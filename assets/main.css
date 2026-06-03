@@ -1,0 +1,378 @@
+:root {
+    color-scheme: light;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f6f7f9;
+    color: #1b1f24;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-width: 320px;
+    background: #f6f7f9;
+}
+
+button,
+input,
+textarea {
+    font: inherit;
+}
+
+button {
+    border: 1px solid #1e4f8f;
+    background: #1e4f8f;
+    color: #ffffff;
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+button:hover {
+    background: #173e71;
+}
+
+.ghost-button {
+    background: #ffffff;
+    color: #1e4f8f;
+}
+
+.ghost-button:hover {
+    background: #eef5ff;
+}
+
+input,
+textarea {
+    width: 100%;
+    border: 1px solid #c8d0da;
+    background: #ffffff;
+    color: #1b1f24;
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+
+textarea {
+    min-height: 84px;
+    resize: vertical;
+    line-height: 1.4;
+}
+
+label {
+    display: grid;
+    gap: 6px;
+    color: #4a5563;
+    font-size: 13px;
+}
+
+pre {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.app-shell {
+    width: min(1600px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 24px 0 40px;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.topbar h1 {
+    margin: 0;
+    font-size: 28px;
+    line-height: 1.1;
+}
+
+.topbar p {
+    margin: 8px 0 0;
+    max-width: 760px;
+    color: #5f6b7a;
+}
+
+.status-pill {
+    border: 1px solid #cfd7e2;
+    background: #ffffff;
+    color: #1e4f8f;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.security-note {
+    border: 1px solid #e0c168;
+    background: #fff7dc;
+    color: #463900;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 16px;
+    line-height: 1.4;
+}
+
+.workspace-grid {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.9fr) minmax(420px, 1.4fr) minmax(360px, 1fr);
+    grid-template-areas:
+        "provider runner inspector"
+        "agents runner inspector";
+    gap: 16px;
+    align-items: start;
+}
+
+.panel {
+    background: #ffffff;
+    border: 1px solid #dce2ea;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.provider-panel {
+    grid-area: provider;
+}
+
+.agent-panel {
+    grid-area: agents;
+}
+
+.runner-panel {
+    grid-area: runner;
+}
+
+.inspector-panel {
+    grid-area: inspector;
+}
+
+.panel-heading,
+.agent-card-head,
+.button-row,
+.inline-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.panel-heading,
+.agent-card-head {
+    justify-content: space-between;
+}
+
+.panel h2,
+.panel h3 {
+    margin: 0;
+}
+
+.panel h2 {
+    font-size: 17px;
+}
+
+.panel h3 {
+    font-size: 14px;
+    margin-top: 16px;
+}
+
+.provider-panel,
+.agent-card,
+.runner-panel,
+.inspector-panel {
+    display: grid;
+    gap: 12px;
+}
+
+.inline-controls {
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.checkbox-line {
+    display: flex;
+    grid-template-columns: none;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkbox-line input {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+}
+
+.number-input {
+    width: 104px;
+}
+
+.new-agent-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.4fr);
+    gap: 10px;
+}
+
+.agent-list {
+    display: grid;
+    gap: 12px;
+}
+
+.agent-card {
+    border: 1px solid #dde4ed;
+    border-radius: 8px;
+    padding: 12px;
+    background: #fbfcfe;
+}
+
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.tool-checkbox {
+    min-width: 0;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: #2d3642;
+}
+
+.goal-box {
+    min-height: 120px;
+}
+
+.final-answer {
+    border: 1px solid #bdd8c7;
+    background: #f0fbf4;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.final-answer p {
+    margin: 8px 0 0;
+    line-height: 1.5;
+}
+
+.timeline {
+    display: grid;
+    gap: 10px;
+    max-height: 620px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.event-row {
+    border: 1px solid #dce2ea;
+    border-radius: 8px;
+    padding: 12px;
+    background: #ffffff;
+}
+
+.event-row h3 {
+    margin: 8px 0;
+}
+
+.event-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: #687586;
+    font-size: 12px;
+}
+
+.empty-state {
+    border: 1px dashed #bdc7d3;
+    border-radius: 8px;
+    padding: 20px;
+    color: #687586;
+    text-align: center;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.stat-block {
+    border: 1px solid #dce2ea;
+    border-radius: 8px;
+    padding: 10px;
+    background: #fbfcfe;
+}
+
+.stat-block span {
+    display: block;
+    color: #687586;
+    font-size: 12px;
+}
+
+.stat-block strong {
+    display: block;
+    margin-top: 2px;
+    font-size: 22px;
+}
+
+.compact-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 6px;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+}
+
+.muted {
+    color: #7a8796;
+}
+
+@media (max-width: 1180px) {
+    .workspace-grid {
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+            "provider inspector"
+            "agents agents"
+            "runner runner";
+    }
+}
+
+@media (max-width: 760px) {
+    .app-shell {
+        width: min(100vw - 20px, 760px);
+        padding-top: 14px;
+    }
+
+    .topbar,
+    .workspace-grid,
+    .new-agent-row {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .workspace-grid {
+        grid-template-areas:
+            "provider"
+            "agents"
+            "runner"
+            "inspector";
+    }
+
+    .panel-heading,
+    .agent-card-head {
+        align-items: flex-start;
+    }
+
+    .tool-grid,
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
