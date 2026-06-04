@@ -1,5 +1,6 @@
 use super::save_snapshot;
 use super::shared::set_status;
+use crate::responses::ResponseFormat;
 use crate::state::{default_tool_names, Agent, AppSnapshot};
 use crate::workspace_files::{apply_workspace_files, load_workspace_files, save_agent_files};
 use dioxus::prelude::*;
@@ -121,6 +122,19 @@ pub fn AgentsPage(
                                             agent.name = event.value();
                                         }
                                     }
+                                }
+                            }
+                            label {
+                                "Response format"
+                                select {
+                                    value: "{agent.response_format.as_form_value()}",
+                                    onchange: move |event| {
+                                        if let Some(agent) = snapshot.write().agents.get_mut(agent_index) {
+                                            agent.response_format = ResponseFormat::from_form_value(&event.value());
+                                        }
+                                    },
+                                    option { value: "toon", "TOON" }
+                                    option { value: "json", "JSON" }
                                 }
                             }
                             label {

@@ -1,5 +1,5 @@
 use crate::inference::{get_implementation, InferenceProvider, InferenceRequest};
-use crate::responses::{parse_tool_calls, ReActAction, ResponseFormat};
+use crate::responses::{parse_tool_calls, ReActAction};
 use crate::state::{
     event, now_iso, Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, ToolCall,
 };
@@ -17,21 +17,14 @@ pub trait RuntimeObject {
 pub struct BrowserAgent {
     pub definition: Agent,
     pub history: Vec<Message>,
-    pub response_format: ResponseFormat,
     initialized: bool,
 }
 
 impl BrowserAgent {
     pub fn new(definition: Agent) -> Self {
-        let response_format = if definition.name.contains("Synthesizer") {
-            ResponseFormat::Json
-        } else {
-            ResponseFormat::Toon
-        };
         Self {
             definition,
             history: Vec::new(),
-            response_format,
             initialized: false,
         }
     }
@@ -185,7 +178,7 @@ impl ReActEngine {
             goal: goal.to_string(),
             history: run.messages.clone(),
             tools: specs,
-            response_format: agent.response_format,
+            response_format: agent.definition.response_format,
         };
 
         let output = match inference.invoke_react(&snapshot.provider, request).await {

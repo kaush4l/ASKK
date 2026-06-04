@@ -1,3 +1,4 @@
+use crate::responses::ResponseFormat;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -122,6 +123,8 @@ pub struct Agent {
     pub enabled: bool,
     pub enabled_tools: Vec<String>,
     #[serde(default)]
+    pub response_format: ResponseFormat,
+    #[serde(default)]
     pub source_path: Option<String>,
 }
 
@@ -137,6 +140,7 @@ impl Agent {
             role: role.into(),
             enabled: true,
             enabled_tools,
+            response_format: ResponseFormat::Toon,
             source_path: None,
         }
     }
@@ -320,6 +324,10 @@ pub fn agent_from_markdown(path: &str, content: &str) -> AppResult<Agent> {
     let enabled_tools = meta_value(&meta, "tools")
         .map(|value| parse_tools(&value))
         .unwrap_or_else(default_tool_names);
+    let response_format = meta_value(&meta, "response_format")
+        .or_else(|| meta_value(&meta, "format"))
+        .map(|value| ResponseFormat::from_form_value(&value))
+        .unwrap_or_default();
     let role = body.trim().to_string();
 
     if role.is_empty() {
@@ -332,6 +340,7 @@ pub fn agent_from_markdown(path: &str, content: &str) -> AppResult<Agent> {
         role,
         enabled,
         enabled_tools,
+        response_format,
         source_path: Some(path.to_string()),
     })
 }
@@ -343,11 +352,12 @@ pub fn agent_to_markdown(agent: &Agent) -> String {
         agent.enabled_tools.join(", ")
     };
     format!(
-        "---\nid: {id}\nname: {name}\nenabled: {enabled}\ntools: {tools}\n---\n\n{role}\n",
+        "---\nid: {id}\nname: {name}\nenabled: {enabled}\ntools: {tools}\nresponse_format: {response_format}\n---\n\n{role}\n",
         id = slugify(&agent.id),
         name = agent.name.trim(),
         enabled = agent.enabled,
         tools = tools,
+        response_format = agent.response_format.as_form_value(),
         role = agent.role.trim(),
     )
 }
@@ -790,6 +800,7 @@ mod tests {
         .with_profile_defaults();
 
         assert_eq!(snapshot.agents[0].name, "Planner");
+        assert_eq!(snapshot.agents[0].response_format, ResponseFormat::Toon);
         assert_eq!(snapshot.runs[0].messages[0].content, "Planner: done");
         assert_eq!(snapshot.runs[0].events[0].title, "Planner responded");
         assert_eq!(snapshot.runs[0].events[0].body, "Planner finished");
@@ -800,7 +811,7 @@ mod tests {
     fn parses_agent_markdown_frontmatter_and_body() {
         let agent = agent_from_markdown(
             "agents/deep-research.md",
-            "---\nid: deep-research\nname: Deep Research\nenabled: false\ntools: memory_search, web_search\n---\n\nResearch deeply.",
+            "---\nid: deep-research\nname: Deep Research\nenabled: false\ntools: memory_search, web_search\nresponse_format: json\n---\n\nResearch deeply.",
         )
         .unwrap();
 
@@ -808,6 +819,7 @@ mod tests {
         assert_eq!(agent.name, "Deep Research");
         assert!(!agent.enabled);
         assert_eq!(agent.enabled_tools, vec!["memory_search", "web_search"]);
+        assert_eq!(agent.response_format, ResponseFormat::Json);
         assert_eq!(agent.role, "Research deeply.");
         assert_eq!(
             agent.source_path.as_deref(),
@@ -817,7 +829,19 @@ mod tests {
         let serialized = agent_to_markdown(&agent);
         assert!(serialized.contains("name: Deep Research"));
         assert!(serialized.contains("tools: memory_search, web_search"));
+        assert!(serialized.contains("response_format: json"));
         assert!(serialized.contains("Research deeply."));
+    }
+
+    #[test]
+    fn agent_markdown_defaults_to_toon_response_format() {
+        let agent = agent_from_markdown(
+            "agents/planner.md",
+            "---\nid: planner\nname: Planner\nenabled: true\ntools: all\n---\n\nPlan.",
+        )
+        .unwrap();
+
+        assert_eq!(agent.response_format, ResponseFormat::Toon);
     }
 
     #[test]

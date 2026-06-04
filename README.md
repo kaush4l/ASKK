@@ -52,7 +52,7 @@ curl http://127.0.0.1:8874/v1/models
 ASKK keeps broad behavior and agent prompts in Markdown:
 
 - `soul.md` is the shared behavior prompt prepended to every agent call.
-- `agents/*.md` defines agents with frontmatter (`id`, `name`, `enabled`, `tools`) and a Markdown body as the agent prompt.
+- `agents/*.md` defines agents with frontmatter (`id`, `name`, `enabled`, `tools`, `response_format`) and a Markdown body as the agent prompt.
 - `skills/**.md` defines reusable skills with frontmatter (`id`, `name`, `enabled`) and a Markdown body.
 
 The hosted app cannot read your local filesystem directly. Use the local bridge from the repo root to enable the Soul page and Agents page to load these files:

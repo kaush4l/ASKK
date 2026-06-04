@@ -480,10 +480,15 @@ pre {
     font-size: 12px;
 }
 
-.new-agent-row,
-.agent-fields {
+.new-agent-row {
     display: grid;
     grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.4fr);
+    gap: 10px;
+}
+
+.agent-fields {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.8fr) minmax(140px, 0.5fr) minmax(220px, 1.4fr);
     gap: 10px;
 }
 

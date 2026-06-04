@@ -38,10 +38,33 @@ pub trait StructuredResponse: Sized {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum ResponseFormat {
     Json,
     Toon,
+}
+
+impl Default for ResponseFormat {
+    fn default() -> Self {
+        Self::Toon
+    }
+}
+
+impl ResponseFormat {
+    pub fn from_form_value(value: &str) -> Self {
+        match value {
+            "json" => Self::Json,
+            _ => Self::Toon,
+        }
+    }
+
+    pub fn as_form_value(self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Toon => "toon",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
