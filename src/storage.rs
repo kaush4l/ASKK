@@ -52,14 +52,14 @@ impl StorageAdapter for IndexedDbStorage {
             .serde()
             .map_err(|err| format!("Unable to create IndexedDB get request: {err}"))?
             .await
+            .map(|snapshot: Option<AppSnapshot>| snapshot.map(AppSnapshot::with_profile_defaults))
             .map_err(|err| format!("Unable to read IndexedDB snapshot: {err}"))
     }
 
     async fn save_snapshot(&self, snapshot: &AppSnapshot) -> AppResult<()> {
         let mut persisted = snapshot.clone();
-        if !persisted.provider.persist_api_key {
-            persisted.provider.api_key.clear();
-        }
+        persisted.ensure_provider_profiles();
+        persisted.sanitize_api_keys();
 
         let tx = self
             .db

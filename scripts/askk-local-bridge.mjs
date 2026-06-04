@@ -1,74 +1,340 @@
 #!/usr/bin/env node
 
 import http from "node:http";
+import { fileURLToPath } from "node:url";
 
 const DEFAULT_TARGET = "http://127.0.0.1:8873/v1";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8874;
+const DEFAULT_BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
+const DEFAULT_TAVILY_BASE_URL = "https://api.tavily.com";
 
-const options = parseArgs(process.argv.slice(2));
-const targetBase = normalizeBaseUrl(options.target ?? process.env.ASKK_BRIDGE_TARGET ?? DEFAULT_TARGET);
-const host = options.host ?? process.env.ASKK_BRIDGE_HOST ?? DEFAULT_HOST;
-const port = Number(options.port ?? process.env.ASKK_BRIDGE_PORT ?? DEFAULT_PORT);
-const listenBasePath = normalizePath(options.basePath ?? targetBase.pathname);
+export function createBridgeServer(rawOptions = {}) {
+    const targetBase = normalizeBaseUrl(
+        rawOptions.target ?? process.env.ASKK_BRIDGE_TARGET ?? DEFAULT_TARGET,
+    );
+    const listenBasePath = normalizePath(rawOptions.basePath ?? targetBase.pathname);
+    const toolsPath = normalizePath(rawOptions.toolsPath ?? "/askk/tools");
+    const searchConfig = {
+        braveApiKey:
+            rawOptions.braveApiKey ??
+            process.env.BRAVE_API_KEY ??
+            process.env.BRAVE_SEARCH_API_KEY ??
+            "",
+        braveSearchUrl:
+            rawOptions.braveSearchUrl ??
+            process.env.ASKK_BRAVE_SEARCH_URL ??
+            DEFAULT_BRAVE_SEARCH_URL,
+        tavilyApiKey: rawOptions.tavilyApiKey ?? process.env.TAVILY_API_KEY ?? "",
+        tavilyBaseUrl:
+            rawOptions.tavilyBaseUrl ??
+            process.env.ASKK_TAVILY_BASE_URL ??
+            DEFAULT_TAVILY_BASE_URL,
+    };
 
-const server = http.createServer(async (request, response) => {
-    setCorsHeaders(request, response);
-
-    if (request.method === "OPTIONS") {
-        response.writeHead(204);
-        response.end();
-        return;
-    }
-
-    try {
-        const upstream = buildUpstreamUrl(request.url ?? "/", targetBase, listenBasePath);
-        const upstreamResponse = await fetch(upstream, {
-            method: request.method,
-            headers: forwardedHeaders(request),
-            body: request.method === "GET" || request.method === "HEAD" ? undefined : request,
-            duplex: "half",
-        });
-
-        response.statusCode = upstreamResponse.status;
-        upstreamResponse.headers.forEach((value, key) => {
-            if (!isHopByHopHeader(key) && !key.toLowerCase().startsWith("access-control-")) {
-                response.setHeader(key, value);
-            }
-        });
+    const server = http.createServer(async (request, response) => {
         setCorsHeaders(request, response);
 
-        if (!upstreamResponse.body) {
+        if (request.method === "OPTIONS") {
+            response.writeHead(204);
             response.end();
             return;
         }
 
-        for await (const chunk of upstreamResponse.body) {
-            response.write(chunk);
-        }
-        response.end();
-    } catch (error) {
-        response.writeHead(502, { "Content-Type": "application/json" });
-        response.end(
-            JSON.stringify(
-                {
-                    error: "ASKK local bridge could not reach upstream provider.",
-                    target: targetBase.toString(),
-                    detail: error instanceof Error ? error.message : String(error),
-                },
-                null,
-                2,
-            ),
-        );
-    }
-});
+        try {
+            const incoming = new URL(request.url ?? "/", "http://bridge.local");
+            if (incoming.pathname.startsWith(`${toolsPath}/`)) {
+                await handleToolRequest(request, response, toolsPath, searchConfig);
+                return;
+            }
 
-server.listen(port, host, () => {
-    console.log(`ASKK local bridge listening at http://${host}:${port}${listenBasePath}`);
-    console.log(`Forwarding to ${targetBase.toString()}`);
-    console.log("Use this ASKK Provider Base URL:");
-    console.log(`http://${host}:${port}${listenBasePath}`);
-});
+            await proxyProviderRequest(request, response, targetBase, listenBasePath);
+        } catch (error) {
+            writeJson(response, 502, {
+                error: "ASKK local bridge request failed.",
+                target: targetBase.toString(),
+                detail: error instanceof Error ? error.message : String(error),
+            });
+        }
+    });
+
+    return { server, targetBase, listenBasePath };
+}
+
+export function startBridge(rawOptions = {}) {
+    const host = rawOptions.host ?? process.env.ASKK_BRIDGE_HOST ?? DEFAULT_HOST;
+    const port = Number(rawOptions.port ?? process.env.ASKK_BRIDGE_PORT ?? DEFAULT_PORT);
+    const bridge = createBridgeServer(rawOptions);
+    bridge.server.listen(port, host, () => {
+        console.log(`ASKK local bridge listening at http://${host}:${port}${bridge.listenBasePath}`);
+        console.log(`Forwarding model calls to ${bridge.targetBase.toString()}`);
+        console.log("Use this ASKK Provider Base URL:");
+        console.log(`http://${host}:${port}${bridge.listenBasePath}`);
+        console.log("Web tool endpoints:");
+        console.log(`http://${host}:${port}/askk/tools/web_search`);
+        console.log(`http://${host}:${port}/askk/tools/web_extract`);
+    });
+    return bridge.server;
+}
+
+async function proxyProviderRequest(request, response, targetBase, listenBasePath) {
+    const upstream = buildUpstreamUrl(request.url ?? "/", targetBase, listenBasePath);
+    const upstreamResponse = await fetch(upstream, {
+        method: request.method,
+        headers: forwardedHeaders(request),
+        body: request.method === "GET" || request.method === "HEAD" ? undefined : request,
+        duplex: "half",
+    });
+
+    response.statusCode = upstreamResponse.status;
+    upstreamResponse.headers.forEach((value, key) => {
+        if (!isHopByHopHeader(key) && !key.toLowerCase().startsWith("access-control-")) {
+            response.setHeader(key, value);
+        }
+    });
+    setCorsHeaders(request, response);
+
+    if (!upstreamResponse.body) {
+        response.end();
+        return;
+    }
+
+    for await (const chunk of upstreamResponse.body) {
+        response.write(chunk);
+    }
+    response.end();
+}
+
+async function handleToolRequest(request, response, toolsPath, config) {
+    if (request.method !== "POST") {
+        writeJson(response, 405, { success: false, error: "Tool endpoints require POST." });
+        return;
+    }
+
+    const incoming = new URL(request.url ?? "/", "http://bridge.local");
+    const toolName = incoming.pathname.slice(`${toolsPath}/`.length);
+    const body = await readJsonBody(request);
+
+    if (toolName === "web_search") {
+        const result = await webSearch(body, config);
+        writeJson(response, result.success === false ? 400 : 200, result);
+        return;
+    }
+
+    if (toolName === "web_extract") {
+        const result = await webExtract(body, config);
+        writeJson(response, result.success === false ? 400 : 200, result);
+        return;
+    }
+
+    writeJson(response, 404, { success: false, error: `Unknown ASKK tool: ${toolName}` });
+}
+
+export async function webSearch(body, config = {}) {
+    const query = requiredString(body, "query");
+    const count = clampInt(body.count ?? body.limit ?? 5, 1, 10);
+    const mergedConfig = mergeSearchConfig(config);
+
+    if (mergedConfig.braveApiKey) {
+        return braveSearch(body, query, count, mergedConfig);
+    }
+    if (mergedConfig.tavilyApiKey) {
+        return tavilySearch(query, count, mergedConfig);
+    }
+
+    return {
+        success: false,
+        error:
+            "No web search provider configured. Set BRAVE_API_KEY, BRAVE_SEARCH_API_KEY, or TAVILY_API_KEY before starting the ASKK local bridge.",
+    };
+}
+
+export async function webExtract(body, config = {}) {
+    const urls = arrayOfStrings(body, "urls").slice(0, 5);
+    if (urls.length === 0) {
+        return { success: false, error: "web_extract requires at least one URL." };
+    }
+
+    const mergedConfig = mergeSearchConfig(config);
+    if (mergedConfig.tavilyApiKey) {
+        return tavilyExtract(urls, mergedConfig);
+    }
+
+    const documents = [];
+    for (const url of urls) {
+        documents.push(await fetchExtract(url));
+    }
+    return { success: true, data: documents };
+}
+
+async function braveSearch(body, query, count, config) {
+    const url = new URL(config.braveSearchUrl);
+    url.searchParams.set("q", query);
+    url.searchParams.set("count", String(count));
+    mapOptionalParam(body, url, "country", "country");
+    mapOptionalParam(body, url, "language", "search_lang");
+    mapOptionalParam(body, url, "ui_lang", "ui_lang");
+    mapOptionalParam(body, url, "freshness", "freshness");
+    mapOptionalParam(body, url, "date_after", "date_after");
+    mapOptionalParam(body, url, "date_before", "date_before");
+
+    const response = await fetch(url, {
+        headers: {
+            Accept: "application/json",
+            "X-Subscription-Token": config.braveApiKey,
+        },
+    });
+    const raw = await readJsonResponse(response);
+    if (!response.ok) {
+        return providerError("Brave Search", response.status, raw);
+    }
+    return normalizeBraveSearch(raw);
+}
+
+async function tavilySearch(query, count, config) {
+    const raw = await tavilyRequest(
+        "search",
+        {
+            query,
+            max_results: Math.min(count, 20),
+            include_raw_content: false,
+            include_images: false,
+        },
+        config,
+    );
+    if (raw.success === false) {
+        return raw;
+    }
+    return normalizeTavilySearch(raw);
+}
+
+async function tavilyExtract(urls, config) {
+    const raw = await tavilyRequest(
+        "extract",
+        {
+            urls,
+            include_images: false,
+            extract_depth: "basic",
+        },
+        config,
+    );
+    if (raw.success === false) {
+        return raw;
+    }
+    return { success: true, data: normalizeTavilyDocuments(raw) };
+}
+
+async function tavilyRequest(endpoint, payload, config) {
+    const url = new URL(`/${endpoint.replace(/^\/+/, "")}`, config.tavilyBaseUrl);
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ ...payload, api_key: config.tavilyApiKey }),
+    });
+    const raw = await readJsonResponse(response);
+    if (!response.ok) {
+        return providerError("Tavily", response.status, raw);
+    }
+    return raw;
+}
+
+async function fetchExtract(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            throw new Error("Only http:// and https:// URLs are supported.");
+        }
+        const response = await fetch(parsed, { headers: { Accept: "text/html,text/plain,*/*" } });
+        const text = await response.text();
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${text.slice(0, 300)}`);
+        }
+        const title = extractTitle(text);
+        const content = htmlToText(text).slice(0, 20_000);
+        return {
+            url: parsed.toString(),
+            title,
+            content,
+            raw_content: content,
+            metadata: { sourceURL: parsed.toString(), title },
+        };
+    } catch (error) {
+        return {
+            url,
+            title: "",
+            content: "",
+            raw_content: "",
+            error: error instanceof Error ? error.message : String(error),
+            metadata: { sourceURL: url },
+        };
+    }
+}
+
+export function normalizeBraveSearch(raw) {
+    const results = raw?.web?.results ?? raw?.results ?? [];
+    return {
+        success: true,
+        data: {
+            web: results.map((result, index) => ({
+                title: result.title ?? "",
+                url: result.url ?? "",
+                description: result.description ?? result.snippet ?? "",
+                position: index + 1,
+            })),
+        },
+    };
+}
+
+export function normalizeTavilySearch(raw) {
+    return {
+        success: true,
+        data: {
+            web: (raw.results ?? []).map((result, index) => ({
+                title: result.title ?? "",
+                url: result.url ?? "",
+                description: result.content ?? "",
+                position: index + 1,
+            })),
+        },
+    };
+}
+
+export function normalizeTavilyDocuments(raw, fallbackUrl = "") {
+    const documents = [];
+    for (const result of raw.results ?? []) {
+        const url = result.url ?? fallbackUrl;
+        const rawContent = result.raw_content ?? result.content ?? "";
+        documents.push({
+            url,
+            title: result.title ?? "",
+            content: rawContent,
+            raw_content: rawContent,
+            metadata: { sourceURL: url, title: result.title ?? "" },
+        });
+    }
+    for (const failed of raw.failed_results ?? []) {
+        documents.push({
+            url: failed.url ?? fallbackUrl,
+            title: "",
+            content: "",
+            raw_content: "",
+            error: failed.error ?? "extraction failed",
+            metadata: { sourceURL: failed.url ?? fallbackUrl },
+        });
+    }
+    for (const failedUrl of raw.failed_urls ?? []) {
+        const url = String(failedUrl);
+        documents.push({
+            url,
+            title: "",
+            content: "",
+            raw_content: "",
+            error: "extraction failed",
+            metadata: { sourceURL: url },
+        });
+    }
+    return documents;
+}
 
 function parseArgs(args) {
     const parsed = {};
@@ -105,7 +371,12 @@ Options:
   --port        Local port to bind. Default: ${DEFAULT_PORT}
   --base-path   Path exposed by the bridge. Default: target URL path
 
-Environment:
+Web tool environment:
+  BRAVE_API_KEY or BRAVE_SEARCH_API_KEY
+  TAVILY_API_KEY
+  ASKK_BRAVE_SEARCH_URL and ASKK_TAVILY_BASE_URL for local/mock providers
+
+Bridge environment:
   ASKK_BRIDGE_TARGET, ASKK_BRIDGE_HOST, ASKK_BRIDGE_PORT`);
 }
 
@@ -131,8 +402,8 @@ function buildUpstreamUrl(rawRequestUrl, base, basePath) {
     const suffix = basePath && incomingPath.startsWith(`${basePath}/`)
         ? incomingPath.slice(basePath.length)
         : incomingPath === basePath
-            ? ""
-            : incomingPath;
+          ? ""
+          : incomingPath;
     const target = new URL(base.toString());
     target.pathname = `${target.pathname.replace(/\/+$/g, "")}${suffix}`;
     target.search = incoming.search;
@@ -172,4 +443,106 @@ function isHopByHopHeader(name) {
         "transfer-encoding",
         "upgrade",
     ].includes(name.toLowerCase());
+}
+
+async function readJsonBody(request) {
+    const chunks = [];
+    for await (const chunk of request) {
+        chunks.push(chunk);
+    }
+    const raw = Buffer.concat(chunks).toString("utf8");
+    if (!raw.trim()) {
+        return {};
+    }
+    return JSON.parse(raw);
+}
+
+async function readJsonResponse(response) {
+    const text = await response.text();
+    if (!text.trim()) {
+        return {};
+    }
+    try {
+        return JSON.parse(text);
+    } catch {
+        return { text };
+    }
+}
+
+function writeJson(response, status, payload) {
+    response.writeHead(status, { "Content-Type": "application/json" });
+    response.end(JSON.stringify(payload, null, 2));
+}
+
+function providerError(provider, status, raw) {
+    return {
+        success: false,
+        error: `${provider} returned HTTP ${status}: ${JSON.stringify(raw)}`,
+    };
+}
+
+function requiredString(body, key) {
+    const value = body?.[key];
+    if (typeof value !== "string" || !value.trim()) {
+        throw new Error(`Missing required string field: ${key}`);
+    }
+    return value.trim();
+}
+
+function arrayOfStrings(body, key) {
+    const value = body?.[key];
+    if (!Array.isArray(value)) {
+        throw new Error(`Missing required array field: ${key}`);
+    }
+    return value
+        .filter((item) => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function clampInt(value, min, max) {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isFinite(parsed)) {
+        return min;
+    }
+    return Math.max(min, Math.min(max, parsed));
+}
+
+function mapOptionalParam(body, url, source, target) {
+    const value = body?.[source];
+    if (typeof value === "string" && value.trim()) {
+        url.searchParams.set(target, value.trim());
+    }
+}
+
+function mergeSearchConfig(config) {
+    return {
+        braveApiKey: config.braveApiKey ?? process.env.BRAVE_API_KEY ?? process.env.BRAVE_SEARCH_API_KEY ?? "",
+        braveSearchUrl: config.braveSearchUrl ?? process.env.ASKK_BRAVE_SEARCH_URL ?? DEFAULT_BRAVE_SEARCH_URL,
+        tavilyApiKey: config.tavilyApiKey ?? process.env.TAVILY_API_KEY ?? "",
+        tavilyBaseUrl: config.tavilyBaseUrl ?? process.env.ASKK_TAVILY_BASE_URL ?? DEFAULT_TAVILY_BASE_URL,
+    };
+}
+
+function extractTitle(html) {
+    return html.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function htmlToText(html) {
+    return html
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, "\"")
+        .replace(/&#39;/g, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+    startBridge(parseArgs(process.argv.slice(2)));
 }

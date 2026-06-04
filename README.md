@@ -16,6 +16,8 @@ Supported presets:
 
 Provider keys entered in the page are visible to browser code. Use testing keys unless you are comfortable with that browser-local trust model. Key persistence is opt-in and stored in IndexedDB.
 
+Provider profiles are stored in IndexedDB so you can save named base URL/model/auth settings and switch between them without retyping. Profiles follow the same key persistence rule: profile API keys are saved only when that profile has `Persist key in browser storage` enabled.
+
 ### Localhost and CORS
 
 A hosted HTTPS page can attempt to call local loopback endpoints such as `http://localhost:11434`, but browser CORS still applies. ASKK does not bypass CORS or mixed-content policy. If the browser reports a failed fetch before an HTTP response, confirm the local model server is running and allows the hosted page origin.
@@ -42,6 +44,42 @@ You can test the bridge directly:
 ```sh
 curl http://127.0.0.1:8874/v1/models
 ```
+
+### Web Tools
+
+ASKK includes Hermes/OpenClaw-style compiled tools:
+
+- `web_search({ query, count?, country?, language?, freshness?, date_after?, date_before? })`
+- `web_extract({ urls })`
+
+These tools call the local bridge at `http://127.0.0.1:8874/askk/tools/...` so browser code does not need direct search-provider API keys.
+
+For Brave Search:
+
+```sh
+BRAVE_API_KEY="..." node scripts/askk-local-bridge.mjs --target http://192.168.11.154:8873/v1
+```
+
+`BRAVE_SEARCH_API_KEY` is also accepted. Search results are returned in the shared Hermes/OpenClaw envelope:
+
+```json
+{
+  "success": true,
+  "data": {
+    "web": [
+      { "title": "Title", "url": "https://example.com", "description": "Snippet", "position": 1 }
+    ]
+  }
+}
+```
+
+For Tavily search and extraction:
+
+```sh
+TAVILY_API_KEY="..." node scripts/askk-local-bridge.mjs --target http://192.168.11.154:8873/v1
+```
+
+If Tavily is not configured, `web_extract` falls back to a lightweight bridge fetch/extract path.
 
 LM Studio must have CORS enabled for web apps:
 

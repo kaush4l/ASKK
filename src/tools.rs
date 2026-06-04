@@ -3,6 +3,8 @@ use gloo_net::http::Request;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+const BRIDGE_TOOL_BASE_URL: &str = "http://127.0.0.1:8874/askk/tools";
+
 #[derive(Clone, Debug, Default)]
 pub struct ToolRegistry {
     specs: Vec<ToolSpec>,
@@ -45,6 +47,34 @@ impl ToolRegistry {
                         .to_string(),
                     input_schema: json!({"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}),
                 },
+                ToolSpec {
+                    name: "web_search".to_string(),
+                    description: "Search the web through the ASKK local bridge. Returns Hermes/OpenClaw-style results with titles, URLs, descriptions, and positions.".to_string(),
+                    input_schema: json!({
+                        "type":"object",
+                        "properties":{
+                            "query":{"type":"string"},
+                            "count":{"type":"integer","minimum":1,"maximum":10},
+                            "country":{"type":"string"},
+                            "language":{"type":"string"},
+                            "freshness":{"type":"string"},
+                            "date_after":{"type":"string"},
+                            "date_before":{"type":"string"}
+                        },
+                        "required":["query"]
+                    }),
+                },
+                ToolSpec {
+                    name: "web_extract".to_string(),
+                    description: "Extract content from up to 5 web page URLs through the ASKK local bridge. Returns Hermes-style document results.".to_string(),
+                    input_schema: json!({
+                        "type":"object",
+                        "properties":{
+                            "urls":{"type":"array","items":{"type":"string"},"maxItems":5}
+                        },
+                        "required":["urls"]
+                    }),
+                },
             ],
         }
     }
@@ -71,6 +101,8 @@ impl ToolRegistry {
             "create_task" => create_task(snapshot, &args).await,
             "update_task" => update_task(snapshot, &args).await,
             "web_fetch_text" => web_fetch_text(&args).await,
+            "web_search" => web_search(&args).await,
+            "web_extract" => web_extract(&args).await,
             _ => Err(format!("Unknown compiled tool: {tool_name}")),
         };
 
@@ -181,6 +213,73 @@ async fn web_fetch_text(args: &Value) -> AppResult<String> {
     Ok(truncate(&text, 4_000))
 }
 
+async fn web_search(args: &Value) -> AppResult<String> {
+    let query = string_arg(args, "query")?;
+    let count = integer_arg(args, "count").unwrap_or(5).clamp(1, 10);
+    let mut body = json!({
+        "query": query,
+        "count": count,
+    });
+
+    for key in [
+        "country",
+        "language",
+        "ui_lang",
+        "freshness",
+        "date_after",
+        "date_before",
+    ] {
+        if let Some(value) = args.get(key).and_then(Value::as_str).map(str::trim) {
+            if !value.is_empty() {
+                body[key] = Value::String(value.to_string());
+            }
+        }
+    }
+
+    bridge_tool_request("web_search", body).await
+}
+
+async fn web_extract(args: &Value) -> AppResult<String> {
+    let urls = string_array_arg(args, "urls")?;
+    if urls.is_empty() {
+        return Err("Missing required non-empty URL list argument `urls`".to_string());
+    }
+    bridge_tool_request(
+        "web_extract",
+        json!({
+            "urls": urls.into_iter().take(5).collect::<Vec<_>>()
+        }),
+    )
+    .await
+}
+
+async fn bridge_tool_request(tool_name: &str, body: Value) -> AppResult<String> {
+    let endpoint = format!("{BRIDGE_TOOL_BASE_URL}/{tool_name}");
+    let response = Request::post(&endpoint)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|err| format!("Unable to create {tool_name} bridge request: {err:?}"))?
+        .send()
+        .await
+        .map_err(|err| {
+            format!(
+                "{tool_name} bridge request failed. Run `node scripts/askk-local-bridge.mjs` on this browser machine and configure web search credentials there. Browser fetch details: {err:?}"
+            )
+        })?;
+
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|err| format!("Unable to read {tool_name} bridge response: {err:?}"))?;
+
+    if !(200..300).contains(&status) {
+        return Err(format!("{tool_name} bridge returned HTTP {status}: {text}"));
+    }
+
+    Ok(truncate(&text, 8_000))
+}
+
 fn string_arg(args: &Value, key: &str) -> AppResult<String> {
     args.get(key)
         .and_then(Value::as_str)
@@ -190,6 +289,29 @@ fn string_arg(args: &Value, key: &str) -> AppResult<String> {
         .ok_or_else(|| format!("Missing required string argument `{key}`"))
 }
 
+fn integer_arg(args: &Value, key: &str) -> Option<i64> {
+    args.get(key).and_then(|value| {
+        value
+            .as_i64()
+            .or_else(|| value.as_str().and_then(|text| text.parse::<i64>().ok()))
+    })
+}
+
+fn string_array_arg(args: &Value, key: &str) -> AppResult<Vec<String>> {
+    args.get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .ok_or_else(|| format!("Missing required array argument `{key}`"))
+}
+
 fn truncate(value: &str, max_chars: usize) -> String {
     if value.chars().count() <= max_chars {
         return value.to_string();
@@ -197,4 +319,32 @@ fn truncate(value: &str, max_chars: usize) -> String {
     let mut output = value.chars().take(max_chars).collect::<String>();
     output.push_str("...");
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::default_tool_names;
+
+    #[test]
+    fn default_tool_specs_include_web_search_and_extract() {
+        let registry = ToolRegistry::new();
+        let specs = registry.specs_for_agent(&default_tool_names());
+        let names = specs
+            .iter()
+            .map(|spec| spec.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"web_search"));
+        assert!(names.contains(&"web_extract"));
+    }
+
+    #[test]
+    fn string_array_arg_filters_empty_values() {
+        let args = json!({"urls": ["https://example.com", "", "  https://docs.rs  "]});
+        assert_eq!(
+            string_array_arg(&args, "urls").unwrap(),
+            vec!["https://example.com", "https://docs.rs"]
+        );
+    }
 }

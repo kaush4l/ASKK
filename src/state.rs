@@ -64,6 +64,34 @@ impl Default for ProviderConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ProviderProfile {
+    pub id: String,
+    pub name: String,
+    pub config: ProviderConfig,
+}
+
+impl ProviderProfile {
+    pub fn new(name: impl Into<String>, config: ProviderConfig) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.into(),
+            config,
+        }
+    }
+
+    pub fn sanitized_name(name: &str, config: &ProviderConfig) -> String {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+        if !config.model.trim().is_empty() {
+            return config.model.trim().to_string();
+        }
+        "Provider Profile".to_string()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Agent {
     pub id: String,
     pub name: String,
@@ -168,6 +196,10 @@ pub struct AgentRun {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AppSnapshot {
     pub provider: ProviderConfig,
+    #[serde(default)]
+    pub provider_profiles: Vec<ProviderProfile>,
+    #[serde(default)]
+    pub active_provider_profile_id: Option<String>,
     pub agents: Vec<Agent>,
     pub memories: Vec<MemoryItem>,
     pub tasks: Vec<TaskItem>,
@@ -179,8 +211,13 @@ pub struct AppSnapshot {
 impl Default for AppSnapshot {
     fn default() -> Self {
         let tools = default_tool_names();
+        let provider = ProviderConfig::default();
+        let profile = ProviderProfile::new("OpenAI", provider.clone());
+        let active_provider_profile_id = Some(profile.id.clone());
         Self {
-            provider: ProviderConfig::default(),
+            provider,
+            provider_profiles: vec![profile],
+            active_provider_profile_id,
             agents: vec![
                 Agent::new(
                     "ASKK Planner",
@@ -215,7 +252,113 @@ pub fn default_tool_names() -> Vec<String> {
         "create_task".to_string(),
         "update_task".to_string(),
         "web_fetch_text".to_string(),
+        "web_search".to_string(),
+        "web_extract".to_string(),
     ]
+}
+
+impl AppSnapshot {
+    pub fn with_profile_defaults(mut self) -> Self {
+        self.ensure_provider_profiles();
+        self
+    }
+
+    pub fn ensure_provider_profiles(&mut self) {
+        if self.provider_profiles.is_empty() {
+            let name = ProviderProfile::sanitized_name("Current Provider", &self.provider);
+            let profile = ProviderProfile::new(name, self.provider.clone());
+            self.active_provider_profile_id = Some(profile.id.clone());
+            self.provider_profiles.push(profile);
+            return;
+        }
+
+        let active_exists = self.active_provider_profile_id.as_ref().is_some_and(|id| {
+            self.provider_profiles
+                .iter()
+                .any(|profile| &profile.id == id)
+        });
+
+        if !active_exists {
+            self.active_provider_profile_id = self
+                .provider_profiles
+                .first()
+                .map(|profile| profile.id.clone());
+        }
+    }
+
+    pub fn sanitize_api_keys(&mut self) {
+        if !self.provider.persist_api_key {
+            self.provider.api_key.clear();
+        }
+        for profile in &mut self.provider_profiles {
+            if !profile.config.persist_api_key {
+                profile.config.api_key.clear();
+            }
+        }
+    }
+
+    pub fn select_provider_profile(&mut self, profile_id: &str) -> AppResult<String> {
+        let Some(profile) = self
+            .provider_profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .cloned()
+        else {
+            return Err(format!("No provider profile found with id {profile_id}"));
+        };
+        self.provider = profile.config;
+        self.active_provider_profile_id = Some(profile.id);
+        Ok(format!("Selected provider profile: {}", profile.name))
+    }
+
+    pub fn save_current_provider_profile(&mut self, name: &str) -> String {
+        let profile_name = ProviderProfile::sanitized_name(name, &self.provider);
+        let profile = ProviderProfile::new(profile_name.clone(), self.provider.clone());
+        self.active_provider_profile_id = Some(profile.id.clone());
+        self.provider_profiles.push(profile);
+        format!("Saved provider profile: {profile_name}")
+    }
+
+    pub fn update_active_provider_profile(&mut self, name: &str) -> String {
+        self.ensure_provider_profiles();
+        let Some(active_id) = self.active_provider_profile_id.clone() else {
+            return self.save_current_provider_profile(name);
+        };
+        let profile_name = ProviderProfile::sanitized_name(name, &self.provider);
+        let Some(profile) = self
+            .provider_profiles
+            .iter_mut()
+            .find(|profile| profile.id == active_id)
+        else {
+            return self.save_current_provider_profile(&profile_name);
+        };
+        profile.name = profile_name.clone();
+        profile.config = self.provider.clone();
+        format!("Updated provider profile: {profile_name}")
+    }
+
+    pub fn delete_provider_profile(&mut self, profile_id: &str) -> String {
+        if self.provider_profiles.len() <= 1 {
+            return "Keep at least one provider profile.".to_string();
+        }
+
+        let Some(index) = self
+            .provider_profiles
+            .iter()
+            .position(|profile| profile.id == profile_id)
+        else {
+            return format!("No provider profile found with id {profile_id}");
+        };
+
+        let removed = self.provider_profiles.remove(index);
+        if self.active_provider_profile_id.as_deref() == Some(profile_id) {
+            if let Some(next) = self.provider_profiles.first().cloned() {
+                self.provider = next.config;
+                self.active_provider_profile_id = Some(next.id);
+            }
+        }
+        format!("Deleted provider profile: {}", removed.name)
+    }
 }
 
 pub fn now_iso() -> String {
@@ -265,7 +408,7 @@ mod tests {
 
     #[test]
     fn old_snapshot_without_auth_mode_deserializes() {
-        let snapshot: AppSnapshot = serde_json::from_value(json!({
+        let snapshot = serde_json::from_value::<AppSnapshot>(json!({
             "provider": {
                 "base_url": "https://api.openai.com/v1",
                 "model": "gpt-4.1-mini",
@@ -284,5 +427,106 @@ mod tests {
         .unwrap();
 
         assert_eq!(snapshot.provider.auth_mode, ProviderAuthMode::Bearer);
+    }
+
+    #[test]
+    fn old_snapshot_seeds_provider_profile_on_normalize() {
+        let snapshot = serde_json::from_value::<AppSnapshot>(json!({
+            "provider": {
+                "base_url": "http://127.0.0.1:8874/v1",
+                "model": "local-model",
+                "api_key": "",
+                "auth_mode": "none",
+                "persist_api_key": false,
+                "temperature": 0.2,
+                "max_tokens": 900
+            },
+            "agents": [],
+            "memories": [],
+            "tasks": [],
+            "runs": [],
+            "current_run": null,
+            "status": "Ready"
+        }))
+        .unwrap()
+        .with_profile_defaults();
+
+        assert_eq!(snapshot.provider_profiles.len(), 1);
+        assert_eq!(snapshot.provider_profiles[0].config.model, "local-model");
+        assert_eq!(
+            snapshot.active_provider_profile_id.as_deref(),
+            Some(snapshot.provider_profiles[0].id.as_str())
+        );
+    }
+
+    #[test]
+    fn sanitize_api_keys_clears_active_provider_and_profiles() {
+        let mut snapshot = AppSnapshot::default();
+        snapshot.provider.api_key = "active-secret".to_string();
+        snapshot.provider.persist_api_key = false;
+        snapshot.provider_profiles = vec![
+            ProviderProfile::new(
+                "Persisted",
+                ProviderConfig {
+                    api_key: "kept".to_string(),
+                    persist_api_key: true,
+                    ..ProviderConfig::default()
+                },
+            ),
+            ProviderProfile::new(
+                "Ephemeral",
+                ProviderConfig {
+                    api_key: "cleared".to_string(),
+                    persist_api_key: false,
+                    ..ProviderConfig::default()
+                },
+            ),
+        ];
+
+        snapshot.sanitize_api_keys();
+
+        assert!(snapshot.provider.api_key.is_empty());
+        assert_eq!(snapshot.provider_profiles[0].config.api_key, "kept");
+        assert!(snapshot.provider_profiles[1].config.api_key.is_empty());
+    }
+
+    #[test]
+    fn provider_profile_helpers_select_update_and_delete() {
+        let mut snapshot = AppSnapshot::default();
+        snapshot.provider.model = "first-model".to_string();
+        let save_status = snapshot.save_current_provider_profile("First");
+        let first_id = snapshot.active_provider_profile_id.clone().unwrap();
+        snapshot.provider.model = "second-model".to_string();
+        let update_status = snapshot.update_active_provider_profile("Second");
+
+        assert_eq!(save_status, "Saved provider profile: First");
+        assert_eq!(update_status, "Updated provider profile: Second");
+        assert_eq!(
+            snapshot
+                .provider_profiles
+                .iter()
+                .find(|profile| profile.id == first_id)
+                .unwrap()
+                .config
+                .model,
+            "second-model"
+        );
+
+        let default_id = snapshot
+            .provider_profiles
+            .iter()
+            .find(|profile| profile.id != first_id)
+            .unwrap()
+            .id
+            .clone();
+        snapshot.select_provider_profile(&default_id).unwrap();
+        assert_eq!(snapshot.provider.model, "gpt-4.1-mini");
+
+        let delete_status = snapshot.delete_provider_profile(&first_id);
+        assert_eq!(delete_status, "Deleted provider profile: Second");
+        assert!(!snapshot
+            .provider_profiles
+            .iter()
+            .any(|profile| profile.id == first_id));
     }
 }
