@@ -21,7 +21,7 @@ fn main() {
 fn App() -> Element {
     let mut snapshot = use_signal(AppSnapshot::default);
     let goal = use_signal(String::new);
-    let new_agent_name = use_signal(|| "ASKK Specialist".to_string());
+    let new_agent_name = use_signal(|| "Specialist".to_string());
     let new_agent_role = use_signal(|| {
         "Handle a focused part of the goal and use compiled tools when useful.".to_string()
     });

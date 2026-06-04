@@ -1,32 +1,35 @@
 use super::shared::set_status;
-use crate::state::{Agent, AppSnapshot};
+use crate::state::{default_tool_names, Agent, AppSnapshot};
 use dioxus::prelude::*;
 
 #[component]
-pub fn AgentTeam(
+pub fn AgentsPage(
     mut snapshot: Signal<AppSnapshot>,
     mut new_agent_name: Signal<String>,
     mut new_agent_role: Signal<String>,
-    tool_names: Vec<String>,
 ) -> Element {
     let current = snapshot.read().clone();
+    let tool_names = default_tool_names();
 
     rsx! {
-        section { class: "panel agent-panel",
-            div { class: "panel-heading",
-                h2 { "Multi-Agent Team" }
+        section { class: "panel page-panel agents-page",
+            div { class: "page-heading",
+                div {
+                    h2 { "Agents" }
+                }
                 button {
                     onclick: move |_| {
                         let agent = Agent::new(
                             new_agent_name.read().clone(),
                             new_agent_role.read().clone(),
-                            crate::state::default_tool_names(),
+                            default_tool_names(),
                         );
                         snapshot.write().agents.push(agent);
                     },
                     "Add Agent"
                 }
             }
+
             div { class: "new-agent-row",
                 input {
                     value: "{new_agent_name.read()}",
@@ -37,7 +40,8 @@ pub fn AgentTeam(
                     oninput: move |event| new_agent_role.set(event.value())
                 }
             }
-            div { class: "agent-list",
+
+            div { class: "agent-list scroll-area",
                 for (agent_index, agent) in current.agents.iter().enumerate() {
                     article { class: "agent-card", key: "{agent.id}",
                         div { class: "agent-card-head",
@@ -65,24 +69,26 @@ pub fn AgentTeam(
                                 "Remove"
                             }
                         }
-                        label {
-                            "Name"
-                            input {
-                                value: "{agent.name}",
-                                oninput: move |event| {
-                                    if let Some(agent) = snapshot.write().agents.get_mut(agent_index) {
-                                        agent.name = event.value();
+                        div { class: "agent-fields",
+                            label {
+                                "Name"
+                                input {
+                                    value: "{agent.name}",
+                                    oninput: move |event| {
+                                        if let Some(agent) = snapshot.write().agents.get_mut(agent_index) {
+                                            agent.name = event.value();
+                                        }
                                     }
                                 }
                             }
-                        }
-                        label {
-                            "Role / system prompt"
-                            textarea {
-                                value: "{agent.role}",
-                                oninput: move |event| {
-                                    if let Some(agent) = snapshot.write().agents.get_mut(agent_index) {
-                                        agent.role = event.value();
+                            label {
+                                "Agent prompt"
+                                textarea {
+                                    value: "{agent.role}",
+                                    oninput: move |event| {
+                                        if let Some(agent) = snapshot.write().agents.get_mut(agent_index) {
+                                            agent.role = event.value();
+                                        }
                                     }
                                 }
                             }

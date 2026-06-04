@@ -7,7 +7,7 @@ pub fn InspectorPanel(snapshot: Signal<AppSnapshot>) -> Element {
     let current = snapshot.read().clone();
 
     rsx! {
-        section { class: "panel inspector-panel",
+        section { class: "panel page-panel inspector-panel",
             h2 { "State Inspector" }
             div { class: "stats-grid",
                 StatBlock { label: "Agents", value: current.agents.len().to_string() }

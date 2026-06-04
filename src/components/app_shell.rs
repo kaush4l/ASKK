@@ -1,10 +1,30 @@
-use super::agent_team::AgentTeam;
+use super::agents_page::AgentsPage;
 use super::chat_panel::ChatPanel;
+use super::event_log::EventLogPanel;
 use super::inspector::InspectorPanel;
 use super::provider_settings::ProviderSettings;
 use super::{FAVICON, MAIN_CSS};
-use crate::state::{default_tool_names, AppSnapshot};
+use crate::state::AppSnapshot;
 use dioxus::prelude::*;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DashboardPage {
+    Chat,
+    Agents,
+    Provider,
+    Inspector,
+}
+
+impl DashboardPage {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Chat => "Chat",
+            Self::Agents => "Agents",
+            Self::Provider => "Provider",
+            Self::Inspector => "Inspector",
+        }
+    }
+}
 
 #[component]
 pub fn AppShell(
@@ -15,7 +35,24 @@ pub fn AppShell(
     provider_models: Signal<Vec<String>>,
 ) -> Element {
     let current = snapshot.read().clone();
-    let tool_names = default_tool_names();
+    let mut active_page = use_signal(|| DashboardPage::Chat);
+    let mut nav_collapsed = use_signal(|| false);
+    let frame_class = if nav_collapsed() {
+        "dashboard-frame nav-collapsed"
+    } else {
+        "dashboard-frame"
+    };
+    let left_nav_class = if nav_collapsed() {
+        "left-nav collapsed"
+    } else {
+        "left-nav"
+    };
+    let pages = [
+        DashboardPage::Chat,
+        DashboardPage::Agents,
+        DashboardPage::Provider,
+        DashboardPage::Inspector,
+    ];
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
@@ -23,29 +60,79 @@ pub fn AppShell(
 
         main { class: "app-shell",
             header { class: "topbar",
-                div {
+                div { class: "brand-block",
                     h1 { "ASKK" }
-                    p { "Client-side multi-agent workspace compiled to Wasm with OpenAI-compatible browser fetch calls." }
+                    p { "Agentic dashboard for browser-hosted model runs." }
                 }
                 div { class: "status-pill", "{current.status}" }
             }
 
             section { class: "security-note",
                 strong { "Prototype key warning: " }
-                span { "provider keys entered here are visible to browser code. Use testing keys. Hosted pages can call localhost only when the model server allows this page origin through CORS." }
+                span { "provider keys entered here are visible to browser code. Hosted pages can call local providers only when CORS allows this page origin." }
             }
 
-            div { class: "workspace-grid",
-                ProviderSettings { snapshot, provider_models }
-                AgentTeam {
-                    snapshot,
-                    new_agent_name,
-                    new_agent_role,
-                    tool_names,
+            div { class: "{frame_class}",
+                aside { class: "{left_nav_class}",
+                    div { class: "left-nav-head",
+                        span { class: "nav-title", "Dashboard" }
+                        button {
+                            class: "icon-button",
+                            onclick: move |_| nav_collapsed.set(!nav_collapsed()),
+                            if nav_collapsed() { ">" } else { "<" }
+                        }
+                    }
+                    nav { class: "nav-list",
+                        for page in pages {
+                            {
+                                let label = page.label();
+                                let glyph = nav_glyph(page);
+                                rsx! {
+                            button {
+                                key: "{label}",
+                                class: if active_page() == page { "nav-item active" } else { "nav-item" },
+                                onclick: move |_| active_page.set(page),
+                                span { class: "nav-glyph", "{glyph}" }
+                                span { class: "nav-text", "{label}" }
+                            }
+                                }
+                            }
+                        }
+                    }
                 }
-                ChatPanel { snapshot, goal }
-                InspectorPanel { snapshot }
+
+                section { class: "page-surface",
+                    {match active_page() {
+                        DashboardPage::Chat => rsx! {
+                            ChatPanel { snapshot, goal }
+                        },
+                        DashboardPage::Agents => rsx! {
+                            AgentsPage {
+                                snapshot,
+                                new_agent_name,
+                                new_agent_role,
+                            }
+                        },
+                        DashboardPage::Provider => rsx! {
+                            ProviderSettings { snapshot, provider_models }
+                        },
+                        DashboardPage::Inspector => rsx! {
+                            InspectorPanel { snapshot }
+                        },
+                    }}
+                }
+
+                EventLogPanel { snapshot }
             }
         }
+    }
+}
+
+fn nav_glyph(page: DashboardPage) -> &'static str {
+    match page {
+        DashboardPage::Chat => "C",
+        DashboardPage::Agents => "A",
+        DashboardPage::Provider => "P",
+        DashboardPage::Inspector => "I",
     }
 }

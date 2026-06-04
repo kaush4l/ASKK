@@ -1,6 +1,7 @@
-mod agent_team;
+mod agents_page;
 mod app_shell;
 mod chat_panel;
+mod event_log;
 mod inspector;
 mod provider_settings;
 mod shared;

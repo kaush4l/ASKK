@@ -4,6 +4,8 @@ use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+const SOUL_PROMPT: &str = include_str!("../soul.md");
+
 #[derive(Clone, Debug)]
 pub struct InferenceRequest {
     pub agent_name: String,
@@ -102,8 +104,11 @@ impl OpenAiCompatibleInference {
         let tool_manifest = serde_json::to_string_pretty(&request.tools)
             .map_err(|err| format!("Unable to serialize tool manifest: {err}"))?;
         let response_instructions = ReActResponse::instructions(request.response_format);
+        let soul_prompt = SOUL_PROMPT.trim();
         let system = format!(
-            r#"You are {agent_name}.
+            r#"{soul_prompt}
+
+You are {agent_name}.
 
 Role:
 {agent_role}
@@ -114,6 +119,7 @@ Available compiled tools:
 {tool_manifest}
 
 {response_instructions}"#,
+            soul_prompt = soul_prompt,
             agent_name = request.agent_name,
             agent_role = request.agent_role,
         );
@@ -401,5 +407,29 @@ mod tests {
 
         config.auth_mode = ProviderAuthMode::Bearer;
         assert!(authorization_header(&config).is_err());
+    }
+
+    #[test]
+    fn agent_calls_include_soul_prompt_before_role() {
+        let request = InferenceRequest {
+            agent_name: "Planner".to_string(),
+            agent_role: "Plan carefully.".to_string(),
+            goal: "Ship it.".to_string(),
+            history: Vec::new(),
+            tools: Vec::new(),
+            response_format: ResponseFormat::Toon,
+        };
+
+        let messages = OpenAiCompatibleInference
+            .normalize_messages(&request)
+            .unwrap();
+        let system = &messages[0].content;
+
+        assert!(system.starts_with("# Shared Agent Soul"));
+        assert!(
+            system.find("You are Planner.").unwrap()
+                > system.find("Carry the user's goal").unwrap()
+        );
+        assert!(system.contains("Role:\nPlan carefully."));
     }
 }

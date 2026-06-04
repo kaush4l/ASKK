@@ -220,17 +220,17 @@ impl Default for AppSnapshot {
             active_provider_profile_id,
             agents: vec![
                 Agent::new(
-                    "ASKK Planner",
+                    "Planner",
                     "Break the user goal into concrete steps. Use tools when they improve the run.",
                     tools.clone(),
                 ),
                 Agent::new(
-                    "ASKK Researcher",
+                    "Researcher",
                     "Collect useful context, query memory, and fetch public web text when CORS allows it.",
                     tools.clone(),
                 ),
                 Agent::new(
-                    "ASKK Synthesizer",
+                    "Synthesizer",
                     "Turn run events and tool results into a concise final answer.",
                     tools,
                 ),
@@ -260,7 +260,16 @@ pub fn default_tool_names() -> Vec<String> {
 impl AppSnapshot {
     pub fn with_profile_defaults(mut self) -> Self {
         self.ensure_provider_profiles();
+        self.normalize_agent_branding();
         self
+    }
+
+    fn normalize_agent_branding(&mut self) {
+        for agent in &mut self.agents {
+            if let Some(name) = agent.name.strip_prefix("ASKK ") {
+                agent.name = name.to_string();
+            }
+        }
     }
 
     pub fn ensure_provider_profiles(&mut self) {
@@ -457,6 +466,38 @@ mod tests {
             snapshot.active_provider_profile_id.as_deref(),
             Some(snapshot.provider_profiles[0].id.as_str())
         );
+    }
+
+    #[test]
+    fn old_snapshot_strips_agent_branding_on_normalize() {
+        let snapshot = serde_json::from_value::<AppSnapshot>(json!({
+            "provider": {
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4.1-mini",
+                "api_key": "",
+                "persist_api_key": false,
+                "temperature": 0.2,
+                "max_tokens": 900
+            },
+            "agents": [
+                {
+                    "id": "planner",
+                    "name": "ASKK Planner",
+                    "role": "Plan.",
+                    "enabled": true,
+                    "enabled_tools": []
+                }
+            ],
+            "memories": [],
+            "tasks": [],
+            "runs": [],
+            "current_run": null,
+            "status": "Ready"
+        }))
+        .unwrap()
+        .with_profile_defaults();
+
+        assert_eq!(snapshot.agents[0].name, "Planner");
     }
 
     #[test]

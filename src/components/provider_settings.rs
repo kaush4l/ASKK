@@ -26,7 +26,7 @@ pub fn ProviderSettings(
     let mut profile_name = use_signal(String::new);
 
     rsx! {
-        section { class: "panel provider-panel",
+        section { class: "panel page-panel provider-panel",
             div { class: "panel-heading",
                 h2 { "Provider Settings" }
                 div { class: "button-row",

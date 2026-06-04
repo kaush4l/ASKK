@@ -1,7 +1,7 @@
 use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::ReActEngine;
-use crate::state::AppSnapshot;
+use crate::state::{AppSnapshot, Message};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
@@ -11,15 +11,17 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
     let current_goal = goal.read().clone();
 
     rsx! {
-        section { class: "panel runner-panel",
-            div { class: "panel-heading",
-                h2 { "Task Runner" }
+        section { class: "panel page-panel chat-panel",
+            div { class: "page-heading",
+                div {
+                    h2 { "Chat" }
+                }
                 div { class: "button-row",
                     button {
                         onclick: move |_| {
                             let run_goal = goal.read().trim().to_string();
                             if run_goal.is_empty() {
-                                set_status(&mut snapshot, "Enter a goal before running.".to_string());
+                                set_status(&mut snapshot, "Enter a message before running.".to_string());
                                 return;
                             }
                             let start_data = snapshot.read().clone();
@@ -41,6 +43,7 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                         "Run"
                     }
                     button {
+                        class: "ghost-button",
                         onclick: move |_| {
                             snapshot.write().current_run = None;
                             set_status(&mut snapshot, "Current run reset.".to_string());
@@ -49,33 +52,64 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                     }
                 }
             }
-            textarea {
-                class: "goal-box",
-                placeholder: "Describe a goal for the ASKK team...",
-                value: "{current_goal}",
-                oninput: move |event| goal.set(event.value())
+
+            div { class: "composer",
+                textarea {
+                    class: "goal-box",
+                    placeholder: "Describe a goal or message for the agent team...",
+                    value: "{current_goal}",
+                    oninput: move |event| goal.set(event.value())
+                }
             }
 
-            if let Some(run) = current.current_run.as_ref() {
-                div { class: "final-answer",
-                    h3 { "Final Answer" }
-                    p { "{run.final_answer}" }
-                }
-                div { class: "timeline",
-                    for event in run.events.iter() {
-                        article { class: "event-row", key: "{event.id}",
-                            div { class: "event-meta",
-                                span { "{event.created_at}" }
-                                span { "{event.kind:?}" }
-                            }
-                            h3 { "{event.title}" }
-                            pre { "{event.body}" }
+            div { class: "conversation-scroll",
+                if let Some(run) = current.current_run.as_ref() {
+                    article { class: "message-bubble user-message",
+                        div { class: "message-author", "You" }
+                        p { "{run.goal}" }
+                    }
+                    for (index, message) in run.messages.iter().enumerate() {
+                        MessageBubble {
+                            key: "{index}",
+                            message: message.clone(),
                         }
                     }
+                    if !run.final_answer.trim().is_empty() {
+                        article { class: "message-bubble final-message",
+                            div { class: "message-author", "Final" }
+                            p { "{run.final_answer}" }
+                        }
+                    }
+                } else if current_goal.trim().is_empty() {
+                    div { class: "empty-state", "No chat yet. Enter a message to start a run." }
+                } else {
+                    article { class: "message-bubble draft-message",
+                        div { class: "message-author", "Draft" }
+                        p { "{current_goal}" }
+                    }
                 }
-            } else {
-                div { class: "empty-state", "No run yet. Enter a goal and run the browser agent loop." }
             }
+        }
+    }
+}
+
+#[component]
+fn MessageBubble(message: Message) -> Element {
+    let class = match message.role.as_str() {
+        "tool" => "message-bubble tool-message",
+        "user" => "message-bubble user-message",
+        _ => "message-bubble assistant-message",
+    };
+    let author = match message.role.as_str() {
+        "tool" => "Tool",
+        "user" => "You",
+        _ => "Agent",
+    };
+
+    rsx! {
+        article { class: "{class}",
+            div { class: "message-author", "{author}" }
+            p { "{message.content}" }
         }
     }
 }
