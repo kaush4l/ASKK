@@ -9,7 +9,8 @@ mod storage;
 mod tools;
 
 use engine::ReActEngine;
-use state::{default_tool_names, Agent, AppSnapshot};
+use inference::{list_models, test_chat};
+use state::{default_tool_names, Agent, AppSnapshot, ProviderAuthMode};
 use storage::{IndexedDbStorage, StorageAdapter};
 
 const FAVICON: Asset = asset!("/assets/favicon.svg");
@@ -27,6 +28,7 @@ fn App() -> Element {
     let mut new_agent_role = use_signal(|| {
         "Handle a focused part of the goal and use compiled tools when useful.".to_string()
     });
+    let mut provider_models = use_signal(Vec::<String>::new);
 
     use_effect(move || {
         spawn_local(async move {
@@ -43,6 +45,7 @@ fn App() -> Element {
 
     let current = snapshot.read().clone();
     let current_goal = goal.read().clone();
+    let current_models = provider_models.read().clone();
     let tool_names = default_tool_names();
 
     rsx! {
@@ -60,7 +63,7 @@ fn App() -> Element {
 
             section { class: "security-note",
                 strong { "Prototype key warning: " }
-                span { "provider keys entered here are visible to browser code. Use testing keys or a local OpenAI-compatible proxy." }
+                span { "provider keys entered here are visible to browser code. Use testing keys. Hosted pages can call localhost only when the model server allows this page origin through CORS." }
             }
 
             div { class: "workspace-grid",
@@ -97,6 +100,43 @@ fn App() -> Element {
                             }
                         }
                     }
+                    div { class: "preset-grid",
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let status = apply_provider_preset(&mut snapshot, ProviderPreset::OpenAi);
+                                provider_models.set(Vec::new());
+                                set_status(&mut snapshot, status);
+                            },
+                            "OpenAI"
+                        }
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let status = apply_provider_preset(&mut snapshot, ProviderPreset::Ollama);
+                                provider_models.set(Vec::new());
+                                set_status(&mut snapshot, status);
+                            },
+                            "Ollama"
+                        }
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let status = apply_provider_preset(&mut snapshot, ProviderPreset::LmStudio);
+                                provider_models.set(Vec::new());
+                                set_status(&mut snapshot, status);
+                            },
+                            "LM Studio"
+                        }
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                provider_models.set(Vec::new());
+                                set_status(&mut snapshot, "Custom provider: edit Base URL, Auth, and Model directly.".to_string());
+                            },
+                            "Custom"
+                        }
+                    }
                     label {
                         "Base URL"
                         input {
@@ -116,11 +156,23 @@ fn App() -> Element {
                         }
                     }
                     label {
+                        "Auth"
+                        select {
+                            value: "{current.provider.auth_mode.as_form_value()}",
+                            onchange: move |event| {
+                                snapshot.write().provider.auth_mode = ProviderAuthMode::from_form_value(&event.value());
+                            },
+                            option { value: "bearer", "Bearer token" }
+                            option { value: "none", "No auth" }
+                        }
+                    }
+                    label {
                         "API Key"
                         input {
                             r#type: "password",
+                            disabled: !current.provider.auth_mode.requires_key(),
                             value: "{current.provider.api_key}",
-                            placeholder: "sk-... or provider token",
+                            placeholder: if current.provider.auth_mode.requires_key() { "sk-... or provider token" } else { "not sent when Auth is No auth" },
                             oninput: move |event| {
                                 snapshot.write().provider.api_key = event.value();
                             }
@@ -164,6 +216,66 @@ fn App() -> Element {
                                     if let Ok(value) = event.value().parse::<u32>() {
                                         snapshot.write().provider.max_tokens = value;
                                     }
+                                }
+                            }
+                        }
+                    }
+                    div { class: "diagnostic-actions",
+                        button {
+                            onclick: move |_| {
+                                let config = snapshot.read().provider.clone();
+                                let mut snapshot = snapshot;
+                                let mut provider_models = provider_models;
+                                spawn_local(async move {
+                                    set_status(&mut snapshot, "Listing provider models...".to_string());
+                                    match list_models(&config).await {
+                                        Ok(models) if models.is_empty() => {
+                                            provider_models.set(Vec::new());
+                                            set_status(&mut snapshot, "Provider returned no models.".to_string());
+                                        }
+                                        Ok(models) => {
+                                            let count = models.len();
+                                            provider_models.set(models);
+                                            set_status(&mut snapshot, format!("Listed {count} model(s)."));
+                                        }
+                                        Err(err) => {
+                                            provider_models.set(Vec::new());
+                                            set_status(&mut snapshot, err);
+                                        }
+                                    }
+                                });
+                            },
+                            "List Models"
+                        }
+                        button {
+                            onclick: move |_| {
+                                let config = snapshot.read().provider.clone();
+                                let mut snapshot = snapshot;
+                                spawn_local(async move {
+                                    set_status(&mut snapshot, "Testing chat completion...".to_string());
+                                    match test_chat(&config).await {
+                                        Ok(status) => set_status(&mut snapshot, status),
+                                        Err(err) => set_status(&mut snapshot, err),
+                                    }
+                                });
+                            },
+                            "Test Chat"
+                        }
+                    }
+                    if !current_models.is_empty() {
+                        div { class: "model-picker",
+                            for model in current_models.iter() {
+                                button {
+                                    class: "ghost-button model-chip",
+                                    key: "{model}",
+                                    onclick: {
+                                        let model = model.clone();
+                                        move |_| {
+                                            snapshot.write().provider.model = model.clone();
+                                            set_status(&mut snapshot, format!("Selected model: {model}"));
+                                        }
+                                    },
+                                    "{model}"
                                 }
                             }
                         }
@@ -405,4 +517,57 @@ async fn save_snapshot(snapshot: AppSnapshot) -> String {
 
 fn set_status(snapshot: &mut Signal<AppSnapshot>, status: String) {
     snapshot.write().status = status;
+}
+
+#[derive(Clone, Copy)]
+enum ProviderPreset {
+    OpenAi,
+    Ollama,
+    LmStudio,
+}
+
+fn apply_provider_preset(snapshot: &mut Signal<AppSnapshot>, preset: ProviderPreset) -> String {
+    let mut data = snapshot.write();
+    let provider = &mut data.provider;
+    match preset {
+        ProviderPreset::OpenAi => {
+            provider.base_url = "https://api.openai.com/v1".to_string();
+            provider.auth_mode = ProviderAuthMode::Bearer;
+            if is_local_placeholder(&provider.model) {
+                provider.model = "gpt-4.1-mini".to_string();
+            }
+            "OpenAI preset selected.".to_string()
+        }
+        ProviderPreset::Ollama => {
+            provider.base_url = "http://localhost:11434/v1".to_string();
+            provider.auth_mode = ProviderAuthMode::None;
+            provider.api_key.clear();
+            provider.persist_api_key = false;
+            if should_replace_with_local_model(&provider.model) {
+                provider.model = "llama3.2".to_string();
+            }
+            "Ollama local preset selected. Use List Models if this model id is not available."
+                .to_string()
+        }
+        ProviderPreset::LmStudio => {
+            provider.base_url = "http://localhost:1234/v1".to_string();
+            provider.auth_mode = ProviderAuthMode::None;
+            provider.api_key.clear();
+            provider.persist_api_key = false;
+            if should_replace_with_local_model(&provider.model) {
+                provider.model = "local-model".to_string();
+            }
+            "LM Studio local preset selected. Use List Models to choose the loaded model id."
+                .to_string()
+        }
+    }
+}
+
+fn should_replace_with_local_model(model: &str) -> bool {
+    let model = model.trim();
+    model.is_empty() || model == "gpt-4.1-mini" || model == "local-model"
+}
+
+fn is_local_placeholder(model: &str) -> bool {
+    matches!(model.trim(), "" | "llama3.2" | "local-model")
 }

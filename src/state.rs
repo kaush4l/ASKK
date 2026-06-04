@@ -4,11 +4,46 @@ use uuid::Uuid;
 
 pub type AppResult<T> = Result<T, String>;
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAuthMode {
+    Bearer,
+    None,
+}
+
+impl Default for ProviderAuthMode {
+    fn default() -> Self {
+        Self::Bearer
+    }
+}
+
+impl ProviderAuthMode {
+    pub fn from_form_value(value: &str) -> Self {
+        match value {
+            "none" => Self::None,
+            _ => Self::Bearer,
+        }
+    }
+
+    pub fn as_form_value(self) -> &'static str {
+        match self {
+            Self::Bearer => "bearer",
+            Self::None => "none",
+        }
+    }
+
+    pub fn requires_key(self) -> bool {
+        matches!(self, Self::Bearer)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ProviderConfig {
     pub base_url: String,
     pub model: String,
     pub api_key: String,
+    #[serde(default)]
+    pub auth_mode: ProviderAuthMode,
     pub persist_api_key: bool,
     pub temperature: f64,
     pub max_tokens: u32,
@@ -20,6 +55,7 @@ impl Default for ProviderConfig {
             base_url: "https://api.openai.com/v1".to_string(),
             model: "gpt-4.1-mini".to_string(),
             api_key: String::new(),
+            auth_mode: ProviderAuthMode::Bearer,
             persist_api_key: false,
             temperature: 0.2,
             max_tokens: 900,
@@ -204,5 +240,49 @@ pub fn event(
         title: title.into(),
         body: body.into(),
         created_at: now_iso(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn provider_auth_mode_defaults_to_bearer_for_old_config() {
+        let config: ProviderConfig = serde_json::from_value(json!({
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-4.1-mini",
+            "api_key": "",
+            "persist_api_key": false,
+            "temperature": 0.2,
+            "max_tokens": 900
+        }))
+        .unwrap();
+
+        assert_eq!(config.auth_mode, ProviderAuthMode::Bearer);
+    }
+
+    #[test]
+    fn old_snapshot_without_auth_mode_deserializes() {
+        let snapshot: AppSnapshot = serde_json::from_value(json!({
+            "provider": {
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4.1-mini",
+                "api_key": "",
+                "persist_api_key": false,
+                "temperature": 0.2,
+                "max_tokens": 900
+            },
+            "agents": [],
+            "memories": [],
+            "tasks": [],
+            "runs": [],
+            "current_run": null,
+            "status": "Ready"
+        }))
+        .unwrap();
+
+        assert_eq!(snapshot.provider.auth_mode, ProviderAuthMode::Bearer);
     }
 }

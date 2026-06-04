@@ -17,6 +17,7 @@ body {
 
 button,
 input,
+select,
 textarea {
     font: inherit;
 }
@@ -46,6 +47,7 @@ button:hover {
 }
 
 input,
+select,
 textarea {
     width: 100%;
     border: 1px solid #c8d0da;
@@ -110,7 +112,9 @@ pre {
     border-radius: 999px;
     padding: 7px 12px;
     font-size: 13px;
-    white-space: nowrap;
+    max-width: 520px;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .security-note {
@@ -160,7 +164,8 @@ pre {
 .panel-heading,
 .agent-card-head,
 .button-row,
-.inline-controls {
+.inline-controls,
+.diagnostic-actions {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -198,6 +203,17 @@ pre {
     flex-wrap: wrap;
 }
 
+.preset-grid,
+.diagnostic-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.diagnostic-actions {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+}
+
 .checkbox-line {
     display: flex;
     grid-template-columns: none;
@@ -213,6 +229,23 @@ pre {
 
 .number-input {
     width: 104px;
+}
+
+.model-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-height: 150px;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.model-chip {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 12px;
 }
 
 .new-agent-row {
@@ -372,7 +405,9 @@ pre {
     }
 
     .tool-grid,
-    .stats-grid {
+    .stats-grid,
+    .preset-grid,
+    .diagnostic-actions {
         grid-template-columns: 1fr;
     }
 }
