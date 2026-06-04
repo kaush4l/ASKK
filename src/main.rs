@@ -131,6 +131,15 @@ fn App() -> Element {
                         button {
                             class: "ghost-button",
                             onclick: move |_| {
+                                let status = apply_provider_preset(&mut snapshot, ProviderPreset::LocalBridge);
+                                provider_models.set(Vec::new());
+                                set_status(&mut snapshot, status);
+                            },
+                            "Local Bridge"
+                        }
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
                                 provider_models.set(Vec::new());
                                 set_status(&mut snapshot, "Custom provider: edit Base URL, Auth, and Model directly.".to_string());
                             },
@@ -524,6 +533,7 @@ enum ProviderPreset {
     OpenAi,
     Ollama,
     LmStudio,
+    LocalBridge,
 }
 
 fn apply_provider_preset(snapshot: &mut Signal<AppSnapshot>, preset: ProviderPreset) -> String {
@@ -559,6 +569,16 @@ fn apply_provider_preset(snapshot: &mut Signal<AppSnapshot>, preset: ProviderPre
             }
             "LM Studio local preset selected. Use List Models to choose the loaded model id."
                 .to_string()
+        }
+        ProviderPreset::LocalBridge => {
+            provider.base_url = "http://127.0.0.1:8874/v1".to_string();
+            provider.auth_mode = ProviderAuthMode::None;
+            provider.api_key.clear();
+            provider.persist_api_key = false;
+            if should_replace_with_local_model(&provider.model) {
+                provider.model = "local-model".to_string();
+            }
+            "Local Bridge preset selected. Run `node scripts/askk-local-bridge.mjs --target <provider-base-url>` on this browser machine.".to_string()
         }
     }
 }

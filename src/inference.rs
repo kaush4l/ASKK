@@ -307,7 +307,7 @@ fn assistant_content(response: ChatResponse) -> AppResult<String> {
 
 fn transport_error(action: &str, endpoint: &str, raw: &str) -> String {
     format!(
-        "Provider {action} request could not reach {endpoint}. If this hosted page is calling localhost, confirm the model server is running and that CORS allows this page origin. Browser fetch details: {raw}"
+        "Provider {action} request could not reach {endpoint}. Confirm the provider is running and allows this page origin through CORS. If direct localhost or LAN access fails from GitHub Pages, run the ASKK local bridge on the browser machine and use http://127.0.0.1:8874/v1. Browser fetch details: {raw}"
     )
 }
 
