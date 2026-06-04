@@ -59,6 +59,7 @@ impl StorageAdapter for IndexedDbStorage {
     async fn save_snapshot(&self, snapshot: &AppSnapshot) -> AppResult<()> {
         let mut persisted = snapshot.clone();
         persisted.ensure_provider_profiles();
+        persisted.normalize_agent_branding();
         persisted.sanitize_api_keys();
 
         let tx = self

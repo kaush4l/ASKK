@@ -264,11 +264,15 @@ impl AppSnapshot {
         self
     }
 
-    fn normalize_agent_branding(&mut self) {
+    pub fn normalize_agent_branding(&mut self) {
         for agent in &mut self.agents {
-            if let Some(name) = agent.name.strip_prefix("ASKK ") {
-                agent.name = name.to_string();
-            }
+            strip_agent_branding(&mut agent.name);
+        }
+        if let Some(run) = &mut self.current_run {
+            normalize_run_branding(run);
+        }
+        for run in &mut self.runs {
+            normalize_run_branding(run);
         }
     }
 
@@ -367,6 +371,23 @@ impl AppSnapshot {
             }
         }
         format!("Deleted provider profile: {}", removed.name)
+    }
+}
+
+fn normalize_run_branding(run: &mut AgentRun) {
+    strip_agent_branding(&mut run.final_answer);
+    for message in &mut run.messages {
+        strip_agent_branding(&mut message.content);
+    }
+    for event in &mut run.events {
+        strip_agent_branding(&mut event.title);
+        strip_agent_branding(&mut event.body);
+    }
+}
+
+fn strip_agent_branding(value: &mut String) {
+    if value.contains("ASKK ") {
+        *value = value.replace("ASKK ", "");
     }
 }
 
@@ -490,7 +511,34 @@ mod tests {
             ],
             "memories": [],
             "tasks": [],
-            "runs": [],
+            "runs": [
+                {
+                    "id": "run-1",
+                    "goal": "Test",
+                    "status": "complete",
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": "ASKK Planner: done"
+                        }
+                    ],
+                    "events": [
+                        {
+                            "id": "event-1",
+                            "run_id": "run-1",
+                            "agent_id": "planner",
+                            "kind": "LlmResponse",
+                            "title": "ASKK Planner responded",
+                            "body": "ASKK Planner finished",
+                            "created_at": "now"
+                        }
+                    ],
+                    "tool_calls": [],
+                    "tool_results": [],
+                    "final_answer": "ASKK Synthesizer: final",
+                    "created_at": "now"
+                }
+            ],
             "current_run": null,
             "status": "Ready"
         }))
@@ -498,6 +546,10 @@ mod tests {
         .with_profile_defaults();
 
         assert_eq!(snapshot.agents[0].name, "Planner");
+        assert_eq!(snapshot.runs[0].messages[0].content, "Planner: done");
+        assert_eq!(snapshot.runs[0].events[0].title, "Planner responded");
+        assert_eq!(snapshot.runs[0].events[0].body, "Planner finished");
+        assert_eq!(snapshot.runs[0].final_answer, "Synthesizer: final");
     }
 
     #[test]
