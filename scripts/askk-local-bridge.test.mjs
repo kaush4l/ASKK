@@ -1,7 +1,10 @@
 import http from "node:http";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createBridgeServer } from "./askk-local-bridge.mjs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { createBridgeServer, readWorkspacePromptFiles } from "./askk-local-bridge.mjs";
 
 const servers = [];
 
@@ -163,6 +166,62 @@ describe("ASKK local bridge web tools", () => {
         assert.equal(response.status, 204);
         assert.equal(response.headers.get("access-control-allow-origin"), "https://kaush4l.github.io");
         assert.equal(response.headers.get("access-control-allow-private-network"), "true");
+    });
+
+    it("reads workspace soul, agent, and skill Markdown files", async () => {
+        const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "askk-files-"));
+        await fs.mkdir(path.join(workspaceRoot, "agents"), { recursive: true });
+        await fs.mkdir(path.join(workspaceRoot, "skills", "research"), { recursive: true });
+        await fs.writeFile(path.join(workspaceRoot, "soul.md"), "Shared soul", "utf8");
+        await fs.writeFile(path.join(workspaceRoot, "agents", "planner.md"), "Planner body", "utf8");
+        await fs.writeFile(
+            path.join(workspaceRoot, "skills", "research", "SKILL.md"),
+            "Research body",
+            "utf8",
+        );
+
+        const direct = await readWorkspacePromptFiles(workspaceRoot);
+        assert.equal(direct.success, true);
+        assert.equal(direct.data.soul.content, "Shared soul");
+        assert.deepEqual(direct.data.agents.map((file) => file.path), ["agents/planner.md"]);
+        assert.deepEqual(direct.data.skills.map((file) => file.path), ["skills/research/SKILL.md"]);
+
+        const bridge = createBridgeServer({ workspaceRoot }).server;
+        const bridgePort = await listen(bridge);
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/files`);
+        const body = await response.json();
+
+        assert.equal(response.status, 200);
+        assert.equal(body.data.soul.content, "Shared soul");
+        assert.equal(body.data.agents[0].content, "Planner body");
+        assert.equal(body.data.skills[0].content, "Research body");
+    });
+
+    it("writes soul and agent Markdown files under the workspace root", async () => {
+        const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "askk-files-"));
+        const bridge = createBridgeServer({ workspaceRoot }).server;
+        const bridgePort = await listen(bridge);
+
+        const soulResponse = await fetch(`http://127.0.0.1:${bridgePort}/askk/files/soul`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: "Updated soul" }),
+        });
+        assert.equal(soulResponse.status, 200);
+        assert.equal(await fs.readFile(path.join(workspaceRoot, "soul.md"), "utf8"), "Updated soul");
+
+        const agentResponse = await fetch(`http://127.0.0.1:${bridgePort}/askk/files/agents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                agents: [{ path: "agents/builder.md", content: "Builder body" }],
+            }),
+        });
+        assert.equal(agentResponse.status, 200);
+        assert.equal(
+            await fs.readFile(path.join(workspaceRoot, "agents", "builder.md"), "utf8"),
+            "Builder body",
+        );
     });
 });
 

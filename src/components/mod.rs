@@ -5,6 +5,7 @@ mod event_log;
 mod inspector;
 mod provider_settings;
 mod shared;
+mod soul_page;
 
 pub use app_shell::AppShell;
 pub use shared::set_status;

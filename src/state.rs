@@ -4,6 +4,29 @@ use uuid::Uuid;
 
 pub type AppResult<T> = Result<T, String>;
 
+const DEFAULT_SOUL: &str = include_str!("../soul.md");
+const DEFAULT_AGENT_FILES: [(&str, &str); 3] = [
+    ("agents/planner.md", include_str!("../agents/planner.md")),
+    (
+        "agents/researcher.md",
+        include_str!("../agents/researcher.md"),
+    ),
+    (
+        "agents/synthesizer.md",
+        include_str!("../agents/synthesizer.md"),
+    ),
+];
+const DEFAULT_SKILL_FILES: [(&str, &str); 2] = [
+    (
+        "skills/research/SKILL.md",
+        include_str!("../skills/research/SKILL.md"),
+    ),
+    (
+        "skills/synthesis/SKILL.md",
+        include_str!("../skills/synthesis/SKILL.md"),
+    ),
+];
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderAuthMode {
@@ -98,6 +121,8 @@ pub struct Agent {
     pub role: String,
     pub enabled: bool,
     pub enabled_tools: Vec<String>,
+    #[serde(default)]
+    pub source_path: Option<String>,
 }
 
 impl Agent {
@@ -112,8 +137,19 @@ impl Agent {
             role: role.into(),
             enabled: true,
             enabled_tools,
+            source_path: None,
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Skill {
+    pub id: String,
+    pub name: String,
+    pub content: String,
+    pub enabled: bool,
+    #[serde(default)]
+    pub source_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -200,7 +236,11 @@ pub struct AppSnapshot {
     pub provider_profiles: Vec<ProviderProfile>,
     #[serde(default)]
     pub active_provider_profile_id: Option<String>,
+    #[serde(default = "default_soul_prompt")]
+    pub soul: String,
     pub agents: Vec<Agent>,
+    #[serde(default = "default_skills")]
+    pub skills: Vec<Skill>,
     pub memories: Vec<MemoryItem>,
     pub tasks: Vec<TaskItem>,
     pub runs: Vec<AgentRun>,
@@ -210,7 +250,6 @@ pub struct AppSnapshot {
 
 impl Default for AppSnapshot {
     fn default() -> Self {
-        let tools = default_tool_names();
         let provider = ProviderConfig::default();
         let profile = ProviderProfile::new("OpenAI", provider.clone());
         let active_provider_profile_id = Some(profile.id.clone());
@@ -218,23 +257,9 @@ impl Default for AppSnapshot {
             provider,
             provider_profiles: vec![profile],
             active_provider_profile_id,
-            agents: vec![
-                Agent::new(
-                    "Planner",
-                    "Break the user goal into concrete steps. Use tools when they improve the run.",
-                    tools.clone(),
-                ),
-                Agent::new(
-                    "Researcher",
-                    "Collect useful context, query memory, and fetch public web text when CORS allows it.",
-                    tools.clone(),
-                ),
-                Agent::new(
-                    "Synthesizer",
-                    "Turn run events and tool results into a concise final answer.",
-                    tools,
-                ),
-            ],
+            soul: default_soul_prompt(),
+            agents: default_agents(),
+            skills: default_skills(),
             memories: Vec::new(),
             tasks: Vec::new(),
             runs: Vec::new(),
@@ -257,11 +282,127 @@ pub fn default_tool_names() -> Vec<String> {
     ]
 }
 
+pub fn default_soul_prompt() -> String {
+    DEFAULT_SOUL.trim().to_string()
+}
+
+pub fn default_agents() -> Vec<Agent> {
+    let agents = DEFAULT_AGENT_FILES
+        .iter()
+        .filter_map(|(path, content)| agent_from_markdown(path, content).ok())
+        .collect::<Vec<_>>();
+
+    if agents.is_empty() {
+        return vec![Agent::new("Agent", "", default_tool_names())];
+    }
+    agents
+}
+
+pub fn default_skills() -> Vec<Skill> {
+    DEFAULT_SKILL_FILES
+        .iter()
+        .filter_map(|(path, content)| skill_from_markdown(path, content).ok())
+        .collect()
+}
+
+pub fn agent_from_markdown(path: &str, content: &str) -> AppResult<Agent> {
+    let (meta, body) = split_markdown_frontmatter(content);
+    let id = meta_value(&meta, "id")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| slugify(&value))
+        .unwrap_or_else(|| slug_from_path(path));
+    let name = meta_value(&meta, "name")
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| title_from_slug(&id));
+    let enabled = meta_value(&meta, "enabled")
+        .map(|value| parse_bool(&value))
+        .unwrap_or(true);
+    let enabled_tools = meta_value(&meta, "tools")
+        .map(|value| parse_tools(&value))
+        .unwrap_or_else(default_tool_names);
+    let role = body.trim().to_string();
+
+    if role.is_empty() {
+        return Err(format!("Agent file {path} does not contain a prompt body."));
+    }
+
+    Ok(Agent {
+        id,
+        name,
+        role,
+        enabled,
+        enabled_tools,
+        source_path: Some(path.to_string()),
+    })
+}
+
+pub fn agent_to_markdown(agent: &Agent) -> String {
+    let tools = if same_tools(&agent.enabled_tools, &default_tool_names()) {
+        "all".to_string()
+    } else {
+        agent.enabled_tools.join(", ")
+    };
+    format!(
+        "---\nid: {id}\nname: {name}\nenabled: {enabled}\ntools: {tools}\n---\n\n{role}\n",
+        id = slugify(&agent.id),
+        name = agent.name.trim(),
+        enabled = agent.enabled,
+        tools = tools,
+        role = agent.role.trim(),
+    )
+}
+
+pub fn agent_markdown_path(agent: &Agent) -> String {
+    agent
+        .source_path
+        .as_deref()
+        .filter(|path| path.starts_with("agents/") && path.ends_with(".md"))
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("agents/{}.md", slugify(&agent.name)))
+}
+
+pub fn skill_from_markdown(path: &str, content: &str) -> AppResult<Skill> {
+    let (meta, body) = split_markdown_frontmatter(content);
+    let id = meta_value(&meta, "id")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| slugify(&value))
+        .unwrap_or_else(|| slug_from_path(path));
+    let name = meta_value(&meta, "name")
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| title_from_slug(&id));
+    let enabled = meta_value(&meta, "enabled")
+        .map(|value| parse_bool(&value))
+        .unwrap_or(true);
+    let body = body.trim().to_string();
+
+    if body.is_empty() {
+        return Err(format!("Skill file {path} does not contain a body."));
+    }
+
+    Ok(Skill {
+        id,
+        name,
+        content: body,
+        enabled,
+        source_path: Some(path.to_string()),
+    })
+}
+
 impl AppSnapshot {
     pub fn with_profile_defaults(mut self) -> Self {
         self.ensure_provider_profiles();
+        self.ensure_prompt_defaults();
         self.normalize_agent_branding();
         self
+    }
+
+    pub fn ensure_prompt_defaults(&mut self) {
+        if self.soul.trim().is_empty() {
+            self.soul = default_soul_prompt();
+        }
+        if self.skills.is_empty() {
+            self.skills = default_skills();
+        }
     }
 
     pub fn normalize_agent_branding(&mut self) {
@@ -371,6 +512,109 @@ impl AppSnapshot {
             }
         }
         format!("Deleted provider profile: {}", removed.name)
+    }
+}
+
+fn split_markdown_frontmatter(content: &str) -> (Vec<(String, String)>, String) {
+    let normalized = content.replace("\r\n", "\n");
+    let mut lines = normalized.lines();
+    if lines.next() != Some("---") {
+        return (Vec::new(), normalized);
+    }
+
+    let mut meta = Vec::new();
+    let mut body = Vec::new();
+    let mut in_meta = true;
+    for line in lines {
+        if in_meta && line.trim() == "---" {
+            in_meta = false;
+            continue;
+        }
+        if in_meta {
+            if let Some((key, value)) = line.split_once(':') {
+                meta.push((key.trim().to_ascii_lowercase(), value.trim().to_string()));
+            }
+        } else {
+            body.push(line);
+        }
+    }
+    (meta, body.join("\n"))
+}
+
+fn meta_value(meta: &[(String, String)], key: &str) -> Option<String> {
+    meta.iter()
+        .find(|(candidate, _)| candidate == key)
+        .map(|(_, value)| value.clone())
+}
+
+fn parse_bool(value: &str) -> bool {
+    !matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "false" | "0" | "no"
+    )
+}
+
+fn parse_tools(value: &str) -> Vec<String> {
+    if value.trim().eq_ignore_ascii_case("all") {
+        return default_tool_names();
+    }
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|tool| !tool.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn same_tools(left: &[String], right: &[String]) -> bool {
+    let mut left = left.to_vec();
+    let mut right = right.to_vec();
+    left.sort();
+    right.sort();
+    left == right
+}
+
+fn slug_from_path(path: &str) -> String {
+    let file = path
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .trim_end_matches(".md")
+        .trim_end_matches(".MD");
+    slugify(file)
+}
+
+fn title_from_slug(slug: &str) -> String {
+    slug.split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn slugify(value: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in value.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        Uuid::new_v4().to_string()
+    } else {
+        slug
     }
 }
 
@@ -550,6 +794,48 @@ mod tests {
         assert_eq!(snapshot.runs[0].events[0].title, "Planner responded");
         assert_eq!(snapshot.runs[0].events[0].body, "Planner finished");
         assert_eq!(snapshot.runs[0].final_answer, "Synthesizer: final");
+    }
+
+    #[test]
+    fn parses_agent_markdown_frontmatter_and_body() {
+        let agent = agent_from_markdown(
+            "agents/deep-research.md",
+            "---\nid: deep-research\nname: Deep Research\nenabled: false\ntools: memory_search, web_search\n---\n\nResearch deeply.",
+        )
+        .unwrap();
+
+        assert_eq!(agent.id, "deep-research");
+        assert_eq!(agent.name, "Deep Research");
+        assert!(!agent.enabled);
+        assert_eq!(agent.enabled_tools, vec!["memory_search", "web_search"]);
+        assert_eq!(agent.role, "Research deeply.");
+        assert_eq!(
+            agent.source_path.as_deref(),
+            Some("agents/deep-research.md")
+        );
+
+        let serialized = agent_to_markdown(&agent);
+        assert!(serialized.contains("name: Deep Research"));
+        assert!(serialized.contains("tools: memory_search, web_search"));
+        assert!(serialized.contains("Research deeply."));
+    }
+
+    #[test]
+    fn parses_skill_markdown_frontmatter_and_body() {
+        let skill = skill_from_markdown(
+            "skills/research/SKILL.md",
+            "---\nid: research\nname: Research\nenabled: true\n---\n\nUse evidence.",
+        )
+        .unwrap();
+
+        assert_eq!(skill.id, "research");
+        assert_eq!(skill.name, "Research");
+        assert!(skill.enabled);
+        assert_eq!(skill.content, "Use evidence.");
+        assert_eq!(
+            skill.source_path.as_deref(),
+            Some("skills/research/SKILL.md")
+        );
     }
 
     #[test]

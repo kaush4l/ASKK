@@ -1,6 +1,9 @@
+use super::save_snapshot;
 use super::shared::set_status;
 use crate::state::{default_tool_names, Agent, AppSnapshot};
+use crate::workspace_files::{apply_workspace_files, load_workspace_files, save_agent_files};
 use dioxus::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 
 #[component]
 pub fn AgentsPage(
@@ -17,16 +20,52 @@ pub fn AgentsPage(
                 div {
                     h2 { "Agents" }
                 }
-                button {
-                    onclick: move |_| {
-                        let agent = Agent::new(
-                            new_agent_name.read().clone(),
-                            new_agent_role.read().clone(),
-                            default_tool_names(),
-                        );
-                        snapshot.write().agents.push(agent);
-                    },
-                    "Add Agent"
+                div { class: "button-row",
+                    button {
+                        class: "ghost-button",
+                        onclick: move |_| {
+                            let mut snapshot = snapshot;
+                            spawn_local(async move {
+                                set_status(&mut snapshot, "Loading agents and skills from Markdown files...".to_string());
+                                match load_workspace_files().await {
+                                    Ok(files) => {
+                                        let mut next = snapshot.read().clone();
+                                        let load_status = apply_workspace_files(&mut next, files);
+                                        let save_status = save_snapshot(next.clone()).await;
+                                        snapshot.set(next);
+                                        set_status(&mut snapshot, format!("{load_status} {save_status}"));
+                                    }
+                                    Err(err) => set_status(&mut snapshot, err),
+                                }
+                            });
+                        },
+                        "Load Files"
+                    }
+                    button {
+                        class: "ghost-button",
+                        onclick: move |_| {
+                            let agents = snapshot.read().agents.clone();
+                            let mut snapshot = snapshot;
+                            spawn_local(async move {
+                                match save_agent_files(&agents).await {
+                                    Ok(status) => set_status(&mut snapshot, status),
+                                    Err(err) => set_status(&mut snapshot, err),
+                                }
+                            });
+                        },
+                        "Save Agents"
+                    }
+                    button {
+                        onclick: move |_| {
+                            let agent = Agent::new(
+                                new_agent_name.read().clone(),
+                                new_agent_role.read().clone(),
+                                default_tool_names(),
+                            );
+                            snapshot.write().agents.push(agent);
+                        },
+                        "Add Agent"
+                    }
                 }
             }
 
@@ -56,6 +95,9 @@ pub fn AgentsPage(
                                     }
                                 }
                                 strong { "{agent.name}" }
+                            }
+                            if let Some(path) = agent.source_path.as_ref() {
+                                span { class: "source-path", "{path}" }
                             }
                             button {
                                 class: "ghost-button",

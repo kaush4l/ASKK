@@ -3,6 +3,7 @@ use super::chat_panel::ChatPanel;
 use super::event_log::EventLogPanel;
 use super::inspector::InspectorPanel;
 use super::provider_settings::ProviderSettings;
+use super::soul_page::SoulPage;
 use super::{FAVICON, MAIN_CSS};
 use crate::state::AppSnapshot;
 use dioxus::prelude::*;
@@ -11,6 +12,7 @@ use dioxus::prelude::*;
 enum DashboardPage {
     Chat,
     Agents,
+    Soul,
     Provider,
     Inspector,
 }
@@ -20,6 +22,7 @@ impl DashboardPage {
         match self {
             Self::Chat => "Chat",
             Self::Agents => "Agents",
+            Self::Soul => "Soul",
             Self::Provider => "Provider",
             Self::Inspector => "Inspector",
         }
@@ -50,6 +53,7 @@ pub fn AppShell(
     let pages = [
         DashboardPage::Chat,
         DashboardPage::Agents,
+        DashboardPage::Soul,
         DashboardPage::Provider,
         DashboardPage::Inspector,
     ];
@@ -113,6 +117,9 @@ pub fn AppShell(
                                 new_agent_role,
                             }
                         },
+                        DashboardPage::Soul => rsx! {
+                            SoulPage { snapshot }
+                        },
                         DashboardPage::Provider => rsx! {
                             ProviderSettings { snapshot, provider_models }
                         },
@@ -132,6 +139,7 @@ fn nav_glyph(page: DashboardPage) -> &'static str {
     match page {
         DashboardPage::Chat => "C",
         DashboardPage::Agents => "A",
+        DashboardPage::Soul => "S",
         DashboardPage::Provider => "P",
         DashboardPage::Inspector => "I",
     }

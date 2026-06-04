@@ -180,6 +180,8 @@ impl ReActEngine {
         let request = InferenceRequest {
             agent_name: agent.definition.name.clone(),
             agent_role: agent.definition.role.clone(),
+            soul: snapshot.soul.clone(),
+            skills: snapshot.skills.clone(),
             goal: goal.to_string(),
             history: run.messages.clone(),
             tools: specs,

@@ -404,6 +404,7 @@ pre {
 
 .provider-panel,
 .agents-page,
+.soul-page,
 .inspector-panel {
     grid-template-rows: auto;
     align-content: start;
@@ -412,6 +413,7 @@ pre {
 
 .provider-panel,
 .agent-card,
+.skill-card,
 .inspector-panel {
     display: grid;
     gap: 12px;
@@ -496,6 +498,39 @@ pre {
     border-radius: 8px;
     padding: 12px;
     background: #fbfaff;
+}
+
+.soul-page {
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.soul-editor textarea {
+    min-height: 220px;
+}
+
+.section-label {
+    color: #5b21b6;
+    font-size: 14px;
+}
+
+.skill-list {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+}
+
+.skill-card {
+    border: 1px solid #ded5ef;
+    border-radius: 8px;
+    padding: 12px;
+    background: #ffffff;
+}
+
+.source-path {
+    color: #756985;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 12px;
+    overflow-wrap: anywhere;
 }
 
 .tool-grid {
@@ -620,7 +655,7 @@ pre {
     }
 
     .nav-list {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
     .left-nav .nav-title {

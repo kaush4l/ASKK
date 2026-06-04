@@ -8,6 +8,7 @@ mod responses;
 mod state;
 mod storage;
 mod tools;
+mod workspace_files;
 
 use components::{set_status, AppShell};
 use state::AppSnapshot;

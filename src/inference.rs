@@ -1,15 +1,17 @@
 use crate::responses::{response_to_result, ReActResponse, ResponseFormat, StructuredResponse};
-use crate::state::{AppResult, Message, ProviderAuthMode, ProviderConfig, ToolSpec};
+use crate::state::{
+    default_soul_prompt, AppResult, Message, ProviderAuthMode, ProviderConfig, Skill, ToolSpec,
+};
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-const SOUL_PROMPT: &str = include_str!("../soul.md");
 
 #[derive(Clone, Debug)]
 pub struct InferenceRequest {
     pub agent_name: String,
     pub agent_role: String,
+    pub soul: String,
+    pub skills: Vec<Skill>,
     pub goal: String,
     pub history: Vec<Message>,
     pub tools: Vec<ToolSpec>,
@@ -104,7 +106,12 @@ impl OpenAiCompatibleInference {
         let tool_manifest = serde_json::to_string_pretty(&request.tools)
             .map_err(|err| format!("Unable to serialize tool manifest: {err}"))?;
         let response_instructions = ReActResponse::instructions(request.response_format);
-        let soul_prompt = SOUL_PROMPT.trim();
+        let soul_prompt = if request.soul.trim().is_empty() {
+            default_soul_prompt()
+        } else {
+            request.soul.trim().to_string()
+        };
+        let skill_prompt = format_skill_prompt(&request.skills);
         let system = format!(
             r#"{soul_prompt}
 
@@ -118,10 +125,14 @@ You run inside a client-only browser Wasm prototype. All tools are precompiled a
 Available compiled tools:
 {tool_manifest}
 
+Workspace skills:
+{skill_prompt}
+
 {response_instructions}"#,
             soul_prompt = soul_prompt,
             agent_name = request.agent_name,
             agent_role = request.agent_role,
+            skill_prompt = skill_prompt,
         );
 
         let mut messages = vec![
@@ -139,6 +150,19 @@ Available compiled tools:
             content: message.content.clone(),
         }));
         Ok(messages)
+    }
+}
+
+fn format_skill_prompt(skills: &[Skill]) -> String {
+    let enabled = skills
+        .iter()
+        .filter(|skill| skill.enabled && !skill.content.trim().is_empty())
+        .map(|skill| format!("## {}\n{}", skill.name.trim(), skill.content.trim()))
+        .collect::<Vec<_>>();
+    if enabled.is_empty() {
+        "No workspace skills are enabled.".to_string()
+    } else {
+        enabled.join("\n\n")
     }
 }
 
@@ -414,6 +438,14 @@ mod tests {
         let request = InferenceRequest {
             agent_name: "Planner".to_string(),
             agent_role: "Plan carefully.".to_string(),
+            soul: "Shared behavior.".to_string(),
+            skills: vec![Skill {
+                id: "care".to_string(),
+                name: "Care".to_string(),
+                content: "Work carefully.".to_string(),
+                enabled: true,
+                source_path: None,
+            }],
             goal: "Ship it.".to_string(),
             history: Vec::new(),
             tools: Vec::new(),
@@ -425,11 +457,11 @@ mod tests {
             .unwrap();
         let system = &messages[0].content;
 
-        assert!(system.starts_with("# Shared Agent Soul"));
+        assert!(system.starts_with("Shared behavior."));
         assert!(
-            system.find("You are Planner.").unwrap()
-                > system.find("Carry the user's goal").unwrap()
+            system.find("You are Planner.").unwrap() > system.find("Shared behavior.").unwrap()
         );
         assert!(system.contains("Role:\nPlan carefully."));
+        assert!(system.contains("## Care\nWork carefully."));
     }
 }

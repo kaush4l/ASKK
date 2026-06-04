@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import http from "node:http";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_TARGET = "http://127.0.0.1:8873/v1";
@@ -15,6 +17,10 @@ export function createBridgeServer(rawOptions = {}) {
     );
     const listenBasePath = normalizePath(rawOptions.basePath ?? targetBase.pathname);
     const toolsPath = normalizePath(rawOptions.toolsPath ?? "/askk/tools");
+    const filesPath = normalizePath(rawOptions.filesPath ?? "/askk/files");
+    const workspaceRoot = path.resolve(
+        rawOptions.workspaceRoot ?? process.env.ASKK_WORKSPACE_ROOT ?? process.cwd(),
+    );
     const searchConfig = {
         braveApiKey:
             rawOptions.braveApiKey ??
@@ -43,6 +49,10 @@ export function createBridgeServer(rawOptions = {}) {
 
         try {
             const incoming = new URL(request.url ?? "/", "http://bridge.local");
+            if (incoming.pathname === filesPath || incoming.pathname.startsWith(`${filesPath}/`)) {
+                await handleWorkspaceFileRequest(request, response, filesPath, workspaceRoot);
+                return;
+            }
             if (incoming.pathname.startsWith(`${toolsPath}/`)) {
                 await handleToolRequest(request, response, toolsPath, searchConfig);
                 return;
@@ -58,7 +68,7 @@ export function createBridgeServer(rawOptions = {}) {
         }
     });
 
-    return { server, targetBase, listenBasePath };
+    return { server, targetBase, listenBasePath, workspaceRoot };
 }
 
 export function startBridge(rawOptions = {}) {
@@ -70,6 +80,8 @@ export function startBridge(rawOptions = {}) {
         console.log(`Forwarding model calls to ${bridge.targetBase.toString()}`);
         console.log("Use this ASKK Provider Base URL:");
         console.log(`http://${host}:${port}${bridge.listenBasePath}`);
+        console.log(`Workspace Markdown root: ${bridge.workspaceRoot}`);
+        console.log(`Workspace file endpoint: http://${host}:${port}/askk/files`);
         console.log("Web tool endpoints:");
         console.log(`http://${host}:${port}/askk/tools/web_search`);
         console.log(`http://${host}:${port}/askk/tools/web_extract`);
@@ -128,6 +140,59 @@ async function handleToolRequest(request, response, toolsPath, config) {
     }
 
     writeJson(response, 404, { success: false, error: `Unknown ASKK tool: ${toolName}` });
+}
+
+async function handleWorkspaceFileRequest(request, response, filesPath, workspaceRoot) {
+    const incoming = new URL(request.url ?? "/", "http://bridge.local");
+    const action = incoming.pathname.slice(filesPath.length).replace(/^\/+/, "");
+
+    if (request.method === "GET" && action === "") {
+        writeJson(response, 200, await readWorkspacePromptFiles(workspaceRoot));
+        return;
+    }
+
+    if (request.method === "POST" && action === "soul") {
+        const body = await readJsonBody(request);
+        await writeWorkspaceFile(workspaceRoot, "soul.md", optionalString(body, "content"));
+        writeJson(response, 200, { success: true, message: "Updated soul.md." });
+        return;
+    }
+
+    if (request.method === "POST" && action === "agents") {
+        const body = await readJsonBody(request);
+        const agents = Array.isArray(body.agents) ? body.agents : [];
+        let count = 0;
+        for (const file of agents) {
+            const relativePath = typeof file.path === "string" && file.path.trim()
+                ? file.path.trim()
+                : `agents/agent-${count + 1}.md`;
+            if (!relativePath.startsWith("agents/") || !relativePath.endsWith(".md")) {
+                throw new Error(`Agent file path must stay under agents/ and end with .md: ${relativePath}`);
+            }
+            await writeWorkspaceFile(workspaceRoot, relativePath, optionalString(file, "content"));
+            count += 1;
+        }
+        writeJson(response, 200, { success: true, message: `Updated ${count} agent file(s).` });
+        return;
+    }
+
+    writeJson(response, 404, { success: false, error: `Unknown workspace file route: ${action}` });
+}
+
+export async function readWorkspacePromptFiles(workspaceRoot = process.cwd()) {
+    const root = path.resolve(workspaceRoot);
+    const soul = await readOptionalWorkspaceFile(root, "soul.md");
+    const agents = await readMarkdownFiles(root, "agents", false);
+    const skills = await readMarkdownFiles(root, "skills", true);
+    return {
+        success: true,
+        data: {
+            root,
+            soul,
+            agents,
+            skills,
+        },
+    };
 }
 
 export async function webSearch(body, config = {}) {
@@ -336,6 +401,78 @@ export function normalizeTavilyDocuments(raw, fallbackUrl = "") {
     return documents;
 }
 
+async function readOptionalWorkspaceFile(workspaceRoot, relativePath) {
+    try {
+        return {
+            path: relativePath,
+            content: await fs.readFile(workspacePath(workspaceRoot, relativePath), "utf8"),
+        };
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return { path: relativePath, content: "" };
+        }
+        throw error;
+    }
+}
+
+async function readMarkdownFiles(workspaceRoot, relativeDir, recursive) {
+    const directory = workspacePath(workspaceRoot, relativeDir);
+    let entries;
+    try {
+        entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return [];
+        }
+        throw error;
+    }
+
+    const files = [];
+    for (const entry of entries) {
+        const relativePath = `${relativeDir}/${entry.name}`;
+        if (entry.isDirectory() && recursive) {
+            const nested = await readMarkdownFiles(workspaceRoot, relativePath, true);
+            files.push(...nested);
+            continue;
+        }
+        if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) {
+            continue;
+        }
+        files.push({
+            path: relativePath,
+            content: await fs.readFile(workspacePath(workspaceRoot, relativePath), "utf8"),
+        });
+    }
+
+    return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+async function writeWorkspaceFile(workspaceRoot, relativePath, content) {
+    const destination = workspacePath(workspaceRoot, relativePath);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.writeFile(destination, content, "utf8");
+}
+
+function workspacePath(workspaceRoot, relativePath) {
+    const normalized = normalizeWorkspaceRelativePath(relativePath);
+    const root = path.resolve(workspaceRoot);
+    const resolved = path.resolve(root, normalized);
+    if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+        throw new Error(`Workspace path escapes root: ${relativePath}`);
+    }
+    return resolved;
+}
+
+function normalizeWorkspaceRelativePath(relativePath) {
+    const normalized = String(relativePath ?? "")
+        .replace(/\\/g, "/")
+        .replace(/^\/+/, "");
+    if (!normalized || normalized.split("/").some((part) => part === "..")) {
+        throw new Error(`Invalid workspace relative path: ${relativePath}`);
+    }
+    return normalized;
+}
+
 function parseArgs(args) {
     const parsed = {};
     for (let index = 0; index < args.length; index += 1) {
@@ -370,6 +507,7 @@ Options:
   --host        Local host to bind. Default: ${DEFAULT_HOST}
   --port        Local port to bind. Default: ${DEFAULT_PORT}
   --base-path   Path exposed by the bridge. Default: target URL path
+  --workspace-root  Root containing soul.md, agents/, and skills/. Default: current directory
 
 Web tool environment:
   BRAVE_API_KEY or BRAVE_SEARCH_API_KEY
@@ -377,7 +515,7 @@ Web tool environment:
   ASKK_BRAVE_SEARCH_URL and ASKK_TAVILY_BASE_URL for local/mock providers
 
 Bridge environment:
-  ASKK_BRIDGE_TARGET, ASKK_BRIDGE_HOST, ASKK_BRIDGE_PORT`);
+  ASKK_BRIDGE_TARGET, ASKK_BRIDGE_HOST, ASKK_BRIDGE_PORT, ASKK_WORKSPACE_ROOT`);
 }
 
 function normalizeBaseUrl(raw) {
@@ -487,6 +625,14 @@ function requiredString(body, key) {
         throw new Error(`Missing required string field: ${key}`);
     }
     return value.trim();
+}
+
+function optionalString(body, key) {
+    const value = body?.[key];
+    if (typeof value !== "string") {
+        return "";
+    }
+    return value;
 }
 
 function arrayOfStrings(body, key) {

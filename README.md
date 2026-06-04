@@ -30,6 +30,8 @@ For a provider running on another LAN machine:
 node scripts/askk-local-bridge.mjs --target http://192.168.11.154:8873/v1 --port 8874
 ```
 
+Start the bridge from the project root, or pass `--workspace-root /path/to/askk`, when you want the hosted app to read and update Markdown prompt files.
+
 Then use the ASKK `Local Bridge` preset, or manually set:
 
 ```text
@@ -44,6 +46,28 @@ You can test the bridge directly:
 ```sh
 curl http://127.0.0.1:8874/v1/models
 ```
+
+### Markdown Workspace Files
+
+ASKK keeps broad behavior and agent prompts in Markdown:
+
+- `soul.md` is the shared behavior prompt prepended to every agent call.
+- `agents/*.md` defines agents with frontmatter (`id`, `name`, `enabled`, `tools`) and a Markdown body as the agent prompt.
+- `skills/**.md` defines reusable skills with frontmatter (`id`, `name`, `enabled`) and a Markdown body.
+
+The hosted app cannot read your local filesystem directly. Use the local bridge from the repo root to enable the Soul page and Agents page to load these files:
+
+```sh
+node scripts/askk-local-bridge.mjs --workspace-root "$(pwd)"
+```
+
+Bridge file routes:
+
+- `GET /askk/files` reads `soul.md`, `agents/`, and `skills/`.
+- `POST /askk/files/soul` updates `soul.md`.
+- `POST /askk/files/agents` writes current agents back to `agents/*.md`.
+
+If the bridge is unavailable, the app uses bundled Markdown defaults plus the browser IndexedDB snapshot.
 
 ### Web Tools
 
