@@ -2,6 +2,7 @@ use crate::inference::{get_implementation, InferenceProvider, InferenceRequest};
 use crate::responses::{parse_tool_calls, ReActAction};
 use crate::state::{
     event, now_iso, Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, ToolCall,
+    ToolResult, ToolSpec,
 };
 use crate::tools::ToolRegistry;
 use uuid::Uuid;
@@ -27,10 +28,6 @@ impl BrowserAgent {
             history: Vec::new(),
             initialized: false,
         }
-    }
-
-    pub fn enabled_tool_specs(&self, tools: &ToolRegistry) -> Vec<crate::state::ToolSpec> {
-        tools.specs_for_agent(&self.definition.enabled_tools)
     }
 
     pub fn remember(&mut self, role: impl Into<String>, content: impl Into<String>) {
@@ -71,11 +68,23 @@ impl ReActEngine {
         }
     }
 
-    pub async fn run_goal(
+    pub async fn run_goal(&self, snapshot: AppSnapshot, goal: String) -> AppResult<AppSnapshot> {
+        let inference = get_implementation(&snapshot.provider);
+        self.run_goal_with_parts(snapshot, goal, &self.tools, &inference)
+            .await
+    }
+
+    async fn run_goal_with_parts<Tools, Inference>(
         &self,
         mut snapshot: AppSnapshot,
         goal: String,
-    ) -> AppResult<AppSnapshot> {
+        tools: &Tools,
+        inference: &Inference,
+    ) -> AppResult<AppSnapshot>
+    where
+        Tools: AgentToolbox,
+        Inference: InferenceProvider,
+    {
         let run_id = Uuid::new_v4().to_string();
         let mut run = AgentRun {
             id: run_id.clone(),
@@ -121,6 +130,8 @@ impl ReActEngine {
                 &mut agent,
                 &goal,
                 enabled_agent_count,
+                tools,
+                inference,
             )
             .await;
             agent.shutdown();
@@ -158,11 +169,12 @@ impl ReActEngine {
         agent: &mut BrowserAgent,
         goal: &str,
         enabled_agent_count: usize,
+        tools: &impl AgentToolbox,
+        inference: &impl InferenceProvider,
     ) {
-        let specs = agent.enabled_tool_specs(&self.tools);
+        let specs = tools.specs_for_agent(&agent.definition.enabled_tools);
         let run_id = run.id.clone();
         let agent_id = agent.definition.id.clone();
-        let inference = get_implementation(&snapshot.provider);
 
         if enabled_agent_count > 1 {
             run.events.push(event(
@@ -183,7 +195,7 @@ impl ReActEngine {
         while true {
             step = step.saturating_add(1);
             if self
-                .invoke_agent_step(snapshot, run, agent, goal, &specs, &inference, step)
+                .invoke_agent_step(snapshot, run, agent, goal, &specs, tools, inference, step)
                 .await
             {
                 return;
@@ -202,6 +214,7 @@ impl ReActEngine {
         agent: &mut BrowserAgent,
         goal: &str,
         specs: &[crate::state::ToolSpec],
+        tools: &impl AgentToolbox,
         inference: &impl InferenceProvider,
         step: usize,
     ) -> bool {
@@ -291,8 +304,15 @@ impl ReActEngine {
                 }
 
                 for tool_call in tool_calls {
-                    self.execute_tool_call(snapshot, run, agent, tool_call.name, tool_call.args)
-                        .await;
+                    self.execute_tool_call(
+                        snapshot,
+                        run,
+                        agent,
+                        tools,
+                        tool_call.name,
+                        tool_call.args,
+                    )
+                    .await;
                 }
                 false
             }
@@ -318,6 +338,7 @@ impl ReActEngine {
         snapshot: &mut AppSnapshot,
         run: &mut AgentRun,
         agent: &BrowserAgent,
+        tools: &impl AgentToolbox,
         name: String,
         args: serde_json::Value,
     ) {
@@ -365,7 +386,7 @@ impl ReActEngine {
             serde_json::to_string_pretty(&args).unwrap_or_else(|_| "{}".to_string()),
         ));
 
-        let result = self.tools.execute(snapshot, call_id, &name, args).await;
+        let result = tools.execute(snapshot, call_id, &name, args).await;
         run.messages.push(Message {
             role: "tool".to_string(),
             content: format!("{} -> {}", name, result.content),
@@ -396,6 +417,34 @@ impl ReActEngine {
     }
 }
 
+trait AgentToolbox {
+    fn specs_for_agent(&self, enabled_tools: &[String]) -> Vec<ToolSpec>;
+
+    async fn execute(
+        &self,
+        snapshot: &mut AppSnapshot,
+        call_id: String,
+        tool_name: &str,
+        args: serde_json::Value,
+    ) -> ToolResult;
+}
+
+impl AgentToolbox for ToolRegistry {
+    fn specs_for_agent(&self, enabled_tools: &[String]) -> Vec<ToolSpec> {
+        ToolRegistry::specs_for_agent(self, enabled_tools)
+    }
+
+    async fn execute(
+        &self,
+        snapshot: &mut AppSnapshot,
+        call_id: String,
+        tool_name: &str,
+        args: serde_json::Value,
+    ) -> ToolResult {
+        ToolRegistry::execute(self, snapshot, call_id, tool_name, args).await
+    }
+}
+
 fn build_local_final_answer(run: &AgentRun) -> String {
     let tool_count = run.tool_results.len();
     let last_message = run
@@ -406,4 +455,170 @@ fn build_local_final_answer(run: &AgentRun) -> String {
     format!(
         "Run completed with {tool_count} compiled tool result(s). Last agent output: {last_message}"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::inference::InferenceOutput;
+    use crate::responses::{ReActAction, ReActResponse, ResponseFormat};
+    use serde_json::{json, Value};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone, Default)]
+    struct FakeInference {
+        requests: Arc<Mutex<Vec<InferenceRequest>>>,
+    }
+
+    impl InferenceProvider for FakeInference {
+        fn provider_name(&self) -> &'static str {
+            "fake-openai-compatible"
+        }
+
+        async fn invoke_react(
+            &self,
+            _config: &crate::state::ProviderConfig,
+            request: InferenceRequest,
+        ) -> AppResult<InferenceOutput<ReActResponse>> {
+            let call_number = {
+                let mut requests = self.requests.lock().expect("request lock");
+                requests.push(request.clone());
+                requests.len()
+            };
+
+            match call_number {
+                1 => Ok(fake_output(
+                    ReActAction::Tool,
+                    r#"web_search({"query":"OpenAI news","count":3})"#,
+                )),
+                2 => {
+                    assert!(
+                        request.history.iter().any(|message| {
+                            message.role == "tool"
+                                && message.content.contains("web_search ->")
+                                && message.content.contains("Reuters")
+                        }),
+                        "second model call should include the web_search tool observation"
+                    );
+                    Ok(fake_output(
+                        ReActAction::Answer,
+                        "Recent OpenAI news includes a Reuters item from the web search results.",
+                    ))
+                }
+                _ => Err("fake model should have answered after the web_search observation".into()),
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct FakeTools {
+        calls: Arc<Mutex<Vec<(String, Value)>>>,
+    }
+
+    impl AgentToolbox for FakeTools {
+        fn specs_for_agent(&self, enabled_tools: &[String]) -> Vec<ToolSpec> {
+            assert!(enabled_tools.iter().any(|tool| tool == "web_search"));
+            vec![ToolSpec {
+                name: "web_search".to_string(),
+                description: "Search the web.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "count": { "type": "integer" }
+                    },
+                    "required": ["query"]
+                }),
+            }]
+        }
+
+        async fn execute(
+            &self,
+            _snapshot: &mut AppSnapshot,
+            call_id: String,
+            tool_name: &str,
+            args: Value,
+        ) -> ToolResult {
+            assert_eq!(tool_name, "web_search");
+            assert_eq!(args["query"], "OpenAI news");
+            self.calls
+                .lock()
+                .expect("tool call lock")
+                .push((tool_name.to_string(), args));
+            ToolResult {
+                call_id,
+                ok: true,
+                content: json!({
+                    "success": true,
+                    "data": {
+                        "web": [
+                            {
+                                "title": "OpenAI News | Today's Latest Stories | Reuters",
+                                "url": "https://www.reuters.com/technology/openai/",
+                                "description": "Reuters search result snippet",
+                                "position": 1
+                            }
+                        ]
+                    }
+                })
+                .to_string(),
+            }
+        }
+    }
+
+    #[test]
+    fn react_loop_calls_web_search_then_answers_from_tool_observation() {
+        let engine = ReActEngine::new();
+        let inference = FakeInference::default();
+        let tools = FakeTools::default();
+        let mut snapshot = AppSnapshot::default();
+        snapshot.agents = vec![Agent {
+            id: "agent".to_string(),
+            name: "Agent".to_string(),
+            role: "Use web search for current news, then answer.".to_string(),
+            enabled: true,
+            enabled_tools: vec!["web_search".to_string()],
+            response_format: ResponseFormat::Toon,
+            source_path: None,
+        }];
+
+        let next = pollster::block_on(engine.run_goal_with_parts(
+            snapshot,
+            "What is the latest OpenAI news?".to_string(),
+            &tools,
+            &inference,
+        ))
+        .expect("run should complete");
+
+        let run = next.current_run.expect("current run");
+        assert_eq!(run.status, "complete");
+        assert!(run.final_answer.contains("Recent OpenAI news"));
+        assert_eq!(run.tool_calls.len(), 1);
+        assert_eq!(run.tool_calls[0].tool_name, "web_search");
+        assert_eq!(run.tool_results.len(), 1);
+        assert!(run.tool_results[0].ok);
+        assert!(run
+            .messages
+            .iter()
+            .any(|message| message.role == "tool" && message.content.contains("Reuters")));
+        assert_eq!(inference.requests.lock().expect("request lock").len(), 2);
+        assert_eq!(tools.calls.lock().expect("tool call lock").len(), 1);
+    }
+
+    fn fake_output(action: ReActAction, response: &str) -> InferenceOutput<ReActResponse> {
+        InferenceOutput {
+            raw_text: format!(
+                "observation: ok\n\nthinking: continue\n\nplan:\n- use evidence\n\naction: {}\n\nresponse: {}",
+                action.as_str(),
+                response
+            ),
+            parsed: ReActResponse {
+                observation: "ok".to_string(),
+                thinking: "continue".to_string(),
+                plan: vec!["use evidence".to_string()],
+                action,
+                response: response.to_string(),
+            },
+        }
+    }
 }

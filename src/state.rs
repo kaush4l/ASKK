@@ -646,10 +646,22 @@ fn strip_agent_branding(value: &mut String) {
 }
 
 pub fn now_iso() -> String {
-    js_sys::Date::new_0()
-        .to_iso_string()
-        .as_string()
-        .unwrap_or_else(|| "unknown-time".to_string())
+    #[cfg(target_arch = "wasm32")]
+    {
+        return js_sys::Date::new_0()
+            .to_iso_string()
+            .as_string()
+            .unwrap_or_else(|| "unknown-time".to_string());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or_default();
+        format!("unix-ms:{millis}")
+    }
 }
 
 pub fn event(

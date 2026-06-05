@@ -94,6 +94,7 @@ dependencies = [
  "gloo-net",
  "indexed_db_futures",
  "js-sys",
+ "pollster",
  "serde",
  "serde_json",
  "uuid",

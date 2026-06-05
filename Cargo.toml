@@ -24,3 +24,6 @@ default = ["web"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
+
+[dev-dependencies]
+pollster = "0.4"
