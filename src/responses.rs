@@ -23,7 +23,7 @@ pub trait StructuredResponse: Sized {
 
     fn from_raw(raw: impl AsRef<str>) -> Self {
         let raw = raw.as_ref();
-        if let Some(fields) = parse_json_object(raw) {
+        if let Some(fields) = parse_json_object(raw, Self::fields()) {
             return Self::from_fields(fields, raw);
         }
         if let Some(fields) = parse_toon(raw, Self::fields()) {
@@ -328,7 +328,7 @@ Rules:
     )
 }
 
-fn parse_json_object(raw: &str) -> Option<BTreeMap<String, Value>> {
+fn parse_json_object(raw: &str, known_fields: &[ResponseField]) -> Option<BTreeMap<String, Value>> {
     let mut depth = 0usize;
     let mut start = None;
     for (idx, ch) in raw.char_indices() {
@@ -343,8 +343,15 @@ fn parse_json_object(raw: &str) -> Option<BTreeMap<String, Value>> {
                 depth -= 1;
                 if depth == 0 {
                     let json = &raw[start?..=idx];
-                    let value = serde_json::from_str::<Value>(json).ok()?;
-                    let object = value.as_object()?;
+                    let Ok(value) = serde_json::from_str::<Value>(json) else {
+                        continue;
+                    };
+                    let Some(object) = value.as_object() else {
+                        continue;
+                    };
+                    if !object.keys().any(|key| is_known_field(key, known_fields)) {
+                        continue;
+                    }
                     return Some(
                         object
                             .iter()
@@ -357,6 +364,10 @@ fn parse_json_object(raw: &str) -> Option<BTreeMap<String, Value>> {
         }
     }
     None
+}
+
+fn is_known_field(key: &str, known_fields: &[ResponseField]) -> bool {
+    known_fields.iter().any(|field| field.name == key)
 }
 
 fn parse_toon(raw: &str, known_fields: &[ResponseField]) -> Option<BTreeMap<String, Value>> {
@@ -555,5 +566,35 @@ response: web_search({"query":"today news","count":5})"#,
         assert_eq!(calls[0].name, "web_search");
         assert_eq!(calls[0].args["query"], "latest AI news");
         assert_eq!(calls[0].args["count"], 2);
+    }
+
+    #[test]
+    fn react_response_prefers_toon_over_inner_tool_json_args() {
+        let parsed = ReActResponse::from_raw(
+            r#"observation: The user wants to know the current news for today.
+thinking: I need to perform a web search to gather latest headlines.
+plan:
+1. Search for today's top news headlines.
+2. Summarize the key stories found.
+action: tool
+response: web_search({"query":"top news headlines today","count":5})"#,
+        );
+
+        assert_eq!(parsed.action, ReActAction::Tool);
+        assert_eq!(
+            parsed.response,
+            r#"web_search({"query":"top news headlines today","count":5})"#
+        );
+    }
+
+    #[test]
+    fn react_response_still_parses_json_with_known_fields() {
+        let parsed = ReActResponse::from_raw(
+            r#"{"observation":"ready","thinking":"done","plan":[],"action":"answer","response":"Final text"}"#,
+        );
+
+        assert_eq!(parsed.action, ReActAction::Answer);
+        assert_eq!(parsed.observation, "ready");
+        assert_eq!(parsed.response, "Final text");
     }
 }
