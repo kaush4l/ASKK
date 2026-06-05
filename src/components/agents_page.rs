@@ -155,20 +155,7 @@ pub fn AgentsPage(
                                     input {
                                         r#type: "checkbox",
                                         checked: agent.enabled_tools.iter().any(|enabled| enabled == tool_name),
-                                        onchange: {
-                                            let tool_name = tool_name.clone();
-                                            move |event| {
-                                                if let Some(agent) = snapshot.write().agents.get_mut(agent_index) {
-                                                    if event.checked() {
-                                                        if !agent.enabled_tools.iter().any(|enabled| enabled == &tool_name) {
-                                                            agent.enabled_tools.push(tool_name.clone());
-                                                        }
-                                                    } else {
-                                                        agent.enabled_tools.retain(|enabled| enabled != &tool_name);
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        disabled: true,
                                     }
                                     "{tool_name}"
                                 }

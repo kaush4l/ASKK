@@ -115,6 +115,93 @@ impl ProviderProfile {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WebSearchProvider {
+    Auto,
+    #[serde(rename = "duckduckgo")]
+    DuckDuckGo,
+    #[serde(rename = "searxng")]
+    SearXng,
+    Brave,
+    Tavily,
+}
+
+impl Default for WebSearchProvider {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+impl WebSearchProvider {
+    pub fn from_form_value(value: &str) -> Self {
+        match value {
+            "duckduckgo" => Self::DuckDuckGo,
+            "searxng" => Self::SearXng,
+            "brave" => Self::Brave,
+            "tavily" => Self::Tavily,
+            _ => Self::Auto,
+        }
+    }
+
+    pub fn as_form_value(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::DuckDuckGo => "duckduckgo",
+            Self::SearXng => "searxng",
+            Self::Brave => "brave",
+            Self::Tavily => "tavily",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WebSearchToolConfig {
+    #[serde(default = "default_bridge_tools_url")]
+    pub bridge_tools_url: String,
+    #[serde(default)]
+    pub provider: WebSearchProvider,
+    #[serde(default = "default_web_search_count")]
+    pub default_count: u32,
+    #[serde(default)]
+    pub country: String,
+    #[serde(default)]
+    pub language: String,
+    #[serde(default)]
+    pub freshness: String,
+    #[serde(default)]
+    pub searxng_url: String,
+    #[serde(default)]
+    pub brave_api_key: String,
+    #[serde(default)]
+    pub tavily_api_key: String,
+    #[serde(default)]
+    pub persist_api_keys: bool,
+}
+
+impl Default for WebSearchToolConfig {
+    fn default() -> Self {
+        Self {
+            bridge_tools_url: default_bridge_tools_url(),
+            provider: WebSearchProvider::Auto,
+            default_count: default_web_search_count(),
+            country: String::new(),
+            language: String::new(),
+            freshness: String::new(),
+            searxng_url: String::new(),
+            brave_api_key: String::new(),
+            tavily_api_key: String::new(),
+            persist_api_keys: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct ToolConfig {
+    #[serde(default)]
+    pub web_search: WebSearchToolConfig,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Agent {
     pub id: String,
@@ -240,6 +327,8 @@ pub struct AppSnapshot {
     pub provider_profiles: Vec<ProviderProfile>,
     #[serde(default)]
     pub active_provider_profile_id: Option<String>,
+    #[serde(default)]
+    pub tool_config: ToolConfig,
     #[serde(default = "default_soul_prompt")]
     pub soul: String,
     pub agents: Vec<Agent>,
@@ -261,6 +350,7 @@ impl Default for AppSnapshot {
             provider,
             provider_profiles: vec![profile],
             active_provider_profile_id,
+            tool_config: ToolConfig::default(),
             soul: default_soul_prompt(),
             agents: default_agents(),
             skills: default_skills(),
@@ -274,16 +364,15 @@ impl Default for AppSnapshot {
 }
 
 pub fn default_tool_names() -> Vec<String> {
-    vec![
-        "memory_write".to_string(),
-        "memory_search".to_string(),
-        "summarize_notes".to_string(),
-        "create_task".to_string(),
-        "update_task".to_string(),
-        "web_fetch_text".to_string(),
-        "web_search".to_string(),
-        "web_extract".to_string(),
-    ]
+    vec!["web_search".to_string()]
+}
+
+pub fn default_bridge_tools_url() -> String {
+    "http://127.0.0.1:8874/askk/tools".to_string()
+}
+
+fn default_web_search_count() -> u32 {
+    5
 }
 
 pub fn default_soul_prompt() -> String {
@@ -403,6 +492,7 @@ impl AppSnapshot {
         self.ensure_provider_profiles();
         self.ensure_prompt_defaults();
         self.normalize_agent_branding();
+        self.normalize_agent_tools();
         self
     }
 
@@ -424,6 +514,12 @@ impl AppSnapshot {
         }
         for run in &mut self.runs {
             normalize_run_branding(run);
+        }
+    }
+
+    pub fn normalize_agent_tools(&mut self) {
+        for agent in &mut self.agents {
+            agent.enabled_tools = default_tool_names();
         }
     }
 
@@ -458,6 +554,10 @@ impl AppSnapshot {
             if !profile.config.persist_api_key {
                 profile.config.api_key.clear();
             }
+        }
+        if !self.tool_config.web_search.persist_api_keys {
+            self.tool_config.web_search.brave_api_key.clear();
+            self.tool_config.web_search.tavily_api_key.clear();
         }
     }
 
@@ -565,15 +665,8 @@ fn parse_bool(value: &str) -> bool {
 }
 
 fn parse_tools(value: &str) -> Vec<String> {
-    if value.trim().eq_ignore_ascii_case("all") {
-        return default_tool_names();
-    }
-    value
-        .split(',')
-        .map(str::trim)
-        .filter(|tool| !tool.is_empty())
-        .map(ToString::to_string)
-        .collect()
+    let _ = value;
+    default_tool_names()
 }
 
 fn same_tools(left: &[String], right: &[String]) -> bool {
@@ -723,6 +816,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(snapshot.provider.auth_mode, ProviderAuthMode::Bearer);
+        assert_eq!(
+            snapshot.tool_config.web_search.bridge_tools_url,
+            default_bridge_tools_url()
+        );
     }
 
     #[test]
@@ -817,10 +914,11 @@ mod tests {
         assert_eq!(snapshot.runs[0].events[0].title, "Planner responded");
         assert_eq!(snapshot.runs[0].events[0].body, "Planner finished");
         assert_eq!(snapshot.runs[0].final_answer, "Synthesizer: final");
+        assert_eq!(snapshot.agents[0].enabled_tools, default_tool_names());
     }
 
     #[test]
-    fn parses_agent_markdown_frontmatter_and_body() {
+    fn parses_agent_markdown_frontmatter_and_normalizes_tools() {
         let agent = agent_from_markdown(
             "agents/deep-research.md",
             "---\nid: deep-research\nname: Deep Research\nenabled: false\ntools: memory_search, web_search\nresponse_format: json\n---\n\nResearch deeply.",
@@ -830,7 +928,7 @@ mod tests {
         assert_eq!(agent.id, "deep-research");
         assert_eq!(agent.name, "Deep Research");
         assert!(!agent.enabled);
-        assert_eq!(agent.enabled_tools, vec!["memory_search", "web_search"]);
+        assert_eq!(agent.enabled_tools, default_tool_names());
         assert_eq!(agent.response_format, ResponseFormat::Json);
         assert_eq!(agent.role, "Research deeply.");
         assert_eq!(
@@ -840,7 +938,7 @@ mod tests {
 
         let serialized = agent_to_markdown(&agent);
         assert!(serialized.contains("name: Deep Research"));
-        assert!(serialized.contains("tools: memory_search, web_search"));
+        assert!(serialized.contains("tools: all"));
         assert!(serialized.contains("response_format: json"));
         assert!(serialized.contains("Research deeply."));
     }
@@ -897,12 +995,64 @@ mod tests {
                 },
             ),
         ];
+        snapshot.tool_config.web_search.brave_api_key = "brave-secret".to_string();
+        snapshot.tool_config.web_search.tavily_api_key = "tavily-secret".to_string();
+        snapshot.tool_config.web_search.persist_api_keys = false;
 
         snapshot.sanitize_api_keys();
 
         assert!(snapshot.provider.api_key.is_empty());
         assert_eq!(snapshot.provider_profiles[0].config.api_key, "kept");
         assert!(snapshot.provider_profiles[1].config.api_key.is_empty());
+        assert!(snapshot.tool_config.web_search.brave_api_key.is_empty());
+        assert!(snapshot.tool_config.web_search.tavily_api_key.is_empty());
+    }
+
+    #[test]
+    fn sanitize_api_keys_keeps_web_search_keys_when_enabled() {
+        let mut snapshot = AppSnapshot::default();
+        snapshot.tool_config.web_search.brave_api_key = "brave-secret".to_string();
+        snapshot.tool_config.web_search.tavily_api_key = "tavily-secret".to_string();
+        snapshot.tool_config.web_search.persist_api_keys = true;
+
+        snapshot.sanitize_api_keys();
+
+        assert_eq!(
+            snapshot.tool_config.web_search.brave_api_key,
+            "brave-secret"
+        );
+        assert_eq!(
+            snapshot.tool_config.web_search.tavily_api_key,
+            "tavily-secret"
+        );
+    }
+
+    #[test]
+    fn web_search_tool_config_deserializes_defaults() {
+        let config = serde_json::from_value::<ToolConfig>(json!({
+            "web_search": {
+                "provider": "duckduckgo"
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(config.web_search.provider, WebSearchProvider::DuckDuckGo);
+        assert_eq!(
+            config.web_search.bridge_tools_url,
+            default_bridge_tools_url()
+        );
+        assert_eq!(config.web_search.default_count, 5);
+        assert!(!config.web_search.persist_api_keys);
+    }
+
+    #[test]
+    fn default_tool_list_contains_only_web_search() {
+        assert_eq!(default_tool_names(), vec!["web_search"]);
+        assert_eq!(parse_tools("all"), vec!["web_search"]);
+        assert_eq!(
+            parse_tools("memory_search, web_extract"),
+            vec!["web_search"]
+        );
     }
 
     #[test]

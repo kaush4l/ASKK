@@ -77,19 +77,20 @@ The bundled default agent is generic and stored in `agents/planner.md`; the file
 
 ## Web Tools
 
-ASKK includes Hermes/OpenClaw-style compiled tools:
+ASKK exposes one active Hermes/OpenClaw-style compiled tool to agents:
 
 - `web_search({ query, count?, country?, language?, freshness?, date_after?, date_before? })`
-- `web_extract({ urls })`
 
-These tools call the local bridge at `http://127.0.0.1:8874/askk/tools/...` so browser code does not need direct search-provider API keys.
+The tool calls the local bridge at `http://127.0.0.1:8874/askk/tools/web_search`. Configure the bridge URL, provider, default count, optional country/language/freshness, and optional provider keys on the Tools page. Search-provider keys entered there are visible to browser code and are persisted only when `Persist web-search API keys` is enabled.
 
-Search provider order:
+Provider `auto` uses this order:
 
 1. Brave Search when `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` is set.
 2. Tavily when `TAVILY_API_KEY` is set.
 3. SearXNG when `SEARXNG_URL`, `SEARXNG_BASE_URL`, or `ASKK_SEARXNG_URL` is set.
 4. Key-free DuckDuckGo HTML search as the no-key fallback.
+
+You can also select `duckduckgo`, `searxng`, `brave`, or `tavily` on the Tools page. Request-level Tools page keys and `searxng_url` override bridge environment values for that search request.
 
 For Brave Search:
 
@@ -110,13 +111,11 @@ BRAVE_API_KEY="..." node scripts/askk-local-bridge.mjs --target http://192.168.1
 }
 ```
 
-For Tavily search and extraction:
+For Tavily search:
 
 ```sh
 TAVILY_API_KEY="..." node scripts/askk-local-bridge.mjs --target http://192.168.11.154:8873/v1
 ```
-
-If Tavily is not configured, `web_extract` falls back to a lightweight bridge fetch/extract path.
 
 For free self-hosted SearXNG search:
 

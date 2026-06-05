@@ -166,6 +166,14 @@ pre {
     grid-template-columns: 74px minmax(0, 1fr) minmax(330px, 0.46fr);
 }
 
+.dashboard-frame.no-log {
+    grid-template-columns: 246px minmax(0, 1fr);
+}
+
+.dashboard-frame.nav-collapsed.no-log {
+    grid-template-columns: 74px minmax(0, 1fr);
+}
+
 .panel,
 .left-nav,
 .page-surface {
@@ -186,6 +194,7 @@ pre {
 .left-nav-head,
 .panel-heading,
 .agent-card-head,
+.tool-card-head,
 .button-row,
 .inline-controls,
 .diagnostic-actions,
@@ -198,6 +207,7 @@ pre {
 .left-nav-head,
 .panel-heading,
 .agent-card-head,
+.tool-card-head,
 .page-heading {
     justify-content: space-between;
 }
@@ -363,6 +373,47 @@ pre {
     background: #effaf3;
 }
 
+.error-message {
+    justify-self: start;
+    border-color: #e7a6a6;
+    background: #fff1f1;
+}
+
+.run-details {
+    width: min(980px, 100%);
+    justify-self: start;
+    border: 1px solid #ded5ef;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 10px 12px;
+}
+
+.run-details summary {
+    cursor: pointer;
+    color: #5b21b6;
+}
+
+.run-details-grid {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.detail-section {
+    display: grid;
+    gap: 10px;
+}
+
+.error-row {
+    border-color: #e7a6a6;
+    background: #fff6f6;
+}
+
+.tool-event-row {
+    border-color: #9ed2b1;
+    background: #f6fff9;
+}
+
 .event-log-panel {
     grid-template-rows: auto minmax(0, 1fr);
 }
@@ -405,6 +456,7 @@ pre {
 .provider-panel,
 .agents-page,
 .soul-page,
+.tools-page,
 .inspector-panel {
     grid-template-rows: auto;
     align-content: start;
@@ -414,9 +466,32 @@ pre {
 .provider-panel,
 .agent-card,
 .skill-card,
+.tool-config-card,
 .inspector-panel {
     display: grid;
     gap: 12px;
+}
+
+.tool-config-card {
+    border: 1px solid #ded5ef;
+    border-radius: 8px;
+    padding: 12px;
+    background: #fbfaff;
+}
+
+.tool-config-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.tool-test-output {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid #ded5ef;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 10px;
 }
 
 .inline-controls {
@@ -605,6 +680,13 @@ pre {
             "nav log";
     }
 
+    .dashboard-frame.no-log,
+    .dashboard-frame.nav-collapsed.no-log {
+        grid-template-columns: 74px minmax(0, 1fr);
+        grid-template-areas:
+            "nav page";
+    }
+
     .left-nav {
         grid-area: nav;
     }
@@ -654,13 +736,21 @@ pre {
         min-height: 0;
     }
 
+    .dashboard-frame.no-log,
+    .dashboard-frame.nav-collapsed.no-log {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "nav"
+            "page";
+    }
+
     .left-nav {
         display: grid;
         grid-template-rows: auto;
     }
 
     .nav-list {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
     }
 
     .left-nav .nav-title {
@@ -687,6 +777,7 @@ pre {
     }
 
     .tool-grid,
+    .tool-config-grid,
     .stats-grid,
     .profile-controls,
     .profile-actions,

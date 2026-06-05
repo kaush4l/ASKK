@@ -4,7 +4,11 @@ use crate::state::{
 };
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::{JsCast, JsValue};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::JsFuture;
 
 #[derive(Clone, Debug)]
 pub struct InferenceRequest {
@@ -32,6 +36,15 @@ pub trait InferenceProvider {
         config: &ProviderConfig,
         request: InferenceRequest,
     ) -> AppResult<InferenceOutput<ReActResponse>>;
+
+    async fn invoke_react_streaming(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+        _on_partial_answer: &mut dyn FnMut(String),
+    ) -> AppResult<InferenceOutput<ReActResponse>> {
+        self.invoke_react(config, request).await
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -82,6 +95,24 @@ impl InferenceProvider for OpenAiCompatibleInference {
         let parsed = response_to_result::<ReActResponse>(&raw_text)?;
         Ok(InferenceOutput { raw_text, parsed })
     }
+
+    async fn invoke_react_streaming(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+        on_partial_answer: &mut dyn FnMut(String),
+    ) -> AppResult<InferenceOutput<ReActResponse>> {
+        match self
+            .invoke_text_streaming(config, &request, on_partial_answer)
+            .await
+        {
+            Ok(raw_text) => {
+                let parsed = response_to_result::<ReActResponse>(&raw_text)?;
+                Ok(InferenceOutput { raw_text, parsed })
+            }
+            Err(_) => self.invoke_react(config, request).await,
+        }
+    }
 }
 
 impl OpenAiCompatibleInference {
@@ -100,6 +131,24 @@ impl OpenAiCompatibleInference {
 
         let parsed = send_chat_completion(config, body).await?;
         assistant_content(parsed)
+    }
+
+    async fn invoke_text_streaming(
+        &self,
+        config: &ProviderConfig,
+        request: &InferenceRequest,
+        on_partial_answer: &mut dyn FnMut(String),
+    ) -> AppResult<String> {
+        let messages = self.normalize_messages(request)?;
+        let body = json!({
+            "model": config.model,
+            "messages": messages,
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+            "stream": true,
+        });
+
+        send_chat_completion_stream(config, body, on_partial_answer).await
     }
 
     fn normalize_messages(&self, request: &InferenceRequest) -> AppResult<Vec<WireMessage>> {
@@ -314,10 +363,7 @@ fn authorization_header(config: &ProviderConfig) -> AppResult<Option<String>> {
     }
 }
 
-async fn send_chat_completion(
-    config: &ProviderConfig,
-    body: serde_json::Value,
-) -> AppResult<ChatResponse> {
+async fn send_chat_completion(config: &ProviderConfig, body: Value) -> AppResult<ChatResponse> {
     if config.model.trim().is_empty() {
         return Err(
             "Provider model is empty. Enter a model id or choose one from List Models.".to_string(),
@@ -350,6 +396,173 @@ async fn send_chat_completion(
         .json()
         .await
         .map_err(|err| format!("Unable to parse provider response: {err:?}"))
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn send_chat_completion_stream(
+    config: &ProviderConfig,
+    body: Value,
+    on_partial_answer: &mut dyn FnMut(String),
+) -> AppResult<String> {
+    if config.model.trim().is_empty() {
+        return Err(
+            "Provider model is empty. Enter a model id or choose one from List Models.".to_string(),
+        );
+    }
+
+    let endpoint = chat_completions_endpoint(config)?;
+    let mut request = Request::post(&endpoint).header("Content-Type", "application/json");
+    if let Some(auth_header) = authorization_header(config)? {
+        request = request.header("Authorization", &auth_header);
+    }
+
+    let response = request
+        .body(body.to_string())
+        .map_err(|err| format!("Unable to create streaming provider request: {err:?}"))?
+        .send()
+        .await
+        .map_err(|err| {
+            transport_error("streaming chat completion", &endpoint, &format!("{err:?}"))
+        })?;
+
+    if !response.ok() {
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unable to read provider error body".to_string());
+        return Err(http_status_error(
+            "streaming chat completion",
+            status,
+            &text,
+        ));
+    }
+
+    let stream = response
+        .body()
+        .ok_or_else(|| "Provider did not return a streaming response body.".to_string())?;
+    let reader = web_sys::ReadableStreamDefaultReader::new(&stream)
+        .map_err(js_error("Unable to read provider stream"))?;
+    let decoder =
+        web_sys::TextDecoder::new().map_err(js_error("Unable to create stream decoder"))?;
+    let mut buffer = String::new();
+    let mut raw_text = String::new();
+
+    loop {
+        let chunk = JsFuture::from(reader.read())
+            .await
+            .map_err(js_error("Unable to read provider stream chunk"))?;
+        let done = js_sys::Reflect::get(&chunk, &JsValue::from_str("done"))
+            .ok()
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        if done {
+            break;
+        }
+        let value = js_sys::Reflect::get(&chunk, &JsValue::from_str("value"))
+            .map_err(js_error("Provider stream chunk did not contain a value"))?;
+        if value.is_undefined() || value.is_null() {
+            continue;
+        }
+        let bytes = js_sys::Uint8Array::new(&value);
+        let text = decoder
+            .decode_with_js_u8_array(&bytes)
+            .map_err(js_error("Unable to decode provider stream chunk"))?
+            .replace("\r\n", "\n");
+        buffer.push_str(&text);
+        if drain_sse_events(&mut buffer, &mut raw_text, on_partial_answer)? {
+            break;
+        }
+    }
+
+    if raw_text.trim().is_empty() {
+        return Err("Provider stream ended without assistant content.".to_string());
+    }
+    Ok(raw_text)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn send_chat_completion_stream(
+    _config: &ProviderConfig,
+    _body: Value,
+    _on_partial_answer: &mut dyn FnMut(String),
+) -> AppResult<String> {
+    Err("Streaming is only available in the browser runtime.".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn drain_sse_events(
+    buffer: &mut String,
+    raw_text: &mut String,
+    on_partial_answer: &mut dyn FnMut(String),
+) -> AppResult<bool> {
+    while let Some(idx) = buffer.find("\n\n") {
+        let event = buffer[..idx].to_string();
+        buffer.drain(..idx + 2);
+        if process_sse_event(&event, raw_text, on_partial_answer)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn process_sse_event(
+    event: &str,
+    raw_text: &mut String,
+    on_partial_answer: &mut dyn FnMut(String),
+) -> AppResult<bool> {
+    for line in event.lines() {
+        let line = line.trim_start();
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+        if data == "[DONE]" {
+            return Ok(true);
+        }
+        if let Some(delta) = stream_delta_content(data)? {
+            raw_text.push_str(&delta);
+            if let Some(partial) = crate::responses::partial_react_answer_text(raw_text) {
+                on_partial_answer(partial);
+            }
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn stream_delta_content(data: &str) -> AppResult<Option<String>> {
+    let value = serde_json::from_str::<Value>(data)
+        .map_err(|err| format!("Unable to parse provider stream event: {err}"))?;
+    Ok(value
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| {
+            choice
+                .get("delta")
+                .and_then(|delta| delta.get("content"))
+                .or_else(|| {
+                    choice
+                        .get("message")
+                        .and_then(|message| message.get("content"))
+                })
+        })
+        .and_then(Value::as_str)
+        .map(str::to_string))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn js_error(context: &'static str) -> impl FnOnce(JsValue) -> String {
+    move |value| {
+        let detail = value
+            .dyn_ref::<js_sys::Error>()
+            .map(|error| error.message().as_string().unwrap_or_default())
+            .or_else(|| value.as_string())
+            .unwrap_or_else(|| format!("{value:?}"));
+        format!("{context}: {detail}")
+    }
 }
 
 fn assistant_content(response: ChatResponse) -> AppResult<String> {

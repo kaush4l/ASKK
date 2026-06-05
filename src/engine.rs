@@ -68,18 +68,55 @@ impl ReActEngine {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn run_goal(&self, snapshot: AppSnapshot, goal: String) -> AppResult<AppSnapshot> {
+        self.run_goal_with_observer(snapshot, goal, |_| {}).await
+    }
+
+    pub async fn run_goal_with_observer<F>(
+        &self,
+        snapshot: AppSnapshot,
+        goal: String,
+        mut observer: F,
+    ) -> AppResult<AppSnapshot>
+    where
+        F: FnMut(AgentRun),
+    {
         let inference = get_implementation(&snapshot.provider);
-        self.run_goal_with_parts(snapshot, goal, &self.tools, &inference)
+        self.run_goal_with_parts_and_observer(
+            snapshot,
+            goal,
+            &self.tools,
+            &inference,
+            &mut observer,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    async fn run_goal_with_parts<Tools, Inference>(
+        &self,
+        snapshot: AppSnapshot,
+        goal: String,
+        tools: &Tools,
+        inference: &Inference,
+    ) -> AppResult<AppSnapshot>
+    where
+        Tools: AgentToolbox,
+        Inference: InferenceProvider,
+    {
+        let mut observer = |_| {};
+        self.run_goal_with_parts_and_observer(snapshot, goal, tools, inference, &mut observer)
             .await
     }
 
-    async fn run_goal_with_parts<Tools, Inference>(
+    async fn run_goal_with_parts_and_observer<Tools, Inference>(
         &self,
         mut snapshot: AppSnapshot,
         goal: String,
         tools: &Tools,
         inference: &Inference,
+        observer: &mut dyn FnMut(AgentRun),
     ) -> AppResult<AppSnapshot>
     where
         Tools: AgentToolbox,
@@ -103,6 +140,7 @@ impl ReActEngine {
             final_answer: String::new(),
             created_at: now_iso(),
         };
+        notify(observer, &run);
 
         let enabled_agents = snapshot
             .agents
@@ -112,12 +150,16 @@ impl ReActEngine {
             .collect::<Vec<_>>();
 
         if enabled_agents.is_empty() {
-            return Ok(self.finish_with_error(
+            let next = self.finish_with_error(
                 snapshot,
                 run,
                 "No enabled agents",
                 "Enable at least one agent before running a goal.",
-            ));
+            );
+            if let Some(run) = next.current_run.as_ref() {
+                notify(observer, run);
+            }
+            return Ok(next);
         }
 
         let enabled_agent_count = enabled_agents.len();
@@ -132,6 +174,7 @@ impl ReActEngine {
                 enabled_agent_count,
                 tools,
                 inference,
+                observer,
             )
             .await;
             agent.shutdown();
@@ -141,6 +184,9 @@ impl ReActEngine {
             snapshot.status = "Provider call failed".to_string();
             snapshot.current_run = Some(run.clone());
             snapshot.runs.insert(0, run);
+            if let Some(run) = snapshot.current_run.as_ref() {
+                notify(observer, run);
+            }
             return Ok(snapshot);
         }
 
@@ -159,6 +205,9 @@ impl ReActEngine {
         snapshot.status = "Run complete".to_string();
         snapshot.current_run = Some(run.clone());
         snapshot.runs.insert(0, run);
+        if let Some(run) = snapshot.current_run.as_ref() {
+            notify(observer, run);
+        }
         Ok(snapshot)
     }
 
@@ -171,6 +220,7 @@ impl ReActEngine {
         enabled_agent_count: usize,
         tools: &impl AgentToolbox,
         inference: &impl InferenceProvider,
+        observer: &mut dyn FnMut(AgentRun),
     ) {
         let specs = tools.specs_for_agent(&agent.definition.enabled_tools);
         let run_id = run.id.clone();
@@ -188,6 +238,7 @@ impl ReActEngine {
                     agent.name()
                 ),
             ));
+            notify(observer, run);
         }
 
         let mut step = 0usize;
@@ -195,7 +246,9 @@ impl ReActEngine {
         while true {
             step = step.saturating_add(1);
             if self
-                .invoke_agent_step(snapshot, run, agent, goal, &specs, tools, inference, step)
+                .invoke_agent_step(
+                    snapshot, run, agent, goal, &specs, tools, inference, step, observer,
+                )
                 .await
             {
                 return;
@@ -217,6 +270,7 @@ impl ReActEngine {
         tools: &impl AgentToolbox,
         inference: &impl InferenceProvider,
         step: usize,
+        observer: &mut dyn FnMut(AgentRun),
     ) -> bool {
         let run_id = run.id.clone();
         let agent_id = agent.definition.id.clone();
@@ -232,6 +286,7 @@ impl ReActEngine {
                 inference.provider_name()
             ),
         ));
+        notify(observer, run);
 
         let request = InferenceRequest {
             agent_name: agent.definition.name.clone(),
@@ -244,7 +299,14 @@ impl ReActEngine {
             response_format: agent.definition.response_format,
         };
 
-        let output = match inference.invoke_react(&snapshot.provider, request).await {
+        let mut on_partial_answer = |partial: String| {
+            run.final_answer = partial;
+            notify(observer, run);
+        };
+        let output = match inference
+            .invoke_react_streaming(&snapshot.provider, request, &mut on_partial_answer)
+            .await
+        {
             Ok(output) => output,
             Err(err) => {
                 run.status = "error".to_string();
@@ -255,6 +317,7 @@ impl ReActEngine {
                     format!("{} provider error", agent.definition.name),
                     err,
                 ));
+                notify(observer, run);
                 return true;
             }
         };
@@ -285,6 +348,7 @@ impl ReActEngine {
                 output.parsed.response
             ),
         ));
+        notify(observer, run);
 
         match output.parsed.action {
             ReActAction::Tool => {
@@ -305,6 +369,7 @@ impl ReActEngine {
                         "Tool parse error",
                         parse_error,
                     ));
+                    notify(observer, run);
                     return false;
                 }
 
@@ -316,6 +381,7 @@ impl ReActEngine {
                         tools,
                         tool_call.name,
                         tool_call.args,
+                        observer,
                     )
                     .await;
                 }
@@ -332,6 +398,7 @@ impl ReActEngine {
                         format!("{} final answer", agent.definition.name),
                         answer,
                     ));
+                    notify(observer, run);
                 }
                 true
             }
@@ -346,6 +413,7 @@ impl ReActEngine {
         tools: &impl AgentToolbox,
         name: String,
         args: serde_json::Value,
+        observer: &mut dyn FnMut(AgentRun),
     ) {
         let run_id = run.id.clone();
         let agent_id = agent.definition.id.clone();
@@ -372,6 +440,7 @@ impl ReActEngine {
                     agent.definition.name
                 ),
             ));
+            notify(observer, run);
             return;
         }
 
@@ -390,6 +459,7 @@ impl ReActEngine {
             format!("{} called {}", agent.definition.name, name),
             serde_json::to_string_pretty(&args).unwrap_or_else(|_| "{}".to_string()),
         ));
+        notify(observer, run);
 
         let result = tools.execute(snapshot, call_id, &name, args).await;
         run.messages.push(Message {
@@ -404,6 +474,7 @@ impl ReActEngine {
             result.content.clone(),
         ));
         run.tool_results.push(result);
+        notify(observer, run);
     }
 
     fn finish_with_error(
@@ -420,6 +491,10 @@ impl ReActEngine {
         snapshot.status = title.to_string();
         snapshot
     }
+}
+
+fn notify(observer: &mut dyn FnMut(AgentRun), run: &AgentRun) {
+    observer(run.clone());
 }
 
 trait AgentToolbox {

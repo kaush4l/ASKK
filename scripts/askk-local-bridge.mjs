@@ -95,7 +95,6 @@ export function startBridge(rawOptions = {}) {
         console.log(`Workspace file endpoint: http://${host}:${port}/askk/files`);
         console.log("Web tool endpoints:");
         console.log(`http://${host}:${port}/askk/tools/web_search`);
-        console.log(`http://${host}:${port}/askk/tools/web_extract`);
     });
     return bridge.server;
 }
@@ -140,12 +139,6 @@ async function handleToolRequest(request, response, toolsPath, config) {
 
     if (toolName === "web_search") {
         const result = await webSearch(body, config);
-        writeJson(response, result.success === false ? 400 : 200, result);
-        return;
-    }
-
-    if (toolName === "web_extract") {
-        const result = await webExtract(body, config);
         writeJson(response, result.success === false ? 400 : 200, result);
         return;
     }
@@ -209,8 +202,34 @@ export async function readWorkspacePromptFiles(workspaceRoot = process.cwd()) {
 export async function webSearch(body, config = {}) {
     const query = requiredString(body, "query");
     const count = clampInt(body.count ?? body.limit ?? 5, 1, 10);
-    const mergedConfig = mergeSearchConfig(config);
+    const mergedConfig = mergeSearchConfig(config, body);
+    const provider = normalizeSearchProvider(body?.provider ?? config.provider ?? "auto");
 
+    if (provider === "duckduckgo") {
+        return duckDuckGoSearch(query, count, mergedConfig);
+    }
+    if (provider === "searxng") {
+        if (!mergedConfig.searxngBaseUrl) {
+            return missingProviderConfig("SearXNG", "searxng_url or SEARXNG_URL");
+        }
+        return searxngSearch(body, query, count, mergedConfig);
+    }
+    if (provider === "brave") {
+        if (!mergedConfig.braveApiKey) {
+            return missingProviderConfig("Brave Search", "brave_api_key, BRAVE_API_KEY, or BRAVE_SEARCH_API_KEY");
+        }
+        return braveSearch(body, query, count, mergedConfig);
+    }
+    if (provider === "tavily") {
+        if (!mergedConfig.tavilyApiKey) {
+            return missingProviderConfig("Tavily", "tavily_api_key or TAVILY_API_KEY");
+        }
+        return tavilySearch(query, count, mergedConfig);
+    }
+
+    if (provider !== "auto") {
+        return { success: false, error: `Unknown web_search provider: ${provider}` };
+    }
     if (mergedConfig.braveApiKey) {
         return braveSearch(body, query, count, mergedConfig);
     }
@@ -220,26 +239,7 @@ export async function webSearch(body, config = {}) {
     if (mergedConfig.searxngBaseUrl) {
         return searxngSearch(body, query, count, mergedConfig);
     }
-
     return duckDuckGoSearch(query, count, mergedConfig);
-}
-
-export async function webExtract(body, config = {}) {
-    const urls = arrayOfStrings(body, "urls").slice(0, 5);
-    if (urls.length === 0) {
-        return { success: false, error: "web_extract requires at least one URL." };
-    }
-
-    const mergedConfig = mergeSearchConfig(config);
-    if (mergedConfig.tavilyApiKey) {
-        return tavilyExtract(urls, mergedConfig);
-    }
-
-    const documents = [];
-    for (const url of urls) {
-        documents.push(await fetchExtract(url));
-    }
-    return { success: true, data: documents };
 }
 
 async function braveSearch(body, query, count, config) {
@@ -321,22 +321,6 @@ async function duckDuckGoSearch(query, count, config) {
     return normalizeDuckDuckGoHtml(text, count);
 }
 
-async function tavilyExtract(urls, config) {
-    const raw = await tavilyRequest(
-        "extract",
-        {
-            urls,
-            include_images: false,
-            extract_depth: "basic",
-        },
-        config,
-    );
-    if (raw.success === false) {
-        return raw;
-    }
-    return { success: true, data: normalizeTavilyDocuments(raw) };
-}
-
 async function tavilyRequest(endpoint, payload, config) {
     const url = new URL(`/${endpoint.replace(/^\/+/, "")}`, config.tavilyBaseUrl);
     const response = await fetch(url, {
@@ -349,38 +333,6 @@ async function tavilyRequest(endpoint, payload, config) {
         return providerError("Tavily", response.status, raw);
     }
     return raw;
-}
-
-async function fetchExtract(url) {
-    try {
-        const parsed = new URL(url);
-        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-            throw new Error("Only http:// and https:// URLs are supported.");
-        }
-        const response = await fetch(parsed, { headers: { Accept: "text/html,text/plain,*/*" } });
-        const text = await response.text();
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${text.slice(0, 300)}`);
-        }
-        const title = extractTitle(text);
-        const content = htmlToText(text).slice(0, 20_000);
-        return {
-            url: parsed.toString(),
-            title,
-            content,
-            raw_content: content,
-            metadata: { sourceURL: parsed.toString(), title },
-        };
-    } catch (error) {
-        return {
-            url,
-            title: "",
-            content: "",
-            raw_content: "",
-            error: error instanceof Error ? error.message : String(error),
-            metadata: { sourceURL: url },
-        };
-    }
 }
 
 export function normalizeBraveSearch(raw) {
@@ -451,43 +403,6 @@ export function normalizeDuckDuckGoHtml(html, count = 10) {
     }
 
     return { success: true, data: { web: results } };
-}
-
-export function normalizeTavilyDocuments(raw, fallbackUrl = "") {
-    const documents = [];
-    for (const result of raw.results ?? []) {
-        const url = result.url ?? fallbackUrl;
-        const rawContent = result.raw_content ?? result.content ?? "";
-        documents.push({
-            url,
-            title: result.title ?? "",
-            content: rawContent,
-            raw_content: rawContent,
-            metadata: { sourceURL: url, title: result.title ?? "" },
-        });
-    }
-    for (const failed of raw.failed_results ?? []) {
-        documents.push({
-            url: failed.url ?? fallbackUrl,
-            title: "",
-            content: "",
-            raw_content: "",
-            error: failed.error ?? "extraction failed",
-            metadata: { sourceURL: failed.url ?? fallbackUrl },
-        });
-    }
-    for (const failedUrl of raw.failed_urls ?? []) {
-        const url = String(failedUrl);
-        documents.push({
-            url,
-            title: "",
-            content: "",
-            raw_content: "",
-            error: "extraction failed",
-            metadata: { sourceURL: url },
-        });
-    }
-    return documents;
 }
 
 async function readOptionalWorkspaceFile(workspaceRoot, relativePath) {
@@ -726,17 +641,6 @@ function optionalString(body, key) {
     return value;
 }
 
-function arrayOfStrings(body, key) {
-    const value = body?.[key];
-    if (!Array.isArray(value)) {
-        throw new Error(`Missing required array field: ${key}`);
-    }
-    return value
-        .filter((item) => typeof item === "string")
-        .map((item) => item.trim())
-        .filter(Boolean);
-}
-
 function clampInt(value, min, max) {
     const parsed = Number.parseInt(String(value), 10);
     if (!Number.isFinite(parsed)) {
@@ -752,22 +656,53 @@ function mapOptionalParam(body, url, source, target) {
     }
 }
 
-function mergeSearchConfig(config) {
+function mergeSearchConfig(config, body = {}) {
     return {
-        braveApiKey: config.braveApiKey ?? process.env.BRAVE_API_KEY ?? process.env.BRAVE_SEARCH_API_KEY ?? "",
+        braveApiKey:
+            optionalString(body, "brave_api_key") ||
+            optionalString(body, "braveApiKey") ||
+            config.braveApiKey ||
+            process.env.BRAVE_API_KEY ||
+            process.env.BRAVE_SEARCH_API_KEY ||
+            "",
         braveSearchUrl: config.braveSearchUrl ?? process.env.ASKK_BRAVE_SEARCH_URL ?? DEFAULT_BRAVE_SEARCH_URL,
-        tavilyApiKey: config.tavilyApiKey ?? process.env.TAVILY_API_KEY ?? "",
+        tavilyApiKey:
+            optionalString(body, "tavily_api_key") ||
+            optionalString(body, "tavilyApiKey") ||
+            config.tavilyApiKey ||
+            process.env.TAVILY_API_KEY ||
+            "",
         tavilyBaseUrl: config.tavilyBaseUrl ?? process.env.ASKK_TAVILY_BASE_URL ?? DEFAULT_TAVILY_BASE_URL,
         searxngBaseUrl:
-            config.searxngBaseUrl ??
-            process.env.SEARXNG_URL ??
-            process.env.SEARXNG_BASE_URL ??
-            process.env.ASKK_SEARXNG_URL ??
+            optionalString(body, "searxng_url") ||
+            optionalString(body, "searxngBaseUrl") ||
+            config.searxngBaseUrl ||
+            process.env.SEARXNG_URL ||
+            process.env.SEARXNG_BASE_URL ||
+            process.env.ASKK_SEARXNG_URL ||
             "",
         duckDuckGoSearchUrl:
             config.duckDuckGoSearchUrl ??
             process.env.ASKK_DUCKDUCKGO_SEARCH_URL ??
             DEFAULT_DUCKDUCKGO_SEARCH_URL,
+    };
+}
+
+function normalizeSearchProvider(value) {
+    const provider = String(value ?? "auto").trim().toLowerCase().replace(/[_\s-]+/g, "");
+    if (provider === "ddg") {
+        return "duckduckgo";
+    }
+    if (["auto", "duckduckgo", "searxng", "brave", "tavily"].includes(provider)) {
+        return provider;
+    }
+    return provider || "auto";
+}
+
+function missingProviderConfig(provider, required) {
+    return {
+        success: false,
+        error: `${provider} selected for web_search, but missing ${required}. Configure it on the ASKK Tools page or bridge environment.`,
     };
 }
 

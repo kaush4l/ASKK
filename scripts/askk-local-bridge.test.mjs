@@ -63,7 +63,7 @@ describe("ASKK local bridge web tools", () => {
         });
     });
 
-    it("normalizes Tavily search and extract results", async () => {
+    it("normalizes Tavily search results", async () => {
         const mock = http.createServer((request, response) => {
             let raw = "";
             request.on("data", (chunk) => {
@@ -79,19 +79,6 @@ describe("ASKK local bridge web tools", () => {
                                 title: "Search Result",
                                 url: "https://example.com/search",
                                 content: "Snippet text",
-                            },
-                        ],
-                    });
-                    return;
-                }
-                if (request.url === "/extract") {
-                    assert.deepEqual(payload.urls, ["https://example.com/search"]);
-                    json(response, {
-                        results: [
-                            {
-                                title: "Extracted Page",
-                                url: "https://example.com/search",
-                                raw_content: "Full page text",
                             },
                         ],
                     });
@@ -127,27 +114,139 @@ describe("ASKK local bridge web tools", () => {
                 ],
             },
         });
+    });
 
-        const extract = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/web_extract`, {
+    it("provider override selects DuckDuckGo even when a Brave key exists", async () => {
+        const mock = http.createServer((request, response) => {
+            assert.equal(request.method, "GET");
+            const url = new URL(request.url, "http://mock.local");
+            assert.equal(url.pathname, "/html/");
+            assert.equal(url.searchParams.get("q"), "override search");
+            response.writeHead(200, { "Content-Type": "text/html" });
+            response.end(`
+                <a class="result__a" href="/l/?uddg=https%3A%2F%2Fexample.com%2Fddg">DDG Result</a>
+                <div class="result__snippet">Duck result.</div>
+            `);
+        });
+        const mockPort = await listen(mock);
+
+        const bridge = createBridgeServer({
+            braveApiKey: "brave-test",
+            duckDuckGoSearchUrl: `http://127.0.0.1:${mockPort}/html/`,
+        }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/web_search`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ urls: ["https://example.com/search"] }),
+            body: JSON.stringify({
+                provider: "duckduckgo",
+                query: "override search",
+                count: 1,
+            }),
         });
-        assert.deepEqual(await extract.json(), {
-            success: true,
-            data: [
-                {
-                    url: "https://example.com/search",
-                    title: "Extracted Page",
-                    content: "Full page text",
-                    raw_content: "Full page text",
-                    metadata: {
-                        sourceURL: "https://example.com/search",
-                        title: "Extracted Page",
+
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.data.web[0].url, "https://example.com/ddg");
+    });
+
+    it("provider override uses request-level SearXNG URL", async () => {
+        const mock = http.createServer((request, response) => {
+            assert.equal(request.method, "GET");
+            const url = new URL(request.url, "http://mock.local");
+            assert.equal(url.pathname, "/search");
+            assert.equal(url.searchParams.get("q"), "request searxng");
+            json(response, {
+                results: [
+                    {
+                        title: "Request SearXNG",
+                        url: "https://example.com/request-searxng",
+                        content: "Request URL snippet",
                     },
-                },
-            ],
+                ],
+            });
         });
+        const mockPort = await listen(mock);
+
+        const bridge = createBridgeServer({
+            braveApiKey: "",
+            tavilyApiKey: "",
+            searxngBaseUrl: "",
+        }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/web_search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                provider: "searxng",
+                searxng_url: `http://127.0.0.1:${mockPort}`,
+                query: "request searxng",
+            }),
+        });
+
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.data.web[0].title, "Request SearXNG");
+    });
+
+    it("request Brave key overrides bridge env for that request", async () => {
+        const mock = http.createServer((request, response) => {
+            assert.equal(request.headers["x-subscription-token"], "request-brave-key");
+            json(response, {
+                web: {
+                    results: [
+                        {
+                            title: "Request Brave",
+                            url: "https://example.com/request-brave",
+                            description: "Request key result",
+                        },
+                    ],
+                },
+            });
+        });
+        const mockPort = await listen(mock);
+
+        const bridge = createBridgeServer({
+            braveApiKey: "bridge-brave-key",
+            braveSearchUrl: `http://127.0.0.1:${mockPort}/brave`,
+        }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/web_search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                provider: "brave",
+                brave_api_key: "request-brave-key",
+                query: "request brave",
+            }),
+        });
+
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.data.web[0].title, "Request Brave");
+    });
+
+    it("selected provider without required key returns a clear error", async () => {
+        const bridge = createBridgeServer({
+            braveApiKey: "",
+            tavilyApiKey: "",
+            searxngBaseUrl: "",
+        }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/web_search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: "tavily", query: "needs key" }),
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 400);
+        assert.equal(body.success, false);
+        assert.match(body.error, /Tavily selected/);
     });
 
     it("normalizes SearXNG web search results", async () => {

@@ -4,6 +4,7 @@ use super::event_log::EventLogPanel;
 use super::inspector::InspectorPanel;
 use super::provider_settings::ProviderSettings;
 use super::soul_page::SoulPage;
+use super::tools_page::ToolsPage;
 use super::{FAVICON, MAIN_CSS};
 use crate::state::AppSnapshot;
 use dioxus::prelude::*;
@@ -13,6 +14,7 @@ enum DashboardPage {
     Chat,
     Agents,
     Soul,
+    Tools,
     Provider,
     Inspector,
 }
@@ -23,6 +25,7 @@ impl DashboardPage {
             Self::Chat => "Chat",
             Self::Agents => "Agents",
             Self::Soul => "Soul",
+            Self::Tools => "Tools",
             Self::Provider => "Provider",
             Self::Inspector => "Inspector",
         }
@@ -40,10 +43,11 @@ pub fn AppShell(
     let current = snapshot.read().clone();
     let mut active_page = use_signal(|| DashboardPage::Chat);
     let mut nav_collapsed = use_signal(|| false);
-    let frame_class = if nav_collapsed() {
-        "dashboard-frame nav-collapsed"
-    } else {
-        "dashboard-frame"
+    let frame_class = match (nav_collapsed(), active_page() == DashboardPage::Chat) {
+        (true, true) => "dashboard-frame nav-collapsed no-log",
+        (true, false) => "dashboard-frame nav-collapsed",
+        (false, true) => "dashboard-frame no-log",
+        (false, false) => "dashboard-frame",
     };
     let left_nav_class = if nav_collapsed() {
         "left-nav collapsed"
@@ -54,6 +58,7 @@ pub fn AppShell(
         DashboardPage::Chat,
         DashboardPage::Agents,
         DashboardPage::Soul,
+        DashboardPage::Tools,
         DashboardPage::Provider,
         DashboardPage::Inspector,
     ];
@@ -120,6 +125,9 @@ pub fn AppShell(
                         DashboardPage::Soul => rsx! {
                             SoulPage { snapshot }
                         },
+                        DashboardPage::Tools => rsx! {
+                            ToolsPage { snapshot }
+                        },
                         DashboardPage::Provider => rsx! {
                             ProviderSettings { snapshot, provider_models }
                         },
@@ -129,7 +137,9 @@ pub fn AppShell(
                     }}
                 }
 
-                EventLogPanel { snapshot }
+                if active_page() != DashboardPage::Chat {
+                    EventLogPanel { snapshot }
+                }
             }
         }
     }
@@ -140,6 +150,7 @@ fn nav_glyph(page: DashboardPage) -> &'static str {
         DashboardPage::Chat => "C",
         DashboardPage::Agents => "A",
         DashboardPage::Soul => "S",
+        DashboardPage::Tools => "T",
         DashboardPage::Provider => "P",
         DashboardPage::Inspector => "I",
     }

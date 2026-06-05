@@ -61,6 +61,7 @@ impl StorageAdapter for IndexedDbStorage {
         persisted.ensure_provider_profiles();
         persisted.ensure_prompt_defaults();
         persisted.normalize_agent_branding();
+        persisted.normalize_agent_tools();
         persisted.sanitize_api_keys();
 
         let tx = self

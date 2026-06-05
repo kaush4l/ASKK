@@ -281,6 +281,46 @@ pub fn response_to_result<T: StructuredResponse>(raw: &str) -> AppResult<T> {
     Ok(parsed)
 }
 
+pub fn partial_react_answer_text(raw: &str) -> Option<String> {
+    let action = find_toon_field(raw, "action")?;
+    let response = find_toon_field(raw, "response")?;
+    if !action.value.trim().eq_ignore_ascii_case("answer") {
+        return None;
+    }
+    if response.start <= action.start {
+        return None;
+    }
+    Some(response.value.trim_start().to_string())
+}
+
+struct ToonField<'a> {
+    start: usize,
+    value: &'a str,
+}
+
+fn find_toon_field<'a>(raw: &'a str, field: &str) -> Option<ToonField<'a>> {
+    let mut offset = 0usize;
+    for line in raw.split_inclusive('\n') {
+        let line_without_newline = line.trim_end_matches('\n').trim_end_matches('\r');
+        if let Some((key, _value)) = line_without_newline.split_once(':') {
+            if clean_key(key) == field {
+                let value_start = offset + key.len() + 1;
+                let value_end = if field == "response" {
+                    raw.len()
+                } else {
+                    offset + line_without_newline.len()
+                };
+                return Some(ToonField {
+                    start: value_start,
+                    value: &raw[value_start..value_end],
+                });
+            }
+        }
+        offset += line.len();
+    }
+    None
+}
+
 fn json_instructions(fields: &[ResponseField]) -> String {
     let docs = fields
         .iter()
@@ -322,7 +362,7 @@ Use exactly these fields, one field per block: {names}.
 
 Rules:
 1. Field names are lowercase followed by a colon.
-2. For tool use, set `action: tool` and put the full invocation in `response`, for example `memory_search({{"query":"browser"}})`.
+2. For tool use, set `action: tool` and put the full invocation in `response`, for example `web_search({{"query":"latest Dioxus 0.7 docs","count":5}})`.
 3. For final output, set `action: answer` and put the answer in `response`.
 4. Do not put a tool name in `action`; only `tool` or `answer` are valid."#
     )
@@ -596,5 +636,22 @@ response: web_search({"query":"top news headlines today","count":5})"#,
         assert_eq!(parsed.action, ReActAction::Answer);
         assert_eq!(parsed.observation, "ready");
         assert_eq!(parsed.response, "Final text");
+    }
+
+    #[test]
+    fn partial_react_answer_streams_only_final_response() {
+        let raw = "observation: ok\nthinking: hidden\nplan:\n- answer\naction: answer\nresponse: visible answer";
+
+        assert_eq!(
+            partial_react_answer_text(raw),
+            Some("visible answer".to_string())
+        );
+    }
+
+    #[test]
+    fn partial_react_answer_ignores_tool_decisions() {
+        let raw = "observation: ok\naction: tool\nresponse: web_search({\"query\":\"news\"})";
+
+        assert_eq!(partial_react_answer_text(raw), None);
     }
 }

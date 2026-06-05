@@ -119,6 +119,7 @@ pub fn apply_workspace_files(snapshot: &mut AppSnapshot, files: WorkspaceFiles) 
 
     snapshot.ensure_prompt_defaults();
     snapshot.normalize_agent_branding();
+    snapshot.normalize_agent_tools();
 
     if loaded_parts.is_empty() {
         "No usable Markdown files were found in soul.md, agents/, or skills/.".to_string()
@@ -189,7 +190,7 @@ mod tests {
         assert_eq!(snapshot.soul, "Shared behavior");
         assert_eq!(snapshot.agents.len(), 1);
         assert_eq!(snapshot.agents[0].name, "Builder");
-        assert_eq!(snapshot.agents[0].enabled_tools, vec!["memory_search"]);
+        assert_eq!(snapshot.agents[0].enabled_tools, vec!["web_search"]);
         assert_eq!(snapshot.skills.len(), 1);
         assert_eq!(snapshot.skills[0].name, "Build");
     }

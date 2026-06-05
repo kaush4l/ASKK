@@ -1,7 +1,7 @@
 use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::ReActEngine;
-use crate::state::{AppSnapshot, Message};
+use crate::state::{AgentEventKind, AgentRun, AppSnapshot};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
@@ -18,28 +18,7 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                 }
                 div { class: "button-row",
                     button {
-                        onclick: move |_| {
-                            let run_goal = goal.read().trim().to_string();
-                            if run_goal.is_empty() {
-                                set_status(&mut snapshot, "Enter a message before running.".to_string());
-                                return;
-                            }
-                            let start_data = snapshot.read().clone();
-                            let mut snapshot = snapshot;
-                            spawn_local(async move {
-                                set_status(&mut snapshot, "Running agent loop...".to_string());
-                                let runtime = ReActEngine::new();
-                                match runtime.run_goal(start_data, run_goal).await {
-                                    Ok(next) => {
-                                        let run_status = next.status.clone();
-                                        let save_status = save_snapshot(next.clone()).await;
-                                        snapshot.set(next);
-                                        set_status(&mut snapshot, format!("{run_status}. {save_status}"));
-                                    }
-                                    Err(err) => set_status(&mut snapshot, format!("Run failed: {err}")),
-                                }
-                            });
-                        },
+                        onclick: move |_| submit_goal(snapshot, goal),
                         "Run"
                     }
                     button {
@@ -58,7 +37,15 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                     class: "goal-box",
                     placeholder: "Describe a goal or message for the agent...",
                     value: "{current_goal}",
-                    oninput: move |event| goal.set(event.value())
+                    oninput: move |event| goal.set(event.value()),
+                    onkeydown: move |event| {
+                        if event.key() == Key::Enter
+                            && !event.modifiers().contains(Modifiers::SHIFT)
+                        {
+                            event.prevent_default();
+                            submit_goal(snapshot, goal);
+                        }
+                    }
                 }
             }
 
@@ -68,18 +55,23 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                         div { class: "message-author", "You" }
                         p { "{run.goal}" }
                     }
-                    for (index, message) in run.messages.iter().enumerate() {
-                        MessageBubble {
-                            key: "{index}",
-                            message: message.clone(),
-                        }
-                    }
                     if !run.final_answer.trim().is_empty() {
                         article { class: "message-bubble final-message",
-                            div { class: "message-author", "Final" }
+                            div { class: "message-author", "Assistant" }
                             p { "{run.final_answer}" }
                         }
+                    } else if run.status == "running" {
+                        article { class: "message-bubble assistant-message",
+                            div { class: "message-author", "Assistant" }
+                            p { "Working..." }
+                        }
+                    } else if run.status == "error" {
+                        article { class: "message-bubble error-message",
+                            div { class: "message-author", "Error" }
+                            p { "{last_error(run)}" }
+                        }
                     }
+                    RunDetails { run: run.clone() }
                 } else if current_goal.trim().is_empty() {
                     div { class: "empty-state", "No chat yet. Enter a message to start a run." }
                 } else {
@@ -93,23 +85,124 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
     }
 }
 
+fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
+    let run_goal = goal.read().trim().to_string();
+    if run_goal.is_empty() {
+        set_status(&mut snapshot, "Enter a message before running.".to_string());
+        return;
+    }
+
+    let start_data = snapshot.read().clone();
+    goal.set(String::new());
+    set_status(&mut snapshot, "Running agent loop...".to_string());
+
+    spawn_local(async move {
+        let runtime = ReActEngine::new();
+        let restore_goal = run_goal.clone();
+        let mut live_snapshot = snapshot;
+        let mut final_snapshot = snapshot;
+        let mut final_goal = goal;
+        let result = runtime
+            .run_goal_with_observer(start_data, run_goal, move |run| {
+                let mut next = live_snapshot.read().clone();
+                next.status = "Running agent loop...".to_string();
+                next.current_run = Some(run);
+                live_snapshot.set(next);
+            })
+            .await;
+
+        match result {
+            Ok(next) => {
+                let run_failed = next
+                    .current_run
+                    .as_ref()
+                    .is_some_and(|run| run.status == "error");
+                if run_failed {
+                    final_goal.set(restore_goal);
+                }
+                let run_status = next.status.clone();
+                let save_status = save_snapshot(next.clone()).await;
+                final_snapshot.set(next);
+                set_status(&mut final_snapshot, format!("{run_status}. {save_status}"));
+            }
+            Err(err) => {
+                final_goal.set(restore_goal);
+                set_status(&mut final_snapshot, format!("Run failed: {err}"));
+            }
+        }
+    });
+}
+
 #[component]
-fn MessageBubble(message: Message) -> Element {
-    let class = match message.role.as_str() {
-        "tool" => "message-bubble tool-message",
-        "user" => "message-bubble user-message",
-        _ => "message-bubble assistant-message",
-    };
-    let author = match message.role.as_str() {
-        "tool" => "Tool",
-        "user" => "You",
-        _ => "Agent",
-    };
+fn RunDetails(run: AgentRun) -> Element {
+    let tool_count = run.tool_results.len();
+    let event_count = run.events.len();
 
     rsx! {
-        article { class: "{class}",
-            div { class: "message-author", "{author}" }
-            p { "{message.content}" }
+        details { class: "run-details",
+            summary {
+                "Run details "
+                span { class: "event-count", "{event_count}" }
+            }
+            div { class: "run-details-grid",
+                if tool_count > 0 {
+                    div { class: "detail-section",
+                        h3 { "Tools" }
+                        for result in run.tool_results.iter() {
+                            article { class: if result.ok { "event-row" } else { "event-row error-row" }, key: "{result.call_id}",
+                                div { class: "event-meta",
+                                    span { "{result.call_id}" }
+                                    span { if result.ok { "ok" } else { "error" } }
+                                }
+                                pre { "{result.content}" }
+                            }
+                        }
+                    }
+                }
+                div { class: "detail-section",
+                    h3 { "Timeline" }
+                    for event in run.events.iter() {
+                        article { class: event_class(&event.kind), key: "{event.id}",
+                            div { class: "event-meta",
+                                span { "{event.created_at}" }
+                                span { "{event.kind:?}" }
+                            }
+                            h3 { "{event.title}" }
+                            pre { "{event.body}" }
+                        }
+                    }
+                }
+                if !run.messages.is_empty() {
+                    div { class: "detail-section",
+                        h3 { "Messages" }
+                        for (index, message) in run.messages.iter().enumerate() {
+                            article { class: "event-row", key: "{index}",
+                                div { class: "event-meta",
+                                    span { "{message.role}" }
+                                }
+                                pre { "{message.content}" }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
+}
+
+fn event_class(kind: &AgentEventKind) -> &'static str {
+    match kind {
+        AgentEventKind::Error => "event-row error-row",
+        AgentEventKind::ToolCompleted => "event-row tool-event-row",
+        _ => "event-row",
+    }
+}
+
+fn last_error(run: &AgentRun) -> String {
+    run.events
+        .iter()
+        .rev()
+        .find(|event| event.kind == AgentEventKind::Error)
+        .map(|event| event.body.clone())
+        .unwrap_or_else(|| "Run failed.".to_string())
 }
