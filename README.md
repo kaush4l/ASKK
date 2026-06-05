@@ -71,7 +71,7 @@ If the bridge is unavailable, the app uses bundled Markdown defaults plus the br
 
 ## Agent Loop
 
-Runs use the first enabled agent as a single ReAct loop. On each model turn the agent returns the configured structured response format, chooses either `action: tool` with one tool invocation or `action: answer` with final text, and the runner continues until the agent answers or the step ceiling is reached.
+Runs use the first enabled agent as a single ReAct loop. On each model turn the agent returns the configured structured response format, chooses either `action: tool` with one tool invocation or `action: answer` with final text, and the runner continues until the agent chooses an answer.
 
 The bundled default agent is generic and stored in `agents/planner.md`; the file name is only a source path. Edit `soul.md`, `agents/*.md`, and `skills/**/*.md` through the hosted app plus local bridge when you want to change behavior without changing Rust code.
 

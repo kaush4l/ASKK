@@ -6,8 +6,6 @@ use crate::state::{
 use crate::tools::ToolRegistry;
 use uuid::Uuid;
 
-const MAX_REACT_STEPS: usize = 8;
-
 pub trait RuntimeObject {
     fn name(&self) -> &str;
     fn is_initialized(&self) -> bool;
@@ -180,9 +178,10 @@ impl ReActEngine {
             ));
         }
 
-        let mut step = 0;
-        while step < MAX_REACT_STEPS {
-            step += 1;
+        let mut step = 0usize;
+        #[allow(while_true)]
+        while true {
+            step = step.saturating_add(1);
             if self
                 .invoke_agent_step(snapshot, run, agent, goal, &specs, &inference, step)
                 .await
@@ -194,15 +193,6 @@ impl ReActEngine {
                 return;
             }
         }
-
-        run.final_answer = build_loop_budget_answer(run, MAX_REACT_STEPS);
-        run.events.push(event(
-            &run_id,
-            Some(agent_id.clone()),
-            AgentEventKind::FinalAnswer,
-            "Loop step budget reached",
-            run.final_answer.clone(),
-        ));
     }
 
     async fn invoke_agent_step(
@@ -221,7 +211,7 @@ impl ReActEngine {
             &run_id,
             Some(agent_id.clone()),
             AgentEventKind::LlmRequest,
-            format!("{} step {step}/{MAX_REACT_STEPS}", agent.name()),
+            format!("{} step {step}", agent.name()),
             format!(
                 "Sending goal, {} prior message(s), and {} compiled tool spec(s) to {} provider.",
                 run.messages.len(),
@@ -415,17 +405,5 @@ fn build_local_final_answer(run: &AgentRun) -> String {
         .unwrap_or("No assistant output was produced.");
     format!(
         "Run completed with {tool_count} compiled tool result(s). Last agent output: {last_message}"
-    )
-}
-
-fn build_loop_budget_answer(run: &AgentRun, max_steps: usize) -> String {
-    let tool_count = run.tool_results.len();
-    let last_message = run
-        .messages
-        .last()
-        .map(|message| message.content.as_str())
-        .unwrap_or("No assistant output was produced.");
-    format!(
-        "Stopped after {max_steps} ReAct step(s) with {tool_count} tool result(s). The agent did not choose `action: answer`. Last output: {last_message}"
     )
 }
