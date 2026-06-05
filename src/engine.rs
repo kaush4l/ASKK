@@ -290,17 +290,22 @@ impl ReActEngine {
             ReActAction::Tool => {
                 let tool_calls = parse_tool_calls(&output.parsed.response);
                 if tool_calls.is_empty() {
+                    let parse_error = format!(
+                        "Tool parse error -> No valid tool call found in response: {}. Use the form tool_name({{\"key\":\"value\"}}), then try again.",
+                        output.parsed.response
+                    );
+                    run.messages.push(Message {
+                        role: "tool".to_string(),
+                        content: parse_error.clone(),
+                    });
                     run.events.push(event(
                         &run_id,
                         Some(agent_id),
                         AgentEventKind::Error,
                         "Tool parse error",
-                        format!(
-                            "No valid tool call found in response: {}",
-                            output.parsed.response
-                        ),
+                        parse_error,
                     ));
-                    return true;
+                    return false;
                 }
 
                 for tool_call in tool_calls {
@@ -489,7 +494,7 @@ mod tests {
             match call_number {
                 1 => Ok(fake_output(
                     ReActAction::Tool,
-                    r#"web_search({"query":"OpenAI news","count":3})"#,
+                    r#"web_search(({"query":"OpenAI news","count":3}))"#,
                 )),
                 2 => {
                     assert!(
@@ -506,6 +511,47 @@ mod tests {
                     ))
                 }
                 _ => Err("fake model should have answered after the web_search observation".into()),
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct ParseErrorThenAnswerInference {
+        requests: Arc<Mutex<Vec<InferenceRequest>>>,
+    }
+
+    impl InferenceProvider for ParseErrorThenAnswerInference {
+        fn provider_name(&self) -> &'static str {
+            "fake-openai-compatible"
+        }
+
+        async fn invoke_react(
+            &self,
+            _config: &crate::state::ProviderConfig,
+            request: InferenceRequest,
+        ) -> AppResult<InferenceOutput<ReActResponse>> {
+            let call_number = {
+                let mut requests = self.requests.lock().expect("request lock");
+                requests.push(request.clone());
+                requests.len()
+            };
+
+            match call_number {
+                1 => Ok(fake_output(ReActAction::Tool, "search the web now")),
+                2 => {
+                    assert!(
+                        request.history.iter().any(|message| {
+                            message.role == "tool"
+                                && message.content.contains("Tool parse error ->")
+                        }),
+                        "second model call should receive the parse-error observation"
+                    );
+                    Ok(fake_output(
+                        ReActAction::Answer,
+                        "I corrected the malformed tool request and can answer now.",
+                    ))
+                }
+                _ => Err("fake model should have answered after parse-error feedback".into()),
             }
         }
     }
@@ -603,6 +649,43 @@ mod tests {
             .any(|message| message.role == "tool" && message.content.contains("Reuters")));
         assert_eq!(inference.requests.lock().expect("request lock").len(), 2);
         assert_eq!(tools.calls.lock().expect("tool call lock").len(), 1);
+    }
+
+    #[test]
+    fn react_loop_does_not_turn_tool_parse_error_into_final_answer() {
+        let engine = ReActEngine::new();
+        let inference = ParseErrorThenAnswerInference::default();
+        let tools = FakeTools::default();
+        let mut snapshot = AppSnapshot::default();
+        snapshot.agents = vec![Agent {
+            id: "agent".to_string(),
+            name: "Agent".to_string(),
+            role: "Use tools when needed.".to_string(),
+            enabled: true,
+            enabled_tools: vec!["web_search".to_string()],
+            response_format: ResponseFormat::Toon,
+            source_path: None,
+        }];
+
+        let next = pollster::block_on(engine.run_goal_with_parts(
+            snapshot,
+            "What is the news today?".to_string(),
+            &tools,
+            &inference,
+        ))
+        .expect("run should complete");
+
+        let run = next.current_run.expect("current run");
+        assert_eq!(run.status, "complete");
+        assert_eq!(
+            run.final_answer,
+            "I corrected the malformed tool request and can answer now."
+        );
+        assert_eq!(run.tool_calls.len(), 0);
+        assert!(run.messages.iter().any(
+            |message| message.role == "tool" && message.content.contains("Tool parse error ->")
+        ));
+        assert_eq!(inference.requests.lock().expect("request lock").len(), 2);
     }
 
     fn fake_output(action: ReActAction, response: &str) -> InferenceOutput<ReActResponse> {
