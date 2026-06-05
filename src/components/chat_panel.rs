@@ -56,7 +56,7 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
             div { class: "composer",
                 textarea {
                     class: "goal-box",
-                    placeholder: "Describe a goal or message for the agent team...",
+                    placeholder: "Describe a goal or message for the agent...",
                     value: "{current_goal}",
                     oninput: move |event| goal.set(event.value())
                 }

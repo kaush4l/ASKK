@@ -6,6 +6,8 @@ use crate::state::{
 use crate::tools::ToolRegistry;
 use uuid::Uuid;
 
+const MAX_REACT_STEPS: usize = 8;
+
 pub trait RuntimeObject {
     fn name(&self) -> &str;
     fn is_initialized(&self) -> bool;
@@ -95,15 +97,14 @@ impl ReActEngine {
             created_at: now_iso(),
         };
 
-        let agents = snapshot
+        let enabled_agents = snapshot
             .agents
             .iter()
             .filter(|agent| agent.enabled)
             .cloned()
-            .map(BrowserAgent::new)
             .collect::<Vec<_>>();
 
-        if agents.is_empty() {
+        if enabled_agents.is_empty() {
             return Ok(self.finish_with_error(
                 snapshot,
                 run,
@@ -112,21 +113,26 @@ impl ReActEngine {
             ));
         }
 
-        for mut agent in agents {
-            agent.initialize();
-            if !agent.is_initialized() {
-                continue;
-            }
-            self.invoke_agent(&mut snapshot, &mut run, &mut agent, &goal)
-                .await;
+        let enabled_agent_count = enabled_agents.len();
+        let mut agent = BrowserAgent::new(enabled_agents[0].clone());
+        agent.initialize();
+        if agent.is_initialized() {
+            self.invoke_agent_loop(
+                &mut snapshot,
+                &mut run,
+                &mut agent,
+                &goal,
+                enabled_agent_count,
+            )
+            .await;
             agent.shutdown();
+        }
 
-            if run.status == "error" {
-                snapshot.status = "Provider call failed".to_string();
-                snapshot.current_run = Some(run.clone());
-                snapshot.runs.insert(0, run);
-                return Ok(snapshot);
-            }
+        if run.status == "error" {
+            snapshot.status = "Provider call failed".to_string();
+            snapshot.current_run = Some(run.clone());
+            snapshot.runs.insert(0, run);
+            return Ok(snapshot);
         }
 
         if run.final_answer.trim().is_empty() {
@@ -147,24 +153,78 @@ impl ReActEngine {
         Ok(snapshot)
     }
 
-    async fn invoke_agent(
+    async fn invoke_agent_loop(
         &self,
         snapshot: &mut AppSnapshot,
         run: &mut AgentRun,
         agent: &mut BrowserAgent,
         goal: &str,
+        enabled_agent_count: usize,
     ) {
         let specs = agent.enabled_tool_specs(&self.tools);
         let run_id = run.id.clone();
         let agent_id = agent.definition.id.clone();
         let inference = get_implementation(&snapshot.provider);
+
+        if enabled_agent_count > 1 {
+            run.events.push(event(
+                &run_id,
+                Some(agent_id.clone()),
+                AgentEventKind::Started,
+                "Single-agent ReAct loop selected",
+                format!(
+                    "{} enabled agents were configured. This run uses {} as the active agent.",
+                    enabled_agent_count,
+                    agent.name()
+                ),
+            ));
+        }
+
+        let mut step = 0;
+        while step < MAX_REACT_STEPS {
+            step += 1;
+            if self
+                .invoke_agent_step(snapshot, run, agent, goal, &specs, &inference, step)
+                .await
+            {
+                return;
+            }
+
+            if run.status == "error" {
+                return;
+            }
+        }
+
+        run.final_answer = build_loop_budget_answer(run, MAX_REACT_STEPS);
+        run.events.push(event(
+            &run_id,
+            Some(agent_id.clone()),
+            AgentEventKind::FinalAnswer,
+            "Loop step budget reached",
+            run.final_answer.clone(),
+        ));
+    }
+
+    async fn invoke_agent_step(
+        &self,
+        snapshot: &mut AppSnapshot,
+        run: &mut AgentRun,
+        agent: &mut BrowserAgent,
+        goal: &str,
+        specs: &[crate::state::ToolSpec],
+        inference: &impl InferenceProvider,
+        step: usize,
+    ) -> bool {
+        let run_id = run.id.clone();
+        let agent_id = agent.definition.id.clone();
         run.events.push(event(
             &run_id,
             Some(agent_id.clone()),
             AgentEventKind::LlmRequest,
-            format!("{} thinking", agent.name()),
+            format!("{} step {step}/{MAX_REACT_STEPS}", agent.name()),
             format!(
-                "Sending goal and {} compiled tool specs to {} provider.",
+                "Sending goal, {} prior message(s), and {} compiled tool spec(s) to {} provider.",
+                run.messages.len(),
                 specs.len(),
                 inference.provider_name()
             ),
@@ -177,7 +237,7 @@ impl ReActEngine {
             skills: snapshot.skills.clone(),
             goal: goal.to_string(),
             history: run.messages.clone(),
-            tools: specs,
+            tools: specs.to_vec(),
             response_format: agent.definition.response_format,
         };
 
@@ -192,7 +252,7 @@ impl ReActEngine {
                     format!("{} provider error", agent.definition.name),
                     err,
                 ));
-                return;
+                return true;
             }
         };
 
@@ -237,13 +297,14 @@ impl ReActEngine {
                             output.parsed.response
                         ),
                     ));
-                    return;
+                    return true;
                 }
 
                 for tool_call in tool_calls {
                     self.execute_tool_call(snapshot, run, agent, tool_call.name, tool_call.args)
                         .await;
                 }
+                false
             }
             ReActAction::Answer => {
                 let answer = output.parsed.final_text();
@@ -257,6 +318,7 @@ impl ReActEngine {
                         answer,
                     ));
                 }
+                true
             }
         }
     }
@@ -277,6 +339,13 @@ impl ReActEngine {
             .iter()
             .any(|tool| tool == &name)
         {
+            run.messages.push(Message {
+                role: "tool".to_string(),
+                content: format!(
+                    "{name} -> ERROR: {} requested `{name}`, but it is not enabled for this agent.",
+                    agent.definition.name
+                ),
+            });
             run.events.push(event(
                 &run_id,
                 Some(agent_id),
@@ -346,5 +415,17 @@ fn build_local_final_answer(run: &AgentRun) -> String {
         .unwrap_or("No assistant output was produced.");
     format!(
         "Run completed with {tool_count} compiled tool result(s). Last agent output: {last_message}"
+    )
+}
+
+fn build_loop_budget_answer(run: &AgentRun, max_steps: usize) -> String {
+    let tool_count = run.tool_results.len();
+    let last_message = run
+        .messages
+        .last()
+        .map(|message| message.content.as_str())
+        .unwrap_or("No assistant output was produced.");
+    format!(
+        "Stopped after {max_steps} ReAct step(s) with {tool_count} tool result(s). The agent did not choose `action: answer`. Last output: {last_message}"
     )
 }

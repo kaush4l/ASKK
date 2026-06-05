@@ -1,7 +1,7 @@
 ---
 id: synthesizer
 name: Synthesizer
-enabled: true
+enabled: false
 tools: all
 response_format: toon
 ---

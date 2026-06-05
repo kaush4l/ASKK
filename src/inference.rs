@@ -120,7 +120,15 @@ You are {agent_name}.
 Role:
 {agent_role}
 
-You run inside a client-only browser Wasm prototype. All tools are precompiled and execute inside the browser.
+You run inside a client-only browser Wasm prototype. The runner is a ReAct loop: each turn you must choose either one tool call or a final answer. If a tool observation is returned in the conversation history, use it to decide the next turn.
+
+Use `action: tool` only when the next best step is to call a compiled tool. Put exactly one invocation in `response`, such as `web_search({{"query":"Dioxus 0.7 signals","count":5}})`.
+
+Use `web_search` when the goal needs current public information, source discovery, or web evidence. Good parameters are `query`, optional `count` from 1 to 10, and optional `country`, `language`, `freshness`, `date_after`, or `date_before`.
+
+Use `action: answer` when you have enough information or when further tool use is unlikely to help.
+
+All tools are precompiled and execute inside the browser or the local ASKK bridge.
 
 Available compiled tools:
 {tool_manifest}
@@ -145,11 +153,29 @@ Workspace skills:
                 content: format!("Goal: {}", request.goal),
             },
         ];
-        messages.extend(request.history.iter().map(|message| WireMessage {
-            role: message.role.clone(),
-            content: message.content.clone(),
-        }));
+        messages.extend(request.history.iter().map(history_wire_message));
         Ok(messages)
+    }
+}
+
+fn history_wire_message(message: &Message) -> WireMessage {
+    match message.role.as_str() {
+        "assistant" => WireMessage {
+            role: "assistant".to_string(),
+            content: message.content.clone(),
+        },
+        "tool" => WireMessage {
+            role: "user".to_string(),
+            content: format!("Tool observation:\n{}", message.content),
+        },
+        "user" => WireMessage {
+            role: "user".to_string(),
+            content: message.content.clone(),
+        },
+        _ => WireMessage {
+            role: "user".to_string(),
+            content: format!("{}:\n{}", message.role, message.content),
+        },
     }
 }
 
@@ -463,5 +489,35 @@ mod tests {
         );
         assert!(system.contains("Role:\nPlan carefully."));
         assert!(system.contains("## Care\nWork carefully."));
+    }
+
+    #[test]
+    fn tool_history_is_sent_as_user_context() {
+        let request = InferenceRequest {
+            agent_name: "Researcher".to_string(),
+            agent_role: "Research.".to_string(),
+            soul: "Shared behavior.".to_string(),
+            skills: Vec::new(),
+            goal: "Find current info.".to_string(),
+            history: vec![
+                Message {
+                    role: "assistant".to_string(),
+                    content: "response: web_search({\"query\":\"askk\"})".to_string(),
+                },
+                Message {
+                    role: "tool".to_string(),
+                    content: "web_search -> {\"success\":true}".to_string(),
+                },
+            ],
+            tools: Vec::new(),
+            response_format: ResponseFormat::Toon,
+        };
+
+        let messages = OpenAiCompatibleInference
+            .normalize_messages(&request)
+            .unwrap();
+        assert_eq!(messages[2].role, "assistant");
+        assert_eq!(messages[3].role, "user");
+        assert!(messages[3].content.starts_with("Tool observation:\n"));
     }
 }

@@ -1,7 +1,7 @@
 ---
 id: researcher
 name: Researcher
-enabled: true
+enabled: false
 tools: all
 response_format: toon
 ---

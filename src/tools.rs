@@ -263,7 +263,7 @@ async fn bridge_tool_request(tool_name: &str, body: Value) -> AppResult<String> 
         .await
         .map_err(|err| {
             format!(
-                "{tool_name} bridge request failed. Run `node scripts/askk-local-bridge.mjs` on this browser machine and configure web search credentials there. Browser fetch details: {err:?}"
+                "{tool_name} bridge request failed. Run `node scripts/askk-local-bridge.mjs` on this browser machine. Optional web search providers are configured on the bridge with Brave, Tavily, or SearXNG env vars; without them the bridge uses key-free DuckDuckGo HTML search. Browser fetch details: {err:?}"
             )
         })?;
 

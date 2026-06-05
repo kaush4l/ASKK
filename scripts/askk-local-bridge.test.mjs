@@ -150,6 +150,107 @@ describe("ASKK local bridge web tools", () => {
         });
     });
 
+    it("normalizes SearXNG web search results", async () => {
+        const mock = http.createServer((request, response) => {
+            assert.equal(request.method, "GET");
+            const url = new URL(request.url, "http://mock.local");
+            assert.equal(url.pathname, "/search");
+            assert.equal(url.searchParams.get("q"), "free agent search");
+            assert.equal(url.searchParams.get("format"), "json");
+            assert.equal(url.searchParams.get("language"), "en");
+            assert.equal(url.searchParams.get("time_range"), "month");
+            json(response, {
+                results: [
+                    {
+                        title: "SearXNG Result",
+                        url: "https://example.com/searxng",
+                        content: "Metasearch snippet",
+                    },
+                ],
+            });
+        });
+        const mockPort = await listen(mock);
+
+        const bridge = createBridgeServer({
+            braveApiKey: "",
+            tavilyApiKey: "",
+            searxngBaseUrl: `http://127.0.0.1:${mockPort}`,
+        }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/web_search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                query: "free agent search",
+                language: "en",
+                freshness: "week",
+            }),
+        });
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), {
+            success: true,
+            data: {
+                web: [
+                    {
+                        title: "SearXNG Result",
+                        url: "https://example.com/searxng",
+                        description: "Metasearch snippet",
+                        position: 1,
+                    },
+                ],
+            },
+        });
+    });
+
+    it("falls back to key-free DuckDuckGo-style HTML search", async () => {
+        const mock = http.createServer((request, response) => {
+            assert.equal(request.method, "GET");
+            const url = new URL(request.url, "http://mock.local");
+            assert.equal(url.searchParams.get("q"), "agent loop");
+            response.writeHead(200, { "Content-Type": "text/html" });
+            response.end(`
+                <html>
+                  <body>
+                    <a class="result__a" href="/l/?uddg=https%3A%2F%2Fexample.com%2Fagent">Agent &amp; Loop</a>
+                    <div class="result__snippet">A key-free search result.</div>
+                  </body>
+                </html>
+            `);
+        });
+        const mockPort = await listen(mock);
+
+        const bridge = createBridgeServer({
+            braveApiKey: "",
+            tavilyApiKey: "",
+            searxngBaseUrl: "",
+            duckDuckGoSearchUrl: `http://127.0.0.1:${mockPort}/html/`,
+        }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/web_search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: "agent loop", count: 1 }),
+        });
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), {
+            success: true,
+            data: {
+                web: [
+                    {
+                        title: "Agent & Loop",
+                        url: "https://example.com/agent",
+                        description: "A key-free search result.",
+                        position: 1,
+                    },
+                ],
+            },
+        });
+    });
+
     it("answers CORS and private-network preflight requests", async () => {
         const bridge = createBridgeServer().server;
         const bridgePort = await listen(bridge);

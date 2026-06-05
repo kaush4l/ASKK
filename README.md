@@ -1,6 +1,6 @@
 # ASKK
 
-ASKK is a client-side Dioxus 0.7 multi-agent workspace compiled to WebAssembly. It stores workspace state in browser IndexedDB and uses OpenAI-compatible browser fetch calls for model requests.
+ASKK is a client-side Dioxus 0.7 agent workspace compiled to WebAssembly. It stores workspace state in browser IndexedDB and uses OpenAI-compatible browser fetch calls for model requests.
 
 ## Model Providers
 
@@ -69,7 +69,13 @@ Bridge file routes:
 
 If the bridge is unavailable, the app uses bundled Markdown defaults plus the browser IndexedDB snapshot.
 
-### Web Tools
+## Agent Loop
+
+Runs use the first enabled agent as a single ReAct loop. On each model turn the agent returns the configured structured response format, chooses either `action: tool` with one tool invocation or `action: answer` with final text, and the runner continues until the agent answers or the step ceiling is reached.
+
+The bundled default agent is generic and stored in `agents/planner.md`; the file name is only a source path. Edit `soul.md`, `agents/*.md`, and `skills/**/*.md` through the hosted app plus local bridge when you want to change behavior without changing Rust code.
+
+## Web Tools
 
 ASKK includes Hermes/OpenClaw-style compiled tools:
 
@@ -77,6 +83,13 @@ ASKK includes Hermes/OpenClaw-style compiled tools:
 - `web_extract({ urls })`
 
 These tools call the local bridge at `http://127.0.0.1:8874/askk/tools/...` so browser code does not need direct search-provider API keys.
+
+Search provider order:
+
+1. Brave Search when `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` is set.
+2. Tavily when `TAVILY_API_KEY` is set.
+3. SearXNG when `SEARXNG_URL`, `SEARXNG_BASE_URL`, or `ASKK_SEARXNG_URL` is set.
+4. Key-free DuckDuckGo HTML search as the no-key fallback.
 
 For Brave Search:
 
@@ -104,6 +117,14 @@ TAVILY_API_KEY="..." node scripts/askk-local-bridge.mjs --target http://192.168.
 ```
 
 If Tavily is not configured, `web_extract` falls back to a lightweight bridge fetch/extract path.
+
+For free self-hosted SearXNG search:
+
+```sh
+SEARXNG_URL="http://localhost:8888" node scripts/askk-local-bridge.mjs --target http://192.168.11.154:8873/v1
+```
+
+The SearXNG instance must have JSON output enabled. If no Brave, Tavily, or SearXNG configuration is present, `web_search` uses the key-free DuckDuckGo HTML fallback.
 
 LM Studio must have CORS enabled for web apps:
 

@@ -10,6 +10,7 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8874;
 const DEFAULT_BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 const DEFAULT_TAVILY_BASE_URL = "https://api.tavily.com";
+const DEFAULT_DUCKDUCKGO_SEARCH_URL = "https://html.duckduckgo.com/html/";
 
 export function createBridgeServer(rawOptions = {}) {
     const targetBase = normalizeBaseUrl(
@@ -36,6 +37,16 @@ export function createBridgeServer(rawOptions = {}) {
             rawOptions.tavilyBaseUrl ??
             process.env.ASKK_TAVILY_BASE_URL ??
             DEFAULT_TAVILY_BASE_URL,
+        searxngBaseUrl:
+            rawOptions.searxngBaseUrl ??
+            process.env.SEARXNG_URL ??
+            process.env.SEARXNG_BASE_URL ??
+            process.env.ASKK_SEARXNG_URL ??
+            "",
+        duckDuckGoSearchUrl:
+            rawOptions.duckDuckGoSearchUrl ??
+            process.env.ASKK_DUCKDUCKGO_SEARCH_URL ??
+            DEFAULT_DUCKDUCKGO_SEARCH_URL,
     };
 
     const server = http.createServer(async (request, response) => {
@@ -206,12 +217,11 @@ export async function webSearch(body, config = {}) {
     if (mergedConfig.tavilyApiKey) {
         return tavilySearch(query, count, mergedConfig);
     }
+    if (mergedConfig.searxngBaseUrl) {
+        return searxngSearch(body, query, count, mergedConfig);
+    }
 
-    return {
-        success: false,
-        error:
-            "No web search provider configured. Set BRAVE_API_KEY, BRAVE_SEARCH_API_KEY, or TAVILY_API_KEY before starting the ASKK local bridge.",
-    };
+    return duckDuckGoSearch(query, count, mergedConfig);
 }
 
 export async function webExtract(body, config = {}) {
@@ -271,6 +281,44 @@ async function tavilySearch(query, count, config) {
         return raw;
     }
     return normalizeTavilySearch(raw);
+}
+
+async function searxngSearch(body, query, count, config) {
+    const url = new URL(config.searxngBaseUrl);
+    url.pathname = `${url.pathname.replace(/\/+$/g, "")}/search`;
+    url.search = "";
+    url.searchParams.set("q", query);
+    url.searchParams.set("format", "json");
+    mapOptionalParam(body, url, "language", "language");
+    const timeRange = searxngTimeRange(body?.freshness);
+    if (timeRange) {
+        url.searchParams.set("time_range", timeRange);
+    }
+
+    const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+    });
+    const raw = await readJsonResponse(response);
+    if (!response.ok) {
+        return providerError("SearXNG", response.status, raw);
+    }
+    return normalizeSearxngSearch(raw, count);
+}
+
+async function duckDuckGoSearch(query, count, config) {
+    const url = new URL(config.duckDuckGoSearchUrl);
+    url.searchParams.set("q", query);
+    const response = await fetch(url, {
+        headers: {
+            Accept: "text/html,application/xhtml+xml",
+            "User-Agent": "ASKK local bridge (+https://github.com/kaush4l/ASKK)",
+        },
+    });
+    const text = await response.text();
+    if (!response.ok) {
+        return providerError("DuckDuckGo", response.status, { text: text.slice(0, 500) });
+    }
+    return normalizeDuckDuckGoHtml(text, count);
 }
 
 async function tavilyExtract(urls, config) {
@@ -362,6 +410,47 @@ export function normalizeTavilySearch(raw) {
             })),
         },
     };
+}
+
+export function normalizeSearxngSearch(raw, count = 10) {
+    return {
+        success: true,
+        data: {
+            web: (raw.results ?? []).slice(0, count).map((result, index) => ({
+                title: result.title ?? "",
+                url: result.url ?? "",
+                description: result.content ?? result.snippet ?? result.description ?? "",
+                position: index + 1,
+            })),
+        },
+    };
+}
+
+export function normalizeDuckDuckGoHtml(html, count = 10) {
+    const results = [];
+    const anchorPattern = /<a\b([^>]*\bclass=["'][^"']*result__a[^"']*["'][^>]*)>([\s\S]*?)<\/a>/gi;
+    let match;
+
+    while ((match = anchorPattern.exec(html)) && results.length < count) {
+        const href = attributeValue(match[1], "href");
+        const title = htmlToText(match[2]);
+        const trailingHtml = html.slice(anchorPattern.lastIndex, anchorPattern.lastIndex + 2_500);
+        const snippetHtml =
+            trailingHtml.match(/<(?:a|div)\b[^>]*\bclass=["'][^"']*result__snippet[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div)>/i)?.[1] ??
+            "";
+        const url = normalizeSearchResultUrl(href);
+        if (!title || !url) {
+            continue;
+        }
+        results.push({
+            title,
+            url,
+            description: htmlToText(snippetHtml),
+            position: results.length + 1,
+        });
+    }
+
+    return { success: true, data: { web: results } };
 }
 
 export function normalizeTavilyDocuments(raw, fallbackUrl = "") {
@@ -512,7 +601,9 @@ Options:
 Web tool environment:
   BRAVE_API_KEY or BRAVE_SEARCH_API_KEY
   TAVILY_API_KEY
-  ASKK_BRAVE_SEARCH_URL and ASKK_TAVILY_BASE_URL for local/mock providers
+  SEARXNG_URL, SEARXNG_BASE_URL, or ASKK_SEARXNG_URL for no-key SearXNG search
+  ASKK_BRAVE_SEARCH_URL, ASKK_TAVILY_BASE_URL, and ASKK_DUCKDUCKGO_SEARCH_URL for local/mock providers
+  Without provider keys or SearXNG, web_search falls back to key-free DuckDuckGo HTML search.
 
 Bridge environment:
   ASKK_BRIDGE_TARGET, ASKK_BRIDGE_HOST, ASKK_BRIDGE_PORT, ASKK_WORKSPACE_ROOT`);
@@ -667,7 +758,50 @@ function mergeSearchConfig(config) {
         braveSearchUrl: config.braveSearchUrl ?? process.env.ASKK_BRAVE_SEARCH_URL ?? DEFAULT_BRAVE_SEARCH_URL,
         tavilyApiKey: config.tavilyApiKey ?? process.env.TAVILY_API_KEY ?? "",
         tavilyBaseUrl: config.tavilyBaseUrl ?? process.env.ASKK_TAVILY_BASE_URL ?? DEFAULT_TAVILY_BASE_URL,
+        searxngBaseUrl:
+            config.searxngBaseUrl ??
+            process.env.SEARXNG_URL ??
+            process.env.SEARXNG_BASE_URL ??
+            process.env.ASKK_SEARXNG_URL ??
+            "",
+        duckDuckGoSearchUrl:
+            config.duckDuckGoSearchUrl ??
+            process.env.ASKK_DUCKDUCKGO_SEARCH_URL ??
+            DEFAULT_DUCKDUCKGO_SEARCH_URL,
     };
+}
+
+function searxngTimeRange(freshness) {
+    const value = typeof freshness === "string" ? freshness.trim().toLowerCase() : "";
+    if (["day", "24h", "past_day"].includes(value)) {
+        return "day";
+    }
+    if (["week", "7d", "past_week", "month", "past_month"].includes(value)) {
+        return "month";
+    }
+    if (["year", "past_year"].includes(value)) {
+        return "year";
+    }
+    return "";
+}
+
+function attributeValue(attributes, name) {
+    const match = attributes.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i"));
+    return match ? decodeHtmlEntities(match[1]) : "";
+}
+
+function normalizeSearchResultUrl(href) {
+    const value = decodeHtmlEntities(href);
+    if (!value) {
+        return "";
+    }
+    try {
+        const parsed = new URL(value, "https://html.duckduckgo.com");
+        const redirected = parsed.searchParams.get("uddg");
+        return redirected ? decodeURIComponent(redirected) : parsed.toString();
+    } catch {
+        return value;
+    }
 }
 
 function extractTitle(html) {
@@ -675,18 +809,24 @@ function extractTitle(html) {
 }
 
 function htmlToText(html) {
-    return html
+    return decodeHtmlEntities(html)
         .replace(/<script[\s\S]*?<\/script>/gi, " ")
         .replace(/<style[\s\S]*?<\/style>/gi, " ")
         .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function decodeHtmlEntities(value) {
+    return String(value ?? "")
+        .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+        .replace(/&#(\d+);/g, (_, number) => String.fromCodePoint(Number.parseInt(number, 10)))
         .replace(/&nbsp;/g, " ")
         .replace(/&amp;/g, "&")
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">")
         .replace(/&quot;/g, "\"")
-        .replace(/&#39;/g, "'")
-        .replace(/\s+/g, " ")
-        .trim();
+        .replace(/&#39;/g, "'");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
