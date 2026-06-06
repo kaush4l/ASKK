@@ -306,15 +306,46 @@ pre {
 }
 
 .chat-panel {
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.chat-header {
+    flex: 0 0 auto;
 }
 
 .composer {
     display: grid;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #e7def5;
+}
+
+.composer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.composer-hint {
+    color: #8a7da0;
+    font-size: 12px;
 }
 
 .goal-box {
-    min-height: 116px;
+    min-height: 64px;
+    max-height: 168px;
+    resize: vertical;
+}
+
+.chat-turn {
+    display: grid;
+    gap: 8px;
+}
+
+.thinking-line {
+    color: #6f6385;
+    font-style: italic;
 }
 
 .conversation-scroll,
@@ -346,6 +377,9 @@ pre {
 }
 
 .message-author {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     color: #756985;
     font-size: 12px;
     text-transform: uppercase;

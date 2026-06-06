@@ -9,19 +9,37 @@ use wasm_bindgen_futures::spawn_local;
 pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) -> Element {
     let current = snapshot.read().clone();
     let current_goal = goal.read().clone();
+    let running = current
+        .current_run
+        .as_ref()
+        .is_some_and(|run| run.status == "running");
+    // The in-progress run is only shown live; completed runs live in `runs`.
+    let live_turn = current
+        .current_run
+        .as_ref()
+        .filter(|run| run.status == "running")
+        .cloned();
+    let has_history = !current.runs.is_empty();
+
+    // Keep the transcript pinned to the newest message as the session grows.
+    use_effect(move || {
+        let data = snapshot.read();
+        let _ = data.runs.len();
+        let _ = data
+            .current_run
+            .as_ref()
+            .map(|run| (run.events.len(), run.final_answer.len()));
+        document::eval(
+            "(() => { const el = document.querySelector('.conversation-scroll'); if (el) el.scrollTop = el.scrollHeight; })()",
+        );
+    });
 
     rsx! {
         section { class: "panel page-panel chat-panel",
-            div { class: "page-heading",
-                div {
-                    h2 { "Chat" }
-                }
+            div { class: "page-heading chat-header",
+                h2 { "Chat" }
                 div { class: "button-row",
-                    button {
-                        onclick: move |_| submit_goal(snapshot, goal),
-                        "Run"
-                    }
-                    if current.current_run.as_ref().is_some_and(|run| run.status == "running") {
+                    if running {
                         button {
                             class: "ghost-button",
                             onclick: move |_| {
@@ -33,19 +51,36 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                     }
                     button {
                         class: "ghost-button",
-                        onclick: move |_| {
-                            snapshot.write().current_run = None;
-                            set_status(&mut snapshot, "Current run reset.".to_string());
-                        },
-                        "Reset"
+                        disabled: running,
+                        onclick: move |_| new_chat(snapshot),
+                        "New chat"
                     }
                 }
             }
 
-            div { class: "composer",
+            div { class: "conversation-scroll",
+                if !has_history && live_turn.is_none() {
+                    div { class: "empty-state",
+                        "Start a conversation — your messages and the agent's replies stay in this session, so follow-up questions keep their context."
+                    }
+                }
+                for run in current.runs.iter() {
+                    ConversationTurn { key: "{run.id}", run: run.clone(), live: false }
+                }
+                if let Some(run) = live_turn.as_ref() {
+                    ConversationTurn { key: "{run.id}", run: run.clone(), live: true }
+                }
+            }
+
+            form {
+                class: "composer",
+                onsubmit: move |event| {
+                    event.prevent_default();
+                    submit_goal(snapshot, goal);
+                },
                 textarea {
                     class: "goal-box",
-                    placeholder: "Describe a goal or message for the agent...",
+                    placeholder: "Message the agent…  (Enter to send, Shift+Enter for a new line)",
                     value: "{current_goal}",
                     oninput: move |event| goal.set(event.value()),
                     onkeydown: move |event| {
@@ -57,43 +92,12 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                         }
                     }
                 }
-            }
-
-            div { class: "conversation-scroll",
-                if let Some(run) = current.current_run.as_ref() {
-                    article { class: "message-bubble user-message",
-                        div { class: "message-author", "You" }
-                        p { "{run.goal}" }
-                    }
-                    RunSummary { run: run.clone() }
-                    if !run.final_answer.trim().is_empty() {
-                        article { class: "message-bubble final-message",
-                            div { class: "message-author", "Assistant" }
-                            p { "{run.final_answer}" }
-                        }
-                    } else if run.status == "running" {
-                        article { class: "message-bubble assistant-message",
-                            div { class: "message-author", "Assistant" }
-                            p { "Working..." }
-                        }
-                    } else if run.status == "error" {
-                        article { class: "message-bubble error-message",
-                            div { class: "message-author", "Error" }
-                            p { "{last_error(run)}" }
-                        }
-                    } else if run.status == "interrupted" {
-                        article { class: "message-bubble error-message",
-                            div { class: "message-author", "Interrupted" }
-                            p { "Run interrupted." }
-                        }
-                    }
-                    RunDetails { run: run.clone() }
-                } else if current_goal.trim().is_empty() {
-                    div { class: "empty-state", "No chat yet. Enter a message to start a run." }
-                } else {
-                    article { class: "message-bubble draft-message",
-                        div { class: "message-author", "Draft" }
-                        p { "{current_goal}" }
+                div { class: "composer-actions",
+                    span { class: "composer-hint", "{session_label(&current)}" }
+                    button {
+                        r#type: "submit",
+                        disabled: running || current_goal.trim().is_empty(),
+                        if running { "Running…" } else { "Send" }
                     }
                 }
             }
@@ -101,17 +105,42 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
     }
 }
 
+fn new_chat(mut snapshot: Signal<AppSnapshot>) {
+    {
+        let mut data = snapshot.write();
+        data.runs.clear();
+        data.current_run = None;
+    }
+    set_status(&mut snapshot, "Started a new chat.".to_string());
+    let data = snapshot.read().clone();
+    spawn_local(async move {
+        let _ = save_snapshot(data).await;
+    });
+}
+
 fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
     let run_goal = goal.read().trim().to_string();
     if run_goal.is_empty() {
-        set_status(&mut snapshot, "Enter a message before running.".to_string());
+        set_status(&mut snapshot, "Enter a message before sending.".to_string());
+        return;
+    }
+    if snapshot
+        .read()
+        .current_run
+        .as_ref()
+        .is_some_and(|run| run.status == "running")
+    {
+        set_status(
+            &mut snapshot,
+            "A run is already in progress. Wait for it to finish or press Stop.".to_string(),
+        );
         return;
     }
 
     let start_data = snapshot.read().clone();
     goal.set(String::new());
     clear_interrupt();
-    set_status(&mut snapshot, "Running orchestrator...".to_string());
+    set_status(&mut snapshot, "Running agent...".to_string());
 
     spawn_local(async move {
         let runtime = ReActEngine::new();
@@ -151,38 +180,38 @@ fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
 }
 
 #[component]
-fn RunSummary(run: AgentRun) -> Element {
-    let worker_labels = run
-        .scratchpad
-        .workers
-        .iter()
-        .map(|worker| format!("{} [{}]", worker.role, worker.status))
-        .collect::<Vec<_>>();
-    let verification = &run.scratchpad.verification;
-
+fn ConversationTurn(run: AgentRun, live: bool) -> Element {
     rsx! {
-        article { class: "run-summary",
-            div { class: "run-summary-head",
-                span { class: "lane-chip", "{run.lane.as_label()}" }
-                span { class: "event-meta", "{run.status}" }
+        div { class: "chat-turn",
+            article { class: "message-bubble user-message",
+                div { class: "message-author", "You" }
+                p { "{run.goal}" }
             }
-            if !run.scratchpad.current_plan.is_empty() {
-                ul { class: "compact-list",
-                    for item in run.scratchpad.current_plan.iter() {
-                        li { "{item}" }
+            if !run.final_answer.trim().is_empty() {
+                article { class: "message-bubble final-message",
+                    div { class: "message-author",
+                        span { "Assistant" }
+                        span { class: "lane-chip", "{run.lane.as_label()}" }
                     }
+                    p { "{run.final_answer}" }
+                }
+            } else if run.status == "running" || live {
+                article { class: "message-bubble assistant-message",
+                    div { class: "message-author", "Assistant" }
+                    p { class: "thinking-line", "{working_label(&run)}" }
+                }
+            } else if run.status == "error" {
+                article { class: "message-bubble error-message",
+                    div { class: "message-author", "Error" }
+                    p { "{last_error(&run)}" }
+                }
+            } else if run.status == "interrupted" {
+                article { class: "message-bubble error-message",
+                    div { class: "message-author", "Interrupted" }
+                    p { "Run interrupted." }
                 }
             }
-            if !worker_labels.is_empty() {
-                div { class: "worker-labels",
-                    for label in worker_labels.iter() {
-                        span { class: "worker-chip", "{label}" }
-                    }
-                }
-            }
-            if !verification.status.trim().is_empty() && verification.status != "pending" {
-                p { class: "muted", "Verification: {verification.status} - {verification.last_result}" }
-            }
+            RunDetails { run: run.clone() }
         }
     }
 }
@@ -191,7 +220,6 @@ fn RunSummary(run: AgentRun) -> Element {
 fn RunDetails(run: AgentRun) -> Element {
     let tool_count = run.tool_results.len();
     let event_count = run.events.len();
-    let meta_count = run.scratchpad.meta_tool_calls.len();
 
     rsx! {
         details { class: "run-details",
@@ -200,40 +228,12 @@ fn RunDetails(run: AgentRun) -> Element {
                 span { class: "event-count", "{event_count}" }
             }
             div { class: "run-details-grid",
-                if !run.scratchpad.workers.is_empty() {
-                    div { class: "detail-section",
-                        h3 { "Workers" }
-                        for worker in run.scratchpad.workers.iter() {
-                            article { class: "event-row", key: "{worker.id}",
-                                div { class: "event-meta",
-                                    span { "{worker.role}" }
-                                    span { "{worker.status}" }
-                                }
-                                pre { "Goal: {worker.sub_goal}\nResult: {worker.result}\nEvidence:\n{worker.evidence.join(\"\\n\")}" }
-                            }
-                        }
-                    }
-                }
-                if meta_count > 0 {
-                    div { class: "detail-section",
-                        h3 { "Orchestrator" }
-                        for call in run.scratchpad.meta_tool_calls.iter() {
-                            article { class: "event-row", key: "{call.id}",
-                                div { class: "event-meta",
-                                    span { "{call.name}" }
-                                    span { "{call.created_at}" }
-                                }
-                                pre { "Args: {call.arguments}\nResult: {call.result}" }
-                            }
-                        }
-                    }
-                }
                 div { class: "detail-section",
                     h3 { "Scratchpad" }
                     article { class: "event-row",
                         div { class: "event-meta",
                             span { "steps {run.scratchpad.budgets.steps_used}/{run.scratchpad.budgets.max_steps}" }
-                            span { "verification {run.scratchpad.verification.status}" }
+                            span { "{run.status}" }
                         }
                         pre { "{scratchpad_text(&run)}" }
                     }
@@ -265,19 +265,6 @@ fn RunDetails(run: AgentRun) -> Element {
                         }
                     }
                 }
-                if !run.messages.is_empty() {
-                    div { class: "detail-section",
-                        h3 { "Messages" }
-                        for (index, message) in run.messages.iter().enumerate() {
-                            article { class: "event-row", key: "{index}",
-                                div { class: "event-meta",
-                                    span { "{message.role}" }
-                                }
-                                pre { "{message.content}" }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -288,6 +275,23 @@ fn event_class(kind: &AgentEventKind) -> &'static str {
         AgentEventKind::Error => "event-row error-row",
         AgentEventKind::ToolCompleted => "event-row tool-event-row",
         _ => "event-row",
+    }
+}
+
+fn working_label(run: &AgentRun) -> String {
+    run.events
+        .iter()
+        .rev()
+        .find(|event| !event.title.trim().is_empty())
+        .map(|event| format!("{}…", event.title))
+        .unwrap_or_else(|| "Working…".to_string())
+}
+
+fn session_label(snapshot: &AppSnapshot) -> String {
+    match snapshot.runs.len() {
+        0 => "New session".to_string(),
+        1 => "1 turn in this session".to_string(),
+        count => format!("{count} turns in this session"),
     }
 }
 

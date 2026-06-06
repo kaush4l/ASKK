@@ -172,6 +172,9 @@ where
     }
     let inference = get_implementation(&provider);
     let specs = executor.domain_specs_for_agent(&enabled_tools);
+    // Prior conversation turns so the agent carries its session forward instead of
+    // treating every query as a fresh start.
+    let conversation = conversation_seed(&snapshot.runs);
     let max_steps = run.scratchpad.budgets.max_steps.max(1);
     let mut answered = false;
 
@@ -190,11 +193,21 @@ where
             AgentEventKind::LlmRequest,
             format!("Model call (turn {turn})"),
             format!(
-                "Sending the goal and {} prior messages.",
+                "Sending {} prior conversation message(s), the query, and {} in-run message(s).",
+                conversation.len(),
                 run.messages.len()
             ),
         ));
         observer(run.clone());
+
+        // Full ordered transcript: prior conversation, the current query, then this
+        // run's accumulated ReAct turns.
+        let mut history = conversation.clone();
+        history.push(Message {
+            role: "user".to_string(),
+            content: run.goal.clone(),
+        });
+        history.extend(run.messages.iter().cloned());
 
         let request = InferenceRequest {
             agent_name: agent.name.clone(),
@@ -202,7 +215,7 @@ where
             soul: snapshot.soul.clone(),
             skills: snapshot.skills.clone(),
             goal: run.goal.clone(),
-            history: run.messages.clone(),
+            history,
             tools: specs.clone(),
             response_format: agent.response_format,
         };
@@ -375,6 +388,30 @@ fn finalize_status(run: &mut AgentRun, answered: bool) {
             }
         }
     }
+}
+
+/// Build the prior-conversation context from completed runs so the agent has a
+/// session memory. Each completed turn contributes the user's query and the
+/// agent's final answer. Bounded to the most recent turns to keep context in budget.
+fn conversation_seed(runs: &[AgentRun]) -> Vec<Message> {
+    const MAX_TURNS: usize = 12;
+    let start = runs.len().saturating_sub(MAX_TURNS);
+    let mut messages = Vec::new();
+    for prior in &runs[start..] {
+        if !prior.goal.trim().is_empty() {
+            messages.push(Message {
+                role: "user".to_string(),
+                content: prior.goal.clone(),
+            });
+        }
+        if !prior.final_answer.trim().is_empty() {
+            messages.push(Message {
+                role: "assistant".to_string(),
+                content: prior.final_answer.clone(),
+            });
+        }
+    }
+    messages
 }
 
 fn pick_agent(snapshot: &AppSnapshot) -> Agent {

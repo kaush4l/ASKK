@@ -246,17 +246,21 @@ Workspace skills:
             skill_prompt = skill_prompt,
         );
 
-        let mut messages = vec![
-            WireMessage {
-                role: "system".to_string(),
-                content: system,
-            },
-            WireMessage {
+        let mut messages = vec![WireMessage {
+            role: "system".to_string(),
+            content: system,
+        }];
+        if request.history.is_empty() {
+            // Single-shot fallback: no transcript supplied, send the goal directly.
+            messages.push(WireMessage {
                 role: "user".to_string(),
                 content: format!("Goal: {}", request.goal),
-            },
-        ];
-        messages.extend(request.history.iter().map(history_wire_message));
+            });
+        } else {
+            // The engine supplies the full ordered conversation (prior turns, the
+            // current query, then this run's ReAct turns).
+            messages.extend(request.history.iter().map(history_wire_message));
+        }
         Ok(messages)
     }
 
@@ -828,8 +832,32 @@ mod tests {
         let messages = OpenAiCompatibleInference
             .normalize_messages(&request)
             .unwrap();
-        assert_eq!(messages[2].role, "assistant");
-        assert_eq!(messages[3].role, "user");
-        assert!(messages[3].content.starts_with("Tool observation:\n"));
+        // With a transcript supplied, the conversation follows the system message
+        // directly (no separate "Goal:" turn): system, assistant, tool-as-user.
+        assert_eq!(messages[0].role, "system");
+        assert_eq!(messages[1].role, "assistant");
+        assert_eq!(messages[2].role, "user");
+        assert!(messages[2].content.starts_with("Tool observation:\n"));
+    }
+
+    #[test]
+    fn empty_history_falls_back_to_goal_message() {
+        let request = InferenceRequest {
+            agent_name: "Planner".to_string(),
+            agent_role: "Plan.".to_string(),
+            soul: "Shared behavior.".to_string(),
+            skills: Vec::new(),
+            goal: "Ship it.".to_string(),
+            history: Vec::new(),
+            tools: Vec::new(),
+            response_format: ResponseFormat::Toon,
+        };
+
+        let messages = OpenAiCompatibleInference
+            .normalize_messages(&request)
+            .unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1].role, "user");
+        assert_eq!(messages[1].content, "Goal: Ship it.");
     }
 }
