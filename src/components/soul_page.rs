@@ -43,7 +43,8 @@ pub fn SoulPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                             spawn_local(async move {
                                 match save_soul_file(content).await {
                                     Ok(status) => {
-                                        let save_status = save_snapshot(snapshot.read().clone()).await;
+                                        let data = snapshot.read().clone();
+                                        let save_status = save_snapshot(data).await;
                                         set_status(&mut snapshot, format!("{status} {save_status}"));
                                     }
                                     Err(err) => set_status(&mut snapshot, err),

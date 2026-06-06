@@ -8,3 +8,4 @@
 /dist/
 
 **/*.rs.bk
+.claude/launch.json

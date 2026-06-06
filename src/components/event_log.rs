@@ -44,10 +44,16 @@ pub fn EventLogPanel(snapshot: Signal<AppSnapshot>) -> Element {
 fn event_kind_label(kind: &AgentEventKind) -> &'static str {
     match kind {
         AgentEventKind::Started => "started",
+        AgentEventKind::Routing => "routing",
+        AgentEventKind::MetaTool => "meta_tool",
         AgentEventKind::LlmRequest => "llm_request",
         AgentEventKind::LlmResponse => "llm_response",
         AgentEventKind::ToolRequested => "tool_requested",
         AgentEventKind::ToolCompleted => "tool_completed",
+        AgentEventKind::WorkerStarted => "worker_started",
+        AgentEventKind::WorkerCompleted => "worker_completed",
+        AgentEventKind::Verification => "verification",
+        AgentEventKind::Interrupted => "interrupted",
         AgentEventKind::FinalAnswer => "final_answer",
         AgentEventKind::Error => "error",
     }

@@ -1,6 +1,6 @@
 use super::save_snapshot;
 use super::shared::set_status;
-use crate::engine::ReActEngine;
+use crate::engine::{ReActEngine, clear_interrupt, request_interrupt};
 use crate::state::{AgentEventKind, AgentRun, AppSnapshot};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -20,6 +20,16 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                     button {
                         onclick: move |_| submit_goal(snapshot, goal),
                         "Run"
+                    }
+                    if current.current_run.as_ref().is_some_and(|run| run.status == "running") {
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                request_interrupt();
+                                set_status(&mut snapshot, "Stop requested. The run will halt after the current turn.".to_string());
+                            },
+                            "Stop"
+                        }
                     }
                     button {
                         class: "ghost-button",
@@ -55,6 +65,7 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                         div { class: "message-author", "You" }
                         p { "{run.goal}" }
                     }
+                    RunSummary { run: run.clone() }
                     if !run.final_answer.trim().is_empty() {
                         article { class: "message-bubble final-message",
                             div { class: "message-author", "Assistant" }
@@ -69,6 +80,11 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                         article { class: "message-bubble error-message",
                             div { class: "message-author", "Error" }
                             p { "{last_error(run)}" }
+                        }
+                    } else if run.status == "interrupted" {
+                        article { class: "message-bubble error-message",
+                            div { class: "message-author", "Interrupted" }
+                            p { "Run interrupted." }
                         }
                     }
                     RunDetails { run: run.clone() }
@@ -94,7 +110,8 @@ fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
 
     let start_data = snapshot.read().clone();
     goal.set(String::new());
-    set_status(&mut snapshot, "Running agent loop...".to_string());
+    clear_interrupt();
+    set_status(&mut snapshot, "Running orchestrator...".to_string());
 
     spawn_local(async move {
         let runtime = ReActEngine::new();
@@ -105,7 +122,7 @@ fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
         let result = runtime
             .run_goal_with_observer(start_data, run_goal, move |run| {
                 let mut next = live_snapshot.read().clone();
-                next.status = "Running agent loop...".to_string();
+                next.status = format!("Running {} lane...", run.lane.as_label());
                 next.current_run = Some(run);
                 live_snapshot.set(next);
             })
@@ -134,9 +151,47 @@ fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
 }
 
 #[component]
+fn RunSummary(run: AgentRun) -> Element {
+    let worker_labels = run
+        .scratchpad
+        .workers
+        .iter()
+        .map(|worker| format!("{} [{}]", worker.role, worker.status))
+        .collect::<Vec<_>>();
+    let verification = &run.scratchpad.verification;
+
+    rsx! {
+        article { class: "run-summary",
+            div { class: "run-summary-head",
+                span { class: "lane-chip", "{run.lane.as_label()}" }
+                span { class: "event-meta", "{run.status}" }
+            }
+            if !run.scratchpad.current_plan.is_empty() {
+                ul { class: "compact-list",
+                    for item in run.scratchpad.current_plan.iter() {
+                        li { "{item}" }
+                    }
+                }
+            }
+            if !worker_labels.is_empty() {
+                div { class: "worker-labels",
+                    for label in worker_labels.iter() {
+                        span { class: "worker-chip", "{label}" }
+                    }
+                }
+            }
+            if !verification.status.trim().is_empty() && verification.status != "pending" {
+                p { class: "muted", "Verification: {verification.status} - {verification.last_result}" }
+            }
+        }
+    }
+}
+
+#[component]
 fn RunDetails(run: AgentRun) -> Element {
     let tool_count = run.tool_results.len();
     let event_count = run.events.len();
+    let meta_count = run.scratchpad.meta_tool_calls.len();
 
     rsx! {
         details { class: "run-details",
@@ -145,6 +200,44 @@ fn RunDetails(run: AgentRun) -> Element {
                 span { class: "event-count", "{event_count}" }
             }
             div { class: "run-details-grid",
+                if !run.scratchpad.workers.is_empty() {
+                    div { class: "detail-section",
+                        h3 { "Workers" }
+                        for worker in run.scratchpad.workers.iter() {
+                            article { class: "event-row", key: "{worker.id}",
+                                div { class: "event-meta",
+                                    span { "{worker.role}" }
+                                    span { "{worker.status}" }
+                                }
+                                pre { "Goal: {worker.sub_goal}\nResult: {worker.result}\nEvidence:\n{worker.evidence.join(\"\\n\")}" }
+                            }
+                        }
+                    }
+                }
+                if meta_count > 0 {
+                    div { class: "detail-section",
+                        h3 { "Orchestrator" }
+                        for call in run.scratchpad.meta_tool_calls.iter() {
+                            article { class: "event-row", key: "{call.id}",
+                                div { class: "event-meta",
+                                    span { "{call.name}" }
+                                    span { "{call.created_at}" }
+                                }
+                                pre { "Args: {call.arguments}\nResult: {call.result}" }
+                            }
+                        }
+                    }
+                }
+                div { class: "detail-section",
+                    h3 { "Scratchpad" }
+                    article { class: "event-row",
+                        div { class: "event-meta",
+                            span { "steps {run.scratchpad.budgets.steps_used}/{run.scratchpad.budgets.max_steps}" }
+                            span { "verification {run.scratchpad.verification.status}" }
+                        }
+                        pre { "{scratchpad_text(&run)}" }
+                    }
+                }
                 if tool_count > 0 {
                     div { class: "detail-section",
                         h3 { "Tools" }
@@ -205,4 +298,19 @@ fn last_error(run: &AgentRun) -> String {
         .find(|event| event.kind == AgentEventKind::Error)
         .map(|event| event.body.clone())
         .unwrap_or_else(|| "Run failed.".to_string())
+}
+
+fn scratchpad_text(run: &AgentRun) -> String {
+    let observations = run
+        .scratchpad
+        .recent_observations
+        .iter()
+        .map(|observation| format!("- {}: {}", observation.source, observation.content))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if observations.is_empty() {
+        "No observations yet.".to_string()
+    } else {
+        observations
+    }
 }

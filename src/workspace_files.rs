@@ -1,6 +1,6 @@
 use crate::state::{
-    agent_from_markdown, agent_markdown_path, agent_to_markdown, skill_from_markdown, Agent,
-    AppResult, AppSnapshot,
+    Agent, AppResult, AppSnapshot, agent_from_markdown, agent_markdown_path, agent_to_markdown,
+    skill_from_markdown,
 };
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -88,11 +88,11 @@ pub async fn save_agent_files(agents: &[Agent]) -> AppResult<String> {
 pub fn apply_workspace_files(snapshot: &mut AppSnapshot, files: WorkspaceFiles) -> String {
     let mut loaded_parts = Vec::new();
 
-    if let Some(soul) = files.soul {
-        if !soul.content.trim().is_empty() {
-            snapshot.soul = soul.content.trim().to_string();
-            loaded_parts.push("soul.md".to_string());
-        }
+    if let Some(soul) = files.soul
+        && !soul.content.trim().is_empty()
+    {
+        snapshot.soul = soul.content.trim().to_string();
+        loaded_parts.push("soul.md".to_string());
     }
 
     let agents = files

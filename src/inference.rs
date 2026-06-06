@@ -1,10 +1,13 @@
-use crate::responses::{response_to_result, ReActResponse, ResponseFormat, StructuredResponse};
+use crate::responses::{
+    ReActResponse, ResponseFormat, StructuredResponse, VerificationCriticResponse,
+    response_to_result,
+};
 use crate::state::{
-    default_soul_prompt, AppResult, Message, ProviderAuthMode, ProviderConfig, Skill, ToolSpec,
+    AppResult, Message, ProviderAuthMode, ProviderConfig, Skill, ToolSpec, default_soul_prompt,
 };
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, JsValue};
 #[cfg(target_arch = "wasm32")]
@@ -29,6 +32,8 @@ pub struct InferenceOutput<T> {
 }
 
 pub trait InferenceProvider {
+    // Part of the provider API; not called by the minimal loop yet.
+    #[allow(dead_code)]
     fn provider_name(&self) -> &'static str;
 
     async fn invoke_react(
@@ -44,6 +49,21 @@ pub trait InferenceProvider {
         _on_partial_answer: &mut dyn FnMut(String),
     ) -> AppResult<InferenceOutput<ReActResponse>> {
         self.invoke_react(config, request).await
+    }
+
+    // Verification critic. Dormant until the verification loop is wired in.
+    #[allow(dead_code)]
+    async fn invoke_critic(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+    ) -> AppResult<InferenceOutput<VerificationCriticResponse>> {
+        let output = self.invoke_react(config, request).await?;
+        let parsed = response_to_result::<VerificationCriticResponse>(&output.parsed.response)?;
+        Ok(InferenceOutput {
+            raw_text: output.raw_text,
+            parsed,
+        })
     }
 }
 
@@ -113,6 +133,16 @@ impl InferenceProvider for OpenAiCompatibleInference {
             Err(_) => self.invoke_react(config, request).await,
         }
     }
+
+    async fn invoke_critic(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+    ) -> AppResult<InferenceOutput<VerificationCriticResponse>> {
+        let raw_text = self.invoke_critic_text(config, &request).await?;
+        let parsed = response_to_result::<VerificationCriticResponse>(&raw_text)?;
+        Ok(InferenceOutput { raw_text, parsed })
+    }
 }
 
 impl OpenAiCompatibleInference {
@@ -122,12 +152,15 @@ impl OpenAiCompatibleInference {
         request: &InferenceRequest,
     ) -> AppResult<String> {
         let messages = self.normalize_messages(request)?;
-        let body = json!({
+        let mut body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
         });
+        if let Some(top_p) = config.top_p {
+            body["top_p"] = json!(top_p);
+        }
 
         let parsed = send_chat_completion(config, body).await?;
         assistant_content(parsed)
@@ -140,15 +173,36 @@ impl OpenAiCompatibleInference {
         on_partial_answer: &mut dyn FnMut(String),
     ) -> AppResult<String> {
         let messages = self.normalize_messages(request)?;
-        let body = json!({
+        let mut body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "stream": true,
         });
+        if let Some(top_p) = config.top_p {
+            body["top_p"] = json!(top_p);
+        }
 
         send_chat_completion_stream(config, body, on_partial_answer).await
+    }
+
+    #[allow(dead_code)]
+    async fn invoke_critic_text(
+        &self,
+        config: &ProviderConfig,
+        request: &InferenceRequest,
+    ) -> AppResult<String> {
+        let messages = self.normalize_critic_messages(request)?;
+        let body = json!({
+            "model": config.model,
+            "messages": messages,
+            "temperature": 0,
+            "max_tokens": config.max_tokens.min(700),
+        });
+
+        let parsed = send_chat_completion(config, body).await?;
+        assistant_content(parsed)
     }
 
     fn normalize_messages(&self, request: &InferenceRequest) -> AppResult<Vec<WireMessage>> {
@@ -200,6 +254,50 @@ Workspace skills:
             WireMessage {
                 role: "user".to_string(),
                 content: format!("Goal: {}", request.goal),
+            },
+        ];
+        messages.extend(request.history.iter().map(history_wire_message));
+        Ok(messages)
+    }
+
+    #[allow(dead_code)]
+    fn normalize_critic_messages(&self, request: &InferenceRequest) -> AppResult<Vec<WireMessage>> {
+        let response_instructions =
+            VerificationCriticResponse::instructions(request.response_format);
+        let soul_prompt = if request.soul.trim().is_empty() {
+            default_soul_prompt()
+        } else {
+            request.soul.trim().to_string()
+        };
+        let skill_prompt = format_skill_prompt(&request.skills);
+        let system = format!(
+            r#"{soul_prompt}
+
+You are {agent_name}.
+
+Role:
+{agent_role}
+
+You are a verifier. Decide whether the worker result satisfies the user's goal using only the supplied worker result, evidence, and checks. Prefer deterministic evidence. Do not call tools. Return `passed: true` only when the answer is supported by the evidence and no required work remains.
+
+Workspace skills:
+{skill_prompt}
+
+{response_instructions}"#,
+            soul_prompt = soul_prompt,
+            agent_name = request.agent_name,
+            agent_role = request.agent_role,
+            skill_prompt = skill_prompt,
+        );
+
+        let mut messages = vec![
+            WireMessage {
+                role: "system".to_string(),
+                content: system,
+            },
+            WireMessage {
+                role: "user".to_string(),
+                content: request.goal.clone(),
             },
         ];
         messages.extend(request.history.iter().map(history_wire_message));
@@ -617,6 +715,7 @@ mod tests {
             persist_api_key: false,
             temperature: 0.2,
             max_tokens: 32,
+            ..ProviderConfig::default()
         }
     }
 

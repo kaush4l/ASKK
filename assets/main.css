@@ -379,6 +379,44 @@ pre {
     background: #fff1f1;
 }
 
+.run-summary {
+    width: min(980px, 100%);
+    justify-self: start;
+    border: 1px solid #ded5ef;
+    border-radius: 8px;
+    background: #fbfaff;
+    padding: 12px;
+}
+
+.run-summary-head,
+.worker-labels {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.lane-chip,
+.worker-chip {
+    display: inline-grid;
+    place-items: center;
+    min-height: 28px;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+.lane-chip {
+    background: #eee7fb;
+    color: #5b21b6;
+}
+
+.worker-chip {
+    background: #eef8f2;
+    color: #23623b;
+}
+
 .run-details {
     width: min(980px, 100%);
     justify-self: start;
@@ -443,6 +481,15 @@ pre {
 
 .event-row h3 {
     margin: 8px 0;
+}
+
+.job-list {
+    display: grid;
+    gap: 10px;
+}
+
+.job-row {
+    align-items: start;
 }
 
 .event-meta {
@@ -511,6 +558,18 @@ pre {
     gap: 8px;
 }
 
+.orchestrator-controls {
+    display: grid;
+    gap: 10px;
+    padding: 12px 0;
+    border-top: 1px solid #e7def5;
+    border-bottom: 1px solid #e7def5;
+}
+
+.orchestrator-controls h3 {
+    margin: 0;
+}
+
 .preset-grid,
 .diagnostic-actions {
     display: grid;
@@ -553,6 +612,51 @@ pre {
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 12px;
+}
+
+.model-profile-controls {
+    display: grid;
+    gap: 10px;
+    padding: 12px 0;
+    border-top: 1px solid #e7def5;
+    border-bottom: 1px solid #e7def5;
+}
+
+.model-profile-controls h3 {
+    margin: 0;
+}
+
+.model-table {
+    display: grid;
+    gap: 6px;
+    max-height: 180px;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.model-table-head,
+.model-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(120px, 0.6fr);
+    gap: 8px;
+    align-items: center;
+}
+
+.model-table-head {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #756985;
+}
+
+.model-row .model-chip {
+    width: 100%;
+    text-align: left;
+}
+
+.model-profile-select {
+    font-size: 12px;
+    min-height: 32px;
 }
 
 .new-agent-row {

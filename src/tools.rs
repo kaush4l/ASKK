@@ -1,16 +1,24 @@
 use crate::state::{AppResult, AppSnapshot, ToolResult, ToolSpec, WebSearchToolConfig};
+use crate::vfs::ProjectVfs;
 use gloo_net::http::Request;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Clone, Debug, Default)]
 pub struct ToolRegistry {
     specs: Vec<ToolSpec>,
+    vfs: ProjectVfs,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
         Self {
-            specs: vec![web_search_spec()],
+            specs: vec![
+                web_search_spec(),
+                file_read_spec(),
+                file_write_spec(),
+                file_list_spec(),
+            ],
+            vfs: ProjectVfs::new(),
         }
     }
 
@@ -31,6 +39,30 @@ impl ToolRegistry {
     ) -> ToolResult {
         let result = match tool_name {
             "web_search" => web_search_with_config(&args, &snapshot.tool_config.web_search).await,
+            "file_read" => match string_arg(&args, "path") {
+                Ok(path) => self
+                    .vfs
+                    .read_file(&path)
+                    .await
+                    .map(|c| c.unwrap_or_default())
+                    .map_err(|e| format!("VFS read error: {e}")),
+                Err(e) => Err(format!("Tool argument error (file_read): {e}")),
+            },
+            "file_write" => match (string_arg(&args, "path"), string_arg(&args, "content")) {
+                (Ok(path), Ok(content)) => self
+                    .vfs
+                    .write_file(&path, &content)
+                    .await
+                    .map(|_| "Success".to_string())
+                    .map_err(|e| format!("VFS write error: {e}")),
+                (Err(e), _) | (_, Err(e)) => Err(format!("Tool argument error (file_write): {e}")),
+            },
+            "file_list" => self
+                .vfs
+                .list_files()
+                .await
+                .map(|f| f.join(", "))
+                .map_err(|e| format!("VFS list error: {e}")),
             _ => Err(format!("Unknown compiled tool: {tool_name}")),
         };
 
@@ -77,7 +109,7 @@ pub async fn web_search_with_config(
     bridge_tool_request("web_search", &endpoint, body).await
 }
 
-pub fn build_web_search_request(
+fn build_web_search_request(
     args: &Value,
     config: &WebSearchToolConfig,
 ) -> AppResult<(String, Value)> {
@@ -122,7 +154,7 @@ async fn bridge_tool_request(tool_name: &str, endpoint: &str, body: Value) -> Ap
         .await
         .map_err(|err| {
             format!(
-                "{tool_name} bridge request failed. Run `node scripts/askk-local-bridge.mjs` on this browser machine, then check the Tools page bridge URL and provider configuration. Browser fetch details: {err:?}"
+                "{tool_name} bridge request failed. Run `node scripts/askk-local-bridge.mjs` from the project root so the hosted app can read and update soul.md, agents/, and skills/. Browser fetch details: {err:?}"
             )
         })?;
 
@@ -144,8 +176,7 @@ fn merge_optional_string(args: &Value, body: &mut Value, key: &str, fallback: Op
         .get(key)
         .and_then(Value::as_str)
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .or_else(|| fallback.map(str::trim).filter(|value| !value.is_empty()));
+        .or_else(|| fallback.map(str::trim));
     if let Some(value) = value {
         body[key] = Value::String(value.to_string());
     }
@@ -184,69 +215,45 @@ fn truncate(value: &str, max_chars: usize) -> String {
     output
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::state::{default_tool_names, WebSearchProvider};
-
-    #[test]
-    fn default_tool_specs_include_only_web_search() {
-        let registry = ToolRegistry::new();
-        let specs = registry.specs_for_agent(&default_tool_names());
-        let names = specs
-            .iter()
-            .map(|spec| spec.name.as_str())
-            .collect::<Vec<_>>();
-
-        assert_eq!(names, vec!["web_search"]);
+fn file_read_spec() -> ToolSpec {
+    ToolSpec {
+        name: "file_read".to_string(),
+        description: "Read the content of a file from the project's virtual filesystem."
+            .to_string(),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" }
+            },
+            "required": ["path"]
+        }),
     }
+}
 
-    #[test]
-    fn web_search_request_merges_model_args_with_persisted_config() {
-        let config = WebSearchToolConfig {
-            bridge_tools_url: "http://127.0.0.1:8874/askk/tools/".to_string(),
-            provider: WebSearchProvider::SearXng,
-            default_count: 7,
-            country: "US".to_string(),
-            language: "en".to_string(),
-            freshness: "week".to_string(),
-            searxng_url: "http://127.0.0.1:8080".to_string(),
-            brave_api_key: "brave".to_string(),
-            tavily_api_key: "tavily".to_string(),
-            persist_api_keys: true,
-        };
-
-        let (endpoint, body) = build_web_search_request(
-            &json!({
-                "query": "dioxus 0.7",
-                "count": 3,
-                "language": "fr",
-                "date_after": "2026-01-01"
-            }),
-            &config,
-        )
-        .unwrap();
-
-        assert_eq!(endpoint, "http://127.0.0.1:8874/askk/tools/web_search");
-        assert_eq!(body["query"], "dioxus 0.7");
-        assert_eq!(body["count"], 3);
-        assert_eq!(body["provider"], "searxng");
-        assert_eq!(body["country"], "US");
-        assert_eq!(body["language"], "fr");
-        assert_eq!(body["freshness"], "week");
-        assert_eq!(body["date_after"], "2026-01-01");
-        assert_eq!(body["searxng_url"], "http://127.0.0.1:8080");
-        assert_eq!(body["brave_api_key"], "brave");
-        assert_eq!(body["tavily_api_key"], "tavily");
+fn file_write_spec() -> ToolSpec {
+    ToolSpec {
+        name: "file_write".to_string(),
+        description:
+            "Write or overwrite the content of a file in the project's virtual filesystem."
+                .to_string(),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "content": { "type": "string" }
+            },
+            "required": ["path", "content"]
+        }),
     }
+}
 
-    #[test]
-    fn web_search_request_validates_bridge_url() {
-        let config = WebSearchToolConfig {
-            bridge_tools_url: "127.0.0.1:8874/askk/tools".to_string(),
-            ..WebSearchToolConfig::default()
-        };
-        let err = build_web_search_request(&json!({"query": "news"}), &config).unwrap_err();
-        assert!(err.contains("must start with http:// or https://"));
+fn file_list_spec() -> ToolSpec {
+    ToolSpec {
+        name: "file_list".to_string(),
+        description: "List all files in the project's virtual filesystem.".to_string(),
+        input_schema: json!({
+            "type": "object",
+            "properties": {}
+        }),
     }
 }

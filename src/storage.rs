@@ -34,6 +34,10 @@ impl IndexedDbStorage {
 
         Ok(Self { db })
     }
+
+    pub fn db(&self) -> &Database {
+        &self.db
+    }
 }
 
 #[async_trait(?Send)]
@@ -59,6 +63,7 @@ impl StorageAdapter for IndexedDbStorage {
     async fn save_snapshot(&self, snapshot: &AppSnapshot) -> AppResult<()> {
         let mut persisted = snapshot.clone();
         persisted.ensure_provider_profiles();
+        persisted.ensure_orchestrator_defaults();
         persisted.ensure_prompt_defaults();
         persisted.normalize_agent_branding();
         persisted.normalize_agent_tools();

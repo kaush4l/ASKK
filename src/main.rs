@@ -3,14 +3,16 @@ use wasm_bindgen_futures::spawn_local;
 
 mod components;
 mod engine;
+mod execution;
 mod inference;
 mod responses;
 mod state;
 mod storage;
 mod tools;
+mod vfs;
 mod workspace_files;
 
-use components::{set_status, AppShell};
+use components::{AppShell, set_status};
 use state::AppSnapshot;
 use storage::{IndexedDbStorage, StorageAdapter};
 

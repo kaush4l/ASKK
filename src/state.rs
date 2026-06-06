@@ -30,15 +30,11 @@ const DEFAULT_SKILL_FILES: [(&str, &str); 2] = [
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ProviderAuthMode {
+    #[default]
     Bearer,
     None,
-}
-
-impl Default for ProviderAuthMode {
-    fn default() -> Self {
-        Self::Bearer
-    }
 }
 
 impl ProviderAuthMode {
@@ -71,6 +67,12 @@ pub struct ProviderConfig {
     pub persist_api_key: bool,
     pub temperature: f64,
     pub max_tokens: u32,
+    /// Optional nucleus-sampling parameter. Sent to the provider only when set.
+    #[serde(default)]
+    pub top_p: Option<f64>,
+    /// Total context budget for this model. Long-running agents default to 131k.
+    #[serde(default = "default_context_window")]
+    pub context_window: u32,
 }
 
 impl Default for ProviderConfig {
@@ -82,7 +84,9 @@ impl Default for ProviderConfig {
             auth_mode: ProviderAuthMode::Bearer,
             persist_api_key: false,
             temperature: 0.2,
-            max_tokens: 900,
+            max_tokens: default_max_tokens(),
+            top_p: None,
+            context_window: default_context_window(),
         }
     }
 }
@@ -115,9 +119,72 @@ impl ProviderProfile {
     }
 }
 
+/// A reusable bundle of inference-tuning settings (temperature and friends) that
+/// can be paired with a model to tweak behavior per agent need without changing
+/// the provider connection. Applying a profile writes its values onto the active
+/// [`ProviderConfig`].
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ModelProfile {
+    pub id: String,
+    pub name: String,
+    pub temperature: f64,
+    pub max_tokens: u32,
+    #[serde(default)]
+    pub top_p: Option<f64>,
+    #[serde(default = "default_context_window")]
+    pub context_window: u32,
+}
+
+impl ModelProfile {
+    pub fn new(
+        name: impl Into<String>,
+        temperature: f64,
+        max_tokens: u32,
+        top_p: Option<f64>,
+        context_window: u32,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.into(),
+            temperature,
+            max_tokens,
+            top_p,
+            context_window,
+        }
+    }
+}
+
+pub fn default_model_profiles() -> Vec<ModelProfile> {
+    vec![
+        ModelProfile::new(
+            "Precise",
+            0.2,
+            default_max_tokens(),
+            None,
+            default_context_window(),
+        ),
+        ModelProfile::new(
+            "Balanced",
+            0.5,
+            default_max_tokens(),
+            None,
+            default_context_window(),
+        ),
+        ModelProfile::new(
+            "Creative",
+            0.8,
+            default_max_tokens(),
+            Some(0.95),
+            default_context_window(),
+        ),
+    ]
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum WebSearchProvider {
+    #[default]
     Auto,
     #[serde(rename = "duckduckgo")]
     DuckDuckGo,
@@ -125,12 +192,6 @@ pub enum WebSearchProvider {
     SearXng,
     Brave,
     Tavily,
-}
-
-impl Default for WebSearchProvider {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 impl WebSearchProvider {
@@ -213,6 +274,10 @@ pub struct Agent {
     pub response_format: ResponseFormat,
     #[serde(default)]
     pub source_path: Option<String>,
+    /// Optional model profile this agent runs with. Falls back to the workspace
+    /// active model profile when unset.
+    #[serde(default)]
+    pub model_profile_id: Option<String>,
 }
 
 impl Agent {
@@ -229,6 +294,7 @@ impl Agent {
             enabled_tools,
             response_format: ResponseFormat::Toon,
             source_path: None,
+            model_profile_id: None,
         }
     }
 }
@@ -288,10 +354,16 @@ pub struct Message {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum AgentEventKind {
     Started,
+    Routing,
+    MetaTool,
     LlmRequest,
     LlmResponse,
     ToolRequested,
     ToolCompleted,
+    WorkerStarted,
+    WorkerCompleted,
+    Verification,
+    Interrupted,
     FinalAnswer,
     Error,
 }
@@ -307,11 +379,291 @@ pub struct AgentEvent {
     pub created_at: String,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[derive(Default)]
+pub enum RunLane {
+    DirectAnswer,
+    SingleAction,
+    #[default]
+    BoundedTask,
+    BackgroundJob,
+    Batch,
+}
+
+impl RunLane {
+    pub fn as_label(self) -> &'static str {
+        match self {
+            Self::DirectAnswer => "direct answer",
+            Self::SingleAction => "single action",
+            Self::BoundedTask => "bounded task",
+            Self::BackgroundJob => "background job",
+            Self::Batch => "batch",
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectAnswer => "direct_answer",
+            Self::SingleAction => "single_action",
+            Self::BoundedTask => "bounded_task",
+            Self::BackgroundJob => "background_job",
+            Self::Batch => "batch",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationCheckType {
+    EvidenceContains,
+    ToolResultContains,
+    ShellCommand,
+    FileExists,
+    ContentRegex,
+    LlmCritic,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct VerificationCheck {
+    pub check_type: VerificationCheckType,
+    pub description: String,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct VerificationSpec {
+    #[serde(default)]
+    pub deterministic_checks: Vec<VerificationCheck>,
+    #[serde(default)]
+    pub tool_result_checks: Vec<VerificationCheck>,
+    #[serde(default)]
+    pub llm_critic_checks: Vec<VerificationCheck>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct VerificationState {
+    #[serde(default)]
+    pub spec: VerificationSpec,
+    #[serde(default)]
+    pub attempts: u32,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub last_result: String,
+    #[serde(default)]
+    pub failures: Vec<String>,
+    #[serde(default)]
+    pub last_progress_signature: String,
+    #[serde(default)]
+    pub no_progress_turns: u32,
+}
+
+impl Default for VerificationState {
+    fn default() -> Self {
+        Self {
+            spec: VerificationSpec::default(),
+            attempts: 0,
+            status: "pending".to_string(),
+            last_result: String::new(),
+            failures: Vec::new(),
+            last_progress_signature: String::new(),
+            no_progress_turns: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RunBudgets {
+    #[serde(default = "default_run_step_budget")]
+    pub max_steps: u32,
+    #[serde(default = "default_verification_retry_budget")]
+    pub max_verification_retries: u32,
+    #[serde(default = "default_no_progress_turn_limit")]
+    pub max_no_progress_turns: u32,
+    #[serde(default)]
+    pub steps_used: u32,
+    #[serde(default)]
+    pub token_budget: u32,
+    #[serde(default)]
+    pub tokens_used: u32,
+    #[serde(default)]
+    pub cost_budget_cents: u32,
+    #[serde(default)]
+    pub cost_used_cents: u32,
+}
+
+impl Default for RunBudgets {
+    fn default() -> Self {
+        Self {
+            max_steps: default_run_step_budget(),
+            max_verification_retries: default_verification_retry_budget(),
+            max_no_progress_turns: default_no_progress_turn_limit(),
+            steps_used: 0,
+            token_budget: 0,
+            tokens_used: 0,
+            cost_budget_cents: 0,
+            cost_used_cents: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ScratchpadObservation {
+    pub id: String,
+    pub source: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RunArtifact {
+    pub id: String,
+    pub name: String,
+    pub artifact_type: String,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct MetaToolCall {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub arguments: Value,
+    #[serde(default)]
+    pub result: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct WorkerScratchpad {
+    #[serde(default)]
+    pub current_plan: Vec<String>,
+    #[serde(default)]
+    pub observations: Vec<ScratchpadObservation>,
+    #[serde(default)]
+    pub artifacts: Vec<RunArtifact>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkerRun {
+    pub id: String,
+    pub role: String,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    pub sub_goal: String,
+    pub status: String,
+    #[serde(default)]
+    pub budget: RunBudgets,
+    #[serde(default)]
+    pub scratchpad: WorkerScratchpad,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    #[serde(default)]
+    pub result: String,
+}
+
+impl WorkerRun {
+    // Worker orchestration is not wired into the minimal loop yet.
+    #[allow(dead_code)]
+    pub fn new(
+        role: impl Into<String>,
+        agent_id: Option<String>,
+        sub_goal: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            role: role.into(),
+            agent_id,
+            sub_goal: sub_goal.into(),
+            status: "pending".to_string(),
+            budget: RunBudgets::default(),
+            scratchpad: WorkerScratchpad::default(),
+            evidence: Vec::new(),
+            result: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct RunScratchpad {
+    #[serde(default)]
+    pub goal: String,
+    #[serde(default)]
+    pub lane: RunLane,
+    #[serde(default)]
+    pub current_plan: Vec<String>,
+    #[serde(default)]
+    pub meta_tool_calls: Vec<MetaToolCall>,
+    #[serde(default)]
+    pub recent_observations: Vec<ScratchpadObservation>,
+    #[serde(default)]
+    pub artifacts: Vec<RunArtifact>,
+    #[serde(default)]
+    pub workers: Vec<WorkerRun>,
+    #[serde(default)]
+    pub verification: VerificationState,
+    #[serde(default)]
+    pub budgets: RunBudgets,
+    #[serde(default)]
+    pub interrupted: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct JobRecord {
+    pub id: String,
+    pub goal: String,
+    #[serde(default)]
+    pub lane: RunLane,
+    pub status: String,
+    #[serde(default)]
+    pub progress: String,
+    #[serde(default)]
+    pub checkpoint: Option<RunScratchpad>,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub last_error: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OrchestratorConfig {
+    #[serde(default)]
+    pub routing_provider_profile_id: Option<String>,
+    #[serde(default)]
+    pub worker_provider_profile_id: Option<String>,
+    #[serde(default = "default_max_parallelism")]
+    pub max_parallelism: u32,
+    #[serde(default = "default_run_step_budget")]
+    pub max_steps: u32,
+    #[serde(default = "default_verification_retry_budget")]
+    pub verification_retries: u32,
+    #[serde(default = "default_no_progress_turn_limit")]
+    pub no_progress_turns: u32,
+}
+
+impl Default for OrchestratorConfig {
+    fn default() -> Self {
+        Self {
+            routing_provider_profile_id: None,
+            worker_provider_profile_id: None,
+            max_parallelism: default_max_parallelism(),
+            max_steps: default_run_step_budget(),
+            verification_retries: default_verification_retry_budget(),
+            no_progress_turns: default_no_progress_turn_limit(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AgentRun {
     pub id: String,
     pub goal: String,
     pub status: String,
+    #[serde(default)]
+    pub lane: RunLane,
+    #[serde(default)]
+    pub scratchpad: RunScratchpad,
     pub messages: Vec<Message>,
     pub events: Vec<AgentEvent>,
     pub tool_calls: Vec<ToolCall>,
@@ -328,7 +680,13 @@ pub struct AppSnapshot {
     #[serde(default)]
     pub active_provider_profile_id: Option<String>,
     #[serde(default)]
+    pub model_profiles: Vec<ModelProfile>,
+    #[serde(default)]
+    pub active_model_profile_id: Option<String>,
+    #[serde(default)]
     pub tool_config: ToolConfig,
+    #[serde(default)]
+    pub orchestrator: OrchestratorConfig,
     #[serde(default = "default_soul_prompt")]
     pub soul: String,
     pub agents: Vec<Agent>,
@@ -336,6 +694,8 @@ pub struct AppSnapshot {
     pub skills: Vec<Skill>,
     pub memories: Vec<MemoryItem>,
     pub tasks: Vec<TaskItem>,
+    #[serde(default)]
+    pub jobs: Vec<JobRecord>,
     pub runs: Vec<AgentRun>,
     pub current_run: Option<AgentRun>,
     pub status: String,
@@ -346,16 +706,27 @@ impl Default for AppSnapshot {
         let provider = ProviderConfig::default();
         let profile = ProviderProfile::new("OpenAI", provider.clone());
         let active_provider_profile_id = Some(profile.id.clone());
+        let default_profile_id = profile.id.clone();
+        let model_profiles = default_model_profiles();
+        let active_model_profile_id = model_profiles.first().map(|profile| profile.id.clone());
         Self {
             provider,
             provider_profiles: vec![profile],
             active_provider_profile_id,
+            model_profiles,
+            active_model_profile_id,
             tool_config: ToolConfig::default(),
+            orchestrator: OrchestratorConfig {
+                routing_provider_profile_id: Some(default_profile_id.clone()),
+                worker_provider_profile_id: Some(default_profile_id),
+                ..OrchestratorConfig::default()
+            },
             soul: default_soul_prompt(),
             agents: default_agents(),
             skills: default_skills(),
             memories: Vec::new(),
             tasks: Vec::new(),
+            jobs: Vec::new(),
             runs: Vec::new(),
             current_run: None,
             status: "Ready".to_string(),
@@ -373,6 +744,33 @@ pub fn default_bridge_tools_url() -> String {
 
 fn default_web_search_count() -> u32 {
     5
+}
+
+/// Default total context budget. Long-running agents assume at least 131k tokens.
+pub fn default_context_window() -> u32 {
+    131_072
+}
+
+/// Default completion-token cap. Generous enough that synthesized answers are not
+/// truncated, while staying well under the context window.
+pub fn default_max_tokens() -> u32 {
+    4_096
+}
+
+fn default_max_parallelism() -> u32 {
+    3
+}
+
+fn default_run_step_budget() -> u32 {
+    8
+}
+
+fn default_verification_retry_budget() -> u32 {
+    1
+}
+
+fn default_no_progress_turn_limit() -> u32 {
+    2
 }
 
 pub fn default_soul_prompt() -> String {
@@ -431,6 +829,7 @@ pub fn agent_from_markdown(path: &str, content: &str) -> AppResult<Agent> {
         enabled_tools,
         response_format,
         source_path: Some(path.to_string()),
+        model_profile_id: None,
     })
 }
 
@@ -490,10 +889,118 @@ pub fn skill_from_markdown(path: &str, content: &str) -> AppResult<Skill> {
 impl AppSnapshot {
     pub fn with_profile_defaults(mut self) -> Self {
         self.ensure_provider_profiles();
+        self.ensure_model_profiles();
+        self.ensure_orchestrator_defaults();
         self.ensure_prompt_defaults();
         self.normalize_agent_branding();
         self.normalize_agent_tools();
         self
+    }
+
+    /// Seed default model profiles for older snapshots and keep the active id valid.
+    pub fn ensure_model_profiles(&mut self) {
+        if self.model_profiles.is_empty() {
+            self.model_profiles = default_model_profiles();
+            self.active_model_profile_id = self
+                .model_profiles
+                .first()
+                .map(|profile| profile.id.clone());
+            return;
+        }
+
+        let active_valid = self
+            .active_model_profile_id
+            .as_ref()
+            .is_some_and(|id| self.model_profiles.iter().any(|profile| &profile.id == id));
+        if !active_valid {
+            self.active_model_profile_id = self
+                .model_profiles
+                .first()
+                .map(|profile| profile.id.clone());
+        }
+    }
+
+    /// Apply a saved model profile's tuning onto the active provider config.
+    pub fn apply_model_profile(&mut self, profile_id: &str) -> AppResult<String> {
+        let Some(profile) = self
+            .model_profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .cloned()
+        else {
+            return Err(format!("No model profile found with id {profile_id}"));
+        };
+        self.provider.temperature = profile.temperature;
+        self.provider.max_tokens = profile.max_tokens;
+        self.provider.top_p = profile.top_p;
+        self.provider.context_window = profile.context_window;
+        self.active_model_profile_id = Some(profile.id);
+        Ok(format!("Applied model profile: {}", profile.name))
+    }
+
+    /// Save the active provider tuning as a new named model profile.
+    pub fn save_model_profile(&mut self, name: &str) -> String {
+        let profile_name = sanitized_profile_name(name, "Model Profile");
+        let profile = ModelProfile::new(
+            profile_name.clone(),
+            self.provider.temperature,
+            self.provider.max_tokens,
+            self.provider.top_p,
+            self.provider.context_window,
+        );
+        self.active_model_profile_id = Some(profile.id.clone());
+        self.model_profiles.push(profile);
+        format!("Saved model profile: {profile_name}")
+    }
+
+    /// Update the active model profile with the current provider tuning.
+    pub fn update_active_model_profile(&mut self, name: &str) -> String {
+        self.ensure_model_profiles();
+        let Some(active_id) = self.active_model_profile_id.clone() else {
+            return self.save_model_profile(name);
+        };
+        let profile_name = sanitized_profile_name(name, "Model Profile");
+        let (temperature, max_tokens, top_p, context_window) = (
+            self.provider.temperature,
+            self.provider.max_tokens,
+            self.provider.top_p,
+            self.provider.context_window,
+        );
+        let Some(profile) = self
+            .model_profiles
+            .iter_mut()
+            .find(|profile| profile.id == active_id)
+        else {
+            return self.save_model_profile(&profile_name);
+        };
+        profile.name = profile_name.clone();
+        profile.temperature = temperature;
+        profile.max_tokens = max_tokens;
+        profile.top_p = top_p;
+        profile.context_window = context_window;
+        format!("Updated model profile: {profile_name}")
+    }
+
+    /// Delete a model profile, keeping at least one and a valid active id.
+    pub fn delete_model_profile(&mut self, profile_id: &str) -> String {
+        if self.model_profiles.len() <= 1 {
+            return "Keep at least one model profile.".to_string();
+        }
+        let Some(index) = self
+            .model_profiles
+            .iter()
+            .position(|profile| profile.id == profile_id)
+        else {
+            return format!("No model profile found with id {profile_id}");
+        };
+        let removed = self.model_profiles.remove(index);
+        if self.active_model_profile_id.as_deref() == Some(profile_id) {
+            self.active_model_profile_id = self
+                .model_profiles
+                .first()
+                .map(|profile| profile.id.clone());
+        }
+        format!("Deleted model profile: {}", removed.name)
     }
 
     pub fn ensure_prompt_defaults(&mut self) {
@@ -543,6 +1050,28 @@ impl AppSnapshot {
                 .provider_profiles
                 .first()
                 .map(|profile| profile.id.clone());
+        }
+    }
+
+    pub fn ensure_orchestrator_defaults(&mut self) {
+        let active_id = self.active_provider_profile_id.clone();
+        if self.orchestrator.routing_provider_profile_id.is_none() {
+            self.orchestrator.routing_provider_profile_id = active_id.clone();
+        }
+        if self.orchestrator.worker_provider_profile_id.is_none() {
+            self.orchestrator.worker_provider_profile_id = active_id;
+        }
+        if self.orchestrator.max_parallelism == 0 {
+            self.orchestrator.max_parallelism = default_max_parallelism();
+        }
+        if self.orchestrator.max_steps == 0 {
+            self.orchestrator.max_steps = default_run_step_budget();
+        }
+        if self.orchestrator.verification_retries == 0 {
+            self.orchestrator.verification_retries = default_verification_retry_budget();
+        }
+        if self.orchestrator.no_progress_turns == 0 {
+            self.orchestrator.no_progress_turns = default_no_progress_turn_limit();
         }
     }
 
@@ -615,11 +1144,11 @@ impl AppSnapshot {
         };
 
         let removed = self.provider_profiles.remove(index);
-        if self.active_provider_profile_id.as_deref() == Some(profile_id) {
-            if let Some(next) = self.provider_profiles.first().cloned() {
-                self.provider = next.config;
-                self.active_provider_profile_id = Some(next.id);
-            }
+        if self.active_provider_profile_id.as_deref() == Some(profile_id)
+            && let Some(next) = self.provider_profiles.first().cloned()
+        {
+            self.provider = next.config;
+            self.active_provider_profile_id = Some(next.id);
         }
         format!("Deleted provider profile: {}", removed.name)
     }
@@ -730,11 +1259,30 @@ fn normalize_run_branding(run: &mut AgentRun) {
         strip_agent_branding(&mut event.title);
         strip_agent_branding(&mut event.body);
     }
+    for call in &mut run.scratchpad.meta_tool_calls {
+        strip_agent_branding(&mut call.result);
+    }
+    for worker in &mut run.scratchpad.workers {
+        strip_agent_branding(&mut worker.role);
+        strip_agent_branding(&mut worker.result);
+        for evidence in &mut worker.evidence {
+            strip_agent_branding(evidence);
+        }
+    }
 }
 
 fn strip_agent_branding(value: &mut String) {
     if value.contains("ASKK ") {
         *value = value.replace("ASKK ", "");
+    }
+}
+
+fn sanitized_profile_name(name: &str, fallback: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        fallback.to_string()
+    } else {
+        trimmed.to_string()
     }
 }
 
@@ -1089,9 +1637,11 @@ mod tests {
 
         let delete_status = snapshot.delete_provider_profile(&first_id);
         assert_eq!(delete_status, "Deleted provider profile: Second");
-        assert!(!snapshot
-            .provider_profiles
-            .iter()
-            .any(|profile| profile.id == first_id));
+        assert!(
+            !snapshot
+                .provider_profiles
+                .iter()
+                .any(|profile| profile.id == first_id)
+        );
     }
 }

@@ -40,15 +40,11 @@ pub trait StructuredResponse: Sized {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ResponseFormat {
     Json,
+    #[default]
     Toon,
-}
-
-impl Default for ResponseFormat {
-    fn default() -> Self {
-        Self::Toon
-    }
 }
 
 impl ResponseFormat {
@@ -80,13 +76,6 @@ impl ReActAction {
             _ => Self::Answer,
         }
     }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Tool => "tool",
-            Self::Answer => "answer",
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -96,6 +85,52 @@ pub struct ReActResponse {
     pub plan: Vec<String>,
     pub action: ReActAction,
     pub response: String,
+}
+
+// Verification critic response. Parsed by the (currently dormant) critic path in
+// `inference.rs`; kept ready for the verification loop, so allow it to be unused.
+#[allow(dead_code)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct VerificationCriticResponse {
+    pub passed: bool,
+    pub reason: String,
+    pub required_changes: Vec<String>,
+}
+
+impl StructuredResponse for VerificationCriticResponse {
+    fn fields() -> &'static [ResponseField] {
+        &[
+            ResponseField {
+                name: "passed",
+                type_name: "boolean",
+                description: "true only when the worker result satisfies the goal using the supplied evidence.",
+            },
+            ResponseField {
+                name: "reason",
+                type_name: "string",
+                description: "One concise explanation of why verification passed or failed.",
+            },
+            ResponseField {
+                name: "required_changes",
+                type_name: "list",
+                description: "Concrete changes needed if failed. Use [] when passed.",
+            },
+        ]
+    }
+
+    fn from_fields(fields: BTreeMap<String, Value>, raw: &str) -> Self {
+        let reason = string_field(&fields, "reason");
+        let required_changes = list_field(&fields, "required_changes");
+        Self {
+            passed: bool_field(&fields, "passed"),
+            reason: if reason.trim().is_empty() {
+                raw.trim().to_string()
+            } else {
+                reason
+            },
+            required_changes,
+        }
+    }
 }
 
 impl ReActResponse {
@@ -170,22 +205,21 @@ pub struct ParsedToolCall {
 pub fn parse_tool_calls(response_text: &str) -> Vec<ParsedToolCall> {
     let normalized_text = normalize_tool_text(response_text);
     let text = normalized_text.trim();
-    if let Ok(value) = serde_json::from_str::<Value>(text) {
-        if let Some(tool) = value
+    if let Ok(value) = serde_json::from_str::<Value>(text)
+        && let Some(tool) = value
             .get("tool")
             .or_else(|| value.get("name"))
             .and_then(Value::as_str)
-        {
-            return vec![ParsedToolCall {
-                name: tool.to_string(),
-                args: value
-                    .get("args")
-                    .or_else(|| value.get("arguments"))
-                    .or_else(|| value.get("input"))
-                    .cloned()
-                    .unwrap_or(Value::Object(Default::default())),
-            }];
-        }
+    {
+        return vec![ParsedToolCall {
+            name: tool.to_string(),
+            args: value
+                .get("args")
+                .or_else(|| value.get("arguments"))
+                .or_else(|| value.get("input"))
+                .cloned()
+                .unwrap_or(Value::Object(Default::default())),
+        }];
     }
 
     parse_function_tool_call(text).into_iter().collect()
@@ -270,10 +304,8 @@ fn is_tool_name(value: &str) -> bool {
 }
 
 fn normalize_tool_text(raw: &str) -> String {
-    raw.replace('\u{201c}', "\"")
-        .replace('\u{201d}', "\"")
-        .replace('\u{2018}', "'")
-        .replace('\u{2019}', "'")
+    raw.replace(['\u{201c}', '\u{201d}'], "\"")
+        .replace(['\u{2018}', '\u{2019}'], "'")
 }
 
 pub fn response_to_result<T: StructuredResponse>(raw: &str) -> AppResult<T> {
@@ -281,6 +313,10 @@ pub fn response_to_result<T: StructuredResponse>(raw: &str) -> AppResult<T> {
     Ok(parsed)
 }
 
+// Streams the final-answer text as it arrives. Used by the SSE path in
+// `inference.rs`, which only compiles on the wasm target, so the host build
+// sees these helpers as unused.
+#[allow(dead_code)]
 pub fn partial_react_answer_text(raw: &str) -> Option<String> {
     let action = find_toon_field(raw, "action")?;
     let response = find_toon_field(raw, "response")?;
@@ -293,28 +329,30 @@ pub fn partial_react_answer_text(raw: &str) -> Option<String> {
     Some(response.value.trim_start().to_string())
 }
 
+#[allow(dead_code)]
 struct ToonField<'a> {
     start: usize,
     value: &'a str,
 }
 
+#[allow(dead_code)]
 fn find_toon_field<'a>(raw: &'a str, field: &str) -> Option<ToonField<'a>> {
     let mut offset = 0usize;
     for line in raw.split_inclusive('\n') {
         let line_without_newline = line.trim_end_matches('\n').trim_end_matches('\r');
-        if let Some((key, _value)) = line_without_newline.split_once(':') {
-            if clean_key(key) == field {
-                let value_start = offset + key.len() + 1;
-                let value_end = if field == "response" {
-                    raw.len()
-                } else {
-                    offset + line_without_newline.len()
-                };
-                return Some(ToonField {
-                    start: value_start,
-                    value: &raw[value_start..value_end],
-                });
-            }
+        if let Some((key, _value)) = line_without_newline.split_once(':')
+            && clean_key(key) == field
+        {
+            let value_start = offset + key.len() + 1;
+            let value_end = if field == "response" {
+                raw.len()
+            } else {
+                offset + line_without_newline.len()
+            };
+            return Some(ToonField {
+                start: value_start,
+                value: &raw[value_start..value_end],
+            });
         }
         offset += line.len();
     }
@@ -487,11 +525,25 @@ fn clean_key(raw: &str) -> String {
 fn string_field(fields: &BTreeMap<String, Value>, key: &str) -> String {
     fields
         .get(key)
-        .and_then(|value| match value {
-            Value::String(text) => Some(strip_wrapping_quotes(text)),
-            _ => Some(value.to_string()),
+        .map(|value| match value {
+            Value::String(text) => strip_wrapping_quotes(text),
+            _ => value.to_string(),
         })
         .unwrap_or_default()
+}
+
+// Used by `VerificationCriticResponse::from_fields` (dormant critic path).
+#[allow(dead_code)]
+fn bool_field(fields: &BTreeMap<String, Value>, key: &str) -> bool {
+    match fields.get(key) {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::String(text)) => matches!(
+            text.trim().to_ascii_lowercase().as_str(),
+            "true" | "yes" | "pass" | "passed"
+        ),
+        Some(Value::Number(number)) => number.as_u64().is_some_and(|value| value > 0),
+        _ => false,
+    }
 }
 
 fn list_field(fields: &BTreeMap<String, Value>, key: &str) -> Vec<String> {
