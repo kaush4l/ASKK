@@ -3,6 +3,10 @@
 use crate::state::{Agent, AgentRun, AppSnapshot};
 use serde::{Deserialize, Serialize};
 
+// These message enums intentionally carry a full `AppSnapshot` in one variant so a
+// run can be dispatched to / returned from a Web Worker in a single post. The size
+// asymmetry is by design, not a mistake.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum WorkerCommand {
     Dispatch(WorkerDispatch),
@@ -25,6 +29,7 @@ pub struct WorkerCancel {
     pub reason: String,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum WorkerEvent {
     Ready { worker_id: String },

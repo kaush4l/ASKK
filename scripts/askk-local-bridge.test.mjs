@@ -368,6 +368,130 @@ describe("ASKK local bridge web tools", () => {
         assert.equal(response.headers.get("access-control-allow-private-network"), "true");
     });
 
+    it("web_fetch returns cleaned text and the page title", async () => {
+        const mock = http.createServer((request, response) => {
+            response.writeHead(200, { "Content-Type": "text/html" });
+            response.end(
+                "<html><head><title>Doc Title</title></head><body><h1>Heading</h1><p>Body &amp; text.</p><script>ignore()</script></body></html>",
+            );
+        });
+        const mockPort = await listen(mock);
+
+        const bridge = createBridgeServer().server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/web_fetch`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: `http://127.0.0.1:${mockPort}/doc` }),
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 200);
+        assert.equal(body.success, true);
+        assert.equal(body.data.title, "Doc Title");
+        assert.match(body.data.text, /Heading/);
+        assert.match(body.data.text, /Body & text\./);
+        assert.doesNotMatch(body.data.text, /ignore\(\)/);
+    });
+
+    it("run_command is disabled unless --allow-exec is set", async () => {
+        const bridge = createBridgeServer().server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/run_command`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: "echo hi" }),
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 400);
+        assert.equal(body.success, false);
+        assert.match(body.error, /--allow-exec/);
+    });
+
+    it("run_command executes allowed commands in the run root when enabled", async () => {
+        const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), "askk-run-"));
+        const bridge = createBridgeServer({ runRoot, allowExec: true }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/run_command`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: "echo askk-ok" }),
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 200);
+        assert.equal(body.data.ok, true);
+        assert.equal(body.data.exit_code, 0);
+        assert.match(body.data.stdout, /askk-ok/);
+    });
+
+    it("run_command blocks binaries outside the allow list", async () => {
+        const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), "askk-run-"));
+        const bridge = createBridgeServer({ runRoot, allowExec: true }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/run_command`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: "curl https://example.com" }),
+        });
+        const body = await response.json();
+
+        assert.equal(response.status, 400);
+        assert.equal(body.success, false);
+        assert.match(body.error, /not in the allowed binary list/);
+    });
+
+    it("fs_write, fs_read, and fs_list round-trip inside the run root", async () => {
+        const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), "askk-run-"));
+        const bridge = createBridgeServer({ runRoot }).server;
+        const bridgePort = await listen(bridge);
+        const base = `http://127.0.0.1:${bridgePort}/askk/tools`;
+
+        const write = await fetch(`${base}/fs_write`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: "src/index.ts", content: "console.log('hi')\n" }),
+        });
+        assert.equal((await write.json()).success, true);
+
+        const read = await fetch(`${base}/fs_read`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: "src/index.ts" }),
+        });
+        assert.equal((await read.json()).data.content, "console.log('hi')\n");
+
+        const list = await fetch(`${base}/fs_list`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+        });
+        const listed = await list.json();
+        assert.equal(listed.success, true);
+        assert.ok(listed.data.files.some((file) => file.path === "src/index.ts" && file.dir === false));
+        assert.ok(listed.data.files.some((file) => file.path === "src" && file.dir === true));
+    });
+
+    it("fs tools refuse paths that escape the run root", async () => {
+        const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), "askk-run-"));
+        const bridge = createBridgeServer({ runRoot }).server;
+        const bridgePort = await listen(bridge);
+
+        const response = await fetch(`http://127.0.0.1:${bridgePort}/askk/tools/fs_write`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: "../escape.txt", content: "no" }),
+        });
+        const body = await response.json();
+        assert.equal(body.success, false);
+        assert.match(body.error, /escape/i);
+    });
+
     it("reads workspace soul, agent, and skill Markdown files", async () => {
         const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "askk-files-"));
         await fs.mkdir(path.join(workspaceRoot, "agents"), { recursive: true });

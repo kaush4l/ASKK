@@ -3,6 +3,7 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_TARGET = "http://127.0.0.1:8873/v1";
@@ -11,6 +12,46 @@ const DEFAULT_PORT = 8874;
 const DEFAULT_BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 const DEFAULT_TAVILY_BASE_URL = "https://api.tavily.com";
 const DEFAULT_DUCKDUCKGO_SEARCH_URL = "https://html.duckduckgo.com/html/";
+const DEFAULT_RUN_ROOT_DIRNAME = ".askk-workspace";
+const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
+const MAX_EXEC_OUTPUT_CHARS = 60_000;
+const MAX_FETCH_CHARS = 24_000;
+// Commands the agent and Workspace page may run when execution is enabled. The
+// first whitespace token of a command must be on this list. This is a guardrail,
+// not a sandbox: enabling execution runs real processes on the bridge machine.
+const ALLOWED_EXEC_BINARIES = new Set([
+    "bun",
+    "bunx",
+    "node",
+    "npm",
+    "npx",
+    "pnpm",
+    "yarn",
+    "deno",
+    "tsc",
+    "vitest",
+    "jest",
+    "eslint",
+    "prettier",
+    "ls",
+    "cat",
+    "echo",
+    "pwd",
+    "mkdir",
+    "rm",
+    "mv",
+    "cp",
+    "touch",
+    "git",
+    "grep",
+    "find",
+    "sed",
+    "head",
+    "tail",
+    "wc",
+    "true",
+    "false",
+]);
 
 export function createBridgeServer(rawOptions = {}) {
     const targetBase = normalizeBaseUrl(
@@ -48,6 +89,20 @@ export function createBridgeServer(rawOptions = {}) {
             process.env.ASKK_DUCKDUCKGO_SEARCH_URL ??
             DEFAULT_DUCKDUCKGO_SEARCH_URL,
     };
+    const runRoot = path.resolve(
+        rawOptions.runRoot ??
+            process.env.ASKK_RUN_ROOT ??
+            path.join(workspaceRoot, DEFAULT_RUN_ROOT_DIRNAME),
+    );
+    const execConfig = {
+        runRoot,
+        allowExec: toBool(rawOptions.allowExec ?? process.env.ASKK_ALLOW_EXEC ?? false),
+        execTimeoutMs: clampInt(
+            rawOptions.execTimeoutMs ?? process.env.ASKK_EXEC_TIMEOUT_MS ?? DEFAULT_EXEC_TIMEOUT_MS,
+            1_000,
+            600_000,
+        ),
+    };
 
     const server = http.createServer(async (request, response) => {
         setCorsHeaders(request, response);
@@ -65,7 +120,7 @@ export function createBridgeServer(rawOptions = {}) {
                 return;
             }
             if (incoming.pathname.startsWith(`${toolsPath}/`)) {
-                await handleToolRequest(request, response, toolsPath, searchConfig);
+                await handleToolRequest(request, response, toolsPath, searchConfig, execConfig);
                 return;
             }
 
@@ -79,7 +134,7 @@ export function createBridgeServer(rawOptions = {}) {
         }
     });
 
-    return { server, targetBase, listenBasePath, workspaceRoot };
+    return { server, targetBase, listenBasePath, workspaceRoot, runRoot, execConfig };
 }
 
 export function startBridge(rawOptions = {}) {
@@ -93,8 +148,17 @@ export function startBridge(rawOptions = {}) {
         console.log(`http://${host}:${port}${bridge.listenBasePath}`);
         console.log(`Workspace Markdown root: ${bridge.workspaceRoot}`);
         console.log(`Workspace file endpoint: http://${host}:${port}/askk/files`);
-        console.log("Web tool endpoints:");
+        console.log(`Project run root (disk fs + command exec): ${bridge.runRoot}`);
+        console.log(
+            bridge.execConfig.allowExec
+                ? `Command execution ENABLED (timeout ${bridge.execConfig.execTimeoutMs}ms). The agent can run bun/node/etc. inside the run root.`
+                : "Command execution DISABLED. Pass --allow-exec (or ASKK_ALLOW_EXEC=1) to let the agent run bun/node projects.",
+        );
+        console.log("Agent tool endpoints:");
         console.log(`http://${host}:${port}/askk/tools/web_search`);
+        console.log(`http://${host}:${port}/askk/tools/web_fetch`);
+        console.log(`http://${host}:${port}/askk/tools/run_command`);
+        console.log(`http://${host}:${port}/askk/tools/fs_read | fs_write | fs_list`);
     });
     return bridge.server;
 }
@@ -127,7 +191,7 @@ async function proxyProviderRequest(request, response, targetBase, listenBasePat
     response.end();
 }
 
-async function handleToolRequest(request, response, toolsPath, config) {
+async function handleToolRequest(request, response, toolsPath, config, execConfig) {
     if (request.method !== "POST") {
         writeJson(response, 405, { success: false, error: "Tool endpoints require POST." });
         return;
@@ -139,6 +203,31 @@ async function handleToolRequest(request, response, toolsPath, config) {
 
     if (toolName === "web_search") {
         const result = await webSearch(body, config);
+        writeJson(response, result.success === false ? 400 : 200, result);
+        return;
+    }
+    if (toolName === "web_fetch") {
+        const result = await webFetch(body);
+        writeJson(response, result.success === false ? 400 : 200, result);
+        return;
+    }
+    if (toolName === "run_command") {
+        const result = await runCommand(body, execConfig);
+        writeJson(response, result.success === false ? 400 : 200, result);
+        return;
+    }
+    if (toolName === "fs_read") {
+        const result = await fsRead(body, execConfig);
+        writeJson(response, result.success === false ? 400 : 200, result);
+        return;
+    }
+    if (toolName === "fs_write") {
+        const result = await fsWrite(body, execConfig);
+        writeJson(response, result.success === false ? 400 : 200, result);
+        return;
+    }
+    if (toolName === "fs_list") {
+        const result = await fsList(body, execConfig);
         writeJson(response, result.success === false ? 400 : 200, result);
         return;
     }
@@ -240,6 +329,249 @@ export async function webSearch(body, config = {}) {
         return searxngSearch(body, query, count, mergedConfig);
     }
     return duckDuckGoSearch(query, count, mergedConfig);
+}
+
+export async function webFetch(body) {
+    const target = requiredString(body, "url");
+    let url;
+    try {
+        url = new URL(target);
+    } catch {
+        return { success: false, error: `web_fetch requires an absolute http(s) URL: ${target}` };
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+        return { success: false, error: `web_fetch only supports http(s) URLs: ${target}` };
+    }
+
+    let response;
+    try {
+        response = await fetch(url, {
+            redirect: "follow",
+            headers: {
+                Accept: "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.8",
+                "User-Agent": "ASKK research agent (+https://github.com/kaush4l/ASKK)",
+            },
+        });
+    } catch (error) {
+        return {
+            success: false,
+            error: `web_fetch could not reach ${url.toString()}: ${error instanceof Error ? error.message : String(error)}`,
+        };
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    const raw = await response.text();
+    if (!response.ok) {
+        return providerError("web_fetch", response.status, { text: raw.slice(0, 400) });
+    }
+
+    const isHtml = contentType.includes("html") || /^\s*<(?:!doctype|html)/i.test(raw);
+    const title = isHtml ? extractTitle(raw) : "";
+    const text = isHtml ? htmlToText(raw) : raw.trim();
+    const truncated = text.length > MAX_FETCH_CHARS;
+
+    return {
+        success: true,
+        data: {
+            url: response.url || url.toString(),
+            status: response.status,
+            content_type: contentType,
+            title,
+            truncated,
+            text: truncated ? `${text.slice(0, MAX_FETCH_CHARS)}\n…[truncated]` : text,
+        },
+    };
+}
+
+export async function runCommand(body, execConfig = {}) {
+    if (!execConfig.allowExec) {
+        return {
+            success: false,
+            error:
+                "Command execution is disabled. Restart the ASKK local bridge with --allow-exec (or ASKK_ALLOW_EXEC=1) to let the agent run bun/node projects in the run root.",
+        };
+    }
+
+    const command = requiredString(body, "command");
+    const binary = command.trim().split(/\s+/, 1)[0] ?? "";
+    if (!ALLOWED_EXEC_BINARIES.has(binary)) {
+        return {
+            success: false,
+            error: `run_command blocked: '${binary}' is not in the allowed binary list. Allowed: ${[...ALLOWED_EXEC_BINARIES].join(", ")}.`,
+        };
+    }
+
+    let cwd;
+    try {
+        cwd = runPath(execConfig.runRoot, optionalString(body, "cwd") || ".");
+        await fs.mkdir(cwd, { recursive: true });
+    } catch (error) {
+        return { success: false, error: `run_command invalid cwd: ${error.message}` };
+    }
+
+    const timeoutMs = clampInt(body.timeout_ms ?? execConfig.execTimeoutMs, 1_000, 600_000);
+    return await new Promise((resolve) => {
+        const child = spawn(command, {
+            cwd,
+            shell: true,
+            env: { ...process.env, CI: "1", FORCE_COLOR: "0" },
+        });
+        let stdout = "";
+        let stderr = "";
+        let timedOut = false;
+        const timer = setTimeout(() => {
+            timedOut = true;
+            child.kill("SIGKILL");
+        }, timeoutMs);
+
+        child.stdout.on("data", (chunk) => {
+            stdout += chunk.toString("utf8");
+            if (stdout.length > MAX_EXEC_OUTPUT_CHARS * 2) {
+                stdout = stdout.slice(-MAX_EXEC_OUTPUT_CHARS * 2);
+            }
+        });
+        child.stderr.on("data", (chunk) => {
+            stderr += chunk.toString("utf8");
+            if (stderr.length > MAX_EXEC_OUTPUT_CHARS * 2) {
+                stderr = stderr.slice(-MAX_EXEC_OUTPUT_CHARS * 2);
+            }
+        });
+        child.on("error", (error) => {
+            clearTimeout(timer);
+            resolve({ success: false, error: `run_command failed to start '${binary}': ${error.message}` });
+        });
+        child.on("close", (code, signal) => {
+            clearTimeout(timer);
+            const exitCode = code ?? (signal ? 1 : 0);
+            resolve({
+                success: true,
+                data: {
+                    command,
+                    cwd: path.relative(execConfig.runRoot, cwd) || ".",
+                    exit_code: exitCode,
+                    ok: exitCode === 0 && !timedOut,
+                    timed_out: timedOut,
+                    stdout: clampText(stdout, MAX_EXEC_OUTPUT_CHARS),
+                    stderr: clampText(stderr, MAX_EXEC_OUTPUT_CHARS),
+                },
+            });
+        });
+    });
+}
+
+export async function fsRead(body, execConfig = {}) {
+    const relativePath = requiredString(body, "path");
+    try {
+        const target = runPath(execConfig.runRoot, relativePath);
+        const content = await fs.readFile(target, "utf8");
+        return {
+            success: true,
+            data: { path: relativePath, content: clampText(content, MAX_FETCH_CHARS * 4) },
+        };
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return { success: false, error: `fs_read: file not found: ${relativePath}` };
+        }
+        return { success: false, error: `fs_read failed for ${relativePath}: ${error.message}` };
+    }
+}
+
+export async function fsWrite(body, execConfig = {}) {
+    const relativePath = requiredString(body, "path");
+    const content = optionalString(body, "content");
+    try {
+        const target = runPath(execConfig.runRoot, relativePath);
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, content, "utf8");
+        return {
+            success: true,
+            data: { path: relativePath, bytes: Buffer.byteLength(content, "utf8") },
+        };
+    } catch (error) {
+        return { success: false, error: `fs_write failed for ${relativePath}: ${error.message}` };
+    }
+}
+
+export async function fsList(body, execConfig = {}) {
+    const relativeDir = optionalString(body, "path") || ".";
+    try {
+        const target = runPath(execConfig.runRoot, relativeDir);
+        await fs.mkdir(execConfig.runRoot, { recursive: true });
+        const files = await listProjectTree(target, execConfig.runRoot);
+        return { success: true, data: { root: relativeDir, files } };
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return { success: true, data: { root: relativeDir, files: [] } };
+        }
+        return { success: false, error: `fs_list failed for ${relativeDir}: ${error.message}` };
+    }
+}
+
+const IGNORED_TREE_DIRS = new Set(["node_modules", ".git", ".cache", "dist", "target"]);
+
+async function listProjectTree(directory, runRoot, depth = 0) {
+    if (depth > 8) {
+        return [];
+    }
+    let entries;
+    try {
+        entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return [];
+        }
+        throw error;
+    }
+    const files = [];
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+        if (entry.name.startsWith(".") && entry.name !== ".gitignore") {
+            continue;
+        }
+        const absolute = path.join(directory, entry.name);
+        const relative = path.relative(runRoot, absolute).split(path.sep).join("/");
+        if (entry.isDirectory()) {
+            if (IGNORED_TREE_DIRS.has(entry.name)) {
+                files.push({ path: relative, dir: true, truncated: true });
+                continue;
+            }
+            files.push({ path: relative, dir: true });
+            files.push(...(await listProjectTree(absolute, runRoot, depth + 1)));
+        } else if (entry.isFile()) {
+            files.push({ path: relative, dir: false });
+        }
+    }
+    return files;
+}
+
+function runPath(runRoot, relativePath) {
+    const root = path.resolve(runRoot);
+    const normalized = String(relativePath ?? ".")
+        .replace(/\\/g, "/")
+        .replace(/^\/+/, "");
+    if (normalized.split("/").some((part) => part === "..")) {
+        throw new Error(`path escapes run root: ${relativePath}`);
+    }
+    const resolved = path.resolve(root, normalized || ".");
+    if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+        throw new Error(`path escapes run root: ${relativePath}`);
+    }
+    return resolved;
+}
+
+function clampText(value, max) {
+    const text = String(value ?? "");
+    if (text.length <= max) {
+        return text;
+    }
+    return `${text.slice(0, max)}\n…[truncated]`;
+}
+
+function toBool(value) {
+    if (typeof value === "boolean") {
+        return value;
+    }
+    const normalized = String(value ?? "").trim().toLowerCase();
+    return ["1", "true", "yes", "on"].includes(normalized);
 }
 
 async function braveSearch(body, query, count, config) {
@@ -477,6 +809,8 @@ function normalizeWorkspaceRelativePath(relativePath) {
     return normalized;
 }
 
+const BOOLEAN_FLAGS = new Set(["allowExec"]);
+
 function parseArgs(args) {
     const parsed = {};
     for (let index = 0; index < args.length; index += 1) {
@@ -490,11 +824,15 @@ function parseArgs(args) {
         }
         const [rawKey, inlineValue] = arg.slice(2).split("=", 2);
         const key = rawKey.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+        if (BOOLEAN_FLAGS.has(key) && inlineValue === undefined) {
+            parsed[key] = true;
+            continue;
+        }
         const value = inlineValue ?? args[index + 1];
         if (value === undefined || value.startsWith("--")) {
             throw new Error(`Missing value for ${arg}`);
         }
-        parsed[key] = value;
+        parsed[key] = BOOLEAN_FLAGS.has(key) ? toBool(value) : value;
         if (inlineValue === undefined) {
             index += 1;
         }
@@ -512,6 +850,11 @@ Options:
   --port        Local port to bind. Default: ${DEFAULT_PORT}
   --base-path   Path exposed by the bridge. Default: target URL path
   --workspace-root  Root containing soul.md, agents/, and skills/. Default: current directory
+  --run-root    Disk directory the agent's fs_* tools and run_command operate in.
+                Default: <workspace-root>/${DEFAULT_RUN_ROOT_DIRNAME}
+  --allow-exec  Enable run_command so the agent can run bun/node/etc. in the run root.
+                DANGER: this runs real processes on this machine. Default: disabled.
+  --exec-timeout-ms  Per-command timeout in milliseconds. Default: ${DEFAULT_EXEC_TIMEOUT_MS}
 
 Web tool environment:
   BRAVE_API_KEY or BRAVE_SEARCH_API_KEY
@@ -521,7 +864,8 @@ Web tool environment:
   Without provider keys or SearXNG, web_search falls back to key-free DuckDuckGo HTML search.
 
 Bridge environment:
-  ASKK_BRIDGE_TARGET, ASKK_BRIDGE_HOST, ASKK_BRIDGE_PORT, ASKK_WORKSPACE_ROOT`);
+  ASKK_BRIDGE_TARGET, ASKK_BRIDGE_HOST, ASKK_BRIDGE_PORT, ASKK_WORKSPACE_ROOT
+  ASKK_RUN_ROOT, ASKK_ALLOW_EXEC, ASKK_EXEC_TIMEOUT_MS`);
 }
 
 function normalizeBaseUrl(raw) {

@@ -5,6 +5,7 @@ use super::inspector::InspectorPanel;
 use super::provider_settings::ProviderSettings;
 use super::soul_page::SoulPage;
 use super::tools_page::ToolsPage;
+use super::workspace_page::WorkspacePage;
 use super::{FAVICON, MAIN_CSS};
 use crate::state::AppSnapshot;
 use dioxus::prelude::*;
@@ -12,6 +13,7 @@ use dioxus::prelude::*;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DashboardPage {
     Chat,
+    Workspace,
     Agents,
     Soul,
     Tools,
@@ -23,6 +25,7 @@ impl DashboardPage {
     fn label(self) -> &'static str {
         match self {
             Self::Chat => "Chat",
+            Self::Workspace => "Workspace",
             Self::Agents => "Agents",
             Self::Soul => "Soul",
             Self::Tools => "Tools",
@@ -43,7 +46,12 @@ pub fn AppShell(
     let current = snapshot.read().clone();
     let mut active_page = use_signal(|| DashboardPage::Chat);
     let mut nav_collapsed = use_signal(|| false);
-    let frame_class = match (nav_collapsed(), active_page() == DashboardPage::Chat) {
+    // The Chat and Workspace pages own their full width; other pages show the event log.
+    let full_width = matches!(
+        active_page(),
+        DashboardPage::Chat | DashboardPage::Workspace
+    );
+    let frame_class = match (nav_collapsed(), full_width) {
         (true, true) => "dashboard-frame nav-collapsed no-log",
         (true, false) => "dashboard-frame nav-collapsed",
         (false, true) => "dashboard-frame no-log",
@@ -56,6 +64,7 @@ pub fn AppShell(
     };
     let pages = [
         DashboardPage::Chat,
+        DashboardPage::Workspace,
         DashboardPage::Agents,
         DashboardPage::Soul,
         DashboardPage::Tools,
@@ -115,6 +124,9 @@ pub fn AppShell(
                         DashboardPage::Chat => rsx! {
                             ChatPanel { snapshot, goal }
                         },
+                        DashboardPage::Workspace => rsx! {
+                            WorkspacePage { snapshot, goal }
+                        },
                         DashboardPage::Agents => rsx! {
                             AgentsPage {
                                 snapshot,
@@ -137,7 +149,7 @@ pub fn AppShell(
                     }}
                 }
 
-                if active_page() != DashboardPage::Chat {
+                if !full_width {
                     EventLogPanel { snapshot }
                 }
             }
@@ -148,6 +160,7 @@ pub fn AppShell(
 fn nav_glyph(page: DashboardPage) -> &'static str {
     match page {
         DashboardPage::Chat => "C",
+        DashboardPage::Workspace => "W",
         DashboardPage::Agents => "A",
         DashboardPage::Soul => "S",
         DashboardPage::Tools => "T",

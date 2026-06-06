@@ -924,3 +924,243 @@ pre {
         grid-template-columns: 1fr;
     }
 }
+
+/* Workspace IDE page */
+.workspace-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+}
+
+.workspace-hint {
+    margin: 0;
+    color: #6f6385;
+    font-size: 13px;
+}
+
+.workspace-hint code {
+    background: #efeaf9;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+.workspace-notice {
+    background: #fff8de;
+    border: 1px solid #f0e3a8;
+    color: #5b4a00;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    word-break: break-word;
+}
+
+.workspace-grid {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 12px;
+    flex: 1 1 auto;
+    min-height: 320px;
+}
+
+.workspace-tree,
+.workspace-editor,
+.workspace-terminal,
+.workspace-agent {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid #d8cfee;
+    border-radius: 8px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.workspace-tree-head,
+.workspace-editor-head,
+.workspace-terminal-head,
+.workspace-agent-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: #2e2140;
+    border-bottom: 1px solid #ece5f8;
+}
+
+.workspace-new-file {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid #f1ecfa;
+}
+
+.workspace-input {
+    width: 100%;
+}
+
+.workspace-input.mono,
+.workspace-code,
+.workspace-terminal-output,
+.editor-path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.workspace-tree-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 6px;
+    overflow: auto;
+    min-height: 0;
+}
+
+.workspace-empty {
+    color: #8a7da0;
+    font-size: 13px;
+    padding: 6px;
+}
+
+.workspace-node {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 28px;
+    padding: 4px 6px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #2e2140;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+button.workspace-node {
+    cursor: pointer;
+}
+
+button.workspace-node:hover {
+    background: #f1ebff;
+}
+
+.workspace-node.selected {
+    background: #e7ddff;
+    color: #4c1d95;
+}
+
+.workspace-node.dir {
+    color: #8a7da0;
+}
+
+.node-glyph {
+    color: #a99cc4;
+}
+
+.editor-path {
+    font-size: 12px;
+    color: #6f6385;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.editor-dirty {
+    color: #b45309;
+    font-size: 12px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.workspace-code {
+    flex: 1 1 auto;
+    min-height: 220px;
+    resize: none;
+    border: 0;
+    border-radius: 0;
+    background: #1e1b2e;
+    color: #ece7fb;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 12px;
+    tab-size: 2;
+}
+
+.workspace-code:focus {
+    outline: none;
+}
+
+.workspace-quick-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+}
+
+.chip-button {
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid #d8cfee;
+    border-radius: 14px;
+    background: #f1ebff;
+    color: #5b21b6;
+    font-size: 12px;
+}
+
+.chip-button:hover {
+    background: #e7ddff;
+}
+
+.workspace-command-row {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    align-items: flex-start;
+}
+
+.workspace-command-row .workspace-input {
+    flex: 1 1 auto;
+}
+
+.workspace-agent .workspace-command-row textarea {
+    min-height: 60px;
+    resize: vertical;
+}
+
+.workspace-terminal-output {
+    margin: 0;
+    padding: 10px 12px;
+    min-height: 64px;
+    max-height: 240px;
+    overflow: auto;
+    background: #16131f;
+    color: #cfc7e6;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.workspace-agent-answer {
+    margin: 8px;
+    padding: 10px 12px;
+    background: #f3fff6;
+    border: 1px solid #cdeed6;
+    border-radius: 6px;
+    font-size: 14px;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+    .workspace-grid {
+        grid-template-columns: 1fr;
+    }
+}

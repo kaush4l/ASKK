@@ -79,13 +79,75 @@ State is the source of truth. Runs, messages, tool calls/results, worker progres
 
 The bundled default agent is generic and stored in `agents/planner.md`; the file name is only a source path. Edit `soul.md`, `agents/*.md`, and `skills/**/*.md` through the hosted app plus local bridge when you want to change behavior without changing Rust code.
 
-## Web Tools
+## Workspace and running projects (Bun)
 
-ASKK exposes one active Hermes/OpenClaw-style compiled tool to agents:
+The **Workspace** page is a browser-hosted text editor over the bridge's on-disk
+**run root**: a file tree, an editor pane, and a terminal that runs commands in
+the same directory the coding agent operates on. Files the agent writes appear in
+the tree, and edits you make are visible to `run_command` and `bun`.
 
-- `web_search({ query, count?, country?, language?, freshness?, date_after?, date_before? })`
+To enable running and testing real projects, start the bridge with execution
+turned on:
 
-The tool calls the local bridge at `http://127.0.0.1:8874/askk/tools/web_search`. Configure the bridge URL, provider, default count, optional country/language/freshness, and optional provider keys on the Tools page. Search-provider keys entered there are visible to browser code and are persisted only when `Persist web-search API keys` is enabled.
+```sh
+node scripts/askk-local-bridge.mjs --allow-exec
+```
+
+- `--allow-exec` (or `ASKK_ALLOW_EXEC=1`) is required before any command runs;
+  the default is **disabled**. Execution runs real processes on the bridge
+  machine, so only enable it when you intend to run projects.
+- `--run-root <dir>` (or `ASKK_RUN_ROOT`) sets the project directory. Default:
+  `<workspace-root>/.askk-workspace`. All `fs_*` and `run_command` calls are
+  confined to this directory; paths that escape it are rejected.
+- `--exec-timeout-ms <n>` caps per-command runtime (default 120000).
+- Commands are limited to an allow list of common dev binaries (`bun`, `bunx`,
+  `node`, `npm`, `npx`, `pnpm`, `yarn`, `deno`, `tsc`, `vitest`, `git`, and basic
+  shell utilities). Bun is the default runtime.
+
+Typical flow: open the Workspace page, ask the coding agent to "create a Bun
+project with an `add(a, b)` function and a passing test, then verify with
+`bun test`", and watch it scaffold files, run the test, and report complete only
+after the test passes. You can also edit files and run commands directly from the
+editor and terminal.
+
+## Compiled Tools
+
+ASKK exposes these compiled tools to agents. Every one runs in the browser or
+through the local bridge, and tool output is always treated as untrusted data,
+never as instructions.
+
+Research:
+
+- `web_search({ query, count?, country?, language?, freshness?, date_after?, date_before? })` — discover sources.
+- `web_fetch({ url })` — fetch one page/document and return its cleaned text and title, so the agent can read a source in full instead of relying on search snippets.
+
+Files and code (disk-backed, shared with the Workspace page and `bun`):
+
+- `fs_write({ path, content })`, `fs_read({ path })`, `fs_list({ path? })` — create, read, and list files in the bridge **run root**.
+- `run_command({ command, cwd?, timeout_ms? })` — run a command (bun, node, npm, tsc, git, …) in the run root. Returns `exit_code`, `ok`, `stdout`, `stderr`. Requires the bridge started with `--allow-exec`.
+
+In-browser virtual filesystem (no bridge needed, IndexedDB-backed):
+
+- `file_write`, `file_read`, `file_list`.
+
+The web tools call the local bridge under `http://127.0.0.1:8874/askk/tools/`. Configure the bridge URL, provider, default count, optional country/language/freshness, and optional provider keys on the Tools page. Search-provider keys entered there are visible to browser code and are persisted only when `Persist web-search API keys` is enabled.
+
+### How the agent behaves
+
+Behavior is driven by the Markdown prompts (`soul.md`, `agents/*.md`,
+`skills/**`), not hard-coded into the loop:
+
+- **Research:** the agent does not answer from the first page of results. It
+  searches, fetches and reads the best sources, synthesizes, names the open gaps
+  and contradictions, then searches again until the picture is complete — and
+  cites the URLs it read.
+- **Building code:** the agent treats *complete* as *verified*, not *written*. It
+  scaffolds files with `fs_write`, runs and tests with `run_command`, and only
+  reports a task done after a verification command (e.g. `bun test`) returns
+  `exit_code` 0, citing that passing command as proof.
+
+The bundled agents are `Agent` (the default generalist, enabled), plus `Coder`,
+`Researcher`, and `Synthesizer` (disabled — enable them on the Agents page).
 
 Provider `auto` uses this order:
 

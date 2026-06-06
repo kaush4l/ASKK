@@ -6,8 +6,9 @@ use uuid::Uuid;
 pub type AppResult<T> = Result<T, String>;
 
 const DEFAULT_SOUL: &str = include_str!("../soul.md");
-const DEFAULT_AGENT_FILES: [(&str, &str); 3] = [
+const DEFAULT_AGENT_FILES: [(&str, &str); 4] = [
     ("agents/planner.md", include_str!("../agents/planner.md")),
+    ("agents/coder.md", include_str!("../agents/coder.md")),
     (
         "agents/researcher.md",
         include_str!("../agents/researcher.md"),
@@ -17,10 +18,14 @@ const DEFAULT_AGENT_FILES: [(&str, &str); 3] = [
         include_str!("../agents/synthesizer.md"),
     ),
 ];
-const DEFAULT_SKILL_FILES: [(&str, &str); 2] = [
+const DEFAULT_SKILL_FILES: [(&str, &str); 3] = [
     (
         "skills/research/SKILL.md",
         include_str!("../skills/research/SKILL.md"),
+    ),
+    (
+        "skills/coding/SKILL.md",
+        include_str!("../skills/coding/SKILL.md"),
     ),
     (
         "skills/synthesis/SKILL.md",
@@ -787,6 +792,11 @@ impl Default for AppSnapshot {
 pub fn default_tool_names() -> Vec<String> {
     vec![
         "web_search".to_string(),
+        "web_fetch".to_string(),
+        "run_command".to_string(),
+        "fs_read".to_string(),
+        "fs_write".to_string(),
+        "fs_list".to_string(),
         "file_read".to_string(),
         "file_write".to_string(),
         "file_list".to_string(),
@@ -817,7 +827,10 @@ fn default_max_parallelism() -> u32 {
 }
 
 fn default_run_step_budget() -> u32 {
-    8
+    // Research and coding goals iterate: search → read → synthesize → re-search,
+    // or write → run → test → fix. Give the loop enough turns to actually verify
+    // before it is forced to stop at the budget.
+    24
 }
 
 fn default_verification_retry_budget() -> u32 {
@@ -1530,6 +1543,9 @@ pub fn event(
 
 #[cfg(test)]
 mod tests {
+    // Tests build a default snapshot and then assign the one field under test; that
+    // reads more clearly than a full struct-update literal here.
+    #![allow(clippy::field_reassign_with_default)]
     use super::*;
     use serde_json::json;
 
@@ -1805,7 +1821,17 @@ mod tests {
     fn default_tool_list_contains_expected_browser_tools() {
         assert_eq!(
             default_tool_names(),
-            vec!["web_search", "file_read", "file_write", "file_list"]
+            vec![
+                "web_search",
+                "web_fetch",
+                "run_command",
+                "fs_read",
+                "fs_write",
+                "fs_list",
+                "file_read",
+                "file_write",
+                "file_list",
+            ]
         );
         assert_eq!(parse_tools("all"), default_tool_names());
     }

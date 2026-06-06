@@ -7,6 +7,7 @@ mod provider_settings;
 mod shared;
 mod soul_page;
 mod tools_page;
+mod workspace_page;
 
 pub use app_shell::AppShell;
 pub use shared::set_status;
