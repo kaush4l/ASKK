@@ -6,6 +6,7 @@ use indexed_db_futures::transaction::TransactionMode;
 
 const DB_NAME: &str = "askk";
 const STORE_NAME: &str = "workspace";
+pub const PROJECT_FILES_STORE_NAME: &str = "project_files";
 const SNAPSHOT_KEY: &str = "snapshot";
 
 #[async_trait(?Send)]
@@ -22,10 +23,13 @@ pub struct IndexedDbStorage {
 impl IndexedDbStorage {
     pub async fn open() -> AppResult<Self> {
         let db = Database::open(DB_NAME)
-            .with_version(1u8)
+            .with_version(2u8)
             .with_on_upgrade_needed(|event, db| {
                 if event.old_version() == 0.0 {
                     db.create_object_store(STORE_NAME).build()?;
+                }
+                if event.old_version() < 2.0 {
+                    db.create_object_store(PROJECT_FILES_STORE_NAME).build()?;
                 }
                 Ok(())
             })
@@ -63,8 +67,10 @@ impl StorageAdapter for IndexedDbStorage {
     async fn save_snapshot(&self, snapshot: &AppSnapshot) -> AppResult<()> {
         let mut persisted = snapshot.clone();
         persisted.ensure_provider_profiles();
+        persisted.ensure_workflow_defaults();
         persisted.ensure_orchestrator_defaults();
         persisted.ensure_prompt_defaults();
+        persisted.checkpoint_current_run();
         persisted.normalize_agent_branding();
         persisted.normalize_agent_tools();
         persisted.sanitize_api_keys();
@@ -78,6 +84,22 @@ impl StorageAdapter for IndexedDbStorage {
         let store = tx
             .object_store(STORE_NAME)
             .map_err(|err| format!("Unable to open IndexedDB object store: {err}"))?;
+        let existing: Option<AppSnapshot> = store
+            .get(SNAPSHOT_KEY.to_string())
+            .serde()
+            .map_err(|err| format!("Unable to create IndexedDB get request: {err}"))?
+            .await
+            .map_err(|err| format!("Unable to read existing IndexedDB snapshot: {err}"))?;
+        if existing
+            .as_ref()
+            .is_some_and(|existing| persisted.is_stale_checkpoint_for(existing))
+        {
+            tx.commit()
+                .await
+                .map_err(|err| format!("Unable to commit skipped IndexedDB transaction: {err}"))?;
+            return Ok(());
+        }
+
         store
             .put(persisted)
             .with_key(SNAPSHOT_KEY.to_string())

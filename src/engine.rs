@@ -12,6 +12,7 @@ use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, RunBudgets, RunLane,
     RunScratchpad, ScratchpadObservation, ToolCall, default_tool_names, event, now_iso,
 };
+use crate::validators::ValidatorRegistry;
 use std::cell::Cell;
 use std::future::Future;
 use std::pin::Pin;
@@ -172,6 +173,7 @@ where
     }
     let inference = get_implementation(&provider);
     let specs = executor.domain_specs_for_agent(&enabled_tools);
+    let validators = ValidatorRegistry;
     // Prior conversation turns so the agent carries its session forward instead of
     // treating every query as a fresh start.
     let conversation = conversation_seed(&snapshot.runs);
@@ -263,34 +265,58 @@ where
 
         match parsed.action {
             ReActAction::Answer => {
-                run.final_answer = parsed.final_text();
-                run.events.push(event(
-                    &run.id,
+                let final_text = parsed.final_text();
+                if validate_final_answer_or_feedback(
+                    &validators,
+                    &mut run,
                     Some(agent_id.clone()),
-                    AgentEventKind::FinalAnswer,
-                    "Final answer",
-                    truncate(&run.final_answer, 600),
-                ));
-                answered = true;
-                observer(run.clone());
-                break;
-            }
-            ReActAction::Tool => {
-                let calls = parse_tool_calls(&parsed.response);
-                if calls.is_empty() {
-                    // The model chose a tool but produced no parseable call. Fall back
-                    // to surfacing its text rather than looping uselessly.
-                    run.final_answer = parsed.final_text();
+                    &final_text,
+                ) {
                     run.events.push(event(
                         &run.id,
                         Some(agent_id.clone()),
                         AgentEventKind::FinalAnswer,
-                        "Final answer (no tool call parsed)",
+                        "Final answer",
                         truncate(&run.final_answer, 600),
                     ));
                     answered = true;
                     observer(run.clone());
                     break;
+                }
+                observer(run.clone());
+                if run.status == "error" {
+                    break;
+                }
+            }
+            ReActAction::Tool => {
+                let calls = parse_tool_calls(&parsed.response);
+                if calls.is_empty() {
+                    // The model chose a tool but produced no parseable call. Validate
+                    // its text like any other final answer instead of returning raw,
+                    // unvalidated output.
+                    let final_text = parsed.final_text();
+                    if validate_final_answer_or_feedback(
+                        &validators,
+                        &mut run,
+                        Some(agent_id.clone()),
+                        &final_text,
+                    ) {
+                        run.events.push(event(
+                            &run.id,
+                            Some(agent_id.clone()),
+                            AgentEventKind::FinalAnswer,
+                            "Final answer (no tool call parsed)",
+                            truncate(&run.final_answer, 600),
+                        ));
+                        answered = true;
+                        observer(run.clone());
+                        break;
+                    }
+                    observer(run.clone());
+                    if run.status == "error" {
+                        break;
+                    }
+                    continue;
                 }
 
                 for call in calls {
@@ -310,14 +336,18 @@ where
                     ));
                     observer(run.clone());
 
-                    let result = executor
-                        .execute_domain_tool(
-                            &mut snapshot,
-                            call_id.clone(),
-                            &call.name,
-                            call.args.clone(),
-                        )
-                        .await;
+                    let result = if tool_allowed(&call.name, &enabled_tools) {
+                        executor
+                            .execute_domain_tool(
+                                &mut snapshot,
+                                call_id.clone(),
+                                &call.name,
+                                call.args.clone(),
+                            )
+                            .await
+                    } else {
+                        disallowed_tool_result(call_id.clone(), &call.name, &enabled_tools)
+                    };
                     let kind = if result.ok {
                         AgentEventKind::ToolCompleted
                     } else {
@@ -334,19 +364,35 @@ where
                         ),
                         truncate(&result.content, 600),
                     ));
-                    // Tool output is untrusted DATA. It enters the conversation as an
-                    // observation only; it is never executed as an instruction.
-                    run.messages.push(Message {
-                        role: "tool".to_string(),
-                        content: format!("{} -> {}", call.name, result.content),
-                    });
-                    push_observation(&mut run, &call.name, truncate(&result.content, 400));
+                    let tool_result_valid = validate_tool_result_or_feedback(
+                        &validators,
+                        &mut run,
+                        Some(agent_id.clone()),
+                        &call.name,
+                        &result,
+                    );
+                    // Tool output is untrusted DATA. A validated successful result enters
+                    // the conversation as evidence; validation failures re-enter as
+                    // structured feedback instead.
+                    if tool_result_valid {
+                        run.messages.push(Message {
+                            role: "tool".to_string(),
+                            content: format!("{} -> {}", call.name, result.content),
+                        });
+                        push_observation(&mut run, &call.name, truncate(&result.content, 400));
+                    }
                     run.tool_results.push(result);
                     observer(run.clone());
+                    if run.status == "error" {
+                        break;
+                    }
                 }
             }
         }
 
+        if run.status == "error" {
+            break;
+        }
         observer(run.clone());
     }
 
@@ -387,6 +433,123 @@ fn finalize_status(run: &mut AgentRun, answered: bool) {
                 ));
             }
         }
+    }
+}
+
+fn tool_allowed(tool_name: &str, enabled_tools: &[String]) -> bool {
+    enabled_tools.iter().any(|allowed| allowed == tool_name)
+}
+
+fn disallowed_tool_result(
+    call_id: String,
+    tool_name: &str,
+    enabled_tools: &[String],
+) -> crate::state::ToolResult {
+    let allowlist = if enabled_tools.is_empty() {
+        "<empty>".to_string()
+    } else {
+        enabled_tools.join(", ")
+    };
+    crate::state::ToolResult {
+        call_id,
+        ok: false,
+        content: format!(
+            "Tool `{tool_name}` is not in this agent's tool allowlist. Allowed tools: {allowlist}."
+        ),
+    }
+}
+
+fn validate_tool_result_or_feedback(
+    validators: &ValidatorRegistry,
+    run: &mut AgentRun,
+    agent_id: Option<String>,
+    tool_name: &str,
+    result: &crate::state::ToolResult,
+) -> bool {
+    let validation = validators.validate_tool_result(tool_name, result, run);
+    if validation.ok {
+        run.events.push(event(
+            &run.id,
+            agent_id,
+            AgentEventKind::Verification,
+            format!("Tool result validated: {tool_name}"),
+            truncate(&result.content, 600),
+        ));
+        return true;
+    }
+
+    let feedback = format!(
+        "Validator feedback for tool `{tool_name}`: {}",
+        validation.feedback
+    );
+    run.events.push(event(
+        &run.id,
+        agent_id,
+        AgentEventKind::Verification,
+        format!("Tool result rejected: {tool_name}"),
+        truncate(&feedback, 600),
+    ));
+    run.messages.push(Message {
+        role: "user".to_string(),
+        content: feedback.clone(),
+    });
+    push_observation(run, "validator", truncate(&feedback, 400));
+    mark_validation_error_if_budget_exceeded(run);
+    false
+}
+
+fn validate_final_answer_or_feedback(
+    validators: &ValidatorRegistry,
+    run: &mut AgentRun,
+    agent_id: Option<String>,
+    answer: &str,
+) -> bool {
+    let validation = validators.validate_final_answer(answer, run);
+    if validation.ok {
+        run.final_answer = answer.trim().to_string();
+        run.events.push(event(
+            &run.id,
+            agent_id,
+            AgentEventKind::Verification,
+            "Final answer validated",
+            truncate(&run.final_answer, 600),
+        ));
+        return true;
+    }
+
+    let feedback = format!("Validator feedback: {}", validation.feedback);
+    run.events.push(event(
+        &run.id,
+        agent_id,
+        AgentEventKind::Verification,
+        "Final answer rejected",
+        truncate(&feedback, 600),
+    ));
+    run.messages.push(Message {
+        role: "user".to_string(),
+        content: feedback.clone(),
+    });
+    push_observation(run, "validator", truncate(&feedback, 400));
+    mark_validation_error_if_budget_exceeded(run);
+    false
+}
+
+fn mark_validation_error_if_budget_exceeded(run: &mut AgentRun) {
+    let failures = run.scratchpad.verification.failures.len() as u32;
+    let max_failures = run.scratchpad.budgets.max_verification_retries.max(1);
+    if failures > max_failures {
+        run.status = "error".to_string();
+        run.final_answer = format!(
+            "Validation failed after {failures} rejected output(s): {}",
+            run.scratchpad.verification.last_result
+        );
+        run.events.push(event(
+            &run.id,
+            None,
+            AgentEventKind::Error,
+            "Validation retry budget exceeded",
+            truncate(&run.final_answer, 600),
+        ));
     }
 }
 
@@ -562,5 +725,92 @@ mod tests {
     fn truncate_appends_ellipsis_when_over_limit() {
         assert_eq!(truncate("abcdef", 3), "abc…");
         assert_eq!(truncate("ab", 3), "ab");
+    }
+
+    #[test]
+    fn rejects_tool_not_in_agent_allowlist_before_execution() {
+        let allowed = vec!["web_search".to_string()];
+
+        assert!(tool_allowed("web_search", &allowed));
+        assert!(!tool_allowed("file_write", &allowed));
+
+        let result =
+            disallowed_tool_result("call-hidden-write".to_string(), "file_write", &allowed);
+        assert!(!result.ok);
+        assert!(
+            result
+                .content
+                .contains("not in this agent's tool allowlist")
+        );
+        assert!(result.content.contains("web_search"));
+    }
+
+    fn test_run_with_evidence() -> AgentRun {
+        let mut run = AgentRun {
+            id: "run-1".to_string(),
+            goal: "answer with evidence".to_string(),
+            status: "running".to_string(),
+            lane: RunLane::BoundedTask,
+            scratchpad: RunScratchpad::default(),
+            messages: Vec::new(),
+            events: Vec::new(),
+            tool_calls: Vec::new(),
+            tool_results: Vec::new(),
+            final_answer: String::new(),
+            created_at: "now".to_string(),
+        };
+        run.tool_results.push(crate::state::ToolResult {
+            call_id: "call-1".to_string(),
+            ok: true,
+            content: "2 + 2 = 4".to_string(),
+        });
+        run
+    }
+
+    #[test]
+    fn final_answer_validation_reenters_loop_on_failure() {
+        let validators = ValidatorRegistry;
+        let mut run = test_run_with_evidence();
+
+        let accepted = validate_final_answer_or_feedback(
+            &validators,
+            &mut run,
+            Some("agent-1".to_string()),
+            "The answer is seven.",
+        );
+
+        assert!(!accepted);
+        assert!(run.final_answer.is_empty());
+        assert!(
+            run.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("Validator feedback")
+        );
+        assert_eq!(
+            run.events.last().unwrap().kind,
+            AgentEventKind::Verification
+        );
+    }
+
+    #[test]
+    fn final_answer_validation_accepts_grounded_answer() {
+        let validators = ValidatorRegistry;
+        let mut run = test_run_with_evidence();
+
+        let accepted = validate_final_answer_or_feedback(
+            &validators,
+            &mut run,
+            Some("agent-1".to_string()),
+            "The evidence says 2 + 2 = 4.",
+        );
+
+        assert!(accepted);
+        assert_eq!(run.final_answer, "The evidence says 2 + 2 = 4.");
+        assert_eq!(
+            run.events.last().unwrap().kind,
+            AgentEventKind::Verification
+        );
     }
 }

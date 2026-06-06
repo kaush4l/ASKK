@@ -1,7 +1,9 @@
 use super::save_snapshot;
 use super::shared::set_status;
-use crate::engine::{ReActEngine, clear_interrupt, request_interrupt};
+use crate::engine::clear_interrupt;
+use crate::orchestrator::run_goal_with_orchestrator_or_worker;
 use crate::state::{AgentEventKind, AgentRun, AppSnapshot};
+use crate::worker_client::request_active_worker_cancel;
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
@@ -13,11 +15,15 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
         .current_run
         .as_ref()
         .is_some_and(|run| run.status == "running");
-    // The in-progress run is only shown live; completed runs live in `runs`.
+    let resumable = current
+        .current_run
+        .as_ref()
+        .is_some_and(|run| run.status == "paused");
+    // The in-progress or recovered run is only shown live; completed runs live in `runs`.
     let live_turn = current
         .current_run
         .as_ref()
-        .filter(|run| run.status == "running")
+        .filter(|run| run.status == "running" || run.status == "paused")
         .cloned();
     let has_history = !current.runs.is_empty();
 
@@ -43,10 +49,17 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                         button {
                             class: "ghost-button",
                             onclick: move |_| {
-                                request_interrupt();
+                                request_active_worker_cancel("user requested stop");
                                 set_status(&mut snapshot, "Stop requested. The run will halt after the current turn.".to_string());
                             },
                             "Stop"
+                        }
+                    }
+                    if resumable {
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| resume_current_run(snapshot, goal),
+                            "Resume"
                         }
                     }
                     button {
@@ -118,9 +131,27 @@ fn new_chat(mut snapshot: Signal<AppSnapshot>) {
     });
 }
 
+fn resume_current_run(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
+    let restored_goal = {
+        let data = snapshot.read();
+        data.current_run
+            .as_ref()
+            .map(|run| run.goal.clone())
+            .unwrap_or_default()
+    };
+
+    if restored_goal.is_empty() {
+        set_status(&mut snapshot, "No paused run to resume.".to_string());
+        return;
+    }
+
+    goal.set(restored_goal.clone());
+    run_goal(snapshot, goal, restored_goal, "Resuming paused run...");
+}
+
 fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
-    let run_goal = goal.read().trim().to_string();
-    if run_goal.is_empty() {
+    let run_goal_text = goal.read().trim().to_string();
+    if run_goal_text.is_empty() {
         set_status(&mut snapshot, "Enter a message before sending.".to_string());
         return;
     }
@@ -137,25 +168,37 @@ fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
         return;
     }
 
-    let start_data = snapshot.read().clone();
     goal.set(String::new());
+    run_goal(snapshot, goal, run_goal_text, "Running agent...");
+}
+
+fn run_goal(
+    mut snapshot: Signal<AppSnapshot>,
+    goal: Signal<String>,
+    run_goal_text: String,
+    status: &'static str,
+) {
     clear_interrupt();
-    set_status(&mut snapshot, "Running agent...".to_string());
+    set_status(&mut snapshot, status.to_string());
 
     spawn_local(async move {
-        let runtime = ReActEngine::new();
-        let restore_goal = run_goal.clone();
+        let restore_goal = run_goal_text.clone();
+        let start_data = snapshot.read().clone();
         let mut live_snapshot = snapshot;
         let mut final_snapshot = snapshot;
         let mut final_goal = goal;
-        let result = runtime
-            .run_goal_with_observer(start_data, run_goal, move |run| {
-                let mut next = live_snapshot.read().clone();
-                next.status = format!("Running {} lane...", run.lane.as_label());
-                next.current_run = Some(run);
-                live_snapshot.set(next);
-            })
-            .await;
+        let result = run_goal_with_orchestrator_or_worker(start_data, run_goal_text, move |run| {
+            let mut next = live_snapshot.read().clone();
+            next.status = format!("Running {} lane...", run.lane.as_label());
+            next.current_run = Some(run);
+            next.checkpoint_current_run();
+            let checkpoint = next.clone();
+            spawn_local(async move {
+                let _ = save_snapshot(checkpoint).await;
+            });
+            live_snapshot.set(next);
+        })
+        .await;
 
         match result {
             Ok(next) => {
@@ -165,6 +208,8 @@ fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
                     .is_some_and(|run| run.status == "error");
                 if run_failed {
                     final_goal.set(restore_goal);
+                } else {
+                    final_goal.set(String::new());
                 }
                 let run_status = next.status.clone();
                 let save_status = save_snapshot(next.clone()).await;

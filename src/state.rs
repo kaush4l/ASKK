@@ -278,6 +278,8 @@ pub struct Agent {
     /// active model profile when unset.
     #[serde(default)]
     pub model_profile_id: Option<String>,
+    #[serde(default)]
+    pub workflow_id: Option<String>,
 }
 
 impl Agent {
@@ -295,6 +297,7 @@ impl Agent {
             response_format: ResponseFormat::Toon,
             source_path: None,
             model_profile_id: None,
+            workflow_id: None,
         }
     }
 }
@@ -307,6 +310,44 @@ pub struct Skill {
     pub enabled: bool,
     #[serde(default)]
     pub source_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowTransition {
+    pub from: String,
+    pub to: String,
+    pub label: String,
+}
+
+impl WorkflowTransition {
+    pub fn new(from: impl Into<String>, to: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            from: from.into(),
+            to: to.into(),
+            label: label.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowDefinition {
+    pub id: String,
+    pub name: String,
+    pub initial_step: String,
+    #[serde(default)]
+    pub transitions: Vec<WorkflowTransition>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct WorkflowRuntimeState {
+    #[serde(default)]
+    pub workflow_id: String,
+    #[serde(default)]
+    pub current_step: String,
+    #[serde(default)]
+    pub history: Vec<String>,
+    #[serde(default)]
+    pub blocked_transition: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -362,6 +403,7 @@ pub enum AgentEventKind {
     ToolCompleted,
     WorkerStarted,
     WorkerCompleted,
+    Workflow,
     Verification,
     Interrupted,
     FinalAnswer,
@@ -604,6 +646,8 @@ pub struct RunScratchpad {
     #[serde(default)]
     pub verification: VerificationState,
     #[serde(default)]
+    pub workflow: WorkflowRuntimeState,
+    #[serde(default)]
     pub budgets: RunBudgets,
     #[serde(default)]
     pub interrupted: bool,
@@ -640,6 +684,8 @@ pub struct OrchestratorConfig {
     pub verification_retries: u32,
     #[serde(default = "default_no_progress_turn_limit")]
     pub no_progress_turns: u32,
+    #[serde(default = "default_orchestrator_workflow_id")]
+    pub workflow_id: Option<String>,
 }
 
 impl Default for OrchestratorConfig {
@@ -651,6 +697,7 @@ impl Default for OrchestratorConfig {
             max_steps: default_run_step_budget(),
             verification_retries: default_verification_retry_budget(),
             no_progress_turns: default_no_progress_turn_limit(),
+            workflow_id: default_orchestrator_workflow_id(),
         }
     }
 }
@@ -692,6 +739,8 @@ pub struct AppSnapshot {
     pub agents: Vec<Agent>,
     #[serde(default = "default_skills")]
     pub skills: Vec<Skill>,
+    #[serde(default = "default_workflows")]
+    pub workflows: Vec<WorkflowDefinition>,
     pub memories: Vec<MemoryItem>,
     pub tasks: Vec<TaskItem>,
     #[serde(default)]
@@ -724,6 +773,7 @@ impl Default for AppSnapshot {
             soul: default_soul_prompt(),
             agents: default_agents(),
             skills: default_skills(),
+            workflows: default_workflows(),
             memories: Vec::new(),
             tasks: Vec::new(),
             jobs: Vec::new(),
@@ -735,7 +785,12 @@ impl Default for AppSnapshot {
 }
 
 pub fn default_tool_names() -> Vec<String> {
-    vec!["web_search".to_string()]
+    vec![
+        "web_search".to_string(),
+        "file_read".to_string(),
+        "file_write".to_string(),
+        "file_list".to_string(),
+    ]
 }
 
 pub fn default_bridge_tools_url() -> String {
@@ -771,6 +826,33 @@ fn default_verification_retry_budget() -> u32 {
 
 fn default_no_progress_turn_limit() -> u32 {
     2
+}
+
+pub fn default_orchestrator_workflow_id() -> Option<String> {
+    Some("parallel_batch".to_string())
+}
+
+pub fn default_workflows() -> Vec<WorkflowDefinition> {
+    vec![WorkflowDefinition {
+        id: "parallel_batch".to_string(),
+        name: "Parallel batch orchestration".to_string(),
+        initial_step: "planned".to_string(),
+        transitions: vec![
+            WorkflowTransition::new("planned", "workers_running", "dispatch child workers"),
+            WorkflowTransition::new("workers_running", "workers_running", "dispatch next wave"),
+            WorkflowTransition::new("workers_running", "workers_joined", "join child worker"),
+            WorkflowTransition::new(
+                "workers_joined",
+                "workers_joined",
+                "join another child worker",
+            ),
+            WorkflowTransition::new("workers_joined", "workers_running", "dispatch next wave"),
+            WorkflowTransition::new("workers_joined", "aggregated", "aggregate child results"),
+            WorkflowTransition::new("workers_running", "failed", "child worker failed"),
+            WorkflowTransition::new("workers_joined", "failed", "aggregation failed"),
+            WorkflowTransition::new("failed", "failed", "remain failed"),
+        ],
+    }]
 }
 
 pub fn default_soul_prompt() -> String {
@@ -815,6 +897,9 @@ pub fn agent_from_markdown(path: &str, content: &str) -> AppResult<Agent> {
         .or_else(|| meta_value(&meta, "format"))
         .map(|value| ResponseFormat::from_form_value(&value))
         .unwrap_or_default();
+    let workflow_id = meta_value(&meta, "workflow")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| slugify(&value));
     let role = body.trim().to_string();
 
     if role.is_empty() {
@@ -830,6 +915,7 @@ pub fn agent_from_markdown(path: &str, content: &str) -> AppResult<Agent> {
         response_format,
         source_path: Some(path.to_string()),
         model_profile_id: None,
+        workflow_id,
     })
 }
 
@@ -890,7 +976,9 @@ impl AppSnapshot {
     pub fn with_profile_defaults(mut self) -> Self {
         self.ensure_provider_profiles();
         self.ensure_model_profiles();
+        self.ensure_workflow_defaults();
         self.ensure_orchestrator_defaults();
+        self.recover_interrupted_run_after_reload();
         self.ensure_prompt_defaults();
         self.normalize_agent_branding();
         self.normalize_agent_tools();
@@ -1026,7 +1114,8 @@ impl AppSnapshot {
 
     pub fn normalize_agent_tools(&mut self) {
         for agent in &mut self.agents {
-            agent.enabled_tools = default_tool_names();
+            let normalized = parse_tools(&agent.enabled_tools.join(","));
+            agent.enabled_tools = normalized;
         }
     }
 
@@ -1053,6 +1142,15 @@ impl AppSnapshot {
         }
     }
 
+    pub fn ensure_workflow_defaults(&mut self) {
+        if self.workflows.is_empty() {
+            self.workflows = default_workflows();
+        }
+        if self.orchestrator.workflow_id.is_none() {
+            self.orchestrator.workflow_id = default_orchestrator_workflow_id();
+        }
+    }
+
     pub fn ensure_orchestrator_defaults(&mut self) {
         let active_id = self.active_provider_profile_id.clone();
         if self.orchestrator.routing_provider_profile_id.is_none() {
@@ -1073,6 +1171,83 @@ impl AppSnapshot {
         if self.orchestrator.no_progress_turns == 0 {
             self.orchestrator.no_progress_turns = default_no_progress_turn_limit();
         }
+    }
+
+    pub fn checkpoint_current_run(&mut self) {
+        if let Some(run) = self.current_run.clone() {
+            self.upsert_job_from_run(&run, &run.status);
+        }
+    }
+
+    pub fn is_stale_checkpoint_for(&self, existing: &AppSnapshot) -> bool {
+        let Some(incoming) = self.current_run.as_ref() else {
+            return false;
+        };
+        let Some(current) = existing.current_run.as_ref() else {
+            return false;
+        };
+        let incoming_is_live_checkpoint =
+            self.status.starts_with("Running ") || !is_terminal_run_status(&incoming.status);
+        incoming.id == current.id
+            && is_terminal_run_status(&current.status)
+            && incoming_is_live_checkpoint
+    }
+
+    pub fn recover_interrupted_run_after_reload(&mut self) {
+        let Some(mut run) = self.current_run.clone() else {
+            return;
+        };
+        if run.status != "running" {
+            return;
+        }
+
+        run.status = "paused".to_string();
+        run.scratchpad.interrupted = true;
+        run.events.push(event(
+            &run.id,
+            None,
+            AgentEventKind::Interrupted,
+            "Run paused after reload",
+            "The browser reloaded while this run was active. The checkpoint is resumable.",
+        ));
+        self.status = "Recovered a paused run from IndexedDB.".to_string();
+        self.current_run = Some(run.clone());
+        self.upsert_job_from_run(&run, "paused");
+    }
+
+    pub fn upsert_job_from_run(&mut self, run: &AgentRun, status: &str) {
+        let now = now_iso();
+        let progress = run
+            .events
+            .last()
+            .map(|event| event.title.clone())
+            .unwrap_or_else(|| run.status.clone());
+        if let Some(job) = self.jobs.iter_mut().find(|job| job.id == run.id) {
+            job.status = status.to_string();
+            job.progress = progress;
+            job.checkpoint = Some(run.scratchpad.clone());
+            job.updated_at = now;
+            job.last_error = run
+                .events
+                .iter()
+                .rev()
+                .find(|event| event.kind == AgentEventKind::Error)
+                .map(|event| event.body.clone())
+                .unwrap_or_default();
+            return;
+        }
+
+        self.jobs.push(JobRecord {
+            id: run.id.clone(),
+            goal: run.goal.clone(),
+            lane: run.lane,
+            status: status.to_string(),
+            progress,
+            checkpoint: Some(run.scratchpad.clone()),
+            created_at: run.created_at.clone(),
+            updated_at: now,
+            last_error: String::new(),
+        });
     }
 
     pub fn sanitize_api_keys(&mut self) {
@@ -1194,8 +1369,34 @@ fn parse_bool(value: &str) -> bool {
 }
 
 fn parse_tools(value: &str) -> Vec<String> {
-    let _ = value;
-    default_tool_names()
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("all") {
+        return default_tool_names();
+    }
+
+    let mut tools = Vec::new();
+    for raw in trimmed.split(',') {
+        let candidate = raw.trim();
+        if candidate.is_empty() {
+            continue;
+        }
+        if !candidate
+            .chars()
+            .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+        {
+            continue;
+        }
+        let normalized = candidate.to_ascii_lowercase();
+        if !tools.iter().any(|tool| tool == &normalized) {
+            tools.push(normalized);
+        }
+    }
+
+    if tools.is_empty() {
+        default_tool_names()
+    } else {
+        tools
+    }
 }
 
 fn same_tools(left: &[String], right: &[String]) -> bool {
@@ -1284,6 +1485,10 @@ fn sanitized_profile_name(name: &str, fallback: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn is_terminal_run_status(status: &str) -> bool {
+    matches!(status, "complete" | "error" | "cancelled" | "interrupted")
 }
 
 pub fn now_iso() -> String {
@@ -1476,7 +1681,10 @@ mod tests {
         assert_eq!(agent.id, "deep-research");
         assert_eq!(agent.name, "Deep Research");
         assert!(!agent.enabled);
-        assert_eq!(agent.enabled_tools, default_tool_names());
+        assert_eq!(
+            agent.enabled_tools,
+            vec!["memory_search".to_string(), "web_search".to_string()]
+        );
         assert_eq!(agent.response_format, ResponseFormat::Json);
         assert_eq!(agent.role, "Research deeply.");
         assert_eq!(
@@ -1486,7 +1694,7 @@ mod tests {
 
         let serialized = agent_to_markdown(&agent);
         assert!(serialized.contains("name: Deep Research"));
-        assert!(serialized.contains("tools: all"));
+        assert!(serialized.contains("tools: memory_search, web_search"));
         assert!(serialized.contains("response_format: json"));
         assert!(serialized.contains("Research deeply."));
     }
@@ -1594,13 +1802,48 @@ mod tests {
     }
 
     #[test]
-    fn default_tool_list_contains_only_web_search() {
-        assert_eq!(default_tool_names(), vec!["web_search"]);
-        assert_eq!(parse_tools("all"), vec!["web_search"]);
+    fn default_tool_list_contains_expected_browser_tools() {
         assert_eq!(
-            parse_tools("memory_search, web_extract"),
-            vec!["web_search"]
+            default_tool_names(),
+            vec!["web_search", "file_read", "file_write", "file_list"]
         );
+        assert_eq!(parse_tools("all"), default_tool_names());
+    }
+
+    #[test]
+    fn parses_agent_tool_allowlist_from_markdown() {
+        assert_eq!(
+            parse_tools("calculator, file_read, web_search"),
+            vec!["calculator", "file_read", "web_search"]
+        );
+        assert_eq!(
+            parse_tools(" calculator , calculator , file-read "),
+            vec!["calculator"]
+        );
+    }
+
+    #[test]
+    fn normalize_agent_tools_preserves_manifest_allowlist() {
+        let mut snapshot = AppSnapshot::default();
+        snapshot.agents = vec![Agent::new(
+            "Restricted",
+            "Use only the allowed tools.",
+            vec!["web_search".to_string(), "web_search".to_string()],
+        )];
+
+        snapshot.normalize_agent_tools();
+
+        assert_eq!(snapshot.agents[0].enabled_tools, vec!["web_search"]);
+    }
+
+    #[test]
+    fn normalize_agent_tools_defaults_only_empty_allowlists() {
+        let mut snapshot = AppSnapshot::default();
+        snapshot.agents = vec![Agent::new("Legacy", "Use defaults.", Vec::new())];
+
+        snapshot.normalize_agent_tools();
+
+        assert_eq!(snapshot.agents[0].enabled_tools, default_tool_names());
     }
 
     #[test]
@@ -1642,6 +1885,125 @@ mod tests {
                 .provider_profiles
                 .iter()
                 .any(|profile| profile.id == first_id)
+        );
+    }
+
+    #[test]
+    fn checkpoint_current_run_persists_resumable_job_record() {
+        let mut snapshot = AppSnapshot::default();
+        let run = AgentRun {
+            id: "run-checkpoint".to_string(),
+            goal: "Persist this run".to_string(),
+            lane: RunLane::BoundedTask,
+            status: "running".to_string(),
+            scratchpad: RunScratchpad {
+                budgets: RunBudgets {
+                    steps_used: 2,
+                    max_steps: 5,
+                    ..RunBudgets::default()
+                },
+                ..RunScratchpad::default()
+            },
+            messages: Vec::new(),
+            events: vec![event(
+                "run-checkpoint",
+                Some("assistant".to_string()),
+                AgentEventKind::LlmRequest,
+                "LLM request 2/5",
+                "Checkpointable progress",
+            )],
+            tool_calls: Vec::new(),
+            tool_results: Vec::new(),
+            final_answer: String::new(),
+            created_at: "now".to_string(),
+        };
+        snapshot.current_run = Some(run);
+
+        snapshot.checkpoint_current_run();
+
+        assert_eq!(snapshot.jobs.len(), 1);
+        assert_eq!(snapshot.jobs[0].id, "run-checkpoint");
+        assert_eq!(snapshot.jobs[0].status, "running");
+        assert_eq!(snapshot.jobs[0].progress, "LLM request 2/5");
+        assert_eq!(
+            snapshot.jobs[0]
+                .checkpoint
+                .as_ref()
+                .unwrap()
+                .budgets
+                .steps_used,
+            2
+        );
+    }
+
+    #[test]
+    fn stale_running_checkpoint_does_not_overwrite_completed_run() {
+        let mut completed = AppSnapshot::default();
+        completed.current_run = Some(AgentRun {
+            id: "run-race".to_string(),
+            goal: "Final result".to_string(),
+            lane: RunLane::Batch,
+            status: "complete".to_string(),
+            scratchpad: RunScratchpad::default(),
+            messages: Vec::new(),
+            events: Vec::new(),
+            tool_calls: Vec::new(),
+            tool_results: Vec::new(),
+            final_answer: "done".to_string(),
+            created_at: "now".to_string(),
+        });
+
+        let mut stale = completed.clone();
+        stale.status = "Running batch lane...".to_string();
+        stale.current_run.as_mut().unwrap().status = "running".to_string();
+        stale.current_run.as_mut().unwrap().final_answer.clear();
+
+        assert!(stale.is_stale_checkpoint_for(&completed));
+
+        stale.current_run.as_mut().unwrap().status = "complete".to_string();
+        stale.current_run.as_mut().unwrap().final_answer = "done".to_string();
+        assert!(stale.is_stale_checkpoint_for(&completed));
+        assert!(!completed.is_stale_checkpoint_for(&stale));
+
+        let mut interrupted = completed.clone();
+        interrupted.status = "Run interrupted.".to_string();
+        interrupted.current_run.as_mut().unwrap().status = "interrupted".to_string();
+        let mut stale_after_interrupt = interrupted.clone();
+        stale_after_interrupt.status = "Running bounded task lane...".to_string();
+        stale_after_interrupt.current_run.as_mut().unwrap().status = "running".to_string();
+        assert!(stale_after_interrupt.is_stale_checkpoint_for(&interrupted));
+    }
+
+    #[test]
+    fn normalize_pauses_running_run_after_reload_and_keeps_resume_checkpoint() {
+        let mut snapshot = AppSnapshot::default();
+        snapshot.current_run = Some(AgentRun {
+            id: "run-reload".to_string(),
+            goal: "Resume after reload".to_string(),
+            lane: RunLane::BoundedTask,
+            status: "running".to_string(),
+            scratchpad: RunScratchpad::default(),
+            messages: Vec::new(),
+            events: Vec::new(),
+            tool_calls: Vec::new(),
+            tool_results: Vec::new(),
+            final_answer: String::new(),
+            created_at: "now".to_string(),
+        });
+
+        let snapshot = snapshot.with_profile_defaults();
+
+        let run = snapshot.current_run.as_ref().unwrap();
+        assert_eq!(run.status, "paused");
+        assert!(run.scratchpad.interrupted);
+        assert_eq!(snapshot.jobs.len(), 1);
+        assert_eq!(snapshot.jobs[0].id, "run-reload");
+        assert_eq!(snapshot.jobs[0].status, "paused");
+        assert!(snapshot.jobs[0].checkpoint.is_some());
+        assert!(
+            run.events
+                .iter()
+                .any(|event| event.kind == AgentEventKind::Interrupted)
         );
     }
 }

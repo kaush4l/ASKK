@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(snapshot.soul, "Shared behavior");
         assert_eq!(snapshot.agents.len(), 1);
         assert_eq!(snapshot.agents[0].name, "Builder");
-        assert_eq!(snapshot.agents[0].enabled_tools, vec!["web_search"]);
+        assert_eq!(snapshot.agents[0].enabled_tools, vec!["memory_search"]);
         assert_eq!(snapshot.skills.len(), 1);
         assert_eq!(snapshot.skills[0].name, "Build");
     }

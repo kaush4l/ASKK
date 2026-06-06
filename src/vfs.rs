@@ -1,5 +1,5 @@
 use crate::state::AppResult;
-use crate::storage::IndexedDbStorage;
+use crate::storage::{IndexedDbStorage, PROJECT_FILES_STORE_NAME};
 use indexed_db_futures::prelude::*;
 use indexed_db_futures::transaction::TransactionMode;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ impl Default for ProjectVfs {
     fn default() -> Self {
         // Use a dedicated store for project files to avoid collisions with app snapshot
         Self {
-            store_name: "project_files".to_string(),
+            store_name: PROJECT_FILES_STORE_NAME.to_string(),
         }
     }
 }
@@ -99,5 +99,15 @@ impl ProjectVfs {
             .map_err(|err| format!("Unable to decode IndexedDB VFS keys: {err}"))?;
 
         Ok(keys)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_store_uses_indexeddb_migration_store_name() {
+        assert_eq!(ProjectVfs::default().store_name, PROJECT_FILES_STORE_NAME);
     }
 }

@@ -52,6 +52,7 @@ fn event_kind_label(kind: &AgentEventKind) -> &'static str {
         AgentEventKind::ToolCompleted => "tool_completed",
         AgentEventKind::WorkerStarted => "worker_started",
         AgentEventKind::WorkerCompleted => "worker_completed",
+        AgentEventKind::Workflow => "workflow",
         AgentEventKind::Verification => "verification",
         AgentEventKind::Interrupted => "interrupted",
         AgentEventKind::FinalAnswer => "final_answer",

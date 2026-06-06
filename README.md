@@ -69,9 +69,13 @@ Bridge file routes:
 
 If the bridge is unavailable, the app uses bundled Markdown defaults plus the browser IndexedDB snapshot.
 
-## Agent Loop
+## Agent Loop, Workers, and Orchestration
 
-Runs use the first enabled agent as a single ReAct loop. On each model turn the agent returns the configured structured response format, chooses either `action: tool` with one tool invocation or `action: answer` with final text, and the runner continues until the agent chooses an answer.
+Simple goals run as a single bounded ReAct loop. Each model turn receives the assembled soul prompt, selected agent instructions, enabled skills, live state, validator feedback, and the schemas for the agent's allowed compiled tools. The model may either request a registered tool or emit a final answer; tool results and final answers are validated before they are promoted to state.
+
+Decomposable batch goals are handled by the orchestrator. The orchestrator owns task decomposition, child-agent selection, worker-pool scheduling, progress monitoring, cancellation, joining, and result aggregation. In the browser build, child agents run through the same loop inside Web Workers via the typed worker transport.
+
+State is the source of truth. Runs, messages, tool calls/results, worker progress, workflow state, jobs, and trace events are serializable and persisted in IndexedDB. If the page reloads during a run, ASKK recovers it as a paused resumable job and exposes a `Resume` action.
 
 The bundled default agent is generic and stored in `agents/planner.md`; the file name is only a source path. Edit `soul.md`, `agents/*.md`, and `skills/**/*.md` through the hosted app plus local bridge when you want to change behavior without changing Rust code.
 
@@ -150,6 +154,26 @@ Serve the app locally:
 ```sh
 dx serve --web
 ```
+
+Run the local hardening gate:
+
+```sh
+cargo fmt --check
+cargo test
+cargo check
+dx build --platform web
+```
+
+Run the deterministic browser smoke provider:
+
+```sh
+python3 scripts/mock-openai-provider.py
+python3 -m http.server 8765 --directory target/dx/askk/debug/web/public
+```
+
+Then open `http://127.0.0.1:8765/`, set the provider base URL to `http://127.0.0.1:9989/v1`, choose `No auth`, and submit a decomposable bullet-list goal to exercise parallel worker orchestration. `curl http://127.0.0.1:9989/stats` reports request concurrency.
+
+The Definition-of-Done traceability note lives at `docs/definition-of-done.md`; extension contracts live at `docs/extensibility.md`.
 
 Clean and build the GitHub Pages artifact:
 

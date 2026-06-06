@@ -91,6 +91,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "dioxus",
+ "futures-channel",
+ "futures-util",
  "gloo-net",
  "indexed_db_futures",
  "js-sys",

@@ -5,11 +5,17 @@ mod components;
 mod engine;
 mod execution;
 mod inference;
+mod orchestrator;
 mod responses;
 mod state;
 mod storage;
 mod tools;
+mod validators;
 mod vfs;
+mod worker_client;
+mod worker_runtime;
+mod worker_transport;
+mod workflow;
 mod workspace_files;
 
 use components::{AppShell, set_status};
@@ -17,6 +23,16 @@ use state::AppSnapshot;
 use storage::{IndexedDbStorage, StorageAdapter};
 
 fn main() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let global = js_sys::global();
+        let has_document =
+            js_sys::Reflect::has(&global, &wasm_bindgen::JsValue::from_str("document"))
+                .unwrap_or(false);
+        if !has_document {
+            return;
+        }
+    }
     dioxus::launch(App);
 }
 
@@ -34,7 +50,16 @@ fn App() -> Element {
         spawn_local(async move {
             match IndexedDbStorage::open().await {
                 Ok(storage) => match storage.load_snapshot().await {
-                    Ok(Some(saved)) => snapshot.set(saved),
+                    Ok(Some(saved)) => {
+                        snapshot.set(saved.clone());
+                        if saved
+                            .current_run
+                            .as_ref()
+                            .is_some_and(|run| run.status == "paused")
+                        {
+                            let _ = storage.save_snapshot(&saved).await;
+                        }
+                    }
                     Ok(None) => {}
                     Err(err) => set_status(&mut snapshot, format!("Load failed: {err}")),
                 },

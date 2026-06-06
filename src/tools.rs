@@ -2,31 +2,59 @@ use crate::state::{AppResult, AppSnapshot, ToolResult, ToolSpec, WebSearchToolCo
 use crate::vfs::ProjectVfs;
 use gloo_net::http::Request;
 use serde_json::{Value, json};
+use std::future::Future;
+use std::pin::Pin;
+
+pub type ToolFuture<'a> = Pin<Box<dyn Future<Output = AppResult<String>> + 'a>>;
+pub type ToolHandler = for<'a> fn(&'a mut AppSnapshot, &'a Value) -> ToolFuture<'a>;
+
+#[derive(Clone)]
+pub struct ToolDescriptor {
+    pub spec: ToolSpec,
+    pub handler: ToolHandler,
+}
+
+impl std::fmt::Debug for ToolDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolDescriptor")
+            .field("spec", &self.spec)
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct ToolRegistry {
-    specs: Vec<ToolSpec>,
-    vfs: ProjectVfs,
+    descriptors: Vec<ToolDescriptor>,
 }
 
 impl ToolRegistry {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
-            specs: vec![
-                web_search_spec(),
-                file_read_spec(),
-                file_write_spec(),
-                file_list_spec(),
-            ],
-            vfs: ProjectVfs::new(),
+            descriptors: Vec::new(),
         }
     }
 
+    pub fn new() -> Self {
+        let mut registry = Self::empty();
+        register_builtin_tools(&mut registry);
+        registry
+    }
+
+    pub fn register(&mut self, descriptor: ToolDescriptor) {
+        self.descriptors
+            .retain(|existing| existing.spec.name != descriptor.spec.name);
+        self.descriptors.push(descriptor);
+    }
+
     pub fn specs_for_agent(&self, enabled_tools: &[String]) -> Vec<ToolSpec> {
-        self.specs
+        self.descriptors
             .iter()
-            .filter(|spec| enabled_tools.iter().any(|enabled| enabled == &spec.name))
-            .cloned()
+            .filter(|descriptor| {
+                enabled_tools
+                    .iter()
+                    .any(|enabled| enabled == &descriptor.spec.name)
+            })
+            .map(|descriptor| descriptor.spec.clone())
             .collect()
     }
 
@@ -37,33 +65,13 @@ impl ToolRegistry {
         tool_name: &str,
         args: Value,
     ) -> ToolResult {
-        let result = match tool_name {
-            "web_search" => web_search_with_config(&args, &snapshot.tool_config.web_search).await,
-            "file_read" => match string_arg(&args, "path") {
-                Ok(path) => self
-                    .vfs
-                    .read_file(&path)
-                    .await
-                    .map(|c| c.unwrap_or_default())
-                    .map_err(|e| format!("VFS read error: {e}")),
-                Err(e) => Err(format!("Tool argument error (file_read): {e}")),
-            },
-            "file_write" => match (string_arg(&args, "path"), string_arg(&args, "content")) {
-                (Ok(path), Ok(content)) => self
-                    .vfs
-                    .write_file(&path, &content)
-                    .await
-                    .map(|_| "Success".to_string())
-                    .map_err(|e| format!("VFS write error: {e}")),
-                (Err(e), _) | (_, Err(e)) => Err(format!("Tool argument error (file_write): {e}")),
-            },
-            "file_list" => self
-                .vfs
-                .list_files()
-                .await
-                .map(|f| f.join(", "))
-                .map_err(|e| format!("VFS list error: {e}")),
-            _ => Err(format!("Unknown compiled tool: {tool_name}")),
+        let result = match self
+            .descriptors
+            .iter()
+            .find(|descriptor| descriptor.spec.name == tool_name)
+        {
+            Some(descriptor) => (descriptor.handler)(snapshot, &args).await,
+            None => Err(format!("Unknown compiled tool: {tool_name}")),
         };
 
         match result {
@@ -79,6 +87,78 @@ impl ToolRegistry {
             },
         }
     }
+}
+
+fn register_builtin_tools(registry: &mut ToolRegistry) {
+    registry.register(web_search_descriptor());
+    registry.register(file_read_descriptor());
+    registry.register(file_write_descriptor());
+    registry.register(file_list_descriptor());
+}
+
+fn web_search_descriptor() -> ToolDescriptor {
+    ToolDescriptor {
+        spec: web_search_spec(),
+        handler: web_search_handler,
+    }
+}
+
+fn file_read_descriptor() -> ToolDescriptor {
+    ToolDescriptor {
+        spec: file_read_spec(),
+        handler: file_read_handler,
+    }
+}
+
+fn file_write_descriptor() -> ToolDescriptor {
+    ToolDescriptor {
+        spec: file_write_spec(),
+        handler: file_write_handler,
+    }
+}
+
+fn file_list_descriptor() -> ToolDescriptor {
+    ToolDescriptor {
+        spec: file_list_spec(),
+        handler: file_list_handler,
+    }
+}
+
+fn web_search_handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
+    Box::pin(async move { web_search_with_config(args, &snapshot.tool_config.web_search).await })
+}
+
+fn file_read_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let path = string_arg(args, "path")?;
+        ProjectVfs::new()
+            .read_file(&path)
+            .await
+            .map(|content| content.unwrap_or_default())
+            .map_err(|err| format!("VFS read error: {err}"))
+    })
+}
+
+fn file_write_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let path = string_arg(args, "path")?;
+        let content = string_arg(args, "content")?;
+        ProjectVfs::new()
+            .write_file(&path, &content)
+            .await
+            .map(|_| "Success".to_string())
+            .map_err(|err| format!("VFS write error: {err}"))
+    })
+}
+
+fn file_list_handler<'a>(_snapshot: &'a mut AppSnapshot, _args: &'a Value) -> ToolFuture<'a> {
+    Box::pin(async move {
+        ProjectVfs::new()
+            .list_files()
+            .await
+            .map(|files| files.join(", "))
+            .map_err(|err| format!("VFS list error: {err}"))
+    })
 }
 
 fn web_search_spec() -> ToolSpec {
@@ -255,5 +335,53 @@ fn file_list_spec() -> ToolSpec {
             "type": "object",
             "properties": {}
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn demo_tool_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
+        Box::pin(async move {
+            Ok(format!(
+                "demo:{}",
+                args.get("value")
+                    .and_then(Value::as_str)
+                    .unwrap_or("missing")
+            ))
+        })
+    }
+
+    #[test]
+    fn registry_accepts_new_tool_descriptor_without_execute_match_edits() {
+        let mut registry = ToolRegistry::empty();
+        registry.register(ToolDescriptor {
+            spec: ToolSpec {
+                name: "demo_tool".to_string(),
+                description: "A test-only descriptor-backed tool.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": { "value": { "type": "string" } },
+                    "required": ["value"]
+                }),
+            },
+            handler: demo_tool_handler,
+        });
+
+        let specs = registry.specs_for_agent(&["demo_tool".to_string()]);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].name, "demo_tool");
+
+        let mut snapshot = AppSnapshot::default();
+        let result = pollster::block_on(registry.execute(
+            &mut snapshot,
+            "call-1".to_string(),
+            "demo_tool",
+            json!({ "value": "ok" }),
+        ));
+
+        assert!(result.ok);
+        assert_eq!(result.content, "demo:ok");
     }
 }
