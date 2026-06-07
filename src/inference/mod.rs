@@ -1,0 +1,85 @@
+//! Provider pillar (one of the four core types: Engine, Tool, **Provider**,
+//! Capability).
+//!
+//! An LLM provider implements [`InferenceProvider`]: it turns an
+//! [`InferenceRequest`] (soul + agent role + skills + tool manifest + transcript)
+//! into a parsed [`ReActResponse`]. The trait carries the common flow as default
+//! methods (streaming falls back to non-streaming; the critic reuses `invoke_react`),
+//! so a concrete provider overrides only what differs — the agent loop never changes.
+//!
+//! - [`openai`] — the one concrete provider today ([`OpenAiCompatibleInference`]),
+//!   which speaks the OpenAI-compatible chat-completions API, so any BYOK endpoint
+//!   works. A new vendor is a new file here implementing the trait.
+//! - [`transport`] — the shared, provider-agnostic HTTP/SSE plumbing and error
+//!   mapping that concrete providers build on.
+
+mod openai;
+mod transport;
+
+pub use openai::OpenAiCompatibleInference;
+pub use transport::{list_models, test_chat};
+
+use crate::responses::{
+    ReActResponse, ResponseFormat, VerificationCriticResponse, response_to_result,
+};
+use crate::state::{AppResult, Message, ProviderConfig, Skill, ToolSpec};
+
+#[derive(Clone, Debug)]
+pub struct InferenceRequest {
+    pub agent_name: String,
+    pub agent_role: String,
+    pub soul: String,
+    pub skills: Vec<Skill>,
+    pub goal: String,
+    pub history: Vec<Message>,
+    pub tools: Vec<ToolSpec>,
+    pub response_format: ResponseFormat,
+}
+
+#[derive(Clone, Debug)]
+pub struct InferenceOutput<T> {
+    pub raw_text: String,
+    pub parsed: T,
+}
+
+pub trait InferenceProvider {
+    // Part of the provider API; not called by the minimal loop yet.
+    #[allow(dead_code)]
+    fn provider_name(&self) -> &'static str;
+
+    async fn invoke_react(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+    ) -> AppResult<InferenceOutput<ReActResponse>>;
+
+    async fn invoke_react_streaming(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+        _on_partial_answer: &mut dyn FnMut(String),
+    ) -> AppResult<InferenceOutput<ReActResponse>> {
+        self.invoke_react(config, request).await
+    }
+
+    // Verification critic. Dormant until the verification loop is wired in.
+    #[allow(dead_code)]
+    async fn invoke_critic(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+    ) -> AppResult<InferenceOutput<VerificationCriticResponse>> {
+        let output = self.invoke_react(config, request).await?;
+        let parsed = response_to_result::<VerificationCriticResponse>(&output.parsed.response)?;
+        Ok(InferenceOutput {
+            raw_text: output.raw_text,
+            parsed,
+        })
+    }
+}
+
+/// Select the provider implementation for a config. Today every config maps to the
+/// OpenAI-compatible provider; this is the one place a vendor switch would branch.
+pub fn get_implementation(_config: &ProviderConfig) -> OpenAiCompatibleInference {
+    OpenAiCompatibleInference
+}
