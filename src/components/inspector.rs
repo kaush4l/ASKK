@@ -39,15 +39,12 @@ pub fn InspectorPanel(snapshot: Signal<AppSnapshot>) -> Element {
                     })
                     .unwrap_or_else(|| vec!["No current run.".to_string()])
             }
-            h3 { "Orchestrator Config" }
+            h3 { "Run limits" }
             CompactList {
                 items: vec![
-                    format!("Routing profile: {}", current.orchestrator.routing_provider_profile_id.clone().unwrap_or_else(|| "active provider".to_string())),
-                    format!("Worker profile: {}", current.orchestrator.worker_provider_profile_id.clone().unwrap_or_else(|| "active provider".to_string())),
                     format!("Max steps: {}", current.orchestrator.max_steps),
+                    format!("Max parallel agents: {}", current.orchestrator.max_parallelism),
                     format!("Verification retries: {}", current.orchestrator.verification_retries),
-                    format!("No-progress turns: {}", current.orchestrator.no_progress_turns),
-                    format!("Max parallelism: {}", current.orchestrator.max_parallelism),
                 ]
             }
             h3 { "Orchestrator Meta-tools" }
@@ -94,7 +91,7 @@ pub fn InspectorPanel(snapshot: Signal<AppSnapshot>) -> Element {
                     }
                 }
             }
-            h3 { "Provider Profiles" }
+            h3 { "Connections" }
             CompactList {
                 items: current.provider_profiles
                     .iter()

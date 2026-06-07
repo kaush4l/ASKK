@@ -646,6 +646,7 @@ fn initial_scratchpad(snapshot: &AppSnapshot, goal: &str, lane: RunLane) -> RunS
         current_plan: lane_plan(lane),
         budgets: RunBudgets {
             max_steps: snapshot.orchestrator.max_steps.max(1),
+            max_verification_retries: snapshot.orchestrator.verification_retries,
             ..RunBudgets::default()
         },
         ..RunScratchpad::default()

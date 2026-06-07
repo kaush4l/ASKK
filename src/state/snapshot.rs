@@ -10,7 +10,10 @@ use super::event::{AgentEventKind, event, now_iso};
 use super::manifest::{
     Agent, Skill, default_agents, default_skills, default_soul_prompt, parse_tools,
 };
-use super::provider::{ModelProfile, ProviderConfig, ProviderProfile, default_model_profiles};
+use super::provider::{
+    ModelProfile, ProviderConfig, ProviderProfile, default_context_window, default_max_tokens,
+    default_model_profiles,
+};
 use super::run::{
     AgentRun, JobRecord, OrchestratorConfig, default_max_parallelism,
     default_no_progress_turn_limit, default_orchestrator_workflow_id, default_run_step_budget,
@@ -108,6 +111,11 @@ impl AppSnapshot {
         self.ensure_prompt_defaults();
         self.normalize_agent_branding();
         self.normalize_agent_tools();
+        // The effective `provider` config carries the active generation preset's
+        // tuning; re-apply it so a freshly loaded snapshot is internally consistent.
+        if let Some(id) = self.active_model_profile_id.clone() {
+            let _ = self.apply_model_profile(&id);
+        }
         self
     }
 
@@ -167,32 +175,88 @@ impl AppSnapshot {
         format!("Saved model profile: {profile_name}")
     }
 
-    /// Update the active model profile with the current provider tuning.
-    pub fn update_active_model_profile(&mut self, name: &str) -> String {
-        self.ensure_model_profiles();
-        let Some(active_id) = self.active_model_profile_id.clone() else {
-            return self.save_model_profile(name);
+    /// Mirror the current provider tuning into the active generation preset, so
+    /// live edits to temperature/max-tokens/top-p/context persist into it without a
+    /// separate "Update" step.
+    pub fn sync_active_model_profile(&mut self) {
+        let Some(id) = self.active_model_profile_id.clone() else {
+            return;
         };
-        let profile_name = sanitized_profile_name(name, "Model Profile");
         let (temperature, max_tokens, top_p, context_window) = (
             self.provider.temperature,
             self.provider.max_tokens,
             self.provider.top_p,
             self.provider.context_window,
         );
-        let Some(profile) = self
+        if let Some(profile) = self
             .model_profiles
             .iter_mut()
-            .find(|profile| profile.id == active_id)
-        else {
-            return self.save_model_profile(&profile_name);
+            .find(|profile| profile.id == id)
+        {
+            profile.temperature = temperature;
+            profile.max_tokens = max_tokens;
+            profile.top_p = top_p;
+            profile.context_window = context_window;
+        }
+    }
+
+    /// Add a fresh generation preset from defaults and make it active.
+    pub fn add_model_profile(&mut self) -> String {
+        let profile = ModelProfile::new(
+            "New preset",
+            0.2,
+            default_max_tokens(),
+            None,
+            default_context_window(),
+        );
+        let id = profile.id.clone();
+        self.model_profiles.push(profile);
+        let _ = self.apply_model_profile(&id);
+        "Added generation preset: New preset".to_string()
+    }
+
+    /// Clone the active generation preset under a new id, and make it active.
+    pub fn duplicate_active_model_profile(&mut self) -> String {
+        self.ensure_model_profiles();
+        let Some(id) = self.active_model_profile_id.clone() else {
+            return self.save_model_profile("Generation preset");
         };
-        profile.name = profile_name.clone();
-        profile.temperature = temperature;
-        profile.max_tokens = max_tokens;
-        profile.top_p = top_p;
-        profile.context_window = context_window;
-        format!("Updated model profile: {profile_name}")
+        let Some(source) = self
+            .model_profiles
+            .iter()
+            .find(|profile| profile.id == id)
+            .cloned()
+        else {
+            return self.save_model_profile("Generation preset");
+        };
+        let name = format!("{} copy", source.name);
+        let profile = ModelProfile::new(
+            name.clone(),
+            source.temperature,
+            source.max_tokens,
+            source.top_p,
+            source.context_window,
+        );
+        self.active_model_profile_id = Some(profile.id.clone());
+        self.model_profiles.push(profile);
+        format!("Duplicated generation preset: {name}")
+    }
+
+    /// Rename the active generation preset in place.
+    pub fn rename_active_model_profile(&mut self, name: &str) -> String {
+        let profile_name = sanitized_profile_name(name, "Generation preset");
+        let Some(id) = self.active_model_profile_id.clone() else {
+            return "No active generation preset.".to_string();
+        };
+        if let Some(profile) = self
+            .model_profiles
+            .iter_mut()
+            .find(|profile| profile.id == id)
+        {
+            profile.name = profile_name.clone();
+            return format!("Renamed generation preset: {profile_name}");
+        }
+        "No active generation preset.".to_string()
     }
 
     /// Delete a model profile, keeping at least one and a valid active id.
@@ -391,18 +455,100 @@ impl AppSnapshot {
         }
     }
 
-    pub fn select_provider_profile(&mut self, profile_id: &str) -> AppResult<String> {
+    /// Make a saved connection active, copying ONLY its connection fields (base
+    /// URL, model, auth, key) onto the effective provider config. Tuning is left
+    /// untouched — that is owned by the active generation preset, not the connection.
+    pub fn select_connection(&mut self, connection_id: &str) -> AppResult<String> {
         let Some(profile) = self
             .provider_profiles
             .iter()
-            .find(|profile| profile.id == profile_id)
+            .find(|profile| profile.id == connection_id)
             .cloned()
         else {
-            return Err(format!("No provider profile found with id {profile_id}"));
+            return Err(format!("No connection found with id {connection_id}"));
         };
-        self.provider = profile.config;
+        self.set_connection_fields(&profile.config);
         self.active_provider_profile_id = Some(profile.id);
-        Ok(format!("Selected provider profile: {}", profile.name))
+        Ok(format!("Selected connection: {}", profile.name))
+    }
+
+    /// Copy the connection-only fields from `source` onto the effective provider
+    /// config (used by select/delete so tuning is never disturbed).
+    fn set_connection_fields(&mut self, source: &ProviderConfig) {
+        self.provider.base_url = source.base_url.clone();
+        self.provider.model = source.model.clone();
+        self.provider.auth_mode = source.auth_mode;
+        self.provider.api_key = source.api_key.clone();
+        self.provider.persist_api_key = source.persist_api_key;
+    }
+
+    /// Mirror the current connection fields into the active connection profile, so
+    /// live edits persist without a separate "Update" step.
+    pub fn sync_active_connection(&mut self) {
+        let Some(id) = self.active_provider_profile_id.clone() else {
+            return;
+        };
+        let connection = self.provider.clone();
+        if let Some(profile) = self
+            .provider_profiles
+            .iter_mut()
+            .find(|profile| profile.id == id)
+        {
+            profile.config.base_url = connection.base_url;
+            profile.config.model = connection.model;
+            profile.config.auth_mode = connection.auth_mode;
+            profile.config.api_key = connection.api_key;
+            profile.config.persist_api_key = connection.persist_api_key;
+        }
+    }
+
+    /// Add a fresh connection from defaults and make it active (a blank slate to
+    /// configure; rename via the Name field). Distinct from duplicate, which copies.
+    pub fn add_connection(&mut self) -> String {
+        let config = ProviderConfig::default();
+        let profile = ProviderProfile::new("New connection", config.clone());
+        let id = profile.id.clone();
+        self.provider_profiles.push(profile);
+        self.set_connection_fields(&config);
+        self.active_provider_profile_id = Some(id);
+        "Added connection: New connection".to_string()
+    }
+
+    /// Clone the active connection under a new id, and make it active.
+    pub fn duplicate_active_connection(&mut self) -> String {
+        let Some(id) = self.active_provider_profile_id.clone() else {
+            return self.save_current_provider_profile("Connection");
+        };
+        let Some(source) = self
+            .provider_profiles
+            .iter()
+            .find(|profile| profile.id == id)
+            .cloned()
+        else {
+            return self.save_current_provider_profile("Connection");
+        };
+        let name = format!("{} copy", source.name);
+        let profile = ProviderProfile::new(name.clone(), source.config);
+        self.active_provider_profile_id = Some(profile.id.clone());
+        self.provider_profiles.push(profile);
+        format!("Duplicated connection: {name}")
+    }
+
+    /// Rename the active connection in place.
+    pub fn rename_active_connection(&mut self, name: &str) -> String {
+        let profile_name = ProviderProfile::sanitized_name(name, &self.provider);
+        let Some(id) = self.active_provider_profile_id.clone() else {
+            return "No active connection.".to_string();
+        };
+        if let Some(profile) = self
+            .provider_profiles
+            .iter_mut()
+            .find(|profile| profile.id == id)
+        {
+            profile.name = profile_name.clone();
+            return format!("Renamed connection: {profile_name}");
+        }
+        "No active connection.".to_string()
     }
 
     pub fn save_current_provider_profile(&mut self, name: &str) -> String {
@@ -410,30 +556,12 @@ impl AppSnapshot {
         let profile = ProviderProfile::new(profile_name.clone(), self.provider.clone());
         self.active_provider_profile_id = Some(profile.id.clone());
         self.provider_profiles.push(profile);
-        format!("Saved provider profile: {profile_name}")
-    }
-
-    pub fn update_active_provider_profile(&mut self, name: &str) -> String {
-        self.ensure_provider_profiles();
-        let Some(active_id) = self.active_provider_profile_id.clone() else {
-            return self.save_current_provider_profile(name);
-        };
-        let profile_name = ProviderProfile::sanitized_name(name, &self.provider);
-        let Some(profile) = self
-            .provider_profiles
-            .iter_mut()
-            .find(|profile| profile.id == active_id)
-        else {
-            return self.save_current_provider_profile(&profile_name);
-        };
-        profile.name = profile_name.clone();
-        profile.config = self.provider.clone();
-        format!("Updated provider profile: {profile_name}")
+        format!("Saved connection: {profile_name}")
     }
 
     pub fn delete_provider_profile(&mut self, profile_id: &str) -> String {
         if self.provider_profiles.len() <= 1 {
-            return "Keep at least one provider profile.".to_string();
+            return "Keep at least one connection.".to_string();
         }
 
         let Some(index) = self
@@ -441,17 +569,17 @@ impl AppSnapshot {
             .iter()
             .position(|profile| profile.id == profile_id)
         else {
-            return format!("No provider profile found with id {profile_id}");
+            return format!("No connection found with id {profile_id}");
         };
 
         let removed = self.provider_profiles.remove(index);
         if self.active_provider_profile_id.as_deref() == Some(profile_id)
             && let Some(next) = self.provider_profiles.first().cloned()
         {
-            self.provider = next.config;
+            self.set_connection_fields(&next.config);
             self.active_provider_profile_id = Some(next.id);
         }
-        format!("Deleted provider profile: {}", removed.name)
+        format!("Deleted connection: {}", removed.name)
     }
 }
 
@@ -706,16 +834,18 @@ mod tests {
     }
 
     #[test]
-    fn provider_profile_helpers_select_update_and_delete() {
+    fn connection_helpers_save_sync_rename_select_and_delete() {
         let mut snapshot = AppSnapshot::default();
+
+        // New connection captured from the current effective config.
         snapshot.provider.model = "first-model".to_string();
         let save_status = snapshot.save_current_provider_profile("First");
         let first_id = snapshot.active_provider_profile_id.clone().unwrap();
-        snapshot.provider.model = "second-model".to_string();
-        let update_status = snapshot.update_active_provider_profile("Second");
+        assert_eq!(save_status, "Saved connection: First");
 
-        assert_eq!(save_status, "Saved provider profile: First");
-        assert_eq!(update_status, "Updated provider profile: Second");
+        // Live edits mirror into the active connection (no explicit "update" step).
+        snapshot.provider.model = "second-model".to_string();
+        snapshot.sync_active_connection();
         assert_eq!(
             snapshot
                 .provider_profiles
@@ -727,6 +857,15 @@ mod tests {
             "second-model"
         );
 
+        // Rename in place.
+        assert_eq!(
+            snapshot.rename_active_connection("Second"),
+            "Renamed connection: Second"
+        );
+
+        // Selecting another connection copies ONLY connection fields; the active
+        // generation preset's tuning (temperature) must be left untouched.
+        snapshot.provider.temperature = 0.9;
         let default_id = snapshot
             .provider_profiles
             .iter()
@@ -734,17 +873,80 @@ mod tests {
             .unwrap()
             .id
             .clone();
-        snapshot.select_provider_profile(&default_id).unwrap();
+        snapshot.select_connection(&default_id).unwrap();
         assert_eq!(snapshot.provider.model, "gpt-4.1-mini");
+        assert_eq!(snapshot.provider.temperature, 0.9);
 
         let delete_status = snapshot.delete_provider_profile(&first_id);
-        assert_eq!(delete_status, "Deleted provider profile: Second");
+        assert_eq!(delete_status, "Deleted connection: Second");
         assert!(
             !snapshot
                 .provider_profiles
                 .iter()
                 .any(|profile| profile.id == first_id)
         );
+    }
+
+    #[test]
+    fn generation_preset_helpers_sync_duplicate_and_rename() {
+        let mut snapshot = AppSnapshot::default();
+        let active_id = snapshot.active_model_profile_id.clone().unwrap();
+
+        // Live tuning edit mirrors into the active preset.
+        snapshot.provider.temperature = 0.42;
+        snapshot.provider.max_tokens = 1234;
+        snapshot.sync_active_model_profile();
+        let active = snapshot
+            .model_profiles
+            .iter()
+            .find(|profile| profile.id == active_id)
+            .unwrap();
+        assert_eq!(active.temperature, 0.42);
+        assert_eq!(active.max_tokens, 1234);
+
+        // Duplicate creates a new, distinct active preset.
+        let before = snapshot.model_profiles.len();
+        snapshot.duplicate_active_model_profile();
+        assert_eq!(snapshot.model_profiles.len(), before + 1);
+        let new_id = snapshot.active_model_profile_id.clone().unwrap();
+        assert_ne!(new_id, active_id);
+
+        // Rename in place.
+        assert_eq!(
+            snapshot.rename_active_model_profile("My preset"),
+            "Renamed generation preset: My preset"
+        );
+        assert_eq!(
+            snapshot
+                .model_profiles
+                .iter()
+                .find(|profile| profile.id == new_id)
+                .unwrap()
+                .name,
+            "My preset"
+        );
+    }
+
+    #[test]
+    fn with_profile_defaults_applies_active_generation_preset_to_provider() {
+        let mut snapshot = AppSnapshot::default();
+        let active_id = snapshot.active_model_profile_id.clone().unwrap();
+        if let Some(profile) = snapshot
+            .model_profiles
+            .iter_mut()
+            .find(|profile| profile.id == active_id)
+        {
+            profile.temperature = 0.33;
+            profile.max_tokens = 999;
+        }
+        // Effective config out of sync until normalization re-applies the preset.
+        snapshot.provider.temperature = 0.0;
+        snapshot.provider.max_tokens = 1;
+
+        let snapshot = snapshot.with_profile_defaults();
+
+        assert_eq!(snapshot.provider.temperature, 0.33);
+        assert_eq!(snapshot.provider.max_tokens, 999);
     }
 
     #[test]

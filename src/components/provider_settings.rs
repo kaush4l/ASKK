@@ -6,6 +6,14 @@ use crate::storage::{IndexedDbStorage, StorageAdapter};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
+/// Provider settings, organized into three cards:
+///   1. Connection      — where to call (base URL / model / auth / key)
+///   2. Generation preset — how to sample (temperature / max tokens / top-p / context)
+///   3. Run limits        — how hard to work a goal (max steps / max parallel / retries)
+///
+/// Connection and Generation preset are independent saved lists; a run uses the
+/// active connection × the active preset. Editing any field updates the active
+/// profile in place (no separate "save" step) — only New / Duplicate / Delete remain.
 #[component]
 pub fn ProviderSettings(
     mut snapshot: Signal<AppSnapshot>,
@@ -13,34 +21,29 @@ pub fn ProviderSettings(
 ) -> Element {
     let current = snapshot.read().clone();
     let current_models = provider_models.read().clone();
-    let active_profile_id = current
+
+    let active_connection_id = current
         .active_provider_profile_id
         .clone()
         .unwrap_or_default();
-    let active_profile_name = current
+    let active_connection_name = current
         .provider_profiles
         .iter()
-        .find(|profile| profile.id == active_profile_id)
+        .find(|profile| profile.id == active_connection_id)
         .map(|profile| profile.name.clone())
-        .unwrap_or_else(|| "Provider Profile".to_string());
-    let routing_profile_id = current
-        .orchestrator
-        .routing_provider_profile_id
-        .clone()
         .unwrap_or_default();
-    let worker_profile_id = current
-        .orchestrator
-        .worker_provider_profile_id
-        .clone()
+    let active_preset_id = current.active_model_profile_id.clone().unwrap_or_default();
+    let active_preset_name = current
+        .model_profiles
+        .iter()
+        .find(|profile| profile.id == active_preset_id)
+        .map(|profile| profile.name.clone())
         .unwrap_or_default();
-    let active_model_profile_id = current.active_model_profile_id.clone().unwrap_or_default();
-    let mut profile_name = use_signal(String::new);
-    let mut model_profile_name = use_signal(String::new);
 
     rsx! {
         section { class: "panel page-panel provider-panel",
             div { class: "panel-heading",
-                h2 { "Provider Settings" }
+                h2 { "Provider" }
                 div { class: "button-row",
                     button {
                         onclick: move |_| {
@@ -72,13 +75,18 @@ pub fn ProviderSettings(
                 }
             }
 
-            div { class: "profile-controls",
-                label {
-                    "Saved Profiles"
+            // ---- Card 1: Connection ------------------------------------------------
+            div { class: "settings-card",
+                div { class: "card-heading",
+                    h3 { "Connection" }
+                    p { class: "muted", "Where to send requests. Pick a saved connection or add one." }
+                }
+                div { class: "profile-row",
                     select {
-                        value: "{active_profile_id}",
+                        class: "profile-select",
+                        value: "{active_connection_id}",
                         onchange: move |event| {
-                            let status = snapshot.write().select_provider_profile(&event.value());
+                            let status = snapshot.write().select_connection(&event.value());
                             provider_models.set(Vec::new());
                             match status {
                                 Ok(status) => set_status(&mut snapshot, status),
@@ -88,96 +96,367 @@ pub fn ProviderSettings(
                         for profile in current.provider_profiles.iter() {
                             option {
                                 value: "{profile.id}",
-                                "{profile.name} - {profile.config.model}"
+                                selected: profile.id == active_connection_id,
+                                "{profile.name} · {profile.config.model}"
                             }
+                        }
+                    }
+                    input {
+                        class: "profile-name",
+                        value: "{active_connection_name}",
+                        placeholder: "Name this connection",
+                        oninput: move |event| {
+                            snapshot.write().rename_active_connection(&event.value());
+                        }
+                    }
+                    div { class: "button-row",
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let status = snapshot.write().add_connection();
+                                provider_models.set(Vec::new());
+                                set_status(&mut snapshot, status);
+                            },
+                            "New"
+                        }
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let status = snapshot.write().duplicate_active_connection();
+                                set_status(&mut snapshot, status);
+                            },
+                            "Duplicate"
+                        }
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let Some(id) = snapshot.read().active_provider_profile_id.clone() else {
+                                    set_status(&mut snapshot, "No active connection.".to_string());
+                                    return;
+                                };
+                                let status = snapshot.write().delete_provider_profile(&id);
+                                provider_models.set(Vec::new());
+                                set_status(&mut snapshot, status);
+                            },
+                            "Delete"
+                        }
+                    }
+                }
+
+                div { class: "preset-grid",
+                    button {
+                        class: "ghost-button",
+                        onclick: move |_| {
+                            let status = apply_provider_preset(&mut snapshot, ProviderPreset::OpenAi);
+                            snapshot.write().sync_active_connection();
+                            provider_models.set(Vec::new());
+                            set_status(&mut snapshot, status);
+                        },
+                        "OpenAI"
+                    }
+                    button {
+                        class: "ghost-button",
+                        onclick: move |_| {
+                            let status = apply_provider_preset(&mut snapshot, ProviderPreset::Ollama);
+                            snapshot.write().sync_active_connection();
+                            provider_models.set(Vec::new());
+                            set_status(&mut snapshot, status);
+                        },
+                        "Ollama"
+                    }
+                    button {
+                        class: "ghost-button",
+                        onclick: move |_| {
+                            let status = apply_provider_preset(&mut snapshot, ProviderPreset::LmStudio);
+                            snapshot.write().sync_active_connection();
+                            provider_models.set(Vec::new());
+                            set_status(&mut snapshot, status);
+                        },
+                        "LM Studio"
+                    }
+                    button {
+                        class: "ghost-button",
+                        onclick: move |_| {
+                            let status = apply_provider_preset(&mut snapshot, ProviderPreset::LocalBridge);
+                            snapshot.write().sync_active_connection();
+                            provider_models.set(Vec::new());
+                            set_status(&mut snapshot, status);
+                        },
+                        "Local Bridge"
+                    }
+                }
+
+                label {
+                    "Base URL"
+                    input {
+                        value: "{current.provider.base_url}",
+                        oninput: move |event| {
+                            let mut data = snapshot.write();
+                            data.provider.base_url = event.value();
+                            data.sync_active_connection();
                         }
                     }
                 }
                 label {
-                    "Profile Name"
+                    "Model"
                     input {
-                        value: "{profile_name.read()}",
-                        placeholder: "{active_profile_name}",
-                        oninput: move |event| profile_name.set(event.value())
+                        value: "{current.provider.model}",
+                        placeholder: "e.g. gpt-4.1-mini",
+                        oninput: move |event| {
+                            let mut data = snapshot.write();
+                            data.provider.model = event.value();
+                            data.sync_active_connection();
+                        }
+                    }
+                }
+                div { class: "button-row",
+                    button {
+                        onclick: move |_| {
+                            let config = snapshot.read().provider.clone();
+                            let mut snapshot = snapshot;
+                            let mut provider_models = provider_models;
+                            spawn_local(async move {
+                                set_status(&mut snapshot, "Listing provider models...".to_string());
+                                match list_models(&config).await {
+                                    Ok(models) if models.is_empty() => {
+                                        provider_models.set(Vec::new());
+                                        set_status(&mut snapshot, "Provider returned no models.".to_string());
+                                    }
+                                    Ok(models) => {
+                                        let count = models.len();
+                                        provider_models.set(models);
+                                        set_status(&mut snapshot, format!("Listed {count} model(s). Click one to use it."));
+                                    }
+                                    Err(err) => {
+                                        provider_models.set(Vec::new());
+                                        set_status(&mut snapshot, err);
+                                    }
+                                }
+                            });
+                        },
+                        "List Models"
+                    }
+                    button {
+                        onclick: move |_| {
+                            let config = snapshot.read().provider.clone();
+                            let mut snapshot = snapshot;
+                            spawn_local(async move {
+                                set_status(&mut snapshot, "Testing chat completion...".to_string());
+                                match test_chat(&config).await {
+                                    Ok(status) => set_status(&mut snapshot, status),
+                                    Err(err) => set_status(&mut snapshot, err),
+                                }
+                            });
+                        },
+                        "Test Chat"
+                    }
+                }
+                if !current_models.is_empty() {
+                    div { class: "model-picker",
+                        for model in current_models.iter() {
+                            button {
+                                class: "ghost-button model-chip",
+                                key: "{model}",
+                                onclick: {
+                                    let model = model.clone();
+                                    move |_| {
+                                        let mut data = snapshot.write();
+                                        data.provider.model = model.clone();
+                                        data.sync_active_connection();
+                                        drop(data);
+                                        set_status(&mut snapshot, format!("Selected model: {model}"));
+                                    }
+                                },
+                                "{model}"
+                            }
+                        }
+                    }
+                }
+                div { class: "inline-controls",
+                    label {
+                        "Auth"
+                        select {
+                            value: "{current.provider.auth_mode.as_form_value()}",
+                            onchange: move |event| {
+                                let mut data = snapshot.write();
+                                data.provider.auth_mode = ProviderAuthMode::from_form_value(&event.value());
+                                data.sync_active_connection();
+                            },
+                            option { value: "bearer", "Bearer token" }
+                            option { value: "none", "No auth" }
+                        }
+                    }
+                    label {
+                        "API key"
+                        input {
+                            r#type: "password",
+                            disabled: !current.provider.auth_mode.requires_key(),
+                            value: "{current.provider.api_key}",
+                            placeholder: if current.provider.auth_mode.requires_key() { "sk-… or provider token" } else { "not sent when Auth is No auth" },
+                            oninput: move |event| {
+                                let mut data = snapshot.write();
+                                data.provider.api_key = event.value();
+                                data.sync_active_connection();
+                            }
+                        }
+                    }
+                    label { class: "checkbox-line",
+                        input {
+                            r#type: "checkbox",
+                            checked: current.provider.persist_api_key,
+                            onchange: move |event| {
+                                let mut data = snapshot.write();
+                                data.provider.persist_api_key = event.checked();
+                                data.sync_active_connection();
+                            }
+                        }
+                        "Remember key in this browser"
                     }
                 }
             }
 
-            div { class: "profile-actions",
-                button {
-                    class: "ghost-button",
-                    onclick: move |_| {
-                        let name = profile_name.read().clone();
-                        let status = snapshot.write().save_current_provider_profile(&name);
-                        profile_name.set(String::new());
-                        set_status(&mut snapshot, status);
-                    },
-                    "Save New"
+            // ---- Card 2: Generation preset ----------------------------------------
+            div { class: "settings-card",
+                div { class: "card-heading",
+                    h3 { "Generation preset" }
+                    p { class: "muted", "How the model samples. Reusable across connections." }
                 }
-                button {
-                    class: "ghost-button",
-                    onclick: move |_| {
-                        let name = profile_name.read().clone();
-                        let status = snapshot.write().update_active_provider_profile(&name);
-                        profile_name.set(String::new());
-                        set_status(&mut snapshot, status);
-                    },
-                    "Update"
-                }
-                button {
-                    class: "ghost-button",
-                    onclick: move |_| {
-                        let Some(profile_id) = snapshot.read().active_provider_profile_id.clone() else {
-                            set_status(&mut snapshot, "No active provider profile selected.".to_string());
-                            return;
-                        };
-                        let status = snapshot.write().delete_provider_profile(&profile_id);
-                        provider_models.set(Vec::new());
-                        set_status(&mut snapshot, status);
-                    },
-                    "Delete"
-                }
-            }
-
-            div { class: "orchestrator-controls",
-                h3 { "Orchestrator Runtime" }
-                div { class: "profile-controls",
-                    label {
-                        "Routing Profile"
-                        select {
-                            value: "{routing_profile_id}",
-                            onchange: move |event| {
-                                let value = event.value();
-                                snapshot.write().orchestrator.routing_provider_profile_id =
-                                    if value.is_empty() { None } else { Some(value) };
+                div { class: "profile-row",
+                    select {
+                        class: "profile-select",
+                        value: "{active_preset_id}",
+                        onchange: move |event| {
+                            let status = snapshot.write().apply_model_profile(&event.value());
+                            match status {
+                                Ok(status) => set_status(&mut snapshot, status),
+                                Err(err) => set_status(&mut snapshot, err),
+                            }
+                        },
+                        for profile in current.model_profiles.iter() {
+                            option {
+                                value: "{profile.id}",
+                                selected: profile.id == active_preset_id,
+                                "{profile.name} · temp {profile.temperature}"
+                            }
+                        }
+                    }
+                    input {
+                        class: "profile-name",
+                        value: "{active_preset_name}",
+                        placeholder: "Name this preset",
+                        oninput: move |event| {
+                            snapshot.write().rename_active_model_profile(&event.value());
+                        }
+                    }
+                    div { class: "button-row",
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let status = snapshot.write().add_model_profile();
+                                set_status(&mut snapshot, status);
                             },
-                            option { value: "", "Active provider" }
-                            for profile in current.provider_profiles.iter() {
-                                option {
-                                    value: "{profile.id}",
-                                    "{profile.name} - {profile.config.model}"
+                            "New"
+                        }
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let status = snapshot.write().duplicate_active_model_profile();
+                                set_status(&mut snapshot, status);
+                            },
+                            "Duplicate"
+                        }
+                        button {
+                            class: "ghost-button",
+                            onclick: move |_| {
+                                let Some(id) = snapshot.read().active_model_profile_id.clone() else {
+                                    set_status(&mut snapshot, "No active generation preset.".to_string());
+                                    return;
+                                };
+                                let status = snapshot.write().delete_model_profile(&id);
+                                set_status(&mut snapshot, status);
+                            },
+                            "Delete"
+                        }
+                    }
+                }
+                div { class: "inline-controls",
+                    label {
+                        "Temperature"
+                        input {
+                            class: "number-input",
+                            r#type: "number",
+                            step: "0.1",
+                            min: "0",
+                            max: "2",
+                            value: "{current.provider.temperature}",
+                            oninput: move |event| {
+                                if let Ok(value) = event.value().parse::<f64>() {
+                                    let mut data = snapshot.write();
+                                    data.provider.temperature = value;
+                                    data.sync_active_model_profile();
                                 }
                             }
                         }
                     }
                     label {
-                        "Worker Profile"
-                        select {
-                            value: "{worker_profile_id}",
-                            onchange: move |event| {
-                                let value = event.value();
-                                snapshot.write().orchestrator.worker_provider_profile_id =
-                                    if value.is_empty() { None } else { Some(value) };
-                            },
-                            option { value: "", "Active provider" }
-                            for profile in current.provider_profiles.iter() {
-                                option {
-                                    value: "{profile.id}",
-                                    "{profile.name} - {profile.config.model}"
+                        "Max tokens"
+                        input {
+                            class: "number-input",
+                            r#type: "number",
+                            min: "1",
+                            value: "{current.provider.max_tokens}",
+                            oninput: move |event| {
+                                if let Ok(value) = event.value().parse::<u32>() {
+                                    let mut data = snapshot.write();
+                                    data.provider.max_tokens = value.max(1);
+                                    data.sync_active_model_profile();
                                 }
                             }
                         }
                     }
+                    label {
+                        "Top-p"
+                        input {
+                            class: "number-input",
+                            r#type: "number",
+                            step: "0.05",
+                            min: "0",
+                            max: "1",
+                            placeholder: "off",
+                            value: current.provider.top_p.map(|value| value.to_string()).unwrap_or_default(),
+                            oninput: move |event| {
+                                let raw = event.value();
+                                let parsed = if raw.trim().is_empty() { None } else { raw.parse::<f64>().ok() };
+                                let mut data = snapshot.write();
+                                data.provider.top_p = parsed;
+                                data.sync_active_model_profile();
+                            }
+                        }
+                    }
+                    label {
+                        "Context window"
+                        input {
+                            class: "number-input",
+                            r#type: "number",
+                            min: "1",
+                            value: "{current.provider.context_window}",
+                            oninput: move |event| {
+                                if let Ok(value) = event.value().parse::<u32>() {
+                                    let mut data = snapshot.write();
+                                    data.provider.context_window = value.max(1);
+                                    data.sync_active_model_profile();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Card 3: Run limits -----------------------------------------------
+            div { class: "settings-card",
+                div { class: "card-heading",
+                    h3 { "Run limits" }
+                    p { class: "muted", "Apply to every run. Set Max parallel ≥ 2 to let decomposable goals fan out into parallel agents." }
                 }
                 div { class: "inline-controls",
                     label {
@@ -195,35 +474,7 @@ pub fn ProviderSettings(
                         }
                     }
                     label {
-                        "Verification retries"
-                        input {
-                            class: "number-input",
-                            r#type: "number",
-                            min: "0",
-                            value: "{current.orchestrator.verification_retries}",
-                            oninput: move |event| {
-                                if let Ok(value) = event.value().parse::<u32>() {
-                                    snapshot.write().orchestrator.verification_retries = value;
-                                }
-                            }
-                        }
-                    }
-                    label {
-                        "No-progress turns"
-                        input {
-                            class: "number-input",
-                            r#type: "number",
-                            min: "1",
-                            value: "{current.orchestrator.no_progress_turns}",
-                            oninput: move |event| {
-                                if let Ok(value) = event.value().parse::<u32>() {
-                                    snapshot.write().orchestrator.no_progress_turns = value.max(1);
-                                }
-                            }
-                        }
-                    }
-                    label {
-                        "Max parallel"
+                        "Max parallel agents"
                         input {
                             class: "number-input",
                             r#type: "number",
@@ -236,324 +487,16 @@ pub fn ProviderSettings(
                             }
                         }
                     }
-                }
-            }
-
-            div { class: "preset-grid",
-                button {
-                    class: "ghost-button",
-                    onclick: move |_| {
-                        let status = apply_provider_preset(&mut snapshot, ProviderPreset::OpenAi);
-                        provider_models.set(Vec::new());
-                        set_status(&mut snapshot, status);
-                    },
-                    "OpenAI"
-                }
-                button {
-                    class: "ghost-button",
-                    onclick: move |_| {
-                        let status = apply_provider_preset(&mut snapshot, ProviderPreset::Ollama);
-                        provider_models.set(Vec::new());
-                        set_status(&mut snapshot, status);
-                    },
-                    "Ollama"
-                }
-                button {
-                    class: "ghost-button",
-                    onclick: move |_| {
-                        let status = apply_provider_preset(&mut snapshot, ProviderPreset::LmStudio);
-                        provider_models.set(Vec::new());
-                        set_status(&mut snapshot, status);
-                    },
-                    "LM Studio"
-                }
-                button {
-                    class: "ghost-button",
-                    onclick: move |_| {
-                        let status = apply_provider_preset(&mut snapshot, ProviderPreset::LocalBridge);
-                        provider_models.set(Vec::new());
-                        set_status(&mut snapshot, status);
-                    },
-                    "Local Bridge"
-                }
-                button {
-                    class: "ghost-button",
-                    onclick: move |_| {
-                        provider_models.set(Vec::new());
-                        set_status(&mut snapshot, "Custom provider: edit Base URL, Auth, and Model directly.".to_string());
-                    },
-                    "Custom"
-                }
-            }
-            label {
-                "Base URL"
-                input {
-                    value: "{current.provider.base_url}",
-                    oninput: move |event| {
-                        snapshot.write().provider.base_url = event.value();
-                    }
-                }
-            }
-            label {
-                "Model"
-                input {
-                    value: "{current.provider.model}",
-                    oninput: move |event| {
-                        snapshot.write().provider.model = event.value();
-                    }
-                }
-            }
-            label {
-                "Auth"
-                select {
-                    value: "{current.provider.auth_mode.as_form_value()}",
-                    onchange: move |event| {
-                        snapshot.write().provider.auth_mode = ProviderAuthMode::from_form_value(&event.value());
-                    },
-                    option { value: "bearer", "Bearer token" }
-                    option { value: "none", "No auth" }
-                }
-            }
-            label {
-                "API Key"
-                input {
-                    r#type: "password",
-                    disabled: !current.provider.auth_mode.requires_key(),
-                    value: "{current.provider.api_key}",
-                    placeholder: if current.provider.auth_mode.requires_key() { "sk-... or provider token" } else { "not sent when Auth is No auth" },
-                    oninput: move |event| {
-                        snapshot.write().provider.api_key = event.value();
-                    }
-                }
-            }
-            div { class: "inline-controls",
-                label { class: "checkbox-line",
-                    input {
-                        r#type: "checkbox",
-                        checked: current.provider.persist_api_key,
-                        onchange: move |event| {
-                            snapshot.write().provider.persist_api_key = event.checked();
-                        }
-                    }
-                    "Persist key in browser storage"
-                }
-                label {
-                    "Temp"
-                    input {
-                        class: "number-input",
-                        r#type: "number",
-                        step: "0.1",
-                        min: "0",
-                        max: "2",
-                        value: "{current.provider.temperature}",
-                        oninput: move |event| {
-                            if let Ok(value) = event.value().parse::<f64>() {
-                                snapshot.write().provider.temperature = value;
-                            }
-                        }
-                    }
-                }
-                label {
-                    "Max tokens"
-                    input {
-                        class: "number-input",
-                        r#type: "number",
-                        min: "1",
-                        value: "{current.provider.max_tokens}",
-                        oninput: move |event| {
-                            if let Ok(value) = event.value().parse::<u32>() {
-                                snapshot.write().provider.max_tokens = value;
-                            }
-                        }
-                    }
-                }
-                label {
-                    "Top P"
-                    input {
-                        class: "number-input",
-                        r#type: "number",
-                        step: "0.05",
-                        min: "0",
-                        max: "1",
-                        placeholder: "off",
-                        value: current.provider.top_p.map(|value| value.to_string()).unwrap_or_default(),
-                        oninput: move |event| {
-                            let raw = event.value();
-                            let parsed = if raw.trim().is_empty() {
-                                None
-                            } else {
-                                raw.parse::<f64>().ok()
-                            };
-                            snapshot.write().provider.top_p = parsed;
-                        }
-                    }
-                }
-                label {
-                    "Context window"
-                    input {
-                        class: "number-input",
-                        r#type: "number",
-                        min: "1",
-                        value: "{current.provider.context_window}",
-                        oninput: move |event| {
-                            if let Ok(value) = event.value().parse::<u32>() {
-                                snapshot.write().provider.context_window = value.max(1);
-                            }
-                        }
-                    }
-                }
-            }
-
-            div { class: "model-profile-controls",
-                h3 { "Model Profiles" }
-                p { class: "muted", "Tune temperature, max tokens, Top P, and context window above, then save them as a reusable profile to pair with a model." }
-                div { class: "profile-controls",
                     label {
-                        "Active Profile"
-                        select {
-                            value: "{active_model_profile_id}",
-                            onchange: move |event| {
-                                let status = snapshot.write().apply_model_profile(&event.value());
-                                match status {
-                                    Ok(status) => set_status(&mut snapshot, status),
-                                    Err(err) => set_status(&mut snapshot, err),
-                                }
-                            },
-                            for profile in current.model_profiles.iter() {
-                                option {
-                                    value: "{profile.id}",
-                                    "{profile.name} - temp {profile.temperature}, {profile.context_window} ctx"
-                                }
-                            }
-                        }
-                    }
-                    label {
-                        "Profile Name"
+                        "Verification retries"
                         input {
-                            value: "{model_profile_name.read()}",
-                            placeholder: "e.g. Long-context research",
-                            oninput: move |event| model_profile_name.set(event.value())
-                        }
-                    }
-                }
-                div { class: "profile-actions",
-                    button {
-                        class: "ghost-button",
-                        onclick: move |_| {
-                            let name = model_profile_name.read().clone();
-                            let status = snapshot.write().save_model_profile(&name);
-                            model_profile_name.set(String::new());
-                            set_status(&mut snapshot, status);
-                        },
-                        "Save New"
-                    }
-                    button {
-                        class: "ghost-button",
-                        onclick: move |_| {
-                            let name = model_profile_name.read().clone();
-                            let status = snapshot.write().update_active_model_profile(&name);
-                            model_profile_name.set(String::new());
-                            set_status(&mut snapshot, status);
-                        },
-                        "Update"
-                    }
-                    button {
-                        class: "ghost-button",
-                        onclick: move |_| {
-                            let Some(profile_id) = snapshot.read().active_model_profile_id.clone() else {
-                                set_status(&mut snapshot, "No active model profile selected.".to_string());
-                                return;
-                            };
-                            let status = snapshot.write().delete_model_profile(&profile_id);
-                            set_status(&mut snapshot, status);
-                        },
-                        "Delete"
-                    }
-                }
-            }
-            div { class: "diagnostic-actions",
-                button {
-                    onclick: move |_| {
-                        let config = snapshot.read().provider.clone();
-                        let mut snapshot = snapshot;
-                        let mut provider_models = provider_models;
-                        spawn_local(async move {
-                            set_status(&mut snapshot, "Listing provider models...".to_string());
-                            match list_models(&config).await {
-                                Ok(models) if models.is_empty() => {
-                                    provider_models.set(Vec::new());
-                                    set_status(&mut snapshot, "Provider returned no models.".to_string());
-                                }
-                                Ok(models) => {
-                                    let count = models.len();
-                                    provider_models.set(models);
-                                    set_status(&mut snapshot, format!("Listed {count} model(s)."));
-                                }
-                                Err(err) => {
-                                    provider_models.set(Vec::new());
-                                    set_status(&mut snapshot, err);
-                                }
-                            }
-                        });
-                    },
-                    "List Models"
-                }
-                button {
-                    onclick: move |_| {
-                        let config = snapshot.read().provider.clone();
-                        let mut snapshot = snapshot;
-                        spawn_local(async move {
-                            set_status(&mut snapshot, "Testing chat completion...".to_string());
-                            match test_chat(&config).await {
-                                Ok(status) => set_status(&mut snapshot, status),
-                                Err(err) => set_status(&mut snapshot, err),
-                            }
-                        });
-                    },
-                    "Test Chat"
-                }
-            }
-            if !current_models.is_empty() {
-                div { class: "model-table",
-                    div { class: "model-table-head",
-                        span { "Model" }
-                        span { "Profile" }
-                    }
-                    for model in current_models.iter() {
-                        div { class: "model-row", key: "{model}",
-                            button {
-                                class: "ghost-button model-chip",
-                                onclick: {
-                                    let model = model.clone();
-                                    move |_| {
-                                        let applied = {
-                                            let mut data = snapshot.write();
-                                            data.provider.model = model.clone();
-                                            match data.active_model_profile_id.clone() {
-                                                Some(id) => data.apply_model_profile(&id).ok(),
-                                                None => None,
-                                            }
-                                        };
-                                        let suffix = applied
-                                            .map(|status| format!(" {status}"))
-                                            .unwrap_or_default();
-                                        set_status(&mut snapshot, format!("Selected model: {model}.{suffix}"));
-                                    }
-                                },
-                                "{model}"
-                            }
-                            select {
-                                class: "model-profile-select",
-                                value: "{active_model_profile_id}",
-                                onchange: move |event| {
-                                    let status = snapshot.write().apply_model_profile(&event.value());
-                                    match status {
-                                        Ok(status) => set_status(&mut snapshot, status),
-                                        Err(err) => set_status(&mut snapshot, err),
-                                    }
-                                },
-                                for profile in current.model_profiles.iter() {
-                                    option { value: "{profile.id}", "{profile.name}" }
+                            class: "number-input",
+                            r#type: "number",
+                            min: "0",
+                            value: "{current.orchestrator.verification_retries}",
+                            oninput: move |event| {
+                                if let Ok(value) = event.value().parse::<u32>() {
+                                    snapshot.write().orchestrator.verification_retries = value;
                                 }
                             }
                         }
