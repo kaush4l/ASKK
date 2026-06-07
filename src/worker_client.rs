@@ -179,9 +179,42 @@ where
 fn spawn_agent_worker() -> AppResult<web_sys::Worker> {
     let options = web_sys::WorkerOptions::new();
     options.set_type(web_sys::WorkerType::Module);
-    let script_url = AGENT_WORKER_JS.to_string();
+    let mut script_url = AGENT_WORKER_JS.to_string();
+    // The worker must import the SAME wasm-bindgen glue the page loaded. Its hashed
+    // URL respects the deploy base path (e.g. /ASKK/assets/askk-<hash>.js), which a
+    // static worker file cannot hardcode — so discover it from the page and hand it
+    // to the worker as a query parameter.
+    if let Some(glue) = main_wasm_glue_url() {
+        let encoded = String::from(js_sys::encode_uri_component(&glue));
+        script_url = format!("{script_url}?wasm={encoded}");
+    }
     web_sys::Worker::new_with_options(&script_url, &options)
         .map_err(|err| format!("Unable to start agent Web Worker `{script_url}`: {err:?}"))
+}
+
+/// Find the URL of the wasm-bindgen glue script the page loaded, so the worker can
+/// import the same module under whatever base path the app is hosted at.
+#[cfg(target_arch = "wasm32")]
+fn main_wasm_glue_url() -> Option<String> {
+    let document = web_sys::window()?.document()?;
+    let scripts = document
+        .query_selector_all("script[type=\"module\"][src]")
+        .ok()?;
+    for index in 0..scripts.length() {
+        let Some(node) = scripts.item(index) else {
+            continue;
+        };
+        let Some(element) = node.dyn_ref::<web_sys::Element>() else {
+            continue;
+        };
+        let Some(src) = element.get_attribute("src") else {
+            continue;
+        };
+        if src.contains("askk") && src.ends_with(".js") && !src.contains("worker") {
+            return Some(src);
+        }
+    }
+    None
 }
 
 #[cfg(target_arch = "wasm32")]

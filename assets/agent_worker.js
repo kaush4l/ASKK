@@ -1,4 +1,8 @@
-const wasmModulePath = "/wasm/askk.js";
+// The wasm-bindgen glue lives next to this worker as a hashed, base-pathed asset
+// (e.g. /ASKK/assets/askk-<hash>.js). A static worker file can't know that URL, so
+// the spawner passes it as `?wasm=...`. Fall back to the dev path when absent.
+const wasmModulePath =
+  new URL(import.meta.url).searchParams.get("wasm") || "/wasm/askk.js";
 const wasmModulePromise = import(wasmModulePath);
 const ready = waitForWasm();
 
