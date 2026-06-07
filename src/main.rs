@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
+mod browser_exec;
 mod components;
 mod engine;
 mod execution;
@@ -25,6 +26,14 @@ use storage::{IndexedDbStorage, StorageAdapter};
 fn main() {
     #[cfg(target_arch = "wasm32")]
     {
+        // Surface any panic to the browser console instead of failing silently, so
+        // an unexpected error is visible and debuggable rather than a blank tab.
+        std::panic::set_hook(Box::new(|info| {
+            web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(&format!(
+                "ASKK panic: {info}"
+            )));
+        }));
+
         let global = js_sys::global();
         let has_document =
             js_sys::Reflect::has(&global, &wasm_bindgen::JsValue::from_str("document"))

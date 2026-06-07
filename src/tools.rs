@@ -1,4 +1,16 @@
-use crate::state::{AppResult, AppSnapshot, ToolResult, ToolSpec, WebSearchToolConfig};
+//! Tool pillar (one of the four core types: Engine, **Tool**, Provider, Capability).
+//!
+//! A tool is an MCP-shaped object: [`ToolSpec`] is `{ name, description,
+//! input_schema }` (the same fields an MCP tool advertises) and every call returns
+//! a [`ToolResult`] `{ ok, content }`. Tools are pre-compiled into the WASM harness
+//! and registered in [`ToolRegistry`]; adding one is a single `register(...)` call,
+//! never an edit to the agent loop. Tools run either fully in the browser (`run_js`,
+//! the browser web_search/web_fetch backend, the IndexedDB `file_*` VFS) or, when a
+//! local bridge is available, through it (`run_command`, disk `fs_*`).
+
+use crate::state::{
+    AppResult, AppSnapshot, SearchBackend, ToolResult, ToolSpec, WebSearchToolConfig,
+};
 use crate::vfs::ProjectVfs;
 use gloo_net::http::Request;
 use serde_json::{Value, json};
@@ -90,6 +102,7 @@ impl ToolRegistry {
 }
 
 fn register_builtin_tools(registry: &mut ToolRegistry) {
+    registry.register(run_js_descriptor());
     registry.register(web_search_descriptor());
     registry.register(web_fetch_descriptor());
     registry.register(run_command_descriptor());
@@ -99,6 +112,13 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(file_read_descriptor());
     registry.register(file_write_descriptor());
     registry.register(file_list_descriptor());
+}
+
+fn run_js_descriptor() -> ToolDescriptor {
+    ToolDescriptor {
+        spec: run_js_spec(),
+        handler: run_js_handler,
+    }
 }
 
 fn web_fetch_descriptor() -> ToolDescriptor {
@@ -168,11 +188,28 @@ fn web_search_handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> Too
     Box::pin(async move { web_search_with_config(args, &snapshot.tool_config.web_search).await })
 }
 
+fn run_js_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let code = string_arg(args, "code")?;
+        let timeout_ms = integer_arg(args, "timeout_ms")
+            .unwrap_or(10_000)
+            .clamp(100, 60_000) as u32;
+        let value = crate::browser_exec::run_js_in_browser(&code, timeout_ms).await?;
+        let (ok, text) = crate::browser_exec::format_run_js(&value);
+        if ok { Ok(text) } else { Err(text) }
+    })
+}
+
 fn web_fetch_handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
         let url = string_arg(args, "url")?;
-        let endpoint = bridge_endpoint(&snapshot.tool_config.web_search, "web_fetch")?;
-        bridge_tool_request("web_fetch", &endpoint, json!({ "url": url })).await
+        match snapshot.tool_config.web_search.backend {
+            SearchBackend::Browser => browser_web_fetch(&url).await,
+            SearchBackend::Bridge => {
+                let endpoint = bridge_endpoint(&snapshot.tool_config.web_search, "web_fetch")?;
+                bridge_tool_request("web_fetch", &endpoint, json!({ "url": url })).await
+            }
+        }
     })
 }
 
@@ -260,7 +297,7 @@ fn file_list_handler<'a>(_snapshot: &'a mut AppSnapshot, _args: &'a Value) -> To
 fn web_search_spec() -> ToolSpec {
     ToolSpec {
         name: "web_search".to_string(),
-        description: "Search the web through the ASKK local bridge. The bridge provider is configured in Tools. Returns Hermes/OpenClaw-style results with titles, URLs, descriptions, and positions.".to_string(),
+        description: "Search the web and get back titles, URLs, and descriptions. By default this runs directly in the browser (key-free, works on the hosted site); it can be switched to the local bridge for richer providers on the Tools page. Use it to discover sources, then web_fetch the best ones to read them in full.".to_string(),
         input_schema: json!({
             "type":"object",
             "properties":{
@@ -277,10 +314,25 @@ fn web_search_spec() -> ToolSpec {
     }
 }
 
+fn run_js_spec() -> ToolSpec {
+    ToolSpec {
+        name: "run_js".to_string(),
+        description: "Run JavaScript natively in the browser, in a sandboxed Web Worker with no bridge or network setup required. The snippet is the body of an async function, so top-level `await` and `return` work; `console.log(...)` output is captured. Returns ok, stdout, stderr, result, and error. Use this to execute and TEST code in-browser: treat ok:true with the expected output as your verification that the code works.".to_string(),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "code": { "type": "string", "description": "JavaScript to run. Log with console.log; `return value` becomes the result." },
+                "timeout_ms": { "type": "integer", "description": "Hard timeout in milliseconds (100-60000, default 10000)." }
+            },
+            "required": ["code"]
+        }),
+    }
+}
+
 fn web_fetch_spec() -> ToolSpec {
     ToolSpec {
         name: "web_fetch".to_string(),
-        description: "Fetch one web page or document by URL through the ASKK local bridge and return its cleaned readable text and title. Use it after web_search to read a promising source in full before you cite it — never answer a research question from search snippets alone.".to_string(),
+        description: "Fetch one web page or document by URL and return its cleaned readable text. By default it runs in the browser via a key-free reader (works on the hosted site); the bridge backend can be selected on the Tools page. Use it after web_search to read a promising source in full before you cite it — never answer a research question from search snippets alone.".to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {
@@ -353,8 +405,216 @@ pub async fn web_search_with_config(
     args: &Value,
     config: &WebSearchToolConfig,
 ) -> AppResult<String> {
-    let (endpoint, body) = build_web_search_request(args, config)?;
-    bridge_tool_request("web_search", &endpoint, body).await
+    match config.backend {
+        SearchBackend::Browser => browser_web_search(args, config).await,
+        SearchBackend::Bridge => {
+            let (endpoint, body) = build_web_search_request(args, config)?;
+            bridge_tool_request("web_search", &endpoint, body).await
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Browser-direct search/fetch backend.
+//
+// Calls CORS-open, key-free public endpoints straight from the page, so research
+// works on the hosted HTTPS site with no bridge. It is intentionally an abstract
+// seam: additional providers (Brave/Tavily/Jina-with-key) can be added behind the
+// same `SearchBackend` / `web_search` envelope without touching the agent loop.
+// ---------------------------------------------------------------------------
+
+/// Browser web_search: merge DuckDuckGo Instant Answer (instant abstracts) with
+/// Wikipedia full-text search (real multi-result hits). Both are CORS `*` and
+/// key-free. Returns the shared `{ success, data: { web: [...] } }` envelope.
+async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppResult<String> {
+    let query = string_arg(args, "query")?;
+    let count = integer_arg(args, "count")
+        .unwrap_or(i64::from(config.default_count))
+        .clamp(1, 10) as usize;
+
+    let mut results: Vec<(String, String, String)> = Vec::new();
+    if let Ok(mut ddg) = duckduckgo_instant_answer(&query).await {
+        results.append(&mut ddg);
+    }
+    if let Ok(mut wiki) = wikipedia_search(&query, count).await {
+        results.append(&mut wiki);
+    }
+
+    // Deduplicate by URL, keep order, cap to `count`, then number the positions.
+    let mut seen = std::collections::HashSet::new();
+    let web: Vec<Value> = results
+        .into_iter()
+        .filter(|(_, url, _)| !url.is_empty() && seen.insert(url.clone()))
+        .take(count)
+        .enumerate()
+        .map(|(index, (title, url, description))| {
+            json!({
+                "title": title,
+                "url": url,
+                "description": description,
+                "position": index + 1,
+            })
+        })
+        .collect();
+
+    if web.is_empty() {
+        return Err(format!(
+            "No browser web_search results for `{query}`. The key-free browser backend (DuckDuckGo Instant Answer + Wikipedia) has limited coverage; switch the Tools page backend to Bridge for a full search provider."
+        ));
+    }
+
+    Ok(json!({ "success": true, "data": { "web": web }, "backend": "browser" }).to_string())
+}
+
+/// Browser web_fetch: read any page as clean text via the key-free, CORS-open
+/// Jina reader (`https://r.jina.ai/<url>`).
+async fn browser_web_fetch(url: &str) -> AppResult<String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(format!("web_fetch needs an absolute http(s) URL: {url}"));
+    }
+    let endpoint = format!("https://r.jina.ai/{url}");
+    let text = http_get_text(&endpoint).await?;
+    let body = json!({
+        "success": true,
+        "data": {
+            "url": url,
+            "text": truncate(&text, 24_000),
+            "backend": "jina_reader",
+        }
+    });
+    Ok(body.to_string())
+}
+
+async fn duckduckgo_instant_answer(query: &str) -> AppResult<Vec<(String, String, String)>> {
+    let url = format!(
+        "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
+        encode_component(query)
+    );
+    let value = http_get_json(&url).await?;
+    let mut out = Vec::new();
+
+    let abstract_text = value
+        .get("AbstractText")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let abstract_url = value
+        .get("AbstractURL")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if !abstract_text.is_empty() && !abstract_url.is_empty() {
+        let heading = value
+            .get("Heading")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(query);
+        out.push((
+            heading.to_string(),
+            abstract_url.to_string(),
+            abstract_text.to_string(),
+        ));
+    }
+
+    if let Some(topics) = value.get("RelatedTopics").and_then(Value::as_array) {
+        collect_ddg_topics(topics, &mut out);
+    }
+    Ok(out)
+}
+
+fn collect_ddg_topics(topics: &[Value], out: &mut Vec<(String, String, String)>) {
+    for topic in topics {
+        if let Some(nested) = topic.get("Topics").and_then(Value::as_array) {
+            collect_ddg_topics(nested, out);
+            continue;
+        }
+        let text = topic.get("Text").and_then(Value::as_str).unwrap_or("");
+        let url = topic.get("FirstURL").and_then(Value::as_str).unwrap_or("");
+        if text.is_empty() || url.is_empty() {
+            continue;
+        }
+        let title = text.split(" - ").next().unwrap_or(text);
+        out.push((title.to_string(), url.to_string(), text.to_string()));
+    }
+}
+
+async fn wikipedia_search(query: &str, count: usize) -> AppResult<Vec<(String, String, String)>> {
+    let url = format!(
+        "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={}&format=json&origin=*&srlimit={}",
+        encode_component(query),
+        count.clamp(1, 10)
+    );
+    let value = http_get_json(&url).await?;
+    let mut out = Vec::new();
+    if let Some(hits) = value
+        .get("query")
+        .and_then(|query| query.get("search"))
+        .and_then(Value::as_array)
+    {
+        for hit in hits {
+            let title = hit.get("title").and_then(Value::as_str).unwrap_or("");
+            if title.is_empty() {
+                continue;
+            }
+            let snippet = strip_html(hit.get("snippet").and_then(Value::as_str).unwrap_or(""));
+            let page_url = format!(
+                "https://en.wikipedia.org/wiki/{}",
+                encode_component(&title.replace(' ', "_"))
+            );
+            out.push((title.to_string(), page_url, snippet));
+        }
+    }
+    Ok(out)
+}
+
+async fn http_get_text(url: &str) -> AppResult<String> {
+    let response = Request::get(url)
+        .send()
+        .await
+        .map_err(|err| format!("Browser request to {url} failed (network or CORS): {err:?}"))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|err| format!("Unable to read response from {url}: {err:?}"))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("{url} returned HTTP {status}"));
+    }
+    Ok(text)
+}
+
+async fn http_get_json(url: &str) -> AppResult<Value> {
+    let text = http_get_text(url).await?;
+    serde_json::from_str::<Value>(&text).map_err(|err| format!("{url} returned non-JSON: {err}"))
+}
+
+/// Percent-encode a string for use as a URL query component (RFC 3986 unreserved
+/// set kept). Pure and host-testable so it does not depend on `js_sys`.
+fn encode_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
+fn strip_html(value: &str) -> String {
+    let without_tags = regex::Regex::new("<[^>]+>")
+        .map(|re| re.replace_all(value, "").into_owned())
+        .unwrap_or_else(|_| value.to_string());
+    without_tags
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&nbsp;", " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Send a JSON request to a bridge tool endpoint and return the parsed `{ success,
@@ -686,6 +946,35 @@ mod tests {
     }
 
     #[test]
+    fn encode_component_escapes_reserved_characters() {
+        assert_eq!(encode_component("a b&c"), "a%20b%26c");
+        assert_eq!(encode_component("rust-lang_2.0~x"), "rust-lang_2.0~x");
+    }
+
+    #[test]
+    fn strip_html_removes_tags_and_decodes_entities() {
+        assert_eq!(
+            strip_html("<span class=\"x\">Bun</span> &amp; Node"),
+            "Bun & Node"
+        );
+    }
+
+    #[test]
+    fn collect_ddg_topics_flattens_nested_topics() {
+        let topics = serde_json::json!([
+            { "Text": "Bun - a JS runtime", "FirstURL": "https://bun.sh" },
+            { "Topics": [ { "Text": "Deno - a runtime", "FirstURL": "https://deno.com" } ] },
+            { "Text": "no url here" }
+        ]);
+        let mut out = Vec::new();
+        collect_ddg_topics(topics.as_array().unwrap(), &mut out);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].0, "Bun");
+        assert_eq!(out[0].1, "https://bun.sh");
+        assert_eq!(out[1].1, "https://deno.com");
+    }
+
+    #[test]
     fn default_registry_includes_disk_and_browser_tools() {
         let registry = ToolRegistry::new();
         let all = crate::state::default_tool_names();
@@ -695,6 +984,7 @@ mod tests {
             .map(|spec| spec.name.as_str())
             .collect::<Vec<_>>();
         for expected in [
+            "run_js",
             "web_search",
             "web_fetch",
             "run_command",

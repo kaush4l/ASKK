@@ -20,6 +20,10 @@ wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["Blob", "ErrorEvent", "MessageEvent", "ReadableStream", "ReadableStreamDefaultReader", "TextDecoder", "Url", "Worker", "WorkerGlobalScope", "WorkerOptions", "WorkerType", "console"] }
 regex = "1.12.3"
 
+# Browser-only: hard timeouts for in-browser code execution (src/browser_exec.rs).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+
 [features]
 default = ["web"]
 web = ["dioxus/web"]

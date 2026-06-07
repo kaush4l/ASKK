@@ -1,6 +1,6 @@
 use super::save_snapshot;
 use super::shared::set_status;
-use crate::state::{AppSnapshot, WebSearchProvider};
+use crate::state::{AppSnapshot, SearchBackend, WebSearchProvider};
 use crate::tools::web_search_with_config;
 use dioxus::prelude::*;
 use serde_json::json;
@@ -40,6 +40,18 @@ pub fn ToolsPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                     span { class: "source-path", "active" }
                 }
                 div { class: "tool-config-grid",
+                    label {
+                        "Backend"
+                        select {
+                            value: "{config.backend.as_form_value()}",
+                            onchange: move |event| {
+                                snapshot.write().tool_config.web_search.backend =
+                                    SearchBackend::from_form_value(&event.value());
+                            },
+                            option { value: "browser", "Browser (no bridge, works hosted)" }
+                            option { value: "bridge", "Bridge (local, richer providers)" }
+                        }
+                    }
                     label {
                         "Bridge URL"
                         input {

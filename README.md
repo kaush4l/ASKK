@@ -79,15 +79,24 @@ State is the source of truth. Runs, messages, tool calls/results, worker progres
 
 The bundled default agent is generic and stored in `agents/planner.md`; the file name is only a source path. Edit `soul.md`, `agents/*.md`, and `skills/**/*.md` through the hosted app plus local bridge when you want to change behavior without changing Rust code.
 
-## Workspace and running projects (Bun)
+## Workspace and running projects
 
-The **Workspace** page is a browser-hosted text editor over the bridge's on-disk
-**run root**: a file tree, an editor pane, and a terminal that runs commands in
-the same directory the coding agent operates on. Files the agent writes appear in
-the tree, and edits you make are visible to `run_command` and `bun`.
+The **Workspace** page is a browser-hosted text editor: a file tree, an editor
+pane, and a runner. It has two modes:
 
-To enable running and testing real projects, start the bridge with execution
-turned on:
+- **Browser** (default) — everything runs in the tab. Files live in the
+  in-browser virtual filesystem (IndexedDB) and code runs natively in a sandboxed
+  Web Worker via the `run_js` tool. **No bridge, no install** — this works on the
+  hosted GitHub Pages site. Create a file, write JavaScript, and press **Run file**.
+- **Bridge** — files and commands run on a local `askk-local-bridge` so you can
+  drive a real on-disk project with `bun`/`node` (see below).
+
+The coding agent shares whichever workspace is active, so files it writes appear in
+the tree, and edits you make are visible to its tools.
+
+### Bridge mode (real bun/node on disk)
+
+To run and test real on-disk projects, start the bridge with execution turned on:
 
 ```sh
 node scripts/askk-local-bridge.mjs --allow-exec
@@ -112,25 +121,29 @@ editor and terminal.
 
 ## Compiled Tools
 
-ASKK exposes these compiled tools to agents. Every one runs in the browser or
-through the local bridge, and tool output is always treated as untrusted data,
-never as instructions.
+Tools are the MCP-shaped core object (`{ name, description, input_schema }` →
+`{ ok, content }`); each is pre-compiled into the WASM harness. Tool output is
+always treated as untrusted data, never as instructions. The default-on tools all
+run **in the browser** — no bridge required, so they work on the hosted site:
 
-Research:
+- `run_js({ code, timeout_ms? })` — run JavaScript natively in a sandboxed Web
+  Worker. Captures `console.log`, returns `ok`/`stdout`/`stderr`/`result`. This is
+  how the agent executes and verifies code in the browser.
+- `web_search({ query, count? })` — discover sources. Defaults to the **Browser**
+  backend (DuckDuckGo Instant Answer + Wikipedia, key-free, CORS); switch to the
+  **Bridge** backend on the Tools page for richer providers (Brave/Tavily/SearXNG).
+- `web_fetch({ url })` — read one page in full as clean text. Browser backend uses
+  the key-free `r.jina.ai` reader; Bridge backend uses the bridge fetcher.
+- `file_write` / `file_read` / `file_list` — the in-browser virtual filesystem
+  (IndexedDB), used by the Workspace in Browser mode.
 
-- `web_search({ query, count?, country?, language?, freshness?, date_after?, date_before? })` — discover sources.
-- `web_fetch({ url })` — fetch one page/document and return its cleaned text and title, so the agent can read a source in full instead of relying on search snippets.
+Bridge-only tools (require a running `askk-local-bridge`, localhost only):
 
-Files and code (disk-backed, shared with the Workspace page and `bun`):
+- `fs_write` / `fs_read` / `fs_list` — disk files in the bridge **run root**.
+- `run_command({ command, cwd?, timeout_ms? })` — run `bun`/`node`/etc. on disk.
+  Returns `exit_code`, `ok`, `stdout`, `stderr`. Requires `--allow-exec`.
 
-- `fs_write({ path, content })`, `fs_read({ path })`, `fs_list({ path? })` — create, read, and list files in the bridge **run root**.
-- `run_command({ command, cwd?, timeout_ms? })` — run a command (bun, node, npm, tsc, git, …) in the run root. Returns `exit_code`, `ok`, `stdout`, `stderr`. Requires the bridge started with `--allow-exec`.
-
-In-browser virtual filesystem (no bridge needed, IndexedDB-backed):
-
-- `file_write`, `file_read`, `file_list`.
-
-The web tools call the local bridge under `http://127.0.0.1:8874/askk/tools/`. Configure the bridge URL, provider, default count, optional country/language/freshness, and optional provider keys on the Tools page. Search-provider keys entered there are visible to browser code and are persisted only when `Persist web-search API keys` is enabled.
+Pick the search backend (and any future provider keys) on the Tools page.
 
 ### How the agent behaves
 
@@ -141,10 +154,11 @@ Behavior is driven by the Markdown prompts (`soul.md`, `agents/*.md`,
   searches, fetches and reads the best sources, synthesizes, names the open gaps
   and contradictions, then searches again until the picture is complete — and
   cites the URLs it read.
-- **Building code:** the agent treats *complete* as *verified*, not *written*. It
-  scaffolds files with `fs_write`, runs and tests with `run_command`, and only
-  reports a task done after a verification command (e.g. `bun test`) returns
-  `exit_code` 0, citing that passing command as proof.
+- **Building code:** the agent treats *complete* as *verified*, not *written*. In
+  Browser mode it writes files and runs them with `run_js`, reporting done only
+  after the check prints the expected result; in Bridge mode it uses `run_command`
+  and treats a verification command (e.g. `bun test`) returning `exit_code` 0 as
+  proof. Either way it cites the run that verified the work.
 
 The bundled agents are `Agent` (the default generalist, enabled), plus `Coder`,
 `Researcher`, and `Synthesizer` (disabled — enable them on the Agents page).

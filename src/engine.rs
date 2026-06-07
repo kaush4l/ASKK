@@ -1,4 +1,10 @@
-//! ReAct harness loop: the runtime spine that drives one agent goal to a final answer.
+//! Engine pillar (one of the four core types: **Engine**, Tool, Provider,
+//! Capability) — the ReAct harness loop: the runtime spine that drives one agent
+//! goal to a final answer.
+//!
+//! The loop is auto-recoverable: a transient provider error is retried with
+//! backoff, and an unrecoverable one pauses the run (resumable) instead of crashing
+//! the app. Tool errors are fed back as observations, never terminal.
 //!
 //! The loop is deliberately small. Each turn it asks the model for a single
 //! [`ReActResponse`], then either executes one compiled tool call (feeding the
@@ -40,6 +46,16 @@ pub fn clear_interrupt() {
 fn interrupt_requested() -> bool {
     INTERRUPT.with(Cell::get)
 }
+
+/// Cooperative backoff between retry attempts. Real delay in the browser; a no-op
+/// on the host test runner (which has no event loop timer).
+#[cfg(target_arch = "wasm32")]
+async fn backoff(ms: u32) {
+    gloo_timers::future::TimeoutFuture::new(ms).await;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn backoff(_ms: u32) {}
 
 /// Drives agent goals through the ReAct loop using browser-safe compiled tools.
 #[derive(Clone, Debug)]
@@ -223,19 +239,48 @@ where
         };
 
         let mut sink = |_partial: String| {};
-        let output = match inference
-            .invoke_react_streaming(&provider, request, &mut sink)
-            .await
-        {
-            Ok(output) => output,
-            Err(err) => {
-                run.status = "error".to_string();
+        // Auto-recovery: a transient provider/network failure should not kill the
+        // run. Retry a few times with backoff; only if every attempt fails do we
+        // stop — and then we *pause* (resumable) rather than hard-error, so the app
+        // and the conversation stay intact and the user can Resume.
+        const MAX_MODEL_ATTEMPTS: u32 = 3;
+        let mut attempt = 0u32;
+        let output = loop {
+            attempt += 1;
+            match inference
+                .invoke_react_streaming(&provider, request.clone(), &mut sink)
+                .await
+            {
+                Ok(output) => break Some(output),
+                Err(err) => {
+                    run.events.push(event(
+                        &run.id,
+                        Some(agent_id.clone()),
+                        AgentEventKind::Error,
+                        format!("Model call failed (attempt {attempt}/{MAX_MODEL_ATTEMPTS})"),
+                        err,
+                    ));
+                    observer(run.clone());
+                    if attempt >= MAX_MODEL_ATTEMPTS {
+                        break None;
+                    }
+                    backoff(300 * attempt).await;
+                }
+            }
+        };
+        let output = match output {
+            Some(output) => output,
+            None => {
+                run.status = "paused".to_string();
+                if run.final_answer.trim().is_empty() {
+                    run.final_answer = "Paused: the model provider could not be reached after several attempts. Check the Provider settings, then press Resume to continue.".to_string();
+                }
                 run.events.push(event(
                     &run.id,
                     Some(agent_id.clone()),
-                    AgentEventKind::Error,
-                    "Model call failed",
-                    err,
+                    AgentEventKind::Interrupted,
+                    "Run paused (provider unreachable)",
+                    truncate(&run.final_answer, 300),
                 ));
                 observer(run.clone());
                 break;
@@ -401,6 +446,7 @@ where
     snapshot.status = match run.status.as_str() {
         "complete" => "Run complete.".to_string(),
         "interrupted" => "Run interrupted.".to_string(),
+        "paused" => "Run paused — press Resume to continue.".to_string(),
         "error" => "Run failed.".to_string(),
         other => other.to_string(),
     };
@@ -418,7 +464,7 @@ where
 
 fn finalize_status(run: &mut AgentRun, answered: bool) {
     match run.status.as_str() {
-        "error" | "interrupted" => {}
+        "error" | "interrupted" | "paused" => {}
         _ => {
             run.status = "complete".to_string();
             if !answered && run.final_answer.trim().is_empty() {
@@ -792,6 +838,17 @@ mod tests {
             run.events.last().unwrap().kind,
             AgentEventKind::Verification
         );
+    }
+
+    #[test]
+    fn finalize_status_preserves_paused_run() {
+        let mut run = test_run_with_evidence();
+        run.status = "paused".to_string();
+        run.final_answer = "Paused: provider unreachable.".to_string();
+        finalize_status(&mut run, false);
+        // A paused (recoverable) run must not be flipped to complete on finalize.
+        assert_eq!(run.status, "paused");
+        assert_eq!(run.final_answer, "Paused: provider unreachable.");
     }
 
     #[test]

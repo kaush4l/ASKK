@@ -4,12 +4,14 @@ name: Coding
 enabled: true
 ---
 
-Use this skill when the goal is to build, fix, or run code in the project run
-root.
+Use this skill when the goal is to build, fix, or run code.
 
-- Scaffold and edit files with `fs_write`; inspect with `fs_list` / `fs_read`.
-- Run, build, and test with `run_command` (bun is the default runtime).
-- Treat `exit_code` 0 as the only proof a build or test step passed. On any
-  non-zero exit, read the output, fix, and re-run.
-- Report the task complete only after the verification command passes, and cite
-  that command and its output. "Wrote the code" is not "verified the code".
+- Scaffold and edit files with `file_write`; inspect with `file_list` / `file_read`.
+- Run and test code in the browser with `run_js`: call your functions and
+  `console.log` the result, or log `PASS` only when the expected condition holds.
+- Treat a `run_js` run that produced the expected output (and `ok: true`) as your
+  proof. If the output is wrong or `ok` is false, read it, fix, and re-run.
+- Report complete only after a run actually verified the behavior, and cite that
+  run. "Wrote the code" is not "verified the code".
+- If a local bridge is running you may use `run_command` (e.g. `bun test`) and
+  treat `exit_code` 0 as proof instead.

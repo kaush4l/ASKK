@@ -46,7 +46,13 @@ where
                 }),
             }
         }
-        WorkerCommand::Cancel(_) => unreachable!("cancel commands return before dispatch handling"),
+        // `handle_non_dispatch_command` already returns for Cancel above; this arm
+        // exists only so the match is total. Never panic from the worker runtime.
+        WorkerCommand::Cancel(cancel) => WorkerEvent::Error(WorkerError {
+            run_id: cancel.run_id,
+            worker_id: cancel.worker_id,
+            message: "Cancel command reached dispatch handling unexpectedly.".to_string(),
+        }),
     }
 }
 
@@ -125,6 +131,9 @@ fn worker_status_from_run(run: &AgentRun) -> WorkerStatus {
         "complete" => WorkerStatus::Succeeded,
         "interrupted" => WorkerStatus::Cancelled,
         "running" => WorkerStatus::Running,
+        // A paused run is a clean, resumable outcome — return the snapshot to the
+        // page so it persists and the Resume action appears, not a worker failure.
+        "paused" => WorkerStatus::Succeeded,
         "error" => WorkerStatus::Failed,
         _ => WorkerStatus::Failed,
     }

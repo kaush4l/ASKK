@@ -1,3 +1,12 @@
+//! Provider pillar (one of the four core types: Engine, Tool, **Provider**,
+//! Capability).
+//!
+//! An LLM provider implements [`InferenceProvider`]: it turns an
+//! [`InferenceRequest`] (soul + agent role + skills + tool manifest + transcript)
+//! into a parsed [`ReActResponse`]. Adding a provider is one `impl` of the trait;
+//! the agent loop never changes. [`OpenAiCompatibleInference`] speaks the
+//! OpenAI-compatible chat-completions API, so any BYOK endpoint works.
+
 use crate::responses::{
     ReActResponse, ResponseFormat, StructuredResponse, VerificationCriticResponse,
     response_to_result,

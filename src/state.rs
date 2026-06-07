@@ -185,6 +185,33 @@ pub fn default_model_profiles() -> Vec<ModelProfile> {
     ]
 }
 
+/// Where web_search / web_fetch actually run. `Browser` calls CORS-open public
+/// endpoints directly from the page (works on the hosted HTTPS site, no bridge).
+/// `Bridge` routes through the local ASKK bridge (richer providers, localhost only).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchBackend {
+    #[default]
+    Browser,
+    Bridge,
+}
+
+impl SearchBackend {
+    pub fn from_form_value(value: &str) -> Self {
+        match value {
+            "bridge" => Self::Bridge,
+            _ => Self::Browser,
+        }
+    }
+
+    pub fn as_form_value(self) -> &'static str {
+        match self {
+            Self::Browser => "browser",
+            Self::Bridge => "bridge",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
@@ -223,6 +250,8 @@ impl WebSearchProvider {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WebSearchToolConfig {
+    #[serde(default)]
+    pub backend: SearchBackend,
     #[serde(default = "default_bridge_tools_url")]
     pub bridge_tools_url: String,
     #[serde(default)]
@@ -248,6 +277,7 @@ pub struct WebSearchToolConfig {
 impl Default for WebSearchToolConfig {
     fn default() -> Self {
         Self {
+            backend: SearchBackend::Browser,
             bridge_tools_url: default_bridge_tools_url(),
             provider: WebSearchProvider::Auto,
             default_count: default_web_search_count(),
@@ -791,6 +821,7 @@ impl Default for AppSnapshot {
 
 pub fn default_tool_names() -> Vec<String> {
     vec![
+        "run_js".to_string(),
         "web_search".to_string(),
         "web_fetch".to_string(),
         "run_command".to_string(),
@@ -1822,6 +1853,7 @@ mod tests {
         assert_eq!(
             default_tool_names(),
             vec![
+                "run_js",
                 "web_search",
                 "web_fetch",
                 "run_command",

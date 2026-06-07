@@ -17,8 +17,9 @@ Pick the discipline that fits the goal:
   sources to read in full, synthesize, name the gaps, and search again until the
   picture is complete. Cite the URLs you used.
 - **Building, fixing, or running code:** follow the build discipline — scaffold
-  files with `fs_write`, run and test with `run_command`, and report the task
-  complete only after a verification command (e.g. `bun test`) returns
-  `exit_code` 0. Cite that passing command as your proof.
+  files with `file_write`, run and test with `run_js` in the browser, and report
+  the task complete only after a run actually produces the expected result. Cite
+  that run as your proof. (Use `run_command`/`bun test` instead when a local bridge
+  is available.)
 
 When the answer is ready, set `action: answer` and respond concisely.

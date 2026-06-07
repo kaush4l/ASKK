@@ -1,4 +1,11 @@
-//! Browser-safe execution backend.
+//! Capability pillar (one of the four core types: Engine, Tool, Provider,
+//! **Capability**) — the browser-safe execution backend.
+//!
+//! A capability is what the platform can actually do: dispatch a compiled tool,
+//! touch the virtual filesystem, run code. In the browser, execution stays in the
+//! tab — tools run in-process or in a Web Worker (see `browser_exec`), never on a
+//! required server. [`ExecutionProvider`] is the trait; [`BrowserExecutionProvider`]
+//! is the WASM implementation.
 //!
 //! The minimal ReAct loop only calls [`BrowserExecutionProvider::execute_domain_tool`]
 //! and [`ExecutionProvider::domain_specs_for_agent`]. The fuller request/result API

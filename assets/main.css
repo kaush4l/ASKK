@@ -362,10 +362,11 @@ pre {
 }
 
 .message-bubble {
-    width: min(760px, 92%);
+    width: fit-content;
+    max-width: min(680px, 78%);
     border: 1px solid #ded5ef;
-    border-radius: 8px;
-    padding: 13px 14px;
+    border-radius: 12px;
+    padding: 11px 14px;
     background: #ffffff;
     overflow-wrap: anywhere;
 }
@@ -390,10 +391,12 @@ pre {
     justify-self: end;
     border-color: #bba7ee;
     background: #f0eaff;
+    border-bottom-right-radius: 4px;
 }
 
 .assistant-message {
     justify-self: start;
+    border-bottom-left-radius: 4px;
 }
 
 .tool-message {
@@ -405,6 +408,7 @@ pre {
     justify-self: start;
     border-color: #9ed2b1;
     background: #effaf3;
+    border-bottom-left-radius: 4px;
 }
 
 .error-message {
@@ -1163,4 +1167,15 @@ button.workspace-node:hover {
     .workspace-grid {
         grid-template-columns: 1fr;
     }
+}
+
+.mode-toggle {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.chip-button.active {
+    background: #5b21b6;
+    color: #ffffff;
+    border-color: #5b21b6;
 }
