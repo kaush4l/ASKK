@@ -235,47 +235,33 @@ where
         created_at: now_iso(),
     };
 
-    let parent_cell = Rc::new(RefCell::new(parent_run));
-    let observer_cell = Rc::new(RefCell::new(observer));
-    emit_parent(&parent_cell, &observer_cell);
+    let sink = ParentRunSink::new(parent_run, observer);
+    sink.emit();
 
     let mut child_results = Vec::new();
     for wave in worker_pool.schedule_waves(planned.len()) {
-        if parent_has_terminal_failure(&parent_cell) {
+        if sink.has_terminal_failure() {
             break;
         }
-        apply_workflow_transition(
-            &parent_cell,
-            &observer_cell,
-            &mut workflow_gate,
-            OrchestrationPhase::WorkersRunning,
-        )?;
-        mark_wave_running(&parent_cell, &observer_cell, &planned, &wave);
+        sink.apply_transition(&mut workflow_gate, OrchestrationPhase::WorkersRunning)?;
+        sink.mark_wave_running(&planned, &wave);
         let child_futures = wave.into_iter().map(|idx| {
             let planned_child = planned[idx].clone();
             let child_snapshot = snapshot.clone();
-            let parent_cell = Rc::clone(&parent_cell);
-            let observer_cell = Rc::clone(&observer_cell);
+            let progress_sink = sink.clone();
             async move {
                 let worker_id = format!("agent-worker-{}", idx + 1);
                 let child_id = planned_child.task.id.clone();
                 let role = planned_child.agent.name.clone();
                 let sub_goal = planned_child.task.sub_goal.clone();
                 let progress_child_id = child_id.clone();
-                let progress_parent = Rc::clone(&parent_cell);
-                let progress_observer = Rc::clone(&observer_cell);
                 let result = run_goal_for_agent_in_worker_or_inline(
                     child_snapshot,
                     sub_goal.clone(),
                     planned_child.agent,
                     worker_id,
                     move |child_run| {
-                        update_worker_from_child_run(
-                            &progress_parent,
-                            &progress_observer,
-                            &progress_child_id,
-                            &child_run,
-                        );
+                        progress_sink.update_worker_from_child_run(&progress_child_id, &child_run);
                     },
                 )
                 .await;
@@ -288,25 +274,18 @@ where
         for (child_id, role, sub_goal, result) in wave_results {
             let outcome = classify_child(role, sub_goal, result);
             let failed = outcome.status.is_terminal_failure();
-            if !parent_has_terminal_failure(&parent_cell) {
+            if !sink.has_terminal_failure() {
                 let next_phase = if failed {
                     OrchestrationPhase::Failed
                 } else {
                     OrchestrationPhase::WorkersJoined
                 };
-                apply_workflow_transition(
-                    &parent_cell,
-                    &observer_cell,
-                    &mut workflow_gate,
-                    next_phase,
-                )?;
+                sink.apply_transition(&mut workflow_gate, next_phase)?;
             }
             if failed {
                 wave_outcome = WaveOutcome::Stop;
             }
-            finish_worker(
-                &parent_cell,
-                &observer_cell,
+            sink.finish_worker(
                 &child_id,
                 outcome.status,
                 &outcome.answer,
@@ -323,9 +302,7 @@ where
     let failed = child_results
         .iter()
         .any(|result| result.status.is_terminal_failure());
-    apply_workflow_transition(
-        &parent_cell,
-        &observer_cell,
+    sink.apply_transition(
         &mut workflow_gate,
         if failed {
             OrchestrationPhase::Failed
@@ -333,7 +310,7 @@ where
             OrchestrationPhase::Aggregated
         },
     )?;
-    let mut parent = parent_cell.borrow().clone();
+    let mut parent = sink.snapshot_run();
     parent.status = if failed {
         RunStatus::Error
     } else {
@@ -358,172 +335,196 @@ where
     if runs_len > 25 {
         snapshot.runs.drain(0..runs_len - 25);
     }
-    observer_cell.borrow_mut()(parent);
+    sink.emit_run(parent);
 
     Ok(snapshot)
 }
 
-fn apply_workflow_transition<F>(
-    parent_cell: &Rc<RefCell<AgentRun>>,
-    observer_cell: &Rc<RefCell<F>>,
-    workflow_gate: &mut Option<WorkflowGate>,
-    phase: OrchestrationPhase,
-) -> AppResult<()>
-where
-    F: FnMut(AgentRun),
-{
-    let Some(gate) = workflow_gate else {
-        return Ok(());
-    };
+/// Owns the shared, mutable parent run and the progress observer for one orchestrated
+/// goal, quarantining the `Rc<RefCell<…>>` borrow/mutate/emit ceremony — and the
+/// `F: FnMut` generic bound — that otherwise bleeds through every orchestration helper.
+/// The cells are genuinely required (single-threaded WASM with concurrently-reporting
+/// child futures); this adapter does not remove them, it stops threading them through
+/// domain logic and gives each mutation a name. Cloneable so a child future can hold
+/// its own handle for progress reporting.
+struct ParentRunSink<F> {
+    cell: Rc<RefCell<AgentRun>>,
+    observer: Rc<RefCell<F>>,
+}
 
-    match gate.transition_to(phase.step_name()) {
-        Ok(state) => {
-            {
-                let mut parent = parent_cell.borrow_mut();
-                let parent_id = parent.id.clone();
-                parent.scratchpad.workflow = state.clone();
-                parent.events.push(event(
-                    &parent_id,
-                    None,
-                    AgentEventKind::Workflow,
-                    format!("Workflow advanced to `{}`", state.current_step),
-                    format!(
-                        "Workflow `{}` history: {}",
-                        state.workflow_id,
-                        state.history.join(" -> ")
-                    ),
-                ));
-            }
-            emit_parent(parent_cell, observer_cell);
-            Ok(())
-        }
-        Err(feedback) => {
-            {
-                let mut parent = parent_cell.borrow_mut();
-                let parent_id = parent.id.clone();
-                parent.status = RunStatus::Error;
-                parent.scratchpad.workflow = gate.state();
-                parent.events.push(event(
-                    &parent_id,
-                    None,
-                    AgentEventKind::Error,
-                    "Workflow transition blocked",
-                    feedback.clone(),
-                ));
-            }
-            emit_parent(parent_cell, observer_cell);
-            Err(feedback)
+impl<F> Clone for ParentRunSink<F> {
+    fn clone(&self) -> Self {
+        Self {
+            cell: Rc::clone(&self.cell),
+            observer: Rc::clone(&self.observer),
         }
     }
 }
 
-fn parent_has_terminal_failure(parent_cell: &Rc<RefCell<AgentRun>>) -> bool {
-    parent_cell.borrow().status.is_failure()
-}
-
-fn mark_wave_running<F>(
-    parent_cell: &Rc<RefCell<AgentRun>>,
-    observer_cell: &Rc<RefCell<F>>,
-    planned: &[PlannedChildTask],
-    wave: &[usize],
-) where
+impl<F> ParentRunSink<F>
+where
     F: FnMut(AgentRun),
 {
-    {
-        let mut parent = parent_cell.borrow_mut();
-        let parent_id = parent.id.clone();
-        for idx in wave {
-            let child = &planned[*idx];
+    fn new(parent_run: AgentRun, observer: F) -> Self {
+        Self {
+            cell: Rc::new(RefCell::new(parent_run)),
+            observer: Rc::new(RefCell::new(observer)),
+        }
+    }
+
+    /// Emit the current parent run to the observer.
+    fn emit(&self) {
+        let parent = self.cell.borrow().clone();
+        self.observer.borrow_mut()(parent);
+    }
+
+    /// Emit an explicit run — used for the finalized run built from a detached clone.
+    fn emit_run(&self, run: AgentRun) {
+        self.observer.borrow_mut()(run);
+    }
+
+    /// A detached clone of the current parent run, for building the finalized run.
+    fn snapshot_run(&self) -> AgentRun {
+        self.cell.borrow().clone()
+    }
+
+    fn has_terminal_failure(&self) -> bool {
+        self.cell.borrow().status.is_failure()
+    }
+
+    /// Advance the (optional) workflow gate to `phase`, recording the transition (or a
+    /// block) on the parent run and emitting. The gate stays a caller-owned `&mut`
+    /// param: it is a stack local mutably borrowed across the wave loop, so it cannot
+    /// live on `&self`.
+    fn apply_transition(
+        &self,
+        workflow_gate: &mut Option<WorkflowGate>,
+        phase: OrchestrationPhase,
+    ) -> AppResult<()> {
+        let Some(gate) = workflow_gate else {
+            return Ok(());
+        };
+
+        match gate.transition_to(phase.step_name()) {
+            Ok(state) => {
+                {
+                    let mut parent = self.cell.borrow_mut();
+                    let parent_id = parent.id.clone();
+                    parent.scratchpad.workflow = state.clone();
+                    parent.events.push(event(
+                        &parent_id,
+                        None,
+                        AgentEventKind::Workflow,
+                        format!("Workflow advanced to `{}`", state.current_step),
+                        format!(
+                            "Workflow `{}` history: {}",
+                            state.workflow_id,
+                            state.history.join(" -> ")
+                        ),
+                    ));
+                }
+                self.emit();
+                Ok(())
+            }
+            Err(feedback) => {
+                {
+                    let mut parent = self.cell.borrow_mut();
+                    let parent_id = parent.id.clone();
+                    parent.status = RunStatus::Error;
+                    parent.scratchpad.workflow = gate.state();
+                    parent.events.push(event(
+                        &parent_id,
+                        None,
+                        AgentEventKind::Error,
+                        "Workflow transition blocked",
+                        feedback.clone(),
+                    ));
+                }
+                self.emit();
+                Err(feedback)
+            }
+        }
+    }
+
+    fn mark_wave_running(&self, planned: &[PlannedChildTask], wave: &[usize]) {
+        {
+            let mut parent = self.cell.borrow_mut();
+            let parent_id = parent.id.clone();
+            for idx in wave {
+                let child = &planned[*idx];
+                if let Some(worker) = parent
+                    .scratchpad
+                    .workers
+                    .iter_mut()
+                    .find(|worker| worker.id == child.task.id)
+                {
+                    worker.status = WorkerRunStatus::Running;
+                }
+                parent.events.push(event(
+                    &parent_id,
+                    child.task.agent_id.clone(),
+                    AgentEventKind::WorkerStarted,
+                    format!("Worker started: {}", child.agent.name),
+                    child.task.sub_goal.clone(),
+                ));
+            }
+        }
+        self.emit();
+    }
+
+    fn update_worker_from_child_run(&self, child_id: &str, child_run: &AgentRun) {
+        {
+            let mut parent = self.cell.borrow_mut();
             if let Some(worker) = parent
                 .scratchpad
                 .workers
                 .iter_mut()
-                .find(|worker| worker.id == child.task.id)
+                .find(|worker| worker.id == child_id)
             {
-                worker.status = WorkerRunStatus::Running;
+                worker.status = child_run.status.into();
+                worker.result = child_run.final_answer.clone();
+                worker.evidence = evidence_from_run(child_run);
+            }
+        }
+        self.emit();
+    }
+
+    fn finish_worker(
+        &self,
+        child_id: &str,
+        status: WorkerRunStatus,
+        answer: &str,
+        child_run: Option<&AgentRun>,
+    ) {
+        {
+            let mut parent = self.cell.borrow_mut();
+            let parent_id = parent.id.clone();
+            let mut agent_id = None;
+            let mut sub_goal = String::new();
+            if let Some(worker) = parent
+                .scratchpad
+                .workers
+                .iter_mut()
+                .find(|worker| worker.id == child_id)
+            {
+                worker.status = status;
+                worker.result = answer.to_string();
+                if let Some(child_run) = child_run {
+                    worker.evidence = evidence_from_run(child_run);
+                }
+                agent_id = worker.agent_id.clone();
+                sub_goal = worker.sub_goal.clone();
             }
             parent.events.push(event(
                 &parent_id,
-                child.task.agent_id.clone(),
-                AgentEventKind::WorkerStarted,
-                format!("Worker started: {}", child.agent.name),
-                child.task.sub_goal.clone(),
+                agent_id,
+                AgentEventKind::WorkerCompleted,
+                format!("Worker completed: {status}"),
+                sub_goal,
             ));
         }
+        self.emit();
     }
-    emit_parent(parent_cell, observer_cell);
-}
-
-fn update_worker_from_child_run<F>(
-    parent_cell: &Rc<RefCell<AgentRun>>,
-    observer_cell: &Rc<RefCell<F>>,
-    child_id: &str,
-    child_run: &AgentRun,
-) where
-    F: FnMut(AgentRun),
-{
-    {
-        let mut parent = parent_cell.borrow_mut();
-        if let Some(worker) = parent
-            .scratchpad
-            .workers
-            .iter_mut()
-            .find(|worker| worker.id == child_id)
-        {
-            worker.status = child_run.status.into();
-            worker.result = child_run.final_answer.clone();
-            worker.evidence = evidence_from_run(child_run);
-        }
-    }
-    emit_parent(parent_cell, observer_cell);
-}
-
-fn finish_worker<F>(
-    parent_cell: &Rc<RefCell<AgentRun>>,
-    observer_cell: &Rc<RefCell<F>>,
-    child_id: &str,
-    status: WorkerRunStatus,
-    answer: &str,
-    child_run: Option<&AgentRun>,
-) where
-    F: FnMut(AgentRun),
-{
-    {
-        let mut parent = parent_cell.borrow_mut();
-        let parent_id = parent.id.clone();
-        let mut agent_id = None;
-        let mut sub_goal = String::new();
-        if let Some(worker) = parent
-            .scratchpad
-            .workers
-            .iter_mut()
-            .find(|worker| worker.id == child_id)
-        {
-            worker.status = status;
-            worker.result = answer.to_string();
-            if let Some(child_run) = child_run {
-                worker.evidence = evidence_from_run(child_run);
-            }
-            agent_id = worker.agent_id.clone();
-            sub_goal = worker.sub_goal.clone();
-        }
-        parent.events.push(event(
-            &parent_id,
-            agent_id,
-            AgentEventKind::WorkerCompleted,
-            format!("Worker completed: {status}"),
-            sub_goal,
-        ));
-    }
-    emit_parent(parent_cell, observer_cell);
-}
-
-fn emit_parent<F>(parent_cell: &Rc<RefCell<AgentRun>>, observer_cell: &Rc<RefCell<F>>)
-where
-    F: FnMut(AgentRun),
-{
-    let parent = parent_cell.borrow().clone();
-    observer_cell.borrow_mut()(parent);
 }
 
 fn evidence_from_run(run: &AgentRun) -> Vec<String> {
