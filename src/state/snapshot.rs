@@ -16,7 +16,7 @@ use super::provider::{
     default_model_profiles,
 };
 use super::run::{
-    AgentRun, JobRecord, OrchestratorConfig, default_max_parallelism,
+    AgentRun, JobRecord, OrchestratorConfig, RunStatus, default_max_parallelism,
     default_no_progress_turn_limit, default_orchestrator_workflow_id, default_run_step_budget,
     default_verification_retry_budget,
 };
@@ -369,7 +369,7 @@ impl AppSnapshot {
 
     pub fn checkpoint_current_run(&mut self) {
         if let Some(run) = self.current_run.clone() {
-            self.upsert_job_from_run(&run, &run.status);
+            self.upsert_job_from_run(&run, run.status);
         }
     }
 
@@ -381,9 +381,9 @@ impl AppSnapshot {
             return false;
         };
         let incoming_is_live_checkpoint =
-            self.status.starts_with("Running ") || !is_terminal_run_status(&incoming.status);
+            self.status.starts_with("Running ") || !is_terminal_run_status(incoming.status);
         incoming.id == current.id
-            && is_terminal_run_status(&current.status)
+            && is_terminal_run_status(current.status)
             && incoming_is_live_checkpoint
     }
 
@@ -391,11 +391,11 @@ impl AppSnapshot {
         let Some(mut run) = self.current_run.clone() else {
             return;
         };
-        if run.status != "running" {
+        if run.status != RunStatus::Running {
             return;
         }
 
-        run.status = "paused".to_string();
+        run.status = RunStatus::Paused;
         run.scratchpad.interrupted = true;
         run.events.push(event(
             &run.id,
@@ -406,18 +406,18 @@ impl AppSnapshot {
         ));
         self.status = "Recovered a paused run from IndexedDB.".to_string();
         self.current_run = Some(run.clone());
-        self.upsert_job_from_run(&run, "paused");
+        self.upsert_job_from_run(&run, RunStatus::Paused);
     }
 
-    pub fn upsert_job_from_run(&mut self, run: &AgentRun, status: &str) {
+    pub fn upsert_job_from_run(&mut self, run: &AgentRun, status: RunStatus) {
         let now = now_iso();
         let progress = run
             .events
             .last()
             .map(|event| event.title.clone())
-            .unwrap_or_else(|| run.status.clone());
+            .unwrap_or_else(|| run.status.to_string());
         if let Some(job) = self.jobs.iter_mut().find(|job| job.id == run.id) {
-            job.status = status.to_string();
+            job.status = status;
             job.progress = progress;
             job.checkpoint = Some(run.scratchpad.clone());
             job.updated_at = now;
@@ -435,7 +435,7 @@ impl AppSnapshot {
             id: run.id.clone(),
             goal: run.goal.clone(),
             lane: run.lane,
-            status: status.to_string(),
+            status,
             progress,
             checkpoint: Some(run.scratchpad.clone()),
             created_at: run.created_at.clone(),
@@ -673,8 +673,11 @@ fn sanitized_profile_name(name: &str, fallback: &str) -> String {
     }
 }
 
-fn is_terminal_run_status(status: &str) -> bool {
-    matches!(status, "complete" | "error" | "cancelled" | "interrupted")
+fn is_terminal_run_status(status: RunStatus) -> bool {
+    matches!(
+        status,
+        RunStatus::Complete | RunStatus::Error | RunStatus::Interrupted
+    )
 }
 
 #[cfg(test)]
@@ -1010,7 +1013,7 @@ mod tests {
             id: "run-checkpoint".to_string(),
             goal: "Persist this run".to_string(),
             lane: RunLane::BoundedTask,
-            status: "running".to_string(),
+            status: RunStatus::Running,
             scratchpad: RunScratchpad {
                 budgets: RunBudgets {
                     steps_used: 2,
@@ -1038,7 +1041,7 @@ mod tests {
 
         assert_eq!(snapshot.jobs.len(), 1);
         assert_eq!(snapshot.jobs[0].id, "run-checkpoint");
-        assert_eq!(snapshot.jobs[0].status, "running");
+        assert_eq!(snapshot.jobs[0].status, RunStatus::Running);
         assert_eq!(snapshot.jobs[0].progress, "LLM request 2/5");
         assert_eq!(
             snapshot.jobs[0]
@@ -1058,7 +1061,7 @@ mod tests {
             id: "run-race".to_string(),
             goal: "Final result".to_string(),
             lane: RunLane::Batch,
-            status: "complete".to_string(),
+            status: RunStatus::Complete,
             scratchpad: RunScratchpad::default(),
             messages: Vec::new(),
             events: Vec::new(),
@@ -1070,22 +1073,22 @@ mod tests {
 
         let mut stale = completed.clone();
         stale.status = "Running batch lane...".to_string();
-        stale.current_run.as_mut().unwrap().status = "running".to_string();
+        stale.current_run.as_mut().unwrap().status = RunStatus::Running;
         stale.current_run.as_mut().unwrap().final_answer.clear();
 
         assert!(stale.is_stale_checkpoint_for(&completed));
 
-        stale.current_run.as_mut().unwrap().status = "complete".to_string();
+        stale.current_run.as_mut().unwrap().status = RunStatus::Complete;
         stale.current_run.as_mut().unwrap().final_answer = "done".to_string();
         assert!(stale.is_stale_checkpoint_for(&completed));
         assert!(!completed.is_stale_checkpoint_for(&stale));
 
         let mut interrupted = completed.clone();
         interrupted.status = "Run interrupted.".to_string();
-        interrupted.current_run.as_mut().unwrap().status = "interrupted".to_string();
+        interrupted.current_run.as_mut().unwrap().status = RunStatus::Interrupted;
         let mut stale_after_interrupt = interrupted.clone();
         stale_after_interrupt.status = "Running bounded task lane...".to_string();
-        stale_after_interrupt.current_run.as_mut().unwrap().status = "running".to_string();
+        stale_after_interrupt.current_run.as_mut().unwrap().status = RunStatus::Running;
         assert!(stale_after_interrupt.is_stale_checkpoint_for(&interrupted));
     }
 
@@ -1096,7 +1099,7 @@ mod tests {
             id: "run-reload".to_string(),
             goal: "Resume after reload".to_string(),
             lane: RunLane::BoundedTask,
-            status: "running".to_string(),
+            status: RunStatus::Running,
             scratchpad: RunScratchpad::default(),
             messages: Vec::new(),
             events: Vec::new(),
@@ -1109,11 +1112,11 @@ mod tests {
         let snapshot = snapshot.with_profile_defaults();
 
         let run = snapshot.current_run.as_ref().unwrap();
-        assert_eq!(run.status, "paused");
+        assert_eq!(run.status, RunStatus::Paused);
         assert!(run.scratchpad.interrupted);
         assert_eq!(snapshot.jobs.len(), 1);
         assert_eq!(snapshot.jobs[0].id, "run-reload");
-        assert_eq!(snapshot.jobs[0].status, "paused");
+        assert_eq!(snapshot.jobs[0].status, RunStatus::Paused);
         assert!(snapshot.jobs[0].checkpoint.is_some());
         assert!(
             run.events

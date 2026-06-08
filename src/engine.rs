@@ -16,7 +16,7 @@ use crate::inference::{InferenceProvider, InferenceRequest, SubAgentInfo, get_im
 use crate::responses::{ReActAction, parse_tool_calls};
 use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, RunBudgets, RunLane,
-    RunScratchpad, ScratchpadObservation, ToolCall, default_tool_names, event, now_iso,
+    RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, default_tool_names, event, now_iso,
 };
 use crate::validators::ValidatorRegistry;
 use std::cell::Cell;
@@ -139,7 +139,7 @@ where
     let mut run = AgentRun {
         id: run_id.clone(),
         goal: goal.clone(),
-        status: "running".to_string(),
+        status: RunStatus::Running,
         lane,
         scratchpad: initial_scratchpad(&snapshot, &goal, lane),
         messages: Vec::new(),
@@ -295,7 +295,7 @@ where
         let output = match output {
             Some(output) => output,
             None => {
-                run.status = "paused".to_string();
+                run.status = RunStatus::Paused;
                 if run.final_answer.trim().is_empty() {
                     run.final_answer = "Paused: the model provider could not be reached after several attempts. Check the Provider settings, then press Resume to continue.".to_string();
                 }
@@ -353,7 +353,7 @@ where
                     break;
                 }
                 observer(run.clone());
-                if run.status == "error" {
+                if run.status == RunStatus::Error {
                     break;
                 }
             }
@@ -382,7 +382,7 @@ where
                         break;
                     }
                     observer(run.clone());
-                    if run.status == "error" {
+                    if run.status == RunStatus::Error {
                         break;
                     }
                     continue;
@@ -452,14 +452,14 @@ where
                     }
                     run.tool_results.push(result);
                     observer(run.clone());
-                    if run.status == "error" {
+                    if run.status == RunStatus::Error {
                         break;
                     }
                 }
             }
         }
 
-        if run.status == "error" {
+        if run.status == RunStatus::Error {
             break;
         }
         observer(run.clone());
@@ -487,10 +487,10 @@ where
 }
 
 fn finalize_status(run: &mut AgentRun, answered: bool) {
-    match run.status.as_str() {
-        "error" | "interrupted" | "paused" => {}
+    match run.status {
+        RunStatus::Error | RunStatus::Interrupted | RunStatus::Paused => {}
         _ => {
-            run.status = "complete".to_string();
+            run.status = RunStatus::Complete;
             if !answered && run.final_answer.trim().is_empty() {
                 run.final_answer =
                     "Reached the step limit before producing a final answer.".to_string();
@@ -608,7 +608,7 @@ fn mark_validation_error_if_budget_exceeded(run: &mut AgentRun) {
     let failures = run.scratchpad.verification.failures.len() as u32;
     let max_failures = run.scratchpad.budgets.max_verification_retries.max(1);
     if failures > max_failures {
-        run.status = "error".to_string();
+        run.status = RunStatus::Error;
         run.final_answer = format!(
             "Validation failed after {failures} rejected output(s): {}",
             run.scratchpad.verification.last_result
@@ -706,7 +706,7 @@ fn push_observation(run: &mut AgentRun, source: &str, content: String) {
 }
 
 fn mark_interrupted(run: &mut AgentRun, reason: &str) {
-    run.status = "interrupted".to_string();
+    run.status = RunStatus::Interrupted;
     run.events.push(event(
         &run.id,
         None,
@@ -837,7 +837,7 @@ mod tests {
         let mut run = AgentRun {
             id: "run-1".to_string(),
             goal: "answer with evidence".to_string(),
-            status: "running".to_string(),
+            status: RunStatus::Running,
             lane: RunLane::BoundedTask,
             scratchpad: RunScratchpad::default(),
             messages: Vec::new(),
@@ -885,11 +885,11 @@ mod tests {
     #[test]
     fn finalize_status_preserves_paused_run() {
         let mut run = test_run_with_evidence();
-        run.status = "paused".to_string();
+        run.status = RunStatus::Paused;
         run.final_answer = "Paused: provider unreachable.".to_string();
         finalize_status(&mut run, false);
         // A paused (recoverable) run must not be flipped to complete on finalize.
-        assert_eq!(run.status, "paused");
+        assert_eq!(run.status, RunStatus::Paused);
         assert_eq!(run.final_answer, "Paused: provider unreachable.");
     }
 

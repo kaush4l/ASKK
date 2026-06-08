@@ -51,6 +51,38 @@ impl RunLane {
     }
 }
 
+/// The lifecycle status of an [`AgentRun`] and the [`JobRecord`] it checkpoints to.
+/// Serialized as a lowercase string for IndexedDB back-compat with snapshots that
+/// stored the status as plain text.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum RunStatus {
+    #[default]
+    Running,
+    Paused,
+    Complete,
+    Error,
+    Interrupted,
+}
+
+impl RunStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Paused => "paused",
+            Self::Complete => "complete",
+            Self::Error => "error",
+            Self::Interrupted => "interrupted",
+        }
+    }
+}
+
+impl std::fmt::Display for RunStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum VerificationCheckType {
@@ -233,7 +265,8 @@ pub struct JobRecord {
     pub goal: String,
     #[serde(default)]
     pub lane: RunLane,
-    pub status: String,
+    #[serde(default)]
+    pub status: RunStatus,
     #[serde(default)]
     pub progress: String,
     #[serde(default)]
@@ -280,7 +313,8 @@ impl Default for OrchestratorConfig {
 pub struct AgentRun {
     pub id: String,
     pub goal: String,
-    pub status: String,
+    #[serde(default)]
+    pub status: RunStatus,
     #[serde(default)]
     pub lane: RunLane,
     #[serde(default)]
@@ -316,4 +350,30 @@ pub(crate) fn default_verification_retry_budget() -> u32 {
 
 pub(crate) fn default_no_progress_turn_limit() -> u32 {
     2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // RunStatus is persisted to IndexedDB as a lowercase string. These exact strings
+    // are the on-disk format of every snapshot written before the enum existed, so a
+    // rename here would silently fail to load older runs. Guard the wire format.
+    #[test]
+    fn run_status_serializes_to_legacy_lowercase_strings() {
+        for (status, wire) in [
+            (RunStatus::Running, "\"running\""),
+            (RunStatus::Paused, "\"paused\""),
+            (RunStatus::Complete, "\"complete\""),
+            (RunStatus::Error, "\"error\""),
+            (RunStatus::Interrupted, "\"interrupted\""),
+        ] {
+            assert_eq!(serde_json::to_string(&status).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<RunStatus>(wire).unwrap(),
+                status,
+                "old snapshots storing {wire} must still load"
+            );
+        }
+    }
 }

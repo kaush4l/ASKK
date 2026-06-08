@@ -2,7 +2,7 @@ use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::clear_interrupt;
 use crate::orchestrator::run_goal_with_orchestrator_or_worker;
-use crate::state::{AgentEventKind, AgentRun, AppSnapshot};
+use crate::state::{AgentEventKind, AgentRun, AppSnapshot, RunStatus};
 use crate::worker_client::request_active_worker_cancel;
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -14,16 +14,16 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
     let running = current
         .current_run
         .as_ref()
-        .is_some_and(|run| run.status == "running");
+        .is_some_and(|run| run.status == RunStatus::Running);
     let resumable = current
         .current_run
         .as_ref()
-        .is_some_and(|run| run.status == "paused");
+        .is_some_and(|run| run.status == RunStatus::Paused);
     // The in-progress or recovered run is only shown live; completed runs live in `runs`.
     let live_turn = current
         .current_run
         .as_ref()
-        .filter(|run| run.status == "running" || run.status == "paused")
+        .filter(|run| run.status == RunStatus::Running || run.status == RunStatus::Paused)
         .cloned();
     let has_history = !current.runs.is_empty();
 
@@ -159,7 +159,7 @@ fn submit_goal(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
         .read()
         .current_run
         .as_ref()
-        .is_some_and(|run| run.status == "running")
+        .is_some_and(|run| run.status == RunStatus::Running)
     {
         set_status(
             &mut snapshot,
@@ -205,7 +205,7 @@ fn run_goal(
                 let run_failed = next
                     .current_run
                     .as_ref()
-                    .is_some_and(|run| run.status == "error");
+                    .is_some_and(|run| run.status == RunStatus::Error);
                 if run_failed {
                     final_goal.set(restore_goal);
                 } else {
@@ -240,17 +240,17 @@ fn ConversationTurn(run: AgentRun, live: bool) -> Element {
                     }
                     p { "{run.final_answer}" }
                 }
-            } else if run.status == "running" || live {
+            } else if run.status == RunStatus::Running || live {
                 article { class: "message-bubble assistant-message",
                     div { class: "message-author", "Assistant" }
                     p { class: "thinking-line", "{working_label(&run)}" }
                 }
-            } else if run.status == "error" {
+            } else if run.status == RunStatus::Error {
                 article { class: "message-bubble error-message",
                     div { class: "message-author", "Error" }
                     p { "{last_error(&run)}" }
                 }
-            } else if run.status == "interrupted" {
+            } else if run.status == RunStatus::Interrupted {
                 article { class: "message-bubble error-message",
                     div { class: "message-author", "Interrupted" }
                     p { "Run interrupted." }

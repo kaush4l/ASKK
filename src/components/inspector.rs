@@ -1,7 +1,7 @@
 use super::save_snapshot;
 use super::shared::{CompactList, StatBlock, set_status};
 use crate::engine::{ReActEngine, clear_interrupt};
-use crate::state::AppSnapshot;
+use crate::state::{AppSnapshot, RunStatus};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
@@ -77,7 +77,7 @@ pub fn InspectorPanel(snapshot: Signal<AppSnapshot>) -> Element {
                             h3 { "{job.goal}" }
                             p { class: "muted", "{job.progress}" }
                             p { class: "muted", "Job {job.id}" }
-                            if is_resumable_job(&job.status) {
+                            if is_resumable_job(job.status) {
                                 button {
                                     class: "ghost-button",
                                     onclick: {
@@ -114,8 +114,8 @@ pub fn InspectorPanel(snapshot: Signal<AppSnapshot>) -> Element {
     }
 }
 
-fn is_resumable_job(status: &str) -> bool {
-    matches!(status, "paused" | "failed" | "blocked")
+fn is_resumable_job(status: RunStatus) -> bool {
+    matches!(status, RunStatus::Paused)
 }
 
 fn resume_background_job(mut snapshot: Signal<AppSnapshot>, job_id: String) {

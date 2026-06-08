@@ -22,7 +22,7 @@ mod workflow;
 mod workspace_files;
 
 use components::{AppShell, set_status};
-use state::AppSnapshot;
+use state::{AppSnapshot, RunStatus};
 use storage::{IndexedDbStorage, StorageAdapter};
 
 fn main() {
@@ -66,7 +66,7 @@ fn App() -> Element {
                         if saved
                             .current_run
                             .as_ref()
-                            .is_some_and(|run| run.status == "paused")
+                            .is_some_and(|run| run.status == RunStatus::Paused)
                         {
                             let _ = storage.save_snapshot(&saved).await;
                         }

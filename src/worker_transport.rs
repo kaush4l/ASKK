@@ -148,7 +148,7 @@ mod tests {
         let mut live_run = crate::state::AgentRun {
             id: "agent-run-1".to_string(),
             goal: "subtask".to_string(),
-            status: "running".to_string(),
+            status: crate::state::RunStatus::Running,
             lane: crate::state::RunLane::BoundedTask,
             scratchpad: crate::state::RunScratchpad::default(),
             messages: Vec::new(),

@@ -1,6 +1,6 @@
 use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, RunBudgets, RunLane, RunScratchpad,
-    WorkerRun, default_tool_names, event, now_iso,
+    RunStatus, WorkerRun, default_tool_names, event, now_iso,
 };
 use crate::worker_client::{run_goal_for_agent_in_worker_or_inline, run_goal_in_worker_or_inline};
 use crate::workflow::{WorkflowGate, find_workflow};
@@ -105,7 +105,7 @@ where
     let parent_run = AgentRun {
         id: run_id.clone(),
         goal: goal.clone(),
-        status: "running".to_string(),
+        status: RunStatus::Running,
         lane: RunLane::Batch,
         scratchpad: RunScratchpad {
             goal: goal.clone(),
@@ -205,7 +205,7 @@ where
                     let child_run = child_snapshot.current_run.clone();
                     let status = child_run
                         .as_ref()
-                        .map(|run| run.status.clone())
+                        .map(|run| run.status.to_string())
                         .unwrap_or_else(|| "complete".to_string());
                     let answer = child_run
                         .as_ref()
@@ -276,7 +276,11 @@ where
         if failed { "failed" } else { "aggregated" },
     )?;
     let mut parent = parent_cell.borrow().clone();
-    parent.status = if failed { "error" } else { "complete" }.to_string();
+    parent.status = if failed {
+        RunStatus::Error
+    } else {
+        RunStatus::Complete
+    };
     parent.final_answer = parent_answer;
     parent.events.push(event(
         &parent.id,
@@ -339,7 +343,7 @@ where
             {
                 let mut parent = parent_cell.borrow_mut();
                 let parent_id = parent.id.clone();
-                parent.status = "error".to_string();
+                parent.status = RunStatus::Error;
                 parent.scratchpad.workflow = gate.state();
                 parent.events.push(event(
                     &parent_id,
@@ -412,7 +416,7 @@ fn update_worker_from_child_run<F>(
             .iter_mut()
             .find(|worker| worker.id == child_id)
         {
-            worker.status = child_run.status.clone();
+            worker.status = child_run.status.to_string();
             worker.result = child_run.final_answer.clone();
             worker.evidence = evidence_from_run(child_run);
         }

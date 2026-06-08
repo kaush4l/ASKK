@@ -11,7 +11,7 @@ use super::save_snapshot;
 use super::shared::set_status;
 use crate::browser_exec::{format_run_js, run_js_in_browser};
 use crate::orchestrator::run_goal_with_orchestrator_or_worker;
-use crate::state::AppSnapshot;
+use crate::state::{AppSnapshot, RunStatus};
 use crate::tools::{bridge_fs_list, bridge_fs_read, bridge_fs_write, bridge_run_command};
 use crate::vfs::ProjectVfs;
 use dioxus::prelude::*;
@@ -154,7 +154,7 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
         .read()
         .current_run
         .as_ref()
-        .is_some_and(|run| run.status == "running");
+        .is_some_and(|run| run.status == RunStatus::Running);
     let last_answer = snapshot
         .read()
         .runs
@@ -508,7 +508,7 @@ fn submit_workspace_goal(
         .read()
         .current_run
         .as_ref()
-        .is_some_and(|run| run.status == "running")
+        .is_some_and(|run| run.status == RunStatus::Running)
     {
         set_status(&mut snapshot, "A run is already in progress.".to_string());
         return;

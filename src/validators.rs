@@ -152,13 +152,13 @@ fn normalize_for_evidence_match(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{AgentRun, RunLane, ToolResult};
+    use crate::state::{AgentRun, RunLane, RunStatus, ToolResult};
 
     fn minimal_run() -> AgentRun {
         AgentRun {
             id: "run-1".to_string(),
             goal: "answer with evidence".to_string(),
-            status: "running".to_string(),
+            status: RunStatus::Running,
             lane: RunLane::BoundedTask,
             scratchpad: Default::default(),
             messages: Vec::new(),
