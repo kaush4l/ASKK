@@ -1,7 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::engine::ReActEngine;
 use crate::engine::request_interrupt;
-use crate::state::{Agent, AgentRun, AppResult, AppSnapshot, default_tool_names};
+use crate::state::{Agent, AgentRun, AppResult, AppSnapshot};
 
 #[cfg(target_arch = "wasm32")]
 use crate::worker_transport::{
@@ -42,7 +42,7 @@ pub async fn run_goal_in_worker_or_inline<F>(
 where
     F: FnMut(AgentRun) + 'static,
 {
-    let agent = select_worker_agent(&snapshot);
+    let agent = crate::engine::pick_agent(&snapshot);
     run_goal_for_agent_in_worker_or_inline(
         snapshot,
         goal,
@@ -95,23 +95,6 @@ pub fn request_active_worker_cancel(reason: &str) {
             }
         }
     });
-}
-
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-fn select_worker_agent(snapshot: &AppSnapshot) -> Agent {
-    snapshot
-        .agents
-        .iter()
-        .find(|agent| agent.enabled)
-        .or_else(|| snapshot.agents.first())
-        .cloned()
-        .unwrap_or_else(|| {
-            Agent::new(
-                "Assistant",
-                "Answer the user's request, using compiled tools when they help.",
-                default_tool_names(),
-            )
-        })
 }
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
@@ -305,11 +288,10 @@ fn finish_once(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::field_reassign_with_default)]
-    use super::*;
     use crate::state::{Agent, AppSnapshot};
 
     #[test]
-    fn select_worker_agent_prefers_enabled_agent() {
+    fn pick_agent_prefers_enabled_agent() {
         let mut snapshot = AppSnapshot::default();
         snapshot.agents = vec![
             Agent {
@@ -319,7 +301,7 @@ mod tests {
             Agent::new("Enabled", "Pick me", vec!["web_search".to_string()]),
         ];
 
-        let agent = select_worker_agent(&snapshot);
+        let agent = crate::engine::pick_agent(&snapshot);
 
         assert_eq!(agent.name, "Enabled");
     }

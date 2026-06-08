@@ -120,7 +120,7 @@ You are responsible for browser-grounded research tasks. Use only your allowed t
 
 No changes are allowed in the engine loop, orchestrator, prompt assembly, state store, or worker runtime. The agent manifest provides role text, tool allowlist, optional workflow, and model profile references as data.
 
-Test coverage: `state::manifest::tests::parses_agent_tool_allowlist_from_markdown` proves custom tool allowlists survive manifest parsing. Agent selection and worker execution are covered by `worker_client::tests::select_worker_agent_prefers_enabled_agent` and orchestrator tests.
+Test coverage: `state::manifest::tests::parses_agent_tool_allowlist_from_markdown` proves custom tool allowlists survive manifest parsing. Agent selection and worker execution are covered by `worker_client::tests::pick_agent_prefers_enabled_agent` and orchestrator tests.
 
 ## Workflow contract
 

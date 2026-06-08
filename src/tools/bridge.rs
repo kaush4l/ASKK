@@ -10,26 +10,33 @@ use serde_json::{Value, json};
 
 use super::common::truncate;
 
-/// Send a JSON request to a bridge tool endpoint and return the parsed `{ success,
-/// data }` envelope. Unlike [`bridge_tool_request`], the body is not truncated, so
-/// the Workspace page can read full file contents and command output.
-pub(crate) async fn bridge_json_request(endpoint: &str, body: Value) -> AppResult<Value> {
+/// Shared transport for both bridge call styles below: POST `body` to `endpoint` and
+/// return the (HTTP status, response text). `context` names the caller for errors.
+async fn bridge_post(context: &str, endpoint: &str, body: Value) -> AppResult<(u16, String)> {
     let response = Request::post(endpoint)
         .header("Content-Type", "application/json")
         .body(body.to_string())
-        .map_err(|err| format!("Unable to create bridge request: {err:?}"))?
+        .map_err(|err| format!("Unable to create {context} bridge request: {err:?}"))?
         .send()
         .await
         .map_err(|err| {
             format!(
-                "ASKK bridge request failed. Run `node scripts/askk-local-bridge.mjs --allow-exec` from the project root. Browser fetch details: {err:?}"
+                "{context} bridge request failed. Run `node scripts/askk-local-bridge.mjs` (add `--allow-exec` for run_command) from the project root. Browser fetch details: {err:?}"
             )
         })?;
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|err| format!("Unable to read bridge response: {err:?}"))?;
+        .map_err(|err| format!("Unable to read {context} bridge response: {err:?}"))?;
+    Ok((status, text))
+}
+
+/// Send a JSON request to a bridge tool endpoint and return the parsed `{ success,
+/// data }` envelope. Unlike [`bridge_tool_request`], the body is not truncated, so
+/// the Workspace page can read full file contents and command output.
+pub(crate) async fn bridge_json_request(endpoint: &str, body: Value) -> AppResult<Value> {
+    let (status, text) = bridge_post("bridge", endpoint, body).await?;
     let value: Value = serde_json::from_str(&text).map_err(|_| {
         format!(
             "Bridge returned non-JSON (HTTP {status}): {}",
@@ -129,28 +136,10 @@ pub(crate) async fn bridge_tool_request(
     endpoint: &str,
     body: Value,
 ) -> AppResult<String> {
-    let response = Request::post(endpoint)
-        .header("Content-Type", "application/json")
-        .body(body.to_string())
-        .map_err(|err| format!("Unable to create {tool_name} bridge request: {err:?}"))?
-        .send()
-        .await
-        .map_err(|err| {
-            format!(
-                "{tool_name} bridge request failed. Run `node scripts/askk-local-bridge.mjs` from the project root so the hosted app can read and update soul.md, agents/, and skills/. Browser fetch details: {err:?}"
-            )
-        })?;
-
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|err| format!("Unable to read {tool_name} bridge response: {err:?}"))?;
-
+    let (status, text) = bridge_post(tool_name, endpoint, body).await?;
     if !(200..300).contains(&status) {
         return Err(format!("{tool_name} bridge returned HTTP {status}: {text}"));
     }
-
     Ok(truncate(&text, 8_000))
 }
 
