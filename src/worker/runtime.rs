@@ -3,7 +3,7 @@
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use crate::engine::{ReActEngine, request_interrupt};
-use crate::state::{AgentRun, AppResult, AppSnapshot};
+use crate::state::{AgentRun, AppResult};
 use crate::worker::transport::{
     WorkerCommand, WorkerDispatch, WorkerError, WorkerEvent, WorkerProgress, WorkerResult,
     WorkerStatus,
@@ -68,7 +68,7 @@ where
     let run_id = dispatch.run_id.clone();
     let worker_id = dispatch.worker_id.clone();
     let goal = dispatch.goal.clone();
-    let snapshot = snapshot_with_dispatch_agent(dispatch.snapshot, dispatch.agent);
+    let snapshot = dispatch.snapshot.with_active_agent(dispatch.agent);
     let runtime = ReActEngine::new();
     let progress_run_id = run_id.clone();
     let progress_worker_id = worker_id.clone();
@@ -107,16 +107,6 @@ where
         trace,
         snapshot: final_snapshot,
     })
-}
-
-fn snapshot_with_dispatch_agent(
-    mut snapshot: AppSnapshot,
-    mut agent: crate::state::Agent,
-) -> AppSnapshot {
-    agent.enabled = true;
-    snapshot.agents.retain(|existing| existing.id != agent.id);
-    snapshot.agents.insert(0, agent);
-    snapshot
 }
 
 fn progress_event(run_id: String, worker_id: String, run: AgentRun) -> WorkerEvent {

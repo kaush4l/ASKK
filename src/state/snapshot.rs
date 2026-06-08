@@ -123,6 +123,16 @@ impl AppSnapshot {
         self
     }
 
+    /// Return this snapshot with `agent` enabled and moved to the front of the agent
+    /// list (de-duplicated by id), so a dispatched or inline run operates as that
+    /// agent. Returns a new value; the receiver is consumed.
+    pub fn with_active_agent(mut self, mut agent: Agent) -> Self {
+        agent.enabled = true;
+        self.agents.retain(|existing| existing.id != agent.id);
+        self.agents.insert(0, agent);
+        self
+    }
+
     /// Seed default model profiles for older snapshots and keep the active id valid.
     pub fn ensure_model_profiles(&mut self) {
         if self.model_profiles.is_empty() {

@@ -73,7 +73,7 @@ where
     #[cfg(not(target_arch = "wasm32"))]
     {
         ReActEngine::new()
-            .run_goal_with_observer(snapshot_with_agent(snapshot, agent), goal, observer)
+            .run_goal_with_observer(snapshot.with_active_agent(agent), goal, observer)
             .await
     }
 }
@@ -95,14 +95,6 @@ pub fn request_active_worker_cancel(reason: &str) {
             }
         }
     });
-}
-
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-fn snapshot_with_agent(mut snapshot: AppSnapshot, mut agent: Agent) -> AppSnapshot {
-    agent.enabled = true;
-    snapshot.agents.retain(|existing| existing.id != agent.id);
-    snapshot.agents.insert(0, agent);
-    snapshot
 }
 
 #[cfg(target_arch = "wasm32")]
