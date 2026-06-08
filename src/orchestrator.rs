@@ -2,7 +2,7 @@ use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, RunBudgets, RunLane, RunScratchpad,
     RunStatus, WorkerRun, default_tool_names, event, now_iso,
 };
-use crate::worker_client::{run_goal_for_agent_in_worker_or_inline, run_goal_in_worker_or_inline};
+use crate::worker::client::{run_goal_for_agent_in_worker_or_inline, run_goal_in_worker_or_inline};
 use crate::workflow::{WorkflowGate, find_workflow};
 use futures_util::future::join_all;
 use std::cell::RefCell;

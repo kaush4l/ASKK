@@ -3,7 +3,7 @@ use super::shared::set_status;
 use crate::engine::clear_interrupt;
 use crate::orchestrator::run_goal_with_orchestrator_or_worker;
 use crate::state::{AgentEventKind, AgentRun, AppSnapshot, RunStatus};
-use crate::worker_client::request_active_worker_cancel;
+use crate::worker::client::request_active_worker_cancel;
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 

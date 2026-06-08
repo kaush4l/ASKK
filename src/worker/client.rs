@@ -4,7 +4,7 @@ use crate::engine::request_interrupt;
 use crate::state::{Agent, AgentRun, AppResult, AppSnapshot};
 
 #[cfg(target_arch = "wasm32")]
-use crate::worker_transport::{
+use crate::worker::transport::{
     WorkerCancel, WorkerCommand, WorkerDispatch, WorkerEvent, WorkerStatus,
 };
 #[cfg(target_arch = "wasm32")]

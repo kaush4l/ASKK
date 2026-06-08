@@ -4,7 +4,7 @@
 
 use crate::engine::{ReActEngine, request_interrupt};
 use crate::state::{AgentRun, AppResult, AppSnapshot};
-use crate::worker_transport::{
+use crate::worker::transport::{
     WorkerCommand, WorkerDispatch, WorkerError, WorkerEvent, WorkerProgress, WorkerResult,
     WorkerStatus,
 };
@@ -178,7 +178,7 @@ pub async fn askk_worker_handle(payload: String) -> Result<String, wasm_bindgen:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::worker_transport::{WorkerCancel, WorkerCommand, WorkerEvent};
+    use crate::worker::transport::{WorkerCancel, WorkerCommand, WorkerEvent};
 
     #[test]
     fn cancel_command_returns_structured_cancel_event() {

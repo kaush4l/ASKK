@@ -15,9 +15,7 @@ mod storage;
 mod tools;
 mod validators;
 mod vfs;
-mod worker_client;
-mod worker_runtime;
-mod worker_transport;
+mod worker;
 mod workflow;
 mod workspace_files;
 
