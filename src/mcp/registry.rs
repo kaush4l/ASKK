@@ -14,14 +14,16 @@
 #![cfg(target_arch = "wasm32")]
 
 use crate::mcp::client::McpClient;
+use crate::mcp::protocol::McpToolDef;
 use crate::mcp::worker_transport::WorkerMcpTransport;
 use crate::state::{
     AgentEventKind, AgentRun, AppResult, McpServerConfig, McpServerKind, ToolResult, ToolSpec,
-    event,
+    default_tool_names, event,
 };
 use dioxus::prelude::*;
 use serde_json::Value;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 /// The bundled reference MCP server, resolved to a hashed, base-pathed URL at build
@@ -32,9 +34,6 @@ const REFERENCE_SERVER: Asset = asset!("/assets/mcp_reference_server.js");
 
 /// Source path of the bundled reference server, as stored in a default config.
 const REFERENCE_SERVER_SOURCE_PATH: &str = "/assets/mcp_reference_server.js";
-
-/// Prefix that marks a tool name as MCP-backed and namespaces it by server id.
-const NAMESPACE_PREFIX: &str = "mcp__";
 
 /// One connected, initialized MCP server and the tools it advertised.
 struct McpConnection {
@@ -47,7 +46,9 @@ struct McpConnection {
     /// The client is wrapped in `Rc` so a tool call can clone it out of the
     /// thread-local table and `.await` the round-trip without holding the borrow.
     client: Rc<McpClient<WorkerMcpTransport>>,
-    /// `(namespaced ToolSpec offered to the model, real tool name on the server)`.
+    /// `(ToolSpec offered to the model with a clean display name, real tool name on
+    /// the server)`. The display name is what the model calls; routing maps it back
+    /// to the real name here.
     tools: Vec<(ToolSpec, String)>,
 }
 
@@ -72,38 +73,78 @@ fn resolve_worker_url(config: &McpServerConfig) -> String {
     }
 }
 
-/// Build the namespaced tool name for a server's tool.
-fn namespaced_name(server_id: &str, tool: &str) -> String {
-    format!("{NAMESPACE_PREFIX}{server_id}__{tool}")
+/// Sanitize a server name into a short identifier-ish slug used only to
+/// disambiguate a tool name that would otherwise collide.
+fn slug(name: &str) -> String {
+    let mut out = String::new();
+    let mut last_underscore = false;
+    for ch in name.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.extend(ch.to_lowercase());
+            last_underscore = false;
+        } else if !last_underscore && !out.is_empty() {
+            out.push('_');
+            last_underscore = true;
+        }
+    }
+    out.trim_matches('_').to_string()
 }
 
-/// Spawn the worker, run the initialize handshake, and discover tools. Performed
+/// Pick the clean, LLM-facing name for an MCP tool. The model should see the bare
+/// tool name (e.g. `echo`), never the internal server id. Only when that bare name
+/// would collide — with a compiled built-in or another connected MCP tool — do we
+/// disambiguate by prefixing the server slug, then a numeric suffix as a last
+/// resort. `used` accumulates every name already offered to the model.
+fn unique_display_name(real: &str, server_name: &str, used: &mut HashSet<String>) -> String {
+    let bare = real.trim();
+    if !bare.is_empty() && used.insert(bare.to_string()) {
+        return bare.to_string();
+    }
+    let server_slug = slug(server_name);
+    if !server_slug.is_empty() {
+        let prefixed = format!("{server_slug}_{bare}");
+        if used.insert(prefixed.clone()) {
+            return prefixed;
+        }
+    }
+    let stem = if server_slug.is_empty() {
+        bare.to_string()
+    } else {
+        format!("{server_slug}_{bare}")
+    };
+    let mut n = 2;
+    loop {
+        let candidate = format!("{stem}_{n}");
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Describe an MCP tool to the model: its own description, plus where it comes from
+/// so the model knows it is talking to an external server.
+fn describe_mcp_tool(def: &McpToolDef, server_name: &str) -> String {
+    let desc = def.description.trim();
+    if desc.is_empty() {
+        format!("Tool provided by the \"{server_name}\" MCP server.")
+    } else {
+        format!("{desc} (Provided by the \"{server_name}\" MCP server.)")
+    }
+}
+
+/// Spawn the worker, run the initialize handshake, and list tools. Returns the live
+/// client plus the raw tool definitions; callers assign display names. Performed
 /// fully outside any thread-local borrow so the awaits can't deadlock the table.
-async fn connect_server(config: &McpServerConfig) -> AppResult<McpConnection> {
+async fn connect_server(
+    config: &McpServerConfig,
+) -> AppResult<(Rc<McpClient<WorkerMcpTransport>>, Vec<McpToolDef>)> {
     let url = resolve_worker_url(config);
     let transport = WorkerMcpTransport::connect(&url)?;
     let client = McpClient::new(transport);
     client.initialize().await?;
     let defs = client.list_tools().await?;
-
-    let tools = defs
-        .into_iter()
-        .map(|def| {
-            let spec = ToolSpec {
-                name: namespaced_name(&config.id, &def.name),
-                description: format!("[MCP · {}] {}", config.name, def.description),
-                input_schema: def.input_schema,
-            };
-            (spec, def.name)
-        })
-        .collect();
-
-    Ok(McpConnection {
-        server_id: config.id.clone(),
-        fingerprint: connection_fingerprint(config),
-        client: Rc::new(client),
-        tools,
-    })
+    Ok((Rc::new(client), defs))
 }
 
 /// Bring up every enabled browser MCP server, emitting connect / tools-listed /
@@ -135,6 +176,18 @@ where
             .retain(|conn| live_fingerprints.contains(&conn.fingerprint));
     });
 
+    // Names already offered to the model: every compiled built-in plus the display
+    // names of connections that survived the prune. New tools are named to avoid
+    // these so two tools never share a name.
+    let mut used: HashSet<String> = default_tool_names().into_iter().collect();
+    MCP_RUNTIME.with(|runtime| {
+        for conn in runtime.borrow().iter() {
+            for (spec, _) in &conn.tools {
+                used.insert(spec.name.clone());
+            }
+        }
+    });
+
     let mut names = Vec::new();
     for server in servers
         .iter()
@@ -162,7 +215,27 @@ where
         }
 
         match connect_server(server).await {
-            Ok(conn) => {
+            Ok((client, defs)) => {
+                // Assign each tool a clean, collision-free display name and a
+                // description that names its source server.
+                let tools: Vec<(ToolSpec, String)> = defs
+                    .into_iter()
+                    .map(|def| {
+                        let display = unique_display_name(&def.name, &server.name, &mut used);
+                        let spec = ToolSpec {
+                            name: display,
+                            description: describe_mcp_tool(&def, &server.name),
+                            input_schema: def.input_schema.clone(),
+                        };
+                        (spec, def.name)
+                    })
+                    .collect();
+                let conn = McpConnection {
+                    server_id: server.id.clone(),
+                    fingerprint,
+                    client,
+                    tools,
+                };
                 let tool_names: Vec<String> = conn
                     .tools
                     .iter()
@@ -211,8 +284,8 @@ where
 /// worker down (the returned connection is dropped here, terminating its worker).
 /// Does not touch the live runtime table.
 pub async fn discover_tools(config: &McpServerConfig) -> AppResult<Vec<String>> {
-    let conn = connect_server(config).await?;
-    Ok(conn.tools.iter().map(|(_, real)| real.clone()).collect())
+    let (_client, defs) = connect_server(config).await?;
+    Ok(defs.into_iter().map(|def| def.name).collect())
 }
 
 /// The namespaced `ToolSpec`s for all live MCP tools whose name is in the agent's
@@ -229,16 +302,16 @@ pub fn specs_for_agent(enabled_tools: &[String]) -> Vec<ToolSpec> {
     })
 }
 
-/// Whether `name` resolves to a live MCP-backed tool (so the engine routes its call
-/// here instead of to the compiled tool registry).
+/// Whether `name` is a live MCP-backed tool's display name (so the engine routes its
+/// call here instead of to the compiled tool registry). Display names are assigned to
+/// avoid colliding with any built-in, so a match here is unambiguous.
 pub fn is_mcp_tool(name: &str) -> bool {
-    name.starts_with(NAMESPACE_PREFIX)
-        && MCP_RUNTIME.with(|runtime| {
-            runtime
-                .borrow()
-                .iter()
-                .any(|conn| conn.tools.iter().any(|(spec, _)| spec.name == name))
-        })
+    MCP_RUNTIME.with(|runtime| {
+        runtime
+            .borrow()
+            .iter()
+            .any(|conn| conn.tools.iter().any(|(spec, _)| spec.name == name))
+    })
 }
 
 /// Route a namespaced MCP tool call to its server's client and convert the MCP

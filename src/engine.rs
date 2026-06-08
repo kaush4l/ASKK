@@ -649,7 +649,10 @@ fn conversation_seed(runs: &[AgentRun]) -> Vec<Message> {
 
 /// The sub-agent roster the running agent can see and delegate to: every enabled
 /// agent except the one currently running, reduced to its name + one-line summary.
-fn sub_agent_roster(snapshot: &AppSnapshot, current_agent_id: &str) -> Vec<SubAgentInfo> {
+pub(crate) fn sub_agent_roster(
+    snapshot: &AppSnapshot,
+    current_agent_id: &str,
+) -> Vec<SubAgentInfo> {
     snapshot
         .agents
         .iter()
@@ -661,7 +664,7 @@ fn sub_agent_roster(snapshot: &AppSnapshot, current_agent_id: &str) -> Vec<SubAg
         .collect()
 }
 
-fn pick_agent(snapshot: &AppSnapshot) -> Agent {
+pub(crate) fn pick_agent(snapshot: &AppSnapshot) -> Agent {
     snapshot
         .agents
         .iter()

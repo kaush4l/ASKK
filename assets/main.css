@@ -480,6 +480,103 @@ pre {
     gap: 10px;
 }
 
+.react-log {
+    display: grid;
+    gap: 8px;
+}
+
+.react-step {
+    border-left: 3px solid #cbb8f0;
+    background: #faf8ff;
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+
+.react-step-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.react-step-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #5b21b6;
+    background: #efe9fc;
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+
+.react-step-title {
+    font-size: 13px;
+    color: #2b2348;
+}
+
+.react-step pre {
+    margin: 6px 0 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #4b4565;
+}
+
+.react-step.step-llm-call {
+    border-left-color: #8b5cf6;
+}
+
+.react-step.step-llm-response {
+    border-left-color: #6366f1;
+}
+
+.react-step.step-tool-call {
+    border-left-color: #0ea5e9;
+}
+
+.react-step.step-tool-call .react-step-label {
+    color: #0369a1;
+    background: #e0f2fe;
+}
+
+.react-step.step-tool-result {
+    border-left-color: #10b981;
+}
+
+.react-step.step-tool-result .react-step-label {
+    color: #047857;
+    background: #d1fae5;
+}
+
+.react-step.step-answer {
+    border-left-color: #f59e0b;
+}
+
+.react-step.step-answer .react-step-label {
+    color: #b45309;
+    background: #fef3c7;
+}
+
+.react-step.step-error {
+    border-left-color: #ef4444;
+}
+
+.react-step.step-error .react-step-label {
+    color: #b91c1c;
+    background: #fee2e2;
+}
+
+.react-step.step-mcp {
+    border-left-color: #14b8a6;
+}
+
+.react-step.step-mcp .react-step-label {
+    color: #0f766e;
+    background: #ccfbf1;
+}
+
 .error-row {
     border-color: #e7a6a6;
     background: #fff6f6;
@@ -492,6 +589,34 @@ pre {
 
 .event-log-panel {
     grid-template-rows: auto minmax(0, 1fr);
+}
+
+.compiled-prompt-panel {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 10px;
+    height: 100%;
+    min-height: 0;
+    border-radius: 8px;
+}
+
+.compiled-prompt-note {
+    margin: 0;
+    font-size: 12px;
+}
+
+.compiled-prompt {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: #faf8ff;
+    border: 1px solid #ece6fb;
+    border-radius: 8px;
+    padding: 12px;
+    color: #2b2348;
 }
 
 .event-count {

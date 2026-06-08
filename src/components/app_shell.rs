@@ -1,5 +1,6 @@
 use super::agents_page::AgentsPage;
 use super::chat_panel::ChatPanel;
+use super::compiled_prompt_panel::CompiledPromptPanel;
 use super::event_log::EventLogPanel;
 use super::inspector::InspectorPanel;
 use super::mcp_page::McpPage;
@@ -49,11 +50,9 @@ pub fn AppShell(
     let current = snapshot.read().clone();
     let mut active_page = use_signal(|| DashboardPage::Chat);
     let mut nav_collapsed = use_signal(|| false);
-    // The Chat and Workspace pages own their full width; other pages show the event log.
-    let full_width = matches!(
-        active_page(),
-        DashboardPage::Chat | DashboardPage::Workspace
-    );
+    // Workspace owns its full width; Chat shows the compiled-prompt panel on the
+    // right; other pages show the event log.
+    let full_width = matches!(active_page(), DashboardPage::Workspace);
     let frame_class = match (nav_collapsed(), full_width) {
         (true, true) => "dashboard-frame nav-collapsed no-log",
         (true, false) => "dashboard-frame nav-collapsed",
@@ -156,7 +155,9 @@ pub fn AppShell(
                     }}
                 }
 
-                if !full_width {
+                if active_page() == DashboardPage::Chat {
+                    CompiledPromptPanel { snapshot }
+                } else if !full_width {
                     EventLogPanel { snapshot }
                 }
             }

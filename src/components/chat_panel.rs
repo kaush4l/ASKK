@@ -256,23 +256,46 @@ fn ConversationTurn(run: AgentRun, live: bool) -> Element {
                     p { "Run interrupted." }
                 }
             }
-            RunDetails { run: run.clone() }
+            RunDetails { run: run.clone(), live }
         }
     }
 }
 
 #[component]
-fn RunDetails(run: AgentRun) -> Element {
-    let tool_count = run.tool_results.len();
-    let event_count = run.events.len();
+fn RunDetails(run: AgentRun, live: bool) -> Element {
+    // Count only the steps shown in the clean log (the ReAct flow), not internal
+    // bookkeeping events.
+    let step_count = run
+        .events
+        .iter()
+        .filter(|event| log_step(&event.kind).is_some())
+        .count();
 
     rsx! {
-        details { class: "run-details",
+        details { class: "run-details", open: live,
             summary {
-                "Run details "
-                span { class: "event-count", "{event_count}" }
+                "Run log "
+                span { class: "event-count", "{step_count}" }
             }
             div { class: "run-details-grid",
+                div { class: "detail-section",
+                    h3 { "Steps" }
+                    div { class: "react-log",
+                        for event in run.events.iter() {
+                            if let Some((label, css)) = log_step(&event.kind) {
+                                article { class: "react-step {css}", key: "{event.id}",
+                                    div { class: "react-step-head",
+                                        span { class: "react-step-label", "{label}" }
+                                        span { class: "react-step-title", "{event.title}" }
+                                    }
+                                    if step_shows_body(&event.kind) && !event.body.trim().is_empty() {
+                                        pre { "{event.body}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 div { class: "detail-section",
                     h3 { "Scratchpad" }
                     article { class: "event-row",
@@ -283,44 +306,41 @@ fn RunDetails(run: AgentRun) -> Element {
                         pre { "{scratchpad_text(&run)}" }
                     }
                 }
-                if tool_count > 0 {
-                    div { class: "detail-section",
-                        h3 { "Tools" }
-                        for result in run.tool_results.iter() {
-                            article { class: if result.ok { "event-row" } else { "event-row error-row" }, key: "{result.call_id}",
-                                div { class: "event-meta",
-                                    span { "{result.call_id}" }
-                                    span { if result.ok { "ok" } else { "error" } }
-                                }
-                                pre { "{result.content}" }
-                            }
-                        }
-                    }
-                }
-                div { class: "detail-section",
-                    h3 { "Timeline" }
-                    for event in run.events.iter() {
-                        article { class: event_class(&event.kind), key: "{event.id}",
-                            div { class: "event-meta",
-                                span { "{event.created_at}" }
-                                span { "{event.kind:?}" }
-                            }
-                            h3 { "{event.title}" }
-                            pre { "{event.body}" }
-                        }
-                    }
-                }
             }
         }
     }
 }
 
-fn event_class(kind: &AgentEventKind) -> &'static str {
+/// Map an event to its place in the clean ReAct log: `(label, css class)`, or `None`
+/// to hide it. The flow the user reads is: LLM call → response → (tool call → tool
+/// result)* → answer, with errors surfaced inline.
+fn log_step(kind: &AgentEventKind) -> Option<(&'static str, &'static str)> {
     match kind {
-        AgentEventKind::Error => "event-row error-row",
-        AgentEventKind::ToolCompleted => "event-row tool-event-row",
-        _ => "event-row",
+        AgentEventKind::LlmRequest => Some(("LLM call", "step-llm-call")),
+        AgentEventKind::LlmResponse => Some(("Response", "step-llm-response")),
+        AgentEventKind::ToolRequested => Some(("Tool call", "step-tool-call")),
+        AgentEventKind::ToolCompleted => Some(("Tool result", "step-tool-result")),
+        AgentEventKind::McpConnected => Some(("MCP", "step-mcp")),
+        AgentEventKind::McpToolsListed => Some(("MCP tools", "step-mcp")),
+        AgentEventKind::FinalAnswer => Some(("Answer", "step-answer")),
+        AgentEventKind::Error => Some(("Error", "step-error")),
+        AgentEventKind::Interrupted => Some(("Interrupted", "step-error")),
+        // Internal bookkeeping — kept out of the readable log.
+        AgentEventKind::Started
+        | AgentEventKind::Routing
+        | AgentEventKind::MetaTool
+        | AgentEventKind::Workflow
+        | AgentEventKind::Verification
+        | AgentEventKind::WorkerStarted
+        | AgentEventKind::WorkerCompleted => None,
     }
+}
+
+/// The `LLM call` step's body is just message-count bookkeeping; every other step's
+/// body (the response text, the tool args, the tool result, the answer) is worth
+/// showing.
+fn step_shows_body(kind: &AgentEventKind) -> bool {
+    !matches!(kind, AgentEventKind::LlmRequest)
 }
 
 fn working_label(run: &AgentRun) -> String {
