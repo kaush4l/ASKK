@@ -73,6 +73,67 @@ impl OrchestrationPhase {
     }
 }
 
+/// Whether the orchestrator should dispatch another wave or stop after the current one
+/// — a typed replacement for the old `stop_after_wave` break-flag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WaveOutcome {
+    Continue,
+    Stop,
+}
+
+/// The distilled outcome of one child worker, classified from its raw run result.
+/// Classification is pure (no parent-state mutation); the wave loop applies the side
+/// effects — workflow transition, `finish_worker`, result collection — from these
+/// fields.
+struct ChildOutcome {
+    status: WorkerRunStatus,
+    answer: String,
+    child_run: Option<AgentRun>,
+    result: ChildResult,
+}
+
+/// Classify a single child worker's run result into a typed [`ChildOutcome`]. An
+/// errored dispatch surfaces as `Error`; a successful run reports its terminal status
+/// (a missing current run is treated as a clean `Complete`, mirroring the previous
+/// "complete" fallback).
+fn classify_child(role: String, sub_goal: String, result: AppResult<AppSnapshot>) -> ChildOutcome {
+    match result {
+        Ok(child_snapshot) => {
+            let child_run = child_snapshot.current_run.clone();
+            let status = child_run
+                .as_ref()
+                .map(|run| WorkerRunStatus::from(run.status))
+                .unwrap_or(WorkerRunStatus::Complete);
+            let answer = child_run
+                .as_ref()
+                .map(|run| run.final_answer.clone())
+                .unwrap_or_default();
+            ChildOutcome {
+                status,
+                answer: answer.clone(),
+                child_run,
+                result: ChildResult {
+                    role,
+                    sub_goal,
+                    status,
+                    answer,
+                },
+            }
+        }
+        Err(err) => ChildOutcome {
+            status: WorkerRunStatus::Error,
+            answer: err.clone(),
+            child_run: None,
+            result: ChildResult {
+                role,
+                sub_goal,
+                status: WorkerRunStatus::Error,
+                answer: err,
+            },
+        },
+    }
+}
+
 pub async fn run_goal_with_orchestrator_or_worker<F>(
     snapshot: AppSnapshot,
     goal: String,
@@ -222,77 +283,38 @@ where
             }
         });
 
-        let mut stop_after_wave = false;
+        let mut wave_outcome = WaveOutcome::Continue;
         let wave_results = join_all(child_futures).await;
         for (child_id, role, sub_goal, result) in wave_results {
-            match result {
-                Ok(child_snapshot) => {
-                    let child_run = child_snapshot.current_run.clone();
-                    let status = child_run
-                        .as_ref()
-                        .map(|run| WorkerRunStatus::from(run.status))
-                        .unwrap_or(WorkerRunStatus::Complete);
-                    let answer = child_run
-                        .as_ref()
-                        .map(|run| run.final_answer.clone())
-                        .unwrap_or_default();
-                    if !parent_has_terminal_failure(&parent_cell) {
-                        let next_phase = if status.is_terminal_failure() {
-                            stop_after_wave = true;
-                            OrchestrationPhase::Failed
-                        } else {
-                            OrchestrationPhase::WorkersJoined
-                        };
-                        apply_workflow_transition(
-                            &parent_cell,
-                            &observer_cell,
-                            &mut workflow_gate,
-                            next_phase,
-                        )?;
-                    }
-                    finish_worker(
-                        &parent_cell,
-                        &observer_cell,
-                        &child_id,
-                        status,
-                        &answer,
-                        child_run.as_ref(),
-                    );
-                    child_results.push(ChildResult {
-                        role,
-                        sub_goal,
-                        status,
-                        answer,
-                    });
-                }
-                Err(err) => {
-                    if !parent_has_terminal_failure(&parent_cell) {
-                        apply_workflow_transition(
-                            &parent_cell,
-                            &observer_cell,
-                            &mut workflow_gate,
-                            OrchestrationPhase::Failed,
-                        )?;
-                    }
-                    stop_after_wave = true;
-                    finish_worker(
-                        &parent_cell,
-                        &observer_cell,
-                        &child_id,
-                        WorkerRunStatus::Error,
-                        &err,
-                        None,
-                    );
-                    child_results.push(ChildResult {
-                        role,
-                        sub_goal,
-                        status: WorkerRunStatus::Error,
-                        answer: err,
-                    });
-                }
+            let outcome = classify_child(role, sub_goal, result);
+            let failed = outcome.status.is_terminal_failure();
+            if !parent_has_terminal_failure(&parent_cell) {
+                let next_phase = if failed {
+                    OrchestrationPhase::Failed
+                } else {
+                    OrchestrationPhase::WorkersJoined
+                };
+                apply_workflow_transition(
+                    &parent_cell,
+                    &observer_cell,
+                    &mut workflow_gate,
+                    next_phase,
+                )?;
             }
+            if failed {
+                wave_outcome = WaveOutcome::Stop;
+            }
+            finish_worker(
+                &parent_cell,
+                &observer_cell,
+                &child_id,
+                outcome.status,
+                &outcome.answer,
+                outcome.child_run.as_ref(),
+            );
+            child_results.push(outcome.result);
         }
-        if stop_after_wave {
+        if wave_outcome == WaveOutcome::Stop {
             break;
         }
     }
@@ -689,6 +711,28 @@ mod tests {
         assert!(answer.contains("Rust result"));
         assert!(answer.contains("Synthesizer — Dioxus"));
         assert!(answer.contains("Dioxus result"));
+    }
+
+    #[test]
+    fn classify_child_maps_error_and_success() {
+        let errored = classify_child(
+            "Researcher".to_string(),
+            "sub".to_string(),
+            Err("boom".to_string()),
+        );
+        assert_eq!(errored.status, WorkerRunStatus::Error);
+        assert!(errored.status.is_terminal_failure());
+        assert_eq!(errored.answer, "boom");
+        assert!(errored.child_run.is_none());
+
+        // No current run on the returned snapshot folds to a clean Complete.
+        let succeeded = classify_child(
+            "Researcher".to_string(),
+            "sub".to_string(),
+            Ok(AppSnapshot::default()),
+        );
+        assert_eq!(succeeded.status, WorkerRunStatus::Complete);
+        assert!(!succeeded.status.is_terminal_failure());
     }
 
     #[test]
