@@ -8,32 +8,35 @@
 //! [`ToolSpec`]s, and the sub-agent roster) into the LLM-facing text, in a fixed
 //! order:
 //!
-//! `soul → "You are {name}" → role → ## CONTEXT → ## SUB-AGENTS → ## AVAILABLE TOOLS
-//! → ## SKILLS → ## RESPONSE FORMAT`.
+//! `soul → "You are {name}" → role → ## SUB-AGENTS → ## AVAILABLE TOOLS → ## SKILLS
+//! → ## CONTEXT`.
 //!
-//! The soul is always first; everything task-specific follows it. The prompt carries
-//! only what the agent's objects actually contain — no boilerplate headers, and tools
-//! are rendered as minimal markdown (name + description + a usage hint), never a raw
-//! JSON-Schema dump. Optional sections (sub-agents, skills) are omitted when empty.
+//! The soul is always first (the agent's persona/identity); everything task-specific
+//! follows it. The prompt carries only what the agent's objects actually contain: no
+//! boilerplate headers, and tools render as minimal markdown (a name, a description,
+//! and a usage hint) rather than a raw JSON-Schema dump. Optional sub-agent and skill
+//! sections are omitted when empty. The response-format instructions are not part of
+//! the system prompt; the provider appends them as the final message, after the
+//! conversation, so the model reads them last. The full order the model sees is
+//! therefore soul, agent, tools, context, messages, response format.
 
 use crate::inference::{InferenceRequest, SubAgentInfo};
-use crate::responses::{ReActResponse, StructuredResponse};
 use crate::state::{AppResult, Skill, ToolSpec, default_soul_prompt};
 
-/// Render the full system prompt for a working ReAct agent. Soul first, then the
-/// agent identity and role, the run context (current date + sandbox note), the
-/// sub-agent roster (if any), the compiled tool manifest, workspace skills (if any),
-/// and the response-format instructions.
+/// Render the system prompt for a working ReAct agent: the soul (persona) first, then
+/// the agent identity and role, the sub-agent roster (if any), the compiled tool
+/// manifest, workspace skills (if any), and the run context (current date + sandbox
+/// note). The response-format instructions are appended separately by the provider as
+/// the final message — see [`crate::inference`].
 pub fn render_system_prompt(request: &InferenceRequest) -> AppResult<String> {
     let soul_prompt = resolve_soul(&request.soul);
-    let context = render_context(&request.now);
     let sub_agents = describe_sub_agents(&request.sub_agents);
     let tool_manifest = describe_tools(&request.tools);
     let skills = describe_skills(&request.skills);
-    let response_instructions = ReActResponse::instructions(request.response_format);
+    let context = render_context(&request.now);
 
     Ok(format!(
-        "{soul_prompt}\n\nYou are {agent_name}.\n\n{agent_role}\n\n{context}\n\n{sub_agents}{tool_manifest}\n\n{skills}{response_instructions}",
+        "{soul_prompt}\n\nYou are {agent_name}.\n\n{agent_role}\n\n{sub_agents}{tool_manifest}\n\n{skills}{context}",
         agent_name = request.agent_name,
         agent_role = request.agent_role.trim(),
     ))
@@ -158,10 +161,15 @@ mod tests {
     }
 
     #[test]
-    fn context_block_carries_the_current_date() {
+    fn context_block_carries_the_current_date_and_comes_last() {
         let system = render_system_prompt(&base_request()).unwrap();
         assert!(system.contains("## CONTEXT"));
         assert!(system.contains("Current date (UTC): 2026-06-08T00:00:00Z"));
+        // Context is the last section of the system prompt (tools precede it).
+        assert!(system.find("## AVAILABLE TOOLS").unwrap() < system.find("## CONTEXT").unwrap());
+        // The response format is NOT in the system prompt; the provider appends it as
+        // the final message, after the conversation.
+        assert!(!system.contains("## RESPONSE FORMAT"));
     }
 
     #[test]
@@ -189,17 +197,20 @@ mod tests {
         let mut request = base_request();
         request.soul = "   ".to_string();
         let system = render_system_prompt(&request).unwrap();
-        assert!(!system.starts_with("You are"));
-        // The bundled soul is non-empty.
-        assert!(system.trim_start().len() > "You are Planner.".len());
+        let default_soul = default_soul_prompt();
+        let default_soul = default_soul.trim();
+        // A blank soul falls back to the bundled default, rendered first.
+        assert!(system.starts_with(default_soul));
+        // The agent identity follows the (non-empty) fallback soul.
+        assert!(system.find("You are Planner.").unwrap() > default_soul.len() - 1);
     }
 
     #[test]
     fn empty_roster_omits_sub_agent_section() {
         let system = render_system_prompt(&base_request()).unwrap();
         assert!(!system.contains("## SUB-AGENTS"));
-        // The tool manifest follows the context block directly when there are no peers.
-        assert!(system.contains("ASKK bridge.\n\n## AVAILABLE TOOLS"));
+        // With no peers, the tool manifest follows the role directly.
+        assert!(system.contains("Plan carefully.\n\n## AVAILABLE TOOLS"));
     }
 
     #[test]
@@ -219,10 +230,11 @@ mod tests {
         assert!(system.contains("## SUB-AGENTS"));
         assert!(system.contains("- Researcher: Finds and reads current web sources."));
         assert!(system.contains("- Coder: Writes and runs code in the browser."));
-        // Roster sits between the context block and the tool manifest.
-        let context_at = system.find("## CONTEXT").unwrap();
+        // Order: identity/role → sub-agents → tools → context.
+        let identity_at = system.find("You are Planner.").unwrap();
         let roster_at = system.find("## SUB-AGENTS").unwrap();
         let tools_at = system.find("## AVAILABLE TOOLS").unwrap();
-        assert!(context_at < roster_at && roster_at < tools_at);
+        let context_at = system.find("## CONTEXT").unwrap();
+        assert!(identity_at < roster_at && roster_at < tools_at && tools_at < context_at);
     }
 }

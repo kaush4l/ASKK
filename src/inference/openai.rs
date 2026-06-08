@@ -1,14 +1,16 @@
-//! The OpenAI-compatible provider: assembles the system prompt (soul + role +
-//! tools + skills + response-format instructions) and the wire transcript, calls
-//! the chat-completions endpoint through [`transport`](super::transport), and parses
-//! the reply into a [`ReActResponse`]. Any BYOK endpoint speaking this API works.
+//! The OpenAI-compatible provider: assembles the wire transcript and calls the
+//! chat-completions endpoint through [`transport`](super::transport), then parses the
+//! reply into a [`ReActResponse`]. The message order the model sees is
+//! `system (soul + agent + tools + context) → conversation messages → response-format
+//! instructions` — the format directive comes last so the model reads it right before
+//! generating. Any BYOK endpoint speaking this API works.
 
 use serde::Serialize;
 use serde_json::json;
 
 use super::transport::{assistant_content, send_chat_completion, send_chat_completion_stream};
 use super::{InferenceOutput, InferenceProvider, InferenceRequest};
-use crate::responses::{ReActResponse, response_to_result};
+use crate::responses::{ReActResponse, StructuredResponse, response_to_result};
 use crate::state::{AppResult, Message, ProviderConfig};
 
 #[derive(Clone, Debug, Default)]
@@ -94,7 +96,8 @@ impl OpenAiCompatibleInference {
 
     fn normalize_messages(&self, request: &InferenceRequest) -> AppResult<Vec<WireMessage>> {
         // The agent owns prompt formatting; the provider only wires the rendered
-        // system prompt to the transcript and ships it.
+        // system prompt to the transcript and ships it. Order the model sees:
+        // soul → agent → tools → context (system) → messages → response format.
         let system = crate::agent_prompt::render_system_prompt(request)?;
 
         let mut messages = vec![WireMessage {
@@ -112,6 +115,12 @@ impl OpenAiCompatibleInference {
             // current query, then this run's ReAct turns).
             messages.extend(request.history.iter().map(history_wire_message));
         }
+        // Response format comes LAST — the final instruction the model reads before it
+        // generates, so format adherence is strongest.
+        messages.push(WireMessage {
+            role: "user".to_string(),
+            content: ReActResponse::instructions(request.response_format),
+        });
         Ok(messages)
     }
 }
@@ -175,6 +184,15 @@ mod tests {
         );
         assert!(system.contains("You are Planner.\n\nPlan carefully."));
         assert!(system.contains("### Care\nWork carefully."));
+        // The response format is not in the system message; it is the final message.
+        assert!(!system.contains("## RESPONSE FORMAT"));
+        assert!(
+            messages
+                .last()
+                .unwrap()
+                .content
+                .contains("## RESPONSE FORMAT")
+        );
     }
 
     #[test]
@@ -205,11 +223,19 @@ mod tests {
             .normalize_messages(&request)
             .unwrap();
         // With a transcript supplied, the conversation follows the system message
-        // directly (no separate "Goal:" turn): system, assistant, tool-as-user.
+        // directly (no separate "Goal:" turn): system, assistant, tool-as-user, then
+        // the trailing response-format message.
         assert_eq!(messages[0].role, "system");
         assert_eq!(messages[1].role, "assistant");
         assert_eq!(messages[2].role, "user");
         assert!(messages[2].content.starts_with("Tool observation:\n"));
+        assert!(
+            messages
+                .last()
+                .unwrap()
+                .content
+                .contains("## RESPONSE FORMAT")
+        );
     }
 
     #[test]
@@ -230,8 +256,10 @@ mod tests {
         let messages = OpenAiCompatibleInference
             .normalize_messages(&request)
             .unwrap();
-        assert_eq!(messages.len(), 2);
+        // system, goal, then the trailing response-format message.
+        assert_eq!(messages.len(), 3);
         assert_eq!(messages[1].role, "user");
         assert_eq!(messages[1].content, "Goal: Ship it.");
+        assert!(messages[2].content.contains("## RESPONSE FORMAT"));
     }
 }

@@ -44,16 +44,22 @@ Initialization reduces in-code objects to LLM-facing text, all in
 
 `src/agent_prompt.rs` is the single place the system prompt is assembled —
 `render_system_prompt` (and `render_critic_system_prompt` for the verifier). A
-provider (`src/inference/openai.rs`) **only** wires that rendered system prompt to
-the transcript and ships it; it composes no prompt sections itself. Fixed order:
+provider (`src/inference/openai.rs`) wires that rendered system prompt to the
+transcript, then appends the response-format instructions as the **final message** so
+the model reads them right before generating. The full order the model sees:
 
 ```
-soul → "You are {name}" → role → ## CONTEXT → ## SUB-AGENTS → ## AVAILABLE TOOLS → ## SKILLS → ## RESPONSE FORMAT
+soul → "You are {name}" → role → ## SUB-AGENTS → ## AVAILABLE TOOLS → ## SKILLS → ## CONTEXT   (system message)
+→ conversation messages (goal / prior turns / tool observations)
+→ ## RESPONSE FORMAT                                                                            (final message)
 ```
 
-The prompt carries only what the agent's objects contain: no boilerplate headers, no
-JSON-Schema tool dump, and the optional `## SUB-AGENTS` / `## SKILLS` sections are
-omitted when empty.
+i.e. **soul → agent → tools → context → messages → response format**. The soul is the
+agent's persona/identity (Hermes-style: injected first). The prompt carries only what
+the agent's objects contain: no boilerplate headers, no JSON-Schema tool dump, and the
+optional `## SUB-AGENTS` / `## SKILLS` sections are omitted when empty. The
+`CompiledPromptPanel` renders this whole order, with a placeholder for the run-time
+conversation.
 
 ## Engine owns its messages
 

@@ -296,7 +296,13 @@ impl AppSnapshot {
     }
 
     pub fn ensure_prompt_defaults(&mut self) {
-        if self.soul.trim().is_empty() {
+        // Seed a blank soul, and migrate the obsolete bundled soul: older snapshots
+        // persisted the previous default, which was titled "# Shared Agent Soul". That
+        // header was retired in favour of the persona-driven soul, so any stored soul
+        // still carrying it is an un-edited old default and is replaced with the
+        // current one. A user-authored soul never contains that header, so edits are
+        // preserved.
+        if self.soul.trim().is_empty() || self.soul.contains("# Shared Agent Soul") {
             self.soul = default_soul_prompt();
         }
         if self.skills.is_empty() {

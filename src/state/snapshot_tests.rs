@@ -443,3 +443,27 @@ fn normalize_pauses_running_run_after_reload_and_keeps_resume_checkpoint() {
             .any(|event| event.kind == AgentEventKind::Interrupted)
     );
 }
+
+#[test]
+fn obsolete_shared_agent_soul_is_migrated_to_current_default() {
+    let mut snapshot = AppSnapshot::default();
+    snapshot.soul = "# Shared Agent Soul\n\nYou are a careful, autonomous agent.".to_string();
+
+    snapshot.ensure_prompt_defaults();
+
+    assert_eq!(snapshot.soul, default_soul_prompt());
+    assert!(!snapshot.soul.contains("# Shared Agent Soul"));
+}
+
+#[test]
+fn user_authored_soul_is_preserved() {
+    let mut snapshot = AppSnapshot::default();
+    snapshot.soul = "You are Atlas, my bespoke research companion.".to_string();
+
+    snapshot.ensure_prompt_defaults();
+
+    assert_eq!(
+        snapshot.soul,
+        "You are Atlas, my bespoke research companion."
+    );
+}

@@ -1,13 +1,16 @@
 use crate::agent_prompt::render_system_prompt;
 use crate::engine::{pick_agent, sub_agent_roster};
 use crate::inference::InferenceRequest;
+use crate::responses::{ReActResponse, StructuredResponse};
 use crate::state::{AppSnapshot, default_tool_names};
 use crate::tools::ToolRegistry;
 use dioxus::prelude::*;
 
-/// Right-panel preview of the exact system prompt the next run will compile for the
-/// active agent (soul → identity → role → tools → skills → sub-agents → format).
-/// Built from the same `agent_prompt` renderer the engine uses, so it stays in sync.
+/// Right-panel preview of the exact prompt the next run will compile for the active
+/// agent, in the order the model sees it: soul → agent (identity + role) → tools →
+/// context → messages → response format. Built from the same `agent_prompt` renderer
+/// the engine uses, so it stays in sync; the conversation messages are shown as a
+/// placeholder since they only exist at run time.
 #[component]
 pub fn CompiledPromptPanel(snapshot: Signal<AppSnapshot>) -> Element {
     let current = snapshot.read().clone();
@@ -21,7 +24,7 @@ pub fn CompiledPromptPanel(snapshot: Signal<AppSnapshot>) -> Element {
                 span { class: "event-count", "{agent.name}" }
             }
             p { class: "muted compiled-prompt-note",
-                "The system prompt the next run sends for the active agent. Tools from enabled MCP servers are added when the run connects them."
+                "The full prompt the next run sends for the active agent, in order: soul → agent → tools → context → messages → response format. Tools from enabled MCP servers are added when the run connects them."
             }
             div { class: "scroll-area",
                 pre { class: "compiled-prompt", "{prompt}" }
@@ -56,5 +59,10 @@ fn compile_preview_prompt(snapshot: &AppSnapshot, agent: &crate::state::Agent) -
         response_format: agent.response_format,
     };
 
-    render_system_prompt(&request).unwrap_or_else(|err| format!("Unable to render prompt: {err}"))
+    let system = render_system_prompt(&request)
+        .unwrap_or_else(|err| format!("Unable to render prompt: {err}"));
+    let response_format = ReActResponse::instructions(agent.response_format);
+    format!(
+        "{system}\n\n## MESSAGES\n\n(The running conversation — the goal, prior turns, and tool observations — is inserted here at run time.)\n\n{response_format}"
+    )
 }
