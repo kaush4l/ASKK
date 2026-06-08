@@ -86,7 +86,7 @@ where
     let status = final_snapshot
         .current_run
         .as_ref()
-        .map(worker_status_from_run)
+        .map(|run| WorkerStatus::from(run.status))
         .unwrap_or(WorkerStatus::Failed);
     let answer = final_snapshot
         .current_run
@@ -126,19 +126,6 @@ fn progress_event(run_id: String, worker_id: String, run: AgentRun) -> WorkerEve
         message: format!("Running {} lane", run.lane.as_label()),
         run,
     })
-}
-
-fn worker_status_from_run(run: &AgentRun) -> WorkerStatus {
-    match run.status.as_str() {
-        "complete" => WorkerStatus::Succeeded,
-        "interrupted" => WorkerStatus::Cancelled,
-        "running" => WorkerStatus::Running,
-        // A paused run is a clean, resumable outcome — return the snapshot to the
-        // page so it persists and the Resume action appears, not a worker failure.
-        "paused" => WorkerStatus::Succeeded,
-        "error" => WorkerStatus::Failed,
-        _ => WorkerStatus::Failed,
-    }
 }
 
 fn trace_from_run(run: &AgentRun) -> Vec<String> {

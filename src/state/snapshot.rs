@@ -381,10 +381,8 @@ impl AppSnapshot {
             return false;
         };
         let incoming_is_live_checkpoint =
-            self.status.starts_with("Running ") || !is_terminal_run_status(incoming.status);
-        incoming.id == current.id
-            && is_terminal_run_status(current.status)
-            && incoming_is_live_checkpoint
+            self.status.starts_with("Running ") || !incoming.status.is_terminal();
+        incoming.id == current.id && current.status.is_terminal() && incoming_is_live_checkpoint
     }
 
     pub fn recover_interrupted_run_after_reload(&mut self) {
@@ -671,13 +669,6 @@ fn sanitized_profile_name(name: &str, fallback: &str) -> String {
     } else {
         trimmed.to_string()
     }
-}
-
-fn is_terminal_run_status(status: RunStatus) -> bool {
-    matches!(
-        status,
-        RunStatus::Complete | RunStatus::Error | RunStatus::Interrupted
-    )
 }
 
 #[cfg(test)]

@@ -75,6 +75,26 @@ impl RunStatus {
             Self::Interrupted => "interrupted",
         }
     }
+
+    /// True for statuses that end a run's lifecycle — it has finished, failed, or was
+    /// interrupted (i.e. it is no longer `Running`/`Paused`). The match is exhaustive
+    /// (no wildcard) so a new variant forces a decision here instead of silently
+    /// counting as non-terminal.
+    pub fn is_terminal(self) -> bool {
+        match self {
+            Self::Complete | Self::Error | Self::Interrupted => true,
+            Self::Running | Self::Paused => false,
+        }
+    }
+
+    /// True for the terminal statuses that represent a failure rather than a clean
+    /// completion. Exhaustive for the same reason as [`Self::is_terminal`].
+    pub fn is_failure(self) -> bool {
+        match self {
+            Self::Error | Self::Interrupted => true,
+            Self::Running | Self::Paused | Self::Complete => false,
+        }
+    }
 }
 
 impl std::fmt::Display for RunStatus {
@@ -375,5 +395,20 @@ mod tests {
                 "old snapshots storing {wire} must still load"
             );
         }
+    }
+
+    #[test]
+    fn run_status_terminal_and_failure_predicates() {
+        assert!(RunStatus::Complete.is_terminal());
+        assert!(RunStatus::Error.is_terminal());
+        assert!(RunStatus::Interrupted.is_terminal());
+        assert!(!RunStatus::Running.is_terminal());
+        assert!(!RunStatus::Paused.is_terminal());
+
+        assert!(RunStatus::Error.is_failure());
+        assert!(RunStatus::Interrupted.is_failure());
+        assert!(!RunStatus::Complete.is_failure());
+        assert!(!RunStatus::Running.is_failure());
+        assert!(!RunStatus::Paused.is_failure());
     }
 }

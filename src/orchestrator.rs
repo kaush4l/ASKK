@@ -364,7 +364,7 @@ fn child_status_failed(status: &str) -> bool {
 }
 
 fn parent_has_terminal_failure(parent_cell: &Rc<RefCell<AgentRun>>) -> bool {
-    child_status_failed(parent_cell.borrow().status.as_str())
+    parent_cell.borrow().status.is_failure()
 }
 
 fn mark_wave_running<F>(

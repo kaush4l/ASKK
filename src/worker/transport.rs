@@ -3,7 +3,7 @@
 // the wasm target stays honest and still flags genuine rot.
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
-use crate::state::{Agent, AgentRun, AppSnapshot};
+use crate::state::{Agent, AgentRun, AppSnapshot, RunStatus};
 use serde::{Deserialize, Serialize};
 
 // These message enums intentionally carry a full `AppSnapshot` in one variant so a
@@ -98,6 +98,24 @@ pub enum WorkerStatus {
     Succeeded,
     Failed,
     Cancelled,
+}
+
+/// Project a child run's terminal [`RunStatus`] onto the worker-facing
+/// [`WorkerStatus`]. This is the one typed place the run-status → worker-status
+/// policy lives; the match is exhaustive so a new `RunStatus` variant forces a
+/// decision here rather than silently mapping to `Failed`.
+impl From<RunStatus> for WorkerStatus {
+    fn from(status: RunStatus) -> Self {
+        match status {
+            RunStatus::Complete => Self::Succeeded,
+            // A paused run is a clean, resumable outcome — it returns the snapshot so
+            // the page persists it and the Resume action appears, not a failure.
+            RunStatus::Paused => Self::Succeeded,
+            RunStatus::Running => Self::Running,
+            RunStatus::Interrupted => Self::Cancelled,
+            RunStatus::Error => Self::Failed,
+        }
+    }
 }
 
 #[cfg(test)]
