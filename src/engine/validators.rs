@@ -1,4 +1,4 @@
-use crate::state::{AgentRun, ToolResult};
+use crate::state::{AgentRun, ToolResult, VerificationStatus};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValidationOutcome {
@@ -69,9 +69,9 @@ impl ValidatorRegistry {
 fn record_validation(run: &mut AgentRun, outcome: &ValidationOutcome) {
     run.scratchpad.verification.attempts = run.scratchpad.verification.attempts.saturating_add(1);
     run.scratchpad.verification.status = if outcome.ok {
-        "passed".to_string()
+        VerificationStatus::Passed
     } else {
-        "failed".to_string()
+        VerificationStatus::Failed
     };
     run.scratchpad.verification.last_result = if outcome.ok {
         "passed".to_string()
@@ -184,7 +184,10 @@ mod tests {
 
         assert!(!validation.ok);
         assert!(validation.feedback.contains("web_search"));
-        assert_eq!(run.scratchpad.verification.status, "failed");
+        assert_eq!(
+            run.scratchpad.verification.status,
+            VerificationStatus::Failed
+        );
         assert_eq!(run.scratchpad.verification.failures.len(), 1);
     }
 
@@ -218,7 +221,10 @@ mod tests {
             registry.validate_final_answer("The recorded evidence says 2 + 2 = 4.", &mut run);
 
         assert!(validation.ok);
-        assert_eq!(run.scratchpad.verification.status, "passed");
+        assert_eq!(
+            run.scratchpad.verification.status,
+            VerificationStatus::Passed
+        );
     }
 
     #[test]

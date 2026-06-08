@@ -131,6 +131,34 @@ pub struct VerificationSpec {
     pub llm_critic_checks: Vec<VerificationCheck>,
 }
 
+/// The outcome of a run's verification gate. A closed three-state lifecycle;
+/// serialized as a lowercase string for IndexedDB back-compat with snapshots that
+/// stored it as plain text (mirrors [`RunStatus`]).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum VerificationStatus {
+    #[default]
+    Pending,
+    Passed,
+    Failed,
+}
+
+impl VerificationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+impl std::fmt::Display for VerificationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct VerificationState {
     #[serde(default)]
@@ -138,7 +166,7 @@ pub struct VerificationState {
     #[serde(default)]
     pub attempts: u32,
     #[serde(default)]
-    pub status: String,
+    pub status: VerificationStatus,
     #[serde(default)]
     pub last_result: String,
     #[serde(default)]
@@ -154,7 +182,7 @@ impl Default for VerificationState {
         Self {
             spec: VerificationSpec::default(),
             attempts: 0,
-            status: "pending".to_string(),
+            status: VerificationStatus::Pending,
             last_result: String::new(),
             failures: Vec::new(),
             last_progress_signature: String::new(),
@@ -391,6 +419,24 @@ mod tests {
             assert_eq!(serde_json::to_string(&status).unwrap(), wire);
             assert_eq!(
                 serde_json::from_str::<RunStatus>(wire).unwrap(),
+                status,
+                "old snapshots storing {wire} must still load"
+            );
+        }
+    }
+
+    // VerificationState.status is persisted to IndexedDB as a lowercase string. Guard
+    // the wire format so a rename can't silently fail to load older runs.
+    #[test]
+    fn verification_status_serializes_to_legacy_lowercase_strings() {
+        for (status, wire) in [
+            (VerificationStatus::Pending, "\"pending\""),
+            (VerificationStatus::Passed, "\"passed\""),
+            (VerificationStatus::Failed, "\"failed\""),
+        ] {
+            assert_eq!(serde_json::to_string(&status).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<VerificationStatus>(wire).unwrap(),
                 status,
                 "old snapshots storing {wire} must still load"
             );
