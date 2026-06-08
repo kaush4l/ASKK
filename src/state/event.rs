@@ -18,6 +18,10 @@ pub enum AgentEventKind {
     WorkerCompleted,
     Workflow,
     Verification,
+    /// A browser MCP server was connected at run start.
+    McpConnected,
+    /// A connected MCP server's tools were discovered via `tools/list`.
+    McpToolsListed,
     Interrupted,
     FinalAnswer,
     Error,
@@ -57,10 +61,10 @@ pub fn event(
 pub fn now_iso() -> String {
     #[cfg(target_arch = "wasm32")]
     {
-        return js_sys::Date::new_0()
+        js_sys::Date::new_0()
             .to_iso_string()
             .as_string()
-            .unwrap_or_else(|| "unknown-time".to_string());
+            .unwrap_or_else(|| "unknown-time".to_string())
     }
 
     #[cfg(not(target_arch = "wasm32"))]

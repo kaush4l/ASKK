@@ -10,6 +10,7 @@ use super::event::{AgentEventKind, event, now_iso};
 use super::manifest::{
     Agent, Skill, default_agents, default_skills, default_soul_prompt, parse_tools,
 };
+use super::mcp::McpServerConfig;
 use super::provider::{
     ModelProfile, ProviderConfig, ProviderProfile, default_context_window, default_max_tokens,
     default_model_profiles,
@@ -50,6 +51,8 @@ pub struct AppSnapshot {
     #[serde(default)]
     pub tool_config: ToolConfig,
     #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
+    #[serde(default)]
     pub orchestrator: OrchestratorConfig,
     #[serde(default = "default_soul_prompt")]
     pub soul: String,
@@ -82,6 +85,7 @@ impl Default for AppSnapshot {
             model_profiles,
             active_model_profile_id,
             tool_config: ToolConfig::default(),
+            mcp_servers: Vec::new(),
             orchestrator: OrchestratorConfig {
                 routing_provider_profile_id: Some(default_profile_id.clone()),
                 worker_provider_profile_id: Some(default_profile_id),
@@ -580,6 +584,44 @@ impl AppSnapshot {
             self.active_provider_profile_id = Some(next.id);
         }
         format!("Deleted connection: {}", removed.name)
+    }
+
+    // MCP-server helpers, driven by the MCP dashboard (`components/mcp_page.rs`).
+    /// Add a fresh, enabled browser-kind MCP server from defaults.
+    pub fn add_mcp_server(&mut self) -> String {
+        let server = McpServerConfig::new("New MCP server", "/assets/mcp_reference_server.js");
+        let name = server.name.clone();
+        self.mcp_servers.push(server);
+        format!("Added MCP server: {name}")
+    }
+
+    /// Remove an MCP server by id. Zero MCP servers is valid, so no minimum is
+    /// enforced (unlike connections).
+    pub fn remove_mcp_server(&mut self, id: &str) -> String {
+        let Some(index) = self.mcp_servers.iter().position(|server| server.id == id) else {
+            return format!("No MCP server found with id {id}");
+        };
+        let removed = self.mcp_servers.remove(index);
+        format!("Removed MCP server: {}", removed.name)
+    }
+
+    /// Enable or disable an MCP server by id.
+    pub fn toggle_mcp_server(&mut self, id: &str, enabled: bool) -> String {
+        let Some(server) = self.mcp_servers.iter_mut().find(|server| server.id == id) else {
+            return format!("No MCP server found with id {id}");
+        };
+        server.enabled = enabled;
+        let verb = if enabled { "Enabled" } else { "Disabled" };
+        format!("{verb} MCP server: {}", server.name)
+    }
+
+    /// Rename an MCP server by id.
+    pub fn rename_mcp_server(&mut self, id: &str, name: &str) -> String {
+        let Some(server) = self.mcp_servers.iter_mut().find(|server| server.id == id) else {
+            return format!("No MCP server found with id {id}");
+        };
+        server.name = name.to_string();
+        format!("Renamed MCP server: {}", server.name)
     }
 }
 

@@ -3,6 +3,7 @@ mod app_shell;
 mod chat_panel;
 mod event_log;
 mod inspector;
+mod mcp_page;
 mod provider_settings;
 mod shared;
 mod soul_page;

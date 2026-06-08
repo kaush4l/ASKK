@@ -54,6 +54,8 @@ fn event_kind_label(kind: &AgentEventKind) -> &'static str {
         AgentEventKind::WorkerCompleted => "worker_completed",
         AgentEventKind::Workflow => "workflow",
         AgentEventKind::Verification => "verification",
+        AgentEventKind::McpConnected => "mcp_connected",
+        AgentEventKind::McpToolsListed => "mcp_tools_listed",
         AgentEventKind::Interrupted => "interrupted",
         AgentEventKind::FinalAnswer => "final_answer",
         AgentEventKind::Error => "error",

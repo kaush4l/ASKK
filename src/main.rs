@@ -6,6 +6,7 @@ mod components;
 mod engine;
 mod execution;
 mod inference;
+mod mcp;
 mod orchestrator;
 mod responses;
 mod state;

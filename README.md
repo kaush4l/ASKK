@@ -223,6 +223,93 @@ If a hosted ASKK URL needs access, include that hosted origin in `OLLAMA_ORIGINS
 OLLAMA_ORIGINS="https://kaush4l.github.io" ollama serve
 ```
 
+## In-browser MCP (reference server)
+
+ASKK can boot a [Model Context Protocol](https://modelcontextprotocol.io) server
+**inside a Web Worker** and discover its tools at runtime — no install, no bridge,
+no extra process. The bundled reference server lives at
+`assets/mcp_reference_server.js`.
+
+It is a **hand-written, single static file** with a deliberate constraint: **no JS
+build step, no bundler, no npm dependency, no toolchain**. It is a classic Web
+Worker (`self.onmessage` / `self.postMessage`), not an ES module, so it loads
+directly with zero compilation. It is served same-origin via the Dioxus `asset!()`
+macro at runtime, and from a `Blob` URL in the headless test.
+
+### Wire format
+
+The worker speaks **JSON-RPC 2.0 over `postMessage`**, exchanging **JSON strings**
+(not objects):
+
+- Inbound: each message is a JSON string containing a JSON-RPC request, parsed with
+  `JSON.parse`.
+- Outbound: every reply is `self.postMessage(JSON.stringify(response))` — always a
+  string. Success is `{ "jsonrpc": "2.0", "id": <id>, "result": <object> }`; failure
+  is `{ "jsonrpc": "2.0", "id": <id>, "error": { "code": <int>, "message": <string> } }`.
+- Responses are correlated by echoing the request's `id`.
+- **Notifications** — any request whose `method` starts with `notifications/` (e.g.
+  `notifications/initialized`), or that carries no `id` — are processed but produce
+  **no reply**.
+
+The lifecycle is the standard MCP handshake: `initialize` →
+`notifications/initialized` → `tools/list` → `tools/call`.
+
+### Tools exposed
+
+The reference server advertises two tools (note the camelCase `inputSchema` key per
+the MCP spec):
+
+- **`echo`** — `inputSchema` `{ text: string }` (required `text`). Returns the
+  `text` argument back verbatim.
+- **`add`** — `inputSchema` `{ a: number, b: number }` (required `a`, `b`).
+  Computes `a + b` and returns the sum as text (inputs `2` and `3` → `"5"`).
+
+Every `tools/call` reply is an MCP `CallToolResult`:
+`{ "content": [ { "type": "text", "text": <string> } ] }`. Calling an unknown tool
+returns a JSON-RPC error with code `-32602`; an unknown method returns `-32601`
+("Method not found"); malformed JSON returns `-32700` ("Parse error").
+
+### Rust client + engine integration
+
+The Rust side lives in `src/mcp/`:
+
+- **`protocol.rs`** — the JSON-RPC 2.0 + MCP wire types (host-testable, no platform deps).
+- **`transport.rs`** — the `McpTransport` trait: the seam where HTTP (remote) and
+  gateway-bridged (stdio) transports can be added later without touching the engine.
+- **`worker_transport.rs`** — `WorkerMcpTransport`, the browser Web Worker transport
+  (wasm only). It posts JSON-RPC frames over `postMessage` and correlates responses
+  to requests by `id`, with a per-request timeout.
+- **`client.rs`** — a minimal `McpClient` (`initialize` / `list_tools` / `call_tool`).
+- **`registry.rs`** (wasm only) — a thread-local table of live connections. At run
+  start the engine brings up each enabled browser server, discovers its tools, and
+  registers them under namespaced names (`mcp__<server-id>__<tool>`) so they never
+  collide with compiled built-ins. A `ToolCall` for one of those names routes to the
+  owning server's client and its `CallToolResult` becomes a `ToolResult` — the same
+  path, instrumentation (`AgentEvent`s), and untrusted-data handling as any built-in.
+
+Servers are configured as `McpServerConfig` on the persisted `AppSnapshot` and managed
+from the **MCP** dashboard page. The transport trait + the routing seam carry a `TODO`
+for per-server capability-scoping of untrusted servers (out of scope for this slice).
+
+### Running the headless worker test
+
+`src/mcp/worker_transport.rs` contains a `wasm_bindgen_test` (`browser_tests`) that
+boots the reference server from a `Blob` URL, runs `initialize`, asserts `tools/list`
+returns `[add, echo]`, calls `add(2, 3)` and asserts `5`, then tears the worker down.
+It is an in-crate test (the crate is a binary with no library target, so `tests/`
+integration files cannot reach the transport). Run it against a real browser with a
+matching webdriver, e.g. headless Chrome:
+
+```sh
+wasm-pack test --headless --chrome   # auto-provisions a matching wasm-bindgen + driver
+```
+
+`wasm-pack` downloads the latest chromedriver; if it does not match your installed
+Chrome, point `CHROMEDRIVER` at a version-matched driver from
+[Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/) and run
+the version-matched runner directly (`--headless --safari` also works once
+`safaridriver --enable` has been authorized).
+
 ## Development
 
 Serve the app locally:

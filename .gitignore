@@ -9,5 +9,6 @@
 
 **/*.rs.bk
 .claude/launch.json
+.claude/worktrees/
 .hermes/
 .askk-workspace/

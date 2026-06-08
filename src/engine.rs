@@ -169,6 +169,25 @@ where
     ));
     observer(run.clone());
 
+    // Bring up enabled browser MCP servers, discover their tools, and add them to
+    // this run's allowlist so the model can see and call them. Browser-only: on the
+    // host test runner there is no Web Worker, so this is a no-op and `enabled_tools`
+    // is unchanged. MCP tool output is untrusted DATA, handled exactly like any other
+    // tool result by the loop below.
+    #[cfg(target_arch = "wasm32")]
+    let enabled_tools = {
+        let mut enabled_tools = enabled_tools;
+        let mcp_tools = crate::mcp::registry::bring_up_enabled(
+            &snapshot.mcp_servers,
+            &mut run,
+            &agent_id,
+            &mut observer,
+        )
+        .await;
+        enabled_tools.extend(mcp_tools);
+        enabled_tools
+    };
+
     // Resolve the model profile (per-agent first, then the workspace active profile)
     // and apply its tuning onto the provider config used for this run.
     let mut provider = snapshot.provider.clone();

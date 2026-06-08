@@ -2,6 +2,7 @@
 //! truth, split one concept per module so each is easy to find:
 //!
 //! - [`provider`] — provider connection + model/inference profiles
+//! - [`mcp`] — persisted MCP (Model Context Protocol) server configuration
 //! - [`tool_config`] — web-tool backend + search provider settings
 //! - [`tool_types`] — the `ToolSpec` / `ToolCall` / `ToolResult` data + tool names
 //! - [`event`] — the run timeline (`AgentEvent`) + `now_iso`
@@ -18,6 +19,7 @@ pub type AppResult<T> = Result<T, String>;
 
 mod event;
 mod manifest;
+mod mcp;
 mod provider;
 mod run;
 mod snapshot;
@@ -27,6 +29,10 @@ mod workflow;
 
 pub use event::*;
 pub use manifest::*;
+// Re-exported for sibling MCP units (UI + `src/mcp/`) that consume these types;
+// the glob looks unused from this crate until those units land.
+#[allow(unused_imports)]
+pub use mcp::*;
 pub use provider::*;
 pub use run::*;
 pub use snapshot::*;

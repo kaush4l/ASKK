@@ -2,6 +2,7 @@ use super::agents_page::AgentsPage;
 use super::chat_panel::ChatPanel;
 use super::event_log::EventLogPanel;
 use super::inspector::InspectorPanel;
+use super::mcp_page::McpPage;
 use super::provider_settings::ProviderSettings;
 use super::soul_page::SoulPage;
 use super::tools_page::ToolsPage;
@@ -17,6 +18,7 @@ enum DashboardPage {
     Agents,
     Soul,
     Tools,
+    Mcp,
     Provider,
     Inspector,
 }
@@ -29,6 +31,7 @@ impl DashboardPage {
             Self::Agents => "Agents",
             Self::Soul => "Soul",
             Self::Tools => "Tools",
+            Self::Mcp => "MCP",
             Self::Provider => "Provider",
             Self::Inspector => "Inspector",
         }
@@ -68,6 +71,7 @@ pub fn AppShell(
         DashboardPage::Agents,
         DashboardPage::Soul,
         DashboardPage::Tools,
+        DashboardPage::Mcp,
         DashboardPage::Provider,
         DashboardPage::Inspector,
     ];
@@ -140,6 +144,9 @@ pub fn AppShell(
                         DashboardPage::Tools => rsx! {
                             ToolsPage { snapshot }
                         },
+                        DashboardPage::Mcp => rsx! {
+                            McpPage { snapshot }
+                        },
                         DashboardPage::Provider => rsx! {
                             ProviderSettings { snapshot, provider_models }
                         },
@@ -164,6 +171,7 @@ fn nav_glyph(page: DashboardPage) -> &'static str {
         DashboardPage::Agents => "A",
         DashboardPage::Soul => "S",
         DashboardPage::Tools => "T",
+        DashboardPage::Mcp => "M",
         DashboardPage::Provider => "P",
         DashboardPage::Inspector => "I",
     }

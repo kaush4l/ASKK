@@ -88,6 +88,13 @@ impl BrowserExecutionProvider {
         tool_name: &str,
         args: Value,
     ) -> ToolResult {
+        // MCP-backed tools route to their live server's client; everything else is a
+        // compiled built-in. This is the one seam where MCP tool calls join the
+        // normal execution path (the engine instruments them identically).
+        #[cfg(target_arch = "wasm32")]
+        if crate::mcp::registry::is_mcp_tool(tool_name) {
+            return crate::mcp::registry::call_tool(call_id, tool_name, args).await;
+        }
         self.tools.execute(snapshot, call_id, tool_name, args).await
     }
 }
@@ -98,7 +105,16 @@ impl ExecutionProvider for BrowserExecutionProvider {
     }
 
     fn domain_specs_for_agent(&self, enabled_tools: &[String]) -> Vec<ToolSpec> {
-        self.tools.specs_for_agent(enabled_tools)
+        let specs = self.tools.specs_for_agent(enabled_tools);
+        // Live MCP tools (discovered at run start) are offered to the model alongside
+        // the compiled built-ins, filtered by the same allowlist.
+        #[cfg(target_arch = "wasm32")]
+        let specs = {
+            let mut specs = specs;
+            specs.extend(crate::mcp::registry::specs_for_agent(enabled_tools));
+            specs
+        };
+        specs
     }
 
     async fn execute(
