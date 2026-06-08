@@ -9,7 +9,6 @@
 //! is one `impl`; adding a new wire format is one arm in the cascade here.
 //!
 //! - [`react`] — the [`ReActResponse`](react::ReActResponse) contract (the loop's turn)
-//! - [`critic`] — the verification-critic contract
 //! - [`tool_calls`] — extracting a tool invocation from a response
 
 use crate::state::AppResult;
@@ -17,11 +16,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-mod critic;
 mod react;
 mod tool_calls;
 
-pub use critic::VerificationCriticResponse;
 pub use react::{ReActAction, ReActResponse};
 pub use tool_calls::parse_tool_calls;
 
@@ -290,8 +287,8 @@ fn find_toon_field<'a>(raw: &'a str, field: &str) -> Option<ToonField<'a>> {
 }
 
 // ---------------------------------------------------------------------------
-// Field-extraction helpers shared by the contract submodules (`react`, `critic`).
-// Private here; visible to those descendants via `super::`.
+// Field-extraction helpers used by the `react` contract submodule.
+// Private here; visible to that descendant via `super::`.
 // ---------------------------------------------------------------------------
 
 fn string_field(fields: &BTreeMap<String, Value>, key: &str) -> String {

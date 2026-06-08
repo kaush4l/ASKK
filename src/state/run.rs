@@ -6,7 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
 
 use super::event::AgentEvent;
 use super::tool_types::{ToolCall, ToolResult};
@@ -200,28 +199,6 @@ pub struct WorkerRun {
     pub evidence: Vec<String>,
     #[serde(default)]
     pub result: String,
-}
-
-impl WorkerRun {
-    // Worker orchestration is not wired into the minimal loop yet.
-    #[allow(dead_code)]
-    pub fn new(
-        role: impl Into<String>,
-        agent_id: Option<String>,
-        sub_goal: impl Into<String>,
-    ) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            role: role.into(),
-            agent_id,
-            sub_goal: sub_goal.into(),
-            status: "pending".to_string(),
-            budget: RunBudgets::default(),
-            scratchpad: WorkerScratchpad::default(),
-            evidence: Vec::new(),
-            result: String::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]

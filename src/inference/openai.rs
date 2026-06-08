@@ -8,7 +8,7 @@ use serde_json::json;
 
 use super::transport::{assistant_content, send_chat_completion, send_chat_completion_stream};
 use super::{InferenceOutput, InferenceProvider, InferenceRequest};
-use crate::responses::{ReActResponse, VerificationCriticResponse, response_to_result};
+use crate::responses::{ReActResponse, response_to_result};
 use crate::state::{AppResult, Message, ProviderConfig};
 
 #[derive(Clone, Debug, Default)]
@@ -21,10 +21,6 @@ struct WireMessage {
 }
 
 impl InferenceProvider for OpenAiCompatibleInference {
-    fn provider_name(&self) -> &'static str {
-        "openai-compatible"
-    }
-
     async fn invoke_react(
         &self,
         config: &ProviderConfig,
@@ -51,16 +47,6 @@ impl InferenceProvider for OpenAiCompatibleInference {
             }
             Err(_) => self.invoke_react(config, request).await,
         }
-    }
-
-    async fn invoke_critic(
-        &self,
-        config: &ProviderConfig,
-        request: InferenceRequest,
-    ) -> AppResult<InferenceOutput<VerificationCriticResponse>> {
-        let raw_text = self.invoke_critic_text(config, &request).await?;
-        let parsed = response_to_result::<VerificationCriticResponse>(&raw_text)?;
-        Ok(InferenceOutput { raw_text, parsed })
     }
 }
 
@@ -106,24 +92,6 @@ impl OpenAiCompatibleInference {
         send_chat_completion_stream(config, body, on_partial_answer).await
     }
 
-    #[allow(dead_code)]
-    async fn invoke_critic_text(
-        &self,
-        config: &ProviderConfig,
-        request: &InferenceRequest,
-    ) -> AppResult<String> {
-        let messages = self.normalize_critic_messages(request)?;
-        let body = json!({
-            "model": config.model,
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": config.max_tokens.min(700),
-        });
-
-        let parsed = send_chat_completion(config, body).await?;
-        assistant_content(parsed)
-    }
-
     fn normalize_messages(&self, request: &InferenceRequest) -> AppResult<Vec<WireMessage>> {
         // The agent owns prompt formatting; the provider only wires the rendered
         // system prompt to the transcript and ships it.
@@ -144,23 +112,6 @@ impl OpenAiCompatibleInference {
             // current query, then this run's ReAct turns).
             messages.extend(request.history.iter().map(history_wire_message));
         }
-        Ok(messages)
-    }
-
-    #[allow(dead_code)]
-    fn normalize_critic_messages(&self, request: &InferenceRequest) -> AppResult<Vec<WireMessage>> {
-        let system = crate::agent_prompt::render_critic_system_prompt(request)?;
-        let mut messages = vec![
-            WireMessage {
-                role: "system".to_string(),
-                content: system,
-            },
-            WireMessage {
-                role: "user".to_string(),
-                content: request.goal.clone(),
-            },
-        ];
-        messages.extend(request.history.iter().map(history_wire_message));
         Ok(messages)
     }
 }

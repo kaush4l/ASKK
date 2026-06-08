@@ -13,7 +13,7 @@
 //! The soul is always first; everything task-specific follows it.
 
 use crate::inference::{InferenceRequest, SubAgentInfo};
-use crate::responses::{ReActResponse, StructuredResponse, VerificationCriticResponse};
+use crate::responses::{ReActResponse, StructuredResponse};
 use crate::state::{AppResult, Skill, ToolSpec, default_soul_prompt};
 
 /// Shared ReAct-loop guidance shown to every working agent (between its role and
@@ -40,20 +40,6 @@ pub fn render_system_prompt(request: &InferenceRequest) -> AppResult<String> {
 
     Ok(format!(
         "{soul_prompt}\n\nYou are {agent_name}.\n\nRole:\n{agent_role}\n\n{REACT_GUIDANCE}\n\n{sub_agents}Available compiled tools:\n{tool_manifest}\n\nWorkspace skills:\n{skill_prompt}\n\n{response_instructions}",
-        agent_name = request.agent_name,
-        agent_role = request.agent_role,
-    ))
-}
-
-/// Render the system prompt for the verification critic: same soul/identity/role
-/// header, but no tools or sub-agents and the critic's own charter + response format.
-pub fn render_critic_system_prompt(request: &InferenceRequest) -> AppResult<String> {
-    let soul_prompt = resolve_soul(&request.soul);
-    let skill_prompt = describe_skills(&request.skills);
-    let response_instructions = VerificationCriticResponse::instructions(request.response_format);
-
-    Ok(format!(
-        "{soul_prompt}\n\nYou are {agent_name}.\n\nRole:\n{agent_role}\n\nYou are a verifier. Decide whether the worker result satisfies the user's goal using only the supplied worker result, evidence, and checks. Prefer deterministic evidence. Do not call tools. Return `passed: true` only when the answer is supported by the evidence and no required work remains.\n\nWorkspace skills:\n{skill_prompt}\n\n{response_instructions}",
         agent_name = request.agent_name,
         agent_role = request.agent_role,
     ))
@@ -187,13 +173,5 @@ mod tests {
         let tools_at = system.find("Available compiled tools:").unwrap();
         let guidance_at = system.find("All tools are precompiled").unwrap();
         assert!(guidance_at < roster_at && roster_at < tools_at);
-    }
-
-    #[test]
-    fn critic_prompt_has_verifier_charter_and_no_tools() {
-        let system = render_critic_system_prompt(&base_request()).unwrap();
-        assert!(system.starts_with("Shared behavior."));
-        assert!(system.contains("You are a verifier."));
-        assert!(!system.contains("Available compiled tools:"));
     }
 }

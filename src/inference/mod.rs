@@ -4,8 +4,8 @@
 //! An LLM provider implements [`InferenceProvider`]: it turns an
 //! [`InferenceRequest`] (soul + agent role + skills + tool manifest + transcript)
 //! into a parsed [`ReActResponse`]. The trait carries the common flow as default
-//! methods (streaming falls back to non-streaming; the critic reuses `invoke_react`),
-//! so a concrete provider overrides only what differs — the agent loop never changes.
+//! methods (streaming falls back to non-streaming), so a concrete provider overrides
+//! only what differs — the agent loop never changes.
 //!
 //! - [`openai`] — the one concrete provider today ([`OpenAiCompatibleInference`]),
 //!   which speaks the OpenAI-compatible chat-completions API, so any BYOK endpoint
@@ -19,9 +19,7 @@ mod transport;
 pub use openai::OpenAiCompatibleInference;
 pub use transport::{list_models, test_chat};
 
-use crate::responses::{
-    ReActResponse, ResponseFormat, VerificationCriticResponse, response_to_result,
-};
+use crate::responses::{ReActResponse, ResponseFormat};
 use crate::state::{AppResult, Message, ProviderConfig, Skill, ToolSpec};
 
 /// A sub-agent the running agent can see and delegate to. This is the
@@ -56,10 +54,6 @@ pub struct InferenceOutput<T> {
 }
 
 pub trait InferenceProvider {
-    // Part of the provider API; not called by the minimal loop yet.
-    #[allow(dead_code)]
-    fn provider_name(&self) -> &'static str;
-
     async fn invoke_react(
         &self,
         config: &ProviderConfig,
@@ -73,21 +67,6 @@ pub trait InferenceProvider {
         _on_partial_answer: &mut dyn FnMut(String),
     ) -> AppResult<InferenceOutput<ReActResponse>> {
         self.invoke_react(config, request).await
-    }
-
-    // Verification critic. Dormant until the verification loop is wired in.
-    #[allow(dead_code)]
-    async fn invoke_critic(
-        &self,
-        config: &ProviderConfig,
-        request: InferenceRequest,
-    ) -> AppResult<InferenceOutput<VerificationCriticResponse>> {
-        let output = self.invoke_react(config, request).await?;
-        let parsed = response_to_result::<VerificationCriticResponse>(&output.parsed.response)?;
-        Ok(InferenceOutput {
-            raw_text: output.raw_text,
-            parsed,
-        })
     }
 }
 
