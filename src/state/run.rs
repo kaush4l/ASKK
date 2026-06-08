@@ -234,11 +234,59 @@ pub struct ScratchpadObservation {
     pub created_at: String,
 }
 
+/// The render kind of a [`RunArtifact`]. A closed, app-owned set; serialized as a
+/// lowercase string for IndexedDB back-compat. Unknown or legacy tags deserialize to
+/// `Text` — the same fallback the renderer has always used — so older snapshots, which
+/// could carry any free-text `artifact_type`, still load.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ArtifactKind {
+    Image,
+    Html,
+    Json,
+    #[default]
+    Text,
+}
+
+impl ArtifactKind {
+    /// Parse a (possibly messy or legacy) type tag, folding anything unrecognized to
+    /// `Text` — preserving the renderer's long-standing `_ => text` fallback.
+    pub fn from_tag(tag: &str) -> Self {
+        match tag.trim().to_ascii_lowercase().as_str() {
+            "image" => Self::Image,
+            "html" => Self::Html,
+            "json" => Self::Json,
+            _ => Self::Text,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Html => "html",
+            Self::Json => "json",
+            Self::Text => "text",
+        }
+    }
+}
+
+/// Deserialize `RunArtifact.artifact_type` from its on-disk string via
+/// [`ArtifactKind::from_tag`], so an unknown legacy tag folds to `Text` instead of
+/// failing the whole snapshot load.
+fn deserialize_artifact_kind<'de, D>(deserializer: D) -> Result<ArtifactKind, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let tag = String::deserialize(deserializer)?;
+    Ok(ArtifactKind::from_tag(&tag))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct RunArtifact {
     pub id: String,
     pub name: String,
-    pub artifact_type: String,
+    #[serde(default, deserialize_with = "deserialize_artifact_kind")]
+    pub artifact_type: ArtifactKind,
     pub content: String,
 }
 
@@ -423,6 +471,38 @@ mod tests {
                 "old snapshots storing {wire} must still load"
             );
         }
+    }
+
+    // RunArtifact.artifact_type is persisted as a lowercase string and must keep
+    // loading older snapshots, including ones carrying an unrecognized tag.
+    #[test]
+    fn artifact_kind_serializes_lowercase_and_folds_unknown_tags() {
+        for (kind, wire) in [
+            (ArtifactKind::Image, "\"image\""),
+            (ArtifactKind::Html, "\"html\""),
+            (ArtifactKind::Json, "\"json\""),
+            (ArtifactKind::Text, "\"text\""),
+        ] {
+            assert_eq!(serde_json::to_string(&kind).unwrap(), wire);
+        }
+        assert_eq!(ArtifactKind::from_tag("IMAGE"), ArtifactKind::Image);
+        assert_eq!(ArtifactKind::from_tag("markdown"), ArtifactKind::Text);
+        assert_eq!(ArtifactKind::from_tag(""), ArtifactKind::Text);
+    }
+
+    #[test]
+    fn run_artifact_with_unknown_type_loads_as_text() {
+        let known = r#"{"id":"a","name":"n","artifact_type":"image","content":"c"}"#;
+        let artifact: RunArtifact = serde_json::from_str(known).unwrap();
+        assert_eq!(artifact.artifact_type, ArtifactKind::Image);
+
+        let legacy = r#"{"id":"a","name":"n","artifact_type":"weird-legacy","content":"c"}"#;
+        let artifact: RunArtifact = serde_json::from_str(legacy).unwrap();
+        assert_eq!(
+            artifact.artifact_type,
+            ArtifactKind::Text,
+            "unknown legacy tags must fold to Text, not fail the load"
+        );
     }
 
     // VerificationState.status is persisted to IndexedDB as a lowercase string. Guard

@@ -3,7 +3,9 @@ use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::clear_interrupt;
 use crate::orchestrator::run_goal_with_orchestrator_or_worker;
-use crate::state::{AgentEventKind, AgentRun, AppSnapshot, RunArtifact, RunStatus, now_iso};
+use crate::state::{
+    AgentEventKind, AgentRun, AppSnapshot, ArtifactKind, RunArtifact, RunStatus, now_iso,
+};
 use crate::worker::client::request_active_worker_cancel;
 use dioxus::prelude::*;
 use uuid::Uuid;
@@ -298,7 +300,7 @@ fn insert_demo_artifact(mut snapshot: Signal<AppSnapshot>) {
     let artifact = RunArtifact {
         id: Uuid::new_v4().to_string(),
         name: "Demo image (dev seed)".to_string(),
-        artifact_type: "image".to_string(),
+        artifact_type: ArtifactKind::Image,
         content: format!("data:image/png;base64,{DEMO_PNG}"),
     };
 

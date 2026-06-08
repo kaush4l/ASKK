@@ -9,7 +9,7 @@
 //! markup. Other types are placed in inert elements (`<img>`, `<pre>`) that do not
 //! execute their content.
 
-use crate::state::RunArtifact;
+use crate::state::{ArtifactKind, RunArtifact};
 use dioxus::prelude::*;
 
 /// Render a list of [`RunArtifact`]s as a captioned gallery. Renders nothing when
@@ -39,29 +39,29 @@ pub fn ArtifactGallery(artifacts: Vec<RunArtifact>, heading: String) -> Element 
 /// empty content degrades to an error/empty caption rather than panicking.
 #[component]
 pub fn ArtifactCard(artifact: RunArtifact) -> Element {
-    let kind = artifact.artifact_type.trim().to_ascii_lowercase();
+    let kind = artifact.artifact_type;
+    let kind_label = kind.as_str();
     rsx! {
         figure { class: "artifact-card",
             div { class: "artifact-body",
-                {render_body(&kind, &artifact.content)}
+                {render_body(kind, &artifact.content)}
             }
             figcaption { class: "artifact-caption",
                 span { class: "artifact-name", "{artifact.name}" }
-                span { class: "artifact-type", "{kind}" }
+                span { class: "artifact-type", "{kind_label}" }
             }
         }
     }
 }
 
-/// Dispatch the artifact body by (already-lowercased) type. Kept separate so the
-/// per-type rendering choices live in one place.
-fn render_body(kind: &str, content: &str) -> Element {
+/// Dispatch the artifact body by [`ArtifactKind`]. The match is exhaustive so a new
+/// kind forces a rendering decision here; `Text` is the inert plain-text fallback.
+fn render_body(kind: ArtifactKind, content: &str) -> Element {
     match kind {
-        "image" => render_image(content),
-        "html" => render_html(content),
-        "json" => render_json(content),
-        // `text` and any unknown type fall back to a plain, inert <pre> block.
-        _ => render_text(content),
+        ArtifactKind::Image => render_image(content),
+        ArtifactKind::Html => render_html(content),
+        ArtifactKind::Json => render_json(content),
+        ArtifactKind::Text => render_text(content),
     }
 }
 
