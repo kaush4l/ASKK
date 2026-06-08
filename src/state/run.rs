@@ -311,6 +311,65 @@ pub struct WorkerScratchpad {
     pub artifacts: Vec<RunArtifact>,
 }
 
+/// The parent orchestrator's view of a child worker's lifecycle. Mirrors
+/// [`RunStatus`] plus a `Pending` state for a worker that has been planned but not yet
+/// dispatched. Serialized as a lowercase string for IndexedDB back-compat — these are
+/// exactly the values the orchestrator persisted as plain text before this enum
+/// existed (a distinct concept from the transport-layer `WorkerStatus`).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkerRunStatus {
+    #[default]
+    Pending,
+    Running,
+    Paused,
+    Complete,
+    Error,
+    Interrupted,
+}
+
+impl WorkerRunStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Running => "running",
+            Self::Paused => "paused",
+            Self::Complete => "complete",
+            Self::Error => "error",
+            Self::Interrupted => "interrupted",
+        }
+    }
+
+    /// True for the terminal statuses that represent a failed worker (mirrors
+    /// [`RunStatus::is_failure`]). Exhaustive so a new variant forces a decision.
+    pub fn is_terminal_failure(self) -> bool {
+        match self {
+            Self::Error | Self::Interrupted => true,
+            Self::Pending | Self::Running | Self::Paused | Self::Complete => false,
+        }
+    }
+}
+
+impl std::fmt::Display for WorkerRunStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Project a child run's [`RunStatus`] onto the worker-run lifecycle. A running child
+/// can never be `Pending`, so the conversion is total over `RunStatus` and exhaustive.
+impl From<RunStatus> for WorkerRunStatus {
+    fn from(status: RunStatus) -> Self {
+        match status {
+            RunStatus::Running => Self::Running,
+            RunStatus::Paused => Self::Paused,
+            RunStatus::Complete => Self::Complete,
+            RunStatus::Error => Self::Error,
+            RunStatus::Interrupted => Self::Interrupted,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WorkerRun {
     pub id: String,
@@ -318,7 +377,7 @@ pub struct WorkerRun {
     #[serde(default)]
     pub agent_id: Option<String>,
     pub sub_goal: String,
-    pub status: String,
+    pub status: WorkerRunStatus,
     #[serde(default)]
     pub budget: RunBudgets,
     #[serde(default)]
@@ -471,6 +530,32 @@ mod tests {
                 "old snapshots storing {wire} must still load"
             );
         }
+    }
+
+    // WorkerRun.status is persisted to IndexedDB as a lowercase string. Guard the
+    // wire format so a rename can't silently fail to load older orchestrated runs.
+    #[test]
+    fn worker_run_status_serializes_to_legacy_lowercase_strings() {
+        for (status, wire) in [
+            (WorkerRunStatus::Pending, "\"pending\""),
+            (WorkerRunStatus::Running, "\"running\""),
+            (WorkerRunStatus::Paused, "\"paused\""),
+            (WorkerRunStatus::Complete, "\"complete\""),
+            (WorkerRunStatus::Error, "\"error\""),
+            (WorkerRunStatus::Interrupted, "\"interrupted\""),
+        ] {
+            assert_eq!(serde_json::to_string(&status).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<WorkerRunStatus>(wire).unwrap(),
+                status,
+                "old snapshots storing {wire} must still load"
+            );
+        }
+        assert!(WorkerRunStatus::Error.is_terminal_failure());
+        assert!(WorkerRunStatus::Interrupted.is_terminal_failure());
+        assert!(!WorkerRunStatus::Complete.is_terminal_failure());
+        assert!(!WorkerRunStatus::Running.is_terminal_failure());
+        assert!(!WorkerRunStatus::Pending.is_terminal_failure());
     }
 
     // RunArtifact.artifact_type is persisted as a lowercase string and must keep

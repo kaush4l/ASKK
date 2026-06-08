@@ -1,6 +1,6 @@
 use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, RunBudgets, RunLane, RunScratchpad,
-    RunStatus, WorkerRun, default_tool_names, event, now_iso,
+    RunStatus, WorkerRun, WorkerRunStatus, default_tool_names, event, now_iso,
 };
 use crate::worker::client::{run_goal_for_agent_in_worker_or_inline, run_goal_in_worker_or_inline};
 use crate::workflow::{WorkflowGate, find_workflow};
@@ -21,7 +21,7 @@ pub struct ChildTask {
 pub struct ChildResult {
     pub role: String,
     pub sub_goal: String,
-    pub status: String,
+    pub status: WorkerRunStatus,
     pub answer: String,
 }
 
@@ -119,7 +119,7 @@ where
             role: planned.agent.name.clone(),
             agent_id: Some(planned.agent.id.clone()),
             sub_goal: planned.task.sub_goal.clone(),
-            status: "pending".to_string(),
+            status: WorkerRunStatus::Pending,
             budget: RunBudgets::default(),
             scratchpad: Default::default(),
             evidence: Vec::new(),
@@ -230,14 +230,14 @@ where
                     let child_run = child_snapshot.current_run.clone();
                     let status = child_run
                         .as_ref()
-                        .map(|run| run.status.to_string())
-                        .unwrap_or_else(|| "complete".to_string());
+                        .map(|run| WorkerRunStatus::from(run.status))
+                        .unwrap_or(WorkerRunStatus::Complete);
                     let answer = child_run
                         .as_ref()
                         .map(|run| run.final_answer.clone())
                         .unwrap_or_default();
                     if !parent_has_terminal_failure(&parent_cell) {
-                        let next_phase = if child_status_failed(&status) {
+                        let next_phase = if status.is_terminal_failure() {
                             stop_after_wave = true;
                             OrchestrationPhase::Failed
                         } else {
@@ -254,7 +254,7 @@ where
                         &parent_cell,
                         &observer_cell,
                         &child_id,
-                        &status,
+                        status,
                         &answer,
                         child_run.as_ref(),
                     );
@@ -275,11 +275,18 @@ where
                         )?;
                     }
                     stop_after_wave = true;
-                    finish_worker(&parent_cell, &observer_cell, &child_id, "error", &err, None);
+                    finish_worker(
+                        &parent_cell,
+                        &observer_cell,
+                        &child_id,
+                        WorkerRunStatus::Error,
+                        &err,
+                        None,
+                    );
                     child_results.push(ChildResult {
                         role,
                         sub_goal,
-                        status: "error".to_string(),
+                        status: WorkerRunStatus::Error,
                         answer: err,
                     });
                 }
@@ -293,7 +300,7 @@ where
     let parent_answer = aggregate_child_results(&goal, &child_results);
     let failed = child_results
         .iter()
-        .any(|result| result.status == "error" || result.status == "interrupted");
+        .any(|result| result.status.is_terminal_failure());
     apply_workflow_transition(
         &parent_cell,
         &observer_cell,
@@ -388,10 +395,6 @@ where
     }
 }
 
-fn child_status_failed(status: &str) -> bool {
-    matches!(status, "error" | "interrupted" | "cancelled")
-}
-
 fn parent_has_terminal_failure(parent_cell: &Rc<RefCell<AgentRun>>) -> bool {
     parent_cell.borrow().status.is_failure()
 }
@@ -415,7 +418,7 @@ fn mark_wave_running<F>(
                 .iter_mut()
                 .find(|worker| worker.id == child.task.id)
             {
-                worker.status = "running".to_string();
+                worker.status = WorkerRunStatus::Running;
             }
             parent.events.push(event(
                 &parent_id,
@@ -445,7 +448,7 @@ fn update_worker_from_child_run<F>(
             .iter_mut()
             .find(|worker| worker.id == child_id)
         {
-            worker.status = child_run.status.to_string();
+            worker.status = child_run.status.into();
             worker.result = child_run.final_answer.clone();
             worker.evidence = evidence_from_run(child_run);
         }
@@ -457,7 +460,7 @@ fn finish_worker<F>(
     parent_cell: &Rc<RefCell<AgentRun>>,
     observer_cell: &Rc<RefCell<F>>,
     child_id: &str,
-    status: &str,
+    status: WorkerRunStatus,
     answer: &str,
     child_run: Option<&AgentRun>,
 ) where
@@ -474,7 +477,7 @@ fn finish_worker<F>(
             .iter_mut()
             .find(|worker| worker.id == child_id)
         {
-            worker.status = status.to_string();
+            worker.status = status;
             worker.result = answer.to_string();
             if let Some(child_run) = child_run {
                 worker.evidence = evidence_from_run(child_run);
@@ -668,13 +671,13 @@ mod tests {
             ChildResult {
                 role: "Researcher".to_string(),
                 sub_goal: "Rust".to_string(),
-                status: "complete".to_string(),
+                status: WorkerRunStatus::Complete,
                 answer: "Rust result".to_string(),
             },
             ChildResult {
                 role: "Synthesizer".to_string(),
                 sub_goal: "Dioxus".to_string(),
-                status: "complete".to_string(),
+                status: WorkerRunStatus::Complete,
                 answer: "Dioxus result".to_string(),
             },
         ];
@@ -689,11 +692,11 @@ mod tests {
     }
 
     #[test]
-    fn child_status_failed_only_for_terminal_failures() {
-        assert!(child_status_failed("error"));
-        assert!(child_status_failed("interrupted"));
-        assert!(child_status_failed("cancelled"));
-        assert!(!child_status_failed("running"));
-        assert!(!child_status_failed("complete"));
+    fn worker_run_status_failed_only_for_terminal_failures() {
+        assert!(WorkerRunStatus::Error.is_terminal_failure());
+        assert!(WorkerRunStatus::Interrupted.is_terminal_failure());
+        assert!(!WorkerRunStatus::Running.is_terminal_failure());
+        assert!(!WorkerRunStatus::Complete.is_terminal_failure());
+        assert!(!WorkerRunStatus::Pending.is_terminal_failure());
     }
 }
