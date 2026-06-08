@@ -308,19 +308,13 @@ where
         match parsed.action {
             ReActAction::Answer => {
                 let final_text = parsed.final_text();
-                if validate_final_answer_or_feedback(
+                if try_finalize_answer(
                     &validators,
                     &mut run,
-                    Some(agent_id.clone()),
+                    &agent_id,
                     &final_text,
+                    "Final answer",
                 ) {
-                    run.events.push(event(
-                        &run.id,
-                        Some(agent_id.clone()),
-                        AgentEventKind::FinalAnswer,
-                        "Final answer",
-                        truncate(&run.final_answer, 600),
-                    ));
                     answered = true;
                     observer(run.clone());
                     break;
@@ -337,19 +331,13 @@ where
                     // its text like any other final answer instead of returning raw,
                     // unvalidated output.
                     let final_text = parsed.final_text();
-                    if validate_final_answer_or_feedback(
+                    if try_finalize_answer(
                         &validators,
                         &mut run,
-                        Some(agent_id.clone()),
+                        &agent_id,
                         &final_text,
+                        "Final answer (no tool call parsed)",
                     ) {
-                        run.events.push(event(
-                            &run.id,
-                            Some(agent_id.clone()),
-                            AgentEventKind::FinalAnswer,
-                            "Final answer (no tool call parsed)",
-                            truncate(&run.final_answer, 600),
-                        ));
                         answered = true;
                         observer(run.clone());
                         break;
@@ -596,6 +584,31 @@ fn validate_tool_result_or_feedback(
     });
     push_observation(run, "validator", truncate(&feedback, 400));
     mark_validation_error_if_budget_exceeded(run);
+    false
+}
+
+/// Validate `final_text` as the run's final answer and, on success, record the
+/// terminal `FinalAnswer` event (titled per call site — the two call sites differ only
+/// in whether the model emitted an explicit answer or a tool action with no parseable
+/// call). Returns whether the answer was accepted; on rejection the caller emits
+/// progress and decides whether to keep looping. Mutates `run` via the validators.
+fn try_finalize_answer(
+    validators: &ValidatorRegistry,
+    run: &mut AgentRun,
+    agent_id: &str,
+    final_text: &str,
+    event_title: &str,
+) -> bool {
+    if validate_final_answer_or_feedback(validators, run, Some(agent_id.to_string()), final_text) {
+        run.events.push(event(
+            &run.id,
+            Some(agent_id.to_string()),
+            AgentEventKind::FinalAnswer,
+            event_title,
+            truncate(&run.final_answer, 600),
+        ));
+        return true;
+    }
     false
 }
 
