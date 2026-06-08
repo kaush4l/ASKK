@@ -12,7 +12,7 @@
 //! results are always treated as data, never as instructions to follow.
 
 use crate::execution::{BrowserExecutionProvider, ExecutionProvider};
-use crate::inference::{InferenceProvider, InferenceRequest, get_implementation};
+use crate::inference::{InferenceProvider, InferenceRequest, SubAgentInfo, get_implementation};
 use crate::responses::{ReActAction, parse_tool_calls};
 use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, RunBudgets, RunLane,
@@ -208,6 +208,10 @@ where
     }
     let inference = get_implementation(&provider);
     let specs = executor.domain_specs_for_agent(&enabled_tools);
+    // The roster of peer agents this run can see and delegate to (everyone enabled
+    // except the agent currently running). Rendered into the prompt's sub-agent
+    // section by `agent_prompt`.
+    let sub_agents = sub_agent_roster(&snapshot, &agent_id);
     let validators = ValidatorRegistry;
     // Prior conversation turns so the agent carries its session forward instead of
     // treating every query as a fresh start.
@@ -254,6 +258,7 @@ where
             goal: run.goal.clone(),
             history,
             tools: specs.clone(),
+            sub_agents: sub_agents.clone(),
             response_format: agent.response_format,
         };
 
@@ -640,6 +645,20 @@ fn conversation_seed(runs: &[AgentRun]) -> Vec<Message> {
         }
     }
     messages
+}
+
+/// The sub-agent roster the running agent can see and delegate to: every enabled
+/// agent except the one currently running, reduced to its name + one-line summary.
+fn sub_agent_roster(snapshot: &AppSnapshot, current_agent_id: &str) -> Vec<SubAgentInfo> {
+    snapshot
+        .agents
+        .iter()
+        .filter(|agent| agent.enabled && agent.id != current_agent_id)
+        .map(|agent| SubAgentInfo {
+            name: agent.name.clone(),
+            description: agent.short_description(),
+        })
+        .collect()
 }
 
 fn pick_agent(snapshot: &AppSnapshot) -> Agent {

@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
+mod agent_prompt;
 mod browser_exec;
 mod components;
 mod engine;

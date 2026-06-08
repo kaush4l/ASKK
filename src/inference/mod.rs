@@ -24,6 +24,16 @@ use crate::responses::{
 };
 use crate::state::{AppResult, Message, ProviderConfig, Skill, ToolSpec};
 
+/// A sub-agent the running agent can see and delegate to. This is the
+/// "code object → LLM information" view of an [`Agent`](crate::state::Agent): just
+/// the name and a one-line description, rendered into the prompt's sub-agent roster
+/// by [`crate::agent_prompt`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubAgentInfo {
+    pub name: String,
+    pub description: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct InferenceRequest {
     pub agent_name: String,
@@ -33,6 +43,9 @@ pub struct InferenceRequest {
     pub goal: String,
     pub history: Vec<Message>,
     pub tools: Vec<ToolSpec>,
+    /// Sub-agents this run can delegate to (the roster the orchestrator/agent
+    /// "sees"). Empty for a single-agent run with no peers.
+    pub sub_agents: Vec<SubAgentInfo>,
     pub response_format: ResponseFormat,
 }
 

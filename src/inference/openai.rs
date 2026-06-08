@@ -8,10 +8,8 @@ use serde_json::json;
 
 use super::transport::{assistant_content, send_chat_completion, send_chat_completion_stream};
 use super::{InferenceOutput, InferenceProvider, InferenceRequest};
-use crate::responses::{
-    ReActResponse, StructuredResponse, VerificationCriticResponse, response_to_result,
-};
-use crate::state::{AppResult, Message, ProviderConfig, Skill, default_soul_prompt};
+use crate::responses::{ReActResponse, VerificationCriticResponse, response_to_result};
+use crate::state::{AppResult, Message, ProviderConfig};
 
 #[derive(Clone, Debug, Default)]
 pub struct OpenAiCompatibleInference;
@@ -127,45 +125,9 @@ impl OpenAiCompatibleInference {
     }
 
     fn normalize_messages(&self, request: &InferenceRequest) -> AppResult<Vec<WireMessage>> {
-        let tool_manifest = serde_json::to_string_pretty(&request.tools)
-            .map_err(|err| format!("Unable to serialize tool manifest: {err}"))?;
-        let response_instructions = ReActResponse::instructions(request.response_format);
-        let soul_prompt = if request.soul.trim().is_empty() {
-            default_soul_prompt()
-        } else {
-            request.soul.trim().to_string()
-        };
-        let skill_prompt = format_skill_prompt(&request.skills);
-        let system = format!(
-            r#"{soul_prompt}
-
-You are {agent_name}.
-
-Role:
-{agent_role}
-
-You run inside a client-only browser Wasm prototype. The runner is a ReAct loop: each turn you must choose either one tool call or a final answer. If a tool observation is returned in the conversation history, use it to decide the next turn.
-
-Use `action: tool` only when the next best step is to call a compiled tool. Put exactly one invocation in `response`, such as `web_search({{"query":"Dioxus 0.7 signals","count":5}})`.
-
-Use `web_search` when the goal needs current public information, source discovery, or web evidence. Good parameters are `query`, optional `count` from 1 to 10, and optional `country`, `language`, `freshness`, `date_after`, or `date_before`.
-
-Use `action: answer` when you have enough information or when further tool use is unlikely to help.
-
-All tools are precompiled and execute inside the browser or the local ASKK bridge.
-
-Available compiled tools:
-{tool_manifest}
-
-Workspace skills:
-{skill_prompt}
-
-{response_instructions}"#,
-            soul_prompt = soul_prompt,
-            agent_name = request.agent_name,
-            agent_role = request.agent_role,
-            skill_prompt = skill_prompt,
-        );
+        // The agent owns prompt formatting; the provider only wires the rendered
+        // system prompt to the transcript and ships it.
+        let system = crate::agent_prompt::render_system_prompt(request)?;
 
         let mut messages = vec![WireMessage {
             role: "system".to_string(),
@@ -187,34 +149,7 @@ Workspace skills:
 
     #[allow(dead_code)]
     fn normalize_critic_messages(&self, request: &InferenceRequest) -> AppResult<Vec<WireMessage>> {
-        let response_instructions =
-            VerificationCriticResponse::instructions(request.response_format);
-        let soul_prompt = if request.soul.trim().is_empty() {
-            default_soul_prompt()
-        } else {
-            request.soul.trim().to_string()
-        };
-        let skill_prompt = format_skill_prompt(&request.skills);
-        let system = format!(
-            r#"{soul_prompt}
-
-You are {agent_name}.
-
-Role:
-{agent_role}
-
-You are a verifier. Decide whether the worker result satisfies the user's goal using only the supplied worker result, evidence, and checks. Prefer deterministic evidence. Do not call tools. Return `passed: true` only when the answer is supported by the evidence and no required work remains.
-
-Workspace skills:
-{skill_prompt}
-
-{response_instructions}"#,
-            soul_prompt = soul_prompt,
-            agent_name = request.agent_name,
-            agent_role = request.agent_role,
-            skill_prompt = skill_prompt,
-        );
-
+        let system = crate::agent_prompt::render_critic_system_prompt(request)?;
         let mut messages = vec![
             WireMessage {
                 role: "system".to_string(),
@@ -251,23 +186,11 @@ fn history_wire_message(message: &Message) -> WireMessage {
     }
 }
 
-fn format_skill_prompt(skills: &[Skill]) -> String {
-    let enabled = skills
-        .iter()
-        .filter(|skill| skill.enabled && !skill.content.trim().is_empty())
-        .map(|skill| format!("## {}\n{}", skill.name.trim(), skill.content.trim()))
-        .collect::<Vec<_>>();
-    if enabled.is_empty() {
-        "No workspace skills are enabled.".to_string()
-    } else {
-        enabled.join("\n\n")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::responses::ResponseFormat;
+    use crate::state::Skill;
 
     #[test]
     fn agent_calls_include_soul_prompt_before_role() {
@@ -285,6 +208,7 @@ mod tests {
             goal: "Ship it.".to_string(),
             history: Vec::new(),
             tools: Vec::new(),
+            sub_agents: Vec::new(),
             response_format: ResponseFormat::Toon,
         };
 
@@ -320,6 +244,7 @@ mod tests {
                 },
             ],
             tools: Vec::new(),
+            sub_agents: Vec::new(),
             response_format: ResponseFormat::Toon,
         };
 
@@ -344,6 +269,7 @@ mod tests {
             goal: "Ship it.".to_string(),
             history: Vec::new(),
             tools: Vec::new(),
+            sub_agents: Vec::new(),
             response_format: ResponseFormat::Toon,
         };
 

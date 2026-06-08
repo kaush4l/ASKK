@@ -76,6 +76,30 @@ impl Agent {
             workflow_id: None,
         }
     }
+
+    /// A one-line, LLM-facing summary of this agent for the sub-agent roster
+    /// (code object → LLM information). Agents carry their full instruction as the
+    /// role/markdown body rather than a separate description field, so the summary
+    /// is the first non-empty line of the role, stripped of markdown heading/bullet
+    /// markers and bounded in length.
+    pub fn short_description(&self) -> String {
+        self.role
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map(|line| {
+                let cleaned = line.trim_start_matches(['#', '-', '*', ' ']).trim();
+                if cleaned.chars().count() > 200 {
+                    let mut out = cleaned.chars().take(200).collect::<String>();
+                    out.push('…');
+                    out
+                } else {
+                    cleaned.to_string()
+                }
+            })
+            .filter(|summary| !summary.is_empty())
+            .unwrap_or_else(|| self.name.clone())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
