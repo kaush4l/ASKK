@@ -223,18 +223,28 @@ If a hosted ASKK URL needs access, include that hosted origin in `OLLAMA_ORIGINS
 OLLAMA_ORIGINS="https://kaush4l.github.io" ollama serve
 ```
 
-## In-browser MCP (reference server)
+## In-browser MCP
 
 ASKK can boot a [Model Context Protocol](https://modelcontextprotocol.io) server
 **inside a Web Worker** and discover its tools at runtime — no install, no bridge,
-no extra process. The bundled reference server lives at
-`assets/mcp_reference_server.js`.
+no extra process. Two kinds of server run entirely in the tab:
 
-It is a **hand-written, single static file** with a deliberate constraint: **no JS
-build step, no bundler, no npm dependency, no toolchain**. It is a classic Web
-Worker (`self.onmessage` / `self.postMessage`), not an ES module, so it loads
-directly with zero compilation. It is served same-origin via the Dioxus `asset!()`
-macro at runtime, and from a `Blob` URL in the headless test.
+- **Module servers** (`McpServerKind::Browser`) — a hand-written, single static JS
+  file that *is* a complete classic Web Worker, implementing the JSON-RPC plumbing
+  itself. The bundled reference server (`assets/mcp_reference_server.js`) is one; it
+  is served same-origin via the Dioxus `asset!()` macro.
+- **Shellized servers** (`McpServerKind::Shellized`) — a server described by its
+  *tools alone* (a small JSON definition). The runtime **shellizes** it: it prepends
+  the definition (`self.ASKK_MCP_DEFINITION = …`) to a generic shell worker
+  (`assets/mcp_shell_worker.js`), publishes the result as a `Blob` URL, and spawns
+  it. The author writes only tool logic; the shell supplies the entire MCP/JSON-RPC
+  protocol. This is how you "take in a server configuration and run it in the browser"
+  without hand-writing a worker.
+
+Both share a deliberate constraint: **no JS build step, no bundler, no npm
+dependency, no toolchain**. Each is a classic Web Worker (`self.onmessage` /
+`self.postMessage`), not an ES module, so it loads with zero compilation. Each server
+runs in its own worker, so tool execution is genuinely parallel.
 
 ### Wire format
 
@@ -269,6 +279,38 @@ Every `tools/call` reply is an MCP `CallToolResult`:
 returns a JSON-RPC error with code `-32602`; an unknown method returns `-32601`
 ("Method not found"); malformed JSON returns `-32700` ("Parse error").
 
+### Shellized definitions
+
+A shellized server is configured by a JSON definition like:
+
+```json
+{
+  "name": "Calculator",
+  "tools": [
+    {
+      "name": "multiply",
+      "description": "Multiply two numbers and return the product.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
+        "required": ["a", "b"]
+      },
+      "handler": "return String(Number(args.a) * Number(args.b));"
+    }
+  ]
+}
+```
+
+Each `handler` is the body of an `async` function receiving `args` (the parsed tool
+arguments). Its return value is normalized into an MCP result: a string/number
+becomes a text block, an object/array becomes pretty-printed JSON, a
+`{ content, isError? }` shape is passed through verbatim, and a thrown error becomes a
+tool-level error result (`isError: true`). The generic shell worker
+(`assets/mcp_shell_worker.js`) supplies `initialize` / `tools/list` / `tools/call`
+around these handlers; `WorkerMcpTransport::connect_shellized` assembles the worker
+from the bundled shell (`include_str!`) plus the definition — so a shellized server
+has no static asset and works on GitHub Pages unchanged.
+
 ### Rust client + engine integration
 
 The Rust side lives in `src/mcp/`:
@@ -278,14 +320,18 @@ The Rust side lives in `src/mcp/`:
   gateway-bridged (stdio) transports can be added later without touching the engine.
 - **`worker_transport.rs`** — `WorkerMcpTransport`, the browser Web Worker transport
   (wasm only). It posts JSON-RPC frames over `postMessage` and correlates responses
-  to requests by `id`, with a per-request timeout.
+  to requests by `id`, with a per-request timeout. `connect` loads a module server by
+  URL; `connect_shellized` assembles a shell worker from a definition and spawns it
+  from a `Blob` URL (revoked on drop).
 - **`client.rs`** — a minimal `McpClient` (`initialize` / `list_tools` / `call_tool`).
 - **`registry.rs`** (wasm only) — a thread-local table of live connections. At run
-  start the engine brings up each enabled browser server, discovers its tools, and
-  registers them under namespaced names (`mcp__<server-id>__<tool>`) so they never
-  collide with compiled built-ins. A `ToolCall` for one of those names routes to the
-  owning server's client and its `CallToolResult` becomes a `ToolResult` — the same
-  path, instrumentation (`AgentEvent`s), and untrusted-data handling as any built-in.
+  start the engine brings up each enabled server (dispatching on kind: a module server
+  loads its URL, a shellized server is parsed via `McpServerDefinition` and shellized),
+  discovers its tools, and registers them under collision-free display names so they
+  never clash with compiled built-ins. A `ToolCall` for one of those names routes to
+  the owning server's client and its `CallToolResult` becomes a `ToolResult` — the
+  same path, instrumentation (`AgentEvent`s), and untrusted-data handling as any
+  built-in.
 
 Servers are configured as `McpServerConfig` on the persisted `AppSnapshot` and managed
 from the **MCP** dashboard page. The transport trait + the routing seam carry a `TODO`
@@ -293,12 +339,15 @@ for per-server capability-scoping of untrusted servers (out of scope for this sl
 
 ### Running the headless worker test
 
-`src/mcp/worker_transport.rs` contains a `wasm_bindgen_test` (`browser_tests`) that
-boots the reference server from a `Blob` URL, runs `initialize`, asserts `tools/list`
-returns `[add, echo]`, calls `add(2, 3)` and asserts `5`, then tears the worker down.
-It is an in-crate test (the crate is a binary with no library target, so `tests/`
-integration files cannot reach the transport). Run it against a real browser with a
-matching webdriver, e.g. headless Chrome:
+`src/mcp/worker_transport.rs` contains `wasm_bindgen_test`s (`browser_tests`) that
+exercise both kinds against a real browser. One boots the reference module server from
+a `Blob` URL, runs `initialize`, asserts `tools/list` returns `[add, echo]`, and calls
+`add(2, 3)` → `5`. The other **shellizes** a bare definition (`multiply`, an async
+handler, and a throwing handler), then asserts the call results — proving the
+end-to-end "config → running worker → tool call" path. They are in-crate tests (the
+crate is a binary with no library target, so `tests/` integration files cannot reach
+the transport). Run them against a real browser with a matching webdriver, e.g.
+headless Chrome:
 
 ```sh
 wasm-pack test --headless --chrome   # auto-provisions a matching wasm-bindgen + driver

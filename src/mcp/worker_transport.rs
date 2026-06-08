@@ -25,6 +25,11 @@ use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 /// dead or wedged server can never hang the agent loop forever.
 const REQUEST_TIMEOUT_MS: u32 = 30_000;
 
+/// The generic MCP shell worker, bundled at compile time. A shellized server is this
+/// source with one `self.ASKK_MCP_DEFINITION = {...};` line prepended (see
+/// [`WorkerMcpTransport::connect_shellized`]).
+const SHELL_WORKER_JS: &str = include_str!("../../assets/mcp_shell_worker.js");
+
 /// The in-flight request table: JSON-RPC id -> the oneshot sender awaiting its
 /// response.
 type Pending = Rc<RefCell<HashMap<u64, oneshot::Sender<JsonRpcResponse>>>>;
@@ -33,6 +38,10 @@ type Pending = Rc<RefCell<HashMap<u64, oneshot::Sender<JsonRpcResponse>>>>;
 pub struct WorkerMcpTransport {
     worker: web_sys::Worker,
     pending: Pending,
+    /// For a shellized server, the Blob object URL the worker was spawned from. It is
+    /// revoked on drop so the in-memory Blob is released; `None` for a server loaded
+    /// from a static module URL (nothing to revoke).
+    object_url: Option<String>,
     // The event handlers are kept owned (not `.forget()`-ed) so they live exactly as
     // long as the transport and are dropped when it is.
     _onmessage: Closure<dyn FnMut(web_sys::MessageEvent)>,
@@ -43,6 +52,30 @@ impl WorkerMcpTransport {
     /// Connect to an MCP server hosted at `url` as a **classic** Web Worker (the
     /// reference server is a classic worker, not a module).
     pub fn connect(url: &str) -> AppResult<Self> {
+        Self::from_url(url, None)
+    }
+
+    /// "Shellize" a server definition into a running worker: prepend the definition to
+    /// the bundled generic shell worker, publish the result as a Blob URL, and spawn
+    /// it. `definition_json` is the already-serialized [`McpServerDefinition`] JSON the
+    /// shell reads from `self.ASKK_MCP_DEFINITION`. No bundler, no static asset — the
+    /// whole server is assembled and run in the tab.
+    pub fn connect_shellized(definition_json: &str) -> AppResult<Self> {
+        let source = format!("self.ASKK_MCP_DEFINITION = {definition_json};\n{SHELL_WORKER_JS}");
+        let url = object_url_for_source(&source)?;
+        match Self::from_url(&url, Some(url.clone())) {
+            Ok(transport) => Ok(transport),
+            Err(err) => {
+                // Spawning failed: revoke the URL we just created so it doesn't leak.
+                let _ = web_sys::Url::revoke_object_url(&url);
+                Err(err)
+            }
+        }
+    }
+
+    /// Spawn the worker at `url`, wire up the message/error closures, and build the
+    /// transport. `object_url`, if set, is revoked when the transport is dropped.
+    fn from_url(url: &str, object_url: Option<String>) -> AppResult<Self> {
         let worker = web_sys::Worker::new(url)
             .map_err(|err| format!("Unable to start the MCP worker `{url}`: {err:?}"))?;
 
@@ -118,6 +151,7 @@ impl WorkerMcpTransport {
         Ok(Self {
             worker,
             pending,
+            object_url,
             _onmessage: onmessage,
             _onerror: onerror,
         })
@@ -127,6 +161,19 @@ impl WorkerMcpTransport {
     pub fn terminate(&self) {
         self.worker.terminate();
     }
+}
+
+/// Publish `source` as a same-origin Blob URL hosting a classic worker. The
+/// `text/javascript` MIME type keeps strict browsers happy about starting the worker.
+fn object_url_for_source(source: &str) -> AppResult<String> {
+    let parts = js_sys::Array::new();
+    parts.push(&JsValue::from_str(source));
+    let options = web_sys::BlobPropertyBag::new();
+    options.set_type("text/javascript");
+    let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &options)
+        .map_err(|err| format!("Unable to build the MCP worker blob: {err:?}"))?;
+    web_sys::Url::create_object_url_with_blob(&blob)
+        .map_err(|err| format!("Unable to create the MCP worker URL: {err:?}"))
 }
 
 impl McpTransport for WorkerMcpTransport {
@@ -178,6 +225,10 @@ impl Drop for WorkerMcpTransport {
     fn drop(&mut self) {
         // Tear the worker down so the headless test gets clean teardown.
         self.worker.terminate();
+        // Release the Blob a shellized server was spawned from (no-op for module URLs).
+        if let Some(url) = &self.object_url {
+            let _ = web_sys::Url::revoke_object_url(url);
+        }
     }
 }
 
@@ -254,5 +305,93 @@ mod browser_tests {
         // terminates the worker. Revoke the Blob URL too.
         drop(client);
         let _ = web_sys::Url::revoke_object_url(&url);
+    }
+
+    /// End-to-end "shellize" round-trip: take a bare tool *definition* (no hand-written
+    /// worker, no static asset), wrap it in the generic shell worker, and prove the
+    /// agent can discover and call its tools — including an async handler and a handler
+    /// that throws (which must surface as a tool-level error, not a transport fault).
+    #[wasm_bindgen_test]
+    async fn shellized_definition_runs_in_a_worker() {
+        let definition = json!({
+            "name": "Calc",
+            "tools": [
+                {
+                    "name": "multiply",
+                    "description": "Multiply two numbers.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
+                        "required": ["a", "b"]
+                    },
+                    "handler": "return String(Number(args.a) * Number(args.b));"
+                },
+                {
+                    "name": "async_echo",
+                    "description": "Echo via an awaited promise.",
+                    "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } } },
+                    "handler": "return await Promise.resolve(String(args.text));"
+                },
+                {
+                    "name": "boom",
+                    "description": "Always throws.",
+                    "inputSchema": { "type": "object" },
+                    "handler": "throw new Error('kaboom');"
+                }
+            ]
+        })
+        .to_string();
+
+        // connect_shellized assembles shell + definition into a Blob and spawns it.
+        let transport =
+            WorkerMcpTransport::connect_shellized(&definition).expect("shellize the definition");
+        let client = McpClient::new(transport);
+
+        client.initialize().await.expect("initialize handshake");
+
+        let mut names: Vec<String> = client
+            .list_tools()
+            .await
+            .expect("tools/list")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            vec![
+                "async_echo".to_string(),
+                "boom".to_string(),
+                "multiply".to_string()
+            ]
+        );
+
+        // A sync handler returns text.
+        let product = client
+            .call_tool("multiply", json!({ "a": 6, "b": 7 }))
+            .await
+            .expect("tools/call multiply");
+        assert_ne!(product.is_error, Some(true));
+        assert_eq!(product.text().trim(), "42");
+
+        // An async (awaiting) handler works because the shell compiles handlers as
+        // async functions.
+        let echoed = client
+            .call_tool("async_echo", json!({ "text": "hi" }))
+            .await
+            .expect("tools/call async_echo");
+        assert_ne!(echoed.is_error, Some(true));
+        assert_eq!(echoed.text().trim(), "hi");
+
+        // A throwing handler is a tool-level error (isError), not a transport failure:
+        // the call still resolves Ok, with the message carried in the result.
+        let boom = client
+            .call_tool("boom", json!({}))
+            .await
+            .expect("tools/call boom still resolves");
+        assert_eq!(boom.is_error, Some(true));
+        assert!(boom.text().contains("kaboom"), "got: {}", boom.text());
+
+        drop(client);
     }
 }

@@ -755,6 +755,28 @@ pre {
     padding: 10px;
 }
 
+.pill {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #efe9fb;
+    border: 1px solid #ded5ef;
+    color: #6b5e8c;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+}
+
+.mcp-definition {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    min-height: 200px;
+    white-space: pre;
+}
+
 .inline-controls {
     align-items: end;
     flex-wrap: wrap;

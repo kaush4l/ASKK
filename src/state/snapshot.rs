@@ -10,7 +10,7 @@ use super::event::{AgentEventKind, event, now_iso};
 use super::manifest::{
     Agent, Skill, default_agents, default_skills, default_soul_prompt, parse_tools,
 };
-use super::mcp::McpServerConfig;
+use super::mcp::{McpServerConfig, default_shellized_definition};
 use super::provider::{
     ModelProfile, ProviderConfig, ProviderProfile, default_context_window, default_max_tokens,
     default_model_profiles,
@@ -587,12 +587,24 @@ impl AppSnapshot {
     }
 
     // MCP-server helpers, driven by the MCP dashboard (`components/mcp_page.rs`).
-    /// Add a fresh, enabled browser-kind MCP server from defaults.
+    /// Add a fresh, enabled browser-kind MCP server (a pre-written JS module) from
+    /// defaults.
     pub fn add_mcp_server(&mut self) -> String {
         let server = McpServerConfig::new("New MCP server", "/assets/mcp_reference_server.js");
         let name = server.name.clone();
         self.mcp_servers.push(server);
         format!("Added MCP server: {name}")
+    }
+
+    /// Add a fresh, enabled shellized MCP server seeded with the default tool-definition
+    /// template, ready to edit. The runtime wraps the definition in the generic shell
+    /// worker at run start.
+    pub fn add_shellized_mcp_server(&mut self) -> String {
+        let server =
+            McpServerConfig::new_shellized("New shellized server", default_shellized_definition());
+        let name = server.name.clone();
+        self.mcp_servers.push(server);
+        format!("Added shellized MCP server: {name}")
     }
 
     /// Remove an MCP server by id. Zero MCP servers is valid, so no minimum is

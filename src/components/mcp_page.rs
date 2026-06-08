@@ -1,6 +1,6 @@
 use super::save_snapshot;
 use super::shared::set_status;
-use crate::state::AppSnapshot;
+use crate::state::{AppSnapshot, McpServerKind};
 use dioxus::prelude::*;
 use std::collections::HashMap;
 use wasm_bindgen_futures::spawn_local;
@@ -21,7 +21,11 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                 div {
                     h2 { "MCP servers" }
                     p { class: "muted",
-                        "Browser-hosted Model Context Protocol servers. Each enabled server is connected at run start and its tools are offered to the agent."
+                        "Browser-hosted Model Context Protocol servers. Each enabled server is connected at run start and its tools are offered to the agent. A "
+                        strong { "module" }
+                        " server loads a pre-written JS worker; a "
+                        strong { "shellized" }
+                        " server is defined by its tools alone and wrapped in a generic shell worker at run start."
                     }
                 }
                 div { class: "button-row",
@@ -30,7 +34,14 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                             let status = snapshot.write().add_mcp_server();
                             set_status(&mut snapshot, status);
                         },
-                        "Add server"
+                        "Add module server"
+                    }
+                    button {
+                        onclick: move |_| {
+                            let status = snapshot.write().add_shellized_mcp_server();
+                            set_status(&mut snapshot, status);
+                        },
+                        "Add shellized server"
                     }
                     button {
                         onclick: move |_| {
@@ -48,7 +59,7 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
 
             if current.mcp_servers.is_empty() {
                 p { class: "muted",
-                    "No MCP servers configured. Add one (it defaults to the bundled reference server) to expose its tools to the agent."
+                    "No MCP servers configured. Add a module server (defaults to the bundled reference server) or a shellized server (defaults to an editable example tool) to expose its tools to the agent."
                 }
             }
 
@@ -60,6 +71,10 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                     let config_probe = server.clone();
                     let id_probe = server.id.clone();
                     let discovery_line = discovered.read().get(&server.id).cloned();
+                    let kind_label = match server.kind {
+                        McpServerKind::Browser => "module",
+                        McpServerKind::Shellized => "shellized",
+                    };
                     rsx! {
                         article { class: "settings-card mcp-card", key: "{server.id}",
                             div { class: "card-heading",
@@ -75,6 +90,7 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                                         }
                                     }
                                     strong { "{server.name}" }
+                                    span { class: "pill", "{kind_label}" }
                                 }
                                 button {
                                     class: "ghost-button",
@@ -94,19 +110,48 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                                     }
                                 }
                             }
-                            label {
-                                "Module path"
-                                input {
-                                    value: "{server.module_path}",
-                                    placeholder: "/assets/mcp_reference_server.js",
-                                    oninput: move |event| {
-                                        if let Some(server) =
-                                            snapshot.write().mcp_servers.get_mut(index)
-                                        {
-                                            server.module_path = event.value();
+                            match server.kind {
+                                McpServerKind::Browser => rsx! {
+                                    label {
+                                        "Module path"
+                                        input {
+                                            value: "{server.module_path}",
+                                            placeholder: "/assets/mcp_reference_server.js",
+                                            oninput: move |event| {
+                                                if let Some(server) =
+                                                    snapshot.write().mcp_servers.get_mut(index)
+                                                {
+                                                    server.module_path = event.value();
+                                                }
+                                            }
                                         }
                                     }
-                                }
+                                },
+                                McpServerKind::Shellized => rsx! {
+                                    label {
+                                        "Definition (JSON)"
+                                        textarea {
+                                            class: "mcp-definition",
+                                            rows: "12",
+                                            spellcheck: "false",
+                                            value: "{server.definition}",
+                                            oninput: move |event| {
+                                                if let Some(server) =
+                                                    snapshot.write().mcp_servers.get_mut(index)
+                                                {
+                                                    server.definition = event.value();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    p { class: "muted",
+                                        "Each tool's "
+                                        code { "handler" }
+                                        " is a JS function body that receives "
+                                        code { "args" }
+                                        " and returns a string, number, or object. The shell worker supplies the MCP protocol around it."
+                                    }
+                                },
                             }
                             div { class: "button-row",
                                 button {

@@ -17,8 +17,8 @@ use crate::mcp::client::McpClient;
 use crate::mcp::protocol::McpToolDef;
 use crate::mcp::worker_transport::WorkerMcpTransport;
 use crate::state::{
-    AgentEventKind, AgentRun, AppResult, McpServerConfig, McpServerKind, ToolResult, ToolSpec,
-    default_tool_names, event,
+    AgentEventKind, AgentRun, AppResult, McpServerConfig, McpServerDefinition, McpServerKind,
+    ToolResult, ToolSpec, default_tool_names, event,
 };
 use dioxus::prelude::*;
 use serde_json::Value;
@@ -54,9 +54,20 @@ struct McpConnection {
 
 /// Identity of a connection for cache-reuse purposes: the fields that change which
 /// worker we talk to or how its tools are presented. `id` namespaces the tools;
-/// `module_path` is the worker URL; `name` is baked into every tool description.
+/// `kind`/`module_path`/`definition` determine what worker is spawned; `name` is baked
+/// into every tool description. Editing the shellized `definition` thus forces a
+/// reconnect instead of silently talking to the old worker.
 fn connection_fingerprint(config: &McpServerConfig) -> String {
-    format!("{}|{}|{}", config.id, config.module_path, config.name)
+    format!(
+        "{}|{:?}|{}|{}|{}",
+        config.id, config.kind, config.module_path, config.name, config.definition
+    )
+}
+
+/// Whether a server kind is run inside the browser tab (and so brought up by the
+/// in-browser runtime). Both kinds today are; remote/bridged kinds added later are not.
+fn runs_in_browser(kind: McpServerKind) -> bool {
+    matches!(kind, McpServerKind::Browser | McpServerKind::Shellized)
 }
 
 thread_local! {
@@ -136,11 +147,22 @@ fn describe_mcp_tool(def: &McpToolDef, server_name: &str) -> String {
 /// Spawn the worker, run the initialize handshake, and list tools. Returns the live
 /// client plus the raw tool definitions; callers assign display names. Performed
 /// fully outside any thread-local borrow so the awaits can't deadlock the table.
+///
+/// A `Browser` server loads its pre-written module by URL; a `Shellized` server is
+/// assembled from its definition and spawned from a Blob — but both end up as the same
+/// [`WorkerMcpTransport`], so everything downstream is identical.
 async fn connect_server(
     config: &McpServerConfig,
 ) -> AppResult<(Rc<McpClient<WorkerMcpTransport>>, Vec<McpToolDef>)> {
-    let url = resolve_worker_url(config);
-    let transport = WorkerMcpTransport::connect(&url)?;
+    let transport = match config.kind {
+        McpServerKind::Browser => WorkerMcpTransport::connect(&resolve_worker_url(config))?,
+        McpServerKind::Shellized => {
+            let definition = McpServerDefinition::parse(&config.definition)?;
+            let definition_json = serde_json::to_string(&definition)
+                .map_err(|err| format!("Unable to encode MCP definition: {err}"))?;
+            WorkerMcpTransport::connect_shellized(&definition_json)?
+        }
+    };
     let client = McpClient::new(transport);
     client.initialize().await?;
     let defs = client.list_tools().await?;
@@ -167,7 +189,7 @@ where
     // worker; the edited server then reconnects fresh below.
     let live_fingerprints: Vec<String> = servers
         .iter()
-        .filter(|server| server.enabled && server.kind == McpServerKind::Browser)
+        .filter(|server| server.enabled && runs_in_browser(server.kind))
         .map(connection_fingerprint)
         .collect();
     MCP_RUNTIME.with(|runtime| {
@@ -191,7 +213,7 @@ where
     let mut names = Vec::new();
     for server in servers
         .iter()
-        .filter(|server| server.enabled && server.kind == McpServerKind::Browser)
+        .filter(|server| server.enabled && runs_in_browser(server.kind))
     {
         // Reuse a live connection from an earlier run on this thread, but only when
         // the config is unchanged (same fingerprint) — an edited server fell out of
