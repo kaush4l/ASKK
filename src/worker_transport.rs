@@ -1,4 +1,7 @@
-#![allow(dead_code)]
+// Agent dispatch to / from a Web Worker is a browser-only path; on the host build
+// (tests aside) these message types are unused, so allow dead code off-wasm only —
+// the wasm target stays honest and still flags genuine rot.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use crate::state::{Agent, AgentRun, AppSnapshot};
 use serde::{Deserialize, Serialize};
@@ -39,6 +42,7 @@ pub enum WorkerEvent {
     Error(WorkerError),
 }
 
+#[cfg(test)]
 impl WorkerEvent {
     pub fn run_id(&self) -> Option<&str> {
         match self {

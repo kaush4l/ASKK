@@ -7,12 +7,9 @@
 //! use. JSON-RPC is hand-rolled — no `rmcp`, no `async_trait`.
 //!
 //! The [`registry`] (wasm-only) consumes this surface to bring up servers and route
-//! tool calls from the engine. On the host build there is no browser MCP path, so
-//! these items read as dead code there — matching the `#![allow(dead_code)]`
-//! convention used by other browser-only modules (`worker_runtime`, `execution`,
-//! `responses::critic`).
-#![allow(dead_code)]
-#![allow(unused_imports)]
+//! tool calls from the engine. On the host build there is no browser MCP path, so some
+//! of these items read as dead code there.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 pub mod client;
 pub mod protocol;
@@ -23,16 +20,8 @@ pub mod transport;
 #[cfg(target_arch = "wasm32")]
 pub mod worker_transport;
 
-// Convenience re-exports forming this module's public surface, consumed by the
-// engine integration (the registry unit, added later).
-pub use client::McpClient;
-pub use protocol::{
-    CallToolResult, ContentBlock, JsonRpcError, JsonRpcRequest, JsonRpcResponse, ListToolsResult,
-    McpToolDef,
-};
-pub use transport::{McpTransport, ResponseFuture};
-#[cfg(target_arch = "wasm32")]
-pub use worker_transport::WorkerMcpTransport;
+// Submodules are used via their full paths (e.g. `crate::mcp::client::McpClient`);
+// there are no top-level re-exports to keep in sync.
 
 use crate::state::{AppResult, McpServerConfig};
 

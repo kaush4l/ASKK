@@ -1,4 +1,6 @@
-#![allow(dead_code)]
+// The worker runtime only runs inside a Web Worker (wasm). On the host build its
+// entry points are unused outside tests, so allow dead code off-wasm only.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use crate::engine::{ReActEngine, request_interrupt};
 use crate::state::{AgentRun, AppResult, AppSnapshot};

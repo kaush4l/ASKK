@@ -27,7 +27,8 @@ impl<T: McpTransport> McpClient<T> {
         }
     }
 
-    /// Borrow the underlying transport (e.g. to notify or terminate it).
+    /// Borrow the underlying transport. Used by tests to inspect what was sent.
+    #[cfg(test)]
     pub fn transport(&self) -> &T {
         &self.transport
     }

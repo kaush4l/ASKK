@@ -157,7 +157,9 @@ impl WorkerMcpTransport {
         })
     }
 
-    /// Terminate the underlying worker. Idempotent.
+    /// Terminate the underlying worker. Idempotent. Teardown helper, not yet wired
+    /// into the registry's disconnect path.
+    #[allow(dead_code)]
     pub fn terminate(&self) {
         self.worker.terminate();
     }
