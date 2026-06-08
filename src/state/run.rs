@@ -608,6 +608,17 @@ mod tests {
         }
     }
 
+    // A VerificationState whose `status` key is absent defaults to Pending. This is
+    // only reachable from a hand-edited snapshot — the app always serializes the field
+    // — and is the intended, consistent default: it already matched the struct-level
+    // Default, and it never fails the load. (Before the enum, a missing field defaulted
+    // to the empty string.)
+    #[test]
+    fn verification_state_missing_status_defaults_to_pending() {
+        let state: VerificationState = serde_json::from_str("{}").unwrap();
+        assert_eq!(state.status, VerificationStatus::Pending);
+    }
+
     #[test]
     fn run_status_terminal_and_failure_predicates() {
         assert!(RunStatus::Complete.is_terminal());
