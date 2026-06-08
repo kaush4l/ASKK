@@ -12,6 +12,7 @@
 //! results are always treated as data, never as instructions to follow.
 
 pub mod browser_exec;
+pub mod exec_capability;
 mod execution;
 mod validators;
 

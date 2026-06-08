@@ -24,6 +24,7 @@ mod file_vfs;
 mod fs_bridge;
 mod http;
 mod run_command;
+mod run_in_sandbox;
 mod run_js;
 mod web_fetch;
 mod web_search;
@@ -135,6 +136,7 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(web_search::descriptor());
     registry.register(web_fetch::descriptor());
     registry.register(run_command::descriptor());
+    registry.register(run_in_sandbox::descriptor());
     registry.register(fs_bridge::read_descriptor());
     registry.register(fs_bridge::write_descriptor());
     registry.register(fs_bridge::list_descriptor());
@@ -205,11 +207,34 @@ mod tests {
             "web_search",
             "web_fetch",
             "run_command",
+            "run_in_sandbox",
             "fs_read",
             "fs_write",
             "fs_list",
         ] {
             assert!(names.contains(&expected), "missing tool: {expected}");
         }
+    }
+
+    #[test]
+    fn run_in_sandbox_descriptor_registers_and_executes_via_the_seam() {
+        // The execution-capability seam wires end to end: the registered
+        // descriptor looks up by name and runs through the stub executor, which
+        // reports a clear "not wired" failure until a real substrate is dropped in.
+        let registry = ToolRegistry::new();
+        let specs = registry.specs_for_agent(&["run_in_sandbox".to_string()]);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].name, "run_in_sandbox");
+
+        let mut snapshot = AppSnapshot::default();
+        let result = pollster::block_on(registry.execute(
+            &mut snapshot,
+            "call-sandbox".to_string(),
+            "run_in_sandbox",
+            json!({ "command": "cargo test" }),
+        ));
+        assert!(!result.ok);
+        assert!(result.content.contains("not yet wired"));
+        assert!(result.content.contains("cargo test"));
     }
 }

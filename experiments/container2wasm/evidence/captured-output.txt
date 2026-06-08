@@ -1,0 +1,39 @@
+container2wasm spike — captured run (batch 05)
+==============================================
+Captured from window.__c2wOutput in the live browser tab (ANSI stripped).
+Served by experiments/container2wasm/server.js (COOP/COEP) on http://localhost:8105/.
+
+Image:   x86_64 alpine:3.18 (amd64-vim-wasi, 3 chunks)
+Command: uname -a; echo; echo hello from alpine; echo; ls /
+
+--- container stdout ---
+Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Tue Sep 12 04:39:51 UTC 2023 x86_64 Linux
+
+hello from alpine
+
+bin    etc    lib    mnt    proc   run    srv    tmp    var
+dev    home   media  opt    root   sbin   sys    usr
+__C2W_DONE_yz9vsmrtto        <- completion sentinel appended by spike.js
+------------------------
+
+Metrics:
+  bytes downloaded:      129,864,098 (123.8 MB, container .wasm chunks only)
+  chunk download time:   3.05 s
+  cold boot -> 1st byte: 3.06 s
+  command completed in:  0.36 s
+  total (click -> done): 3.42 s
+  crossOriginIsolated:   true   (SharedArrayBuffer available)
+
+Second image verified (riscv64 alpine:3.18, riscv64-vim-wasi, 2 chunks):
+  uname -a -> Linux localhost 6.1.0 #1 Tue Sep 12 05:14:06 UTC 2023 riscv64 Linux
+  bytes downloaded: 78,061,854 (74.4 MB); cold boot 2.45 s; command 0.80 s; total 3.25 s
+
+A full-page screenshot (terminal + metrics panel + green cross-origin-isolation pill)
+is saved alongside this file as uname-output.png. Note: that PNG was captured on a
+warm HTTP cache, so it shows a faster cold-boot (~0.85 s, total ~1.0 s); the numbers
+above and in the findings doc are from a cold-cache run (the conservative case where
+the 124 MB download dominates).
+
+Reproduce the screenshot:
+  node server.js &                       # in experiments/container2wasm/
+  ./evidence/capture.sh                  # drives headless Chrome over CDP

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASKK spike — @bjorn3/browser_wasi_shim</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 1.5rem;
+        max-width: 56rem;
+        margin-inline: auto;
+        line-height: 1.45;
+      }
+      h1 {
+        font-size: 1.3rem;
+        margin-bottom: 0.25rem;
+      }
+      .sub {
+        color: #888;
+        margin-top: 0;
+        font-size: 0.9rem;
+      }
+      button {
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+        border-radius: 0.4rem;
+        border: 1px solid #888;
+        cursor: pointer;
+        background: #2563eb;
+        color: white;
+        border-color: #2563eb;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      pre {
+        background: #11151c;
+        color: #d6e2f0;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        overflow-x: auto;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 3rem;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.25rem 1rem;
+        font-size: 0.9rem;
+        margin: 1rem 0;
+      }
+      .metrics dt {
+        font-weight: 600;
+      }
+      .metrics dd {
+        margin: 0;
+        font-variant-numeric: tabular-nums;
+      }
+      code {
+        background: rgba(127, 127, 127, 0.2);
+        padding: 0.1rem 0.3rem;
+        border-radius: 0.25rem;
+      }
+      .ok {
+        color: #16a34a;
+        font-weight: 600;
+      }
+      .label {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #888;
+        margin: 1rem 0 0.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ASKK spike: @bjorn3/browser_wasi_shim</h1>
+    <p class="sub">
+      Runs a real <code>wasm32-wasip1</code> binary in the browser under a pure-JS
+      WASI Preview-1 shim. No COOP/COEP, no server, no install.
+    </p>
+
+    <p>
+      <button id="run">Run demo.wasm</button>
+      <span id="status"></span>
+    </p>
+
+    <div class="label">Binary stdout / stderr</div>
+    <pre id="stdout">(click "Run demo.wasm")</pre>
+
+    <div class="label">Guest-written file (read back from the virtual FS)</div>
+    <pre id="readback">(none yet)</pre>
+
+    <div class="label">Measurements</div>
+    <dl class="metrics" id="metrics">
+      <dt>cross-origin isolated</dt>
+      <dd id="m-coi">—</dd>
+      <dt>shim load time</dt>
+      <dd id="m-shimload">—</dd>
+      <dt>.wasm fetch + compile</dt>
+      <dd id="m-compile">—</dd>
+      <dt>instantiate + run</dt>
+      <dd id="m-run">—</dd>
+      <dt>total (fetch→exit)</dt>
+      <dd id="m-total">—</dd>
+      <dt>binary size</dt>
+      <dd id="m-binsize">—</dd>
+      <dt>exit code</dt>
+      <dd id="m-exit">—</dd>
+    </dl>
+
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>

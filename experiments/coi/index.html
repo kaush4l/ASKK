@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASKK spike: coi-serviceworker cross-origin-isolation gate</title>
+    <!--
+      Register the service worker as the very first script in <head>, before any
+      module that might want SharedArrayBuffer. On the FIRST load the page is not
+      yet controlled by the SW, so coi-serviceworker.js triggers exactly one
+      automatic reload; on the reload the synthesized COOP/COEP headers are in
+      effect and the document becomes cross-origin isolated.
+
+      The SW file MUST be served from the SAME ORIGIN as this page (a service
+      worker can only be registered for a script on its own origin). It therefore
+      cannot be loaded from a CDN. coi-serviceworker.js registers itself using
+      `document.currentScript.src`, so this <script> tag is what defines the SW
+      script URL and scope.
+    -->
+    <script src="coi-serviceworker.js"></script>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      body {
+        margin: 0 auto;
+        max-width: 760px;
+        padding: 2rem 1.25rem 4rem;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.25rem;
+      }
+      .card {
+        border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin: 1rem 0;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.35rem 0;
+        border-bottom: 1px dashed
+          color-mix(in srgb, currentColor 15%, transparent);
+      }
+      .row:last-child {
+        border-bottom: 0;
+      }
+      .k {
+        opacity: 0.8;
+      }
+      .v {
+        font-weight: 700;
+        text-align: right;
+        word-break: break-word;
+      }
+      .pass {
+        color: #128a3a;
+      }
+      .fail {
+        color: #c0392b;
+      }
+      .pending {
+        color: #b8860b;
+      }
+      .verdict {
+        font-size: 1.05rem;
+        font-weight: 700;
+        padding: 0.85rem 1rem;
+        border-radius: 10px;
+      }
+      .verdict.isolated {
+        background: color-mix(in srgb, #128a3a 18%, transparent);
+      }
+      .verdict.not-isolated {
+        background: color-mix(in srgb, #c0392b 18%, transparent);
+      }
+      details {
+        margin-top: 1rem;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        opacity: 0.85;
+        font-size: 0.85rem;
+      }
+      .hint {
+        opacity: 0.7;
+        font-size: 0.85rem;
+      }
+      code {
+        background: color-mix(in srgb, currentColor 12%, transparent);
+        padding: 0.05rem 0.3rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>coi-serviceworker cross-origin-isolation gate</h1>
+    <p class="hint">
+      ASKK spike. Serve this folder from a plain static server with
+      <strong>no</strong> COOP/COEP headers (simulating GitHub Pages), e.g.
+      <code>python3 -m http.server 8108 --directory experiments/coi</code>, then
+      open <code>http://localhost:8108/</code>. The page should flip from
+      <em>not isolated</em> to <em>isolated</em> after one automatic reload.
+    </p>
+
+    <div id="verdict" class="verdict not-isolated">measuring&hellip;</div>
+
+    <div class="card">
+      <div class="row">
+        <span class="k">crossOriginIsolated</span>
+        <span class="v" id="coi">&mdash;</span>
+      </div>
+      <div class="row">
+        <span class="k">new SharedArrayBuffer(8)</span>
+        <span class="v" id="sab">&mdash;</span>
+      </div>
+      <div class="row">
+        <span class="k">isSecureContext</span>
+        <span class="v" id="secure">&mdash;</span>
+      </div>
+      <div class="row">
+        <span class="k">SW controller present</span>
+        <span class="v" id="controller">&mdash;</span>
+      </div>
+      <div class="row">
+        <span class="k">SW registered (this origin)</span>
+        <span class="v" id="registered">&mdash;</span>
+      </div>
+      <div class="row">
+        <span class="k">page reloaded by SW once</span>
+        <span class="v" id="reloaded">&mdash;</span>
+      </div>
+      <div class="row">
+        <span class="k">origin</span>
+        <span class="v" id="origin">&mdash;</span>
+      </div>
+      <div class="row">
+        <span class="k">userAgent</span>
+        <span class="v" id="ua">&mdash;</span>
+      </div>
+    </div>
+
+    <details>
+      <summary>Machine-readable result (for screenshots / automation)</summary>
+      <pre id="json">collecting&hellip;</pre>
+    </details>
+
+    <p class="hint">
+      If <code>crossOriginIsolated</code> stays <code>false</code> on a secure
+      origin, check the console: Safari and Firefox enforce COEP differently and
+      some configurations need the <code>credentialless</code> fallback that
+      coi-serviceworker negotiates automatically.
+    </p>
+
+    <script>
+      (function () {
+        const $ = (id) => document.getElementById(id);
+        const set = (id, ok, text) => {
+          const el = $(id);
+          el.textContent = text;
+          el.classList.remove("pass", "fail", "pending");
+          el.classList.add(ok === true ? "pass" : ok === false ? "fail" : "pending");
+        };
+
+        // Distinguish "first ever load" from "the SW-triggered reload" using the
+        // same sessionStorage key family coi-serviceworker uses. We only READ a
+        // marker we set ourselves so we never interfere with the SW's own logic.
+        const reloadedBySelf = !!window.sessionStorage.getItem("coiReloadedBySelf");
+
+        async function report() {
+          const isolated = window.crossOriginIsolated === true;
+
+          set("coi", isolated, String(window.crossOriginIsolated));
+          set("secure", window.isSecureContext === true, String(window.isSecureContext));
+
+          let sabOk = false;
+          let sabText = "";
+          try {
+            // The real gate: SharedArrayBuffer is only constructable in a
+            // cross-origin-isolated context. This is what container2wasm /
+            // @wasmer/sdk threading actually depends on.
+            const sab = new SharedArrayBuffer(8);
+            sabOk = sab.byteLength === 8;
+            sabText = "ok (byteLength=" + sab.byteLength + ")";
+          } catch (e) {
+            sabOk = false;
+            sabText = (e && e.name ? e.name + ": " : "") + (e && e.message ? e.message : String(e));
+          }
+          set("sab", sabOk, sabText);
+
+          const reg = "serviceWorker" in navigator
+            ? await navigator.serviceWorker.getRegistration().catch(() => null)
+            : null;
+          const controller = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+
+          set("controller", controller, String(controller));
+          set("registered", !!reg, reg ? "yes (" + reg.scope + ")" : "no");
+          set("reloaded", reloadedBySelf, reloadedBySelf ? "yes" : "not yet");
+          $("origin").textContent = window.location.origin;
+          $("ua").textContent = navigator.userAgent;
+
+          const verdict = $("verdict");
+          if (isolated && sabOk) {
+            verdict.className = "verdict isolated";
+            verdict.textContent =
+              "ISOLATED ✓ — crossOriginIsolated is true and SharedArrayBuffer works. gh-pages workaround proven.";
+          } else if (controller && !isolated) {
+            verdict.className = "verdict not-isolated";
+            verdict.textContent =
+              "NOT ISOLATED — SW is controlling the page but COOP/COEP did not take. Check console / browser support.";
+          } else {
+            verdict.className = "verdict not-isolated";
+            verdict.textContent =
+              "NOT ISOLATED — waiting for the service worker to install and reload the page once…";
+          }
+
+          const result = {
+            crossOriginIsolated: window.crossOriginIsolated,
+            sharedArrayBufferConstructable: sabOk,
+            sharedArrayBufferDetail: sabText,
+            isSecureContext: window.isSecureContext,
+            serviceWorkerControlling: controller,
+            serviceWorkerRegistered: !!reg,
+            serviceWorkerScope: reg ? reg.scope : null,
+            reloadedBySelf,
+            origin: window.location.origin,
+            userAgent: navigator.userAgent,
+            verdict: isolated && sabOk ? "ISOLATED" : "NOT_ISOLATED",
+            timestamp: new Date().toISOString(),
+          };
+          $("json").textContent = JSON.stringify(result, null, 2);
+          // Expose for headless/automation assertions (preview/Chrome MCP eval).
+          window.__coiResult = result;
+        }
+
+        // Initial render, then a couple of follow-ups: the SW controller can
+        // attach a beat after the reload, so we re-measure to avoid a flash of a
+        // stale "not yet" state.
+        report();
+        if (navigator.serviceWorker) {
+          navigator.serviceWorker.ready.then(report).catch(() => {});
+          navigator.serviceWorker.addEventListener("controllerchange", report);
+        }
+        setTimeout(report, 600);
+        setTimeout(report, 1500);
+      })();
+    </script>
+  </body>
+</html>

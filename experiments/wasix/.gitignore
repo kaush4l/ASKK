@@ -1,0 +1,5 @@
+# Spike artifacts — do NOT commit the large WASM blobs or installed deps.
+# Regenerate with: npm install && npm run vendor
+node_modules/
+vendor/
+package-lock.json

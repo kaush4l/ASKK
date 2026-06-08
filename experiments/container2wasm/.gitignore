@@ -1,0 +1,6 @@
+# Large prebuilt container .wasm chunks — fetched by fetch-assets.sh, not vendored.
+# Each chunk is up to 50 MB; full images are 74-191 MB. Exceeds the repo blob limit.
+htdocs/containers/*.wasm
+
+# Networking proxy wasm (~18 MB) — only needed if net != none; fetched on demand.
+htdocs/src/c2w-net-proxy.wasm
