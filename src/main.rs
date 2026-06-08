@@ -14,10 +14,8 @@ mod state;
 mod storage;
 mod tools;
 mod validators;
-mod vfs;
 mod worker;
 mod workflow;
-mod workspace_files;
 
 use components::{AppShell, set_status};
 use state::{AppSnapshot, RunStatus};

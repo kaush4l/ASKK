@@ -1,3 +1,10 @@
+//! Browser persistence. This module is the IndexedDB snapshot store; its siblings
+//! are the in-browser virtual filesystem ([`vfs`], also IndexedDB-backed) and the
+//! optional dev-bridge file sync ([`workspace_files`]).
+
+pub mod vfs;
+pub mod workspace_files;
+
 use crate::state::{AppResult, AppSnapshot};
 use async_trait::async_trait;
 use indexed_db_futures::database::Database;

@@ -4,7 +4,7 @@
 //! `fs_*` family instead.
 
 use crate::state::{AppSnapshot, ToolSpec};
-use crate::vfs::ProjectVfs;
+use crate::storage::vfs::ProjectVfs;
 use serde_json::{Value, json};
 
 use super::common::string_arg;

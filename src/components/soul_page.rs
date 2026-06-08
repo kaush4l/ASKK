@@ -1,7 +1,9 @@
 use super::save_snapshot;
 use super::shared::set_status;
 use crate::state::AppSnapshot;
-use crate::workspace_files::{apply_workspace_files, load_workspace_files, save_soul_file};
+use crate::storage::workspace_files::{
+    apply_workspace_files, load_workspace_files, save_soul_file,
+};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
