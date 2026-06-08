@@ -12,11 +12,14 @@
 //! results are always treated as data, never as instructions to follow.
 
 use crate::execution::{BrowserExecutionProvider, ExecutionProvider};
-use crate::inference::{InferenceProvider, InferenceRequest, SubAgentInfo, get_implementation};
-use crate::responses::{ReActAction, parse_tool_calls};
+use crate::inference::{
+    InferenceOutput, InferenceProvider, InferenceRequest, SubAgentInfo, get_implementation,
+};
+use crate::responses::{ReActAction, ReActResponse, parse_tool_calls};
 use crate::state::{
-    Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, RunBudgets, RunLane,
-    RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, default_tool_names, event, now_iso,
+    Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, ProviderConfig, RunBudgets,
+    RunLane, RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, default_tool_names, event,
+    now_iso,
 };
 use crate::validators::ValidatorRegistry;
 use std::cell::Cell;
@@ -262,53 +265,18 @@ where
             response_format: agent.response_format,
         };
 
-        let mut sink = |_partial: String| {};
-        // Auto-recovery: a transient provider/network failure should not kill the
-        // run. Retry a few times with backoff; only if every attempt fails do we
-        // stop — and then we *pause* (resumable) rather than hard-error, so the app
-        // and the conversation stay intact and the user can Resume.
-        const MAX_MODEL_ATTEMPTS: u32 = 3;
-        let mut attempt = 0u32;
-        let output = loop {
-            attempt += 1;
-            match inference
-                .invoke_react_streaming(&provider, request.clone(), &mut sink)
-                .await
-            {
-                Ok(output) => break Some(output),
-                Err(err) => {
-                    run.events.push(event(
-                        &run.id,
-                        Some(agent_id.clone()),
-                        AgentEventKind::Error,
-                        format!("Model call failed (attempt {attempt}/{MAX_MODEL_ATTEMPTS})"),
-                        err,
-                    ));
-                    observer(run.clone());
-                    if attempt >= MAX_MODEL_ATTEMPTS {
-                        break None;
-                    }
-                    backoff(300 * attempt).await;
-                }
-            }
-        };
-        let output = match output {
-            Some(output) => output,
-            None => {
-                run.status = RunStatus::Paused;
-                if run.final_answer.trim().is_empty() {
-                    run.final_answer = "Paused: the model provider could not be reached after several attempts. Check the Provider settings, then press Resume to continue.".to_string();
-                }
-                run.events.push(event(
-                    &run.id,
-                    Some(agent_id.clone()),
-                    AgentEventKind::Interrupted,
-                    "Run paused (provider unreachable)",
-                    truncate(&run.final_answer, 300),
-                ));
-                observer(run.clone());
-                break;
-            }
+        let Some(output) = call_model_with_retry(
+            &inference,
+            &provider,
+            request,
+            &mut run,
+            &agent_id,
+            &mut observer,
+        )
+        .await
+        else {
+            // Every attempt failed: the run was paused (resumable) inside the helper.
+            break;
         };
 
         let parsed = output.parsed;
@@ -467,12 +435,13 @@ where
 
     finalize_status(&mut run, answered);
 
-    snapshot.status = match run.status.as_str() {
-        "complete" => "Run complete.".to_string(),
-        "interrupted" => "Run interrupted.".to_string(),
-        "paused" => "Run paused — press Resume to continue.".to_string(),
-        "error" => "Run failed.".to_string(),
-        other => other.to_string(),
+    // finalize_status above guarantees a terminal status here (Running is flipped to
+    // Complete), so every arm is a finished-run message.
+    snapshot.status = match run.status {
+        RunStatus::Complete | RunStatus::Running => "Run complete.".to_string(),
+        RunStatus::Interrupted => "Run interrupted.".to_string(),
+        RunStatus::Paused => "Run paused — press Resume to continue.".to_string(),
+        RunStatus::Error => "Run failed.".to_string(),
     };
     snapshot.current_run = Some(run.clone());
     snapshot.runs.push(run.clone());
@@ -484,6 +453,63 @@ where
     observer(run);
 
     Ok(snapshot)
+}
+
+/// Call the model for one turn, retrying a transient failure a few times with
+/// backoff. On success returns the parsed output. If every attempt fails the run is
+/// *paused* (resumable, not hard-errored) and `None` is returned so the caller stops —
+/// the app and conversation stay intact and the user can Resume.
+async fn call_model_with_retry<P, F>(
+    inference: &P,
+    provider: &ProviderConfig,
+    request: InferenceRequest,
+    run: &mut AgentRun,
+    agent_id: &str,
+    observer: &mut F,
+) -> Option<InferenceOutput<ReActResponse>>
+where
+    P: InferenceProvider,
+    F: FnMut(AgentRun),
+{
+    const MAX_MODEL_ATTEMPTS: u32 = 3;
+    let mut sink = |_partial: String| {};
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        match inference
+            .invoke_react_streaming(provider, request.clone(), &mut sink)
+            .await
+        {
+            Ok(output) => return Some(output),
+            Err(err) => {
+                run.events.push(event(
+                    &run.id,
+                    Some(agent_id.to_string()),
+                    AgentEventKind::Error,
+                    format!("Model call failed (attempt {attempt}/{MAX_MODEL_ATTEMPTS})"),
+                    err,
+                ));
+                observer(run.clone());
+                if attempt < MAX_MODEL_ATTEMPTS {
+                    backoff(300 * attempt).await;
+                    continue;
+                }
+                run.status = RunStatus::Paused;
+                if run.final_answer.trim().is_empty() {
+                    run.final_answer = "Paused: the model provider could not be reached after several attempts. Check the Provider settings, then press Resume to continue.".to_string();
+                }
+                run.events.push(event(
+                    &run.id,
+                    Some(agent_id.to_string()),
+                    AgentEventKind::Interrupted,
+                    "Run paused (provider unreachable)",
+                    truncate(&run.final_answer, 300),
+                ));
+                observer(run.clone());
+                return None;
+            }
+        }
+    }
 }
 
 fn finalize_status(run: &mut AgentRun, answered: bool) {
