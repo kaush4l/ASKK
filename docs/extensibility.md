@@ -78,7 +78,7 @@ Enabled skills are composed into the prompt by the provider-normalization path. 
 
 Validators gate tool results and final answers. `ValidatorRegistry` returns a structured `ValidationOutcome { ok, feedback }`. Failures are recorded in `run.scratchpad.verification`, added as visible loop feedback, and bounded by the run verification retry budget.
 
-Acceptance tests: `validators::tests::*` and `engine::tests::final_answer_validation_*` prove tool and final-answer validation paths.
+Acceptance tests: `engine::validators::tests::*` and `engine::tests::final_answer_validation_*` prove tool and final-answer validation paths.
 
 ## LLM provider contract
 

@@ -9,7 +9,7 @@
 
 use super::save_snapshot;
 use super::shared::set_status;
-use crate::browser_exec::{format_run_js, run_js_in_browser};
+use crate::engine::browser_exec::{format_run_js, run_js_in_browser};
 use crate::orchestrator::run_goal_with_orchestrator_or_worker;
 use crate::state::{AppSnapshot, RunStatus};
 use crate::storage::vfs::ProjectVfs;

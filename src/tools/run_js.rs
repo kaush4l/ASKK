@@ -35,8 +35,8 @@ fn handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a
         let timeout_ms = integer_arg(args, "timeout_ms")
             .unwrap_or(10_000)
             .clamp(100, 60_000) as u32;
-        let value = crate::browser_exec::run_js_in_browser(&code, timeout_ms).await?;
-        let (ok, text) = crate::browser_exec::format_run_js(&value);
+        let value = crate::engine::browser_exec::run_js_in_browser(&code, timeout_ms).await?;
+        let (ok, text) = crate::engine::browser_exec::format_run_js(&value);
         if ok { Ok(text) } else { Err(text) }
     })
 }

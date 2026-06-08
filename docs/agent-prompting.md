@@ -41,7 +41,7 @@ soul → "You are {name}" → role → ReAct guidance → sub-agents → tools �
 
 ## Engine owns its messages
 
-`src/engine.rs` owns the conversation messages distinct from the system prompt: the
+`src/engine/mod.rs` owns the conversation messages distinct from the system prompt: the
 user goal, prior-run conversation seed, the assistant's raw responses, tool
 observations (`tool_name -> result`), and validator feedback. Tool output is always
 untrusted **data**, never instructions.

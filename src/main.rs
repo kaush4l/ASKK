@@ -2,10 +2,8 @@ use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 mod agent_prompt;
-mod browser_exec;
 mod components;
 mod engine;
-mod execution;
 mod inference;
 mod mcp;
 mod orchestrator;
@@ -13,7 +11,6 @@ mod responses;
 mod state;
 mod storage;
 mod tools;
-mod validators;
 mod worker;
 mod workflow;
 

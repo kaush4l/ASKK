@@ -11,7 +11,10 @@
 //! observation back as untrusted data) or accepts the model's final answer. Tool
 //! results are always treated as data, never as instructions to follow.
 
-use crate::execution::{BrowserExecutionProvider, ExecutionProvider};
+pub mod browser_exec;
+mod execution;
+mod validators;
+
 use crate::inference::{
     InferenceOutput, InferenceProvider, InferenceRequest, SubAgentInfo, get_implementation,
 };
@@ -21,11 +24,12 @@ use crate::state::{
     RunLane, RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, default_tool_names, event,
     now_iso,
 };
-use crate::validators::ValidatorRegistry;
+use execution::{BrowserExecutionProvider, ExecutionProvider};
 use std::cell::Cell;
 use std::future::Future;
 use std::pin::Pin;
 use uuid::Uuid;
+use validators::ValidatorRegistry;
 
 /// Boxed future returned by the engine entry points.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = AppResult<T>> + 'a>>;
