@@ -53,11 +53,21 @@ pub fn AppShell(
     // Workspace owns its full width; Chat shows the compiled-prompt panel on the
     // right; other pages show the event log.
     let full_width = matches!(active_page(), DashboardPage::Workspace);
-    let frame_class = match (nav_collapsed(), full_width) {
+    // On Chat, cap the frame to the viewport so the conversation and prompt panels
+    // scroll internally and the composer stays a visible footer (no page scroll to
+    // reach the input). Only Chat opts in: both its columns scroll internally, so
+    // other pages keep their content-driven page growth.
+    let chat_active = matches!(active_page(), DashboardPage::Chat);
+    let base_frame_class = match (nav_collapsed(), full_width) {
         (true, true) => "dashboard-frame nav-collapsed no-log",
         (true, false) => "dashboard-frame nav-collapsed",
         (false, true) => "dashboard-frame no-log",
         (false, false) => "dashboard-frame",
+    };
+    let frame_class = if chat_active {
+        format!("{base_frame_class} chat-active")
+    } else {
+        base_frame_class.to_string()
     };
     let left_nav_class = if nav_collapsed() {
         "left-nav collapsed"
