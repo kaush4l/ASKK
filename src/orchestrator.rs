@@ -48,6 +48,31 @@ impl WorkerPool {
     }
 }
 
+/// The orchestrator's own phase vocabulary — the typed source of the workflow step
+/// names it drives the [`WorkflowGate`] through. `step_name` is the single boundary
+/// where a typed phase becomes the config-defined string the gate matches on, so a
+/// step name that diverges from `default_workflows()` can no longer be introduced by
+/// a typo at a call site. Workflow *definitions* stay string-keyed because they are
+/// user/JSON-defined (an open set); only the orchestrator's own choices are typed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OrchestrationPhase {
+    WorkersRunning,
+    WorkersJoined,
+    Failed,
+    Aggregated,
+}
+
+impl OrchestrationPhase {
+    fn step_name(self) -> &'static str {
+        match self {
+            Self::WorkersRunning => "workers_running",
+            Self::WorkersJoined => "workers_joined",
+            Self::Failed => "failed",
+            Self::Aggregated => "aggregated",
+        }
+    }
+}
+
 pub async fn run_goal_with_orchestrator_or_worker<F>(
     snapshot: AppSnapshot,
     goal: String,
@@ -162,7 +187,7 @@ where
             &parent_cell,
             &observer_cell,
             &mut workflow_gate,
-            "workers_running",
+            OrchestrationPhase::WorkersRunning,
         )?;
         mark_wave_running(&parent_cell, &observer_cell, &planned, &wave);
         let child_futures = wave.into_iter().map(|idx| {
@@ -212,17 +237,17 @@ where
                         .map(|run| run.final_answer.clone())
                         .unwrap_or_default();
                     if !parent_has_terminal_failure(&parent_cell) {
-                        let next_step = if child_status_failed(&status) {
+                        let next_phase = if child_status_failed(&status) {
                             stop_after_wave = true;
-                            "failed"
+                            OrchestrationPhase::Failed
                         } else {
-                            "workers_joined"
+                            OrchestrationPhase::WorkersJoined
                         };
                         apply_workflow_transition(
                             &parent_cell,
                             &observer_cell,
                             &mut workflow_gate,
-                            next_step,
+                            next_phase,
                         )?;
                     }
                     finish_worker(
@@ -246,7 +271,7 @@ where
                             &parent_cell,
                             &observer_cell,
                             &mut workflow_gate,
-                            "failed",
+                            OrchestrationPhase::Failed,
                         )?;
                     }
                     stop_after_wave = true;
@@ -273,7 +298,11 @@ where
         &parent_cell,
         &observer_cell,
         &mut workflow_gate,
-        if failed { "failed" } else { "aggregated" },
+        if failed {
+            OrchestrationPhase::Failed
+        } else {
+            OrchestrationPhase::Aggregated
+        },
     )?;
     let mut parent = parent_cell.borrow().clone();
     parent.status = if failed {
@@ -309,7 +338,7 @@ fn apply_workflow_transition<F>(
     parent_cell: &Rc<RefCell<AgentRun>>,
     observer_cell: &Rc<RefCell<F>>,
     workflow_gate: &mut Option<WorkflowGate>,
-    next_step: &str,
+    phase: OrchestrationPhase,
 ) -> AppResult<()>
 where
     F: FnMut(AgentRun),
@@ -318,7 +347,7 @@ where
         return Ok(());
     };
 
-    match gate.transition_to(next_step) {
+    match gate.transition_to(phase.step_name()) {
         Ok(state) => {
             {
                 let mut parent = parent_cell.borrow_mut();
