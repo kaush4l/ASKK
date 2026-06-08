@@ -267,6 +267,7 @@ where
             history,
             tools: specs.clone(),
             sub_agents: sub_agents.clone(),
+            now: crate::state::now_iso(),
             response_format: agent.response_format,
         };
 

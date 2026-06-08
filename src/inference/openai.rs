@@ -160,6 +160,7 @@ mod tests {
             history: Vec::new(),
             tools: Vec::new(),
             sub_agents: Vec::new(),
+            now: "2026-06-08T00:00:00Z".to_string(),
             response_format: ResponseFormat::Toon,
         };
 
@@ -172,8 +173,8 @@ mod tests {
         assert!(
             system.find("You are Planner.").unwrap() > system.find("Shared behavior.").unwrap()
         );
-        assert!(system.contains("Role:\nPlan carefully."));
-        assert!(system.contains("## Care\nWork carefully."));
+        assert!(system.contains("You are Planner.\n\nPlan carefully."));
+        assert!(system.contains("### Care\nWork carefully."));
     }
 
     #[test]
@@ -196,6 +197,7 @@ mod tests {
             ],
             tools: Vec::new(),
             sub_agents: Vec::new(),
+            now: "2026-06-08T00:00:00Z".to_string(),
             response_format: ResponseFormat::Toon,
         };
 
@@ -221,6 +223,7 @@ mod tests {
             history: Vec::new(),
             tools: Vec::new(),
             sub_agents: Vec::new(),
+            now: "2026-06-08T00:00:00Z".to_string(),
             response_format: ResponseFormat::Toon,
         };
 

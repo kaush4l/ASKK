@@ -44,6 +44,10 @@ pub struct InferenceRequest {
     /// Sub-agents this run can delegate to (the roster the orchestrator/agent
     /// "sees"). Empty for a single-agent run with no peers.
     pub sub_agents: Vec<SubAgentInfo>,
+    /// The current date/time, read once at request-build time (via
+    /// [`crate::state::now_iso`]) and rendered into the prompt's `## CONTEXT` block so
+    /// the agent can reason about "now" — e.g. how recent a news search should be.
+    pub now: String,
     pub response_format: ResponseFormat,
 }
 

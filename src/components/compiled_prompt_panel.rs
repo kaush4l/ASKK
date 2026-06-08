@@ -52,6 +52,7 @@ fn compile_preview_prompt(snapshot: &AppSnapshot, agent: &crate::state::Agent) -
         history: Vec::new(),
         tools,
         sub_agents,
+        now: crate::state::now_iso(),
         response_format: agent.response_format,
     };
 

@@ -7,9 +7,13 @@ part lives. (Patterns here were informed by the LocalAgents reference design.)
 
 System instruction is split across two markdown sources:
 
-- **`soul.md`** — the shared agent "soul" (behavioral charter), embedded at compile
-  time (`state::manifest::default_soul_prompt`) and stored mutably on
-  `AppSnapshot.soul`. It is rendered **first** in every prompt.
+- **`soul.md`** — the agent "soul" (behavioral charter), embedded at compile time
+  (`state::manifest::default_soul_prompt`) and stored mutably on `AppSnapshot.soul`.
+  It is rendered **first** in every prompt and carries only behavioral content (no
+  meta-header): the four laws (think before acting, stay grounded, work surgically,
+  drive to a verified result) plus the exploratory streak, the untrusted-data
+  boundary, and the research/build playbooks. It does **not** list the tools — those
+  come from the tool manifest.
 - **`agents/*.md`** — per-agent files (`planner.md`, `coder.md`, `researcher.md`,
   `synthesizer.md`) parsed by `agent_from_markdown` into `Agent { name, role, … }`.
   The markdown body becomes the agent's `role`. The right agent is chosen per run
@@ -21,10 +25,18 @@ System instruction is split across two markdown sources:
 Initialization reduces in-code objects to LLM-facing text, all in
 [`src/agent_prompt.rs`](../src/agent_prompt.rs):
 
-- `describe_tools` — `ToolSpec`s (already MCP-shaped `{name, description,
-  input_schema}`) serialized as the tool catalogue.
-- `describe_skills` — enabled `Skill`s as markdown sections.
-- `describe_sub_agents` — the sub-agent roster (see below).
+- `describe_tools` — each `ToolSpec` as a **minimal** markdown entry (name +
+  description + a generic `tool_name({"key": "value"})` usage hint) under
+  `## AVAILABLE TOOLS`. The raw `input_schema` is **not** dumped into the prompt — the
+  exact parameters live in the description, and the model writes calls in the same
+  `tool_name({...})` shape the response format requires.
+- `render_context` — a `## CONTEXT` block carrying the current date (UTC, via
+  `state::now_iso`, passed in on `InferenceRequest.now`) so the agent can reason about
+  "now" (e.g. how recent a news search should be), plus the one-line sandbox note.
+- `describe_skills` — enabled `Skill`s as `### ` subsections under `## SKILLS`; the
+  section is omitted entirely when none are enabled.
+- `describe_sub_agents` — the sub-agent roster under `## SUB-AGENTS` (see below);
+  omitted when empty.
 - `Agent::short_description` — a one-line summary of an agent derived from its role,
   used in the roster.
 
@@ -36,8 +48,12 @@ provider (`src/inference/openai.rs`) **only** wires that rendered system prompt 
 the transcript and ships it; it composes no prompt sections itself. Fixed order:
 
 ```
-soul → "You are {name}" → role → ReAct guidance → sub-agents → tools → skills → response-format
+soul → "You are {name}" → role → ## CONTEXT → ## SUB-AGENTS → ## AVAILABLE TOOLS → ## SKILLS → ## RESPONSE FORMAT
 ```
+
+The prompt carries only what the agent's objects contain: no boilerplate headers, no
+JSON-Schema tool dump, and the optional `## SUB-AGENTS` / `## SKILLS` sections are
+omitted when empty.
 
 ## Engine owns its messages
 
