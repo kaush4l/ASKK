@@ -191,13 +191,18 @@ pub fn agent_to_markdown(agent: &Agent) -> String {
     } else {
         agent.enabled_tools.join(", ")
     };
+    let strategy_line = match agent.strategy_id.as_deref() {
+        Some(s) if !s.is_empty() => format!("strategy: {s}\n"),
+        _ => String::new(),
+    };
     format!(
-        "---\nid: {id}\nname: {name}\nenabled: {enabled}\ntools: {tools}\nresponse_format: {response_format}\n---\n\n{role}\n",
+        "---\nid: {id}\nname: {name}\nenabled: {enabled}\ntools: {tools}\nresponse_format: {response_format}\n{strategy_line}---\n\n{role}\n",
         id = slugify(&agent.id),
         name = agent.name.trim(),
         enabled = agent.enabled,
         tools = tools,
         response_format = agent.response_format.as_form_value(),
+        strategy_line = strategy_line,
         role = agent.role.trim(),
     )
 }
@@ -456,5 +461,52 @@ mod tests {
             parse_tools(" calculator , calculator , file-read "),
             vec!["calculator"]
         );
+    }
+
+    #[test]
+    fn agent_markdown_parses_strategy_key() {
+        let agent = agent_from_markdown(
+            "agents/orchestrator.md",
+            "---\nid: orchestrator\nname: Orchestrator\nenabled: true\ntools: all\nstrategy: orchestrate\n---\n\nOrchestrate tasks.",
+        )
+        .unwrap();
+
+        assert_eq!(agent.strategy_id, Some("orchestrate".to_string()));
+    }
+
+    #[test]
+    fn agent_markdown_without_strategy_defaults_to_none() {
+        let agent = agent_from_markdown(
+            "agents/plain.md",
+            "---\nid: plain\nname: Plain\nenabled: true\ntools: all\n---\n\nDo work.",
+        )
+        .unwrap();
+
+        assert_eq!(agent.strategy_id, None);
+    }
+
+    #[test]
+    fn agent_markdown_round_trips_strategy() {
+        // Agent with a strategy_id survives a serialize → parse round-trip.
+        let mut agent = Agent::new("Round Tripper", "Do the round trip.", default_tool_names());
+        agent.strategy_id = Some("plan-act-review".to_string());
+
+        let md = agent_to_markdown(&agent);
+        assert!(md.contains("strategy: plan-act-review"));
+
+        let path = format!("agents/{}.md", slugify(&agent.name));
+        let parsed = agent_from_markdown(&path, &md).unwrap();
+        assert_eq!(parsed.strategy_id, Some("plan-act-review".to_string()));
+
+        // Agent with strategy_id == None round-trips to None, with no `strategy:` line.
+        let mut agent_none = Agent::new("No Strategy", "Just work.", default_tool_names());
+        agent_none.strategy_id = None;
+
+        let md_none = agent_to_markdown(&agent_none);
+        assert!(!md_none.contains("strategy:"));
+
+        let path_none = format!("agents/{}.md", slugify(&agent_none.name));
+        let parsed_none = agent_from_markdown(&path_none, &md_none).unwrap();
+        assert_eq!(parsed_none.strategy_id, None);
     }
 }
