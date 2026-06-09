@@ -10,7 +10,7 @@ use serde_json::json;
 
 use super::transport::{assistant_content, send_chat_completion, send_chat_completion_stream};
 use super::{InferenceOutput, InferenceProvider, InferenceRequest};
-use crate::responses::{ReActResponse, StructuredResponse, response_to_result};
+use crate::responses::{ReActResponse, response_to_result};
 use crate::state::{AppResult, Message, ProviderConfig};
 
 #[derive(Clone, Debug, Default)]
@@ -119,7 +119,7 @@ impl OpenAiCompatibleInference {
         // generates, so format adherence is strongest.
         messages.push(WireMessage {
             role: "user".to_string(),
-            content: ReActResponse::instructions(request.response_format),
+            content: request.format_instructions.clone(),
         });
         Ok(messages)
     }
@@ -149,7 +149,7 @@ fn history_wire_message(message: &Message) -> WireMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::responses::ResponseFormat;
+    use crate::responses::{ResponseFormat, ResponseKind};
     use crate::state::Skill;
 
     #[test]
@@ -171,6 +171,7 @@ mod tests {
             sub_agents: Vec::new(),
             now: "2026-06-08T00:00:00Z".to_string(),
             response_format: ResponseFormat::Toon,
+            format_instructions: ResponseKind::ReAct.instructions(ResponseFormat::Toon),
         };
 
         let messages = OpenAiCompatibleInference
@@ -217,6 +218,7 @@ mod tests {
             sub_agents: Vec::new(),
             now: "2026-06-08T00:00:00Z".to_string(),
             response_format: ResponseFormat::Toon,
+            format_instructions: ResponseKind::ReAct.instructions(ResponseFormat::Toon),
         };
 
         let messages = OpenAiCompatibleInference
@@ -251,6 +253,7 @@ mod tests {
             sub_agents: Vec::new(),
             now: "2026-06-08T00:00:00Z".to_string(),
             response_format: ResponseFormat::Toon,
+            format_instructions: ResponseKind::ReAct.instructions(ResponseFormat::Toon),
         };
 
         let messages = OpenAiCompatibleInference

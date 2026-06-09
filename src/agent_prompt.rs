@@ -21,7 +21,7 @@
 //! therefore soul, agent, tools, context, messages, response format.
 
 use crate::inference::{InferenceRequest, SubAgentInfo};
-use crate::responses::{ReActResponse, ResponseFormat, StructuredResponse};
+use crate::responses::{ResponseFormat, ResponseKind};
 use crate::state::{AppResult, Message, Skill, ToolSpec, default_soul_prompt};
 
 /// A prompt whose **static** pieces are compiled once and reused across turns.
@@ -140,12 +140,13 @@ impl CompiledPrompt {
         goal: &str,
         history: &[Message],
         response_format: ResponseFormat,
+        response_kind: ResponseKind,
     ) -> RenderedPrompt {
         RenderedPrompt {
             system_prompt: self.render_system(now),
             goal: goal.to_string(),
             history: history.to_vec(),
-            response_format: ReActResponse::instructions(response_format),
+            response_format: response_kind.instructions(response_format),
         }
     }
 }
@@ -244,7 +245,7 @@ fn describe_sub_agents(sub_agents: &[SubAgentInfo]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::responses::ResponseFormat;
+    use crate::responses::{ReActResponse, ResponseFormat, StructuredResponse};
     use crate::state::Message;
 
     fn base_request() -> InferenceRequest {
@@ -265,6 +266,7 @@ mod tests {
             sub_agents: Vec::new(),
             now: "2026-06-08T00:00:00Z".to_string(),
             response_format: ResponseFormat::Toon,
+            format_instructions: ResponseKind::ReAct.instructions(ResponseFormat::Toon),
         }
     }
 
@@ -450,12 +452,19 @@ mod tests {
             role: "user".to_string(),
             content: "Earlier turn.".to_string(),
         }];
-        let first = compiled.render(&request.now, "Goal one.", &history, ResponseFormat::Toon);
+        let first = compiled.render(
+            &request.now,
+            "Goal one.",
+            &history,
+            ResponseFormat::Toon,
+            ResponseKind::ReAct,
+        );
         let second = compiled.render(
             "2031-02-03T00:00:00Z",
             "Goal two.",
             &[],
             ResponseFormat::Json,
+            ResponseKind::ReAct,
         );
 
         // The static body inside the system prompt is unchanged across renders.

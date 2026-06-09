@@ -1,7 +1,7 @@
 use crate::agent_prompt::render_system_prompt;
 use crate::engine::{pick_agent, sub_agent_roster};
 use crate::inference::InferenceRequest;
-use crate::responses::{ReActResponse, StructuredResponse};
+use crate::responses::ResponseKind;
 use crate::state::{AppSnapshot, default_tool_names};
 use crate::tools::ToolRegistry;
 use dioxus::prelude::*;
@@ -57,11 +57,12 @@ fn compile_preview_prompt(snapshot: &AppSnapshot, agent: &crate::state::Agent) -
         sub_agents,
         now: crate::state::now_iso(),
         response_format: agent.response_format,
+        format_instructions: ResponseKind::ReAct.instructions(agent.response_format),
     };
 
     let system = render_system_prompt(&request)
         .unwrap_or_else(|err| format!("Unable to render prompt: {err}"));
-    let response_format = ReActResponse::instructions(agent.response_format);
+    let response_format = request.format_instructions.clone();
     format!(
         "{system}\n\n## MESSAGES\n\n(The running conversation — the goal, prior turns, and tool observations — is inserted here at run time.)\n\n{response_format}"
     )

@@ -22,8 +22,8 @@ use crate::inference::{
     get_implementation,
 };
 use crate::responses::{
-    FormatNegotiator, ParseOutcome, ParsedToolCall, ReActAction, ReActResponse, StructuredResponse,
-    parse_tool_calls,
+    FormatNegotiator, ParseOutcome, ParsedToolCall, ReActAction, ReActResponse, ResponseKind,
+    StructuredResponse, parse_tool_calls,
 };
 use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, ProviderConfig, RunBudgets,
@@ -347,6 +347,7 @@ impl AgentLoop {
             sub_agents: self.sub_agents.clone(),
             now: crate::state::now_iso(),
             response_format: requested_format,
+            format_instructions: ResponseKind::ReAct.instructions(requested_format),
         };
 
         let Some(output) = call_model_with_retry(
