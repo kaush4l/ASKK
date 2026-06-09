@@ -13,11 +13,11 @@
 
 use std::cell::Cell;
 
-use crate::engine::ReActEngine;
+use crate::engine::{LoopParams, ReActEngine};
 use crate::state::{Agent, AppResult, AppSnapshot, ToolSpec};
 use serde_json::{Value, json};
 
-use super::common::string_arg;
+use super::common::{optional_string_arg, string_arg};
 use super::{ToolDescriptor, ToolFuture};
 
 /// Hard cap on nested `call_agent` delegation depth. Each level is already bounded
@@ -73,7 +73,9 @@ fn spec() -> ToolSpec {
             "type": "object",
             "properties": {
                 "agent": { "type": "string", "description": "The id or name of the sub-agent to run (case-insensitive)." },
-                "query": { "type": "string", "description": "The self-contained sub-task for the sub-agent to answer." }
+                "query": { "type": "string", "description": "The self-contained sub-task for the sub-agent to answer." },
+                "strategy": { "type": "string", "description": "Optional strategy id the sub-agent should run for this task (e.g. react, plan-act-review). Defaults to the agent's configured strategy." },
+                "max_turns": { "type": "integer", "description": "Optional per-invocation step budget for the sub-agent." }
             },
             "required": ["agent", "query"]
         }),
@@ -90,6 +92,21 @@ fn handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a>
         let agent = resolve_agent(snapshot, &agent_ref)?;
         let agent_label = agent.name.clone();
 
+        let strategy = optional_string_arg(args, "strategy");
+        if let Some(requested) = strategy.as_deref()
+            && crate::strategy::StrategyRegistry::new()
+                .get(requested)
+                .is_none()
+        {
+            return Err(format!(
+                "Unknown strategy `{requested}`. Known strategies: react, plan-act-review, skills-work-critique, orchestrate."
+            ));
+        }
+        let max_turns = args
+            .get("max_turns")
+            .and_then(Value::as_u64)
+            .map(|v| v as u32);
+
         // Bound delegation depth so two agents that delegate to each other cannot
         // recurse forever. Held for the duration of the sub-run, released on drop.
         let _depth = DepthGuard::enter()?;
@@ -97,8 +114,13 @@ fn handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a>
         // Run on a focused sub-snapshot scoped to the resolved agent, so the
         // sub-run never mutates the caller's live snapshot / current run. The
         // sub-agent's loop reuses the existing engine entry point.
+        let params = LoopParams {
+            agent_id: Some(agent.id.clone()),
+            strategy,
+            max_turns,
+        };
         let sub_snapshot = snapshot.clone().with_active_agent(agent);
-        let final_answer = run_sub_agent(sub_snapshot, query).await?;
+        let final_answer = run_sub_agent(sub_snapshot, query, params).await?;
 
         // The sub-agent's answer is UNTRUSTED DATA: hand it back verbatim as a tool
         // observation, clearly attributed, with no instruction-following implied.
@@ -131,11 +153,15 @@ fn resolve_agent(snapshot: &AppSnapshot, agent_ref: &str) -> AppResult<Agent> {
 
 /// Run the resolved sub-agent's loop on `query` and extract its final answer text.
 /// A run that produces no answer yields a clear, non-panicking message.
-async fn run_sub_agent(sub_snapshot: AppSnapshot, query: String) -> AppResult<String> {
+async fn run_sub_agent(
+    sub_snapshot: AppSnapshot,
+    query: String,
+    params: LoopParams,
+) -> AppResult<String> {
     // The observer is a no-op: the sub-run's timeline is internal to this tool call
     // and is summarized by its final answer.
     let result = ReActEngine::new()
-        .run_goal_with_observer(sub_snapshot, query, |_run| {})
+        .run_with_params_and_observer(sub_snapshot, query, params, |_run| {})
         .await?;
 
     let answer = result

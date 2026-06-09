@@ -14,7 +14,7 @@ use dioxus::prelude::*;
 #[component]
 pub fn CompiledPromptPanel(snapshot: Signal<AppSnapshot>) -> Element {
     let current = snapshot.read().clone();
-    let agent = pick_agent(&current);
+    let agent = pick_agent(&current, None);
     let prompt = compile_preview_prompt(&current, &agent);
 
     rsx! {

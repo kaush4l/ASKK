@@ -23,6 +23,10 @@ pub struct WorkerDispatch {
     pub goal: String,
     pub agent: Agent,
     pub snapshot: AppSnapshot,
+    #[serde(default)]
+    pub strategy: Option<String>,
+    #[serde(default)]
+    pub max_turns: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -135,6 +139,8 @@ mod tests {
                 default_tool_names(),
             ),
             snapshot: AppSnapshot::default(),
+            strategy: None,
+            max_turns: None,
         });
 
         let encoded = serde_json::to_string(&message).unwrap();

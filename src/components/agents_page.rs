@@ -140,6 +140,23 @@ pub fn AgentsPage(
                                 }
                             }
                             label {
+                                "Strategy"
+                                select {
+                                    value: "{agent.strategy_id.clone().unwrap_or_else(|| \"react\".to_string())}",
+                                    onchange: move |event| {
+                                        if let Some(agent) = snapshot.write().agents.get_mut(agent_index) {
+                                            let value = event.value();
+                                            agent.strategy_id =
+                                                if value == "react" { None } else { Some(value) };
+                                        }
+                                    },
+                                    option { value: "react", "ReAct (default)" }
+                                    option { value: "plan-act-review", "Plan – Act – Review" }
+                                    option { value: "skills-work-critique", "Skills – Work – Critique" }
+                                    option { value: "orchestrate", "Orchestrate" }
+                                }
+                            }
+                            label {
                                 "Agent prompt"
                                 textarea {
                                     value: "{agent.role}",

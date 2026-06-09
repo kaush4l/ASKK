@@ -14,6 +14,15 @@ pub(crate) fn string_arg(args: &Value, key: &str) -> AppResult<String> {
         .ok_or_else(|| format!("Missing required string argument `{key}`"))
 }
 
+/// Optional string argument: None when absent/empty, Some(trimmed) otherwise.
+pub(crate) fn optional_string_arg(args: &Value, key: &str) -> Option<String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 /// Read an optional integer argument, accepting either a JSON number or a numeric
 /// string (models often emit `"count":"5"`).
 pub(crate) fn integer_arg(args: &Value, key: &str) -> Option<i64> {

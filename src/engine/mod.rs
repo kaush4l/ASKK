@@ -45,6 +45,20 @@ use validators::ValidatorRegistry;
 /// Boxed future returned by the engine entry points.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = AppResult<T>> + 'a>>;
 
+/// Construction parameters for one loop invocation. Whoever builds a loop — the
+/// chat entry, the worker runtime, or `call_agent` building a sub-loop — passes
+/// the same struct; strategy travels with the work.
+#[derive(Clone, Debug, Default)]
+pub struct LoopParams {
+    /// Agent to run (matched by id then name, case-insensitive). None = the
+    /// first enabled agent, exactly as before.
+    pub agent_id: Option<String>,
+    /// Strategy override: explicit param → agent's `strategy_id` → "react".
+    pub strategy: Option<String>,
+    /// Per-invocation step-budget override. None = `snapshot.orchestrator.max_steps`.
+    pub max_turns: Option<u32>,
+}
+
 thread_local! {
     /// Cooperative stop flag. WASM is single-threaded, so a thread-local `Cell`
     /// is sufficient to signal an in-flight run to halt after its current turn.
@@ -105,7 +119,30 @@ impl ReActEngine {
         F: FnMut(AgentRun) + 'static,
     {
         let executor = self.executor.clone();
-        Box::pin(async move { run_react_session(executor, snapshot, goal, observer).await })
+        Box::pin(async move {
+            run_react_session(executor, snapshot, goal, LoopParams::default(), observer).await
+        })
+    }
+
+    /// Run a goal with explicit loop parameters (agent, strategy, budget).
+    pub fn run_with_params_and_observer<F>(
+        &self,
+        snapshot: AppSnapshot,
+        goal: String,
+        params: LoopParams,
+        observer: F,
+    ) -> BoxFuture<'_, AppSnapshot>
+    where
+        F: FnMut(AgentRun) + 'static,
+    {
+        if let Some(requested) = params.strategy.as_deref()
+            && StrategyRegistry::new().get(requested).is_none()
+        {
+            let id = requested.to_string();
+            return Box::pin(async move { Err(format!("Unknown strategy `{id}`.")) });
+        }
+        let executor = self.executor.clone();
+        Box::pin(async move { run_react_session(executor, snapshot, goal, params, observer).await })
     }
 
     /// Resume a persisted job by re-running its recorded goal through the loop.
@@ -126,7 +163,10 @@ impl ReActEngine {
                 .find(|job| job.id == job_id)
                 .map(|job| job.goal.clone());
             match goal {
-                Some(goal) => run_react_session(executor, snapshot, goal, observer).await,
+                Some(goal) => {
+                    run_react_session(executor, snapshot, goal, LoopParams::default(), observer)
+                        .await
+                }
                 None => Err(format!("No job found with id {job_id}")),
             }
         })
@@ -203,9 +243,14 @@ impl AgentLoop {
     /// Pure and synchronous: it touches no platform APIs and performs no I/O. The
     /// async, observer-driven run-start work (browser MCP bring-up) is deferred to
     /// [`AgentLoop::run`] because it needs the live `run` and `observer`.
-    fn new(executor: BrowserExecutionProvider, snapshot: &AppSnapshot, goal: &str) -> Self {
+    fn new(
+        executor: BrowserExecutionProvider,
+        snapshot: &AppSnapshot,
+        goal: &str,
+        params: &LoopParams,
+    ) -> Self {
         let lane = classify_goal(goal);
-        let agent = pick_agent(snapshot);
+        let agent = pick_agent(snapshot, params.agent_id.as_deref());
         let agent_id = agent.id.clone();
         let enabled_tools = if agent.enabled_tools.is_empty() {
             default_tool_names()
@@ -240,12 +285,15 @@ impl AgentLoop {
         // Prior conversation turns so the agent carries its session forward instead of
         // treating every query as a fresh start.
         let conversation = conversation_seed(&snapshot.runs);
-        let max_steps = snapshot.orchestrator.max_steps.max(1);
+        let max_steps = params
+            .max_turns
+            .unwrap_or(snapshot.orchestrator.max_steps)
+            .max(1);
 
-        // Strategy resolution: explicit param → agent config → default. Task 6
-        // threads agent config + params here; until then both are None (= react).
+        // Strategy resolution: explicit param → agent config → default.
         let registry = StrategyRegistry::new();
-        let strategy_id = resolve_strategy_id(None, None);
+        let strategy_id =
+            resolve_strategy_id(params.strategy.as_deref(), agent.strategy_id.as_deref());
         let strategy = registry.get(&strategy_id).unwrap_or_else(fallback_strategy);
 
         Self {
@@ -959,13 +1007,14 @@ async fn run_react_session<F>(
     executor: BrowserExecutionProvider,
     snapshot: AppSnapshot,
     goal: String,
+    params: LoopParams,
     observer: F,
 ) -> AppResult<AppSnapshot>
 where
     F: FnMut(AgentRun),
 {
     clear_interrupt();
-    let agent_loop = AgentLoop::new(executor, &snapshot, &goal);
+    let agent_loop = AgentLoop::new(executor, &snapshot, &goal, &params);
     Ok(agent_loop.run(snapshot, goal, observer).await)
 }
 
@@ -1210,7 +1259,21 @@ pub(crate) fn sub_agent_roster(
         .collect()
 }
 
-pub(crate) fn pick_agent(snapshot: &AppSnapshot) -> Agent {
+pub(crate) fn pick_agent(snapshot: &AppSnapshot, requested: Option<&str>) -> Agent {
+    if let Some(needle) = requested.map(str::trim).filter(|needle| !needle.is_empty())
+        && let Some(agent) = snapshot
+            .agents
+            .iter()
+            .find(|agent| agent.id.eq_ignore_ascii_case(needle))
+            .or_else(|| {
+                snapshot
+                    .agents
+                    .iter()
+                    .find(|agent| agent.name.eq_ignore_ascii_case(needle))
+            })
+    {
+        return agent.clone();
+    }
     snapshot
         .agents
         .iter()
@@ -1502,6 +1565,20 @@ mod tests {
             run.events.last().unwrap().kind,
             AgentEventKind::Verification
         );
+    }
+
+    #[test]
+    fn loop_params_strategy_beats_agent_config() {
+        use crate::strategy::resolve_strategy_id;
+        assert_eq!(
+            resolve_strategy_id(Some("plan-act-review"), Some("react")),
+            "plan-act-review"
+        );
+        assert_eq!(
+            resolve_strategy_id(None, Some("orchestrate")),
+            "orchestrate"
+        );
+        assert_eq!(resolve_strategy_id(None, None), "react");
     }
 
     #[test]

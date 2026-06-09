@@ -56,6 +56,10 @@ pub struct Agent {
     pub model_profile_id: Option<String>,
     #[serde(default)]
     pub workflow_id: Option<String>,
+    /// Strategy this agent runs by default. `None` = the workspace default
+    /// (`react`). Overridable per invocation via `LoopParams.strategy`.
+    #[serde(default)]
+    pub strategy_id: Option<String>,
 }
 
 impl Agent {
@@ -74,6 +78,7 @@ impl Agent {
             source_path: None,
             model_profile_id: None,
             workflow_id: None,
+            strategy_id: None,
         }
     }
 
@@ -157,6 +162,9 @@ pub fn agent_from_markdown(path: &str, content: &str) -> AppResult<Agent> {
     let workflow_id = meta_value(&meta, "workflow")
         .filter(|value| !value.trim().is_empty())
         .map(|value| slugify(&value));
+    let strategy_id = meta_value(&meta, "strategy")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     let role = body.trim().to_string();
 
     if role.is_empty() {
@@ -173,6 +181,7 @@ pub fn agent_from_markdown(path: &str, content: &str) -> AppResult<Agent> {
         source_path: Some(path.to_string()),
         model_profile_id: None,
         workflow_id,
+        strategy_id,
     })
 }
 

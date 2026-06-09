@@ -42,7 +42,7 @@ pub async fn run_goal_in_worker_or_inline<F>(
 where
     F: FnMut(AgentRun) + 'static,
 {
-    let agent = crate::engine::pick_agent(&snapshot);
+    let agent = crate::engine::pick_agent(&snapshot, None);
     run_goal_for_agent_in_worker_or_inline(
         snapshot,
         goal,
@@ -115,6 +115,8 @@ where
         goal,
         agent,
         snapshot,
+        strategy: None,
+        max_turns: None,
     });
     let worker = spawn_agent_worker()?;
     let (tx, rx) = oneshot::channel::<AppResult<AppSnapshot>>();
@@ -293,7 +295,7 @@ mod tests {
             Agent::new("Enabled", "Pick me", vec!["web_search".to_string()]),
         ];
 
-        let agent = crate::engine::pick_agent(&snapshot);
+        let agent = crate::engine::pick_agent(&snapshot, None);
 
         assert_eq!(agent.name, "Enabled");
     }

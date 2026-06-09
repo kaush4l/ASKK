@@ -120,6 +120,15 @@ mod tests {
     }
 
     #[test]
+    fn catalog_always_contains_react() {
+        let catalog = StrategyRegistry::new().catalog();
+        assert!(
+            catalog.iter().any(|(id, _)| *id == "react"),
+            "catalog must contain 'react'; UI picker depends on it"
+        );
+    }
+
+    #[test]
     fn resolution_order_param_beats_agent_beats_default() {
         assert_eq!(resolve_strategy_id(Some("a"), Some("b")), "a");
         assert_eq!(resolve_strategy_id(None, Some("b")), "b");
