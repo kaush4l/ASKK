@@ -56,7 +56,6 @@ fn compile_preview_prompt(snapshot: &AppSnapshot, agent: &crate::state::Agent) -
         tools,
         sub_agents,
         now: crate::state::now_iso(),
-        response_format: agent.response_format,
         format_instructions: ResponseKind::ReAct.instructions(agent.response_format),
     };
 

@@ -392,6 +392,8 @@ fn log_step(kind: &AgentEventKind) -> Option<(&'static str, &'static str)> {
         | AgentEventKind::Routing
         | AgentEventKind::MetaTool
         | AgentEventKind::Workflow
+        | AgentEventKind::PhaseStarted
+        | AgentEventKind::PhaseCompleted
         | AgentEventKind::Verification
         | AgentEventKind::WorkerStarted
         | AgentEventKind::WorkerCompleted => None,

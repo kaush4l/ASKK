@@ -29,7 +29,7 @@ pub use registry::get_or_create;
 pub use registry::{DEFAULT_PROVIDER, ModelIdentifier, normalize_model_identifier};
 pub use transport::{list_models, test_chat};
 
-use crate::responses::{ReActResponse, ResponseFormat};
+use crate::responses::ReActResponse;
 use crate::state::{AppResult, Message, ProviderConfig, Skill, ToolSpec};
 
 /// A sub-agent the running agent can see and delegate to. This is the
@@ -58,11 +58,6 @@ pub struct InferenceRequest {
     /// [`crate::state::now_iso`]) and rendered into the prompt's `## CONTEXT` block so
     /// the agent can reason about "now" — e.g. how recent a news search should be.
     pub now: String,
-    /// The negotiated response format for this turn. Stored here so call sites and
-    /// future phases can inspect which format was requested alongside the rendered
-    /// instructions. Not read by the provider (which uses `format_instructions`).
-    #[allow(dead_code)]
-    pub response_format: ResponseFormat,
     /// The fully rendered response-format instruction block (schema-specific).
     /// Computed by the engine from the active phase's `ResponseKind` +
     /// negotiated `ResponseFormat`; providers place it last, never compute it.

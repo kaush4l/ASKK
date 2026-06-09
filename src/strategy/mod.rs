@@ -2,14 +2,22 @@
 //! routing function, run above the unchanged base turn (construct prompt → call
 //! LLM → parse → act). The base ReAct loop is the degenerate single-phase case.
 
-// All types here are consumed by the engine (Task 5); suppress dead-code until then.
-#![allow(dead_code, unused_imports)]
+// Most types here are now consumed by the engine (Task 5). A few items
+// (`StrategyRegistry::catalog`, the `Strategy::artifact` default override, and the
+// `Plan`/`Critique`/etc. multi-phase machinery) only go live in later tasks; keep a
+// scoped dead-code allow until then rather than per-item attributes.
+#![allow(dead_code)]
 
 mod react;
 mod registry;
 
 pub use react::ReactStrategy;
-pub use registry::{DEFAULT_STRATEGY_ID, StrategyRegistry, fallback_strategy, resolve_strategy_id};
+// `DEFAULT_STRATEGY_ID` is public API (the canonical "react" id) used by the agent
+// config + UI picker in Task 6; nothing imports it yet, so scope an allow here rather
+// than dropping the re-export.
+#[allow(unused_imports)]
+pub use registry::DEFAULT_STRATEGY_ID;
+pub use registry::{StrategyRegistry, fallback_strategy, resolve_strategy_id};
 
 use crate::responses::{ParsedResponse, ResponseKind};
 

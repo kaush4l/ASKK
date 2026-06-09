@@ -17,6 +17,10 @@ pub enum AgentEventKind {
     WorkerStarted,
     WorkerCompleted,
     Workflow,
+    /// A strategy phase began.
+    PhaseStarted,
+    /// A strategy phase completed (body carries the routing decision).
+    PhaseCompleted,
     Verification,
     /// A browser MCP server was connected at run start.
     McpConnected,

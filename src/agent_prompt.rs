@@ -265,7 +265,6 @@ mod tests {
             tools: Vec::new(),
             sub_agents: Vec::new(),
             now: "2026-06-08T00:00:00Z".to_string(),
-            response_format: ResponseFormat::Toon,
             format_instructions: ResponseKind::ReAct.instructions(ResponseFormat::Toon),
         }
     }

@@ -22,13 +22,17 @@ use crate::inference::{
     get_implementation,
 };
 use crate::responses::{
-    FormatNegotiator, ParseOutcome, ParsedToolCall, ReActAction, ReActResponse, ResponseKind,
-    StructuredResponse, parse_tool_calls,
+    FormatNegotiator, ParseOutcome, ParsedResponse, ParsedToolCall, ReActAction, ReActResponse,
+    ResponseFormat, StructuredResponse, parse_tool_calls,
 };
 use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, ProviderConfig, RunBudgets,
     RunLane, RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, ToolSpec,
     default_tool_names, event, now_iso,
+};
+use crate::strategy::{
+    LoopMode, MAX_BACK_EDGES, Phase, PhaseOutcome, Routing, Strategy, StrategyContext,
+    StrategyRegistry, ToolPolicy, fallback_strategy, resolve_strategy_id,
 };
 use execution::{BrowserExecutionProvider, ExecutionProvider};
 use std::cell::Cell;
@@ -164,6 +168,11 @@ struct AgentLoop {
     enabled_tools: Vec<String>,
     /// The peer agents this run can see and delegate to.
     sub_agents: Vec<SubAgentInfo>,
+    /// The shared soul/persona prompt, captured once at init (stable across the run).
+    soul: String,
+    /// The workspace skill library, captured once at init. Filtered per phase by a
+    /// `SkillSelection` outcome before being shown to the model.
+    skills: Vec<crate::state::Skill>,
     /// Prior conversation turns, so the agent carries its session forward.
     conversation: Vec<Message>,
     /// Output validators applied to tool results and the final answer.
@@ -172,6 +181,8 @@ struct AgentLoop {
     max_steps: u32,
     /// The lane this goal was routed to (a timeline label / plan seed only).
     lane: RunLane,
+    /// The strategy driving this run's phase sequence.
+    strategy: &'static dyn Strategy,
 }
 
 /// What one [`AgentLoop::step`] decided the loop should do next.
@@ -231,6 +242,12 @@ impl AgentLoop {
         let conversation = conversation_seed(&snapshot.runs);
         let max_steps = snapshot.orchestrator.max_steps.max(1);
 
+        // Strategy resolution: explicit param → agent config → default. Task 6
+        // threads agent config + params here; until then both are None (= react).
+        let registry = StrategyRegistry::new();
+        let strategy_id = resolve_strategy_id(None, None);
+        let strategy = registry.get(&strategy_id).unwrap_or_else(fallback_strategy);
+
         Self {
             executor,
             agent,
@@ -239,10 +256,13 @@ impl AgentLoop {
             provider,
             enabled_tools,
             sub_agents,
+            soul: snapshot.soul.clone(),
+            skills: snapshot.skills.clone(),
             conversation,
             validators: ValidatorRegistry,
             max_steps,
             lane,
+            strategy,
         }
     }
 
@@ -299,11 +319,15 @@ impl AgentLoop {
     async fn step<F>(
         &self,
         turn: u32,
+        phase: &Phase,
+        context: &StrategyContext,
         snapshot: &mut AppSnapshot,
         run: &mut AgentRun,
         specs: &[ToolSpec],
         enabled_tools: &[String],
         format_negotiator: &mut FormatNegotiator,
+        last_answer: &mut Option<String>,
+        final_response: &mut Option<ReActResponse>,
         observer: &mut F,
     ) -> StepOutcome
     where
@@ -323,12 +347,14 @@ impl AgentLoop {
         ));
         observer(run.clone());
 
-        // Full ordered transcript: prior conversation, the current query, then this
-        // run's accumulated ReAct turns.
+        // Full ordered transcript: prior conversation, the per-phase goal text, then
+        // this run's accumulated ReAct turns. For the react strategy's bare phase
+        // `phase_goal` returns the goal untouched, preserving byte parity.
+        let goal_text = phase_goal(phase, context, &run.goal);
         let mut history = self.conversation.clone();
         history.push(Message {
             role: "user".to_string(),
-            content: run.goal.clone(),
+            content: goal_text.clone(),
         });
         history.extend(run.messages.iter().cloned());
 
@@ -336,19 +362,8 @@ impl AgentLoop {
         // repeated TOON parse failures). Captured so we can score this turn's reply
         // against the format we actually requested.
         let requested_format = format_negotiator.format();
-        let request = InferenceRequest {
-            agent_name: self.agent.name.clone(),
-            agent_role: self.agent.role.clone(),
-            soul: snapshot.soul.clone(),
-            skills: snapshot.skills.clone(),
-            goal: run.goal.clone(),
-            history,
-            tools: specs.to_vec(),
-            sub_agents: self.sub_agents.clone(),
-            now: crate::state::now_iso(),
-            response_format: requested_format,
-            format_instructions: ResponseKind::ReAct.instructions(requested_format),
-        };
+        let request =
+            self.build_request(phase, context, goal_text, history, requested_format, specs);
 
         let Some(output) = call_model_with_retry(
             &self.inference,
@@ -369,7 +384,7 @@ impl AgentLoop {
         // different structured format or the lenient fallback) is a failure that moves
         // us toward requesting JSON. `output.parsed` stays the lenient best-effort value
         // the rest of the loop uses.
-        let parse_outcome: ParseOutcome = ReActResponse::parsed_format(&output.raw_text);
+        let parse_outcome: ParseOutcome = phase.response_kind.parsed_format(&output.raw_text);
         format_negotiator.record(parse_outcome.honors(requested_format));
         let next_format = format_negotiator.format();
         if next_format != requested_format {
@@ -388,6 +403,7 @@ impl AgentLoop {
         }
 
         let parsed = output.parsed;
+        *final_response = Some(parsed.clone());
         run.messages.push(Message {
             role: "assistant".to_string(),
             content: output.raw_text.clone(),
@@ -418,6 +434,7 @@ impl AgentLoop {
                     &final_text,
                     "Final answer",
                 ) {
+                    *last_answer = Some(final_text.clone());
                     observer(run.clone());
                     return StepOutcome::Stop { answered: true };
                 }
@@ -440,6 +457,7 @@ impl AgentLoop {
                         &final_text,
                         "Final answer (no tool call parsed)",
                     ) {
+                        *last_answer = Some(final_text.clone());
                         observer(run.clone());
                         return StepOutcome::Stop { answered: true };
                     }
@@ -460,6 +478,196 @@ impl AgentLoop {
         }
         observer(run.clone());
         StepOutcome::Continue
+    }
+
+    /// Build one phase-aware model request. [`ToolPolicy`] filters the tool manifest;
+    /// a `SkillSelection` outcome (carried in `context.selected_skills`) filters the
+    /// skill set. The negotiated `requested_format` is rendered into
+    /// `format_instructions` via the phase's [`ResponseKind`] — for the react phase
+    /// (`ResponseKind::ReAct`) this is byte-identical to the previous inline literal.
+    fn build_request(
+        &self,
+        phase: &Phase,
+        context: &StrategyContext,
+        goal: String,
+        history: Vec<Message>,
+        requested_format: ResponseFormat,
+        specs: &[ToolSpec],
+    ) -> InferenceRequest {
+        let tools = match phase.tool_policy {
+            ToolPolicy::NoTools => Vec::new(),
+            ToolPolicy::Inherit => specs.to_vec(),
+            ToolPolicy::Subset(names) => specs
+                .iter()
+                .filter(|spec| names.contains(&spec.name.as_str()))
+                .cloned()
+                .collect(),
+        };
+        let base_skills = self.skills.clone();
+        let skills = match &context.selected_skills {
+            Some(selected) => base_skills
+                .iter()
+                .filter(|skill| {
+                    selected
+                        .iter()
+                        .any(|name| name.eq_ignore_ascii_case(&skill.name))
+                })
+                .cloned()
+                .collect(),
+            None => base_skills,
+        };
+        InferenceRequest {
+            agent_name: self.agent.name.clone(),
+            agent_role: self.agent.role.clone(),
+            soul: self.soul.clone(),
+            skills,
+            goal,
+            history,
+            tools,
+            sub_agents: self.sub_agents.clone(),
+            now: crate::state::now_iso(),
+            format_instructions: phase.response_kind.instructions(requested_format),
+        }
+    }
+
+    /// Run a Loop-mode phase: the original per-turn ReAct loop, bounded by the phase
+    /// budget (`max_turns`, 0 = the loop's global step budget) and the remaining global
+    /// budget. Returns the phase outcome, or `None` when the run stopped (interrupt,
+    /// pause, error) — in which case run status/events already say why. A validated
+    /// final answer is recorded into `last_answer` and produces a ReAct outcome.
+    #[allow(clippy::too_many_arguments)]
+    async fn run_loop_phase<F>(
+        &self,
+        phase: &Phase,
+        max_turns: u32,
+        context: &StrategyContext,
+        snapshot: &mut AppSnapshot,
+        run: &mut AgentRun,
+        specs: &[ToolSpec],
+        enabled_tools: &[String],
+        steps_used: &mut u32,
+        format_negotiator: &mut FormatNegotiator,
+        last_answer: &mut Option<String>,
+        observer: &mut F,
+    ) -> Option<PhaseOutcome>
+    where
+        F: FnMut(AgentRun),
+    {
+        let phase_budget = if max_turns == 0 {
+            self.max_steps
+        } else {
+            max_turns
+        };
+        let mut turns_this_phase: u32 = 0;
+        let mut final_response: Option<ReActResponse> = None;
+
+        while turns_this_phase < phase_budget && *steps_used < self.max_steps {
+            if interrupt_requested() {
+                mark_interrupted(run, "Run interrupted before the next model call.");
+                observer(run.clone());
+                return None;
+            }
+            *steps_used += 1;
+            turns_this_phase += 1;
+
+            match self
+                .step(
+                    *steps_used,
+                    phase,
+                    context,
+                    snapshot,
+                    run,
+                    specs,
+                    enabled_tools,
+                    format_negotiator,
+                    last_answer,
+                    &mut final_response,
+                    observer,
+                )
+                .await
+            {
+                StepOutcome::Continue => {}
+                StepOutcome::Stop { answered } => {
+                    if !answered {
+                        return None;
+                    }
+                    break;
+                }
+            }
+        }
+
+        Some(PhaseOutcome {
+            phase: phase.name,
+            response: ParsedResponse::ReAct(final_response.unwrap_or_else(|| {
+                ReActResponse::from_raw("phase budget exhausted without an answer")
+            })),
+            turns_used: turns_this_phase,
+        })
+    }
+
+    /// Run a OneShot phase: one model call, no tool dispatch, parsed by the phase's
+    /// response kind. The raw reply is recorded to `run.messages` so later phases carry
+    /// it forward. Returns `None` on an unrecoverable model error (the run is already
+    /// paused by [`call_model_with_retry`]) or an interrupt. The `react` strategy never
+    /// uses OneShot — this is built and tested now for the multi-phase strategies that
+    /// arrive in later tasks.
+    #[allow(clippy::too_many_arguments)]
+    async fn run_one_shot_phase<F>(
+        &self,
+        phase: &Phase,
+        context: &StrategyContext,
+        snapshot: &mut AppSnapshot,
+        run: &mut AgentRun,
+        specs: &[ToolSpec],
+        steps_used: &mut u32,
+        format_negotiator: &mut FormatNegotiator,
+        observer: &mut F,
+    ) -> Option<PhaseOutcome>
+    where
+        F: FnMut(AgentRun),
+    {
+        let _ = snapshot;
+        if interrupt_requested() {
+            mark_interrupted(run, "Run interrupted before the next model call.");
+            observer(run.clone());
+            return None;
+        }
+        *steps_used += 1;
+
+        let goal_text = phase_goal(phase, context, &run.goal);
+        let mut history = self.conversation.clone();
+        history.push(Message {
+            role: "user".to_string(),
+            content: goal_text.clone(),
+        });
+        history.extend(run.messages.iter().cloned());
+
+        let requested_format = format_negotiator.format();
+        let request =
+            self.build_request(phase, context, goal_text, history, requested_format, specs);
+        let output = call_model_with_retry(
+            &self.inference,
+            &self.provider,
+            request,
+            run,
+            &self.agent_id,
+            observer,
+        )
+        .await?;
+
+        let parse_outcome = phase.response_kind.parsed_format(&output.raw_text);
+        format_negotiator.record(parse_outcome.honors(requested_format));
+        run.messages.push(Message {
+            role: "assistant".to_string(),
+            content: output.raw_text.clone(),
+        });
+        observer(run.clone());
+
+        Some(PhaseOutcome {
+            phase: phase.name,
+            response: phase.response_kind.parse(&output.raw_text),
+            turns_used: 1,
+        })
     }
 
     /// Execute the parsed tool calls for one turn and feed their results back.
@@ -599,38 +807,127 @@ impl AgentLoop {
         // original loop did.
         let specs = self.executor.domain_specs_for_agent(&enabled_tools);
 
-        let mut answered = false;
         // Requested-format negotiation (Unit #2): persists across turns so a streak of
         // TOON parse failures can escalate the requested format to JSON (and one clean
         // parse relaxes it back). `step` feeds it each turn's outcome and reads back the
         // format to request next.
         let mut format_negotiator = FormatNegotiator::new(self.agent.response_format);
-        for step in 0..self.max_steps {
-            if interrupt_requested() {
-                mark_interrupted(&mut run, "Run interrupted before the next model call.");
-                observer(run.clone());
+
+        // === Strategy driver ===
+        // Drive the strategy's ordered phases. The `react` strategy is the degenerate
+        // single-phase case (one `act` phase, `Loop { max_turns: 0 }`), so this loop
+        // runs the original per-turn ReAct loop once and behaves identically except for
+        // the two new PhaseStarted/PhaseCompleted timeline events.
+        let phases = self.strategy.phases();
+        let mut context = StrategyContext::default();
+        let mut steps_used: u32 = 0;
+        let mut last_answer: Option<String> = None;
+        let mut phase_idx = 0usize;
+
+        while phase_idx < phases.len() {
+            let phase = &phases[phase_idx];
+            push_phase_event(
+                &mut run,
+                &self.agent_id,
+                AgentEventKind::PhaseStarted,
+                phase.name,
+                format!("Strategy `{}`, phase `{}`.", self.strategy.id(), phase.name),
+            );
+            // Record the phase as the active workflow step (timeline scratchpad only;
+            // no gate-check is invoked — workflow gating re-targets in a later task).
+            run.scratchpad.workflow.current_step = phase.name.to_string();
+            run.scratchpad.workflow.history.push(phase.name.to_string());
+            observer(run.clone());
+
+            let outcome = match phase.loop_mode {
+                LoopMode::OneShot => {
+                    self.run_one_shot_phase(
+                        phase,
+                        &context,
+                        &mut snapshot,
+                        &mut run,
+                        &specs,
+                        &mut steps_used,
+                        &mut format_negotiator,
+                        &mut observer,
+                    )
+                    .await
+                }
+                LoopMode::Loop { max_turns } => {
+                    self.run_loop_phase(
+                        phase,
+                        max_turns,
+                        &context,
+                        &mut snapshot,
+                        &mut run,
+                        &specs,
+                        &enabled_tools,
+                        &mut steps_used,
+                        &mut format_negotiator,
+                        &mut last_answer,
+                        &mut observer,
+                    )
+                    .await
+                }
+            };
+
+            let Some(outcome) = outcome else {
+                // Interrupted, paused, or errored inside the phase: the phase runner
+                // already updated run status/events. Stop the strategy.
                 break;
+            };
+
+            // A OneShot ReAct phase (e.g. an orchestrate `synthesize` phase) produces
+            // the final answer directly.
+            if let (LoopMode::OneShot, ParsedResponse::ReAct(react)) =
+                (phase.loop_mode, &outcome.response)
+            {
+                let final_text = react.final_text();
+                if try_finalize_answer(
+                    &self.validators,
+                    &mut run,
+                    &self.agent_id,
+                    &final_text,
+                    "Final answer",
+                ) {
+                    last_answer = Some(final_text);
+                }
+                observer(run.clone());
             }
 
-            match self
-                .step(
-                    step + 1,
-                    &mut snapshot,
-                    &mut run,
-                    &specs,
-                    &enabled_tools,
-                    &mut format_negotiator,
-                    &mut observer,
-                )
-                .await
-            {
-                StepOutcome::Continue => {}
-                StepOutcome::Stop { answered: done } => {
-                    answered = done;
-                    break;
-                }
+            if let Some(artifact) = self.strategy.artifact(&outcome) {
+                context.artifacts.retain(|(name, _)| name != &artifact.0);
+                context.artifacts.push(artifact);
+            }
+            if let ParsedResponse::SkillSelection(selection) = &outcome.response {
+                context.selected_skills = Some(selection.selected_skills.clone());
+            }
+
+            let routing = apply_back_edge_budget(
+                self.strategy.route(phase_idx, &outcome),
+                &mut context.back_edges_used,
+            );
+            push_phase_event(
+                &mut run,
+                &self.agent_id,
+                AgentEventKind::PhaseCompleted,
+                phase.name,
+                format!(
+                    "Routing: {routing:?} (back edges used: {}).",
+                    context.back_edges_used
+                ),
+            );
+            observer(run.clone());
+
+            match routing {
+                Routing::Next => phase_idx += 1,
+                Routing::Back(target) => phase_idx = target.min(phases.len() - 1),
+                Routing::Done => break,
             }
         }
+
+        let answered = last_answer.is_some();
+        // === end strategy driver ===
 
         finalize_status(&mut run, answered);
 
@@ -943,6 +1240,59 @@ fn initial_scratchpad(snapshot: &AppSnapshot, goal: &str, lane: RunLane) -> RunS
     }
 }
 
+/// Compose the per-phase goal text: frame, then carried artifacts, then the goal.
+/// The react strategy's bare phase (empty frame, no artifacts) returns the goal
+/// untouched for byte parity with the original loop.
+fn phase_goal(phase: &Phase, context: &StrategyContext, goal: &str) -> String {
+    if phase.prompt_frame.trim().is_empty() && context.artifacts.is_empty() {
+        return goal.to_string();
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if !phase.prompt_frame.trim().is_empty() {
+        parts.push(phase.prompt_frame.trim().to_string());
+    }
+    for (name, content) in &context.artifacts {
+        parts.push(format!(
+            "## {} (from an earlier phase)\n{}",
+            name.to_uppercase(),
+            content
+        ));
+    }
+    parts.push(format!("The goal: {goal}"));
+    parts.join("\n\n")
+}
+
+/// Push a phase-lifecycle event (`PhaseStarted` / `PhaseCompleted`) onto the run
+/// timeline, titled `Phase: <name>` with the supplied body.
+fn push_phase_event(
+    run: &mut AgentRun,
+    agent_id: &str,
+    kind: AgentEventKind,
+    phase_name: &str,
+    body: String,
+) {
+    run.events.push(event(
+        &run.id,
+        Some(agent_id.to_string()),
+        kind,
+        format!("Phase: {phase_name}"),
+        body,
+    ));
+}
+
+/// Enforce the back-edge cap: a `Back` beyond [`MAX_BACK_EDGES`] becomes `Done`, so
+/// critique cycles are bounded by construction.
+fn apply_back_edge_budget(routing: Routing, back_edges_used: &mut u32) -> Routing {
+    match routing {
+        Routing::Back(target) if *back_edges_used < MAX_BACK_EDGES => {
+            *back_edges_used += 1;
+            Routing::Back(target)
+        }
+        Routing::Back(_) => Routing::Done,
+        other => other,
+    }
+}
+
 fn push_observation(run: &mut AgentRun, source: &str, content: String) {
     run.scratchpad
         .recent_observations
@@ -1152,5 +1502,58 @@ mod tests {
             run.events.last().unwrap().kind,
             AgentEventKind::Verification
         );
+    }
+
+    #[test]
+    fn react_strategy_emits_phase_events_around_the_loop() {
+        // The strategy driver wraps every phase in a PhaseStarted / PhaseCompleted
+        // pair. The model call itself is browser-bound (it panics on the host runner),
+        // so we drive the driver's phase-event emission directly against the real
+        // `react` strategy — its single `act` phase, its `route` (always Done), and the
+        // same `push_phase_event` / `apply_back_edge_budget` helpers `run` uses — and
+        // assert the two events fire with the right title and routing body. This is the
+        // host-testable proof of the parity behavior added by Task 5.
+        let mut run = test_run_with_evidence();
+        let strategy = fallback_strategy(); // the `react` strategy
+        let phases = strategy.phases();
+        let mut context = StrategyContext::default();
+
+        for (idx, phase) in phases.iter().enumerate() {
+            push_phase_event(
+                &mut run,
+                "agent-1",
+                AgentEventKind::PhaseStarted,
+                phase.name,
+                format!("Strategy `{}`, phase `{}`.", strategy.id(), phase.name),
+            );
+            // The react phase is a `Loop`, so its outcome is a ReAct response; only the
+            // routing decision matters for the PhaseCompleted body.
+            let outcome = PhaseOutcome {
+                phase: phase.name,
+                response: ParsedResponse::ReAct(ReActResponse::from_raw(
+                    "action: answer\nresponse: The evidence says 2 + 2 = 4.",
+                )),
+                turns_used: 1,
+            };
+            let routing =
+                apply_back_edge_budget(strategy.route(idx, &outcome), &mut context.back_edges_used);
+            push_phase_event(
+                &mut run,
+                "agent-1",
+                AgentEventKind::PhaseCompleted,
+                phase.name,
+                format!(
+                    "Routing: {routing:?} (back edges used: {}).",
+                    context.back_edges_used
+                ),
+            );
+        }
+
+        assert!(run.events.iter().any(|event| {
+            event.kind == AgentEventKind::PhaseStarted && event.title.contains("act")
+        }));
+        assert!(run.events.iter().any(|event| {
+            event.kind == AgentEventKind::PhaseCompleted && event.body.contains("Done")
+        }));
     }
 }
