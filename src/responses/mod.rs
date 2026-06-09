@@ -53,10 +53,16 @@ pub trait StructuredResponse: Sized {
     fn fields() -> &'static [ResponseField];
     fn from_fields(fields: BTreeMap<String, Value>, raw: &str) -> Self;
 
+    /// Extra TOON rules specific to this schema, appended after the generic
+    /// rule. Empty for most schemas; ReAct adds its action/tool/answer rules.
+    fn toon_rules() -> &'static [&'static str] {
+        &[]
+    }
+
     fn instructions(format: ResponseFormat) -> String {
         match format {
             ResponseFormat::Json => json_instructions(Self::fields()),
-            ResponseFormat::Toon => toon_instructions(Self::fields()),
+            ResponseFormat::Toon => toon_instructions(Self::fields(), Self::toon_rules()),
         }
     }
 
@@ -169,7 +175,7 @@ fn json_instructions(fields: &[ResponseField]) -> String {
     )
 }
 
-fn toon_instructions(fields: &[ResponseField]) -> String {
+fn toon_instructions(fields: &[ResponseField], extra_rules: &[&str]) -> String {
     let docs = fields
         .iter()
         .map(|field| {
@@ -185,18 +191,16 @@ fn toon_instructions(fields: &[ResponseField]) -> String {
         .map(|field| field.name)
         .collect::<Vec<_>>()
         .join(", ");
+    let mut rules: Vec<String> = vec!["Field names are lowercase followed by a colon.".to_string()];
+    rules.extend(extra_rules.iter().map(|rule| rule.to_string()));
+    let rules = rules
+        .iter()
+        .enumerate()
+        .map(|(index, rule)| format!("{}. {rule}", index + 1))
+        .collect::<Vec<_>>()
+        .join("\n");
     format!(
-        r#"## RESPONSE FORMAT
-
-Use exactly these fields, one field per block: {names}.
-
-{docs}
-
-Rules:
-1. Field names are lowercase followed by a colon.
-2. For tool use, set `action: tool` and put the full invocation in `response`, for example `web_search({{"query":"latest Dioxus 0.7 docs","count":5}})`.
-3. For final output, set `action: answer` and put the answer in `response`.
-4. Do not put a tool name in `action`; only `tool` or `answer` are valid."#
+        "## RESPONSE FORMAT\n\nUse exactly these fields, one field per block: {names}.\n\n{docs}\n\nRules:\n{rules}"
     )
 }
 

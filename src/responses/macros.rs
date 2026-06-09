@@ -14,7 +14,10 @@
 //!   → generates `EnumName` with a `from_value` that maps each literal to its
 //!   variant and anything else to the default.
 //!
-//! Optional trailing hooks (both used by `ReActResponse`):
+//! Optional trailing clauses (order-fixed: rules, normalize, finish):
+//! - `rules: ["rule 1", "rule 2", ...],` — TOON rules appended after the generic
+//!   rule. When present, the expansion overrides `toon_rules()`. Used by
+//!   `ReActResponse` to inject its action/tool/answer rules.
 //! - `normalize: path,` — `fn(&mut BTreeMap<String, Value>)`, runs before extraction.
 //! - `finish: method,` — `fn(self, raw: &str) -> Self` inherent method, runs after.
 
@@ -24,6 +27,7 @@ macro_rules! define_response {
         pub struct $name:ident {
             $( $field:ident : $kind:tt => $desc:expr ),+ $(,)?
         }
+        $( rules: [ $($rule:literal),+ $(,)? ], )?
         $( normalize: $normalize:path, )?
         $( finish: $finish:ident, )?
     ) => {
@@ -45,6 +49,12 @@ macro_rules! define_response {
                     }, )+
                 ]
             }
+
+            $(
+            fn toon_rules() -> &'static [&'static str] {
+                &[ $( $rule, )+ ]
+            }
+            )?
 
             fn from_fields(
                 #[allow(unused_mut)] mut fields: std::collections::BTreeMap<

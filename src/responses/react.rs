@@ -20,6 +20,11 @@ define_response! {
         action: (choice ReActAction { Tool = "tool", Answer = "answer" } default Answer, "tool | answer") => "'tool' to invoke a compiled tool, 'answer' for final response text.",
         response: text => "If action='tool': tool_name({\"key\":\"value\"}). If action='answer': final answer.",
     }
+    rules: [
+        "For tool use, set `action: tool` and put the full invocation in `response`, for example `web_search({\"query\":\"latest Dioxus 0.7 docs\",\"count\":5})`.",
+        "For final output, set `action: answer` and put the answer in `response`.",
+        "Do not put a tool name in `action`; only `tool` or `answer` are valid.",
+    ],
     normalize: normalize_invalid_action,
     finish: with_raw_fallback,
 }
@@ -127,6 +132,14 @@ response: web_search({"query":"top news headlines today","count":5})"#,
         assert_eq!(outcome, ParseOutcome::Fallback);
         assert!(!outcome.honors(ResponseFormat::Toon));
         assert!(!outcome.honors(ResponseFormat::Json));
+    }
+
+    #[test]
+    fn react_toon_instructions_keep_action_rules() {
+        let text = ReActResponse::instructions(ResponseFormat::Toon);
+        assert!(text.contains("1. Field names are lowercase followed by a colon."));
+        assert!(text.contains("2. For tool use, set `action: tool`"));
+        assert!(text.contains("4. Do not put a tool name in `action`"));
     }
 
     #[test]

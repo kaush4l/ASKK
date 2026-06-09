@@ -55,6 +55,32 @@ mod tests {
     use crate::responses::StructuredResponse;
 
     #[test]
+    fn critique_verdict_parses_from_toon() {
+        let parsed = CritiqueResponse::from_raw("verdict: revise\nfeedback: missing tests");
+        assert_eq!(parsed.verdict, CritiqueVerdict::Revise);
+        assert_eq!(parsed.feedback, "missing tests");
+    }
+
+    #[test]
+    fn list_fields_parse_bracket_and_json_array_forms() {
+        let bracket = PlanResponse::from_raw("observation: o\nplan: [read, edit]\nrisks: []");
+        assert_eq!(bracket.plan, vec!["read".to_string(), "edit".to_string()]);
+
+        let json =
+            PlanResponse::from_raw(r#"{"observation":"o","plan":["read","edit"],"risks":[]}"#);
+        assert_eq!(json.plan, vec!["read".to_string(), "edit".to_string()]);
+    }
+
+    #[test]
+    fn phase_type_fallback_parse_yields_empty_fields() {
+        // Unstructured prose has no known fields; the fallback path stores the raw
+        // text under a nonexistent `response` key, so all fields stay empty/default.
+        let parsed = CritiqueResponse::from_raw("just some prose with no fields");
+        assert_eq!(parsed.verdict, CritiqueVerdict::Pass);
+        assert!(parsed.feedback.is_empty());
+    }
+
+    #[test]
     fn plan_response_parses_toon() {
         let parsed = PlanResponse::from_raw(
             "observation: small task\nplan:\n1. read the file\n2. edit it\nrisks: []",

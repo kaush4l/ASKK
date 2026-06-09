@@ -106,5 +106,8 @@ mod tests {
         assert!(text.contains("verdict"));
         assert!(text.contains("feedback"));
         assert!(!text.contains("observation"));
+        // Non-ReAct schemas must not inherit ReAct's action/tool rules.
+        assert!(!text.contains("action:"));
+        assert!(!text.contains("`tool`"));
     }
 }
