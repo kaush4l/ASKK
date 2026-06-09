@@ -78,6 +78,26 @@ pub(crate) fn encode_component(value: &str) -> String {
     encoded
 }
 
+/// Turn a full HTML page into readable text: drop the heavy non-content blocks
+/// (`script`/`style`/`head`/`noscript`/`svg`/`template`), then strip the remaining
+/// tags and decode entities via [`strip_html`]. This is a best-effort cleaner for the
+/// non-Jina `web_fetch` fallbacks (direct fetch / CORS proxy), which return raw HTML;
+/// it is not a full main-content extractor (nav/footer text may remain). Pure and
+/// host-testable.
+pub(crate) fn html_to_readable_text(html: &str) -> String {
+    let mut cleaned = html.to_string();
+    // The `regex` crate has no backreferences, so remove each block type separately.
+    // (?is) = case-insensitive + dot-matches-newline; the lazy `.*?` stops at the
+    // first matching close tag.
+    for tag in ["script", "style", "head", "noscript", "svg", "template"] {
+        let pattern = format!(r"(?is)<{tag}\b[^>]*>.*?</{tag}>");
+        if let Ok(re) = regex::Regex::new(&pattern) {
+            cleaned = re.replace_all(&cleaned, " ").into_owned();
+        }
+    }
+    strip_html(&cleaned)
+}
+
 /// Strip HTML tags and decode the common entities from a search snippet, collapsing
 /// whitespace to a single space.
 pub(crate) fn strip_html(value: &str) -> String {
@@ -112,5 +132,18 @@ mod tests {
             strip_html("<span class=\"x\">Bun</span> &amp; Node"),
             "Bun & Node"
         );
+    }
+
+    #[test]
+    fn html_to_readable_text_drops_script_style_and_head() {
+        let html = "<html><head><title>Title</title></head><body>\
+            <script>var a = 1; alert('x');</script>\
+            <style>.x { color: red; }</style>\
+            <p>Hello <b>world</b> &amp; all.</p></body></html>";
+        let text = html_to_readable_text(html);
+        assert!(text.contains("Hello world & all."));
+        assert!(!text.contains("var a"));
+        assert!(!text.contains("color: red"));
+        assert!(!text.contains("Title")); // inside <head>, dropped
     }
 }
