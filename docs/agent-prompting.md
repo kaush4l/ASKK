@@ -61,6 +61,53 @@ optional `## SUB-AGENTS` / `## SKILLS` sections are omitted when empty. The
 `CompiledPromptPanel` renders this whole order, with a placeholder for the run-time
 conversation.
 
+## Init-time vs runtime prompt split (TARGET)
+
+> **Status: TARGET, not yet shipped.** Today `render_system_prompt` rebuilds the
+> *entire* system prompt from the `InferenceRequest` on **every** turn (see
+> [`src/agent_prompt.rs`](../src/agent_prompt.rs)). The split below is the design this
+> batch is porting in from the `LocalAgents` reference; it is a performance/structure
+> refinement of the same ordering shown above, not a change to what the model sees.
+
+The prompt divides into two halves by how often each part changes:
+
+- **Static, compiled ONCE at init time.** The pieces that do not vary turn-to-turn for
+  a given agent: the **soul**, the **concise tool manifest** (`describe_tools` — the
+  minimal name + description + usage hint, *not* a JSON-Schema dump), the enabled
+  **skills**, and the **sub-agent roster**. These are assembled once when the run
+  starts and reused unchanged across every turn of that run.
+- **Dynamic, rebuilt PER TURN.** The pieces that change as the run progresses: the
+  **context** (current date + sandbox note), the **conversation history**, the
+  **goal**, and accumulated tool **observations** — plus the **response-format
+  instructions, always appended last** so the model reads the output contract
+  immediately before generating.
+
+The serialization itself is "concise object → string": each in-code object renders to
+the smallest faithful text (a tool is three lines, not a schema), and the split is the
+init-time/runtime boundary — compile the static prefix once, concatenate the
+freshly-built dynamic suffix each turn. The on-the-wire order the model sees is
+unchanged (**soul → agent → tools → context → messages → response format**); only the
+*when* of assembly moves.
+
+## Response format: TOON default, JSON fallback after 3 consecutive failures
+
+The response contract is a `ResponseFormat` object
+([`src/responses/mod.rs`](../src/responses/mod.rs)) with two wire formats: **TOON**
+(the default — terse, one field per block) and **JSON**. Each `StructuredResponse`
+declares its fields once and inherits both the prompt `instructions(format)` and the
+`from_raw` cascade parser.
+
+- **Today**, parsing is a per-response cascade: `from_raw` tries a JSON object first,
+  then TOON, then a raw-text fallback — on *every* response, independent of history.
+  The format the model is *instructed* to use is fixed per agent (TOON by default).
+- **TARGET**: the format becomes adaptive. The loop stays on **TOON by default**, and
+  only **after 3 consecutive parse failures** does it **fall back to instructing the
+  model in JSON** for subsequent turns. The counter is consecutive — a single clean
+  parse resets it — so a transient malformed turn does not permanently switch formats.
+  This keeps the terse TOON path as the common case while giving the more rigid JSON
+  contract as a recovery mode when a particular model keeps producing unparseable
+  TOON.
+
 ## Engine owns its messages
 
 `src/engine/mod.rs` owns the conversation messages distinct from the system prompt: the

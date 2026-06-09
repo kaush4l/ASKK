@@ -11,6 +11,67 @@ chosen by the parallel spikes cross-linked at the end.
 > not propose reverting it, nor does it propose reshaping the ReAct loop into a typed
 > FSM — the loop is intentional as-is.
 
+## 0. Target loop architecture (being built across this batch)
+
+> **Status: TARGET, not yet shipped.** This section describes the agentic flow this
+> batch is porting in from the `LocalAgents` reference, implemented across sibling
+> PRs. Where it says "today" it is accurate to the current code; everything labelled
+> **TARGET** is the design those PRs converge on, not a description of `main`. The
+> loop stays a ReAct harness (see the scope note above) — this is a refactor of *how*
+> the loop is shaped and fed, not a rewrite into an FSM.
+
+### The loop as an object (construct-prompt → call-LLM → decide-action)
+
+Today the loop is the free function `run_react_session` in
+[`src/engine/mod.rs`](../src/engine/mod.rs): each turn it assembles an
+`InferenceRequest`, calls the model once for a single [`ReActResponse`], and either
+finalizes an answer or runs the emitted tool call(s). The **TARGET** reshapes that
+same control flow as a **loop-object** with three named phases per turn:
+
+1. **construct-prompt** — build the turn's messages: the compiled-once static prefix
+   (see §"init-time vs runtime split" in [`agent-prompting.md`](./agent-prompting.md))
+   plus the rebuilt-per-turn dynamic context (history, goal, observations), with the
+   **response-format instructions appended last** so the model reads them right before
+   generating.
+2. **call-LLM** — invoke the resolved provider (see the registry below) for one raw
+   completion and parse it into the turn's typed response.
+3. **decide-action** — branch on the parsed action: accept a final answer, or
+   dispatch the turn's tool call(s) and feed each observation back as **untrusted
+   data**, then loop.
+
+The **orchestrator is itself a loop-object** of the same shape. Today
+[`src/orchestrator.rs`](../src/orchestrator.rs) decomposes a batch goal, schedules
+child agents in concurrency waves (`join_all`), and aggregates their results — its
+"construct-prompt" is task decomposition, its "call-LLM" is dispatching each child's
+own ReAct loop, and its "decide-action" is the wave/join/aggregate gate. The TARGET
+makes that symmetry explicit: a single agent run and an orchestrated run are the same
+loop-object abstraction at two scales, so **agent-as-a-tool** (a sub-agent invoked
+like any other tool) falls out cleanly rather than being a special case.
+
+### Interchangeable inference behind a short `provider/model` id (TARGET)
+
+Today provider selection is `get_implementation()` in
+[`src/inference/mod.rs`](../src/inference/mod.rs), which always returns the single
+`OpenAiCompatibleInference` impl. The **TARGET** introduces an **inference registry
+keyed by a short `provider/model` id** (e.g. `openai/gpt-4o`,
+`local/gemma-4-12B-it-qat-mxfp8`): the loop names the model it wants by that one
+string, the registry resolves it to a concrete `InferenceProvider` + model
+parameters, and swapping models is changing the id, never the loop. This preserves
+the existing `InferenceProvider` trait seam — a new vendor is still one `impl` — and
+adds only the short-id lookup in front of it.
+
+### Parallel dual tool-call dispatch (TARGET)
+
+Today `parse_tool_calls` ([`src/responses/tool_calls.rs`](../src/responses/tool_calls.rs))
+returns a `Vec<ParsedToolCall>`, and the engine already iterates it
+(`for call in calls`), but in practice it extracts a **single** call and runs calls
+**serially**. The **TARGET** is genuine **parallel dual tool-call dispatch**: a turn
+may emit **two or more** tool calls, and they execute **concurrently** (via
+`join_all`, the same primitive the orchestrator already uses for child waves), with
+results collected **in call order** so the observations the model sees line up with
+the calls it wrote. Each result is still untrusted data; concurrency changes only
+*when* the calls run, not how their output is trusted.
+
 ## 1. Where execution sits in the spine
 
 ASKK is a ReAct harness. The spine is `run_react_session` in

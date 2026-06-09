@@ -385,6 +385,51 @@ python3 -m http.server 8765 --directory target/dx/askk/debug/web/public
 
 Then open `http://127.0.0.1:8765/`, set the provider base URL to `http://127.0.0.1:9989/v1`, choose `No auth`, and submit a decomposable bullet-list goal to exercise parallel worker orchestration. `curl http://127.0.0.1:9989/stats` reports request concurrency.
 
+### Manual e2e: a live turn against a local endpoint
+
+A quick, copy-pasteable smoke test that drives one real agent turn end-to-end against
+a local OpenAI-compatible model and confirms the loop issues **concurrent tool calls**
+before answering. (Parallel dual tool-call dispatch is a target of the in-progress
+loop refactor — see `docs/EXECUTION_MODEL.md` § "Target loop architecture"; run this
+checklist once that lands to verify the behavior live.)
+
+Local endpoint used below:
+
+```text
+Base URL: http://127.0.0.1:8873/v1
+Model:    gemma-4-12B-it-qat-mxfp8
+API key:  pass
+```
+
+Steps:
+
+1. **Serve the app.**
+
+   ```sh
+   dx serve --platform web
+   ```
+
+2. **Point ASKK at the local endpoint.** Open the served page, go to the provider
+   settings, and set base URL `http://127.0.0.1:8873/v1`, model
+   `gemma-4-12B-it-qat-mxfp8`, auth `Bearer token` with key `pass`. (If the browser
+   reports a failed fetch before any HTTP response, the endpoint either is not running
+   or is not allowing the page origin via CORS — see "Localhost and CORS" above.)
+
+3. **Run a goal that forces at least two tool calls**, e.g.:
+
+   > search the web for the latest Dioxus release notes and fetch the changelog page
+
+   This needs both `web_search` (to discover the release) and `web_fetch` (to read the
+   changelog), so a single turn should emit two tool calls.
+
+4. **Confirm in the event log** that the turn issued **two tool calls** (two
+   `Tool requested` events — `web_search` and `web_fetch`) and that the run produced a
+   **final answer** that cites what it read; a complete run ends with a validated
+   `Final answer` event. Once parallel dispatch lands (the TARGET above), the two
+   calls should run **concurrently** rather than one strictly after the other — until
+   then this checklist still verifies that a single turn drives ≥2 tool calls to a
+   final answer.
+
 The Definition-of-Done traceability note lives at `docs/definition-of-done.md`; extension contracts live at `docs/extensibility.md`.
 
 Clean and build the GitHub Pages artifact:

@@ -19,6 +19,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 mod bridge;
+mod call_agent;
 mod common;
 mod file_vfs;
 mod fs_bridge;
@@ -143,6 +144,7 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(file_vfs::read_descriptor());
     registry.register(file_vfs::write_descriptor());
     registry.register(file_vfs::list_descriptor());
+    registry.register(call_agent::descriptor());
 }
 
 #[cfg(test)]

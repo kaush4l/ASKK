@@ -134,6 +134,56 @@ fn classify_child(role: String, sub_goal: String, result: AppResult<AppSnapshot>
     }
 }
 
+/// The big orchestrator object. It mirrors the lifecycle of a single loop-agent —
+/// it takes in the query, constructs its plan/prompt, runs its loop, and returns the
+/// response — but its "loop" is wave decomposition: it splits the goal into child
+/// agent tasks and schedules them concurrently in [`WorkerPool`]-sized waves, driving
+/// the optional [`WorkflowGate`] through its phases, then aggregates the child answers
+/// into one parent run.
+///
+/// Construct it with [`Orchestrator::new`] from an [`AppSnapshot`] (which carries the
+/// orchestrator config), then drive it with [`Orchestrator::run`]. When the goal does
+/// not decompose into at least two child tasks (or parallelism is disabled in config),
+/// `run` falls back to a single-agent inline/worker run, identical to the legacy path.
+///
+/// Child results — like all tool results and fetched content — are UNTRUSTED DATA: the
+/// orchestrator aggregates them into the parent answer but never treats them as
+/// instructions to follow.
+pub struct Orchestrator {
+    snapshot: AppSnapshot,
+}
+
+impl Orchestrator {
+    /// Build an orchestrator bound to `snapshot`. The orchestration config
+    /// (`max_parallelism`, `max_steps`, `workflow_id`, …) and the available child
+    /// agents are read from the snapshot, so no separate config argument is needed.
+    pub fn new(snapshot: AppSnapshot) -> Self {
+        Self { snapshot }
+    }
+
+    /// Take the query, construct the wave plan, run the orchestration loop, and return
+    /// the resulting snapshot — the same lifecycle shape as a loop-agent's `run`.
+    ///
+    /// If `goal` decomposes into at least two child tasks and parallelism is enabled,
+    /// the children are scheduled concurrently in waves and their answers aggregated.
+    /// Otherwise this delegates to a single-agent inline/worker run, preserving the
+    /// behavior of the original free function.
+    pub async fn run<F>(self, goal: String, observer: F) -> AppResult<AppSnapshot>
+    where
+        F: FnMut(AgentRun) + 'static,
+    {
+        let snapshot = self.snapshot;
+        let planned = plan_child_tasks(&snapshot, &goal);
+        if !decomposes_into_waves(&planned, snapshot.orchestrator.max_parallelism) {
+            return run_goal_in_worker_or_inline(snapshot, goal, observer).await;
+        }
+
+        run_orchestrated_goal(snapshot, goal, planned, observer).await
+    }
+}
+
+/// Back-compat wrapper: build an [`Orchestrator`] from `snapshot` and run it. Existing
+/// callers keep the original free-function signature and identical behavior.
 pub async fn run_goal_with_orchestrator_or_worker<F>(
     snapshot: AppSnapshot,
     goal: String,
@@ -142,12 +192,7 @@ pub async fn run_goal_with_orchestrator_or_worker<F>(
 where
     F: FnMut(AgentRun) + 'static,
 {
-    let planned = plan_child_tasks(&snapshot, &goal);
-    if planned.len() < 2 || snapshot.orchestrator.max_parallelism < 2 {
-        return run_goal_in_worker_or_inline(snapshot, goal, observer).await;
-    }
-
-    run_orchestrated_goal(snapshot, goal, planned, observer).await
+    Orchestrator::new(snapshot).run(goal, observer).await
 }
 
 async fn run_orchestrated_goal<F>(
@@ -539,6 +584,15 @@ fn evidence_from_run(run: &AgentRun) -> Vec<String> {
     evidence
 }
 
+/// Whether a planned goal should fan out into concurrent waves. It does so only when
+/// the goal decomposed into at least two child tasks *and* parallelism is enabled
+/// (`max_parallelism >= 2`); otherwise the orchestrator falls back to a single-agent
+/// run. Kept as a named predicate so the routing decision the [`Orchestrator`] loop
+/// makes is testable without dispatching any work.
+fn decomposes_into_waves(planned: &[PlannedChildTask], max_parallelism: u32) -> bool {
+    planned.len() >= 2 && max_parallelism >= 2
+}
+
 fn plan_child_tasks(snapshot: &AppSnapshot, goal: &str) -> Vec<PlannedChildTask> {
     let agents = available_agents(snapshot);
     decompose_goal(goal)
@@ -669,6 +723,37 @@ mod tests {
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].sub_goal, "Rust 2024 edition");
         assert_eq!(tasks[1].sub_goal, "Dioxus 0.7 workers");
+    }
+
+    #[test]
+    fn orchestrator_object_holds_its_snapshot() {
+        let snapshot = AppSnapshot::default();
+        let orchestrator = Orchestrator::new(snapshot.clone());
+
+        assert_eq!(orchestrator.snapshot, snapshot);
+    }
+
+    #[test]
+    fn decomposes_into_waves_requires_two_tasks_and_parallelism() {
+        let agent = Agent::new("Worker", "Do work", default_tool_names());
+        let task = PlannedChildTask {
+            task: ChildTask {
+                id: "1".to_string(),
+                role: "Worker".to_string(),
+                agent_id: Some(agent.id.clone()),
+                sub_goal: "sub".to_string(),
+            },
+            agent,
+        };
+        let two = vec![task.clone(), task.clone()];
+        let one = vec![task];
+
+        // Both conditions met -> fan out into waves.
+        assert!(decomposes_into_waves(&two, 3));
+        // Fewer than two child tasks -> fall back to a single-agent run.
+        assert!(!decomposes_into_waves(&one, 3));
+        // Parallelism disabled -> fall back even with multiple tasks.
+        assert!(!decomposes_into_waves(&two, 1));
     }
 
     #[test]

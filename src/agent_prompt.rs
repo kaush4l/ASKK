@@ -21,25 +21,146 @@
 //! therefore soul, agent, tools, context, messages, response format.
 
 use crate::inference::{InferenceRequest, SubAgentInfo};
-use crate::state::{AppResult, Skill, ToolSpec, default_soul_prompt};
+use crate::responses::{ReActResponse, ResponseFormat, StructuredResponse};
+use crate::state::{AppResult, Message, Skill, ToolSpec, default_soul_prompt};
+
+/// A prompt whose **static** pieces are compiled once and reused across turns.
+///
+/// This mirrors LocalAgents' `BaseAgent`, where the soul, tool manifest, skills, and
+/// sub-agent roster are assembled in `__init__` and cached, while only the per-turn
+/// context, history, and current goal are rebuilt in `render()`. Splitting the prompt
+/// this way keeps the hot path (one [`CompiledPrompt::render`] per agent step) free of
+/// the repeated string work that the static sections would otherwise cost.
+///
+/// The static body is everything from the soul through the tool/skill sections —
+/// `soul → "You are {name}" → role → ## SUB-AGENTS → ## AVAILABLE TOOLS → ## SKILLS`.
+/// The dynamic tail a render appends is the run context (`## CONTEXT` + date), the
+/// conversation history, the current goal, and — always **last** — the response-format
+/// instructions, which the model reads right before it generates.
+#[derive(Clone, Debug)]
+pub struct CompiledPrompt {
+    /// The precomputed static prefix: soul + identity/role + sub-agents + tools +
+    /// skills, joined exactly as [`render_system_prompt`] would, but **without** the
+    /// trailing `## CONTEXT` block (that is dynamic). Computed once in
+    /// [`CompiledPrompt::new`] and never rebuilt.
+    static_body: String,
+}
+
+/// The fully ordered, per-turn prompt pieces a [`CompiledPrompt::render`] produces.
+///
+/// The pieces are kept separate (rather than pre-joined) so the caller — today the
+/// provider in [`crate::inference`] — can map them onto wire messages with the right
+/// roles: the `system_prompt` is the system message, the `history` are the transcript
+/// turns, and `response_format` is the final user message the model reads last.
+// Adopted by the agent-loop unit, which will read these per turn; until then the
+// fields are only exercised by tests, so the dead-code lint would otherwise fire.
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+pub struct RenderedPrompt {
+    /// The system message: the compiled static body followed by the dynamic
+    /// `## CONTEXT` block (current date + sandbox note).
+    pub system_prompt: String,
+    /// The current goal for this run (the engine sends it as a user turn when no
+    /// transcript is supplied).
+    pub goal: String,
+    /// The conversation transcript for this turn, in order.
+    pub history: Vec<Message>,
+    /// The response-format instructions — **always last**, so the model reads the
+    /// output contract immediately before generating.
+    pub response_format: String,
+}
+
+impl CompiledPrompt {
+    /// Compile the **static** prompt pieces once: the soul (persona), the agent
+    /// identity and role, the sub-agent roster (if any), the compiled tool manifest,
+    /// and workspace skills (if any). The result is cached in [`Self::static_body`] and
+    /// reused by every [`Self::render`] / [`Self::render_system`] — the dynamic
+    /// context, history, goal, and response-format instructions are added per turn.
+    pub fn new(
+        soul: &str,
+        agent_name: &str,
+        agent_role: &str,
+        sub_agents: &[SubAgentInfo],
+        tools: &[ToolSpec],
+        skills: &[Skill],
+    ) -> Self {
+        let soul_prompt = resolve_soul(soul);
+        let sub_agents = describe_sub_agents(sub_agents);
+        let tool_manifest = describe_tools(tools);
+        let skills = describe_skills(skills);
+
+        // Byte-identical to the legacy one-shot assembly, minus the trailing context
+        // block: the context (`{skills}{context}`) had `skills` end in `\n\n` (or be
+        // empty) so it slots before `## CONTEXT`. Trimming the trailing whitespace here
+        // lets `render_system` re-append `\n\n{context}` and reproduce the exact text.
+        let static_body = format!(
+            "{soul_prompt}\n\nYou are {agent_name}.\n\n{agent_role}\n\n{sub_agents}{tool_manifest}\n\n{skills}",
+            agent_role = agent_role.trim(),
+        )
+        .trim_end()
+        .to_string();
+
+        Self { static_body }
+    }
+
+    /// Compile the static pieces from an [`InferenceRequest`]'s agent-side fields
+    /// (everything except the per-turn `now`, `goal`, `history`, and
+    /// `response_format`). A convenience for callers that already hold a request and
+    /// want the static body cached once before stepping the agent.
+    pub fn from_request(request: &InferenceRequest) -> Self {
+        Self::new(
+            &request.soul,
+            &request.agent_name,
+            &request.agent_role,
+            &request.sub_agents,
+            &request.tools,
+            &request.skills,
+        )
+    }
+
+    /// Build the **system message** for a turn: the cached static body plus the dynamic
+    /// `## CONTEXT` block carrying `now` (the current date) and the sandbox note. This
+    /// is the system prompt only — the response-format instructions are appended
+    /// separately (see [`Self::render`]).
+    pub fn render_system(&self, now: &str) -> String {
+        let context = render_context(now);
+        format!("{}\n\n{context}", self.static_body)
+    }
+
+    /// Render all per-turn **dynamic** pieces around the cached static body: the system
+    /// message (static body + context/date), the current `goal`, the conversation
+    /// `history`, and the response-format instructions — which stay **last**. The
+    /// static body itself is never recomputed; only this dynamic tail changes per turn.
+    // The agent-loop unit calls this each step; until it lands the only caller is a
+    // test, so the dead-code lint would otherwise flag it.
+    #[allow(dead_code)]
+    pub fn render(
+        &self,
+        now: &str,
+        goal: &str,
+        history: &[Message],
+        response_format: ResponseFormat,
+    ) -> RenderedPrompt {
+        RenderedPrompt {
+            system_prompt: self.render_system(now),
+            goal: goal.to_string(),
+            history: history.to_vec(),
+            response_format: ReActResponse::instructions(response_format),
+        }
+    }
+}
 
 /// Render the system prompt for a working ReAct agent: the soul (persona) first, then
 /// the agent identity and role, the sub-agent roster (if any), the compiled tool
 /// manifest, workspace skills (if any), and the run context (current date + sandbox
 /// note). The response-format instructions are appended separately by the provider as
 /// the final message — see [`crate::inference`].
+///
+/// This is a thin back-compat wrapper over [`CompiledPrompt`]: it compiles the static
+/// body and renders the system message in one call. Callers that step the same agent
+/// repeatedly should build a [`CompiledPrompt`] once and reuse it.
 pub fn render_system_prompt(request: &InferenceRequest) -> AppResult<String> {
-    let soul_prompt = resolve_soul(&request.soul);
-    let sub_agents = describe_sub_agents(&request.sub_agents);
-    let tool_manifest = describe_tools(&request.tools);
-    let skills = describe_skills(&request.skills);
-    let context = render_context(&request.now);
-
-    Ok(format!(
-        "{soul_prompt}\n\nYou are {agent_name}.\n\n{agent_role}\n\n{sub_agents}{tool_manifest}\n\n{skills}{context}",
-        agent_name = request.agent_name,
-        agent_role = request.agent_role.trim(),
-    ))
+    Ok(CompiledPrompt::from_request(request).render_system(&request.now))
 }
 
 /// The run context block: the current date (so the agent can reason about "now" — e.g.
@@ -236,5 +357,128 @@ mod tests {
         let tools_at = system.find("## AVAILABLE TOOLS").unwrap();
         let context_at = system.find("## CONTEXT").unwrap();
         assert!(identity_at < roster_at && roster_at < tools_at && tools_at < context_at);
+    }
+
+    /// The legacy one-shot assembly, inlined here as an independent golden reference so
+    /// the [`CompiledPrompt`] split can never silently drift the wording the model sees.
+    /// This is the exact `format!` the renderer used before the static/dynamic split.
+    fn legacy_system_prompt(request: &InferenceRequest) -> String {
+        let soul_prompt = resolve_soul(&request.soul);
+        let sub_agents = describe_sub_agents(&request.sub_agents);
+        let tool_manifest = describe_tools(&request.tools);
+        let skills = describe_skills(&request.skills);
+        let context = render_context(&request.now);
+        format!(
+            "{soul_prompt}\n\nYou are {agent_name}.\n\n{agent_role}\n\n{sub_agents}{tool_manifest}\n\n{skills}{context}",
+            agent_name = request.agent_name,
+            agent_role = request.agent_role.trim(),
+        )
+    }
+
+    /// A request that exercises every static section (soul, role, sub-agents, tools,
+    /// skills) so the golden comparison covers the trailing-whitespace seam between the
+    /// skills block and the dynamic context.
+    fn full_request() -> InferenceRequest {
+        let mut request = base_request();
+        request.tools = vec![ToolSpec {
+            name: "web_search".to_string(),
+            description: "Search the web.".to_string(),
+            input_schema: serde_json::json!({"type": "object"}),
+        }];
+        request.sub_agents = vec![SubAgentInfo {
+            name: "Researcher".to_string(),
+            description: "Finds and reads current web sources.".to_string(),
+        }];
+        request
+    }
+
+    #[test]
+    fn compiled_render_system_matches_legacy_byte_for_byte() {
+        // No-skills / no-tools / no-roster case (the trailing seam is tool→context).
+        let minimal = base_request();
+        let mut minimal = minimal;
+        minimal.skills = Vec::new();
+        assert_eq!(
+            CompiledPrompt::from_request(&minimal).render_system(&minimal.now),
+            legacy_system_prompt(&minimal),
+        );
+
+        // Skills-present case (the trailing seam is skills→context).
+        let with_skills = base_request();
+        assert_eq!(
+            CompiledPrompt::from_request(&with_skills).render_system(&with_skills.now),
+            legacy_system_prompt(&with_skills),
+        );
+
+        // Every section populated.
+        let full = full_request();
+        assert_eq!(
+            CompiledPrompt::from_request(&full).render_system(&full.now),
+            legacy_system_prompt(&full),
+        );
+
+        // And the public back-compat wrapper agrees with the golden reference too.
+        assert_eq!(
+            render_system_prompt(&full).unwrap(),
+            legacy_system_prompt(&full),
+        );
+    }
+
+    #[test]
+    fn static_body_is_stable_while_dynamic_pieces_vary() {
+        let request = full_request();
+        let compiled = CompiledPrompt::from_request(&request);
+
+        // The static body is identical no matter the per-turn `now`.
+        let a = compiled.render_system("2026-01-01T00:00:00Z");
+        let b = compiled.render_system("2030-12-31T23:59:59Z");
+        let static_a = a.split("\n\n## CONTEXT").next().unwrap();
+        let static_b = b.split("\n\n## CONTEXT").next().unwrap();
+        assert_eq!(static_a, static_b);
+        // Only the dynamic context differs.
+        assert_ne!(a, b);
+        assert!(a.contains("Current date (UTC): 2026-01-01T00:00:00Z"));
+        assert!(b.contains("Current date (UTC): 2030-12-31T23:59:59Z"));
+    }
+
+    #[test]
+    fn render_keeps_response_format_last_and_carries_dynamic_goal_and_history() {
+        let request = full_request();
+        let compiled = CompiledPrompt::from_request(&request);
+
+        let history = vec![Message {
+            role: "user".to_string(),
+            content: "Earlier turn.".to_string(),
+        }];
+        let first = compiled.render(&request.now, "Goal one.", &history, ResponseFormat::Toon);
+        let second = compiled.render(
+            "2031-02-03T00:00:00Z",
+            "Goal two.",
+            &[],
+            ResponseFormat::Json,
+        );
+
+        // The static body inside the system prompt is unchanged across renders.
+        let static_first = first.system_prompt.split("\n\n## CONTEXT").next().unwrap();
+        let static_second = second.system_prompt.split("\n\n## CONTEXT").next().unwrap();
+        assert_eq!(static_first, static_second);
+
+        // Dynamic pieces vary per call.
+        assert_eq!(first.goal, "Goal one.");
+        assert_eq!(second.goal, "Goal two.");
+        assert_eq!(first.history, history);
+        assert!(second.history.is_empty());
+
+        // The response-format instructions are produced (and differ per format), to be
+        // wired as the final message the model reads.
+        assert_eq!(
+            first.response_format,
+            ReActResponse::instructions(ResponseFormat::Toon)
+        );
+        assert_eq!(
+            second.response_format,
+            ReActResponse::instructions(ResponseFormat::Json)
+        );
+        assert_ne!(first.response_format, second.response_format);
     }
 }

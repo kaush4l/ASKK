@@ -16,11 +16,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+mod format_negotiation;
 mod react;
 mod tool_calls;
 
+// Public format-negotiation API. `FormatNegotiator` is consumed by the engine loop;
+// the pure `next_format_after_failures` helper and `MAX_TOON_FAILURES` threshold are
+// part of this pillar's surface (and unit-tested directly), even though the binary
+// drives the stateful negotiator rather than calling the free function.
+#[allow(unused_imports)]
+pub use format_negotiation::{FormatNegotiator, MAX_TOON_FAILURES, next_format_after_failures};
 pub use react::{ReActAction, ReActResponse};
-pub use tool_calls::parse_tool_calls;
+pub use tool_calls::{ParsedToolCall, parse_tool_calls};
 
 #[derive(Clone, Debug)]
 pub struct ResponseField {
@@ -54,6 +61,46 @@ pub trait StructuredResponse: Sized {
             Value::String(raw.trim().to_string()),
         );
         Self::from_fields(fallback, raw)
+    }
+
+    /// Report which wire format `raw` cleanly parsed in, mirroring the
+    /// [`from_raw`](Self::from_raw) cascade (JSON → TOON → fallback) without building
+    /// the typed value. Used by [`FormatNegotiator`] to decide whether a reply honored
+    /// the *requested* format: a reply is only a format success when its
+    /// [`ParseOutcome`] matches the format the model was asked for.
+    fn parsed_format(raw: impl AsRef<str>) -> ParseOutcome {
+        let raw = raw.as_ref();
+        if parse_json_object(raw, Self::fields()).is_some() {
+            return ParseOutcome::Json;
+        }
+        if parse_toon(raw, Self::fields()).is_some() {
+            return ParseOutcome::Toon;
+        }
+        ParseOutcome::Fallback
+    }
+}
+
+/// Which wire format a raw model reply cleanly parsed in, as reported by
+/// [`StructuredResponse::parsed_format`]. [`Fallback`](ParseOutcome::Fallback) means
+/// the reply matched neither structured format and only the lenient
+/// "everything-as-`response`" path applied — i.e. the model did not honor any
+/// requested format.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParseOutcome {
+    Json,
+    Toon,
+    Fallback,
+}
+
+impl ParseOutcome {
+    /// Whether this outcome cleanly honored the `requested` format. A reply that
+    /// parsed via the lenient [`Fallback`](ParseOutcome::Fallback) path, or parsed in a
+    /// *different* structured format than the one asked for, did NOT honor the request.
+    pub fn honors(self, requested: ResponseFormat) -> bool {
+        matches!(
+            (self, requested),
+            (ParseOutcome::Json, ResponseFormat::Json) | (ParseOutcome::Toon, ResponseFormat::Toon)
+        )
     }
 }
 

@@ -10,13 +10,23 @@
 //! - [`openai`] — the one concrete provider today ([`OpenAiCompatibleInference`]),
 //!   which speaks the OpenAI-compatible chat-completions API, so any BYOK endpoint
 //!   works. A new vendor is a new file here implementing the trait.
+//! - [`registry`] — the id → cached-impl seam: a short `"provider/model"`
+//!   identifier is normalized and resolved to a cached [`InferenceProvider`], so the
+//!   runtime LLM is interchangeable behind a stable handle.
 //! - [`transport`] — the shared, provider-agnostic HTTP/SSE plumbing and error
 //!   mapping that concrete providers build on.
 
 mod openai;
+mod registry;
 mod transport;
 
 pub use openai::OpenAiCompatibleInference;
+pub use registry::get_or_create;
+// The id-normalization seam is public for sibling units (the engine/orchestrator
+// will resolve models by short id); it looks unused from this crate until they wire
+// it, so allow that here — same convention as `state::mod`'s sibling re-exports.
+#[allow(unused_imports)]
+pub use registry::{DEFAULT_PROVIDER, ModelIdentifier, normalize_model_identifier};
 pub use transport::{list_models, test_chat};
 
 use crate::responses::{ReActResponse, ResponseFormat};
@@ -74,8 +84,14 @@ pub trait InferenceProvider {
     }
 }
 
-/// Select the provider implementation for a config. Today every config maps to the
-/// OpenAI-compatible provider; this is the one place a vendor switch would branch.
-pub fn get_implementation(_config: &ProviderConfig) -> OpenAiCompatibleInference {
-    OpenAiCompatibleInference
+/// Select the provider implementation for a config, resolved through the cached
+/// [`registry`] keyed by the config's model identifier (see
+/// [`normalize_model_identifier`]). Today every identifier maps to the
+/// OpenAI-compatible provider, but the normalize-and-cache seam is real, so a future
+/// vendor switch is a localized change in [`registry`] rather than here.
+///
+/// Returns the impl by value (it is a zero-sized handle, cheap to clone); the
+/// registry retains the cached entry so repeated calls reuse one built impl.
+pub fn get_implementation(config: &ProviderConfig) -> OpenAiCompatibleInference {
+    (*get_or_create(&config.model)).clone()
 }

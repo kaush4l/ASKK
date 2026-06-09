@@ -8,6 +8,9 @@ use serde_json::Value;
 
 use super::{ResponseField, StructuredResponse, list_field, string_field};
 
+#[cfg(test)]
+use super::{ParseOutcome, ResponseFormat};
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ReActAction {
     Tool,
@@ -149,5 +152,35 @@ response: web_search({"query":"top news headlines today","count":5})"#,
         assert_eq!(parsed.action, ReActAction::Answer);
         assert_eq!(parsed.observation, "ready");
         assert_eq!(parsed.response, "Final text");
+    }
+
+    #[test]
+    fn parsed_format_reports_toon_for_toon_reply() {
+        let outcome =
+            ReActResponse::parsed_format("observation: ok\naction: answer\nresponse: done");
+        assert_eq!(outcome, ParseOutcome::Toon);
+        // A TOON reply honors a TOON request but not a JSON one.
+        assert!(outcome.honors(ResponseFormat::Toon));
+        assert!(!outcome.honors(ResponseFormat::Json));
+    }
+
+    #[test]
+    fn parsed_format_reports_json_for_json_reply() {
+        let outcome = ReActResponse::parsed_format(
+            r#"{"observation":"ready","action":"answer","response":"done"}"#,
+        );
+        assert_eq!(outcome, ParseOutcome::Json);
+        assert!(outcome.honors(ResponseFormat::Json));
+        assert!(!outcome.honors(ResponseFormat::Toon));
+    }
+
+    #[test]
+    fn parsed_format_reports_fallback_for_unstructured_reply() {
+        // Free prose with no known field markers honors no requested format, so it
+        // counts as a failure for negotiation purposes.
+        let outcome = ReActResponse::parsed_format("just some prose with no fields");
+        assert_eq!(outcome, ParseOutcome::Fallback);
+        assert!(!outcome.honors(ResponseFormat::Toon));
+        assert!(!outcome.honors(ResponseFormat::Json));
     }
 }

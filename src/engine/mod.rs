@@ -14,21 +14,27 @@
 pub mod browser_exec;
 pub mod exec_capability;
 mod execution;
+mod tool_dispatch;
 mod validators;
 
 use crate::inference::{
-    InferenceOutput, InferenceProvider, InferenceRequest, SubAgentInfo, get_implementation,
+    InferenceOutput, InferenceProvider, InferenceRequest, OpenAiCompatibleInference, SubAgentInfo,
+    get_implementation,
 };
-use crate::responses::{ReActAction, ReActResponse, parse_tool_calls};
+use crate::responses::{
+    FormatNegotiator, ParseOutcome, ParsedToolCall, ReActAction, ReActResponse, StructuredResponse,
+    parse_tool_calls,
+};
 use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, ProviderConfig, RunBudgets,
-    RunLane, RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, default_tool_names, event,
-    now_iso,
+    RunLane, RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, ToolSpec,
+    default_tool_names, event, now_iso,
 };
 use execution::{BrowserExecutionProvider, ExecutionProvider};
 use std::cell::Cell;
 use std::future::Future;
 use std::pin::Pin;
+use tool_dispatch::{PreparedCall, dispatch_tool_calls};
 use uuid::Uuid;
 use validators::ValidatorRegistry;
 
@@ -123,127 +129,195 @@ impl ReActEngine {
     }
 }
 
-async fn run_react_session<F>(
+/// The smallest unit of the runtime: a **loop-object** that drives one agent goal to
+/// a final answer.
+///
+/// `AgentLoop` separates the run's lifecycle into the two phases the Python reference
+/// (`ReActAgent`) keeps apart: init-time work that is computed **once** in
+/// [`AgentLoop::new`] (select the agent, resolve the provider/inference
+/// implementation, build the tool allowlist seed, the sub-agent roster, the prior
+/// conversation, and the per-run budgets), and the per-turn lifecycle —
+/// construct-prompt → call-model → parse → decide-action — driven by [`AgentLoop::run`]
+/// (with [`AgentLoop::step`] doing one turn).
+///
+/// The object is deliberately **dependency-light**: it is pure types plus calls into
+/// the existing seams (the [`ExecutionProvider`] executor and the [`InferenceProvider`]
+/// inference impl). It pulls in no `web-sys`/`gloo`/`wasm-bindgen` directly — all
+/// platform divergence stays behind those seams, honoring the minimal-core principle.
+///
+/// Tool results and fetched content are always treated as untrusted DATA, never as
+/// instructions to follow.
+struct AgentLoop {
+    /// The capability seam used to fetch tool specs and execute tool calls.
     executor: BrowserExecutionProvider,
-    mut snapshot: AppSnapshot,
-    goal: String,
-    mut observer: F,
-) -> AppResult<AppSnapshot>
-where
-    F: FnMut(AgentRun),
-{
-    clear_interrupt();
+    /// The agent selected for this run (its name/role/response-format drive prompting).
+    agent: Agent,
+    /// Cached `agent.id` — used as the actor on most events.
+    agent_id: String,
+    /// The inference implementation resolved from the run's provider config.
+    inference: OpenAiCompatibleInference,
+    /// The provider config for this run, with the active model profile applied.
+    provider: ProviderConfig,
+    /// The tool allowlist seed (per-agent enabled tools, or the defaults). Run-start
+    /// MCP discovery extends a copy of this inside [`AgentLoop::run`]; the model only
+    /// ever sees and calls tools on the resulting allowlist.
+    enabled_tools: Vec<String>,
+    /// The peer agents this run can see and delegate to.
+    sub_agents: Vec<SubAgentInfo>,
+    /// Prior conversation turns, so the agent carries its session forward.
+    conversation: Vec<Message>,
+    /// Output validators applied to tool results and the final answer.
+    validators: ValidatorRegistry,
+    /// The hard turn budget for the loop (always at least 1).
+    max_steps: u32,
+    /// The lane this goal was routed to (a timeline label / plan seed only).
+    lane: RunLane,
+}
 
-    let lane = classify_goal(&goal);
-    let run_id = Uuid::new_v4().to_string();
-    let agent = pick_agent(&snapshot);
-    let agent_id = agent.id.clone();
-    let enabled_tools = if agent.enabled_tools.is_empty() {
-        default_tool_names()
-    } else {
-        agent.enabled_tools.clone()
-    };
+/// What one [`AgentLoop::step`] decided the loop should do next.
+enum StepOutcome {
+    /// Keep looping: take another turn.
+    Continue,
+    /// Stop the loop. `answered` records whether a validated final answer was produced
+    /// (vs. an interrupt, pause, validation error, or empty-tool stop).
+    Stop { answered: bool },
+}
 
-    let mut run = AgentRun {
-        id: run_id.clone(),
-        goal: goal.clone(),
-        status: RunStatus::Running,
-        lane,
-        scratchpad: initial_scratchpad(&snapshot, &goal, lane),
-        messages: Vec::new(),
-        events: vec![event(
-            &run_id,
-            None,
-            AgentEventKind::Started,
-            "Run started",
-            format!("Goal: {goal}"),
-        )],
-        tool_calls: Vec::new(),
-        tool_results: Vec::new(),
-        final_answer: String::new(),
-        created_at: now_iso(),
-    };
-    run.events.push(event(
-        &run_id,
-        Some(agent_id.clone()),
-        AgentEventKind::Routing,
-        format!("Routing: {}", lane.as_label()),
-        format!(
-            "Classified into the {} ({}) lane. Compiled tools: {}.",
-            lane.as_label(),
-            lane.as_str(),
-            enabled_tools.join(", ")
-        ),
-    ));
-    observer(run.clone());
+impl AgentLoop {
+    /// Init-time construction: do the **once-per-run** work and cache it. This mirrors
+    /// `ReActAgent.__init__` in the reference — agent selection, provider/inference
+    /// resolution, the tool allowlist seed, the sub-agent roster, the prior
+    /// conversation, and the run budgets are all computed here, not per turn.
+    ///
+    /// Pure and synchronous: it touches no platform APIs and performs no I/O. The
+    /// async, observer-driven run-start work (browser MCP bring-up) is deferred to
+    /// [`AgentLoop::run`] because it needs the live `run` and `observer`.
+    fn new(executor: BrowserExecutionProvider, snapshot: &AppSnapshot, goal: &str) -> Self {
+        let lane = classify_goal(goal);
+        let agent = pick_agent(snapshot);
+        let agent_id = agent.id.clone();
+        let enabled_tools = if agent.enabled_tools.is_empty() {
+            default_tool_names()
+        } else {
+            agent.enabled_tools.clone()
+        };
 
-    // Bring up enabled browser MCP servers, discover their tools, and add them to
-    // this run's allowlist so the model can see and call them. Browser-only: on the
-    // host test runner there is no Web Worker, so this is a no-op and `enabled_tools`
-    // is unchanged. MCP tool output is untrusted DATA, handled exactly like any other
-    // tool result by the loop below.
-    #[cfg(target_arch = "wasm32")]
-    let enabled_tools = {
-        let mut enabled_tools = enabled_tools;
-        let mcp_tools = crate::mcp::registry::bring_up_enabled(
-            &snapshot.mcp_servers,
-            &mut run,
-            &agent_id,
-            &mut observer,
-        )
-        .await;
-        enabled_tools.extend(mcp_tools);
-        enabled_tools
-    };
-
-    // Resolve the model profile (per-agent first, then the workspace active profile)
-    // and apply its tuning onto the provider config used for this run.
-    let mut provider = snapshot.provider.clone();
-    let profile_id = agent
-        .model_profile_id
-        .clone()
-        .or_else(|| snapshot.active_model_profile_id.clone());
-    if let Some(profile_id) = profile_id
-        && let Some(profile) = snapshot
-            .model_profiles
-            .iter()
-            .find(|profile| profile.id == profile_id)
-    {
-        provider.temperature = profile.temperature;
-        provider.max_tokens = profile.max_tokens;
-        provider.top_p = profile.top_p;
-        provider.context_window = profile.context_window;
-    }
-    let inference = get_implementation(&provider);
-    let specs = executor.domain_specs_for_agent(&enabled_tools);
-    // The roster of peer agents this run can see and delegate to (everyone enabled
-    // except the agent currently running). Rendered into the prompt's sub-agent
-    // section by `agent_prompt`.
-    let sub_agents = sub_agent_roster(&snapshot, &agent_id);
-    let validators = ValidatorRegistry;
-    // Prior conversation turns so the agent carries its session forward instead of
-    // treating every query as a fresh start.
-    let conversation = conversation_seed(&snapshot.runs);
-    let max_steps = run.scratchpad.budgets.max_steps.max(1);
-    let mut answered = false;
-
-    for step in 0..max_steps {
-        if interrupt_requested() {
-            mark_interrupted(&mut run, "Run interrupted before the next model call.");
-            observer(run.clone());
-            break;
+        // Resolve the model profile (per-agent first, then the workspace active
+        // profile) and apply its tuning onto the provider config used for this run.
+        let mut provider = snapshot.provider.clone();
+        let profile_id = agent
+            .model_profile_id
+            .clone()
+            .or_else(|| snapshot.active_model_profile_id.clone());
+        if let Some(profile_id) = profile_id
+            && let Some(profile) = snapshot
+                .model_profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+        {
+            provider.temperature = profile.temperature;
+            provider.max_tokens = profile.max_tokens;
+            provider.top_p = profile.top_p;
+            provider.context_window = profile.context_window;
         }
+        let inference = get_implementation(&provider);
 
-        let turn = step + 1;
+        // The roster of peer agents this run can see and delegate to (everyone enabled
+        // except the agent currently running). Rendered into the prompt's sub-agent
+        // section by `agent_prompt`.
+        let sub_agents = sub_agent_roster(snapshot, &agent_id);
+        // Prior conversation turns so the agent carries its session forward instead of
+        // treating every query as a fresh start.
+        let conversation = conversation_seed(&snapshot.runs);
+        let max_steps = snapshot.orchestrator.max_steps.max(1);
+
+        Self {
+            executor,
+            agent,
+            agent_id,
+            inference,
+            provider,
+            enabled_tools,
+            sub_agents,
+            conversation,
+            validators: ValidatorRegistry,
+            max_steps,
+            lane,
+        }
+    }
+
+    /// Build the fresh [`AgentRun`] this loop drives, seeded from init-time state and
+    /// the just-determined allowlist (including any MCP tools discovered at run start).
+    fn build_run(&self, goal: &str, snapshot: &AppSnapshot, enabled_tools: &[String]) -> AgentRun {
+        let run_id = Uuid::new_v4().to_string();
+        let mut run = AgentRun {
+            id: run_id.clone(),
+            goal: goal.to_string(),
+            status: RunStatus::Running,
+            lane: self.lane,
+            scratchpad: initial_scratchpad(snapshot, goal, self.lane),
+            messages: Vec::new(),
+            events: vec![event(
+                &run_id,
+                None,
+                AgentEventKind::Started,
+                "Run started",
+                format!("Goal: {goal}"),
+            )],
+            tool_calls: Vec::new(),
+            tool_results: Vec::new(),
+            final_answer: String::new(),
+            created_at: now_iso(),
+        };
+        run.events.push(event(
+            &run_id,
+            Some(self.agent_id.clone()),
+            AgentEventKind::Routing,
+            format!("Routing: {}", self.lane.as_label()),
+            format!(
+                "Classified into the {} ({}) lane. Compiled tools: {}.",
+                self.lane.as_label(),
+                self.lane.as_str(),
+                enabled_tools.join(", ")
+            ),
+        ));
+        run
+    }
+
+    /// Per-turn lifecycle: construct the prompt, call the model (with retry), parse the
+    /// response, then decide the action — accept a validated final answer, or execute
+    /// the parsed tool calls and feed their UNTRUSTED results back. Returns whether the
+    /// outer loop should continue or stop. `turn` is 1-based.
+    ///
+    /// `snapshot` is passed in mutably because tool execution operates on it; the loop
+    /// object stays immutable across turns (only the `run`, `snapshot`, and `observer`
+    /// change).
+    // The per-turn driver legitimately needs the run context, the tool specs/allowlist,
+    // the cross-turn format negotiator, and the observer; bundling them into a struct
+    // would obscure more than it clarifies for one private method.
+    #[allow(clippy::too_many_arguments)]
+    async fn step<F>(
+        &self,
+        turn: u32,
+        snapshot: &mut AppSnapshot,
+        run: &mut AgentRun,
+        specs: &[ToolSpec],
+        enabled_tools: &[String],
+        format_negotiator: &mut FormatNegotiator,
+        observer: &mut F,
+    ) -> StepOutcome
+    where
+        F: FnMut(AgentRun),
+    {
         run.scratchpad.budgets.steps_used = turn;
         run.events.push(event(
             &run.id,
-            Some(agent_id.clone()),
+            Some(self.agent_id.clone()),
             AgentEventKind::LlmRequest,
             format!("Model call (turn {turn})"),
             format!(
                 "Sending {} prior conversation message(s), the query, and {} in-run message(s).",
-                conversation.len(),
+                self.conversation.len(),
                 run.messages.len()
             ),
         ));
@@ -251,39 +325,66 @@ where
 
         // Full ordered transcript: prior conversation, the current query, then this
         // run's accumulated ReAct turns.
-        let mut history = conversation.clone();
+        let mut history = self.conversation.clone();
         history.push(Message {
             role: "user".to_string(),
             content: run.goal.clone(),
         });
         history.extend(run.messages.iter().cloned());
 
+        // Ask for the format the negotiator currently favors (escalated to JSON after
+        // repeated TOON parse failures). Captured so we can score this turn's reply
+        // against the format we actually requested.
+        let requested_format = format_negotiator.format();
         let request = InferenceRequest {
-            agent_name: agent.name.clone(),
-            agent_role: agent.role.clone(),
+            agent_name: self.agent.name.clone(),
+            agent_role: self.agent.role.clone(),
             soul: snapshot.soul.clone(),
             skills: snapshot.skills.clone(),
             goal: run.goal.clone(),
             history,
-            tools: specs.clone(),
-            sub_agents: sub_agents.clone(),
+            tools: specs.to_vec(),
+            sub_agents: self.sub_agents.clone(),
             now: crate::state::now_iso(),
-            response_format: agent.response_format,
+            response_format: requested_format,
         };
 
         let Some(output) = call_model_with_retry(
-            &inference,
-            &provider,
+            &self.inference,
+            &self.provider,
             request,
-            &mut run,
-            &agent_id,
-            &mut observer,
+            run,
+            &self.agent_id,
+            observer,
         )
         .await
         else {
             // Every attempt failed: the run was paused (resumable) inside the helper.
-            break;
+            return StepOutcome::Stop { answered: false };
         };
+
+        // Score this reply against the format we requested and feed the negotiator: a
+        // clean parse in the requested format resets the streak; anything else (a
+        // different structured format or the lenient fallback) is a failure that moves
+        // us toward requesting JSON. `output.parsed` stays the lenient best-effort value
+        // the rest of the loop uses.
+        let parse_outcome: ParseOutcome = ReActResponse::parsed_format(&output.raw_text);
+        format_negotiator.record(parse_outcome.honors(requested_format));
+        let next_format = format_negotiator.format();
+        if next_format != requested_format {
+            run.events.push(event(
+                &run.id,
+                Some(self.agent_id.clone()),
+                AgentEventKind::Routing,
+                "Response format escalated",
+                format!(
+                    "Requesting {} after {} consecutive parse failure(s) on {}.",
+                    next_format.as_form_value(),
+                    format_negotiator.consecutive_failures(),
+                    requested_format.as_form_value()
+                ),
+            ));
+        }
 
         let parsed = output.parsed;
         run.messages.push(Message {
@@ -297,32 +398,31 @@ where
         };
         run.events.push(event(
             &run.id,
-            Some(agent_id.clone()),
+            Some(self.agent_id.clone()),
             AgentEventKind::LlmResponse,
             format!("Model responded (turn {turn})"),
             truncate(&thinking, 600),
         ));
         if !thinking.trim().is_empty() {
-            push_observation(&mut run, &agent.name, thinking);
+            push_observation(run, &self.agent.name, thinking);
         }
 
         match parsed.action {
             ReActAction::Answer => {
                 let final_text = parsed.final_text();
                 if try_finalize_answer(
-                    &validators,
-                    &mut run,
-                    &agent_id,
+                    &self.validators,
+                    run,
+                    &self.agent_id,
                     &final_text,
                     "Final answer",
                 ) {
-                    answered = true;
                     observer(run.clone());
-                    break;
+                    return StepOutcome::Stop { answered: true };
                 }
                 observer(run.clone());
                 if run.status == RunStatus::Error {
-                    break;
+                    return StepOutcome::Stop { answered: false };
                 }
             }
             ReActAction::Tool => {
@@ -333,120 +433,242 @@ where
                     // unvalidated output.
                     let final_text = parsed.final_text();
                     if try_finalize_answer(
-                        &validators,
-                        &mut run,
-                        &agent_id,
+                        &self.validators,
+                        run,
+                        &self.agent_id,
                         &final_text,
                         "Final answer (no tool call parsed)",
                     ) {
-                        answered = true;
                         observer(run.clone());
-                        break;
+                        return StepOutcome::Stop { answered: true };
                     }
                     observer(run.clone());
                     if run.status == RunStatus::Error {
-                        break;
+                        return StepOutcome::Stop { answered: false };
                     }
-                    continue;
+                    return StepOutcome::Continue;
                 }
 
-                for call in calls {
-                    let call_id = Uuid::new_v4().to_string();
-                    run.tool_calls.push(ToolCall {
-                        id: call_id.clone(),
-                        agent_id: agent_id.clone(),
-                        tool_name: call.name.clone(),
-                        arguments: call.args.clone(),
-                    });
-                    run.events.push(event(
-                        &run.id,
-                        Some(agent_id.clone()),
-                        AgentEventKind::ToolRequested,
-                        format!("Tool requested: {}", call.name),
-                        truncate(&call.args.to_string(), 400),
-                    ));
-                    observer(run.clone());
-
-                    let result = if tool_allowed(&call.name, &enabled_tools) {
-                        executor
-                            .execute_domain_tool(
-                                &mut snapshot,
-                                call_id.clone(),
-                                &call.name,
-                                call.args.clone(),
-                            )
-                            .await
-                    } else {
-                        disallowed_tool_result(call_id.clone(), &call.name, &enabled_tools)
-                    };
-                    let kind = if result.ok {
-                        AgentEventKind::ToolCompleted
-                    } else {
-                        AgentEventKind::Error
-                    };
-                    run.events.push(event(
-                        &run.id,
-                        Some(agent_id.clone()),
-                        kind,
-                        format!(
-                            "Tool {}: {}",
-                            if result.ok { "completed" } else { "failed" },
-                            call.name
-                        ),
-                        truncate(&result.content, 600),
-                    ));
-                    let tool_result_valid = validate_tool_result_or_feedback(
-                        &validators,
-                        &mut run,
-                        Some(agent_id.clone()),
-                        &call.name,
-                        &result,
-                    );
-                    // Tool output is untrusted DATA. A validated successful result enters
-                    // the conversation as evidence; validation failures re-enter as
-                    // structured feedback instead.
-                    if tool_result_valid {
-                        run.messages.push(Message {
-                            role: "tool".to_string(),
-                            content: format!("{} -> {}", call.name, result.content),
-                        });
-                        push_observation(&mut run, &call.name, truncate(&result.content, 400));
-                    }
-                    run.tool_results.push(result);
-                    observer(run.clone());
-                    if run.status == RunStatus::Error {
-                        break;
-                    }
-                }
+                self.execute_tool_calls(calls, snapshot, run, enabled_tools, observer)
+                    .await;
             }
         }
 
         if run.status == RunStatus::Error {
-            break;
+            return StepOutcome::Stop { answered: false };
         }
         observer(run.clone());
+        StepOutcome::Continue
     }
 
-    finalize_status(&mut run, answered);
+    /// Execute the parsed tool calls for one turn and feed their results back.
+    ///
+    /// Each tool's output is UNTRUSTED DATA: a validated successful result enters the
+    /// conversation as evidence, while a validation failure re-enters as structured
+    /// feedback instead — never as an instruction the model must obey. A tool not on
+    /// the allowlist short-circuits to a rejection result without executing.
+    async fn execute_tool_calls<F>(
+        &self,
+        calls: Vec<ParsedToolCall>,
+        snapshot: &mut AppSnapshot,
+        run: &mut AgentRun,
+        enabled_tools: &[String],
+        observer: &mut F,
+    ) where
+        F: FnMut(AgentRun),
+    {
+        // === Parallel dual tool-call dispatch (unit #4) ===
+        // A model turn may emit >= 2 tool calls. Prepare them all (assign ids, record the
+        // requests, and apply the allowlist gate — the single visible gate per invariant
+        // 7), then run them CONCURRENTLY via `dispatch_tool_calls` and feed the ordered
+        // observations back exactly as the old sequential loop did. The single-call path
+        // is unchanged in effect. Tool output is untrusted DATA throughout.
+        let prepared = calls
+            .iter()
+            .map(|call| {
+                let call_id = Uuid::new_v4().to_string();
+                run.tool_calls.push(ToolCall {
+                    id: call_id.clone(),
+                    agent_id: self.agent_id.clone(),
+                    tool_name: call.name.clone(),
+                    arguments: call.args.clone(),
+                });
+                run.events.push(event(
+                    &run.id,
+                    Some(self.agent_id.clone()),
+                    AgentEventKind::ToolRequested,
+                    format!("Tool requested: {}", call.name),
+                    truncate(&call.args.to_string(), 400),
+                ));
+                PreparedCall {
+                    call_id,
+                    name: call.name.clone(),
+                    args: call.args.clone(),
+                    allowed: tool_allowed(&call.name, enabled_tools),
+                    enabled_tools: enabled_tools.to_vec(),
+                }
+            })
+            .collect::<Vec<_>>();
+        observer(run.clone());
 
-    // finalize_status above guarantees a terminal status here (Running is flipped to
-    // Complete), so every arm is a finished-run message.
-    snapshot.status = match run.status {
-        RunStatus::Complete | RunStatus::Running => "Run complete.".to_string(),
-        RunStatus::Interrupted => "Run interrupted.".to_string(),
-        RunStatus::Paused => "Run paused — press Resume to continue.".to_string(),
-        RunStatus::Error => "Run failed.".to_string(),
-    };
-    snapshot.current_run = Some(run.clone());
-    snapshot.runs.push(run.clone());
-    // Keep the persisted run history bounded so the snapshot does not grow forever.
-    let runs_len = snapshot.runs.len();
-    if runs_len > 25 {
-        snapshot.runs.drain(0..runs_len - 25);
+        let results = dispatch_tool_calls(&self.executor, snapshot, &prepared).await;
+
+        // Process observations IN CALL ORDER (the order `dispatch_tool_calls` returns),
+        // so feedback into the conversation is deterministic regardless of which call
+        // finished first.
+        for (prepared_call, result) in prepared.iter().zip(results) {
+            let tool_name = &prepared_call.name;
+            let kind = if result.ok {
+                AgentEventKind::ToolCompleted
+            } else {
+                AgentEventKind::Error
+            };
+            run.events.push(event(
+                &run.id,
+                Some(self.agent_id.clone()),
+                kind,
+                format!(
+                    "Tool {}: {}",
+                    if result.ok { "completed" } else { "failed" },
+                    tool_name
+                ),
+                truncate(&result.content, 600),
+            ));
+            let tool_result_valid = validate_tool_result_or_feedback(
+                &self.validators,
+                run,
+                Some(self.agent_id.clone()),
+                tool_name,
+                &result,
+            );
+            // Tool output is untrusted DATA. A validated successful result enters
+            // the conversation as evidence; validation failures re-enter as
+            // structured feedback instead.
+            if tool_result_valid {
+                run.messages.push(Message {
+                    role: "tool".to_string(),
+                    content: format!("{} -> {}", tool_name, result.content),
+                });
+                push_observation(run, tool_name, truncate(&result.content, 400));
+            }
+            run.tool_results.push(result);
+            observer(run.clone());
+            if run.status == RunStatus::Error {
+                break;
+            }
+        }
+        // === end parallel dual tool-call dispatch ===
     }
-    observer(run);
 
-    Ok(snapshot)
+    /// Drive the goal to completion: run-start setup (MCP bring-up), then the per-turn
+    /// loop up to `max_steps`, then finalize and persist the run into `snapshot`.
+    /// Notifies `observer` after every state change.
+    async fn run<F>(self, mut snapshot: AppSnapshot, goal: String, mut observer: F) -> AppSnapshot
+    where
+        F: FnMut(AgentRun),
+    {
+        // The allowlist the model actually sees: the init-time seed, plus any MCP
+        // tools discovered at run start. Built before the first turn so the routing
+        // event reflects the final tool set.
+        let enabled_tools = self.enabled_tools.clone();
+        let mut run = self.build_run(&goal, &snapshot, &enabled_tools);
+        observer(run.clone());
+
+        // Bring up enabled browser MCP servers, discover their tools, and add them to
+        // this run's allowlist so the model can see and call them. Browser-only: on the
+        // host test runner there is no Web Worker, so this is a no-op and `enabled_tools`
+        // is unchanged. MCP tool output is untrusted DATA, handled exactly like any
+        // other tool result by the loop below.
+        #[cfg(target_arch = "wasm32")]
+        let enabled_tools = {
+            let mut enabled_tools = enabled_tools;
+            let mcp_tools = crate::mcp::registry::bring_up_enabled(
+                &snapshot.mcp_servers,
+                &mut run,
+                &self.agent_id,
+                &mut observer,
+            )
+            .await;
+            enabled_tools.extend(mcp_tools);
+            enabled_tools
+        };
+
+        // Tool manifest the model is shown each turn. Computed once here, after the
+        // allowlist is finalized (post-MCP), then reused every turn — exactly as the
+        // original loop did.
+        let specs = self.executor.domain_specs_for_agent(&enabled_tools);
+
+        let mut answered = false;
+        // Requested-format negotiation (Unit #2): persists across turns so a streak of
+        // TOON parse failures can escalate the requested format to JSON (and one clean
+        // parse relaxes it back). `step` feeds it each turn's outcome and reads back the
+        // format to request next.
+        let mut format_negotiator = FormatNegotiator::new(self.agent.response_format);
+        for step in 0..self.max_steps {
+            if interrupt_requested() {
+                mark_interrupted(&mut run, "Run interrupted before the next model call.");
+                observer(run.clone());
+                break;
+            }
+
+            match self
+                .step(
+                    step + 1,
+                    &mut snapshot,
+                    &mut run,
+                    &specs,
+                    &enabled_tools,
+                    &mut format_negotiator,
+                    &mut observer,
+                )
+                .await
+            {
+                StepOutcome::Continue => {}
+                StepOutcome::Stop { answered: done } => {
+                    answered = done;
+                    break;
+                }
+            }
+        }
+
+        finalize_status(&mut run, answered);
+
+        // finalize_status above guarantees a terminal status here (Running is flipped to
+        // Complete), so every arm is a finished-run message.
+        snapshot.status = match run.status {
+            RunStatus::Complete | RunStatus::Running => "Run complete.".to_string(),
+            RunStatus::Interrupted => "Run interrupted.".to_string(),
+            RunStatus::Paused => "Run paused — press Resume to continue.".to_string(),
+            RunStatus::Error => "Run failed.".to_string(),
+        };
+        snapshot.current_run = Some(run.clone());
+        snapshot.runs.push(run.clone());
+        // Keep the persisted run history bounded so the snapshot does not grow forever.
+        let runs_len = snapshot.runs.len();
+        if runs_len > 25 {
+            snapshot.runs.drain(0..runs_len - 25);
+        }
+        observer(run);
+
+        snapshot
+    }
+}
+
+/// Drive one agent goal to a final answer, notifying `observer` after every state
+/// change. A thin wrapper that constructs an [`AgentLoop`] (init-time work) and runs it
+/// (per-turn lifecycle), preserving the engine's public entry-point behavior.
+async fn run_react_session<F>(
+    executor: BrowserExecutionProvider,
+    snapshot: AppSnapshot,
+    goal: String,
+    observer: F,
+) -> AppResult<AppSnapshot>
+where
+    F: FnMut(AgentRun),
+{
+    clear_interrupt();
+    let agent_loop = AgentLoop::new(executor, &snapshot, &goal);
+    Ok(agent_loop.run(snapshot, goal, observer).await)
 }
 
 /// Call the model for one turn, retrying a transient failure a few times with
@@ -528,25 +750,6 @@ fn finalize_status(run: &mut AgentRun, answered: bool) {
 
 fn tool_allowed(tool_name: &str, enabled_tools: &[String]) -> bool {
     enabled_tools.iter().any(|allowed| allowed == tool_name)
-}
-
-fn disallowed_tool_result(
-    call_id: String,
-    tool_name: &str,
-    enabled_tools: &[String],
-) -> crate::state::ToolResult {
-    let allowlist = if enabled_tools.is_empty() {
-        "<empty>".to_string()
-    } else {
-        enabled_tools.join(", ")
-    };
-    crate::state::ToolResult {
-        call_id,
-        ok: false,
-        content: format!(
-            "Tool `{tool_name}` is not in this agent's tool allowlist. Allowed tools: {allowlist}."
-        ),
-    }
 }
 
 fn validate_tool_result_or_feedback(
@@ -862,20 +1065,12 @@ mod tests {
 
     #[test]
     fn rejects_tool_not_in_agent_allowlist_before_execution() {
+        // The engine owns the allowlist gate; the disallowed-call *result* is produced
+        // by `tool_dispatch` (and covered by its own tests). Here we assert the gate.
         let allowed = vec!["web_search".to_string()];
 
         assert!(tool_allowed("web_search", &allowed));
         assert!(!tool_allowed("file_write", &allowed));
-
-        let result =
-            disallowed_tool_result("call-hidden-write".to_string(), "file_write", &allowed);
-        assert!(!result.ok);
-        assert!(
-            result
-                .content
-                .contains("not in this agent's tool allowlist")
-        );
-        assert!(result.content.contains("web_search"));
     }
 
     fn test_run_with_evidence() -> AgentRun {
