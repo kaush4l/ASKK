@@ -17,8 +17,10 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 mod format_negotiation;
+mod macros;
 mod react;
 mod tool_calls;
+pub(crate) use macros::define_response;
 
 // Public format-negotiation API. `FormatNegotiator` is consumed by the engine loop;
 // the pure `next_format_after_failures` helper and `MAX_TOON_FAILURES` threshold are
@@ -338,7 +340,7 @@ fn find_toon_field<'a>(raw: &'a str, field: &str) -> Option<ToonField<'a>> {
 // Private here; visible to that descendant via `super::`.
 // ---------------------------------------------------------------------------
 
-fn string_field(fields: &BTreeMap<String, Value>, key: &str) -> String {
+pub(crate) fn string_field(fields: &BTreeMap<String, Value>, key: &str) -> String {
     fields
         .get(key)
         .map(|value| match value {
@@ -348,7 +350,7 @@ fn string_field(fields: &BTreeMap<String, Value>, key: &str) -> String {
         .unwrap_or_default()
 }
 
-fn list_field(fields: &BTreeMap<String, Value>, key: &str) -> Vec<String> {
+pub(crate) fn list_field(fields: &BTreeMap<String, Value>, key: &str) -> Vec<String> {
     match fields.get(key) {
         Some(Value::Array(items)) => items
             .iter()

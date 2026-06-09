@@ -3,36 +3,25 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{ResponseField, StructuredResponse, list_field, string_field};
+use super::define_response;
 
 #[cfg(test)]
-use super::{ParseOutcome, ResponseFormat};
+use super::{ParseOutcome, ResponseFormat, StructuredResponse};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub enum ReActAction {
-    Tool,
-    Answer,
-}
-
-impl ReActAction {
-    fn from_value(value: Option<&Value>) -> Self {
-        match value.and_then(Value::as_str).unwrap_or("answer").trim() {
-            "tool" => Self::Tool,
-            _ => Self::Answer,
-        }
+define_response! {
+    /// One turn of the ReAct loop — observation, thinking, plan, and either a tool
+    /// action or a final answer.
+    pub struct ReActResponse {
+        observation: text => "One short sentence about current context, key facts, or constraints.",
+        thinking: text => "Concise reasoning that is safe to show in the run timeline.",
+        plan: list => "0-3 short, concrete next steps. Use [] when obvious.",
+        action: (choice ReActAction { Tool = "tool", Answer = "answer" } default Answer, "tool | answer") => "'tool' to invoke a compiled tool, 'answer' for final response text.",
+        response: text => "If action='tool': tool_name({\"key\":\"value\"}). If action='answer': final answer.",
     }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct ReActResponse {
-    pub observation: String,
-    pub thinking: String,
-    pub plan: Vec<String>,
-    pub action: ReActAction,
-    pub response: String,
+    normalize: normalize_invalid_action,
+    finish: with_raw_fallback,
 }
 
 impl ReActResponse {
@@ -49,50 +38,6 @@ impl ReActResponse {
             self.response = raw.trim().to_string();
         }
         self
-    }
-}
-
-impl StructuredResponse for ReActResponse {
-    fn fields() -> &'static [ResponseField] {
-        &[
-            ResponseField {
-                name: "observation",
-                type_name: "string",
-                description: "One short sentence about current context, key facts, or constraints.",
-            },
-            ResponseField {
-                name: "thinking",
-                type_name: "string",
-                description: "Concise reasoning that is safe to show in the run timeline.",
-            },
-            ResponseField {
-                name: "plan",
-                type_name: "list",
-                description: "0-3 short, concrete next steps. Use [] when obvious.",
-            },
-            ResponseField {
-                name: "action",
-                type_name: "tool | answer",
-                description: "'tool' to invoke a compiled tool, 'answer' for final response text.",
-            },
-            ResponseField {
-                name: "response",
-                type_name: "string",
-                description: "If action='tool': tool_name({\"key\":\"value\"}). If action='answer': final answer.",
-            },
-        ]
-    }
-
-    fn from_fields(mut fields: BTreeMap<String, Value>, raw: &str) -> Self {
-        normalize_invalid_action(&mut fields);
-        Self {
-            observation: string_field(&fields, "observation"),
-            thinking: string_field(&fields, "thinking"),
-            plan: list_field(&fields, "plan"),
-            action: ReActAction::from_value(fields.get("action")),
-            response: string_field(&fields, "response").trim().to_string(),
-        }
-        .with_raw_fallback(raw)
     }
 }
 
