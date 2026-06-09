@@ -39,6 +39,9 @@ pub fn ToolsPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                     h3 { "web_search" }
                     span { class: "source-path", "active" }
                 }
+                p { class: "muted",
+                    "Browser backend: with a Tavily API key it searches the full web — general results and current news — directly from the page (free tier at tavily.com). Without a key it falls back to key-free public sources (DuckDuckGo, GDELT news [rate-limited], Hacker News, Stack Overflow, Wikipedia), which cover tech and reference well but not general news. For heavy or parallel use, the Bridge backend with Brave/Tavily/SearXNG is the most reliable."
+                }
                 div { class: "tool-config-grid",
                     label {
                         "Backend"

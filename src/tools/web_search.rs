@@ -122,8 +122,12 @@ async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppRe
 /// configured key lets us call it straight from the page — a real general-web + news
 /// provider, no bridge required. Returns the shared `web` hit array.
 async fn tavily_browser_search(query: &str, count: usize, api_key: &str) -> AppResult<Vec<Value>> {
+    // Send the key both as the bearer header (current Tavily) and as the legacy
+    // `api_key` body field, so either auth mode the key was issued for works.
     let body = json!({
+        "api_key": api_key,
         "query": query,
+        "topic": "general",
         "max_results": count.clamp(1, 10),
         "search_depth": "basic",
     });
