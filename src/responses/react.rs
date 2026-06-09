@@ -183,4 +183,28 @@ response: web_search({"query":"top news headlines today","count":5})"#,
         assert!(!outcome.honors(ResponseFormat::Toon));
         assert!(!outcome.honors(ResponseFormat::Json));
     }
+
+    #[test]
+    fn react_fields_table_is_unchanged_by_macro_migration() {
+        // Golden pin: the macro migration must keep the field table — and therefore
+        // the generated JSON/TOON instructions — bit-for-bit identical.
+        let fields = ReActResponse::fields();
+        let expected: &[(&str, &str)] = &[
+            ("observation", "string"),
+            ("thinking", "string"),
+            ("plan", "list"),
+            ("action", "tool | answer"),
+            ("response", "string"),
+        ];
+        let actual: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|field| (field.name, field.type_name))
+            .collect();
+        assert_eq!(actual, expected);
+        assert!(
+            fields[3]
+                .description
+                .contains("'tool' to invoke a compiled tool")
+        );
+    }
 }
