@@ -30,6 +30,39 @@ pub(crate) async fn http_get_json(url: &str) -> AppResult<Value> {
     serde_json::from_str::<Value>(&text).map_err(|err| format!("{url} returned non-JSON: {err}"))
 }
 
+/// POST a JSON body to a URL (with an optional bearer token) and parse the JSON
+/// response. Used for browser-direct, CORS-allowed BYOK search providers such as
+/// Tavily, so a real general-web search works from the hosted site with no bridge.
+pub(crate) async fn http_post_json(
+    url: &str,
+    body: &Value,
+    bearer_token: Option<&str>,
+) -> AppResult<Value> {
+    let payload = serde_json::to_string(body)
+        .map_err(|err| format!("Unable to encode request body: {err}"))?;
+    let mut builder = Request::post(url).header("Content-Type", "application/json");
+    if let Some(token) = bearer_token {
+        builder = builder.header("Authorization", &format!("Bearer {token}"));
+    }
+    let request = builder
+        .body(payload)
+        .map_err(|err| format!("Unable to build request to {url}: {err:?}"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|err| format!("Browser request to {url} failed (network or CORS): {err:?}"))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|err| format!("Unable to read response from {url}: {err:?}"))?;
+    if !(200..300).contains(&status) {
+        let snippet: String = text.chars().take(200).collect();
+        return Err(format!("{url} returned HTTP {status}: {snippet}"));
+    }
+    serde_json::from_str::<Value>(&text).map_err(|err| format!("{url} returned non-JSON: {err}"))
+}
+
 /// Percent-encode a string for use as a URL query component (RFC 3986 unreserved
 /// set kept). Pure and host-testable so it does not depend on `js_sys`.
 pub(crate) fn encode_component(value: &str) -> String {

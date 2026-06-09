@@ -1,14 +1,18 @@
-//! `web_search` — discover sources on the web. Two interchangeable backends sit
-//! behind the same `web_search` envelope (`{ success, data: { web: [...] } }`):
+//! `web_search` — discover sources on the web, including current news. Two
+//! interchangeable backends sit behind the same envelope
+//! (`{ success, data: { web: [...] } }`):
 //!
-//! - **Browser** (default, key-free): merge DuckDuckGo Instant Answer with Wikipedia
-//!   full-text search. Both are CORS `*` and key-free, so it works on the hosted
-//!   HTTPS site with no bridge.
+//! - **Browser** (default): if a Tavily API key is configured, call Tavily directly
+//!   from the page (Tavily allows cross-origin requests) for full general-web + news
+//!   search with no bridge. With no key, merge several CORS-open, key-free public APIs
+//!   concurrently — DuckDuckGo Instant Answer (entity answers), GDELT (current news),
+//!   Hacker News (tech discussion), Stack Overflow (coding Q&A), and Wikipedia
+//!   (reference). Works on the hosted HTTPS site with no bridge; a source that errors
+//!   or rate-limits is simply dropped from the merge.
 //! - **Bridge**: forward to a full provider (Brave/Tavily/SearXNG) via the local
 //!   bridge.
 //!
-//! Adding another provider is a new arm here behind `SearchBackend`; the agent loop
-//! never changes.
+//! Adding another source/provider is a new arm here; the agent loop never changes.
 
 use crate::state::{AppResult, AppSnapshot, SearchBackend, ToolSpec, WebSearchToolConfig};
 use serde_json::{Value, json};
@@ -16,7 +20,7 @@ use std::collections::HashSet;
 
 use super::bridge::{bridge_endpoint, bridge_tool_request};
 use super::common::{integer_arg, merge_optional_string, string_arg};
-use super::http::{encode_component, http_get_json, strip_html};
+use super::http::{encode_component, http_get_json, http_post_json, strip_html};
 use super::{ToolDescriptor, ToolFuture};
 
 pub(crate) fn descriptor() -> ToolDescriptor {
@@ -29,7 +33,7 @@ pub(crate) fn descriptor() -> ToolDescriptor {
 fn spec() -> ToolSpec {
     ToolSpec {
         name: "web_search".to_string(),
-        description: "Search the web and get back titles, URLs, and descriptions. By default this runs directly in the browser (key-free, works on the hosted site); it can be switched to the local bridge for richer providers on the Tools page. Use it to discover sources, then web_fetch the best ones to read them in full.".to_string(),
+        description: "Search the web for current information and news, returning titles, URLs, and descriptions. By default it runs directly in the browser key-free (DuckDuckGo, GDELT news, Hacker News, Stack Overflow, Wikipedia); adding a Tavily API key on the Tools page upgrades it to full general-web search from the page, and the local bridge can be used for Brave/Tavily/SearXNG. Use it to discover sources for recent events and news, then web_fetch the best ones to read them in full.".to_string(),
         input_schema: json!({
             "type":"object",
             "properties":{
@@ -74,28 +78,137 @@ async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppRe
         .unwrap_or(i64::from(config.default_count))
         .clamp(1, 10) as usize;
 
+    // Best path: a configured Tavily key calls Tavily directly from the page (Tavily
+    // allows cross-origin requests) — a real general-web + news provider with no
+    // bridge. Fall through to the key-free sources if it errors or returns nothing, so
+    // a bad key or outage degrades to the key-free backend rather than failing.
+    let tavily_key = config.tavily_api_key.trim();
+    if !tavily_key.is_empty()
+        && let Ok(web) = tavily_browser_search(&query, count, tavily_key).await
+        && !web.is_empty()
+    {
+        return Ok(
+            json!({ "success": true, "data": { "web": web }, "backend": "browser+tavily" })
+                .to_string(),
+        );
+    }
+
     // No single key-free API does general web search, so query several CORS-open,
     // key-free sources CONCURRENTLY and merge: DuckDuckGo Instant Answer (entity /
-    // definition answers), Hacker News (current tech discussion), Stack Overflow
-    // (coding Q&A), and Wikipedia (reference). For a full general-web provider
-    // (Brave / Tavily / SearXNG), switch the Tools page backend to Bridge.
-    let (ddg, hn, stack, wiki) = futures_util::join!(
+    // definition answers), GDELT (current news), Hacker News (tech discussion), Stack
+    // Overflow (coding Q&A), and Wikipedia (reference). For a full general-web provider
+    // without a key, switch the Tools page backend to Bridge.
+    let (ddg, news, hn, stack, wiki) = futures_util::join!(
         duckduckgo_instant_answer(&query),
+        gdelt_news_search(&query, count),
         hackernews_search(&query, count),
         stackoverflow_search(&query, count),
         wikipedia_search(&query, count),
     );
     let sources: Vec<Vec<(String, String, String)>> =
-        [ddg, hn, stack, wiki].into_iter().flatten().collect();
+        [ddg, news, hn, stack, wiki].into_iter().flatten().collect();
     let web = merge_search_results(&sources, count);
 
     if web.is_empty() {
         return Err(format!(
-            "No browser web_search results for `{query}`. The key-free browser backend (DuckDuckGo, Hacker News, Stack Overflow, Wikipedia) has limited coverage; switch the Tools page backend to Bridge for a full general-web provider (Brave / Tavily / SearXNG)."
+            "No browser web_search results for `{query}`. The key-free browser backend (DuckDuckGo, GDELT news, Hacker News, Stack Overflow, Wikipedia) has limited coverage. For full general-web search from the hosted site, add a free Tavily API key on the Tools page; or switch the backend to Bridge for Brave / Tavily / SearXNG."
         ));
     }
 
     Ok(json!({ "success": true, "data": { "web": web }, "backend": "browser" }).to_string())
+}
+
+/// Browser-direct Tavily search (BYOK). Tavily allows cross-origin requests, so a
+/// configured key lets us call it straight from the page — a real general-web + news
+/// provider, no bridge required. Returns the shared `web` hit array.
+async fn tavily_browser_search(query: &str, count: usize, api_key: &str) -> AppResult<Vec<Value>> {
+    let body = json!({
+        "query": query,
+        "max_results": count.clamp(1, 10),
+        "search_depth": "basic",
+    });
+    let value = http_post_json("https://api.tavily.com/search", &body, Some(api_key)).await?;
+    Ok(parse_tavily_results(&value, count))
+}
+
+fn parse_tavily_results(value: &Value, count: usize) -> Vec<Value> {
+    let Some(results) = value.get("results").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut web = Vec::new();
+    for item in results {
+        let title = item.get("title").and_then(Value::as_str).unwrap_or("");
+        let url = item.get("url").and_then(Value::as_str).unwrap_or("");
+        if title.trim().is_empty() || url.trim().is_empty() {
+            continue;
+        }
+        let description = item
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        web.push(json!({
+            "title": title,
+            "url": url,
+            "description": description,
+            "position": web.len() + 1,
+        }));
+        if web.len() >= count {
+            break;
+        }
+    }
+    web
+}
+
+/// Current-news search via GDELT's key-free, CORS-open global news index. Returns the
+/// most recent matching articles, so the otherwise tech- and reference-heavy key-free
+/// backend can answer "latest news" queries. GDELT rate-limits to roughly one request
+/// every few seconds; when it throttles (or a query is too short), this source simply
+/// errors and is dropped from the merge while the others still answer.
+async fn gdelt_news_search(query: &str, count: usize) -> AppResult<Vec<(String, String, String)>> {
+    let url = format!(
+        "https://api.gdeltproject.org/api/v2/doc/doc?query={}&mode=artlist&format=json&sort=datedesc&maxrecords={}",
+        encode_component(query),
+        count.clamp(1, 10),
+    );
+    let value = http_get_json(&url).await?;
+    Ok(parse_gdelt_articles(&value))
+}
+
+fn parse_gdelt_articles(value: &Value) -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    let Some(articles) = value.get("articles").and_then(Value::as_array) else {
+        return out;
+    };
+    for article in articles {
+        let title = clean_gdelt_title(article.get("title").and_then(Value::as_str).unwrap_or(""));
+        let url = article.get("url").and_then(Value::as_str).unwrap_or("");
+        if title.is_empty() || url.is_empty() {
+            continue;
+        }
+        let domain = article.get("domain").and_then(Value::as_str).unwrap_or("");
+        let date = article
+            .get("seendate")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        out.push((title, url.to_string(), format!("News · {domain} · {date}")));
+    }
+    out
+}
+
+/// GDELT tokenizes titles with spaces around punctuation ("U . S . stocks , Asia");
+/// collapse the common cases back to readable text.
+fn clean_gdelt_title(raw: &str) -> String {
+    strip_html(raw)
+        .replace(" ,", ",")
+        .replace(" .", ".")
+        .replace(" ?", "?")
+        .replace(" !", "!")
+        .replace(" :", ":")
+        .replace(" ;", ";")
+        .trim()
+        .to_string()
 }
 
 /// Merge per-source result lists into the shared `web` array by round-robin
@@ -385,6 +498,44 @@ mod tests {
         // No `url` field -> fall back to the HN item permalink.
         assert_eq!(out[1].1, "https://news.ycombinator.com/item?id=2");
         assert!(out[0].2.contains("120 points"));
+    }
+
+    #[test]
+    fn parse_gdelt_articles_extracts_recent_news_and_cleans_titles() {
+        let value = serde_json::json!({
+            "articles": [
+                {
+                    "title": "U . S . stocks close mixed , Asian markets sink",
+                    "url": "https://news.example/markets",
+                    "domain": "news.example",
+                    "seendate": "20260609T004500Z",
+                    "language": "English"
+                },
+                { "title": "", "url": "https://news.example/empty" }
+            ]
+        });
+        let out = parse_gdelt_articles(&value);
+        assert_eq!(out.len(), 1); // empty-title article is skipped
+        assert_eq!(out[0].0, "U. S. stocks close mixed, Asian markets sink");
+        assert_eq!(out[0].1, "https://news.example/markets");
+        assert!(out[0].2.contains("news.example"));
+        assert!(out[0].2.contains("20260609"));
+    }
+
+    #[test]
+    fn parse_tavily_results_maps_to_web_hits() {
+        let value = serde_json::json!({
+            "results": [
+                { "title": "Tesla news", "url": "https://t.example/1", "content": "Latest on TSLA today.", "score": 0.9 },
+                { "title": "", "url": "https://t.example/2", "content": "skip: empty title" }
+            ]
+        });
+        let web = parse_tavily_results(&value, 5);
+        assert_eq!(web.len(), 1); // empty-title result is skipped
+        assert_eq!(web[0]["title"], "Tesla news");
+        assert_eq!(web[0]["url"], "https://t.example/1");
+        assert_eq!(web[0]["description"], "Latest on TSLA today.");
+        assert_eq!(web[0]["position"], 1);
     }
 
     #[test]
