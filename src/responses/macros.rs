@@ -4,9 +4,12 @@
 //! instruction generation, and format negotiation all come from the base trait's
 //! default methods reading the generated field table.
 //!
+//! Paths in the expansion are crate-absolute (`crate::responses::...`), so the
+//! macro may be invoked from any module in the crate.
+//!
 //! Field kinds:
-//! - `text`  → `String`, extracted with [`super::string_field`], trimmed.
-//! - `list`  → `Vec<String>`, extracted with [`super::list_field`].
+//! - `text`  → `String`, extracted with [`crate::responses::string_field`], trimmed.
+//! - `list`  → `Vec<String>`, extracted with [`crate::responses::list_field`].
 //! - `(choice EnumName { Variant = "literal", ... } default Variant, "type name")`
 //!   → generates `EnumName` with a `from_value` that maps each literal to its
 //!   variant and anything else to the default.
