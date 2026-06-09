@@ -10,6 +10,7 @@ mod orchestrator;
 mod responses;
 mod state;
 mod storage;
+mod strategy;
 mod tools;
 mod worker;
 mod workflow;
