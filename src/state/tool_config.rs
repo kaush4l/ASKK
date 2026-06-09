@@ -83,7 +83,7 @@ pub struct WebSearchToolConfig {
     pub language: String,
     #[serde(default)]
     pub freshness: String,
-    #[serde(default)]
+    #[serde(default = "default_searxng_url")]
     pub searxng_url: String,
     #[serde(default)]
     pub brave_api_key: String,
@@ -103,7 +103,7 @@ impl Default for WebSearchToolConfig {
             country: String::new(),
             language: String::new(),
             freshness: String::new(),
-            searxng_url: String::new(),
+            searxng_url: default_searxng_url(),
             brave_api_key: String::new(),
             tavily_api_key: String::new(),
             persist_api_keys: false,
@@ -119,6 +119,18 @@ pub struct ToolConfig {
 
 pub fn default_bridge_tools_url() -> String {
     "http://127.0.0.1:8874/askk/tools".to_string()
+}
+
+/// Default SearXNG instance for the browser-direct search engine. SearXNG is the
+/// primary browser engine (see `tools/search`), so the app ships a public instance to
+/// make "use SearXNG for the search engine" work out of the box. This one is chosen
+/// because it sends a permissive CORS header (`Access-Control-Allow-Origin: *`) and
+/// exposes the JSON API — the two things a browser-direct call needs. Public instances
+/// can rate-limit or change; when this one is unavailable the browser backend falls
+/// back to the key-free sources, and a user can point this at their own instance on the
+/// Tools page for full reliability and privacy.
+pub fn default_searxng_url() -> String {
+    "https://search.rhscz.eu".to_string()
 }
 
 fn default_web_search_count() -> u32 {
@@ -145,6 +157,16 @@ mod tests {
             default_bridge_tools_url()
         );
         assert_eq!(config.web_search.default_count, 5);
+        // An absent searxng_url fills the shipped public default, so SearXNG is the
+        // primary browser engine out of the box.
+        assert_eq!(config.web_search.searxng_url, default_searxng_url());
         assert!(!config.web_search.persist_api_keys);
+    }
+
+    #[test]
+    fn default_config_ships_a_searxng_url() {
+        let config = WebSearchToolConfig::default();
+        assert_eq!(config.searxng_url, default_searxng_url());
+        assert!(config.searxng_url.starts_with("https://"));
     }
 }

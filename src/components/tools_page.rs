@@ -40,7 +40,7 @@ pub fn ToolsPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                     span { class: "source-path", "active" }
                 }
                 p { class: "muted",
-                    "Browser backend: with a Tavily API key it searches the full web — general results and current news — directly from the page (free tier at tavily.com). Without a key it falls back to key-free public sources (DuckDuckGo, GDELT news [rate-limited], Hacker News, Stack Overflow, Wikipedia), which cover tech and reference well but not general news. For heavy or parallel use, the Bridge backend with Brave/Tavily/SearXNG is the most reliable."
+                    "Browser backend: it tries the configured SearXNG instance first (a real general-web metasearch, no key). Browser-direct SearXNG needs an instance with format=json + CORS enabled; the shipped public default can rate-limit, so for full reliability and privacy point the SearXNG URL at your own instance. It then falls back to a Tavily API key (full web + current news from the page, free tier at tavily.com) and finally to key-free public sources (DuckDuckGo, GDELT news [rate-limited], Hacker News, Stack Overflow, Wikipedia). For heavy or parallel use, the Bridge backend with Brave/Tavily/SearXNG is the most reliable."
                 }
                 div { class: "tool-config-grid",
                     label {
@@ -128,7 +128,7 @@ pub fn ToolsPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                         "SearXNG URL"
                         input {
                             value: "{config.searxng_url}",
-                            placeholder: "http://127.0.0.1:8080",
+                            placeholder: "https://search.example (needs format=json + CORS)",
                             oninput: move |event| {
                                 snapshot.write().tool_config.web_search.searxng_url = event.value();
                             }

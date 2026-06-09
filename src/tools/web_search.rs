@@ -2,18 +2,22 @@
 //! interchangeable backends sit behind the same envelope
 //! (`{ success, data: { web: [...] } }`):
 //!
-//! - **Browser** (default): if a Tavily API key is configured, call Tavily directly
-//!   from the page (Tavily allows cross-origin requests) for full general-web + news
-//!   search with no bridge. With no key, merge several CORS-open, key-free public APIs
-//!   concurrently — DuckDuckGo Instant Answer (entity answers), Wikinews (real news,
-//!   reliable, no rate limit), GDELT (fresher/broader news but rate-limited), Hacker
-//!   News (tech discussion), Stack Overflow (coding Q&A), and Wikipedia (reference).
-//!   Works on the hosted HTTPS site with no bridge; a source that errors or
-//!   rate-limits is simply dropped from the merge.
+//! - **Browser** (default): try a configured **SearXNG** instance first (browser-direct
+//!   via its JSON API — a real general-web metasearch, no key), so "use SearXNG for the
+//!   search engine" holds out of the box; this needs an instance with `format=json` +
+//!   CORS. If that errors or returns nothing, fall through to a configured Tavily key
+//!   (full general-web + news, cross-origin allowed), and finally to several CORS-open,
+//!   key-free public APIs merged concurrently — DuckDuckGo Instant Answer (entity
+//!   answers), Wikinews (real news, reliable, no rate limit), GDELT (fresher/broader
+//!   news but rate-limited), Hacker News (tech discussion), Stack Overflow (coding Q&A),
+//!   and Wikipedia (reference). Works on the hosted HTTPS site with no bridge; a source
+//!   that errors or rate-limits is simply dropped, so results are never empty.
 //! - **Bridge**: forward to a full provider (Brave/Tavily/SearXNG) via the local
 //!   bridge.
 //!
-//! Adding another source/provider is a new arm here; the agent loop never changes.
+//! The browser engines are swappable behind `tools/search` (one `impl SearchEngine`
+//! per file); adding another source/provider is a new arm there or here, and the agent
+//! loop never changes.
 
 use crate::state::{AppResult, AppSnapshot, SearchBackend, ToolSpec, WebSearchToolConfig};
 use serde_json::{Value, json};
@@ -22,6 +26,7 @@ use std::collections::HashSet;
 use super::bridge::{bridge_endpoint, bridge_tool_request};
 use super::common::{integer_arg, merge_optional_string, string_arg};
 use super::http::{encode_component, http_get_json, http_post_json, strip_html};
+use super::search::{SearchHit, SearchOptions, resolve_browser_engine};
 use super::{ToolDescriptor, ToolFuture};
 
 pub(crate) fn descriptor() -> ToolDescriptor {
@@ -70,14 +75,37 @@ pub async fn web_search_with_config(
     }
 }
 
-/// Browser backend: use a configured Tavily key (full general-web search) if present,
-/// otherwise merge the CORS-open, key-free sources (news + tech + reference), dedupe by
-/// URL, cap to `count`, and number the positions.
+/// Browser backend: try a configured SearXNG instance first (browser-direct metasearch),
+/// then a configured Tavily key (full general-web search), and finally merge the
+/// CORS-open, key-free sources (news + tech + reference), deduped by URL, capped to
+/// `count`, with numbered positions. Each tier falls through to the next on error or no
+/// results, so results are never empty.
 async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppResult<String> {
     let query = string_arg(args, "query")?;
     let count = integer_arg(args, "count")
         .unwrap_or(i64::from(config.default_count))
         .clamp(1, 10) as usize;
+
+    // SearXNG (browser-direct) is the configured primary engine whenever a SearXNG URL
+    // is set — the app ships a public default, so "use SearXNG for the search engine"
+    // holds out of the box. It needs an instance with `format=json` + CORS; on error or
+    // no results it falls through to Tavily / the key-free sources below, so web_search
+    // never returns empty and the query is never routed through a third-party proxy.
+    if let Some(engine) = resolve_browser_engine(config) {
+        let opts = SearchOptions {
+            language: arg_or_config(args, "language", &config.language),
+            freshness: arg_or_config(args, "freshness", &config.freshness),
+        };
+        if let Ok(hits) = engine.search(&query, count, &opts).await
+            && !hits.is_empty()
+        {
+            let backend = format!("browser+{}", engine.id());
+            let web = number_hits(hits);
+            return Ok(
+                json!({ "success": true, "data": { "web": web }, "backend": backend }).to_string(),
+            );
+        }
+    }
 
     // Best path: a configured Tavily key calls Tavily directly from the page (Tavily
     // allows cross-origin requests) — a real general-web + news provider with no
@@ -494,6 +522,34 @@ fn merge_config_string(body: &mut Value, key: &str, value: &str) {
     if !value.is_empty() {
         body[key] = Value::String(value.to_string());
     }
+}
+
+/// Read an optional string arg, falling back to a configured default; trimmed. Used to
+/// derive a browser engine's [`SearchOptions`] from the call args plus tool config.
+fn arg_or_config(args: &Value, key: &str, fallback: &str) -> String {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback.trim())
+        .to_string()
+}
+
+/// Number an engine's already-ordered hits into the shared `web` array shape
+/// (`{ title, url, description, position }`), 1-based positions.
+fn number_hits(hits: Vec<SearchHit>) -> Vec<Value> {
+    hits.into_iter()
+        .enumerate()
+        .map(|(index, hit)| {
+            let (title, url, description) = hit.into_tuple();
+            json!({
+                "title": title,
+                "url": url,
+                "description": description,
+                "position": index + 1,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -27,6 +27,7 @@ mod http;
 mod run_command;
 mod run_in_sandbox;
 mod run_js;
+mod search;
 mod web_fetch;
 mod web_search;
 
