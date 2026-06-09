@@ -17,7 +17,7 @@ use crate::engine::{LoopParams, ReActEngine};
 use crate::state::{Agent, AppResult, AppSnapshot, ToolSpec};
 use serde_json::{Value, json};
 
-use super::common::{optional_string_arg, string_arg};
+use super::common::{integer_arg, optional_string_arg, string_arg};
 use super::{ToolDescriptor, ToolFuture};
 
 /// Hard cap on nested `call_agent` delegation depth. Each level is already bounded
@@ -26,6 +26,11 @@ use super::{ToolDescriptor, ToolFuture};
 /// indefinitely. This cap makes runaway nesting unrepresentable. WASM is
 /// single-threaded, so a thread-local `Cell` is a sufficient, lock-free counter.
 const MAX_NESTING_DEPTH: u32 = 3;
+
+/// Ceiling on a caller-supplied per-invocation step budget. The budget is
+/// model-controlled data; without a clamp a buggy model could request a
+/// budget that burns the user's tokens for hours.
+const MAX_SUB_AGENT_TURNS: u32 = 100;
 
 thread_local! {
     static NESTING_DEPTH: Cell<u32> = const { Cell::new(0) };
@@ -93,19 +98,8 @@ fn handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a>
         let agent_label = agent.name.clone();
 
         let strategy = optional_string_arg(args, "strategy");
-        if let Some(requested) = strategy.as_deref()
-            && crate::strategy::StrategyRegistry::new()
-                .get(requested)
-                .is_none()
-        {
-            return Err(format!(
-                "Unknown strategy `{requested}`. Known strategies: react, plan-act-review, skills-work-critique, orchestrate."
-            ));
-        }
-        let max_turns = args
-            .get("max_turns")
-            .and_then(Value::as_u64)
-            .map(|v| v as u32);
+        let max_turns =
+            integer_arg(args, "max_turns").map(|v| (v.max(0) as u32).min(MAX_SUB_AGENT_TURNS));
 
         // Bound delegation depth so two agents that delegate to each other cannot
         // recurse forever. Held for the duration of the sub-run, released on drop.

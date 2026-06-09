@@ -72,8 +72,13 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     {
+        use crate::engine::LoopParams;
+        let params = LoopParams {
+            agent_id: Some(agent.id.clone()),
+            ..LoopParams::default()
+        };
         ReActEngine::new()
-            .run_goal_with_observer(snapshot.with_active_agent(agent), goal, observer)
+            .run_with_params_and_observer(snapshot.with_active_agent(agent), goal, params, observer)
             .await
     }
 }

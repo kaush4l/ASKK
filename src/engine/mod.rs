@@ -108,22 +108,6 @@ impl ReActEngine {
         }
     }
 
-    /// Run a fresh goal to completion, notifying `observer` after every state change.
-    pub fn run_goal_with_observer<F>(
-        &self,
-        snapshot: AppSnapshot,
-        goal: String,
-        observer: F,
-    ) -> BoxFuture<'_, AppSnapshot>
-    where
-        F: FnMut(AgentRun) + 'static,
-    {
-        let executor = self.executor.clone();
-        Box::pin(async move {
-            run_react_session(executor, snapshot, goal, LoopParams::default(), observer).await
-        })
-    }
-
     /// Run a goal with explicit loop parameters (agent, strategy, budget).
     pub fn run_with_params_and_observer<F>(
         &self,
@@ -135,11 +119,18 @@ impl ReActEngine {
     where
         F: FnMut(AgentRun) + 'static,
     {
-        if let Some(requested) = params.strategy.as_deref()
-            && StrategyRegistry::new().get(requested).is_none()
-        {
-            let id = requested.to_string();
-            return Box::pin(async move { Err(format!("Unknown strategy `{id}`.")) });
+        if let Some(requested) = params.strategy.as_deref() {
+            let registry = StrategyRegistry::new();
+            if registry.get(requested).is_none() {
+                let known = registry
+                    .catalog()
+                    .iter()
+                    .map(|(id, _)| *id)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let message = format!("Unknown strategy `{requested}`. Known strategies: {known}.");
+                return Box::pin(async move { Err(message) });
+            }
         }
         let executor = self.executor.clone();
         Box::pin(async move { run_react_session(executor, snapshot, goal, params, observer).await })
@@ -294,6 +285,7 @@ impl AgentLoop {
         let registry = StrategyRegistry::new();
         let strategy_id =
             resolve_strategy_id(params.strategy.as_deref(), agent.strategy_id.as_deref());
+        // TODO(task-9/10): surface a run event when a configured strategy_id fails to resolve instead of silently running react.
         let strategy = registry.get(&strategy_id).unwrap_or_else(fallback_strategy);
 
         Self {

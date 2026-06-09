@@ -150,6 +150,7 @@ pub fn AgentsPage(
                                                 if value == "react" { None } else { Some(value) };
                                         }
                                     },
+                                    // TODO(task-9/10): derive options from StrategyRegistry::catalog() once all built-ins land.
                                     option { value: "react", "ReAct (default)" }
                                     option { value: "plan-act-review", "Plan – Act – Review" }
                                     option { value: "skills-work-critique", "Skills – Work – Critique" }
