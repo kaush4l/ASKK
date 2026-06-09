@@ -17,7 +17,9 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 mod format_negotiation;
+mod kind;
 mod macros;
+mod phase_responses;
 mod react;
 mod tool_calls;
 pub(crate) use macros::define_response;
@@ -30,6 +32,15 @@ pub(crate) use macros::define_response;
 pub use format_negotiation::{FormatNegotiator, MAX_TOON_FAILURES, next_format_after_failures};
 pub use react::{ReActAction, ReActResponse};
 pub use tool_calls::{ParsedToolCall, parse_tool_calls};
+// consumed by the strategy layer (Tasks 4+)
+#[allow(unused_imports)]
+pub use kind::{ParsedResponse, ResponseKind};
+// consumed by the strategy layer (Tasks 4+)
+#[allow(unused_imports)]
+pub use phase_responses::{
+    CritiqueResponse, CritiqueVerdict, PlanResponse, SkillSelectionResponse, SummaryResponse,
+    TaskBreakdownResponse,
+};
 
 #[derive(Clone, Debug)]
 pub struct ResponseField {
