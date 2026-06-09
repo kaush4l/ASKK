@@ -5,10 +5,11 @@
 //! - **Browser** (default): if a Tavily API key is configured, call Tavily directly
 //!   from the page (Tavily allows cross-origin requests) for full general-web + news
 //!   search with no bridge. With no key, merge several CORS-open, key-free public APIs
-//!   concurrently — DuckDuckGo Instant Answer (entity answers), GDELT (current news),
-//!   Hacker News (tech discussion), Stack Overflow (coding Q&A), and Wikipedia
-//!   (reference). Works on the hosted HTTPS site with no bridge; a source that errors
-//!   or rate-limits is simply dropped from the merge.
+//!   concurrently — DuckDuckGo Instant Answer (entity answers), Wikinews (real news,
+//!   reliable, no rate limit), GDELT (fresher/broader news but rate-limited), Hacker
+//!   News (tech discussion), Stack Overflow (coding Q&A), and Wikipedia (reference).
+//!   Works on the hosted HTTPS site with no bridge; a source that errors or
+//!   rate-limits is simply dropped from the merge.
 //! - **Bridge**: forward to a full provider (Brave/Tavily/SearXNG) via the local
 //!   bridge.
 //!
@@ -33,7 +34,7 @@ pub(crate) fn descriptor() -> ToolDescriptor {
 fn spec() -> ToolSpec {
     ToolSpec {
         name: "web_search".to_string(),
-        description: "Search the web for current information and news, returning titles, URLs, and descriptions. By default it runs directly in the browser key-free (DuckDuckGo, GDELT news, Hacker News, Stack Overflow, Wikipedia); adding a Tavily API key on the Tools page upgrades it to full general-web search from the page, and the local bridge can be used for Brave/Tavily/SearXNG. Use it to discover sources for recent events and news, then web_fetch the best ones to read them in full.".to_string(),
+        description: "Search the web for current information and news, returning titles, URLs, and descriptions. By default it runs directly in the browser key-free (Wikinews and GDELT for news, DuckDuckGo, Hacker News, Stack Overflow, Wikipedia); adding a Tavily API key on the Tools page upgrades it to full general-web search from the page, and the local bridge can be used for Brave/Tavily/SearXNG. Use it to discover sources for recent events and news, then web_fetch the best ones to read them in full.".to_string(),
         input_schema: json!({
             "type":"object",
             "properties":{
@@ -69,9 +70,9 @@ pub async fn web_search_with_config(
     }
 }
 
-/// Browser backend: merge DuckDuckGo Instant Answer (instant abstracts) with
-/// Wikipedia full-text search (real multi-result hits), dedupe by URL, cap to
-/// `count`, and number the positions.
+/// Browser backend: use a configured Tavily key (full general-web search) if present,
+/// otherwise merge the CORS-open, key-free sources (news + tech + reference), dedupe by
+/// URL, cap to `count`, and number the positions.
 async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppResult<String> {
     let query = string_arg(args, "query")?;
     let count = integer_arg(args, "count")
@@ -95,23 +96,27 @@ async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppRe
 
     // No single key-free API does general web search, so query several CORS-open,
     // key-free sources CONCURRENTLY and merge: DuckDuckGo Instant Answer (entity /
-    // definition answers), GDELT (current news), Hacker News (tech discussion), Stack
-    // Overflow (coding Q&A), and Wikipedia (reference). For a full general-web provider
-    // without a key, switch the Tools page backend to Bridge.
-    let (ddg, news, hn, stack, wiki) = futures_util::join!(
+    // definition answers), Wikinews (real news, Wikipedia-grade CORS + no rate limit),
+    // GDELT (fresher/broader news but rate-limited, best-effort), Hacker News (tech
+    // discussion), Stack Overflow (coding Q&A), and Wikipedia (reference). For a full
+    // general-web provider without a key, switch the Tools page backend to Bridge.
+    let (ddg, wikinews, gdelt, hn, stack, wiki) = futures_util::join!(
         duckduckgo_instant_answer(&query),
+        wikinews_search(&query, count),
         gdelt_news_search(&query, count),
         hackernews_search(&query, count),
         stackoverflow_search(&query, count),
         wikipedia_search(&query, count),
     );
-    let sources: Vec<Vec<(String, String, String)>> =
-        [ddg, news, hn, stack, wiki].into_iter().flatten().collect();
+    let sources: Vec<Vec<(String, String, String)>> = [ddg, wikinews, gdelt, hn, stack, wiki]
+        .into_iter()
+        .flatten()
+        .collect();
     let web = merge_search_results(&sources, count);
 
     if web.is_empty() {
         return Err(format!(
-            "No browser web_search results for `{query}`. The key-free browser backend (DuckDuckGo, GDELT news, Hacker News, Stack Overflow, Wikipedia) has limited coverage. For full general-web search from the hosted site, add a free Tavily API key on the Tools page; or switch the backend to Bridge for Brave / Tavily / SearXNG."
+            "No browser web_search results for `{query}`. The key-free browser backend (Wikinews, GDELT, DuckDuckGo, Hacker News, Stack Overflow, Wikipedia) has limited coverage. For full general-web search from the hosted site, add a free Tavily API key on the Tools page; or switch the backend to Bridge for Brave / Tavily / SearXNG."
         ));
     }
 
@@ -163,6 +168,50 @@ fn parse_tavily_results(value: &Value, count: usize) -> Vec<Value> {
         }
     }
     web
+}
+
+/// Real-news search via Wikinews, using the same key-free, CORS-open MediaWiki API as
+/// Wikipedia — so it is reliable with no rate limit (unlike GDELT). Coverage is thinner
+/// (volunteer-written) but it returns real news articles for major topics, and the
+/// agent can `web_fetch` any hit to read the full story.
+async fn wikinews_search(query: &str, count: usize) -> AppResult<Vec<(String, String, String)>> {
+    let url = format!(
+        "https://en.wikinews.org/w/api.php?action=query&list=search&srsearch={}&format=json&origin=*&srlimit={}&srsort=create_timestamp_desc",
+        encode_component(query),
+        count.clamp(1, 10),
+    );
+    let value = http_get_json(&url).await?;
+    Ok(parse_wikinews_hits(&value))
+}
+
+fn parse_wikinews_hits(value: &Value) -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    let Some(hits) = value
+        .get("query")
+        .and_then(|query| query.get("search"))
+        .and_then(Value::as_array)
+    else {
+        return out;
+    };
+    for hit in hits {
+        let title = hit.get("title").and_then(Value::as_str).unwrap_or("");
+        if title.is_empty() {
+            continue;
+        }
+        let timestamp = hit.get("timestamp").and_then(Value::as_str).unwrap_or("");
+        let page_url = format!(
+            "https://en.wikinews.org/wiki/{}",
+            encode_component(&title.replace(' ', "_"))
+        );
+        let snippet = strip_html(hit.get("snippet").and_then(Value::as_str).unwrap_or(""));
+        let description = if snippet.is_empty() {
+            format!("Wikinews · {timestamp}")
+        } else {
+            format!("Wikinews · {timestamp} · {snippet}")
+        };
+        out.push((title.to_string(), page_url, description));
+    }
+    out
 }
 
 /// Current-news search via GDELT's key-free, CORS-open global news index. Returns the
@@ -524,6 +573,26 @@ mod tests {
         assert_eq!(out[0].1, "https://news.example/markets");
         assert!(out[0].2.contains("news.example"));
         assert!(out[0].2.contains("20260609"));
+    }
+
+    #[test]
+    fn parse_wikinews_hits_builds_article_urls_and_dates() {
+        let value = serde_json::json!({
+            "query": { "search": [
+                { "title": "Iran launches missiles at Israel", "timestamp": "2025-09-25T01:03:10Z", "snippet": "<span>Tensions</span> rise" },
+                { "title": "", "timestamp": "2026-01-01T00:00:00Z" }
+            ]}
+        });
+        let out = parse_wikinews_hits(&value);
+        assert_eq!(out.len(), 1); // empty-title hit is skipped
+        assert_eq!(out[0].0, "Iran launches missiles at Israel");
+        assert_eq!(
+            out[0].1,
+            "https://en.wikinews.org/wiki/Iran_launches_missiles_at_Israel"
+        );
+        assert!(out[0].2.contains("Wikinews"));
+        assert!(out[0].2.contains("2025-09-25"));
+        assert!(out[0].2.contains("Tensions rise")); // HTML stripped
     }
 
     #[test]
