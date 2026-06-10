@@ -7,6 +7,7 @@
 //! - [`tool_config`] — web-tool backend + search provider settings
 //! - [`tool_types`] — the `ToolSpec` / `ToolCall` / `ToolResult` data + tool names
 //! - [`event`] — the run timeline (`AgentEvent`) + `now_iso`
+//! - [`schedule`] — `ScheduleEntry` / `ScheduleKind` / `SchedulePayload` for the PWA scheduler
 //! - [`workflow`] — declarative workflow definitions + runtime state
 //! - [`run`] — a single `AgentRun` and everything inside it (scratchpad, budgets, …)
 //! - [`manifest`] — agents/skills and their Markdown-manifest parsing
@@ -25,6 +26,7 @@ mod manifest;
 mod mcp;
 mod provider;
 mod run;
+mod schedule;
 mod snapshot;
 mod tool_config;
 mod tool_types;
@@ -40,6 +42,10 @@ pub use manifest::*;
 pub use mcp::*;
 pub use provider::*;
 pub use run::*;
+// Re-exported for the PWA scheduler (src/scheduler/) that consumes these types;
+// the glob looks unused from this crate until that unit lands.
+#[allow(unused_imports)]
+pub use schedule::*;
 pub use snapshot::*;
 pub use tool_config::*;
 pub use tool_types::*;
