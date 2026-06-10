@@ -102,6 +102,14 @@ mod tests {
     }
 
     #[test]
+    fn summary_fallback_parse_yields_empty_summary() {
+        // Prose with no fields hits the fallback path: the engine must treat an
+        // empty summary as "do not compact" (guarded in maybe_compact).
+        let parsed = SummaryResponse::from_raw("here is a long prose reply with no fields");
+        assert!(parsed.summary.is_empty());
+    }
+
+    #[test]
     fn summary_and_breakdown_and_skills_parse() {
         let summary =
             SummaryResponse::from_raw("summary: did things\nopen_threads: [verify output]");

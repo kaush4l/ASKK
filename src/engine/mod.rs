@@ -744,14 +744,15 @@ impl AgentLoop {
             loop_mode: LoopMode::OneShot,
             list_skill_library: false,
         };
+        // goal is unused on the wire when history is non-empty; the prompt rides in history[0].
         let history = vec![Message {
             role: "user".to_string(),
-            content: goal.clone(),
+            content: goal,
         }];
         let request = self.build_request(
             &phase,
             &StrategyContext::default(),
-            goal,
+            String::new(),
             history,
             ResponseFormat::Toon,
             &[],
@@ -761,6 +762,19 @@ impl AgentLoop {
                 if let ParsedResponse::Summary(summary) =
                     crate::responses::ResponseKind::Summary.parse(&output.raw_text)
                 {
+                    if summary.summary.trim().is_empty() {
+                        // Fallback/garbage parse — keep history untouched, log, and
+                        // retry at the next trigger.
+                        run.events.push(event(
+                            &run.id,
+                            Some(self.agent_id.clone()),
+                            AgentEventKind::Error,
+                            "Memory compaction skipped (empty summary)",
+                            "The summarizer reply did not parse into a usable summary; working memory was left unchanged.".to_string(),
+                        ));
+                        observer(run.clone());
+                        return;
+                    }
                     let dropped = older.len();
                     let mut compacted = vec![memory::summary_message(
                         &summary.summary,
