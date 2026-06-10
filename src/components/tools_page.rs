@@ -1,6 +1,9 @@
 use super::save_snapshot;
 use super::shared::set_status;
 use crate::state::{AppSnapshot, SearchBackend, WebSearchProvider};
+use crate::tools::google::auth::is_token_valid;
+#[cfg(target_arch = "wasm32")]
+use crate::tools::google::auth::{build_auth_url, current_origin};
 use crate::tools::web_search_with_config;
 use dioxus::prelude::*;
 use serde_json::json;
@@ -205,6 +208,146 @@ pub fn ToolsPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                     pre { class: "tool-test-output", "{test_result.read()}" }
                 }
             }
+        // ── Notifications ─────────────────────────────────────────────
+        article { class: "tool-config-card",
+            div { class: "tool-card-head",
+                h3 { "Notifications" }
+            }
+            p { class: "muted",
+                "Allow notifications so the scheduler can alert you when the tab is open."
+            }
+            button {
+                onclick: move |_| {
+                    #[cfg(target_arch = "wasm32")]
+                    spawn_local(async {
+                        if let Some(win) = web_sys::window() {
+                            if let Ok(promise) = web_sys::Notification::request_permission() {
+                                let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+                            }
+                        }
+                    });
+                },
+                "Allow notifications"
+            }
+        }
+
+        // ── Google (Gmail + Calendar) ──────────────────────────────────
+        article { class: "tool-config-card",
+            div { class: "tool-card-head",
+                h3 { "Google (Gmail + Calendar)" }
+            }
+            p { class: "muted",
+                "Create a Web Application OAuth 2.0 client in Google Cloud Console, "
+                "add this page's origin as an authorised redirect URI, and add your email "
+                "as a test user. Scopes: gmail.readonly + calendar.readonly."
+            }
+            div { class: "tool-config-grid",
+                label {
+                    "Client ID"
+                    input {
+                        r#type: "text",
+                        placeholder: "1234.apps.googleusercontent.com",
+                        value: "{snapshot.read().tool_config.google.client_id}",
+                        oninput: move |e| {
+                            snapshot.write().tool_config.google.client_id = e.value();
+                        }
+                    }
+                }
+                {
+                    let tok    = snapshot.read().tool_config.google.access_token.clone();
+                    let expiry = snapshot.read().tool_config.google.token_expiry_ms;
+                    let now_ms = {
+                        #[cfg(target_arch = "wasm32")]
+                        { js_sys::Date::now() as u64 }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        { 0u64 }
+                    };
+                    if tok.is_empty() {
+                        rsx! { p { class: "muted", "Not connected" } }
+                    } else if is_token_valid(&tok, expiry, now_ms) {
+                        rsx! { p { class: "muted", "Connected (token valid)" } }
+                    } else {
+                        rsx! { p { class: "muted", "Token expired — click Connect to refresh" } }
+                    }
+                }
+                button {
+                    onclick: move |_| {
+                        let client_id = snapshot.read().tool_config.google.client_id.clone();
+                        if !client_id.is_empty() {
+                        #[cfg(target_arch = "wasm32")]
+                        spawn_local(async move {
+                            let redirect_uri = current_origin();
+                            match build_auth_url(&client_id, &redirect_uri).await {
+                                Ok(url) => {
+                                    if let Some(w) = web_sys::window() {
+                                        let _ = w.location().set_href(&url);
+                                    }
+                                }
+                                Err(e) => web_sys::console::error_1(&e.into()),
+                            }
+                        });
+                        } // end !client_id.is_empty()
+                    },
+                    "Connect Google"
+                }
+                label { class: "checkbox-line",
+                    input {
+                        r#type: "checkbox",
+                        checked: snapshot.read().tool_config.google.persist_tokens,
+                        onchange: move |e| {
+                            snapshot.write().tool_config.google.persist_tokens = e.checked();
+                        }
+                    }
+                    " Persist token to IndexedDB (less re-auth, less secure)"
+                }
+            }
+        }
+
+        // ── Telegram ──────────────────────────────────────────────────
+        article { class: "tool-config-card",
+            div { class: "tool-card-head",
+                h3 { "Telegram" }
+            }
+            p { class: "muted",
+                "Create a bot via @BotFather, paste the token below. "
+                "For chat ID, send a message to your bot then get the ID from @userinfobot."
+            }
+            div { class: "tool-config-grid",
+                label {
+                    "Bot token"
+                    input {
+                        r#type: "password",
+                        placeholder: "123456789:ABCdef...",
+                        value: "{snapshot.read().tool_config.telegram.bot_token}",
+                        oninput: move |e| {
+                            snapshot.write().tool_config.telegram.bot_token = e.value();
+                        }
+                    }
+                }
+                label {
+                    "Chat ID"
+                    input {
+                        r#type: "text",
+                        placeholder: "123456789",
+                        value: "{snapshot.read().tool_config.telegram.chat_id}",
+                        oninput: move |e| {
+                            snapshot.write().tool_config.telegram.chat_id = e.value();
+                        }
+                    }
+                }
+                label { class: "checkbox-line",
+                    input {
+                        r#type: "checkbox",
+                        checked: snapshot.read().tool_config.telegram.persist_token,
+                        onchange: move |e| {
+                            snapshot.write().tool_config.telegram.persist_token = e.checked();
+                        }
+                    }
+                    " Persist token to IndexedDB"
+                }
+            }
+        }
+
         }
     }
 }
