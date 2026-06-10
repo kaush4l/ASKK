@@ -408,16 +408,29 @@ async fn resolve_wasm_source(cwd: Option<&str>, token: &str) -> AppResult<WasmSo
     }
     candidates.push(rel.clone());
 
-    // COORDINATOR: swap to OpfsVfs — this read goes through the same storage
-    // seam as load_workspace_files/store_workspace_files below.
-    let vfs = crate::storage::vfs::ProjectVfs::new();
+    let vfs = crate::storage::opfs_vfs::OpfsVfs::new();
     for candidate in candidates {
-        if let Some(content) = vfs.read_file(&candidate).await? {
-            let bytes = decode_base64(content.trim()).map_err(|err| {
+        if let Some(bytes) = vfs.read_bytes(&candidate).await? {
+            // A real binary in OPFS is used as-is; a text file holding the
+            // binary as base64 (the agent-tool convention) is decoded.
+            if bytes.starts_with(b"\0asm") {
+                return Ok(WasmSource::VfsBytes {
+                    vfs_path: candidate,
+                    bytes,
+                });
+            }
+            let text = String::from_utf8(bytes).map_err(|_| {
                 format!(
-                    "Found `{candidate}` in the project filesystem but it is not a \
+                    "Found `{candidate}` in the workspace but it is neither a wasm \
+                     binary nor base64 text. Store the wasm32-wasip1 binary (or its \
+                     base64 text), or pass an http(s) URL to fetch it from."
+                )
+            })?;
+            let bytes = decode_base64(text.trim()).map_err(|err| {
+                format!(
+                    "Found `{candidate}` in the workspace but it is not a \
                      base64-encoded wasm binary ({err}). Store the wasm32-wasip1 binary \
-                     as base64 text, or pass an http(s) URL to fetch it from."
+                     (or its base64 text), or pass an http(s) URL to fetch it from."
                 )
             })?;
             return Ok(WasmSource::VfsBytes {
@@ -427,8 +440,8 @@ async fn resolve_wasm_source(cwd: Option<&str>, token: &str) -> AppResult<WasmSo
         }
     }
     Err(format!(
-        "No .wasm binary named `{rel}` exists in the project filesystem. Write the \
-         base64-encoded wasm32-wasip1 binary there first (file_write), or pass an \
+        "No .wasm binary named `{rel}` exists in the workspace. Write the \
+         wasm32-wasip1 binary (or its base64 text) there first, or pass an \
          http(s) URL as the first command token."
     ))
 }
@@ -436,13 +449,15 @@ async fn resolve_wasm_source(cwd: Option<&str>, token: &str) -> AppResult<WasmSo
 /// Load the workspace files to seed into the worker's `/workspace`, scoped to
 /// `cwd` when given (paths are sent relative to it). The `.wasm` binary itself
 /// is skipped — it is the program, not workspace data.
-// COORDINATOR: swap to OpfsVfs — load_workspace_files/store_workspace_files are
-// the single seam to change when src/storage/opfs_vfs.rs lands.
 #[cfg(target_arch = "wasm32")]
 async fn load_workspace_files(cwd: Option<&str>, skip_path: Option<&str>) -> AppResult<Vec<Value>> {
-    let vfs = crate::storage::vfs::ProjectVfs::new();
+    let vfs = crate::storage::opfs_vfs::OpfsVfs::new();
     let mut files = Vec::new();
-    for path in vfs.list_files().await? {
+    for entry in vfs.list_all().await? {
+        if entry.is_dir {
+            continue;
+        }
+        let path = entry.path;
         if Some(path.as_str()) == skip_path {
             continue;
         }
@@ -465,21 +480,24 @@ async fn load_workspace_files(cwd: Option<&str>, skip_path: Option<&str>) -> App
 /// anything absolute or escaping the run root is refused (skipped), and binary
 /// content is stored as its base64 text (the same convention used for `.wasm`
 /// binaries going in).
-// COORDINATOR: swap to OpfsVfs — see load_workspace_files above.
 #[cfg(target_arch = "wasm32")]
 async fn store_workspace_files(cwd: Option<&str>, files: &[RunnerFileOut]) -> AppResult<()> {
-    let vfs = crate::storage::vfs::ProjectVfs::new();
+    let vfs = crate::storage::opfs_vfs::OpfsVfs::new();
     for file in files {
         let Ok(rel) = normalize_rel_path(&file.path) else {
             // Refuse hostile or malformed paths rather than trusting the worker.
             continue;
         };
-        let content = match (&file.text, &file.base64) {
-            (Some(text), _) => text,
-            (None, Some(base64)) => base64,
+        let dest = join_cwd(cwd, &rel);
+        match (&file.text, &file.base64) {
+            (Some(text), _) => vfs.write_file(&dest, text).await?,
+            // OPFS stores real bytes, so binary output round-trips as binary.
+            (None, Some(base64)) => match decode_base64(base64.trim()) {
+                Ok(bytes) => vfs.write_bytes(&dest, &bytes).await?,
+                Err(_) => vfs.write_file(&dest, base64).await?,
+            },
             (None, None) => continue,
-        };
-        vfs.write_file(&join_cwd(cwd, &rel), content).await?;
+        }
     }
     Ok(())
 }

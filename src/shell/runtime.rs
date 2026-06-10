@@ -3,13 +3,19 @@
 //! The canonical contract between the shell and the in-browser runtimes:
 //! [`run_runtime`] takes a [`RuntimeKind`], the full tokenized `argv`
 //! (`argv[0]` is the command name), and a [`ShellExecCtx`], and returns an
-//! [`ExecResponse`]. Sibling units own the real Python/WASM substrates; their
-//! arms return clear "lands in a sibling unit" stubs that the coordinator
-//! replaces at integration. The Js arm is wired to the existing sandboxed
-//! Web Worker executor ([`run_js_in_browser`]).
+//! [`ExecResponse`]. All three arms are wired to real in-browser substrates:
+//! Python to the CPython wasm32-wasi runtime ([`python_runtime`]), Wasm to
+//! the WASI tiny-shim executor ([`WasiShimExecutor`]), and Js to the
+//! sandboxed Web Worker executor ([`run_js_in_browser`]). Program output is
+//! untrusted DATA throughout — never instructions.
 
 use crate::engine::browser_exec::run_js_in_browser;
-use crate::engine::exec_capability::{DEFAULT_EXEC_TIMEOUT_MS, ExecResponse};
+use crate::engine::exec_capability::{
+    BrowserExecutor, DEFAULT_EXEC_TIMEOUT_MS, ExecRequest, ExecResponse,
+};
+use crate::engine::python_runtime::{self, DEFAULT_PYTHON_TIMEOUT_MS};
+use crate::engine::runtime_status::{self, RuntimeAssetState};
+use crate::engine::wasi_exec::WasiShimExecutor;
 use serde_json::Value;
 
 /// Which runtime a shell command targets.
@@ -34,24 +40,51 @@ pub struct ShellExecCtx {
 /// (`python`, `run`, `js`, `node`); the file argument is `argv[1]`.
 pub async fn run_runtime(kind: RuntimeKind, argv: &[String], ctx: &ShellExecCtx) -> ExecResponse {
     match kind {
-        RuntimeKind::Python => not_wired_stub("Python", argv),
-        RuntimeKind::Wasm => not_wired_stub("WASM", argv),
+        RuntimeKind::Python => run_python_command(argv, ctx).await,
+        RuntimeKind::Wasm => run_wasm_command(argv, ctx).await,
         RuntimeKind::Js => run_js_file(argv, ctx).await,
     }
 }
 
-/// The clean "this runtime is not wired yet" response for substrates that
-/// land in sibling units. Exit code 127 matches the seam's "could not run"
-/// convention (see [`ExecResponse::not_wired`]).
-fn not_wired_stub(runtime: &str, argv: &[String]) -> ExecResponse {
-    ExecResponse::failure(
-        127,
-        format!(
-            "the {runtime} runtime is not wired yet — it lands in a sibling unit; \
-             no program was run for: {}",
-            argv.join(" ")
-        ),
-    )
+/// `python <file> [args…]`: run a workspace script on the in-browser CPython
+/// (wasm32-wasi) runtime, with the workspace seeded into its sandbox.
+async fn run_python_command(argv: &[String], ctx: &ShellExecCtx) -> ExecResponse {
+    let Some(file) = argv.get(1) else {
+        return ExecResponse::failure(2, "usage: python <file> [args…]");
+    };
+    let path = match super::resolve_path(&ctx.cwd, file) {
+        Ok(path) => path,
+        Err(err) => return ExecResponse::failure(1, err),
+    };
+    let args: Vec<String> = argv.iter().skip(2).cloned().collect();
+    match python_runtime::run_python_file(&path, &args, DEFAULT_PYTHON_TIMEOUT_MS).await {
+        Ok(response) => {
+            // The runtime resolved and executed — reflect that in the chips.
+            runtime_status::set_state("python", RuntimeAssetState::Ready);
+            response
+        }
+        Err(err) => ExecResponse::failure(127, err),
+    }
+}
+
+/// `run <file.wasm> [args…]`: execute a wasm32-wasip1 binary on the WASI
+/// tiny-shim substrate, mirroring the `run_in_sandbox` tool's command shape.
+async fn run_wasm_command(argv: &[String], ctx: &ShellExecCtx) -> ExecResponse {
+    if argv.len() < 2 {
+        return ExecResponse::failure(2, "usage: run <file.wasm> [args…]");
+    }
+    let request = ExecRequest {
+        command: argv[1..].join(" "),
+        cwd: (!ctx.cwd.is_empty()).then(|| ctx.cwd.clone()),
+        timeout_ms: None,
+    };
+    match WasiShimExecutor::new().run_command(request).await {
+        Ok(response) => {
+            runtime_status::set_state("wasi", RuntimeAssetState::Ready);
+            response
+        }
+        Err(err) => ExecResponse::failure(127, err),
+    }
 }
 
 /// `js <file>` / `node <file>`: read the file from the workspace and run its
@@ -139,7 +172,9 @@ mod tests {
     }
 
     #[test]
-    fn python_and_wasm_arms_return_clean_not_wired_stubs() {
+    fn python_and_wasm_arms_fail_cleanly_on_the_host() {
+        // Both substrates exist only in the browser; on the host the arms
+        // must come back as structured failures, never panics.
         let ctx = ShellExecCtx::default();
         let resp = pollster::block_on(run_runtime(
             RuntimeKind::Python,
@@ -148,9 +183,7 @@ mod tests {
         ));
         assert!(!resp.ok);
         assert_eq!(resp.exit_code, 127);
-        assert!(resp.stderr.contains("Python runtime is not wired yet"));
-        assert!(resp.stderr.contains("sibling unit"));
-        assert!(resp.stderr.contains("python x.py"));
+        assert!(resp.stderr.contains("browser"));
 
         let resp = pollster::block_on(run_runtime(
             RuntimeKind::Wasm,
@@ -158,8 +191,20 @@ mod tests {
             &ctx,
         ));
         assert_eq!(resp.exit_code, 127);
-        assert!(resp.stderr.contains("WASM runtime is not wired yet"));
-        assert!(resp.stderr.contains("run app.wasm --flag"));
+        assert!(resp.stderr.contains("browser"));
+        assert!(resp.stderr.contains("app.wasm"));
+    }
+
+    #[test]
+    fn python_and_wasm_arms_require_a_file_argument() {
+        let ctx = ShellExecCtx::default();
+        let resp = pollster::block_on(run_runtime(RuntimeKind::Python, &argv(&["python"]), &ctx));
+        assert_eq!(resp.exit_code, 2);
+        assert!(resp.stderr.starts_with("usage: python"));
+
+        let resp = pollster::block_on(run_runtime(RuntimeKind::Wasm, &argv(&["run"]), &ctx));
+        assert_eq!(resp.exit_code, 2);
+        assert!(resp.stderr.starts_with("usage: run"));
     }
 
     #[test]

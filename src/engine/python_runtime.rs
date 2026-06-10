@@ -145,18 +145,21 @@ async fn run_python(
     Ok(response)
 }
 
-/// Load the workspace seed for the sandbox: every file in the project VFS.
-// COORDINATOR: swap to OpfsVfs once src/storage/opfs_vfs.rs lands; this is the
-// single load seam for that change.
+/// Load the workspace seed for the sandbox: every file in the workspace
+/// filesystem (OPFS).
 async fn load_workspace_seed() -> AppResult<Vec<(String, String)>> {
-    use crate::storage::vfs::ProjectVfs;
-    let vfs = ProjectVfs::new();
-    let paths = vfs
-        .list_files()
+    use crate::storage::opfs_vfs::OpfsVfs;
+    let vfs = OpfsVfs::new();
+    let entries = vfs
+        .list_all()
         .await
         .map_err(|err| format!("Unable to list workspace files for the Python sandbox: {err}"))?;
-    let mut files = Vec::with_capacity(paths.len());
-    for path in paths {
+    let mut files = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if entry.is_dir {
+            continue;
+        }
+        let path = entry.path;
         let content = vfs
             .read_file(&path)
             .await
@@ -167,16 +170,14 @@ async fn load_workspace_seed() -> AppResult<Vec<(String, String)>> {
     Ok(files)
 }
 
-/// Write changed sandbox files back to the workspace. Text files are stored;
-/// binary files (non-UTF-8) are skipped because the VFS is text-only. Returns
-/// the stored paths and the skipped binary paths.
-// COORDINATOR: swap to OpfsVfs once src/storage/opfs_vfs.rs lands; this is the
-// single store seam for that change.
+/// Write changed sandbox files back to the workspace (OPFS). Text files are
+/// stored; binary outputs are currently skipped (reported to the caller).
+/// Returns the stored paths and the skipped binary paths.
 async fn store_workspace_outputs(
     files_out: &[WorkerFileOut],
 ) -> AppResult<(Vec<String>, Vec<String>)> {
-    use crate::storage::vfs::ProjectVfs;
-    let vfs = ProjectVfs::new();
+    use crate::storage::opfs_vfs::OpfsVfs;
+    let vfs = OpfsVfs::new();
     let mut written = Vec::new();
     let mut skipped_binary = Vec::new();
     for file in files_out {
