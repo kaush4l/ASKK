@@ -450,6 +450,7 @@ mod tests {
                 "file_read",
                 "file_write",
                 "file_list",
+                "file_edit",
             ]
         );
         assert_eq!(parse_tools("all"), default_tool_names());

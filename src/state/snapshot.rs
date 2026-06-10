@@ -11,7 +11,7 @@ use super::event::{AgentEventKind, event, now_iso};
 use super::manifest::{
     Agent, Skill, default_agents, default_skills, default_soul_prompt, parse_tools,
 };
-use super::mcp::{McpServerConfig, default_shellized_definition};
+use super::mcp::{McpServerConfig, McpServerKind, default_shellized_definition};
 use super::provider::{
     ModelProfile, ProviderConfig, ProviderProfile, default_context_window, default_max_tokens,
     default_model_profiles,
@@ -89,7 +89,7 @@ impl Default for AppSnapshot {
             model_profiles,
             active_model_profile_id,
             tool_config: ToolConfig::default(),
-            mcp_servers: Vec::new(),
+            mcp_servers: vec![McpServerConfig::new_workspace()],
             orchestrator: OrchestratorConfig {
                 routing_provider_profile_id: Some(default_profile_id.clone()),
                 worker_provider_profile_id: Some(default_profile_id),
@@ -606,6 +606,23 @@ impl AppSnapshot {
     }
 
     // MCP-server helpers, driven by the MCP dashboard (`components/mcp_page.rs`).
+    /// Make sure the built-in workspace MCP server exists (snapshots persisted
+    /// before it shipped won't have it). Inserted first so it lists ahead of
+    /// user-added servers. Returns `true` when the snapshot changed. Idempotent;
+    /// a user who doesn't want its tools disables it (the flag persists) rather
+    /// than removing it.
+    pub fn ensure_workspace_mcp_server(&mut self) -> bool {
+        let present = self
+            .mcp_servers
+            .iter()
+            .any(|server| server.kind == McpServerKind::Workspace);
+        if present {
+            return false;
+        }
+        self.mcp_servers.insert(0, McpServerConfig::new_workspace());
+        true
+    }
+
     /// Add a fresh, enabled browser-kind MCP server (a pre-written JS module) from
     /// defaults.
     pub fn add_mcp_server(&mut self) -> String {

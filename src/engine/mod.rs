@@ -1091,6 +1091,7 @@ impl AgentLoop {
             let mut enabled_tools = enabled_tools;
             let mcp_tools = crate::mcp::registry::bring_up_enabled(
                 &snapshot.mcp_servers,
+                &snapshot.tool_config,
                 &mut run,
                 &self.agent_id,
                 &mut observer,

@@ -33,6 +33,11 @@ pub enum McpServerKind {
     /// runtime injects the definition into a generic shell worker that supplies the
     /// MCP protocol — so the author writes tool logic, never the plumbing.
     Shellized,
+    /// The built-in workspace server: an in-process Rust transport (no worker, no
+    /// JS) exposing the Workspace page's actions — list/read/create/edit files and
+    /// run code — as MCP tools backed by the same compiled tool handlers. See
+    /// `crate::mcp::workspace_server`.
+    Workspace,
 }
 
 /// A saved, named MCP server connection. Persisted as part of the [`AppSnapshot`]
@@ -87,7 +92,25 @@ impl McpServerConfig {
             enabled: true,
         }
     }
+
+    /// Create the built-in [`McpServerKind::Workspace`] server. Its id is FIXED
+    /// (not a fresh UUID) so seeding is idempotent across snapshots and
+    /// `AppSnapshot::default()` stays deterministic for tests.
+    pub fn new_workspace() -> Self {
+        Self {
+            id: WORKSPACE_MCP_SERVER_ID.to_string(),
+            name: "Workspace".to_string(),
+            kind: McpServerKind::Workspace,
+            module_path: String::new(),
+            definition: String::new(),
+            enabled: true,
+        }
+    }
 }
+
+/// Stable id of the built-in workspace MCP server (see
+/// [`McpServerConfig::new_workspace`]).
+pub const WORKSPACE_MCP_SERVER_ID: &str = "workspace-builtin";
 
 /// The default `inputSchema` for a shell tool that declares none: an open object.
 #[allow(dead_code)] // referenced by ShellToolDef's serde derive; see struct note.
@@ -222,6 +245,24 @@ mod tests {
             serde_json::to_string(&McpServerKind::Shellized).unwrap(),
             "\"shellized\""
         );
+        assert_eq!(
+            serde_json::to_string(&McpServerKind::Workspace).unwrap(),
+            "\"workspace\""
+        );
+    }
+
+    #[test]
+    fn workspace_server_has_a_stable_id_and_round_trips() {
+        let first = McpServerConfig::new_workspace();
+        let second = McpServerConfig::new_workspace();
+        assert_eq!(first, second, "workspace config must be deterministic");
+        assert_eq!(first.id, WORKSPACE_MCP_SERVER_ID);
+        assert_eq!(first.kind, McpServerKind::Workspace);
+        assert!(first.enabled);
+
+        let json = serde_json::to_string(&first).unwrap();
+        let decoded: McpServerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(first, decoded);
     }
 
     #[test]

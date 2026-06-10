@@ -42,5 +42,6 @@ pub fn default_tool_names() -> Vec<String> {
         "file_read".to_string(),
         "file_write".to_string(),
         "file_list".to_string(),
+        "file_edit".to_string(),
     ]
 }

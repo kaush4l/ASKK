@@ -16,11 +16,25 @@ pub type ResponseFuture<'a> = Pin<Box<dyn Future<Output = AppResult<JsonRpcRespo
 
 /// Transport seam: a JSON-RPC request/response channel to an MCP server.
 ///
-/// `WorkerMcpTransport` (browser) implements it today; HTTP (remote) and stdio
-/// (gateway-bridged) transports can be added later WITHOUT touching the engine.
+/// `WorkerMcpTransport` (browser) and the in-process `WorkspaceMcpServer`
+/// implement it today; HTTP (remote) and stdio (gateway-bridged) transports can
+/// be added later WITHOUT touching the engine.
 pub trait McpTransport {
     /// Send a JSON-RPC *request* and await the correlated response.
     fn send(&self, request: JsonRpcRequest) -> ResponseFuture<'_>;
     /// Fire-and-forget a JSON-RPC *notification* (no id, no response expected).
     fn notify(&self, notification: Value) -> AppResult<()>;
+}
+
+/// Delegating impl so heterogeneous transports (worker-backed, in-process) can
+/// share one `McpClient<Box<dyn McpTransport>>` in the registry's connection
+/// table.
+impl McpTransport for Box<dyn McpTransport> {
+    fn send(&self, request: JsonRpcRequest) -> ResponseFuture<'_> {
+        (**self).send(request)
+    }
+
+    fn notify(&self, notification: Value) -> AppResult<()> {
+        (**self).notify(notification)
+    }
 }

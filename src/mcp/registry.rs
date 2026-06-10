@@ -15,10 +15,12 @@
 
 use crate::mcp::client::McpClient;
 use crate::mcp::protocol::McpToolDef;
+use crate::mcp::transport::McpTransport;
 use crate::mcp::worker_transport::WorkerMcpTransport;
+use crate::mcp::workspace_server::WorkspaceMcpServer;
 use crate::state::{
     AgentEventKind, AgentRun, AppResult, McpServerConfig, McpServerDefinition, McpServerKind,
-    ToolResult, ToolSpec, default_tool_names, event,
+    ToolConfig, ToolResult, ToolSpec, default_tool_names, event,
 };
 use dioxus::prelude::*;
 use serde_json::Value;
@@ -45,7 +47,8 @@ struct McpConnection {
     fingerprint: String,
     /// The client is wrapped in `Rc` so a tool call can clone it out of the
     /// thread-local table and `.await` the round-trip without holding the borrow.
-    client: Rc<McpClient<WorkerMcpTransport>>,
+    /// Boxed transport: worker-backed and in-process servers share this table.
+    client: Rc<McpClient<Box<dyn McpTransport>>>,
     /// `(ToolSpec offered to the model with a clean display name, real tool name on
     /// the server)`. The display name is what the model calls; routing maps it back
     /// to the real name here.
@@ -65,9 +68,12 @@ fn connection_fingerprint(config: &McpServerConfig) -> String {
 }
 
 /// Whether a server kind is run inside the browser tab (and so brought up by the
-/// in-browser runtime). Both kinds today are; remote/bridged kinds added later are not.
+/// in-browser runtime). All kinds today are; remote/bridged kinds added later are not.
 fn runs_in_browser(kind: McpServerKind) -> bool {
-    matches!(kind, McpServerKind::Browser | McpServerKind::Shellized)
+    matches!(
+        kind,
+        McpServerKind::Browser | McpServerKind::Shellized | McpServerKind::Workspace
+    )
 }
 
 thread_local! {
@@ -144,23 +150,31 @@ fn describe_mcp_tool(def: &McpToolDef, server_name: &str) -> String {
     }
 }
 
-/// Spawn the worker, run the initialize handshake, and list tools. Returns the live
+/// Connect a server, run the initialize handshake, and list tools. Returns the live
 /// client plus the raw tool definitions; callers assign display names. Performed
 /// fully outside any thread-local borrow so the awaits can't deadlock the table.
 ///
 /// A `Browser` server loads its pre-written module by URL; a `Shellized` server is
-/// assembled from its definition and spawned from a Blob — but both end up as the same
-/// [`WorkerMcpTransport`], so everything downstream is identical.
+/// assembled from its definition and spawned from a Blob; a `Workspace` server is the
+/// in-process Rust transport (no worker at all, capturing `tool_config` for handlers
+/// that need it). All three end up behind the same boxed [`McpTransport`], so
+/// everything downstream is identical.
 async fn connect_server(
     config: &McpServerConfig,
-) -> AppResult<(Rc<McpClient<WorkerMcpTransport>>, Vec<McpToolDef>)> {
-    let transport = match config.kind {
-        McpServerKind::Browser => WorkerMcpTransport::connect(&resolve_worker_url(config))?,
+    tool_config: &ToolConfig,
+) -> AppResult<(Rc<McpClient<Box<dyn McpTransport>>>, Vec<McpToolDef>)> {
+    let transport: Box<dyn McpTransport> = match config.kind {
+        McpServerKind::Browser => {
+            Box::new(WorkerMcpTransport::connect(&resolve_worker_url(config))?)
+        }
         McpServerKind::Shellized => {
             let definition = McpServerDefinition::parse(&config.definition)?;
             let definition_json = serde_json::to_string(&definition)
                 .map_err(|err| format!("Unable to encode MCP definition: {err}"))?;
-            WorkerMcpTransport::connect_shellized(&definition_json)?
+            Box::new(WorkerMcpTransport::connect_shellized(&definition_json)?)
+        }
+        McpServerKind::Workspace => {
+            Box::new(WorkspaceMcpServer::new(tool_config.web_search.clone()))
         }
     };
     let client = McpClient::new(transport);
@@ -176,6 +190,7 @@ async fn connect_server(
 /// for servers no longer enabled are torn down.
 pub async fn bring_up_enabled<F>(
     servers: &[McpServerConfig],
+    tool_config: &ToolConfig,
     run: &mut AgentRun,
     agent_id: &str,
     observer: &mut F,
@@ -236,7 +251,7 @@ where
             continue;
         }
 
-        match connect_server(server).await {
+        match connect_server(server, tool_config).await {
             Ok((client, defs)) => {
                 // Assign each tool a clean, collision-free display name and a
                 // description that names its source server.
@@ -305,8 +320,11 @@ where
 /// One-shot probe for the dashboard: connect, initialize, list tools, then tear the
 /// worker down (the returned connection is dropped here, terminating its worker).
 /// Does not touch the live runtime table.
-pub async fn discover_tools(config: &McpServerConfig) -> AppResult<Vec<String>> {
-    let (_client, defs) = connect_server(config).await?;
+pub async fn discover_tools(
+    config: &McpServerConfig,
+    tool_config: &ToolConfig,
+) -> AppResult<Vec<String>> {
+    let (_client, defs) = connect_server(config, tool_config).await?;
     Ok(defs.into_iter().map(|def| def.name).collect())
 }
 

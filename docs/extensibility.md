@@ -38,6 +38,18 @@ Registration is centralized in `ToolRegistry::new()` via `register_builtin_tools
 
 Acceptance test: `tools::tests::registry_accepts_new_tool_descriptor_without_execute_match_edits` proves a brand-new descriptor can be registered and executed without changing the executor match logic.
 
+### Workspace actions as MCP tools
+
+The Workspace page's actions (list/read/create/edit files, run JS, run a bridge
+command) are also exposed to the agent as **MCP tools** by the built-in
+`workspace` server ([`src/mcp/workspace_server.rs`](../src/mcp/workspace_server.rs)),
+an in-process `McpTransport` (no worker, no JS) whose `tools/call` delegates to the
+same compiled handlers (`file_list`/`file_read`/`file_write`/`file_edit`/`run_js`/
+`run_command`). It is seeded into every snapshot (`workspace-builtin`, kind
+`workspace`), brought up at run start like any other MCP server, and can be
+disabled on the MCP page. Adding a third transport kind required no engine change:
+`McpServerKind` + one `connect_server` arm behind the boxed `McpTransport` seam.
+
 ## Agent contract
 
 An agent is a Markdown manifest in `agents/*.md`:

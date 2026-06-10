@@ -74,7 +74,9 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                     let kind_label = match server.kind {
                         McpServerKind::Browser => "module",
                         McpServerKind::Shellized => "shellized",
+                        McpServerKind::Workspace => "built-in",
                     };
+                    let is_builtin = server.kind == McpServerKind::Workspace;
                     rsx! {
                         article { class: "settings-card mcp-card", key: "{server.id}",
                             div { class: "card-heading",
@@ -92,13 +94,15 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                                     strong { "{server.name}" }
                                     span { class: "pill", "{kind_label}" }
                                 }
-                                button {
-                                    class: "ghost-button",
-                                    onclick: move |_| {
-                                        let status = snapshot.write().remove_mcp_server(&id_remove);
-                                        set_status(&mut snapshot, status);
-                                    },
-                                    "Remove"
+                                if !is_builtin {
+                                    button {
+                                        class: "ghost-button",
+                                        onclick: move |_| {
+                                            let status = snapshot.write().remove_mcp_server(&id_remove);
+                                            set_status(&mut snapshot, status);
+                                        },
+                                        "Remove"
+                                    }
                                 }
                             }
                             label {
@@ -152,17 +156,35 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                                         " and returns a string, number, or object. The shell worker supplies the MCP protocol around it."
                                     }
                                 },
+                                McpServerKind::Workspace => rsx! {
+                                    p { class: "muted",
+                                        "Built-in, in-process server exposing the Workspace actions as MCP tools: "
+                                        code { "workspace_list_files" }
+                                        ", "
+                                        code { "workspace_read_file" }
+                                        ", "
+                                        code { "workspace_create_file" }
+                                        ", "
+                                        code { "workspace_edit_file" }
+                                        ", "
+                                        code { "workspace_run_js" }
+                                        ", and "
+                                        code { "workspace_run_command" }
+                                        ". They operate on the same files and runners as the Workspace page. Untick the checkbox to stop offering them to the agent."
+                                    }
+                                },
                             }
                             div { class: "button-row",
                                 button {
                                     class: "ghost-button",
                                     onclick: move |_| {
                                         let config = config_probe.clone();
+                                        let tool_config = snapshot.peek().tool_config.clone();
                                         let id = id_probe.clone();
                                         let mut discovered = discovered;
                                         spawn_local(async move {
                                             discovered.write().insert(id.clone(), "Discovering…".to_string());
-                                            let line = match crate::mcp::probe_tools(&config).await {
+                                            let line = match crate::mcp::probe_tools(&config, &tool_config).await {
                                                 Ok(tools) if tools.is_empty() => {
                                                     "Connected — server advertised no tools.".to_string()
                                                 }

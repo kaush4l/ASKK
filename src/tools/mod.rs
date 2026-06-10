@@ -21,6 +21,7 @@ use std::pin::Pin;
 mod bridge;
 mod call_agent;
 mod common;
+mod file_edit;
 mod file_vfs;
 mod fs_bridge;
 mod http;
@@ -145,6 +146,7 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(file_vfs::read_descriptor());
     registry.register(file_vfs::write_descriptor());
     registry.register(file_vfs::list_descriptor());
+    registry.register(file_edit::descriptor());
     registry.register(call_agent::descriptor());
 }
 
@@ -214,6 +216,10 @@ mod tests {
             "fs_read",
             "fs_write",
             "fs_list",
+            "file_read",
+            "file_write",
+            "file_list",
+            "file_edit",
         ] {
             assert!(names.contains(&expected), "missing tool: {expected}");
         }

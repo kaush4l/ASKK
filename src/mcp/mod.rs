@@ -2,7 +2,8 @@
 //!
 //! This module's one responsibility is speaking MCP to a server: it defines the
 //! JSON-RPC + MCP wire types ([`protocol`]), a transport seam ([`transport`]), the
-//! browser Web Worker transport ([`worker_transport`], wasm-only), and a tiny client
+//! browser Web Worker transport ([`worker_transport`], wasm-only), the built-in
+//! in-process workspace server ([`workspace_server`]), and a tiny client
 //! ([`client`]) that allocates request ids and parses the handful of MCP methods we
 //! use. JSON-RPC is hand-rolled — no `rmcp`, no `async_trait`.
 //!
@@ -19,24 +20,31 @@ pub mod registry;
 pub mod transport;
 #[cfg(target_arch = "wasm32")]
 pub mod worker_transport;
+/// The built-in in-process workspace server (host-testable: no worker, no JS).
+pub mod workspace_server;
 
 // Submodules are used via their full paths (e.g. `crate::mcp::client::McpClient`);
 // there are no top-level re-exports to keep in sync.
 
-use crate::state::{AppResult, McpServerConfig};
+use crate::state::{AppResult, McpServerConfig, ToolConfig};
 
 /// Probe an MCP server from the current thread (used by the dashboard on the main
 /// thread): connect, run the initialize handshake, list its tools, then tear the
-/// worker down. Returns the discovered tool names. Browser-only — on the host it
-/// reports that discovery needs the browser.
-pub async fn probe_tools(config: &McpServerConfig) -> AppResult<Vec<String>> {
+/// worker down. Returns the discovered tool names. `tool_config` supplies the
+/// settings the in-process workspace server captures at connect time (worker-kind
+/// servers ignore it). Browser-only — on the host it reports that discovery needs
+/// the browser.
+pub async fn probe_tools(
+    config: &McpServerConfig,
+    tool_config: &ToolConfig,
+) -> AppResult<Vec<String>> {
     #[cfg(target_arch = "wasm32")]
     {
-        registry::discover_tools(config).await
+        registry::discover_tools(config, tool_config).await
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = config;
+        let _ = (config, tool_config);
         Err("MCP discovery is only available in the browser.".to_string())
     }
 }

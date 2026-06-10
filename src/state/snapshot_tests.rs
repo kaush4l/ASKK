@@ -469,6 +469,47 @@ fn user_authored_soul_is_preserved() {
 }
 
 #[test]
+fn default_snapshot_seeds_the_builtin_workspace_mcp_server() {
+    let snapshot = AppSnapshot::default();
+    let workspace: Vec<_> = snapshot
+        .mcp_servers
+        .iter()
+        .filter(|server| server.kind == McpServerKind::Workspace)
+        .collect();
+    assert_eq!(workspace.len(), 1);
+    assert_eq!(workspace[0].id, WORKSPACE_MCP_SERVER_ID);
+    assert!(workspace[0].enabled);
+}
+
+#[test]
+fn ensure_workspace_mcp_server_is_idempotent_and_respects_disabled() {
+    // A snapshot persisted before the workspace server shipped: no entry at all.
+    let mut snapshot = AppSnapshot::default();
+    snapshot.mcp_servers.clear();
+    assert!(snapshot.ensure_workspace_mcp_server(), "first call seeds");
+    assert!(!snapshot.ensure_workspace_mcp_server(), "second is a no-op");
+    assert_eq!(snapshot.mcp_servers.len(), 1);
+    assert_eq!(snapshot.mcp_servers[0].kind, McpServerKind::Workspace);
+
+    // A user who disabled the built-in keeps it disabled — ensure must not
+    // duplicate it or flip the flag back on.
+    snapshot.mcp_servers[0].enabled = false;
+    assert!(!snapshot.ensure_workspace_mcp_server());
+    assert_eq!(snapshot.mcp_servers.len(), 1);
+    assert!(!snapshot.mcp_servers[0].enabled);
+}
+
+#[test]
+fn ensure_workspace_mcp_server_inserts_ahead_of_user_servers() {
+    let mut snapshot = AppSnapshot::default();
+    snapshot.mcp_servers.clear();
+    snapshot.add_mcp_server();
+    assert!(snapshot.ensure_workspace_mcp_server());
+    assert_eq!(snapshot.mcp_servers[0].kind, McpServerKind::Workspace);
+    assert_eq!(snapshot.mcp_servers.len(), 2);
+}
+
+#[test]
 fn agent_memories_survive_serde_round_trip_and_default_for_old_snapshots() {
     let mut snapshot = AppSnapshot::default();
     upsert_rolling_summary(&mut snapshot.agent_memories, "researcher", "knows X".into());
