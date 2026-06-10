@@ -8,10 +8,14 @@
 // scoped dead-code allow until then rather than per-item attributes.
 #![allow(dead_code)]
 
+mod plan_act_review;
 mod react;
 mod registry;
+mod skills_work_critique;
 
+pub use plan_act_review::PlanActReviewStrategy;
 pub use react::ReactStrategy;
+pub use skills_work_critique::SkillsWorkCritiqueStrategy;
 // `DEFAULT_STRATEGY_ID` is public API (the canonical "react" id) used by the agent
 // config + UI picker in Task 6; nothing imports it yet, so scope an allow here rather
 // than dropping the re-export.

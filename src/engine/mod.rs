@@ -216,6 +216,9 @@ struct AgentLoop {
     lane: RunLane,
     /// The strategy driving this run's phase sequence.
     strategy: &'static dyn Strategy,
+    /// Precomputed skill library string (enabled skills → "- name: first line" joined).
+    /// Appended to the phase goal when `phase.list_skill_library` is true.
+    skill_library: String,
 }
 
 /// What one [`AgentLoop::step`] decided the loop should do next.
@@ -302,6 +305,19 @@ impl AgentLoop {
         // TODO(task-9/10): surface a run event when a configured strategy_id fails to resolve instead of silently running react.
         let strategy = registry.get(&strategy_id).unwrap_or_else(fallback_strategy);
 
+        // Precompute the skill library for phases that set `list_skill_library: true`.
+        // Format: "- name: first line of content" per enabled skill, newline-joined.
+        let skill_library = snapshot
+            .skills
+            .iter()
+            .filter(|skill| skill.enabled)
+            .map(|skill| {
+                let first_line = skill.content.lines().next().unwrap_or("");
+                format!("- {}: {}", skill.name, first_line)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
         Self {
             executor,
             agent,
@@ -317,6 +333,7 @@ impl AgentLoop {
             max_steps,
             lane,
             strategy,
+            skill_library,
         }
     }
 
@@ -404,7 +421,7 @@ impl AgentLoop {
         // Full ordered transcript: prior conversation, the per-phase goal text, then
         // this run's accumulated ReAct turns. For the react strategy's bare phase
         // `phase_goal` returns the goal untouched, preserving byte parity.
-        let goal_text = phase_goal(phase, context, &run.goal);
+        let goal_text = phase_goal(phase, context, &run.goal, &self.skill_library);
         let mut history = self.conversation.clone();
         history.push(Message {
             role: "user".to_string(),
@@ -690,7 +707,7 @@ impl AgentLoop {
         self.maybe_compact(run, observer).await;
         *steps_used += 1;
 
-        let goal_text = phase_goal(phase, context, &run.goal);
+        let goal_text = phase_goal(phase, context, &run.goal, &self.skill_library);
         let mut history = self.conversation.clone();
         history.push(Message {
             role: "user".to_string(),
@@ -1131,10 +1148,22 @@ impl AgentLoop {
                 break;
             };
 
+            // Compute routing BEFORE the OneShot-ReAct finalize block so we can gate
+            // finalization on Done. Without this ordering a strategy that routes Next or
+            // Back after a OneShot-ReAct phase would finalize early (double FinalAnswer
+            // + later overwrite when the next Loop phase answers).
+            let routing = apply_back_edge_budget(
+                self.strategy.route(phase_idx, &outcome),
+                &mut context.back_edges_used,
+            );
+
             // A OneShot ReAct phase (e.g. an orchestrate `synthesize` phase) produces
-            // the final answer directly.
+            // the final answer directly — but only when routing is Done (no further
+            // phases will answer). If the strategy routes Next or Back, the subsequent
+            // phase will set last_answer instead.
             if let (LoopMode::OneShot, ParsedResponse::ReAct(react)) =
                 (phase.loop_mode, &outcome.response)
+                && matches!(routing, Routing::Done)
             {
                 let final_text = react.final_text();
                 if try_finalize_answer(
@@ -1149,6 +1178,8 @@ impl AgentLoop {
                 observer(run.clone());
             }
 
+            // Artifact and skill collection happens regardless of routing so that
+            // later phases (on a Back edge) carry forward the distilled context.
             if let Some(artifact) = self.strategy.artifact(&outcome) {
                 context.artifacts.retain(|(name, _)| name != &artifact.0);
                 context.artifacts.push(artifact);
@@ -1157,10 +1188,6 @@ impl AgentLoop {
                 context.selected_skills = Some(selection.selected_skills.clone());
             }
 
-            let routing = apply_back_edge_budget(
-                self.strategy.route(phase_idx, &outcome),
-                &mut context.back_edges_used,
-            );
             push_phase_event(
                 &mut run,
                 &self.agent_id,
@@ -1175,6 +1202,9 @@ impl AgentLoop {
 
             match routing {
                 Routing::Next => phase_idx += 1,
+                // A Back edge may lead the next loop phase to answer again; the newer
+                // validated answer overwrites run.final_answer (best-so-far semantics —
+                // a paused re-run keeps the prior answer under a Paused status).
                 Routing::Back(target) => phase_idx = target.min(phases.len() - 1),
                 Routing::Done => break,
             }
@@ -1522,11 +1552,15 @@ fn initial_scratchpad(snapshot: &AppSnapshot, goal: &str, lane: RunLane) -> RunS
     }
 }
 
-/// Compose the per-phase goal text: frame, then carried artifacts, then the goal.
-/// The react strategy's bare phase (empty frame, no artifacts) returns the goal
-/// untouched for byte parity with the original loop.
-fn phase_goal(phase: &Phase, context: &StrategyContext, goal: &str) -> String {
-    if phase.prompt_frame.trim().is_empty() && context.artifacts.is_empty() {
+/// Compose the per-phase goal text: frame, then carried artifacts, then the goal,
+/// then (when requested) the skill library. The react strategy's bare phase (empty
+/// frame, no artifacts, `list_skill_library: false`) returns the goal untouched for
+/// byte parity with the original loop.
+fn phase_goal(phase: &Phase, context: &StrategyContext, goal: &str, skill_library: &str) -> String {
+    if phase.prompt_frame.trim().is_empty()
+        && context.artifacts.is_empty()
+        && !phase.list_skill_library
+    {
         return goal.to_string();
     }
     let mut parts: Vec<String> = Vec::new();
@@ -1541,6 +1575,9 @@ fn phase_goal(phase: &Phase, context: &StrategyContext, goal: &str) -> String {
         ));
     }
     parts.push(format!("The goal: {goal}"));
+    if phase.list_skill_library && !skill_library.is_empty() {
+        parts.push(format!("## SKILL LIBRARY\n{skill_library}"));
+    }
     parts.join("\n\n")
 }
 
@@ -1798,6 +1835,24 @@ mod tests {
             "orchestrate"
         );
         assert_eq!(resolve_strategy_id(None, None), "react");
+    }
+
+    #[test]
+    fn back_edges_cap_at_two_then_done() {
+        let mut used = 0;
+        assert_eq!(
+            apply_back_edge_budget(Routing::Back(1), &mut used),
+            Routing::Back(1)
+        );
+        assert_eq!(
+            apply_back_edge_budget(Routing::Back(1), &mut used),
+            Routing::Back(1)
+        );
+        assert_eq!(
+            apply_back_edge_budget(Routing::Back(1), &mut used),
+            Routing::Done
+        );
+        assert_eq!(used, 2);
     }
 
     #[test]

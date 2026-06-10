@@ -1,11 +1,13 @@
 //! Id-keyed strategy lookup, mirroring the tool and inference registries: built-ins
 //! registered at construction, one line per strategy, no engine edits to extend.
 
-use super::{ReactStrategy, Strategy};
+use super::{PlanActReviewStrategy, ReactStrategy, SkillsWorkCritiqueStrategy, Strategy};
 
 pub const DEFAULT_STRATEGY_ID: &str = "react";
 
 static REACT: ReactStrategy = ReactStrategy;
+static PLAN_ACT_REVIEW: PlanActReviewStrategy = PlanActReviewStrategy;
+static SKILLS_WORK_CRITIQUE: SkillsWorkCritiqueStrategy = SkillsWorkCritiqueStrategy;
 
 /// Infallible default used when an id (even "react") fails to resolve.
 pub fn fallback_strategy() -> &'static dyn Strategy {
@@ -55,6 +57,8 @@ impl StrategyRegistry {
 
 fn register_builtin_strategies(registry: &mut StrategyRegistry) {
     registry.register(&REACT);
+    registry.register(&PLAN_ACT_REVIEW);
+    registry.register(&SKILLS_WORK_CRITIQUE);
 }
 
 /// One resolution order everywhere: explicit param → agent config → default.
