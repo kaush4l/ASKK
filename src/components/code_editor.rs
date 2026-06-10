@@ -14,9 +14,15 @@ const CM6_BUNDLE: Asset = asset!("/assets/cm6_editor.js");
 
 /// TypeScript/JavaScript language-service worker (built from `scripts/lsp-ts/`,
 /// see its package.json). Referenced via `asset!` so the bundler ships it; the
-/// editor glue attaches it only once the CM6 bundle exposes
-/// `attachLanguageService`.
+/// editor glue attaches it via the CM6 bundle's `attachLanguageService`.
 const LSP_TS_WORKER: Asset = asset!("/assets/lsp_ts_worker.js");
+/// Python diagnostics language-service worker (Ruff WASM), built from
+/// `scripts/lsp-python/` — `bun run build` there regenerates both assets.
+const LSP_PY_WORKER_JS: Asset = asset!("/assets/lsp_py_worker.js");
+/// The Ruff engine the worker loads. Shipped as its own asset because Dioxus
+/// content-hashes filenames, so the worker can't find it by its canonical
+/// sibling name; we pass this URL via the worker's `?wasm=` query parameter.
+const LSP_PY_RUFF_WASM: Asset = asset!("/assets/lsp_py_ruff.wasm");
 
 /// An event reported by the mounted editor.
 #[derive(Clone, PartialEq, Deserialize)]
@@ -52,13 +58,17 @@ const token = window.AskkCM.mount(HOST, {
     onChange: (path, text) => dioxus.send({ path, text, save: false }),
     onSave: (path, text) => dioxus.send({ path, text, save: true }),
 });
-// COORDINATOR: lights up when CM6 bundle v2 lands (AskkCM.attachLanguageService).
-// The worker asset (assets/lsp_ts_worker.js, built from scripts/lsp-ts/) is a
-// TS/JS language service; until the bundle exposes the hook this is a no-op.
+// Language services (guarded so a v1 bundle degrades to a no-op): the TS/JS
+// worker (assets/lsp_ts_worker.js) and the Python/Ruff diagnostics worker
+// (assets/lsp_py_worker.js, which locates its wasm via the ?wasm= parameter).
 if (typeof window.AskkCM?.attachLanguageService === "function") {
     window.AskkCM.attachLanguageService(HOST, {
         languages: ["typescript", "javascript"],
         workerUrl: "__ASKK_LSP_TS_WORKER__",
+    });
+    window.AskkCM.attachLanguageService(HOST, {
+        languages: ["python"],
+        workerUrl: "__ASKK_LSP_PY_WORKER__" + "?wasm=" + encodeURIComponent("__ASKK_LSP_PY_WASM__"),
     });
 }
 dioxus.send({ ready: true });
@@ -159,8 +169,10 @@ pub fn CodeEditor(
             id: "askk-cm-host",
             class: "ide-editor-host",
             onmounted: move |_| {
-                let glue =
-                    EDITOR_GLUE.replace("__ASKK_LSP_TS_WORKER__", &LSP_TS_WORKER.to_string());
+                let glue = EDITOR_GLUE
+                    .replace("__ASKK_LSP_TS_WORKER__", &LSP_TS_WORKER.to_string())
+                    .replace("__ASKK_LSP_PY_WORKER__", &LSP_PY_WORKER_JS.to_string())
+                    .replace("__ASKK_LSP_PY_WASM__", &LSP_PY_RUFF_WASM.to_string());
                 let eval = document::eval(&glue);
                 controller.set(Some(eval));
                 spawn(async move {
