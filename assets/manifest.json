@@ -1,0 +1,17 @@
+{
+  "name": "ASKK Assistant",
+  "short_name": "ASKK",
+  "description": "Browser-native agentic assistant — no server required.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    {
+      "src": "/assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
