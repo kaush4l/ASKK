@@ -394,6 +394,7 @@ fn log_step(kind: &AgentEventKind) -> Option<(&'static str, &'static str)> {
         | AgentEventKind::Workflow
         | AgentEventKind::PhaseStarted
         | AgentEventKind::PhaseCompleted
+        | AgentEventKind::MemoryCompacted
         | AgentEventKind::Verification
         | AgentEventKind::WorkerStarted
         | AgentEventKind::WorkerCompleted => None,

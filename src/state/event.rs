@@ -21,6 +21,8 @@ pub enum AgentEventKind {
     PhaseStarted,
     /// A strategy phase completed (body carries the routing decision).
     PhaseCompleted,
+    /// Working memory was compacted (older messages folded into a summary).
+    MemoryCompacted,
     Verification,
     /// A browser MCP server was connected at run start.
     McpConnected,

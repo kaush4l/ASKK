@@ -14,6 +14,7 @@
 pub mod browser_exec;
 pub mod exec_capability;
 mod execution;
+mod memory;
 mod tool_dispatch;
 mod validators;
 
@@ -607,6 +608,7 @@ impl AgentLoop {
                 observer(run.clone());
                 return None;
             }
+            self.maybe_compact(run, observer).await;
             *steps_used += 1;
             turns_this_phase += 1;
 
@@ -672,6 +674,7 @@ impl AgentLoop {
             observer(run.clone());
             return None;
         }
+        self.maybe_compact(run, observer).await;
         *steps_used += 1;
 
         let goal_text = phase_goal(phase, context, &run.goal);
@@ -708,6 +711,87 @@ impl AgentLoop {
             response: phase.response_kind.parse(&output.raw_text),
             turns_used: 1,
         })
+    }
+
+    /// Compact run.messages in place when policy triggers. Failure is non-fatal:
+    /// keep history, log, retry at the next trigger.
+    async fn maybe_compact<F>(&self, run: &mut AgentRun, observer: &mut F)
+    where
+        F: FnMut(AgentRun),
+    {
+        let policy = memory::MemoryPolicy::default();
+        if !memory::needs_compaction(&policy, &run.messages, self.provider.context_window) {
+            return;
+        }
+        let Some((older, recent)) = memory::split_for_compaction(&run.messages, policy.keep_recent)
+        else {
+            return;
+        };
+
+        let transcript = older
+            .iter()
+            .map(|message| format!("[{}] {}", message.role, message.content))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let goal = format!(
+            "Summarize this conversation prefix for an agent that will continue working. Keep decisions, key facts, file paths, and tool results. Be dense.\n\n{transcript}"
+        );
+        let phase = Phase {
+            name: "compact",
+            response_kind: crate::responses::ResponseKind::Summary,
+            prompt_frame: "",
+            tool_policy: ToolPolicy::NoTools,
+            loop_mode: LoopMode::OneShot,
+            list_skill_library: false,
+        };
+        let history = vec![Message {
+            role: "user".to_string(),
+            content: goal.clone(),
+        }];
+        let request = self.build_request(
+            &phase,
+            &StrategyContext::default(),
+            goal,
+            history,
+            ResponseFormat::Toon,
+            &[],
+        );
+        match call_model_plain(&self.inference, &self.provider, request).await {
+            Ok(output) => {
+                if let ParsedResponse::Summary(summary) =
+                    crate::responses::ResponseKind::Summary.parse(&output.raw_text)
+                {
+                    let dropped = older.len();
+                    let mut compacted = vec![memory::summary_message(
+                        &summary.summary,
+                        &summary.open_threads,
+                    )];
+                    compacted.extend(recent);
+                    run.messages = compacted;
+                    run.events.push(event(
+                        &run.id,
+                        Some(self.agent_id.clone()),
+                        AgentEventKind::MemoryCompacted,
+                        "Memory compacted",
+                        format!(
+                            "Folded {dropped} message(s) into a summary; kept {} verbatim.",
+                            policy.keep_recent
+                        ),
+                    ));
+                    observer(run.clone());
+                }
+            }
+            Err(error) => {
+                run.events.push(event(
+                    &run.id,
+                    Some(self.agent_id.clone()),
+                    AgentEventKind::Error,
+                    "Memory compaction failed (non-fatal)",
+                    error,
+                ));
+                observer(run.clone());
+            }
+        }
     }
 
     /// Execute the parsed tool calls for one turn and feed their results back.
@@ -1065,6 +1149,16 @@ where
             }
         }
     }
+}
+
+/// One model attempt with no retry and no run-state side effects — used for
+/// best-effort internal calls (compaction, rolling-summary merge).
+async fn call_model_plain(
+    inference: &OpenAiCompatibleInference,
+    provider: &ProviderConfig,
+    request: InferenceRequest,
+) -> AppResult<InferenceOutput<ReActResponse>> {
+    inference.invoke_react(provider, request).await
 }
 
 fn finalize_status(run: &mut AgentRun, answered: bool) {
