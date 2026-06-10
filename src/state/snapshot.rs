@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::AppResult;
 use super::agent_memory::AgentMemory;
+use super::compiled_function::{CompiledFunction, default_compiled_function};
 use super::event::{AgentEventKind, event, now_iso};
 use super::manifest::{
     Agent, Skill, default_agents, default_skills, default_soul_prompt, parse_tools,
@@ -53,6 +54,10 @@ pub struct AppSnapshot {
     pub tool_config: ToolConfig,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
+    /// User-defined compiled functions, hosted together in the stateful tool-host
+    /// worker at run start (see `state::compiled_function`).
+    #[serde(default)]
+    pub compiled_functions: Vec<CompiledFunction>,
     #[serde(default)]
     pub orchestrator: OrchestratorConfig,
     #[serde(default = "default_soul_prompt")]
@@ -90,6 +95,7 @@ impl Default for AppSnapshot {
             active_model_profile_id,
             tool_config: ToolConfig::default(),
             mcp_servers: vec![McpServerConfig::new_workspace()],
+            compiled_functions: Vec::new(),
             orchestrator: OrchestratorConfig {
                 routing_provider_profile_id: Some(default_profile_id.clone()),
                 worker_provider_profile_id: Some(default_profile_id),
@@ -670,6 +676,44 @@ impl AppSnapshot {
         };
         server.name = name.to_string();
         format!("Renamed MCP server: {}", server.name)
+    }
+
+    // Compiled-function helpers, driven by the MCP dashboard's tool-host section.
+    /// Add a fresh, enabled compiled function seeded with the stateful-counter
+    /// example, ready to edit.
+    pub fn add_compiled_function(&mut self) -> String {
+        let function = default_compiled_function();
+        let name = function.name.clone();
+        self.compiled_functions.push(function);
+        format!("Added compiled function: {name}")
+    }
+
+    /// Remove a compiled function by id. Zero functions is valid (the tool host is
+    /// simply not brought up).
+    pub fn remove_compiled_function(&mut self, id: &str) -> String {
+        let Some(index) = self
+            .compiled_functions
+            .iter()
+            .position(|function| function.id == id)
+        else {
+            return format!("No compiled function found with id {id}");
+        };
+        let removed = self.compiled_functions.remove(index);
+        format!("Removed compiled function: {}", removed.name)
+    }
+
+    /// Enable or disable a compiled function by id.
+    pub fn toggle_compiled_function(&mut self, id: &str, enabled: bool) -> String {
+        let Some(function) = self
+            .compiled_functions
+            .iter_mut()
+            .find(|function| function.id == id)
+        else {
+            return format!("No compiled function found with id {id}");
+        };
+        function.enabled = enabled;
+        let verb = if enabled { "Enabled" } else { "Disabled" };
+        format!("{verb} compiled function: {}", function.name)
     }
 }
 

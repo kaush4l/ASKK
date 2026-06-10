@@ -1,19 +1,22 @@
 use super::save_snapshot;
 use super::shared::set_status;
-use crate::state::{AppSnapshot, McpServerKind};
+use crate::state::{AppSnapshot, McpServerKind, TOOL_HOST_SERVER_ID, tool_host_server_config};
 use dioxus::prelude::*;
 use std::collections::HashMap;
 use wasm_bindgen_futures::spawn_local;
 
-/// Dashboard section for browser-hosted MCP servers: list, add, remove, enable, and
-/// probe each server's tools. Configured servers persist in the snapshot; their
-/// tools are offered to the agent at run start (see `crate::mcp::registry`).
+/// Dashboard section for browser-hosted MCP servers — list, add, remove, enable,
+/// and probe each server's tools — plus the tool host's compiled functions.
+/// Configured servers and functions persist in the snapshot; their tools are
+/// offered to the agent at run start (see `crate::mcp::registry`).
 #[component]
 pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
     let current = snapshot.read().clone();
     // Server id -> a human-readable "discovered tools" / error line, filled by the
-    // per-server Discover button (a main-thread probe of the worker).
+    // per-server Discover button (a main-thread probe of the worker). The tool
+    // host's probe line lives under its stable server id.
     let discovered = use_signal(HashMap::<String, String>::new);
+    let tool_host_line = discovered.read().get(TOOL_HOST_SERVER_ID).cloned();
 
     rsx! {
         section { class: "panel page-panel mcp-page",
@@ -203,6 +206,160 @@ pub fn McpPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                         }
                     }
                 }
+            }
+
+            div { class: "page-heading",
+                div {
+                    h2 { "Tool host — compiled functions" }
+                    p { class: "muted",
+                        "User-defined functions, compiled once and hosted together in a single dedicated, stateful Web Worker (the tool host) at run start. Each handler receives "
+                        code { "args" }
+                        " and a shared "
+                        code { "state" }
+                        " object that persists across calls and across runs — until a function is edited or the page reloads. Every enabled function is offered to the agent as a tool, in parity with the built-ins."
+                    }
+                }
+                div { class: "button-row",
+                    button {
+                        onclick: move |_| {
+                            let status = snapshot.write().add_compiled_function();
+                            set_status(&mut snapshot, status);
+                        },
+                        "Add function"
+                    }
+                    button {
+                        class: "ghost-button",
+                        onclick: move |_| {
+                            let functions = snapshot.peek().compiled_functions.clone();
+                            let tool_config = snapshot.peek().tool_config.clone();
+                            let mut discovered = discovered;
+                            spawn_local(async move {
+                                let key = TOOL_HOST_SERVER_ID.to_string();
+                                discovered.write().insert(key.clone(), "Discovering…".to_string());
+                                let line = match tool_host_server_config(&functions) {
+                                    Ok(Some(config)) => {
+                                        match crate::mcp::probe_tools(&config, &tool_config).await {
+                                            Ok(tools) if tools.is_empty() => {
+                                                "Connected — the tool host advertised no tools.".to_string()
+                                            }
+                                            Ok(tools) => format!("Tools: {}", tools.join(", ")),
+                                            Err(err) => format!("Error: {err}"),
+                                        }
+                                    }
+                                    Ok(None) => {
+                                        "No enabled functions — add or enable one first.".to_string()
+                                    }
+                                    Err(err) => format!("Error: {err}"),
+                                };
+                                discovered.write().insert(key, line);
+                            });
+                        },
+                        "Test tool host"
+                    }
+                }
+            }
+
+            if current.compiled_functions.is_empty() {
+                p { class: "muted",
+                    "No compiled functions yet. Add one to spin up the tool host — the example function shows how to keep state between calls."
+                }
+            }
+
+            for (index, function) in current.compiled_functions.iter().enumerate() {
+                {
+                    let id_toggle = function.id.clone();
+                    let id_remove = function.id.clone();
+                    rsx! {
+                        article { class: "settings-card mcp-card", key: "{function.id}",
+                            div { class: "card-heading",
+                                label { class: "checkbox-line",
+                                    input {
+                                        r#type: "checkbox",
+                                        checked: function.enabled,
+                                        onchange: move |event| {
+                                            let status = snapshot
+                                                .write()
+                                                .toggle_compiled_function(&id_toggle, event.checked());
+                                            set_status(&mut snapshot, status);
+                                        }
+                                    }
+                                    strong { "{function.name}" }
+                                    span { class: "pill", "function" }
+                                }
+                                button {
+                                    class: "ghost-button",
+                                    onclick: move |_| {
+                                        let status = snapshot.write().remove_compiled_function(&id_remove);
+                                        set_status(&mut snapshot, status);
+                                    },
+                                    "Remove"
+                                }
+                            }
+                            label {
+                                "Name"
+                                input {
+                                    value: "{function.name}",
+                                    oninput: move |event| {
+                                        if let Some(function) =
+                                            snapshot.write().compiled_functions.get_mut(index)
+                                        {
+                                            function.name = event.value();
+                                        }
+                                    }
+                                }
+                            }
+                            label {
+                                "Description"
+                                input {
+                                    value: "{function.description}",
+                                    oninput: move |event| {
+                                        if let Some(function) =
+                                            snapshot.write().compiled_functions.get_mut(index)
+                                        {
+                                            function.description = event.value();
+                                        }
+                                    }
+                                }
+                            }
+                            label {
+                                "Input schema (JSON object; empty means any arguments)"
+                                textarea {
+                                    class: "mcp-definition",
+                                    rows: "4",
+                                    spellcheck: "false",
+                                    value: "{function.input_schema}",
+                                    oninput: move |event| {
+                                        if let Some(function) =
+                                            snapshot.write().compiled_functions.get_mut(index)
+                                        {
+                                            function.input_schema = event.value();
+                                        }
+                                    }
+                                }
+                            }
+                            label {
+                                "Handler body (JS — receives args and state)"
+                                textarea {
+                                    class: "mcp-definition",
+                                    rows: "6",
+                                    spellcheck: "false",
+                                    value: "{function.body}",
+                                    oninput: move |event| {
+                                        if let Some(function) =
+                                            snapshot.write().compiled_functions.get_mut(index)
+                                        {
+                                            function.body = event.value();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(line) = tool_host_line {
+                pre { class: "tool-test-output", "{line}" }
             }
         }
     }

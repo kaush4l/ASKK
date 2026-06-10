@@ -396,4 +396,47 @@ mod browser_tests {
 
         drop(client);
     }
+
+    /// The shell worker's shared `state` object persists across calls for the
+    /// worker's lifetime: a counter handler returns 1 then 2 from the same worker.
+    /// This is the property the tool host (compiled functions) leans on.
+    #[wasm_bindgen_test]
+    async fn shellized_state_persists_across_calls() {
+        let definition = json!({
+            "name": "Stateful",
+            "tools": [
+                {
+                    "name": "counter",
+                    "description": "Increment a persistent counter.",
+                    "inputSchema": { "type": "object" },
+                    "handler": "state.count = (state.count || 0) + 1; return String(state.count);"
+                }
+            ]
+        })
+        .to_string();
+
+        let transport =
+            WorkerMcpTransport::connect_shellized(&definition).expect("shellize the definition");
+        let client = McpClient::new(transport);
+        client.initialize().await.expect("initialize handshake");
+
+        let first = client
+            .call_tool("counter", json!({}))
+            .await
+            .expect("first call");
+        assert_ne!(first.is_error, Some(true));
+        assert_eq!(first.text().trim(), "1");
+
+        let second = client
+            .call_tool("counter", json!({}))
+            .await
+            .expect("second call");
+        assert_eq!(
+            second.text().trim(),
+            "2",
+            "state must persist across calls in the same worker"
+        );
+
+        drop(client);
+    }
 }

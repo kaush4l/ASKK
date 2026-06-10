@@ -19,11 +19,18 @@
 //
 // The injected definition is `{ name?, tools: [ { name, description?, inputSchema?,
 // handler } ] }` where `handler` is the JS *body* of an async function taking `args`
-// (the parsed tool arguments). Its return value is normalized into an MCP result:
+// (the parsed tool arguments) and `state` (see below). Its return value is
+// normalized into an MCP result:
 //   * string / number / boolean  -> a single text block
 //   * an object shaped like `{ content: [...], isError? }` -> passed through verbatim
 //   * any other object / array    -> pretty-printed JSON text block
 //   * a thrown error              -> a tool-level error result (`isError: true`)
+//
+// `state` is a plain object shared by EVERY tool of this server and persisted for
+// the worker's lifetime: it survives across calls and across agent runs, because the
+// runtime keeps the worker alive until the server's config changes (or the page
+// reloads). This is what makes a server STATEFUL — a counter, a cache, a session —
+// without any storage API. Handlers that ignore the parameter are unaffected.
 
 const PROTOCOL_VERSION = "2024-11-05";
 
@@ -41,6 +48,11 @@ const SERVER_NAME =
   typeof DEFINITION.name === "string" && DEFINITION.name.trim()
     ? DEFINITION.name.trim()
     : "askk-shell-mcp";
+
+// The server's persistent state: one plain object shared by all of this server's
+// tool handlers, alive for the worker's lifetime (see header). `Object.create(null)`
+// so handler-controlled keys can never collide with Object.prototype.
+const STATE = Object.create(null);
 
 // Compile each tool once at load: build the public `tools/list` shape and a handler
 // table keyed by name. A handler that fails to compile is kept as a deferred error so
@@ -62,7 +74,7 @@ for (const tool of Array.isArray(DEFINITION.tools) ? DEFINITION.tools : []) {
   });
   const body = typeof tool.handler === "string" ? tool.handler : "";
   try {
-    HANDLERS.set(tool.name, { fn: new AsyncFunction("args", body) });
+    HANDLERS.set(tool.name, { fn: new AsyncFunction("args", "state", body) });
   } catch (error) {
     HANDLERS.set(tool.name, { error: "Handler failed to compile: " + String(error) });
   }
@@ -154,7 +166,7 @@ async function callTool(params) {
       ? params.arguments
       : {};
   try {
-    const value = await entry.fn(args);
+    const value = await entry.fn(args, STATE);
     return normalizeResult(value);
   } catch (error) {
     // A handler throwing is a tool-level error, not a protocol error: report it as a

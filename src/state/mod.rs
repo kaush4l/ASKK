@@ -3,6 +3,7 @@
 //!
 //! - [`provider`] — provider connection + model/inference profiles
 //! - [`mcp`] — persisted MCP (Model Context Protocol) server configuration
+//! - [`compiled_function`] — user-defined functions + the stateful tool-host server
 //! - [`tool_config`] — web-tool backend + search provider settings
 //! - [`tool_types`] — the `ToolSpec` / `ToolCall` / `ToolResult` data + tool names
 //! - [`event`] — the run timeline (`AgentEvent`) + `now_iso`
@@ -18,6 +19,7 @@
 pub type AppResult<T> = Result<T, String>;
 
 mod agent_memory;
+mod compiled_function;
 mod event;
 mod manifest;
 mod mcp;
@@ -29,6 +31,7 @@ mod tool_types;
 mod workflow;
 
 pub use agent_memory::*;
+pub use compiled_function::*;
 pub use event::*;
 pub use manifest::*;
 // Re-exported for sibling MCP units (UI + `src/mcp/`) that consume these types;

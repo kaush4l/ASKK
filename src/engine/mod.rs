@@ -1081,17 +1081,47 @@ impl AgentLoop {
             observer(run.clone());
         }
 
-        // Bring up enabled browser MCP servers, discover their tools, and add them to
-        // this run's allowlist so the model can see and call them. Browser-only: on the
-        // host test runner there is no Web Worker, so this is a no-op and `enabled_tools`
-        // is unchanged. MCP tool output is untrusted DATA, handled exactly like any
-        // other tool result by the loop below.
+        // Peer agents offered as named `agent_<slug>` tools, gated on the generic
+        // `call_agent` being in this run's allowlist so delegation stays opt-in.
+        // Computed before MCP bring-up because these names are RESERVED there: no
+        // MCP tool may take an assigned agent-tool name as its display name.
+        let agent_tool_names = if enabled_tools.iter().any(|name| name == "call_agent") {
+            crate::tools::agent_tools::candidate_names(&snapshot, &self.agent_id)
+        } else {
+            Vec::new()
+        };
+
+        // Bring up enabled browser MCP servers — each in its own dedicated Web
+        // Worker — plus the synthesized tool host (the stateful worker hosting the
+        // user's compiled functions), discover their tools, and add them to this
+        // run's allowlist so the model can see and call them. Browser-only: on the
+        // host test runner there is no Web Worker, so this is a no-op and
+        // `enabled_tools` is unchanged. MCP tool output is untrusted DATA, handled
+        // exactly like any other tool result by the loop below.
         #[cfg(target_arch = "wasm32")]
         let enabled_tools = {
             let mut enabled_tools = enabled_tools;
+            let mut servers = snapshot.mcp_servers.clone();
+            match crate::state::tool_host_server_config(&snapshot.compiled_functions) {
+                Ok(Some(tool_host)) => servers.push(tool_host),
+                Ok(None) => {}
+                Err(err) => {
+                    // A misconfigured function must not silently vanish: surface it
+                    // on the timeline and run on without the tool host.
+                    run.events.push(event(
+                        &run.id,
+                        Some(self.agent_id.clone()),
+                        AgentEventKind::Error,
+                        "Tool host not started",
+                        err,
+                    ));
+                    observer(run.clone());
+                }
+            }
             let mcp_tools = crate::mcp::registry::bring_up_enabled(
-                &snapshot.mcp_servers,
+                &servers,
                 &snapshot.tool_config,
+                &agent_tool_names,
                 &mut run,
                 &self.agent_id,
                 &mut observer,
@@ -1101,10 +1131,27 @@ impl AgentLoop {
             enabled_tools
         };
 
+        // The allowlist is final once the agent tools join it (platform-independent,
+        // so host-side runs offer them too).
+        let enabled_tools = {
+            let mut enabled_tools = enabled_tools;
+            enabled_tools.extend(agent_tool_names);
+            enabled_tools
+        };
+
         // Tool manifest the model is shown each turn. Computed once here, after the
-        // allowlist is finalized (post-MCP), then reused every turn — exactly as the
-        // original loop did.
-        let specs = self.executor.domain_specs_for_agent(&enabled_tools);
+        // allowlist is finalized (post-MCP, post-agent-tools), then reused every
+        // turn — exactly as the original loop did. Agent-tool specs are derived
+        // from the snapshot's agents, so they join here rather than in the
+        // executor's compiled-tool registry.
+        let specs = {
+            let mut specs = self.executor.domain_specs_for_agent(&enabled_tools);
+            specs.extend(crate::tools::agent_tools::specs_for_agent(
+                &snapshot,
+                &enabled_tools,
+            ));
+            specs
+        };
 
         // Requested-format negotiation (Unit #2): persists across turns so a streak of
         // TOON parse failures can escalate the requested format to JSON (and one clean

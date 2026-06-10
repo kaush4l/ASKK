@@ -87,6 +87,14 @@ fn spec() -> ToolSpec {
     }
 }
 
+/// Crate-internal entry for the per-agent named tools (`tools::agent_tools`),
+/// which pre-fill the `agent` argument and reuse this handler verbatim — so the
+/// nesting cap, sub-snapshot isolation, and untrusted-observation framing are
+/// defined exactly once, here.
+pub(crate) fn delegate<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
+    handler(snapshot, args)
+}
+
 fn handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
         let agent_ref = string_arg(args, "agent")?;

@@ -18,6 +18,11 @@ use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 
+/// Peer agents exposed as named tools (`agent_<slug>`), routed through
+/// `call_agent`. Consumed by the engine (allowlist/specs) and the execution
+/// provider (call routing) — not registered in the compiled-tool table because the
+/// set is derived from the snapshot's agents, not fixed at compile time.
+pub(crate) mod agent_tools;
 mod bridge;
 mod call_agent;
 mod common;

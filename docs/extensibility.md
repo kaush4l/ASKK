@@ -50,6 +50,33 @@ same compiled handlers (`file_list`/`file_read`/`file_write`/`file_edit`/`run_js
 disabled on the MCP page. Adding a third transport kind required no engine change:
 `McpServerKind` + one `connect_server` arm behind the boxed `McpTransport` seam.
 
+### Compiled functions and the stateful tool host
+
+Beyond MCP server configs, the agent's tools can come from two more sources, both
+in parity with the compiled built-ins:
+
+* **Compiled functions** ([`src/state/compiled_function.rs`](../src/state/compiled_function.rs)):
+  a `CompiledFunction` is one named JS handler body + description + input schema,
+  managed on the MCP page and persisted in the snapshot. At run start every enabled
+  function is synthesized into ONE shellized server (`tool_host_server_config`,
+  stable id `tool-host-builtin`) that the MCP runtime brings up in its own
+  dedicated Web Worker — the **tool host**. The shell worker compiles each handler
+  as `async (args, state) => { ... }` where `state` is a single object shared by
+  all functions and persisted for the worker's lifetime (across calls AND across
+  runs, until a function is edited or the page reloads — the runtime's fingerprint
+  cache keeps the worker alive while the definition is unchanged). So the tool
+  host both hosts all the user's functions and maintains their state in another
+  Web Worker. Browser test:
+  `mcp::worker_transport::browser_tests::shellized_state_persists_across_calls`.
+
+* **Agent tools** ([`src/tools/agent_tools.rs`](../src/tools/agent_tools.rs)):
+  when `call_agent` is in a run's allowlist, every enabled peer agent is also
+  offered as its own named tool `agent_<slug>` (e.g. `agent_researcher`), whose
+  call routes through the `call_agent` handler with `agent` pre-filled — the
+  nesting cap and untrusted-observation framing are inherited, never duplicated.
+  Agent-tool names are reserved in the MCP registry's display-name assignment, so
+  the three sources can never collide on a name.
+
 ## Agent contract
 
 An agent is a Markdown manifest in `agents/*.md`:

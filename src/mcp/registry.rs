@@ -188,9 +188,15 @@ async fn connect_server(
 /// tools so the engine can add them to the agent's allowlist. Idempotent across
 /// runs on the same thread: already-connected servers are reused, and connections
 /// for servers no longer enabled are torn down.
+///
+/// `reserved_names` are tool names the engine has already promised to another
+/// source (today: the per-agent `agent_<slug>` tools); no MCP tool is ever given
+/// one of these as its display name, so a name in the allowlist maps to exactly
+/// one source.
 pub async fn bring_up_enabled<F>(
     servers: &[McpServerConfig],
     tool_config: &ToolConfig,
+    reserved_names: &[String],
     run: &mut AgentRun,
     agent_id: &str,
     observer: &mut F,
@@ -213,10 +219,11 @@ where
             .retain(|conn| live_fingerprints.contains(&conn.fingerprint));
     });
 
-    // Names already offered to the model: every compiled built-in plus the display
-    // names of connections that survived the prune. New tools are named to avoid
-    // these so two tools never share a name.
+    // Names already offered to the model: every compiled built-in, the engine's
+    // reserved names, plus the display names of connections that survived the
+    // prune. New tools are named to avoid these so two tools never share a name.
     let mut used: HashSet<String> = default_tool_names().into_iter().collect();
+    used.extend(reserved_names.iter().cloned());
     MCP_RUNTIME.with(|runtime| {
         for conn in runtime.borrow().iter() {
             for (spec, _) in &conn.tools {

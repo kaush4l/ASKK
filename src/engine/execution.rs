@@ -37,12 +37,18 @@ impl BrowserExecutionProvider {
         tool_name: &str,
         args: Value,
     ) -> ToolResult {
-        // MCP-backed tools route to their live server's client; everything else is a
-        // compiled built-in. This is the one seam where MCP tool calls join the
-        // normal execution path (the engine instruments them identically).
+        // MCP-backed tools route to their live server's client; agent tools route
+        // through `call_agent`; everything else is a compiled built-in. These are
+        // the seams where the three tool sources join the normal execution path
+        // (the engine instruments them all identically). MCP display names and
+        // agent-tool names are assigned to never collide, so the order here is not
+        // load-bearing.
         #[cfg(target_arch = "wasm32")]
         if crate::mcp::registry::is_mcp_tool(tool_name) {
             return crate::mcp::registry::call_tool(call_id, tool_name, args).await;
+        }
+        if let Some(agent_id) = crate::tools::agent_tools::resolve(snapshot, tool_name) {
+            return crate::tools::agent_tools::call(snapshot, call_id, &agent_id, &args).await;
         }
         self.tools.execute(snapshot, call_id, tool_name, args).await
     }
