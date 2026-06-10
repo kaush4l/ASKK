@@ -8,11 +8,13 @@
 // scoped dead-code allow until then rather than per-item attributes.
 #![allow(dead_code)]
 
+mod orchestrate;
 mod plan_act_review;
 mod react;
 mod registry;
 mod skills_work_critique;
 
+pub use orchestrate::OrchestrateStrategy;
 pub use plan_act_review::PlanActReviewStrategy;
 pub use react::ReactStrategy;
 pub use skills_work_critique::SkillsWorkCritiqueStrategy;

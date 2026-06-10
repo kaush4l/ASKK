@@ -12,7 +12,7 @@ use super::tool_types::default_tool_names;
 use crate::responses::ResponseFormat;
 
 const DEFAULT_SOUL: &str = include_str!("../../soul.md");
-const DEFAULT_AGENT_FILES: [(&str, &str); 4] = [
+const DEFAULT_AGENT_FILES: [(&str, &str); 5] = [
     ("agents/planner.md", include_str!("../../agents/planner.md")),
     ("agents/coder.md", include_str!("../../agents/coder.md")),
     (
@@ -22,6 +22,10 @@ const DEFAULT_AGENT_FILES: [(&str, &str); 4] = [
     (
         "agents/synthesizer.md",
         include_str!("../../agents/synthesizer.md"),
+    ),
+    (
+        "agents/orchestrator.md",
+        include_str!("../../agents/orchestrator.md"),
     ),
 ];
 const DEFAULT_SKILL_FILES: [(&str, &str); 3] = [
