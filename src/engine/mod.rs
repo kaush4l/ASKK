@@ -17,6 +17,7 @@ mod execution;
 mod memory;
 mod tool_dispatch;
 mod validators;
+pub mod wasi_exec;
 
 use crate::inference::{
     InferenceOutput, InferenceProvider, InferenceRequest, OpenAiCompatibleInference, SubAgentInfo,

@@ -233,8 +233,8 @@ mod tests {
     #[test]
     fn run_in_sandbox_descriptor_registers_and_executes_via_the_seam() {
         // The execution-capability seam wires end to end: the registered
-        // descriptor looks up by name and runs through the stub executor, which
-        // reports a clear "not wired" failure until a real substrate is dropped in.
+        // descriptor looks up by name and runs through the WASI executor, which
+        // rejects a non-wasm command line with a clear, instructive error.
         let registry = ToolRegistry::new();
         let specs = registry.specs_for_agent(&["run_in_sandbox".to_string()]);
         assert_eq!(specs.len(), 1);
@@ -248,7 +248,7 @@ mod tests {
             json!({ "command": "cargo test" }),
         ));
         assert!(!result.ok);
-        assert!(result.content.contains("not yet wired"));
-        assert!(result.content.contains("cargo test"));
+        assert!(result.content.contains(".wasm"));
+        assert!(result.content.contains("`cargo`"));
     }
 }
