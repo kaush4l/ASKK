@@ -113,7 +113,7 @@ generality of `run_command`, with **no second machine in the loop**.
 (A third tool, `run_in_sandbox`
 ([`src/tools/run_in_sandbox.rs`](../src/tools/run_in_sandbox.rs)), is that
 executor's agent-facing entry point — see §5. It shipped as a stub-backed seam;
-the current batch wires it to a real WASI substrate. See §3 "Current state".)
+it is wired to the real WASI tiny-shim substrate. See §3 "Current state".)
 
 ### The in-browser Web Worker pattern (the substrate seam already exists)
 
@@ -264,9 +264,9 @@ The likely shape: **tiny-shim as the default in-browser executor, container2wasm
 an opt-in "full environment" tier behind cross-origin isolation, bridge as fallback**
 — all three behind one capability seam (§5) so the model sees one tool.
 
-### Current state (this batch)
+### Current state
 
-The matrix has been acted on. Status of each row, shipping in the current batch:
+The matrix has been acted on. Status of each row:
 
 - **WASI tiny-shim is the live default substrate.** The §5 capability seam is
   being wired to `@bjorn3/browser_wasi_shim`: `run_in_sandbox` gains a real
@@ -290,7 +290,7 @@ The matrix has been acted on. Status of each row, shipping in the current batch:
   stays on the existing `run_js` tool.
 - **container2wasm remains documented, not shipped.** It stays the opt-in
   "full environment" tier behind cross-origin isolation, exactly as the matrix
-  recommends; nothing in this batch depends on coi-serviceworker.
+  recommends; nothing shipped depends on coi-serviceworker.
 
 ## 4. The COOP/COEP / SharedArrayBuffer constraint
 
@@ -391,14 +391,14 @@ building it). It is a normal descriptor module registered in
 to the registered `CodeExecutor`. As substrates land, the tool's spec and behavior do
 not change — only the backend wired behind the trait.
 
-> **Status (current batch).** The seam is being wired to its first real
+> **Status.** The seam is wired to its first real
 > substrate: a `WasiShimExecutor` backed by `@bjorn3/browser_wasi_shim` replaces
 > the worker stub behind `run_in_sandbox` (copy-in/copy-out of the `/workspace`
 > run root, hard timeout enforced by terminating the worker). Python ships as a
 > first-class runtime on the same substrate via a dedicated `run_python` tool.
 > The tool spec the model sees is unchanged — only the backend behind the trait
 > changed, which is the property this section was designed to guarantee. See
-> §3 "Current state (this batch)" for the Rust/Java deferral and the Bun verdict.
+> §3 "Current state" for the Rust/Java deferral and the Bun verdict.
 
 ## 6. Open questions for the spikes
 
@@ -406,7 +406,7 @@ The matrix is a starting point; the parallel spikes resolve the empirics:
 
 - Tiny-shim: which language toolchains realistically compile to a single
   `wasm32-wasi` binary that the shim runs, and how is the binary delivered (bundled
-  vs. fetched vs. compiled in-tab)? *(Partially resolved this batch: CPython
+  vs. fetched vs. compiled in-tab)? *(Partially resolved: CPython
   `wasm32-wasi` is the first delivered runtime — committed if ≤45 MB per file,
   else pinned-URL lazy fetch + CacheStorage; `rustc`/`javac` have no WASI builds
   and are deferred — see §3 "Current state".)*

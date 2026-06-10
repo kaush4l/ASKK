@@ -8,7 +8,7 @@ lives in [`EXECUTION_MODEL.md`](./EXECUTION_MODEL.md) and
 ## 2026-06-10 — Workspace IDE batch (9 parallel units)
 
 A nine-unit parallel batch extending the Workspace page into a bolt.DIY-style
-in-browser IDE. All implementation work below is **shipping in the current
+in-browser IDE. All implementation work below is **merged to main
 batch** — built in parallel sibling worktrees and reconciled at integration, so
 exact wording/shape may be adjusted by the coordinator:
 

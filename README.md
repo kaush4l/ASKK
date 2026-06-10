@@ -85,7 +85,7 @@ The **Workspace** page is a browser-hosted text editor: a file tree, an editor
 pane, and a runner. It has two modes:
 
 - **Browser** (default) — everything runs in the tab. Files live in the
-  in-browser virtual filesystem (IndexedDB, moving to OPFS in the current batch —
+  in-browser virtual filesystem (OPFS, migrated automatically from IndexedDB —
   see below) and code runs natively in a sandboxed
   Web Worker via the `run_js` tool. **No bridge, no install** — this works on the
   hosted GitHub Pages site. Create a file, write JavaScript, and press **Run file**.
@@ -95,7 +95,7 @@ pane, and a runner. It has two modes:
 The coding agent shares whichever workspace is active, so files it writes appear in
 the tree, and edits you make are visible to its tools.
 
-### Workspace IDE (shipping in the current batch)
+### Workspace IDE
 
 The Workspace is being extended into a fuller in-browser IDE. None of it changes
 the hosting model: ASKK stays a static, bring-your-own-key page — no server, no
@@ -171,14 +171,14 @@ run **in the browser** — no bridge required, so they work on the hosted site:
 - `web_fetch({ url })` — read one page in full as clean text. Browser backend uses
   the key-free `r.jina.ai` reader; Bridge backend uses the bridge fetcher.
 - `file_write` / `file_read` / `file_list` — the in-browser virtual filesystem
-  (IndexedDB, moving to OPFS in the current batch), used by the Workspace in
+  (OPFS, with one-time IndexedDB migration), used by the Workspace in
   Browser mode.
 - `run_in_sandbox({ command, cwd?, timeout_ms? })` — run a single `wasm32-wasi`
   binary in the in-browser execution sandbox; mirrors `run_command`'s
   exit-code contract. Gains its first real backend (the WASI tiny-shim) in the
-  current batch — see `docs/EXECUTION_MODEL.md`.
+  see `docs/EXECUTION_MODEL.md`.
 - `run_python` — run Python in-browser on a CPython `wasm32-wasi` runtime
-  (shipping in the current batch).
+  .
 
 Bridge-only tools (require a running `askk-local-bridge`, localhost only):
 
