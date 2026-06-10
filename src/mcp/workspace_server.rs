@@ -13,14 +13,13 @@
 //! renderer shows the model only `name` + `description`, never `input_schema`
 //! (see `agent_prompt::describe_tools`).
 
-use crate::mcp::protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, McpToolDef};
+use crate::mcp::protocol::{
+    JsonRpcError, JsonRpcRequest, JsonRpcResponse, MCP_PROTOCOL_VERSION, McpToolDef,
+};
 use crate::mcp::transport::{McpTransport, ResponseFuture};
 use crate::state::{AppResult, AppSnapshot, WebSearchToolConfig};
 use crate::tools::ToolRegistry;
 use serde_json::{Value, json};
-
-/// MCP `protocolVersion` this server speaks — matches what the client requests.
-const PROTOCOL_VERSION: &str = "2024-11-05";
 
 /// One workspace tool: its MCP definition plus the compiled tool it delegates to.
 /// Arguments pass through verbatim — the MCP argument shapes are chosen to match
@@ -147,20 +146,38 @@ pub fn workspace_tool_defs() -> Vec<McpToolDef> {
     workspace_tools().into_iter().map(|tool| tool.def).collect()
 }
 
+/// The compiled tool a workspace MCP tool name delegates to, or `None` when
+/// `name` is not one of this server's tools. The engine uses this to scope the
+/// workspace tools per agent: a workspace tool is only offered when the
+/// agent's allowlist already grants its compiled delegate, so the built-in
+/// server can never silently widen a deliberately restricted agent.
+pub fn compiled_delegate(name: &str) -> Option<&'static str> {
+    workspace_tools()
+        .into_iter()
+        .find(|tool| tool.def.name == name)
+        .map(|tool| tool.compiled_name)
+}
+
 /// In-process MCP server for the workspace. Holds the compiled [`ToolRegistry`]
-/// it delegates to and the web-search/bridge config captured at connect time
-/// (tool handlers read the bridge URL from the snapshot; MCP calls carry none,
-/// so the server injects this copy into a fresh snapshot per call).
+/// it delegates to plus the ONE tool setting any delegated handler reads: the
+/// bridge tools URL (`run_command`). Captured narrowly so this long-lived
+/// transport never holds API keys it doesn't need (invariant 6). If a future
+/// workspace tool needs more config, capture that field explicitly here —
+/// delegated handlers must never depend on other snapshot state, because each
+/// call runs against a fresh default snapshot.
 pub struct WorkspaceMcpServer {
     tools: ToolRegistry,
-    web_search: WebSearchToolConfig,
+    bridge_tools_url: String,
 }
 
 impl WorkspaceMcpServer {
+    /// Build the server, capturing the bridge URL as of connect time. The
+    /// registry reconnects this server on every bring-up, so later settings
+    /// edits take effect on the next run.
     pub fn new(web_search: WebSearchToolConfig) -> Self {
         Self {
             tools: ToolRegistry::new(),
-            web_search,
+            bridge_tools_url: web_search.bridge_tools_url,
         }
     }
 
@@ -221,10 +238,10 @@ impl WorkspaceMcpServer {
             );
         };
 
-        // Compiled handlers read config (e.g. the bridge URL for run_command)
-        // from the snapshot; give them a fresh one carrying the captured config.
+        // Compiled handlers read config (the bridge URL for run_command) from
+        // the snapshot; give them a fresh one carrying the captured URL.
         let mut snapshot = AppSnapshot::default();
-        snapshot.tool_config.web_search = self.web_search.clone();
+        snapshot.tool_config.web_search.bridge_tools_url = self.bridge_tools_url.clone();
         let result = self
             .tools
             .execute(
@@ -246,7 +263,7 @@ impl McpTransport for WorkspaceMcpServer {
                 "initialize" => Self::ok_response(
                     id,
                     json!({
-                        "protocolVersion": PROTOCOL_VERSION,
+                        "protocolVersion": MCP_PROTOCOL_VERSION,
                         "capabilities": { "tools": {} },
                         "serverInfo": {
                             "name": "askk-workspace",
@@ -328,6 +345,17 @@ mod tests {
         let tools = pollster::block_on(client.list_tools()).expect("list");
         assert_eq!(tools.len(), 6);
         assert!(tools.iter().any(|def| def.name == "workspace_edit_file"));
+    }
+
+    #[test]
+    fn compiled_delegate_maps_workspace_tools_and_ignores_foreign_names() {
+        assert_eq!(
+            compiled_delegate("workspace_run_command"),
+            Some("run_command")
+        );
+        assert_eq!(compiled_delegate("workspace_edit_file"), Some("file_edit"));
+        assert_eq!(compiled_delegate("file_edit"), None);
+        assert_eq!(compiled_delegate("some_other_mcp_tool"), None);
     }
 
     #[test]

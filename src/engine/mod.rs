@@ -1127,7 +1127,19 @@ impl AgentLoop {
                 &mut observer,
             )
             .await;
-            enabled_tools.extend(mcp_tools);
+            // Workspace MCP tools mirror compiled tools 1:1. Offer one only when
+            // this agent's allowlist already grants its compiled delegate, so the
+            // built-in server cannot silently widen a deliberately restricted
+            // agent (the manifest `tools:` list is the per-agent privilege
+            // boundary). Other MCP tools keep the existing offer-all behavior.
+            let offered: Vec<String> = mcp_tools
+                .into_iter()
+                .filter(|name| {
+                    crate::mcp::workspace_server::compiled_delegate(name)
+                        .is_none_or(|delegate| enabled_tools.iter().any(|tool| tool == delegate))
+                })
+                .collect();
+            enabled_tools.extend(offered);
             enabled_tools
         };
 

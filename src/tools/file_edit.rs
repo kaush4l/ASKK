@@ -5,6 +5,11 @@
 //!
 //! The replacement core is a pure function ([`apply_replacement`]) so the
 //! ambiguity rules are host-testable without IndexedDB.
+//!
+//! Known limitation: tool calls within one model turn run concurrently
+//! (`engine::tool_dispatch`), so two same-turn edits to the SAME file are a
+//! read-modify-write race where the later write wins silently. Serializing
+//! VFS mutations is tracked as follow-up work.
 
 use crate::state::{AppSnapshot, ToolSpec};
 use crate::storage::vfs::ProjectVfs;
@@ -25,10 +30,10 @@ fn spec() -> ToolSpec {
         name: "file_edit".to_string(),
         description: "Edit a file in the project's virtual filesystem by exact string \
             replacement. Provide path, old_string (must match the file content exactly, \
-            including whitespace), and new_string. By default old_string must match \
-            exactly once; pass replace_all=true to replace every occurrence. Fails if \
-            the file does not exist (use file_write to create files) or if old_string \
-            is not found or is ambiguous."
+            including whitespace), and new_string (may be \"\" to delete old_string). \
+            By default old_string must match exactly once; pass replace_all=true to \
+            replace every occurrence. Fails if the file does not exist (use file_write \
+            to create files) or if old_string is not found or is ambiguous."
             .to_string(),
         input_schema: json!({
             "type": "object",
@@ -80,11 +85,22 @@ fn apply_replacement(
     }
 }
 
+/// Extract a replacement-text argument VERBATIM: present and string-typed, but
+/// never trimmed and allowed to be empty — whitespace is significant in exact
+/// string replacement, and an empty `new_string` means deletion. (`string_arg`
+/// trims and rejects empty values, which would break both.)
+fn exact_string_arg(args: &Value, key: &str) -> Result<String, String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| format!("Missing required string argument `{key}`"))
+}
+
 fn handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
         let path = string_arg(args, "path")?;
-        let old_string = string_arg(args, "old_string")?;
-        let new_string = string_arg(args, "new_string")?;
+        let old_string = exact_string_arg(args, "old_string")?;
+        let new_string = exact_string_arg(args, "new_string")?;
         let replace_all = args
             .get("replace_all")
             .and_then(Value::as_bool)
@@ -151,6 +167,39 @@ mod tests {
         // new_string itself contains old_string.
         let (out, n) = apply_replacement("alpha", "alpha", "alpha beta", false).expect("edit");
         assert_eq!(out, "alpha beta");
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn exact_args_preserve_whitespace_and_allow_empty_new_string() {
+        // Whitespace is significant for exact replacement: arguments must reach
+        // apply_replacement verbatim, and "" is a valid new_string (deletion).
+        let args = serde_json::json!({ "old_string": "    indented\n", "new_string": "" });
+        assert_eq!(
+            exact_string_arg(&args, "old_string").expect("old"),
+            "    indented\n"
+        );
+        assert_eq!(exact_string_arg(&args, "new_string").expect("new"), "");
+        assert!(exact_string_arg(&args, "absent").is_err());
+    }
+
+    #[test]
+    fn empty_new_string_deletes_the_match() {
+        let (out, n) = apply_replacement("keep DELETE keep", " DELETE", "", false).expect("delete");
+        assert_eq!(out, "keep keep");
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn indentation_only_edits_survive() {
+        let (out, n) = apply_replacement(
+            "fn x() {\n    body\n}",
+            "\n    body",
+            "\n        body",
+            false,
+        )
+        .expect("indent edit");
+        assert_eq!(out, "fn x() {\n        body\n}");
         assert_eq!(n, 1);
     }
 }

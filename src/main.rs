@@ -54,10 +54,7 @@ fn App() -> Element {
         spawn_local(async move {
             match IndexedDbStorage::open().await {
                 Ok(storage) => match storage.load_snapshot().await {
-                    Ok(Some(mut saved)) => {
-                        // Snapshots persisted before the built-in workspace MCP
-                        // server shipped don't have it; seed it on load.
-                        saved.ensure_workspace_mcp_server();
+                    Ok(Some(saved)) => {
                         snapshot.set(saved.clone());
                         if saved
                             .current_run

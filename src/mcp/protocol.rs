@@ -7,6 +7,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// The MCP protocol version this prototype speaks — sent by the client in
+/// `initialize` and echoed by the in-process workspace server. One constant so
+/// the two sides cannot silently drift.
+pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
+
 /// A JSON-RPC 2.0 request. The client owns `id` allocation; the transport
 /// correlates the response by this id.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

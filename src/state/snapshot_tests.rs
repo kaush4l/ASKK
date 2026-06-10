@@ -500,6 +500,22 @@ fn ensure_workspace_mcp_server_is_idempotent_and_respects_disabled() {
 }
 
 #[test]
+fn with_profile_defaults_seeds_the_workspace_server_on_any_load_path() {
+    // `with_profile_defaults` is the canonical post-load normalizer (applied by
+    // storage::load_snapshot), so every load path — app start AND the Provider
+    // page's Load button — must seed the built-in server.
+    let mut snapshot = AppSnapshot::default();
+    snapshot.mcp_servers.clear();
+    let normalized = snapshot.with_profile_defaults();
+    assert!(
+        normalized
+            .mcp_servers
+            .iter()
+            .any(|server| server.kind == McpServerKind::Workspace)
+    );
+}
+
+#[test]
 fn ensure_workspace_mcp_server_inserts_ahead_of_user_servers() {
     let mut snapshot = AppSnapshot::default();
     snapshot.mcp_servers.clear();

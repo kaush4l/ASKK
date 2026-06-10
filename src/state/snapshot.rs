@@ -122,6 +122,7 @@ impl AppSnapshot {
         self.ensure_model_profiles();
         self.ensure_workflow_defaults();
         self.ensure_orchestrator_defaults();
+        self.ensure_workspace_mcp_server();
         self.recover_interrupted_run_after_reload();
         self.ensure_prompt_defaults();
         self.normalize_agent_branding();

@@ -5,7 +5,9 @@
 //! [`McpTransport`] trait and the [`protocol`](crate::mcp::protocol) types, so it is
 //! host-compilable and unit-tested against a mock transport.
 
-use crate::mcp::protocol::{CallToolResult, JsonRpcRequest, ListToolsResult, McpToolDef};
+use crate::mcp::protocol::{
+    CallToolResult, JsonRpcRequest, ListToolsResult, MCP_PROTOCOL_VERSION, McpToolDef,
+};
 use crate::mcp::transport::McpTransport;
 use crate::state::AppResult;
 use serde_json::{Value, json};
@@ -60,7 +62,7 @@ impl<T: McpTransport> McpClient<T> {
         self.request(
             "initialize",
             Some(json!({
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": {},
                 "clientInfo": { "name": "askk", "version": "0.1.0" }
             })),

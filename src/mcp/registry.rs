@@ -204,6 +204,17 @@ pub async fn bring_up_enabled<F>(
 where
     F: FnMut(AgentRun),
 {
+    // The in-process workspace server captures tool settings (the bridge URL) at
+    // connect time and is allocation-cheap to rebuild — always reconnect it so
+    // settings edits take effect on every bring-up, including main-thread resumes
+    // where this table outlives the run. Its config fingerprint alone cannot
+    // catch this: `tool_config` is not part of the fingerprint.
+    MCP_RUNTIME.with(|runtime| {
+        runtime
+            .borrow_mut()
+            .retain(|conn| conn.server_id != crate::state::WORKSPACE_MCP_SERVER_ID);
+    });
+
     // Drop connections for servers that are no longer enabled, were removed, or whose
     // config was edited (a changed module_path/name yields a different fingerprint).
     // Dropping the `McpConnection` drops its client, whose transport terminates the
