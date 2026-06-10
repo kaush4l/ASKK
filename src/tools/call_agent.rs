@@ -272,4 +272,29 @@ mod tests {
         drop(held);
         let _reentry = DepthGuard::enter().expect("counter is rebalanced after drop");
     }
+
+    #[test]
+    fn unknown_strategy_in_call_agent_yields_error_observation() {
+        // Spec §Testing item 5: a bad strategy id in call_agent must come back as a
+        // graceful tool error (observation), never a panic, and must name the known
+        // strategies so the model can correct itself.
+        let mut snapshot = snapshot_with_agents();
+        let result = pollster::block_on((handler)(
+            &mut snapshot,
+            &json!({
+                "agent": "researcher",
+                "query": "do something",
+                "strategy": "definitely-not-a-strategy"
+            }),
+        ));
+        let error = result.expect_err("unknown strategy must be a graceful error, not Ok");
+        assert!(
+            error.contains("Unknown strategy"),
+            "error must name 'Unknown strategy'; got: {error}"
+        );
+        assert!(
+            error.contains("react"),
+            "error must list at least the 'react' strategy so the model can correct itself; got: {error}"
+        );
+    }
 }

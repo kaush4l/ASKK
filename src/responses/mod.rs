@@ -28,19 +28,21 @@ pub(crate) use macros::define_response;
 // the pure `next_format_after_failures` helper and `MAX_TOON_FAILURES` threshold are
 // part of this pillar's surface (and unit-tested directly), even though the binary
 // drives the stateful negotiator rather than calling the free function.
+// `MAX_TOON_FAILURES` and `next_format_after_failures` are only consumed on the wasm
+// target (transport layer) and in format_negotiation's own unit tests; the host build
+// sees them as unused. Keep the allow so the full pub API is reachable from outside.
 #[allow(unused_imports)]
 pub use format_negotiation::{FormatNegotiator, MAX_TOON_FAILURES, next_format_after_failures};
-pub use react::{ReActAction, ReActResponse};
-pub use tool_calls::{ParsedToolCall, parse_tool_calls};
-// consumed by the strategy layer (Tasks 4+)
-#[allow(unused_imports)]
 pub use kind::{ParsedResponse, ResponseKind};
-// consumed by the strategy layer (Tasks 4+)
+// Phase-response types are consumed by the strategy layer (wasm target); the host
+// build's `--all-targets` pass sees most of them as unused via this re-export path.
 #[allow(unused_imports)]
 pub use phase_responses::{
     CritiqueResponse, CritiqueVerdict, PlanResponse, SkillSelectionResponse, SummaryResponse,
     TaskBreakdownResponse,
 };
+pub use react::{ReActAction, ReActResponse};
+pub use tool_calls::{ParsedToolCall, parse_tool_calls};
 
 #[derive(Clone, Debug)]
 pub struct ResponseField {

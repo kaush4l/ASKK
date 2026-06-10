@@ -474,6 +474,7 @@ pub fn ProviderSettings(
                         }
                     }
                     label {
+                        // Currently inert (no engine consumer) — kept visible until dispatch capping lands.
                         "Max parallel agents"
                         input {
                             class: "number-input",

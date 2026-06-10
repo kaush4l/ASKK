@@ -11,8 +11,6 @@ use super::phase_responses::{
 use super::react::ReActResponse;
 use super::{ParseOutcome, ResponseFormat, StructuredResponse};
 
-// Consumed by the strategy layer (Tasks 4+); suppress dead-code until then.
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseKind {
@@ -25,7 +23,6 @@ pub enum ResponseKind {
 }
 
 /// A parsed phase response, tagged by kind. Strategies route on this.
-#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum ParsedResponse {
     ReAct(ReActResponse),
@@ -36,7 +33,6 @@ pub enum ParsedResponse {
     Summary(SummaryResponse),
 }
 
-#[allow(dead_code)]
 impl ResponseKind {
     /// The format-instruction block for this schema (always appended last in the
     /// rendered prompt).

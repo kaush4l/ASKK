@@ -420,6 +420,8 @@ pub struct OrchestratorConfig {
     pub routing_provider_profile_id: Option<String>,
     #[serde(default)]
     pub worker_provider_profile_id: Option<String>,
+    /// Retained for serde back-compat and future dispatch capping; since the bespoke
+    /// orchestrator's removal nothing reads it — parallel tool fan-out is uncapped join_all.
     #[serde(default = "default_max_parallelism")]
     pub max_parallelism: u32,
     #[serde(default = "default_run_step_budget")]

@@ -2,10 +2,6 @@
 //! breakdown, and history summarization. All declared via [`define_response!`];
 //! the base trait supplies parsing and JSON/TOON instructions.
 
-// These types are consumed by the strategy layer (Tasks 4+); suppress dead-code
-// until then so the full clippy gate (-D warnings) keeps passing.
-#![allow(dead_code)]
-
 use super::define_response;
 
 define_response! {
