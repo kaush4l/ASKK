@@ -1,0 +1,114 @@
+<!doctype html>
+<!--
+  Standalone harness for the BUILT CM6 bundle (assets/cm6_editor.js).
+
+  Serve the repo root (e.g. `python3 -m http.server 8205`) and open
+  http://localhost:8205/scripts/cm6-editor/test/index.html — the page mounts
+  an editor, opens a TypeScript doc, and attaches the mock language-service
+  worker (mock_ls_worker.js). Expected behavior:
+    - one mock warning diagnostic in the lint gutter (published on didOpen),
+    - typing / Ctrl-Space shows the two fixed mock completions,
+    - hovering text shows the mock hover tooltip,
+    - switching to notes.md (no service for markdown) falls back to defaults.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ASKK CM6 harness — language-service bridge</title>
+    <style>
+      body {
+        margin: 0;
+        background: #0f0c16;
+        color: #c8c0da;
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+      }
+      button {
+        background: #231d33;
+        color: #c8c0da;
+        border: 1px solid #564b6e;
+        border-radius: 4px;
+        padding: 4px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #askk-cm-host {
+        height: 420px;
+        border-top: 1px solid #231d33;
+        border-bottom: 1px solid #231d33;
+      }
+      #log {
+        padding: 10px 14px;
+        white-space: pre-wrap;
+        color: #8d80a8;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>ASKK CM6 harness</strong>
+      <button id="open-ts">open demo.ts (mock LS)</button>
+      <button id="open-md">open notes.md (no LS)</button>
+      <span id="status">loading bundle…</span>
+    </header>
+    <div id="askk-cm-host"></div>
+    <div id="log"></div>
+
+    <script src="../../../assets/cm6_editor.js"></script>
+    <script>
+      const HOST = "askk-cm-host";
+      const status = document.getElementById("status");
+      const log = (line) => {
+        document.getElementById("log").textContent += line + "\n";
+      };
+
+      const DEMO_TS = [
+        "// demo.ts — type `mock` then Ctrl-Space for mock completions;",
+        "// hover any word for the mock tooltip. The lint gutter shows one",
+        "// warning published by the mock worker on didOpen.",
+        "function greet(name: string): string {",
+        '  return "hello " + name;',
+        "}",
+        "",
+        "const result = greet(\"askk\");",
+        "",
+      ].join("\n");
+
+      const NOTES_MD = "# notes.md\n\nNo language service is attached for markdown,\nso completion falls back to the editor defaults.\n";
+
+      const token = window.AskkCM.mount(HOST, {
+        onChange: (path, text) => log(`onChange path=${path} len=${text.length}`),
+        onSave: (path) => log(`onSave path=${path}`),
+      });
+      if (!token) {
+        status.textContent = "mount FAILED (host missing)";
+        throw new Error("mount failed");
+      }
+
+      window.AskkCM.open(HOST, "demo.ts", DEMO_TS);
+
+      const serviceId = window.AskkCM.attachLanguageService(HOST, {
+        workerUrl: "./mock_ls_worker.js",
+        languages: ["typescript", "javascript"],
+      });
+      status.textContent = serviceId
+        ? `mounted (token ${token}), mock LS attached (id ${serviceId})`
+        : "mounted, but attachLanguageService FAILED";
+      log(`mount token=${token} serviceId=${serviceId}`);
+
+      document.getElementById("open-ts").addEventListener("click", () => {
+        window.AskkCM.open(HOST, "demo.ts", DEMO_TS);
+        log("opened demo.ts");
+      });
+      document.getElementById("open-md").addEventListener("click", () => {
+        window.AskkCM.open(HOST, "notes.md", NOTES_MD);
+        log("opened notes.md");
+      });
+    </script>
+  </body>
+</html>
