@@ -32,6 +32,7 @@ pub struct ToolResult {
 pub fn default_tool_names() -> Vec<String> {
     vec![
         "run_js".to_string(),
+        "run_python".to_string(),
         "web_search".to_string(),
         "web_fetch".to_string(),
         "run_command".to_string(),

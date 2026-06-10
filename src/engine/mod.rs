@@ -15,6 +15,7 @@ pub mod browser_exec;
 pub mod exec_capability;
 mod execution;
 mod memory;
+pub mod python_runtime;
 mod tool_dispatch;
 mod validators;
 pub mod wasi_exec;
