@@ -611,6 +611,7 @@ impl AgentLoop {
             sub_agents: self.sub_agents.clone(),
             now: crate::state::now_iso(),
             format_instructions: phase.response_kind.instructions(requested_format),
+            parts: Vec::new(),
         }
     }
 

@@ -62,6 +62,15 @@ pub struct InferenceRequest {
     /// Computed by the engine from the active phase's `ResponseKind` +
     /// negotiated `ResponseFormat`; providers place it last, never compute it.
     pub format_instructions: String,
+    /// Multimodal content parts (image/audio) attached alongside the rendered
+    /// text — the request is one "big sheet of paper" that can carry more than
+    /// strings. Collected by the core engine at render time; a provider that
+    /// cannot ship a part ignores it (the OpenAI-compatible provider does, and
+    /// the field is empty everywhere today).
+    // Read by a provider once a modality mapping lands; until then only the
+    // core engine writes it, so the dead-code lint would otherwise fire.
+    #[allow(dead_code)]
+    pub parts: Vec<crate::core::Part>,
 }
 
 #[derive(Clone, Debug)]

@@ -3,6 +3,11 @@ use wasm_bindgen_futures::spawn_local;
 
 mod agent_prompt;
 mod components;
+// The shell adopts the core engine in the core-wiring stage; until then only
+// the core's own tests exercise it, which the dead-code and unused-import
+// lints cannot see (re-exports from a bin crate count as unused until used).
+#[allow(dead_code, unused_imports)]
+mod core;
 mod engine;
 mod inference;
 mod mcp;

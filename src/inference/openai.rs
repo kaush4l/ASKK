@@ -171,6 +171,7 @@ mod tests {
             sub_agents: Vec::new(),
             now: "2026-06-08T00:00:00Z".to_string(),
             format_instructions: ResponseKind::ReAct.instructions(ResponseFormat::Toon),
+            parts: Vec::new(),
         };
 
         let messages = OpenAiCompatibleInference
@@ -217,6 +218,7 @@ mod tests {
             sub_agents: Vec::new(),
             now: "2026-06-08T00:00:00Z".to_string(),
             format_instructions: ResponseKind::ReAct.instructions(ResponseFormat::Toon),
+            parts: Vec::new(),
         };
 
         let messages = OpenAiCompatibleInference
@@ -251,6 +253,7 @@ mod tests {
             sub_agents: Vec::new(),
             now: "2026-06-08T00:00:00Z".to_string(),
             format_instructions: ResponseKind::ReAct.instructions(ResponseFormat::Toon),
+            parts: Vec::new(),
         };
 
         let messages = OpenAiCompatibleInference

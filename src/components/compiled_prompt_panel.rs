@@ -57,6 +57,7 @@ fn compile_preview_prompt(snapshot: &AppSnapshot, agent: &crate::state::Agent) -
         sub_agents,
         now: crate::state::now_iso(),
         format_instructions: ResponseKind::ReAct.instructions(agent.response_format),
+        parts: Vec::new(),
     };
 
     let system = render_system_prompt(&request)
