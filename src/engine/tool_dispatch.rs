@@ -12,10 +12,16 @@
 //! WASM is single-threaded: `join_all` here is *cooperative* concurrency on the one
 //! browser event loop, not parallel threads. Each call gets its own clone of the
 //! [`AppSnapshot`] (mirroring the orchestrator's per-child snapshot clone) so the
-//! concurrent futures never alias a single `&mut snapshot`. Compiled tool handlers
-//! read `snapshot.tool_config` but do not mutate the snapshot, so the clones carry no
-//! state back — the durable side effects live in the browser (OPFS / the bridge),
-//! not in the snapshot.
+//! concurrent futures never alias a single `&mut snapshot`.
+//!
+//! Handlers run against that clone. With one exception, every mutation a handler
+//! makes to its clone is intentionally discarded when the clone drops — the durable
+//! side effects live in the browser (OPFS / the bridge), not in the snapshot. The
+//! exception is `agent_memories`: `call_agent` runs a sub-agent that produces a
+//! rolling summary, and that summary must reach the parent. So the dispatcher moves
+//! each call's `agent_memories` out of its clone after the handler finishes and
+//! surfaces it alongside the [`ToolResult`], in call order, for the engine to merge
+//! into the real snapshot. All OTHER clone mutations are still discarded by design.
 //!
 //! The untrusted-data boundary is unchanged: a [`ToolResult`] returned here is
 //! observation/evidence, never an instruction. This module only *runs* tools and
@@ -23,7 +29,7 @@
 //! do with it.
 
 use super::execution::BrowserExecutionProvider;
-use crate::state::{AppSnapshot, ToolResult};
+use crate::state::{AgentMemory, AppSnapshot, ToolResult};
 use futures_util::future::join_all;
 use serde_json::Value;
 use std::future::Future;
@@ -50,16 +56,18 @@ pub struct PreparedCall {
 }
 
 /// Run every prepared call from one model turn **concurrently** and return their
-/// results **in call order** (the order of `calls`), regardless of completion order.
+/// results paired with each call's `agent_memories` delta, **in call order** (the
+/// order of `calls`), regardless of completion order.
 ///
 /// The single-call path is identical in behavior to running that one call directly:
 /// `join_all` over a one-element iterator awaits exactly that future and yields a
 /// one-element `Vec`. For two or more calls the futures overlap on the event loop.
 ///
 /// Each call executes against its **own clone** of `snapshot` so the concurrent
-/// futures do not alias a single `&mut AppSnapshot`. Compiled handlers do not mutate
-/// the snapshot (they only read `tool_config`), so nothing is lost by not threading a
-/// shared mutable snapshot through — matching the orchestrator's per-child clone.
+/// futures do not alias a single `&mut AppSnapshot`. After the handler finishes, the
+/// clone's `agent_memories` is moved out and returned as the second tuple element —
+/// the one mutation that must survive (a `call_agent` sub-run's rolling summary). All
+/// other clone mutations are discarded; matching the orchestrator's per-child clone.
 ///
 /// Tool output is untrusted DATA. This function returns results verbatim; validation
 /// and the decision to admit a result as evidence stay with the engine.
@@ -67,7 +75,7 @@ pub async fn dispatch_tool_calls(
     executor: &BrowserExecutionProvider,
     snapshot: &AppSnapshot,
     calls: &[PreparedCall],
-) -> Vec<ToolResult> {
+) -> Vec<(ToolResult, Vec<AgentMemory>)> {
     // Build one future per call up front (they don't run until polled), then hand the
     // whole batch to the concurrent core. Each future captures *owned* clones of what
     // it needs — including its own snapshot clone — so they can all coexist and overlap
@@ -76,7 +84,7 @@ pub async fn dispatch_tool_calls(
         let mut call_snapshot = snapshot.clone();
         let call = call.clone();
         async move {
-            if call.allowed {
+            let result = if call.allowed {
                 executor
                     .execute_domain_tool(
                         &mut call_snapshot,
@@ -87,7 +95,11 @@ pub async fn dispatch_tool_calls(
                     .await
             } else {
                 disallowed_tool_result(&call.call_id, &call.name, &call.enabled_tools)
-            }
+            };
+            // Surface the handler's `agent_memories` mutation (e.g. a `call_agent`
+            // sub-run's rolling summary) for the engine to merge in call order. Every
+            // other mutation on `call_snapshot` is intentionally dropped here.
+            (result, call_snapshot.agent_memories)
         }
     });
     join_in_order(futures).await
@@ -280,6 +292,54 @@ mod tests {
         assert_eq!(*instrument.completion_order.borrow(), vec![7]);
         // One call can never overlap with itself.
         assert_eq!(instrument.peak.get(), 1);
+    }
+
+    /// Write-back proof: the dispatcher pairs each result with the `agent_memories`
+    /// its handler mutated on its own clone, surfaced in CALL order. Here each mock
+    /// call future yields `(ToolResult, Vec<AgentMemory>)` — the exact shape
+    /// `dispatch_tool_calls` returns — with a per-call memory tagged by index, and
+    /// completion order is inverted (call 0 parks longest). The memory deltas must
+    /// still come back keyed to their originating call, in call order, so the engine
+    /// can merge them deterministically.
+    #[test]
+    fn dispatch_surfaces_per_call_agent_memory_deltas_in_call_order() {
+        let instrument = Rc::new(Instrument::default());
+        // Earlier calls park longer (finish last), so completion order inverts.
+        let futures = mock_calls(&instrument, &[(0, 4), (1, 2), (2, 0)])
+            .into_iter()
+            .map(|mock| {
+                let index = mock.index;
+                async move {
+                    let result = mock.await;
+                    // Stand in for `call_snapshot.agent_memories` moved out post-handler.
+                    let memories = vec![AgentMemory {
+                        agent_id: format!("agent-{index}"),
+                        rolling_summary: format!("delta-{index}"),
+                        updated_at: String::new(),
+                    }];
+                    (result, memories)
+                }
+            });
+
+        let returned = run_to_completion(join_in_order(futures));
+
+        // Completion order inverted (2, 1, 0) — proving the call-order claim is non-trivial.
+        assert_eq!(*instrument.completion_order.borrow(), vec![2, 1, 0]);
+        let pairs: Vec<(String, String)> = returned
+            .into_iter()
+            .map(|(result, memories)| {
+                assert_eq!(memories.len(), 1);
+                (result.call_id, memories[0].rolling_summary.clone())
+            })
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![
+                ("call-0".to_string(), "delta-0".to_string()),
+                ("call-1".to_string(), "delta-1".to_string()),
+                ("call-2".to_string(), "delta-2".to_string()),
+            ]
+        );
     }
 
     #[test]
