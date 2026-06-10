@@ -2,6 +2,7 @@ mod agents_page;
 mod app_shell;
 mod artifact_view;
 mod chat_panel;
+mod code_editor;
 mod compiled_prompt_panel;
 mod event_log;
 mod inspector;
