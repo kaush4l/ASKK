@@ -2,7 +2,7 @@
 
 use crate::state::AppSnapshot;
 use crate::tools::{ToolDescriptor, ToolFuture, ToolSpec};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(unused_imports))]
 use crate::tools::common::optional_string_arg;
@@ -104,8 +104,7 @@ fn handle<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> 
             if !is_token_valid(&token, expiry, current_time_ms()) {
                 return Err("Google token expired. Reconnect on the Tools page.".into());
             }
-            let query = optional_string_arg(args, "query")
-                .unwrap_or_else(|| "is:unread".into());
+            let query = optional_string_arg(args, "query").unwrap_or_else(|| "is:unread".into());
             let max = args
                 .get("max_results")
                 .and_then(Value::as_u64)
