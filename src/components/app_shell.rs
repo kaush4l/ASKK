@@ -11,6 +11,12 @@ use super::workspace_page::WorkspacePage;
 use super::{FAVICON, MAIN_CSS};
 use crate::state::AppSnapshot;
 use dioxus::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use crate::scheduler::start_scheduler;
+#[cfg(target_arch = "wasm32")]
+use crate::storage::{IndexedDbStorage, StorageAdapter};
+#[cfg(target_arch = "wasm32")]
+use crate::tools::google::auth::{current_origin, handle_oauth_callback};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DashboardPage {
@@ -48,6 +54,46 @@ pub fn AppShell(
     provider_models: Signal<Vec<String>>,
 ) -> Element {
     let current = snapshot.read().clone();
+
+    // Start the in-tab scheduler on first mount.
+    {
+        #[allow(unused_variables)]
+        let snap_sched = snapshot;
+        use_effect(move || {
+            #[cfg(target_arch = "wasm32")]
+            start_scheduler(snap_sched);
+        });
+    }
+
+    // Handle Google OAuth redirect callback on page load.
+    {
+        #[allow(unused_variables, unused_mut)]
+        let mut snap_oauth = snapshot;
+        use_effect(move || {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let mut sig = snap_oauth;
+                wasm_bindgen_futures::spawn_local(async move {
+                    let client_id = sig.read().tool_config.google.client_id.clone();
+                    if client_id.is_empty() {
+                        return;
+                    }
+                    let redirect_uri = current_origin();
+                    if let Some((token, expiry)) =
+                        handle_oauth_callback(&client_id, &redirect_uri).await
+                    {
+                        let mut next = sig.read().clone();
+                        next.tool_config.google.access_token = token;
+                        next.tool_config.google.token_expiry_ms = expiry;
+                        if let Ok(storage) = IndexedDbStorage::open().await {
+                            let _ = storage.save_snapshot(&next).await;
+                        }
+                        sig.set(next);
+                    }
+                });
+            }
+        });
+    }
     let mut active_page = use_signal(|| DashboardPage::Chat);
     let mut nav_collapsed = use_signal(|| false);
     // Workspace owns its full width; Chat shows the compiled-prompt panel on the
@@ -88,6 +134,7 @@ pub fn AppShell(
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
+        document::Link { rel: "manifest", href: "/assets/manifest.json" }
 
         main { class: "app-shell",
             header { class: "topbar",
