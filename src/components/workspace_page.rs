@@ -5,7 +5,7 @@
 //! HTML preview split, a bottom Terminal/Agent panel, and a status bar.
 //!
 //! By default everything runs **in the browser**: files live in the in-browser
-//! virtual filesystem ([`ProjectVfs`], IndexedDB) and code runs in a sandboxed
+//! workspace filesystem ([`OpfsVfs`], OPFS) and code runs in a sandboxed
 //! Web Worker via [`run_js_in_browser`] — no bridge required, so it works on
 //! the hosted site. A "Bridge" mode is available for driving a local
 //! `askk-local-bridge` (disk files + real `bun`/`node` execution) when one is
@@ -16,7 +16,7 @@ use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::browser_exec::{format_run_js, run_js_in_browser};
 use crate::state::{AppSnapshot, RunStatus};
-use crate::storage::vfs::ProjectVfs;
+use crate::storage::opfs_vfs::{FsEntry, OpfsVfs};
 use crate::tools::{bridge_fs_list, bridge_fs_read, bridge_fs_write, bridge_run_command};
 use crate::worker::client::run_goal_in_worker_or_inline;
 use dioxus::prelude::*;
@@ -84,32 +84,32 @@ fn parse_bridge_nodes(value: &Value) -> Vec<FileNode> {
         .unwrap_or_default()
 }
 
-/// The in-browser VFS stores flat path keys; synthesize the parent directories so
-/// the tree renders with structure.
-fn nodes_from_paths(paths: Vec<String>) -> Vec<FileNode> {
-    let mut entries: BTreeSet<(String, bool)> = BTreeSet::new();
-    for path in paths {
-        let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
-        let mut acc = String::new();
-        for (index, part) in parts.iter().enumerate() {
-            if index > 0 {
-                acc.push('/');
-            }
-            acc.push_str(part);
-            entries.insert((acc.clone(), index < parts.len() - 1));
-        }
-    }
+/// OPFS `list_all` entries (already recursive and sorted) mapped to display
+/// nodes with their tree depth.
+fn nodes_from_entries(entries: Vec<FsEntry>) -> Vec<FileNode> {
     entries
         .into_iter()
-        .map(|(path, is_dir)| {
-            let depth = path.matches('/').count();
-            FileNode {
-                path,
-                is_dir,
-                depth,
-            }
+        .map(|entry| FileNode {
+            depth: entry.path.matches('/').count(),
+            is_dir: entry.is_dir,
+            path: entry.path,
         })
         .collect()
+}
+
+/// `path` equals `base` or lives somewhere below it (segment-aware).
+fn path_within(path: &str, base: &str) -> bool {
+    path == base || (path.starts_with(base) && path.as_bytes().get(base.len()) == Some(&b'/'))
+}
+
+/// Where `path` ends up when `from` is renamed to `to`; `None` if unaffected.
+fn retarget_path(path: &str, from: &str, to: &str) -> Option<String> {
+    if path == from {
+        return Some(to.to_string());
+    }
+    let prefix = format!("{from}/");
+    path.strip_prefix(&prefix)
+        .map(|rest| format!("{to}/{rest}"))
 }
 
 /// Hide every node that sits under a collapsed directory. The collapsed
@@ -192,8 +192,8 @@ fn refresh_tree(
     match mode {
         WorkspaceMode::Browser => {
             spawn_local(async move {
-                match ProjectVfs::new().list_files().await {
-                    Ok(paths) => files.set(nodes_from_paths(paths)),
+                match OpfsVfs::new().list_all().await {
+                    Ok(entries) => files.set(nodes_from_entries(entries)),
                     Err(err) => {
                         files.set(Vec::new());
                         notice.set(format!("Filesystem error: {err}"));
@@ -224,6 +224,9 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
     let mut tabs = use_signal(Vec::<OpenTab>::new);
     let mut active = use_signal(|| Option::<String>::None);
     let mut new_path = use_signal(String::new);
+    let mut renaming = use_signal(|| Option::<String>::None);
+    let mut rename_input = use_signal(String::new);
+    let mut deleting = use_signal(|| Option::<String>::None);
     let mut command = use_signal(|| "bun test".to_string());
     let mut js_input = use_signal(String::new);
     let mut terminal = use_signal(String::new);
@@ -232,6 +235,15 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
     let mut panel = use_signal(|| PanelTab::Terminal);
     let mut preview = use_signal(|| false);
     let editor_ctl = use_signal(|| Option::<document::Eval>::None);
+    let ctx = ExplorerCtx {
+        snapshot,
+        tabs,
+        active,
+        editor_ctl,
+        files,
+        notice,
+        preview,
+    };
 
     // Reload the tree on mount and whenever the mode changes.
     use_effect(move || {
@@ -296,6 +308,7 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
     let current_command = command.read().clone();
     let current_js = js_input.read().clone();
     let current_new_path = new_path.read().clone();
+    let rename_value = rename_input.read().clone();
     let notice_text = notice.read().clone();
     let terminal_text = terminal.read().clone();
     let visible = visible_nodes(&files.read(), &collapsed.read());
@@ -327,7 +340,7 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                 key: "{option.label()}",
                                 class: if active_mode == option { "chip-button active" } else { "chip-button" },
                                 title: match option {
-                                    WorkspaceMode::Browser => "Files in this tab (IndexedDB); JS runs in a sandboxed Web Worker.",
+                                    WorkspaceMode::Browser => "Files in this tab (OPFS); JS runs in a sandboxed Web Worker.",
                                     WorkspaceMode::Bridge => "Files and commands on a local askk-local-bridge (node scripts/askk-local-bridge.mjs --allow-exec).",
                                 },
                                 onclick: move |_| {
@@ -335,6 +348,8 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                     tabs.set(Vec::new());
                                     active.set(None);
                                     preview.set(false);
+                                    renaming.set(None);
+                                    deleting.set(None);
                                     editor_open(&editor_ctl, "", "");
                                 },
                                 "{option.label()}"
@@ -382,6 +397,28 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                             },
                             "+"
                         }
+                        if active_mode == WorkspaceMode::Browser {
+                            button {
+                                class: "ide-icon-button",
+                                title: "Create folder",
+                                disabled: current_new_path.trim().is_empty(),
+                                onclick: move |_| {
+                                    let path = new_path.read().trim().trim_matches('/').to_string();
+                                    if path.is_empty() { return; }
+                                    spawn_local(async move {
+                                        match OpfsVfs::new().mkdir(&path).await {
+                                            Ok(()) => {
+                                                new_path.set(String::new());
+                                                notice.set(format!("Created folder {path}."));
+                                                refresh_tree(snapshot, WorkspaceMode::Browser, files, notice);
+                                            }
+                                            Err(err) => notice.set(err),
+                                        }
+                                    });
+                                },
+                                "+/"
+                            }
+                        }
                     }
                     div { class: "ide-tree",
                         if visible.is_empty() {
@@ -392,48 +429,129 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                 let path = node.path.clone();
                                 let name = path.rsplit('/').next().unwrap_or(&path).to_string();
                                 let indent = format!("padding-left: {}px;", 8 + node.depth * 14);
-                                if node.is_dir {
-                                    let is_collapsed = collapsed.read().contains(&path);
-                                    rsx! {
-                                        button {
-                                            key: "{path}",
-                                            class: "ide-node dir",
-                                            style: "{indent}",
-                                            onclick: move |_| {
-                                                collapsed.with_mut(|set| {
-                                                    if !set.remove(&path) {
-                                                        set.insert(path.clone());
-                                                    }
-                                                });
-                                            },
-                                            span { class: "node-chevron", if is_collapsed { "▸" } else { "▾" } }
-                                            span { class: "node-name", "{name}" }
-                                        }
-                                    }
+                                let is_dir = node.is_dir;
+                                let can_manage = active_mode == WorkspaceMode::Browser;
+                                let is_renaming =
+                                    can_manage && renaming.read().as_deref() == Some(path.as_str());
+                                let is_deleting =
+                                    can_manage && deleting.read().as_deref() == Some(path.as_str());
+                                let is_active = !is_dir && active_path.as_deref() == Some(path.as_str());
+                                let is_open = !is_dir && open_tabs.iter().any(|tab| tab.path == path);
+                                let row_class = if is_dir {
+                                    "ide-node dir"
+                                } else if is_active {
+                                    "ide-node file selected"
+                                } else if is_open {
+                                    "ide-node file open"
                                 } else {
-                                    let is_active = active_path.as_deref() == Some(path.as_str());
-                                    let is_open = open_tabs.iter().any(|tab| tab.path == path);
-                                    let row_class = if is_active {
-                                        "ide-node file selected"
-                                    } else if is_open {
-                                        "ide-node file open"
-                                    } else {
-                                        "ide-node file"
-                                    };
-                                    let (glyph, glyph_class) = file_glyph(&path);
-                                    rsx! {
-                                        button {
-                                            key: "{path}",
-                                            class: "{row_class}",
-                                            style: "{indent}",
-                                            onclick: move |_| {
-                                                open_file_in_tab(
-                                                    snapshot, active_mode, path.clone(),
-                                                    tabs, active, editor_ctl, notice,
-                                                );
-                                            },
-                                            span { class: "node-glyph {glyph_class}", "{glyph}" }
-                                            span { class: "node-name", "{name}" }
+                                    "ide-node file"
+                                };
+                                let main_path = path.clone();
+                                let rename_from = path.clone();
+                                let rename_start = path.clone();
+                                let delete_path = path.clone();
+                                let delete_start = path.clone();
+                                rsx! {
+                                    div { key: "{path}", class: "{row_class}", style: "{indent}",
+                                        if is_renaming {
+                                            form {
+                                                class: "ide-rename-form",
+                                                onsubmit: move |event| {
+                                                    event.prevent_default();
+                                                    let to = rename_input.read().clone();
+                                                    rename_workspace_entry(ctx, active_mode, rename_from.clone(), to, renaming);
+                                                },
+                                                input {
+                                                    class: "ide-input mono",
+                                                    value: "{rename_value}",
+                                                    oninput: move |event| rename_input.set(event.value()),
+                                                }
+                                                button { class: "ide-icon-button", r#type: "submit", title: "Confirm rename", "✓" }
+                                                button {
+                                                    class: "ide-icon-button",
+                                                    r#type: "button",
+                                                    title: "Cancel rename",
+                                                    onclick: move |_| renaming.set(None),
+                                                    "✕"
+                                                }
+                                            }
+                                        } else {
+                                            if is_dir {
+                                                button {
+                                                    class: "ide-node-main",
+                                                    onclick: move |_| {
+                                                        collapsed.with_mut(|set| {
+                                                            if !set.remove(&main_path) {
+                                                                set.insert(main_path.clone());
+                                                            }
+                                                        });
+                                                    },
+                                                    span { class: "node-chevron",
+                                                        if collapsed.read().contains(&path) { "▸" } else { "▾" }
+                                                    }
+                                                    span { class: "node-name", "{name}" }
+                                                }
+                                            } else {
+                                                {
+                                                    let (glyph, glyph_class) = file_glyph(&path);
+                                                    rsx! {
+                                                        button {
+                                                            class: "ide-node-main",
+                                                            onclick: move |_| {
+                                                                open_file_in_tab(
+                                                                    snapshot, active_mode, main_path.clone(),
+                                                                    tabs, active, editor_ctl, notice,
+                                                                );
+                                                            },
+                                                            span { class: "node-glyph {glyph_class}", "{glyph}" }
+                                                            span { class: "node-name", "{name}" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            if can_manage {
+                                                if is_deleting {
+                                                    div { class: "ide-node-actions confirm",
+                                                        span { class: "ide-confirm-label", "Delete?" }
+                                                        button {
+                                                            class: "ide-icon-button",
+                                                            title: "Confirm delete",
+                                                            onclick: move |_| {
+                                                                delete_workspace_entry(ctx, active_mode, delete_path.clone(), deleting);
+                                                            },
+                                                            "✓"
+                                                        }
+                                                        button {
+                                                            class: "ide-icon-button",
+                                                            title: "Cancel delete",
+                                                            onclick: move |_| deleting.set(None),
+                                                            "✕"
+                                                        }
+                                                    }
+                                                } else {
+                                                    div { class: "ide-node-actions",
+                                                        button {
+                                                            class: "ide-icon-button",
+                                                            title: "Rename or move (edit the full path)",
+                                                            onclick: move |_| {
+                                                                rename_input.set(rename_start.clone());
+                                                                renaming.set(Some(rename_start.clone()));
+                                                                deleting.set(None);
+                                                            },
+                                                            "✎"
+                                                        }
+                                                        button {
+                                                            class: "ide-icon-button",
+                                                            title: if is_dir { "Delete folder and its contents" } else { "Delete file" },
+                                                            onclick: move |_| {
+                                                                deleting.set(Some(delete_start.clone()));
+                                                                renaming.set(None);
+                                                            },
+                                                            "🗑"
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -762,6 +880,130 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
     }
 }
 
+/// The explorer-management signal bundle, passed to the rename/delete helpers
+/// so they stay under a sane argument count. `Signal` is `Copy`, so this is too.
+#[derive(Clone, Copy)]
+struct ExplorerCtx {
+    snapshot: Signal<AppSnapshot>,
+    tabs: Signal<Vec<OpenTab>>,
+    active: Signal<Option<String>>,
+    editor_ctl: Signal<Option<document::Eval>>,
+    files: Signal<Vec<FileNode>>,
+    notice: Signal<String>,
+    preview: Signal<bool>,
+}
+
+/// Rename (or move) `from` to `to` in OPFS, then retarget any open tabs —
+/// including the active editor document, so Mod-S keeps saving to the right
+/// path — and refresh the tree.
+fn rename_workspace_entry(
+    ctx: ExplorerCtx,
+    mode: WorkspaceMode,
+    from: String,
+    to: String,
+    mut renaming: Signal<Option<String>>,
+) {
+    let ExplorerCtx {
+        snapshot,
+        mut tabs,
+        mut active,
+        editor_ctl,
+        files,
+        mut notice,
+        ..
+    } = ctx;
+    let to = to.trim().trim_matches('/').to_string();
+    if to.is_empty() || to == from {
+        renaming.set(None);
+        return;
+    }
+    spawn_local(async move {
+        match OpfsVfs::new().rename(&from, &to).await {
+            Ok(()) => {
+                renaming.set(None);
+                tabs.with_mut(|tabs| {
+                    for tab in tabs.iter_mut() {
+                        if let Some(new_path) = retarget_path(&tab.path, &from, &to) {
+                            tab.path = new_path;
+                        }
+                    }
+                });
+                let new_active = active
+                    .peek()
+                    .as_deref()
+                    .and_then(|current| retarget_path(current, &from, &to));
+                if let Some(new_active) = new_active {
+                    let content = tabs
+                        .peek()
+                        .iter()
+                        .find(|tab| tab.path == new_active)
+                        .map(|tab| tab.content.clone())
+                        .unwrap_or_default();
+                    editor_open(&editor_ctl, &new_active, &content);
+                    active.set(Some(new_active));
+                }
+                notice.set(format!("Renamed {from} → {to}."));
+                refresh_tree(snapshot, mode, files, notice);
+            }
+            Err(err) => notice.set(err),
+        }
+    });
+}
+
+/// Delete `path` (recursively for folders) from OPFS, close any tabs that
+/// lived under it, and refresh the tree.
+fn delete_workspace_entry(
+    ctx: ExplorerCtx,
+    mode: WorkspaceMode,
+    path: String,
+    mut deleting: Signal<Option<String>>,
+) {
+    let ExplorerCtx {
+        snapshot,
+        mut tabs,
+        mut active,
+        editor_ctl,
+        files,
+        mut notice,
+        mut preview,
+    } = ctx;
+    spawn_local(async move {
+        match OpfsVfs::new().delete(&path).await {
+            Ok(()) => {
+                deleting.set(None);
+                tabs.with_mut(|tabs| tabs.retain(|tab| !path_within(&tab.path, &path)));
+                let active_removed = active
+                    .peek()
+                    .as_deref()
+                    .is_some_and(|current| path_within(current, &path));
+                if active_removed {
+                    let next = tabs
+                        .peek()
+                        .first()
+                        .map(|tab| (tab.path.clone(), tab.content.clone()));
+                    match next {
+                        Some((next_path, content)) => {
+                            editor_open(&editor_ctl, &next_path, &content);
+                            active.set(Some(next_path));
+                        }
+                        None => {
+                            editor_open(&editor_ctl, "", "");
+                            preview.set(false);
+                            active.set(None);
+                        }
+                    }
+                }
+                notice.set(format!("Deleted {path}."));
+                refresh_tree(snapshot, mode, files, notice);
+            }
+            Err(err) => {
+                deleting.set(None);
+                notice.set(err);
+            }
+        }
+    });
+}
+
 /// Focus `path` in the editor: reuse the existing tab if it is already open,
 /// otherwise read the file from the active filesystem and open a new tab.
 fn open_file_in_tab(
@@ -790,7 +1032,7 @@ fn open_file_in_tab(
     active.set(Some(path.clone()));
     spawn_local(async move {
         let result = match mode {
-            WorkspaceMode::Browser => ProjectVfs::new()
+            WorkspaceMode::Browser => OpfsVfs::new()
                 .read_file(&path)
                 .await
                 .map(|content| content.unwrap_or_default()),
@@ -827,7 +1069,7 @@ fn save_file(
 ) {
     spawn_local(async move {
         let result = match mode {
-            WorkspaceMode::Browser => ProjectVfs::new().write_file(&path, &content).await,
+            WorkspaceMode::Browser => OpfsVfs::new().write_file(&path, &content).await,
             WorkspaceMode::Bridge => {
                 let config = snapshot.read().tool_config.web_search.clone();
                 bridge_fs_write(&config, &path, &content).await
@@ -901,26 +1143,67 @@ fn submit_workspace_goal(
 mod tests {
     use super::*;
 
+    /// Build display nodes the way the OPFS tree does: one entry per file plus
+    /// explicit entries for every parent directory, sorted by path.
+    fn nodes_from_file_paths(paths: &[&str]) -> Vec<FileNode> {
+        let mut entries = std::collections::BTreeMap::new();
+        for path in paths {
+            let parts: Vec<&str> = path.split('/').collect();
+            let mut acc = String::new();
+            for (index, part) in parts.iter().enumerate() {
+                if index > 0 {
+                    acc.push('/');
+                }
+                acc.push_str(part);
+                entries.insert(acc.clone(), index < parts.len() - 1);
+            }
+        }
+        nodes_from_entries(
+            entries
+                .into_iter()
+                .map(|(path, is_dir)| FsEntry { path, is_dir })
+                .collect(),
+        )
+    }
+
     #[test]
-    fn synthesizes_directory_nodes_from_flat_paths() {
-        let nodes = nodes_from_paths(vec!["src/lib/add.js".to_string(), "README.md".to_string()]);
-        let paths: Vec<(&str, bool)> = nodes
+    fn maps_opfs_entries_to_nodes_with_depth() {
+        let nodes = nodes_from_entries(vec![
+            FsEntry {
+                path: "README.md".to_string(),
+                is_dir: false,
+            },
+            FsEntry {
+                path: "src".to_string(),
+                is_dir: true,
+            },
+            FsEntry {
+                path: "src/lib".to_string(),
+                is_dir: true,
+            },
+            FsEntry {
+                path: "src/lib/add.js".to_string(),
+                is_dir: false,
+            },
+        ]);
+        let summary: Vec<(&str, bool, usize)> = nodes
             .iter()
-            .map(|node| (node.path.as_str(), node.is_dir))
+            .map(|node| (node.path.as_str(), node.is_dir, node.depth))
             .collect();
-        assert!(paths.contains(&("src", true)));
-        assert!(paths.contains(&("src/lib", true)));
-        assert!(paths.contains(&("src/lib/add.js", false)));
-        assert!(paths.contains(&("README.md", false)));
+        assert_eq!(
+            summary,
+            vec![
+                ("README.md", false, 0),
+                ("src", true, 0),
+                ("src/lib", true, 1),
+                ("src/lib/add.js", false, 2),
+            ]
+        );
     }
 
     #[test]
     fn collapsed_directories_hide_descendants_but_stay_visible() {
-        let nodes = nodes_from_paths(vec![
-            "src/lib/add.js".to_string(),
-            "src/main.js".to_string(),
-            "README.md".to_string(),
-        ]);
+        let nodes = nodes_from_file_paths(&["src/lib/add.js", "src/main.js", "README.md"]);
         let mut collapsed = BTreeSet::new();
         collapsed.insert("src".to_string());
         let remaining = visible_nodes(&nodes, &collapsed);
@@ -942,10 +1225,7 @@ mod tests {
     #[test]
     fn collapse_prefix_does_not_hide_sibling_with_same_prefix() {
         // "src" collapsed must not hide "src-extra/file.js".
-        let nodes = nodes_from_paths(vec![
-            "src/a.js".to_string(),
-            "src-extra/file.js".to_string(),
-        ]);
+        let nodes = nodes_from_file_paths(&["src/a.js", "src-extra/file.js"]);
         let mut collapsed = BTreeSet::new();
         collapsed.insert("src".to_string());
         let visible: Vec<String> = visible_nodes(&nodes, &collapsed)
@@ -996,5 +1276,30 @@ mod tests {
         assert_eq!(file_glyph("index.html").0, "<>");
         assert_eq!(file_glyph("lib.rs").0, "RS");
         assert_eq!(file_glyph("Makefile").0, "··");
+    }
+
+    #[test]
+    fn path_within_requires_segment_boundaries() {
+        assert!(path_within("src", "src"));
+        assert!(path_within("src/a/b.js", "src"));
+        assert!(!path_within("src-extra/a.js", "src"));
+        assert!(!path_within("sr", "src"));
+    }
+
+    #[test]
+    fn retarget_path_follows_renames_of_files_and_ancestors() {
+        // The renamed entry itself.
+        assert_eq!(
+            retarget_path("a.js", "a.js", "b.js"),
+            Some("b.js".to_string())
+        );
+        // A file under a renamed directory.
+        assert_eq!(
+            retarget_path("src/lib/add.js", "src", "core"),
+            Some("core/lib/add.js".to_string())
+        );
+        // Unrelated paths (including same-prefix siblings) are untouched.
+        assert_eq!(retarget_path("src-extra/a.js", "src", "core"), None);
+        assert_eq!(retarget_path("README.md", "src", "core"), None);
     }
 }

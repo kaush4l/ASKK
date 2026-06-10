@@ -1425,6 +1425,65 @@ pre {
     color: #a99cc4;
 }
 
+/* The clickable part of a row (open file / toggle folder); the row itself is a
+   div so rename/delete action buttons can sit beside it. */
+.ide-node-main {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 20px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.ide-node-actions {
+    display: none;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 2px;
+}
+
+.ide-node:hover .ide-node-actions,
+.ide-node-actions.confirm {
+    display: flex;
+}
+
+.ide-node-actions .ide-icon-button {
+    min-width: 20px;
+    min-height: 20px;
+    font-size: 11px;
+}
+
+.ide-confirm-label {
+    font-size: 11px;
+    color: #f0956f;
+    white-space: nowrap;
+}
+
+.ide-rename-form {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.ide-rename-form .ide-input {
+    min-height: 22px;
+    font-size: 12px;
+}
+
 .node-chevron {
     flex: 0 0 auto;
     width: 12px;
