@@ -123,8 +123,12 @@ async fn run_python(
     let all_files = load_workspace_seed().await?;
     let (files, skipped_seed) = partition_workspace_seed(all_files);
     let message = build_run_message(&assets, mode, args, &files);
+    let label = match mode {
+        RunMode::File(path) => format!("python {path}"),
+        RunMode::Code(_) => "python -c …".to_string(),
+    };
 
-    let Some(done) = drive_python_worker(message.to_string(), timeout_ms).await? else {
+    let Some(done) = drive_python_worker(&label, message.to_string(), timeout_ms).await? else {
         return Ok(ExecResponse::failure(
             124,
             format!(
@@ -337,6 +341,7 @@ fn append_harness_notes(
 /// [`browser_exec::run_js_in_browser`](crate::engine::browser_exec).
 #[cfg(target_arch = "wasm32")]
 async fn drive_python_worker(
+    label: &str,
     message_json: String,
     timeout_ms: u32,
 ) -> AppResult<Option<WorkerDone>> {
@@ -351,6 +356,21 @@ async fn drive_python_worker(
         .map_err(|err| format!("Unable to start the Python runner worker: {err:?}"))?;
 
     let (tx, mut rx) = futures_channel::mpsc::unbounded::<AppResult<String>>();
+
+    // Register with the process registry so the Workspace run panel can list
+    // and kill this run. The on_kill closure is idempotent per the registry
+    // contract: the channel send is a no-op once the run resolved, and
+    // `Worker::terminate()` tolerates an already-terminated worker.
+    let tx_kill = tx.clone();
+    let worker_kill = worker.clone();
+    let process_id = crate::engine::process_registry::register(
+        label,
+        "python",
+        Box::new(move || {
+            let _ = tx_kill.unbounded_send(Err("Process killed from the run panel.".to_string()));
+            worker_kill.terminate();
+        }),
+    );
 
     let tx_msg = tx.clone();
     let onmessage = Closure::<dyn FnMut(web_sys::MessageEvent)>::wrap(Box::new(
@@ -420,6 +440,8 @@ async fn drive_python_worker(
 
     // Always terminate: success, failure, or timeout — a disposable worker per run.
     worker.terminate();
+    // Completion path: a no-op if the run panel already killed this process.
+    crate::engine::process_registry::unregister(process_id);
     drop(onmessage);
     drop(onerror);
     outcome
@@ -428,6 +450,7 @@ async fn drive_python_worker(
 /// Host-build fallback: there is no browser worker outside wasm.
 #[cfg(not(target_arch = "wasm32"))]
 async fn drive_python_worker(
+    _label: &str,
     _message_json: String,
     _timeout_ms: u32,
 ) -> AppResult<Option<WorkerDone>> {

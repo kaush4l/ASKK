@@ -339,6 +339,22 @@ async fn run_wasi_command(req: ExecRequest) -> AppResult<ExecResponse> {
     ));
     worker.set_onerror(Some(onerror.as_ref().unchecked_ref()));
 
+    // Register with the process registry so the Workspace run panel can list
+    // and kill this run. Idempotent per the registry contract: the oneshot
+    // sender fires at most once and `terminate()` tolerates repeats.
+    let tx_kill = Rc::clone(&tx_cell);
+    let worker_kill = worker.clone();
+    let process_id = crate::engine::process_registry::register(
+        format!("run {}", command_line.wasm_path),
+        "wasi",
+        Box::new(move || {
+            if let Some(tx) = tx_kill.borrow_mut().take() {
+                let _ = tx.send(Err("Process killed from the run panel.".to_string()));
+            }
+            worker_kill.terminate();
+        }),
+    );
+
     worker
         .post_message_with_transfer(&message, &transfer)
         .map_err(|err| format!("Unable to send the run request to the WASI worker: {err:?}"))?;
@@ -348,6 +364,8 @@ async fn run_wasi_command(req: ExecRequest) -> AppResult<ExecResponse> {
     let timeout = gloo_timers::future::TimeoutFuture::new(timeout_ms);
     let outcome = futures_util::future::select(rx, timeout).await;
     worker.terminate();
+    // Completion path: a no-op if the run panel already killed this process.
+    crate::engine::process_registry::unregister(process_id);
     drop(onmessage);
     drop(onerror);
 
