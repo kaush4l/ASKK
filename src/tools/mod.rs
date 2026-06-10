@@ -29,6 +29,7 @@ mod common;
 mod file_edit;
 mod file_vfs;
 mod fs_bridge;
+pub(crate) mod google;
 mod http;
 mod run_command;
 mod run_in_sandbox;
@@ -157,6 +158,8 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(file_edit::descriptor());
     registry.register(call_agent::descriptor());
     registry.register(schedule_tool::descriptor());
+    registry.register(google::gmail::descriptor());
+    registry.register(google::calendar::descriptor());
 }
 
 #[cfg(test)]
