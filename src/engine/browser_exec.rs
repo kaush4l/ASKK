@@ -57,11 +57,31 @@ pub async fn run_js_in_browser(code: &str, timeout_ms: u32) -> AppResult<Value> 
         .post_message(&JsValue::from_str(&payload))
         .map_err(|err| format!("Unable to send code to the exec worker: {err:?}"))?;
 
+    // Register the live worker with the process registry so the Workspace run
+    // panel can list and kill it. The on_kill closure is idempotent (per the
+    // registry contract): the oneshot sender fires at most once and
+    // `Worker::terminate()` tolerates an already-terminated worker. Killing
+    // resolves the race below immediately with a clear "killed" error.
+    let tx_kill = Rc::clone(&tx_cell);
+    let worker_kill = worker.clone();
+    let process_id = crate::engine::process_registry::register(
+        run_js_label(code),
+        "js",
+        Box::new(move || {
+            if let Some(tx) = tx_kill.borrow_mut().take() {
+                let _ = tx.send(Err("Process killed from the run panel.".to_string()));
+            }
+            worker_kill.terminate();
+        }),
+    );
+
     // Race the worker's reply against the timeout. Either outcome terminates the
     // worker; the closures stay alive on the stack until after the await.
     let timeout = gloo_timers::future::TimeoutFuture::new(timeout_ms);
     let outcome = futures_util::future::select(rx, timeout).await;
     worker.terminate();
+    // Completion path: a no-op if the run panel already killed this process.
+    crate::engine::process_registry::unregister(process_id);
     // Keep the event handlers alive until the worker is done with them.
     drop(onmessage);
     drop(onerror);
@@ -85,6 +105,26 @@ pub async fn run_js_in_browser(code: &str, timeout_ms: u32) -> AppResult<Value> 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn run_js_in_browser(_code: &str, _timeout_ms: u32) -> AppResult<Value> {
     Err("In-browser JavaScript execution is only available in the browser runtime.".to_string())
+}
+
+/// Process-registry label for a `run_js` invocation: the first non-empty line
+/// of the code, truncated, or a generic fallback for blank snippets.
+// Used by the wasm registration path above; kept target-neutral so the host
+// unit tests cover it.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+fn run_js_label(code: &str) -> String {
+    const MAX_LABEL_CHARS: usize = 48;
+    let line = code
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("run_js snippet");
+    if line.chars().count() > MAX_LABEL_CHARS {
+        let truncated: String = line.chars().take(MAX_LABEL_CHARS).collect();
+        format!("{truncated}…")
+    } else {
+        line.to_string()
+    }
 }
 
 /// Render a `run_js` result value into a compact, human/agent-readable transcript.
@@ -147,6 +187,16 @@ mod tests {
         assert!(text.contains("ok: true"));
         assert!(text.contains("stdout:\nhello"));
         assert!(text.contains("result: 5"));
+    }
+
+    #[test]
+    fn run_js_label_uses_first_nonempty_line_and_truncates() {
+        assert_eq!(run_js_label("\n  console.log(1);\nmore"), "console.log(1);");
+        assert_eq!(run_js_label("   \n\t\n"), "run_js snippet");
+        let long = "x".repeat(80);
+        let label = run_js_label(&long);
+        assert!(label.ends_with('…'));
+        assert_eq!(label.chars().count(), 49);
     }
 
     #[test]

@@ -8,6 +8,7 @@ mod event_log;
 mod inspector;
 mod mcp_page;
 mod provider_settings;
+mod run_panel;
 mod shared;
 mod soul_page;
 mod terminal;

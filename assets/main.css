@@ -1833,6 +1833,122 @@ pre {
 
 .ide-term-host .xterm {
     height: 100%;
+/* --- Run panel (processes / runtimes) --- */
+.ide-run {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 12px;
+}
+
+.ide-run-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ide-run-title {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8a7da0;
+}
+
+.ide-run-empty {
+    color: #6f6385;
+    font-size: 12px;
+}
+
+.ide-run-proc {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border: 1px solid #2a2440;
+    border-radius: 6px;
+    background: #1b1726;
+}
+
+.ide-run-kind {
+    flex: 0 0 auto;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: #231d33;
+    color: #a99cc4;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.ide-run-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: #ece7fb;
+}
+
+.ide-run-elapsed {
+    flex: 0 0 auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #8a7da0;
+}
+
+.ide-kill-button {
+    flex: 0 0 auto;
+    min-height: 22px;
+    padding: 1px 10px;
+    border: 1px solid #5a2a3c;
+    border-radius: 5px;
+    background: #3a1d2a;
+    color: #ff9db1;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.ide-kill-button:hover {
+    background: #57243a;
+    color: #ffffff;
+}
+
+.ide-runtime-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ide-runtime-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    border: 1px solid #2a2440;
+    border-radius: 999px;
+    background: #1b1726;
+    font-size: 11px;
+    color: #6f6385;
+}
+
+.ide-runtime-name {
+    font-weight: 600;
+    color: #a99cc4;
+}
+
+.ide-runtime-chip.ready {
+    color: #7bd88f;
+    border-color: #2f4a37;
+}
+
+.ide-runtime-chip.downloading {
+    color: #e8d44d;
+    border-color: #4a432a;
 }
 
 /* --- Status bar --- */
@@ -1871,6 +1987,12 @@ pre {
 
 .ide-status-dirty {
     color: #e8d44d;
+}
+
+.ide-status-storage {
+    flex: 0 0 auto;
+    color: #a99cc4;
+    font-size: 11px;
 }
 
 .ide-status-path {
