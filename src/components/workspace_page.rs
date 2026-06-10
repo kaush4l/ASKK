@@ -10,10 +10,10 @@
 use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::browser_exec::{format_run_js, run_js_in_browser};
-use crate::orchestrator::run_goal_with_orchestrator_or_worker;
 use crate::state::{AppSnapshot, RunStatus};
 use crate::storage::vfs::ProjectVfs;
 use crate::tools::{bridge_fs_list, bridge_fs_read, bridge_fs_write, bridge_run_command};
+use crate::worker::client::run_goal_in_worker_or_inline;
 use dioxus::prelude::*;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -520,7 +520,7 @@ fn submit_workspace_goal(
         let start = snapshot.read().clone();
         let mut live = snapshot;
         let mut finish = snapshot;
-        let result = run_goal_with_orchestrator_or_worker(start, goal_text, move |run| {
+        let result = run_goal_in_worker_or_inline(start, goal_text, move |run| {
             let mut next = live.read().clone();
             next.current_run = Some(run);
             next.checkpoint_current_run();

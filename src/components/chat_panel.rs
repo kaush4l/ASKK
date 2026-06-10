@@ -2,11 +2,10 @@ use super::artifact_view::ArtifactGallery;
 use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::clear_interrupt;
-use crate::orchestrator::run_goal_with_orchestrator_or_worker;
 use crate::state::{
     AgentEventKind, AgentRun, AppSnapshot, ArtifactKind, RunArtifact, RunStatus, now_iso,
 };
-use crate::worker::client::request_active_worker_cancel;
+use crate::worker::client::{request_active_worker_cancel, run_goal_in_worker_or_inline};
 use dioxus::prelude::*;
 use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
@@ -199,7 +198,7 @@ fn run_goal(
         let mut live_snapshot = snapshot;
         let mut final_snapshot = snapshot;
         let mut final_goal = goal;
-        let result = run_goal_with_orchestrator_or_worker(start_data, run_goal_text, move |run| {
+        let result = run_goal_in_worker_or_inline(start_data, run_goal_text, move |run| {
             let mut next = live_snapshot.read().clone();
             next.status = format!("Running {} lane...", run.lane.as_label());
             next.current_run = Some(run);

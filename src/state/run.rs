@@ -86,15 +86,6 @@ impl RunStatus {
             Self::Running | Self::Paused => false,
         }
     }
-
-    /// True for the terminal statuses that represent a failure rather than a clean
-    /// completion. Exhaustive for the same reason as [`Self::is_terminal`].
-    pub fn is_failure(self) -> bool {
-        match self {
-            Self::Error | Self::Interrupted => true,
-            Self::Running | Self::Paused | Self::Complete => false,
-        }
-    }
 }
 
 impl std::fmt::Display for RunStatus {
@@ -339,15 +330,6 @@ impl WorkerRunStatus {
             Self::Interrupted => "interrupted",
         }
     }
-
-    /// True for the terminal statuses that represent a failed worker (mirrors
-    /// [`RunStatus::is_failure`]). Exhaustive so a new variant forces a decision.
-    pub fn is_terminal_failure(self) -> bool {
-        match self {
-            Self::Error | Self::Interrupted => true,
-            Self::Pending | Self::Running | Self::Paused | Self::Complete => false,
-        }
-    }
 }
 
 impl std::fmt::Display for WorkerRunStatus {
@@ -556,11 +538,6 @@ mod tests {
                 "old snapshots storing {wire} must still load"
             );
         }
-        assert!(WorkerRunStatus::Error.is_terminal_failure());
-        assert!(WorkerRunStatus::Interrupted.is_terminal_failure());
-        assert!(!WorkerRunStatus::Complete.is_terminal_failure());
-        assert!(!WorkerRunStatus::Running.is_terminal_failure());
-        assert!(!WorkerRunStatus::Pending.is_terminal_failure());
     }
 
     // RunArtifact.artifact_type is persisted as a lowercase string and must keep
@@ -625,17 +602,11 @@ mod tests {
     }
 
     #[test]
-    fn run_status_terminal_and_failure_predicates() {
+    fn run_status_terminal_predicate() {
         assert!(RunStatus::Complete.is_terminal());
         assert!(RunStatus::Error.is_terminal());
         assert!(RunStatus::Interrupted.is_terminal());
         assert!(!RunStatus::Running.is_terminal());
         assert!(!RunStatus::Paused.is_terminal());
-
-        assert!(RunStatus::Error.is_failure());
-        assert!(RunStatus::Interrupted.is_failure());
-        assert!(!RunStatus::Complete.is_failure());
-        assert!(!RunStatus::Running.is_failure());
-        assert!(!RunStatus::Paused.is_failure());
     }
 }
