@@ -15,6 +15,8 @@ pub mod browser_exec;
 pub mod exec_capability;
 mod execution;
 mod memory;
+pub mod process_registry;
+pub mod runtime_status;
 mod tool_dispatch;
 mod validators;
 

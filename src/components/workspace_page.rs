@@ -12,6 +12,7 @@
 //! running.
 
 use super::code_editor::{CodeEditor, EditorEvent, editor_open};
+use super::run_panel::{RunButton, RunPanel, StorageUsageBadge};
 use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::browser_exec::{format_run_js, run_js_in_browser};
@@ -43,6 +44,7 @@ impl WorkspaceMode {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PanelTab {
     Terminal,
+    Run,
     Agent,
 }
 
@@ -514,34 +516,16 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                 }
                             }
                             if active_mode == WorkspaceMode::Browser {
-                                button {
-                                    class: "ide-action",
-                                    title: "Run the open file in the sandboxed Web Worker",
-                                    disabled: busy() || active_tab.is_none(),
-                                    onclick: move |_| {
-                                        if busy() { return; }
-                                        let Some(path) = active.peek().clone() else { return; };
-                                        let code = tabs
-                                            .peek()
-                                            .iter()
-                                            .find(|tab| tab.path == path)
-                                            .map(|tab| tab.content.clone())
-                                            .unwrap_or_default();
-                                        panel.set(PanelTab::Terminal);
-                                        busy.set(true);
-                                        terminal.with_mut(|log| log.push_str(&format!("> run {path}\n")));
-                                        spawn_local(async move {
-                                            match run_js_in_browser(&code, 10_000).await {
-                                                Ok(value) => {
-                                                    let (_ok, text) = format_run_js(&value);
-                                                    terminal.with_mut(|log| { log.push_str(&text); log.push_str("\n\n"); });
-                                                }
-                                                Err(err) => terminal.with_mut(|log| log.push_str(&format!("error: {err}\n\n"))),
-                                            }
-                                            busy.set(false);
-                                        });
-                                    },
-                                    if busy() { "Running…" } else { "▶ Run" }
+                                // Extension-dispatching Run button (run_panel.rs):
+                                // .js/.mjs run the buffer, .py/.wasm go through the
+                                // shell runtime contract, .html toggles the preview.
+                                RunButton {
+                                    path: active_path.clone(),
+                                    code: active_tab.as_ref().map(|tab| tab.content.clone()).unwrap_or_default(),
+                                    busy,
+                                    terminal,
+                                    on_focus_terminal: move |_| panel.set(PanelTab::Terminal),
+                                    on_toggle_preview: move |_| preview.set(!preview()),
                                 }
                             }
                             button {
@@ -594,6 +578,11 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                 class: if panel() == PanelTab::Terminal { "ide-panel-tab active" } else { "ide-panel-tab" },
                                 onclick: move |_| panel.set(PanelTab::Terminal),
                                 "Terminal"
+                            }
+                            button {
+                                class: if panel() == PanelTab::Run { "ide-panel-tab active" } else { "ide-panel-tab" },
+                                onclick: move |_| panel.set(PanelTab::Run),
+                                "Run"
                             }
                             button {
                                 class: if panel() == PanelTab::Agent { "ide-panel-tab active" } else { "ide-panel-tab" },
@@ -714,6 +703,9 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                 },
                             }
                         },
+                        PanelTab::Run => rsx! {
+                            RunPanel {}
+                        },
                         PanelTab::Agent => rsx! {
                             div { class: "ide-agent",
                                 p { class: "ide-agent-hint",
@@ -750,6 +742,7 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                         span { class: "ide-status-notice", "{notice_text}" }
                     }
                     span { class: "ide-status-spacer" }
+                    StorageUsageBadge {}
                     if let Some(path) = active_path.as_ref() {
                         if active_dirty {
                             span { class: "ide-status-dirty", "● unsaved" }
