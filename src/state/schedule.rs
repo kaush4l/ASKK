@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ScheduleEntry {
     pub id: String,
     pub label: String,
@@ -19,7 +19,7 @@ pub struct ScheduleEntry {
     pub last_fired_ms: Option<u64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(tag = "type")]
 pub enum ScheduleKind {
     /// Fires once at the given UTC timestamp (ms since epoch).
@@ -28,7 +28,7 @@ pub enum ScheduleKind {
     DailyAt { hour: u8, minute: u8 },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(tag = "type")]
 pub enum SchedulePayload {
     /// Display a Web Notification with this text.
@@ -58,15 +58,21 @@ impl ScheduleEntry {
         hour: u8,
         minute: u8,
         payload: SchedulePayload,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, String> {
+        if hour > 23 {
+            return Err(format!("hour must be 0–23, got {hour}"));
+        }
+        if minute > 59 {
+            return Err(format!("minute must be 0–59, got {minute}"));
+        }
+        Ok(Self {
             id: Uuid::new_v4().to_string(),
             label: label.into(),
             kind: ScheduleKind::DailyAt { hour, minute },
             payload,
             enabled: true,
             last_fired_ms: None,
-        }
+        })
     }
 }
 
@@ -85,12 +91,17 @@ mod tests {
         );
         let json = serde_json::to_value(&entry).unwrap();
         let back: ScheduleEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(back.id, entry.id);
         assert_eq!(back.label, "standup reminder");
         assert!(back.enabled);
         assert_eq!(back.last_fired_ms, None);
         match back.kind {
             ScheduleKind::OneShot { fire_at_ms } => assert_eq!(fire_at_ms, 1_700_000_000_000),
             _ => panic!("expected OneShot"),
+        }
+        match back.payload {
+            SchedulePayload::Notification { text } => assert_eq!(text, "Time for standup"),
+            _ => panic!("expected Notification payload"),
         }
     }
 
@@ -104,9 +115,11 @@ mod tests {
                 agent_id: "assistant".into(),
                 goal: "Run morning briefing".into(),
             },
-        );
+        )
+        .unwrap();
         let json = serde_json::to_value(&entry).unwrap();
         let back: ScheduleEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(back.id, entry.id);
         match back.kind {
             ScheduleKind::DailyAt { hour, minute } => {
                 assert_eq!(hour, 7);
