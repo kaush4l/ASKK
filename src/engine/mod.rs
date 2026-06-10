@@ -575,18 +575,7 @@ impl AgentLoop {
                 .collect(),
         };
         let base_skills = self.skills.clone();
-        let skills = match &context.selected_skills {
-            Some(selected) => base_skills
-                .iter()
-                .filter(|skill| {
-                    selected
-                        .iter()
-                        .any(|name| name.eq_ignore_ascii_case(&skill.name))
-                })
-                .cloned()
-                .collect(),
-            None => base_skills,
-        };
+        let skills = filter_selected_skills(base_skills, context.selected_skills.as_ref());
         InferenceRequest {
             agent_name: self.agent.name.clone(),
             agent_role: self.agent.role.clone(),
@@ -1205,6 +1194,9 @@ impl AgentLoop {
                 // A Back edge may lead the next loop phase to answer again; the newer
                 // validated answer overwrites run.final_answer (best-so-far semantics —
                 // a paused re-run keeps the prior answer under a Paused status).
+                // KNOWN LIMITATION: the chat panel renders run.final_answer as soon as it
+                // is set, so a mid-strategy (pre-review) answer is visible and may change
+                // after a revise. UI-side fix tracked for the workspace polish task.
                 Routing::Back(target) => phase_idx = target.min(phases.len() - 1),
                 Routing::Done => break,
             }
@@ -1556,6 +1548,30 @@ fn initial_scratchpad(snapshot: &AppSnapshot, goal: &str, lane: RunLane) -> RunS
 /// then (when requested) the skill library. The react strategy's bare phase (empty
 /// frame, no artifacts, `list_skill_library: false`) returns the goal untouched for
 /// byte parity with the original loop.
+/// Filter the agent's base skill set according to a `SkillSelection` phase outcome.
+///
+/// - `None`  → the agent's full set (no selection phase ran).
+/// - `Some(empty)` → full set (the model found no library skill specially relevant;
+///   fall back rather than zeroing the agent's normal capabilities).
+/// - `Some(names)` → only skills whose name matches one of `names` (case-insensitive).
+fn filter_selected_skills(
+    base: Vec<crate::state::Skill>,
+    selected: Option<&Vec<String>>,
+) -> Vec<crate::state::Skill> {
+    match selected {
+        Some(names) if !names.is_empty() => base
+            .into_iter()
+            .filter(|skill| {
+                names
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case(&skill.name))
+            })
+            .collect(),
+        // None (no selection phase) or Some([]) (nothing chosen) → full base set.
+        _ => base,
+    }
+}
+
 fn phase_goal(phase: &Phase, context: &StrategyContext, goal: &str, skill_library: &str) -> String {
     if phase.prompt_frame.trim().is_empty()
         && context.artifacts.is_empty()
@@ -1906,5 +1922,39 @@ mod tests {
         assert!(run.events.iter().any(|event| {
             event.kind == AgentEventKind::PhaseCompleted && event.body.contains("Done")
         }));
+    }
+
+    fn make_skill(name: &str) -> crate::state::Skill {
+        crate::state::Skill {
+            id: name.to_lowercase(),
+            name: name.to_string(),
+            content: format!("# {name}\nSkill content."),
+            enabled: true,
+            source_path: None,
+        }
+    }
+
+    #[test]
+    fn selected_skills_none_keeps_all() {
+        let base = vec![make_skill("research"), make_skill("coding")];
+        let result = filter_selected_skills(base.clone(), None);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn selected_skills_empty_falls_back_to_all() {
+        let base = vec![make_skill("research"), make_skill("coding")];
+        let empty: Vec<String> = vec![];
+        let result = filter_selected_skills(base, Some(&empty));
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn selected_skills_filters_case_insensitively() {
+        let base = vec![make_skill("research"), make_skill("coding")];
+        let selected = vec!["RESEARCH".to_string()];
+        let result = filter_selected_skills(base, Some(&selected));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "research");
     }
 }

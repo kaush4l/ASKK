@@ -83,6 +83,7 @@ pub struct StrategyContext {
     pub artifacts: Vec<(String, String)>,
     pub back_edges_used: u32,
     /// Skills chosen by a `SkillSelection` phase; `None` = agent default set.
+    /// `Some(empty)` falls back to the agent's full set (selection narrows, never zeroes).
     pub selected_skills: Option<Vec<String>>,
 }
 

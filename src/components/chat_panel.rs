@@ -247,6 +247,9 @@ fn ConversationTurn(run: AgentRun, live: bool) -> Element {
                 div { class: "message-author", "You" }
                 p { "{run.goal}" }
             }
+            // NOTE: final_answer may be provisional while a multi-phase strategy is still
+            // running (e.g. act answered, review pending). Rendered as-is for now; see
+            // engine driver KNOWN LIMITATION note.
             if !run.final_answer.trim().is_empty() {
                 article { class: "message-bubble final-message",
                     div { class: "message-author",
