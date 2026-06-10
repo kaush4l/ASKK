@@ -359,6 +359,14 @@ pre {
     font-style: italic;
 }
 
+.phase-status {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #81758f;
+    font-style: italic;
+}
+
 .conversation-scroll,
 .scroll-area {
     min-height: 0;

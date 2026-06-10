@@ -240,6 +240,16 @@ fn ConversationTurn(run: AgentRun, live: bool) -> Element {
     // The run's own artifacts plus any its workers produced, shown inline so the
     // agent can *show* the user images/HTML/JSON/text it generated this turn.
     let artifacts = collect_artifacts(&run);
+
+    // Derive the current phase name from the newest PhaseStarted event. Only shown
+    // while the run is actively Running so paused/completed runs stay clean.
+    let current_phase = run
+        .events
+        .iter()
+        .rev()
+        .find(|event| event.kind == AgentEventKind::PhaseStarted)
+        .map(|event| event.title.clone());
+
     rsx! {
         div { class: "chat-turn",
             article { class: "message-bubble user-message",
@@ -247,8 +257,9 @@ fn ConversationTurn(run: AgentRun, live: bool) -> Element {
                 p { "{run.goal}" }
             }
             // NOTE: final_answer may be provisional while a multi-phase strategy is still
-            // running (e.g. act answered, review pending). Rendered as-is for now; see
-            // engine driver KNOWN LIMITATION note.
+            // running (e.g. act answered, review pending). When a phase is active we show
+            // the phase-status line beneath the provisional answer so the user can see
+            // the strategy is still in progress (e.g. "Phase: review" running after "act").
             if !run.final_answer.trim().is_empty() {
                 article { class: "message-bubble final-message",
                     div { class: "message-author",
@@ -256,11 +267,17 @@ fn ConversationTurn(run: AgentRun, live: bool) -> Element {
                         span { class: "lane-chip", "{run.lane.as_label()}" }
                     }
                     p { "{run.final_answer}" }
+                    if let Some(phase) = current_phase.as_ref().filter(|_| run.status == RunStatus::Running) {
+                        span { class: "phase-status", "{phase}" }
+                    }
                 }
             } else if run.status == RunStatus::Running || live {
                 article { class: "message-bubble assistant-message",
                     div { class: "message-author", "Assistant" }
                     p { class: "thinking-line", "{working_label(&run)}" }
+                    if let Some(phase) = current_phase.as_ref().filter(|_| run.status == RunStatus::Running) {
+                        span { class: "phase-status", "{phase}" }
+                    }
                 }
             } else if run.status == RunStatus::Error {
                 article { class: "message-bubble error-message",

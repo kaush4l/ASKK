@@ -39,14 +39,15 @@ same control flow as a **loop-object** with three named phases per turn:
    dispatch the turn's tool call(s) and feed each observation back as **untrusted
    data**, then loop.
 
-The **orchestrator is itself a loop-object** of the same shape. Today
-[`src/orchestrator.rs`](../src/orchestrator.rs) decomposes a batch goal, schedules
-child agents in concurrency waves (`join_all`), and aggregates their results — its
-"construct-prompt" is task decomposition, its "call-LLM" is dispatching each child's
-own ReAct loop, and its "decide-action" is the wave/join/aggregate gate. The TARGET
-makes that symmetry explicit: a single agent run and an orchestrated run are the same
-loop-object abstraction at two scales, so **agent-as-a-tool** (a sub-agent invoked
-like any other tool) falls out cleanly rather than being a special case.
+The **orchestrator is itself a loop-object** of the same shape. The orchestrator is a
+bundled agent running the `orchestrate` strategy: its phases are `decompose`
+(one-shot `TaskBreakdown`), `delegate` (a ReAct loop with `call_agent` fan-out), and
+`synthesize` (one-shot final answer). Its "construct-prompt" is task decomposition,
+its "call-LLM" is dispatching each sub-agent via `call_agent`, and its
+"decide-action" is the routing table in `OrchestrateStrategy::route`. A single agent
+run and an orchestrated run are the same loop-object abstraction at two scales, so
+**agent-as-a-tool** (a sub-agent invoked like any other tool) falls out cleanly
+rather than being a special case.
 
 ### Interchangeable inference behind a short `provider/model` id (TARGET)
 
@@ -67,10 +68,13 @@ returns a `Vec<ParsedToolCall>`, and the engine already iterates it
 (`for call in calls`), but in practice it extracts a **single** call and runs calls
 **serially**. The **TARGET** is genuine **parallel dual tool-call dispatch**: a turn
 may emit **two or more** tool calls, and they execute **concurrently** (via
-`join_all`, the same primitive the orchestrator already uses for child waves), with
+`join_all` in [`src/engine/tool_dispatch.rs`](../src/engine/tool_dispatch.rs)), with
 results collected **in call order** so the observations the model sees line up with
 the calls it wrote. Each result is still untrusted data; concurrency changes only
-*when* the calls run, not how their output is trusted.
+*when* the calls run, not how their output is trusted. The orchestrator's sub-agent
+fan-out uses this same mechanism: when the `delegate` phase emits several
+`call_agent` calls in one turn, they run concurrently as ordinary parallel tool
+dispatch.
 
 ## 1. Where execution sits in the spine
 
@@ -85,7 +89,7 @@ registered in `register_builtin_tools()` at
 [`src/tools/mod.rs:133`](../src/tools/mod.rs). The loop only ever asks the registry
 for specs and runs a call by name; it contains no per-tool match. Adding an executor
 is therefore one descriptor module plus one `registry.register(...)` line — the loop,
-orchestrator, prompt assembly, and state store do not change. This is the
+strategies, prompt assembly, and state store do not change. This is the
 extensibility contract documented in [`extensibility.md`](./extensibility.md).
 
 Two execution tools exist today, sitting at opposite ends of the capability/safety
@@ -376,3 +380,14 @@ The matrix is a starting point; the parallel spikes resolve the empirics:
 - [`spikes/coi-serviceworker.md`](./spikes/coi-serviceworker.md) — enabling `SharedArrayBuffer` on gh-pages.
 - [`extensibility.md`](./extensibility.md) — the Tool / Capability contracts the executor plugs into.
 - [`agent-prompting.md`](./agent-prompting.md) — how a tool's spec reaches the model.
+
+## Strategy layer
+
+A `Strategy` is an ordered sequence of `Phase`s with routing (`Next`/`Back`/
+`Done`, back-edges capped at 2). Each phase runs the same base turn with its own
+response schema, prompt frame, tool policy, and loop mode. `react` is the
+single-phase degenerate case and the default. The orchestrator is a normal agent
+running the `orchestrate` strategy; sub-agents are reached through `call_agent`,
+and parallel fan-out is the existing concurrent tool dispatch. Memory is owned
+per loop object: working messages compact at 100 messages or 70% of the context
+window; each agent identity keeps a rolling summary in the snapshot.

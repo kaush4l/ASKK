@@ -147,3 +147,18 @@ Acceptance tests: `workflow::tests::allows_declared_transition` and `workflow::t
 ## Definition-of-Done traceability
 
 See `docs/definition-of-done.md` for the invariant-to-component map and the repeatable browser smoke demos.
+
+## The unified extension skeleton
+
+Every extensible subsystem follows: descriptor + trait + id-keyed registry +
+one-line registration.
+
+| subsystem | descriptor | trait | registry | registration |
+|---|---|---|---|---|
+| tools | `ToolSpec` | handler fn | `ToolRegistry` | one line in `register_builtin_tools` |
+| inference | `ProviderConfig` / model id | `InferenceProvider` | inference registry | id-keyed `get_or_create` |
+| responses | `ResponseField` table (`define_response!`) | `StructuredResponse` | `ResponseKind` dispatch | macro + enum variant + match arm |
+| strategies | `Phase` list | `Strategy` | `StrategyRegistry` | one line in `register_builtin_strategies` |
+
+Strategy selection resolves: `LoopParams.strategy` → agent `strategy_id` →
+`react`. Strategy travels with the work: `call_agent({agent, query, strategy})`.
