@@ -37,6 +37,7 @@ mod run_js;
 mod run_python;
 mod schedule_tool;
 mod search;
+mod telegram;
 mod web_fetch;
 mod web_search;
 
@@ -160,6 +161,7 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(schedule_tool::descriptor());
     registry.register(google::gmail::descriptor());
     registry.register(google::calendar::descriptor());
+    registry.register(telegram::descriptor());
 }
 
 #[cfg(test)]
