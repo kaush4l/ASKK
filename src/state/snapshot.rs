@@ -22,6 +22,7 @@ use super::run::{
     default_no_progress_turn_limit, default_orchestrator_workflow_id, default_run_step_budget,
     default_verification_retry_budget,
 };
+use super::schedule::ScheduleEntry;
 use super::tool_config::ToolConfig;
 use super::workflow::{WorkflowDefinition, default_workflows};
 
@@ -74,6 +75,9 @@ pub struct AppSnapshot {
     /// Rolling per-agent summaries (continuity across invocations).
     #[serde(default)]
     pub agent_memories: Vec<AgentMemory>,
+    /// Scheduled reminders and briefing triggers. Fired by the in-tab scheduler.
+    #[serde(default)]
+    pub schedules: Vec<ScheduleEntry>,
     pub runs: Vec<AgentRun>,
     pub current_run: Option<AgentRun>,
     pub status: String,
@@ -109,6 +113,7 @@ impl Default for AppSnapshot {
             tasks: Vec::new(),
             jobs: Vec::new(),
             agent_memories: Vec::new(),
+            schedules: Vec::new(),
             runs: Vec::new(),
             current_run: None,
             status: "Ready".to_string(),
@@ -482,6 +487,12 @@ impl AppSnapshot {
         if !self.tool_config.web_search.persist_api_keys {
             self.tool_config.web_search.brave_api_key.clear();
             self.tool_config.web_search.tavily_api_key.clear();
+        }
+        if !self.tool_config.google.persist_tokens {
+            self.tool_config.google.access_token.clear();
+        }
+        if !self.tool_config.telegram.persist_token {
+            self.tool_config.telegram.bot_token.clear();
         }
     }
 

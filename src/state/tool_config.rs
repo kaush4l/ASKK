@@ -112,9 +112,42 @@ impl Default for WebSearchToolConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct GoogleConfig {
+    /// OAuth client ID from Google Cloud Console (Web Application type, no secret).
+    #[serde(default)]
+    pub client_id: String,
+    /// Short-lived access token (expires ~1 hr). Cleared on save unless persist_tokens=true.
+    #[serde(default)]
+    pub access_token: String,
+    /// UTC ms when the token expires; 0 = unset.
+    #[serde(default)]
+    pub token_expiry_ms: u64,
+    /// Whether to persist access_token to IndexedDB. Default false.
+    #[serde(default)]
+    pub persist_tokens: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct TelegramConfig {
+    /// Telegram Bot API token (from @BotFather).
+    #[serde(default)]
+    pub bot_token: String,
+    /// Telegram chat ID to send messages to.
+    #[serde(default)]
+    pub chat_id: String,
+    /// Whether to persist bot_token to IndexedDB. Default false.
+    #[serde(default)]
+    pub persist_token: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct ToolConfig {
     #[serde(default)]
     pub web_search: WebSearchToolConfig,
+    #[serde(default)]
+    pub google: GoogleConfig,
+    #[serde(default)]
+    pub telegram: TelegramConfig,
 }
 
 pub fn default_bridge_tools_url() -> String {

@@ -545,3 +545,39 @@ fn agent_memories_survive_serde_round_trip_and_default_for_old_snapshots() {
     let old: AppSnapshot = serde_json::from_value(value).expect("old loads");
     assert!(old.agent_memories.is_empty());
 }
+
+#[test]
+fn snapshot_without_schedules_field_deserializes_cleanly() {
+    let snap: AppSnapshot = serde_json::from_value(serde_json::json!({
+        "provider": {
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini",
+            "api_key": "",
+            "persist_api_key": false,
+            "temperature": 0.2,
+            "max_tokens": 900
+        },
+        "agents": [],
+        "memories": [],
+        "tasks": [],
+        "runs": [],
+        "current_run": null,
+        "status": "Ready"
+    }))
+    .unwrap();
+    assert!(snap.schedules.is_empty());
+    assert!(snap.tool_config.google.client_id.is_empty());
+    assert!(snap.tool_config.telegram.bot_token.is_empty());
+}
+
+#[test]
+fn sanitize_clears_google_and_telegram_tokens_when_not_persisted() {
+    let mut snap = AppSnapshot::default();
+    snap.tool_config.google.access_token = "ya29.live_token".into();
+    snap.tool_config.google.persist_tokens = false;
+    snap.tool_config.telegram.bot_token = "123456:secret".into();
+    snap.tool_config.telegram.persist_token = false;
+    snap.sanitize_api_keys();
+    assert!(snap.tool_config.google.access_token.is_empty());
+    assert!(snap.tool_config.telegram.bot_token.is_empty());
+}
