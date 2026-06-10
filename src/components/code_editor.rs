@@ -12,6 +12,12 @@ use serde::Deserialize;
 
 const CM6_BUNDLE: Asset = asset!("/assets/cm6_editor.js");
 
+/// TypeScript/JavaScript language-service worker (built from `scripts/lsp-ts/`,
+/// see its package.json). Referenced via `asset!` so the bundler ships it; the
+/// editor glue attaches it only once the CM6 bundle exposes
+/// `attachLanguageService`.
+const LSP_TS_WORKER: Asset = asset!("/assets/lsp_ts_worker.js");
+
 /// An event reported by the mounted editor.
 #[derive(Clone, PartialEq, Deserialize)]
 pub struct EditorEvent {
@@ -46,6 +52,15 @@ const token = window.AskkCM.mount(HOST, {
     onChange: (path, text) => dioxus.send({ path, text, save: false }),
     onSave: (path, text) => dioxus.send({ path, text, save: true }),
 });
+// COORDINATOR: lights up when CM6 bundle v2 lands (AskkCM.attachLanguageService).
+// The worker asset (assets/lsp_ts_worker.js, built from scripts/lsp-ts/) is a
+// TS/JS language service; until the bundle exposes the hook this is a no-op.
+if (typeof window.AskkCM?.attachLanguageService === "function") {
+    window.AskkCM.attachLanguageService(HOST, {
+        languages: ["typescript", "javascript"],
+        workerUrl: "__ASKK_LSP_TS_WORKER__",
+    });
+}
 dioxus.send({ ready: true });
 for (;;) {
     const msg = await dioxus.recv();
@@ -96,7 +111,9 @@ pub fn CodeEditor(
             id: "askk-cm-host",
             class: "ide-editor-host",
             onmounted: move |_| {
-                let eval = document::eval(EDITOR_GLUE);
+                let glue =
+                    EDITOR_GLUE.replace("__ASKK_LSP_TS_WORKER__", &LSP_TS_WORKER.to_string());
+                let eval = document::eval(&glue);
                 controller.set(Some(eval));
                 spawn(async move {
                     let mut eval = eval;
