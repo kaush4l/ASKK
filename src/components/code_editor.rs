@@ -51,6 +51,10 @@ for (;;) {
     const msg = await dioxus.recv();
     if (!msg || msg.cmd === "close") break;
     if (msg.cmd === "open") window.AskkCM.open(HOST, msg.path, msg.content);
+    // Lint diagnostics for the open doc; no-op on bundles without the v2 API.
+    if (msg.cmd === "diagnostics" && typeof window.AskkCM.setDiagnostics === "function") {
+        window.AskkCM.setDiagnostics(HOST, msg.path, msg.items || []);
+    }
 }
 // Token-guarded: if a newer mount already replaced this editor (remount race),
 // this teardown is stale and must not destroy the new instance.
@@ -70,6 +74,50 @@ pub fn editor_open(controller: &Signal<Option<document::Eval>>, path: &str, cont
             "content": content,
         }));
     }
+}
+
+/// Set lint-gutter diagnostics on the mounted editor for the document at
+/// `path`. `items` is a JSON array of `{from, to, severity, message}` objects
+/// (UTF-16 code-unit offsets; severity `"error" | "warning" | "info"`). The
+/// bundle drops the update silently when `path` is not the open doc, so stale
+/// results from an async checker are safe to send.
+#[allow(dead_code)] // consumed by language-service integrations, not the core pane
+pub fn editor_set_diagnostics(
+    controller: &Signal<Option<document::Eval>>,
+    path: &str,
+    items: serde_json::Value,
+) {
+    if let Some(eval) = controller.peek().as_ref() {
+        let _ = eval.send(serde_json::json!({
+            "cmd": "diagnostics",
+            "path": path,
+            "items": items,
+        }));
+    }
+}
+
+/// Attach a language-service worker to the active editor host. The worker at
+/// `worker_asset_url` must speak the postMessage protocol documented in
+/// `scripts/cm6-editor/entry.js` (initialize / didOpen / didChange / didClose
+/// / completion / hover / publishDiagnostics); `languages` lists the language
+/// ids it serves (e.g. `["typescript", "javascript"]`). Safe to call before
+/// the bundle has loaded or on bundles without the v2 API: the guarded eval
+/// is a no-op then. Re-attaching the same URL respawns the worker.
+#[allow(dead_code)] // entry point for the per-language worker integrations
+pub fn attach_language_service(worker_asset_url: &str, languages: &[&str]) {
+    let opts = serde_json::json!({
+        "workerUrl": worker_asset_url,
+        "languages": languages,
+    });
+    let js = format!(
+        r#"
+const opts = {opts};
+if (typeof window.AskkCM?.attachLanguageService === "function") {{
+    window.AskkCM.attachLanguageService("askk-cm-host", opts);
+}}
+"#
+    );
+    let _ = document::eval(&js);
 }
 
 /// The CodeMirror host pane. `controller` is owned by the parent so it can
