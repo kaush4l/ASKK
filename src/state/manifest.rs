@@ -440,6 +440,7 @@ mod tests {
             default_tool_names(),
             vec![
                 "run_js",
+                "run_python",
                 "web_search",
                 "web_fetch",
                 "run_command",

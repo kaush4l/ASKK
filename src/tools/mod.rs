@@ -27,6 +27,7 @@ mod http;
 mod run_command;
 mod run_in_sandbox;
 mod run_js;
+mod run_python;
 mod search;
 mod web_fetch;
 mod web_search;
@@ -135,6 +136,7 @@ impl ToolRegistry {
 /// loop, executor, and prompt assembly never change.
 fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(run_js::descriptor());
+    registry.register(run_python::descriptor());
     registry.register(web_search::descriptor());
     registry.register(web_fetch::descriptor());
     registry.register(run_command::descriptor());
@@ -207,6 +209,7 @@ mod tests {
             .collect::<Vec<_>>();
         for expected in [
             "run_js",
+            "run_python",
             "web_search",
             "web_fetch",
             "run_command",
