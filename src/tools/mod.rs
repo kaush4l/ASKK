@@ -34,6 +34,7 @@ mod run_command;
 mod run_in_sandbox;
 mod run_js;
 mod run_python;
+mod schedule_tool;
 mod search;
 mod web_fetch;
 mod web_search;
@@ -155,6 +156,7 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(file_vfs::list_descriptor());
     registry.register(file_edit::descriptor());
     registry.register(call_agent::descriptor());
+    registry.register(schedule_tool::descriptor());
 }
 
 #[cfg(test)]
