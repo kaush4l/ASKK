@@ -5,6 +5,7 @@ use crate::state::{Agent, AppSnapshot, default_tool_names};
 use crate::storage::workspace_files::{
     apply_workspace_files, load_workspace_files, save_agent_files,
 };
+use crate::strategy::{DEFAULT_STRATEGY_ID, StrategyRegistry};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
@@ -16,6 +17,9 @@ pub fn AgentsPage(
 ) -> Element {
     let current = snapshot.read().clone();
     let tool_names = default_tool_names();
+    // The strategy picker's options come straight from the registry catalog, so a new
+    // built-in shows up here automatically (one `register(...)` line, no UI edit).
+    let strategy_catalog = StrategyRegistry::new().catalog();
 
     rsx! {
         section { class: "panel page-panel agents-page",
@@ -150,11 +154,18 @@ pub fn AgentsPage(
                                                 if value == "react" { None } else { Some(value) };
                                         }
                                     },
-                                    // TODO(task-9/10): derive options from StrategyRegistry::catalog() once all built-ins land.
-                                    option { value: "react", "ReAct (default)" }
-                                    option { value: "plan-act-review", "Plan – Act – Review" }
-                                    option { value: "skills-work-critique", "Skills – Work – Critique" }
-                                    option { value: "orchestrate", "Orchestrate" }
+                                    for (id, description) in strategy_catalog.iter().copied() {
+                                        option {
+                                            key: "{id}",
+                                            value: "{id}",
+                                            title: "{description}",
+                                            if id == DEFAULT_STRATEGY_ID {
+                                                "{id} (default)"
+                                            } else {
+                                                "{id}"
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             label {

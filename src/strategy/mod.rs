@@ -2,12 +2,6 @@
 //! routing function, run above the unchanged base turn (construct prompt → call
 //! LLM → parse → act). The base ReAct loop is the degenerate single-phase case.
 
-// Most types here are now consumed by the engine (Task 5). A few items
-// (`StrategyRegistry::catalog`, the `Strategy::artifact` default override, and the
-// `Plan`/`Critique`/etc. multi-phase machinery) only go live in later tasks; keep a
-// scoped dead-code allow until then rather than per-item attributes.
-#![allow(dead_code)]
-
 mod orchestrate;
 mod plan_act_review;
 mod react;
@@ -17,13 +11,8 @@ mod skills_work_critique;
 pub use orchestrate::OrchestrateStrategy;
 pub use plan_act_review::PlanActReviewStrategy;
 pub use react::ReactStrategy;
+pub use registry::{DEFAULT_STRATEGY_ID, StrategyRegistry, fallback_strategy, resolve_strategy_id};
 pub use skills_work_critique::SkillsWorkCritiqueStrategy;
-// `DEFAULT_STRATEGY_ID` is public API (the canonical "react" id) used by the agent
-// config + UI picker in Task 6; nothing imports it yet, so scope an allow here rather
-// than dropping the re-export.
-#[allow(unused_imports)]
-pub use registry::DEFAULT_STRATEGY_ID;
-pub use registry::{StrategyRegistry, fallback_strategy, resolve_strategy_id};
 
 use crate::responses::{ParsedResponse, ResponseKind};
 
@@ -75,6 +64,10 @@ pub enum Routing {
 pub struct PhaseOutcome {
     pub phase: &'static str,
     pub response: ParsedResponse,
+    /// Turns the phase consumed. Recorded by every phase runner and surfaced in
+    /// tests/diagnostics; the driver does not branch on it yet, so it is read only by
+    /// constructors for now.
+    #[allow(dead_code)]
     pub turns_used: u32,
 }
 
