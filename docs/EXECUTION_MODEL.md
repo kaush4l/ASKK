@@ -110,6 +110,11 @@ executor** that runs *any* binary (not just JS, not just Python — Pyodide is
 explicitly rejected as Python-only) with the simplicity of `run_js` and the
 generality of `run_command`, with **no second machine in the loop**.
 
+(A third tool, `run_in_sandbox`
+([`src/tools/run_in_sandbox.rs`](../src/tools/run_in_sandbox.rs)), is that
+executor's agent-facing entry point — see §5. It shipped as a stub-backed seam;
+the current batch wires it to a real WASI substrate. See §3 "Current state".)
+
 ### The in-browser Web Worker pattern (the substrate seam already exists)
 
 Both the JS executor and the MCP runtime already prove the pattern a general
@@ -259,6 +264,34 @@ The likely shape: **tiny-shim as the default in-browser executor, container2wasm
 an opt-in "full environment" tier behind cross-origin isolation, bridge as fallback**
 — all three behind one capability seam (§5) so the model sees one tool.
 
+### Current state (this batch)
+
+The matrix has been acted on. Status of each row, shipping in the current batch:
+
+- **WASI tiny-shim is the live default substrate.** The §5 capability seam is
+  being wired to `@bjorn3/browser_wasi_shim`: `run_in_sandbox` gains a real
+  `WasiShimExecutor` backend (replacing the worker stub), running a single
+  `wasm32-wasi` binary per call in a disposable worker with copy-in/copy-out of
+  the `/workspace` run root and timeout-terminate semantics — the same worker
+  lifecycle as §1. No COOP/COEP, so it deploys to gh-pages unchanged.
+- **Python ships as a first-class runtime on that substrate.** A CPython
+  `wasm32-wasi` build runs on the tiny-shim, exposed to the agent as a dedicated
+  `run_python` tool. Runtime assets follow the project asset policy: committed
+  in-repo when ≤45 MB per file, otherwise lazy-fetched from a pinned URL and
+  cached in CacheStorage.
+- **Rust and Java execution are DEFERRED.** No `rustc`/`javac` `wasm32-wasi`
+  builds exist; true in-browser compilation for either language would require
+  custom container2wasm images (a Docker build step, >100 MB of hosted assets,
+  and COOP/COEP via coi-serviceworker). This batch ships **editor support only**
+  (syntax highlighting; Java via `@codemirror/lang-java`); execution stays a
+  documented future tier on the container2wasm row above.
+- **Bun as an in-browser runner is rejected.** Bun has no WASM build (it is Zig
+  + JavaScriptCore; a browser build is not feasible), so JavaScript execution
+  stays on the existing `run_js` tool.
+- **container2wasm remains documented, not shipped.** It stays the opt-in
+  "full environment" tier behind cross-origin isolation, exactly as the matrix
+  recommends; nothing in this batch depends on coi-serviceworker.
+
 ## 4. The COOP/COEP / SharedArrayBuffer constraint
 
 Anything that needs threads or shared memory — WASIX and container2wasm both do —
@@ -358,13 +391,25 @@ building it). It is a normal descriptor module registered in
 to the registered `CodeExecutor`. As substrates land, the tool's spec and behavior do
 not change — only the backend wired behind the trait.
 
+> **Status (current batch).** The seam is being wired to its first real
+> substrate: a `WasiShimExecutor` backed by `@bjorn3/browser_wasi_shim` replaces
+> the worker stub behind `run_in_sandbox` (copy-in/copy-out of the `/workspace`
+> run root, hard timeout enforced by terminating the worker). Python ships as a
+> first-class runtime on the same substrate via a dedicated `run_python` tool.
+> The tool spec the model sees is unchanged — only the backend behind the trait
+> changed, which is the property this section was designed to guarantee. See
+> §3 "Current state (this batch)" for the Rust/Java deferral and the Bun verdict.
+
 ## 6. Open questions for the spikes
 
 The matrix is a starting point; the parallel spikes resolve the empirics:
 
 - Tiny-shim: which language toolchains realistically compile to a single
   `wasm32-wasi` binary that the shim runs, and how is the binary delivered (bundled
-  vs. fetched vs. compiled in-tab)?
+  vs. fetched vs. compiled in-tab)? *(Partially resolved this batch: CPython
+  `wasm32-wasi` is the first delivered runtime — committed if ≤45 MB per file,
+  else pinned-URL lazy fetch + CacheStorage; `rustc`/`javac` have no WASI builds
+  and are deferred — see §3 "Current state".)*
 - container2wasm: is the ~16 s cold-start amortizable (warm worker pool, cached
   rootfs in OPFS), or is it acceptable only as a deliberate "full environment" tier?
 - WASIX: does it earn its cross-origin-isolation cost over tiny-shim for the cases we
