@@ -7,6 +7,7 @@ mod engine;
 mod inference;
 mod mcp;
 mod responses;
+mod scheduler;
 mod shell;
 mod state;
 mod storage;
