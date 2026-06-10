@@ -10,6 +10,7 @@ mod mcp_page;
 mod provider_settings;
 mod shared;
 mod soul_page;
+mod terminal;
 mod tools_page;
 mod workspace_page;
 

@@ -14,6 +14,7 @@
 use super::code_editor::{CodeEditor, EditorEvent, editor_open};
 use super::save_snapshot;
 use super::shared::set_status;
+use super::terminal::{TermInject, Terminal};
 use crate::engine::browser_exec::{format_run_js, run_js_in_browser};
 use crate::state::{AppSnapshot, RunStatus};
 use crate::storage::vfs::ProjectVfs;
@@ -21,7 +22,7 @@ use crate::tools::{bridge_fs_list, bridge_fs_read, bridge_fs_write, bridge_run_c
 use crate::worker::client::run_goal_in_worker_or_inline;
 use dioxus::prelude::*;
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use wasm_bindgen_futures::spawn_local;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -84,11 +85,14 @@ fn parse_bridge_nodes(value: &Value) -> Vec<FileNode> {
         .unwrap_or_default()
 }
 
-/// The in-browser VFS stores flat path keys; synthesize the parent directories so
-/// the tree renders with structure.
-fn nodes_from_paths(paths: Vec<String>) -> Vec<FileNode> {
-    let mut entries: BTreeSet<(String, bool)> = BTreeSet::new();
-    for path in paths {
+/// The in-browser VFS stores flat `(path, is_dir)` keys (explicit directory
+/// entries come from the shell's `mkdir`); synthesize the missing parent
+/// directories so the tree renders with structure. A path that is both an
+/// explicit directory entry and an implied ancestor renders once, as a
+/// directory.
+fn nodes_from_entries(entries: Vec<(String, bool)>) -> Vec<FileNode> {
+    let mut nodes: BTreeMap<String, bool> = BTreeMap::new();
+    for (path, is_dir) in entries {
         let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
         let mut acc = String::new();
         for (index, part) in parts.iter().enumerate() {
@@ -96,10 +100,12 @@ fn nodes_from_paths(paths: Vec<String>) -> Vec<FileNode> {
                 acc.push('/');
             }
             acc.push_str(part);
-            entries.insert((acc.clone(), index < parts.len() - 1));
+            let node_is_dir = index < parts.len() - 1 || is_dir;
+            let entry = nodes.entry(acc.clone()).or_insert(node_is_dir);
+            *entry = *entry || node_is_dir;
         }
     }
-    entries
+    nodes
         .into_iter()
         .map(|(path, is_dir)| {
             let depth = path.matches('/').count();
@@ -192,8 +198,8 @@ fn refresh_tree(
     match mode {
         WorkspaceMode::Browser => {
             spawn_local(async move {
-                match ProjectVfs::new().list_files().await {
-                    Ok(paths) => files.set(nodes_from_paths(paths)),
+                match ProjectVfs::new().list_entries().await {
+                    Ok(entries) => files.set(nodes_from_entries(entries)),
                     Err(err) => {
                         files.set(Vec::new());
                         notice.set(format!("Filesystem error: {err}"));
@@ -225,8 +231,9 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
     let mut active = use_signal(|| Option::<String>::None);
     let mut new_path = use_signal(String::new);
     let mut command = use_signal(|| "bun test".to_string());
-    let mut js_input = use_signal(String::new);
     let mut terminal = use_signal(String::new);
+    let shell_cwd = use_signal(String::new);
+    let mut term_inject = use_signal(Vec::<TermInject>::new);
     let mut notice = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut panel = use_signal(|| PanelTab::Terminal);
@@ -294,7 +301,6 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
         .map(|run| run.final_answer.clone())
         .filter(|answer| !answer.trim().is_empty());
     let current_command = command.read().clone();
-    let current_js = js_input.read().clone();
     let current_new_path = new_path.read().clone();
     let notice_text = notice.read().clone();
     let terminal_text = terminal.read().clone();
@@ -529,14 +535,20 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                             .unwrap_or_default();
                                         panel.set(PanelTab::Terminal);
                                         busy.set(true);
-                                        terminal.with_mut(|log| log.push_str(&format!("> run {path}\n")));
+                                        term_inject.with_mut(|queue| {
+                                            queue.push(TermInject::Write(format!("> run {path}\n")));
+                                        });
                                         spawn_local(async move {
                                             match run_js_in_browser(&code, 10_000).await {
                                                 Ok(value) => {
                                                     let (_ok, text) = format_run_js(&value);
-                                                    terminal.with_mut(|log| { log.push_str(&text); log.push_str("\n\n"); });
+                                                    term_inject.with_mut(|queue| {
+                                                        queue.push(TermInject::Write(format!("{text}\n")));
+                                                    });
                                                 }
-                                                Err(err) => terminal.with_mut(|log| log.push_str(&format!("error: {err}\n\n"))),
+                                                Err(err) => term_inject.with_mut(|queue| {
+                                                    queue.push(TermInject::Write(format!("error: {err}\n")));
+                                                }),
                                             }
                                             busy.set(false);
                                         });
@@ -606,7 +618,12 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                 button {
                                     class: "ide-icon-button",
                                     title: "Clear terminal output",
-                                    onclick: move |_| terminal.set(String::new()),
+                                    onclick: move |_| match active_mode {
+                                        WorkspaceMode::Browser => {
+                                            term_inject.with_mut(|queue| queue.push(TermInject::Clear));
+                                        }
+                                        WorkspaceMode::Bridge => terminal.set(String::new()),
+                                    },
                                     "✕"
                                 }
                             }
@@ -614,65 +631,36 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                     }
                     match panel() {
                         PanelTab::Terminal => rsx! {
-                            pre { class: "ide-terminal-output",
-                                if terminal_text.is_empty() {
-                                    span { class: "ide-terminal-hint",
-                                        match active_mode {
-                                            WorkspaceMode::Browser => "In-browser terminal: type JavaScript below or ▶ Run the open file — code executes in a sandboxed Web Worker.",
-                                            WorkspaceMode::Bridge => "Bridge terminal: commands run in the bridge run root. Start it with `node scripts/askk-local-bridge.mjs --allow-exec`.",
-                                        }
-                                    }
-                                } else {
-                                    "{terminal_text}"
-                                }
-                            }
-                            if active_mode == WorkspaceMode::Bridge {
-                                div { class: "ide-quick-row",
-                                    for preset in ["bun install", "bun test", "bun run index.ts", "ls -la"] {
-                                        button {
-                                            key: "{preset}",
-                                            class: "chip-button",
-                                            onclick: move |_| command.set(preset.to_string()),
-                                            "{preset}"
-                                        }
-                                    }
-                                }
-                            }
                             match active_mode {
+                                // The real in-browser terminal: an interactive
+                                // virtual shell over the workspace filesystem.
                                 WorkspaceMode::Browser => rsx! {
-                                    form {
-                                        class: "ide-terminal-input",
-                                        onsubmit: move |event| {
-                                            event.prevent_default();
-                                            let code = js_input.read().trim().to_string();
-                                            if code.is_empty() || busy() { return; }
-                                            js_input.set(String::new());
-                                            busy.set(true);
-                                            terminal.with_mut(|log| log.push_str(&format!("js> {code}\n")));
-                                            spawn_local(async move {
-                                                match run_js_in_browser(&code, 10_000).await {
-                                                    Ok(value) => {
-                                                        let (_ok, text) = format_run_js(&value);
-                                                        terminal.with_mut(|log| { log.push_str(&text); log.push_str("\n\n"); });
-                                                    }
-                                                    Err(err) => terminal.with_mut(|log| log.push_str(&format!("error: {err}\n\n"))),
-                                                }
-                                                busy.set(false);
-                                            });
-                                        },
-                                        span { class: "ide-prompt", "js>" }
-                                        input {
-                                            class: "ide-input mono",
-                                            value: "{current_js}",
-                                            placeholder: "JavaScript to run in the sandboxed worker",
-                                            oninput: move |event| js_input.set(event.value()),
-                                        }
-                                        button { class: "ide-action", r#type: "submit", disabled: busy() || current_js.trim().is_empty(),
-                                            if busy() { "Running…" } else { "Run" }
-                                        }
+                                    Terminal {
+                                        cwd: shell_cwd,
+                                        inject: term_inject,
+                                        on_fs_change: move |_| refresh_tree(snapshot, WorkspaceMode::Browser, files, notice),
                                     }
                                 },
                                 WorkspaceMode::Bridge => rsx! {
+                                    pre { class: "ide-terminal-output",
+                                        if terminal_text.is_empty() {
+                                            span { class: "ide-terminal-hint",
+                                                "Bridge terminal: commands run in the bridge run root. Start it with `node scripts/askk-local-bridge.mjs --allow-exec`."
+                                            }
+                                        } else {
+                                            "{terminal_text}"
+                                        }
+                                    }
+                                    div { class: "ide-quick-row",
+                                        for preset in ["bun install", "bun test", "bun run index.ts", "ls -la"] {
+                                            button {
+                                                key: "{preset}",
+                                                class: "chip-button",
+                                                onclick: move |_| command.set(preset.to_string()),
+                                                "{preset}"
+                                            }
+                                        }
+                                    }
                                     form {
                                         class: "ide-terminal-input",
                                         onsubmit: move |event| {
@@ -901,9 +889,13 @@ fn submit_workspace_goal(
 mod tests {
     use super::*;
 
+    fn file_entries(paths: &[&str]) -> Vec<(String, bool)> {
+        paths.iter().map(|path| (path.to_string(), false)).collect()
+    }
+
     #[test]
     fn synthesizes_directory_nodes_from_flat_paths() {
-        let nodes = nodes_from_paths(vec!["src/lib/add.js".to_string(), "README.md".to_string()]);
+        let nodes = nodes_from_entries(file_entries(&["src/lib/add.js", "README.md"]));
         let paths: Vec<(&str, bool)> = nodes
             .iter()
             .map(|node| (node.path.as_str(), node.is_dir))
@@ -915,12 +907,32 @@ mod tests {
     }
 
     #[test]
-    fn collapsed_directories_hide_descendants_but_stay_visible() {
-        let nodes = nodes_from_paths(vec![
-            "src/lib/add.js".to_string(),
-            "src/main.js".to_string(),
-            "README.md".to_string(),
+    fn explicit_directory_entries_render_once_as_directories() {
+        // The shell's `mkdir demo` stores an explicit ("demo", true) entry;
+        // it must render as a directory even once files exist inside it, and
+        // never as a duplicate file row.
+        let nodes = nodes_from_entries(vec![
+            ("demo".to_string(), true),
+            ("demo/a.txt".to_string(), false),
+            ("empty".to_string(), true),
         ]);
+        let paths: Vec<(&str, bool)> = nodes
+            .iter()
+            .map(|node| (node.path.as_str(), node.is_dir))
+            .collect();
+        assert_eq!(
+            paths,
+            vec![("demo", true), ("demo/a.txt", false), ("empty", true)]
+        );
+    }
+
+    #[test]
+    fn collapsed_directories_hide_descendants_but_stay_visible() {
+        let nodes = nodes_from_entries(file_entries(&[
+            "src/lib/add.js",
+            "src/main.js",
+            "README.md",
+        ]));
         let mut collapsed = BTreeSet::new();
         collapsed.insert("src".to_string());
         let remaining = visible_nodes(&nodes, &collapsed);
@@ -942,10 +954,7 @@ mod tests {
     #[test]
     fn collapse_prefix_does_not_hide_sibling_with_same_prefix() {
         // "src" collapsed must not hide "src-extra/file.js".
-        let nodes = nodes_from_paths(vec![
-            "src/a.js".to_string(),
-            "src-extra/file.js".to_string(),
-        ]);
+        let nodes = nodes_from_entries(file_entries(&["src/a.js", "src-extra/file.js"]));
         let mut collapsed = BTreeSet::new();
         collapsed.insert("src".to_string());
         let visible: Vec<String> = visible_nodes(&nodes, &collapsed)

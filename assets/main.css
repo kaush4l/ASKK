@@ -1761,6 +1761,21 @@ pre {
     font-size: 13px;
 }
 
+/* The xterm.js shell host (Browser mode). xterm's own stylesheet ships inside
+   assets/xterm_term.js and is injected at mount. */
+.ide-term-host {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    background: #131019;
+    padding: 4px 0 4px 8px;
+    overflow: hidden;
+}
+
+.ide-term-host .xterm {
+    height: 100%;
+}
+
 /* --- Status bar --- */
 .ide-status {
     grid-area: status;
