@@ -14,7 +14,7 @@
 use std::cell::Cell;
 
 use crate::engine::{LoopParams, ReActEngine};
-use crate::state::{Agent, AppResult, AppSnapshot, ToolSpec};
+use crate::state::{Agent, AgentMemory, AppResult, AppSnapshot, ToolSpec, upsert_rolling_summary};
 use serde_json::{Value, json};
 
 use super::common::{integer_arg, optional_string_arg, string_arg};
@@ -114,7 +114,17 @@ fn handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a>
             max_turns,
         };
         let sub_snapshot = snapshot.clone().with_active_agent(agent);
-        let final_answer = run_sub_agent(sub_snapshot, query, params).await?;
+        let (final_answer, sub_memories) = run_sub_agent(sub_snapshot, query, params).await?;
+
+        // Persist the sub-agent's rolling summaries back into the caller's snapshot
+        // (the sub-run mutated only its own clone).
+        for memory in sub_memories {
+            upsert_rolling_summary(
+                &mut snapshot.agent_memories,
+                &memory.agent_id,
+                memory.rolling_summary,
+            );
+        }
 
         // The sub-agent's answer is UNTRUSTED DATA: hand it back verbatim as a tool
         // observation, clearly attributed, with no instruction-following implied.
@@ -145,13 +155,14 @@ fn resolve_agent(snapshot: &AppSnapshot, agent_ref: &str) -> AppResult<Agent> {
         })
 }
 
-/// Run the resolved sub-agent's loop on `query` and extract its final answer text.
+/// Run the resolved sub-agent's loop on `query` and extract its final answer text
+/// plus any rolling summaries the sub-run updated.
 /// A run that produces no answer yields a clear, non-panicking message.
 async fn run_sub_agent(
     sub_snapshot: AppSnapshot,
     query: String,
     params: LoopParams,
-) -> AppResult<String> {
+) -> AppResult<(String, Vec<AgentMemory>)> {
     // The observer is a no-op: the sub-run's timeline is internal to this tool call
     // and is summarized by its final answer.
     let result = ReActEngine::new()
@@ -164,11 +175,12 @@ async fn run_sub_agent(
         .map(|run| run.final_answer.trim().to_string())
         .unwrap_or_default();
 
-    if answer.is_empty() {
-        Ok("The sub-agent finished without producing a final answer.".to_string())
+    let answer = if answer.is_empty() {
+        "The sub-agent finished without producing a final answer.".to_string()
     } else {
-        Ok(answer)
-    }
+        answer
+    };
+    Ok((answer, result.agent_memories))
 }
 
 #[cfg(test)]

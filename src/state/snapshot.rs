@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::AppResult;
+use super::agent_memory::AgentMemory;
 use super::event::{AgentEventKind, event, now_iso};
 use super::manifest::{
     Agent, Skill, default_agents, default_skills, default_soul_prompt, parse_tools,
@@ -65,6 +66,9 @@ pub struct AppSnapshot {
     pub tasks: Vec<TaskItem>,
     #[serde(default)]
     pub jobs: Vec<JobRecord>,
+    /// Rolling per-agent summaries (continuity across invocations).
+    #[serde(default)]
+    pub agent_memories: Vec<AgentMemory>,
     pub runs: Vec<AgentRun>,
     pub current_run: Option<AgentRun>,
     pub status: String,
@@ -98,6 +102,7 @@ impl Default for AppSnapshot {
             memories: Vec::new(),
             tasks: Vec::new(),
             jobs: Vec::new(),
+            agent_memories: Vec::new(),
             runs: Vec::new(),
             current_run: None,
             status: "Ready".to_string(),

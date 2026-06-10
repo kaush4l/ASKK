@@ -17,6 +17,7 @@
 /// The crate-wide result type: a value or a human-readable error message.
 pub type AppResult<T> = Result<T, String>;
 
+mod agent_memory;
 mod event;
 mod manifest;
 mod mcp;
@@ -27,6 +28,7 @@ mod tool_config;
 mod tool_types;
 mod workflow;
 
+pub use agent_memory::*;
 pub use event::*;
 pub use manifest::*;
 // Re-exported for sibling MCP units (UI + `src/mcp/`) that consume these types;

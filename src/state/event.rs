@@ -23,6 +23,8 @@ pub enum AgentEventKind {
     PhaseCompleted,
     /// Working memory was compacted (older messages folded into a summary).
     MemoryCompacted,
+    /// The agent's rolling summary was updated after a completed run.
+    RollingSummaryUpdated,
     Verification,
     /// A browser MCP server was connected at run start.
     McpConnected,

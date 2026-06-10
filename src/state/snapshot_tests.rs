@@ -467,3 +467,24 @@ fn user_authored_soul_is_preserved() {
         "You are Atlas, my bespoke research companion."
     );
 }
+
+#[test]
+fn agent_memories_survive_serde_round_trip_and_default_for_old_snapshots() {
+    let mut snapshot = AppSnapshot::default();
+    upsert_rolling_summary(&mut snapshot.agent_memories, "researcher", "knows X".into());
+    let json = serde_json::to_string(&snapshot).expect("serializes");
+    let restored: AppSnapshot = serde_json::from_str(&json).expect("deserializes");
+    assert_eq!(
+        rolling_summary_for(&restored.agent_memories, "researcher"),
+        "knows X"
+    );
+
+    // An old snapshot without the field still loads.
+    let mut value: serde_json::Value = serde_json::from_str(&json).expect("value");
+    value
+        .as_object_mut()
+        .expect("object")
+        .remove("agent_memories");
+    let old: AppSnapshot = serde_json::from_value(value).expect("old loads");
+    assert!(old.agent_memories.is_empty());
+}

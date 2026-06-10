@@ -29,7 +29,7 @@ use crate::responses::{
 use crate::state::{
     Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, ProviderConfig, RunBudgets,
     RunLane, RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, ToolSpec,
-    default_tool_names, event, now_iso,
+    default_tool_names, event, now_iso, rolling_summary_for, upsert_rolling_summary,
 };
 use crate::strategy::{
     LoopMode, MAX_BACK_EDGES, Phase, PhaseOutcome, Routing, Strategy, StrategyContext,
@@ -276,7 +276,19 @@ impl AgentLoop {
         let sub_agents = sub_agent_roster(snapshot, &agent_id);
         // Prior conversation turns so the agent carries its session forward instead of
         // treating every query as a fresh start.
-        let conversation = conversation_seed(&snapshot.runs);
+        let mut conversation = conversation_seed(&snapshot.runs);
+        let rolling = rolling_summary_for(&snapshot.agent_memories, &agent_id);
+        if !rolling.trim().is_empty() {
+            conversation.insert(
+                0,
+                Message {
+                    role: "user".to_string(),
+                    content: format!(
+                        "## PRIOR WORK (rolling summary from this agent's earlier invocations)\n{rolling}"
+                    ),
+                },
+            );
+        }
         let max_steps = params
             .max_turns
             .unwrap_or(snapshot.orchestrator.max_steps)
@@ -808,6 +820,86 @@ impl AgentLoop {
         }
     }
 
+    /// Fold this run's outcome into the agent's rolling summary. Best-effort:
+    /// failure logs an event and changes nothing.
+    async fn update_rolling_summary<F>(
+        &self,
+        snapshot: &mut AppSnapshot,
+        run: &mut AgentRun,
+        observer: &mut F,
+    ) where
+        F: FnMut(AgentRun),
+    {
+        if run.final_answer.trim().is_empty() {
+            return;
+        }
+        let previous = rolling_summary_for(&snapshot.agent_memories, &self.agent_id);
+        let goal = format!(
+            "Merge into one rolling summary (max 2000 characters) what this agent has done and learned. Keep stable facts, decisions, and unfinished threads; drop chit-chat.\n\nPrevious summary:\n{previous}\n\nThis run's goal:\n{}\n\nThis run's final answer:\n{}",
+            run.goal, run.final_answer
+        );
+        let phase = Phase {
+            name: "rolling-summary",
+            response_kind: crate::responses::ResponseKind::Summary,
+            prompt_frame: "",
+            tool_policy: ToolPolicy::NoTools,
+            loop_mode: LoopMode::OneShot,
+            list_skill_library: false,
+        };
+        let request = self.build_request(
+            &phase,
+            &StrategyContext::default(),
+            String::new(), // prompt carried in history[0], matching maybe_compact pattern
+            vec![Message {
+                role: "user".to_string(),
+                content: goal,
+            }],
+            ResponseFormat::Toon,
+            &[],
+        );
+        match call_model_plain(&self.inference, &self.provider, request).await {
+            Ok(output) => {
+                if let crate::responses::ParsedResponse::Summary(summary) =
+                    crate::responses::ResponseKind::Summary.parse(&output.raw_text)
+                    && !summary.summary.trim().is_empty()
+                {
+                    upsert_rolling_summary(
+                        &mut snapshot.agent_memories,
+                        &self.agent_id,
+                        summary.summary,
+                    );
+                    run.events.push(event(
+                        &run.id,
+                        Some(self.agent_id.clone()),
+                        AgentEventKind::RollingSummaryUpdated,
+                        "Rolling summary updated",
+                        "Merged this run's outcome into the agent's rolling summary.",
+                    ));
+                    observer(run.clone());
+                } else {
+                    run.events.push(event(
+                        &run.id,
+                        Some(self.agent_id.clone()),
+                        AgentEventKind::Error,
+                        "Rolling summary update skipped (empty summary)",
+                        "The model returned an empty summary; rolling summary unchanged.",
+                    ));
+                    observer(run.clone());
+                }
+            }
+            Err(error) => {
+                run.events.push(event(
+                    &run.id,
+                    Some(self.agent_id.clone()),
+                    AgentEventKind::Error,
+                    "Rolling summary update failed (non-fatal)",
+                    error,
+                ));
+                observer(run.clone());
+            }
+        }
+    }
+
     /// Execute the parsed tool calls for one turn and feed their results back.
     ///
     /// Each tool's output is UNTRUSTED DATA: a validated successful result enters the
@@ -1068,6 +1160,9 @@ impl AgentLoop {
         // === end strategy driver ===
 
         finalize_status(&mut run, answered);
+
+        self.update_rolling_summary(&mut snapshot, &mut run, &mut observer)
+            .await;
 
         // finalize_status above guarantees a terminal status here (Running is flipped to
         // Complete), so every arm is a finished-run message.
