@@ -1,7 +1,9 @@
 //! Browser persistence. This module is the IndexedDB snapshot store; its siblings
-//! are the in-browser virtual filesystem ([`vfs`], also IndexedDB-backed) and the
-//! optional dev-bridge file sync ([`workspace_files`]).
+//! are the OPFS workspace filesystem ([`opfs_vfs`], the live file store), the
+//! legacy IndexedDB virtual filesystem ([`vfs`], kept as the migration source),
+//! and the optional dev-bridge file sync ([`workspace_files`]).
 
+pub mod opfs_vfs;
 pub mod vfs;
 pub mod workspace_files;
 

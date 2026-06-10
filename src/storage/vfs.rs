@@ -29,6 +29,11 @@ impl ProjectVfs {
         Self::default()
     }
 
+    /// Legacy write path. The live workspace filesystem is now
+    /// [`crate::storage::opfs_vfs::OpfsVfs`]; this store is kept intact as the
+    /// read-only source for its one-time migration, so nothing writes here
+    /// anymore.
+    #[allow(dead_code)]
     pub async fn write_file(&self, path: &str, content: &str) -> AppResult<()> {
         let db = IndexedDbStorage::open().await?;
         let tx = db

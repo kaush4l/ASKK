@@ -1,10 +1,11 @@
-//! `file_read` / `file_write` / `file_list` — the project's in-browser virtual
-//! filesystem (OPFS/IndexedDB). These never touch disk and need no bridge; use them
-//! for scratch files that live in the tab. For a runnable on-disk project, use the
+//! `file_read` / `file_write` / `file_list` — the project's in-browser workspace
+//! filesystem (OPFS, rooted at the `workspace` directory; see
+//! [`crate::storage::opfs_vfs`]). These never touch disk and need no bridge; use
+//! them for files that live in the tab. For a runnable on-disk project, use the
 //! `fs_*` family instead.
 
 use crate::state::{AppSnapshot, ToolSpec};
-use crate::storage::vfs::ProjectVfs;
+use crate::storage::opfs_vfs::{FsEntry, OpfsVfs};
 use serde_json::{Value, json};
 
 use super::common::string_arg;
@@ -34,7 +35,9 @@ pub(crate) fn list_descriptor() -> ToolDescriptor {
 fn read_spec() -> ToolSpec {
     ToolSpec {
         name: "file_read".to_string(),
-        description: "Read the content of a file from the project's virtual filesystem."
+        description: "Read a file from the project's in-browser workspace filesystem (OPFS). \
+                      Paths are relative and '/'-separated, e.g. src/index.js. Returns an \
+                      empty string when the file does not exist."
             .to_string(),
         input_schema: json!({
             "type": "object",
@@ -49,9 +52,10 @@ fn read_spec() -> ToolSpec {
 fn write_spec() -> ToolSpec {
     ToolSpec {
         name: "file_write".to_string(),
-        description:
-            "Write or overwrite the content of a file in the project's virtual filesystem."
-                .to_string(),
+        description: "Write or overwrite a file in the project's in-browser workspace \
+                      filesystem (OPFS). Paths are relative and '/'-separated; parent \
+                      folders are created automatically."
+            .to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {
@@ -66,7 +70,9 @@ fn write_spec() -> ToolSpec {
 fn list_spec() -> ToolSpec {
     ToolSpec {
         name: "file_list".to_string(),
-        description: "List all files in the project's virtual filesystem.".to_string(),
+        description: "List the project's in-browser workspace filesystem (OPFS), one entry \
+                      per line, sorted by path. Folders end with '/'."
+            .to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {}
@@ -74,10 +80,28 @@ fn list_spec() -> ToolSpec {
     }
 }
 
+/// One line per entry, folders marked with a trailing `/`.
+fn format_entries(entries: &[FsEntry]) -> String {
+    if entries.is_empty() {
+        return "(no files)".to_string();
+    }
+    entries
+        .iter()
+        .map(|entry| {
+            if entry.is_dir {
+                format!("{}/", entry.path)
+            } else {
+                entry.path.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn read_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
         let path = string_arg(args, "path")?;
-        ProjectVfs::new()
+        OpfsVfs::new()
             .read_file(&path)
             .await
             .map(|content| content.unwrap_or_default())
@@ -89,7 +113,7 @@ fn write_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFut
     Box::pin(async move {
         let path = string_arg(args, "path")?;
         let content = string_arg(args, "content")?;
-        ProjectVfs::new()
+        OpfsVfs::new()
             .write_file(&path, &content)
             .await
             .map(|_| "Success".to_string())
@@ -99,10 +123,43 @@ fn write_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFut
 
 fn list_handler<'a>(_snapshot: &'a mut AppSnapshot, _args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
-        ProjectVfs::new()
-            .list_files()
+        OpfsVfs::new()
+            .list_all()
             .await
-            .map(|files| files.join(", "))
+            .map(|entries| format_entries(&entries))
             .map_err(|err| format!("VFS list error: {err}"))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn specs_keep_their_registered_names_and_required_args() {
+        assert_eq!(read_spec().name, "file_read");
+        assert_eq!(write_spec().name, "file_write");
+        assert_eq!(list_spec().name, "file_list");
+        assert_eq!(read_spec().input_schema["required"], json!(["path"]));
+        assert_eq!(
+            write_spec().input_schema["required"],
+            json!(["path", "content"])
+        );
+    }
+
+    #[test]
+    fn list_output_marks_directories_and_handles_empty() {
+        assert_eq!(format_entries(&[]), "(no files)");
+        let entries = vec![
+            FsEntry {
+                path: "src".to_string(),
+                is_dir: true,
+            },
+            FsEntry {
+                path: "src/add.js".to_string(),
+                is_dir: false,
+            },
+        ];
+        assert_eq!(format_entries(&entries), "src/\nsrc/add.js");
+    }
 }
