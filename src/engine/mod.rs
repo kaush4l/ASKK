@@ -18,10 +18,12 @@ mod memory;
 pub mod process_registry;
 pub mod python_runtime;
 pub mod runtime_status;
+mod session;
 mod tool_dispatch;
 mod validators;
 pub mod wasi_exec;
 
+use crate::core::ReactEngine;
 use crate::inference::{
     InferenceOutput, InferenceProvider, InferenceRequest, OpenAiCompatibleInference, SubAgentInfo,
     get_implementation,
@@ -234,6 +236,12 @@ struct AgentLoop {
     /// run event at the start of `run()` (which has the live run to attach it to)
     /// before the driver falls back to `react`.
     unresolved_strategy: Option<String>,
+    /// The core engine this loop is migrating onto. It mirrors the identity,
+    /// provider, and conversation state of the legacy fields above (transitional
+    /// duplication, deleted when the loop body moves onto `engine.invoke`), and
+    /// at run start it receives the live [`crate::core::ToolMap`] + specs — the
+    /// dispatch gate already routes through it.
+    engine: ReactEngine,
 }
 
 /// What one [`AgentLoop::step`] decided the loop should do next.
@@ -348,6 +356,22 @@ impl AgentLoop {
             .collect::<Vec<_>>()
             .join("\n");
 
+        // The core-engine mirror of this loop's identity/provider/conversation
+        // state. The legacy fields stay alongside it until the loop body moves
+        // onto `engine.invoke` (next stage); both are built from the same
+        // sources here, so they cannot drift within a run.
+        let engine = ReactEngine::new(
+            session::build_base_engine(
+                &agent,
+                provider.clone(),
+                snapshot.soul.clone(),
+                snapshot.skills.clone(),
+                sub_agents.clone(),
+                conversation.clone(),
+            ),
+            max_steps,
+        );
+
         Self {
             executor,
             agent,
@@ -366,6 +390,7 @@ impl AgentLoop {
             skill_library,
             workflow_gate,
             unresolved_strategy,
+            engine,
         }
     }
 
@@ -427,7 +452,6 @@ impl AgentLoop {
         snapshot: &mut AppSnapshot,
         run: &mut AgentRun,
         specs: &[ToolSpec],
-        enabled_tools: &[String],
         format_negotiator: &mut FormatNegotiator,
         last_answer: &mut Option<String>,
         final_response: &mut Option<ReActResponse>,
@@ -571,7 +595,7 @@ impl AgentLoop {
                     return StepOutcome::Continue;
                 }
 
-                self.execute_tool_calls(calls, snapshot, run, enabled_tools, observer)
+                self.execute_tool_calls(calls, snapshot, run, observer)
                     .await;
             }
         }
@@ -629,7 +653,6 @@ impl AgentLoop {
         snapshot: &mut AppSnapshot,
         run: &mut AgentRun,
         specs: &[ToolSpec],
-        enabled_tools: &[String],
         steps_used: &mut u32,
         format_negotiator: &mut FormatNegotiator,
         last_answer: &mut Option<String>,
@@ -664,7 +687,6 @@ impl AgentLoop {
                     snapshot,
                     run,
                     specs,
-                    enabled_tools,
                     format_negotiator,
                     last_answer,
                     &mut final_response,
@@ -948,7 +970,6 @@ impl AgentLoop {
         calls: Vec<ParsedToolCall>,
         snapshot: &mut AppSnapshot,
         run: &mut AgentRun,
-        enabled_tools: &[String],
         observer: &mut F,
     ) where
         F: FnMut(AgentRun),
@@ -980,8 +1001,10 @@ impl AgentLoop {
                     call_id,
                     name: call.name.clone(),
                     args: call.args.clone(),
-                    allowed: tool_allowed(&call.name, enabled_tools),
-                    enabled_tools: enabled_tools.to_vec(),
+                    // The single visible gate: membership in the core ToolMap,
+                    // which `run()` built from the finalized allowlist.
+                    allowed: self.engine.base.tools.contains(&call.name),
+                    enabled_tools: self.engine.base.tools.names(),
                 }
             })
             .collect::<Vec<_>>();
@@ -1170,6 +1193,13 @@ impl AgentLoop {
             specs
         };
 
+        // Reify the finalized tool surface for the core engine: the ToolMap is
+        // the dispatch gate (membership = the allowlist; every name — compiled,
+        // MCP, or agent — binds to the same executor closure) and `specs` is the
+        // model-visible manifest. The gate below routes through this map.
+        self.engine.base.tools = session::build_tool_map(&self.executor, &enabled_tools);
+        self.engine.base.specs = specs.clone();
+
         // Requested-format negotiation (Unit #2): persists across turns so a streak of
         // TOON parse failures can escalate the requested format to JSON (and one clean
         // parse relaxes it back). `step` feeds it each turn's outcome and reads back the
@@ -1234,7 +1264,6 @@ impl AgentLoop {
                         &mut snapshot,
                         &mut run,
                         &specs,
-                        &enabled_tools,
                         &mut steps_used,
                         &mut format_negotiator,
                         &mut last_answer,
@@ -1447,10 +1476,6 @@ fn finalize_status(run: &mut AgentRun, answered: bool) {
             }
         }
     }
-}
-
-fn tool_allowed(tool_name: &str, enabled_tools: &[String]) -> bool {
-    enabled_tools.iter().any(|allowed| allowed == tool_name)
 }
 
 fn validate_tool_result_or_feedback(
@@ -1946,12 +1971,75 @@ mod tests {
 
     #[test]
     fn rejects_tool_not_in_agent_allowlist_before_execution() {
-        // The engine owns the allowlist gate; the disallowed-call *result* is produced
-        // by `tool_dispatch` (and covered by its own tests). Here we assert the gate.
-        let allowed = vec!["web_search".to_string()];
+        // The engine owns the allowlist gate, now as core ToolMap membership;
+        // the disallowed-call *result* is produced by `tool_dispatch` (and
+        // covered by its own tests). Here we assert the gate.
+        let map = session::build_tool_map(
+            &BrowserExecutionProvider::new(),
+            &["web_search".to_string()],
+        );
 
-        assert!(tool_allowed("web_search", &allowed));
-        assert!(!tool_allowed("file_write", &allowed));
+        assert!(map.contains("web_search"));
+        assert!(!map.contains("file_write"));
+    }
+
+    /// Stage-2 parity proof for the core migration: configured the way the
+    /// phase driver will configure it, `Engine::render` produces the same
+    /// request as the legacy `build_request` path inside `step` — field for
+    /// field, except `now`, which each path reads at build time.
+    // Deleted with `build_request` when the loop body moves onto the core
+    // engine; until then it pins the render contract during the migration.
+    #[test]
+    fn engine_render_matches_legacy_build_request_field_for_field() {
+        use crate::core::Engine as _;
+
+        let snapshot = AppSnapshot::default();
+        let params = LoopParams::default();
+        let goal = "compare the two render paths";
+        let mut agent_loop =
+            AgentLoop::new(BrowserExecutionProvider::new(), &snapshot, goal, &params);
+
+        let phase = &agent_loop.strategy.phases()[0];
+        let context = StrategyContext::default();
+        let specs = agent_loop
+            .executor
+            .domain_specs_for_agent(&agent_loop.enabled_tools);
+        let goal_text = phase_goal(phase, &context, goal, &agent_loop.skill_library);
+
+        // Legacy path: the transcript assembly inside `step` + `build_request`.
+        let mut history = agent_loop.conversation.clone();
+        history.push(Message {
+            role: "user".to_string(),
+            content: goal_text.clone(),
+        });
+        let requested = agent_loop.engine.base.negotiator.format();
+        let legacy = agent_loop.build_request(
+            phase,
+            &context,
+            goal_text.clone(),
+            history,
+            requested,
+            &specs,
+        );
+
+        // Core path: configure the engine exactly as the phase driver will
+        // (phase-filtered specs/skills, the phase's response kind), then render.
+        agent_loop.engine.base.specs = filter_tools_by_policy(phase.tool_policy, &specs);
+        agent_loop.engine.base.skills =
+            filter_selected_skills(agent_loop.skills.clone(), context.selected_skills.as_ref());
+        agent_loop.engine.base.response_kind = phase.response_kind;
+        let rendered = agent_loop.engine.render(&goal_text);
+
+        assert_eq!(rendered.agent_name, legacy.agent_name);
+        assert_eq!(rendered.agent_role, legacy.agent_role);
+        assert_eq!(rendered.soul, legacy.soul);
+        assert_eq!(rendered.skills, legacy.skills);
+        assert_eq!(rendered.goal, legacy.goal);
+        assert_eq!(rendered.history, legacy.history);
+        assert_eq!(rendered.tools, legacy.tools);
+        assert_eq!(rendered.sub_agents, legacy.sub_agents);
+        assert_eq!(rendered.format_instructions, legacy.format_instructions);
+        assert_eq!(rendered.parts, legacy.parts);
     }
 
     fn test_run_with_evidence() -> AgentRun {
