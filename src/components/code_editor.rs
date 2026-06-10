@@ -12,6 +12,14 @@ use serde::Deserialize;
 
 const CM6_BUNDLE: Asset = asset!("/assets/cm6_editor.js");
 
+/// Python diagnostics language-service worker (Ruff WASM), built from
+/// `scripts/lsp-python/` — `bun run build` there regenerates both assets.
+const LSP_PY_WORKER_JS: Asset = asset!("/assets/lsp_py_worker.js");
+/// The Ruff engine the worker loads. Shipped as its own asset because Dioxus
+/// content-hashes filenames, so the worker can't find it by its canonical
+/// sibling name; we pass this URL via the worker's `?wasm=` query parameter.
+const LSP_PY_RUFF_WASM: Asset = asset!("/assets/lsp_py_ruff.wasm");
+
 /// An event reported by the mounted editor.
 #[derive(Clone, PartialEq, Deserialize)]
 pub struct EditorEvent {
@@ -72,6 +80,30 @@ pub fn editor_open(controller: &Signal<Option<document::Eval>>, path: &str, cont
     }
 }
 
+/// Offer the Python diagnostics worker to the editor bundle, exactly once per
+/// page. The current CM6 bundle (v1) exposes no language-service hook, so the
+/// guarded JS resolves as a deliberate no-op and the app runs unchanged.
+fn attach_python_language_service() {
+    let glue = format!(
+        r#"
+const workerUrl = {worker} + "?wasm=" + encodeURIComponent({wasm});
+// Same handshake as the editor glue: wait (bounded) for the bundle global.
+for (let i = 0; i < 100 && !window.AskkCM; i += 1) {{
+    await new Promise((resolve) => setTimeout(resolve, 50));
+}}
+// COORDINATOR: lights up when CM6 bundle v2 lands with
+// `AskkCM.attachLanguageService(languages, workerUrl)`.
+if (typeof window.AskkCM?.attachLanguageService === "function" && !window.__askkLspPyAttached) {{
+    window.__askkLspPyAttached = true;
+    window.AskkCM.attachLanguageService(["python"], workerUrl);
+}}
+"#,
+        worker = serde_json::json!(LSP_PY_WORKER_JS.to_string()),
+        wasm = serde_json::json!(LSP_PY_RUFF_WASM.to_string()),
+    );
+    document::eval(&glue);
+}
+
 /// The CodeMirror host pane. `controller` is owned by the parent so it can
 /// push documents into the editor; `on_event` receives edits, saves and the
 /// mount handshake.
@@ -96,6 +128,7 @@ pub fn CodeEditor(
             id: "askk-cm-host",
             class: "ide-editor-host",
             onmounted: move |_| {
+                attach_python_language_service();
                 let eval = document::eval(EDITOR_GLUE);
                 controller.set(Some(eval));
                 spawn(async move {
