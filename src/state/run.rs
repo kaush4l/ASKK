@@ -482,8 +482,13 @@ pub struct AgentRun {
     pub created_at: String,
 }
 
+/// The workspace-level orchestrator no longer drives a workflow gate of its own:
+/// gating is now per-agent (`Agent.workflow_id` → `snapshot.workflows`), checked at
+/// strategy phase boundaries in the engine. Default agents carry no `workflow_id`, so
+/// a default single-agent run is never gated. The `OrchestratorConfig.workflow_id`
+/// field is retained for serde back-compat with older snapshots only.
 pub fn default_orchestrator_workflow_id() -> Option<String> {
-    Some("parallel_batch".to_string())
+    None
 }
 
 // These budget defaults seed both the serde defaults here and the orchestrator

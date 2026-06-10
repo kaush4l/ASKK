@@ -44,23 +44,14 @@ pub struct WorkflowRuntimeState {
 
 pub fn default_workflows() -> Vec<WorkflowDefinition> {
     vec![WorkflowDefinition {
-        id: "parallel_batch".to_string(),
-        name: "Parallel batch orchestration".to_string(),
-        initial_step: "planned".to_string(),
+        id: "orchestrate_phases".to_string(),
+        name: "Orchestrate phase gating".to_string(),
+        initial_step: "decompose".to_string(),
         transitions: vec![
-            WorkflowTransition::new("planned", "workers_running", "dispatch child workers"),
-            WorkflowTransition::new("workers_running", "workers_running", "dispatch next wave"),
-            WorkflowTransition::new("workers_running", "workers_joined", "join child worker"),
-            WorkflowTransition::new(
-                "workers_joined",
-                "workers_joined",
-                "join another child worker",
-            ),
-            WorkflowTransition::new("workers_joined", "workers_running", "dispatch next wave"),
-            WorkflowTransition::new("workers_joined", "aggregated", "aggregate child results"),
-            WorkflowTransition::new("workers_running", "failed", "child worker failed"),
-            WorkflowTransition::new("workers_joined", "failed", "aggregation failed"),
-            WorkflowTransition::new("failed", "failed", "remain failed"),
+            WorkflowTransition::new("decompose", "delegate", "delegate sub-tasks"),
+            WorkflowTransition::new("delegate", "delegate", "continue delegation"),
+            WorkflowTransition::new("delegate", "synthesize", "synthesize results"),
+            WorkflowTransition::new("synthesize", "synthesize", "finalize"),
         ],
     }]
 }

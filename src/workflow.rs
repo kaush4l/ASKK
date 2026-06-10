@@ -56,11 +56,10 @@ mod tests {
         WorkflowDefinition {
             id: "test_workflow".to_string(),
             name: "Test workflow".to_string(),
-            initial_step: "planned".to_string(),
+            initial_step: "decompose".to_string(),
             transitions: vec![
-                WorkflowTransition::new("planned", "running", "dispatch"),
-                WorkflowTransition::new("running", "joined", "join"),
-                WorkflowTransition::new("joined", "done", "aggregate"),
+                WorkflowTransition::new("decompose", "delegate", "delegate sub-tasks"),
+                WorkflowTransition::new("delegate", "synthesize", "synthesize results"),
             ],
         }
     }
@@ -69,20 +68,20 @@ mod tests {
     fn allows_declared_transition() {
         let mut gate = WorkflowGate::new(workflow());
 
-        let state = gate.transition_to("running").unwrap();
+        let state = gate.transition_to("delegate").unwrap();
 
-        assert_eq!(state.current_step, "running");
-        assert_eq!(state.history, vec!["planned", "running"]);
+        assert_eq!(state.current_step, "delegate");
+        assert_eq!(state.history, vec!["decompose", "delegate"]);
     }
 
     #[test]
     fn blocks_undeclared_transition_and_records_feedback() {
         let mut gate = WorkflowGate::new(workflow());
 
-        let err = gate.transition_to("done").unwrap_err();
+        let err = gate.transition_to("synthesize").unwrap_err();
 
-        assert!(err.contains("blocks transition `planned` -> `done`"));
-        assert_eq!(gate.state().current_step, "planned");
-        assert!(gate.state().blocked_transition.contains("planned"));
+        assert!(err.contains("blocks transition `decompose` -> `synthesize`"));
+        assert_eq!(gate.state().current_step, "decompose");
+        assert!(gate.state().blocked_transition.contains("decompose"));
     }
 }

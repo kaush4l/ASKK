@@ -36,6 +36,7 @@ use crate::strategy::{
     LoopMode, MAX_BACK_EDGES, Phase, PhaseOutcome, Routing, Strategy, StrategyContext,
     StrategyRegistry, ToolPolicy, fallback_strategy, resolve_strategy_id,
 };
+use crate::workflow::{WorkflowGate, find_workflow};
 use execution::{BrowserExecutionProvider, ExecutionProvider};
 use std::cell::Cell;
 use std::future::Future;
@@ -219,6 +220,16 @@ struct AgentLoop {
     /// Precomputed skill library string (enabled skills → "- name: first line" joined).
     /// Appended to the phase goal when `phase.list_skill_library` is true.
     skill_library: String,
+    /// Optional per-agent workflow gate. `Some` only when the selected agent declares
+    /// a `workflow_id` resolving to a definition in `snapshot.workflows`; the strategy
+    /// driver then checks each phase boundary (previous step → `phase.name`) against
+    /// it, mirroring the old orchestrator's gating. Default agents carry no
+    /// `workflow_id`, so this is `None` and no gating fires.
+    workflow_gate: Option<WorkflowGate>,
+    /// Set in `new()` when a configured strategy id failed to resolve; surfaced as a
+    /// run event at the start of `run()` (which has the live run to attach it to)
+    /// before the driver falls back to `react`.
+    unresolved_strategy: Option<String>,
 }
 
 /// What one [`AgentLoop::step`] decided the loop should do next.
@@ -298,12 +309,27 @@ impl AgentLoop {
             .unwrap_or(snapshot.orchestrator.max_steps)
             .max(1);
 
-        // Strategy resolution: explicit param → agent config → default.
+        // Strategy resolution: explicit param → agent config → default. When an id is
+        // configured but unknown, fall back to `react` and remember the id so `run` can
+        // surface a run event (the run does not exist yet at construction time).
         let registry = StrategyRegistry::new();
         let strategy_id =
             resolve_strategy_id(params.strategy.as_deref(), agent.strategy_id.as_deref());
-        // TODO(task-9/10): surface a run event when a configured strategy_id fails to resolve instead of silently running react.
-        let strategy = registry.get(&strategy_id).unwrap_or_else(fallback_strategy);
+        let (strategy, unresolved_strategy) = match registry.get(&strategy_id) {
+            Some(strategy) => (strategy, None),
+            None => (fallback_strategy(), Some(strategy_id)),
+        };
+
+        // Per-agent workflow gate: only when the agent declares a `workflow_id` that
+        // resolves to a workspace workflow definition. Default agents have none, so this
+        // is `None` and a default single-agent run is never gated.
+        let workflow_gate = agent
+            .workflow_id
+            .as_deref()
+            .filter(|id| !id.trim().is_empty())
+            .and_then(|id| find_workflow(&snapshot.workflows, id))
+            .cloned()
+            .map(WorkflowGate::new);
 
         // Precompute the skill library for phases that set `list_skill_library: true`.
         // Format: "- name: first line of content" per enabled skill, newline-joined.
@@ -334,6 +360,8 @@ impl AgentLoop {
             lane,
             strategy,
             skill_library,
+            workflow_gate,
+            unresolved_strategy,
         }
     }
 
@@ -565,15 +593,7 @@ impl AgentLoop {
         requested_format: ResponseFormat,
         specs: &[ToolSpec],
     ) -> InferenceRequest {
-        let tools = match phase.tool_policy {
-            ToolPolicy::NoTools => Vec::new(),
-            ToolPolicy::Inherit => specs.to_vec(),
-            ToolPolicy::Subset(names) => specs
-                .iter()
-                .filter(|spec| names.contains(&spec.name.as_str()))
-                .cloned()
-                .collect(),
-        };
+        let tools = filter_tools_by_policy(phase.tool_policy, specs);
         let base_skills = self.skills.clone();
         let skills = filter_selected_skills(base_skills, context.selected_skills.as_ref());
         InferenceRequest {
@@ -1032,7 +1052,12 @@ impl AgentLoop {
     /// Drive the goal to completion: run-start setup (MCP bring-up), then the per-turn
     /// loop up to `max_steps`, then finalize and persist the run into `snapshot`.
     /// Notifies `observer` after every state change.
-    async fn run<F>(self, mut snapshot: AppSnapshot, goal: String, mut observer: F) -> AppSnapshot
+    async fn run<F>(
+        mut self,
+        mut snapshot: AppSnapshot,
+        goal: String,
+        mut observer: F,
+    ) -> AppSnapshot
     where
         F: FnMut(AgentRun),
     {
@@ -1042,6 +1067,19 @@ impl AgentLoop {
         let enabled_tools = self.enabled_tools.clone();
         let mut run = self.build_run(&goal, &snapshot, &enabled_tools);
         observer(run.clone());
+
+        // If a configured strategy id failed to resolve, the constructor fell back to
+        // `react`; surface that decision on the run timeline now that the run exists.
+        if let Some(unresolved) = self.unresolved_strategy.take() {
+            run.events.push(event(
+                &run.id,
+                Some(self.agent_id.clone()),
+                AgentEventKind::Routing,
+                "Strategy not found",
+                format!("Strategy `{unresolved}` not found; running `react`."),
+            ));
+            observer(run.clone());
+        }
 
         // Bring up enabled browser MCP servers, discover their tools, and add them to
         // this run's allowlist so the model can see and call them. Browser-only: on the
@@ -1093,10 +1131,20 @@ impl AgentLoop {
                 phase.name,
                 format!("Strategy `{}`, phase `{}`.", self.strategy.id(), phase.name),
             );
-            // Record the phase as the active workflow step (timeline scratchpad only;
-            // no gate-check is invoked — workflow gating re-targets in a later task).
-            run.scratchpad.workflow.current_step = phase.name.to_string();
-            run.scratchpad.workflow.history.push(phase.name.to_string());
+            // Workflow gating at the phase boundary. When the agent declares a workflow,
+            // the transition (current gate step → `phase.name`) must be allowed by the
+            // definition; a blocked transition pauses the run (mirroring the old
+            // orchestrator). With no gate (the default), the scratchpad records the phase
+            // as the active step without any check.
+            if !apply_phase_gate(
+                &mut self.workflow_gate,
+                phase.name,
+                &mut run,
+                &self.agent_id,
+            ) {
+                observer(run.clone());
+                break;
+            }
             observer(run.clone());
 
             let outcome = match phase.loop_mode {
@@ -1544,10 +1592,24 @@ fn initial_scratchpad(snapshot: &AppSnapshot, goal: &str, lane: RunLane) -> RunS
     }
 }
 
-/// Compose the per-phase goal text: frame, then carried artifacts, then the goal,
-/// then (when requested) the skill library. The react strategy's bare phase (empty
-/// frame, no artifacts, `list_skill_library: false`) returns the goal untouched for
-/// byte parity with the original loop.
+/// Apply a phase's tool policy to the agent's tool manifest. The three `ToolPolicy`
+/// variants behave as: `NoTools` exposes nothing; `Inherit` exposes the whole agent
+/// allowlist; `Subset` intersects the named tools with the allowlist (a name not in
+/// the agent's manifest is silently dropped, so a policy can never widen the
+/// allowlist). Pure so it is unit-testable without a live loop; `build_request` is
+/// its only caller.
+fn filter_tools_by_policy(policy: ToolPolicy, specs: &[ToolSpec]) -> Vec<ToolSpec> {
+    match policy {
+        ToolPolicy::NoTools => Vec::new(),
+        ToolPolicy::Inherit => specs.to_vec(),
+        ToolPolicy::Subset(names) => specs
+            .iter()
+            .filter(|spec| names.contains(&spec.name.as_str()))
+            .cloned()
+            .collect(),
+    }
+}
+
 /// Filter the agent's base skill set according to a `SkillSelection` phase outcome.
 ///
 /// - `None`  → the agent's full set (no selection phase ran).
@@ -1572,6 +1634,10 @@ fn filter_selected_skills(
     }
 }
 
+/// Compose the per-phase goal text: frame, then carried artifacts, then the goal,
+/// then (when requested) the skill library. The react strategy's bare phase (empty
+/// frame, no artifacts, `list_skill_library: false`) returns the goal untouched for
+/// byte parity with the original loop.
 fn phase_goal(phase: &Phase, context: &StrategyContext, goal: &str, skill_library: &str) -> String {
     if phase.prompt_frame.trim().is_empty()
         && context.artifacts.is_empty()
@@ -1613,6 +1679,70 @@ fn push_phase_event(
         format!("Phase: {phase_name}"),
         body,
     ));
+}
+
+/// Advance the (optional) per-agent workflow gate to `phase_name` at a phase
+/// boundary, recording the result on the run. Returns `true` when the strategy may
+/// proceed into the phase, `false` when the transition is blocked (the run is then
+/// marked `Paused`, `blocked_transition` is set, and a `Workflow` event is pushed —
+/// the driver breaks the strategy loop). Mirrors the bespoke orchestrator's gating.
+///
+/// With no gate (the default), the scratchpad simply records `phase_name` as the
+/// active step and the run proceeds — behavior identical to an ungated run.
+///
+/// A phase whose name already equals the gate's current step (e.g. the first phase,
+/// which is the workflow's `initial_step`, or a `Loop` phase re-entered on its own
+/// self-transition) is a no-op move and is always allowed.
+fn apply_phase_gate(
+    gate: &mut Option<WorkflowGate>,
+    phase_name: &str,
+    run: &mut AgentRun,
+    agent_id: &str,
+) -> bool {
+    let Some(gate) = gate else {
+        // Ungated run: record the phase as the active step without any check.
+        run.scratchpad.workflow.current_step = phase_name.to_string();
+        run.scratchpad.workflow.history.push(phase_name.to_string());
+        return true;
+    };
+
+    if gate.state().current_step == phase_name {
+        // No movement (initial step, or a self-transition handled at the turn level):
+        // adopt the gate's state without re-checking an undeclared self-edge.
+        run.scratchpad.workflow = gate.state();
+        return true;
+    }
+
+    match gate.transition_to(phase_name) {
+        Ok(state) => {
+            run.scratchpad.workflow = state.clone();
+            run.events.push(event(
+                &run.id,
+                Some(agent_id.to_string()),
+                AgentEventKind::Workflow,
+                format!("Workflow advanced to `{}`", state.current_step),
+                format!(
+                    "Workflow `{}` history: {}",
+                    state.workflow_id,
+                    state.history.join(" -> ")
+                ),
+            ));
+            true
+        }
+        Err(feedback) => {
+            run.status = RunStatus::Paused;
+            run.scratchpad.workflow = gate.state();
+            run.scratchpad.workflow.blocked_transition = feedback.clone();
+            run.events.push(event(
+                &run.id,
+                Some(agent_id.to_string()),
+                AgentEventKind::Workflow,
+                "Workflow transition blocked",
+                feedback,
+            ));
+            false
+        }
+    }
 }
 
 /// Enforce the back-edge cap: a `Back` beyond [`MAX_BACK_EDGES`] becomes `Done`, so
@@ -1956,5 +2086,137 @@ mod tests {
         let result = filter_selected_skills(base, Some(&selected));
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "research");
+    }
+
+    fn spec(name: &str) -> ToolSpec {
+        ToolSpec {
+            name: name.to_string(),
+            description: String::new(),
+            input_schema: serde_json::json!({}),
+        }
+    }
+
+    #[test]
+    fn delegate_phase_exposes_only_the_subset_tools() {
+        // orchestrate's `delegate` phase declares
+        // `Subset(["call_agent", "file_read", "file_write", "file_list"])`. Applied to a
+        // manifest that also contains `web_search`, only the subset survives — the
+        // engine never widens an agent's allowlist via a phase policy.
+        use crate::strategy::OrchestrateStrategy;
+        let delegate = &OrchestrateStrategy.phases()[1];
+        let specs = vec![
+            spec("web_search"),
+            spec("call_agent"),
+            spec("file_read"),
+            spec("file_write"),
+            spec("file_list"),
+        ];
+
+        let filtered = filter_tools_by_policy(delegate.tool_policy, &specs);
+
+        assert!(filtered.iter().all(|tool| {
+            ["call_agent", "file_read", "file_write", "file_list"].contains(&tool.name.as_str())
+        }));
+        assert!(!filtered.iter().any(|tool| tool.name == "web_search"));
+        assert_eq!(filtered.len(), 4);
+    }
+
+    #[test]
+    fn tool_policy_no_tools_and_inherit_bound_the_extremes() {
+        let specs = vec![spec("web_search"), spec("call_agent")];
+        assert!(filter_tools_by_policy(ToolPolicy::NoTools, &specs).is_empty());
+        assert_eq!(filter_tools_by_policy(ToolPolicy::Inherit, &specs).len(), 2);
+    }
+
+    fn gated_run() -> AgentRun {
+        AgentRun {
+            id: "run-gate".to_string(),
+            goal: "g".to_string(),
+            status: RunStatus::Running,
+            lane: RunLane::Batch,
+            scratchpad: RunScratchpad::default(),
+            messages: Vec::new(),
+            events: Vec::new(),
+            tool_calls: Vec::new(),
+            tool_results: Vec::new(),
+            final_answer: String::new(),
+            created_at: "now".to_string(),
+        }
+    }
+
+    fn orchestrate_gate() -> WorkflowGate {
+        let definition = crate::state::default_workflows()
+            .into_iter()
+            .next()
+            .expect("default workflow");
+        WorkflowGate::new(definition)
+    }
+
+    #[test]
+    fn ungated_phase_records_step_without_a_gate() {
+        let mut gate = None;
+        let mut run = gated_run();
+        assert!(apply_phase_gate(
+            &mut gate,
+            "decompose",
+            &mut run,
+            "agent-1"
+        ));
+        assert_eq!(run.scratchpad.workflow.current_step, "decompose");
+        assert_eq!(run.status, RunStatus::Running);
+    }
+
+    #[test]
+    fn gated_initial_step_is_a_no_op_move() {
+        // The first phase IS the workflow's initial step (`decompose`); entering it must
+        // not require an undeclared `decompose -> decompose` self-edge.
+        let mut gate = Some(orchestrate_gate());
+        let mut run = gated_run();
+        assert!(apply_phase_gate(
+            &mut gate,
+            "decompose",
+            &mut run,
+            "agent-1"
+        ));
+        assert_eq!(run.scratchpad.workflow.current_step, "decompose");
+        assert_eq!(run.status, RunStatus::Running);
+    }
+
+    #[test]
+    fn gated_declared_transition_advances_and_logs() {
+        let mut gate = Some(orchestrate_gate());
+        let mut run = gated_run();
+        // decompose -> delegate is declared.
+        assert!(apply_phase_gate(&mut gate, "delegate", &mut run, "agent-1"));
+        assert_eq!(run.scratchpad.workflow.current_step, "delegate");
+        assert!(run.events.iter().any(
+            |event| event.kind == AgentEventKind::Workflow && event.title.contains("advanced")
+        ));
+    }
+
+    #[test]
+    fn gated_blocked_transition_pauses_run_and_records_feedback() {
+        let mut gate = Some(orchestrate_gate());
+        let mut run = gated_run();
+        // decompose -> synthesize is NOT declared (must pass through delegate).
+        assert!(!apply_phase_gate(
+            &mut gate,
+            "synthesize",
+            &mut run,
+            "agent-1"
+        ));
+        assert_eq!(run.status, RunStatus::Paused);
+        assert!(
+            run.scratchpad
+                .workflow
+                .blocked_transition
+                .contains("blocks")
+        );
+        assert!(
+            run.events
+                .iter()
+                .any(|event| event.kind == AgentEventKind::Workflow
+                    && event.title.contains("blocked"))
+        );
     }
 }
