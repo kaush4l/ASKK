@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>lsp_ts_worker harness</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #16131f; color: #d8d2e8; margin: 2rem; }
+  h1 { font-size: 16px; }
+  dt { color: #a99cc4; margin-top: 1rem; }
+  dd { margin: .25rem 0 0 0; white-space: pre-wrap; word-break: break-word;
+       background: #1f1a2c; padding: .5rem; border-radius: 6px; }
+  .pass { color: #7ee787; }
+  .fail { color: #ff7b72; }
+</style>
+</head>
+<body>
+<h1>assets/lsp_ts_worker.js protocol harness</h1>
+<p>Drives the worker directly (no CodeMirror): initialize with two files where
+one imports the other, completion at a member-access position, hover on a
+typed symbol, then a didChange that introduces a type error.</p>
+<dl>
+  <dt>1. Cross-file import (initialize diagnostics for main.ts)</dt>
+  <dd id="crossfile">pending…</dd>
+  <dt>2. Completion at <code>myObj.</code></dt>
+  <dd id="completions">pending…</dd>
+  <dt>3. Hover on <code>makeUser</code></dt>
+  <dd id="hover">pending…</dd>
+  <dt>4. Diagnostics after didChange (<code>const x: number = "s"</code>)</dt>
+  <dd id="diags">pending…</dd>
+  <dt>Summary</dt>
+  <dd id="summary">running…</dd>
+</dl>
+
+<script>
+"use strict";
+
+const UTIL_TS = `export interface User {
+  name: string;
+  age: number;
+  greet(): string;
+}
+
+export function makeUser(name: string): User {
+  return { name, age: 0, greet: () => "hi " + name };
+}
+`;
+
+const MAIN_TS = `import { makeUser } from "./util";
+
+const myObj = makeUser("Ada");
+myObj.name;
+`;
+
+const ERROR_LINE = `const x: number = "s";`;
+const MAIN_TS_WITH_ERROR = MAIN_TS + ERROR_LINE + "\n";
+
+// UTF-16 code-unit offsets, computed instead of hardcoded.
+const COMPLETION_OFFSET = MAIN_TS.indexOf("myObj.name") + "myObj.".length;
+const HOVER_OFFSET = MAIN_TS.indexOf('makeUser("Ada")') + 1;
+const EXPECTED_ERR_FROM = MAIN_TS.length + "const ".length; // the `x`
+const EXPECTED_ERR_TO = EXPECTED_ERR_FROM + 1;
+
+const worker = new Worker("../../../assets/lsp_ts_worker.js");
+const replies = new Map(); // id -> resolve
+const diagWaiters = []; // { path, resolve }
+let nextId = 1;
+
+worker.onmessage = (event) => {
+  const msg = event.data;
+  if (msg.id !== undefined) {
+    const resolve = replies.get(msg.id);
+    replies.delete(msg.id);
+    if (resolve) resolve(msg);
+    return;
+  }
+  if (msg.method === "publishDiagnostics") {
+    for (let i = diagWaiters.length - 1; i >= 0; i--) {
+      if (diagWaiters[i].path === msg.path) {
+        const { resolve } = diagWaiters.splice(i, 1)[0];
+        resolve(msg);
+      }
+    }
+  }
+};
+worker.onerror = (err) => {
+  finish([`worker error: ${err.message}`]);
+};
+
+function request(method, path, offset) {
+  const id = nextId++;
+  return new Promise((resolve) => {
+    replies.set(id, resolve);
+    worker.postMessage({ id, method, path, offset });
+  });
+}
+
+function nextDiagnostics(path) {
+  return new Promise((resolve) => diagWaiters.push({ path, resolve }));
+}
+
+function withTimeout(promise, ms, what) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`timed out waiting for ${what}`)), ms),
+    ),
+  ]);
+}
+
+function show(id, ok, text) {
+  const el = document.getElementById(id);
+  el.textContent = `${ok ? "PASS" : "FAIL"} — ${text}`;
+  el.classList.add(ok ? "pass" : "fail");
+}
+
+function finish(failures) {
+  const el = document.getElementById("summary");
+  const ok = failures.length === 0;
+  el.textContent = ok ? "ALL PASS (4/4)" : `FAILURES: ${failures.join("; ")}`;
+  el.classList.add(ok ? "pass" : "fail");
+  document.title = (ok ? "PASS - " : "FAIL - ") + document.title;
+}
+
+async function run() {
+  const failures = [];
+
+  // 1. initialize with two files; util.ts is imported by main.ts. The worker
+  //    publishes diagnostics for initialize files; main.ts must have no
+  //    "Cannot find module" (i.e. the cross-file import resolved).
+  const initialDiags = withTimeout(
+    nextDiagnostics("main.ts"),
+    60000,
+    "initial diagnostics for main.ts",
+  );
+  worker.postMessage({
+    method: "initialize",
+    files: [
+      { path: "util.ts", text: UTIL_TS },
+      { path: "main.ts", text: MAIN_TS },
+    ],
+  });
+  try {
+    const initial = await initialDiags;
+    const moduleErrors = initial.diagnostics.filter((d) =>
+      /Cannot find module/i.test(d.message),
+    );
+    const ok = moduleErrors.length === 0;
+    if (!ok) failures.push("cross-file import");
+    show(
+      "crossfile",
+      ok,
+      ok
+        ? `"./util" resolved; diagnostics: ${JSON.stringify(initial.diagnostics)}`
+        : JSON.stringify(moduleErrors),
+    );
+  } catch (err) {
+    failures.push("cross-file import");
+    show("crossfile", false, String(err));
+  }
+
+  // 2. Completion right after the dot in `myObj.` — must list User's members.
+  try {
+    const reply = await withTimeout(
+      request("completion", "main.ts", COMPLETION_OFFSET),
+      30000,
+      "completion reply",
+    );
+    const labels = reply.result.items.map((item) => item.label);
+    const ok = ["name", "age", "greet"].every((m) => labels.includes(m));
+    if (!ok) failures.push("completion");
+    show(
+      "completions",
+      ok,
+      `labels=${JSON.stringify(labels)} items=${JSON.stringify(reply.result.items)}`,
+    );
+  } catch (err) {
+    failures.push("completion");
+    show("completions", false, String(err));
+  }
+
+  // 3. Hover on `makeUser` — must include its type text.
+  try {
+    const reply = await withTimeout(
+      request("hover", "main.ts", HOVER_OFFSET),
+      30000,
+      "hover reply",
+    );
+    const contents = reply.result.contents;
+    const ok =
+      typeof contents === "string" &&
+      contents.includes("makeUser") &&
+      contents.includes("User");
+    if (!ok) failures.push("hover");
+    show("hover", ok, JSON.stringify(contents));
+  } catch (err) {
+    failures.push("hover");
+    show("hover", false, String(err));
+  }
+
+  // 4. didChange introducing `const x: number = "s"` — expect an error
+  //    diagnostic spanning exactly the `x` identifier.
+  try {
+    const push = withTimeout(
+      nextDiagnostics("main.ts"),
+      30000,
+      "diagnostics after didChange",
+    );
+    worker.postMessage({
+      method: "didChange",
+      path: "main.ts",
+      text: MAIN_TS_WITH_ERROR,
+    });
+    const msg = await push;
+    const hit = msg.diagnostics.find(
+      (d) =>
+        d.severity === "error" &&
+        d.from === EXPECTED_ERR_FROM &&
+        d.to === EXPECTED_ERR_TO &&
+        /not assignable to type 'number'/.test(d.message),
+    );
+    const ok = hit !== undefined;
+    if (!ok) failures.push("diagnostics");
+    show(
+      "diags",
+      ok,
+      `expected from=${EXPECTED_ERR_FROM} to=${EXPECTED_ERR_TO}; got ${JSON.stringify(msg.diagnostics)}`,
+    );
+  } catch (err) {
+    failures.push("diagnostics");
+    show("diags", false, String(err));
+  }
+
+  finish(failures);
+}
+
+run();
+</script>
+</body>
+</html>
