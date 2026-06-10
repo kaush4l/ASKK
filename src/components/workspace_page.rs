@@ -14,6 +14,7 @@
 use super::code_editor::{CodeEditor, EditorEvent, editor_open};
 use super::save_snapshot;
 use super::shared::set_status;
+use super::terminal::{TermInject, Terminal};
 use crate::engine::browser_exec::{format_run_js, run_js_in_browser};
 use crate::state::{AppSnapshot, RunStatus};
 use crate::storage::opfs_vfs::{FsEntry, OpfsVfs};
@@ -228,8 +229,9 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
     let mut rename_input = use_signal(String::new);
     let mut deleting = use_signal(|| Option::<String>::None);
     let mut command = use_signal(|| "bun test".to_string());
-    let mut js_input = use_signal(String::new);
     let mut terminal = use_signal(String::new);
+    let shell_cwd = use_signal(String::new);
+    let mut term_inject = use_signal(Vec::<TermInject>::new);
     let mut notice = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut panel = use_signal(|| PanelTab::Terminal);
@@ -306,7 +308,6 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
         .map(|run| run.final_answer.clone())
         .filter(|answer| !answer.trim().is_empty());
     let current_command = command.read().clone();
-    let current_js = js_input.read().clone();
     let current_new_path = new_path.read().clone();
     let rename_value = rename_input.read().clone();
     let notice_text = notice.read().clone();
@@ -647,14 +648,20 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                             .unwrap_or_default();
                                         panel.set(PanelTab::Terminal);
                                         busy.set(true);
-                                        terminal.with_mut(|log| log.push_str(&format!("> run {path}\n")));
+                                        term_inject.with_mut(|queue| {
+                                            queue.push(TermInject::Write(format!("> run {path}\n")));
+                                        });
                                         spawn_local(async move {
                                             match run_js_in_browser(&code, 10_000).await {
                                                 Ok(value) => {
                                                     let (_ok, text) = format_run_js(&value);
-                                                    terminal.with_mut(|log| { log.push_str(&text); log.push_str("\n\n"); });
+                                                    term_inject.with_mut(|queue| {
+                                                        queue.push(TermInject::Write(format!("{text}\n")));
+                                                    });
                                                 }
-                                                Err(err) => terminal.with_mut(|log| log.push_str(&format!("error: {err}\n\n"))),
+                                                Err(err) => term_inject.with_mut(|queue| {
+                                                    queue.push(TermInject::Write(format!("error: {err}\n")));
+                                                }),
                                             }
                                             busy.set(false);
                                         });
@@ -724,7 +731,12 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                                 button {
                                     class: "ide-icon-button",
                                     title: "Clear terminal output",
-                                    onclick: move |_| terminal.set(String::new()),
+                                    onclick: move |_| match active_mode {
+                                        WorkspaceMode::Browser => {
+                                            term_inject.with_mut(|queue| queue.push(TermInject::Clear));
+                                        }
+                                        WorkspaceMode::Bridge => terminal.set(String::new()),
+                                    },
                                     "✕"
                                 }
                             }
@@ -732,65 +744,36 @@ pub fn WorkspacePage(mut snapshot: Signal<AppSnapshot>, goal: Signal<String>) ->
                     }
                     match panel() {
                         PanelTab::Terminal => rsx! {
-                            pre { class: "ide-terminal-output",
-                                if terminal_text.is_empty() {
-                                    span { class: "ide-terminal-hint",
-                                        match active_mode {
-                                            WorkspaceMode::Browser => "In-browser terminal: type JavaScript below or ▶ Run the open file — code executes in a sandboxed Web Worker.",
-                                            WorkspaceMode::Bridge => "Bridge terminal: commands run in the bridge run root. Start it with `node scripts/askk-local-bridge.mjs --allow-exec`.",
-                                        }
-                                    }
-                                } else {
-                                    "{terminal_text}"
-                                }
-                            }
-                            if active_mode == WorkspaceMode::Bridge {
-                                div { class: "ide-quick-row",
-                                    for preset in ["bun install", "bun test", "bun run index.ts", "ls -la"] {
-                                        button {
-                                            key: "{preset}",
-                                            class: "chip-button",
-                                            onclick: move |_| command.set(preset.to_string()),
-                                            "{preset}"
-                                        }
-                                    }
-                                }
-                            }
                             match active_mode {
+                                // The real in-browser terminal: an interactive
+                                // virtual shell over the workspace filesystem.
                                 WorkspaceMode::Browser => rsx! {
-                                    form {
-                                        class: "ide-terminal-input",
-                                        onsubmit: move |event| {
-                                            event.prevent_default();
-                                            let code = js_input.read().trim().to_string();
-                                            if code.is_empty() || busy() { return; }
-                                            js_input.set(String::new());
-                                            busy.set(true);
-                                            terminal.with_mut(|log| log.push_str(&format!("js> {code}\n")));
-                                            spawn_local(async move {
-                                                match run_js_in_browser(&code, 10_000).await {
-                                                    Ok(value) => {
-                                                        let (_ok, text) = format_run_js(&value);
-                                                        terminal.with_mut(|log| { log.push_str(&text); log.push_str("\n\n"); });
-                                                    }
-                                                    Err(err) => terminal.with_mut(|log| log.push_str(&format!("error: {err}\n\n"))),
-                                                }
-                                                busy.set(false);
-                                            });
-                                        },
-                                        span { class: "ide-prompt", "js>" }
-                                        input {
-                                            class: "ide-input mono",
-                                            value: "{current_js}",
-                                            placeholder: "JavaScript to run in the sandboxed worker",
-                                            oninput: move |event| js_input.set(event.value()),
-                                        }
-                                        button { class: "ide-action", r#type: "submit", disabled: busy() || current_js.trim().is_empty(),
-                                            if busy() { "Running…" } else { "Run" }
-                                        }
+                                    Terminal {
+                                        cwd: shell_cwd,
+                                        inject: term_inject,
+                                        on_fs_change: move |_| refresh_tree(snapshot, WorkspaceMode::Browser, files, notice),
                                     }
                                 },
                                 WorkspaceMode::Bridge => rsx! {
+                                    pre { class: "ide-terminal-output",
+                                        if terminal_text.is_empty() {
+                                            span { class: "ide-terminal-hint",
+                                                "Bridge terminal: commands run in the bridge run root. Start it with `node scripts/askk-local-bridge.mjs --allow-exec`."
+                                            }
+                                        } else {
+                                            "{terminal_text}"
+                                        }
+                                    }
+                                    div { class: "ide-quick-row",
+                                        for preset in ["bun install", "bun test", "bun run index.ts", "ls -la"] {
+                                            button {
+                                                key: "{preset}",
+                                                class: "chip-button",
+                                                onclick: move |_| command.set(preset.to_string()),
+                                                "{preset}"
+                                            }
+                                        }
+                                    }
                                     form {
                                         class: "ide-terminal-input",
                                         onsubmit: move |event| {
