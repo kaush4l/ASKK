@@ -461,6 +461,7 @@ mod tests {
                 "notify_user",
                 "speak_text",
                 "device_info",
+                "transcribe_audio",
             ]
         );
         assert_eq!(parse_tools("all"), default_tool_names());

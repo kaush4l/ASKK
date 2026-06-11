@@ -1,10 +1,12 @@
 //! `clipboard_read` / `clipboard_write` — text exchange with the system
 //! clipboard. Reads are permission-prompted by the browser per use; clipboard
 //! content is untrusted user data, never instructions (the loop's standing
-//! rule for tool results applies).
+//! rule for tool results applies). Executes on the page via
+//! [`crate::worker::page_proxy`].
 
-use crate::capabilities::system;
+use crate::capabilities::page_ops::PageOp;
 use crate::state::{AppSnapshot, ToolSpec};
+use crate::worker::page_proxy::run_page_op;
 use serde_json::{Value, json};
 
 use super::common::string_arg;
@@ -54,17 +56,24 @@ fn write_spec() -> ToolSpec {
 }
 
 fn read_handler<'a>(_snapshot: &'a mut AppSnapshot, _args: &'a Value) -> ToolFuture<'a> {
-    Box::pin(async move { system::clipboard_read_text().await })
+    Box::pin(async move {
+        let envelope = run_page_op(PageOp::ClipboardRead).await?;
+        let parsed: Value = serde_json::from_str(&envelope)
+            .map_err(|err| format!("clipboard envelope was not JSON: {err}"))?;
+        Ok(parsed
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string())
+    })
 }
 
 fn write_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
         let text = string_arg(args, "text")?;
-        system::clipboard_write_text(&text).await?;
-        Ok(format!(
-            "Copied {} characters to the clipboard.",
-            text.len()
-        ))
+        let chars = text.len();
+        run_page_op(PageOp::ClipboardWrite { text }).await?;
+        Ok(format!("Copied {chars} characters to the clipboard."))
     })
 }
 

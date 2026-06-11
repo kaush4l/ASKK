@@ -1,9 +1,11 @@
 //! `notify_user` — surface a system notification so the assistant can get the
 //! user's attention even when this tab is in the background. Permission is the
-//! browser's standard notification prompt.
+//! browser's standard notification prompt. Executes on the page via
+//! [`crate::worker::page_proxy`].
 
-use crate::capabilities::system;
+use crate::capabilities::page_ops::PageOp;
 use crate::state::{AppSnapshot, ToolSpec};
+use crate::worker::page_proxy::run_page_op;
 use serde_json::{Value, json};
 
 use super::common::{optional_string_arg, string_arg};
@@ -39,7 +41,7 @@ fn handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a
     Box::pin(async move {
         let title = string_arg(args, "title")?;
         let body = optional_string_arg(args, "body").unwrap_or_default();
-        system::show_notification(&title, &body).await?;
+        run_page_op(PageOp::Notify { title, body }).await?;
         Ok("Notification shown.".to_string())
     })
 }

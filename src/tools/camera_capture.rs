@@ -1,11 +1,12 @@
 //! `camera_capture` — grab one webcam frame. The browser's own permission
 //! prompt is the user's approval gate for device access; the saved PNG lands in
 //! the OPFS workspace and the frame is attached to the run as an image artifact
-//! so the user sees exactly what the agent saw.
+//! so the user sees exactly what the agent saw. Runs in worker-hosted sessions
+//! too: capture executes on the page via [`crate::worker::page_proxy`].
 
-use crate::capabilities::media;
+use crate::capabilities::page_ops::PageOp;
 use crate::state::{AppSnapshot, ArtifactKind, RunArtifact, ToolSpec};
-use crate::storage::opfs_vfs::OpfsVfs;
+use crate::worker::page_proxy::run_page_op;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -45,27 +46,21 @@ fn handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a>
             .and_then(Value::as_u64)
             .unwrap_or(1280)
             .clamp(64, 4096) as u32;
-        let image = media::capture_camera_frame(max_width).await?;
+        let envelope = run_page_op(PageOp::CameraFrame { max_width }).await?;
+        let frame: Value = serde_json::from_str(&envelope)
+            .map_err(|err| format!("capture envelope was not JSON: {err}"))?;
 
-        let path = format!("captures/cam-{}.png", short_id());
-        OpfsVfs::new()
-            .write_bytes(&path, &image.bytes)
-            .await
-            .map_err(|err| format!("captured frame could not be saved: {err}"))?;
-
-        attach_image_artifact(snapshot, "Webcam capture", &image.data_url);
+        if let Some(data_url) = frame.get("data_url").and_then(Value::as_str) {
+            attach_image_artifact(snapshot, "Webcam capture", data_url);
+        }
         Ok(format!(
             "Captured {}x{} webcam frame, saved to {} ({} KiB).",
-            image.width,
-            image.height,
-            path,
-            image.bytes.len() / 1024
+            frame.get("width").and_then(Value::as_u64).unwrap_or(0),
+            frame.get("height").and_then(Value::as_u64).unwrap_or(0),
+            frame.get("path").and_then(Value::as_str).unwrap_or("?"),
+            frame.get("kib").and_then(Value::as_u64).unwrap_or(0),
         ))
     })
-}
-
-fn short_id() -> String {
-    Uuid::new_v4().to_string()[..8].to_string()
 }
 
 /// Attach a captured image to the live run so the chat renders it.

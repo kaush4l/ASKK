@@ -12,7 +12,15 @@
 //! Everything here is wasm-only at runtime; host builds get inert stubs so the
 //! crate stays unit-testable with `cargo test`.
 
+// Browser-only surface: on the host build the wasm call paths are compiled out,
+// so several public items look dead there. Allow that off-wasm only — the wasm
+// target stays honest and still flags genuine rot (same convention as
+// `worker::transport`).
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+
+pub mod local_ai;
 pub mod media;
+pub mod page_ops;
 pub mod system;
 
 use serde::{Deserialize, Serialize};

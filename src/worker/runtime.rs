@@ -15,6 +15,19 @@ pub fn handle_non_dispatch_command(command: WorkerCommand) -> Option<WorkerEvent
             request_interrupt();
             Some(WorkerEvent::Cancelled(cancel))
         }
+        // The page answered a proxied page-thread operation: wake its waiter
+        // (see `page_proxy`). The ack keeps the one-reply-per-message contract.
+        WorkerCommand::PageOpResolved(resolved) => {
+            let result = if resolved.ok {
+                Ok(resolved.value)
+            } else {
+                Err(resolved.value)
+            };
+            crate::worker::page_proxy::resolve_page_op(&resolved.request_id, result);
+            Some(WorkerEvent::PageOpAck {
+                request_id: resolved.request_id,
+            })
+        }
         WorkerCommand::Dispatch(_) => None,
     }
 }
@@ -48,13 +61,16 @@ where
                 }),
             }
         }
-        // `handle_non_dispatch_command` already returns for Cancel above; this arm
-        // exists only so the match is total. Never panic from the worker runtime.
+        // `handle_non_dispatch_command` already returns for these above; the arms
+        // exist only so the match is total. Never panic from the worker runtime.
         WorkerCommand::Cancel(cancel) => WorkerEvent::Error(WorkerError {
             run_id: cancel.run_id,
             worker_id: cancel.worker_id,
             message: "Cancel command reached dispatch handling unexpectedly.".to_string(),
         }),
+        WorkerCommand::PageOpResolved(resolved) => WorkerEvent::PageOpAck {
+            request_id: resolved.request_id,
+        },
     }
 }
 
@@ -131,7 +147,7 @@ fn trace_from_run(run: &AgentRun) -> Vec<String> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn post_worker_event(event: WorkerEvent) {
+pub(crate) fn post_worker_event(event: WorkerEvent) {
     use wasm_bindgen::{JsCast, JsValue};
 
     let Ok(json) = serde_json::to_string(&event) else {

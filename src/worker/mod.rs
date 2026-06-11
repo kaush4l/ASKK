@@ -4,5 +4,6 @@
 //! inline (no worker), which is what the unit tests exercise.
 
 pub mod client;
+pub mod page_proxy;
 pub mod runtime;
 pub mod transport;

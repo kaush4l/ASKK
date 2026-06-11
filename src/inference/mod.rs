@@ -16,12 +16,17 @@
 //! - [`transport`] — the shared, provider-agnostic HTTP/SSE plumbing and error
 //!   mapping that concrete providers build on.
 
+mod local_gemma;
 mod openai;
 mod registry;
 mod transport;
 
+// Public for sibling units and tests (the registry constructs it via its module
+// path, so the re-export looks unused in-crate) — same convention as below.
+#[allow(unused_imports)]
+pub use local_gemma::LocalGemmaInference;
 pub use openai::OpenAiCompatibleInference;
-pub use registry::get_or_create;
+pub use registry::{ProviderImpl, get_or_create};
 // The id-normalization seam is public for sibling units (the engine/orchestrator
 // will resolve models by short id); it looks unused from this crate until they wire
 // it, so allow that here — same convention as `state::mod`'s sibling re-exports.
@@ -98,12 +103,13 @@ pub trait InferenceProvider {
 
 /// Select the provider implementation for a config, resolved through the cached
 /// [`registry`] keyed by the config's model identifier (see
-/// [`normalize_model_identifier`]). Today every identifier maps to the
-/// OpenAI-compatible provider, but the normalize-and-cache seam is real, so a future
-/// vendor switch is a localized change in [`registry`] rather than here.
+/// [`normalize_model_identifier`]). `"local/..."` identifiers select the
+/// in-browser Gemma runtime ([`LocalGemmaInference`]); everything else speaks
+/// the OpenAI-compatible API.
 ///
-/// Returns the impl by value (it is a zero-sized handle, cheap to clone); the
-/// registry retains the cached entry so repeated calls reuse one built impl.
-pub fn get_implementation(config: &ProviderConfig) -> OpenAiCompatibleInference {
+/// Returns the impl by value (a zero-sized handle wrapped in the dispatch enum,
+/// cheap to clone); the registry retains the cached entry so repeated calls
+/// reuse one built impl.
+pub fn get_implementation(config: &ProviderConfig) -> ProviderImpl {
     (*get_or_create(&config.model)).clone()
 }

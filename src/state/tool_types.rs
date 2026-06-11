@@ -53,5 +53,6 @@ pub fn default_tool_names() -> Vec<String> {
         "notify_user".to_string(),
         "speak_text".to_string(),
         "device_info".to_string(),
+        "transcribe_audio".to_string(),
     ]
 }

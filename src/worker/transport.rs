@@ -3,6 +3,7 @@
 // the wasm target stays honest and still flags genuine rot.
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
+use crate::capabilities::page_ops::PageOp;
 use crate::state::{Agent, AgentRun, AppSnapshot, RunStatus};
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +15,18 @@ use serde::{Deserialize, Serialize};
 pub enum WorkerCommand {
     Dispatch(WorkerDispatch),
     Cancel(WorkerCancel),
+    /// Page → worker: the result of a [`WorkerEvent::PageOpRequested`] the page
+    /// executed on the worker's behalf (see [`crate::worker::page_proxy`]).
+    PageOpResolved(PageOpResolved),
+}
+
+/// Outcome of a proxied page-thread operation, correlated by `request_id`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PageOpResolved {
+    pub request_id: String,
+    pub ok: bool,
+    /// JSON envelope on success; the error message on failure.
+    pub value: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -39,11 +52,25 @@ pub struct WorkerCancel {
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum WorkerEvent {
-    Ready { worker_id: String },
+    Ready {
+        worker_id: String,
+    },
     Progress(WorkerProgress),
     Result(WorkerResult),
     Cancelled(WorkerCancel),
     Error(WorkerError),
+    /// Worker → page: run this window-only operation (device capture, local
+    /// model call, …) and post back a [`WorkerCommand::PageOpResolved`].
+    PageOpRequested {
+        request_id: String,
+        op: PageOp,
+    },
+    /// Worker → page: a `PageOpResolved` command was routed to its waiter. Pure
+    /// acknowledgment so every worker-handled message yields one reply; the
+    /// page ignores it.
+    PageOpAck {
+        request_id: String,
+    },
 }
 
 #[cfg(test)]
@@ -55,6 +82,7 @@ impl WorkerEvent {
             Self::Result(result) => Some(&result.run_id),
             Self::Cancelled(cancel) => Some(&cancel.run_id),
             Self::Error(error) => Some(&error.run_id),
+            Self::PageOpRequested { .. } | Self::PageOpAck { .. } => None,
         }
     }
 
@@ -65,6 +93,7 @@ impl WorkerEvent {
             Self::Result(result) => Some(&result.worker_id),
             Self::Cancelled(cancel) => Some(&cancel.worker_id),
             Self::Error(error) => Some(&error.worker_id),
+            Self::PageOpRequested { .. } | Self::PageOpAck { .. } => None,
         }
     }
 }

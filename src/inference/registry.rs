@@ -22,7 +22,57 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use super::OpenAiCompatibleInference;
+use super::local_gemma::LocalGemmaInference;
+use super::{InferenceOutput, InferenceProvider, InferenceRequest, OpenAiCompatibleInference};
+use crate::responses::ReActResponse;
+use crate::state::{AppResult, ProviderConfig};
+
+/// The provider id that selects the in-browser runtime ([`LocalGemmaInference`]).
+pub const LOCAL_PROVIDER: &str = "local";
+
+/// The closed set of concrete provider implementations, dispatched by enum
+/// (the provider trait is not object-safe — it uses `async fn`; the core wraps
+/// this in its own dyn-safe handle via a blanket impl). Adding a vendor is one
+/// variant + one arm in [`build_implementation`]; the loop and the engines
+/// stay untouched.
+#[derive(Clone, Debug)]
+pub enum ProviderImpl {
+    OpenAi(OpenAiCompatibleInference),
+    LocalGemma(LocalGemmaInference),
+}
+
+impl InferenceProvider for ProviderImpl {
+    async fn invoke_react(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+    ) -> AppResult<InferenceOutput<ReActResponse>> {
+        match self {
+            Self::OpenAi(provider) => provider.invoke_react(config, request).await,
+            Self::LocalGemma(provider) => provider.invoke_react(config, request).await,
+        }
+    }
+
+    async fn invoke_react_streaming(
+        &self,
+        config: &ProviderConfig,
+        request: InferenceRequest,
+        on_partial_answer: &mut dyn FnMut(String),
+    ) -> AppResult<InferenceOutput<ReActResponse>> {
+        match self {
+            Self::OpenAi(provider) => {
+                provider
+                    .invoke_react_streaming(config, request, on_partial_answer)
+                    .await
+            }
+            Self::LocalGemma(provider) => {
+                provider
+                    .invoke_react_streaming(config, request, on_partial_answer)
+                    .await
+            }
+        }
+    }
+}
 
 /// The provider id used when an identifier carries no `"provider/"` prefix. A bare
 /// model name (e.g. `"gpt-4o-mini"`) is treated as belonging to this provider, since
@@ -86,7 +136,7 @@ thread_local! {
     /// One cached impl per normalized `"provider/model"` key. `Rc` so callers (and
     /// tests) can observe that a repeated lookup hands back the *same* handle rather
     /// than a fresh build.
-    static IMPLEMENTATIONS: RefCell<HashMap<String, Rc<OpenAiCompatibleInference>>> =
+    static IMPLEMENTATIONS: RefCell<HashMap<String, Rc<ProviderImpl>>> =
         RefCell::new(HashMap::new());
 }
 
@@ -95,9 +145,9 @@ thread_local! {
 /// The identifier is normalized via [`normalize_model_identifier`], then looked up
 /// by its `"provider/model"` key. The first lookup for a key builds the impl and
 /// caches it; every later lookup for the same key returns the same [`Rc`] handle.
-/// Every provider id maps to [`OpenAiCompatibleInference`] today; the build site
-/// below is the one place a divergent provider would branch on `id.provider`.
-pub fn get_or_create(raw: &str) -> Rc<OpenAiCompatibleInference> {
+/// `"local/..."` ids select the in-browser Gemma runtime; every other provider
+/// id maps to the OpenAI-compatible transport.
+pub fn get_or_create(raw: &str) -> Rc<ProviderImpl> {
     let id = normalize_model_identifier(raw);
     let key = id.key();
     IMPLEMENTATIONS.with(|cache| {
@@ -112,11 +162,15 @@ pub fn get_or_create(raw: &str) -> Rc<OpenAiCompatibleInference> {
     })
 }
 
-/// Construct the provider impl for a normalized identifier. Every provider is
-/// OpenAI-compatible today, so this ignores `id.provider`; it is the seam where a
-/// future vendor switch (Anthropic, Google, …) would branch.
-fn build_implementation(_id: &ModelIdentifier) -> OpenAiCompatibleInference {
-    OpenAiCompatibleInference
+/// Construct the provider impl for a normalized identifier — the one place a
+/// vendor switch branches. `"local"` selects the in-browser Gemma runtime;
+/// everything else is OpenAI-compatible (any BYOK endpoint).
+fn build_implementation(id: &ModelIdentifier) -> ProviderImpl {
+    if id.provider == LOCAL_PROVIDER {
+        ProviderImpl::LocalGemma(LocalGemmaInference)
+    } else {
+        ProviderImpl::OpenAi(OpenAiCompatibleInference)
+    }
 }
 
 /// Test-only: number of distinct cached `"provider/model"` keys.

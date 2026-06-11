@@ -1,13 +1,13 @@
 //! `screen_capture` — grab one frame of a screen/window/tab the user picks.
 //! Browsers require a fresh user gesture for `getDisplayMedia`, so this tool
 //! works best right after the user clicks something; mid-run calls may be
-//! rejected by the browser and surface that error to the model.
+//! rejected by the browser and surface that error to the model. Capture
+//! executes on the page via [`crate::worker::page_proxy`].
 
-use crate::capabilities::media;
+use crate::capabilities::page_ops::PageOp;
 use crate::state::{AppSnapshot, ToolSpec};
-use crate::storage::opfs_vfs::OpfsVfs;
+use crate::worker::page_proxy::run_page_op;
 use serde_json::{Value, json};
-use uuid::Uuid;
 
 use super::camera_capture::attach_image_artifact;
 use super::{ToolDescriptor, ToolFuture};
@@ -46,21 +46,19 @@ fn handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a>
             .and_then(Value::as_u64)
             .unwrap_or(1600)
             .clamp(64, 4096) as u32;
-        let image = media::capture_screen_frame(max_width).await?;
+        let envelope = run_page_op(PageOp::ScreenFrame { max_width }).await?;
+        let frame: Value = serde_json::from_str(&envelope)
+            .map_err(|err| format!("capture envelope was not JSON: {err}"))?;
 
-        let path = format!("captures/screen-{}.png", &Uuid::new_v4().to_string()[..8]);
-        OpfsVfs::new()
-            .write_bytes(&path, &image.bytes)
-            .await
-            .map_err(|err| format!("captured frame could not be saved: {err}"))?;
-
-        attach_image_artifact(snapshot, "Screen capture", &image.data_url);
+        if let Some(data_url) = frame.get("data_url").and_then(Value::as_str) {
+            attach_image_artifact(snapshot, "Screen capture", data_url);
+        }
         Ok(format!(
             "Captured {}x{} screen frame, saved to {} ({} KiB).",
-            image.width,
-            image.height,
-            path,
-            image.bytes.len() / 1024
+            frame.get("width").and_then(Value::as_u64).unwrap_or(0),
+            frame.get("height").and_then(Value::as_u64).unwrap_or(0),
+            frame.get("path").and_then(Value::as_str).unwrap_or("?"),
+            frame.get("kib").and_then(Value::as_u64).unwrap_or(0),
         ))
     })
 }

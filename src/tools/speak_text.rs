@@ -1,9 +1,10 @@
 //! `speak_text` — voice output via the browser's built-in speech synthesis.
 //! Queues the utterance and returns immediately; nothing blocks the run while
-//! the browser speaks.
+//! the browser speaks. Executes on the page via [`crate::worker::page_proxy`].
 
-use crate::capabilities::system;
+use crate::capabilities::page_ops::PageOp;
 use crate::state::{AppSnapshot, ToolSpec};
+use crate::worker::page_proxy::run_page_op;
 use serde_json::{Value, json};
 
 use super::common::string_arg;
@@ -36,8 +37,9 @@ fn spec() -> ToolSpec {
 fn handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
         let text = string_arg(args, "text")?;
-        system::speak_text(&text)?;
-        Ok(format!("Speaking {} characters aloud.", text.len()))
+        let chars = text.len();
+        run_page_op(PageOp::Speak { text }).await?;
+        Ok(format!("Speaking {chars} characters aloud."))
     })
 }
 

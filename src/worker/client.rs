@@ -5,7 +5,7 @@ use crate::state::{Agent, AgentRun, AppResult, AppSnapshot};
 
 #[cfg(target_arch = "wasm32")]
 use crate::worker::transport::{
-    WorkerCancel, WorkerCommand, WorkerDispatch, WorkerEvent, WorkerStatus,
+    PageOpResolved, WorkerCancel, WorkerCommand, WorkerDispatch, WorkerEvent, WorkerStatus,
 };
 #[cfg(target_arch = "wasm32")]
 use dioxus::prelude::*;
@@ -128,7 +128,12 @@ where
     let tx_cell = Rc::new(RefCell::new(Some(tx)));
     let observer_cell = Rc::new(RefCell::new(observer));
 
-    install_message_handler(&worker, Rc::clone(&tx_cell), Rc::clone(&observer_cell));
+    install_message_handler(
+        &worker,
+        worker.clone(),
+        Rc::clone(&tx_cell),
+        Rc::clone(&observer_cell),
+    );
     install_error_handler(&worker, Rc::clone(&tx_cell));
 
     ACTIVE_WORKERS.with(|active| {
@@ -202,6 +207,7 @@ fn main_wasm_glue_url() -> Option<String> {
 #[cfg(target_arch = "wasm32")]
 fn install_message_handler<F>(
     worker: &web_sys::Worker,
+    worker_handle: web_sys::Worker,
     tx_cell: Rc<RefCell<Option<oneshot::Sender<AppResult<AppSnapshot>>>>>,
     observer_cell: Rc<RefCell<F>>,
 ) where
@@ -239,6 +245,27 @@ fn install_message_handler<F>(
                 Ok(WorkerEvent::Error(error)) => finish_once(&tx_cell, Err(error.message)),
                 Ok(WorkerEvent::Cancelled(_)) => {}
                 Ok(WorkerEvent::Ready { .. }) => {}
+                // The worker asked for a window-only operation (device capture,
+                // local-model call): run it here on the page and post the result
+                // back, correlated by request id. See `worker::page_proxy`.
+                Ok(WorkerEvent::PageOpRequested { request_id, op }) => {
+                    let responder = worker_handle.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let outcome = crate::capabilities::page_ops::execute_page_op(&op).await;
+                        let resolved = WorkerCommand::PageOpResolved(PageOpResolved {
+                            request_id,
+                            ok: outcome.is_ok(),
+                            value: match outcome {
+                                Ok(value) => value,
+                                Err(error) => error,
+                            },
+                        });
+                        if let Ok(payload) = serde_json::to_string(&resolved) {
+                            let _ = responder.post_message(&JsValue::from_str(&payload));
+                        }
+                    });
+                }
+                Ok(WorkerEvent::PageOpAck { .. }) => {}
                 Err(err) => finish_once(
                     &tx_cell,
                     Err(format!(

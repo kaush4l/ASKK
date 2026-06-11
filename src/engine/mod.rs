@@ -24,7 +24,7 @@ pub mod wasi_exec;
 
 use crate::core::{Engine, ReactEngine, StopReason};
 use crate::inference::{
-    InferenceOutput, InferenceProvider, InferenceRequest, OpenAiCompatibleInference, SubAgentInfo,
+    InferenceOutput, InferenceProvider, InferenceRequest, ProviderImpl, SubAgentInfo,
     get_implementation,
 };
 use crate::responses::{ParsedResponse, ReActResponse, ResponseFormat, StructuredResponse};
@@ -183,7 +183,7 @@ struct RunSession {
     /// Cached `agent.id` — used as the actor on most events.
     agent_id: String,
     /// The inference implementation resolved from the run's provider config.
-    inference: OpenAiCompatibleInference,
+    inference: ProviderImpl,
     /// The provider config for this run, with the active model profile applied.
     provider: ProviderConfig,
     /// The tool allowlist seed (per-agent enabled tools, or the defaults). Run-start
@@ -1075,7 +1075,7 @@ where
 /// One model attempt with no retry and no run-state side effects — used for
 /// best-effort internal calls (compaction, rolling-summary merge).
 async fn call_model_plain(
-    inference: &OpenAiCompatibleInference,
+    inference: &ProviderImpl,
     provider: &ProviderConfig,
     request: InferenceRequest,
 ) -> AppResult<InferenceOutput<ReActResponse>> {

@@ -46,6 +46,7 @@ mod screen_capture;
 mod search;
 mod speak_text;
 mod telegram;
+mod transcribe_audio;
 mod web_fetch;
 mod web_search;
 
@@ -179,6 +180,7 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(notify_user::descriptor());
     registry.register(speak_text::descriptor());
     registry.register(device_info::descriptor());
+    registry.register(transcribe_audio::descriptor());
 }
 
 #[cfg(test)]

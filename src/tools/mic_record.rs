@@ -1,12 +1,12 @@
 //! `mic_record` — record a short microphone clip. The browser's permission
 //! prompt gates device access; the clip is saved into the OPFS workspace where
-//! the local transcriber (or the user) can pick it up.
+//! the local transcriber (or the user) can pick it up. Recording executes on
+//! the page via [`crate::worker::page_proxy`].
 
-use crate::capabilities::media;
+use crate::capabilities::page_ops::PageOp;
 use crate::state::{AppSnapshot, ToolSpec};
-use crate::storage::opfs_vfs::OpfsVfs;
+use crate::worker::page_proxy::run_page_op;
 use serde_json::{Value, json};
-use uuid::Uuid;
 
 use super::{ToolDescriptor, ToolFuture};
 
@@ -40,28 +40,16 @@ fn spec() -> ToolSpec {
 fn handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
         let seconds = args.get("seconds").and_then(Value::as_f64).unwrap_or(5.0);
-        let clip = media::record_microphone(seconds).await?;
-
-        let extension = if clip.mime.contains("ogg") {
-            "ogg"
-        } else {
-            "webm"
-        };
-        let path = format!(
-            "captures/mic-{}.{extension}",
-            &Uuid::new_v4().to_string()[..8]
-        );
-        OpfsVfs::new()
-            .write_bytes(&path, &clip.bytes)
-            .await
-            .map_err(|err| format!("recording could not be saved: {err}"))?;
+        let envelope = run_page_op(PageOp::MicRecord { seconds }).await?;
+        let clip: Value = serde_json::from_str(&envelope)
+            .map_err(|err| format!("recording envelope was not JSON: {err}"))?;
 
         Ok(format!(
             "Recorded {:.1}s of audio ({}, {} KiB), saved to {}.",
-            clip.seconds,
-            clip.mime,
-            clip.bytes.len() / 1024,
-            path
+            clip.get("seconds").and_then(Value::as_f64).unwrap_or(0.0),
+            clip.get("mime").and_then(Value::as_str).unwrap_or("?"),
+            clip.get("kib").and_then(Value::as_u64).unwrap_or(0),
+            clip.get("path").and_then(Value::as_str).unwrap_or("?"),
         ))
     })
 }

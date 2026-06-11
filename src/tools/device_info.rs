@@ -1,10 +1,11 @@
 //! `device_info` — hand the model the same capability sweep the Capabilities
 //! page renders: what this browser context can sense and do, including which
 //! tools map to which surfaces. Lets the agent plan around its actual host
-//! instead of guessing.
+//! instead of guessing. Probes on the page via [`crate::worker::page_proxy`].
 
-use crate::capabilities;
+use crate::capabilities::page_ops::PageOp;
 use crate::state::{AppSnapshot, ToolSpec};
+use crate::worker::page_proxy::run_page_op;
 use serde_json::{Value, json};
 
 use super::{ToolDescriptor, ToolFuture};
@@ -32,11 +33,7 @@ fn spec() -> ToolSpec {
 }
 
 fn handler<'a>(_snapshot: &'a mut AppSnapshot, _args: &'a Value) -> ToolFuture<'a> {
-    Box::pin(async move {
-        let report = capabilities::probe().await?;
-        serde_json::to_string_pretty(&report)
-            .map_err(|err| format!("capability report serialization failed: {err}"))
-    })
+    Box::pin(async move { run_page_op(PageOp::Probe).await })
 }
 
 #[cfg(test)]
