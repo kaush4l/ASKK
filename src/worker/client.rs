@@ -1,5 +1,5 @@
 #[cfg(not(target_arch = "wasm32"))]
-use crate::engine::ReActEngine;
+use crate::engine::SessionRunner;
 use crate::engine::request_interrupt;
 use crate::state::{Agent, AgentRun, AppResult, AppSnapshot};
 
@@ -77,7 +77,7 @@ where
             agent_id: Some(agent.id.clone()),
             ..LoopParams::default()
         };
-        ReActEngine::new()
+        SessionRunner::new()
             .run_with_params_and_observer(snapshot.with_active_agent(agent), goal, params, observer)
             .await
     }

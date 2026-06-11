@@ -1,6 +1,6 @@
 use super::save_snapshot;
 use super::shared::{CompactList, StatBlock, set_status};
-use crate::engine::{ReActEngine, clear_interrupt};
+use crate::engine::{SessionRunner, clear_interrupt};
 use crate::state::{AppSnapshot, RunStatus};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -127,7 +127,7 @@ fn resume_background_job(mut snapshot: Signal<AppSnapshot>, job_id: String) {
     );
 
     spawn_local(async move {
-        let runtime = ReActEngine::new();
+        let runtime = SessionRunner::new();
         let mut live_snapshot = snapshot;
         let mut final_snapshot = snapshot;
         let result = runtime

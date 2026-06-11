@@ -95,7 +95,7 @@ use crate::responses::{ParsedToolCall, ReActResponse, ResponseFormat};
 use crate::state::{AgentEventKind, AgentRun, RunStatus, ToolCall, ToolResult, event};
 
 use super::{
-    AgentLoop, push_observation, truncate, try_finalize_answer, validate_tool_result_or_feedback,
+    RunSession, push_observation, truncate, try_finalize_answer, validate_tool_result_or_feedback,
 };
 
 /// The shell's [`EngineHooks`] implementation: everything the legacy loop did
@@ -105,7 +105,7 @@ use super::{
 /// and message strings are byte-identical to the pre-migration loop.
 pub(super) struct RunHooks<'a, F: FnMut(AgentRun)> {
     /// The loop's init-time state: identity, validators, compaction deps.
-    pub(super) agent_loop: &'a AgentLoop,
+    pub(super) agent_loop: &'a RunSession,
     /// The live run this invoke is driving.
     pub(super) run: &'a mut AgentRun,
     /// UI notification callback, fired after every observable state change.

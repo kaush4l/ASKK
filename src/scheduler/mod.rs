@@ -9,7 +9,7 @@ pub use runtime::start_scheduler;
 #[cfg(target_arch = "wasm32")]
 mod runtime {
     use super::logic::{catch_up_entries, local_tz_offset_min, mark_fired};
-    use crate::engine::{LoopParams, ReActEngine};
+    use crate::engine::{LoopParams, SessionRunner};
     use crate::state::AppSnapshot;
     use crate::state::{ScheduleEntry, ScheduleKind, SchedulePayload};
     use crate::storage::{IndexedDbStorage, StorageAdapter};
@@ -89,7 +89,7 @@ mod runtime {
                     };
                     // obs_sig is a Copy clone of sig, used only inside the observer closure.
                     let mut obs_sig = sig;
-                    let result = ReActEngine::new()
+                    let result = SessionRunner::new()
                         .run_with_params_and_observer(start, goal, params, move |run| {
                             let mut next = obs_sig.read().clone();
                             next.current_run = Some(run);

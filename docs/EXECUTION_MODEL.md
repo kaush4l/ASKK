@@ -11,70 +11,102 @@ chosen by the parallel spikes cross-linked at the end.
 > not propose reverting it, nor does it propose reshaping the ReAct loop into a typed
 > FSM — the loop is intentional as-is.
 
-## 0. Target loop architecture (being built across this batch)
+## 0. Loop architecture — the abstract-base core (SHIPPED)
 
-> **Status: TARGET, not yet shipped.** This section describes the agentic flow this
-> batch is porting in from the `LocalAgents` reference, implemented across sibling
-> PRs. Where it says "today" it is accurate to the current code; everything labelled
-> **TARGET** is the design those PRs converge on, not a description of `main`. The
-> loop stays a ReAct harness (see the scope note above) — this is a refactor of *how*
-> the loop is shaped and fed, not a rewrite into an FSM.
+> **Status: SHIPPED.** The loop architecture ported from the `LocalAgents`
+> reference is live: the pure agent loop lives in [`src/core/`](../src/core/)
+> as an abstract base (`trait Engine` + `BaseEngine`) with one concrete engine
+> (`ReactEngine`) that overrides exactly one method — `invoke`, the bounded
+> while-loop. The loop stays a ReAct harness (see the scope note above) — this
+> was a refactor of *how* the loop is shaped and fed, not a rewrite into an FSM.
+
+### The layering
+
+```
+UI / entries (components, worker, scheduler, call_agent)
+  └─ Shell/driver  src/engine/   SessionRunner + RunSession: agent selection,
+     MCP bring-up, allowlist finalization, strategy phase driver, workflow
+     gates, validators, memory compaction, events/observer, persistence
+       └─ core  src/core/        THE PURE PROGRAMMING SOLUTION TO AN AGENT
+          trait Engine (abstract base: required accessors + invoke; render,
+          history, call_model, execute_tool, dispatch_tools as default
+          methods) + BaseEngine (state record) + ReactEngine (the while loop)
+          + ToolMap (name → callable) + Part (multimodal) — zero
+          cfg(target_arch), host-tested with a mock InferenceHandle
+            └─ leaves  inference providers, tools, strategies, responses, state
+```
+
+The shell reaches the loop only through `trait EngineHooks`
+([`src/engine/session.rs`](../src/engine/session.rs) implements it once as
+`RunHooks`): events, observer notifications, validator verdicts
+(accept / reject-with-feedback / abort), per-turn memory compaction, and the
+interrupt flag. The core honors verdicts; it never reads run state.
 
 ### The loop as an object (construct-prompt → call-LLM → decide-action)
 
-Today the loop is the free function `run_react_session` in
-[`src/engine/mod.rs`](../src/engine/mod.rs): each turn it assembles an
-`InferenceRequest`, calls the model once for a single [`ReActResponse`], and either
-finalizes an answer or runs the emitted tool call(s). The **TARGET** reshapes that
-same control flow as a **loop-object** with three named phases per turn:
+The spine entry is still `run_react_session` in
+[`src/engine/mod.rs`](../src/engine/mod.rs); the per-turn control flow is
+[`ReactEngine::invoke`](../src/core/react.rs) over the three named steps:
 
-1. **construct-prompt** — build the turn's messages: the compiled-once static prefix
-   (see §"init-time vs runtime split" in [`agent-prompting.md`](./agent-prompting.md))
-   plus the rebuilt-per-turn dynamic context (history, goal, observations), with the
-   **response-format instructions appended last** so the model reads them right before
-   generating.
-2. **call-LLM** — invoke the resolved provider (see the registry below) for one raw
-   completion and parse it into the turn's typed response.
-3. **decide-action** — branch on the parsed action: accept a final answer, or
-   dispatch the turn's tool call(s) and feed each observation back as **untrusted
-   data**, then loop.
+1. **construct-prompt** — `Engine::render` assembles the turn's
+   `InferenceRequest`: one big sheet of paper carrying identity, soul, skills,
+   the tool manifest, the sub-agent roster, the ordered transcript
+   (prior conversation → goal → in-run history), optional image/audio
+   [`Part`](../src/core/content.rs)s from multimodal collectors, and the
+   **response-format instructions appended last** so the model reads them
+   right before generating (string realization: the compiled-once static
+   prefix in [`agent-prompting.md`](./agent-prompting.md)).
+2. **call-LLM** — `Engine::call_model` invokes the attached
+   `InferenceHandle` with retry + injected backoff, then scores the reply and
+   feeds the cross-turn format negotiator (TOON → JSON escalation).
+3. **decide-action** — the match in `invoke`: accept a final answer (subject
+   to the shell's verdict), or dispatch the turn's tool call(s) via the
+   `ToolMap` and feed each observation back as **untrusted data**, then loop.
 
-The **orchestrator is itself a loop-object** of the same shape. The orchestrator is a
-bundled agent running the `orchestrate` strategy: its phases are `decompose`
-(one-shot `TaskBreakdown`), `delegate` (a ReAct loop with `call_agent` fan-out), and
-`synthesize` (one-shot final answer). Its "construct-prompt" is task decomposition,
-its "call-LLM" is dispatching each sub-agent via `call_agent`, and its
-"decide-action" is the routing table in `OrchestrateStrategy::route`. A single agent
-run and an orchestrated run are the same loop-object abstraction at two scales, so
-**agent-as-a-tool** (a sub-agent invoked like any other tool) falls out cleanly
-rather than being a special case.
+The **orchestrator is itself the same loop-object**: a bundled agent running
+the `orchestrate` strategy, whose phases (`decompose`, `delegate`,
+`synthesize`) are driven by the shell's strategy driver configuring one
+long-lived engine per phase (specs subset, skills, response kind, budget) and
+calling `invoke`. A single agent run and an orchestrated run are the same
+abstraction at two scales, so **agent-as-a-tool** falls out cleanly:
+`session::build_tool_map` binds every allowlisted name — compiled, MCP-backed,
+or `agent_<slug>` — to the same executor closure at bind time, and the core
+treats delegation as an ordinary `ToolMap` entry (the reference's
+`_build_tools_map` contract).
 
-### Interchangeable inference behind a short `provider/model` id (TARGET)
+### Interchangeable inference behind a short `provider/model` id (SHIPPED)
 
-Today provider selection is `get_implementation()` in
-[`src/inference/mod.rs`](../src/inference/mod.rs), which always returns the single
-`OpenAiCompatibleInference` impl. The **TARGET** introduces an **inference registry
-keyed by a short `provider/model` id** (e.g. `openai/gpt-4o`,
-`local/gemma-4-12B-it-qat-mxfp8`): the loop names the model it wants by that one
-string, the registry resolves it to a concrete `InferenceProvider` + model
-parameters, and swapping models is changing the id, never the loop. This preserves
-the existing `InferenceProvider` trait seam — a new vendor is still one `impl` — and
-adds only the short-id lookup in front of it.
+Provider selection is the cached registry behind `get_implementation()` in
+[`src/inference/mod.rs`](../src/inference/mod.rs): a short `provider/model`
+identifier is normalized and resolved to a cached `InferenceProvider` impl
+(today every id maps to `OpenAiCompatibleInference`). The core never sees the
+registry — `BaseEngine::new` attaches the resolved handle at construction (the
+reference's "inference attached in `__init__` from `model_id`"), and tests
+inject a mock through `BaseEngine::with_inference`. A new vendor is still one
+`impl`, never a loop edit.
 
-### Parallel dual tool-call dispatch (TARGET)
+### Parallel dual tool-call dispatch (SHIPPED in the core)
 
-Today `parse_tool_calls` ([`src/responses/tool_calls.rs`](../src/responses/tool_calls.rs))
-returns a `Vec<ParsedToolCall>`, and the engine already iterates it
-(`for call in calls`), but in practice it extracts a **single** call and runs calls
-**serially**. The **TARGET** is genuine **parallel dual tool-call dispatch**: a turn
-may emit **two or more** tool calls, and they execute **concurrently** (via
-`join_all` in [`src/engine/tool_dispatch.rs`](../src/engine/tool_dispatch.rs)), with
-results collected **in call order** so the observations the model sees line up with
-the calls it wrote. Each result is still untrusted data; concurrency changes only
-*when* the calls run, not how their output is trusted. The orchestrator's sub-agent
-fan-out uses this same mechanism: when the `delegate` phase emits several
-`call_agent` calls in one turn, they run concurrently as ordinary parallel tool
-dispatch.
+`Engine::dispatch_tools` runs every call from one model turn **concurrently**
+(`join_in_order` in [`src/core/tooling.rs`](../src/core/tooling.rs)) against
+per-call snapshot clones, and collects results **in call order** so the
+observations the model sees line up with the calls it wrote; each call's
+`agent_memories` delta (a `call_agent` sub-run's rolling summary) is merged
+back in call order. Each result is still untrusted data; concurrency changes
+only *when* the calls run, not how their output is trusted. (The inline-text
+parser still extracts a single call per turn today; multi-call turns reach
+dispatch through other response shapes.)
+
+### Deferred (noted, intentionally not built yet)
+
+- **`RuntimeObject` lifecycle base** for long-lived services — MCP server
+  workers and the process registry manage their own lifecycles today; revisit
+  if a second service class appears.
+- **`Part` → wire mapping** — `InferenceRequest.parts` carries image/audio
+  parts end-to-end, but the OpenAI-compatible provider ignores them until a
+  content-array mapping lands.
+- **`Message` parts persistence** — `Message { role, content }` stays
+  text-only (it is IndexedDB-persisted; extending it is a storage migration).
 
 ## 1. Where execution sits in the spine
 

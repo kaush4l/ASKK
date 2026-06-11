@@ -13,7 +13,7 @@
 
 use std::cell::Cell;
 
-use crate::engine::{LoopParams, ReActEngine};
+use crate::engine::{LoopParams, SessionRunner};
 use crate::state::{Agent, AgentMemory, AppResult, AppSnapshot, ToolSpec, upsert_rolling_summary};
 use serde_json::{Value, json};
 
@@ -173,7 +173,7 @@ async fn run_sub_agent(
 ) -> AppResult<(String, Vec<AgentMemory>)> {
     // The observer is a no-op: the sub-run's timeline is internal to this tool call
     // and is summarized by its final answer.
-    let result = ReActEngine::new()
+    let result = SessionRunner::new()
         .run_with_params_and_observer(sub_snapshot, query, params, |_run| {})
         .await?;
 

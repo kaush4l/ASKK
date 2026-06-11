@@ -84,17 +84,17 @@ fn interrupt_requested() -> bool {
 
 /// Drives agent goals through the ReAct loop using browser-safe compiled tools.
 #[derive(Clone, Debug)]
-pub struct ReActEngine {
+pub struct SessionRunner {
     executor: BrowserExecutionProvider,
 }
 
-impl Default for ReActEngine {
+impl Default for SessionRunner {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ReActEngine {
+impl SessionRunner {
     pub fn new() -> Self {
         Self {
             executor: BrowserExecutionProvider::new(),
@@ -160,13 +160,13 @@ impl ReActEngine {
 /// The smallest unit of the runtime: a **loop-object** that drives one agent goal to
 /// a final answer.
 ///
-/// `AgentLoop` separates the run's lifecycle into the two phases the Python reference
+/// `RunSession` separates the run's lifecycle into the two phases the Python reference
 /// (`ReActAgent`) keeps apart: init-time work that is computed **once** in
-/// [`AgentLoop::new`] (select the agent, resolve the provider/inference
+/// [`RunSession::new`] (select the agent, resolve the provider/inference
 /// implementation, build the tool allowlist seed, the sub-agent roster, the prior
 /// conversation, and the per-run budgets), and the per-turn lifecycle —
-/// construct-prompt → call-model → parse → decide-action — driven by [`AgentLoop::run`]
-/// (with [`AgentLoop::step`] doing one turn).
+/// construct-prompt → call-model → parse → decide-action — driven by [`RunSession::run`]
+/// (with [`RunSession::step`] doing one turn).
 ///
 /// The object is deliberately **dependency-light**: it is pure types plus calls into
 /// the existing seams (the [`ExecutionProvider`] executor and the [`InferenceProvider`]
@@ -175,7 +175,7 @@ impl ReActEngine {
 ///
 /// Tool results and fetched content are always treated as untrusted DATA, never as
 /// instructions to follow.
-struct AgentLoop {
+struct RunSession {
     /// The capability seam used to fetch tool specs and execute tool calls.
     executor: BrowserExecutionProvider,
     /// The agent selected for this run (its name/role/response-format drive prompting).
@@ -187,7 +187,7 @@ struct AgentLoop {
     /// The provider config for this run, with the active model profile applied.
     provider: ProviderConfig,
     /// The tool allowlist seed (per-agent enabled tools, or the defaults). Run-start
-    /// MCP discovery extends a copy of this inside [`AgentLoop::run`]; the model only
+    /// MCP discovery extends a copy of this inside [`RunSession::run`]; the model only
     /// ever sees and calls tools on the resulting allowlist.
     enabled_tools: Vec<String>,
     /// The peer agents this run can see and delegate to.
@@ -222,7 +222,7 @@ struct AgentLoop {
     unresolved_strategy: Option<String>,
 }
 
-impl AgentLoop {
+impl RunSession {
     /// Init-time construction: do the **once-per-run** work and cache it. This mirrors
     /// `ReActAgent.__init__` in the reference — agent selection, provider/inference
     /// resolution, the tool allowlist seed, the sub-agent roster, the prior
@@ -230,7 +230,7 @@ impl AgentLoop {
     ///
     /// Pure and synchronous: it touches no platform APIs and performs no I/O. The
     /// async, observer-driven run-start work (browser MCP bring-up) is deferred to
-    /// [`AgentLoop::run`] because it needs the live `run` and `observer`.
+    /// [`RunSession::run`] because it needs the live `run` and `observer`.
     fn new(
         executor: BrowserExecutionProvider,
         snapshot: &AppSnapshot,
@@ -1051,7 +1051,7 @@ impl AgentLoop {
 }
 
 /// Drive one agent goal to a final answer, notifying `observer` after every state
-/// change. A thin wrapper that constructs an [`AgentLoop`] (init-time work) and runs it
+/// change. A thin wrapper that constructs an [`RunSession`] (init-time work) and runs it
 /// (per-turn lifecycle), preserving the engine's public entry-point behavior.
 async fn run_react_session<F>(
     executor: BrowserExecutionProvider,
@@ -1064,7 +1064,7 @@ where
     F: FnMut(AgentRun),
 {
     clear_interrupt();
-    let agent_loop = AgentLoop::new(executor, &snapshot, &goal, &params);
+    let agent_loop = RunSession::new(executor, &snapshot, &goal, &params);
     Ok(agent_loop.run(snapshot, goal, observer).await)
 }
 
@@ -1618,7 +1618,7 @@ mod tests {
         let snapshot = AppSnapshot::default();
         let params = LoopParams::default();
         let goal = "compare the two render paths";
-        let agent_loop = AgentLoop::new(BrowserExecutionProvider::new(), &snapshot, goal, &params);
+        let agent_loop = RunSession::new(BrowserExecutionProvider::new(), &snapshot, goal, &params);
 
         let phase = &agent_loop.strategy.phases()[0];
         let context = StrategyContext::default();
@@ -2076,15 +2076,15 @@ mod tests {
         })
     }
 
-    /// A fully wired shell fixture: a real `AgentLoop` over the default
+    /// A fully wired shell fixture: a real `RunSession` over the default
     /// snapshot, a core engine carrying the scripted inference, and a fresh
     /// run — the exact objects `run()` hands to a Loop-mode phase.
     fn shell_fixture(
         goal: &str,
         inference: Rc<ScriptedInference>,
-    ) -> (AgentLoop, ReactEngine, AgentRun, AppSnapshot) {
+    ) -> (RunSession, ReactEngine, AgentRun, AppSnapshot) {
         let snapshot = AppSnapshot::default();
-        let agent_loop = AgentLoop::new(
+        let agent_loop = RunSession::new(
             BrowserExecutionProvider::new(),
             &snapshot,
             goal,

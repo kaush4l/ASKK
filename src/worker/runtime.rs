@@ -2,7 +2,7 @@
 // entry points are unused outside tests, so allow dead code off-wasm only.
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
-use crate::engine::{LoopParams, ReActEngine, request_interrupt};
+use crate::engine::{LoopParams, SessionRunner, request_interrupt};
 use crate::state::{AgentRun, AppResult};
 use crate::worker::transport::{
     WorkerCommand, WorkerDispatch, WorkerError, WorkerEvent, WorkerProgress, WorkerResult,
@@ -74,7 +74,7 @@ where
         max_turns: dispatch.max_turns,
     };
     let snapshot = dispatch.snapshot.with_active_agent(dispatch.agent);
-    let runtime = ReActEngine::new();
+    let runtime = SessionRunner::new();
     let progress_run_id = run_id.clone();
     let progress_worker_id = worker_id.clone();
 
