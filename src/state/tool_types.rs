@@ -44,5 +44,14 @@ pub fn default_tool_names() -> Vec<String> {
         "file_write".to_string(),
         "file_list".to_string(),
         "file_edit".to_string(),
+        "camera_capture".to_string(),
+        "screen_capture".to_string(),
+        "mic_record".to_string(),
+        "geolocate".to_string(),
+        "clipboard_read".to_string(),
+        "clipboard_write".to_string(),
+        "notify_user".to_string(),
+        "speak_text".to_string(),
+        "device_info".to_string(),
     ]
 }

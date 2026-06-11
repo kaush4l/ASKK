@@ -25,18 +25,26 @@ use std::pin::Pin;
 pub(crate) mod agent_tools;
 mod bridge;
 mod call_agent;
+mod camera_capture;
+mod clipboard;
 mod common;
+mod device_info;
 mod file_edit;
 mod file_vfs;
 mod fs_bridge;
+mod geolocate;
 pub(crate) mod google;
 mod http;
+mod mic_record;
+mod notify_user;
 mod run_command;
 mod run_in_sandbox;
 mod run_js;
 mod run_python;
 mod schedule_tool;
+mod screen_capture;
 mod search;
+mod speak_text;
 mod telegram;
 mod web_fetch;
 mod web_search;
@@ -162,6 +170,15 @@ fn register_builtin_tools(registry: &mut ToolRegistry) {
     registry.register(google::gmail::descriptor());
     registry.register(google::calendar::descriptor());
     registry.register(telegram::descriptor());
+    registry.register(camera_capture::descriptor());
+    registry.register(screen_capture::descriptor());
+    registry.register(mic_record::descriptor());
+    registry.register(geolocate::descriptor());
+    registry.register(clipboard::read_descriptor());
+    registry.register(clipboard::write_descriptor());
+    registry.register(notify_user::descriptor());
+    registry.register(speak_text::descriptor());
+    registry.register(device_info::descriptor());
 }
 
 #[cfg(test)]

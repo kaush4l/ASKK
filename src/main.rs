@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 mod agent_prompt;
+mod capabilities;
 mod components;
 // Parts of the core's public surface are exercised only by host tests today
 // (NoHooks, the mock-inference seam) or reserved for modality wiring (Part

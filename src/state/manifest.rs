@@ -452,6 +452,15 @@ mod tests {
                 "file_write",
                 "file_list",
                 "file_edit",
+                "camera_capture",
+                "screen_capture",
+                "mic_record",
+                "geolocate",
+                "clipboard_read",
+                "clipboard_write",
+                "notify_user",
+                "speak_text",
+                "device_info",
             ]
         );
         assert_eq!(parse_tools("all"), default_tool_names());

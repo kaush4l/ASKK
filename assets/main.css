@@ -609,9 +609,106 @@ pre {
     white-space: nowrap;
 }
 
-.dev-button {
-    border-style: dashed;
-    color: #b45309;
+/* ── Capabilities page ──────────────────────────────────────────────── */
+
+.cap-group {
+    margin-top: 18px;
+}
+
+.cap-group h3 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+}
+
+.cap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 10px;
+}
+
+.cap-card {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #fff;
+}
+
+.cap-dot {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    margin-top: 4px;
+    border-radius: 999px;
+    background: #d1d5db;
+}
+
+.cap-dot.yes {
+    background: #16a34a;
+}
+
+.cap-dot.partial {
+    background: #d97706;
+}
+
+.cap-dot.no {
+    background: #dc2626;
+}
+
+.cap-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.cap-label {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.cap-detail {
+    font-size: 12px;
+    color: #6b7280;
+    overflow-wrap: anywhere;
+}
+
+.cap-tool {
+    align-self: flex-start;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    color: #5b21b6;
+    background: #efe9fc;
+    border-radius: 999px;
+    padding: 1px 8px;
+}
+
+.cap-test button {
+    align-self: flex-start;
+}
+
+.cap-shot {
+    max-width: 100%;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+.cap-clip {
+    width: 100%;
+}
+
+.cap-error {
+    color: #dc2626;
+}
+
+.cap-ua {
+    margin-top: 16px;
+    font-size: 11px;
 }
 
 .react-log {

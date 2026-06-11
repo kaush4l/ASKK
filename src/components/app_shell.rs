@@ -1,4 +1,5 @@
 use super::agents_page::AgentsPage;
+use super::capabilities_page::CapabilitiesPage;
 use super::chat_panel::ChatPanel;
 use super::compiled_prompt_panel::CompiledPromptPanel;
 use super::event_log::EventLogPanel;
@@ -22,6 +23,7 @@ use dioxus::prelude::*;
 enum DashboardPage {
     Chat,
     Workspace,
+    Capabilities,
     Agents,
     Soul,
     Tools,
@@ -35,6 +37,7 @@ impl DashboardPage {
         match self {
             Self::Chat => "Chat",
             Self::Workspace => "Workspace",
+            Self::Capabilities => "Capabilities",
             Self::Agents => "Agents",
             Self::Soul => "Soul",
             Self::Tools => "Tools",
@@ -123,6 +126,7 @@ pub fn AppShell(
     let pages = [
         DashboardPage::Chat,
         DashboardPage::Workspace,
+        DashboardPage::Capabilities,
         DashboardPage::Agents,
         DashboardPage::Soul,
         DashboardPage::Tools,
@@ -187,6 +191,9 @@ pub fn AppShell(
                         DashboardPage::Workspace => rsx! {
                             WorkspacePage { snapshot, goal }
                         },
+                        DashboardPage::Capabilities => rsx! {
+                            CapabilitiesPage {}
+                        },
                         DashboardPage::Agents => rsx! {
                             AgentsPage {
                                 snapshot,
@@ -226,6 +233,7 @@ fn nav_glyph(page: DashboardPage) -> &'static str {
     match page {
         DashboardPage::Chat => "C",
         DashboardPage::Workspace => "W",
+        DashboardPage::Capabilities => "✦",
         DashboardPage::Agents => "A",
         DashboardPage::Soul => "S",
         DashboardPage::Tools => "T",
