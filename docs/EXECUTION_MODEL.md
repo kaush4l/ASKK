@@ -78,12 +78,18 @@ treats delegation as an ordinary `ToolMap` entry (the reference's
 
 Provider selection is the cached registry behind `get_implementation()` in
 [`src/inference/mod.rs`](../src/inference/mod.rs): a short `provider/model`
-identifier is normalized and resolved to a cached `InferenceProvider` impl
-(today every id maps to `OpenAiCompatibleInference`). The core never sees the
-registry — `BaseEngine::new` attaches the resolved handle at construction (the
+identifier is normalized and resolved to a cached `InferenceProvider` impl,
+enum-dispatched through `ProviderImpl` (the trait uses `async fn`, so the
+registry's closed enum is the dyn-safety seam; the core additionally wraps it
+in its own `LocalInference` handle via a blanket impl). Two providers exist:
+`OpenAiCompatibleInference` for every remote/BYOK id, and
+`LocalGemmaInference` for `local/...` ids — Gemma 4 E2B/E4B running fully
+in-browser via the vendored transformers.js worker (see
+[`LOCAL_MODELS.md`](./LOCAL_MODELS.md)). The core never sees the registry —
+`BaseEngine::new` attaches the resolved handle at construction (the
 reference's "inference attached in `__init__` from `model_id`"), and tests
 inject a mock through `BaseEngine::with_inference`. A new vendor is still one
-`impl`, never a loop edit.
+`impl` + one enum arm, never a loop edit.
 
 ### Parallel dual tool-call dispatch (SHIPPED in the core)
 
