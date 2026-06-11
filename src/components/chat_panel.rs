@@ -2,12 +2,9 @@ use super::artifact_view::ArtifactGallery;
 use super::save_snapshot;
 use super::shared::set_status;
 use crate::engine::clear_interrupt;
-use crate::state::{
-    AgentEventKind, AgentRun, AppSnapshot, ArtifactKind, RunArtifact, RunStatus, now_iso,
-};
+use crate::state::{AgentEventKind, AgentRun, AppSnapshot, RunArtifact, RunStatus};
 use crate::worker::client::{request_active_worker_cancel, run_goal_in_worker_or_inline};
 use dioxus::prelude::*;
-use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
 
 #[component]
@@ -70,14 +67,6 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                         disabled: running,
                         onclick: move |_| new_chat(snapshot),
                         "New chat"
-                    }
-                    // Dev-only: seed a demo artifact so the artifact surface can be
-                    // exercised without a live model run. Not part of the agent loop.
-                    button {
-                        class: "ghost-button dev-button",
-                        title: "Dev only: push a sample image artifact into the current run",
-                        onclick: move |_| insert_demo_artifact(snapshot),
-                        "Insert demo artifact (dev)"
                     }
                 }
             }
@@ -305,41 +294,6 @@ fn collect_artifacts(run: &AgentRun) -> Vec<RunArtifact> {
         artifacts.extend(worker.scratchpad.artifacts.iter().cloned());
     }
     artifacts
-}
-
-/// Dev-only helper: append a completed turn carrying a tiny inline PNG artifact to
-/// the session history so the artifact surface can be demonstrated without a live
-/// model run. We push a finished run into `runs` (rather than mutating
-/// `current_run`) because the chat only renders `current_run` while it is
-/// running/paused — a completed run lives in history. Never part of the agent loop.
-fn insert_demo_artifact(mut snapshot: Signal<AppSnapshot>) {
-    // A 64x64 solid purple (#6d28d9) PNG, base64-encoded inline. Treated as ordinary
-    // untrusted artifact content by the renderer, exactly like a model-produced image.
-    const DEMO_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsItjOQPbxgi+hcEKLF3zWgQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQELgvHm+FLgEUcEQAAAABJRU5ErkJggg==";
-    let artifact = RunArtifact {
-        id: Uuid::new_v4().to_string(),
-        name: "Demo image (dev seed)".to_string(),
-        artifact_type: ArtifactKind::Image,
-        content: format!("data:image/png;base64,{DEMO_PNG}"),
-    };
-
-    let mut run = AgentRun {
-        id: Uuid::new_v4().to_string(),
-        goal: "Demo artifact (dev seed)".to_string(),
-        status: RunStatus::Complete,
-        lane: Default::default(),
-        scratchpad: Default::default(),
-        messages: Vec::new(),
-        events: Vec::new(),
-        tool_calls: Vec::new(),
-        tool_results: Vec::new(),
-        final_answer: "Here is an artifact I generated for you.".to_string(),
-        created_at: now_iso(),
-    };
-    run.scratchpad.artifacts.push(artifact);
-
-    snapshot.write().runs.push(run);
-    set_status(&mut snapshot, "Inserted a demo artifact.".to_string());
 }
 
 #[component]
