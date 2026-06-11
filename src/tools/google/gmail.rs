@@ -109,8 +109,7 @@ fn handle<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> 
                 .get("max_results")
                 .and_then(Value::as_u64)
                 .unwrap_or(10)
-                .min(20)
-                .max(1);
+                .clamp(1, 20);
             fetch_messages(&token, &query, max).await
         }
     })
@@ -150,16 +149,14 @@ async fn fetch_messages(token: &str, query: &str, max: u64) -> Result<String, St
             .header("Authorization", &format!("Bearer {token}"))
             .send()
             .await
+            && r.ok()
+            && let Ok(j) = r.json::<Value>().await
         {
-            if r.ok() {
-                if let Ok(j) = r.json::<Value>().await {
-                    let m = parse_message(&j);
-                    out.push(format!(
-                        "From: {}\nSubject: {}\nDate: {}\nSnippet: {}",
-                        m.from, m.subject, m.date, m.snippet
-                    ));
-                }
-            }
+            let m = parse_message(&j);
+            out.push(format!(
+                "From: {}\nSubject: {}\nDate: {}\nSnippet: {}",
+                m.from, m.subject, m.date, m.snippet
+            ));
         }
     }
     Ok(out.join("\n\n---\n\n"))

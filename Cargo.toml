@@ -3,21 +3,41 @@ name = "askk"
 version = "0.1.0"
 authors = ["kaush <kaushal.beyblader@gmail.com>"]
 edition = "2024"
+rust-version = "1.96"
 
 [dependencies]
 dioxus = { version = "0.7.9", features = [] }
 async-trait = "0.1"
 futures-channel = "0.3"
 futures-util = "0.3"
-gloo-net = "0.6"
+gloo-net = "0.7"
 indexed_db_futures = { version = "0.6.4", features = ["serde"] }
 js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde", "js"] }
-wasm-bindgen = "0.2.99"
+wasm-bindgen = "0.2.123"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Blob", "BlobPropertyBag", "Document", "Element", "ErrorEvent", "File", "FileSystemDirectoryHandle", "FileSystemFileHandle", "FileSystemGetDirectoryOptions", "FileSystemGetFileOptions", "FileSystemHandle", "FileSystemHandleKind", "FileSystemRemoveOptions", "FileSystemWritableFileStream", "MessageEvent", "Navigator", "NodeList", "ReadableStream", "ReadableStreamDefaultReader", "StorageManager", "TextDecoder", "Url", "Window", "WritableStream", "Worker", "WorkerGlobalScope", "WorkerNavigator", "WorkerOptions", "WorkerType", "console", "Crypto", "CryptoKey", "History", "Notification", "NotificationOptions", "NotificationPermission", "Storage", "SubtleCrypto"] }
+web-sys = { version = "0.3", features = [
+    # Document/DOM, workers, streams, storage (pre-existing surface).
+    "Blob", "BlobPropertyBag", "Document", "Element", "ErrorEvent", "File",
+    "FileSystemDirectoryHandle", "FileSystemFileHandle", "FileSystemGetDirectoryOptions",
+    "FileSystemGetFileOptions", "FileSystemHandle", "FileSystemHandleKind",
+    "FileSystemRemoveOptions", "FileSystemWritableFileStream", "MessageEvent", "Navigator",
+    "NodeList", "ReadableStream", "ReadableStreamDefaultReader", "StorageManager",
+    "TextDecoder", "Url", "Window", "WritableStream", "Worker", "WorkerGlobalScope",
+    "WorkerNavigator", "WorkerOptions", "WorkerType", "console", "Crypto", "CryptoKey",
+    "History", "Notification", "NotificationOptions", "NotificationPermission", "Storage",
+    "SubtleCrypto",
+    # Browser-capability surface: camera/mic capture, screen share, geolocation,
+    # permissions introspection, speech synthesis, clipboard (capability tools + probe panel).
+    "MediaDevices", "MediaStream", "MediaStreamConstraints", "MediaStreamTrack",
+    "MediaTrackConstraints", "DisplayMediaStreamConstraints", "HtmlVideoElement",
+    "HtmlCanvasElement", "CanvasRenderingContext2d", "MediaRecorder", "MediaRecorderOptions",
+    "BlobEvent", "Geolocation", "Position", "Coordinates",
+    "PositionOptions", "PositionError", "Permissions", "PermissionStatus", "PermissionState",
+    "SpeechSynthesis", "SpeechSynthesisUtterance", "Clipboard", "Screen",
+] }
 regex = "1.12.3"
 
 # Browser-only: hard timeouts for in-browser code execution (src/browser_exec.rs).

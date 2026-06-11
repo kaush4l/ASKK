@@ -93,14 +93,12 @@ fn handle<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a> 
                 .get("days_ahead")
                 .and_then(Value::as_u64)
                 .unwrap_or(1)
-                .min(7)
-                .max(1);
+                .clamp(1, 7);
             let max = args
                 .get("max_results")
                 .and_then(Value::as_u64)
                 .unwrap_or(10)
-                .min(20)
-                .max(1);
+                .clamp(1, 20);
             fetch_events(&token, days, max).await
         }
     })

@@ -220,10 +220,8 @@ pub fn ToolsPage(mut snapshot: Signal<AppSnapshot>) -> Element {
                 onclick: move |_| {
                     #[cfg(target_arch = "wasm32")]
                     spawn_local(async {
-                        if let Some(win) = web_sys::window() {
-                            if let Ok(promise) = web_sys::Notification::request_permission() {
-                                let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-                            }
+                        if let Ok(promise) = web_sys::Notification::request_permission() {
+                            let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
                         }
                     });
                 },
