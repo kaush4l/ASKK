@@ -19,24 +19,19 @@ pub mod process_registry;
 pub mod python_runtime;
 pub mod runtime_status;
 mod session;
-mod tool_dispatch;
 mod validators;
 pub mod wasi_exec;
 
-use crate::core::ReactEngine;
+use crate::core::{Engine, ReactEngine, StopReason};
 use crate::inference::{
     InferenceOutput, InferenceProvider, InferenceRequest, OpenAiCompatibleInference, SubAgentInfo,
     get_implementation,
 };
-use crate::responses::{
-    FormatNegotiator, ParseOutcome, ParsedResponse, ParsedToolCall, ReActAction, ReActResponse,
-    ResponseFormat, StructuredResponse, parse_tool_calls,
-};
+use crate::responses::{ParsedResponse, ReActResponse, ResponseFormat, StructuredResponse};
 use crate::state::{
-    Agent, AgentEventKind, AgentMemory, AgentRun, AppResult, AppSnapshot, Message, ProviderConfig,
-    RunBudgets, RunLane, RunScratchpad, RunStatus, ScratchpadObservation, ToolCall, ToolResult,
-    ToolSpec, default_tool_names, event, merge_agent_memories, now_iso, rolling_summary_for,
-    upsert_rolling_summary,
+    Agent, AgentEventKind, AgentRun, AppResult, AppSnapshot, Message, ProviderConfig, RunBudgets,
+    RunLane, RunScratchpad, RunStatus, ScratchpadObservation, ToolSpec, default_tool_names, event,
+    now_iso, rolling_summary_for, upsert_rolling_summary,
 };
 use crate::strategy::{
     LoopMode, MAX_BACK_EDGES, Phase, PhaseOutcome, Routing, Strategy, StrategyContext,
@@ -47,7 +42,6 @@ use execution::{BrowserExecutionProvider, ExecutionProvider};
 use std::cell::Cell;
 use std::future::Future;
 use std::pin::Pin;
-use tool_dispatch::{PreparedCall, dispatch_tool_calls};
 use uuid::Uuid;
 use validators::ValidatorRegistry;
 
@@ -87,16 +81,6 @@ pub fn clear_interrupt() {
 fn interrupt_requested() -> bool {
     INTERRUPT.with(Cell::get)
 }
-
-/// Cooperative backoff between retry attempts. Real delay in the browser; a no-op
-/// on the host test runner (which has no event loop timer).
-#[cfg(target_arch = "wasm32")]
-async fn backoff(ms: u32) {
-    gloo_timers::future::TimeoutFuture::new(ms).await;
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-async fn backoff(_ms: u32) {}
 
 /// Drives agent goals through the ReAct loop using browser-safe compiled tools.
 #[derive(Clone, Debug)]
@@ -236,21 +220,6 @@ struct AgentLoop {
     /// run event at the start of `run()` (which has the live run to attach it to)
     /// before the driver falls back to `react`.
     unresolved_strategy: Option<String>,
-    /// The core engine this loop is migrating onto. It mirrors the identity,
-    /// provider, and conversation state of the legacy fields above (transitional
-    /// duplication, deleted when the loop body moves onto `engine.invoke`), and
-    /// at run start it receives the live [`crate::core::ToolMap`] + specs — the
-    /// dispatch gate already routes through it.
-    engine: ReactEngine,
-}
-
-/// What one [`AgentLoop::step`] decided the loop should do next.
-enum StepOutcome {
-    /// Keep looping: take another turn.
-    Continue,
-    /// Stop the loop. `answered` records whether a validated final answer was produced
-    /// (vs. an interrupt, pause, validation error, or empty-tool stop).
-    Stop { answered: bool },
 }
 
 impl AgentLoop {
@@ -356,22 +325,6 @@ impl AgentLoop {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // The core-engine mirror of this loop's identity/provider/conversation
-        // state. The legacy fields stay alongside it until the loop body moves
-        // onto `engine.invoke` (next stage); both are built from the same
-        // sources here, so they cannot drift within a run.
-        let engine = ReactEngine::new(
-            session::build_base_engine(
-                &agent,
-                provider.clone(),
-                snapshot.soul.clone(),
-                snapshot.skills.clone(),
-                sub_agents.clone(),
-                conversation.clone(),
-            ),
-            max_steps,
-        );
-
         Self {
             executor,
             agent,
@@ -390,7 +343,6 @@ impl AgentLoop {
             skill_library,
             workflow_gate,
             unresolved_strategy,
-            engine,
         }
     }
 
@@ -432,186 +384,151 @@ impl AgentLoop {
         run
     }
 
-    /// Per-turn lifecycle: construct the prompt, call the model (with retry), parse the
-    /// response, then decide the action — accept a validated final answer, or execute
-    /// the parsed tool calls and feed their UNTRUSTED results back. Returns whether the
-    /// outer loop should continue or stop. `turn` is 1-based.
-    ///
-    /// `snapshot` is passed in mutably because tool execution operates on it; the loop
-    /// object stays immutable across turns (only the `run`, `snapshot`, and `observer`
-    /// change).
-    // The per-turn driver legitimately needs the run context, the tool specs/allowlist,
-    // the cross-turn format negotiator, and the observer; bundling them into a struct
-    // would obscure more than it clarifies for one private method.
+    /// Run a Loop-mode phase: configure the core engine for this phase, hand
+    /// control to [`crate::core::ReactEngine`]'s `invoke` (the while loop now
+    /// lives in the core), and map its outcome back onto the strategy driver's
+    /// vocabulary. The phase budget (`max_turns`, 0 = the loop's global step
+    /// budget) is capped by the remaining global budget — the same arithmetic
+    /// as the original while condition. Returns the phase outcome, or `None`
+    /// when the run stopped (interrupt, pause, error) — run status/events
+    /// already say why. A validated final answer lands in `last_answer`.
     #[allow(clippy::too_many_arguments)]
-    async fn step<F>(
+    async fn run_loop_phase<F>(
         &self,
-        turn: u32,
         phase: &Phase,
+        max_turns: u32,
         context: &StrategyContext,
+        engine: &mut ReactEngine,
         snapshot: &mut AppSnapshot,
         run: &mut AgentRun,
         specs: &[ToolSpec],
-        format_negotiator: &mut FormatNegotiator,
+        steps_used: &mut u32,
         last_answer: &mut Option<String>,
-        final_response: &mut Option<ReActResponse>,
         observer: &mut F,
-    ) -> StepOutcome
+    ) -> Option<PhaseOutcome>
     where
         F: FnMut(AgentRun),
     {
-        run.scratchpad.budgets.steps_used = turn;
-        run.events.push(event(
-            &run.id,
-            Some(self.agent_id.clone()),
-            AgentEventKind::LlmRequest,
-            format!("Model call (turn {turn})"),
-            format!(
-                "Sending {} prior conversation message(s), the query, and {} in-run message(s).",
-                self.conversation.len(),
-                run.messages.len()
-            ),
-        ));
-        observer(run.clone());
-
-        // Full ordered transcript: prior conversation, the per-phase goal text, then
-        // this run's accumulated ReAct turns. For the react strategy's bare phase
-        // `phase_goal` returns the goal untouched, preserving byte parity.
-        let goal_text = phase_goal(phase, context, &run.goal, &self.skill_library);
-        let mut history = self.conversation.clone();
-        history.push(Message {
-            role: "user".to_string(),
-            content: goal_text.clone(),
-        });
-        history.extend(run.messages.iter().cloned());
-
-        // Ask for the format the negotiator currently favors (escalated to JSON after
-        // repeated TOON parse failures). Captured so we can score this turn's reply
-        // against the format we actually requested.
-        let requested_format = format_negotiator.format();
-        let request =
-            self.build_request(phase, context, goal_text, history, requested_format, specs);
-
-        let Some(output) = call_model_with_retry(
-            &self.inference,
-            &self.provider,
-            request,
-            run,
-            &self.agent_id,
-            observer,
-        )
-        .await
-        else {
-            // Every attempt failed: the run was paused (resumable) inside the helper.
-            return StepOutcome::Stop { answered: false };
-        };
-
-        // Score this reply against the format we requested and feed the negotiator: a
-        // clean parse in the requested format resets the streak; anything else (a
-        // different structured format or the lenient fallback) is a failure that moves
-        // us toward requesting JSON. `output.parsed` stays the lenient best-effort value
-        // the rest of the loop uses.
-        let parse_outcome: ParseOutcome = phase.response_kind.parsed_format(&output.raw_text);
-        format_negotiator.record(parse_outcome.honors(requested_format));
-        let next_format = format_negotiator.format();
-        if next_format != requested_format {
-            run.events.push(event(
-                &run.id,
-                Some(self.agent_id.clone()),
-                AgentEventKind::Routing,
-                "Response format escalated",
-                format!(
-                    "Requesting {} after {} consecutive parse failure(s) on {}.",
-                    next_format.as_form_value(),
-                    format_negotiator.consecutive_failures(),
-                    requested_format.as_form_value()
-                ),
-            ));
-        }
-
-        let parsed = output.parsed;
-        *final_response = Some(parsed.clone());
-        run.messages.push(Message {
-            role: "assistant".to_string(),
-            content: output.raw_text.clone(),
-        });
-        let thinking = if parsed.thinking.trim().is_empty() {
-            parsed.observation.clone()
+        let phase_budget = if max_turns == 0 {
+            self.max_steps
         } else {
-            parsed.thinking.clone()
+            max_turns
         };
-        run.events.push(event(
-            &run.id,
-            Some(self.agent_id.clone()),
-            AgentEventKind::LlmResponse,
-            format!("Model responded (turn {turn})"),
-            truncate(&thinking, 600),
-        ));
-        if !thinking.trim().is_empty() {
-            push_observation(run, &self.agent.name, thinking);
+        let effective_budget = phase_budget.min(self.max_steps.saturating_sub(*steps_used));
+        if effective_budget == 0 {
+            // Global budget already exhausted: the same outcome as the old
+            // loop whose while-condition never admitted a turn.
+            return Some(PhaseOutcome {
+                phase: phase.name,
+                response: ParsedResponse::ReAct(ReActResponse::from_raw(
+                    "phase budget exhausted without an answer",
+                )),
+                turns_used: 0,
+            });
         }
 
-        match parsed.action {
-            ReActAction::Answer => {
-                let final_text = parsed.final_text();
-                if try_finalize_answer(
-                    &self.validators,
-                    run,
-                    &self.agent_id,
-                    &final_text,
-                    "Final answer",
-                ) {
-                    *last_answer = Some(final_text.clone());
-                    observer(run.clone());
-                    return StepOutcome::Stop { answered: true };
+        // Per-phase engine configuration — what the old per-turn request build
+        // applied inline: the policy-filtered manifest, the selected skills,
+        // and the phase's response contract.
+        engine.max_iterations = effective_budget;
+        engine.base.specs = filter_tools_by_policy(phase.tool_policy, specs);
+        engine.base.skills =
+            filter_selected_skills(self.skills.clone(), context.selected_skills.as_ref());
+        engine.base.response_kind = phase.response_kind;
+
+        let goal_text = phase_goal(phase, context, &run.goal, &self.skill_library);
+        let mut hooks = session::RunHooks {
+            agent_loop: self,
+            run,
+            observer,
+            steps_before: *steps_used,
+        };
+        let outcome = engine.invoke(&goal_text, snapshot, &mut hooks).await;
+        *steps_used += outcome.turns_used;
+
+        match outcome.stop {
+            StopReason::Answered | StopReason::BudgetExhausted => {
+                if outcome.answer.is_some() {
+                    *last_answer = outcome.answer.clone();
                 }
+                Some(PhaseOutcome {
+                    phase: phase.name,
+                    response: ParsedResponse::ReAct(outcome.last_response.unwrap_or_else(|| {
+                        ReActResponse::from_raw("phase budget exhausted without an answer")
+                    })),
+                    turns_used: outcome.turns_used,
+                })
+            }
+            StopReason::Interrupted => {
+                mark_interrupted(run, "Run interrupted before the next model call.");
                 observer(run.clone());
-                if run.status == RunStatus::Error {
-                    return StepOutcome::Stop { answered: false };
-                }
+                None
             }
-            ReActAction::Tool => {
-                let calls = parse_tool_calls(&parsed.response);
-                if calls.is_empty() {
-                    // The model chose a tool but produced no parseable call. Validate
-                    // its text like any other final answer instead of returning raw,
-                    // unvalidated output.
-                    let final_text = parsed.final_text();
-                    if try_finalize_answer(
-                        &self.validators,
-                        run,
-                        &self.agent_id,
-                        &final_text,
-                        "Final answer (no tool call parsed)",
-                    ) {
-                        *last_answer = Some(final_text.clone());
-                        observer(run.clone());
-                        return StepOutcome::Stop { answered: true };
-                    }
-                    observer(run.clone());
-                    if run.status == RunStatus::Error {
-                        return StepOutcome::Stop { answered: false };
-                    }
-                    return StepOutcome::Continue;
-                }
-
-                self.execute_tool_calls(calls, snapshot, run, observer)
-                    .await;
-            }
+            // Paused (provider unreachable) or aborted (validation budget
+            // exceeded): run status and events were already written by the
+            // hooks; the strategy stops here.
+            StopReason::ProviderPaused | StopReason::Aborted => None,
         }
-
-        if run.status == RunStatus::Error {
-            return StepOutcome::Stop { answered: false };
-        }
-        observer(run.clone());
-        StepOutcome::Continue
     }
 
-    /// Build one phase-aware model request. [`ToolPolicy`] filters the tool manifest;
-    /// a `SkillSelection` outcome (carried in `context.selected_skills`) filters the
-    /// skill set. The negotiated `requested_format` is rendered into
-    /// `format_instructions` via the phase's [`ResponseKind`] — for the react phase
-    /// (`ResponseKind::ReAct`) this is byte-identical to the previous inline literal.
+    /// Run a OneShot phase: one model call through the core engine's template
+    /// methods (`render` + `call_model`) — no tool dispatch. The raw reply is
+    /// recorded through the history funnel so later phases carry it forward.
+    /// Returns `None` on an unrecoverable model error (the run was paused by
+    /// the hooks) or an interrupt.
+    #[allow(clippy::too_many_arguments)]
+    async fn run_one_shot_phase<F>(
+        &self,
+        phase: &Phase,
+        context: &StrategyContext,
+        engine: &mut ReactEngine,
+        run: &mut AgentRun,
+        specs: &[ToolSpec],
+        steps_used: &mut u32,
+        observer: &mut F,
+    ) -> Option<PhaseOutcome>
+    where
+        F: FnMut(AgentRun),
+    {
+        if interrupt_requested() {
+            mark_interrupted(run, "Run interrupted before the next model call.");
+            observer(run.clone());
+            return None;
+        }
+        if self.maybe_compact(run, observer).await {
+            engine.base.history = run.messages.clone();
+        }
+        *steps_used += 1;
+
+        engine.base.specs = filter_tools_by_policy(phase.tool_policy, specs);
+        engine.base.skills =
+            filter_selected_skills(self.skills.clone(), context.selected_skills.as_ref());
+        engine.base.response_kind = phase.response_kind;
+
+        let goal_text = phase_goal(phase, context, &run.goal, &self.skill_library);
+        let request = engine.render(&goal_text);
+        let mut hooks = session::RunHooks {
+            agent_loop: self,
+            run,
+            observer,
+            steps_before: *steps_used,
+        };
+        let output = engine.call_model(request, &mut hooks).await?;
+        engine.append_history(&mut hooks, "assistant", output.raw_text.clone());
+
+        Some(PhaseOutcome {
+            phase: phase.name,
+            response: phase.response_kind.parse(&output.raw_text),
+            turns_used: 1,
+        })
+    }
+
+    /// Build one phase-aware model request for the loop's **internal**
+    /// best-effort calls (memory compaction, the rolling-summary merge).
+    /// [`ToolPolicy`] filters the tool manifest; a `SkillSelection` outcome
+    /// filters the skill set. The live per-turn request is rendered by the
+    /// core engine ([`crate::core::Engine::render`]); this builder serves the
+    /// side calls that deliberately bypass the engine's negotiator and hooks.
     fn build_request(
         &self,
         phase: &Phase,
@@ -639,159 +556,19 @@ impl AgentLoop {
         }
     }
 
-    /// Run a Loop-mode phase: the original per-turn ReAct loop, bounded by the phase
-    /// budget (`max_turns`, 0 = the loop's global step budget) and the remaining global
-    /// budget. Returns the phase outcome, or `None` when the run stopped (interrupt,
-    /// pause, error) — in which case run status/events already say why. A validated
-    /// final answer is recorded into `last_answer` and produces a ReAct outcome.
-    #[allow(clippy::too_many_arguments)]
-    async fn run_loop_phase<F>(
-        &self,
-        phase: &Phase,
-        max_turns: u32,
-        context: &StrategyContext,
-        snapshot: &mut AppSnapshot,
-        run: &mut AgentRun,
-        specs: &[ToolSpec],
-        steps_used: &mut u32,
-        format_negotiator: &mut FormatNegotiator,
-        last_answer: &mut Option<String>,
-        observer: &mut F,
-    ) -> Option<PhaseOutcome>
-    where
-        F: FnMut(AgentRun),
-    {
-        let phase_budget = if max_turns == 0 {
-            self.max_steps
-        } else {
-            max_turns
-        };
-        let mut turns_this_phase: u32 = 0;
-        let mut final_response: Option<ReActResponse> = None;
-
-        while turns_this_phase < phase_budget && *steps_used < self.max_steps {
-            if interrupt_requested() {
-                mark_interrupted(run, "Run interrupted before the next model call.");
-                observer(run.clone());
-                return None;
-            }
-            self.maybe_compact(run, observer).await;
-            *steps_used += 1;
-            turns_this_phase += 1;
-
-            match self
-                .step(
-                    *steps_used,
-                    phase,
-                    context,
-                    snapshot,
-                    run,
-                    specs,
-                    format_negotiator,
-                    last_answer,
-                    &mut final_response,
-                    observer,
-                )
-                .await
-            {
-                StepOutcome::Continue => {}
-                StepOutcome::Stop { answered } => {
-                    if !answered {
-                        return None;
-                    }
-                    break;
-                }
-            }
-        }
-
-        Some(PhaseOutcome {
-            phase: phase.name,
-            response: ParsedResponse::ReAct(final_response.unwrap_or_else(|| {
-                ReActResponse::from_raw("phase budget exhausted without an answer")
-            })),
-            turns_used: turns_this_phase,
-        })
-    }
-
-    /// Run a OneShot phase: one model call, no tool dispatch, parsed by the phase's
-    /// response kind. The raw reply is recorded to `run.messages` so later phases carry
-    /// it forward. Returns `None` on an unrecoverable model error (the run is already
-    /// paused by [`call_model_with_retry`]) or an interrupt. The `react` strategy never
-    /// uses OneShot — this is built and tested now for the multi-phase strategies that
-    /// arrive in later tasks.
-    #[allow(clippy::too_many_arguments)]
-    async fn run_one_shot_phase<F>(
-        &self,
-        phase: &Phase,
-        context: &StrategyContext,
-        snapshot: &mut AppSnapshot,
-        run: &mut AgentRun,
-        specs: &[ToolSpec],
-        steps_used: &mut u32,
-        format_negotiator: &mut FormatNegotiator,
-        observer: &mut F,
-    ) -> Option<PhaseOutcome>
-    where
-        F: FnMut(AgentRun),
-    {
-        let _ = snapshot;
-        if interrupt_requested() {
-            mark_interrupted(run, "Run interrupted before the next model call.");
-            observer(run.clone());
-            return None;
-        }
-        self.maybe_compact(run, observer).await;
-        *steps_used += 1;
-
-        let goal_text = phase_goal(phase, context, &run.goal, &self.skill_library);
-        let mut history = self.conversation.clone();
-        history.push(Message {
-            role: "user".to_string(),
-            content: goal_text.clone(),
-        });
-        history.extend(run.messages.iter().cloned());
-
-        let requested_format = format_negotiator.format();
-        let request =
-            self.build_request(phase, context, goal_text, history, requested_format, specs);
-        let output = call_model_with_retry(
-            &self.inference,
-            &self.provider,
-            request,
-            run,
-            &self.agent_id,
-            observer,
-        )
-        .await?;
-
-        let parse_outcome = phase.response_kind.parsed_format(&output.raw_text);
-        format_negotiator.record(parse_outcome.honors(requested_format));
-        run.messages.push(Message {
-            role: "assistant".to_string(),
-            content: output.raw_text.clone(),
-        });
-        observer(run.clone());
-
-        Some(PhaseOutcome {
-            phase: phase.name,
-            response: phase.response_kind.parse(&output.raw_text),
-            turns_used: 1,
-        })
-    }
-
     /// Compact run.messages in place when policy triggers. Failure is non-fatal:
     /// keep history, log, retry at the next trigger.
-    async fn maybe_compact<F>(&self, run: &mut AgentRun, observer: &mut F)
+    async fn maybe_compact<F>(&self, run: &mut AgentRun, observer: &mut F) -> bool
     where
         F: FnMut(AgentRun),
     {
         let policy = memory::MemoryPolicy::default();
         if !memory::needs_compaction(&policy, &run.messages, self.provider.context_window) {
-            return;
+            return false;
         }
         let Some((older, recent)) = memory::split_for_compaction(&run.messages, policy.keep_recent)
         else {
-            return;
+            return false;
         };
 
         let transcript = older
@@ -839,7 +616,7 @@ impl AgentLoop {
                             "The summarizer reply did not parse into a usable summary; working memory was left unchanged.".to_string(),
                         ));
                         observer(run.clone());
-                        return;
+                        return false;
                     }
                     let dropped = older.len();
                     let mut compacted = vec![memory::summary_message(
@@ -859,7 +636,9 @@ impl AgentLoop {
                         ),
                     ));
                     observer(run.clone());
+                    return true;
                 }
+                false
             }
             Err(error) => {
                 run.events.push(event(
@@ -870,6 +649,7 @@ impl AgentLoop {
                     error,
                 ));
                 observer(run.clone());
+                false
             }
         }
     }
@@ -957,124 +737,6 @@ impl AgentLoop {
                 observer(run.clone());
             }
         }
-    }
-
-    /// Execute the parsed tool calls for one turn and feed their results back.
-    ///
-    /// Each tool's output is UNTRUSTED DATA: a validated successful result enters the
-    /// conversation as evidence, while a validation failure re-enters as structured
-    /// feedback instead — never as an instruction the model must obey. A tool not on
-    /// the allowlist short-circuits to a rejection result without executing.
-    async fn execute_tool_calls<F>(
-        &self,
-        calls: Vec<ParsedToolCall>,
-        snapshot: &mut AppSnapshot,
-        run: &mut AgentRun,
-        observer: &mut F,
-    ) where
-        F: FnMut(AgentRun),
-    {
-        // === Parallel dual tool-call dispatch (unit #4) ===
-        // A model turn may emit >= 2 tool calls. Prepare them all (assign ids, record the
-        // requests, and apply the allowlist gate — the single visible gate per invariant
-        // 7), then run them CONCURRENTLY via `dispatch_tool_calls` and feed the ordered
-        // observations back exactly as the old sequential loop did. The single-call path
-        // is unchanged in effect. Tool output is untrusted DATA throughout.
-        let prepared = calls
-            .iter()
-            .map(|call| {
-                let call_id = Uuid::new_v4().to_string();
-                run.tool_calls.push(ToolCall {
-                    id: call_id.clone(),
-                    agent_id: self.agent_id.clone(),
-                    tool_name: call.name.clone(),
-                    arguments: call.args.clone(),
-                });
-                run.events.push(event(
-                    &run.id,
-                    Some(self.agent_id.clone()),
-                    AgentEventKind::ToolRequested,
-                    format!("Tool requested: {}", call.name),
-                    truncate(&call.args.to_string(), 400),
-                ));
-                PreparedCall {
-                    call_id,
-                    name: call.name.clone(),
-                    args: call.args.clone(),
-                    // The single visible gate: membership in the core ToolMap,
-                    // which `run()` built from the finalized allowlist.
-                    allowed: self.engine.base.tools.contains(&call.name),
-                    enabled_tools: self.engine.base.tools.names(),
-                }
-            })
-            .collect::<Vec<_>>();
-        observer(run.clone());
-
-        let dispatched = dispatch_tool_calls(&self.executor, snapshot, &prepared).await;
-
-        // Split the dispatcher's `(ToolResult, Vec<AgentMemory>)` pairs: results feed
-        // the conversation below; the per-call `agent_memories` deltas (e.g. a
-        // `call_agent` sub-run's rolling summary, mutated on that call's discarded
-        // snapshot clone) are merged into the REAL snapshot afterwards, in call order.
-        let mut memory_batches: Vec<Vec<AgentMemory>> = Vec::with_capacity(dispatched.len());
-        let mut results: Vec<ToolResult> = Vec::with_capacity(dispatched.len());
-        for (result, memories) in dispatched {
-            results.push(result);
-            memory_batches.push(memories);
-        }
-
-        // Process observations IN CALL ORDER (the order `dispatch_tool_calls` returns),
-        // so feedback into the conversation is deterministic regardless of which call
-        // finished first.
-        for (prepared_call, result) in prepared.iter().zip(results) {
-            let tool_name = &prepared_call.name;
-            let kind = if result.ok {
-                AgentEventKind::ToolCompleted
-            } else {
-                AgentEventKind::Error
-            };
-            run.events.push(event(
-                &run.id,
-                Some(self.agent_id.clone()),
-                kind,
-                format!(
-                    "Tool {}: {}",
-                    if result.ok { "completed" } else { "failed" },
-                    tool_name
-                ),
-                truncate(&result.content, 600),
-            ));
-            let tool_result_valid = validate_tool_result_or_feedback(
-                &self.validators,
-                run,
-                Some(self.agent_id.clone()),
-                tool_name,
-                &result,
-            );
-            // Tool output is untrusted DATA. A validated successful result enters
-            // the conversation as evidence; validation failures re-enter as
-            // structured feedback instead.
-            if tool_result_valid {
-                run.messages.push(Message {
-                    role: "tool".to_string(),
-                    content: format!("{} -> {}", tool_name, result.content),
-                });
-                push_observation(run, tool_name, truncate(&result.content, 400));
-            }
-            run.tool_results.push(result);
-            observer(run.clone());
-            if run.status == RunStatus::Error {
-                break;
-            }
-        }
-
-        // Merge each call's surfaced `agent_memories` delta into the real snapshot.
-        // Rule: call-order upsert; for parallel delegations to the same agent the
-        // later call wins (each ran on its own clone and could not see the other's
-        // merge). This is the write-back that carries a `call_agent` sub-run's rolling
-        // summary back to the parent, which the per-call snapshot clone alone discards.
-        merge_agent_memories(&mut snapshot.agent_memories, memory_batches);
-        // === end parallel dual tool-call dispatch ===
     }
 
     /// Drive the goal to completion: run-start setup (MCP bring-up), then the per-turn
@@ -1193,18 +855,26 @@ impl AgentLoop {
             specs
         };
 
-        // Reify the finalized tool surface for the core engine: the ToolMap is
-        // the dispatch gate (membership = the allowlist; every name — compiled,
-        // MCP, or agent — binds to the same executor closure) and `specs` is the
-        // model-visible manifest. The gate below routes through this map.
-        self.engine.base.tools = session::build_tool_map(&self.executor, &enabled_tools);
-        self.engine.base.specs = specs.clone();
-
-        // Requested-format negotiation (Unit #2): persists across turns so a streak of
-        // TOON parse failures can escalate the requested format to JSON (and one clean
-        // parse relaxes it back). `step` feeds it each turn's outcome and reads back the
-        // format to request next.
-        let mut format_negotiator = FormatNegotiator::new(self.agent.response_format);
+        // The run-local core engine: identity/conversation from init-time state,
+        // the finalized allowlist reified as the ToolMap (membership IS the
+        // dispatch gate; compiled, MCP, and agent_<slug> names all bind to the
+        // same executor closure), and the format negotiator that persists across
+        // turns and phases (a streak of TOON parse failures escalates the
+        // requested format to JSON; one clean parse relaxes it back). The loop
+        // itself is `ReactEngine::invoke` in `crate::core`; the strategy driver
+        // below configures the engine per phase and maps outcomes back.
+        let mut engine = ReactEngine::new(
+            session::build_base_engine(
+                &self.agent,
+                self.provider.clone(),
+                self.soul.clone(),
+                self.skills.clone(),
+                self.sub_agents.clone(),
+                self.conversation.clone(),
+            ),
+            self.max_steps,
+        );
+        engine.base.tools = session::build_tool_map(&self.executor, &enabled_tools);
 
         // === Strategy driver ===
         // Drive the strategy's ordered phases. The `react` strategy is the degenerate
@@ -1247,11 +917,10 @@ impl AgentLoop {
                     self.run_one_shot_phase(
                         phase,
                         &context,
-                        &mut snapshot,
+                        &mut engine,
                         &mut run,
                         &specs,
                         &mut steps_used,
-                        &mut format_negotiator,
                         &mut observer,
                     )
                     .await
@@ -1261,11 +930,11 @@ impl AgentLoop {
                         phase,
                         max_turns,
                         &context,
+                        &mut engine,
                         &mut snapshot,
                         &mut run,
                         &specs,
                         &mut steps_used,
-                        &mut format_negotiator,
                         &mut last_answer,
                         &mut observer,
                     )
@@ -1297,14 +966,22 @@ impl AgentLoop {
                 && matches!(routing, Routing::Done)
             {
                 let final_text = react.final_text();
-                if try_finalize_answer(
+                match try_finalize_answer(
                     &self.validators,
                     &mut run,
                     &self.agent_id,
                     &final_text,
                     "Final answer",
                 ) {
-                    last_answer = Some(final_text);
+                    None => last_answer = Some(final_text),
+                    Some(feedback) => {
+                        // Routing is Done, so no later phase consumes this;
+                        // keep the legacy transcript shape (feedback recorded).
+                        run.messages.push(Message {
+                            role: "user".to_string(),
+                            content: feedback,
+                        });
+                    }
                 }
                 observer(run.clone());
             }
@@ -1391,63 +1068,6 @@ where
     Ok(agent_loop.run(snapshot, goal, observer).await)
 }
 
-/// Call the model for one turn, retrying a transient failure a few times with
-/// backoff. On success returns the parsed output. If every attempt fails the run is
-/// *paused* (resumable, not hard-errored) and `None` is returned so the caller stops —
-/// the app and conversation stay intact and the user can Resume.
-async fn call_model_with_retry<P, F>(
-    inference: &P,
-    provider: &ProviderConfig,
-    request: InferenceRequest,
-    run: &mut AgentRun,
-    agent_id: &str,
-    observer: &mut F,
-) -> Option<InferenceOutput<ReActResponse>>
-where
-    P: InferenceProvider,
-    F: FnMut(AgentRun),
-{
-    const MAX_MODEL_ATTEMPTS: u32 = 3;
-    let mut sink = |_partial: String| {};
-    let mut attempt = 0u32;
-    loop {
-        attempt += 1;
-        match inference
-            .invoke_react_streaming(provider, request.clone(), &mut sink)
-            .await
-        {
-            Ok(output) => return Some(output),
-            Err(err) => {
-                run.events.push(event(
-                    &run.id,
-                    Some(agent_id.to_string()),
-                    AgentEventKind::Error,
-                    format!("Model call failed (attempt {attempt}/{MAX_MODEL_ATTEMPTS})"),
-                    err,
-                ));
-                observer(run.clone());
-                if attempt < MAX_MODEL_ATTEMPTS {
-                    backoff(300 * attempt).await;
-                    continue;
-                }
-                run.status = RunStatus::Paused;
-                if run.final_answer.trim().is_empty() {
-                    run.final_answer = "Paused: the model provider could not be reached after several attempts. Check the Provider settings, then press Resume to continue.".to_string();
-                }
-                run.events.push(event(
-                    &run.id,
-                    Some(agent_id.to_string()),
-                    AgentEventKind::Interrupted,
-                    "Run paused (provider unreachable)",
-                    truncate(&run.final_answer, 300),
-                ));
-                observer(run.clone());
-                return None;
-            }
-        }
-    }
-}
-
 /// One model attempt with no retry and no run-state side effects — used for
 /// best-effort internal calls (compaction, rolling-summary merge).
 async fn call_model_plain(
@@ -1478,13 +1098,18 @@ fn finalize_status(run: &mut AgentRun, answered: bool) {
     }
 }
 
+/// Validate one tool result. `None` = accepted (Verification event recorded);
+/// `Some(feedback)` = rejected — the feedback text is returned for the caller
+/// to feed back into the conversation (the core engine's history funnel owns
+/// that append), while the events, scratchpad observation, and retry-budget
+/// bookkeeping are recorded here.
 fn validate_tool_result_or_feedback(
     validators: &ValidatorRegistry,
     run: &mut AgentRun,
     agent_id: Option<String>,
     tool_name: &str,
     result: &crate::state::ToolResult,
-) -> bool {
+) -> Option<String> {
     let validation = validators.validate_tool_result(tool_name, result, run);
     if validation.ok {
         run.events.push(event(
@@ -1494,7 +1119,7 @@ fn validate_tool_result_or_feedback(
             format!("Tool result validated: {tool_name}"),
             truncate(&result.content, 600),
         ));
-        return true;
+        return None;
     }
 
     let feedback = format!(
@@ -1508,13 +1133,9 @@ fn validate_tool_result_or_feedback(
         format!("Tool result rejected: {tool_name}"),
         truncate(&feedback, 600),
     ));
-    run.messages.push(Message {
-        role: "user".to_string(),
-        content: feedback.clone(),
-    });
     push_observation(run, "validator", truncate(&feedback, 400));
     mark_validation_error_if_budget_exceeded(run);
-    false
+    Some(feedback)
 }
 
 /// Validate `final_text` as the run's final answer and, on success, record the
@@ -1528,26 +1149,34 @@ fn try_finalize_answer(
     agent_id: &str,
     final_text: &str,
     event_title: &str,
-) -> bool {
-    if validate_final_answer_or_feedback(validators, run, Some(agent_id.to_string()), final_text) {
-        run.events.push(event(
-            &run.id,
-            Some(agent_id.to_string()),
-            AgentEventKind::FinalAnswer,
-            event_title,
-            truncate(&run.final_answer, 600),
-        ));
-        return true;
+) -> Option<String> {
+    match validate_final_answer_or_feedback(validators, run, Some(agent_id.to_string()), final_text)
+    {
+        None => {
+            run.events.push(event(
+                &run.id,
+                Some(agent_id.to_string()),
+                AgentEventKind::FinalAnswer,
+                event_title,
+                truncate(&run.final_answer, 600),
+            ));
+            None
+        }
+        Some(feedback) => Some(feedback),
     }
-    false
 }
 
+/// Validate a candidate final answer. `None` = accepted (`run.final_answer`
+/// set, Verification event recorded); `Some(feedback)` = rejected — the
+/// feedback is returned for the caller to feed back into the conversation
+/// (the core engine's history funnel owns that append), while the events,
+/// observation, and retry-budget bookkeeping are recorded here.
 fn validate_final_answer_or_feedback(
     validators: &ValidatorRegistry,
     run: &mut AgentRun,
     agent_id: Option<String>,
     answer: &str,
-) -> bool {
+) -> Option<String> {
     let validation = validators.validate_final_answer(answer, run);
     if validation.ok {
         run.final_answer = answer.trim().to_string();
@@ -1558,7 +1187,7 @@ fn validate_final_answer_or_feedback(
             "Final answer validated",
             truncate(&run.final_answer, 600),
         ));
-        return true;
+        return None;
     }
 
     let feedback = format!("Validator feedback: {}", validation.feedback);
@@ -1569,13 +1198,9 @@ fn validate_final_answer_or_feedback(
         "Final answer rejected",
         truncate(&feedback, 600),
     ));
-    run.messages.push(Message {
-        role: "user".to_string(),
-        content: feedback.clone(),
-    });
     push_observation(run, "validator", truncate(&feedback, 400));
     mark_validation_error_if_budget_exceeded(run);
-    false
+    Some(feedback)
 }
 
 fn mark_validation_error_if_budget_exceeded(run: &mut AgentRun) {
@@ -1983,21 +1608,17 @@ mod tests {
         assert!(!map.contains("file_write"));
     }
 
-    /// Stage-2 parity proof for the core migration: configured the way the
-    /// phase driver will configure it, `Engine::render` produces the same
-    /// request as the legacy `build_request` path inside `step` — field for
-    /// field, except `now`, which each path reads at build time.
-    // Deleted with `build_request` when the loop body moves onto the core
-    // engine; until then it pins the render contract during the migration.
+    /// Parity proof for the core migration: configured the way the phase
+    /// driver configures it, `Engine::render` produces the same request as
+    /// the shell's `build_request` (now serving the internal best-effort
+    /// calls) — field for field, except `now`, which each path reads at
+    /// build time.
     #[test]
     fn engine_render_matches_legacy_build_request_field_for_field() {
-        use crate::core::Engine as _;
-
         let snapshot = AppSnapshot::default();
         let params = LoopParams::default();
         let goal = "compare the two render paths";
-        let mut agent_loop =
-            AgentLoop::new(BrowserExecutionProvider::new(), &snapshot, goal, &params);
+        let agent_loop = AgentLoop::new(BrowserExecutionProvider::new(), &snapshot, goal, &params);
 
         let phase = &agent_loop.strategy.phases()[0];
         let context = StrategyContext::default();
@@ -2006,13 +1627,27 @@ mod tests {
             .domain_specs_for_agent(&agent_loop.enabled_tools);
         let goal_text = phase_goal(phase, &context, goal, &agent_loop.skill_library);
 
-        // Legacy path: the transcript assembly inside `step` + `build_request`.
+        // Shell path: the transcript assembly + `build_request`.
         let mut history = agent_loop.conversation.clone();
         history.push(Message {
             role: "user".to_string(),
             content: goal_text.clone(),
         });
-        let requested = agent_loop.engine.base.negotiator.format();
+
+        // Core path: build the engine the way `run()` does, configure it the
+        // way the phase driver does, then render.
+        let mut engine = ReactEngine::new(
+            session::build_base_engine(
+                &agent_loop.agent,
+                agent_loop.provider.clone(),
+                agent_loop.soul.clone(),
+                agent_loop.skills.clone(),
+                agent_loop.sub_agents.clone(),
+                agent_loop.conversation.clone(),
+            ),
+            agent_loop.max_steps,
+        );
+        let requested = engine.base.negotiator.format();
         let legacy = agent_loop.build_request(
             phase,
             &context,
@@ -2021,14 +1656,11 @@ mod tests {
             requested,
             &specs,
         );
-
-        // Core path: configure the engine exactly as the phase driver will
-        // (phase-filtered specs/skills, the phase's response kind), then render.
-        agent_loop.engine.base.specs = filter_tools_by_policy(phase.tool_policy, &specs);
-        agent_loop.engine.base.skills =
+        engine.base.specs = filter_tools_by_policy(phase.tool_policy, &specs);
+        engine.base.skills =
             filter_selected_skills(agent_loop.skills.clone(), context.selected_skills.as_ref());
-        agent_loop.engine.base.response_kind = phase.response_kind;
-        let rendered = agent_loop.engine.render(&goal_text);
+        engine.base.response_kind = phase.response_kind;
+        let rendered = engine.render(&goal_text);
 
         assert_eq!(rendered.agent_name, legacy.agent_name);
         assert_eq!(rendered.agent_role, legacy.agent_role);
@@ -2069,22 +1701,20 @@ mod tests {
         let validators = ValidatorRegistry;
         let mut run = test_run_with_evidence();
 
-        let accepted = validate_final_answer_or_feedback(
+        let feedback = validate_final_answer_or_feedback(
             &validators,
             &mut run,
             Some("agent-1".to_string()),
             "The answer is seven.",
         );
 
-        assert!(!accepted);
+        let feedback = feedback.expect("ungrounded answer must be rejected with feedback");
+        assert!(feedback.contains("Validator feedback"));
         assert!(run.final_answer.is_empty());
-        assert!(
-            run.messages
-                .last()
-                .unwrap()
-                .content
-                .contains("Validator feedback")
-        );
+        // The conversation append now belongs to the core engine's history
+        // funnel (the hooks return the feedback); the helper records only
+        // events and observations.
+        assert!(run.messages.is_empty());
         assert_eq!(
             run.events.last().unwrap().kind,
             AgentEventKind::Verification
@@ -2107,14 +1737,14 @@ mod tests {
         let validators = ValidatorRegistry;
         let mut run = test_run_with_evidence();
 
-        let accepted = validate_final_answer_or_feedback(
+        let feedback = validate_final_answer_or_feedback(
             &validators,
             &mut run,
             Some("agent-1".to_string()),
             "The evidence says 2 + 2 = 4.",
         );
 
-        assert!(accepted);
+        assert!(feedback.is_none(), "grounded answer must be accepted");
         assert_eq!(run.final_answer, "The evidence says 2 + 2 = 4.");
         assert_eq!(
             run.events.last().unwrap().kind,

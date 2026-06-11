@@ -135,7 +135,7 @@ struct RecordingHooks {
     finished: Vec<(String, bool)>,
     failures: Vec<u32>,
     exhausted: u32,
-    escalations: Vec<(ResponseFormat, u32)>,
+    escalations: Vec<(ResponseFormat, ResponseFormat, u32)>,
     mirrored: Vec<Message>,
     turns_started: Vec<u32>,
 }
@@ -157,8 +157,8 @@ impl EngineHooks for RecordingHooks {
         self.exhausted += 1;
     }
 
-    fn on_format_escalated(&mut self, to: ResponseFormat, consecutive_failures: u32) {
-        self.escalations.push((to, consecutive_failures));
+    fn on_format_escalated(&mut self, from: ResponseFormat, to: ResponseFormat, failures: u32) {
+        self.escalations.push((from, to, failures));
     }
 
     fn on_history_appended(&mut self, message: &Message) {
@@ -561,7 +561,11 @@ fn format_escalation_fires_after_consecutive_toon_failures() {
 
     assert_eq!(
         hooks.escalations,
-        vec![(ResponseFormat::Json, MAX_TOON_FAILURES)]
+        vec![(
+            ResponseFormat::Toon,
+            ResponseFormat::Json,
+            MAX_TOON_FAILURES
+        )]
     );
     assert_eq!(engine.base.negotiator.format(), ResponseFormat::Json);
 }

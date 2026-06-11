@@ -15,7 +15,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 
-use futures_util::future::join_all;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -31,7 +30,7 @@ use crate::state::{
 };
 
 use super::content::{MultimodalCollector, Part};
-use super::tooling::{ToolMap, disallowed_tool_result};
+use super::tooling::{ToolMap, disallowed_tool_result, join_in_order};
 
 /// A dyn-safe view of an [`InferenceProvider`]. The provider trait uses `async
 /// fn` (not object-safe), so this wrapper boxes the futures; the blanket impl
@@ -184,9 +183,9 @@ pub trait EngineHooks {
     fn on_model_exhausted(&mut self) {}
 
     /// The format negotiator escalated (e.g. TOON → JSON) after consecutive
-    /// parse failures.
-    fn on_format_escalated(&mut self, to: ResponseFormat, consecutive_failures: u32) {
-        let _ = (to, consecutive_failures);
+    /// parse failures on the previously requested format.
+    fn on_format_escalated(&mut self, from: ResponseFormat, to: ResponseFormat, failures: u32) {
+        let _ = (from, to, failures);
     }
 
     /// A message entered the engine's history (fired before the push). The
@@ -433,7 +432,7 @@ pub trait Engine {
         let next_format = base.negotiator.format();
         if next_format != requested_format {
             let failures = base.negotiator.consecutive_failures();
-            hooks.on_format_escalated(next_format, failures);
+            hooks.on_format_escalated(requested_format, next_format, failures);
         }
         Some(output)
     }
@@ -524,7 +523,7 @@ pub trait Engine {
                     (result, call_snapshot.agent_memories)
                 }
             });
-            join_all(futures).await
+            join_in_order(futures).await
         };
 
         let mut memory_batches: Vec<Vec<AgentMemory>> = Vec::with_capacity(dispatched.len());

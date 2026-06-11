@@ -3,9 +3,10 @@ use wasm_bindgen_futures::spawn_local;
 
 mod agent_prompt;
 mod components;
-// The shell adopts the core engine in the core-wiring stage; until then only
-// the core's own tests exercise it, which the dead-code and unused-import
-// lints cannot see (re-exports from a bin crate count as unused until used).
+// Parts of the core's public surface are exercised only by host tests today
+// (NoHooks, the mock-inference seam) or reserved for modality wiring (Part
+// constructors); the bin-target lints cannot see test usage. Pruned/narrowed
+// as the loop-level shell tests and a Part-capable provider land.
 #[allow(dead_code, unused_imports)]
 mod core;
 mod engine;
