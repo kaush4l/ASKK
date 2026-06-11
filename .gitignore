@@ -13,3 +13,8 @@
 .hermes/
 .askk-workspace/
 node_modules/
+
+# Local model cache (multi-GB weights; fetched by scripts/models/fetch.sh,
+# staged into a deploy by scripts/models/stage.sh). Only the README is tracked.
+/models/*
+!/models/README.md
