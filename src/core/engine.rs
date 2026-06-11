@@ -188,8 +188,11 @@ pub trait EngineHooks {
         let _ = (from, to, failures);
     }
 
-    /// A message entered the engine's history (fired before the push). The
-    /// shell mirrors the in-run transcript here.
+    /// A message entered the engine's history (fired just **before** the
+    /// engine's own push, so the shell's mirror lands first and an observer
+    /// notification fired here sees the mirror up to date). Invariant: do not
+    /// read the engine's history back from inside this hook — it is one
+    /// message behind until the funnel completes.
     fn on_history_appended(&mut self, message: &Message) {
         let _ = message;
     }
@@ -554,7 +557,11 @@ pub trait Engine {
         }
 
         // Merge each call's surfaced memory delta into the real snapshot, in
-        // call order (later calls win on the same agent).
+        // call order (later calls win on the same agent). Deliberately
+        // unconditional — on Abort the calls already ran to completion
+        // concurrently, so their memory write-backs are kept even though the
+        // observations past the abort point never entered the conversation
+        // (same behavior as the pre-migration dispatcher).
         merge_agent_memories(&mut snapshot.agent_memories, memory_batches);
         !aborted
     }

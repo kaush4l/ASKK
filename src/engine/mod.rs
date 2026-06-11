@@ -498,6 +498,10 @@ impl RunSession {
         if self.maybe_compact(run, observer).await {
             engine.base.history = run.messages.clone();
         }
+        // Capture the pre-increment count for the hooks (same convention as
+        // the Loop-mode path: `steps_before` + the engine's 1-based local turn
+        // = the global turn number).
+        let steps_before = *steps_used;
         *steps_used += 1;
 
         engine.base.specs = filter_tools_by_policy(phase.tool_policy, specs);
@@ -511,7 +515,7 @@ impl RunSession {
             agent_loop: self,
             run,
             observer,
-            steps_before: *steps_used,
+            steps_before,
         };
         let output = engine.call_model(request, &mut hooks).await?;
         engine.append_history(&mut hooks, "assistant", output.raw_text.clone());

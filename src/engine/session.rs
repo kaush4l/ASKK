@@ -280,7 +280,10 @@ impl<F: FnMut(AgentRun)> EngineHooks for RunHooks<'_, F> {
         if self.run.status == RunStatus::Error {
             // Terminal (validation retry budget exceeded). Keep the legacy
             // transcript shape: the rejected result's feedback message still
-            // lands, even though the loop stops here.
+            // lands, even though the loop stops here. Bypassing the engine's
+            // history funnel is sound only because this path is terminal —
+            // the engine is dropped when the strategy stops on `None`, and a
+            // Resume builds a fresh engine seeded from `run.messages`.
             if let ToolVerdict::Reject { feedback } = verdict {
                 self.run.messages.push(crate::state::Message {
                     role: "user".to_string(),
@@ -316,6 +319,9 @@ impl<F: FnMut(AgentRun)> EngineHooks for RunHooks<'_, F> {
                 if self.run.status == RunStatus::Error {
                     // Terminal: keep the legacy transcript shape (feedback
                     // message recorded) even though the loop stops here.
+                    // Bypassing the engine's history funnel is sound only on
+                    // this terminal path — the engine is dropped when the
+                    // strategy stops, and Resume reseeds from `run.messages`.
                     self.run.messages.push(crate::state::Message {
                         role: "user".to_string(),
                         content: feedback,
