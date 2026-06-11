@@ -2002,4 +2002,408 @@ mod tests {
                     && event.title.contains("blocked"))
         );
     }
+
+    // ── Loop-level tests: the real shell (run_loop_phase + RunHooks) driven
+    //    against a scripted inference — coverage that was impossible while the
+    //    loop hard-wired the concrete provider. ──────────────────────────────
+
+    use crate::core::BaseEngine;
+    use crate::responses::ReActAction;
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+    use std::rc::Rc;
+    use std::task::{Context as TaskContext, Poll, Waker};
+
+    /// Hand-drive a future on the host with no async runtime (same driver as
+    /// the core tests): no-op waker + unconditional re-poll.
+    fn run_to_completion<Fut: std::future::Future>(fut: Fut) -> Fut::Output {
+        let waker = Waker::noop();
+        let mut cx = TaskContext::from_waker(waker);
+        let mut fut = Box::pin(fut);
+        loop {
+            if let Poll::Ready(out) = fut.as_mut().poll(&mut cx) {
+                return out;
+            }
+        }
+    }
+
+    /// Scripted provider for the shell tests: pops one reply per call and
+    /// records every request (the blanket `LocalInference` impl makes it an
+    /// `InferenceHandle`).
+    #[derive(Default)]
+    struct ScriptedInference {
+        replies: RefCell<VecDeque<AppResult<InferenceOutput<ReActResponse>>>>,
+        requests: RefCell<Vec<InferenceRequest>>,
+    }
+
+    impl ScriptedInference {
+        fn new(replies: Vec<AppResult<InferenceOutput<ReActResponse>>>) -> Rc<Self> {
+            Rc::new(Self {
+                replies: RefCell::new(replies.into_iter().collect()),
+                requests: RefCell::new(Vec::new()),
+            })
+        }
+    }
+
+    impl InferenceProvider for ScriptedInference {
+        async fn invoke_react(
+            &self,
+            _config: &ProviderConfig,
+            request: InferenceRequest,
+        ) -> AppResult<InferenceOutput<ReActResponse>> {
+            self.requests.borrow_mut().push(request);
+            self.replies
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or_else(|| Err("scripted replies exhausted".to_string()))
+        }
+    }
+
+    fn reply(
+        action: ReActAction,
+        response: &str,
+        raw: &str,
+    ) -> AppResult<InferenceOutput<ReActResponse>> {
+        Ok(InferenceOutput {
+            raw_text: raw.to_string(),
+            parsed: ReActResponse {
+                observation: String::new(),
+                thinking: String::new(),
+                plan: Vec::new(),
+                action,
+                response: response.to_string(),
+            },
+        })
+    }
+
+    /// A fully wired shell fixture: a real `AgentLoop` over the default
+    /// snapshot, a core engine carrying the scripted inference, and a fresh
+    /// run — the exact objects `run()` hands to a Loop-mode phase.
+    fn shell_fixture(
+        goal: &str,
+        inference: Rc<ScriptedInference>,
+    ) -> (AgentLoop, ReactEngine, AgentRun, AppSnapshot) {
+        let snapshot = AppSnapshot::default();
+        let agent_loop = AgentLoop::new(
+            BrowserExecutionProvider::new(),
+            &snapshot,
+            goal,
+            &LoopParams::default(),
+        );
+        let engine = ReactEngine::new(
+            BaseEngine::with_inference(inference, agent_loop.provider.clone()),
+            agent_loop.max_steps,
+        );
+        let run = agent_loop.build_run(goal, &snapshot, &agent_loop.enabled_tools);
+        (agent_loop, engine, run, snapshot)
+    }
+
+    #[test]
+    fn loop_phase_emits_the_legacy_event_sequence_for_tool_then_answer() {
+        clear_interrupt();
+        let inference = ScriptedInference::new(vec![
+            reply(
+                ReActAction::Tool,
+                "lookup_capital({\"q\":\"France\"})",
+                "raw-1",
+            ),
+            reply(
+                ReActAction::Answer,
+                "The capital of France is Paris.",
+                "raw-2",
+            ),
+        ]);
+        let (agent_loop, mut engine, mut run, mut snapshot) =
+            shell_fixture("capital of France?", Rc::clone(&inference));
+        engine.base.tools.bind(
+            "lookup_capital",
+            Rc::new(|_s, _a| Box::pin(async { Ok("the capital of France is Paris".to_string()) })),
+        );
+
+        let phase = &agent_loop.strategy.phases()[0];
+        let mut steps_used = 0u32;
+        let mut last_answer = None;
+        let outcome = run_to_completion(agent_loop.run_loop_phase(
+            phase,
+            0,
+            &StrategyContext::default(),
+            &mut engine,
+            &mut snapshot,
+            &mut run,
+            &[],
+            &mut steps_used,
+            &mut last_answer,
+            &mut |_run| {},
+        ));
+
+        let outcome = outcome.expect("phase must complete with an answer");
+        assert_eq!(outcome.turns_used, 2);
+        assert_eq!(steps_used, 2);
+        assert_eq!(
+            last_answer.as_deref(),
+            Some("The capital of France is Paris.")
+        );
+        let kinds: Vec<AgentEventKind> =
+            run.events.iter().map(|event| event.kind.clone()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                AgentEventKind::Started,
+                AgentEventKind::Routing,
+                AgentEventKind::LlmRequest,
+                AgentEventKind::LlmResponse,
+                AgentEventKind::ToolRequested,
+                AgentEventKind::ToolCompleted,
+                AgentEventKind::Verification,
+                AgentEventKind::LlmRequest,
+                AgentEventKind::LlmResponse,
+                AgentEventKind::Verification,
+                AgentEventKind::FinalAnswer,
+            ]
+        );
+        // The run transcript mirrors the engine history one-to-one.
+        assert_eq!(run.messages, engine.base.history);
+        assert_eq!(run.final_answer, "The capital of France is Paris.");
+    }
+
+    #[test]
+    fn validation_reentry_consumes_a_turn_and_feeds_feedback_back() {
+        clear_interrupt();
+        let inference = ScriptedInference::new(vec![
+            reply(ReActAction::Tool, "calc({})", "raw-1"),
+            reply(ReActAction::Answer, "The answer is seven.", "raw-2"),
+            reply(ReActAction::Answer, "The evidence says 2 + 2 = 4.", "raw-3"),
+        ]);
+        let (agent_loop, mut engine, mut run, mut snapshot) =
+            shell_fixture("what is 2+2?", Rc::clone(&inference));
+        engine.base.tools.bind(
+            "calc",
+            Rc::new(|_s, _a| Box::pin(async { Ok("2 + 2 = 4".to_string()) })),
+        );
+
+        let phase = &agent_loop.strategy.phases()[0];
+        let mut steps_used = 0u32;
+        let mut last_answer = None;
+        let outcome = run_to_completion(agent_loop.run_loop_phase(
+            phase,
+            0,
+            &StrategyContext::default(),
+            &mut engine,
+            &mut snapshot,
+            &mut run,
+            &[],
+            &mut steps_used,
+            &mut last_answer,
+            &mut |_run| {},
+        ));
+
+        assert_eq!(outcome.expect("must answer").turns_used, 3);
+        assert_eq!(run.final_answer, "The evidence says 2 + 2 = 4.");
+        assert!(
+            run.messages
+                .iter()
+                .any(|m| m.role == "user" && m.content.contains("Validator feedback:")),
+            "rejected answer's feedback must enter the transcript"
+        );
+        assert_eq!(run.messages, engine.base.history);
+        // The retry request carried the feedback back to the model.
+        let retry_request = inference.requests.borrow()[2].clone();
+        assert!(
+            retry_request
+                .history
+                .iter()
+                .any(|m| m.content.contains("Validator feedback:"))
+        );
+    }
+
+    #[test]
+    fn provider_failure_pauses_the_run_resumably() {
+        clear_interrupt();
+        let inference = ScriptedInference::new(vec![
+            Err("connection refused".to_string()),
+            Err("connection refused".to_string()),
+            Err("connection refused".to_string()),
+        ]);
+        let (agent_loop, mut engine, mut run, mut snapshot) = shell_fixture("hello", inference);
+
+        let phase = &agent_loop.strategy.phases()[0];
+        let mut steps_used = 0u32;
+        let mut last_answer = None;
+        let outcome = run_to_completion(agent_loop.run_loop_phase(
+            phase,
+            0,
+            &StrategyContext::default(),
+            &mut engine,
+            &mut snapshot,
+            &mut run,
+            &[],
+            &mut steps_used,
+            &mut last_answer,
+            &mut |_run| {},
+        ));
+
+        assert!(outcome.is_none(), "a paused run stops the strategy");
+        assert_eq!(run.status, RunStatus::Paused);
+        assert!(
+            run.final_answer
+                .starts_with("Paused: the model provider could not be reached")
+        );
+        let failures = run
+            .events
+            .iter()
+            .filter(|event| event.kind == AgentEventKind::Error)
+            .count();
+        assert_eq!(failures, 3, "one Error event per attempt");
+        assert_eq!(
+            run.events.last().unwrap().kind,
+            AgentEventKind::Interrupted,
+            "the pause event closes the timeline"
+        );
+    }
+
+    #[test]
+    fn agent_slug_delegation_is_an_ordinary_tool_map_entry() {
+        clear_interrupt();
+        let inference = ScriptedInference::new(vec![
+            reply(
+                ReActAction::Tool,
+                "agent_researcher({\"query\":\"dioxus\"})",
+                "raw-1",
+            ),
+            reply(
+                ReActAction::Answer,
+                "Research notes: dioxus 0.7 is current.",
+                "raw-2",
+            ),
+        ]);
+        let (agent_loop, mut engine, mut run, mut snapshot) =
+            shell_fixture("research dioxus", Rc::clone(&inference));
+        // What `session::build_tool_map` does for `agent_<slug>` names: bind
+        // the delegation route like any other callable (stubbed here). The
+        // loop never special-cases delegation.
+        engine.base.tools.bind(
+            "agent_researcher",
+            Rc::new(|_s, _a| {
+                Box::pin(async { Ok("Research notes: dioxus 0.7 is current.".to_string()) })
+            }),
+        );
+
+        let phase = &agent_loop.strategy.phases()[0];
+        let mut steps_used = 0u32;
+        let mut last_answer = None;
+        let outcome = run_to_completion(agent_loop.run_loop_phase(
+            phase,
+            0,
+            &StrategyContext::default(),
+            &mut engine,
+            &mut snapshot,
+            &mut run,
+            &[],
+            &mut steps_used,
+            &mut last_answer,
+            &mut |_run| {},
+        ));
+
+        assert!(outcome.is_some());
+        assert!(run.messages.iter().any(|m| m.role == "tool"
+            && m.content == "agent_researcher -> Research notes: dioxus 0.7 is current."));
+    }
+
+    #[test]
+    fn collector_parts_travel_on_the_shell_request() {
+        clear_interrupt();
+        let inference = ScriptedInference::new(vec![reply(ReActAction::Answer, "done", "raw-1")]);
+        let (agent_loop, mut engine, mut run, mut snapshot) =
+            shell_fixture("hi", Rc::clone(&inference));
+        engine.base.collectors.push(Rc::new(|| {
+            vec![crate::core::Part::Image {
+                mime: "image/png".to_string(),
+                data_base64: "aGk=".to_string(),
+            }]
+        }));
+
+        let phase = &agent_loop.strategy.phases()[0];
+        let mut steps_used = 0u32;
+        let mut last_answer = None;
+        let _ = run_to_completion(agent_loop.run_loop_phase(
+            phase,
+            0,
+            &StrategyContext::default(),
+            &mut engine,
+            &mut snapshot,
+            &mut run,
+            &[],
+            &mut steps_used,
+            &mut last_answer,
+            &mut |_run| {},
+        ));
+
+        // The image part rides the request; no wire change (the provider
+        // ignores parts), so the run completes exactly as a text-only turn.
+        let request = inference.requests.borrow()[0].clone();
+        assert_eq!(request.parts.len(), 1);
+        assert_eq!(run.final_answer, "done");
+    }
+
+    #[test]
+    fn global_turn_numbering_continues_across_phases() {
+        clear_interrupt();
+        let inference = ScriptedInference::new(vec![reply(ReActAction::Answer, "done", "raw-1")]);
+        let (agent_loop, mut engine, mut run, mut snapshot) = shell_fixture("hi", inference);
+
+        let phase = &agent_loop.strategy.phases()[0];
+        // Three turns already spent by earlier phases of this run.
+        let mut steps_used = 3u32;
+        let mut last_answer = None;
+        let _ = run_to_completion(agent_loop.run_loop_phase(
+            phase,
+            0,
+            &StrategyContext::default(),
+            &mut engine,
+            &mut snapshot,
+            &mut run,
+            &[],
+            &mut steps_used,
+            &mut last_answer,
+            &mut |_run| {},
+        ));
+
+        assert_eq!(steps_used, 4);
+        assert_eq!(run.scratchpad.budgets.steps_used, 4);
+        assert!(
+            run.events
+                .iter()
+                .any(|event| event.title == "Model call (turn 4)"),
+            "event numbering must continue from the global step count"
+        );
+    }
+
+    #[test]
+    fn interrupt_between_turns_marks_the_run_interrupted() {
+        clear_interrupt();
+        let inference = ScriptedInference::new(vec![reply(ReActAction::Answer, "never", "raw-1")]);
+        let (agent_loop, mut engine, mut run, mut snapshot) = shell_fixture("hi", inference);
+
+        request_interrupt();
+        let phase = &agent_loop.strategy.phases()[0];
+        let mut steps_used = 0u32;
+        let mut last_answer = None;
+        let outcome = run_to_completion(agent_loop.run_loop_phase(
+            phase,
+            0,
+            &StrategyContext::default(),
+            &mut engine,
+            &mut snapshot,
+            &mut run,
+            &[],
+            &mut steps_used,
+            &mut last_answer,
+            &mut |_run| {},
+        ));
+        clear_interrupt();
+
+        assert!(outcome.is_none());
+        assert_eq!(run.status, RunStatus::Interrupted);
+        assert_eq!(steps_used, 0, "no model call after the interrupt");
+    }
 }
