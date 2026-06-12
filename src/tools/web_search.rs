@@ -1,6 +1,7 @@
-//! `web_search` — discover sources on the web, including current news. Two
-//! interchangeable backends sit behind the same envelope
-//! (`{ success, data: { web: [...] } }`):
+//! `web_search` — search the web and return the *contents* of the result pages, so the
+//! model reasons over real page text rather than a list of links. The browser backend
+//! returns `{ success, query, backend, results: [{ title, url, content }] }`; the bridge
+//! backend forwards to a full provider and returns that provider's shape. Two backends:
 //!
 //! - **Browser** (default): try a configured **SearXNG** instance first (browser-direct
 //!   via its JSON API — a real general-web metasearch, no key), so "use SearXNG for the
@@ -19,14 +20,14 @@
 //! per file); adding another source/provider is a new arm there or here, and the agent
 //! loop never changes.
 //!
-//! **Content scrape (browser backend).** Links alone are weak context, so the browser
-//! backend does not stop at them: it always scrapes the top results' pages **in parallel**
-//! via the same key-free reader chain as `web_fetch` and attaches each page's readable
-//! `content` (plus a `content_source`) to its hit, so the model reasons over full text in
-//! one turn instead of a `web_fetch` per source. The call shape is unchanged — `query` +
-//! `count` + the existing optionals — the scrape is automatic. **Every** result is read
-//! (concurrency-throttled, see [`SCRAPE_CONCURRENCY`]; each page truncated to
-//! [`MAX_SCRAPE_CHARS`]) and it is best-effort — a page that fails keeps its snippet.
+//! **Content scrape (browser backend).** The tool returns page *content*, not links: it
+//! runs the query, then fetches **every** result page **in parallel** via the same
+//! key-free reader chain as `web_fetch` and returns the scraped text as
+//! `results: [{ title, url, content }]` — the search engine's link list and snippets are
+//! dropped ([`into_content_results`]). The call shape is unchanged — `query` + `count` +
+//! the existing optionals. Reads are concurrency-throttled ([`SCRAPE_CONCURRENCY`]) and
+//! each page truncated to [`MAX_SCRAPE_CHARS`]; best-effort — a page that can't be read
+//! falls back to its engine snippet so the source still contributes.
 
 use crate::state::{AppResult, AppSnapshot, SearchBackend, ToolSpec, WebSearchToolConfig};
 use serde_json::{Value, json};
@@ -50,7 +51,7 @@ pub(crate) fn descriptor() -> ToolDescriptor {
 fn spec() -> ToolSpec {
     ToolSpec {
         name: "web_search".to_string(),
-        description: "Search the web for current information and news. Returns ranked hits (title, URL, description) plus the readable page `content` of the top results, scraped in parallel — so you get full text to reason over in one turn, not just links to fetch separately. Runs directly in the browser key-free (SearXNG/Wikinews/GDELT for news, DuckDuckGo, Hacker News, Stack Overflow, Wikipedia); adding a Tavily API key on the Tools page upgrades it to full general-web search from the page, and the local bridge can be used for Brave/Tavily/SearXNG.".to_string(),
+        description: "Search the web and read the pages for you. Runs the query, fetches every result page in parallel, and returns the scraped page **content** of each source as `results: [{title, url, content}]` — not a list of links. Read the returned content to answer the user; if it is not enough, search again with a sharper query. Runs directly in the browser key-free (SearXNG/Wikinews/GDELT for news, DuckDuckGo, Hacker News, Stack Overflow, Wikipedia); adding a Tavily API key on the Tools page upgrades it to full general-web search from the page, and the local bridge can be used for Brave/Tavily/SearXNG.".to_string(),
         input_schema: json!({
             "type":"object",
             "properties":{
@@ -97,12 +98,20 @@ async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppRe
 
     let (mut web, backend) = browser_search_hits(&query, count, args, config).await?;
 
-    // Links alone are weak context, so always enrich each hit with its page's readable
-    // content, fetched in parallel — the model reasons over full text in one turn
-    // instead of a follow-up web_fetch per source. The call shape stays query + count.
+    // The tool returns *context*, not links: fetch every result page in parallel, then
+    // hand back the scraped page contents for the model to read and decide whether it can
+    // answer confidently or must search again. The search engine's link list / snippets
+    // are an implementation detail — `into_content_results` drops them.
     scrape_contents(&mut web).await;
+    let results = into_content_results(web);
 
-    Ok(json!({ "success": true, "data": { "web": web }, "backend": backend }).to_string())
+    Ok(json!({
+        "success": true,
+        "query": query,
+        "backend": backend,
+        "results": results,
+    })
+    .to_string())
 }
 
 /// Gather ranked hits from the browser tiers, in order, falling through on error or no
@@ -206,8 +215,8 @@ async fn scrape_contents(web: &mut [Value]) {
         .collect()
         .await;
     for (index, result) in fetched {
-        if let Ok((text, source)) = result {
-            attach_content(&mut web[index], &text, source);
+        if let Ok((text, _source)) = result {
+            attach_content(&mut web[index], &text);
         }
     }
 }
@@ -228,11 +237,31 @@ fn scrape_targets(web: &[Value]) -> Vec<(usize, String)> {
         .collect()
 }
 
-/// Attach scraped page text (truncated to [`MAX_SCRAPE_CHARS`]) and the name of the
-/// fetch path that served it onto one hit. Pure and host-testable.
-fn attach_content(hit: &mut Value, text: &str, source: &str) {
+/// Attach scraped page text (truncated to [`MAX_SCRAPE_CHARS`]) onto one hit under
+/// `content`. Pure and host-testable.
+fn attach_content(hit: &mut Value, text: &str) {
     hit["content"] = Value::String(truncate(text, MAX_SCRAPE_CHARS));
-    hit["content_source"] = Value::String(source.to_string());
+}
+
+/// Reduce scraped hits to the content payload the model reads — `{ title, url, content }`
+/// per source — dropping the search-engine framing (snippet, position, ranking). `content`
+/// is the scraped page text; when a page could not be read it falls back to the engine
+/// snippet so an unreachable source still contributes something rather than vanishing.
+/// Pure and host-testable.
+fn into_content_results(web: Vec<Value>) -> Vec<Value> {
+    web.into_iter()
+        .map(|hit| {
+            let title = hit.get("title").and_then(Value::as_str).unwrap_or_default();
+            let url = hit.get("url").and_then(Value::as_str).unwrap_or_default();
+            let content = hit
+                .get("content")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+                .or_else(|| hit.get("description").and_then(Value::as_str))
+                .unwrap_or_default();
+            json!({ "title": title, "url": url, "content": content })
+        })
+        .collect()
 }
 
 /// Browser-direct Tavily search (BYOK). Tavily allows cross-origin requests, so a
@@ -774,17 +803,40 @@ mod tests {
     }
 
     #[test]
-    fn attach_content_truncates_text_and_records_source() {
+    fn attach_content_truncates_text() {
         let mut hit = serde_json::json!({ "title": "t", "url": "https://x", "position": 1 });
         let long = "x".repeat(MAX_SCRAPE_CHARS + 50);
-        attach_content(&mut hit, &long, "jina_reader");
+        attach_content(&mut hit, &long);
         let content = hit["content"].as_str().unwrap();
         assert!(content.ends_with("...")); // truncate() appends an ellipsis
         assert_eq!(content.chars().count(), MAX_SCRAPE_CHARS + 3);
-        assert_eq!(hit["content_source"], "jina_reader");
-        // existing fields are preserved alongside the new ones
+        // existing fields are preserved alongside the new content
         assert_eq!(hit["title"], "t");
         assert_eq!(hit["position"], 1);
+    }
+
+    #[test]
+    fn into_content_results_keeps_content_and_drops_search_framing() {
+        let web = vec![
+            serde_json::json!({
+                "title": "A", "url": "https://a", "description": "snippetA",
+                "position": 1, "content": "FULL TEXT A"
+            }),
+            // scrape failed (no `content`) -> falls back to the engine snippet
+            serde_json::json!({ "title": "B", "url": "https://b", "description": "snippetB", "position": 2 }),
+        ];
+        let results = into_content_results(web);
+        assert_eq!(results.len(), 2);
+        // search-engine framing (snippet, ranking) is gone from the payload
+        assert!(results[0].get("description").is_none());
+        assert!(results[0].get("position").is_none());
+        assert!(results[0].get("content_source").is_none());
+        // scraped content kept, keyed by title + url for grounding
+        assert_eq!(results[0]["title"], "A");
+        assert_eq!(results[0]["url"], "https://a");
+        assert_eq!(results[0]["content"], "FULL TEXT A");
+        // an unreachable page falls back to its snippet instead of vanishing
+        assert_eq!(results[1]["content"], "snippetB");
     }
 
     #[test]
