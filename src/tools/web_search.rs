@@ -18,16 +18,27 @@
 //! The browser engines are swappable behind `tools/search` (one `impl SearchEngine`
 //! per file); adding another source/provider is a new arm there or here, and the agent
 //! loop never changes.
+//!
+//! **Content scrape (browser backend).** Links alone are weak context, so the browser
+//! backend does not stop at them: it always scrapes the top results' pages **in parallel**
+//! via the same key-free reader chain as `web_fetch` and attaches each page's readable
+//! `content` (plus a `content_source`) to its hit, so the model reasons over full text in
+//! one turn instead of a `web_fetch` per source. The call shape is unchanged — `query` +
+//! `count` + the existing optionals — the scrape is automatic. It is bounded
+//! ([`MAX_SCRAPE_PAGES`], [`MAX_SCRAPE_CHARS`]) and best-effort (a page that fails keeps
+//! its snippet).
 
 use crate::state::{AppResult, AppSnapshot, SearchBackend, ToolSpec, WebSearchToolConfig};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
 use super::bridge::{bridge_endpoint, bridge_tool_request};
-use super::common::{integer_arg, merge_optional_string, string_arg};
+use super::common::{integer_arg, merge_optional_string, string_arg, truncate};
 use super::http::{encode_component, http_get_json, http_post_json, strip_html};
 use super::search::{SearchHit, SearchOptions, resolve_browser_engine};
+use super::web_fetch::fetch_page_text;
 use super::{ToolDescriptor, ToolFuture};
+use futures_util::stream::{self, StreamExt};
 
 pub(crate) fn descriptor() -> ToolDescriptor {
     ToolDescriptor {
@@ -39,7 +50,7 @@ pub(crate) fn descriptor() -> ToolDescriptor {
 fn spec() -> ToolSpec {
     ToolSpec {
         name: "web_search".to_string(),
-        description: "Search the web for current information and news, returning titles, URLs, and descriptions. By default it runs directly in the browser key-free (Wikinews and GDELT for news, DuckDuckGo, Hacker News, Stack Overflow, Wikipedia); adding a Tavily API key on the Tools page upgrades it to full general-web search from the page, and the local bridge can be used for Brave/Tavily/SearXNG. Use it to discover sources for recent events and news, then web_fetch the best ones to read them in full.".to_string(),
+        description: "Search the web for current information and news. Returns ranked hits (title, URL, description) plus the readable page `content` of the top results, scraped in parallel — so you get full text to reason over in one turn, not just links to fetch separately. Runs directly in the browser key-free (SearXNG/Wikinews/GDELT for news, DuckDuckGo, Hacker News, Stack Overflow, Wikipedia); adding a Tavily API key on the Tools page upgrades it to full general-web search from the page, and the local bridge can be used for Brave/Tavily/SearXNG.".to_string(),
         input_schema: json!({
             "type":"object",
             "properties":{
@@ -75,17 +86,36 @@ pub async fn web_search_with_config(
     }
 }
 
-/// Browser backend: try a configured SearXNG instance first (browser-direct metasearch),
-/// then a configured Tavily key (full general-web search), and finally merge the
-/// CORS-open, key-free sources (news + tech + reference), deduped by URL, capped to
-/// `count`, with numbered positions. Each tier falls through to the next on error or no
-/// results, so results are never empty.
+/// Browser backend: gather hits (SearXNG → Tavily → key-free merge), then — unless the
+/// caller passed `fetch_content: false` — scrape the top results' pages in parallel and
+/// attach each page's readable content before returning the shared envelope.
 async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppResult<String> {
     let query = string_arg(args, "query")?;
     let count = integer_arg(args, "count")
         .unwrap_or(i64::from(config.default_count))
         .clamp(1, 10) as usize;
 
+    let (mut web, backend) = browser_search_hits(&query, count, args, config).await?;
+
+    // Links alone are weak context, so always enrich each hit with its page's readable
+    // content, fetched in parallel — the model reasons over full text in one turn
+    // instead of a follow-up web_fetch per source. The call shape stays query + count.
+    scrape_contents(&mut web).await;
+
+    Ok(json!({ "success": true, "data": { "web": web }, "backend": backend }).to_string())
+}
+
+/// Gather ranked hits from the browser tiers, in order, falling through on error or no
+/// results: a configured SearXNG instance (browser-direct metasearch), then a configured
+/// Tavily key (full general-web search), then the CORS-open key-free sources merged
+/// (news + tech + reference), deduped by URL and capped to `count`. Returns the hits and
+/// the `backend` label, or an error only when every tier comes up empty.
+async fn browser_search_hits(
+    query: &str,
+    count: usize,
+    args: &Value,
+    config: &WebSearchToolConfig,
+) -> AppResult<(Vec<Value>, String)> {
     // SearXNG (browser-direct) is the configured primary engine whenever a SearXNG URL
     // is set — the app ships a public default, so "use SearXNG for the search engine"
     // holds out of the box. It needs an instance with `format=json` + CORS; on error or
@@ -96,14 +126,10 @@ async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppRe
             language: arg_or_config(args, "language", &config.language),
             freshness: arg_or_config(args, "freshness", &config.freshness),
         };
-        if let Ok(hits) = engine.search(&query, count, &opts).await
+        if let Ok(hits) = engine.search(query, count, &opts).await
             && !hits.is_empty()
         {
-            let backend = format!("browser+{}", engine.id());
-            let web = number_hits(hits);
-            return Ok(
-                json!({ "success": true, "data": { "web": web }, "backend": backend }).to_string(),
-            );
+            return Ok((number_hits(hits), format!("browser+{}", engine.id())));
         }
     }
 
@@ -113,13 +139,10 @@ async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppRe
     // a bad key or outage degrades to the key-free backend rather than failing.
     let tavily_key = config.tavily_api_key.trim();
     if !tavily_key.is_empty()
-        && let Ok(web) = tavily_browser_search(&query, count, tavily_key).await
+        && let Ok(web) = tavily_browser_search(query, count, tavily_key).await
         && !web.is_empty()
     {
-        return Ok(
-            json!({ "success": true, "data": { "web": web }, "backend": "browser+tavily" })
-                .to_string(),
-        );
+        return Ok((web, "browser+tavily".to_string()));
     }
 
     // No single key-free API does general web search, so query several CORS-open,
@@ -129,12 +152,12 @@ async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppRe
     // discussion), Stack Overflow (coding Q&A), and Wikipedia (reference). For a full
     // general-web provider without a key, switch the Tools page backend to Bridge.
     let (ddg, wikinews, gdelt, hn, stack, wiki) = futures_util::join!(
-        duckduckgo_instant_answer(&query),
-        wikinews_search(&query, count),
-        gdelt_news_search(&query, count),
-        hackernews_search(&query, count),
-        stackoverflow_search(&query, count),
-        wikipedia_search(&query, count),
+        duckduckgo_instant_answer(query),
+        wikinews_search(query, count),
+        gdelt_news_search(query, count),
+        hackernews_search(query, count),
+        stackoverflow_search(query, count),
+        wikipedia_search(query, count),
     );
     let sources: Vec<Vec<(String, String, String)>> = [ddg, wikinews, gdelt, hn, stack, wiki]
         .into_iter()
@@ -148,7 +171,71 @@ async fn browser_web_search(args: &Value, config: &WebSearchToolConfig) -> AppRe
         ));
     }
 
-    Ok(json!({ "success": true, "data": { "web": web }, "backend": "browser" }).to_string())
+    Ok((web, "browser".to_string()))
+}
+
+/// Per-page content budget when scraping search results. Smaller than `web_fetch`'s
+/// single-page budget (24k chars) because a search returns several pages at once and
+/// all of them land in the model's context together.
+const MAX_SCRAPE_CHARS: usize = 4_000;
+
+/// Most pages to scrape per search. Bounds total fan-out so a search never reads more
+/// than a handful of pages; any hits past this keep their `description` snippet but get
+/// no scraped `content`.
+const MAX_SCRAPE_PAGES: usize = 6;
+
+/// Maximum scrape requests in flight at once. Below [`MAX_SCRAPE_PAGES`] so the pages
+/// are read in small waves rather than one burst — the key-free reader (Jina) rate-limits
+/// per origin, so bursting all six at once would get most of them throttled.
+const SCRAPE_CONCURRENCY: usize = 3;
+
+/// Fetch the readable content of the top hits and attach it to each via
+/// [`attach_content`], at most [`SCRAPE_CONCURRENCY`] requests in flight. Best-effort: a
+/// hit whose fetch fails (rate-limited reader, uncooperative page) is left untouched —
+/// its snippet still stands — so one bad page never fails the whole search. Reuses
+/// `web_fetch`'s fallback chain so both tools read pages identically.
+async fn scrape_contents(web: &mut [Value]) {
+    let targets = scrape_targets(web, MAX_SCRAPE_PAGES);
+    if targets.is_empty() {
+        return;
+    }
+    // Each future owns its URL and carries the hit index back, so `buffer_unordered`
+    // (results arrive out of order) can still be reapplied to the right hit.
+    let fetched: Vec<(usize, AppResult<(String, &'static str)>)> =
+        stream::iter(targets.into_iter().map(|(index, url)| async move {
+            (index, fetch_page_text(&url).await)
+        }))
+        .buffer_unordered(SCRAPE_CONCURRENCY)
+        .collect()
+        .await;
+    for (index, result) in fetched {
+        if let Ok((text, source)) = result {
+            attach_content(&mut web[index], &text, source);
+        }
+    }
+}
+
+/// Pick the `(index, url)` of the hits to scrape: the first `max_pages` that carry a
+/// non-empty URL. Pure, so the cap and selection stay host-testable.
+fn scrape_targets(web: &[Value], max_pages: usize) -> Vec<(usize, String)> {
+    web.iter()
+        .enumerate()
+        .filter_map(|(index, hit)| {
+            hit.get("url")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|url| !url.is_empty())
+                .map(|url| (index, url.to_string()))
+        })
+        .take(max_pages)
+        .collect()
+}
+
+/// Attach scraped page text (truncated to [`MAX_SCRAPE_CHARS`]) and the name of the
+/// fetch path that served it onto one hit. Pure and host-testable.
+fn attach_content(hit: &mut Value, text: &str, source: &str) {
+    hit["content"] = Value::String(truncate(text, MAX_SCRAPE_CHARS));
+    hit["content_source"] = Value::String(source.to_string());
 }
 
 /// Browser-direct Tavily search (BYOK). Tavily allows cross-origin requests, so a
@@ -665,6 +752,40 @@ mod tests {
         assert_eq!(web[0]["url"], "https://t.example/1");
         assert_eq!(web[0]["description"], "Latest on TSLA today.");
         assert_eq!(web[0]["position"], 1);
+    }
+
+    #[test]
+    fn scrape_targets_caps_pages_and_skips_blank_urls() {
+        let web = vec![
+            serde_json::json!({ "url": "https://a/1" }),
+            serde_json::json!({ "url": "   " }), // blank -> skipped
+            serde_json::json!({ "title": "no url field" }), // missing -> skipped
+            serde_json::json!({ "url": "https://a/2" }),
+            serde_json::json!({ "url": "https://a/3" }),
+        ];
+        // Cap of 2 keeps the first two *valid* urls, preserving their original indices.
+        let targets = scrape_targets(&web, 2);
+        assert_eq!(
+            targets,
+            vec![
+                (0, "https://a/1".to_string()),
+                (3, "https://a/2".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn attach_content_truncates_text_and_records_source() {
+        let mut hit = serde_json::json!({ "title": "t", "url": "https://x", "position": 1 });
+        let long = "x".repeat(MAX_SCRAPE_CHARS + 50);
+        attach_content(&mut hit, &long, "jina_reader");
+        let content = hit["content"].as_str().unwrap();
+        assert!(content.ends_with("...")); // truncate() appends an ellipsis
+        assert_eq!(content.chars().count(), MAX_SCRAPE_CHARS + 3);
+        assert_eq!(hit["content_source"], "jina_reader");
+        // existing fields are preserved alongside the new ones
+        assert_eq!(hit["title"], "t");
+        assert_eq!(hit["position"], 1);
     }
 
     #[test]

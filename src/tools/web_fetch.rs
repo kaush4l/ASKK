@@ -59,9 +59,20 @@ fn handler<'a>(snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a>
 const MAX_FETCH_CHARS: usize = 24_000;
 
 /// Browser backend: read any page as clean text through a resilient key-free fallback
-/// chain — Jina reader (bypasses CORS, clean markdown), then a direct fetch (for
-/// CORS-open pages when Jina is busy), then a public CORS proxy as a last resort.
+/// chain and shape it into the tool envelope. The fetch itself lives in
+/// [`fetch_page_text`] so `web_search` can reuse the same chain for its parallel scrape.
 async fn browser_web_fetch(url: &str) -> AppResult<String> {
+    let (text, backend) = fetch_page_text(url).await?;
+    Ok(fetch_response(url, &text, backend))
+}
+
+/// Read one page to clean text through the resilient key-free fallback chain — Jina
+/// reader (bypasses CORS, clean markdown), then a direct fetch (for CORS-open pages
+/// when Jina is busy), then a public CORS proxy as a last resort — returning the
+/// untruncated text and the `&'static` name of the path that served it. Shared with
+/// `web_search`'s result scrape so both tools read pages identically; each caller
+/// truncates to its own budget.
+pub(crate) async fn fetch_page_text(url: &str) -> AppResult<(String, &'static str)> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err(format!("web_fetch needs an absolute http(s) URL: {url}"));
     }
@@ -71,7 +82,7 @@ async fn browser_web_fetch(url: &str) -> AppResult<String> {
     if let Ok(text) = http_get_text(&format!("https://r.jina.ai/{url}")).await
         && !text.trim().is_empty()
     {
-        return Ok(fetch_response(url, &text, "jina_reader"));
+        return Ok((text, "jina_reader"));
     }
 
     // 2. Direct fetch — works only for CORS-open pages, but needs no third party and
@@ -79,7 +90,7 @@ async fn browser_web_fetch(url: &str) -> AppResult<String> {
     if let Ok(html) = http_get_text(url).await {
         let text = html_to_readable_text(&html);
         if !text.trim().is_empty() {
-            return Ok(fetch_response(url, &text, "direct"));
+            return Ok((text, "direct"));
         }
     }
 
@@ -92,7 +103,7 @@ async fn browser_web_fetch(url: &str) -> AppResult<String> {
     if let Ok(html) = http_get_text(&proxied).await {
         let text = html_to_readable_text(&html);
         if !text.trim().is_empty() {
-            return Ok(fetch_response(url, &text, "cors_proxy"));
+            return Ok((text, "cors_proxy"));
         }
     }
 
