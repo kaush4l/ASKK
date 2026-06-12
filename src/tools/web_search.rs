@@ -24,9 +24,9 @@
 //! via the same key-free reader chain as `web_fetch` and attaches each page's readable
 //! `content` (plus a `content_source`) to its hit, so the model reasons over full text in
 //! one turn instead of a `web_fetch` per source. The call shape is unchanged — `query` +
-//! `count` + the existing optionals — the scrape is automatic. It is bounded
-//! ([`MAX_SCRAPE_PAGES`], [`MAX_SCRAPE_CHARS`]) and best-effort (a page that fails keeps
-//! its snippet).
+//! `count` + the existing optionals — the scrape is automatic. **Every** result is read
+//! (concurrency-throttled, see [`SCRAPE_CONCURRENCY`]; each page truncated to
+//! [`MAX_SCRAPE_CHARS`]) and it is best-effort — a page that fails keeps its snippet.
 
 use crate::state::{AppResult, AppSnapshot, SearchBackend, ToolSpec, WebSearchToolConfig};
 use serde_json::{Value, json};
@@ -179,23 +179,20 @@ async fn browser_search_hits(
 /// all of them land in the model's context together.
 const MAX_SCRAPE_CHARS: usize = 4_000;
 
-/// Most pages to scrape per search. Bounds total fan-out so a search never reads more
-/// than a handful of pages; any hits past this keep their `description` snippet but get
-/// no scraped `content`.
-const MAX_SCRAPE_PAGES: usize = 6;
+/// Maximum scrape requests in flight at once. **Every** result's page is read — the
+/// whole point of the tool is to return content, not links — but the key-free reader
+/// (Jina) rate-limits per origin and every page goes through it, so the reads run in
+/// concurrent waves of this size rather than one burst that would get most throttled.
+/// `count` is already clamped to ≤10 upstream, so this bounds total fan-out too.
+const SCRAPE_CONCURRENCY: usize = 4;
 
-/// Maximum scrape requests in flight at once. Below [`MAX_SCRAPE_PAGES`] so the pages
-/// are read in small waves rather than one burst — the key-free reader (Jina) rate-limits
-/// per origin, so bursting all six at once would get most of them throttled.
-const SCRAPE_CONCURRENCY: usize = 3;
-
-/// Fetch the readable content of the top hits and attach it to each via
+/// Fetch the readable content of **all** result hits and attach it to each via
 /// [`attach_content`], at most [`SCRAPE_CONCURRENCY`] requests in flight. Best-effort: a
 /// hit whose fetch fails (rate-limited reader, uncooperative page) is left untouched —
 /// its snippet still stands — so one bad page never fails the whole search. Reuses
 /// `web_fetch`'s fallback chain so both tools read pages identically.
 async fn scrape_contents(web: &mut [Value]) {
-    let targets = scrape_targets(web, MAX_SCRAPE_PAGES);
+    let targets = scrape_targets(web);
     if targets.is_empty() {
         return;
     }
@@ -215,9 +212,10 @@ async fn scrape_contents(web: &mut [Value]) {
     }
 }
 
-/// Pick the `(index, url)` of the hits to scrape: the first `max_pages` that carry a
-/// non-empty URL. Pure, so the cap and selection stay host-testable.
-fn scrape_targets(web: &[Value], max_pages: usize) -> Vec<(usize, String)> {
+/// Pick the `(index, url)` of every hit that carries a non-empty URL — the full result
+/// set is scraped (`count` is already capped to ≤10 upstream). Pure, so the selection
+/// stays host-testable.
+fn scrape_targets(web: &[Value]) -> Vec<(usize, String)> {
     web.iter()
         .enumerate()
         .filter_map(|(index, hit)| {
@@ -227,7 +225,6 @@ fn scrape_targets(web: &[Value], max_pages: usize) -> Vec<(usize, String)> {
                 .filter(|url| !url.is_empty())
                 .map(|url| (index, url.to_string()))
         })
-        .take(max_pages)
         .collect()
 }
 
@@ -755,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn scrape_targets_caps_pages_and_skips_blank_urls() {
+    fn scrape_targets_collects_every_nonblank_url() {
         let web = vec![
             serde_json::json!({ "url": "https://a/1" }),
             serde_json::json!({ "url": "   " }), // blank -> skipped
@@ -763,13 +760,15 @@ mod tests {
             serde_json::json!({ "url": "https://a/2" }),
             serde_json::json!({ "url": "https://a/3" }),
         ];
-        // Cap of 2 keeps the first two *valid* urls, preserving their original indices.
-        let targets = scrape_targets(&web, 2);
+        // Every result with a URL is scraped (not just a top-N slice), original indices
+        // preserved so out-of-order fetch results reattach to the right hit.
+        let targets = scrape_targets(&web);
         assert_eq!(
             targets,
             vec![
                 (0, "https://a/1".to_string()),
                 (3, "https://a/2".to_string()),
+                (4, "https://a/3".to_string()),
             ]
         );
     }
