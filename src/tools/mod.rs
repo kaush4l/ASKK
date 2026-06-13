@@ -107,6 +107,17 @@ impl ToolRegistry {
         self.descriptors.push(descriptor);
     }
 
+    /// The descriptor (spec + handler) registered under `name`, if any. The
+    /// shell uses this to assemble the run's `ToolSet`: a compiled built-in
+    /// becomes a `core::RustTool` wrapping its real handler, so the dispatch
+    /// runs the function directly rather than matching the name again.
+    pub fn descriptor(&self, name: &str) -> Option<ToolDescriptor> {
+        self.descriptors
+            .iter()
+            .find(|descriptor| descriptor.spec.name == name)
+            .cloned()
+    }
+
     pub fn specs_for_agent(&self, enabled_tools: &[String]) -> Vec<ToolSpec> {
         self.descriptors
             .iter()

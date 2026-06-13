@@ -38,6 +38,44 @@ Registration is centralized in `ToolRegistry::new()` via `register_builtin_tools
 
 Acceptance test: `tools::tests::registry_accepts_new_tool_descriptor_without_execute_match_edits` proves a brand-new descriptor can be registered and executed without changing the executor match logic.
 
+### Tool composition: one trait, one set, many paradigms
+
+Every tool source — however it is implemented — is unified behind one
+composition contract, [`core::Tool`](../src/core/tool.rs):
+
+```rust
+pub trait Tool {
+    fn spec(&self) -> &ToolSpec;          // what the model is told it can call
+    fn paradigm(&self) -> ToolParadigm;   // RustFn | Js | Mcp | Connector | Agent
+    fn call<'a>(&'a self, snapshot: &'a mut AppSnapshot, args: &'a Value) -> ToolFuture<'a>;
+}
+```
+
+A run's tools live in **one** `core::ToolSet` (an ordered set of `Rc<dyn Tool>`)
+that the engine composes alongside its inference handle and response kind. The
+set is read three ways: `specs()` to inject the manifest into the model,
+`contains()` as the allowlist gate, `get(name).call(...)` to run a call. The loop
+**never matches on a tool's kind** — dispatch is polymorphic.
+
+The paradigm of each name is chosen exactly once, when the shell assembles the
+set in [`session::build_tool_set`](../src/engine/session.rs):
+
+| paradigm | concrete `impl Tool` | callability | environment / state |
+|---|---|---|---|
+| `RustFn` | `core::RustTool` (wraps a compiled handler) | runs the `fn` directly | none |
+| `Mcp` | `mcp::registry::McpTool` | routes to the live server's client | server worker brought up at run start; carries its display name |
+| `Js` | `McpTool` whose server is the tool host (`tool-host-builtin`) | runs a user JS function | dedicated Web Worker with a persistent per-tool `state` object |
+| `Agent` | `tools::agent_tools::AgentTool` | delegates via `call_agent` | carries the target agent id |
+| `Connector` | reserved — a hosted-connector MCP server kind | (future) | (future) |
+
+Adding a paradigm is one `impl Tool`, never an edit to the loop or the dispatch
+path (invariant 2). "Tools are the only thing that needs an environment": the
+set owns that lifecycle — bringing MCP/tool-host servers up before the loop runs,
+then handing the loop a flat collection of callables it treats identically.
+
+Acceptance tests: `core::tool::tests::*` cover the set's insertion/allowlist/spec
+semantics and a polymorphic `get(...).call(...)`.
+
 ### Workspace actions as MCP tools
 
 The Workspace page's actions (list/read/create/edit files, run JS, run a bridge
@@ -194,7 +232,7 @@ one-line registration.
 
 | subsystem | descriptor | trait | registry | registration |
 |---|---|---|---|---|
-| tools | `ToolSpec` | handler fn | `ToolRegistry` | one line in `register_builtin_tools` |
+| tools | `ToolSpec` | `core::Tool` (handler fn for built-ins) | `ToolRegistry` (compiled) → `core::ToolSet` (per-run, all paradigms) | one line in `register_builtin_tools` |
 | inference | `ProviderConfig` / model id | `InferenceProvider` | inference registry | id-keyed `get_or_create` |
 | responses | `ResponseField` table (`define_response!`) | `StructuredResponse` | `ResponseKind` dispatch | macro + enum variant + match arm |
 | strategies | `Phase` list | `Strategy` | `StrategyRegistry` | one line in `register_builtin_strategies` |

@@ -860,9 +860,10 @@ impl RunSession {
         };
 
         // The run-local core engine: identity/conversation from init-time state,
-        // the finalized allowlist reified as the ToolMap (membership IS the
-        // dispatch gate; compiled, MCP, and agent_<slug> names all bind to the
-        // same executor closure), and the format negotiator that persists across
+        // the finalized allowlist assembled into the ToolSet (membership IS the
+        // dispatch gate; each name becomes the `Rc<dyn Tool>` for its paradigm —
+        // compiled RustTool, McpTool, or agent_<slug> AgentTool — and the loop
+        // calls them polymorphically), and the format negotiator that persists across
         // turns and phases (a streak of TOON parse failures escalates the
         // requested format to JSON; one clean parse relaxes it back). The loop
         // itself is `ReactEngine::invoke` in `crate::core`; the strategy driver
@@ -878,7 +879,7 @@ impl RunSession {
             ),
             self.max_steps,
         );
-        engine.base.tools = session::build_tool_map(&self.executor, &enabled_tools);
+        engine.base.tools = session::build_tool_set(&self.executor, &snapshot, &enabled_tools);
 
         // === Strategy driver ===
         // Drive the strategy's ordered phases. The `react` strategy is the degenerate
@@ -1600,16 +1601,48 @@ mod tests {
 
     #[test]
     fn rejects_tool_not_in_agent_allowlist_before_execution() {
-        // The engine owns the allowlist gate, now as core ToolMap membership;
+        // The engine owns the allowlist gate, now as core ToolSet membership;
         // the disallowed-call *result* is produced by `tool_dispatch` (and
         // covered by its own tests). Here we assert the gate.
-        let map = session::build_tool_map(
+        let set = session::build_tool_set(
             &BrowserExecutionProvider::new(),
+            &AppSnapshot::default(),
             &["web_search".to_string()],
         );
 
-        assert!(map.contains("web_search"));
-        assert!(!map.contains("file_write"));
+        assert!(set.contains("web_search"));
+        assert!(!set.contains("file_write"));
+    }
+
+    #[test]
+    fn build_tool_set_classifies_each_name_by_paradigm() {
+        // The set is the place paradigm is decided: a compiled built-in is a
+        // `RustFn`, and an `agent_<slug>` resolves to an `Agent` tool carrying
+        // its target agent id (the MCP/`Js` paradigms are wasm-only and covered
+        // by the registry's browser tests).
+        let mut researcher = crate::state::Agent::new("Researcher", "Researches.", Vec::new());
+        researcher.id = "researcher".to_string();
+        researcher.enabled = true;
+        let snapshot = AppSnapshot {
+            agents: vec![researcher],
+            ..AppSnapshot::default()
+        };
+
+        let set = session::build_tool_set(
+            &BrowserExecutionProvider::new(),
+            &snapshot,
+            &["web_search".to_string(), "agent_researcher".to_string()],
+        );
+
+        assert_eq!(
+            set.paradigm("web_search"),
+            Some(crate::core::ToolParadigm::RustFn)
+        );
+        assert_eq!(
+            set.paradigm("agent_researcher"),
+            Some(crate::core::ToolParadigm::Agent),
+            "an agent_<slug> name must resolve to the Agent paradigm"
+        );
     }
 
     /// Parity proof for the core migration: configured the way the phase
@@ -2282,9 +2315,9 @@ mod tests {
         ]);
         let (agent_loop, mut engine, mut run, mut snapshot) =
             shell_fixture("research dioxus", Rc::clone(&inference));
-        // What `session::build_tool_map` does for `agent_<slug>` names: bind
-        // the delegation route like any other callable (stubbed here). The
-        // loop never special-cases delegation.
+        // What `session::build_tool_set` does for `agent_<slug>` names: insert
+        // an `AgentTool` carrying the delegation route (stubbed here via the
+        // bind shim). The loop never special-cases delegation.
         engine.base.tools.bind(
             "agent_researcher",
             Rc::new(|_s, _a| {

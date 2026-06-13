@@ -1,17 +1,20 @@
 //! Shell-side builders for the core engine: translate the selected agent and
-//! snapshot state into a [`BaseEngine`], reify the finalized allowlist as a
-//! [`ToolMap`] of executor closures, and supply the platform sleeper. This is
-//! the one place the shell's world (snapshot, executor, MCP discovery) is
-//! converted into the core's world (plain state + callables).
+//! snapshot state into a [`BaseEngine`], and assemble the finalized allowlist
+//! into a [`ToolSet`] — one `Rc<dyn Tool>` per name, the paradigm chosen here
+//! (a compiled `RustTool`, an `McpTool` bound to a live server, an `AgentTool`
+//! carrying a target agent id). This is the one place the shell's world
+//! (snapshot, executor, MCP discovery) is converted into the core's world
+//! (plain state + tools), and where the user's "maintain the set of tools" step
+//! happens — once per run, before the loop ever dispatches.
 
 use std::rc::Rc;
 
-use crate::core::{BaseEngine, Sleeper, ToolMap};
+use crate::core::{BaseEngine, RustTool, Sleeper, ToolBinding, ToolSet};
 use crate::inference::SubAgentInfo;
 use crate::responses::FormatNegotiator;
-use crate::state::{Agent, Message, ProviderConfig, Skill};
+use crate::state::{Agent, AppSnapshot, Message, ProviderConfig, Skill, ToolSpec};
 
-use super::execution::BrowserExecutionProvider;
+use super::execution::{BrowserExecutionProvider, ExecutionProvider};
 
 /// Build the engine's shared state record from init-time run state. Inference
 /// attaches inside [`BaseEngine::new`] via the registry, exactly as the legacy
@@ -36,41 +39,108 @@ pub(super) fn build_base_engine(
     base
 }
 
-/// Reify the finalized allowlist as the core tool map: every name — compiled,
-/// MCP-backed, or an `agent_<slug>` delegation — binds to the same executor
-/// closure, so the core treats them identically. Sub-agent-as-tool happens
-/// here, at bind time; the loop never special-cases delegation.
-pub(super) fn build_tool_map(
+/// Assemble the finalized allowlist into the run's [`ToolSet`]: for each enabled
+/// name, build the concrete `Rc<dyn Tool>` for its paradigm and insert it. An
+/// MCP-backed name becomes an `McpTool` bound to the live server brought up at
+/// run start; an `agent_<slug>` becomes an `AgentTool` carrying its target agent
+/// id; a compiled built-in becomes a [`RustTool`] wrapping its real handler. The
+/// loop then dispatches every one of them polymorphically through
+/// [`crate::core::Tool::call`] — the kind is decided once, here, when the set is
+/// built, never branched on in the hot path. Membership still IS the allowlist
+/// gate, so an allow-listed name with no resolved paradigm keeps an entry that
+/// defers to the executor (the legacy unknown-tool behavior).
+pub(super) fn build_tool_set(
     executor: &BrowserExecutionProvider,
+    snapshot: &AppSnapshot,
     enabled_tools: &[String],
-) -> ToolMap {
-    let mut map = ToolMap::default();
+) -> ToolSet {
+    // Every advertised spec across all sources — the same merge the run uses for
+    // the model's tool manifest — so each tool we build carries its real spec.
+    let mut specs = executor.domain_specs_for_agent(enabled_tools);
+    specs.extend(crate::tools::agent_tools::specs_for_agent(
+        snapshot,
+        enabled_tools,
+    ));
+    let spec_for = |name: &str| -> ToolSpec {
+        specs
+            .iter()
+            .find(|spec| spec.name == name)
+            .cloned()
+            .unwrap_or_else(|| ToolSpec {
+                name: name.to_string(),
+                description: String::new(),
+                input_schema: serde_json::Value::Null,
+            })
+    };
+
+    let mut set = ToolSet::default();
     for name in enabled_tools {
-        let executor = executor.clone();
-        let tool_name = name.clone();
-        map.bind(
-            name.clone(),
-            Rc::new(move |snapshot, args| {
-                let executor = executor.clone();
-                let tool_name = tool_name.clone();
-                let args = args.clone();
-                Box::pin(async move {
-                    // The binding returns only the result body; the core engine
-                    // owns the ToolResult envelope (it assigns the call id), so
-                    // the id the executor stamps here goes unused.
-                    let result = executor
-                        .execute_domain_tool(snapshot, String::new(), &tool_name, args)
-                        .await;
-                    if result.ok {
-                        Ok(result.content)
-                    } else {
-                        Err(result.content)
-                    }
-                })
-            }),
-        );
+        // MCP-backed: route to the live server's client. The server environment
+        // was already started when the run brought enabled servers up. One scan
+        // answers both "is it MCP?" and "which paradigm?" — tool-host servers run
+        // user JavaScript functions (`Js`); every other live server is `Mcp`.
+        #[cfg(target_arch = "wasm32")]
+        if let Some(paradigm) = crate::mcp::registry::classify_mcp_tool(name) {
+            set.insert(Rc::new(crate::mcp::registry::McpTool::new(
+                spec_for(name),
+                paradigm,
+            )));
+            continue;
+        }
+        // Peer-agent delegation: carries its resolved target agent id.
+        if let Some(agent_id) = crate::tools::agent_tools::resolve(snapshot, name) {
+            set.insert(Rc::new(crate::tools::agent_tools::AgentTool::new(
+                spec_for(name),
+                agent_id,
+            )));
+            continue;
+        }
+        // Compiled built-in: wrap the real handler so the call runs directly.
+        if let Some(descriptor) = executor.compiled_descriptor(name) {
+            set.insert(Rc::new(RustTool::new(
+                descriptor.spec,
+                rust_binding(descriptor.handler),
+            )));
+            continue;
+        }
+        // Allow-listed but unresolved: keep the entry (membership IS the gate)
+        // and defer to the executor, which yields the structured "unknown tool"
+        // error — identical to the pre-composition behavior.
+        set.insert(Rc::new(RustTool::new(
+            spec_for(name),
+            executor_fallback(executor, name),
+        )));
     }
-    map
+    set
+}
+
+/// Wrap a compiled tool's `fn`-pointer handler as a core [`ToolBinding`], so a
+/// built-in becomes an ordinary [`RustTool`] in the set.
+fn rust_binding(handler: crate::tools::ToolHandler) -> ToolBinding {
+    Rc::new(move |snapshot, args| handler(snapshot, args))
+}
+
+/// A binding for an allow-listed name with no resolved paradigm: defer to the
+/// executor's domain dispatch. The binding returns only the result body; the
+/// core engine owns the `ToolResult` envelope and assigns the call id.
+fn executor_fallback(executor: &BrowserExecutionProvider, name: &str) -> ToolBinding {
+    let executor = executor.clone();
+    let name = name.to_string();
+    Rc::new(move |snapshot, args| {
+        let executor = executor.clone();
+        let name = name.clone();
+        let args = args.clone();
+        Box::pin(async move {
+            let result = executor
+                .execute_domain_tool(snapshot, String::new(), &name, args)
+                .await;
+            if result.ok {
+                Ok(result.content)
+            } else {
+                Err(result.content)
+            }
+        })
+    })
 }
 
 /// Cooperative retry backoff in the browser: a real event-loop timer.

@@ -155,6 +155,51 @@ pub async fn call(
     }
 }
 
+/// A peer-agent delegation as a first-class [`crate::core::Tool`] (paradigm
+/// `Agent`). It carries the resolved target agent id — its only state — and
+/// routes every call through [`call`], inheriting `call_agent`'s nesting cap,
+/// sub-snapshot isolation, and untrusted-observation framing. The shell builds
+/// one when it assembles the run's tool set, so the loop dispatches delegation
+/// polymorphically with no name special-casing.
+pub struct AgentTool {
+    spec: ToolSpec,
+    agent_id: String,
+}
+
+impl AgentTool {
+    pub fn new(spec: ToolSpec, agent_id: String) -> Self {
+        Self { spec, agent_id }
+    }
+}
+
+impl crate::core::Tool for AgentTool {
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
+    }
+
+    fn paradigm(&self) -> crate::core::ToolParadigm {
+        crate::core::ToolParadigm::Agent
+    }
+
+    fn call<'a>(
+        &'a self,
+        snapshot: &'a mut AppSnapshot,
+        args: &'a Value,
+    ) -> crate::core::ToolFuture<'a> {
+        Box::pin(async move {
+            // The call id is intentionally empty here: this returns only the
+            // result body, and `Engine::execute_tool` stamps the authoritative
+            // id onto the outer `ToolResult`. The inner id is never surfaced.
+            let result = call(snapshot, String::new(), &self.agent_id, args).await;
+            if result.ok {
+                Ok(result.content)
+            } else {
+                Err(result.content)
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

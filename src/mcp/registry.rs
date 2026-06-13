@@ -360,6 +360,76 @@ pub fn specs_for_agent(enabled_tools: &[String]) -> Vec<ToolSpec> {
     })
 }
 
+/// A live MCP tool as a first-class [`crate::core::Tool`] (paradigm `Mcp`). It
+/// carries its namespaced display name — its identity/state — and routes each
+/// call to the owning server's client via [`call_tool`]. The server *environment*
+/// was already brought up by [`bring_up_enabled`] when the run's tool set was
+/// assembled: a tool is the only thing that needs an environment, and the set
+/// owns that lifecycle. Built by the shell's `build_tool_set`, so the loop
+/// dispatches MCP calls polymorphically — no name-keyed branch in the hot path.
+pub struct McpTool {
+    spec: ToolSpec,
+    paradigm: crate::core::ToolParadigm,
+}
+
+impl McpTool {
+    pub fn new(spec: ToolSpec, paradigm: crate::core::ToolParadigm) -> Self {
+        Self { spec, paradigm }
+    }
+}
+
+impl crate::core::Tool for McpTool {
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
+    }
+
+    fn paradigm(&self) -> crate::core::ToolParadigm {
+        self.paradigm
+    }
+
+    fn call<'a>(
+        &'a self,
+        _snapshot: &'a mut crate::state::AppSnapshot,
+        args: &'a Value,
+    ) -> crate::core::ToolFuture<'a> {
+        let name = self.spec.name.clone();
+        let args = args.clone();
+        Box::pin(async move {
+            let result = call_tool(String::new(), &name, args).await;
+            if result.ok {
+                Ok(result.content)
+            } else {
+                Err(result.content)
+            }
+        })
+    }
+}
+
+/// Classify `name` as a live MCP-backed tool, returning its paradigm — or `None`
+/// when no live server currently serves it. One borrow of the runtime table, so
+/// the "is it MCP?" and "which paradigm?" answers can never disagree across a
+/// server coming down between two scans. Tools served by the built-in tool host
+/// run user-authored JavaScript functions (with a persistent per-tool `state`
+/// object), so they surface as [`crate::core::ToolParadigm::Js`]; every other
+/// live server is a true `Mcp` tool. (Connector-hosted servers map to `Connector`
+/// once that server kind lands.)
+pub fn classify_mcp_tool(name: &str) -> Option<crate::core::ToolParadigm> {
+    MCP_RUNTIME.with(|runtime| {
+        runtime.borrow().iter().find_map(|conn| {
+            conn.tools
+                .iter()
+                .any(|(spec, _)| spec.name == name)
+                .then(|| {
+                    if conn.server_id == crate::state::TOOL_HOST_SERVER_ID {
+                        crate::core::ToolParadigm::Js
+                    } else {
+                        crate::core::ToolParadigm::Mcp
+                    }
+                })
+        })
+    })
+}
+
 /// Whether `name` is a live MCP-backed tool's display name (so the engine routes its
 /// call here instead of to the compiled tool registry). Display names are assigned to
 /// avoid colliding with any built-in, so a match here is unambiguous.

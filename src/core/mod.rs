@@ -19,8 +19,10 @@
 //! - [`ReactEngine`] is the concrete engine: it overrides exactly one method,
 //!   `invoke` — the ReAct while-loop.
 //!
-//! A sub-agent is an ordinary [`ToolMap`] entry (wrapped at bind time by the
-//! shell), so delegation and tool use are the same operation to the loop.
+//! A sub-agent is an ordinary [`ToolSet`] entry — an `Rc<dyn Tool>` whose
+//! paradigm is `Agent` — so delegation and tool use are the same operation to
+//! the loop. The set holds every paradigm (compiled Rust, JS body, MCP,
+//! connector, agent) behind one [`Tool`] trait; dispatch is polymorphic.
 //!
 //! This module is platform-free: no `cfg(target_arch)`, no web APIs, no I/O
 //! beyond what the injected [`InferenceHandle`] and [`ToolBinding`]s perform.
@@ -32,6 +34,7 @@
 mod content;
 mod engine;
 mod react;
+mod tool;
 mod tooling;
 
 pub use content::{MultimodalCollector, Part};
@@ -40,7 +43,8 @@ pub use engine::{
     NoHooks, Sleeper, StopReason, ToolVerdict, noop_sleeper,
 };
 pub use react::ReactEngine;
-pub use tooling::{ToolBinding, ToolFuture, ToolMap, disallowed_tool_result};
+pub use tool::{RustTool, Tool, ToolParadigm, ToolSet};
+pub use tooling::{ToolBinding, ToolFuture, disallowed_tool_result};
 
 #[cfg(test)]
 mod tests;

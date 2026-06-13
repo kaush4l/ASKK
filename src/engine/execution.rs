@@ -30,6 +30,13 @@ impl BrowserExecutionProvider {
         }
     }
 
+    /// The compiled descriptor for `name`, if it is a built-in. The shell uses
+    /// it to build a paradigm-tagged `core::RustTool` that wraps the real
+    /// handler, so the run's `ToolSet` dispatches compiled tools directly.
+    pub fn compiled_descriptor(&self, name: &str) -> Option<crate::tools::ToolDescriptor> {
+        self.tools.descriptor(name)
+    }
+
     pub async fn execute_domain_tool(
         &self,
         snapshot: &mut AppSnapshot,

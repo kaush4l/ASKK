@@ -283,7 +283,7 @@ fn collectors_contribute_parts_to_the_render() {
 
 #[test]
 fn tool_map_rebind_replaces_and_preserves_order() {
-    let mut map = ToolMap::default();
+    let mut map = ToolSet::default();
     map.bind("a", echo_binding());
     map.bind("b", echo_binding());
     map.bind("a", echo_binding());

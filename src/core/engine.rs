@@ -30,7 +30,8 @@ use crate::state::{
 };
 
 use super::content::{MultimodalCollector, Part};
-use super::tooling::{ToolMap, disallowed_tool_result, join_in_order};
+use super::tool::ToolSet;
+use super::tooling::{disallowed_tool_result, join_in_order};
 
 /// A dyn-safe view of an [`InferenceProvider`]. The provider trait uses `async
 /// fn` (not object-safe), so this wrapper boxes the futures; the blanket impl
@@ -239,8 +240,10 @@ pub struct BaseEngine {
     pub provider: ProviderConfig,
     /// The model, attached at construction (registry) or injected (tests).
     pub inference: InferenceHandle,
-    /// The callable tools; membership is the allowlist gate.
-    pub tools: ToolMap,
+    /// The callable tools, one `Rc<dyn Tool>` per name regardless of paradigm
+    /// (compiled Rust, JS body, MCP, connector, agent). Membership is the
+    /// allowlist gate; dispatch is polymorphic via [`super::Tool::call`].
+    pub tools: ToolSet,
     /// The tool manifest shown to the model. Deliberately separate from
     /// `tools`: a phase may show a subset of specs while the dispatch gate
     /// stays the full map (today's specs-vs-allowlist split).
@@ -280,7 +283,7 @@ impl BaseEngine {
             soul: String::new(),
             provider,
             inference,
-            tools: ToolMap::default(),
+            tools: ToolSet::default(),
             specs: Vec::new(),
             skills: Vec::new(),
             sub_agents: Vec::new(),
@@ -465,10 +468,10 @@ pub trait Engine {
         args: &Value,
     ) -> ToolResult {
         let base = self.base();
-        let Some(binding) = base.tools.get(name) else {
+        let Some(tool) = base.tools.get(name) else {
             return disallowed_tool_result(&call_id, name, &base.tools.names());
         };
-        match binding(snapshot, args).await {
+        match tool.call(snapshot, args).await {
             Ok(content) => ToolResult {
                 call_id,
                 ok: true,
