@@ -68,6 +68,12 @@ pub fn ChatPanel(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) ->
                         onclick: move |_| new_chat(snapshot),
                         "New chat"
                     }
+                    button {
+                        class: "ghost-button",
+                        disabled: running,
+                        onclick: move |_| clear_chat(snapshot, goal),
+                        "Clear"
+                    }
                 }
             }
 
@@ -125,6 +131,23 @@ fn new_chat(mut snapshot: Signal<AppSnapshot>) {
         data.current_run = None;
     }
     set_status(&mut snapshot, "Started a new chat.".to_string());
+    let data = snapshot.read().clone();
+    spawn_local(async move {
+        let _ = save_snapshot(data).await;
+    });
+}
+
+/// Wipe the conversation entirely: every turn, the live run, and the composer
+/// text, then persist the empty state. Unlike `new_chat` this also empties the
+/// goal box, so it is a full reset of the chat surface.
+fn clear_chat(mut snapshot: Signal<AppSnapshot>, mut goal: Signal<String>) {
+    {
+        let mut data = snapshot.write();
+        data.runs.clear();
+        data.current_run = None;
+    }
+    goal.set(String::new());
+    set_status(&mut snapshot, "Cleared the chat.".to_string());
     let data = snapshot.read().clone();
     spawn_local(async move {
         let _ = save_snapshot(data).await;
