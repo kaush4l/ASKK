@@ -207,13 +207,14 @@ async fn scrape_contents(web: &mut [Value]) {
     }
     // Each future owns its URL and carries the hit index back, so `buffer_unordered`
     // (results arrive out of order) can still be reapplied to the right hit.
-    let fetched: Vec<(usize, AppResult<(String, &'static str)>)> =
-        stream::iter(targets.into_iter().map(|(index, url)| async move {
-            (index, fetch_page_text(&url).await)
-        }))
-        .buffer_unordered(SCRAPE_CONCURRENCY)
-        .collect()
-        .await;
+    let fetched: Vec<(usize, AppResult<(String, &'static str)>)> = stream::iter(
+        targets
+            .into_iter()
+            .map(|(index, url)| async move { (index, fetch_page_text(&url).await) }),
+    )
+    .buffer_unordered(SCRAPE_CONCURRENCY)
+    .collect()
+    .await;
     for (index, result) in fetched {
         if let Ok((text, _source)) = result {
             attach_content(&mut web[index], &text);

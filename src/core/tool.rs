@@ -265,8 +265,11 @@ mod tests {
         );
         assert_eq!(set.paradigm("shimmed"), Some(ToolParadigm::RustFn));
         let mut snapshot = AppSnapshot::default();
-        let out =
-            pollster::block_on(set.get("shimmed").unwrap().call(&mut snapshot, &Value::Null));
+        let out = pollster::block_on(
+            set.get("shimmed")
+                .unwrap()
+                .call(&mut snapshot, &Value::Null),
+        );
         assert_eq!(out.unwrap(), "ok");
     }
 }
