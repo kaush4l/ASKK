@@ -147,7 +147,7 @@ const PROBE_JS: &str = r#"
         sharedMem && isolated ? "yes" : (sharedMem ? "partial" : "no"),
         isolated ? "cross-origin isolated" : "not cross-origin isolated: SAB unavailable, single-threaded WASM only");
     add("wasi_shim", "WASI sandbox (vendored shim)", "AI & Compute", "yes",
-        "app-provided @bjorn3/browser_wasi_shim · CPython 3.14 + .wasm runner, no COOP/COEP needed", "run_in_sandbox");
+        "app-provided @bjorn3/browser_wasi_shim · CPython 3.14 + .wasm runner, no COOP/COEP needed", "run_python");
     add("workers", "Web Workers", "AI & Compute", mark(typeof Worker !== "undefined"));
     add("offscreen_canvas", "OffscreenCanvas", "AI & Compute", mark(typeof OffscreenCanvas !== "undefined"));
     add("webcodecs", "WebCodecs", "AI & Compute", mark(typeof VideoEncoder !== "undefined"));

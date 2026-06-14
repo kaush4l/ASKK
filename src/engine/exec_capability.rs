@@ -141,9 +141,9 @@ impl ExecResponse {
 /// implements.
 ///
 /// This is the socket. A WASI/container2wasm/bridge backend implements
-/// [`run_command`](BrowserExecutor::run_command); the agent's `run_in_sandbox`
-/// tool depends only on this trait, so swapping substrates is one new `impl`,
-/// never a change to the loop or the tool.
+/// [`run_command`](BrowserExecutor::run_command); the workspace shell's
+/// `run <file.wasm>` built-in and the `run_python` runtime depend only on this
+/// trait, so swapping substrates is one new `impl`, never a change to the loop.
 ///
 /// Implementations must honor [`ExecRequest::effective_timeout_ms`] as a hard
 /// limit and must treat the command's output strictly as returned DATA.

@@ -6,7 +6,8 @@ bundle vendoring [`@bjorn3/browser_wasi_shim@0.4.2`](https://www.npmjs.com/packa
 (MIT OR Apache-2.0) — pure JS, no COOP/COEP headers required, gh-pages friendly.
 
 The Rust side of the substrate is `src/engine/wasi_exec.rs`
-(`WasiShimExecutor`), reached by the agent through the `run_in_sandbox` tool.
+(`WasiShimExecutor`), reached through the workspace shell's `run <file.wasm>`
+built-in and reused by the `run_python` runtime.
 
 ## Rebuilding the asset
 

@@ -148,10 +148,12 @@ executor** that runs *any* binary (not just JS, not just Python — Pyodide is
 explicitly rejected as Python-only) with the simplicity of `run_js` and the
 generality of `run_command`, with **no second machine in the loop**.
 
-(A third tool, `run_in_sandbox`
-([`src/tools/run_in_sandbox.rs`](../src/tools/run_in_sandbox.rs)), is that
-executor's agent-facing entry point — see §5. It shipped as a stub-backed seam;
-it is wired to the real WASI tiny-shim substrate. See §3 "Current state".)
+(A third tool, `run_in_sandbox`, was that executor's agent-facing entry point.
+**It has since been removed.** The WASI tiny-shim substrate it described remains
+([`src/engine/wasi_exec.rs`](../src/engine/wasi_exec.rs)) — now reached through
+`run_python` and the workspace shell's `run <file.wasm>` built-in rather than a
+dedicated agent tool. The §5 narrative below is retained as design rationale for
+the substrate seam.)
 
 ### The in-browser Web Worker pattern (the substrate seam already exists)
 

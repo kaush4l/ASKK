@@ -36,7 +36,6 @@ pub fn default_tool_names() -> Vec<String> {
         "web_search".to_string(),
         "web_fetch".to_string(),
         "run_command".to_string(),
-        "run_in_sandbox".to_string(),
         "fs_read".to_string(),
         "fs_write".to_string(),
         "fs_list".to_string(),

@@ -109,7 +109,7 @@ install, no special response headers.
   `help`) plus runtime dispatch via `python`, `run`, and `js`.
 - **In-browser Python** — a CPython `wasm32-wasi` runtime on the WASI tiny-shim
   substrate, exposed to the agent as a `run_python` tool. The same substrate
-  gives the `run_in_sandbox` tool its first real backend.
+  also backs the workspace shell's `run <file.wasm>` built-in.
 - **Run/process management** — a process registry with kill, runtime status
   chips, and storage usage reporting.
 
@@ -173,10 +173,6 @@ run **in the browser** — no bridge required, so they work on the hosted site:
 - `file_write` / `file_read` / `file_list` — the in-browser virtual filesystem
   (OPFS, with one-time IndexedDB migration), used by the Workspace in
   Browser mode.
-- `run_in_sandbox({ command, cwd?, timeout_ms? })` — run a single `wasm32-wasi`
-  binary in the in-browser execution sandbox; mirrors `run_command`'s
-  exit-code contract. Gains its first real backend (the WASI tiny-shim) in the
-  see `docs/EXECUTION_MODEL.md`.
 - `run_python` — run Python in-browser on a CPython `wasm32-wasi` runtime
   .
 

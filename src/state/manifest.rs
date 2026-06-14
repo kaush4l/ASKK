@@ -444,7 +444,6 @@ mod tests {
                 "web_search",
                 "web_fetch",
                 "run_command",
-                "run_in_sandbox",
                 "fs_read",
                 "fs_write",
                 "fs_list",

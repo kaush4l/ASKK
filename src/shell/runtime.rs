@@ -68,7 +68,7 @@ async fn run_python_command(argv: &[String], ctx: &ShellExecCtx) -> ExecResponse
 }
 
 /// `run <file.wasm> [args…]`: execute a wasm32-wasip1 binary on the WASI
-/// tiny-shim substrate, mirroring the `run_in_sandbox` tool's command shape.
+/// tiny-shim substrate.
 async fn run_wasm_command(argv: &[String], ctx: &ShellExecCtx) -> ExecResponse {
     if argv.len() < 2 {
         return ExecResponse::failure(2, "usage: run <file.wasm> [args…]");

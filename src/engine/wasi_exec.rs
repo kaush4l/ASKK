@@ -71,14 +71,14 @@ pub(crate) fn parse_wasm_command_line(command: &str) -> AppResult<WasmCommandLin
     let tokens: Vec<String> = command.split_whitespace().map(str::to_string).collect();
     let Some(first) = tokens.first() else {
         return Err(
-            "run_in_sandbox needs a command line whose first token is a path to a \
+            "the wasm sandbox needs a command line whose first token is a path to a \
              wasm32-wasip1 .wasm binary; got an empty command."
                 .to_string(),
         );
     };
     if !first.to_ascii_lowercase().ends_with(".wasm") {
         return Err(format!(
-            "run_in_sandbox runs a single wasm32-wasip1 binary: the first token must be a \
+            "the wasm sandbox runs a single wasm32-wasip1 binary: the first token must be a \
              path or http(s) URL ending in .wasm, got `{first}`. Native commands (shells, \
              package managers, non-wasm binaries) cannot run in the in-browser sandbox; \
              use run_command via the local bridge for those."
