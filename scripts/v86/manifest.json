@@ -1,0 +1,20 @@
+{
+  "images": [
+    {
+      "id": "alpine-base",
+      "label": "Alpine (base)",
+      "url": "runtimes/v86/alpine-base.state",
+      "type": "state",
+      "bytes": 0,
+      "packages": ["busybox"]
+    },
+    {
+      "id": "alpine-python",
+      "label": "Alpine + python3",
+      "url": "runtimes/v86/alpine-python.state",
+      "type": "state",
+      "bytes": 0,
+      "packages": ["python3", "py3-pip"]
+    }
+  ]
+}

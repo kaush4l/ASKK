@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ASKK wasi-runner worker harness</title>
+  <style>
+    body { font: 14px/1.5 ui-monospace, monospace; margin: 2rem; max-width: 70rem; }
+    pre { background: #f4f4f4; padding: 0.75rem; white-space: pre-wrap; }
+    .ok { color: #0a7d2c; }
+    .bad { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>assets/wasi_runner_worker.js harness</h1>
+  <p>
+    Posts <code>guest.wasm</code> (bytes as a transferable) with argv, env, stdin,
+    and one seeded <code>/workspace</code> file; renders the structured reply.
+    Serve from the repo root, e.g. <code>python3 -m http.server 8202</code>.
+  </p>
+  <div>status: <strong id="status">loading…</strong></div>
+  <div>exit code: <strong id="exit">?</strong></div>
+  <h2>stdout</h2>
+  <pre id="stdout">(none)</pre>
+  <h2>stderr</h2>
+  <pre id="stderr">(none)</pre>
+  <h2>round-tripped /workspace/out/result.txt</h2>
+  <pre id="roundtrip">(none)</pre>
+
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
+
+    async function run() {
+      try {
+        const wasmResp = await fetch("./guest.wasm");
+        if (!wasmResp.ok) {
+          throw new Error(
+            `guest.wasm not found (HTTP ${wasmResp.status}); ` +
+              "run scripts/wasi-runner/test/build-guest.sh first",
+          );
+        }
+        const wasmBytes = await wasmResp.arrayBuffer();
+
+        const worker = new Worker("/assets/wasi_runner_worker.js");
+        worker.onmessage = (event) => {
+          const reply = JSON.parse(event.data);
+          $("exit").textContent = String(reply.exit_code);
+          $("stdout").textContent = reply.stdout || "(empty)";
+          $("stderr").textContent = reply.stderr || "(empty)";
+          const file = (reply.files_out || []).find(
+            (f) => f.path === "out/result.txt",
+          );
+          if (file) {
+            $("roundtrip").textContent =
+              file.text ?? `(base64) ${file.base64}`;
+          } else {
+            $("roundtrip").textContent =
+              "(out/result.txt missing from files_out — round-trip FAILED)";
+          }
+          $("status").innerHTML = reply.ok
+            ? '<span class="ok">done (ok)</span>'
+            : '<span class="bad">done (failed)</span>';
+          worker.terminate();
+        };
+        worker.onerror = (event) => {
+          $("status").textContent = `worker error: ${event.message}`;
+        };
+
+        worker.postMessage(
+          {
+            wasm_bytes: wasmBytes,
+            argv: ["guest.wasm", "--greet", "askk", "harness"],
+            env: { DEMO_KEY: "from-harness" },
+            stdin: "hello stdin\n",
+            files: [{ path: "input.txt", text: "seed-from-harness" }],
+          },
+          [wasmBytes],
+        );
+      } catch (error) {
+        $("status").textContent = `harness error: ${error?.message ?? String(error)}`;
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "askk-xterm-term",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0"
+  },
+  "description": "Builds the xterm.js terminal bundle (assets/xterm_term.js) consumed by the ASKK workspace IDE. Run `bun install && bun run build` after editing entry.js or bumping deps, then commit the regenerated asset.",
+  "scripts": {
+    "build": "bun build ./entry.js --format=iife --minify --outfile=../../assets/xterm_term.js"
+  }
+}

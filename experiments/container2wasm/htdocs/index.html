@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+<title>container2wasm spike — Alpine in the tab (ASKK batch 05)</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css">
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 1.5rem; max-width: 980px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; }
+  #terminal { display: inline-block; }
+  #metrics { background:#0b0b0b; color:#7CFC00; font-family: ui-monospace, Menlo, monospace;
+             padding:0.75rem 1rem; border-radius:6px; white-space:pre; font-size:0.85rem; margin:1rem 0; }
+  .row { margin: 0.4rem 0; }
+  code { background:#f0f0f0; padding:1px 4px; border-radius:3px; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.8rem; }
+  .ok { background:#173; color:#fff; }
+  .warn { background:#a60; color:#fff; }
+  .bad { background:#922; color:#fff; }
+  button { font-size:0.95rem; padding:0.4rem 0.9rem; margin-right:0.5rem; }
+  select, input { font-size:0.95rem; padding:0.3rem; }
+</style>
+</head>
+<body>
+
+<h1>container2wasm spike: Alpine Linux in a browser tab</h1>
+
+<p>ASKK feasibility batch 05. This page boots a real OCI container image
+(<code>alpine:3.18</code>, x86_64) inside a CPU emulator compiled to WebAssembly
+(<a href="https://github.com/container2wasm/container2wasm">container2wasm</a>, the
+WASI-on-browser path), runs it in a Web Worker, and executes one shell command. The
+glue JS is vendored from the upstream demo (Apache-2.0); the multi-MB container
+<code>.wasm</code> chunks are fetched by <code>fetch-assets.sh</code> and are not in git.</p>
+
+<div class="row">
+  Cross-origin isolation (SharedArrayBuffer):
+  <span id="coi" class="pill warn">checking…</span>
+</div>
+
+<div class="row">
+  Image:
+  <select id="image">
+    <option value="amd64-vim-wasi|3|x86_64 alpine:3.18" selected>x86_64 alpine:3.18 — ~124 MB (3 chunks)</option>
+    <option value="riscv64-vim-wasi|2|riscv64 alpine:3.18">riscv64 alpine:3.18 — ~74 MB (2 chunks, smallest)</option>
+  </select>
+  Command:
+  <input id="cmd" value="uname -a; echo; echo hello from alpine; echo; ls /" size="46">
+</div>
+
+<div class="row">
+  <button id="run">Boot &amp; run command</button>
+  <span id="status">idle</span>
+</div>
+
+<div id="metrics">metrics will appear here after boot…</div>
+
+<h2>Terminal (live container stdout)</h2>
+<div id="terminal"></div>
+
+<p style="margin-top:1rem;color:#666;font-size:0.85rem;">
+Networking is disabled in this spike (<code>net=none</code>) to keep the boot path
+minimal and offline. The upstream demo also supports an in-browser HTTP proxy
+(Fetch-API-backed) for container networking; see <code>docs/spikes/container2wasm.md</code>.</p>
+
+<!-- coi-serviceworker registers a SW that re-serves the page with COOP/COEP headers
+     so SharedArrayBuffer works even on hosts (like GitHub Pages) that can't set
+     response headers. On a server that already sets the headers it's a no-op. -->
+<script src="./coi-serviceworker.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-pty@0.9.4/index.js"></script>
+<script src="./src/stack.js"></script>
+<script src="./spike.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "askk-v86-vm",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "v86": "^0.5.224"
+  },
+  "description": "Builds the v86 x86 VM serial-console bundle (assets/v86_vm.js) consumed by the ASKK VM page. Run `bun install && bun run build` after editing entry.js or bumping deps, then commit the regenerated asset and the v86 runtime blobs (v86_vm.wasm, v86_bios.bin, v86_vgabios.bin) in assets/. The build goes through build.mjs because libv86 has a dead Node-only `require(\"perf_hooks\")` branch that the browser bundle must stub out.",
+  "scripts": {
+    "build": "bun run build.mjs"
+  }
+}

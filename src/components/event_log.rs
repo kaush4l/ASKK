@@ -1,0 +1,67 @@
+use crate::components::ui::{Badge, Card};
+use crate::state::{AgentEventKind, AppSnapshot};
+use dioxus::prelude::*;
+
+#[component]
+pub fn EventLogPanel(snapshot: Signal<AppSnapshot>) -> Element {
+    let current = snapshot.read().clone();
+    let events = current
+        .current_run()
+        .map(|run| run.events.clone())
+        .unwrap_or_default();
+
+    rsx! {
+        Card { class: "shell-side-panel",
+            div { class: "shell-panel-head",
+                h2 { "Event Log" }
+                Badge { tone: "info", "{events.len()}" }
+            }
+            div { class: "shell-timeline shell-scroll",
+                if events.is_empty() {
+                    div { class: "shell-empty", "No events yet." }
+                } else {
+                    for event in events.iter() {
+                        {
+                            let kind_label = event_kind_label(&event.kind);
+                            rsx! {
+                        article { class: "shell-event-row", key: "{event.id}",
+                            div { class: "shell-event-meta",
+                                span { "{event.created_at}" }
+                                span { "{kind_label}" }
+                            }
+                            h3 { "{event.title}" }
+                            pre { "{event.body}" }
+                        }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn event_kind_label(kind: &AgentEventKind) -> &'static str {
+    match kind {
+        AgentEventKind::Started => "started",
+        AgentEventKind::Routing => "routing",
+        AgentEventKind::MetaTool => "meta_tool",
+        AgentEventKind::LlmRequest => "llm_request",
+        AgentEventKind::LlmResponse => "llm_response",
+        AgentEventKind::ToolRequested => "tool_requested",
+        AgentEventKind::ToolCompleted => "tool_completed",
+        AgentEventKind::WorkerStarted => "worker_started",
+        AgentEventKind::WorkerCompleted => "worker_completed",
+        AgentEventKind::Workflow => "workflow",
+        AgentEventKind::PhaseStarted => "Phase started",
+        AgentEventKind::PhaseCompleted => "Phase completed",
+        AgentEventKind::MemoryCompacted => "Memory compacted",
+        AgentEventKind::RollingSummaryUpdated => "Rolling summary",
+        AgentEventKind::Verification => "verification",
+        AgentEventKind::McpConnected => "mcp_connected",
+        AgentEventKind::McpToolsListed => "mcp_tools_listed",
+        AgentEventKind::Interrupted => "interrupted",
+        AgentEventKind::FinalAnswer => "final_answer",
+        AgentEventKind::Error => "error",
+    }
+}

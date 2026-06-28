@@ -1,0 +1,13 @@
+{
+  "name": "askk-python-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Source for assets/python_runner_worker.js: a classic Web Worker that runs CPython (wasm32-wasi) under @bjorn3/browser_wasi_shim. Edit entry.js, then `bun run build` and commit the rebuilt asset.",
+  "scripts": {
+    "build": "bun build ./entry.js --format=iife --target=browser --outfile=../../assets/python_runner_worker.js"
+  },
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2"
+  }
+}

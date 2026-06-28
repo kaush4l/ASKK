@@ -1,0 +1,12 @@
+{
+  "name": "askk-wasi-runner",
+  "private": true,
+  "type": "module",
+  "description": "Source for assets/wasi_runner_worker.js — the in-browser WASI exec worker. Build with `bun install && bun run build` and commit the rebuilt asset.",
+  "scripts": {
+    "build": "bun build entry.js --target=browser --format=iife --outfile=../../assets/wasi_runner_worker.js"
+  },
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2"
+  }
+}

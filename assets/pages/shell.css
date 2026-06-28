@@ -1,0 +1,171 @@
+/* ── Shell chrome (Soft Desk) ─────────────────────────────────────────────
+   App-shell-owned refinements over the chrome already defined in main.css.
+   Loads AFTER main.css, so these win. Scope: topbar, security banner, left
+   nav, page-surface frame, and the two right-hand panels. Tokens only — never
+   a raw hex. Namespaced under `shell-*` for new elements; existing chrome
+   classes (owned by app_shell) are refined here, never the globally-shared
+   .panel/.btn/.ghost-button/.ui-* primitives. */
+
+/* Topbar — softer brand block, status moved to a StatusDot chip. */
+.topbar {
+    align-items: center;
+    padding: 4px 2px;
+}
+
+.shell-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink-soft);
+    border-radius: var(--pill);
+    padding: 7px 14px 7px 12px;
+    font-size: 13px;
+    max-width: 520px;
+    overflow-wrap: anywhere;
+    box-shadow: var(--shadow-soft);
+}
+
+/* Dismissible advisory — soft rounded warm strip, light elevation. */
+.security-note {
+    align-items: center;
+    border-radius: var(--r-lg);
+    padding: 11px 14px;
+    box-shadow: var(--shadow-soft);
+}
+
+.security-note .note-dismiss {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--pill);
+    line-height: 1;
+}
+
+/* Left nav — soft rounded rail with a rounded cyan active pill. */
+.left-nav {
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-soft);
+    padding: 14px;
+}
+
+.nav-item {
+    border-radius: var(--r);
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.nav-item:hover {
+    background: var(--surface-2);
+}
+
+/* Rounded soft cyan pill for the active page — replaces the inset bar. */
+.nav-item.active {
+    background: var(--surface-accent);
+    color: var(--accent-ink);
+    box-shadow: none;
+}
+
+.left-nav.collapsed .nav-item {
+    border-radius: var(--r);
+}
+
+/* Page-surface frame — match the soft card elevation of the side rails. */
+.page-surface {
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-soft);
+}
+
+/* ── Right-hand panels (Panel primitive + internal scroll) ──────────────── */
+/* The Panel primitive gives the rounded card + heading; these add the
+   grid layout so the body scrolls inside the column instead of growing it. */
+.shell-side-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px;
+    height: 100%;
+    min-height: 0;
+}
+
+.shell-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.shell-panel-head h2 {
+    margin: 0;
+    font-size: 16px;
+    color: var(--ink);
+}
+
+.shell-panel-note {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 12px;
+}
+
+.shell-prompt-panel {
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 10px;
+}
+
+.shell-scroll {
+    min-height: 0;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.shell-prompt-pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px;
+    color: var(--ink);
+}
+
+.shell-timeline {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+}
+
+.shell-event-row {
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.shell-event-row h3 {
+    margin: 8px 0 0;
+    font-size: 14px;
+}
+
+.shell-event-row pre {
+    margin: 8px 0 0;
+}
+
+.shell-event-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--ink-muted);
+    font-size: 12px;
+    font-family: var(--mono);
+}
+
+.shell-empty {
+    color: var(--ink-muted);
+    text-align: center;
+    padding: 24px 12px;
+}

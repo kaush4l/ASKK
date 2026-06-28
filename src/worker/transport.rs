@@ -1,0 +1,271 @@
+// Agent dispatch to / from a Web Worker is a browser-only path; on the host build
+// (tests aside) these message types are unused, so allow dead code off-wasm only —
+// the wasm target stays honest and still flags genuine rot.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+
+use crate::capabilities::page_ops::PageOp;
+use crate::core::event::Signal;
+use crate::state::{Agent, AgentRun, AppSnapshot, RunStatus};
+use serde::{Deserialize, Serialize};
+
+// These message enums intentionally carry a full `AppSnapshot` in one variant so a
+// run can be dispatched to / returned from a Web Worker in a single post. The size
+// asymmetry is by design, not a mistake.
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum WorkerCommand {
+    Dispatch(WorkerDispatch),
+    Cancel(WorkerCancel),
+    /// Page → worker: the result of a [`WorkerEvent::PageOpRequested`] the page
+    /// executed on the worker's behalf (see [`crate::worker::page_proxy`]).
+    PageOpResolved(PageOpResolved),
+}
+
+/// Outcome of a proxied page-thread operation, correlated by `request_id`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PageOpResolved {
+    pub request_id: String,
+    pub ok: bool,
+    /// JSON envelope on success; the error message on failure.
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkerDispatch {
+    pub run_id: String,
+    pub worker_id: String,
+    pub goal: String,
+    pub agent: Agent,
+    pub snapshot: AppSnapshot,
+    #[serde(default)]
+    pub strategy: Option<String>,
+    #[serde(default)]
+    pub max_turns: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkerCancel {
+    pub run_id: String,
+    pub worker_id: String,
+    pub reason: String,
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum WorkerEvent {
+    Ready {
+        worker_id: String,
+    },
+    Progress(WorkerProgress),
+    /// Worker → page: one fine-grained [`Signal`] delta on the legible-runtime
+    /// bus, posted *alongside* (never instead of) [`WorkerEvent::Progress`]. The
+    /// page-side reducer folds these into the rendered subset of an `AgentRun` in
+    /// O(1) per tick; the coarse `Progress(WorkerProgress { run })` clone path is
+    /// unchanged and remains the authoritative live snapshot during the dual-emit
+    /// migration window.
+    Signal(Signal),
+    Result(WorkerResult),
+    Cancelled(WorkerCancel),
+    Error(WorkerError),
+    /// Worker → page: run this window-only operation (device capture, local
+    /// model call, …) and post back a [`WorkerCommand::PageOpResolved`].
+    PageOpRequested {
+        request_id: String,
+        op: PageOp,
+    },
+    /// Worker → page: a `PageOpResolved` command was routed to its waiter. Pure
+    /// acknowledgment so every worker-handled message yields one reply; the
+    /// page ignores it.
+    PageOpAck {
+        request_id: String,
+    },
+}
+
+#[cfg(test)]
+impl WorkerEvent {
+    pub fn run_id(&self) -> Option<&str> {
+        match self {
+            Self::Ready { .. } => None,
+            Self::Progress(progress) => Some(&progress.run_id),
+            Self::Signal(signal) => Some(&signal.run_id),
+            Self::Result(result) => Some(&result.run_id),
+            Self::Cancelled(cancel) => Some(&cancel.run_id),
+            Self::Error(error) => Some(&error.run_id),
+            Self::PageOpRequested { .. } | Self::PageOpAck { .. } => None,
+        }
+    }
+
+    pub fn worker_id(&self) -> Option<&str> {
+        match self {
+            Self::Ready { worker_id } => Some(worker_id),
+            Self::Progress(progress) => Some(&progress.worker_id),
+            // A signal addresses a run and a component `instance`, not a worker
+            // id; the worker fills its own id into the post envelope elsewhere.
+            Self::Signal(_) => None,
+            Self::Result(result) => Some(&result.worker_id),
+            Self::Cancelled(cancel) => Some(&cancel.worker_id),
+            Self::Error(error) => Some(&error.worker_id),
+            Self::PageOpRequested { .. } | Self::PageOpAck { .. } => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkerProgress {
+    pub run_id: String,
+    pub worker_id: String,
+    pub message: String,
+    pub run: AgentRun,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkerResult {
+    pub run_id: String,
+    pub worker_id: String,
+    pub status: WorkerStatus,
+    pub answer: String,
+    pub trace: Vec<String>,
+    pub snapshot: AppSnapshot,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkerError {
+    pub run_id: String,
+    pub worker_id: String,
+    pub message: String,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerStatus {
+    Pending,
+    Running,
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+/// Project a child run's terminal [`RunStatus`] onto the worker-facing
+/// [`WorkerStatus`]. This is the one typed place the run-status → worker-status
+/// policy lives; the match is exhaustive so a new `RunStatus` variant forces a
+/// decision here rather than silently mapping to `Failed`.
+impl From<RunStatus> for WorkerStatus {
+    fn from(status: RunStatus) -> Self {
+        match status {
+            RunStatus::Complete => Self::Succeeded,
+            // A paused run is a clean, resumable outcome — it returns the snapshot so
+            // the page persists it and the Resume action appears, not a failure.
+            RunStatus::Paused => Self::Succeeded,
+            RunStatus::Running => Self::Running,
+            RunStatus::Interrupted => Self::Cancelled,
+            RunStatus::Error => Self::Failed,
+            // The verifier gate rejected the work — a non-success terminal, surfaced to
+            // the parent as a failure (not a silent Succeeded).
+            RunStatus::Unverified => Self::Failed,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{Agent, AppSnapshot, default_tool_names};
+
+    #[test]
+    fn worker_dispatch_message_round_trips_through_json() {
+        let message = WorkerCommand::Dispatch(WorkerDispatch {
+            run_id: "run-1".to_string(),
+            worker_id: "worker-a".to_string(),
+            goal: "Compare two sources".to_string(),
+            agent: Agent::new(
+                "Researcher",
+                "Use tools for evidence.",
+                default_tool_names(),
+            ),
+            snapshot: AppSnapshot::default(),
+            strategy: None,
+            max_turns: None,
+        });
+
+        let encoded = serde_json::to_string(&message).unwrap();
+        let decoded: WorkerCommand = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, message);
+    }
+
+    #[test]
+    fn worker_result_message_carries_structured_status_trace_and_snapshot() {
+        let result = WorkerResult {
+            run_id: "run-1".to_string(),
+            worker_id: "worker-a".to_string(),
+            status: WorkerStatus::Succeeded,
+            answer: "Done".to_string(),
+            trace: vec!["started".to_string(), "finished".to_string()],
+            snapshot: AppSnapshot::default(),
+        };
+        let message = WorkerEvent::Result(result.clone());
+
+        assert_eq!(message.run_id(), Some("run-1"));
+        assert_eq!(message.worker_id(), Some("worker-a"));
+        assert_eq!(result.trace.len(), 2);
+        assert_eq!(result.snapshot.status, "Ready");
+    }
+
+    #[test]
+    fn worker_progress_carries_live_agent_run() {
+        let mut live_run = crate::state::AgentRun {
+            id: "agent-run-1".to_string(),
+            goal: "subtask".to_string(),
+            status: crate::state::RunStatus::Running,
+            lane: crate::state::RunLane::BoundedTask,
+            scratchpad: crate::state::RunScratchpad::default(),
+            messages: Vec::new(),
+            events: Vec::new(),
+            tool_calls: Vec::new(),
+            tool_results: Vec::new(),
+            final_answer: String::new(),
+            created_at: "now".to_string(),
+        };
+        live_run.final_answer = "partial".to_string();
+        let progress = WorkerProgress {
+            run_id: "run-1".to_string(),
+            worker_id: "worker-a".to_string(),
+            message: "running bounded task".to_string(),
+            run: live_run.clone(),
+        };
+
+        let encoded = serde_json::to_string(&WorkerEvent::Progress(progress)).unwrap();
+        let decoded: WorkerEvent = serde_json::from_str(&encoded).unwrap();
+
+        match decoded {
+            WorkerEvent::Progress(progress) => assert_eq!(progress.run, live_run),
+            other => panic!("expected progress event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn worker_signal_event_round_trips_through_json() {
+        use crate::core::event::{Signal, SignalKind};
+
+        let signal = Signal::new(
+            5,
+            "run-1",
+            "Assistant",
+            SignalKind::StepsUsedSet { steps_used: 3 },
+            1_700_000_000_000.0,
+        );
+        let event = WorkerEvent::Signal(signal.clone());
+
+        let encoded = serde_json::to_string(&event).unwrap();
+        let decoded: WorkerEvent = serde_json::from_str(&encoded).unwrap();
+
+        match decoded {
+            WorkerEvent::Signal(decoded_signal) => assert_eq!(decoded_signal, signal),
+            other => panic!("expected signal event, got {other:?}"),
+        }
+        // The signal carries the run id, but no worker id (it addresses a
+        // component instance instead).
+        assert_eq!(event.run_id(), Some("run-1"));
+        assert_eq!(event.worker_id(), None);
+    }
+}

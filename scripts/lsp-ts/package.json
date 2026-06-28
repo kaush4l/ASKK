@@ -1,0 +1,13 @@
+{
+  "name": "askk-lsp-ts-worker",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@typescript/vfs": "^1.6.4",
+    "typescript": "^6.0.3"
+  },
+  "description": "Builds the TypeScript/JavaScript language-service Web Worker (assets/lsp_ts_worker.js) consumed by the ASKK workspace IDE's CM6 editor. Fully offline: the TypeScript compiler and the lib.*.d.ts default libraries are embedded in the bundle. Run `bun install && bun run build` after editing entry.js or bumping deps, then commit the regenerated asset.",
+  "scripts": {
+    "build": "bun gen-libs.mjs && bun build ./entry.js --format=iife --target=browser --minify --outfile=../../assets/lsp_ts_worker.js"
+  }
+}

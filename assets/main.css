@@ -1,0 +1,2646 @@
+@import url("https://fonts.googleapis.com/css2?family=Amarante&display=swap");
+
+/* ── Design tokens ──────────────────────────────────────────────────────
+   One palette, one accent. Navy ink on warm paper, cyan accent (matches the
+   ASKK mark). Hairline borders, near-flat surfaces. Edit a token here, not a
+   hex below. */
+:root {
+    color-scheme: light;
+    font-family: "Amarante", ui-serif, Georgia, serif;
+
+    --paper: #f5f4f0;
+    --surface: #ffffff;
+    --surface-2: #f1f3f3;
+    --surface-accent: #e7f5f9;
+
+    --ink: #14202b;
+    --ink-soft: #44515d;
+    --ink-muted: #717c86;
+
+    --line: #e6e5e0;
+    --line-2: #d4d5cf;
+
+    --accent: #23b3d1;
+    --accent-strong: #1791ab;
+    --accent-ink: #06222b;
+    --accent-text: #0b7488;
+    --accent-wash: #e3f4f9;
+
+    --ok: #2f8f57;
+    --ok-wash: #e8f4ec;
+    --warn: #946612;
+    --warn-bg: #fbf4e2;
+    --warn-line: #ecddb0;
+    --danger: #c23b3b;
+    --danger-wash: #fbecec;
+    --danger-line: #ecc4c4;
+
+    --control-warm: #f0ebe2;
+
+    --r-sm: 7px;
+    --r: 10px;
+    --r-lg: 13px;
+    --r-xl: 16px;
+    --pill: 999px;
+
+    --shadow: 0 1px 2px rgba(20, 32, 43, 0.05);
+    --shadow-soft: 0 2px 8px rgba(20, 32, 43, 0.06);
+    --shadow-card: 0 4px 16px rgba(20, 32, 43, 0.08);
+    --shadow-pop: 0 6px 18px rgba(20, 32, 43, 0.08);
+    --focus: 0 0 0 3px rgba(35, 179, 209, 0.35);
+
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+    background: var(--paper);
+    color: var(--ink);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#main {
+    min-height: 100%;
+}
+
+body {
+    margin: 0;
+    min-width: 320px;
+    background: var(--paper);
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+    letter-spacing: 0;
+}
+
+/* Primary action: cyan fill, dark ink for contrast. */
+button {
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    font-weight: 600;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+button:hover {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Secondary action: quiet, bordered, navy text. */
+.ghost-button {
+    background: var(--surface);
+    color: var(--ink);
+    border-color: var(--line-2);
+}
+
+.ghost-button:hover {
+    background: var(--surface-2);
+    border-color: var(--line-2);
+    color: var(--ink);
+}
+
+.icon-button {
+    width: 34px;
+    min-height: 34px;
+    padding: 0;
+    background: var(--surface);
+    color: var(--ink-soft);
+    border-color: var(--line-2);
+}
+
+.icon-button:hover {
+    background: var(--surface-2);
+    color: var(--ink);
+}
+
+/* Visible keyboard focus everywhere it was missing. */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.nav-item:focus-visible,
+summary:focus-visible {
+    outline: none;
+    box-shadow: var(--focus);
+}
+
+input,
+select,
+textarea {
+    width: 100%;
+    border: 1px solid var(--line-2);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: var(--r-sm);
+    padding: 9px 10px;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--ink-muted);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--focus);
+}
+
+textarea {
+    min-height: 88px;
+    resize: vertical;
+    line-height: 1.45;
+}
+
+label {
+    display: grid;
+    gap: 6px;
+    color: var(--ink-soft);
+    font-size: 13px;
+}
+
+pre {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.tool-checkbox,
+.model-chip,
+.event-meta,
+.compact-list,
+.stat-block span,
+.message-author,
+pre {
+    font-family: var(--mono);
+}
+
+.app-shell {
+    width: min(1720px, calc(100vw - 32px));
+    min-height: 100dvh;
+    margin: 0 auto;
+    padding: 24px 0 32px;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    margin-bottom: 16px;
+}
+
+.brand-block h1 {
+    margin: 0;
+    font-size: 30px;
+    line-height: 1.05;
+    color: var(--ink);
+}
+
+/* Cyan tick under the wordmark — the one place the brand color leads. */
+.brand-block h1::after {
+    content: "";
+    display: block;
+    width: 38px;
+    height: 3px;
+    margin-top: 6px;
+    border-radius: var(--pill);
+    background: var(--accent);
+}
+
+.brand-block p {
+    margin: 9px 0 0;
+    color: var(--ink-muted);
+}
+
+.status-pill {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink-soft);
+    border-radius: var(--pill);
+    padding: 8px 14px;
+    font-size: 13px;
+    max-width: 520px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    box-shadow: var(--shadow);
+}
+
+/* Quiet, dismissible advisory — no longer a permanent wall of yellow. */
+.security-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    border: 1px solid var(--warn-line);
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-radius: var(--r);
+    padding: 9px 12px;
+    margin-bottom: 16px;
+    line-height: 1.4;
+    font-size: 13px;
+}
+
+.security-note .note-body {
+    flex: 1 1 auto;
+}
+
+.security-note .note-dismiss {
+    flex: 0 0 auto;
+    min-height: 24px;
+    padding: 0 8px;
+    border: 0;
+    background: transparent;
+    color: var(--warn);
+    font-weight: 700;
+}
+
+.security-note .note-dismiss:hover {
+    background: rgba(148, 102, 18, 0.12);
+}
+
+.dashboard-frame {
+    display: grid;
+    grid-template-columns: 246px minmax(0, 1fr) minmax(330px, 0.46fr);
+    gap: 16px;
+    align-items: stretch;
+    min-height: calc(100dvh - 152px);
+}
+
+.dashboard-frame.nav-collapsed {
+    grid-template-columns: 74px minmax(0, 1fr) minmax(330px, 0.46fr);
+}
+
+.dashboard-frame.no-log {
+    grid-template-columns: 246px minmax(0, 1fr);
+}
+
+.dashboard-frame.nav-collapsed.no-log {
+    grid-template-columns: 74px minmax(0, 1fr);
+}
+
+/* Lock the whole dashboard to the viewport so each column scrolls inside itself
+   (the event log, the nav, and the page body) rather than the page growing to the
+   tallest column and the body scrolling. A flex column fills the space under the
+   variable-height header (topbar + dismissible banner) with no magic offset, so
+   the frame is exactly the remaining height whether or not the banner is shown.
+   Only in the full 3-column desktop layout; at <=1240px the columns stack and the
+   page scrolls naturally (see the responsive blocks below). */
+@media (min-width: 1241px) {
+    .app-shell {
+        height: 100dvh;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dashboard-frame {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+}
+
+.panel,
+.left-nav,
+.page-surface {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    box-shadow: var(--shadow);
+}
+
+.left-nav {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 14px;
+    min-width: 0;
+    padding: 12px;
+}
+
+.left-nav-head,
+.panel-heading,
+.agent-card-head,
+.tool-card-head,
+.button-row,
+.inline-controls,
+.diagnostic-actions,
+.page-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.left-nav-head,
+.panel-heading,
+.agent-card-head,
+.tool-card-head,
+.page-heading {
+    justify-content: space-between;
+}
+
+.nav-title {
+    color: var(--ink-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.left-nav.collapsed .nav-title,
+.left-nav.collapsed .nav-text {
+    display: none;
+}
+
+.nav-list {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    min-height: 0;
+}
+
+.nav-item {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 38px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--ink-soft);
+    font-weight: 600;
+    text-align: left;
+}
+
+.nav-item:hover {
+    background: var(--surface-2);
+    color: var(--ink);
+}
+
+.nav-item.active {
+    background: var(--surface-accent);
+    color: var(--ink);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.left-nav.collapsed .nav-item {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0;
+}
+
+.nav-glyph {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    color: var(--ink-soft);
+}
+
+.nav-glyph svg {
+    width: 17px;
+    height: 17px;
+    display: block;
+}
+
+.nav-item:hover .nav-glyph,
+.nav-item.active .nav-glyph {
+    background: var(--accent-wash);
+    color: var(--accent-text);
+}
+
+.page-surface {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+}
+
+.panel {
+    padding: 16px;
+}
+
+.page-panel,
+.event-log-panel {
+    display: grid;
+    gap: 16px;
+    height: 100%;
+    min-height: 0;
+    border-radius: var(--r);
+}
+
+.page-panel {
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    /* Pack rows at the top at their natural height (the grid would otherwise
+       stretch them to fill the column, inflating every gap), and scroll the
+       page's own content inside the column when it is taller than the viewport. */
+    align-content: start;
+    overflow-y: auto;
+}
+
+.panel h2,
+.panel h3 {
+    margin: 0;
+}
+
+.panel h2 {
+    font-size: 19px;
+    color: var(--ink);
+}
+
+.panel h3 {
+    font-size: 14px;
+    margin-top: 16px;
+}
+
+.chat-panel {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.chat-header {
+    flex: 0 0 auto;
+}
+
+.composer {
+    display: grid;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+
+.composer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.composer-hint {
+    color: var(--ink-muted);
+    font-size: 12px;
+}
+
+.goal-box {
+    min-height: 64px;
+    max-height: 168px;
+    resize: vertical;
+}
+
+.chat-turn {
+    display: grid;
+    gap: 8px;
+}
+
+.thinking-line {
+    color: var(--ink-muted);
+    font-style: italic;
+}
+
+.phase-status {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--ink-muted);
+    font-style: italic;
+}
+
+.conversation-scroll,
+.scroll-area {
+    min-height: 0;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.conversation-scroll {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+}
+
+.message-bubble {
+    width: fit-content;
+    max-width: min(680px, 78%);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 11px 14px;
+    background: var(--surface);
+    overflow-wrap: anywhere;
+}
+
+.message-bubble p {
+    margin: 7px 0 0;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.message-author {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.user-message,
+.draft-message {
+    justify-self: end;
+    border-color: var(--accent);
+    background: var(--accent-wash);
+    border-bottom-right-radius: 4px;
+}
+
+.assistant-message {
+    justify-self: start;
+    border-bottom-left-radius: 4px;
+}
+
+.tool-message {
+    justify-self: start;
+    background: var(--surface-2);
+}
+
+.final-message {
+    justify-self: start;
+    border-color: var(--ok);
+    background: var(--ok-wash);
+    border-bottom-left-radius: 4px;
+}
+
+.error-message {
+    justify-self: start;
+    border-color: var(--danger-line);
+    background: var(--danger-wash);
+}
+
+.run-summary {
+    width: min(980px, 100%);
+    justify-self: start;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--surface-2);
+    padding: 12px;
+}
+
+.run-summary-head,
+.worker-labels {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.lane-chip,
+.worker-chip {
+    display: inline-grid;
+    place-items: center;
+    min-height: 28px;
+    border-radius: var(--pill);
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+}
+
+.lane-chip {
+    background: var(--accent-wash);
+    color: var(--accent-text);
+}
+
+.worker-chip {
+    background: var(--ok-wash);
+    color: var(--ok);
+}
+
+.run-details {
+    width: min(980px, 100%);
+    justify-self: start;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--surface);
+    padding: 10px 12px;
+}
+
+.run-details summary {
+    cursor: pointer;
+    color: var(--accent-text);
+}
+
+.run-details-grid {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.detail-section {
+    display: grid;
+    gap: 10px;
+}
+
+/* Artifact display surface — the agent's "show me" channel. */
+.artifact-gallery {
+    width: min(980px, 100%);
+    justify-self: start;
+    display: grid;
+    gap: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--surface-2);
+    padding: 12px;
+}
+
+.artifact-gallery-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.artifact-gallery-head h3 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--accent-text);
+}
+
+.artifact-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.artifact-card {
+    margin: 0;
+    display: grid;
+    gap: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--surface);
+    padding: 10px;
+    overflow: hidden;
+}
+
+.artifact-body {
+    display: grid;
+    place-items: center;
+    min-height: 80px;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    padding: 8px;
+    overflow: auto;
+}
+
+.artifact-image {
+    max-width: 100%;
+    max-height: 320px;
+    border-radius: 4px;
+    image-rendering: pixelated;
+    object-fit: contain;
+}
+
+.artifact-frame {
+    width: 100%;
+    min-height: 220px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface);
+}
+
+.artifact-text {
+    margin: 0;
+    width: 100%;
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    font-family: var(--mono);
+}
+
+.artifact-error {
+    margin: 0;
+    color: var(--danger);
+    font-size: 13px;
+}
+
+.artifact-caption {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.artifact-name {
+    font-size: 13px;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+}
+
+.artifact-type {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-text);
+    background: var(--accent-wash);
+    border-radius: var(--pill);
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+
+/* ── Capabilities page ──────────────────────────────────────────────── */
+
+.cap-group {
+    margin-top: 18px;
+}
+
+.cap-group h3 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-muted);
+}
+
+.cap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 10px;
+}
+
+.cap-card {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 10px 12px;
+    background: var(--surface);
+}
+
+/* Status is encoded by SHAPE as well as color (filled / ring / hollow) so it
+   reads without color vision; an aria-label carries it to screen readers. */
+.cap-dot {
+    flex: none;
+    width: 11px;
+    height: 11px;
+    margin-top: 4px;
+    border-radius: var(--pill);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 2px var(--line-2);
+}
+
+.cap-dot.yes {
+    background: var(--ok);
+    box-shadow: none;
+}
+
+.cap-dot.partial {
+    background: var(--warn);
+    box-shadow: inset 0 0 0 3px var(--surface), 0 0 0 1.5px var(--warn);
+}
+
+.cap-dot.no {
+    background: var(--surface);
+    box-shadow: inset 0 0 0 2px var(--danger);
+}
+
+.cap-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.cap-label {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.cap-detail {
+    font-size: 12px;
+    color: var(--ink-muted);
+    overflow-wrap: anywhere;
+}
+
+.cap-tool {
+    align-self: flex-start;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--accent-text);
+    background: var(--accent-wash);
+    border-radius: var(--pill);
+    padding: 1px 8px;
+}
+
+.cap-test button {
+    align-self: flex-start;
+}
+
+.cap-shot {
+    max-width: 100%;
+    border-radius: var(--r);
+    border: 1px solid var(--line);
+}
+
+.cap-clip {
+    width: 100%;
+}
+
+.cap-error {
+    color: var(--danger);
+}
+
+.cap-ua {
+    margin-top: 16px;
+    font-size: 11px;
+}
+
+.react-log {
+    display: grid;
+    gap: 8px;
+}
+
+.react-step {
+    border-left: 3px solid var(--line-2);
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: 8px 10px;
+}
+
+.react-step-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.react-step-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-text);
+    background: var(--accent-wash);
+    border-radius: var(--pill);
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+
+.react-step-title {
+    font-size: 13px;
+    color: var(--ink);
+}
+
+.react-step pre {
+    margin: 6px 0 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+}
+
+/* Step kinds keep distinct hues — they read as a legend, not decoration. */
+.react-step.step-llm-call {
+    border-left-color: var(--accent);
+}
+
+.react-step.step-llm-response {
+    border-left-color: #2f6fae;
+}
+
+.react-step.step-tool-call {
+    border-left-color: #0ea5e9;
+}
+
+.react-step.step-tool-call .react-step-label {
+    color: #0369a1;
+    background: #e0f2fe;
+}
+
+.react-step.step-tool-result {
+    border-left-color: var(--ok);
+}
+
+.react-step.step-tool-result .react-step-label {
+    color: #047857;
+    background: var(--ok-wash);
+}
+
+.react-step.step-answer {
+    border-left-color: var(--warn);
+}
+
+.react-step.step-answer .react-step-label {
+    color: #b45309;
+    background: #fef3c7;
+}
+
+.react-step.step-error {
+    border-left-color: var(--danger);
+}
+
+.react-step.step-error .react-step-label {
+    color: #b91c1c;
+    background: var(--danger-wash);
+}
+
+.react-step.step-mcp {
+    border-left-color: #14b8a6;
+}
+
+.react-step.step-mcp .react-step-label {
+    color: #0f766e;
+    background: #ccfbf1;
+}
+
+.error-row {
+    border-color: var(--danger-line);
+    background: var(--danger-wash);
+}
+
+.tool-event-row {
+    border-color: var(--ok);
+    background: var(--ok-wash);
+}
+
+.event-log-panel {
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.compiled-prompt-panel {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 10px;
+    height: 100%;
+    min-height: 0;
+    border-radius: var(--r);
+}
+
+.compiled-prompt-note {
+    margin: 0;
+    font-size: 12px;
+}
+
+.compiled-prompt {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px;
+    color: var(--ink);
+}
+
+.event-count {
+    min-width: 28px;
+    border-radius: var(--pill);
+    background: var(--accent-wash);
+    color: var(--accent-text);
+    padding: 4px 8px;
+    text-align: center;
+    font-size: 12px;
+}
+
+.timeline {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+}
+
+.event-row {
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px;
+    background: var(--surface);
+}
+
+.event-row h3 {
+    margin: 8px 0;
+}
+
+.job-list {
+    display: grid;
+    gap: 10px;
+}
+
+.job-row {
+    align-items: start;
+}
+
+.event-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--ink-muted);
+    font-size: 12px;
+}
+
+.provider-panel,
+.agents-page,
+.soul-page,
+.tools-page,
+.inspector-panel {
+    grid-template-rows: auto;
+    align-content: start;
+    overflow: auto;
+}
+
+.provider-panel,
+.agent-card,
+.skill-card,
+.tool-config-card,
+.inspector-panel {
+    display: grid;
+    gap: 12px;
+}
+
+.settings-card {
+    display: grid;
+    gap: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 14px;
+    background: var(--surface);
+}
+
+.card-heading {
+    display: grid;
+    gap: 2px;
+}
+
+.card-heading h3 {
+    margin: 0;
+}
+
+.card-heading .muted {
+    font-size: 12px;
+}
+
+.profile-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.profile-select,
+.profile-name {
+    min-height: 36px;
+}
+
+@media (max-width: 640px) {
+    .profile-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.tool-config-card {
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px;
+    background: var(--surface);
+}
+
+.tool-config-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.tool-test-output {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--surface);
+    padding: 10px;
+}
+
+.pill {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: var(--pill);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+}
+
+.mcp-definition {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    min-height: 200px;
+    white-space: pre;
+}
+
+/* The MCP page carries long descriptions and several actions per heading, so —
+   unlike the short-heading pages that share .page-heading — its headings stack:
+   the title + description take the full width and the action row sits beneath
+   them, wrapping instead of squeezing the prose into a sliver or overflowing. */
+.mcp-page .page-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+}
+
+.mcp-page .button-row {
+    flex-wrap: wrap;
+}
+
+/* MCP cards reuse .card-heading (a vertical grid elsewhere) to hold a
+   checkbox-line and a Remove button; lay it out as one row so they align across
+   the card instead of stacking. */
+.mcp-card .card-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.inline-controls {
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.profile-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+    gap: 10px;
+}
+
+.profile-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.orchestrator-controls {
+    display: grid;
+    gap: 10px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+}
+
+.orchestrator-controls h3 {
+    margin: 0;
+}
+
+.preset-grid,
+.diagnostic-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.diagnostic-actions {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+}
+
+.checkbox-line {
+    display: flex;
+    grid-template-columns: none;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkbox-line input {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    accent-color: var(--accent);
+}
+
+/* Checkboxes shown for reference only (e.g. tools fixed by the agent's
+   Markdown) — render as read-only, not falsely interactive. */
+.checkbox-line.read-only {
+    color: var(--ink-muted);
+    cursor: default;
+}
+
+.checkbox-line.read-only input {
+    cursor: default;
+}
+
+.number-input {
+    width: 104px;
+}
+
+.model-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-height: 150px;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.model-chip {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+}
+
+.model-profile-controls {
+    display: grid;
+    gap: 10px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+}
+
+.model-profile-controls h3 {
+    margin: 0;
+}
+
+.model-table {
+    display: grid;
+    gap: 6px;
+    max-height: 180px;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.model-table-head,
+.model-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(120px, 0.6fr);
+    gap: 8px;
+    align-items: center;
+}
+
+.model-table-head {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-muted);
+}
+
+.model-row .model-chip {
+    width: 100%;
+    text-align: left;
+}
+
+.model-profile-select {
+    font-size: 12px;
+    min-height: 32px;
+}
+
+.new-agent-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.4fr);
+    gap: 10px;
+}
+
+.agent-fields {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.8fr) minmax(140px, 0.5fr) minmax(220px, 1.4fr);
+    gap: 10px;
+}
+
+.agent-list {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+}
+
+.agent-card {
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px;
+    background: var(--surface);
+}
+
+.soul-page {
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.soul-editor textarea {
+    min-height: 220px;
+}
+
+.section-label {
+    color: var(--accent-text);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.skill-list {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+}
+
+.skill-card {
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px;
+    background: var(--surface);
+}
+
+.source-path {
+    color: var(--ink-muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.tool-checkbox {
+    min-width: 0;
+    font-size: 12px;
+    color: var(--ink-soft);
+}
+
+.empty-state {
+    border: 1px dashed var(--line-2);
+    border-radius: var(--r);
+    padding: 20px;
+    color: var(--ink-muted);
+    text-align: center;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.stat-block {
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+}
+
+.stat-block span {
+    display: block;
+    color: var(--ink-muted);
+    font-size: 12px;
+}
+
+.stat-block strong {
+    display: block;
+    margin-top: 2px;
+    font-size: 22px;
+    color: var(--ink);
+}
+
+.compact-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 6px;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+}
+
+.muted {
+    color: var(--ink-muted);
+}
+
+@media (max-width: 1240px) {
+    .dashboard-frame,
+    .dashboard-frame.nav-collapsed {
+        grid-template-columns: 74px minmax(0, 1fr);
+        grid-template-areas:
+            "nav page"
+            "nav log";
+    }
+
+    .dashboard-frame.no-log,
+    .dashboard-frame.nav-collapsed.no-log {
+        grid-template-columns: 74px minmax(0, 1fr);
+        grid-template-areas:
+            "nav page";
+    }
+
+    .left-nav {
+        grid-area: nav;
+    }
+
+    .page-surface {
+        grid-area: page;
+        min-height: 620px;
+    }
+
+    .event-log-panel {
+        grid-area: log;
+        min-height: 360px;
+    }
+
+    .left-nav .nav-title,
+    .left-nav .nav-text {
+        display: none;
+    }
+
+    .left-nav .nav-item {
+        grid-template-columns: 1fr;
+        justify-items: center;
+        padding: 0;
+    }
+}
+
+@media (max-width: 760px) {
+    .app-shell {
+        width: min(100vw - 20px, 760px);
+        padding-top: 14px;
+    }
+
+    .topbar,
+    .new-agent-row,
+    .agent-fields {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-frame,
+    .dashboard-frame.nav-collapsed {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "nav"
+            "page"
+            "log";
+        min-height: 0;
+    }
+
+    .dashboard-frame.no-log,
+    .dashboard-frame.nav-collapsed.no-log {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "nav"
+            "page";
+    }
+
+    .left-nav {
+        display: grid;
+        grid-template-rows: auto;
+    }
+
+    .nav-list {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .left-nav .nav-title {
+        display: block;
+    }
+
+    .left-nav .nav-text {
+        display: none;
+    }
+
+    .page-surface,
+    .event-log-panel {
+        min-height: 520px;
+    }
+
+    .message-bubble {
+        width: 100%;
+    }
+
+    .page-heading,
+    .panel-heading,
+    .agent-card-head {
+        align-items: flex-start;
+    }
+
+    .tool-grid,
+    .tool-config-grid,
+    .stats-grid,
+    .profile-controls,
+    .profile-actions,
+    .preset-grid,
+    .diagnostic-actions {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Workspace IDE page (VS Code-style: explorer | editor over panel, status bar) */
+.workspace-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+}
+
+.chip-button {
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid #d8cfee;
+    border-radius: 14px;
+    background: #f1ebff;
+    color: var(--accent);
+    font-size: 12px;
+}
+
+.chip-button:hover {
+    background: #e7ddff;
+}
+
+.chip-button.active {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+}
+
+.mode-toggle {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.workspace-ide {
+    flex: 1 1 auto;
+    min-height: 540px;
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 230px auto;
+    grid-template-areas:
+        "explorer main"
+        "explorer panel"
+        "status status";
+    border: 1px solid #2a2440;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #16131f;
+    color: #cfc7e6;
+}
+
+/* --- File explorer (left rail) --- */
+.ide-explorer {
+    grid-area: explorer;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: #1b1726;
+    border-right: 1px solid #2a2440;
+}
+
+.ide-explorer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8a7da0;
+}
+
+.ide-icon-button {
+    min-width: 24px;
+    min-height: 24px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #8a7da0;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.ide-icon-button:hover:not(:disabled) {
+    background: #2a2440;
+    color: #ece7fb;
+}
+
+.ide-icon-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ide-new-file {
+    display: flex;
+    gap: 6px;
+    padding: 0 8px 8px;
+}
+
+.ide-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 26px;
+    padding: 2px 8px;
+    border: 1px solid #2a2440;
+    border-radius: 5px;
+    background: #131019;
+    color: #ece7fb;
+    font-size: 12px;
+}
+
+.ide-input::placeholder {
+    color: #564b6e;
+}
+
+.ide-input:focus {
+    outline: 1px solid var(--accent);
+}
+
+.ide-input.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.ide-tree {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 4px 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.ide-empty {
+    color: #6f6385;
+    font-size: 12px;
+    padding: 6px;
+}
+
+.ide-node {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 24px;
+    padding: 2px 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #cfc7e6;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.ide-node:hover {
+    background: #231d33;
+}
+
+.ide-node.open {
+    color: #ece7fb;
+}
+
+.ide-node.selected {
+    background: #322852;
+    color: #ffffff;
+}
+
+.ide-node.dir {
+    color: #a99cc4;
+}
+
+/* The clickable part of a row (open file / toggle folder); the row itself is a
+   div so rename/delete action buttons can sit beside it. */
+.ide-node-main {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 20px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.ide-node-actions {
+    display: none;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 2px;
+}
+
+.ide-node:hover .ide-node-actions,
+.ide-node-actions.confirm {
+    display: flex;
+}
+
+.ide-node-actions .ide-icon-button {
+    min-width: 20px;
+    min-height: 20px;
+    font-size: 11px;
+}
+
+.ide-confirm-label {
+    font-size: 11px;
+    color: #f0956f;
+    white-space: nowrap;
+}
+
+.ide-rename-form {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.ide-rename-form .ide-input {
+    min-height: 22px;
+    font-size: 12px;
+}
+
+.node-chevron {
+    flex: 0 0 auto;
+    width: 12px;
+    color: #6f6385;
+    font-size: 11px;
+}
+
+.node-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.node-glyph {
+    flex: 0 0 auto;
+    min-width: 20px;
+    text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 3px;
+    padding: 1px 2px;
+}
+
+.glyph-js { color: #e8d44d; }
+.glyph-ts { color: #6ea8fe; }
+.glyph-json { color: #e8a14d; }
+.glyph-html { color: #f1764c; }
+.glyph-css { color: #8fb7ff; }
+.glyph-md { color: #9fd0ff; }
+.glyph-py { color: #7bd88f; }
+.glyph-rs { color: #f0956f; }
+.glyph-plain { color: #6f6385; }
+
+/* --- Editor area (tab strip + CodeMirror + optional preview) --- */
+.ide-main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    background: #16131f;
+}
+
+.ide-tabs {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 8px;
+    background: #1b1726;
+    border-bottom: 1px solid #2a2440;
+    min-height: 35px;
+}
+
+.ide-tab-strip {
+    display: flex;
+    align-items: stretch;
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.ide-tab {
+    display: flex;
+    align-items: center;
+    border-right: 1px solid #2a2440;
+    background: #1b1726;
+    color: #8a7da0;
+    max-width: 220px;
+}
+
+.ide-tab.active {
+    background: #16131f;
+    color: #ece7fb;
+    box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.ide-tab-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    padding: 0 4px 0 10px;
+    cursor: pointer;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tab-dirty {
+    color: #e8d44d;
+    font-size: 10px;
+}
+
+.ide-tab-close {
+    border: 0;
+    background: transparent;
+    color: #6f6385;
+    font-size: 13px;
+    padding: 0 8px 0 2px;
+    cursor: pointer;
+}
+
+.ide-tab-close:hover {
+    color: #ece7fb;
+}
+
+.ide-tab-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+}
+
+.ide-action {
+    min-height: 24px;
+    padding: 0 10px;
+    border: 1px solid #2a2440;
+    border-radius: 5px;
+    background: #231d33;
+    color: #cfc7e6;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ide-action:hover:not(:disabled) {
+    background: #322852;
+    color: #ffffff;
+}
+
+.ide-action:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ide-action.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+}
+
+.ide-editor-split {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.ide-editor-split.with-preview {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.ide-editor-host {
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.ide-editor-host .cm-editor {
+    height: 100%;
+}
+
+.ide-preview {
+    border: 0;
+    border-left: 1px solid #2a2440;
+    background: #ffffff;
+    width: 100%;
+    height: 100%;
+}
+
+.ide-editor-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #16131f;
+    color: #6f6385;
+    text-align: center;
+    padding: 16px;
+}
+
+.ide-empty-mark {
+    font-size: 28px;
+    letter-spacing: 0.35em;
+    color: #322852;
+    font-weight: 700;
+}
+
+.ide-editor-empty p {
+    margin: 0;
+    font-size: 13px;
+    max-width: 420px;
+}
+
+/* --- Bottom panel (terminal / agent) --- */
+.ide-panel {
+    grid-area: panel;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-top: 1px solid #2a2440;
+    background: #16131f;
+}
+
+.ide-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #2a2440;
+    padding: 0 8px;
+    min-height: 30px;
+}
+
+.ide-panel-tabs {
+    display: flex;
+    gap: 2px;
+}
+
+.ide-panel-tab {
+    border: 0;
+    background: transparent;
+    color: #8a7da0;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.ide-panel-tab.active {
+    color: #ece7fb;
+    box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.ide-panel-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.ide-terminal-output {
+    margin: 0;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 12px;
+    background: #131019;
+    color: #cfc7e6;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.ide-terminal-hint {
+    color: #564b6e;
+}
+
+.ide-quick-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 8px 0;
+}
+
+.ide-quick-row .chip-button {
+    background: #231d33;
+    border-color: #2a2440;
+    color: #a99cc4;
+}
+
+.ide-quick-row .chip-button:hover {
+    background: #322852;
+    color: #ffffff;
+}
+
+.ide-terminal-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-top: 1px solid #2a2440;
+}
+
+.ide-prompt {
+    flex: 0 0 auto;
+    color: #7bd88f;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+.ide-agent {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+}
+
+.ide-agent-hint {
+    margin: 0;
+    color: #8a7da0;
+    font-size: 12px;
+}
+
+.ide-agent-answer {
+    padding: 8px 10px;
+    background: #1b2a1f;
+    border: 1px solid #2f4a37;
+    border-radius: 6px;
+    color: #cdeed6;
+    font-size: 13px;
+    white-space: pre-wrap;
+}
+
+.ide-agent-form {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.ide-agent-form textarea.ide-input {
+    min-height: 48px;
+    resize: vertical;
+    font-size: 13px;
+}
+
+/* The xterm.js shell host (Browser mode). xterm's own stylesheet ships inside
+   assets/xterm_term.js and is injected at mount. */
+.ide-term-host {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    background: #131019;
+    padding: 4px 0 4px 8px;
+    overflow: hidden;
+}
+
+.ide-term-host .xterm {
+    height: 100%;
+}
+
+/* --- VM page (v86 serial console) --- */
+.vm-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #131019;
+    border: 1px solid var(--hairline, #2a2440);
+}
+
+.vm-bar {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #1b1726;
+    border-bottom: 1px solid var(--hairline, #2a2440);
+    color: #cfc7e6;
+    font-size: 13px;
+}
+
+.vm-bar .vm-title {
+    font-weight: 600;
+}
+
+.vm-bar .vm-sub {
+    color: #8a82a6;
+    font-size: 12px;
+}
+
+.vm-bar .vm-status {
+    margin-left: auto;
+    color: var(--accent, #23b3d1);
+    font-size: 12px;
+}
+
+/* --- Run panel (processes / runtimes) --- */
+.ide-run {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 12px;
+}
+
+.ide-run-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ide-run-title {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8a7da0;
+}
+
+.ide-run-empty {
+    color: #6f6385;
+    font-size: 12px;
+}
+
+.ide-run-proc {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border: 1px solid #2a2440;
+    border-radius: 6px;
+    background: #1b1726;
+}
+
+.ide-run-kind {
+    flex: 0 0 auto;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: #231d33;
+    color: #a99cc4;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.ide-run-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: #ece7fb;
+}
+
+.ide-run-elapsed {
+    flex: 0 0 auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #8a7da0;
+}
+
+.ide-kill-button {
+    flex: 0 0 auto;
+    min-height: 22px;
+    padding: 1px 10px;
+    border: 1px solid #5a2a3c;
+    border-radius: 5px;
+    background: #3a1d2a;
+    color: #ff9db1;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.ide-kill-button:hover {
+    background: #57243a;
+    color: #ffffff;
+}
+
+.ide-runtime-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ide-runtime-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    border: 1px solid #2a2440;
+    border-radius: 999px;
+    background: #1b1726;
+    font-size: 11px;
+    color: #6f6385;
+}
+
+.ide-runtime-name {
+    font-weight: 600;
+    color: #a99cc4;
+}
+
+.ide-runtime-chip.ready {
+    color: #7bd88f;
+    border-color: #2f4a37;
+}
+
+.ide-runtime-chip.downloading {
+    color: #e8d44d;
+    border-color: #4a432a;
+}
+
+/* --- Status bar --- */
+.ide-status {
+    grid-area: status;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+    min-height: 26px;
+    background: #2a1f47;
+    color: #cfc7e6;
+    font-size: 12px;
+}
+
+.ide-status-mode {
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px;
+    margin-left: -10px;
+    background: var(--accent);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.ide-status-notice {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ide-status-spacer {
+    flex: 1 1 auto;
+}
+
+.ide-status-dirty {
+    color: #e8d44d;
+}
+
+.ide-status-storage {
+    flex: 0 0 auto;
+    color: #a99cc4;
+    font-size: 11px;
+}
+
+.ide-status-path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #a99cc4;
+}
+
+@media (max-width: 900px) {
+    .workspace-ide {
+        grid-template-columns: 1fr;
+        grid-template-rows: 200px minmax(0, 1fr) 220px auto;
+        grid-template-areas:
+            "explorer"
+            "main"
+            "panel"
+            "status";
+        min-height: 720px;
+    }
+
+    .ide-explorer {
+        border-right: 0;
+        border-bottom: 1px solid #2a2440;
+    }
+}
+
+/* ── Fleet view ─────────────────────────────────────────────────────────────
+   The live, watcher-supervised thread tree. Navy + cyan, hairline borders, no
+   heavy shadows; the single cyan primary (--accent) is reserved for the
+   "actively working" badges so the eye lands on what is doing work right now. */
+.fleet-counts {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fleet-count-live {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: var(--pill);
+    background: var(--accent-wash);
+    border: 1px solid var(--accent);
+    color: var(--accent-text);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.fleet-count-total {
+    color: var(--ink-muted);
+    font-size: 12px;
+}
+
+.fleet-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fleet-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--surface);
+}
+
+.fleet-row-dead {
+    opacity: 0.55;
+    background: var(--surface-2);
+}
+
+.fleet-row-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.fleet-kind {
+    flex: 0 0 auto;
+    color: var(--accent-strong);
+    font-size: 13px;
+}
+
+.fleet-label {
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fleet-kind-tag {
+    flex: 0 0 auto;
+    color: var(--ink-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* MCP hosts read as infrastructure, not agents — a quiet bordered host badge. */
+.fleet-host-badge {
+    flex: 0 0 auto;
+    padding: 1px 8px;
+    border-radius: var(--pill);
+    background: var(--surface-2);
+    border: 1px solid var(--line-2);
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* Activity badge — base. Variants below tint only the actively-working states. */
+.fleet-badge {
+    flex: 0 0 auto;
+    padding: 1px 9px;
+    border-radius: var(--pill);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* The one cyan primary: a thread is doing live work (thinking or running a tool). */
+.fleet-badge-thinking,
+.fleet-badge-tool {
+    background: var(--accent-wash);
+    border-color: var(--accent);
+    color: var(--accent-text);
+}
+
+/* Blocked-but-alive states stay quiet (waiting on the model or a child). */
+.fleet-badge-waiting,
+.fleet-badge-child {
+    background: var(--surface-2);
+    border-color: var(--line-2);
+    color: var(--ink-soft);
+}
+
+.fleet-badge-idle {
+    color: var(--ink-muted);
+}
+
+.fleet-badge-dead {
+    background: transparent;
+    border-color: var(--line);
+    color: var(--ink-muted);
+}
+
+.fleet-counters {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-muted);
+}
+
+/* ── Traversable fleet: one identical panel per engine instance ──────────────
+   The fleet maps over the live instance collection and paints the same slot for
+   each run. Navy + cyan, hairline borders, no heavy shadows; the single cyan
+   primary lands on the live "running" status so the eye finds the active run. */
+.instance-fleet {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.instance-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+}
+
+.instance-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.instance-id-block {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+}
+
+.instance-label {
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.instance-lane {
+    flex: 0 0 auto;
+    color: var(--ink-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.instance-head-right {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Status pill — quiet by default; the one cyan primary marks the running run. */
+.instance-status {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: var(--pill);
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.instance-status-running {
+    background: var(--accent-wash);
+    border-color: var(--accent);
+    color: var(--accent-text);
+}
+
+.instance-status-paused {
+    background: var(--warn-bg);
+    border-color: var(--warn-line);
+    color: var(--warn);
+}
+
+.instance-status-complete {
+    background: var(--ok-wash);
+    border-color: var(--ok);
+    color: var(--ok);
+}
+
+.instance-status-error,
+.instance-status-interrupted {
+    background: var(--danger-wash);
+    border-color: var(--danger-line);
+    color: var(--danger);
+}
+
+.instance-stop {
+    padding: 3px 12px;
+    font-size: 12px;
+}
+
+.instance-working {
+    margin: 0;
+    color: var(--accent-text);
+    font-size: 13px;
+}
+
+.instance-banner {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: var(--r);
+    font-size: 13px;
+}
+
+.instance-banner-error {
+    background: var(--danger-wash);
+    border: 1px solid var(--danger-line);
+    color: var(--danger);
+}
+
+.instance-banner-interrupted {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    color: var(--warn);
+}
+
+.instance-answer {
+    margin: 0;
+    color: var(--ink);
+    white-space: pre-wrap;
+}
+
+.instance-log {
+    max-height: 320px;
+}
+
+.instance-empty {
+    font-size: 13px;
+}

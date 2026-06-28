@@ -1,0 +1,99 @@
+/* ── Editors cluster (Soul + Inspector) ──────────────────────────────────
+   Soft-desk page styling for the system-prompt editor and the state inspector.
+   Reuses the shared tokens and ui-* primitives; only declares the few
+   page-local bits the primitives don't cover (soft textarea, mono blocks).
+   All classes are namespaced (soul-* / inspector-*) so they never collide with
+   the globally-shared classes in main.css. */
+
+/* Soul: the editor surface inside its Card. */
+.soul-editor-card {
+    display: grid;
+    gap: 16px;
+}
+
+.soul-editor-field {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 13px;
+}
+
+.soul-editor-field textarea {
+    width: 100%;
+    min-height: 240px;
+    resize: vertical;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    box-shadow: var(--shadow-soft) inset;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.soul-editor-field textarea:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--focus);
+}
+
+/* Soul: skills list. The skill body keeps monospace (it shows raw markdown). */
+.soul-skills {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+}
+
+.soul-skill-body {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: 10px 12px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+/* Inspector: fleet + job rows as soft cards. */
+.inspector-rows {
+    display: grid;
+    gap: 10px;
+}
+
+.inspector-row {
+    display: grid;
+    gap: 6px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+}
+
+.inspector-row-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.inspector-row h3 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--ink);
+}
+
+.inspector-row .muted {
+    font-family: var(--mono);
+    font-size: 12px;
+}

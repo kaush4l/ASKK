@@ -1,0 +1,12 @@
+{
+  "name": "askk-lsp-python",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@astral-sh/ruff-wasm-web": "^0.15.16"
+  },
+  "description": "Builds the Python diagnostics worker (assets/lsp_py_worker.js) and copies the Ruff engine beside it (assets/lsp_py_ruff.wasm). Run `bun install && bun run build` after editing entry.js or bumping deps, then commit both regenerated assets.",
+  "scripts": {
+    "build": "bun build ./entry.js --format=iife --minify --define 'import.meta.url=self.location.href' --outfile=../../assets/lsp_py_worker.js && cp node_modules/@astral-sh/ruff-wasm-web/ruff_wasm_bg.wasm ../../assets/lsp_py_ruff.wasm"
+  }
+}

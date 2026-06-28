@@ -1,0 +1,137 @@
+/* ── Soft-desk: Registry cluster ─────────────────────────────────────────
+   Scoped restyle for the Tools, Agents, and Capabilities pages. Everything
+   here is namespaced under a page wrapper class so it can't leak into other
+   views, and overrides only classes these three pages own. Uses main.css
+   design tokens only — no new hexes. Soft light elevation, rounded cards,
+   generous padding, pill badges, cyan accent controls. */
+
+/* ── Soft cards (Tools + Agents + Capabilities) ──────────────────────────
+   Lift the flat bordered cards to soft rounded surfaces with airy padding. */
+.tools-page .tool-config-card,
+.agents-page .agent-card,
+.capabilities-page .cap-card {
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.tools-page .tool-config-card,
+.agents-page .agent-card {
+    padding: 18px 20px;
+}
+
+.agents-page .agent-card:hover,
+.capabilities-page .cap-card:hover {
+    border-color: var(--line-2);
+    box-shadow: var(--shadow-pop);
+}
+
+/* ── Card heads: title + side action, with a hairline divider ─────────── */
+.tools-page .tool-card-head,
+.agents-page .agent-card-head {
+    align-items: center;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+}
+
+.tools-page .tool-card-head h3,
+.agents-page .agent-card-head strong {
+    font-size: 15px;
+}
+
+/* ── Pill badges (status / tags) ─────────────────────────────────────── */
+.registry-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 11px;
+    border-radius: var(--pill);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: var(--accent-wash);
+    color: var(--accent-text);
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.registry-badge.is-ok {
+    background: var(--ok-wash);
+    color: var(--ok);
+}
+
+.registry-badge.is-muted {
+    background: var(--surface-2);
+    color: var(--ink-muted);
+    border-color: var(--line);
+}
+
+/* ── Accent primary action; ghost stays as-is but gets the pill shape ──── */
+.tools-page .button-row button,
+.agents-page .button-row button {
+    border-radius: var(--pill);
+    padding-inline: 16px;
+}
+
+/* ── Tools: roomier config grid ──────────────────────────────────────── */
+.tools-page .tool-config-grid {
+    gap: 14px;
+}
+
+.tools-page .tool-config-grid label,
+.agents-page .agent-fields label {
+    display: grid;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--ink-soft);
+}
+
+.tools-page .tool-test-output {
+    border-radius: var(--r);
+    background: var(--surface-2);
+    border-color: var(--line);
+}
+
+/* ── Agents: create-row as one soft inset card ───────────────────────── */
+.agents-page .new-agent-row {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow);
+    padding: 16px 20px;
+    gap: 12px;
+}
+
+.agents-page .agent-fields {
+    gap: 14px;
+}
+
+/* Read-only tool chips read as pills, not bare checkboxes. */
+.agents-page .tool-grid {
+    gap: 8px;
+}
+
+.agents-page .tool-checkbox.read-only {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--pill);
+    padding: 3px 12px;
+    font-size: 12px;
+    color: var(--ink-soft);
+}
+
+/* ── Capabilities: soft grid + roomier test cards ────────────────────── */
+.capabilities-page .cap-card {
+    padding: 14px 16px;
+}
+
+.capabilities-page .cap-grid {
+    gap: 12px;
+}
+
+.capabilities-page .cap-test button {
+    border-radius: var(--pill);
+    margin-top: 4px;
+}

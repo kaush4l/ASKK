@@ -1,0 +1,15 @@
+{
+  "name": "askk-local-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Source for assets/local_ai.js (main-thread IIFE, window.AskkLocalAI) and assets/local_ai_worker.js (module Web Worker running transformers.js v4: Whisper ASR + Gemma 4 ONNX text generation, WebGPU when available). Edit entry.js / worker.js, then `bun install && bun run build` and commit the rebuilt assets.",
+  "scripts": {
+    "build:main": "bun build ./entry.js --format=iife --minify --outfile=../../assets/local_ai.js",
+    "build:worker": "bun build ./worker.js --format=esm --minify --outfile=../../assets/local_ai_worker.js",
+    "build": "bun run build:main && bun run build:worker"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0"
+  }
+}

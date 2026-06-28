@@ -1,0 +1,80 @@
+/* ── VM page (v86 serial console) — soft-desk overrides ──────────────────────
+   Restyles the page chrome (.vm-page / .vm-bar / status) over the shared design
+   tokens, framing the raw serial console in a soft Card. The console interior
+   stays dark (xterm needs it) — its dark background comes from the shared
+   `.ide-term-host` rule in main.css; here we only round it inside the card.
+   All values are tokens — never a literal hex. */
+
+.vm-page {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    height: 100%;
+    min-height: 0;
+    padding: 16px;
+    background: var(--paper);
+    border: none;
+    border-radius: 0;
+    overflow: hidden;
+}
+
+/* Soft rounded top bar: identity on the left, picker centre, state on the right. */
+.vm-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-soft);
+    color: var(--ink);
+    font-size: 14px;
+}
+
+.vm-bar-id {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.vm-bar .vm-title {
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 15px;
+}
+
+.vm-bar .vm-sub {
+    color: var(--ink-muted);
+    font-size: 12px;
+}
+
+.vm-picker {
+    display: flex;
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+    overflow-x: auto;
+}
+
+.vm-bar .vm-status {
+    margin-left: auto;
+    flex: 0 0 auto;
+}
+
+/* Card framing the serial console; let the terminal own the inner space. */
+.vm-console-card {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 6px;
+    overflow: hidden;
+}
+
+/* Round the dark console interior to sit flush inside the card padding. */
+.vm-console {
+    border-radius: var(--r);
+    overflow: hidden;
+}

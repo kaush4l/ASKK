@@ -1,0 +1,16 @@
+{
+  "name": "askk-wasix-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained spike: in-browser code execution via @wasmer/sdk (WASIX). NOT wired into the ASKK app.",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "serve": "node server.mjs",
+    "start": "npm run vendor && npm run serve",
+    "measure": "node scripts/measure.mjs"
+  },
+  "dependencies": {
+    "@wasmer/sdk": "0.10.0"
+  }
+}

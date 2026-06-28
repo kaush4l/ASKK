@@ -1,0 +1,187 @@
+<!doctype html>
+<!--
+  Standalone e2e harness for the in-browser Python runtime.
+
+  Serve from the REPO ROOT (so /assets/... resolves), e.g.:
+      python3 -m http.server 8203
+  then open http://localhost:8203/scripts/python-runner/test/
+
+  Exercises assets/python_runner_worker.js + assets/runtimes/python/* through
+  the same two-phase protocol the Rust host uses ("ready" then result, with the
+  run timeout enforced by terminating the worker).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ASKK python-runner e2e</title>
+    <style>
+      body { font: 14px/1.5 ui-monospace, monospace; margin: 2rem; background: #111; color: #ddd; }
+      h1 { font-size: 1.1rem; }
+      table { border-collapse: collapse; margin-top: 1rem; }
+      td, th { border: 1px solid #444; padding: 0.4rem 0.7rem; text-align: left; vertical-align: top; }
+      .pass { color: #5f5; }
+      .fail { color: #f55; }
+      #summary { font-size: 1.2rem; margin-top: 1rem; font-weight: bold; }
+      pre { white-space: pre-wrap; margin: 0; max-width: 48rem; }
+    </style>
+  </head>
+  <body>
+    <h1>ASKK python-runner — acceptance harness</h1>
+    <div>worker: <code>/assets/python_runner_worker.js</code> · runtime: <code>/assets/runtimes/python/</code></div>
+    <table id="results">
+      <tr><th>case</th><th>status</th><th>details</th></tr>
+    </table>
+    <div id="summary">running…</div>
+    <script type="module">
+      const WORKER_URL = "/assets/python_runner_worker.js";
+      const PYTHON_URL = "/assets/runtimes/python/python.wasm";
+      const STDLIB_URL = "/assets/runtimes/python/python-stdlib.zip";
+      const BOOT_BUDGET_MS = 120_000;
+
+      // Mirrors the Rust host: post the request, wait for {phase:"ready"} on a
+      // generous boot budget, then race the result against the run timeout and
+      // terminate the worker either way.
+      function runPython({ mode, code, entry, args, stdin, files, timeout_ms = 30_000 }) {
+        return new Promise((resolve, reject) => {
+          const worker = new Worker(WORKER_URL);
+          let timer = setTimeout(() => {
+            worker.terminate();
+            reject(new Error(`runtime failed to initialize within ${BOOT_BUDGET_MS} ms`));
+          }, BOOT_BUDGET_MS);
+          worker.onerror = (e) => {
+            clearTimeout(timer);
+            worker.terminate();
+            reject(new Error("worker error: " + e.message));
+          };
+          worker.onmessage = (ev) => {
+            const data = JSON.parse(ev.data);
+            if (data.phase === "ready") {
+              clearTimeout(timer);
+              timer = setTimeout(() => {
+                worker.terminate();
+                resolve({
+                  timed_out: true,
+                  exit_code: 124,
+                  stdout: "",
+                  stderr: `python run timed out after ${timeout_ms} ms`,
+                  files_out: [],
+                });
+              }, timeout_ms);
+              return;
+            }
+            clearTimeout(timer);
+            worker.terminate();
+            if (data.error) reject(new Error(data.error));
+            else resolve(data);
+          };
+          worker.postMessage(
+            JSON.stringify({
+              python_url: PYTHON_URL,
+              stdlib_url: STDLIB_URL,
+              mode, code, entry, args, stdin, files,
+            }),
+          );
+        });
+      }
+
+      const CASES = [
+        {
+          name: "code mode: json+math",
+          run: () => runPython({
+            mode: "code",
+            code: 'import json, math; print(json.dumps({"ok": math.sqrt(16)}))',
+          }),
+          check: (r) => r.exit_code === 0 && r.stdout.trim() === '{"ok": 4.0}',
+        },
+        {
+          name: "multi-file: main.py reads data file + imports sibling",
+          run: () => runPython({
+            mode: "file",
+            entry: "main.py",
+            args: ["alpha", "beta"],
+            files: [
+              { path: "main.py", text: 'import sys\nwith open("data.txt") as f:\n    print("DATA:", f.read().strip())\nimport helper\nprint("HELPER:", helper.double(21))\nprint("ARGS:", sys.argv[1:])\n' },
+              { path: "data.txt", text: "hello-from-data-file" },
+              { path: "helper.py", text: "def double(x):\n    return x * 2\n" },
+            ],
+          }),
+          check: (r) =>
+            r.exit_code === 0 &&
+            r.stdout.includes("DATA: hello-from-data-file") &&
+            r.stdout.includes("HELPER: 42") &&
+            r.stdout.includes("ARGS: ['alpha', 'beta']"),
+        },
+        {
+          name: "sys.exit(3) yields exit_code 3",
+          run: () => runPython({ mode: "code", code: "import sys; sys.exit(3)" }),
+          check: (r) => r.exit_code === 3,
+        },
+        {
+          name: "stdout and stderr captured separately",
+          run: () => runPython({
+            mode: "code",
+            code: 'import sys; print("to-out"); print("to-err", file=sys.stderr)',
+          }),
+          check: (r) =>
+            r.exit_code === 0 &&
+            r.stdout.includes("to-out") && !r.stdout.includes("to-err") &&
+            r.stderr.includes("to-err") && !r.stderr.includes("to-out"),
+        },
+        {
+          name: "while True: pass killed by timeout",
+          run: () => runPython({ mode: "code", code: "while True: pass", timeout_ms: 3_000 }),
+          check: (r) => r.timed_out === true && r.exit_code === 124 && /timed out/.test(r.stderr),
+        },
+        {
+          name: "files_out: changed files copied out (stdin too)",
+          run: () => runPython({
+            mode: "code",
+            code: 'import os, sys\ndata = sys.stdin.read().strip()\nos.makedirs("out", exist_ok=True)\nwith open("out/result.txt", "w") as f:\n    f.write("got:" + data)\nprint("WROTE")',
+            files: [{ path: "unchanged.txt", text: "same" }],
+            stdin: "fed-via-stdin\n",
+          }),
+          check: (r) =>
+            r.exit_code !== 0
+              ? false
+              : r.files_out.some((f) => f.path === "out/result.txt" && f.text === "got:fed-via-stdin") &&
+                !r.files_out.some((f) => f.path === "unchanged.txt"),
+        },
+      ];
+
+      const table = document.getElementById("results");
+      let passed = 0;
+      for (const c of CASES) {
+        const row = table.insertRow();
+        row.insertCell().textContent = c.name;
+        const statusCell = row.insertCell();
+        const detailCell = row.insertCell();
+        statusCell.textContent = "…";
+        try {
+          const t0 = performance.now();
+          const r = await c.run();
+          const ms = (performance.now() - t0).toFixed(0);
+          const ok = c.check(r);
+          statusCell.textContent = ok ? "PASS" : "FAIL";
+          statusCell.className = ok ? "pass" : "fail";
+          const pre = document.createElement("pre");
+          pre.textContent =
+            `exit_code=${r.exit_code} timed_out=${!!r.timed_out} (${ms} ms)\n` +
+            `stdout: ${JSON.stringify(r.stdout)}\nstderr: ${JSON.stringify(r.stderr)}\n` +
+            `files_out: ${JSON.stringify(r.files_out)}`;
+          detailCell.appendChild(pre);
+          if (ok) passed++;
+          console.log(`[e2e] ${c.name}: ${ok ? "PASS" : "FAIL"}`, r);
+        } catch (err) {
+          statusCell.textContent = "FAIL";
+          statusCell.className = "fail";
+          detailCell.textContent = String(err);
+          console.error(`[e2e] ${c.name}: FAIL`, err);
+        }
+      }
+      const summary = document.getElementById("summary");
+      const allPass = passed === CASES.length;
+      summary.textContent = allPass ? `ALL PASS (${passed}/${CASES.length})` : `FAILURES (${passed}/${CASES.length} passed)`;
+      summary.className = allPass ? "pass" : "fail";
+    </script>
+  </body>
+</html>

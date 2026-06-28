@@ -1,0 +1,23 @@
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+/target/
+/dist/
+
+**/*.rs.bk
+.claude/launch.json
+.claude/worktrees/
+.hermes/
+.askk-workspace/
+node_modules/
+
+# Local-only context docs (intent notes, plans, specs) — not tracked in the repo.
+docs/
+
+# Local model cache (multi-GB weights; fetched by scripts/models/fetch.sh,
+# staged into a deploy by scripts/models/stage.sh). Only the README is tracked.
+/models/*
+!/models/README.md

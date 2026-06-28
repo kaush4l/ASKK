@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "askk-lsp-python",
+      "dependencies": {
+        "@astral-sh/ruff-wasm-web": "^0.15.16",
+      },
+    },
+  },
+  "packages": {
+    "@astral-sh/ruff-wasm-web": ["@astral-sh/ruff-wasm-web@0.15.16", "", {}, "sha512-wcXuet4mPfnw7WSb0QKPafnE8mzyQA+6eDxA+7Kcs/4LuvgKr3yMgUMgy6Lq6IRQ0zlzI7BXglAzVjX4oNxqwQ=="],
+  }
+}

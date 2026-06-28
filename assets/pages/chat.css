@@ -1,0 +1,233 @@
+/* ── Chat page (soft desk) ───────────────────────────────────────────────
+   Page-scoped restyle for the conversation surface. Loads AFTER main.css, so
+   every rule here is scoped under `.chat-soft` (the ChatPanel root) to override
+   this page's own classes without touching globally-shared ones (e.g. the
+   `.react-step` run-log, also used by the instance panel, is left alone).
+
+   Soft-desk: rounded cards (--r-lg/--r-xl), soft light elevation
+   (--shadow-soft/--shadow-card), generous padding, pill badges, one cyan
+   accent. Tokens only — no hardcoded hex. Monospace (--mono) kept on code/meta. */
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.chat-soft .chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.chat-soft .chat-header h2 {
+    margin: 0;
+}
+
+/* ── Conversation scroll ────────────────────────────────────────────────── */
+.chat-soft .conversation-scroll {
+    gap: 16px;
+    padding: 4px 6px 4px 2px;
+}
+
+.chat-soft .empty-state {
+    justify-self: center;
+    max-width: 520px;
+    margin-top: 32px;
+    padding: 20px 22px;
+    text-align: center;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-soft);
+    line-height: 1.6;
+}
+
+.chat-soft .chat-turn {
+    gap: 12px;
+}
+
+/* ── Message bubbles — soft rounded cards, tone per role ─────────────────── */
+.chat-soft .message-bubble {
+    max-width: min(680px, 80%);
+    padding: 14px 18px;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+}
+
+.chat-soft .message-bubble p {
+    margin: 8px 0 0;
+    line-height: 1.55;
+}
+
+.chat-soft .message-author {
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--ink-muted);
+}
+
+/* User — accent-washed, anchored right with a tucked corner. */
+.chat-soft .user-message {
+    justify-self: end;
+    border-color: var(--accent);
+    background: var(--accent-wash);
+    border-bottom-right-radius: var(--r-sm);
+}
+
+.chat-soft .user-message .message-author {
+    color: var(--accent-text);
+}
+
+/* Assistant — plain surface card, left, tucked corner. */
+.chat-soft .assistant-message {
+    justify-self: start;
+    background: var(--surface);
+    border-bottom-left-radius: var(--r-sm);
+}
+
+/* Tool — quieter recessed surface. */
+.chat-soft .tool-message {
+    justify-self: start;
+    background: var(--surface-2);
+    border-bottom-left-radius: var(--r-sm);
+}
+
+/* Final answer — success tone. */
+.chat-soft .final-message {
+    justify-self: start;
+    border-color: var(--ok);
+    background: var(--ok-wash);
+    border-bottom-left-radius: var(--r-sm);
+}
+
+.chat-soft .final-message .message-author span:first-child {
+    color: var(--ok);
+}
+
+/* Error / interrupted — danger tone. */
+.chat-soft .error-message {
+    justify-self: start;
+    border-color: var(--danger-line);
+    background: var(--danger-wash);
+    border-bottom-left-radius: var(--r-sm);
+}
+
+.chat-soft .error-message .message-author {
+    color: var(--danger);
+}
+
+/* Live-forming reply + activity lines. */
+.chat-soft .streaming-line {
+    color: var(--ink);
+}
+
+.chat-soft .thinking-line {
+    color: var(--ink-muted);
+    font-style: italic;
+}
+
+.chat-soft .phase-status {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--ink-muted);
+    font-style: italic;
+}
+
+/* Pill chip inside the author row. */
+.chat-soft .lane-chip {
+    min-height: 22px;
+    padding: 2px 10px;
+    border-radius: var(--pill);
+    background: var(--accent-wash);
+    color: var(--accent-text);
+    font-family: var(--mono);
+    font-size: 11px;
+}
+
+/* ── Run details (kept compact; react-step internals are shared, untouched) ── */
+.chat-soft .run-details {
+    width: min(980px, 100%);
+    justify-self: start;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+    padding: 12px 16px;
+}
+
+.chat-soft .run-details summary {
+    cursor: pointer;
+    color: var(--ink-soft);
+    font-size: 13px;
+}
+
+.chat-soft .run-details[open] summary {
+    margin-bottom: 8px;
+}
+
+/* ── Composer — soft card footer ────────────────────────────────────────── */
+.chat-soft .composer {
+    gap: 12px;
+    padding: 14px;
+    border-top: none;
+    border: 1px solid var(--line);
+    border-radius: var(--r-xl);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+
+.chat-soft .goal-box {
+    min-height: 72px;
+    max-height: 180px;
+    resize: vertical;
+    border-radius: var(--r);
+    background: var(--paper);
+}
+
+.chat-soft .composer-actions {
+    justify-content: space-between;
+}
+
+.chat-soft .composer-hint {
+    color: var(--ink-muted);
+    font-size: 12px;
+}
+
+/* ── Artifact gallery — soft cards ──────────────────────────────────────── */
+.chat-soft .artifact-gallery {
+    width: min(980px, 100%);
+    justify-self: start;
+    gap: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-soft);
+    padding: 16px;
+}
+
+.chat-soft .artifact-list {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+/* Each artifact is a soft card. The figure carries `ui-card` (applied in
+   artifact_view.rs) for the base surface; these scoped rules adapt that card to
+   the gallery grid (the bare `ui-card` is a generic block, not a figure). */
+.chat-soft .artifact-card.ui-card {
+    margin: 0;
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    overflow: hidden;
+}
+
+.chat-soft .artifact-card .artifact-body {
+    border-radius: var(--r);
+    background: var(--surface-2);
+}
+
+.chat-soft .artifact-card .artifact-type {
+    border-radius: var(--pill);
+    background: var(--accent-wash);
+    color: var(--accent-text);
+}

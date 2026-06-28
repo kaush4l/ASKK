@@ -1,0 +1,365 @@
+/* ── UI primitives ───────────────────────────────────────────────────────
+   Soft-desk component library. Rounded cards, soft light elevation, one cyan
+   accent (--accent). All values come from the tokens in main.css :root — never
+   hardcode a hex here. */
+
+/* Card / Panel */
+.ui-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-soft);
+    padding: 16px;
+}
+
+.ui-panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-card);
+    padding: 18px;
+}
+
+.ui-panel-title {
+    margin: 0 0 12px;
+    font-size: 16px;
+    color: var(--ink);
+}
+
+/* Buttons */
+.ui-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1;
+    padding: 9px 16px;
+    border-radius: var(--pill);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.ui-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus);
+}
+
+.ui-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ui-btn-primary {
+    background: var(--accent);
+    color: #ffffff;
+    box-shadow: var(--shadow-soft);
+}
+
+.ui-btn-primary:hover:not(:disabled) {
+    background: var(--accent-strong);
+}
+
+.ui-btn-secondary {
+    background: var(--control-warm);
+    color: var(--ink);
+    border-color: var(--line-2);
+}
+
+.ui-btn-secondary:hover:not(:disabled) {
+    background: var(--surface-2);
+}
+
+.ui-btn-ghost {
+    background: transparent;
+    color: var(--ink-soft);
+    border-color: var(--line);
+}
+
+.ui-btn-ghost:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--ink);
+}
+
+.ui-btn-icon {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: var(--r);
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    border-color: var(--line);
+}
+
+.ui-btn-icon:hover:not(:disabled) {
+    background: var(--surface-accent);
+    color: var(--accent-text);
+}
+
+/* Toggle switch */
+.ui-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--ink-soft);
+}
+
+.ui-toggle-track {
+    position: relative;
+    flex: 0 0 auto;
+    width: 40px;
+    height: 22px;
+    border-radius: var(--pill);
+    background: var(--line-2);
+    transition: background 0.15s ease;
+}
+
+.ui-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+    transition: transform 0.15s ease;
+}
+
+.ui-toggle.on .ui-toggle-track {
+    background: var(--accent);
+}
+
+.ui-toggle.on .ui-toggle-thumb {
+    transform: translateX(18px);
+}
+
+.ui-toggle:focus-visible .ui-toggle-track {
+    box-shadow: var(--focus);
+}
+
+/* Slider */
+.ui-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: var(--pill);
+    background: var(--line-2);
+    cursor: pointer;
+}
+
+.ui-slider:focus-visible {
+    outline: none;
+    box-shadow: var(--focus);
+}
+
+.ui-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: var(--shadow-soft);
+    border: 2px solid var(--surface);
+}
+
+.ui-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: var(--shadow-soft);
+    border: 2px solid var(--surface);
+}
+
+/* Badge (pill) */
+.ui-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    line-height: 1;
+    padding: 4px 10px;
+    border-radius: var(--pill);
+    border: 1px solid transparent;
+}
+
+.ui-badge-neutral {
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    border-color: var(--line);
+}
+
+.ui-badge-info {
+    background: var(--accent-wash);
+    color: var(--accent-text);
+}
+
+.ui-badge-success {
+    background: var(--ok-wash);
+    color: var(--ok);
+}
+
+.ui-badge-warn {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-color: var(--warn-line);
+}
+
+.ui-badge-error {
+    background: var(--danger-wash);
+    color: var(--danger);
+    border-color: var(--danger-line);
+}
+
+/* Status dot */
+.ui-status-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--ink-soft);
+}
+
+.ui-status-dot::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ink-muted);
+}
+
+.ui-status-dot-info::before {
+    background: var(--accent);
+}
+
+.ui-status-dot-success::before {
+    background: var(--ok);
+}
+
+.ui-status-dot-warn::before {
+    background: var(--warn);
+}
+
+.ui-status-dot-error::before {
+    background: var(--danger);
+}
+
+/* Segmented control */
+.ui-segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--pill);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+}
+
+.ui-segmented-option {
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1;
+    padding: 7px 14px;
+    border: none;
+    border-radius: var(--pill);
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ui-segmented-option:hover:not(.active) {
+    color: var(--ink);
+}
+
+.ui-segmented-option.active {
+    background: var(--surface);
+    color: var(--accent-text);
+    box-shadow: var(--shadow-soft);
+}
+
+.ui-segmented-option:focus-visible {
+    outline: none;
+    box-shadow: var(--focus);
+}
+
+/* Section heading */
+.ui-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.ui-section-heading h2 {
+    margin: 0;
+    font-size: 16px;
+    color: var(--ink);
+}
+
+.ui-section-heading-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Search input */
+.ui-search {
+    width: 100%;
+    font-family: inherit;
+    font-size: 14px;
+    padding: 9px 14px;
+    border-radius: var(--pill);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+}
+
+.ui-search::placeholder {
+    color: var(--ink-muted);
+}
+
+.ui-search:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--focus);
+}
+
+/* List row */
+.ui-list-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--ink);
+    padding: 10px 12px;
+    border-radius: var(--r);
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.ui-list-row:hover {
+    background: var(--surface-2);
+}
+
+.ui-list-row.selected {
+    background: var(--surface-accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}
+
+.ui-list-row:focus-visible {
+    outline: none;
+    box-shadow: var(--focus);
+}
