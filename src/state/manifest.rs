@@ -1484,9 +1484,8 @@ phase.3.on_fail: plan\n\
 
     #[test]
     fn team_member_derives_team_order_and_namespaced_id() {
-        let agent =
-            agent_from_markdown("agents/coder/1_planner.md", "---\n---\nPlan the work.")
-                .expect("parse team member");
+        let agent = agent_from_markdown("agents/coder/1_planner.md", "---\n---\nPlan the work.")
+            .expect("parse team member");
         assert_eq!(agent.team.as_deref(), Some("coder"));
         assert_eq!(agent.order, 1);
         // Namespaced so it never collides with a flat `agents/2_planner.md`.
@@ -1497,9 +1496,8 @@ phase.3.on_fail: plan\n\
 
     #[test]
     fn flat_agent_has_no_team() {
-        let agent =
-            agent_from_markdown("agents/1_orchestrator.md", "---\n---\nCoordinate.")
-                .expect("parse flat agent");
+        let agent = agent_from_markdown("agents/1_orchestrator.md", "---\n---\nCoordinate.")
+            .expect("parse flat agent");
         assert_eq!(agent.team, None);
         assert_eq!(agent.id, "orchestrator");
     }
@@ -1509,11 +1507,8 @@ phase.3.on_fail: plan\n\
         let agents = vec![
             agent_from_markdown("agents/coder/2_coder.md", "---\n---\nWrite code.").unwrap(),
             agent_from_markdown("agents/coder/1_planner.md", "---\n---\nPlan.").unwrap(),
-            agent_from_markdown(
-                "agents/coder/3_verifier.md",
-                "---\n---\nVerify the build.",
-            )
-            .unwrap(),
+            agent_from_markdown("agents/coder/3_verifier.md", "---\n---\nVerify the build.")
+                .unwrap(),
             // A flat agent is ignored by team grouping.
             agent_from_markdown("agents/1_orchestrator.md", "---\n---\nCoordinate.").unwrap(),
         ];

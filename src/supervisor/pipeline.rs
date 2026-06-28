@@ -234,8 +234,7 @@ mod tests {
 
     #[test]
     fn explicit_gate_override_changes_the_verifier() {
-        let pipeline =
-            TeamPipeline::new(vec!["a".into(), "b".into(), "c".into()], 1).with_gate(1);
+        let pipeline = TeamPipeline::new(vec!["a".into(), "b".into(), "c".into()], 1).with_gate(1);
         assert!(!pipeline.current_is_gate()); // cursor 0 is not the gate
     }
 }

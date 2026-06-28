@@ -198,7 +198,9 @@ pub async fn run_team(
 
     // Pipeline drained without a gate verdict (e.g. an empty team): surface the last
     // output as the result.
-    TeamOutcome::Done { answer: last_output }
+    TeamOutcome::Done {
+        answer: last_output,
+    }
 }
 
 /// Reset every member to `Queued` after a bounce so the roster reflects that the
@@ -380,8 +382,7 @@ mod tests {
             } else {
                 Ok(format!("{id} output"))
             };
-            Box::pin(async move { result })
-                as Pin<Box<dyn Future<Output = Result<String, String>>>>
+            Box::pin(async move { result }) as Pin<Box<dyn Future<Output = Result<String, String>>>>
         };
 
         let outcome = pollster::block_on(run_team(

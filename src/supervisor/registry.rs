@@ -91,8 +91,10 @@ mod tests {
         }
 
         // Inner guard dropped: outer is active again.
-        let routed_outer =
-            with_active(|sup| sup.send_to("coder-planner", Message::new("x", "hi")).is_ok());
+        let routed_outer = with_active(|sup| {
+            sup.send_to("coder-planner", Message::new("x", "hi"))
+                .is_ok()
+        });
         assert_eq!(routed_outer, Some(true));
 
         drop(guard);

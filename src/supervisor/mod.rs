@@ -168,7 +168,10 @@ mod tests {
         let mut supervisor = Supervisor::new();
         let members = supervisor.spawn_team(&agents, "coder").unwrap();
 
-        assert_eq!(members, vec!["coder-planner", "coder-coder", "coder-verifier"]);
+        assert_eq!(
+            members,
+            vec!["coder-planner", "coder-coder", "coder-verifier"]
+        );
         assert_eq!(supervisor.len(), 3);
         // Every member starts Queued.
         for id in &members {

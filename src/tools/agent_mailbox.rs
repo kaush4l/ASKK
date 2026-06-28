@@ -34,8 +34,7 @@ fn active_agent_id(snapshot: &AppSnapshot) -> String {
         .unwrap_or_else(|| "supervisor".to_string())
 }
 
-const NO_TEAM: &str =
-    "No team is currently running, so there is no agent queue to use. This tool only works while a `delegate_team` run is in progress.";
+const NO_TEAM: &str = "No team is currently running, so there is no agent queue to use. This tool only works while a `delegate_team` run is in progress.";
 
 // ---- agent_send ------------------------------------------------------------------
 
@@ -108,7 +107,11 @@ fn progress_handler<'a>(_snapshot: &'a mut AppSnapshot, args: &'a Value) -> Tool
                 None => format!("No agent `{id}` is on the current team."),
             },
             None => {
-                let lines: Vec<String> = supervisor.list().iter().map(|i| render_instance(i)).collect();
+                let lines: Vec<String> = supervisor
+                    .list()
+                    .iter()
+                    .map(|i| render_instance(i))
+                    .collect();
                 if lines.is_empty() {
                     "The team roster is empty.".to_string()
                 } else {
@@ -194,8 +197,8 @@ mod tests {
         AppSnapshot {
             agents: vec![
                 {
-                    let mut a =
-                        agent_from_markdown("agents/coder/1_planner.md", "---\n---\nPlan.").unwrap();
+                    let mut a = agent_from_markdown("agents/coder/1_planner.md", "---\n---\nPlan.")
+                        .unwrap();
                     a.enabled = true;
                     a
                 },
@@ -279,8 +282,7 @@ mod tests {
         let _guard = install(handle.clone());
 
         let mut snapshot = snapshot;
-        let listed =
-            pollster::block_on((list_handler)(&mut snapshot, &json!({}))).unwrap();
+        let listed = pollster::block_on((list_handler)(&mut snapshot, &json!({}))).unwrap();
         let planner = listed.find("coder-planner").unwrap();
         let coder = listed.find("coder-coder").unwrap();
         let verifier = listed.find("coder-verifier").unwrap();

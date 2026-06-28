@@ -60,7 +60,12 @@ mod tests {
 
     #[test]
     fn terminal_and_running_predicates() {
-        assert!(AgentStatus::Done { answer: "ok".into() }.is_terminal());
+        assert!(
+            AgentStatus::Done {
+                answer: "ok".into()
+            }
+            .is_terminal()
+        );
         assert!(AgentStatus::Failed { error: "x".into() }.is_terminal());
         assert!(!AgentStatus::Idle.is_terminal());
         assert!(
