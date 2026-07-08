@@ -54,6 +54,11 @@ dependencies = [
  "askk-inference",
  "askk-runtime",
  "dioxus",
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

@@ -16,7 +16,7 @@ path must exist once implemented (planned rows marked ⏳).
 | 9 | Effects absorbed, signals emitted | `crates/core/src/sheet.rs` + `signal.rs` |
 | 10 | Signals appended to log (single writer) | `crates/runtime/src/state/log.rs` |
 | 11 | Phase routing (gate semantics) | `crates/core/src/phase.rs` |
-| 12 | UI = fold(signals) → Dioxus surfaces | `crates/core/src/signal.rs` (fold) + ⏳ `crates/web/src/` |
+| 12 | UI = fold(signals) → Dioxus surfaces | `crates/core/src/signal.rs` (fold) + `crates/web/src/` |
 
 ## Import rules (one-way, structure-tested)
 

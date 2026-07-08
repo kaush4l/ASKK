@@ -8,4 +8,26 @@ license.workspace = true
 askk-core.workspace = true
 askk-inference.workspace = true
 askk-runtime.workspace = true
+serde_json.workspace = true
 dioxus = { version = "0.7", features = ["web"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Navigator",
+    "StorageManager",
+    "FileSystemDirectoryHandle",
+    "FileSystemFileHandle",
+    "FileSystemGetFileOptions",
+    "FileSystemGetDirectoryOptions",
+    "FileSystemWritableFileStream",
+    "File",
+    "Blob",
+    "Headers",
+    "Request",
+    "RequestInit",
+    "Response",
+] }
