@@ -20,16 +20,5 @@ pub use memory::{MemoryStore, DEFAULT_MAX_ENTRIES};
 pub use session::SessionStore;
 pub use store::{BlobStore, KvStore, LocalBoxFuture, MemBlob, MemKv, StoreError};
 
-/// Minimal test executor: every memory-backed future here is immediately
-/// ready, so a noop-waker poll loop suffices — no executor dependency.
 #[cfg(test)]
-pub(crate) fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
-    use std::task::{Context, Poll, Waker};
-    let mut future = std::pin::pin!(future);
-    let mut cx = Context::from_waker(Waker::noop());
-    loop {
-        if let Poll::Ready(value) = future.as_mut().poll(&mut cx) {
-            return value;
-        }
-    }
-}
+pub(crate) use crate::testutil::block_on;

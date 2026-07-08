@@ -5,16 +5,16 @@ path must exist once implemented (planned rows marked ⏳).
 
 | # | Lifecycle hop | Location |
 |---|---|---|
-| 1 | Command submitted (SUBMIT/STEER/CANCEL/CONFIRM) | ⏳ `crates/runtime/src/run.rs` |
-| 2 | Agent config loaded + validated | ⏳ `crates/runtime/src/config/` |
-| 3 | Sheet assembled from elements | ⏳ `crates/runtime/src/assemble.rs` |
+| 1 | Command submitted (SUBMIT/STEER/CANCEL/CONFIRM) | `crates/runtime/src/run/` |
+| 2 | Agent config loaded + validated | `crates/runtime/src/config/` |
+| 3 | Sheet assembled from elements | `crates/runtime/src/assemble.rs` |
 | 4 | Sheet rendered → InferenceRequest | `crates/core/src/sheet.rs` |
 | 5 | Provider infers (adapter maps request) | `crates/inference/src/<provider>.rs` |
 | 6 | Reply parsed against contract | `crates/core/src/contract.rs` |
-| 7 | Tool calls gated (allowlist) + dispatched | ⏳ `crates/runtime/src/tools/` |
-| 8 | Mutating calls → action gate → audit | ⏳ `crates/runtime/src/actions/` |
+| 7 | Tool calls gated (allowlist) + dispatched | `crates/runtime/src/tools/` |
+| 8 | Mutating calls → action gate → audit | `crates/runtime/src/actions/` |
 | 9 | Effects absorbed, signals emitted | `crates/core/src/sheet.rs` + `signal.rs` |
-| 10 | Signals appended to log (single writer) | ⏳ `crates/runtime/src/state/log.rs` |
+| 10 | Signals appended to log (single writer) | `crates/runtime/src/state/log.rs` |
 | 11 | Phase routing (gate semantics) | `crates/core/src/phase.rs` |
 | 12 | UI = fold(signals) → Dioxus surfaces | `crates/core/src/signal.rs` (fold) + ⏳ `crates/web/src/` |
 
