@@ -298,6 +298,8 @@ fn derive_action(fields: &Map<String, Value>, raw_text: &str) -> Action {
                 _ => json!({}),
             };
             return Action::ToolCalls(vec![ToolCall {
+                // Placeholder id: parse is pure, so the run loop assigns the
+                // unique run-qualified id before absorb/dispatch.
                 id: "call_0".into(),
                 name: name.into(),
                 args,
@@ -353,6 +355,16 @@ pub struct FormatNegotiator {
 impl FormatNegotiator {
     pub const ESCALATE_AFTER: u32 = 3;
 
+    /// Start at the agent's declared format — honored telemetry is aligned
+    /// from turn 1 instead of assuming TOON until an escalation.
+    pub fn with_mode(mode: OutputMode) -> Self {
+        Self {
+            mode,
+            failures: 0,
+            honored: true,
+        }
+    }
+
     pub fn mode(&self) -> OutputMode {
         self.mode
     }
@@ -384,11 +396,7 @@ impl FormatNegotiator {
 
 impl Default for FormatNegotiator {
     fn default() -> Self {
-        Self {
-            mode: OutputMode::Toon,
-            failures: 0,
-            honored: true,
-        }
+        Self::with_mode(OutputMode::Toon)
     }
 }
 
@@ -474,6 +482,14 @@ mod tests {
         );
         assert_eq!(extract_json_object("{\"a\": 1"), None);
         assert_eq!(extract_json_object("no braces"), None);
+    }
+
+    #[test]
+    fn negotiator_starts_at_the_given_mode() {
+        let mut n = FormatNegotiator::with_mode(OutputMode::Json);
+        assert_eq!(n.mode(), OutputMode::Json);
+        n.record_success(ParsedFormat::Json); // honored from turn 1
+        assert!(n.honored());
     }
 
     #[test]

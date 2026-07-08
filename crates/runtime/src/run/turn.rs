@@ -3,16 +3,16 @@
 //! absorb → dispatch tools through the action gate → route answers through
 //! phase gate semantics (ADR-008). Every step emits a stamped signal.
 
-use askk_core::phase::route;
 use askk_core::{
     contracts, Action, Contract, Element, InferenceConfig, InferenceReply, InferenceRequest,
-    Message, OutputMode, ParsedFormat, ParsedResponse, PhaseFrame, ProviderError, Role,
-    RouteOutcome, Routing, RunStatus, Sheet, Signal, SignalKind, Skill, ToolSet,
+    LoopMode, Message, OutputMode, ParsedFormat, ParsedResponse, PhaseFrame, ProviderError, Role,
+    RunStatus, Sheet, Signal, SignalKind, Skill, ToolSet,
 };
-use serde_json::{Map, Value};
+use serde_json::Map;
 
-use crate::assemble::assemble;
+use crate::assemble::{assemble, AssembleOverrides};
 use crate::config::AgentConfig;
+use crate::run::answer::handle_answer;
 use crate::run::dispatch::{dispatch_queued, Dispatch};
 use crate::run::session::{RunState, Shared};
 use crate::state::StoreError;
@@ -131,6 +131,26 @@ pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(),
             let name = run.phases[run.phase_idx].name.clone();
             emit(shared, run, SignalKind::PhaseEntered { name }).await?;
             run.phase_entered = true;
+            run.phase_turns = 0; // every (re-)entry gets a fresh clamp
+        }
+        // Per-phase clamp (ADR-011): a Loop phase spends at most its own
+        // max_turns; min() with the global budget falls out of check order
+        // (the global check above fires first when it is the tighter bound).
+        // Exhaustion without an answer is never success (ADR-008): no gate
+        // passed, so the run ends Unverified via the fall-off rules.
+        if let LoopMode::Loop { max_turns } = run.phases[run.phase_idx].loop_mode {
+            if run.phase_turns >= max_turns {
+                emit(
+                    shared,
+                    run,
+                    SignalKind::StatusSet {
+                        status: RunStatus::Unverified,
+                    },
+                )
+                .await?;
+                run.status = RunStatus::Unverified;
+                return Ok(());
+            }
         }
         match one_turn(shared, run).await? {
             Turn::Continue => {}
@@ -151,7 +171,7 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
     let toolset = effective_toolset(shared, run)?;
 
     let mut repairs = 0u32;
-    let (mut sheet, parsed) = loop {
+    let (mut sheet, mut parsed) = loop {
         let sheet = build_sheet(shared, run, &agent, &phase, &contract, &toolset);
         let Some(reply) = infer_with_retry(shared, run, &agent, &sheet.render()).await? else {
             return Ok(Turn::Terminal); // provider failed after retries
@@ -200,6 +220,19 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
         }
     };
 
+    // Unique, run-qualified tool-call ids BEFORE absorb/dispatch: text-path
+    // parses synthesize the same placeholder for every call, and parked
+    // confirmations live in a session-wide map keyed by ActionId — ids must
+    // never collide across runs. ponytail: provider-native ids are replaced
+    // too (nothing round-trips them today); keep them alongside if a future
+    // adapter needs tool_use id fidelity.
+    if let Action::ToolCalls(calls) = &mut parsed.action {
+        for call in calls {
+            call.id = format!("{}-call-{}", run.id.0, run.call_seq);
+            run.call_seq += 1;
+        }
+    }
+
     for signal in sheet.absorb(&parsed) {
         emit(shared, run, signal.kind).await?;
     }
@@ -238,7 +271,12 @@ fn build_sheet(
         header: phase.header.clone(),
         artifacts: run.artifacts.clone(),
     });
-    let mut sheet = assemble(
+    let overrides = AssembleOverrides {
+        contract: (phase.contract != agent.contract).then(|| contract.clone()),
+        directive: None,
+        output_mode: (run.negotiator.mode() != agent.format).then(|| run.negotiator.mode()),
+    };
+    assemble(
         agent,
         &shared.soul,
         skills,
@@ -254,18 +292,8 @@ fn build_sheet(
             ..Default::default()
         },
         frame,
-    );
-    if phase.contract != agent.contract {
-        for element in &mut sheet.elements {
-            if let Element::Contract(c) = element {
-                *c = contract.clone();
-            }
-        }
-    }
-    if run.negotiator.mode() == OutputMode::Json && agent.format != OutputMode::Json {
-        sheet.elements.push(Element::OutputMode(OutputMode::Json)); // escalated
-    }
-    sheet
+        overrides,
+    )
 }
 
 /// Pull the absorb effects back out of the sheet into run state.
@@ -308,6 +336,7 @@ async fn infer_with_retry(
 ) -> Result<Option<InferenceReply>, StoreError> {
     emit(shared, run, SignalKind::LlmRequest).await?;
     run.turns += 1;
+    run.phase_turns += 1;
     let provider = match (shared.resolver)(&agent.provider) {
         Ok(provider) => provider,
         Err(e) => {
@@ -324,15 +353,25 @@ async fn infer_with_retry(
         }
     };
     let host = shared.host();
+    let run_id = run.id.clone();
     let mut last_error = None;
     for attempt in 0..MAX_PROVIDER_ATTEMPTS {
-        let mut deltas: Vec<String> = Vec::new();
-        let mut sink = |delta: &str| deltas.push(delta.to_string());
+        // Deltas reach the host sink AS THEY ARRIVE (`on_delta` is sync; the
+        // log writer is async). They are transient UI signals — seq 0, never
+        // logged: `LlmResponse` is the durable record and fold ignores
+        // LlmDelta either way (ADR-003).
+        let mut sink = |delta: &str| {
+            host.on_signal(&Signal {
+                seq: 0,
+                run_id: run_id.clone(),
+                ts_ms: host.now_ms(),
+                kind: SignalKind::LlmDelta {
+                    text: delta.to_string(),
+                },
+            });
+        };
         match provider.infer(request, &mut sink).await {
             Ok(reply) => {
-                for text in deltas {
-                    emit(shared, run, SignalKind::LlmDelta { text }).await?;
-                }
                 emit(
                     shared,
                     run,
@@ -361,110 +400,6 @@ async fn infer_with_retry(
     emit(shared, run, SignalKind::Error { message }).await?;
     run.status = RunStatus::Failed;
     Ok(None)
-}
-
-/// Answer → phase routing with gate semantics (ADR-008). A gate phase whose
-/// contract says `verdict: revise` routes back along its on_fail edge.
-async fn handle_answer(
-    shared: &Shared,
-    run: &mut RunState,
-    phase: &askk_core::Phase,
-    parsed: &ParsedResponse,
-    text: String,
-) -> Result<Turn, StoreError> {
-    let revise =
-        phase.gate && parsed.fields.get("verdict").and_then(Value::as_str) == Some("revise");
-    let proposed = if revise {
-        let distance = phase
-            .on_fail
-            .as_ref()
-            .and_then(|target| {
-                run.phases[..run.phase_idx]
-                    .iter()
-                    .position(|p| &p.name == target)
-                    .map(|i| run.phase_idx - i)
-            })
-            .unwrap_or(1);
-        Routing::Back(distance)
-    } else if phase.gate {
-        Routing::Done
-    } else {
-        Routing::Next
-    };
-    match route(phase, proposed, run.back_edges) {
-        RouteOutcome::Success => {
-            run.artifacts.push((phase.name.clone(), text.clone()));
-            emit(
-                shared,
-                run,
-                SignalKind::Result {
-                    final_text: text.clone(),
-                },
-            )
-            .await?;
-            run.status = RunStatus::Answered;
-            run.final_text = Some(text);
-            Ok(Turn::Terminal)
-        }
-        RouteOutcome::Advance => {
-            run.artifacts.push((phase.name.clone(), text.clone()));
-            run.phase_idx += 1;
-            if run.phase_idx >= run.phases.len() {
-                // Ran off the end without a gate pass: no false success.
-                finish_unverified(shared, run, text).await?;
-                return Ok(Turn::Terminal);
-            }
-            run.phase_entered = false;
-            Ok(Turn::Continue)
-        }
-        RouteOutcome::Rewind(distance) => {
-            run.back_edges += 1;
-            run.phase_idx = run.phase_idx.saturating_sub(distance);
-            run.phase_entered = false;
-            let feedback = parsed
-                .fields
-                .get("feedback")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            observe(
-                shared,
-                run,
-                format!("Gate '{}' failed — revise. {feedback}", phase.name),
-            )
-            .await?;
-            Ok(Turn::Continue)
-        }
-        RouteOutcome::Unverified => {
-            finish_unverified(shared, run, text).await?;
-            Ok(Turn::Terminal)
-        }
-    }
-}
-
-async fn finish_unverified(
-    shared: &Shared,
-    run: &mut RunState,
-    text: String,
-) -> Result<(), StoreError> {
-    emit(
-        shared,
-        run,
-        SignalKind::StatusSet {
-            status: RunStatus::Unverified,
-        },
-    )
-    .await?;
-    emit(
-        shared,
-        run,
-        SignalKind::Result {
-            final_text: text.clone(),
-        },
-    )
-    .await?;
-    run.status = RunStatus::Unverified;
-    run.final_text = Some(text);
-    Ok(())
 }
 
 fn format_str(format: ParsedFormat) -> &'static str {

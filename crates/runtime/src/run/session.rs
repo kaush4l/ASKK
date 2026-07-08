@@ -92,6 +92,11 @@ pub(crate) struct RunState {
     pub(crate) back_edges: u32,
     /// Provider calls made (repairs included; transport retries excluded).
     pub(crate) turns: u32,
+    /// Provider calls made inside the current phase (reset on phase entry);
+    /// clamped by the phase's `LoopMode::Loop { max_turns }` (GAPS #8).
+    pub(crate) phase_turns: u32,
+    /// Per-run counter behind unique, run-qualified tool-call ids.
+    pub(crate) call_seq: u64,
     pub(crate) started_ms: u64,
     pub(crate) nudged: bool,
     pub(crate) negotiator: FormatNegotiator,
@@ -151,9 +156,11 @@ impl RunState {
             phase_entered: false,
             back_edges: 0,
             turns: 0,
+            phase_turns: 0,
+            call_seq: 0,
             started_ms: 0,
             nudged: false,
-            negotiator: FormatNegotiator::default(),
+            negotiator: FormatNegotiator::with_mode(agent.format),
             history: Vec::new(),
             snapshot: StateSnapshot::default(),
             memory,
@@ -225,14 +232,9 @@ impl RunSession {
                     ));
                 }
             }
-            // Validation universe: names agents reference that the registry
-            // actually holds — anything else is flagged by validate.
-            let known_tools: Vec<String> = agents
-                .iter()
-                .flat_map(|a| a.tools.iter())
-                .filter(|t| registry.contains(t))
-                .cloned()
-                .collect();
+            // Validation universe = everything the registry holds; any agent
+            // ref outside it is flagged by validate.
+            let known_tools = registry.names();
             let known_skills: Vec<String> = skills.iter().map(|s| s.id.clone()).collect();
             let known_contracts: Vec<String> =
                 contracts::NAMES.iter().map(|n| n.to_string()).collect();

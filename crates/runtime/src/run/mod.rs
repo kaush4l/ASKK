@@ -4,9 +4,11 @@
 //!
 //! - [`host`] — `RunHost`, the shell seam (time, sleep, interrupts, deltas).
 //! - [`session`] — `RunSession`: submit / drive / resolve_action / cancel.
-//! - [`turn`] — the per-phase per-turn loop (gate semantics, ADR-008).
+//! - [`turn`] — the per-phase per-turn loop.
+//! - [`answer`] — answer → phase routing (gate semantics, ADR-008).
 //! - [`dispatch`] — tool-call dispatch through the action gate.
 
+pub(crate) mod answer;
 pub(crate) mod dispatch;
 pub mod host;
 pub mod session;
