@@ -59,3 +59,12 @@ maps to a named terminal signal. No unbounded await anywhere in runtime (kiln AD
 ## ADR-012 (A) — ~500-line file cap, structure-tested
 God files killed navigability in two prior builds (2,900-line engine/mod.rs). A test walks the
 tree and fails on oversize files, wrong-direction imports, and doc-listed-but-missing modules.
+
+## ADR-013 (A) — kiln is the structure north star; MAP.md is the guarded navigation surface
+Owner directive (2026-07-08): kiln's folder organization and navigation are the reference;
+the ASKK GitHub prototype is the feature reference. Concretely: root `MAP.md` holds the
+lifecycle→file table and import rules, guarded by structure tests (a listed non-⏳ path that
+doesn't exist fails CI); single-concept file names (`sheet.rs`, `contract.rs`, `signal.rs` —
+kiln's `engine.js`/`responses.js`/`fold.js` idiom); UI components import only the wire
+(`askk-core`) — `runtime` is reachable solely from the worker/bootstrap glue in
+`crates/web/src/host/`, mirroring kiln's "app imports only contracts" edge.
