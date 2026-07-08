@@ -1,5 +1,5 @@
 target/
 dist/
 node_modules/
-docs/architecture/ARCHITECTURE.md
 .DS_Store
+.claude/settings.local.json
