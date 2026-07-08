@@ -11,7 +11,7 @@ use serde_json::json;
 
 use crate::actions::ActionGate;
 use crate::run::session::{RunState, Shared};
-use crate::run::turn::{effective_allow, effective_toolset, emit, observe};
+use crate::run::turn::{effective_allow, emit, observe};
 use crate::state::StoreError;
 
 /// ToolCtx slice carrying the caller's delegation depth (read by DelegateTool).
@@ -23,6 +23,16 @@ pub(crate) const PARENT_TOOLS_SLICE: &str = "parent_tools";
 pub(crate) enum Dispatch {
     Done,
     Paused,
+}
+
+/// The dispatch allowlist check: phase-effective membership, then the
+/// registry (ADR-004). No per-call ToolSet rebuild.
+fn resolve_tool(shared: &Shared, run: &RunState, name: &str) -> Option<Rc<dyn Tool>> {
+    effective_allow(run)
+        .iter()
+        .any(|t| t == name)
+        .then(|| shared.registry.get(name).cloned())
+        .flatten()
 }
 
 /// Dispatch the run's queued tool calls: membership check → action gate →
@@ -43,8 +53,7 @@ pub(crate) async fn dispatch_queued(
             },
         )
         .await?;
-        let toolset = effective_toolset(shared, run)?;
-        let Some(tool) = toolset.get(&call.name).cloned() else {
+        let Some(tool) = resolve_tool(shared, run, &call.name) else {
             let allow = effective_allow(run);
             observe(
                 shared,
@@ -128,14 +137,9 @@ async fn execute_tool(
     ctx.set_slice(PARENT_TOOLS_SLICE, json!(effective_allow(run)));
     let result = tool.call(call.args.clone(), &mut ctx).await;
 
-    // Lift back declared slices (ADR-005). ToolCtx has no slice iterator, so
-    // the checkable universe is the snapshot's keys plus the builtin notes
-    // slice — a known core API gap, flagged for wave 5.
-    let mut keys: Vec<String> = run.snapshot.slices.keys().cloned().collect();
-    keys.push(crate::tools::builtin::NOTES_SLICE.to_string());
-    keys.sort();
-    keys.dedup();
-    for key in keys {
+    // Lift back every slice the ctx now holds (ADR-005): ALL tool-written
+    // keys — pre-declared or brand new — emit StateWritten on change.
+    for key in ctx.slice_keys() {
         if key == DEPTH_SLICE || key == PARENT_TOOLS_SLICE {
             continue;
         }
@@ -176,8 +180,7 @@ pub(crate) async fn apply_resolution(
             name: proposal.tool.clone(),
             args: proposal.args.clone(),
         };
-        let toolset = effective_toolset(shared, run)?;
-        match toolset.get(&call.name).cloned() {
+        match resolve_tool(shared, run, &call.name) {
             Some(tool) => execute_tool(shared, run, &call, &tool).await,
             None => {
                 observe(

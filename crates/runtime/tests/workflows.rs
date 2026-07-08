@@ -202,10 +202,13 @@ fn action_confirm_then_approve() {
         let proj = f.session.projection(&run).unwrap();
         assert_eq!(proj.pending_actions.len(), 1);
         assert_eq!(proj.pending_actions[0].proposal.tool, "state_note");
+        // Ids are run-qualified and unique (no cross-run ActionId collisions).
+        let pending_id = proj.pending_actions[0].proposal.id.clone();
+        assert_eq!(pending_id, ActionId(format!("{}-call-0", run.0)));
 
         let out = f
             .session
-            .resolve_action(&run, &ActionId("call_0".into()), true, f.host.clone())
+            .resolve_action(&run, &pending_id, true, f.host.clone())
             .await;
         assert_eq!(out.status, RunStatus::Answered);
         let signals = f.host.signals();
@@ -229,9 +232,13 @@ fn action_deny_then_model_adapts() {
         f.mock.push_text("action: answer\nresponse: skipped it");
         let run = f.session.submit("solo", "note this").await.unwrap();
         f.session.drive(&run, f.host.clone()).await;
+        let pending_id = f.session.projection(&run).unwrap().pending_actions[0]
+            .proposal
+            .id
+            .clone();
         let out = f
             .session
-            .resolve_action(&run, &ActionId("call_0".into()), false, f.host.clone())
+            .resolve_action(&run, &pending_id, false, f.host.clone())
             .await;
         assert_eq!(out.status, RunStatus::Answered);
         assert_eq!(out.final_text.as_deref(), Some("skipped it"));

@@ -64,6 +64,12 @@ impl ToolCtx {
     pub fn set_slice(&mut self, name: impl Into<String>, value: Value) {
         self.slices.insert(name.into(), value);
     }
+
+    /// Every slice name currently present, sorted — the lift-back universe:
+    /// keys a tool wrote are visible here even if nobody pre-declared them.
+    pub fn slice_keys(&self) -> Vec<String> {
+        self.slices.keys().cloned().collect()
+    }
 }
 
 /// Dyn-safe: browser is single-threaded, so no Send bounds and Rc is fine.
@@ -194,7 +200,10 @@ mod tests {
     fn ctx_holds_named_state_slices() {
         let mut ctx = ToolCtx::default();
         assert!(ctx.slice("cwd").is_none());
+        assert!(ctx.slice_keys().is_empty());
         ctx.set_slice("cwd", json!("/tmp"));
+        ctx.set_slice("aim", json!("x"));
         assert_eq!(ctx.slice("cwd"), Some(&json!("/tmp")));
+        assert_eq!(ctx.slice_keys(), vec!["aim".to_string(), "cwd".to_string()]);
     }
 }

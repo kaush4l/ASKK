@@ -54,8 +54,13 @@ impl ToolRegistry {
         Ok(())
     }
 
-    pub fn contains(&self, name: &str) -> bool {
-        self.tools.contains_key(name)
+    /// Every registered tool name, sorted — the validation universe.
+    pub fn names(&self) -> Vec<String> {
+        self.tools.keys().cloned().collect()
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Rc<dyn Tool>> {
+        self.tools.get(name)
     }
 
     /// Membership of the returned set IS the run's allowlist. Unknown names
@@ -144,6 +149,17 @@ mod tests {
         let err = reg.register(stub("echo")).unwrap_err();
         assert_eq!(err, RegistryError::DuplicateName("echo".into()));
         assert!(err.to_string().contains("echo"));
+    }
+
+    #[test]
+    fn names_and_get_expose_the_registry() {
+        let mut reg = ToolRegistry::new();
+        for name in ["b", "a"] {
+            reg.register(stub(name)).unwrap();
+        }
+        assert_eq!(reg.names(), vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(reg.get("a").unwrap().spec().name, "a");
+        assert!(reg.get("ghost").is_none());
     }
 
     #[test]

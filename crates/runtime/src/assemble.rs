@@ -3,11 +3,21 @@
 
 use askk_core::contracts;
 use askk_core::{
-    ActionPolicy, Directive, Element, Identity, InferenceConfig, MemoryBlock, Message, Part,
-    PhaseFrame, Sheet, Skill, StateSnapshot, ToolSpec,
+    ActionPolicy, Contract, Directive, Element, Identity, InferenceConfig, MemoryBlock, Message,
+    OutputMode, Part, PhaseFrame, Sheet, Skill, StateSnapshot, ToolSpec,
 };
 
 use crate::config::AgentConfig;
+
+/// Per-turn overrides applied AT assembly (no post-assembly sheet patching):
+/// the phase's contract, a per-run directive, the negotiated output mode.
+/// `None` = the agent-level default.
+#[derive(Debug, Clone, Default)]
+pub struct AssembleOverrides {
+    pub contract: Option<Contract>,
+    pub directive: Option<String>,
+    pub output_mode: Option<OutputMode>,
+}
 
 /// Build the sheet for one agent invocation.
 ///
@@ -31,12 +41,15 @@ pub fn assemble(
     policy: ActionPolicy,
     config: InferenceConfig,
     phase_frame: Option<PhaseFrame>,
+    overrides: AssembleOverrides,
 ) -> Sheet {
-    let contract = contracts::lookup(&agent.contract).unwrap_or_else(|e| {
-        panic!(
-            "{}: {e} — run config::validate before assemble",
-            agent.source_path
-        )
+    let contract = overrides.contract.unwrap_or_else(|| {
+        contracts::lookup(&agent.contract).unwrap_or_else(|e| {
+            panic!(
+                "{}: {e} — run config::validate before assemble",
+                agent.source_path
+            )
+        })
     });
     let mut elements = vec![
         Element::Identity(Identity {
@@ -45,9 +58,11 @@ pub fn assemble(
             role: agent.body.clone(),
         }),
         // ponytail: the agent card is the standing goal framing; the live task
-        // arrives via UserInput. run.rs can override with a per-run directive.
+        // arrives via UserInput. Overrides carry a per-run directive.
         Element::Directive(Directive {
-            text: agent.description.clone(),
+            text: overrides
+                .directive
+                .unwrap_or_else(|| agent.description.clone()),
         }),
         Element::Skills(skills),
         Element::ToolManifest(tool_specs),
@@ -62,7 +77,9 @@ pub fn assemble(
     }
     elements.push(Element::InferenceConfig(config));
     elements.push(Element::ActionPolicy(policy));
-    elements.push(Element::OutputMode(agent.format));
+    elements.push(Element::OutputMode(
+        overrides.output_mode.unwrap_or(agent.format),
+    ));
     if let Some(frame) = phase_frame {
         elements.push(Element::PhaseFrame(frame));
     }
@@ -105,6 +122,7 @@ mod tests {
             ActionPolicy::default(),
             InferenceConfig::default(),
             phase_frame,
+            AssembleOverrides::default(),
         )
     }
 
@@ -221,6 +239,37 @@ mod tests {
             ActionPolicy::default(),
             InferenceConfig::default(),
             None,
+            AssembleOverrides::default(),
         );
+    }
+
+    #[test]
+    fn overrides_apply_at_assembly_no_patching_needed() {
+        let sheet = assemble(
+            &agent(),
+            "",
+            vec![],
+            "go",
+            StateSnapshot::default(),
+            MemoryBlock::default(),
+            vec![],
+            vec![],
+            vec![],
+            ActionPolicy::default(),
+            InferenceConfig::default(),
+            None,
+            AssembleOverrides {
+                contract: Some(askk_core::contracts::critique()),
+                directive: Some("per-run directive".into()),
+                output_mode: Some(askk_core::OutputMode::Json),
+            },
+        );
+        let req = sheet.render();
+        assert_eq!(req.contract.name, "critique");
+        assert_eq!(req.contract.mode, askk_core::OutputMode::Json);
+        assert!(req
+            .sections
+            .iter()
+            .any(|(k, text)| k.name() == "directive" && text.contains("per-run directive")));
     }
 }
