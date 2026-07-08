@@ -1,0 +1,11 @@
+[package]
+name = "askk-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+askk-core.workspace = true
+askk-inference.workspace = true
+serde.workspace = true
+serde_json.workspace = true

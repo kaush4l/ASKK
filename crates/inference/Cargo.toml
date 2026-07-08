@@ -1,0 +1,10 @@
+[package]
+name = "askk-inference"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+askk-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
