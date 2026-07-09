@@ -7,11 +7,13 @@ pub mod builtin;
 pub mod registry;
 pub mod search;
 pub mod shell;
+pub mod workspace;
 
 pub use builtin::register_builtins;
 pub use registry::{RegistryError, RustTool, ToolRegistry};
 pub use search::register_web_search;
 pub use shell::{register_shell, ShellExec};
+pub use workspace::register_workspace;
 
 #[cfg(test)]
 pub(crate) use crate::testutil;

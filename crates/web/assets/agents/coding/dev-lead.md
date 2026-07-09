@@ -3,7 +3,7 @@ id: dev-lead
 name: Dev Lead
 description: Leads a coding team — plans the work, delegates implementation to the programmer, has the reviewer critique it, and loops until the review passes.
 enabled: true
-tools: programmer, reviewer, shell
+tools: programmer, reviewer, shell, read_file, list_files
 skills: concise
 provider: default
 contract: react

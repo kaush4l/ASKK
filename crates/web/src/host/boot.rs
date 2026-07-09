@@ -363,7 +363,10 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || js_sys::Date::now() as u64).map_err(|e| e.to_string())?;
     register_web_search(&mut registry, transport.clone()).map_err(|e| e.to_string())?;
-    askk_runtime::tools::register_shell(&mut registry, Rc::new(super::vm::SerialShell::new()))
+    let shell_exec = Rc::new(super::vm::SerialShell::new());
+    askk_runtime::tools::register_shell(&mut registry, shell_exec.clone())
+        .map_err(|e| e.to_string())?;
+    askk_runtime::tools::register_workspace(&mut registry, shell_exec)
         .map_err(|e| e.to_string())?;
 
     // The resolver reads the live profile-set cell per run: a settings save
@@ -420,7 +423,10 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).map_err(|e| e.to_string())?;
     register_web_search(&mut registry, Rc::new(MockTransport::new())).map_err(|e| e.to_string())?;
-    askk_runtime::tools::register_shell(&mut registry, Rc::new(super::vm::SerialShell::new()))
+    let shell_exec = Rc::new(super::vm::SerialShell::new());
+    askk_runtime::tools::register_shell(&mut registry, shell_exec.clone())
+        .map_err(|e| e.to_string())?;
+    askk_runtime::tools::register_workspace(&mut registry, shell_exec)
         .map_err(|e| e.to_string())?;
     super::config::register_baked_tools(&mut registry);
 

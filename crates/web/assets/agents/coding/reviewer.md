@@ -3,7 +3,7 @@ id: reviewer
 name: Reviewer
 description: Critiques the team's code — reads it, runs it, and returns PASS or REVISE with specific, actionable feedback.
 enabled: true
-tools: shell
+tools: shell, read_file, list_files
 skills: concise
 provider: default
 contract: react
