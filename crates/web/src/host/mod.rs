@@ -4,5 +4,7 @@
 
 pub mod boot;
 pub mod browser;
+pub mod dom;
 pub mod fetch;
 pub mod opfs;
+pub mod profile;

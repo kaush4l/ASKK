@@ -1,29 +1,59 @@
-//! App layout: header, agent rail, run column (composer → timeline →
-//! pending actions → status line), settings drawer. UI = fold(signals);
-//! every command goes through the host facade (ADR-003/013).
+//! Root layout (kiln `renderApp`): the persistent shell — header, rails,
+//! avatar bar — wraps a `<main class="stage">` where the picked stage
+//! renders. UI = fold(signals); every command goes through the host facade
+//! (ADR-003/013); browser glue (hash, theme attribute, clock) lives in
+//! `host::dom`.
 
 use std::rc::Rc;
 
 use dioxus::prelude::*;
 
-use askk_core::{RunId, RunProjection, RunStatus};
+use askk_core::{RunId, RunProjection, SignalKind};
+use serde_json::{json, Value};
 
 use crate::host::boot::{self, HarnessHandle, ProviderProfileForm};
-use crate::ui::actions::PendingActionsBar;
-use crate::ui::settings::SettingsDrawer;
-use crate::ui::timeline::Timeline;
+use crate::host::dom;
+use crate::ui::agents::AgentsStage;
+use crate::ui::chat::ChatStage;
+use crate::ui::manifest::Stage;
+use crate::ui::settings::SettingsStage;
+use crate::ui::shell::{AvatarBar, Header, LeftRail, RightRail};
 
 const CSS: &str = include_str!("main.css");
+const AMARANTE_LATIN: Asset = asset!("/assets/amarante-latin.woff2");
+const AMARANTE_LATIN_EXT: Asset = asset!("/assets/amarante-latin-ext.woff2");
 
-fn status_label(status: RunStatus) -> &'static str {
-    match status {
-        RunStatus::Running => "running",
-        RunStatus::Answered => "answered",
-        RunStatus::Unverified => "unverified",
-        RunStatus::BudgetExhausted => "budget exhausted",
-        RunStatus::Interrupted => "interrupted",
-        RunStatus::Failed => "failed",
+/// Self-hosted Amarante (`--font-sans`/`--font-display` in main.css); the
+/// unicode-range split matches the kiln next/font export.
+fn font_css() -> String {
+    format!(
+        "@font-face{{font-family:Amarante;font-style:normal;font-weight:400;font-display:swap;\
+         src:url('{AMARANTE_LATIN}') format('woff2');\
+         unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,\
+         U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}}\
+         @font-face{{font-family:Amarante;font-style:normal;font-weight:400;font-display:swap;\
+         src:url('{AMARANTE_LATIN_EXT}') format('woff2');\
+         unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,\
+         U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,\
+         U+2C60-2C7F,U+A720-A7FF;}}"
+    )
+}
+
+/// Latest loop signal → the plain-language phase label; the bool marks
+/// external (tool) work — the warm accent, kiln-style.
+fn phase_label(kind: Option<SignalKind>) -> (String, bool) {
+    match kind {
+        Some(SignalKind::LlmRequest) => ("thinking".into(), false),
+        Some(SignalKind::ParseOutcome { .. }) => ("parsing".into(), false),
+        Some(SignalKind::ToolRequested { name, .. }) => (format!("acting: {name}"), true),
+        Some(SignalKind::ToolCompleted { .. }) => ("observing".into(), true),
+        _ => ("working".into(), false),
     }
+}
+
+fn elapsed_label(start_ms: u64) -> String {
+    let ms = dom::now_ms().saturating_sub(start_ms);
+    format!("{:.1}s", ms as f64 / 1000.0)
 }
 
 #[component]
@@ -35,11 +65,28 @@ pub fn App() -> Element {
     let mut boot_error = use_signal(|| Option::<String>::None);
     let mut ui_error = use_signal(|| Option::<String>::None);
     let mut current = use_signal(|| Option::<RunId>::None);
-    let mut input = use_signal(String::new);
     let mut agent_id = use_signal(String::new);
-    let mut show_settings = use_signal(|| false);
     let mut profile = use_signal(ProviderProfileForm::default);
     let mut busy = use_signal(|| false);
+    let mut run_start = use_signal(|| 0u64);
+    // Persisted UI prefs (kiln appstate): stage, theme, rails, inspector tab.
+    let mut stage = use_signal(|| Stage::Chat);
+    let mut theme = use_signal(|| "paper".to_string());
+    let mut left_open = use_signal(|| true);
+    let mut right_open = use_signal(|| true);
+    let mut tab = use_signal(|| "Skills".to_string());
+
+    let persist = move || {
+        let Some(h) = handle() else { return };
+        let value = json!({
+            "stage": stage().key(),
+            "theme": theme(),
+            "left_open": left_open(),
+            "right_open": right_open(),
+            "tab": tab(),
+        });
+        spawn(async move { h.set_pref("ui", value).await });
+    };
 
     use_future(move || async move {
         let notify: Box<dyn Fn()> = Box::new(move || {
@@ -52,33 +99,96 @@ pub fn App() -> Element {
                 if let Some(first) = h.agents().first() {
                     agent_id.set(first.id.clone());
                 }
+                if let Some(prefs) = h.get_pref("ui").await {
+                    if let Some(t) = prefs.get("theme").and_then(Value::as_str) {
+                        theme.set(t.to_string());
+                    }
+                    if let Some(s) = prefs.get("stage").and_then(Value::as_str) {
+                        if let Some(s) = Stage::from_key(s) {
+                            stage.set(s);
+                        }
+                    }
+                    if let Some(b) = prefs.get("left_open").and_then(Value::as_bool) {
+                        left_open.set(b);
+                    }
+                    if let Some(b) = prefs.get("right_open").and_then(Value::as_bool) {
+                        right_open.set(b);
+                    }
+                    if let Some(t) = prefs.get("tab").and_then(Value::as_str) {
+                        tab.set(t.to_string());
+                    }
+                }
+                // Deep link wins over the persisted stage.
+                if let Some(s) = dom::read_hash().and_then(|k| Stage::from_key(&k)) {
+                    stage.set(s);
+                }
+                dom::apply_theme(&theme());
+                dom::write_hash(stage().key());
                 handle.set(Some(Rc::new(h)));
             }
             Err(e) => boot_error.set(Some(e)),
         }
     });
 
-    let _tick = refold();
-    let cards = handle().map(|h| h.agents()).unwrap_or_default();
+    // The elapsed clock: ticks while a run drives (host stub never ticks).
+    let tick = use_signal(|| 0u64);
+    use_future(move || async move {
+        loop {
+            dom::sleep_ms(400).await;
+            if busy() {
+                let mut t = tick;
+                t += 1;
+            }
+        }
+    });
+
+    let _subscribe = (refold(), tick());
+    let runs_newest = handle().map(|h| h.runs()).unwrap_or_default();
+    let runs_oldest: Vec<RunProjection> = runs_newest
+        .iter()
+        .rev()
+        .map(|(_, proj)| proj.clone())
+        .collect();
     let projection: Option<RunProjection> = match (handle(), current()) {
         (Some(h), Some(run_id)) => Some(h.projection(&run_id)),
         _ => None,
     };
+    let (phase, warm) = phase_label(match (handle(), current()) {
+        (Some(h), Some(run_id)) => h.latest_activity(&run_id),
+        _ => None,
+    });
+    let draft = match (handle(), current()) {
+        (Some(h), Some(run_id)) => h.draft(&run_id),
+        _ => String::new(),
+    };
+    let elapsed = elapsed_label(run_start());
+    let agent_name = handle()
+        .and_then(|h| h.agents().first().map(|a| a.name.clone()))
+        .unwrap_or_else(|| "agent".into());
 
-    let on_submit = move |_| {
+    let on_pick = move |s: Stage| {
+        stage.set(s);
+        dom::write_hash(s.key());
+        persist();
+    };
+    let on_theme = move |id: String| {
+        dom::apply_theme(&id);
+        theme.set(id);
+        persist();
+    };
+    let on_send = move |goal: String| {
         let Some(h) = handle() else { return };
-        let goal = input().trim().to_string();
-        if goal.is_empty() || busy() {
+        if busy() {
             return;
         }
         let agent = agent_id();
         busy.set(true);
         ui_error.set(None);
+        run_start.set(dom::now_ms());
         spawn(async move {
             match h.submit(&agent, &goal).await {
                 Ok(run_id) => {
                     current.set(Some(run_id));
-                    input.set(String::new());
                     h.drive().await;
                 }
                 Err(e) => ui_error.set(Some(e)),
@@ -88,7 +198,10 @@ pub fn App() -> Element {
             counter += 1;
         });
     };
-
+    let on_stop = move |_| {
+        let Some(h) = handle() else { return };
+        spawn(async move { h.cancel().await });
+    };
     let on_resolve = move |(action_id, approve): (String, bool)| {
         let Some(h) = handle() else { return };
         spawn(async move {
@@ -97,11 +210,9 @@ pub fn App() -> Element {
             counter += 1;
         });
     };
-
     let on_save = move |form: ProviderProfileForm| {
         let Some(h) = handle() else { return };
         profile.set(form.clone());
-        show_settings.set(false);
         spawn(async move {
             if let Err(e) = h.set_profile(form).await {
                 ui_error.set(Some(e));
@@ -109,71 +220,70 @@ pub fn App() -> Element {
         });
     };
 
+    // Hoisted so the Style element's props stay stable across renders.
+    let font_face = use_hook(font_css);
+    let cols = format!(
+        "grid-template-columns: {} 1fr {}",
+        if left_open() { "var(--left-w)" } else { "0px" },
+        if right_open() {
+            "var(--right-w)"
+        } else {
+            "0px"
+        },
+    );
+    let notice = boot_error().or(ui_error());
+
     rsx! {
         document::Style { {CSS} }
+        document::Style { {font_face} }
         div { class: "app",
-            header { class: "topbar",
-                h1 { class: "brand", "ASKK" }
-                button { class: "ghost", onclick: move |_| show_settings.set(!show_settings()), "Settings" }
+            Header {
+                stage: stage(),
+                busy: busy(),
+                left_open: left_open(),
+                right_open: right_open(),
+                on_toggle_left: move |_| { left_open.toggle(); persist(); },
+                on_toggle_right: move |_| { right_open.toggle(); persist(); },
             }
-            div { class: "body",
-                nav { class: "rail",
-                    h2 { class: "rail-title", "Agents" }
-                    for card in cards {
-                        button {
-                            key: "{card.id}",
-                            class: if agent_id() == card.id { "agent active" } else { "agent" },
-                            onclick: {
-                                let id = card.id.clone();
-                                move |_| agent_id.set(id.clone())
-                            },
-                            div { class: "agent-name", "{card.name}" }
-                            div { class: "agent-desc", "{card.description}" }
-                        }
+            div { class: "body", style: "{cols}",
+                LeftRail { stage: stage(), open: left_open(), on_pick }
+                main { class: "stage",
+                    match stage() {
+                        Stage::Chat => rsx! {
+                            ChatStage {
+                                runs: runs_oldest,
+                                busy: busy(),
+                                draft,
+                                phase: phase.clone(),
+                                warm,
+                                agent: agent_name,
+                                elapsed: elapsed.clone(),
+                                notice,
+                                pending: projection.as_ref().map(|p| p.pending_actions.clone()).unwrap_or_default(),
+                                on_send,
+                                on_stop,
+                                on_resolve,
+                            }
+                        },
+                        Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },
+                        Stage::Settings => rsx! {
+                            SettingsStage { profile: profile(), theme: theme(), on_save, on_theme }
+                        },
                     }
                 }
-                main { class: "run",
-                    div { class: "composer",
-                        textarea {
-                            class: "goal",
-                            placeholder: "What should the agent do?",
-                            value: "{input}",
-                            oninput: move |e| input.set(e.value()),
-                        }
-                        button {
-                            class: "primary",
-                            disabled: busy() || handle().is_none(),
-                            onclick: on_submit,
-                            if busy() { "Running…" } else { "Submit" }
-                        }
-                    }
-                    if let Some(e) = boot_error() {
-                        div { class: "row error", "boot failed: {e}" }
-                    }
-                    if let Some(e) = ui_error() {
-                        div { class: "row error", "{e}" }
-                    }
-                    if let Some(p) = projection {
-                        Timeline { projection: p.clone() }
-                        if !p.pending_actions.is_empty() {
-                            PendingActionsBar { records: p.pending_actions.clone(), on_resolve }
-                        }
-                        div { class: "statusline",
-                            "{status_label(p.status)} — {p.turns_used} turns"
-                        }
-                    } else {
-                        div { class: "empty",
-                            "No run yet. Pick an agent, describe the goal, submit."
-                        }
-                    }
+                RightRail {
+                    open: right_open(),
+                    tab: tab(),
+                    agent: current().map(|_| agent_id()),
+                    messages: projection.map(|p| p.messages).unwrap_or_default(),
+                    on_tab: move |t: String| { tab.set(t); persist(); },
                 }
             }
-            if show_settings() {
-                SettingsDrawer {
-                    profile: profile(),
-                    on_save,
-                    on_close: move |_| show_settings.set(false),
-                }
+            AvatarBar {
+                busy: busy(),
+                label: phase,
+                warm,
+                elapsed: busy().then_some(elapsed),
             }
         }
     }

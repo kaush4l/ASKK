@@ -6,12 +6,17 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use askk_core::{fold, ActionId, ActionPolicy, Budgets, RunId, RunProjection, Signal};
+use askk_core::{fold, ActionId, ActionPolicy, Budgets, RunId, RunProjection, Signal, SignalKind};
 use askk_runtime::config::{load_soul, AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
 use askk_runtime::tools::{register_builtins, ToolRegistry};
-use serde_json::{json, Value};
+use serde_json::Value;
+
+#[cfg(any(target_arch = "wasm32", test))]
+use super::profile::profile_from_json;
+use super::profile::profile_to_json;
+pub use super::profile::{AgentCard, ProviderProfileForm};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use askk_runtime::testutil::block_on;
@@ -22,54 +27,6 @@ const CONCISE_MD: &str = include_str!("../../../../agents/skills/concise.md");
 
 /// The single provider profile id agents reference (`provider: default`).
 const PROFILE_ID: &str = "default";
-
-/// What the UI's agent rail shows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentCard {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-}
-
-/// The settings form. BYOK: persisted only to the local store (OPFS in the
-/// browser), sent only to `base_url`.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct ProviderProfileForm {
-    pub base_url: String,
-    pub model: String,
-    pub api_key: String,
-    pub temperature: Option<f32>,
-}
-
-fn profile_to_json(form: &ProviderProfileForm) -> Value {
-    json!({
-        "base_url": form.base_url,
-        "model": form.model,
-        "api_key": form.api_key,
-        "temperature": form.temperature,
-    })
-}
-
-/// Used by the wasm boot path (and tests); host runs start from defaults.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-fn profile_from_json(value: &Value) -> ProviderProfileForm {
-    let text = |key: &str| {
-        value
-            .get(key)
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string()
-    };
-    ProviderProfileForm {
-        base_url: text("base_url"),
-        model: text("model"),
-        api_key: text("api_key"),
-        temperature: value
-            .get("temperature")
-            .and_then(Value::as_f64)
-            .map(|t| t as f32),
-    }
-}
 
 /// The one facade the UI talks to.
 pub struct HarnessHandle {
@@ -82,6 +39,9 @@ pub struct HarnessHandle {
     profile: Rc<RefCell<ProviderProfileForm>>,
     settings: SessionStore,
     current: RefCell<Option<RunId>>,
+    /// Submission order — the Agents forest lists these (plus any delegate
+    /// runs observed in the live buffer) newest-first.
+    known_runs: RefCell<Vec<RunId>>,
 }
 
 impl HarnessHandle {
@@ -101,7 +61,75 @@ impl HarnessHandle {
             .await
             .map_err(|e| e.to_string())?;
         *self.current.borrow_mut() = Some(run_id.clone());
+        self.known_runs.borrow_mut().push(run_id.clone());
         Ok(run_id)
+    }
+
+    /// Stop the current run (GAPS item 13 closed): a parked run lands the
+    /// Interrupted terminal at once; a driving run's cancel token is set and
+    /// checked per loop iteration.
+    pub async fn cancel(&self) {
+        if let Some(run_id) = self.current_run() {
+            let _ = self.session.cancel(&run_id).await;
+        }
+    }
+
+    /// Every run this page session has seen, newest first, each with its
+    /// fold. Delegate runs never submitted through the facade surface via
+    /// their signals in the live buffer.
+    pub fn runs(&self) -> Vec<(RunId, RunProjection)> {
+        let mut ids = self.known_runs.borrow().clone();
+        for signal in self.buffer.borrow().iter() {
+            if !ids.contains(&signal.run_id) {
+                ids.push(signal.run_id.clone());
+            }
+        }
+        ids.iter()
+            .rev()
+            .map(|id| (id.clone(), self.projection(id)))
+            .collect()
+    }
+
+    /// Streamed answer text for a mid-drive run: `LlmDelta` accumulation
+    /// since the last `LlmRequest`, cleared once the full response lands.
+    pub fn draft(&self, run_id: &RunId) -> String {
+        let mut out = String::new();
+        for signal in self.buffer.borrow().iter().filter(|s| &s.run_id == run_id) {
+            match &signal.kind {
+                SignalKind::LlmRequest | SignalKind::LlmResponse { .. } => out.clear(),
+                SignalKind::LlmDelta { text } => out.push_str(text),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// The most recent loop activity for the avatar/draft phase label.
+    pub fn latest_activity(&self, run_id: &RunId) -> Option<SignalKind> {
+        self.buffer
+            .borrow()
+            .iter()
+            .rev()
+            .filter(|s| &s.run_id == run_id)
+            .find(|s| {
+                matches!(
+                    s.kind,
+                    SignalKind::LlmRequest
+                        | SignalKind::ParseOutcome { .. }
+                        | SignalKind::ToolRequested { .. }
+                        | SignalKind::ToolCompleted { .. }
+                )
+            })
+            .map(|s| s.kind.clone())
+    }
+
+    /// UI preference (stage/theme/rails), persisted in the session store.
+    pub async fn get_pref(&self, name: &str) -> Option<Value> {
+        self.settings.pref(name).await.ok().flatten()
+    }
+
+    pub async fn set_pref(&self, name: &str, value: Value) {
+        let _ = self.settings.set_pref(name, value).await;
     }
 
     /// Drive the current run to a terminal or a confirmation pause. The
@@ -210,6 +238,7 @@ fn build_handle(
         profile,
         settings: SessionStore::new(kv),
         current: RefCell::new(None),
+        known_runs: RefCell::new(Vec::new()),
     })
 }
 
@@ -381,12 +410,6 @@ mod tests {
             api_key: "sk-local".into(),
             temperature: Some(0.5),
         };
-        assert_eq!(profile_from_json(&profile_to_json(&form)), form);
-        assert_eq!(
-            profile_from_json(&json!({})),
-            ProviderProfileForm::default()
-        );
-
         block_on(async {
             let handle = host_session().await.unwrap();
             assert_eq!(handle.get_profile(), ProviderProfileForm::default());
@@ -400,6 +423,80 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert_eq!(profile_from_json(&stored), form);
+        });
+    }
+
+    #[test]
+    fn cancel_lands_the_interrupted_terminal_on_a_parked_run() {
+        block_on(async {
+            let handle = host_session().await.unwrap();
+            let run = handle.submit("assistant", "say hello").await.unwrap();
+            handle.cancel().await;
+            assert_eq!(handle.projection(&run).status, RunStatus::Interrupted);
+        });
+    }
+
+    #[test]
+    fn runs_lists_submitted_and_buffer_observed_runs_newest_first() {
+        block_on(async {
+            let handle = host_session().await.unwrap();
+            let first = handle.submit("assistant", "one").await.unwrap();
+            handle.drive().await;
+            // A delegate run seen only through the live buffer.
+            let ghost = RunId::new("delegate-run");
+            handle.buffer.borrow_mut().push(Signal {
+                seq: 1,
+                run_id: ghost.clone(),
+                ts_ms: 0,
+                kind: SignalKind::PhaseEntered {
+                    name: "main".into(),
+                },
+            });
+            let runs = handle.runs();
+            let ids: Vec<&RunId> = runs.iter().map(|(id, _)| id).collect();
+            assert_eq!(ids, vec![&ghost, &first]);
+            assert_eq!(runs[1].1.status, RunStatus::Answered);
+        });
+    }
+
+    #[test]
+    fn draft_accumulates_deltas_and_clears_on_response() {
+        block_on(async {
+            let handle = host_session().await.unwrap();
+            let run_id = RunId::new("r-draft");
+            let push = |kind: SignalKind| {
+                handle.buffer.borrow_mut().push(Signal {
+                    seq: 0,
+                    run_id: run_id.clone(),
+                    ts_ms: 0,
+                    kind,
+                });
+            };
+            push(SignalKind::LlmRequest);
+            push(SignalKind::LlmDelta { text: "hel".into() });
+            push(SignalKind::LlmDelta { text: "lo".into() });
+            assert_eq!(handle.draft(&run_id), "hello");
+            assert_eq!(
+                handle.latest_activity(&run_id),
+                Some(SignalKind::LlmRequest)
+            );
+            push(SignalKind::LlmResponse {
+                text: "hello".into(),
+            });
+            assert_eq!(handle.draft(&run_id), "");
+        });
+    }
+
+    #[test]
+    fn prefs_round_trip_through_the_session_store() {
+        block_on(async {
+            let handle = host_session().await.unwrap();
+            assert_eq!(handle.get_pref("ui").await, None);
+            handle
+                .set_pref("ui", serde_json::json!({"theme": "amber"}))
+                .await;
+            let stored = handle.get_pref("ui").await.unwrap();
+            assert_eq!(stored["theme"], "amber");
         });
     }
 }
