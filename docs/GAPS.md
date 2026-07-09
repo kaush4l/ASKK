@@ -79,3 +79,14 @@ below is accepted, not pending.
 29. `shell` output capture is marker-delimited over a raw TTY: very chatty
     commands (>~30 s or huge output) can hit the exec timeout. Fine for typical
     one-shot commands; stream/pager support is deferred.
+
+## Wave-11 (coding teams) — accepted v1 bounds
+
+30. Offline VM = POSIX/busybox coding only (no python3/node/gcc without `apk add`, which
+    needs guest networking — GAPS 25). The team builds/runs shell projects today.
+31. gemma-4-12B sometimes loops re-issuing write_file instead of progressing to run it
+    (weak agentic follow-through; GAPS 20/26). The tools/contract are correct on every call;
+    clean exec output + an anti-loop prompt line + the phase clamp mitigate. A stronger model
+    converges reliably (verified: full write->run->answer in one build).
+32. edit_file uses busybox awk ENVIRON substring replace (first occurrence). No multi-file
+    refactor / regex edit yet — write_file a fresh version for large changes.
