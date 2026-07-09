@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 
 use askk_core::{ActionRecord, Role, RunProjection, RunStatus};
 
+use crate::host::boot::AgentCard;
 use crate::ui::actions::PendingActionsBar;
 
 pub struct ChatItem {
@@ -62,10 +63,13 @@ pub fn ChatStage(
     phase: String,
     warm: bool,
     agent: String,
+    agents: Vec<AgentCard>,
+    active_agent: String,
     elapsed: String,
     notice: Option<String>,
     pending: Vec<ActionRecord>,
     on_send: EventHandler<String>,
+    on_agent: EventHandler<String>,
     on_stop: EventHandler<()>,
     on_resolve: EventHandler<(String, bool)>,
 ) -> Element {
@@ -121,6 +125,20 @@ pub fn ChatStage(
             }
             if !pending.is_empty() {
                 PendingActionsBar { records: pending, on_resolve }
+            }
+            div { class: "presets agent-picker",
+                for card in agents.iter() {
+                    button {
+                        key: "{card.id}",
+                        class: if active_agent == card.id { "preset on" } else { "preset" },
+                        title: "{card.description}",
+                        onclick: {
+                            let id = card.id.clone();
+                            move |_| on_agent.call(id.clone())
+                        },
+                        "{card.name}"
+                    }
+                }
             }
             div { class: "composer",
                 textarea {

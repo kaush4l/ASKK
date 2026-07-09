@@ -20,6 +20,7 @@ pub struct ProviderProfileForm {
     pub model: String,
     pub api_key: String,
     pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
 }
 
 /// One saved provider profile: a user-chosen name over the form fields.
@@ -83,6 +84,7 @@ pub(super) fn profile_to_json(form: &ProviderProfileForm) -> Value {
         "model": form.model,
         "api_key": form.api_key,
         "temperature": form.temperature,
+        "max_tokens": form.max_tokens,
     })
 }
 
@@ -104,6 +106,10 @@ pub(super) fn profile_from_json(value: &Value) -> ProviderProfileForm {
             .get("temperature")
             .and_then(Value::as_f64)
             .map(|t| t as f32),
+        max_tokens: value
+            .get("max_tokens")
+            .and_then(Value::as_u64)
+            .map(|t| t as u32),
     }
 }
 
@@ -163,6 +169,7 @@ mod tests {
             model: "qwen".into(),
             api_key: "sk-local".into(),
             temperature: Some(0.5),
+            max_tokens: Some(2048),
         };
         assert_eq!(profile_from_json(&profile_to_json(&form)), form);
         assert_eq!(

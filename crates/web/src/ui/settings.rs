@@ -57,6 +57,8 @@ pub fn SettingsStage(
             .map(|t| t.to_string())
             .unwrap_or_default()
     });
+    let mut max_tokens =
+        use_signal(|| active.max_tokens.map(|t| t.to_string()).unwrap_or_default());
     let mut saved = use_signal(|| false);
     let deletable = profiles.get(&name()).is_some();
 
@@ -159,6 +161,15 @@ pub fn SettingsStage(
                     oninput: move |e| { temperature.set(e.value()); saved.set(false); },
                 }
             }
+            label { class: "settings-row",
+                span { class: "settings-label", "Max tokens (blank = 2048)" }
+                input {
+                    class: "field",
+                    placeholder: "2048",
+                    value: "{max_tokens}",
+                    oninput: move |e| { max_tokens.set(e.value()); saved.set(false); },
+                }
+            }
             div { class: "presets",
                 button {
                     class: "save",
@@ -171,6 +182,7 @@ pub fn SettingsStage(
                                 model: model().trim().to_string(),
                                 api_key: api_key().trim().to_string(),
                                 temperature: temperature().trim().parse::<f32>().ok(),
+                                max_tokens: max_tokens().trim().parse::<u32>().ok(),
                             },
                         });
                     },

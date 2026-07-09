@@ -42,6 +42,7 @@ core ← inference ← runtime ← web
 | Named contracts | `crates/core/src/contracts.rs` |
 | TOON | `crates/core/src/toon.rs` |
 | Tool trait + ToolSet | `crates/core/src/tool.rs` |
+| web_search tool (DDG + Wikipedia) | `crates/runtime/src/tools/search.rs` |
 | Actions + policy | `crates/core/src/action.rs` |
 | Signals + fold | `crates/core/src/signal.rs` |
 | Statuses, budgets, snapshots | `crates/core/src/state.rs` |

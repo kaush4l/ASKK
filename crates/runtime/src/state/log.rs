@@ -33,6 +33,10 @@ pub struct SignalLog {
     buf: String,
     next_seq: u64,
     quarantined: u64,
+    /// Set on the first failed segment write: persistence is lost for this
+    /// epoch but signals keep flowing in memory — durability degrades, runs
+    /// never die on a storage fault (observed: broken OPFS quota grants).
+    degraded: bool,
 }
 
 fn seg_path(epoch: u64) -> String {
@@ -90,6 +94,7 @@ impl SignalLog {
             buf: String::new(),
             next_seq,
             quarantined,
+            degraded: false,
         };
 
         // Epoch fence: synthesize terminals for every replayed run that has
@@ -128,7 +133,9 @@ impl SignalLog {
 
     /// Stamp and append one signal: monotonic seq (strictly increasing across
     /// all runs and reopens — per-run monotonic by construction), ts from the
-    /// injected clock, size-verified write.
+    /// injected clock, size-verified write. A failed or short write flips the
+    /// log to degraded (in-memory only) instead of erroring: persistence is
+    /// observability, and losing it must never kill a live run.
     pub async fn append(&mut self, kind: SignalKind, run_id: RunId) -> Result<Signal, StoreError> {
         let signal = Signal {
             seq: self.next_seq,
@@ -137,35 +144,40 @@ impl SignalLog {
             kind,
         };
         let line = serde_json::to_string(&signal)?;
-        let len_before = self.buf.len();
         self.buf.push_str(&line);
         self.buf.push('\n');
-        self.blobs
-            .write(&self.seg_path, self.buf.as_bytes())
-            .await?;
-
-        // Size-verified write: the blob must now be exactly what we hold.
-        let stored = self
-            .blobs
-            .read(&self.seg_path)
-            .await?
-            .map_or(0, |bytes| bytes.len());
-        if stored != self.buf.len() {
-            self.buf.truncate(len_before); // keep buffer honest about the store
-            return Err(StoreError::new(format!(
-                "size-verify failed on {}: wrote {} bytes, store holds {}",
-                self.seg_path,
-                len_before + line.len() + 1,
-                stored
-            )));
+        if !self.degraded {
+            self.degraded = !self.persist().await;
         }
-
         self.next_seq += 1;
         Ok(signal)
     }
 
+    /// Write the segment and size-verify it; false = this store is broken.
+    async fn persist(&self) -> bool {
+        if self
+            .blobs
+            .write(&self.seg_path, self.buf.as_bytes())
+            .await
+            .is_err()
+        {
+            return false;
+        }
+        // Size-verified write: the blob must now be exactly what we hold.
+        matches!(
+            self.blobs.read(&self.seg_path).await,
+            Ok(Some(bytes)) if bytes.len() == self.buf.len()
+        )
+    }
+
     pub fn epoch(&self) -> u64 {
         self.epoch
+    }
+
+    /// True once a segment write has failed; signals still flow in memory
+    /// but will not survive a reload.
+    pub fn degraded(&self) -> bool {
+        self.degraded
     }
 
     /// Lines skipped during replay because they would not parse.
@@ -346,13 +358,16 @@ mod tests {
     }
 
     #[test]
-    fn size_verify_catches_lying_store() {
+    fn broken_store_degrades_but_signals_keep_flowing() {
         block_on(async {
             let blobs: Rc<dyn BlobStore> = Rc::new(LyingBlob {
                 inner: MemBlob::new(),
             });
             let (mut log, _) = open(&blobs).await;
-            let err = log
+            assert!(!log.degraded());
+            // The lying write fails size-verify → degraded, NOT an error;
+            // the run's signals keep coming with monotonic seqs.
+            let first = log
                 .append(
                     SignalKind::RunStarted {
                         agent_id: "a".into(),
@@ -361,8 +376,10 @@ mod tests {
                     run("r1"),
                 )
                 .await
-                .unwrap_err();
-            assert!(err.message.contains("size-verify failed"), "{err}");
+                .unwrap();
+            assert!(log.degraded());
+            let second = log.append(SignalKind::LlmRequest, run("r1")).await.unwrap();
+            assert_eq!(second.seq, first.seq + 1);
         });
     }
 

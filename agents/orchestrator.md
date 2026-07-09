@@ -3,7 +3,7 @@ id: orchestrator
 name: Orchestrator
 description: Breaks a goal into steps and delegates each to a specialist sub-agent.
 enabled: true
-tools: researcher, assistant, calc
+tools: researcher, assistant, calc, web_search, echo, now
 skills: concise
 provider: default
 contract: react

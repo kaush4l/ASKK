@@ -73,6 +73,7 @@ fn profiles_save_activate_delete_and_persist() {
         model: "gemma-4-12B-it-qat-mxfp8".into(),
         api_key: "local".into(),
         temperature: Some(0.5),
+        max_tokens: Some(2048),
     };
     block_on(async {
         let handle = host_session().await.unwrap();

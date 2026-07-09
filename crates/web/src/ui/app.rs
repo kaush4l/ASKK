@@ -95,6 +95,9 @@ pub fn App() -> Element {
         });
         match boot::session(notify).await {
             Ok(h) => {
+                if let Some(w) = h.storage_warning() {
+                    ui_error.set(Some(w));
+                }
                 profiles.set(h.get_profiles());
                 if let Some(first) = h.agents().first() {
                     agent_id.set(first.id.clone());
@@ -162,8 +165,11 @@ pub fn App() -> Element {
         _ => String::new(),
     };
     let elapsed = elapsed_label(run_start());
-    let agent_name = handle()
-        .and_then(|h| h.agents().first().map(|a| a.name.clone()))
+    let agent_cards = handle().map(|h| h.agents()).unwrap_or_default();
+    let agent_name = agent_cards
+        .iter()
+        .find(|a| a.id == agent_id())
+        .map(|a| a.name.clone())
         .unwrap_or_else(|| "agent".into());
 
     let on_pick = move |s: Stage| {
@@ -275,10 +281,13 @@ pub fn App() -> Element {
                                 phase: phase.clone(),
                                 warm,
                                 agent: agent_name,
+                                agents: agent_cards.clone(),
+                                active_agent: agent_id(),
                                 elapsed: elapsed.clone(),
                                 notice,
                                 pending: projection.as_ref().map(|p| p.pending_actions.clone()).unwrap_or_default(),
                                 on_send,
+                                on_agent: move |id: String| agent_id.set(id),
                                 on_stop,
                                 on_resolve,
                             }

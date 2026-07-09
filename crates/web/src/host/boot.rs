@@ -47,11 +47,19 @@ pub struct HarnessHandle {
     /// Submission order — the Agents forest lists these (plus any delegate
     /// runs observed in the live buffer) newest-first.
     known_runs: RefCell<Vec<RunId>>,
+    /// Set when boot fell back to in-memory stores (broken OPFS grant).
+    storage_warning: Option<String>,
 }
 
 impl HarnessHandle {
     pub fn agents(&self) -> Vec<AgentCard> {
         self.cards.clone()
+    }
+
+    /// Non-fatal boot degradation the UI should surface once (e.g. the
+    /// in-memory storage fallback).
+    pub fn storage_warning(&self) -> Option<String> {
+        self.storage_warning.clone()
     }
 
     pub fn current_run(&self) -> Option<RunId> {
@@ -279,21 +287,60 @@ fn build_handle(
         settings: SessionStore::new(kv),
         current: RefCell::new(None),
         known_runs: RefCell::new(Vec::new()),
+        storage_warning: None,
     })
 }
 
-/// Browser bootstrap: OPFS stores, fetch transport, `Date.now` clock,
-/// provider resolved from the persisted profile via the inference registry.
+/// OPFS stores, verified writable end to end (some contexts — incognito,
+/// embedded webviews — grant OPFS but fail `createWritable` with quota
+/// errors at ~KB scale). The probe writes real payloads through both seams
+/// so a broken grant is caught at boot, not mid-run.
 #[cfg(target_arch = "wasm32")]
-pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
-    use super::browser::BrowserHost;
-    use super::fetch::FetchTransport;
+async fn opfs_stores() -> Result<(Rc<dyn KvStore>, Rc<dyn askk_runtime::state::BlobStore>), String>
+{
     use super::opfs::{OpfsBlob, OpfsKv};
-    use askk_inference::{ProviderProfile, ProviderRegistry, Transport};
     use askk_runtime::state::BlobStore;
 
     let kv: Rc<dyn KvStore> = Rc::new(OpfsKv::new().await.map_err(|e| e.to_string())?);
     let blobs: Rc<dyn BlobStore> = Rc::new(OpfsBlob::new().await.map_err(|e| e.to_string())?);
+    kv.set("probe/kv", Value::from("ok"))
+        .await
+        .map_err(|e| e.to_string())?;
+    kv.remove("probe/kv").await.map_err(|e| e.to_string())?;
+    // ponytail: 64 KiB ≈ one busy run's log segment; the REWRITE of the same
+    // path matters — broken grants pass a single write and fail the second.
+    for _ in 0..2 {
+        blobs
+            .write("probe.bin", &vec![0u8; 64 * 1024])
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    blobs.remove("probe.bin").await.map_err(|e| e.to_string())?;
+    Ok((kv, blobs))
+}
+
+/// Browser bootstrap: OPFS stores (in-memory fallback when the browser's
+/// storage grant is broken), fetch transport, `Date.now` clock, provider
+/// resolved from the persisted profile via the inference registry.
+#[cfg(target_arch = "wasm32")]
+pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
+    use super::browser::BrowserHost;
+    use super::fetch::FetchTransport;
+    use askk_inference::{ProviderProfile, ProviderRegistry, Transport};
+    use askk_runtime::state::{BlobStore, MemBlob, MemKv};
+
+    let (kv, blobs, storage_warning): (Rc<dyn KvStore>, Rc<dyn BlobStore>, Option<String>) =
+        match opfs_stores().await {
+            Ok((kv, blobs)) => (kv, blobs, None),
+            Err(e) => (
+                Rc::new(MemKv::new()),
+                Rc::new(MemBlob::new()),
+                Some(format!(
+                    "browser storage unavailable ({e}); running in-memory — profiles and \
+                     history will not survive a reload"
+                )),
+            ),
+        };
     let (log, _replayed) = SignalLog::open(blobs, Box::new(|| js_sys::Date::now() as u64))
         .await
         .map_err(|e| e.to_string())?;
@@ -344,7 +391,9 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
             api_key: form.api_key.clone(),
             model: form.model.clone(),
             temperature: form.temperature,
-            max_tokens: None,
+            // ponytail: 2048 default caps runaway local-model generations
+            // (unbounded TOON loops observed); the profile field overrides.
+            max_tokens: form.max_tokens.or(Some(2048)),
         });
         providers.get(&format!("{profile_id}/{}", form.model))
     });
@@ -352,9 +401,11 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let buffer: Rc<RefCell<Vec<Signal>>> = Rc::new(RefCell::new(Vec::new()));
     let host: Rc<dyn RunHost> = Rc::new(BrowserHost::new(buffer.clone(), notify));
     let (agents, skills, soul) = baked_config()?;
-    build_handle(
+    let mut handle = build_handle(
         agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles,
-    )
+    )?;
+    handle.storage_warning = storage_warning;
+    Ok(handle)
 }
 
 /// Host bootstrap: memory stores + a scripted `MockProvider` — the living

@@ -17,6 +17,22 @@ below is accepted, not pending.
     active run's raw messages (kiln's glass-box rendered-prompt inspector deferred); no model
     profiles UI (one BYOK provider profile).
 
+## Wave-7 live-e2e findings (gemma-4-12B @ omlx, 2026-07-08)
+
+16. Delegation authority narrowing (child = parent ∩ child) means an orchestrator must
+    list every transitive tool or sub-agents run with empty allowlists; orchestrator.md
+    now carries the superset. Revisit if the tool count grows.
+17. Cancel sets the per-iteration token but does not abort an in-flight fetch; a slow
+    local-model prefill (observed: minutes at ~22 prompt-tok/s) keeps the run "busy"
+    until the call returns. Fix = AbortController plumbed through send_stream.
+18. Every LlmDelta notify refolds all runs in the UI; with a fast stream the main
+    thread saturates (long evals time out mid-run). Fix = fold incrementally or
+    throttle notify.
+19. Chat renders both the raw TOON reply and the parsed answer as assistant bubbles
+    (fold keeps both); cosmetic duplication.
+20. Small local models sometimes re-delegate the same goal redundantly; max_tokens
+    default (2048) bounds each turn, prompt diet for nested sheets would help more.
+
 ## Known-minor (wave 4 findings, queue for next iteration)
 
 11. `ProviderRegistry` caches instances per model id with no profile-update invalidation —
