@@ -45,7 +45,7 @@ pub fn react() -> Contract {
             FieldSpec::new(
                 "answer",
                 FieldKind::Str,
-                true,
+                false,
                 "if action is tool: the call on a single line as \
                  {\"name\": \"<tool>\", \"arguments\": {...}} (MCP style; one \
                  object per line to run several in parallel). If action is \
@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn schema_marks_required_fields() {
         let schema = react().schema();
-        assert_eq!(schema["required"], json!(["action", "answer"]));
+        assert_eq!(schema["required"], json!(["action"]));
         assert_eq!(
             schema["properties"]["action"]["enum"],
             json!(["tool", "answer"])

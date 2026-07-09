@@ -162,13 +162,45 @@ impl Contract {
         };
         let map = toon::decode(&reply.text, &self.key_names());
         if !map.is_empty() {
-            return self.finish(map, &reply.text, ParsedFormat::Toon);
+            match self.finish(map, &reply.text, ParsedFormat::Toon) {
+                Ok(parsed) => return Ok(parsed),
+                Err(failure) => {
+                    // Structured parse missed a required field — but if the
+                    // reply carries MCP tool calls (the model dropped them on a
+                    // bare line instead of under `answer:`), that IS the action.
+                    if let Some(parsed) = self.recover_tool_calls(&reply.text) {
+                        return Ok(parsed);
+                    }
+                    return Err(failure);
+                }
+            }
+        }
+        if let Some(parsed) = self.recover_tool_calls(&reply.text) {
+            return Ok(parsed);
         }
         if let Some(failure) = json_failure {
             return Err(failure);
         }
         // Nothing structured found: coerce defaults; required fields decide.
         self.finish(Map::new(), &reply.text, ParsedFormat::Repaired)
+    }
+
+    /// Last-ditch recovery for the react turn: only contracts that carry an
+    /// `action` switch accept bare MCP call objects. Returns a tool-call
+    /// response when the raw reply contains at least one.
+    fn recover_tool_calls(&self, text: &str) -> Option<ParsedResponse> {
+        if !self.fields.iter().any(|f| f.name == "action") {
+            return None;
+        }
+        let calls = calls_from_answer(text);
+        if calls.is_empty() {
+            return None;
+        }
+        Some(ParsedResponse {
+            fields: Map::new(),
+            action: Action::ToolCalls(calls),
+            format: ParsedFormat::Repaired,
+        })
     }
 
     fn key_names(&self) -> Vec<&str> {
@@ -326,9 +358,11 @@ fn calls_from_answer(answer: &str) -> Vec<ToolCall> {
         .collect()
 }
 
-/// Action derivation (react v2): `action` is the switch. `tool` → the
-/// `answer` field IS the call (MCP-style, one per line); anything else →
-/// `answer` is the final text (falling back to the raw reply).
+/// Action derivation (react v2): `action` is the switch. `tool` → the call is
+/// MCP-style (`{"name","arguments"}`), ideally in `answer` but models often
+/// drop it on a bare line — so when `answer` yields nothing we scan the whole
+/// raw reply for the call(s). `answer` (any non-call content) is the final
+/// text, falling back to the raw reply.
 fn derive_action(fields: &Map<String, Value>, raw_text: &str) -> Action {
     let answer = fields
         .get("answer")
@@ -338,6 +372,12 @@ fn derive_action(fields: &Map<String, Value>, raw_text: &str) -> Action {
         .to_string();
     if fields.get("action").and_then(Value::as_str) == Some("tool") {
         let calls = calls_from_answer(&answer);
+        if !calls.is_empty() {
+            return Action::ToolCalls(calls);
+        }
+        // Forgiving fallback: the model put the call on a bare line instead of
+        // under `answer:`. Scan the raw reply for MCP call objects.
+        let calls = calls_from_answer(raw_text);
         if !calls.is_empty() {
             return Action::ToolCalls(calls);
         }

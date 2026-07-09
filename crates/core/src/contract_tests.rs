@@ -36,10 +36,7 @@ fn malformed_reply_missing_required_yields_repair_prompt() {
     let err = contracts::react()
         .parse(&reply("just some prose"))
         .unwrap_err();
-    assert_eq!(
-        err.missing,
-        vec!["action".to_string(), "answer".to_string()]
-    );
+    assert_eq!(err.missing, vec!["action".to_string()]);
     assert!(err.repair_prompt.contains("action"));
     assert!(err.repair_prompt.contains("tool | answer"));
 }
@@ -155,4 +152,20 @@ fn tool_action_with_unparseable_answer_falls_back_to_answer() {
     let text = "action: tool\nanswer: run the thing";
     let parsed = contracts::react().parse(&reply(text)).unwrap();
     assert_eq!(parsed.action, Action::Answer("run the thing".into()));
+}
+
+#[test]
+fn tool_call_on_a_bare_line_without_answer_field_is_recovered() {
+    // The exact live failure: the model wrote `action: tool` then dropped the
+    // MCP call on its own line instead of under `answer:`. v2 must recover it.
+    let text = "observation:\n- need to make a dir\nplan:\n- run mkdir\naction: tool\n{\"name\": \"shell\", \"arguments\": {\"command\": \"mkdir -p /root/project\"}}";
+    let parsed = contracts::react().parse(&reply(text)).unwrap();
+    match parsed.action {
+        Action::ToolCalls(calls) => {
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].name, "shell");
+            assert_eq!(calls[0].args, json!({"command": "mkdir -p /root/project"}));
+        }
+        other => panic!("expected recovered tool call, got {other:?}"),
+    }
 }

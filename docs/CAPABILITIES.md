@@ -62,3 +62,20 @@ Ordered by leverage; each is one increment.
   an MCP card, wrapped as a `dyn Tool` (ADR-019).
 
 Queue item #2 (`vm_exec` over serial) is now DONE as the `shell` tool.
+
+## Wave 11 — coding teams (2026-07-09)
+
+- **Recursive agent folders**: a SUBFOLDER under `agents/` is a team. `agents/coding/`
+  holds `dev-lead` + `programmer` + `reviewer`. build.rs discovers nested `*.md` and
+  bakes/serves them like top-level agents.
+- **Open-swe multi-agent coding team**: `dev-lead` plans → delegates to `programmer` →
+  gates through `reviewer` (critic) in a loop until it passes. Orchestrator routes any
+  "build me X" to `dev-lead`.
+- **bolt.diy single-agent path**: `builder` — one agent, all tools, does the whole job.
+- **Workspace file tools** (rust builtins over the VM shell): `write_file` (quoted-heredoc,
+  byte-exact), `read_file`, `list_files`, `edit_file` (awk substring replace via env). The
+  coders write/inspect/edit files with these and RUN via `shell`.
+
+Two development models coexist: multi-agent (orchestrator → dev-lead → team) and
+single-agent (builder). Both run on the sandboxed VM. Offline VM = POSIX/busybox
+projects today; richer toolchains wait on guest networking (GAPS 25).
