@@ -268,7 +268,16 @@ const api = {
             emulator.serial0_send("root\n");
             record.tail = "";
           }
-          if (/[#%$] $/.test(record.tail)) record.shellSeen = true;
+          if (/[#%$] $/.test(record.tail)) {
+            // First time at a shell prompt: turn OFF input echo AND blank the
+            // heredoc continuation prompt (PS2) so exec() captures ONLY the
+            // command's real stdout — not the echoed command, heredoc `>`
+            // lines, or prompts (which otherwise pollute a tool's observation).
+            if (!record.shellSeen) {
+              emulator.serial0_send("stty -echo 2>/dev/null; PS2=''\n");
+            }
+            record.shellSeen = true;
+          }
         });
         emulator.add_listener("emulator-started", () => {
           if (!record.destroyed) onState("booting");
@@ -302,10 +311,11 @@ const api = {
     return !!(record && record.shellSeen && !record.destroyed);
   },
 
-  // Run ONE command in the guest shell and capture stdout+stderr until a
-  // marker line lands. The marker is assembled from two string halves so the
-  // echoed command never contains it. Resolves with the output (echoed
-  // command line stripped); rejects on timeout or missing VM.
+  // Run ONE command in the guest shell and capture its output until a marker
+  // line lands. The marker is assembled from two string halves so the command
+  // text never contains it. Input echo is off (set at first prompt), so the
+  // captured buffer is ONLY the command's real stdout/stderr — no echoed
+  // command, no heredoc PS2 lines. Rejects on timeout or missing VM.
   exec(hostId, cmd, timeoutMs) {
     const record = vms.get(hostId);
     if (!record || !record.emulator || record.destroyed) {
@@ -321,11 +331,9 @@ const api = {
         if (at < 0) return;
         record.taps.delete(tap);
         clearTimeout(timer);
-        let out = buf.slice(0, at);
-        out = out.slice(0, out.lastIndexOf("\n") + 1); // drop marker's own line prefix
-        // Strip the echoed command (everything up to its first newline).
-        const firstNl = out.indexOf("\n");
-        if (firstNl >= 0) out = out.slice(firstNl + 1);
+        // Everything up to the marker is the command output; trim the trailing
+        // newline that precedes the marker line.
+        let out = buf.slice(0, at).replace(/\r?\n?$/, "");
         const exit = (buf.slice(at + marker.length).match(/^(\d+)/) || [])[1];
         resolve(exit && exit !== "0" ? `${out}\n[exit ${exit}]` : out);
       };
