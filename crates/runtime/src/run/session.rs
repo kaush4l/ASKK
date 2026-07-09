@@ -48,9 +48,10 @@ pub(crate) struct Shared {
     pub(crate) skills: Vec<SkillConfig>,
     pub(crate) registry: ToolRegistry,
     pub(crate) resolver: ProviderResolver,
-    /// `Some` between appends; taken out for the duration of each write so
-    /// no RefCell borrow crosses an await (single writer, enforced loudly).
-    pub(crate) log: RefCell<Option<SignalLog>>,
+    /// Single writer, serialized by an async mutex: concurrent runs and
+    /// parallel tool dispatch queue their appends instead of colliding
+    /// (ADR-015). No RefCell borrow ever crosses an await.
+    pub(crate) log: futures::lock::Mutex<SignalLog>,
     pub(crate) memory: MemoryStore,
     pub(crate) session: SessionStore,
     pub(crate) budgets: Budgets,
@@ -261,7 +262,7 @@ impl RunSession {
                 skills,
                 registry,
                 resolver,
-                log: RefCell::new(Some(log)),
+                log: futures::lock::Mutex::new(log),
                 memory,
                 session,
                 budgets,

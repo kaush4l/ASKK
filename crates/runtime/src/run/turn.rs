@@ -38,16 +38,12 @@ pub(crate) async fn emit(
     run: &mut RunState,
     kind: SignalKind,
 ) -> Result<(), StoreError> {
-    // Take the log out of its cell for the await: no RefCell borrow lives
-    // across the suspend point, and a reentrant append (which would break
-    // the single-writer contract) fails loudly here instead of racing.
-    let mut log = shared
-        .log
-        .borrow_mut()
-        .take()
-        .expect("single writer: reentrant signal append");
+    // The async mutex serializes appends: concurrent runs (parallel drives,
+    // parallel tool dispatch) queue here, preserving the single-writer
+    // contract without a panic path (ADR-015).
+    let mut log = shared.log.lock().await;
     let appended = log.append(kind, run.id.clone()).await;
-    *shared.log.borrow_mut() = Some(log);
+    drop(log);
     let signal: Signal = appended?;
     if let Some(host) = shared.hosts.borrow().get(&run.id) {
         host.on_signal(&signal);

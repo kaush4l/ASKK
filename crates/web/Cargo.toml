@@ -11,6 +11,9 @@ askk-runtime.workspace = true
 serde_json.workspace = true
 dioxus = { version = "0.7", features = ["web"] }
 
+[build-dependencies]
+serde_json.workspace = true
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"

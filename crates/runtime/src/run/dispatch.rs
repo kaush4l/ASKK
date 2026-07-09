@@ -40,10 +40,15 @@ fn resolve_tool(shared: &Shared, run: &RunState, name: &str) -> Option<Rc<dyn To
 
 /// Dispatch the run's queued tool calls: membership check → action gate →
 /// execute / park / deny. Pauses (and returns) on a confirmation.
+///
+/// Consecutive Auto-verdict calls execute CONCURRENTLY (ADR-015): their
+/// `Tool::call` futures are joined, so a multi-call turn fans sub-agents and
+/// I/O-bound tools out in parallel; results absorb in call order.
 pub(crate) async fn dispatch_queued(
     shared: &Shared,
     run: &mut RunState,
 ) -> Result<Dispatch, StoreError> {
+    let mut batch: Vec<(ToolCall, Rc<dyn Tool>)> = Vec::new();
     while !run.queued_calls.is_empty() {
         let call = run.queued_calls.remove(0);
         emit(
@@ -57,6 +62,7 @@ pub(crate) async fn dispatch_queued(
         )
         .await?;
         let Some(tool) = resolve_tool(shared, run, &call.name) else {
+            execute_batch(shared, run, &mut batch).await?;
             let allow = effective_allow(run);
             observe(
                 shared,
@@ -79,9 +85,10 @@ pub(crate) async fn dispatch_queued(
         match verdict {
             Verdict::Auto => {
                 emit(shared, run, SignalKind::ActionVerdict { record }).await?;
-                execute_tool(shared, run, &call, &tool).await?;
+                batch.push((call, tool));
             }
             Verdict::NeedsConfirmation if run.depth > 0 => {
+                execute_batch(shared, run, &mut batch).await?;
                 // A delegated run cannot pause its parent's tool call; the
                 // confirmation degrades to a first-class denial observation.
                 let content = format!(
@@ -97,6 +104,7 @@ pub(crate) async fn dispatch_queued(
                 observe(shared, run, content).await?;
             }
             Verdict::NeedsConfirmation => {
+                execute_batch(shared, run, &mut batch).await?;
                 run.awaiting = Some(record.proposal.id.clone());
                 emit(
                     shared,
@@ -111,6 +119,7 @@ pub(crate) async fn dispatch_queued(
                 return Ok(Dispatch::Paused);
             }
             Verdict::Denied { .. } => {
+                execute_batch(shared, run, &mut batch).await?;
                 let content = record
                     .result
                     .as_ref()
@@ -121,7 +130,50 @@ pub(crate) async fn dispatch_queued(
             }
         }
     }
+    execute_batch(shared, run, &mut batch).await?;
     Ok(Dispatch::Done)
+}
+
+/// Run the accumulated Auto-verdict batch: one call executes inline; several
+/// run their futures concurrently (join_all), then absorb sequentially in
+/// call order (deterministic signals; a shared state slice = last writer
+/// wins, same as the sequential path).
+async fn execute_batch(
+    shared: &Shared,
+    run: &mut RunState,
+    batch: &mut Vec<(ToolCall, Rc<dyn Tool>)>,
+) -> Result<(), StoreError> {
+    if batch.len() <= 1 {
+        if let Some((call, tool)) = batch.pop() {
+            execute_tool(shared, run, &call, &tool).await?;
+        }
+        return Ok(());
+    }
+    let calls: Vec<(ToolCall, Rc<dyn Tool>)> = std::mem::take(batch);
+    let jobs = calls.iter().map(|(call, tool)| {
+        let mut ctx = make_ctx(run);
+        async move {
+            let result = tool.call(call.args.clone(), &mut ctx).await;
+            (result, ctx)
+        }
+    });
+    let outcomes = futures::future::join_all(jobs).await;
+    for ((call, _), (result, ctx)) in calls.iter().zip(outcomes) {
+        absorb_result(shared, run, call, result, ctx).await?;
+    }
+    Ok(())
+}
+
+/// The per-call ToolCtx: the run's state slices + the delegation slices.
+fn make_ctx(run: &RunState) -> ToolCtx {
+    let mut ctx = ToolCtx::default();
+    for (key, value) in &run.snapshot.slices {
+        ctx.set_slice(key.clone(), value.clone());
+    }
+    ctx.set_slice(DEPTH_SLICE, json!(run.depth));
+    ctx.set_slice(PARENT_TOOLS_SLICE, json!(effective_allow(run)));
+    ctx.set_slice(PARENT_RUN_SLICE, json!(run.id.0));
+    ctx
 }
 
 /// Execute one gated-through call. Tool errors become observations — they
@@ -132,15 +184,19 @@ async fn execute_tool(
     call: &ToolCall,
     tool: &Rc<dyn Tool>,
 ) -> Result<(), StoreError> {
-    let mut ctx = ToolCtx::default();
-    for (key, value) in &run.snapshot.slices {
-        ctx.set_slice(key.clone(), value.clone());
-    }
-    ctx.set_slice(DEPTH_SLICE, json!(run.depth));
-    ctx.set_slice(PARENT_TOOLS_SLICE, json!(effective_allow(run)));
-    ctx.set_slice(PARENT_RUN_SLICE, json!(run.id.0));
+    let mut ctx = make_ctx(run);
     let result = tool.call(call.args.clone(), &mut ctx).await;
+    absorb_result(shared, run, call, result, ctx).await
+}
 
+/// Lift written slices back, land ToolCompleted, append the observation.
+async fn absorb_result(
+    shared: &Shared,
+    run: &mut RunState,
+    call: &ToolCall,
+    result: askk_core::ToolResult,
+    ctx: ToolCtx,
+) -> Result<(), StoreError> {
     // Lift back every slice the ctx now holds (ADR-005): ALL tool-written
     // keys — pre-declared or brand new — emit StateWritten on change.
     for key in ctx.slice_keys() {

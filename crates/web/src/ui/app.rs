@@ -191,9 +191,8 @@ pub fn App() -> Element {
     };
     let on_send = move |goal: String| {
         let Some(h) = handle() else { return };
-        if busy() {
-            return;
-        }
+        // No busy gate: every send is its own run; runs drive in parallel
+        // (switch agent and send again while one is still working).
         let agent = agent_id();
         busy.set(true);
         ui_error.set(None);
@@ -201,12 +200,18 @@ pub fn App() -> Element {
         spawn(async move {
             match h.submit(&agent, &goal).await {
                 Ok(run_id) => {
-                    current.set(Some(run_id));
-                    h.drive().await;
+                    current.set(Some(run_id.clone()));
+                    h.drive_run(&run_id).await;
+                    // Only the run still in chat focus clears the busy pulse.
+                    if current() == Some(run_id) {
+                        busy.set(false);
+                    }
                 }
-                Err(e) => ui_error.set(Some(e)),
+                Err(e) => {
+                    ui_error.set(Some(e));
+                    busy.set(false);
+                }
             }
-            busy.set(false);
             let mut counter = refold;
             counter += 1;
         });
@@ -353,6 +358,7 @@ pub fn App() -> Element {
                             }
                         },
                         Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },
+                        Stage::Vm => rsx! { crate::ui::vm::VmStage {} },
                         Stage::Settings => rsx! {
                             SettingsStage {
                                 key: "{profiles().active}",

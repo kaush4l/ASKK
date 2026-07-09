@@ -498,3 +498,56 @@ fn replay_fold_matches_final_projection() {
         assert_eq!(fold(run_signals.into_iter()), live);
     });
 }
+
+#[test]
+fn parallel_calls_fan_out_two_delegates() {
+    block_on(async {
+        let f = fixture(&[PARENT, WORKER, HELPER]).await;
+        // One turn, two delegate calls: they execute concurrently (join_all),
+        // each nested run pops its own scripted reply.
+        f.mock.push_text(
+            r#"{"action": "tool", "calls": [
+                {"tool": "worker", "args": {"goal": "part one"}},
+                {"tool": "helper", "args": {"goal": "part two"}}
+            ]}"#,
+        );
+        f.mock.push_text("action: answer\nresponse: one done");
+        f.mock.push_text("action: answer\nresponse: two done");
+        f.mock
+            .push_text("action: answer\nresponse: both parts done");
+        let run = f.session.submit("parent", "do both parts").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("both parts done"));
+
+        let signals = f.host.signals();
+        let started: Vec<String> = signals
+            .iter()
+            .filter_map(|s| match &s.kind {
+                SignalKind::RunStarted { agent_id, .. } => Some(agent_id.clone()),
+                _ => None,
+            })
+            .collect();
+        // Parent's own RunStarted precedes host install (GAPS 12); the two
+        // nested fan-out runs both started, in call order.
+        assert_eq!(started, vec!["worker", "helper"]);
+        // Parent absorbed BOTH sub-results as observations, in call order.
+        let parent_obs: Vec<String> = signals
+            .iter()
+            .filter(|s| s.run_id == run)
+            .filter_map(|s| match &s.kind {
+                SignalKind::ObservationAppended { text } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(parent_obs.len(), 2);
+        assert!(parent_obs.iter().all(|o| o.contains("Result (untrusted)")));
+        // Both tool calls completed ok on the parent run.
+        let completed_ok = signals
+            .iter()
+            .filter(|s| s.run_id == run)
+            .filter(|s| matches!(s.kind, SignalKind::ToolCompleted { ok: true, .. }))
+            .count();
+        assert_eq!(completed_ok, 2);
+    });
+}

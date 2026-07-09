@@ -21,11 +21,10 @@ pub use super::profile::{AgentCard, NamedProfile, ProfileSet, ProviderProfileFor
 #[cfg(not(target_arch = "wasm32"))]
 pub use askk_runtime::testutil::block_on;
 
-const SOUL_MD: &str = include_str!("../../../../agents/soul.md");
-const ASSISTANT_MD: &str = include_str!("../../../../agents/assistant.md");
-const RESEARCHER_MD: &str = include_str!("../../../../agents/researcher.md");
-const ORCHESTRATOR_MD: &str = include_str!("../../../../agents/orchestrator.md");
-const CONCISE_MD: &str = include_str!("../../../../agents/skills/concise.md");
+// The agents/ FOLDER is the config: build.rs embeds every `agents/*.md` it
+// finds (manifest.json fixes the order) — adding an agent is adding a file.
+// `AGENT_FILES`, `SKILL_FILES`, `SOUL_MD`:
+include!(concat!(env!("OUT_DIR"), "/agents_gen.rs"));
 
 /// The single provider id agents reference (`provider: default`); which
 /// saved profile it points at is the profile set's `active` pick.
@@ -151,7 +150,14 @@ impl HarnessHandle {
         let Some(run_id) = self.current_run() else {
             return;
         };
-        let _ = self.session.drive(&run_id, self.host.clone()).await;
+        self.drive_run(&run_id).await;
+    }
+
+    /// Drive a SPECIFIC run: parallel submits each spawn their own drive,
+    /// so several runs progress concurrently (ADR-015; the signal log
+    /// serializes their appends).
+    pub async fn drive_run(&self, run_id: &RunId) {
+        let _ = self.session.drive(run_id, self.host.clone()).await;
     }
 
     /// Resolve a parked confirmation on the current run.
@@ -227,19 +233,59 @@ impl HarnessHandle {
 }
 
 fn baked_config() -> Result<(Vec<AgentConfig>, Vec<SkillConfig>, String), String> {
-    let agents = vec![
-        AgentConfig::from_markdown("agents/assistant.md", ASSISTANT_MD)
-            .map_err(|e| e.to_string())?,
-        AgentConfig::from_markdown("agents/researcher.md", RESEARCHER_MD)
-            .map_err(|e| e.to_string())?,
-        AgentConfig::from_markdown("agents/orchestrator.md", ORCHESTRATOR_MD)
-            .map_err(|e| e.to_string())?,
-    ];
-    let skills = vec![
-        SkillConfig::from_markdown("agents/skills/concise.md", CONCISE_MD)
-            .map_err(|e| e.to_string())?,
-    ];
+    let agents = AGENT_FILES
+        .iter()
+        .map(|(path, text)| AgentConfig::from_markdown(path, text).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let skills = SKILL_FILES
+        .iter()
+        .map(|(path, text)| SkillConfig::from_markdown(path, text).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
     Ok((agents, skills, load_soul(SOUL_MD)))
+}
+
+/// Runtime config override: fetch `agents/manifest.json` from the served
+/// site root and every agent file it lists. On a real static host this
+/// makes the deployed folder the live config — drop in an agent.md, reload,
+/// no rebuild. Dev servers answer unknown paths with the SPA fallback, so
+/// any parse failure falls back to the baked set silently.
+#[cfg(target_arch = "wasm32")]
+async fn fetched_config() -> Option<(Vec<AgentConfig>, Vec<SkillConfig>, String)> {
+    use super::fetch::fetch_text;
+
+    let manifest: Value = serde_json::from_str(&fetch_text("agents/manifest.json").await.ok()?)
+        .ok()
+        .filter(Value::is_object)?;
+    let mut agents = Vec::new();
+    for name in manifest
+        .get("agents")?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+    {
+        let path = format!("agents/{name}");
+        let text = fetch_text(&path).await.ok()?;
+        agents.push(AgentConfig::from_markdown(&path, &text).ok()?);
+    }
+    if agents.is_empty() {
+        return None;
+    }
+    let (_, baked_skills, baked_soul) = baked_config().ok()?;
+    let mut skills = baked_skills;
+    if let Some(list) = manifest.get("skills").and_then(Value::as_array) {
+        let mut fetched = Vec::new();
+        for name in list.iter().filter_map(Value::as_str) {
+            let path = format!("agents/{name}");
+            let text = fetch_text(&path).await.ok()?;
+            fetched.push(SkillConfig::from_markdown(&path, &text).ok()?);
+        }
+        skills = fetched;
+    }
+    let soul = match manifest.get("soul").and_then(Value::as_str) {
+        Some(name) => load_soul(&fetch_text(&format!("agents/{name}")).await.ok()?),
+        None => baked_soul,
+    };
+    Some((agents, skills, soul))
 }
 
 #[allow(clippy::too_many_arguments)] // ponytail: one private assembly seam
@@ -400,7 +446,10 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
 
     let buffer: Rc<RefCell<Vec<Signal>>> = Rc::new(RefCell::new(Vec::new()));
     let host: Rc<dyn RunHost> = Rc::new(BrowserHost::new(buffer.clone(), notify));
-    let (agents, skills, soul) = baked_config()?;
+    let (agents, skills, soul) = match fetched_config().await {
+        Some(config) => config,
+        None => baked_config()?,
+    };
     let mut handle = build_handle(
         agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles,
     )?;

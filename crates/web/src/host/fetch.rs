@@ -4,7 +4,7 @@
 //! a `TransportError`.
 
 #[cfg(target_arch = "wasm32")]
-pub use imp::FetchTransport;
+pub use imp::{fetch_text, FetchTransport};
 
 #[cfg(target_arch = "wasm32")]
 mod imp {
@@ -71,6 +71,22 @@ mod imp {
                 .as_string()
                 .unwrap_or_default(),
         )
+    }
+
+    /// Plain same-origin GET → body text; non-2xx is an error. Used by boot
+    /// to fetch runtime config (agents/manifest.json + agent files).
+    pub async fn fetch_text(url: &str) -> Result<String, String> {
+        let req = HttpRequest {
+            method: "GET".into(),
+            url: url.into(),
+            headers: Vec::new(),
+            body: String::new(),
+        };
+        let (response, _) = do_fetch(&req).await.map_err(|e| format!("{e:?}"))?;
+        if !(200..300).contains(&response.status()) {
+            return Err(format!("GET {url}: status {}", response.status()));
+        }
+        read_text(&response).await.map_err(|e| format!("{e:?}"))
     }
 
     #[derive(Default)]

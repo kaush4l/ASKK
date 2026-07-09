@@ -42,6 +42,7 @@ version = "0.1.0"
 dependencies = [
  "askk-core",
  "askk-inference",
+ "futures",
  "serde",
  "serde_json",
 ]

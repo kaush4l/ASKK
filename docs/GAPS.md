@@ -52,3 +52,15 @@ below is accepted, not pending.
     misses it mid-drive (fold tolerates; full stream appears once the run parks).
 14. Contract `version` rides the wire but has no parse-time mismatch check (risk-register
     row 12 mitigation is aspirational until contracts actually evolve).
+
+## Wave-9 (parallel + VM) — accepted v1 bounds
+
+24. The chat busy pulse tracks the FOCUSED run only; parallel runs' progress lives in the
+    Agents view. Per-run cancel is Stop-on-current only.
+25. VM: no guest networking (apk add needs a relay) and no persistent rootfs (state
+    save/restore exists in the bundle API, unwired). `vm_exec` tool = queue item #2 in
+    docs/CAPABILITIES.md.
+26. Small models (gemma-12B) re-delegate the same sub-goal redundantly inside the
+    orchestrator's dispatch phase (GAPS 20 under phases); the per-phase turn clamp bounds
+    it. The `calls` parallel list is proven by deterministic tests; live models use it
+    opportunistically.

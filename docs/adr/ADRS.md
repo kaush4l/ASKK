@@ -83,3 +83,30 @@ re-exports its env; driving Kokoro through v4 means hand-rolling phonemization +
 Rust-native inference (candle/ort-rs — heavier than the proven JS path, ADR-010 already blesses
 vendored JS for heavy surfaces). Deferred: module-worker offload, VAD/wake-word, sentence-level
 TTS streaming, webgpu (jsep wasm tier).
+
+## ADR-015 (A) — Parallel agents = async concurrency on one thread, not workers
+Wave 9 goal: parallel agents. Chosen mechanics: (1) the signal log's single-writer contract
+is kept by an async mutex (`futures::lock::Mutex<SignalLog>`) — concurrent appends queue
+instead of panicking; (2) a turn's consecutive Auto-verdict tool calls execute via
+`join_all` (the react contract gained an optional `calls` list → `Action::ToolCalls[N]`),
+so an orchestrator fans sub-agents out in ONE turn and absorbs results in call order;
+(3) the UI drives each submitted run in its own task (`drive_run(run_id)`), so N top-level
+runs progress at once. Alternatives rejected: worker-per-agent (old-ASKK phase-0 verdict —
+LLM runs are I/O-bound, join_all already overlaps the waits; workers buy ~0 until local
+in-browser inference dominates), buffered per-run signal queues merged post-hoc (breaks the
+live stream fold + seq ordering). Failed-JSON-rung fallthrough to TOON rides along: a
+`calls` item's `{"tool": ...}` fragment must not shadow surrounding TOON lines.
+
+## ADR-016 (A) — VM = vendored v86; alpine boots bzimage+initrd with the ISO as cdrom
+Real x86 Linux in the browser via vendored v86 (`assets/vm/`, sources `scripts/vm/` — the
+bundle stages its own MATCHING v86.wasm from the installed npm package). Two committed
+images: Buildroot (v86 stock serial CD, seconds) and Alpine 3.24.1 x86 virt (sha256-verified
+from dl-cdn). Alpine's stock isolinux only talks to VGA, so the serial-console path boots the
+ISO's OWN kernel+initramfs directly (`imageType: bzimage` + `initrdUrl`) with
+`console=ttyS0` and attaches the full ISO as a SECOND drive (`cdromUrl`) — the initramfs
+finds apks/modloop on the cdrom and OpenRC lands on a serial login. This cracked the old
+repo's wall (docker-baked state images were thought required). Same-origin assets kill the
+CORS wall; Cache Storage keeps multi-MB images one-download-per-deploy. Alternatives
+rejected: WebVM/CheerpX (closed licensing, hosted-only constraints), copy.sh state images
+(no CORS), in-emulator `setup-alpine` disk installs (no persistent hda writeback yet).
+Deferred: guest networking (relay), `vm_exec` tool over serial, persistent rootfs.

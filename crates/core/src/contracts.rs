@@ -48,6 +48,14 @@ pub fn react() -> Contract {
                 "JSON object of tool arguments when action is tool",
             ),
             FieldSpec::new(
+                "calls",
+                FieldKind::List,
+                false,
+                "to run SEVERAL tools at once (they execute in parallel): one \
+                 JSON object per item, {\"tool\": name, \"args\": {...}}; \
+                 overrides tool/args",
+            ),
+            FieldSpec::new(
                 "response",
                 FieldKind::Str,
                 false,

@@ -151,7 +151,9 @@ pub fn ChatStage(
                 if busy {
                     button { class: "send stop", onclick: move |_| on_stop.call(()), "Stop" }
                 }
-                button { class: "send", disabled: busy, onclick: send, "Send" }
+                // Always enabled: a send while another run drives starts a
+                // PARALLEL run (pick a different agent — or the same one).
+                button { class: "send", onclick: send, "Send" }
             }
         }
     }

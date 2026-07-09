@@ -1,0 +1,5 @@
+{
+  "agents": ["assistant.md", "researcher.md", "orchestrator.md"],
+  "skills": ["skills/concise.md"],
+  "soul": "soul.md"
+}
