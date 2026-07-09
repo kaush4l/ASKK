@@ -124,12 +124,34 @@ pub fn RightRail(
 /// with the elapsed clock on the right. Reduced motion → the dot goes
 /// static via CSS; the label still carries the meaning.
 #[component]
-pub fn AvatarBar(busy: bool, label: String, warm: bool, elapsed: Option<String>) -> Element {
+#[allow(clippy::too_many_arguments)] // ponytail: the bar's full control surface
+pub fn AvatarBar(
+    busy: bool,
+    label: String,
+    warm: bool,
+    elapsed: Option<String>,
+    recording: bool,
+    speech_busy: bool,
+    on_mic: EventHandler<()>,
+    on_speak: EventHandler<()>,
+) -> Element {
     rsx! {
         div { class: "avatar-bar",
             div { class: "avatar-controls",
-                button { class: "icon-btn", title: "Mic input (coming soon)", disabled: true, "🎙" }
-                button { class: "icon-btn", title: "Read aloud (coming soon)", disabled: true, "🔊" }
+                button {
+                    class: if recording { "icon-btn rec" } else { "icon-btn" },
+                    title: if recording { "Stop and transcribe" } else { "Speak to the agent" },
+                    disabled: speech_busy && !recording,
+                    onclick: move |_| on_mic.call(()),
+                    "🎙"
+                }
+                button {
+                    class: "icon-btn",
+                    title: "Read the last answer aloud",
+                    disabled: speech_busy,
+                    onclick: move |_| on_speak.call(()),
+                    "🔊"
+                }
             }
             div { class: "activity-center",
                 if busy {

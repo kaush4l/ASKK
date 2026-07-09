@@ -8,6 +8,7 @@
 use dioxus::prelude::*;
 
 use crate::host::boot::{NamedProfile, ProfileSet, ProviderProfileForm};
+use crate::host::speech::SpeechConfig;
 
 /// Mirrors the `[data-theme]` blocks in `main.css` — adding a theme = one
 /// CSS block + one row here.
@@ -32,13 +33,16 @@ const PRESETS: &[(&str, &str)] = &[
 ];
 
 #[component]
+#[allow(clippy::too_many_arguments)] // ponytail: the stage's full data surface
 pub fn SettingsStage(
     profiles: ProfileSet,
     theme: String,
+    speech: SpeechConfig,
     on_save: EventHandler<NamedProfile>,
     on_select: EventHandler<String>,
     on_delete: EventHandler<String>,
     on_theme: EventHandler<String>,
+    on_speech: EventHandler<SpeechConfig>,
 ) -> Element {
     let active = profiles.active_form();
     let mut name = use_signal(|| {
@@ -198,6 +202,46 @@ pub fn SettingsStage(
             }
             p { class: "hint",
                 "Bring your own key: profiles stay in this browser's private storage (OPFS) and each key is sent only to its base URL. The highlighted profile is the one runs use. Remote servers must allow this origin via CORS."
+            }
+            div { class: "settings-title", "Speech (HF model ids, blank = default)" }
+            label { class: "settings-row",
+                span { class: "settings-label", "STT model (default onnx-community/whisper-tiny.en)" }
+                input {
+                    class: "field",
+                    placeholder: "onnx-community/whisper-small",
+                    value: "{speech.stt_model}",
+                    oninput: {
+                        let speech = speech.clone();
+                        move |e: Event<FormData>| on_speech.call(SpeechConfig { stt_model: e.value(), ..speech.clone() })
+                    },
+                }
+            }
+            label { class: "settings-row",
+                span { class: "settings-label", "TTS model (default onnx-community/Kokoro-82M-v1.0-ONNX)" }
+                input {
+                    class: "field",
+                    placeholder: "onnx-community/Kokoro-82M-v1.0-ONNX",
+                    value: "{speech.tts_model}",
+                    oninput: {
+                        let speech = speech.clone();
+                        move |e: Event<FormData>| on_speech.call(SpeechConfig { tts_model: e.value(), ..speech.clone() })
+                    },
+                }
+            }
+            label { class: "settings-row",
+                span { class: "settings-label", "TTS voice (default af_heart)" }
+                input {
+                    class: "field",
+                    placeholder: "af_heart",
+                    value: "{speech.voice}",
+                    oninput: {
+                        let speech = speech.clone();
+                        move |e: Event<FormData>| on_speech.call(SpeechConfig { voice: e.value(), ..speech.clone() })
+                    },
+                }
+            }
+            p { class: "hint",
+                "Models download from the Hugging Face hub on first use and cache in this browser. Speech runs fully locally (ONNX wasm) — nothing leaves the machine."
             }
         }
     }

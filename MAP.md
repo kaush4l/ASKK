@@ -43,6 +43,8 @@ core ← inference ← runtime ← web
 | TOON | `crates/core/src/toon.rs` |
 | Tool trait + ToolSet | `crates/core/src/tool.rs` |
 | web_search tool (DDG + Wikipedia) | `crates/runtime/src/tools/search.rs` |
+| Speech seam (STT/TTS, HF model ids) | `crates/web/src/host/speech.rs` |
+| Speech engine bundles (source) | `scripts/speech/{stt,tts}-entry.js` + `build.sh` |
 | Actions + policy | `crates/core/src/action.rs` |
 | Signals + fold | `crates/core/src/signal.rs` |
 | Statuses, budgets, snapshots | `crates/core/src/state.rs` |

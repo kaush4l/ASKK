@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 
 use crate::host::boot::{self, HarnessHandle, NamedProfile, ProfileSet};
 use crate::host::dom;
+use crate::host::speech::{self, SpeechConfig};
 use crate::ui::agents::AgentsStage;
 use crate::ui::chat::ChatStage;
 use crate::ui::manifest::Stage;
@@ -68,6 +69,9 @@ pub fn App() -> Element {
     let mut agent_id = use_signal(String::new);
     let mut profiles = use_signal(ProfileSet::default);
     let mut busy = use_signal(|| false);
+    let mut recording = use_signal(|| false);
+    let mut speech_busy = use_signal(|| false);
+    let mut speech_cfg = use_signal(SpeechConfig::default);
     let mut run_start = use_signal(|| 0u64);
     // Persisted UI prefs (kiln appstate): stage, theme, rails, inspector tab.
     let mut stage = use_signal(|| Stage::Chat);
@@ -101,6 +105,9 @@ pub fn App() -> Element {
                 profiles.set(h.get_profiles());
                 if let Some(first) = h.agents().first() {
                     agent_id.set(first.id.clone());
+                }
+                if let Some(v) = h.get_pref("speech").await {
+                    speech_cfg.set(SpeechConfig::from_json(&v));
                 }
                 if let Some(prefs) = h.get_pref("ui").await {
                     if let Some(t) = prefs.get("theme").and_then(Value::as_str) {
@@ -243,6 +250,59 @@ pub fn App() -> Element {
             profiles.set(h.get_profiles());
         });
     };
+    let on_speech_cfg = move |cfg: SpeechConfig| {
+        let Some(h) = handle() else { return };
+        speech_cfg.set(cfg.clone());
+        spawn(async move { h.set_pref("speech", cfg.to_json()).await });
+    };
+    // Mic = push-to-talk: first click records, second click transcribes and
+    // sends the transcript to the active agent (RealtimeSTT's text() shape).
+    let on_mic = move |_| {
+        if recording() {
+            recording.set(false);
+            speech_busy.set(true);
+            spawn(async move {
+                let mut send = on_send;
+                match speech::record_stop_transcribe(&speech_cfg().stt_model).await {
+                    Ok(text) if !text.is_empty() => send(text),
+                    Ok(_) => ui_error.set(Some("mic heard nothing transcribable".into())),
+                    Err(e) => ui_error.set(Some(e)),
+                }
+                speech_busy.set(false);
+            });
+        } else {
+            spawn(async move {
+                match speech::record_start().await {
+                    Ok(()) => recording.set(true),
+                    Err(e) => ui_error.set(Some(e)),
+                }
+            });
+        }
+    };
+    // Speaker = read the newest answer aloud (kokoro by default).
+    let on_speak = move |_| {
+        let Some(h) = handle() else { return };
+        speech_busy.set(true);
+        spawn(async move {
+            let answer = h.runs().into_iter().find_map(|(_, proj)| {
+                proj.messages
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == askk_core::Role::Assistant)
+                    .map(|m| m.content.clone())
+            });
+            match answer {
+                Some(text) => {
+                    let cfg = speech_cfg();
+                    if let Err(e) = speech::speak(&text, &cfg.tts_model, &cfg.voice).await {
+                        ui_error.set(Some(e));
+                    }
+                }
+                None => ui_error.set(Some("nothing to read yet".into())),
+            }
+            speech_busy.set(false);
+        });
+    };
 
     // Hoisted so the Style element's props stay stable across renders.
     let font_face = use_hook(font_css);
@@ -298,10 +358,12 @@ pub fn App() -> Element {
                                 key: "{profiles().active}",
                                 profiles: profiles(),
                                 theme: theme(),
+                                speech: speech_cfg(),
                                 on_save: on_save_profile,
                                 on_select: on_select_profile,
                                 on_delete: on_delete_profile,
                                 on_theme,
+                                on_speech: on_speech_cfg,
                             }
                         },
                     }
@@ -319,6 +381,10 @@ pub fn App() -> Element {
                 label: phase,
                 warm,
                 elapsed: busy().then_some(elapsed),
+                recording: recording(),
+                speech_busy: speech_busy(),
+                on_mic,
+                on_speak,
             }
         }
     }

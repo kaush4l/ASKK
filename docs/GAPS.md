@@ -33,6 +33,17 @@ below is accepted, not pending.
 20. Small local models sometimes re-delegate the same goal redundantly; max_tokens
     default (2048) bounds each turn, prompt diet for nested sheets would help more.
 
+## Speech (wave 8, ADR-014) — accepted v1 bounds
+
+21. Whisper q8 ONNX exports trip a DequantizeLinear bug in onnxruntime-web 1.26 (wasm);
+    the STT default dtype is pinned `{encoder fp32, decoder q4}`. Retest q8 on the next
+    transformers.js/ort bump.
+22. Speech engines run on the main thread — long transcriptions/synthesis block the UI.
+    Old ASKK proved the module-worker split; do it when it hurts.
+23. Mic is push-to-talk only (no VAD/wake-word — RealtimeSTT's two-tier VAD is the
+    reference when wanted); kokoro voice .bins fetch from a hardcoded HF URL, so TTS
+    voices are online-first (weights themselves obey localModelPath).
+
 ## Known-minor (wave 4 findings, queue for next iteration)
 
 11. `ProviderRegistry` caches instances per model id with no profile-update invalidation —

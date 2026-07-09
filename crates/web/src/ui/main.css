@@ -259,6 +259,8 @@ input, textarea { font: inherit; }
 }
 .icon-btn:hover { background: var(--control-bg-hover); }
 .icon-btn:active { transform: scale(0.95); }
+.icon-btn.rec { color: var(--on-accent); background: var(--warm, #c96f4a); border-color: transparent; animation: pulse 1.2s ease-in-out infinite; }
+.icon-btn:disabled { opacity: 0.45; pointer-events: none; }
 .icon-btn.on { background: var(--control-bg-hover); border-color: var(--border); }
 .ready-pill {
   display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px;

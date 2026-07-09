@@ -8,3 +8,4 @@ pub mod dom;
 pub mod fetch;
 pub mod opfs;
 pub mod profile;
+pub mod speech;

@@ -68,3 +68,18 @@ doesn't exist fails CI); single-concept file names (`sheet.rs`, `contract.rs`, `
 kiln's `engine.js`/`responses.js`/`fold.js` idiom); UI components import only the wire
 (`askk-core`) — `runtime` is reachable solely from the worker/bootstrap glue in
 `crates/web/src/host/`, mirroring kiln's "app imports only contracts" edge.
+
+## ADR-014 (A) — Speech = HF-model-id-switched engine modules behind a one-call seam
+Pattern lifted from RealtimeTTS/RealtimeSTT code (docs/findings/speech-recon.md): the engine
+contract is one call per direction — `transcribe(f32 mono 16k) -> text`, `speak(text)` — and
+the model id is an opaque string only the engine interprets; swapping whisper-tiny→small or
+kokoro→any compatible ONNX id changes zero pipeline code. Engines are vendored bun bundles
+(`assets/speech/askk-{stt,tts}.js`, sources in `scripts/speech/`) that lazy-load on first use,
+download models from the HF hub via transformers.js (v4 for STT; kokoro-js's pinned v3 for
+TTS — two ort runtimes, each with its own staged same-origin wasm pair, URLs passed explicitly
+because dioxus hashes asset names). Defaults = smallest run-anywhere models: whisper-tiny.en +
+Kokoro-82M q8. Alternatives rejected: one shared transformers version (kokoro pins v3 and
+re-exports its env; driving Kokoro through v4 means hand-rolling phonemization + voices);
+Rust-native inference (candle/ort-rs — heavier than the proven JS path, ADR-010 already blesses
+vendored JS for heavy surfaces). Deferred: module-worker offload, VAD/wake-word, sentence-level
+TTS streaming, webgpu (jsep wasm tier).
