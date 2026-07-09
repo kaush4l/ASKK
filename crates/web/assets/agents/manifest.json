@@ -1,5 +1,13 @@
 {
-  "agents": ["assistant.md", "researcher.md", "orchestrator.md"],
+  "agents": [
+    "assistant.md",
+    "researcher.md",
+    "builder.md",
+    "coding/dev-lead.md",
+    "coding/programmer.md",
+    "coding/reviewer.md",
+    "orchestrator.md"
+  ],
   "skills": ["skills/concise.md"],
   "tools": ["fetch_url.js"],
   "soul": "soul.md"

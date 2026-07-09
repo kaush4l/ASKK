@@ -11,7 +11,21 @@ fn baked_agents_surface_as_cards() {
         let handle = host_session().await.unwrap();
         let cards = handle.agents();
         let ids: Vec<&str> = cards.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(ids, vec!["assistant", "researcher", "orchestrator"]);
+        // The roster is whatever the served agents/ folder holds (top-level +
+        // nested team members); assert the known anchors are present, not an
+        // exact list, so adding an agent file is a no-code change.
+        for anchor in [
+            "assistant",
+            "researcher",
+            "orchestrator",
+            "dev-lead",
+            "programmer",
+        ] {
+            assert!(
+                ids.contains(&anchor),
+                "missing agent card '{anchor}' in {ids:?}"
+            );
+        }
         assert!(cards.iter().all(|c| !c.description.is_empty()));
     });
 }
