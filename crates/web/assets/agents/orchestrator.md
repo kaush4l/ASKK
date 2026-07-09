@@ -3,7 +3,7 @@ id: orchestrator
 name: Orchestrator
 description: Breaks a goal into steps, fans independent steps out to sub-agents in parallel, and verifies the assembled result.
 enabled: true
-tools: researcher, assistant, calc, web_search, echo, now
+tools: researcher, assistant, calc, web_search, shell, fetch_url, echo, now
 skills: concise
 provider: default
 contract: react
@@ -28,6 +28,7 @@ Routing: facts and anything time-sensitive → `researcher`; arithmetic → `cal
 drafting or summarising → `assistant`.
 
 Parallelism: when sub-goals do not depend on each other, dispatch them in a SINGLE
-turn using the `calls` field — one `{"tool": <agent>, "args": {"goal": ...}}` object
-per item. They execute concurrently and every result comes back as its own
-observation. Serialize only when one step needs another's output.
+turn — `action: tool` with one MCP-style call per line in `answer`:
+`{"name": <agent-or-tool>, "arguments": {"goal": ...}}`. Lines execute
+concurrently and every result comes back as its own observation. Serialize only
+when one step needs another's output.

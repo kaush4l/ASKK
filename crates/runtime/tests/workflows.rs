@@ -141,7 +141,7 @@ fn parse_outcomes(signals: &[Signal]) -> Vec<(bool, String)> {
 fn happy_answer() {
     block_on(async {
         let f = fixture(&[SOLO]).await;
-        f.mock.push_text("action: answer\nresponse: 4");
+        f.mock.push_text("action: answer\nanswer: 4");
         let run = f.session.submit("solo", "what is 2+2").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
@@ -171,9 +171,10 @@ fn happy_answer() {
 fn tool_loop_echo_then_answer() {
     block_on(async {
         let f = fixture(&[SOLO]).await;
-        f.mock
-            .push_text("action: tool\ntool: echo\nargs: {\"text\": \"hi\"}");
-        f.mock.push_text("action: answer\nresponse: echoed");
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"hi\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: echoed");
         let run = f.session.submit("solo", "echo hi").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
@@ -193,8 +194,8 @@ fn action_confirm_then_approve() {
     block_on(async {
         let f = fixture(&[SOLO]).await;
         f.mock
-            .push_text("action: tool\ntool: state_note\nargs: {\"note\": \"remember\"}");
-        f.mock.push_text("action: answer\nresponse: noted");
+            .push_text("action: tool\nanswer: {\"name\": \"state_note\", \"arguments\": {\"note\": \"remember\"}}");
+        f.mock.push_text("action: answer\nanswer: noted");
         let run = f.session.submit("solo", "note this").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Running); // parked, not terminal
@@ -228,8 +229,8 @@ fn action_deny_then_model_adapts() {
     block_on(async {
         let f = fixture(&[SOLO]).await;
         f.mock
-            .push_text("action: tool\ntool: state_note\nargs: {\"note\": \"secret\"}");
-        f.mock.push_text("action: answer\nresponse: skipped it");
+            .push_text("action: tool\nanswer: {\"name\": \"state_note\", \"arguments\": {\"note\": \"secret\"}}");
+        f.mock.push_text("action: answer\nanswer: skipped it");
         let run = f.session.submit("solo", "note this").await.unwrap();
         f.session.drive(&run, f.host.clone()).await;
         let pending_id = f.session.projection(&run).unwrap().pending_actions[0]
@@ -259,9 +260,9 @@ fn gate_phase_fail_revise_pass() {
     block_on(async {
         let f = fixture(&[CODER]).await;
         f.mock.push_text("steps:\n- write it\nrationale: simple");
-        f.mock.push_text("action: answer\nresponse: draft v1");
+        f.mock.push_text("action: answer\nanswer: draft v1");
         f.mock.push_text("verdict: revise\nfeedback: tighten it");
-        f.mock.push_text("action: answer\nresponse: draft v2");
+        f.mock.push_text("action: answer\nanswer: draft v2");
         f.mock.push_text("verdict: pass");
         let run = f.session.submit("coder", "build the thing").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
@@ -287,10 +288,12 @@ fn budget_exhaustion_with_final_turn_nudge() {
             ..Budgets::default()
         };
         let f = fixture_with(&[SOLO], budgets, ActionPolicy::default()).await;
-        f.mock
-            .push_text("action: tool\ntool: echo\nargs: {\"text\": \"a\"}");
-        f.mock
-            .push_text("action: tool\ntool: echo\nargs: {\"text\": \"b\"}");
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"a\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"b\"}}",
+        );
         let run = f.session.submit("solo", "never answers").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::BudgetExhausted);
@@ -345,8 +348,9 @@ fn budget_guard_holds_inside_the_repair_loop() {
 fn interrupt_mid_run() {
     block_on(async {
         let f = fixture(&[SOLO]).await;
-        f.mock
-            .push_text("action: tool\ntool: echo\nargs: {\"text\": \"a\"}");
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"a\"}}",
+        );
         f.host.interrupt_after(1); // first turn runs; the next check trips
         let run = f.session.submit("solo", "slow work").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
@@ -365,7 +369,7 @@ fn malformed_reply_repairs_then_succeeds() {
     block_on(async {
         let f = fixture(&[SOLO]).await;
         f.mock.push_text("total gibberish without structure");
-        f.mock.push_text("action: answer\nresponse: fixed");
+        f.mock.push_text("action: answer\nanswer: fixed");
         let run = f.session.submit("solo", "answer me").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
@@ -414,8 +418,8 @@ fn unknown_tool_gets_structured_rejection() {
     block_on(async {
         let f = fixture(&[SOLO]).await;
         f.mock
-            .push_text("action: tool\ntool: ghost\nargs: {\"x\": 1}");
-        f.mock.push_text("action: answer\nresponse: ok then");
+            .push_text("action: tool\nanswer: {\"name\": \"ghost\", \"arguments\": {\"x\": 1}}");
+        f.mock.push_text("action: answer\nanswer: ok then");
         let run = f.session.submit("solo", "use ghost").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
@@ -430,10 +434,11 @@ fn unknown_tool_gets_structured_rejection() {
 fn delegation_happy_path() {
     block_on(async {
         let f = fixture(&[PARENT, WORKER, HELPER]).await;
-        f.mock
-            .push_text("action: tool\ntool: worker\nargs: {\"goal\": \"do sub\"}");
-        f.mock.push_text("action: answer\nresponse: sub-result");
-        f.mock.push_text("action: answer\nresponse: combined");
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"worker\", \"arguments\": {\"goal\": \"do sub\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: sub-result");
+        f.mock.push_text("action: answer\nanswer: combined");
         let run = f.session.submit("parent", "orchestrate").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
@@ -460,12 +465,14 @@ fn delegation_depth_cap_rejects() {
             ..Budgets::default()
         };
         let f = fixture_with(&[PARENT, WORKER, HELPER], budgets, ActionPolicy::default()).await;
-        f.mock
-            .push_text("action: tool\ntool: worker\nargs: {\"goal\": \"go deep\"}");
-        f.mock
-            .push_text("action: tool\ntool: helper\nargs: {\"goal\": \"deeper\"}");
-        f.mock.push_text("action: answer\nresponse: gave up");
-        f.mock.push_text("action: answer\nresponse: done");
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"worker\", \"arguments\": {\"goal\": \"go deep\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"helper\", \"arguments\": {\"goal\": \"deeper\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: gave up");
+        f.mock.push_text("action: answer\nanswer: done");
         let run = f.session.submit("parent", "orchestrate").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
@@ -482,8 +489,8 @@ fn replay_fold_matches_final_projection() {
     block_on(async {
         let f = fixture(&[SOLO]).await;
         f.mock
-            .push_text("action: tool\ntool: calc\nargs: {\"op\": \"+\", \"a\": 2, \"b\": 2}");
-        f.mock.push_text("action: answer\nresponse: 4");
+            .push_text("action: tool\nanswer: {\"name\": \"calc\", \"arguments\": {\"op\": \"+\", \"a\": 2, \"b\": 2}}");
+        f.mock.push_text("action: answer\nanswer: 4");
         let run = f.session.submit("solo", "2+2").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
@@ -506,15 +513,12 @@ fn parallel_calls_fan_out_two_delegates() {
         // One turn, two delegate calls: they execute concurrently (join_all),
         // each nested run pops its own scripted reply.
         f.mock.push_text(
-            r#"{"action": "tool", "calls": [
-                {"tool": "worker", "args": {"goal": "part one"}},
-                {"tool": "helper", "args": {"goal": "part two"}}
-            ]}"#,
+            r#"{"action": "tool",
+                "answer": "{\"name\": \"worker\", \"arguments\": {\"goal\": \"part one\"}}\n{\"name\": \"helper\", \"arguments\": {\"goal\": \"part two\"}}"}"#,
         );
-        f.mock.push_text("action: answer\nresponse: one done");
-        f.mock.push_text("action: answer\nresponse: two done");
-        f.mock
-            .push_text("action: answer\nresponse: both parts done");
+        f.mock.push_text("action: answer\nanswer: one done");
+        f.mock.push_text("action: answer\nanswer: two done");
+        f.mock.push_text("action: answer\nanswer: both parts done");
         let run = f.session.submit("parent", "do both parts").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);

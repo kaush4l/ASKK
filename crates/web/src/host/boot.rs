@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use askk_core::{fold, ActionId, ActionPolicy, Budgets, RunId, RunProjection, Signal, SignalKind};
-use askk_runtime::config::{load_soul, AgentConfig, SkillConfig};
+use askk_runtime::config::{AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
 use askk_runtime::tools::{register_builtins, register_web_search, ToolRegistry};
@@ -20,11 +20,6 @@ pub use super::profile::{AgentCard, NamedProfile, ProfileSet, ProviderProfileFor
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use askk_runtime::testutil::block_on;
-
-// The agents/ FOLDER is the config: build.rs embeds every `agents/*.md` it
-// finds (manifest.json fixes the order) — adding an agent is adding a file.
-// `AGENT_FILES`, `SKILL_FILES`, `SOUL_MD`:
-include!(concat!(env!("OUT_DIR"), "/agents_gen.rs"));
 
 /// The single provider id agents reference (`provider: default`); which
 /// saved profile it points at is the profile set's `active` pick.
@@ -144,20 +139,20 @@ impl HarnessHandle {
         let _ = self.settings.set_pref(name, value).await;
     }
 
-    /// Drive the current run to a terminal or a confirmation pause. The
+    /// Drive a SPECIFIC run to a terminal or confirmation pause. Parallel
+    /// submits each spawn their own drive, so several runs progress
+    /// concurrently (ADR-015; the signal log serializes their appends). The
     /// outcome is not returned — the projection is the UI's truth.
-    pub async fn drive(&self) {
-        let Some(run_id) = self.current_run() else {
-            return;
-        };
-        self.drive_run(&run_id).await;
-    }
-
-    /// Drive a SPECIFIC run: parallel submits each spawn their own drive,
-    /// so several runs progress concurrently (ADR-015; the signal log
-    /// serializes their appends).
     pub async fn drive_run(&self, run_id: &RunId) {
         let _ = self.session.drive(run_id, self.host.clone()).await;
+    }
+
+    /// Drive the current run (host smoke + tests; the wasm UI drives per-run).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub async fn drive(&self) {
+        if let Some(run_id) = self.current_run() {
+            self.drive_run(&run_id).await;
+        }
     }
 
     /// Resolve a parked confirmation on the current run.
@@ -230,62 +225,6 @@ impl HarnessHandle {
             .await
             .map_err(|e| e.to_string())
     }
-}
-
-fn baked_config() -> Result<(Vec<AgentConfig>, Vec<SkillConfig>, String), String> {
-    let agents = AGENT_FILES
-        .iter()
-        .map(|(path, text)| AgentConfig::from_markdown(path, text).map_err(|e| e.to_string()))
-        .collect::<Result<Vec<_>, _>>()?;
-    let skills = SKILL_FILES
-        .iter()
-        .map(|(path, text)| SkillConfig::from_markdown(path, text).map_err(|e| e.to_string()))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok((agents, skills, load_soul(SOUL_MD)))
-}
-
-/// Runtime config override: fetch `agents/manifest.json` from the served
-/// site root and every agent file it lists. On a real static host this
-/// makes the deployed folder the live config — drop in an agent.md, reload,
-/// no rebuild. Dev servers answer unknown paths with the SPA fallback, so
-/// any parse failure falls back to the baked set silently.
-#[cfg(target_arch = "wasm32")]
-async fn fetched_config() -> Option<(Vec<AgentConfig>, Vec<SkillConfig>, String)> {
-    use super::fetch::fetch_text;
-
-    let manifest: Value = serde_json::from_str(&fetch_text("agents/manifest.json").await.ok()?)
-        .ok()
-        .filter(Value::is_object)?;
-    let mut agents = Vec::new();
-    for name in manifest
-        .get("agents")?
-        .as_array()?
-        .iter()
-        .filter_map(Value::as_str)
-    {
-        let path = format!("agents/{name}");
-        let text = fetch_text(&path).await.ok()?;
-        agents.push(AgentConfig::from_markdown(&path, &text).ok()?);
-    }
-    if agents.is_empty() {
-        return None;
-    }
-    let (_, baked_skills, baked_soul) = baked_config().ok()?;
-    let mut skills = baked_skills;
-    if let Some(list) = manifest.get("skills").and_then(Value::as_array) {
-        let mut fetched = Vec::new();
-        for name in list.iter().filter_map(Value::as_str) {
-            let path = format!("agents/{name}");
-            let text = fetch_text(&path).await.ok()?;
-            fetched.push(SkillConfig::from_markdown(&path, &text).ok()?);
-        }
-        skills = fetched;
-    }
-    let soul = match manifest.get("soul").and_then(Value::as_str) {
-        Some(name) => load_soul(&fetch_text(&format!("agents/{name}")).await.ok()?),
-        None => baked_soul,
-    };
-    Some((agents, skills, soul))
 }
 
 #[allow(clippy::too_many_arguments)] // ponytail: one private assembly seam
@@ -424,6 +363,8 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || js_sys::Date::now() as u64).map_err(|e| e.to_string())?;
     register_web_search(&mut registry, transport.clone()).map_err(|e| e.to_string())?;
+    askk_runtime::tools::register_shell(&mut registry, Rc::new(super::vm::SerialShell::new()))
+        .map_err(|e| e.to_string())?;
 
     // The resolver reads the live profile-set cell per run: a settings save
     // or an active-profile switch is effective on the next run, no rebuild.
@@ -446,9 +387,14 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
 
     let buffer: Rc<RefCell<Vec<Signal>>> = Rc::new(RefCell::new(Vec::new()));
     let host: Rc<dyn RunHost> = Rc::new(BrowserHost::new(buffer.clone(), notify));
-    let (agents, skills, soul) = match fetched_config().await {
+    // fetched_config also registers any manifest-declared JS tools into the
+    // registry, so it must run before the registry moves into build_handle.
+    let (agents, skills, soul) = match super::config::fetched_config(&mut registry).await {
         Some(config) => config,
-        None => baked_config()?,
+        None => {
+            super::config::register_baked_tools(&mut registry);
+            super::config::baked_config()?
+        }
     };
     let mut handle = build_handle(
         agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles,
@@ -474,17 +420,20 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).map_err(|e| e.to_string())?;
     register_web_search(&mut registry, Rc::new(MockTransport::new())).map_err(|e| e.to_string())?;
+    askk_runtime::tools::register_shell(&mut registry, Rc::new(super::vm::SerialShell::new()))
+        .map_err(|e| e.to_string())?;
+    super::config::register_baked_tools(&mut registry);
 
     let mock = Rc::new(MockProvider::new("default/mock"));
-    mock.push_text("action: tool\ntool: echo\nargs: {\"text\": \"hello from the harness\"}");
-    mock.push_text("action: answer\nresponse: echo returned: hello from the harness");
+    mock.push_text("action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"hello from the harness\"}}");
+    mock.push_text("action: answer\nanswer: echo returned: hello from the harness");
     let provider: Rc<dyn Provider> = mock;
     let resolver: ProviderResolver = Box::new(move |_| Ok(provider.clone()));
 
     let buffer: Rc<RefCell<Vec<Signal>>> = Rc::new(RefCell::new(Vec::new()));
     let host: Rc<dyn RunHost> = Rc::new(TestHost::new());
     let profiles = Rc::new(RefCell::new(ProfileSet::default()));
-    let (agents, skills, soul) = baked_config()?;
+    let (agents, skills, soul) = super::config::baked_config()?;
     build_handle(
         agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles,
     )

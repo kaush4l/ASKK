@@ -161,7 +161,7 @@ fn map_md_paths_exist() {
 #[test]
 fn every_agents_markdown_parses() {
     let root = workspace_root();
-    let agents = root.join("agents");
+    let agents = root.join("crates/web/assets/agents");
     assert!(agents.is_dir(), "agents/ missing at {}", agents.display());
     let mut seen = 0usize;
     for path in files_with_ext(&agents, "md") {

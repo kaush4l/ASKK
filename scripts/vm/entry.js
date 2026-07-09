@@ -30,8 +30,14 @@
 // apks/modloop on the cdrom — the serial-console path for stock ISOs whose
 // isolinux menu only talks to VGA).
 //   window.AskkV86.sendSerial(hostId, text)   // raw bytes into the guest TTY
+//   window.AskkV86.exec(hostId, cmd, timeoutMs?) -> Promise<string>
+//       Run one shell command in the guest over serial and capture its
+//       output (marker-delimited; rejects on timeout / no VM).
 //   window.AskkV86.saveState(hostId) -> Promise<Uint8Array>
 //   window.AskkV86.destroy(hostId, token?)    // token-guarded teardown
+// Auto-login: when the serial tail ends in "login:" the bundle sends
+// "root\n" (live-ISO root has no password), so the guest lands on a shell
+// without user input and exec() works headlessly.
 // where imageType ∈ "state" | "flat" | "bzimage" | "cdrom" and
 // onState(s) reports "downloading" | "booting" | "ready" | "error".
 //
@@ -84,6 +90,9 @@ const vms = new Map();
 // after a new one; tokens let a stale teardown no-op instead of killing the VM
 // that replaced it (same scheme as AskkTerm / AskkCM).
 let mountCounter = 0;
+
+// Monotonic exec sequence: each exec() gets a unique completion marker.
+let execSeq = 0;
 
 // Fetch a runtime blob cache-first via Cache Storage so multi-MB images are
 // downloaded once per deploy (asset URLs are content-hashed). Returns an
@@ -176,6 +185,11 @@ const api = {
       decoder: new TextDecoder("utf-8", { fatal: false }),
       destroyed: false,
       sawOutput: false,
+      // Rolling serial tail for the auto-login watcher + exec capture taps.
+      tail: "",
+      taps: new Set(),
+      loginSent: false,
+      shellSeen: false,
     };
     record.resize = new ResizeObserver(() => {
       try {
@@ -244,7 +258,17 @@ const api = {
           const text = record.decoder.decode(new Uint8Array([byte]), {
             stream: true,
           });
-          if (text) term.write(text);
+          if (!text) return;
+          term.write(text);
+          for (const tap of record.taps) tap(text);
+          // Auto-login watcher: getty prompts end in "login: ".
+          record.tail = (record.tail + text).slice(-160);
+          if (/login: ?$/.test(record.tail) && o.autoLogin !== false) {
+            record.loginSent = true;
+            emulator.serial0_send("root\n");
+            record.tail = "";
+          }
+          if (/[#%$] $/.test(record.tail)) record.shellSeen = true;
         });
         emulator.add_listener("emulator-started", () => {
           if (!record.destroyed) onState("booting");
@@ -270,6 +294,50 @@ const api = {
     if (record && record.emulator && !record.destroyed) {
       record.emulator.serial0_send(text);
     }
+  },
+
+  // Whether the guest has reached an interactive shell (auto-login done).
+  shellReady(hostId) {
+    const record = vms.get(hostId);
+    return !!(record && record.shellSeen && !record.destroyed);
+  },
+
+  // Run ONE command in the guest shell and capture stdout+stderr until a
+  // marker line lands. The marker is assembled from two string halves so the
+  // echoed command never contains it. Resolves with the output (echoed
+  // command line stripped); rejects on timeout or missing VM.
+  exec(hostId, cmd, timeoutMs) {
+    const record = vms.get(hostId);
+    if (!record || !record.emulator || record.destroyed) {
+      return Promise.reject(new Error(`AskkV86.exec: no VM at ${hostId}`));
+    }
+    const n = ++execSeq;
+    const marker = `__ASKK_DONE_${n}__`;
+    return new Promise((resolve, reject) => {
+      let buf = "";
+      const tap = (text) => {
+        buf += text;
+        const at = buf.indexOf(marker);
+        if (at < 0) return;
+        record.taps.delete(tap);
+        clearTimeout(timer);
+        let out = buf.slice(0, at);
+        out = out.slice(0, out.lastIndexOf("\n") + 1); // drop marker's own line prefix
+        // Strip the echoed command (everything up to its first newline).
+        const firstNl = out.indexOf("\n");
+        if (firstNl >= 0) out = out.slice(firstNl + 1);
+        const exit = (buf.slice(at + marker.length).match(/^(\d+)/) || [])[1];
+        resolve(exit && exit !== "0" ? `${out}\n[exit ${exit}]` : out);
+      };
+      const timer = setTimeout(() => {
+        record.taps.delete(tap);
+        reject(new Error(`exec timed out after ${timeoutMs || 30000} ms`));
+      }, timeoutMs || 30000);
+      record.taps.add(tap);
+      record.emulator.serial0_send(
+        `${cmd}; printf '__ASKK_''DONE_${n}__%s\\n' $?\n`
+      );
+    });
   },
 
   // Snapshot the running guest's full state (suspend/resume, or a sibling unit

@@ -337,7 +337,11 @@ pub fn App() -> Element {
             div { class: "body", style: "{cols}",
                 LeftRail { stage: stage(), open: left_open(), on_pick }
                 main { class: "stage",
+                    // Persistent VM console: mounted once, booted at load,
+                    // visible only on the VM stage (so `shell` works anywhere).
+                    crate::ui::vm::VmConsole { visible: stage() == Stage::Vm }
                     match stage() {
+                        Stage::Vm => rsx! {},
                         Stage::Chat => rsx! {
                             ChatStage {
                                 runs: runs_oldest,
@@ -358,7 +362,6 @@ pub fn App() -> Element {
                             }
                         },
                         Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },
-                        Stage::Vm => rsx! { crate::ui::vm::VmStage {} },
                         Stage::Settings => rsx! {
                             SettingsStage {
                                 key: "{profiles().active}",

@@ -110,3 +110,37 @@ CORS wall; Cache Storage keeps multi-MB images one-download-per-deploy. Alternat
 rejected: WebVM/CheerpX (closed licensing, hosted-only constraints), copy.sh state images
 (no CORS), in-emulator `setup-alpine` disk installs (no persistent hda writeback yet).
 Deferred: guest networking (relay), `vm_exec` tool over serial, persistent rootfs.
+
+## ADR-017 (A) — react contract v2: explore in lists, one switch, MCP-style call
+Owner directive (wave 10): the turn schema had too many fields (thinking/plan/tool/args/
+response). v2 keeps four: `observation` and `plan` are STRING LISTS (the model explores as
+much as it needs), `action` is the sole control switch (`tool`|`answer`), and `answer`
+carries EITHER the final text OR the tool call(s). When `action: tool`, `answer` is a
+single-line MCP-shaped object `{"name": <tool>, "arguments": {...}}` (the exact shape MCP
+`tools/call` uses, so MCP-standard tools drop in unchanged); several lines = parallel calls,
+or a JSON array of them. Tool name and args are NOT split into separate fields — one line,
+one call. Parse cascade unchanged (native → JSON → TOON → repair); a failed JSON rung still
+falls through to TOON so an embedded call object never shadows surrounding TOON.
+
+## ADR-018 (A) — the `shell` tool + VM-as-substrate: agents run real command lines
+The in-browser v86 guest (ADR-016) is now the agent's command line. entry.js gained
+`exec(hostId, cmd, timeout)` — marker-delimited serial capture — and auto-login (sends
+`root\n` on a `login:` prompt), so the guest reaches a shell with no user input. The VM boots
+ONCE at app load into a persistent console mounted at app root (parked off-screen when not on
+the VM stage, still running), so `shell` works from any stage. A runtime `ShellTool` (injected
+`ShellExec` seam, mirroring web_search's transport injection) wraps it; the web executor calls
+`window.AskkV86.exec` and waits (bounded) for `shellReady`. `Effect::Pure` (auto-runs, no
+gate): the guest is a sandbox — no host FS, no network, no persistence — so a bad command only
+touches the throwaway VM. Buildroot is the default image (boots in seconds → shell ready fast);
+Alpine is one pick away.
+
+## ADR-019 (A) — agents + custom tools are real served files, not hardcoded
+The `agents/` folder moved UNDER `crates/web/assets/agents/` so the SAME files are both baked
+(build.rs fallback) AND served verbatim at `/assets/agents/*`. Boot fetches the served
+`manifest.json` at runtime and loads every agent/skill/tool it lists — drop a file in the
+deployed folder, reload, no rebuild. Custom tools are plain browser JS beside the agent.md
+files (`fetch_url.js`): each self-registers on `window.askkTools[name]` with an MCP-shaped card
+(`description` / `inputSchema` / `async call(args)`); Rust evals the file, reads the card, and
+wraps it as a `dyn Tool` the agent calls like any native tool. build.rs emits `TOOL_FILES` so
+host builds register inert name-stubs (config validation + smoke stay green without a DOM).
+Nothing about the roster is hardcoded — the folder is the whole configuration surface.

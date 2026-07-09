@@ -49,3 +49,16 @@ Ordered by leverage; each is one increment.
 - `agents/soul.md` — shared identity prelude.
 - `agents/skills/*.md` — reusable prompt fragments agents opt into.
 - Provider profiles — saved in the browser (OPFS), switchable per run.
+
+## Wave 10 additions (2026-07-09)
+
+- **`shell` tool**: agents run real command lines in the in-browser Linux VM
+  (v86 serial, auto-login, marker-captured output). VM now boots at app load
+  into a persistent console so `shell` works from any stage.
+- **react contract v2**: `observation`/`plan` string lists, `action` switch,
+  `answer` = final text OR MCP-style call line `{"name","arguments"}` (ADR-017).
+- **Agents + custom JS tools are served files** under `crates/web/assets/agents/`
+  (baked + live-fetch). `fetch_url.js` is the sample custom tool — self-registers
+  an MCP card, wrapped as a `dyn Tool` (ADR-019).
+
+Queue item #2 (`vm_exec` over serial) is now DONE as the `shell` tool.

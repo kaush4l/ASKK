@@ -289,73 +289,62 @@ fn coerce(spec: &FieldSpec, value: Value) -> Option<Value> {
     }
 }
 
-/// One `calls` list item → ToolCall. Items arrive as JSON objects (JSON
-/// rung) or as their stringified form (List coercion): both parse.
-fn parse_call_item(item: &Value) -> Option<ToolCall> {
-    let obj = match item {
-        Value::Object(map) => Some(map.clone()),
-        Value::String(s) => match serde_json::from_str::<Value>(s) {
-            Ok(Value::Object(map)) => Some(map),
-            _ => None,
-        },
-        _ => None,
-    }?;
-    let name = obj.get("tool").and_then(Value::as_str)?.trim().to_string();
+/// One MCP-style call object → ToolCall: `{"name": ..., "arguments": {...}}`
+/// (the shape MCP `tools/call` uses, so MCP-standard tools plug in as-is).
+fn parse_mcp_call(value: &Value) -> Option<ToolCall> {
+    let obj = value.as_object()?;
+    let name = obj.get("name").and_then(Value::as_str)?.trim().to_string();
     if name.is_empty() {
         return None;
     }
     let args = obj
-        .get("args")
+        .get("arguments")
         .cloned()
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({}));
     Some(ToolCall {
+        // Placeholder id: parse is pure, so the run loop assigns the
+        // unique run-qualified id before absorb/dispatch.
         id: "call_0".into(),
         name,
         args,
     })
 }
 
-/// Action derivation: `action: tool` + a `calls` list means parallel tool
-/// calls; `action: tool` + a tool name means one call; anything else is an
-/// answer (the `response` field, falling back to the raw text).
+/// Tool calls from the `answer` field: one MCP-style JSON object per line
+/// (several lines = parallel calls), or a single JSON array of them.
+fn calls_from_answer(answer: &str) -> Vec<ToolCall> {
+    if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(answer.trim()) {
+        return items.iter().filter_map(parse_mcp_call).collect();
+    }
+    answer
+        .lines()
+        .filter_map(|line| {
+            let object = extract_json_object(line)?;
+            parse_mcp_call(&serde_json::from_str::<Value>(object).ok()?)
+        })
+        .collect()
+}
+
+/// Action derivation (react v2): `action` is the switch. `tool` → the
+/// `answer` field IS the call (MCP-style, one per line); anything else →
+/// `answer` is the final text (falling back to the raw reply).
 fn derive_action(fields: &Map<String, Value>, raw_text: &str) -> Action {
-    let wants_tool = fields.get("action").and_then(Value::as_str) == Some("tool");
-    if wants_tool {
-        if let Some(Value::Array(items)) = fields.get("calls") {
-            let calls: Vec<ToolCall> = items.iter().filter_map(parse_call_item).collect();
-            if !calls.is_empty() {
-                return Action::ToolCalls(calls);
-            }
-        }
-        if let Some(name) = fields
-            .get("tool")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-        {
-            let args = match fields.get("args") {
-                Some(Value::Object(map)) => Value::Object(map.clone()),
-                Some(Value::String(s)) => serde_json::from_str(s)
-                    .ok()
-                    .filter(Value::is_object)
-                    .unwrap_or_else(|| json!({ "input": s })),
-                _ => json!({}),
-            };
-            return Action::ToolCalls(vec![ToolCall {
-                // Placeholder id: parse is pure, so the run loop assigns the
-                // unique run-qualified id before absorb/dispatch.
-                id: "call_0".into(),
-                name: name.into(),
-                args,
-            }]);
+    let answer = fields
+        .get("answer")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if fields.get("action").and_then(Value::as_str) == Some("tool") {
+        let calls = calls_from_answer(&answer);
+        if !calls.is_empty() {
+            return Action::ToolCalls(calls);
         }
     }
-    let answer = fields
-        .get("response")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| raw_text.trim().to_string());
+    if answer.is_empty() {
+        return Action::Answer(raw_text.trim().to_string());
+    }
     Action::Answer(answer)
 }
 

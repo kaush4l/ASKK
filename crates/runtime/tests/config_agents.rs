@@ -10,7 +10,9 @@ use askk_core::contracts;
 use askk_runtime::config::{load_soul, validate, AgentConfig, SkillConfig};
 
 fn agents_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../agents")
+    // The agents folder lives under the web crate's served assets so the same
+    // files are baked AND served verbatim at `/assets/agents/*`.
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/assets/agents")
 }
 
 fn md_files(root: &Path) -> Vec<PathBuf> {

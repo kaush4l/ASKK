@@ -4,8 +4,11 @@
 
 pub mod boot;
 pub mod browser;
+pub mod config;
 pub mod dom;
 pub mod fetch;
+pub mod jstool;
 pub mod opfs;
 pub mod profile;
 pub mod speech;
+pub mod vm;

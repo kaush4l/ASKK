@@ -58,9 +58,33 @@ fn push_entries(out: &mut String, name: &str, root: &Path, files: &[PathBuf]) {
     let _ = writeln!(out, "];");
 }
 
+/// Manifest-listed custom JS tools (filename, source) → `(name, source)`.
+fn manifest_tools(dir: &Path) -> Vec<(String, PathBuf)> {
+    let Ok(text) = fs::read_to_string(dir.join("manifest.json")) else {
+        return Vec::new();
+    };
+    let Ok(value) = text.parse::<serde_json::Value>() else {
+        return Vec::new();
+    };
+    value["tools"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .map(|f| {
+                    let name = f.strip_suffix(".js").unwrap_or(f).to_string();
+                    (name, dir.join(f))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let agents_dir = manifest_dir.join("../../agents").canonicalize().unwrap();
+    // The agents folder lives UNDER assets/ so the same files are both baked
+    // (fallback) AND served verbatim at `/assets/agents/*` for runtime load.
+    let agents_dir = manifest_dir.join("assets/agents").canonicalize().unwrap();
     println!("cargo:rerun-if-changed={}", agents_dir.display());
 
     let mut agent_files = md_files(&agents_dir);
@@ -76,6 +100,13 @@ fn main() {
         "pub const SOUL_MD: &str = include_str!({:?});",
         agents_dir.join("soul.md").display()
     );
+    // Baked JS tools: (tool name, source) so host builds know the names and
+    // wasm has a fallback if the live fetch misses.
+    let _ = writeln!(out, "pub const TOOL_FILES: &[(&str, &str)] = &[");
+    for (name, path) in manifest_tools(&agents_dir) {
+        let _ = writeln!(out, "    ({name:?}, include_str!({:?})),", path.display());
+    }
+    let _ = writeln!(out, "];");
 
     let dest = PathBuf::from(env::var("OUT_DIR").unwrap()).join("agents_gen.rs");
     fs::write(dest, out).unwrap();

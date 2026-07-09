@@ -431,3 +431,8 @@ input, textarea { font: inherit; }
 .vm-status-error { color: var(--red, #ff6b81); }
 .vm-console { flex: 1; min-height: 320px; border: 1px solid var(--line);
   border-radius: 8px; overflow: hidden; background: #131019; padding: 6px; }
+
+/* VM parked off-screen: kept sized + running so the shell tool works from
+   any stage; NOT display:none (that zeroes xterm and kills the fit). */
+.vm-parked { position: absolute; left: -100000px; top: 0;
+  width: 1000px; height: 600px; pointer-events: none; }

@@ -64,3 +64,18 @@ below is accepted, not pending.
     orchestrator's dispatch phase (GAPS 20 under phases); the per-phase turn clamp bounds
     it. The `calls` parallel list is proven by deterministic tests; live models use it
     opportunistically.
+
+## Wave-10 — accepted v1 bounds
+
+27. Live-fetch of the served agents folder is a no-op on the dev server (dioxus
+    SPA-fallbacks unhashed `/assets/agents/*` to index.html); boot detects the
+    non-JSON and falls back to the BAKED copy of the same files. True drop-in
+    override needs a static host that serves the folder (gh-pages via a stage
+    step, or any plain file server) — same shape as old ASKK's staged v86
+    manifest. Baked path is identical, so no behavior is lost in dev.
+28. `shell` runs on Buildroot by default (busybox; fast boot). Switch to Alpine
+    in the VM picker for a fuller toolset; the executor targets whichever image
+    is currently booted.
+29. `shell` output capture is marker-delimited over a raw TTY: very chatty
+    commands (>~30 s or huge output) can hit the exec timeout. Fine for typical
+    one-shot commands; stream/pager support is deferred.

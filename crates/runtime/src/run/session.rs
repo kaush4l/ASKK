@@ -291,16 +291,11 @@ impl RunSession {
             .filter(|a| a.enabled)
             .ok_or_else(|| ConfigError::one(format!("unknown or disabled agent '{agent_id}'")))?
             .clone();
-        let memory = shared
-            .memory
-            .load(agent_id)
-            .await
-            .map_err(|e| ConfigError::one(e.to_string()))?;
-        shared
-            .session
-            .set_active_agent_id(agent_id)
-            .await
-            .map_err(|e| ConfigError::one(e.to_string()))?;
+        // A sick store must not block a run: memory failing to load → start
+        // with none; the active-agent pref is cosmetic → ignore a write miss
+        // (mirrors the signal log's degrade-don't-die contract, GAPS storage).
+        let memory = shared.memory.load(agent_id).await.unwrap_or_default();
+        let _ = shared.session.set_active_agent_id(agent_id).await;
         let run_id = shared.next_run_id();
         let mut run = RunState::new(
             &agent,

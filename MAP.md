@@ -43,6 +43,11 @@ core ← inference ← runtime ← web
 | TOON | `crates/core/src/toon.rs` |
 | Tool trait + ToolSet | `crates/core/src/tool.rs` |
 | web_search tool (DDG + Wikipedia) | `crates/runtime/src/tools/search.rs` |
+| shell tool (exec over VM serial) | `crates/runtime/src/tools/shell.rs` |
+| shell executor (browser serial bridge) | `crates/web/src/host/vm.rs` |
+| Agents/skills/tools loader (baked + live fetch) | `crates/web/src/host/config.rs` |
+| Custom JS tool wrapper (MCP card) | `crates/web/src/host/jstool.rs` |
+| Agents + custom tools (served config) | `crates/web/assets/agents/` |
 | Agents-folder config bake (glob + manifest order) | `crates/web/build.rs` |
 | VM stage (v86 serial console) | `crates/web/src/ui/vm.rs` |
 | VM bundle source (v86 + xterm) | `scripts/vm/entry.js` + `build.mjs` |

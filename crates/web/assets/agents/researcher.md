@@ -3,7 +3,7 @@ id: researcher
 name: Researcher
 description: Looks facts up on the live web and reports back with sources.
 enabled: true
-tools: web_search
+tools: web_search, fetch_url
 skills: concise
 provider: default
 contract: react

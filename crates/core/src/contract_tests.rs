@@ -10,7 +10,7 @@ fn reply(text: &str) -> InferenceReply {
 #[test]
 fn json_happy_path_parses() {
     let parsed = contracts::react()
-        .parse(&reply(r#"{"action": "answer", "response": "hi"}"#))
+        .parse(&reply(r#"{"action": "answer", "answer": "hi"}"#))
         .unwrap();
     assert_eq!(parsed.format, ParsedFormat::Json);
     assert_eq!(parsed.action, Action::Answer("hi".into()));
@@ -18,14 +18,14 @@ fn json_happy_path_parses() {
 
 #[test]
 fn json_embedded_in_prose_is_found() {
-    let text = "Sure! Here you go:\n{\"action\": \"answer\", \"response\": \"x\"}\nDone.";
+    let text = "Sure! Here you go:\n{\"action\": \"answer\", \"answer\": \"x\"}\nDone.";
     let parsed = contracts::react().parse(&reply(text)).unwrap();
     assert_eq!(parsed.format, ParsedFormat::Json);
 }
 
 #[test]
 fn truncated_json_falls_back_to_toon_recovery() {
-    let text = "{\"action\": \"answer\",\n\"response\": \"partial";
+    let text = "{\"action\": \"answer\",\n\"answer\": \"partial";
     let parsed = contracts::react().parse(&reply(text)).unwrap();
     assert_eq!(parsed.format, ParsedFormat::Toon);
     assert_eq!(parsed.fields["action"], "answer");
@@ -36,14 +36,17 @@ fn malformed_reply_missing_required_yields_repair_prompt() {
     let err = contracts::react()
         .parse(&reply("just some prose"))
         .unwrap_err();
-    assert_eq!(err.missing, vec!["action".to_string()]);
+    assert_eq!(
+        err.missing,
+        vec!["action".to_string(), "answer".to_string()]
+    );
     assert!(err.repair_prompt.contains("action"));
     assert!(err.repair_prompt.contains("tool | answer"));
 }
 
 #[test]
 fn native_tool_calls_win_over_text() {
-    let mut r = reply(r#"{"action": "answer", "response": "ignored"}"#);
+    let mut r = reply(r#"{"action": "answer", "answer": "ignored"}"#);
     r.native_tool_calls = vec![ToolCall {
         id: "1".into(),
         name: "search".into(),
@@ -56,7 +59,7 @@ fn native_tool_calls_win_over_text() {
 
 #[test]
 fn toon_tool_call_with_json_string_args() {
-    let text = "action: tool\ntool: search\nargs: {\"q\": \"rust\"}";
+    let text = "action: tool\nanswer: {\"name\": \"search\", \"arguments\": {\"q\": \"rust\"}}";
     let parsed = contracts::react().parse(&reply(text)).unwrap();
     match parsed.action {
         Action::ToolCalls(calls) => assert_eq!(calls[0].args, json!({"q": "rust"})),
@@ -112,11 +115,14 @@ fn negotiator_escalation_reset_and_honored() {
 }
 
 #[test]
-fn calls_array_parses_to_parallel_tool_calls() {
-    let text = r#"{"action": "tool", "calls": [
-        {"tool": "a", "args": {"x": 1}},
-        {"tool": "b", "args": {"y": 2}}
-    ]}"#;
+fn multi_line_answer_parses_to_parallel_mcp_calls() {
+    let text = "action: tool\nanswer: {\"name\": \"a\", \"arguments\": {\"x\": 1}}";
+    let parsed = contracts::react().parse(&reply(text)).unwrap();
+    assert!(matches!(parsed.action, Action::ToolCalls(ref c) if c.len() == 1));
+
+    // JSON mode: several calls, one per line inside the answer string.
+    let text = r#"{"action": "tool",
+        "answer": "{\"name\": \"a\", \"arguments\": {\"x\": 1}}\n{\"name\": \"b\", \"arguments\": {\"y\": 2}}"}"#;
     let parsed = contracts::react().parse(&reply(text)).unwrap();
     match parsed.action {
         Action::ToolCalls(calls) => {
@@ -130,29 +136,23 @@ fn calls_array_parses_to_parallel_tool_calls() {
 }
 
 #[test]
-fn toon_calls_list_items_parse_from_strings() {
-    let text =
-        "action: tool\ncalls:\n- {\"tool\": \"a\", \"args\": {\"x\": 1}}\n- {\"tool\": \"b\"}";
+fn answer_as_json_array_of_calls_parses() {
+    let text = r#"{"action": "tool",
+        "answer": "[{\"name\": \"a\"}, {\"name\": \"b\", \"arguments\": {\"y\": 2}}]"}"#;
     let parsed = contracts::react().parse(&reply(text)).unwrap();
     match parsed.action {
         Action::ToolCalls(calls) => {
             assert_eq!(calls.len(), 2);
-            assert_eq!(calls[1].name, "b");
-            assert_eq!(calls[1].args, json!({}));
+            assert_eq!(calls[0].args, json!({}));
+            assert_eq!(calls[1].args, json!({"y": 2}));
         }
         other => panic!("expected tool calls, got {other:?}"),
     }
 }
 
 #[test]
-fn empty_or_malformed_calls_falls_back_to_single_tool() {
-    let text = r#"{"action": "tool", "calls": ["not json"], "tool": "echo", "args": {"t": 1}}"#;
+fn tool_action_with_unparseable_answer_falls_back_to_answer() {
+    let text = "action: tool\nanswer: run the thing";
     let parsed = contracts::react().parse(&reply(text)).unwrap();
-    match parsed.action {
-        Action::ToolCalls(calls) => {
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].name, "echo");
-        }
-        other => panic!("expected tool calls, got {other:?}"),
-    }
+    assert_eq!(parsed.action, Action::Answer("run the thing".into()));
 }
