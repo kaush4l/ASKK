@@ -2,21 +2,62 @@
 //! row (docs/ROADMAP.md) not already covered by workflows.rs or lower layers.
 //! Assertions target the signal stream first, then the fold (ADR-003).
 
+use std::future::Future;
+use std::pin::{pin, Pin};
 use std::rc::Rc;
+use std::task::{Context, Poll, Waker};
 
 use askk_core::signal::fold;
 use askk_core::{
-    ActionPolicy, Budgets, Effect, Part, Provider, ProviderError, Role, RunStatus, Signal,
-    SignalKind, ToolResult, ToolSpec, Verdict,
+    ActionPolicy, Budgets, Effect, InferenceReply, InferenceRequest, Part, Provider, ProviderError,
+    Role, RunStatus, Signal, SignalKind, ToolResult, ToolSpec, Verdict,
 };
 use askk_inference::MockProvider;
 use askk_runtime::assemble::{assemble, AssembleOverrides};
 use askk_runtime::config::AgentConfig;
 use askk_runtime::run::{ProviderResolver, RunSession, SessionInit, TestHost};
-use askk_runtime::state::{BlobStore, MemBlob, MemKv, MemoryStore, SessionStore, SignalLog};
+use askk_runtime::state::{
+    BlobStore, LocalBoxFuture, MemBlob, MemKv, MemoryStore, SessionStore, SignalLog,
+};
 use askk_runtime::testutil::block_on;
 use askk_runtime::tools::{register_builtins, RustTool, ToolRegistry};
 use serde_json::json;
+
+/// Wraps the mock so every LLM call suspends once before replying — lets a
+/// test hold a drive in-flight (poll → Pending → act → resume).
+struct YieldOnce(Rc<MockProvider>);
+
+impl Provider for YieldOnce {
+    fn id(&self) -> &str {
+        self.0.id()
+    }
+
+    fn infer<'a>(
+        &'a self,
+        req: &'a InferenceRequest,
+        on_delta: &'a mut dyn FnMut(&str),
+    ) -> LocalBoxFuture<'a, Result<InferenceReply, ProviderError>> {
+        let inner = self.0.infer(req, on_delta);
+        Box::pin(async move {
+            let mut yielded = false;
+            std::future::poll_fn(move |_| {
+                if yielded {
+                    Poll::Ready(())
+                } else {
+                    yielded = true;
+                    Poll::Pending
+                }
+            })
+            .await;
+            inner.await
+        })
+    }
+}
+
+/// One manual poll with a noop waker; the tests re-poll themselves.
+fn poll_once<T>(fut: &mut Pin<&mut impl Future<Output = T>>) -> Poll<T> {
+    fut.as_mut().poll(&mut Context::from_waker(Waker::noop()))
+}
 
 const SOLO: (&str, &str) = (
     "agents/solo.md",
@@ -47,7 +88,7 @@ struct Fixture {
     blobs: Rc<dyn BlobStore>,
 }
 
-async fn fixture_with(files: &[(&str, &str)], budgets: Budgets) -> Fixture {
+async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, yielding: bool) -> Fixture {
     let mock = Rc::new(MockProvider::new("mock/test"));
     let blobs: Rc<dyn BlobStore> = Rc::new(MemBlob::new());
     let (log, _) = SignalLog::open(Rc::clone(&blobs), Box::new(|| 0))
@@ -79,7 +120,11 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets) -> Fixture {
         .iter()
         .map(|(path, text)| AgentConfig::from_markdown(path, text).unwrap())
         .collect();
-    let provider: Rc<dyn Provider> = mock.clone();
+    let provider: Rc<dyn Provider> = if yielding {
+        Rc::new(YieldOnce(mock.clone()))
+    } else {
+        mock.clone()
+    };
     let resolver: ProviderResolver = Box::new(move |_| Ok(provider.clone()));
     let session = RunSession::new(SessionInit {
         agents,
@@ -104,7 +149,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets) -> Fixture {
 }
 
 async fn fixture(files: &[(&str, &str)]) -> Fixture {
-    fixture_with(files, Budgets::default()).await
+    fixture_with(files, Budgets::default(), false).await
 }
 
 fn observations(signals: &[Signal]) -> Vec<String> {
@@ -395,7 +440,7 @@ fn phase_loop_clamp_exhaustion_is_unverified() {
             max_turns: 40, // global stays looser than the phase clamp (16)
             ..Budgets::default()
         };
-        let f = fixture_with(&[LOOPER], budgets).await;
+        let f = fixture_with(&[LOOPER], budgets, false).await;
         for _ in 0..16 {
             f.mock
                 .push_text("action: tool\ntool: echo\nargs: {\"text\": \"again\"}");
@@ -471,4 +516,71 @@ fn tool_written_new_slice_emits_state_written() {
             .iter()
             .any(|(k, text)| k.name() == "state" && text.contains("scratch")));
     });
+}
+
+/// FINDING 1 regression: `cancel` reaches a run that is actively driving
+/// (out of the session map): honest "requested" outcome instead of
+/// `Failed{"unknown run"}`, then the drive's own per-iteration check lands
+/// the Interrupted terminal in the log.
+#[test]
+fn cancel_mid_drive_lands_interrupted_terminal() {
+    let f = block_on(fixture_with(&[SOLO], Budgets::default(), true));
+    f.mock
+        .push_text("action: tool\ntool: echo\nargs: {\"text\": \"a\"}");
+    f.mock
+        .push_text("action: tool\ntool: echo\nargs: {\"text\": \"b\"}");
+    let run = block_on(f.session.submit("solo", "loop forever")).unwrap();
+    let mut drive = pin!(f.session.drive(&run, f.host.clone()));
+    assert!(poll_once(&mut drive).is_pending()); // suspended in the first LLM call
+    let out = block_on(f.session.cancel(&run));
+    assert_eq!(out.status, RunStatus::Running); // honest: requested, not unknown
+    assert!(out.final_text.unwrap().contains("cancellation requested"));
+    let out = block_on(drive);
+    assert_eq!(out.status, RunStatus::Interrupted);
+    assert_eq!(f.mock.remaining(), 1); // stopped at the next owned wait
+    assert!(f
+        .host
+        .signals()
+        .iter()
+        .any(|s| matches!(s.kind, SignalKind::Interrupted)));
+    assert_eq!(
+        f.session.projection(&run).unwrap().status,
+        RunStatus::Interrupted
+    );
+}
+
+/// FINDING 3 regression: two in-flight drives with two distinct hosts —
+/// every signal reaches only its own run's host (per-run hosts, no
+/// session-wide slot to stomp mid-turn).
+#[test]
+fn concurrent_drives_keep_hosts_isolated_per_run() {
+    let f = block_on(fixture_with(&[SOLO], Budgets::default(), true));
+    let host_a = Rc::new(TestHost::new());
+    let host_b = Rc::new(TestHost::new());
+    let run_a = block_on(f.session.submit("solo", "job a")).unwrap();
+    let run_b = block_on(f.session.submit("solo", "job b")).unwrap();
+    f.mock.push_text("action: answer\nresponse: from a"); // popped by A's call
+    f.mock.push_text("action: answer\nresponse: from b"); // popped by B's call
+    let mut drive_a = pin!(f.session.drive(&run_a, host_a.clone()));
+    let mut drive_b = pin!(f.session.drive(&run_b, host_b.clone()));
+    assert!(poll_once(&mut drive_a).is_pending()); // A suspended in its LLM call
+    assert!(poll_once(&mut drive_b).is_pending()); // B suspended alongside A
+    assert_eq!(block_on(drive_a).status, RunStatus::Answered);
+    assert_eq!(block_on(drive_b).status, RunStatus::Answered);
+    for (host, run) in [(&host_a, &run_a), (&host_b, &run_b)] {
+        let signals = host.signals();
+        assert!(!signals.is_empty());
+        assert!(
+            signals.iter().all(|s| &s.run_id == run),
+            "host of {run:?} saw a foreign run's signals"
+        );
+    }
+    let result_of = |host: &TestHost| {
+        host.signals().iter().find_map(|s| match &s.kind {
+            SignalKind::Result { final_text } => Some(final_text.clone()),
+            _ => None,
+        })
+    };
+    assert_eq!(result_of(host_a.as_ref()).as_deref(), Some("from a"));
+    assert_eq!(result_of(host_b.as_ref()).as_deref(), Some("from b"));
 }

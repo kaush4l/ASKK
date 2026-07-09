@@ -18,6 +18,9 @@ use crate::state::StoreError;
 pub(crate) const DEPTH_SLICE: &str = "delegation_depth";
 /// ToolCtx slice carrying the caller's effective allowlist (authority narrows).
 pub(crate) const PARENT_TOOLS_SLICE: &str = "parent_tools";
+/// ToolCtx slice carrying the caller's run id (DelegateTool resolves the
+/// parent's live host through it for the nested run).
+pub(crate) const PARENT_RUN_SLICE: &str = "parent_run_id";
 
 #[derive(PartialEq, Eq)]
 pub(crate) enum Dispatch {
@@ -67,7 +70,7 @@ pub(crate) async fn dispatch_queued(
             .await?;
             continue;
         };
-        let host = shared.host();
+        let host = shared.host(&run.id);
         let gate = ActionGate::new({
             let host = host.clone();
             move || host.now_ms()
@@ -135,12 +138,13 @@ async fn execute_tool(
     }
     ctx.set_slice(DEPTH_SLICE, json!(run.depth));
     ctx.set_slice(PARENT_TOOLS_SLICE, json!(effective_allow(run)));
+    ctx.set_slice(PARENT_RUN_SLICE, json!(run.id.0));
     let result = tool.call(call.args.clone(), &mut ctx).await;
 
     // Lift back every slice the ctx now holds (ADR-005): ALL tool-written
     // keys — pre-declared or brand new — emit StateWritten on change.
     for key in ctx.slice_keys() {
-        if key == DEPTH_SLICE || key == PARENT_TOOLS_SLICE {
+        if key == DEPTH_SLICE || key == PARENT_TOOLS_SLICE || key == PARENT_RUN_SLICE {
             continue;
         }
         if let Some(value) = ctx.slice(&key) {

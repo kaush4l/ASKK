@@ -2,7 +2,7 @@
 //! contract/provider/phase ref across the whole config set is reported in
 //! ONE error. Also: duplicate ids, bad slugs, gate cardinality.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::config::agent::AgentConfig;
 use crate::config::ConfigError;
@@ -59,7 +59,6 @@ pub fn validate(
             problems.push(format!("{at}: unknown provider '{}'", agent.provider));
         }
 
-        let phase_names: BTreeSet<&str> = agent.phases.iter().map(|p| p.name.as_str()).collect();
         let gates: Vec<&str> = agent
             .phases
             .iter()
@@ -73,7 +72,7 @@ pub fn validate(
                 gates.join(", ")
             ));
         }
-        for phase in &agent.phases {
+        for (idx, phase) in agent.phases.iter().enumerate() {
             if !known(known_contracts, &phase.contract) {
                 problems.push(format!(
                     "{at}: phase '{}' uses unknown contract '{}'",
@@ -91,11 +90,18 @@ pub fn validate(
                 }
             }
             if let Some(target) = &phase.on_fail {
-                if !phase_names.contains(target.as_str()) {
-                    problems.push(format!(
+                // A rewind edge must point strictly backwards: answer routing
+                // only searches phases before the failing one (ADR-008).
+                match agent.phases.iter().position(|p| &p.name == target) {
+                    None => problems.push(format!(
                         "{at}: phase '{}' on_fail target '{target}' names no phase",
                         phase.name
-                    ));
+                    )),
+                    Some(t) if t >= idx => problems.push(format!(
+                        "{at}: phase '{}' on_fail target '{target}' must name an earlier phase",
+                        phase.name
+                    )),
+                    Some(_) => {}
                 }
             }
         }
@@ -209,6 +215,36 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.problems[0].contains("'write' is not in the agent's tools"));
+    }
+
+    #[test]
+    fn on_fail_must_target_an_earlier_phase() {
+        // Gate naming itself, and a phase naming a LATER phase: both are
+        // misrouted rewinds answer routing could never take — reject loud.
+        let a = agent(
+            "selfref",
+            "---\nid: selfref\nphase.1.name: plan\nphase.2.name: verify\n\
+             phase.2.gate: true\nphase.2.on_fail: verify\n---\n",
+        );
+        let b = agent(
+            "late",
+            "---\nid: late\nphase.1.name: check\nphase.1.on_fail: fix\n\
+             phase.2.name: fix\n---\n",
+        );
+        let err = validate(
+            &[a, b],
+            &strs(&[]),
+            &strs(&[]),
+            &strs(&["react"]),
+            &strs(&["default"]),
+        )
+        .unwrap_err();
+        let joined = err.problems.join("\n");
+        assert!(
+            joined.contains("phase 'verify' on_fail target 'verify' must name an earlier phase")
+        );
+        assert!(joined.contains("phase 'check' on_fail target 'fix' must name an earlier phase"));
+        assert_eq!(err.problems.len(), 2);
     }
 
     #[test]

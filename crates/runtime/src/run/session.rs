@@ -57,9 +57,14 @@ pub(crate) struct Shared {
     pub(crate) policy: ActionPolicy,
     pub(crate) pending: RefCell<PendingActions>,
     pub(crate) runs: RefCell<BTreeMap<RunId, RunState>>,
-    /// Installed by `drive`/`resolve_action` for the duration of the session;
-    /// the delegation seam reads it for nested runs.
-    pub(crate) host: RefCell<Option<Rc<dyn RunHost>>>,
+    /// Per-run live host, installed by `drive`/`resolve_action` (and by the
+    /// delegation seam for nested runs). Keyed by run id so concurrent
+    /// in-flight drives never stomp each other's host mid-turn.
+    pub(crate) hosts: RefCell<BTreeMap<RunId, Rc<dyn RunHost>>>,
+    /// Per-run cancel token. Survives the run's removal from `runs` while
+    /// driving, so `cancel` can reach an actively-driving run.
+    /// ponytail: entries live as long as the session, like `runs` itself.
+    pub(crate) cancels: RefCell<BTreeMap<RunId, Rc<Cell<bool>>>>,
     next_run: Cell<u64>,
 }
 
@@ -70,11 +75,12 @@ impl Shared {
         RunId::new(format!("run-{n}"))
     }
 
-    pub(crate) fn host(&self) -> Rc<dyn RunHost> {
-        self.host
+    pub(crate) fn host(&self, run_id: &RunId) -> Rc<dyn RunHost> {
+        self.hosts
             .borrow()
-            .clone()
-            .expect("drive/resolve_action install the host before any turn runs")
+            .get(run_id)
+            .cloned()
+            .expect("drive/resolve_action install the run's host before any turn runs")
     }
 }
 
@@ -114,7 +120,9 @@ pub(crate) struct RunState {
     pub(crate) queued_calls: Vec<ToolCall>,
     /// The parked confirmation this run is paused on.
     pub(crate) awaiting: Option<ActionId>,
-    pub(crate) cancel_requested: bool,
+    /// Cancel token shared with `Shared::cancels`, so `cancel` reaches this
+    /// run even while it is out of the map mid-drive.
+    pub(crate) cancel_requested: Rc<Cell<bool>>,
     /// Every stamped signal of this run, in order — the run's own stream.
     pub(crate) signals: Vec<Signal>,
 }
@@ -171,7 +179,7 @@ impl RunState {
             final_text: None,
             queued_calls: Vec::new(),
             awaiting: None,
-            cancel_requested: false,
+            cancel_requested: Rc::new(Cell::new(false)),
             signals: Vec::new(),
         }
     }
@@ -260,7 +268,8 @@ impl RunSession {
                 policy,
                 pending: RefCell::new(PendingActions::new()),
                 runs: RefCell::new(BTreeMap::new()),
-                host: RefCell::new(None),
+                hosts: RefCell::new(BTreeMap::new()),
+                cancels: RefCell::new(BTreeMap::new()),
                 next_run: Cell::new(0),
             }
         });
@@ -310,6 +319,10 @@ impl RunSession {
         )
         .await
         .map_err(|e| ConfigError::one(e.to_string()))?;
+        shared
+            .cancels
+            .borrow_mut()
+            .insert(run_id.clone(), run.cancel_requested.clone());
         shared.runs.borrow_mut().insert(run_id.clone(), run);
         Ok(run_id)
     }
@@ -317,7 +330,7 @@ impl RunSession {
     /// Run to a terminal status or to a NeedsConfirmation pause (outcome
     /// status stays `Running` while parked).
     pub async fn drive(&self, run_id: &RunId, host: Rc<dyn RunHost>) -> RunOutcome {
-        *self.shared.host.borrow_mut() = Some(host);
+        self.shared.hosts.borrow_mut().insert(run_id.clone(), host);
         let Some(mut run) = self.shared.runs.borrow_mut().remove(run_id) else {
             return unknown_run(run_id);
         };
@@ -339,7 +352,7 @@ impl RunSession {
         approve: bool,
         host: Rc<dyn RunHost>,
     ) -> RunOutcome {
-        *self.shared.host.borrow_mut() = Some(host);
+        self.shared.hosts.borrow_mut().insert(run_id.clone(), host);
         let Some(mut run) = self.shared.runs.borrow_mut().remove(run_id) else {
             return unknown_run(run_id);
         };
@@ -363,13 +376,23 @@ impl RunSession {
         self.finish(run_id, run)
     }
 
-    /// Interrupt a run from outside: Interrupted terminal (ADR-011).
+    /// Interrupt a run from outside: Interrupted terminal (ADR-011). A run
+    /// that is actively driving (out of the map) gets its cancel token set;
+    /// the drive's per-iteration check lands the Interrupted terminal.
     pub async fn cancel(&self, run_id: &RunId) -> RunOutcome {
         let Some(mut run) = self.shared.runs.borrow_mut().remove(run_id) else {
+            if let Some(token) = self.shared.cancels.borrow().get(run_id) {
+                token.set(true);
+                return RunOutcome {
+                    status: RunStatus::Running,
+                    final_text: Some("cancellation requested".into()),
+                    turns_used: 0,
+                };
+            }
             return unknown_run(run_id);
         };
         if !run.status.is_terminal() {
-            run.cancel_requested = true;
+            run.cancel_requested.set(true);
             // Best-effort: the terminal must land even if the store is sick.
             let _ = turn::emit(&self.shared, &mut run, SignalKind::Interrupted).await;
             run.status = RunStatus::Interrupted;
@@ -390,5 +413,13 @@ impl RunSession {
         let outcome = run.outcome();
         self.shared.runs.borrow_mut().insert(run_id.clone(), run);
         outcome
+    }
+}
+
+#[cfg(test)]
+impl RunSession {
+    /// Test seam: unit tests drive `handle_answer` against the real Shared.
+    pub(crate) fn shared(&self) -> &Rc<Shared> {
+        &self.shared
     }
 }

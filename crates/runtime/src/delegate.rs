@@ -6,11 +6,11 @@
 
 use std::rc::Weak;
 
-use askk_core::{Effect, RunStatus, SignalKind, Tool, ToolCtx, ToolResult, ToolSpec};
+use askk_core::{Effect, RunId, RunStatus, SignalKind, Tool, ToolCtx, ToolResult, ToolSpec};
 use serde_json::{json, Value};
 
 use crate::config::AgentConfig;
-use crate::run::dispatch::{DEPTH_SLICE, PARENT_TOOLS_SLICE};
+use crate::run::dispatch::{DEPTH_SLICE, PARENT_RUN_SLICE, PARENT_TOOLS_SLICE};
 use crate::run::session::{RunState, Shared};
 use crate::run::turn;
 use crate::state::LocalBoxFuture;
@@ -93,7 +93,16 @@ impl Tool for DelegateTool {
                 Ok(memory) => memory,
                 Err(e) => return ToolResult::err(format!("delegate: {e}")),
             };
+            // The nested run signals through the calling run's live host.
+            let parent_host = ctx
+                .slice(PARENT_RUN_SLICE)
+                .and_then(Value::as_str)
+                .and_then(|id| shared.hosts.borrow().get(&RunId::new(id)).cloned());
+            let Some(host) = parent_host else {
+                return ToolResult::err("delegate: no live host for the calling run");
+            };
             let run_id = shared.next_run_id();
+            shared.hosts.borrow_mut().insert(run_id.clone(), host);
             let mut run = RunState::new(&child, goal, allowed, depth + 1, memory, run_id);
             let started = turn::emit(
                 &shared,
@@ -108,6 +117,7 @@ impl Tool for DelegateTool {
                 Ok(()) => turn::drive_run(&shared, &mut run).await,
                 Err(e) => Err(e),
             };
+            shared.hosts.borrow_mut().remove(&run.id);
             if let Err(e) = driven {
                 return ToolResult::err(format!("delegate '{}': {e}", self.child_id));
             }

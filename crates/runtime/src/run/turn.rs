@@ -49,7 +49,7 @@ pub(crate) async fn emit(
     let appended = log.append(kind, run.id.clone()).await;
     *shared.log.borrow_mut() = Some(log);
     let signal: Signal = appended?;
-    if let Some(host) = shared.host.borrow().as_ref() {
+    if let Some(host) = shared.hosts.borrow().get(&run.id) {
         host.on_signal(&signal);
     }
     run.signals.push(signal);
@@ -81,12 +81,32 @@ pub(crate) async fn fail_run(shared: &Shared, run: &mut RunState, error: &StoreE
     .await;
 }
 
+/// Global budget/deadline guard: checked between turns AND before each
+/// repair call (every repair is a provider call). True = terminal landed.
+async fn out_of_budget(shared: &Shared, run: &mut RunState) -> Result<bool, StoreError> {
+    let host = shared.host(&run.id);
+    let over_deadline = host.now_ms().saturating_sub(run.started_ms) >= shared.budgets.deadline_ms;
+    if run.turns >= shared.budgets.max_turns || over_deadline {
+        emit(
+            shared,
+            run,
+            SignalKind::StatusSet {
+                status: RunStatus::BudgetExhausted,
+            },
+        )
+        .await?;
+        run.status = RunStatus::BudgetExhausted;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 /// Drive one run until a terminal status or a confirmation pause.
 pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(), StoreError> {
     if run.awaiting.is_some() {
         return Ok(()); // parked on a confirmation; resolve_action resumes
     }
-    let host = shared.host();
+    let host = shared.host(&run.id);
     if run.started_ms == 0 {
         run.started_ms = host.now_ms();
     }
@@ -95,23 +115,12 @@ pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(),
             return Ok(());
         }
         // (a) every wait has an owner and a terminal (ADR-011).
-        if run.cancel_requested || host.interrupted() {
+        if run.cancel_requested.get() || host.interrupted() {
             emit(shared, run, SignalKind::Interrupted).await?;
             run.status = RunStatus::Interrupted;
             return Ok(());
         }
-        let over_deadline =
-            host.now_ms().saturating_sub(run.started_ms) >= shared.budgets.deadline_ms;
-        if run.turns >= shared.budgets.max_turns || over_deadline {
-            emit(
-                shared,
-                run,
-                SignalKind::StatusSet {
-                    status: RunStatus::BudgetExhausted,
-                },
-            )
-            .await?;
-            run.status = RunStatus::BudgetExhausted;
+        if out_of_budget(shared, run).await? {
             return Ok(());
         }
         if shared.budgets.is_final_turn(run.turns) && !run.nudged {
@@ -216,6 +225,11 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
                     break (sheet, parsed);
                 }
                 observe(shared, run, failure.repair_prompt).await?;
+                // The repair is another provider call: the budget/deadline
+                // guard holds here too, not just between turns.
+                if out_of_budget(shared, run).await? {
+                    return Ok(Turn::Terminal);
+                }
             }
         }
     };
@@ -352,7 +366,7 @@ async fn infer_with_retry(
             return Ok(None);
         }
     };
-    let host = shared.host();
+    let host = shared.host(&run.id);
     let run_id = run.id.clone();
     let mut last_error = None;
     for attempt in 0..MAX_PROVIDER_ATTEMPTS {

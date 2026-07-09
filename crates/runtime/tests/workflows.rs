@@ -314,6 +314,33 @@ fn budget_exhaustion_with_final_turn_nudge() {
     });
 }
 
+/// FINDING 2 regression: the budget guard holds INSIDE the repair loop —
+/// a run out of turns never spends extra provider calls on repairs.
+#[test]
+fn budget_guard_holds_inside_the_repair_loop() {
+    block_on(async {
+        let budgets = Budgets {
+            max_turns: 1,
+            ..Budgets::default()
+        };
+        let f = fixture_with(&[SOLO], budgets, ActionPolicy::default()).await;
+        f.mock.push_text("gibberish the contract cannot parse");
+        f.mock.push_text("gibberish again"); // must never be consumed
+        let run = f.session.submit("solo", "answer me").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::BudgetExhausted);
+        assert_eq!(out.turns_used, 1);
+        assert_eq!(f.mock.requests().len(), 1); // exactly one provider call
+        assert_eq!(f.mock.remaining(), 1);
+        assert!(f.host.signals().iter().any(|s| matches!(
+            &s.kind,
+            SignalKind::StatusSet {
+                status: RunStatus::BudgetExhausted
+            }
+        )));
+    });
+}
+
 #[test]
 fn interrupt_mid_run() {
     block_on(async {
