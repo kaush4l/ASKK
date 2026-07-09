@@ -16,6 +16,7 @@ pub mod sheet;
 pub mod signal;
 pub mod state;
 pub mod tool;
+pub mod toolcall;
 pub mod toon;
 
 pub use action::{ActionId, ActionPolicy, ActionProposal, ActionRecord, PolicyDecision, Verdict};

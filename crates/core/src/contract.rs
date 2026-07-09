@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::request::{InferenceReply, ToolCall};
+use crate::toolcall::{derive_action, scan_tool_calls};
 use crate::toon;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -186,13 +187,15 @@ impl Contract {
     }
 
     /// Last-ditch recovery for the react turn: only contracts that carry an
-    /// `action` switch accept bare MCP call objects. Returns a tool-call
-    /// response when the raw reply contains at least one.
+    /// `action` switch accept bare tool calls. Returns a tool-call response
+    /// when the raw reply contains at least one, in EITHER shape a model tends
+    /// to emit — MCP `{"name","arguments"}` or the natural `toolname: {args}`.
     fn recover_tool_calls(&self, text: &str) -> Option<ParsedResponse> {
         if !self.fields.iter().any(|f| f.name == "action") {
             return None;
         }
-        let calls = calls_from_answer(text);
+        let fields: Vec<&str> = self.fields.iter().map(|f| f.name.as_str()).collect();
+        let calls = scan_tool_calls(text, &fields);
         if calls.is_empty() {
             return None;
         }
@@ -319,73 +322,6 @@ fn coerce(spec: &FieldSpec, value: Value) -> Option<Value> {
                 .map(|v| Value::String(v.clone()))
         }
     }
-}
-
-/// One MCP-style call object → ToolCall: `{"name": ..., "arguments": {...}}`
-/// (the shape MCP `tools/call` uses, so MCP-standard tools plug in as-is).
-fn parse_mcp_call(value: &Value) -> Option<ToolCall> {
-    let obj = value.as_object()?;
-    let name = obj.get("name").and_then(Value::as_str)?.trim().to_string();
-    if name.is_empty() {
-        return None;
-    }
-    let args = obj
-        .get("arguments")
-        .cloned()
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}));
-    Some(ToolCall {
-        // Placeholder id: parse is pure, so the run loop assigns the
-        // unique run-qualified id before absorb/dispatch.
-        id: "call_0".into(),
-        name,
-        args,
-    })
-}
-
-/// Tool calls from the `answer` field: one MCP-style JSON object per line
-/// (several lines = parallel calls), or a single JSON array of them.
-fn calls_from_answer(answer: &str) -> Vec<ToolCall> {
-    if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(answer.trim()) {
-        return items.iter().filter_map(parse_mcp_call).collect();
-    }
-    answer
-        .lines()
-        .filter_map(|line| {
-            let object = extract_json_object(line)?;
-            parse_mcp_call(&serde_json::from_str::<Value>(object).ok()?)
-        })
-        .collect()
-}
-
-/// Action derivation (react v2): `action` is the switch. `tool` → the call is
-/// MCP-style (`{"name","arguments"}`), ideally in `answer` but models often
-/// drop it on a bare line — so when `answer` yields nothing we scan the whole
-/// raw reply for the call(s). `answer` (any non-call content) is the final
-/// text, falling back to the raw reply.
-fn derive_action(fields: &Map<String, Value>, raw_text: &str) -> Action {
-    let answer = fields
-        .get("answer")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    if fields.get("action").and_then(Value::as_str) == Some("tool") {
-        let calls = calls_from_answer(&answer);
-        if !calls.is_empty() {
-            return Action::ToolCalls(calls);
-        }
-        // Forgiving fallback: the model put the call on a bare line instead of
-        // under `answer:`. Scan the raw reply for MCP call objects.
-        let calls = calls_from_answer(raw_text);
-        if !calls.is_empty() {
-            return Action::ToolCalls(calls);
-        }
-    }
-    if answer.is_empty() {
-        return Action::Answer(raw_text.trim().to_string());
-    }
-    Action::Answer(answer)
 }
 
 /// Quote-aware brace scan: extract the first balanced top-level JSON object.

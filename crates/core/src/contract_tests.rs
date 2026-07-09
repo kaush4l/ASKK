@@ -169,3 +169,30 @@ fn tool_call_on_a_bare_line_without_answer_field_is_recovered() {
         other => panic!("expected recovered tool call, got {other:?}"),
     }
 }
+
+#[test]
+fn named_tool_call_shape_is_recovered() {
+    // The second live shape: `toolname:` then a JSON args object (no MCP
+    // "name" key). Two calls in one reply -> two ToolCalls, in order.
+    let text = "action: tool\nwrite_file:\n{\n  \"content\": \"#!/bin/sh\\necho hi\",\n  \"path\": \"/root/project/greet.sh\"\n}\nshell:\n{\n  \"command\": \"sh /root/project/greet.sh\"\n}";
+    let parsed = contracts::react().parse(&reply(text)).unwrap();
+    match parsed.action {
+        Action::ToolCalls(calls) => {
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].name, "write_file");
+            assert_eq!(calls[0].args["path"], "/root/project/greet.sh");
+            assert_eq!(calls[1].name, "shell");
+            assert_eq!(calls[1].args["command"], "sh /root/project/greet.sh");
+        }
+        other => panic!("expected two recovered tool calls, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_plain_answer_object_is_not_mistaken_for_a_tool_call() {
+    // action: answer with a JSON object in the text must NOT be recovered as a
+    // tool call (no preceding tool label, no MCP name).
+    let text = "action: answer\nanswer: your config is {\"port\": 8080}";
+    let parsed = contracts::react().parse(&reply(text)).unwrap();
+    assert!(matches!(parsed.action, Action::Answer(_)));
+}
