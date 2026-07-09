@@ -10,23 +10,28 @@ use askk_core::{fold, ActionId, ActionPolicy, Budgets, RunId, RunProjection, Sig
 use askk_runtime::config::{load_soul, AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
-use askk_runtime::tools::{register_builtins, ToolRegistry};
+use askk_runtime::tools::{register_builtins, register_web_search, ToolRegistry};
 use serde_json::Value;
 
 #[cfg(any(target_arch = "wasm32", test))]
 use super::profile::profile_from_json;
 use super::profile::profile_to_json;
-pub use super::profile::{AgentCard, ProviderProfileForm};
+pub use super::profile::{AgentCard, NamedProfile, ProfileSet, ProviderProfileForm};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use askk_runtime::testutil::block_on;
 
 const SOUL_MD: &str = include_str!("../../../../agents/soul.md");
 const ASSISTANT_MD: &str = include_str!("../../../../agents/assistant.md");
+const RESEARCHER_MD: &str = include_str!("../../../../agents/researcher.md");
+const ORCHESTRATOR_MD: &str = include_str!("../../../../agents/orchestrator.md");
 const CONCISE_MD: &str = include_str!("../../../../agents/skills/concise.md");
 
-/// The single provider profile id agents reference (`provider: default`).
+/// The single provider id agents reference (`provider: default`); which
+/// saved profile it points at is the profile set's `active` pick.
 const PROFILE_ID: &str = "default";
+/// Pref key holding the active profile's name.
+const ACTIVE_PROFILE_PREF: &str = "active_profile";
 
 /// The one facade the UI talks to.
 pub struct HarnessHandle {
@@ -36,7 +41,7 @@ pub struct HarnessHandle {
     /// that is mid-drive (and therefore out of the session's run map).
     buffer: Rc<RefCell<Vec<Signal>>>,
     cards: Vec<AgentCard>,
-    profile: Rc<RefCell<ProviderProfileForm>>,
+    profiles: Rc<RefCell<ProfileSet>>,
     settings: SessionStore,
     current: RefCell<Option<RunId>>,
     /// Submission order — the Agents forest lists these (plus any delegate
@@ -166,25 +171,60 @@ impl HarnessHandle {
         })
     }
 
-    pub fn get_profile(&self) -> ProviderProfileForm {
-        self.profile.borrow().clone()
+    pub fn get_profiles(&self) -> ProfileSet {
+        self.profiles.borrow().clone()
     }
 
-    /// Persist the profile and make it live: the resolver reads the shared
-    /// cell per run, so the next run uses the new values.
-    pub async fn set_profile(&self, form: ProviderProfileForm) -> Result<(), String> {
+    /// Save (insert or replace) a named profile and make it active. The
+    /// resolver reads the shared cell per run, so the next run uses it.
+    pub async fn save_profile(&self, name: &str, form: ProviderProfileForm) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("profile name must not be empty".into());
+        }
         self.settings
-            .set_provider_profile(PROFILE_ID, profile_to_json(&form))
+            .set_provider_profile(name, profile_to_json(&form))
             .await
             .map_err(|e| e.to_string())?;
-        *self.profile.borrow_mut() = form;
-        Ok(())
+        self.profiles.borrow_mut().upsert(name, form);
+        self.persist_active().await
+    }
+
+    /// Route runs at a saved profile.
+    pub async fn activate_profile(&self, name: &str) -> Result<(), String> {
+        if self.profiles.borrow().get(name).is_none() {
+            return Err(format!("unknown profile '{name}'"));
+        }
+        self.profiles.borrow_mut().active = name.to_string();
+        self.persist_active().await
+    }
+
+    /// Delete a saved profile; an active deletion falls to the first left.
+    pub async fn delete_profile(&self, name: &str) -> Result<(), String> {
+        self.settings
+            .remove_provider_profile(name)
+            .await
+            .map_err(|e| e.to_string())?;
+        self.profiles.borrow_mut().remove(name);
+        self.persist_active().await
+    }
+
+    async fn persist_active(&self) -> Result<(), String> {
+        let active = self.profiles.borrow().active.clone();
+        self.settings
+            .set_pref(ACTIVE_PROFILE_PREF, Value::from(active))
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 
 fn baked_config() -> Result<(Vec<AgentConfig>, Vec<SkillConfig>, String), String> {
     let agents = vec![
         AgentConfig::from_markdown("agents/assistant.md", ASSISTANT_MD)
+            .map_err(|e| e.to_string())?,
+        AgentConfig::from_markdown("agents/researcher.md", RESEARCHER_MD)
+            .map_err(|e| e.to_string())?,
+        AgentConfig::from_markdown("agents/orchestrator.md", ORCHESTRATOR_MD)
             .map_err(|e| e.to_string())?,
     ];
     let skills = vec![
@@ -205,7 +245,7 @@ fn build_handle(
     kv: Rc<dyn KvStore>,
     host: Rc<dyn RunHost>,
     buffer: Rc<RefCell<Vec<Signal>>>,
-    profile: Rc<RefCell<ProviderProfileForm>>,
+    profiles: Rc<RefCell<ProfileSet>>,
 ) -> Result<HarnessHandle, String> {
     let cards = agents
         .iter()
@@ -235,7 +275,7 @@ fn build_handle(
         host,
         buffer,
         cards,
-        profile,
+        profiles,
         settings: SessionStore::new(kv),
         current: RefCell::new(None),
         known_runs: RefCell::new(Vec::new()),
@@ -259,23 +299,44 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
         .map_err(|e| e.to_string())?;
 
     let settings = SessionStore::new(kv.clone());
-    let stored = settings
-        .provider_profile(PROFILE_ID)
+    let mut set = ProfileSet::default();
+    for name in settings
+        .provider_profile_ids()
         .await
-        .map_err(|e| e.to_string())?;
-    let profile = Rc::new(RefCell::new(
-        stored.as_ref().map(profile_from_json).unwrap_or_default(),
-    ));
+        .map_err(|e| e.to_string())?
+    {
+        if let Some(stored) = settings
+            .provider_profile(&name)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            set.profiles.push(NamedProfile {
+                name,
+                form: profile_from_json(&stored),
+            });
+        }
+    }
+    set.active = settings
+        .pref(ACTIVE_PROFILE_PREF)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_str().map(String::from))
+        .filter(|name| set.get(name).is_some())
+        .or_else(|| set.profiles.first().map(|p| p.name.clone()))
+        .unwrap_or_default();
+    let profiles = Rc::new(RefCell::new(set));
 
+    let transport: Rc<dyn Transport> = Rc::new(FetchTransport::new());
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || js_sys::Date::now() as u64).map_err(|e| e.to_string())?;
+    register_web_search(&mut registry, transport.clone()).map_err(|e| e.to_string())?;
 
-    // The resolver reads the live profile cell per run: a settings save is
-    // effective on the next run, no rebuild. Registry construction is cheap.
-    let transport: Rc<dyn Transport> = Rc::new(FetchTransport::new());
-    let resolver_profile = profile.clone();
+    // The resolver reads the live profile-set cell per run: a settings save
+    // or an active-profile switch is effective on the next run, no rebuild.
+    let resolver_profiles = profiles.clone();
     let resolver: ProviderResolver = Box::new(move |profile_id| {
-        let form = resolver_profile.borrow().clone();
+        let form = resolver_profiles.borrow().active_form();
         let mut providers = ProviderRegistry::new(transport.clone());
         providers.add_profile(ProviderProfile {
             id: profile_id.to_string(),
@@ -292,7 +353,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let host: Rc<dyn RunHost> = Rc::new(BrowserHost::new(buffer.clone(), notify));
     let (agents, skills, soul) = baked_config()?;
     build_handle(
-        agents, skills, soul, registry, resolver, log, kv, host, buffer, profile,
+        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles,
     )
 }
 
@@ -301,7 +362,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn host_session() -> Result<HarnessHandle, String> {
     use askk_core::Provider;
-    use askk_inference::MockProvider;
+    use askk_inference::{MockProvider, MockTransport};
     use askk_runtime::run::TestHost;
     use askk_runtime::state::{BlobStore, MemBlob, MemKv};
 
@@ -312,6 +373,7 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
         .map_err(|e| e.to_string())?;
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).map_err(|e| e.to_string())?;
+    register_web_search(&mut registry, Rc::new(MockTransport::new())).map_err(|e| e.to_string())?;
 
     let mock = Rc::new(MockProvider::new("default/mock"));
     mock.push_text("action: tool\ntool: echo\nargs: {\"text\": \"hello from the harness\"}");
@@ -321,10 +383,10 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
 
     let buffer: Rc<RefCell<Vec<Signal>>> = Rc::new(RefCell::new(Vec::new()));
     let host: Rc<dyn RunHost> = Rc::new(TestHost::new());
-    let profile = Rc::new(RefCell::new(ProviderProfileForm::default()));
+    let profiles = Rc::new(RefCell::new(ProfileSet::default()));
     let (agents, skills, soul) = baked_config()?;
     build_handle(
-        agents, skills, soul, registry, resolver, log, kv, host, buffer, profile,
+        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles,
     )
 }
 
@@ -337,166 +399,5 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
-    use super::*;
-    use askk_core::{RunStatus, SignalKind};
-
-    #[test]
-    fn baked_agents_surface_as_cards() {
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            let cards = handle.agents();
-            assert_eq!(cards.len(), 1);
-            assert_eq!(cards[0].id, "assistant");
-            assert!(!cards[0].description.is_empty());
-        });
-    }
-
-    #[test]
-    fn scripted_happy_path_answers_through_the_facade() {
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            let run = handle.submit("assistant", "say hello").await.unwrap();
-            assert_eq!(handle.current_run(), Some(run.clone()));
-            handle.drive().await;
-            let proj = handle.projection(&run);
-            assert_eq!(proj.status, RunStatus::Answered);
-            assert_eq!(proj.turns_used, 2);
-            assert!(proj
-                .messages
-                .iter()
-                .any(|m| m.content.contains("hello from the harness")));
-        });
-    }
-
-    #[test]
-    fn unknown_agent_is_a_string_error_not_a_panic() {
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            let err = handle.submit("ghost", "hi").await.unwrap_err();
-            assert!(err.contains("ghost"));
-        });
-    }
-
-    #[test]
-    fn mid_drive_projection_folds_the_live_buffer() {
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            // A run id the session does not know simulates mid-drive (the
-            // run is out of the session map while driving).
-            let run_id = RunId::new("live-run");
-            handle.buffer.borrow_mut().push(Signal {
-                seq: 1,
-                run_id: run_id.clone(),
-                ts_ms: 0,
-                kind: SignalKind::PhaseEntered {
-                    name: "main".into(),
-                },
-            });
-            let proj = handle.projection(&run_id);
-            assert_eq!(proj.status, RunStatus::Running);
-            assert!(proj.timeline.iter().any(|t| t.contains("phase: main")));
-            // Other runs' signals do not leak into the fold.
-            let other = handle.projection(&RunId::new("someone-else"));
-            assert!(other.timeline.is_empty());
-        });
-    }
-
-    #[test]
-    fn profile_round_trips_through_form_json_and_store() {
-        let form = ProviderProfileForm {
-            base_url: "http://localhost:1234/v1".into(),
-            model: "qwen".into(),
-            api_key: "sk-local".into(),
-            temperature: Some(0.5),
-        };
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            assert_eq!(handle.get_profile(), ProviderProfileForm::default());
-            handle.set_profile(form.clone()).await.unwrap();
-            assert_eq!(handle.get_profile(), form);
-            // Persisted, not just cached.
-            let stored = handle
-                .settings
-                .provider_profile(PROFILE_ID)
-                .await
-                .unwrap()
-                .unwrap();
-            assert_eq!(profile_from_json(&stored), form);
-        });
-    }
-
-    #[test]
-    fn cancel_lands_the_interrupted_terminal_on_a_parked_run() {
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            let run = handle.submit("assistant", "say hello").await.unwrap();
-            handle.cancel().await;
-            assert_eq!(handle.projection(&run).status, RunStatus::Interrupted);
-        });
-    }
-
-    #[test]
-    fn runs_lists_submitted_and_buffer_observed_runs_newest_first() {
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            let first = handle.submit("assistant", "one").await.unwrap();
-            handle.drive().await;
-            // A delegate run seen only through the live buffer.
-            let ghost = RunId::new("delegate-run");
-            handle.buffer.borrow_mut().push(Signal {
-                seq: 1,
-                run_id: ghost.clone(),
-                ts_ms: 0,
-                kind: SignalKind::PhaseEntered {
-                    name: "main".into(),
-                },
-            });
-            let runs = handle.runs();
-            let ids: Vec<&RunId> = runs.iter().map(|(id, _)| id).collect();
-            assert_eq!(ids, vec![&ghost, &first]);
-            assert_eq!(runs[1].1.status, RunStatus::Answered);
-        });
-    }
-
-    #[test]
-    fn draft_accumulates_deltas_and_clears_on_response() {
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            let run_id = RunId::new("r-draft");
-            let push = |kind: SignalKind| {
-                handle.buffer.borrow_mut().push(Signal {
-                    seq: 0,
-                    run_id: run_id.clone(),
-                    ts_ms: 0,
-                    kind,
-                });
-            };
-            push(SignalKind::LlmRequest);
-            push(SignalKind::LlmDelta { text: "hel".into() });
-            push(SignalKind::LlmDelta { text: "lo".into() });
-            assert_eq!(handle.draft(&run_id), "hello");
-            assert_eq!(
-                handle.latest_activity(&run_id),
-                Some(SignalKind::LlmRequest)
-            );
-            push(SignalKind::LlmResponse {
-                text: "hello".into(),
-            });
-            assert_eq!(handle.draft(&run_id), "");
-        });
-    }
-
-    #[test]
-    fn prefs_round_trip_through_the_session_store() {
-        block_on(async {
-            let handle = host_session().await.unwrap();
-            assert_eq!(handle.get_pref("ui").await, None);
-            handle
-                .set_pref("ui", serde_json::json!({"theme": "amber"}))
-                .await;
-            let stored = handle.get_pref("ui").await.unwrap();
-            assert_eq!(stored["theme"], "amber");
-        });
-    }
-}
+#[path = "boot_tests.rs"]
+mod tests;

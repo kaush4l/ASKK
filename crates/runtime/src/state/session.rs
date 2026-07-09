@@ -46,6 +46,10 @@ impl SessionStore {
             .await
     }
 
+    pub async fn remove_provider_profile(&self, id: &str) -> Result<(), StoreError> {
+        self.kv.remove(&format!("{PROVIDER_PREFIX}{id}")).await
+    }
+
     pub async fn provider_profile_ids(&self) -> Result<Vec<String>, StoreError> {
         Ok(self
             .kv
@@ -111,6 +115,11 @@ mod tests {
             assert_eq!(
                 session.provider_profile_ids().await.unwrap(),
                 vec!["anthropic", "lmstudio"]
+            );
+            session.remove_provider_profile("anthropic").await.unwrap();
+            assert_eq!(
+                session.provider_profile_ids().await.unwrap(),
+                vec!["lmstudio"]
             );
         });
     }

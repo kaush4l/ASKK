@@ -15,5 +15,6 @@ pub use mock::MockProvider;
 pub use openai_compat::OpenAiCompat;
 pub use registry::{parse_model_id, ProviderProfile, ProviderRegistry};
 pub use transport::{
-    parse_sse_lines, HttpRequest, HttpResponse, MockTransport, SseEvent, Transport, TransportError,
+    parse_sse_lines, HttpRequest, HttpResponse, MockTransport, SseAssembler, SseEvent, Transport,
+    TransportError, Utf8Accumulator,
 };

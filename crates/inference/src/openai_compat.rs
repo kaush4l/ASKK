@@ -1,6 +1,7 @@
 //! OpenAI-compatible chat/completions adapter. Body building and reply
 //! parsing are pure functions; the Transport is injected (ADR-009).
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use futures::future::LocalBoxFuture;
@@ -10,7 +11,7 @@ use askk_core::contract::OutputMode;
 use askk_core::provider::{Provider, ProviderError};
 use askk_core::request::{InferenceReply, InferenceRequest, Role, SectionKind, ToolCall, Usage};
 
-use crate::transport::{parse_sse_lines, HttpRequest, HttpResponse, Transport, TransportError};
+use crate::transport::{HttpRequest, HttpResponse, SseAssembler, Transport, TransportError};
 
 pub struct OpenAiCompat {
     id: String,
@@ -103,6 +104,10 @@ pub fn build_body(req: &InferenceRequest, model: &str) -> Value {
     if req.contract.mode == OutputMode::Json {
         body["response_format"] = json!({"type": "json_object"});
     }
+    // Always request SSE; servers that ignore it fall back to the buffered
+    // JSON path in `infer`. include_usage puts usage on the final chunk.
+    body["stream"] = json!(true);
+    body["stream_options"] = json!({"include_usage": true});
     body
 }
 
@@ -175,35 +180,84 @@ pub(crate) fn transport_to_error(err: TransportError, base_url: &str) -> Provide
     }
 }
 
-/// Assemble a chat.completion.chunk SSE stream, emitting deltas as they pass.
-// ponytail: streamed tool_call deltas are not assembled — native calls come
-// back on non-streaming replies; add chunk merging if a provider needs it.
-pub(crate) fn assemble_stream(
-    body: &str,
-    on_delta: &mut dyn FnMut(&str),
-) -> Result<InferenceReply, ProviderError> {
-    let mut text = String::new();
-    let mut usage = None;
-    for event in parse_sse_lines(body) {
-        if event.data == "[DONE]" {
-            continue;
+/// Streamed reply accumulator: content deltas pass through `on_delta` as
+/// they arrive; tool_call deltas merge by index (id/name land once,
+/// arguments concatenate); usage rides the final chunk.
+#[derive(Default)]
+pub(crate) struct StreamAcc {
+    pub saw_event: bool,
+    text: String,
+    usage: Option<Usage>,
+    calls: Vec<PartialCall>,
+}
+
+#[derive(Default)]
+struct PartialCall {
+    id: String,
+    name: String,
+    args: String,
+}
+
+impl StreamAcc {
+    pub(crate) fn absorb(&mut self, data: &str, on_delta: &mut dyn FnMut(&str)) {
+        if data == "[DONE]" {
+            self.saw_event = true;
+            return;
         }
-        let Ok(value) = serde_json::from_str::<Value>(&event.data) else {
-            continue; // tolerate keepalives / partial junk
+        let Ok(value) = serde_json::from_str::<Value>(data) else {
+            return; // tolerate keepalives / partial junk
         };
-        if let Some(chunk) = value["choices"][0]["delta"]["content"].as_str() {
-            text.push_str(chunk);
-            on_delta(chunk);
+        self.saw_event = true;
+        let delta = &value["choices"][0]["delta"];
+        if let Some(chunk) = delta["content"].as_str() {
+            if !chunk.is_empty() {
+                self.text.push_str(chunk);
+                on_delta(chunk);
+            }
+        }
+        if let Some(calls) = delta["tool_calls"].as_array() {
+            for call in calls {
+                let index = call["index"].as_u64().unwrap_or(0) as usize;
+                while self.calls.len() <= index {
+                    self.calls.push(PartialCall::default());
+                }
+                let slot = &mut self.calls[index];
+                if let Some(id) = call["id"].as_str() {
+                    if !id.is_empty() {
+                        slot.id = id.into();
+                    }
+                }
+                if let Some(name) = call["function"]["name"].as_str() {
+                    if !name.is_empty() {
+                        slot.name = name.into();
+                    }
+                }
+                if let Some(args) = call["function"]["arguments"].as_str() {
+                    slot.args.push_str(args);
+                }
+            }
         }
         if let Some(u) = parse_usage(&value["usage"], "prompt_tokens", "completion_tokens") {
-            usage = Some(u);
+            self.usage = Some(u);
         }
     }
-    Ok(InferenceReply {
-        text,
-        native_tool_calls: Vec::new(),
-        usage,
-    })
+
+    pub(crate) fn into_reply(self) -> InferenceReply {
+        InferenceReply {
+            text: self.text,
+            native_tool_calls: self
+                .calls
+                .into_iter()
+                .filter(|c| !c.name.is_empty())
+                .map(|c| ToolCall {
+                    id: c.id,
+                    name: c.name,
+                    args: serde_json::from_str(&c.args).unwrap_or_else(|_| json!({})),
+                })
+                .collect(),
+            usage: self.usage,
+        }
+    }
 }
 
 impl Provider for OpenAiCompat {
@@ -226,22 +280,39 @@ impl Provider for OpenAiCompat {
                 ],
                 body: build_body(req, &self.model).to_string(),
             };
+            // Deltas hit `on_delta` live as chunks arrive off the wire.
+            let assembler = RefCell::new(SseAssembler::new());
+            let acc = RefCell::new(StreamAcc::default());
+            let deltas = RefCell::new(on_delta);
+            let mut on_chunk = |chunk: &str| {
+                let mut acc = acc.borrow_mut();
+                let mut cb = deltas.borrow_mut();
+                for event in assembler.borrow_mut().feed(chunk) {
+                    acc.absorb(&event.data, &mut **cb);
+                }
+            };
             let resp = self
                 .transport
-                .send(http)
+                .send_stream(http, &mut on_chunk)
                 .await
                 .map_err(|e| transport_to_error(e, &self.base_url))?;
             if let Some(err) = status_to_error(&resp, &self.base_url) {
                 return Err(err);
             }
-            if resp.body.trim_start().starts_with("data:") {
-                return assemble_stream(&resp.body, on_delta);
+            for event in assembler.borrow_mut().finish() {
+                acc.borrow_mut()
+                    .absorb(&event.data, &mut **deltas.borrow_mut());
             }
+            let acc = acc.into_inner();
+            if acc.saw_event {
+                return Ok(acc.into_reply());
+            }
+            // Server ignored stream:true and sent one buffered JSON reply.
             let value: Value = serde_json::from_str(&resp.body)
                 .map_err(|e| ProviderError::Malformed(e.to_string()))?;
             let reply = parse_reply(&value)?;
             if !reply.text.is_empty() {
-                on_delta(&reply.text); // non-streaming: one delta, full text
+                (**deltas.borrow_mut())(&reply.text); // one delta, full text
             }
             Ok(reply)
         })
@@ -295,6 +366,8 @@ mod tests {
         assert_eq!(body["temperature"], 0.5);
         assert_eq!(body["max_tokens"], 100);
         assert!(body.get("response_format").is_none());
+        assert_eq!(body["stream"], true);
+        assert_eq!(body["stream_options"]["include_usage"], true);
     }
 
     #[test]
@@ -414,5 +487,33 @@ mod tests {
         assert_eq!(reply.text, "hello");
         assert_eq!(deltas, vec!["he", "llo"]);
         assert_eq!(reply.usage.unwrap().output_tokens, 2);
+    }
+
+    #[test]
+    fn streamed_tool_call_deltas_assemble_by_index() {
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
+            "\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"pa\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+            "\"function\":{\"arguments\":\"th\\\": \\\"x\\\"}\"}}]}}]}\n\n",
+            "data: [DONE]\n\n"
+        );
+        let (provider, _) = provider_with(200, sse);
+        let reply = block_on(provider.infer(&request(), &mut |_| {})).unwrap();
+        assert_eq!(reply.native_tool_calls.len(), 1);
+        assert_eq!(reply.native_tool_calls[0].id, "c1");
+        assert_eq!(reply.native_tool_calls[0].name, "read");
+        assert_eq!(reply.native_tool_calls[0].args, json!({"path": "x"}));
+    }
+
+    #[test]
+    fn stream_without_trailing_blank_line_still_lands_via_finish() {
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"tail\"}}]}";
+        let (provider, _) = provider_with(200, sse);
+        let mut deltas = Vec::new();
+        let reply =
+            block_on(provider.infer(&request(), &mut |d| deltas.push(d.to_string()))).unwrap();
+        assert_eq!(reply.text, "tail");
+        assert_eq!(deltas, vec!["tail"]);
     }
 }

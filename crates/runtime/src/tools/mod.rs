@@ -5,9 +5,11 @@
 
 pub mod builtin;
 pub mod registry;
+pub mod search;
 
 pub use builtin::register_builtins;
 pub use registry::{RegistryError, RustTool, ToolRegistry};
+pub use search::register_web_search;
 
 #[cfg(test)]
 pub(crate) use crate::testutil;

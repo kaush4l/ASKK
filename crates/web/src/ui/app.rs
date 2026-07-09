@@ -11,7 +11,7 @@ use dioxus::prelude::*;
 use askk_core::{RunId, RunProjection, SignalKind};
 use serde_json::{json, Value};
 
-use crate::host::boot::{self, HarnessHandle, ProviderProfileForm};
+use crate::host::boot::{self, HarnessHandle, NamedProfile, ProfileSet};
 use crate::host::dom;
 use crate::ui::agents::AgentsStage;
 use crate::ui::chat::ChatStage;
@@ -66,7 +66,7 @@ pub fn App() -> Element {
     let mut ui_error = use_signal(|| Option::<String>::None);
     let mut current = use_signal(|| Option::<RunId>::None);
     let mut agent_id = use_signal(String::new);
-    let mut profile = use_signal(ProviderProfileForm::default);
+    let mut profiles = use_signal(ProfileSet::default);
     let mut busy = use_signal(|| false);
     let mut run_start = use_signal(|| 0u64);
     // Persisted UI prefs (kiln appstate): stage, theme, rails, inspector tab.
@@ -95,7 +95,7 @@ pub fn App() -> Element {
         });
         match boot::session(notify).await {
             Ok(h) => {
-                profile.set(h.get_profile());
+                profiles.set(h.get_profiles());
                 if let Some(first) = h.agents().first() {
                     agent_id.set(first.id.clone());
                 }
@@ -210,13 +210,31 @@ pub fn App() -> Element {
             counter += 1;
         });
     };
-    let on_save = move |form: ProviderProfileForm| {
+    let on_save_profile = move |p: NamedProfile| {
         let Some(h) = handle() else { return };
-        profile.set(form.clone());
         spawn(async move {
-            if let Err(e) = h.set_profile(form).await {
+            if let Err(e) = h.save_profile(&p.name, p.form).await {
                 ui_error.set(Some(e));
             }
+            profiles.set(h.get_profiles());
+        });
+    };
+    let on_select_profile = move |name: String| {
+        let Some(h) = handle() else { return };
+        spawn(async move {
+            if let Err(e) = h.activate_profile(&name).await {
+                ui_error.set(Some(e));
+            }
+            profiles.set(h.get_profiles());
+        });
+    };
+    let on_delete_profile = move |name: String| {
+        let Some(h) = handle() else { return };
+        spawn(async move {
+            if let Err(e) = h.delete_profile(&name).await {
+                ui_error.set(Some(e));
+            }
+            profiles.set(h.get_profiles());
         });
     };
 
@@ -267,7 +285,15 @@ pub fn App() -> Element {
                         },
                         Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },
                         Stage::Settings => rsx! {
-                            SettingsStage { profile: profile(), theme: theme(), on_save, on_theme }
+                            SettingsStage {
+                                key: "{profiles().active}",
+                                profiles: profiles(),
+                                theme: theme(),
+                                on_save: on_save_profile,
+                                on_select: on_select_profile,
+                                on_delete: on_delete_profile,
+                                on_theme,
+                            }
                         },
                     }
                 }
