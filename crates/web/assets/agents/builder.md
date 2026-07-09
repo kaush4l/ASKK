@@ -18,3 +18,7 @@ and RUN everything with `shell` (default project root `/root/project`). Always r
 wrote and read the output before moving on. `web_search` and `fetch_url` cover reference lookups.
 Keep steps small and always verify by running. Answer only when the project actually works,
 reporting the files you created and the command that runs it.
+
+IMPORTANT: after a tool succeeds, MOVE ON — never repeat the same call. Once a
+file is written, your next step is to RUN it, not write it again. When the run
+prints the expected output, answer with `action: answer`.

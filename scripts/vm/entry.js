@@ -322,19 +322,30 @@ const api = {
       return Promise.reject(new Error(`AskkV86.exec: no VM at ${hostId}`));
     }
     const n = ++execSeq;
-    const marker = `__ASKK_DONE_${n}__`;
+    // Bracket the output with a START and a DONE marker (each split across two
+    // string halves so the command text can never contain them). The captured
+    // output is strictly what lands BETWEEN them — no leading shell prompt, no
+    // trailing prompt. DONE carries the exit code.
+    const beg = `__ASKK_BEG_${n}__`;
+    const done = `__ASKK_DONE_${n}__`;
     return new Promise((resolve, reject) => {
       let buf = "";
       const tap = (text) => {
         buf += text;
-        const at = buf.indexOf(marker);
-        if (at < 0) return;
+        const dAt = buf.indexOf(done);
+        if (dAt < 0) return;
         record.taps.delete(tap);
         clearTimeout(timer);
-        // Everything up to the marker is the command output; trim the trailing
-        // newline that precedes the marker line.
-        let out = buf.slice(0, at).replace(/\r?\n?$/, "");
-        const exit = (buf.slice(at + marker.length).match(/^(\d+)/) || [])[1];
+        const bAt = buf.indexOf(beg);
+        const from = bAt >= 0 ? bAt + beg.length : 0;
+        // Strip the newline right after START, one leading shell-prompt token
+        // (e.g. "/root% " that can precede output), and the newline before DONE.
+        let out = buf
+          .slice(from, dAt)
+          .replace(/^\r?\n/, "")
+          .replace(/^\S*\s*[#%$]\s+/, "")
+          .replace(/\r?\n?$/, "");
+        const exit = (buf.slice(dAt + done.length).match(/^(\d+)/) || [])[1];
         resolve(exit && exit !== "0" ? `${out}\n[exit ${exit}]` : out);
       };
       const timer = setTimeout(() => {
@@ -343,7 +354,7 @@ const api = {
       }, timeoutMs || 30000);
       record.taps.add(tap);
       record.emulator.serial0_send(
-        `${cmd}; printf '__ASKK_''DONE_${n}__%s\\n' $?\n`
+        `printf '__ASKK_''BEG_${n}__\\n'; ${cmd}; printf '__ASKK_''DONE_${n}__%s\\n' $?\n`
       );
     });
   },

@@ -19,3 +19,7 @@ directories. After writing, always RUN it and read the output; if it errors, fix
 report the file path, what it does, and the exact command + output that proves it.
 
 `web_search` and `fetch_url` are available when you need an API shape or a reference.
+
+IMPORTANT: after a tool succeeds, MOVE ON — never repeat the same call. Once a
+file is written, your next step is to RUN it, not write it again. When the run
+prints the expected output, answer with `action: answer`.
