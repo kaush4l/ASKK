@@ -861,3 +861,197 @@ fn board_card_lifecycle_through_the_loop() {
         assert_eq!(f.mock.remaining(), 0);
     });
 }
+
+const KANBAN: (&str, &str) = (
+    "agents/kanban.md",
+    "---\nid: kanban\ndescription: Plans cards, dispatches them, accepts only met criteria.\n\
+     tools: board_add, board_list, board_move, board_check, tester, echo\n---\n\
+     You work goals through the kanban board.",
+);
+const TESTER: (&str, &str) = (
+    "agents/tester.md",
+    "---\nid: tester\ndescription: Verifies card criteria and records verdicts.\n\
+     tools: board_list, board_check, board_move\n---\nYou verify cards.",
+);
+
+/// The full team arc: the orchestrator plans a card and pushes it to testing;
+/// the tester delegate finds a criterion unmet and BOUNCES the card back to
+/// planning with a note; after the fix a second tester pass marks it met and
+/// only then does the card reach done.
+#[test]
+fn kanban_bounce_until_criteria_met() {
+    block_on(async {
+        let policy = ActionPolicy {
+            mutating_default: PolicyDecision::Auto,
+            ..Default::default()
+        };
+        let f = fixture_with(&[KANBAN, TESTER], Budgets::default(), policy).await;
+        // Parent: plan the card, dispatch it, push to testing.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_add\", \"arguments\": \
+             {\"title\": \"Ship widget\", \"goal\": \"build the widget\", \
+             \"criteria\": [\"widget works\"], \"stage\": \"planning\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_move\", \"arguments\": \
+             {\"id\": \"ship-widget\", \"stage\": \"doing\", \"assignee\": \"kanban\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_move\", \"arguments\": \
+             {\"id\": \"ship-widget\", \"stage\": \"testing\"}}",
+        );
+        // Parent delegates verification; the tester fails the criterion and
+        // bounces the card back to planning with a note.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"tester\", \"arguments\": \
+             {\"goal\": \"verify card ship-widget\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_check\", \"arguments\": \
+             {\"id\": \"ship-widget\", \"criterion\": 1, \"met\": false, \
+             \"note\": \"widget crashes on start\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_move\", \"arguments\": \
+             {\"id\": \"ship-widget\", \"stage\": \"planning\", \
+             \"note\": \"bounced: widget crashes on start\"}}",
+        );
+        f.mock
+            .push_text("action: answer\nanswer: criterion 1 unmet; bounced to planning");
+        // Parent reads the bounce note, re-dispatches, delegates again; the
+        // tester now passes the criterion and finishes the card.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_list\", \"arguments\": {\"id\": \"ship-widget\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_move\", \"arguments\": \
+             {\"id\": \"ship-widget\", \"stage\": \"testing\", \"note\": \"fix applied\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"tester\", \"arguments\": \
+             {\"goal\": \"re-verify card ship-widget\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_check\", \"arguments\": \
+             {\"id\": \"ship-widget\", \"criterion\": 1, \"met\": true, \
+             \"note\": \"starts cleanly now\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_move\", \"arguments\": \
+             {\"id\": \"ship-widget\", \"stage\": \"done\"}}",
+        );
+        f.mock
+            .push_text("action: answer\nanswer: all criteria met; card done");
+        f.mock.push_text("action: answer\nanswer: widget shipped");
+        let run = f.session.submit("kanban", "ship the widget").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("widget shipped"));
+        let signals = f.host.signals();
+        // Both verification passes ran as real tester delegate runs.
+        let tester_runs = signals
+            .iter()
+            .filter(|s| matches!(&s.kind, SignalKind::RunStarted { agent_id, .. } if agent_id == "tester"))
+            .count();
+        assert_eq!(tester_runs, 2);
+        let obs = observations(&signals);
+        // The explicit planning bounce happened, and it happened BEFORE done.
+        let bounce = obs
+            .iter()
+            .position(|o| o.contains("moved [ship-widget] testing -> planning"))
+            .expect("bounce observation");
+        let done = obs
+            .iter()
+            .position(|o| o.contains("moved [ship-widget] testing -> done"))
+            .expect("done observation");
+        assert!(bounce < done, "{obs:?}");
+        // The bounce note is on the card (parent read it back via board_list).
+        assert!(
+            obs.iter()
+                .any(|o| o.contains("notes:") && o.contains("widget crashes on start")),
+            "{obs:?}"
+        );
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// The tester delegate's verdicts are visible to the parent (its answer comes
+/// back as an untrusted Result observation) and PERSIST on the shared board:
+/// a follow-up board_list turn in the parent run shows the checked boxes.
+#[test]
+fn tester_delegate_records_verdicts() {
+    block_on(async {
+        let policy = ActionPolicy {
+            mutating_default: PolicyDecision::Auto,
+            ..Default::default()
+        };
+        let f = fixture_with(&[KANBAN, TESTER], Budgets::default(), policy).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_add\", \"arguments\": \
+             {\"title\": \"Audit login\", \"goal\": \"audit the login page\", \
+             \"criteria\": [\"a11y pass\", \"loads fast\"], \"stage\": \"testing\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"tester\", \"arguments\": \
+             {\"goal\": \"verify card audit-login\"}}",
+        );
+        // Tester: one criterion by substring (met defaults true), one by
+        // number, explicitly unmet.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_check\", \"arguments\": \
+             {\"id\": \"audit-login\", \"criterion\": \"a11y\", \"note\": \"screen reader ok\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_check\", \"arguments\": \
+             {\"id\": \"audit-login\", \"criterion\": 2, \"met\": false, \"note\": \"3s load time\"}}",
+        );
+        f.mock
+            .push_text("action: answer\nanswer: a11y met, load speed unmet");
+        // Parent re-reads the card in a follow-up turn, then answers.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_list\", \"arguments\": {\"id\": \"audit-login\"}}",
+        );
+        f.mock
+            .push_text("action: answer\nanswer: verdicts recorded");
+        let run = f.session.submit("kanban", "audit login").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let signals = f.host.signals();
+        let obs = observations(&signals);
+        // The tester's board_check verdicts landed in the stream.
+        assert!(
+            obs.iter()
+                .any(|o| o.contains("criterion 1 of [audit-login] met")),
+            "{obs:?}"
+        );
+        assert!(
+            obs.iter()
+                .any(|o| o.contains("criterion 2 of [audit-login] unmet")),
+            "{obs:?}"
+        );
+        // The tester's summary reached the PARENT run as an untrusted result.
+        let parent_obs: Vec<String> = signals
+            .iter()
+            .filter(|s| s.run_id == run)
+            .filter_map(|s| match &s.kind {
+                SignalKind::ObservationAppended { text } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            parent_obs
+                .iter()
+                .any(|o| o.contains("Result (untrusted): a11y met, load speed unmet")),
+            "{parent_obs:?}"
+        );
+        // Criterion state persisted across runs: the parent's own board_list
+        // sees the checked box states the tester wrote.
+        let detail = parent_obs
+            .iter()
+            .find(|o| o.contains("[audit-login] Audit login"))
+            .expect("board_list detail");
+        assert!(detail.contains("1. [x] a11y pass"), "{detail}");
+        assert!(detail.contains("2. [ ] loads fast"), "{detail}");
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
