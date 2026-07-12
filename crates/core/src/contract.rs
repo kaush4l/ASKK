@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::request::{InferenceReply, ToolCall};
-use crate::toolcall::{derive_action, scan_tool_calls};
+use crate::toolcall::{derive_action, scan_tool_calls, strip_scaffold};
 use crate::toon;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -184,6 +184,14 @@ impl Contract {
             }
         }
         json!({"type": "object", "properties": properties, "required": required})
+    }
+
+    /// Fallback-answer hygiene: strip this contract's scaffold field lines
+    /// (everything except `answer`) from a raw reply before it stands in as
+    /// the answer — repairs replay history; scaffold replay wastes context.
+    pub fn strip_scaffold(&self, text: &str) -> String {
+        let names: Vec<&str> = self.fields.iter().map(|f| f.name.as_str()).collect();
+        strip_scaffold(text, &names)
     }
 
     /// Parse cascade: native tool calls first, then JSON, then TOON, then repair.

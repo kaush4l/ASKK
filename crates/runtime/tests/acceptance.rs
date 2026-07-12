@@ -22,7 +22,8 @@ use askk_runtime::run::{ProviderResolver, RunSession, SessionInit, TestHost};
 use askk_runtime::state::{BlobStore, MemBlob, MemKv, MemoryStore, SessionStore, SignalLog};
 use askk_runtime::testutil::block_on;
 use askk_runtime::tools::{
-    register_builtins, register_shell, register_workspace, RustTool, ShellExec, ToolRegistry,
+    register_builtins, register_echo, register_shell, register_workspace, RustTool, ShellExec,
+    ToolRegistry,
 };
 use futures::future::LocalBoxFuture;
 
@@ -105,6 +106,7 @@ async fn row(
         .unwrap();
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).unwrap();
+    register_echo(&mut registry).unwrap();
     register_shell(&mut registry, shell.clone()).unwrap();
     register_workspace(&mut registry, shell).unwrap();
     fake_js_eval(&mut registry);

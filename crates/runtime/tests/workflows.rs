@@ -15,7 +15,7 @@ use askk_runtime::state::{
     BlobStore, BoardStore, KvStore, MemBlob, MemKv, MemoryStore, SessionStore, SignalLog,
 };
 use askk_runtime::testutil::block_on;
-use askk_runtime::tools::{register_builtins, ToolRegistry};
+use askk_runtime::tools::{register_builtins, register_echo, ToolRegistry};
 
 const SOLO: (&str, &str) = (
     "agents/solo.md",
@@ -127,6 +127,7 @@ async fn fixture_full(
         .unwrap();
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).unwrap();
+    register_echo(&mut registry).unwrap();
     let board_kv: Rc<dyn KvStore> = Rc::new(MemKv::new());
     askk_runtime::tools::register_board(&mut registry, board_kv.clone()).unwrap();
     askk_runtime::tools::register_artifacts(&mut registry, Rc::clone(&blobs), || 7).unwrap();

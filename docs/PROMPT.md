@@ -145,7 +145,7 @@ History starts empty per run (crates/runtime/src/run/session.rs:177) and grows b
 
 | Append | Where |
 |---|---|
-| Assistant reply verbatim (answer text, or JSON-stringified calls) | sheet.rs:73-90 (absorb) |
+| Assistant reply, dieted: answer text, or id-less MCP call objects `[{"name","arguments"}]`; raw-fallback answers are scaffold-stripped (observation/plan/action lines dropped) | sheet.rs (absorb); toolcall.rs `strip_scaffold`; turn.rs Repaired path |
 | Tool observation `"{name}: {content}"` as Role::Tool | dispatch.rs:239; turn.rs:60-67 |
 | Unknown-tool / denial / delegated-confirmation observations | dispatch.rs:76-86, 103-113, 136-145 |
 | Repair prompts | turn.rs:235 |
@@ -160,7 +160,7 @@ a WINDOWED VIEW of history (`window_history`, crates/core/src/context.rs): the f
 user message + the newest messages that fit, middle elided with one
 `[…N earlier messages elided…]` marker — durable history is never rewritten. Single
 observations clamp at `max_observation_chars` with an explicit clip suffix, and
-web_search/news_search/fetch_url/mcp_* observations carry an
+web_search/fetch_url/mcp_* observations carry an
 `(untrusted web content)` label (run/dispatch.rs). Per-phase `max_turns` clamps loop
 phases (turn.rs).
 

@@ -224,10 +224,11 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
                 .await?;
                 repairs += 1;
                 if repairs > MAX_REPAIRS_PER_TURN {
-                    // Out of repairs: the raw text is the answer candidate.
+                    // Out of repairs: the raw text stands in as the answer,
+                    // scaffold-stripped so history stays lean.
                     let parsed = ParsedResponse {
                         fields: Map::new(),
-                        action: Action::Answer(reply.text.trim().to_string()),
+                        action: Action::Answer(contract.strip_scaffold(&reply.text)),
                         format: ParsedFormat::Repaired,
                     };
                     break (sheet, parsed);

@@ -26,7 +26,6 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
         searxng.clone(),
     )
     .map_err(|e| e.to_string())?;
-    register_news(&mut registry, Rc::new(MockTransport::new())).map_err(|e| e.to_string())?;
     register_knowledge(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
     register_memory_tools(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
     register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;

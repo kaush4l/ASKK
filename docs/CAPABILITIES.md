@@ -30,6 +30,7 @@ reference; kiln is the structure reference).
 | **Director thread**: per-agent `budget.*` in MD (max_turns/deadline_s/depth) | `runtime/config/agent.rs` | wave 16 |
 | **Board reorientation**: durable-board digest injected at run start for board-holding agents | `runtime/state/board.rs`, `runtime/run/session.rs` | wave 16 |
 | Config surface documented in-folder | `crates/web/assets/agents/README.md` | wave 16 |
+| **Context diet**: history replays answers + id-less MCP calls only (scaffold-stripped fallbacks); news folded into `web_search news:true`; `echo` test-only | `core/toolcall.rs`, `core/sheet.rs`, `runtime/tools/search.rs` | wave 17 |
 
 ## Queue (what would make it more of a workspace)
 
@@ -61,10 +62,10 @@ is documented with file:line citations in `docs/PROMPT.md`.
   environment it lives in instead of enumerating every tool. Comma-separated
   preset names expanded into `tools` at load time (env tools first, then
   explicit `tools:` extras, deduplicated): `vm` (shell, write_file, read_file,
-  list_files, edit_file), `web` (web_search, news_search, fetch_url,
-  knowledge_search/read/write/list), `core` (echo, calc, now, js_eval), `board`
-  (board_add/list/move/check). Unknown preset names are load errors, listed
-  with the other config problems.
+  list_files, edit_file), `web` (web_search, fetch_url,
+  knowledge_search/read/write/list, artifact_publish), `core` (calc, now,
+  js_eval), `board` (board_add/list/move/check). Unknown preset names are load
+  errors, listed with the other config problems.
 - `agents/soul.md` — shared identity prelude.
 - `agents/skills/*.md` — reusable prompt fragments agents opt into.
 - Provider profiles — saved in the browser (OPFS), switchable per run.

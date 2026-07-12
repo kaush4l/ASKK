@@ -299,7 +299,7 @@ async fn absorb_result(
 /// as instructions. ponytail: a plain name match for now; provenance should
 /// someday ride ToolSpec so tools self-declare their trust label.
 fn untrusted(name: &str) -> bool {
-    matches!(name, "web_search" | "news_search" | "fetch_url") || name.starts_with("mcp_")
+    matches!(name, "web_search" | "fetch_url") || name.starts_with("mcp_")
 }
 
 /// Clamp one tool result to the observation budget (whole chars, never
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn web_and_mcp_tools_are_untrusted() {
-        for name in ["web_search", "news_search", "fetch_url", "mcp_anything"] {
+        for name in ["web_search", "fetch_url", "mcp_anything"] {
             assert!(untrusted(name), "{name}");
         }
         assert!(!untrusted("echo"));

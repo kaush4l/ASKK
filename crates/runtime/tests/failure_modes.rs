@@ -20,7 +20,7 @@ use askk_runtime::state::{
     BlobStore, LocalBoxFuture, MemBlob, MemKv, MemoryStore, SessionStore, SignalLog,
 };
 use askk_runtime::testutil::block_on;
-use askk_runtime::tools::{register_builtins, RustTool, ToolRegistry};
+use askk_runtime::tools::{register_builtins, register_echo, RustTool, ToolRegistry};
 use serde_json::json;
 
 /// Wraps the mock so every LLM call suspends once before replying — lets a
@@ -96,6 +96,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, yielding: bool) 
         .unwrap();
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).unwrap();
+    register_echo(&mut registry).unwrap();
     // A tool that writes a slice NOBODY pre-declared — the lift-back must
     // still see it (ToolCtx::slice_keys, ADR-005).
     registry

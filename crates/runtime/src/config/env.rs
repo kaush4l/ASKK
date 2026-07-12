@@ -3,9 +3,9 @@
 //! reference-checked like hand-written ones). Nothing is stored on
 //! `AgentConfig`; env only feeds the tools list. Presets:
 //! - `vm`: shell, write_file, read_file, list_files, edit_file
-//! - `web`: web_search, news_search, fetch_url, knowledge_search,
-//!   knowledge_read, knowledge_write, knowledge_list, artifact_publish
-//! - `core`: echo, calc, now, js_eval
+//! - `web`: web_search, fetch_url, knowledge_search, knowledge_read,
+//!   knowledge_write, knowledge_list, artifact_publish
+//! - `core`: calc, now, js_eval
 //! - `board`: board_add, board_list, board_move, board_check
 
 fn preset(name: &str) -> Option<&'static [&'static str]> {
@@ -19,7 +19,6 @@ fn preset(name: &str) -> Option<&'static [&'static str]> {
         ]),
         "web" => Some(&[
             "web_search",
-            "news_search",
             "fetch_url",
             "knowledge_search",
             "knowledge_read",
@@ -27,7 +26,7 @@ fn preset(name: &str) -> Option<&'static [&'static str]> {
             "knowledge_list",
             "artifact_publish",
         ]),
-        "core" => Some(&["echo", "calc", "now", "js_eval"]),
+        "core" => Some(&["calc", "now", "js_eval"]),
         "board" => Some(&["board_add", "board_list", "board_move", "board_check"]),
         _ => None,
     }
@@ -87,7 +86,6 @@ mod tests {
         assert_eq!(
             tools,
             strs(&[
-                "echo",
                 "calc",
                 "now",
                 "js_eval",
@@ -143,7 +141,6 @@ mod tests {
         let expanded = expand(&strs(&["web"]), Vec::new(), "a.md:2", &mut problems);
         let handwritten = strs(&[
             "web_search",
-            "news_search",
             "fetch_url",
             "knowledge_search",
             "knowledge_read",

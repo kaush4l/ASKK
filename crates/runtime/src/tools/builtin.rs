@@ -15,11 +15,16 @@ pub fn register_builtins(
     reg: &mut ToolRegistry,
     now_ms: impl Fn() -> u64 + 'static,
 ) -> Result<(), RegistryError> {
-    reg.register(echo())?;
     reg.register(calc())?;
     reg.register(now(now_ms))?;
     reg.register(state_note())?;
     Ok(())
+}
+
+/// Test stub, NOT part of the production roster (context diet: a tool the
+/// model never needs is a tool spec it never pays for). Fixtures opt in.
+pub fn register_echo(reg: &mut ToolRegistry) -> Result<(), RegistryError> {
+    reg.register(echo())
 }
 
 fn echo() -> std::rc::Rc<dyn askk_core::Tool> {
@@ -137,6 +142,7 @@ mod tests {
     fn builtins() -> ToolRegistry {
         let mut reg = ToolRegistry::new();
         register_builtins(&mut reg, || 42).unwrap();
+        register_echo(&mut reg).unwrap();
         reg
     }
 
@@ -161,6 +167,15 @@ mod tests {
         for name in ["echo", "calc", "now"] {
             assert_eq!(set.get(name).unwrap().spec().effect, Effect::Pure);
         }
+    }
+
+    #[test]
+    fn echo_is_opt_in_not_a_production_builtin() {
+        let mut reg = ToolRegistry::new();
+        register_builtins(&mut reg, || 42).unwrap();
+        assert!(reg.get("echo").is_none());
+        register_echo(&mut reg).unwrap();
+        assert!(reg.get("echo").is_some());
     }
 
     #[test]

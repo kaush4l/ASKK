@@ -70,10 +70,17 @@ impl Sheet {
     pub fn absorb(&mut self, effect: &ParsedResponse) -> Vec<Signal> {
         let mut signals = Vec::new();
 
-        // History append: the assistant's turn, verbatim.
+        // History append: the assistant's turn. Tool calls replay as id-less
+        // MCP objects — ids are runtime bookkeeping, not context.
         let content = match &effect.action {
             Action::Answer(text) => text.clone(),
-            Action::ToolCalls(calls) => serde_json::to_string(calls).unwrap_or_default(),
+            Action::ToolCalls(calls) => {
+                let compact: Vec<Value> = calls
+                    .iter()
+                    .map(|c| serde_json::json!({"name": c.name, "arguments": c.args}))
+                    .collect();
+                serde_json::to_string(&compact).unwrap_or_default()
+            }
         };
         let message = Message::new(Role::Assistant, content.clone());
         if let Some(history) = self.elements.iter_mut().find_map(|e| match e {
@@ -254,6 +261,26 @@ mod tests {
         let req = sheet.render();
         assert_eq!(req.history.len(), 2);
         assert_eq!(req.history[1].content, "done");
+    }
+
+    #[test]
+    fn absorb_replays_tool_calls_as_idless_mcp_objects() {
+        let mut sheet = full_sheet();
+        let parsed = ParsedResponse {
+            fields: Map::new(),
+            action: Action::ToolCalls(vec![crate::request::ToolCall {
+                id: "run-1-call-0".into(),
+                name: "read".into(),
+                args: json!({"path": "x"}),
+            }]),
+            format: ParsedFormat::Toon,
+        };
+        sheet.absorb(&parsed);
+        let req = sheet.render();
+        let entry = &req.history.last().unwrap().content;
+        assert!(entry.contains("\"name\":\"read\""), "{entry}");
+        assert!(entry.contains("\"arguments\""), "{entry}");
+        assert!(!entry.contains("call-0"), "ids are not context: {entry}");
     }
 
     #[test]

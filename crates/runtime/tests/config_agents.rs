@@ -274,11 +274,9 @@ phase.3.on_fail: plan
         assert_eq!(cfg.tools, want);
         // env alone == the hand-written equivalent list.
         let by_env = AgentConfig::from_markdown("a.md", "---\nid: a\nenv: core\n---\n").unwrap();
-        let by_hand = AgentConfig::from_markdown(
-            "a.md",
-            "---\nid: a\ntools: echo, calc, now, js_eval\n---\n",
-        )
-        .unwrap();
+        let by_hand =
+            AgentConfig::from_markdown("a.md", "---\nid: a\ntools: calc, now, js_eval\n---\n")
+                .unwrap();
         assert_eq!(by_env.tools, by_hand.tools);
     }
 

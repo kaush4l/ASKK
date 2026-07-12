@@ -12,8 +12,7 @@ use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
 use askk_runtime::tools::{
     register_artifacts, register_board, register_builtins, register_knowledge, register_mcp,
-    register_memory_tools, register_news, register_shell, register_web_search, register_workspace,
-    ToolRegistry,
+    register_memory_tools, register_shell, register_web_search, register_workspace, ToolRegistry,
 };
 use serde_json::Value;
 
@@ -423,7 +422,6 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     register_builtins(&mut registry, now).map_err(|e| e.to_string())?;
     register_web_search(&mut registry, transport.clone(), searxng.clone())
         .map_err(|e| e.to_string())?;
-    register_news(&mut registry, transport.clone()).map_err(|e| e.to_string())?;
     register_knowledge(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
     register_memory_tools(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
     register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;

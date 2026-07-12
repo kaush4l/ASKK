@@ -4,7 +4,7 @@ name: Assistant
 description: General-purpose assistant; answers directly, uses tools when they help.
 enabled: true
 env: core
-tools: web_search, news_search, shell, knowledge_search, knowledge_read, knowledge_write, knowledge_list, remember, recall, forget, artifact_publish
+tools: web_search, shell, knowledge_search, knowledge_read, knowledge_write, knowledge_list, remember, recall, forget, artifact_publish
 skills: concise
 provider: default
 contract: react

@@ -16,6 +16,7 @@ use serde_json::Value;
 
 use crate::state::LocalBoxFuture;
 
+use super::news;
 use super::registry::{RegistryError, ToolRegistry};
 
 const MAX_RESULTS: usize = 5;
@@ -45,12 +46,16 @@ impl WebSearch {
                 description: "Searches the web (SearXNG metasearch when \
                               configured, DuckDuckGo instant answers and \
                               Wikipedia as fallback) and returns the top \
-                              results."
+                              results. Set news=true for current events: a \
+                              newest-first news index (Wikinews, GDELT \
+                              fallback) with dates and links."
                     .into(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "query": { "type": "string", "description": "Search query." }
+                        "query": { "type": "string", "description": "Search query." },
+                        "news": { "type": "boolean", "description":
+                            "True = recent news/headlines instead of general web." }
                     },
                     "required": ["query"]
                 }),
@@ -127,6 +132,38 @@ impl WebSearch {
         };
         Ok(lines.join("\n"))
     }
+
+    /// News lane (`news: true`): Wikinews full-text search first (key-free,
+    /// origin=*, reliable), GDELT DOC 2.0 as best-effort fallback — GDELT is
+    /// broad + fresh but rate-limits/bans hard, so it is never primary.
+    async fn search_news(&self, query: &str) -> Result<String, String> {
+        let wikinews = match self.fetch_json(news::wikinews_url(query)).await {
+            Ok(value) => {
+                let lines = news::parse_wikinews(&value);
+                if lines.is_empty() {
+                    Err("no hits".to_string())
+                } else {
+                    Ok(lines)
+                }
+            }
+            Err(e) => Err(e),
+        };
+        let lines = match wikinews {
+            Ok(lines) => lines,
+            Err(wn_err) => {
+                let value = self
+                    .fetch_json(news::gdelt_url(query))
+                    .await
+                    .map_err(|gd_err| format!("wikinews: {wn_err}; gdelt: {gd_err}"))?;
+                let lines = news::parse_gdelt(&value);
+                if lines.is_empty() {
+                    return Err(format!("no news for '{query}'"));
+                }
+                lines
+            }
+        };
+        Ok(lines.join("\n"))
+    }
 }
 
 impl Tool for WebSearch {
@@ -144,7 +181,13 @@ impl Tool for WebSearch {
             let Some(query) = query else {
                 return ToolResult::err("web_search: missing string field 'query'");
             };
-            match self.search(query).await {
+            let news = args.get("news").and_then(Value::as_bool).unwrap_or(false);
+            let result = if news {
+                self.search_news(query).await
+            } else {
+                self.search(query).await
+            };
+            match result {
                 Ok(text) => ToolResult::ok(text),
                 Err(e) => ToolResult::err(format!("web_search: {e}")),
             }

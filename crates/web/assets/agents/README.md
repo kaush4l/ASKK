@@ -35,7 +35,7 @@ name: Coder              # Display name; defaults to id.
 description: ...         # Doubles as the tool card when delegated to.
 enabled: true            # true|false; default true. false = not loaded as a tool.
 env: vm, web             # Tool-bundle presets, expanded into `tools` at load.
-tools: echo, researcher  # Tool AND agent names; unknown = hard error.
+tools: calc, researcher  # Tool AND agent names; unknown = hard error.
 skills: concise          # skills/*.md ids; unknown = hard error.
 provider: default        # Provider profile id; default "default".
 contract: react          # react|plan|critique or this agent's field.* contract.
@@ -47,9 +47,9 @@ format: toon             # json|toon|text; initial output mode. Default toon.
 `env` presets (union with explicit `tools`, deduplicated):
 
 - `vm`: shell, write_file, read_file, list_files, edit_file
-- `web`: web_search, news_search, fetch_url, knowledge_search, knowledge_read,
+- `web`: web_search, fetch_url, knowledge_search, knowledge_read,
   knowledge_write, knowledge_list, artifact_publish
-- `core`: echo, calc, now, js_eval
+- `core`: calc, now, js_eval
 - `board`: board_add, board_list, board_move, board_check
 
 ### Phases (`phase.N.*`) — the multi-scene strategy

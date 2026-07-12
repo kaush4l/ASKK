@@ -209,6 +209,29 @@ fn named_tool_call_shape_is_recovered() {
 }
 
 #[test]
+fn strip_scaffold_drops_working_notes_keeps_answer_and_prose() {
+    let c = contracts::react();
+    let raw = "observation:\n- saw the file\nplan:\n- fix it\naction: answer\nanswer: done deal\ntrailing prose";
+    assert_eq!(c.strip_scaffold(raw), "done deal\ntrailing prose");
+    // Nothing but scaffold: keep the original rather than an empty answer.
+    let scaffold_only = "observation:\n- nothing";
+    assert_eq!(c.strip_scaffold(scaffold_only), scaffold_only);
+}
+
+#[test]
+fn empty_answer_fallback_is_scaffold_stripped() {
+    // `action: answer` with no `answer:` — the raw reply stands in, minus the
+    // observation/plan working notes (context diet).
+    let text =
+        "The capital is Paris.\nobservation:\n- checked the atlas\nplan:\n- reply\naction: answer";
+    let parsed = contracts::react().parse(&reply(text)).unwrap();
+    assert_eq!(
+        parsed.action,
+        Action::Answer("The capital is Paris.".into())
+    );
+}
+
+#[test]
 fn a_plain_answer_object_is_not_mistaken_for_a_tool_call() {
     // action: answer with a JSON object in the text must NOT be recovered as a
     // tool call (no preceding tool label, no MCP name).

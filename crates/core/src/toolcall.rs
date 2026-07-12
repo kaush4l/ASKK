@@ -128,11 +128,48 @@ pub(crate) fn derive_action(fields: &Map<String, Value>, raw_text: &str) -> Acti
         }
     }
     if answer.is_empty() {
-        return Action::Answer(raw_text.trim().to_string());
+        return Action::Answer(strip_scaffold(raw_text, &field_names(fields)));
     }
     Action::Answer(answer)
 }
 
 fn field_names(fields: &Map<String, Value>) -> Vec<&str> {
     fields.keys().map(String::as_str).collect()
+}
+
+/// Fallback-answer hygiene: when a raw reply stands in for the answer, its
+/// contract scaffold (`observation:`/`plan:`/`action:` lines and their `- `
+/// items) is working notes, not the answer — replaying it into history wastes
+/// context. Keeps `answer:` content and any free text; falls back to the
+/// trimmed original if stripping leaves nothing.
+pub(crate) fn strip_scaffold(text: &str, field_names: &[&str]) -> String {
+    let mut kept: Vec<&str> = Vec::new();
+    let mut skipping = false;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if let Some((key, rest)) = trimmed.split_once(':') {
+            let key = key.trim();
+            if is_ident(key) && field_names.contains(&key) {
+                skipping = key != "answer";
+                if !skipping {
+                    let rest = rest.trim();
+                    if !rest.is_empty() {
+                        kept.push(rest);
+                    }
+                }
+                continue;
+            }
+        }
+        if skipping && (trimmed.starts_with('-') || trimmed.is_empty()) {
+            continue;
+        }
+        skipping = false;
+        kept.push(line);
+    }
+    let out = kept.join("\n").trim().to_string();
+    if out.is_empty() {
+        text.trim().to_string()
+    } else {
+        out
+    }
 }
