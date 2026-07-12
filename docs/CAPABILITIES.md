@@ -42,6 +42,9 @@ Ordered by leverage; each is one increment.
 
 ## Configuration surface
 
+What each knob renders into the prompt — element order, provider mapping, parse/repair —
+is documented with file:line citations in `docs/PROMPT.md`.
+
 - `agents/*.md` — one file per agent: frontmatter (id, tools, skills, provider,
   contract, format, `phase.N.*` strategy) + body directive. The folder IS the
   roster; `agents/manifest.json` fixes order and (on static hosts) overrides at

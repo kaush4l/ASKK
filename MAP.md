@@ -77,5 +77,6 @@ core ← inference ← runtime ← web
 | Acceptance rows — v0 termination (ADR-020) | `bench/acceptance/ROWS.md` → `crates/runtime/tests/acceptance.rs` |
 | ScriptedLlm fixtures | `crates/runtime/tests/fixtures/` (loader: `MockProvider::from_script`) |
 | Bench status generator (writes STATUS.md) | `scripts/bench-status.sh` |
+| What the LLM sees each turn (prompt assembly, code-cited) | `docs/PROMPT.md` |
 | Docs | `docs/` (GOAL, ARCHITECTURE, GLOSSARY, MODELS, TESTING, ROADMAP, adr/ADRS) |
 | Merge gate (fmt, clippy, wasm32 check, tests, bench) | `scripts/gate.sh` |
