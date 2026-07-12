@@ -12,7 +12,7 @@ use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
 use askk_runtime::tools::{
     register_board, register_builtins, register_knowledge, register_memory_tools, register_news,
-    register_web_search, ToolRegistry,
+    register_shell, register_web_search, register_workspace, ToolRegistry,
 };
 use serde_json::Value;
 
@@ -409,20 +409,17 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
 
     let transport: Rc<dyn Transport> = Rc::new(FetchTransport::new());
     let mut registry = ToolRegistry::new();
-    register_builtins(&mut registry, || js_sys::Date::now() as u64).map_err(|e| e.to_string())?;
+    let now = || js_sys::Date::now() as u64;
+    register_builtins(&mut registry, now).map_err(|e| e.to_string())?;
     register_web_search(&mut registry, transport.clone(), searxng.clone())
         .map_err(|e| e.to_string())?;
     register_news(&mut registry, transport.clone()).map_err(|e| e.to_string())?;
-    register_knowledge(&mut registry, kv.clone(), || js_sys::Date::now() as u64)
-        .map_err(|e| e.to_string())?;
-    register_memory_tools(&mut registry, kv.clone(), || js_sys::Date::now() as u64)
-        .map_err(|e| e.to_string())?;
+    register_knowledge(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
+    register_memory_tools(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
     register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(super::vm::SerialShell::new());
-    askk_runtime::tools::register_shell(&mut registry, shell_exec.clone())
-        .map_err(|e| e.to_string())?;
-    askk_runtime::tools::register_workspace(&mut registry, shell_exec)
-        .map_err(|e| e.to_string())?;
+    register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
+    register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;
 
     // The resolver reads the live profile-set cell per run: a settings save
     // or an active-profile switch is effective on the next run, no rebuild.
@@ -489,10 +486,8 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     register_memory_tools(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
     register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(super::vm::SerialShell::new());
-    askk_runtime::tools::register_shell(&mut registry, shell_exec.clone())
-        .map_err(|e| e.to_string())?;
-    askk_runtime::tools::register_workspace(&mut registry, shell_exec)
-        .map_err(|e| e.to_string())?;
+    register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
+    register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;
     super::config::register_baked_tools(&mut registry);
 
     let mock = Rc::new(MockProvider::new("default/mock"));

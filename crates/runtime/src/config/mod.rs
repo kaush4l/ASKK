@@ -3,6 +3,7 @@
 //! listing ALL problems. Silent drops forbidden.
 
 pub mod agent;
+pub(crate) mod env;
 pub(crate) mod fields;
 pub mod frontmatter;
 pub mod validate;

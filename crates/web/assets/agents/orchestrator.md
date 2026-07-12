@@ -3,7 +3,8 @@ id: orchestrator
 name: Orchestrator
 description: Breaks a goal into steps, fans independent steps out to sub-agents in parallel, and verifies the assembled result.
 enabled: true
-tools: researcher, assistant, dev-lead, builder, programmer, reviewer, tester, calc, web_search, news_search, knowledge_search, knowledge_read, knowledge_write, knowledge_list, shell, write_file, read_file, list_files, edit_file, fetch_url, echo, now, js_eval, board_add, board_list, board_move, board_check, spawn_run, check_run, wait_run, steer_run, cancel_run
+env: vm, web, core, board
+tools: researcher, assistant, dev-lead, builder, programmer, reviewer, tester, spawn_run, check_run, wait_run, steer_run, cancel_run
 skills: concise
 provider: default
 contract: react

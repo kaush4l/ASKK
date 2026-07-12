@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use askk_core::{Contract, LoopMode, OutputMode, Phase, Skill};
 
+use crate::config::env as env_presets;
 use crate::config::fields::{self, FieldDraft};
 use crate::config::frontmatter::{self, Entry};
 use crate::config::ConfigError;
@@ -59,6 +60,8 @@ impl AgentConfig {
         };
         let mut drafts: BTreeMap<usize, PhaseDraft> = BTreeMap::new();
         let mut field_drafts: BTreeMap<usize, FieldDraft> = BTreeMap::new();
+        // (preset names, location) — expanded after the loop, key-order agnostic.
+        let mut env: Option<(Vec<String>, String)> = None;
         for entry in &fm.entries {
             let at = format!("{path_label}:{}", entry.line);
             match entry.key.as_str() {
@@ -73,6 +76,9 @@ impl AgentConfig {
                     )),
                 },
                 "tools" => cfg.tools = frontmatter::split_list(&entry.value),
+                // Environment presets (vm|web|core|board — see config::env):
+                // expanded into `tools` at load, nothing stored on the config.
+                "env" => env = Some((frontmatter::split_list(&entry.value), at.clone())),
                 "skills" => cfg.skills = frontmatter::split_list(&entry.value),
                 "provider" => cfg.provider = entry.value.clone(),
                 "contract" => cfg.contract = entry.value.clone(),
@@ -92,6 +98,10 @@ impl AgentConfig {
                 }
                 other => problems.push(format!("{at}: unknown key '{other}'")),
             }
+        }
+        if let Some((names, at)) = env {
+            let explicit = std::mem::take(&mut cfg.tools);
+            cfg.tools = env_presets::expand(&names, explicit, &at, &mut problems);
         }
         if cfg.id.is_empty() {
             problems.push(format!("{path_label}: missing required key `id`"));
@@ -450,6 +460,41 @@ phase.3.on_fail: plan
         let text = "---\nid: a\ntools: x, y\nphase.1.name: p\nphase.1.tools: x\n---\n";
         let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
         assert_eq!(cfg.phases[0].tool_filter, Some(vec!["x".to_string()]));
+    }
+
+    #[test]
+    fn env_presets_expand_and_union_with_tools() {
+        // `shell` is already in `vm` (deduped); `fetch_url` is an extra.
+        let text = "---\nid: a\nenv: vm\ntools: fetch_url, shell\n---\n";
+        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
+        let want = [
+            "shell",
+            "write_file",
+            "read_file",
+            "list_files",
+            "edit_file",
+            "fetch_url",
+        ];
+        assert_eq!(cfg.tools, want);
+        // env alone == the hand-written equivalent list.
+        let by_env = AgentConfig::from_markdown("a.md", "---\nid: a\nenv: core\n---\n").unwrap();
+        let by_hand = AgentConfig::from_markdown(
+            "a.md",
+            "---\nid: a\ntools: echo, calc, now, js_eval\n---\n",
+        )
+        .unwrap();
+        assert_eq!(by_env.tools, by_hand.tools);
+    }
+
+    #[test]
+    fn unknown_env_preset_joins_the_other_problems() {
+        let text = "---\nenv: vm, matrix\nformat: xml\n---\n";
+        let err = AgentConfig::from_markdown("a.md", text).unwrap_err();
+        let joined = err.problems.join("\n");
+        assert!(joined.contains("a.md:2: unknown env preset 'matrix'"));
+        assert!(joined.contains("`format` must be json|toon|text"));
+        assert!(joined.contains("missing required key `id`"));
+        assert_eq!(err.problems.len(), 3);
     }
 
     #[test]

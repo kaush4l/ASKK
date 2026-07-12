@@ -46,6 +46,14 @@ Ordered by leverage; each is one increment.
   contract, format, `phase.N.*` strategy) + body directive. The folder IS the
   roster; `agents/manifest.json` fixes order and (on static hosts) overrides at
   runtime without a rebuild.
+- `env:` frontmatter — environment presets, so an agent declares WHICH
+  environment it lives in instead of enumerating every tool. Comma-separated
+  preset names expanded into `tools` at load time (env tools first, then
+  explicit `tools:` extras, deduplicated): `vm` (shell, write_file, read_file,
+  list_files, edit_file), `web` (web_search, news_search, fetch_url,
+  knowledge_search/read/write/list), `core` (echo, calc, now, js_eval), `board`
+  (board_add/list/move/check). Unknown preset names are load errors, listed
+  with the other config problems.
 - `agents/soul.md` — shared identity prelude.
 - `agents/skills/*.md` — reusable prompt fragments agents opt into.
 - Provider profiles — saved in the browser (OPFS), switchable per run.
