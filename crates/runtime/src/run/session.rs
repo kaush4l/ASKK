@@ -310,6 +310,14 @@ impl RunSession {
                     .borrow_mut()
                     .push(format!("cannot register handoff tool: {e}"));
             }
+            // Skill discovery (progressive disclosure): skill_list is the
+            // cheap index, skill_read loads one body on demand. Opt-in via
+            // explicit `tools:` frontmatter only — no env preset.
+            if let Err(e) = crate::tools::register_skills(&mut registry, &skills) {
+                problems
+                    .borrow_mut()
+                    .push(format!("cannot register skill tools: {e}"));
+            }
             // Validation universe = everything the registry holds; any agent
             // ref outside it is flagged by validate.
             let known_tools = registry.names();

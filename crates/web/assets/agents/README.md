@@ -125,6 +125,14 @@ name: Concise            # Defaults to id.
 (markdown body = the reusable prompt fragment)
 ```
 
+Skills named in `skills:` frontmatter ride in every prompt. For runtime
+picking instead, grant the discovery tools via `tools:` (progressive
+disclosure — the index is cheap, a body loads only on demand; not in any
+`env` preset):
+
+- `skill_list`: index of every loaded skill (id — name — first line).
+- `skill_read`: one skill's full body by id.
+
 ## manifest.json
 
 ```json

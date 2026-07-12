@@ -45,6 +45,11 @@ const HELPER: (&str, &str) = (
     "agents/helper.md",
     "---\nid: helper\ndescription: Helps.\n---\nYou help.",
 );
+const PICKER: (&str, &str) = (
+    "agents/picker.md",
+    "---\nid: picker\ndescription: Picks skills at runtime.\n\
+     tools: skill_list, skill_read\n---\nYou pick skills on demand.",
+);
 const SCRUM: (&str, &str) = (
     "agents/scrum.md",
     "---\nid: scrum\ndescription: Works the kanban board.\n\
@@ -148,6 +153,11 @@ async fn fixture_full(
         SkillConfig::from_markdown(
             "agents/skills/careful.md",
             "---\nid: careful\n---\nDouble-check everything.",
+        )
+        .unwrap(),
+        SkillConfig::from_markdown(
+            "agents/skills/tea.md",
+            "---\nid: tea\nname: Tea brewing\n---\nSteep at 80C.\nNever boil green tea.",
         )
         .unwrap(),
     ];
@@ -1849,6 +1859,33 @@ fn phase_skill_filter_narrows_the_sheet() {
     });
 }
 
+// ---- Skill discovery (wave-19 B5): progressive disclosure over the loaded
+// skill set. skill_list is the cheap index; skill_read loads one body.
+
+#[test]
+fn skill_list_indexes_every_loaded_skill() {
+    block_on(async {
+        let f = fixture(&[PICKER]).await;
+        f.mock
+            .push_text("action: tool\nanswer: {\"name\": \"skill_list\", \"arguments\": {}}");
+        f.mock.push_text("action: answer\nanswer: picked");
+        let run = f
+            .session
+            .submit("picker", "what skills exist")
+            .await
+            .unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        // One row per loaded skill, in load order: id — name — first line.
+        assert!(obs
+            .iter()
+            .any(|o| o.contains("concise — concise — Be brief.")
+                && o.contains("tea — Tea brewing — Steep at 80C.")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
 // ---- Stall guard (repeat-identical-mutating-call refusal, GAPS 50/61) ----
 
 fn auto_mutating() -> ActionPolicy {
@@ -1953,5 +1990,50 @@ fn stall_guard_resets_on_a_different_mutating_call() {
             "{obs:?}"
         );
         assert!(obs.iter().any(|o| o.contains("noted (4 total)")));
+    });
+}
+
+#[test]
+fn skill_read_returns_the_full_body() {
+    block_on(async {
+        let f = fixture(&[PICKER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"skill_read\", \"arguments\": {\"id\": \"tea\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: brewed");
+        let run = f
+            .session
+            .submit("picker", "read the tea skill")
+            .await
+            .unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        // Name header + the WHOLE body, not just the index line.
+        assert!(obs.iter().any(|o| o.contains("# Tea brewing")
+            && o.contains("Steep at 80C.")
+            && o.contains("Never boil green tea.")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+#[test]
+fn skill_read_unknown_id_names_the_valid_ids() {
+    block_on(async {
+        let f = fixture(&[PICKER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"skill_read\", \"arguments\": {\"id\": \"ghost\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: no such skill");
+        let run = f.session.submit("picker", "read ghost").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        // The structured rejection is an observation; the run still answers.
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("no such skill"));
+        let obs = observations(&f.host.signals());
+        assert!(obs.iter().any(|o| o.contains("unknown skill 'ghost'")
+            && o.contains("concise")
+            && o.contains("tea")));
+        assert_eq!(f.mock.remaining(), 0);
     });
 }

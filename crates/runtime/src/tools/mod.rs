@@ -13,6 +13,7 @@ mod news;
 pub mod registry;
 pub mod search;
 pub mod shell;
+pub mod skills;
 pub mod workspace;
 
 pub use artifact::register_artifacts;
@@ -24,6 +25,7 @@ pub use memory_tools::register_memory_tools;
 pub use registry::{RegistryError, RustTool, ToolRegistry};
 pub use search::register_web_search;
 pub use shell::{register_shell, ShellExec};
+pub use skills::register_skills;
 pub use workspace::register_workspace;
 
 #[cfg(test)]
