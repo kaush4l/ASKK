@@ -181,3 +181,16 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     /frame-ancestors blockers render a blank frame (the open ↗ escape is always
     visible). No in-viewer signal distinguishes "blocked" from "slow" — a load
     timeout heuristic would need iframe onload plumbing.
+57. Live-hit (wave-15 e2e): the natural phrasing "publish a webpage" goes to the
+    DEFAULT assistant, whose roster lacked artifact_publish — gemma retried the
+    unknown tool until the final-turn nudge and answered inline. The unknown-tool
+    error text worked as designed; the roster was the gap (assistant.md fixed
+    same session). Lesson: when a stage's empty-state hint names a flow, the
+    default agent must be able to run it.
+58. Second same-origin tab can boot into the silent in-memory fallback: the OPFS
+    write probe threw QuotaExceededError (quota NOT actually full — likely
+    write contention with the first tab's open log) → signals still mirror, but
+    blob-backed views (Artifacts gallery, board) render empty there, and the
+    degradation notice only shows on the Chat stage. Upgrade path: a read-only
+    OPFS degrade tier (reads from OPFS, writes to memory) would make wall tabs
+    robust; surface the storage notice on every stage.
