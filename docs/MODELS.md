@@ -50,6 +50,9 @@ skills: concise                              # resolved at load; unknown = hard 
 provider: default                            # provider profile id
 contract: react                              # named contract (default: react)
 format: toon                                 # initial output mode
+budget.max_turns: 64                         # optional budget.* overrides of the session budgets
+budget.deadline_s: 1800                      # wall clock, seconds (stored as ms)
+budget.depth: 3                              # delegation depth cap, 1..=8 (runaway guard)
 phase.1.name: plan                           # optional phases → DeclaredStrategy
 phase.1.contract: plan
 phase.1.loop: one_shot

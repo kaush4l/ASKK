@@ -52,6 +52,11 @@ core ← inference ← runtime ← web
 | Board UI tab (5-column live view) | `crates/web/src/ui/board.rs` |
 | Dashboard stage (wall display) | `crates/web/src/ui/dashboard.rs` |
 | Cross-tab signal bus (BroadcastChannel mirror, ADR-031) | `crates/web/src/host/bus.rs` |
+| Team config (folder team.md, ADR-032) | `crates/runtime/src/config/team.rs` |
+| Team delegation boundary (TeamTool, principles injection) | `crates/runtime/src/delegate.rs` |
+| Per-agent budgets (`budget.*` frontmatter) | `crates/runtime/src/config/agent.rs` |
+| Board digest (director reorientation) | `crates/runtime/src/state/board.rs` |
+| Agents-folder config reference | `crates/web/assets/agents/README.md` |
 | artifact_publish tool (html/markdown/url blobs) | `crates/runtime/src/tools/artifact.rs` |
 | Artifact read side (blob docs → UI) | `crates/web/src/host/artifacts.rs` |
 | Artifacts stage (gallery + sandboxed viewer) | `crates/web/src/ui/artifacts.rs` |

@@ -194,3 +194,8 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     degradation notice only shows on the Chat stage. Upgrade path: a read-only
     OPFS degrade tier (reads from OPFS, writes to memory) would make wall tabs
     robust; surface the storage notice on every stage.
+59. Team nesting is one folder deep (validation rejects deeper team.md). A
+    team-in-team ("departments") story needs boundary composition rules first.
+60. The board digest injects at submit only — a long dispatch loop can drift
+    from a board another run mutates mid-flight; a per-phase-entry refresh (or
+    a board_digest tool the director calls) is the next increment.

@@ -1579,6 +1579,170 @@ fn depth_cap_holds_through_team_boundary() {
         assert!(observations(&f.host.signals())
             .iter()
             .any(|o| o.contains("delegation depth cap (1) reached")));
+    });
+}
+
+// --- per-agent budgets declared in MD (the long-running director thread) -----
+
+const DIRECTOR: (&str, &str) = (
+    "agents/director.md",
+    "---\nid: director\ndescription: Sustains a long goal-directed thread.\n\
+     tools: echo\nbudget.max_turns: 20\n---\nYou direct the long thread.",
+);
+
+/// (a) `budget.max_turns: 20` outlives the session default 16: the run drives
+/// past turn 16 un-nudged and the final-turn nudge fires at turn 20, not 16.
+#[test]
+fn declared_max_turns_extends_past_session_default() {
+    block_on(async {
+        let f = fixture(&[DIRECTOR]).await; // session default: max_turns 16
+        for _ in 0..20 {
+            f.mock.push_text(
+                "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"on it\"}}",
+            );
+        }
+        let run = f.session.submit("director", "long goal").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::BudgetExhausted);
+        assert_eq!(out.turns_used, 20); // past the default 16
+        assert_eq!(f.mock.remaining(), 0);
+        let requests = f.mock.requests();
+        assert_eq!(requests.len(), 20);
+        // Turn 17's request carries no nudge; turn 20's does.
+        let nudged = |i: usize| {
+            requests[i]
+                .history
+                .iter()
+                .any(|m| m.content.contains("final turn"))
+        };
+        assert!(!nudged(16), "nudged at the session default boundary");
+        assert!(nudged(19), "no nudge on the declared final turn");
+        // Exactly one nudge landed in the durable stream.
+        let nudges = f
+            .host
+            .signals()
+            .iter()
+            .filter(|s| matches!(
+                &s.kind,
+                SignalKind::HistoryAppended { role: Role::User, text } if text.contains("final turn")
+            ))
+            .count();
+        assert_eq!(nudges, 1);
+    });
+}
+
+const STRETCH: (&str, &str) = (
+    "agents/stretch.md",
+    "---\nid: stretch\ndescription: Overrides only max_turns.\n\
+     tools: echo\nbudget.max_turns: 4\n---\nYou stretch the thread.",
+);
+
+/// (b) Overrides compose per field: the agent's `budget.max_turns` wins over
+/// the session value, while undeclared session fields (here the observation
+/// clamp) still bind the same run.
+#[test]
+fn budget_override_composes_with_session_fields() {
+    block_on(async {
+        let budgets = Budgets {
+            max_turns: 2, // session says 2; the agent declares 4
+            max_observation_chars: 40,
+            ..Budgets::default()
+        };
+        let f = fixture_with(&[STRETCH, SOLO], budgets, ActionPolicy::default()).await;
+        let big = "b".repeat(120);
+        f.mock.push_text(&format!(
+            "action: tool\nanswer: {{\"name\": \"echo\", \"arguments\": {{\"text\": \"{big}\"}}}}"
+        ));
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"more\"}}",
+        );
+        f.mock
+            .push_text("action: answer\nanswer: outlived the session cap");
+        let run = f.session.submit("stretch", "long goal").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        // 3 turns > the session's 2: the declared max_turns governed.
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.turns_used, 3);
+        // The UNDECLARED session field still applied to the same run.
+        assert!(observations(&f.host.signals())
+            .iter()
+            .any(|o| o.contains("[clipped, kept 40 of 120 chars]")));
+
+        // An agent WITHOUT overrides keeps every session default.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"a\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"b\"}}",
+        );
+        let run = f.session.submit("solo", "never answers").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::BudgetExhausted);
+        assert_eq!(out.turns_used, 2);
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+// A four-agent chain: each ancestor carries the rest of the chain's delegate
+// tools (authority narrows: child toolset = parent ∩ child). dhelper — the
+// run CALLING the third delegation — declares `budget.depth: 3`.
+const DPARENT: (&str, &str) = (
+    "agents/dparent.md",
+    "---\nid: dparent\ndescription: Top of the chain.\ntools: dworker, dhelper, dleaf\n---\nDelegate down.",
+);
+const DWORKER: (&str, &str) = (
+    "agents/dworker.md",
+    "---\nid: dworker\ndescription: Middle link.\ntools: dhelper, dleaf\n---\nPass it on.",
+);
+const DHELPER: (&str, &str) = (
+    "agents/dhelper.md",
+    "---\nid: dhelper\ndescription: Deep link with its own depth budget.\n\
+     tools: dleaf\nbudget.depth: 3\n---\nGo one deeper.",
+);
+const DLEAF: (&str, &str) = (
+    "agents/dleaf.md",
+    "---\nid: dleaf\ndescription: Bottom of the chain.\n---\nAnswer directly.",
+);
+
+/// (c) `budget.depth: 3` on the calling run allows a delegation chain one
+/// level deeper than the session default 2: dparent → dworker → dhelper →
+/// dleaf succeeds (the same third hop is rejected under the default cap —
+/// `delegation_depth_cap_rejects` covers that side).
+#[test]
+fn declared_depth_budget_allows_deeper_chain() {
+    block_on(async {
+        let f = fixture(&[DPARENT, DWORKER, DHELPER, DLEAF]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"dworker\", \"arguments\": {\"goal\": \"level two\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"dhelper\", \"arguments\": {\"goal\": \"level three\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"dleaf\", \"arguments\": {\"goal\": \"level four\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: leaf done"); // dleaf (depth 3)
+        f.mock.push_text("action: answer\nanswer: helper done");
+        f.mock.push_text("action: answer\nanswer: worker done");
+        f.mock.push_text("action: answer\nanswer: chain complete");
+        let run = f.session.submit("dparent", "go deep").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("chain complete"));
+        let signals = f.host.signals();
+        // The fourth level really ran — one hop past the default cap of 2.
+        assert!(signals.iter().any(|s| matches!(
+            &s.kind,
+            SignalKind::RunStarted { agent_id, goal } if agent_id == "dleaf" && goal == "level four"
+        )));
+        let obs = observations(&signals);
+        assert!(obs
+            .iter()
+            .any(|o| o.contains("Result (untrusted): leaf done")));
+        assert!(
+            !obs.iter().any(|o| o.contains("depth cap")),
+            "no hop may hit the cap: {obs:?}"
+        );
         assert_eq!(f.mock.remaining(), 0);
     });
 }

@@ -26,6 +26,10 @@ reference; kiln is the structure reference).
 | **Dashboard wall**: big-numeral tile stage, `#/Dashboard` deep link, pop-out button | `web/ui/dashboard.rs` | wave 15 |
 | **Big artifacts**: `artifact_publish` (html/markdown/url) → gallery + sandboxed viewer; PDF via url kind | `runtime/tools/artifact.rs`, `web/ui/artifacts.rs` | wave 15 |
 | Markdown rendering in chat answers + artifact docs (in-repo subset renderer) | `web/ui/markdown.rs` | wave 15 |
+| **First-class teams**: folder + team.md = ONE delegate tool, boundary resets authority, shared principles injected (ADR-032) | `runtime/config/team.rs`, `runtime/delegate.rs` | wave 16 |
+| **Director thread**: per-agent `budget.*` in MD (max_turns/deadline_s/depth) | `runtime/config/agent.rs` | wave 16 |
+| **Board reorientation**: durable-board digest injected at run start for board-holding agents | `runtime/state/board.rs`, `runtime/run/session.rs` | wave 16 |
+| Config surface documented in-folder | `crates/web/assets/agents/README.md` | wave 16 |
 
 ## Queue (what would make it more of a workspace)
 

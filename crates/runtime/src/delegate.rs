@@ -12,13 +12,24 @@ use askk_core::{Effect, RunId, RunStatus, SignalKind, Tool, ToolCtx, ToolResult,
 use serde_json::{json, Value};
 
 use crate::config::{AgentConfig, TeamConfig};
-use crate::run::dispatch::{DEPTH_SLICE, PARENT_RUN_SLICE, PARENT_TOOLS_SLICE, TEAM_SLICE};
+use crate::run::dispatch::{
+    DEPTH_SLICE, MAX_DEPTH_SLICE, PARENT_RUN_SLICE, PARENT_TOOLS_SLICE, TEAM_SLICE,
+};
 use crate::run::session::{RunState, Shared};
 use crate::run::turn;
 use crate::state::LocalBoxFuture;
 
 /// The tool name run/dispatch.rs keys the run-ending short-circuit on.
 pub(crate) const HANDOFF_TOOL: &str = "handoff";
+
+/// The CALLING run's resolved delegation depth cap, read from the ToolCtx
+/// slice (per-agent `budget.depth` overrides ride the run, not the session);
+/// the session default is only the fallback for a ctx without the slice.
+pub(crate) fn depth_cap(shared: &Shared, ctx: &ToolCtx) -> u8 {
+    ctx.slice(MAX_DEPTH_SLICE)
+        .and_then(Value::as_u64)
+        .map_or(shared.budgets.max_delegation_depth, |n| n as u8)
+}
 
 /// The caller's effective allowlist, read from the ToolCtx slice.
 pub(crate) fn parent_tools(ctx: &ToolCtx) -> Vec<String> {
@@ -88,7 +99,15 @@ async fn drive_child(
     };
     let run_id = shared.next_run_id();
     shared.hosts.borrow_mut().insert(run_id.clone(), host);
-    let mut run = RunState::new(child, goal, allowed, depth + 1, memory, run_id);
+    let mut run = RunState::new(
+        child,
+        goal,
+        allowed,
+        depth + 1,
+        memory,
+        run_id,
+        shared.budgets,
+    );
     // The run carries its team: set by the boundary, or inherited when the
     // caller runs inside a team and the child is a member of it.
     run.team_id = match boundary {
@@ -158,7 +177,7 @@ impl Tool for DelegateTool {
                 return ToolResult::err("delegate: session is gone");
             };
             let depth = ctx.slice(DEPTH_SLICE).and_then(Value::as_u64).unwrap_or(0) as u8;
-            let cap = shared.budgets.max_delegation_depth;
+            let cap = depth_cap(&shared, ctx);
             if depth >= cap {
                 return ToolResult::err(format!(
                     "delegation depth cap ({cap}) reached; handle the goal yourself or answer"
@@ -235,7 +254,7 @@ impl Tool for HandoffTool {
                 return ToolResult::err("handoff: session is gone");
             };
             let depth = ctx.slice(DEPTH_SLICE).and_then(Value::as_u64).unwrap_or(0) as u8;
-            let cap = shared.budgets.max_delegation_depth;
+            let cap = depth_cap(&shared, ctx);
             if depth >= cap {
                 return ToolResult::err(format!("handoff: delegation depth cap ({cap}) reached"));
             }

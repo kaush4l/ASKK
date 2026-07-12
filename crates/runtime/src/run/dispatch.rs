@@ -19,6 +19,9 @@ use crate::tools::artifact::{published_slug, ARTIFACT_TOOL};
 
 /// ToolCtx slice carrying the caller's delegation depth (read by DelegateTool).
 pub(crate) const DEPTH_SLICE: &str = "delegation_depth";
+/// ToolCtx slice carrying the calling RUN's resolved depth cap (the driving
+/// parent is out of `shared.runs` mid-drive, so the cap rides the ctx too).
+pub(crate) const MAX_DEPTH_SLICE: &str = "delegation_max_depth";
 /// ToolCtx slice carrying the caller's effective allowlist (authority narrows).
 pub(crate) const PARENT_TOOLS_SLICE: &str = "parent_tools";
 /// ToolCtx slice carrying the caller's run id (DelegateTool resolves the
@@ -190,6 +193,7 @@ fn make_ctx(run: &RunState) -> ToolCtx {
         ctx.set_slice(key.clone(), value.clone());
     }
     ctx.set_slice(DEPTH_SLICE, json!(run.depth));
+    ctx.set_slice(MAX_DEPTH_SLICE, json!(run.budgets.max_delegation_depth));
     ctx.set_slice(PARENT_TOOLS_SLICE, json!(effective_allow(run)));
     ctx.set_slice(PARENT_RUN_SLICE, json!(run.id.0));
     if let Some(team) = &run.team_id {
@@ -223,6 +227,7 @@ async fn absorb_result(
     // keys — pre-declared or brand new — emit StateWritten on change.
     for key in ctx.slice_keys() {
         if key == DEPTH_SLICE
+            || key == MAX_DEPTH_SLICE
             || key == PARENT_TOOLS_SLICE
             || key == PARENT_RUN_SLICE
             || key == TEAM_SLICE
@@ -249,7 +254,7 @@ async fn absorb_result(
     .await?;
     // What re-enters the model's context is clamped and trust-labeled; the
     // ToolCompleted signal above keeps the full content durable.
-    let content = clamp_observation(&result.content, shared.budgets.max_observation_chars);
+    let content = clamp_observation(&result.content, run.budgets.max_observation_chars);
     let observation = if untrusted(&call.name) {
         format!("{} (untrusted web content): {content}", call.name)
     } else {

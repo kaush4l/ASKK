@@ -83,8 +83,8 @@ pub(crate) async fn fail_run(shared: &Shared, run: &mut RunState, error: &StoreE
 /// repair call (every repair is a provider call). True = terminal landed.
 async fn out_of_budget(shared: &Shared, run: &mut RunState) -> Result<bool, StoreError> {
     let host = shared.host(&run.id);
-    let over_deadline = host.now_ms().saturating_sub(run.started_ms) >= shared.budgets.deadline_ms;
-    if run.turns >= shared.budgets.max_turns || over_deadline {
+    let over_deadline = host.now_ms().saturating_sub(run.started_ms) >= run.budgets.deadline_ms;
+    if run.turns >= run.budgets.max_turns || over_deadline {
         emit(
             shared,
             run,
@@ -121,7 +121,7 @@ pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(),
         if out_of_budget(shared, run).await? {
             return Ok(());
         }
-        if shared.budgets.is_final_turn(run.turns) && !run.nudged {
+        if run.budgets.is_final_turn(run.turns) && !run.nudged {
             run.nudged = true;
             run.history.push(Message::new(Role::User, FINAL_TURN_NUDGE));
             emit(
@@ -258,7 +258,7 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
     for signal in sheet.absorb(&parsed) {
         emit(shared, run, signal.kind).await?;
     }
-    sync_back(shared, run, &sheet);
+    sync_back(run, &sheet);
 
     match parsed.action.clone() {
         Action::Answer(text) => handle_answer(shared, run, &phase, &parsed, text).await,
@@ -322,7 +322,7 @@ fn build_sheet(
         run.memory.clone(),
         // The sheet carries a budgeted VIEW of the history; run.history
         // stays the full log (sync_back appends, never replaces).
-        window_history(&run.history, shared.budgets.max_context_chars),
+        window_history(&run.history, run.budgets.max_context_chars),
         toolset.specs(),
         Vec::new(),
         shared.policy.clone(),
@@ -339,10 +339,10 @@ fn build_sheet(
 /// history is the WINDOWED view build_sheet assembled; only the messages
 /// absorb appended beyond that view flow back — run.history stays the full
 /// log, and elision markers never become durable history.
-fn sync_back(shared: &Shared, run: &mut RunState, sheet: &Sheet) {
+fn sync_back(run: &mut RunState, sheet: &Sheet) {
     // Deterministic recompute: run.history has not changed since the final
     // build_sheet, so this length equals the assembled view's length.
-    let shown = window_history(&run.history, shared.budgets.max_context_chars).len();
+    let shown = window_history(&run.history, run.budgets.max_context_chars).len();
     for element in &sheet.elements {
         match element {
             Element::History(h) => run.history.extend(h.iter().skip(shown).cloned()),

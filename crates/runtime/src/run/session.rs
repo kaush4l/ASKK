@@ -133,6 +133,9 @@ pub(crate) struct RunState {
     /// lead, inherited by members it delegates to. Drives the principles
     /// injection in the sheet.
     pub(crate) team_id: Option<String>,
+    /// Session budgets with the agent's `budget.*` overrides applied — the
+    /// run's OWN thread length. The driver reads these, never the session's.
+    pub(crate) budgets: Budgets,
     pub(crate) depth: u8,
     pub(crate) status: RunStatus,
     pub(crate) final_text: Option<String>,
@@ -155,19 +158,23 @@ impl RunState {
         depth: u8,
         memory: MemoryBlock,
         id: RunId,
+        session_budgets: Budgets,
     ) -> Self {
+        let budgets = agent.budget.apply(session_budgets);
         let declared = !agent.phases.is_empty();
         let phases = if declared {
             agent.phases.clone()
         } else {
             // The implicit react loop phase IS the gate: its answer ends the
             // run as Answered (a single-phase agent has no separate verifier).
+            // Its clamp tracks the RUN's resolved turn budget (a declared
+            // `budget.max_turns` must not die on the 16-turn loop default).
             vec![Phase {
                 name: "main".into(),
                 contract: agent.contract.clone(),
                 tool_filter: None,
                 loop_mode: LoopMode::Loop {
-                    max_turns: crate::config::agent::DEFAULT_LOOP_MAX_TURNS,
+                    max_turns: budgets.max_turns,
                 },
                 gate: true,
                 on_fail: None,
@@ -197,6 +204,7 @@ impl RunState {
             artifacts: Vec::new(),
             allowed_tools,
             team_id: None,
+            budgets,
             depth,
             status: RunStatus::Running,
             final_text: None,
@@ -356,6 +364,7 @@ impl RunSession {
             0,
             memory,
             run_id.clone(),
+            shared.budgets,
         );
         turn::emit(
             shared,

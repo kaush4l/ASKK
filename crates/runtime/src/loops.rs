@@ -96,7 +96,7 @@ impl Tool for SpawnRun {
                 Err(e) => return e,
             };
             let depth = ctx.slice(DEPTH_SLICE).and_then(Value::as_u64).unwrap_or(0) as u8;
-            let cap = shared.budgets.max_delegation_depth;
+            let cap = crate::delegate::depth_cap(&shared, ctx);
             if depth >= cap {
                 return ToolResult::err(format!("spawn_run: delegation depth cap ({cap}) reached"));
             }
@@ -136,7 +136,15 @@ impl Tool for SpawnRun {
             };
             let run_id = shared.next_run_id();
             shared.hosts.borrow_mut().insert(run_id.clone(), host);
-            let mut run = RunState::new(&child, goal, allowed, depth + 1, memory, run_id.clone());
+            let mut run = RunState::new(
+                &child,
+                goal,
+                allowed,
+                depth + 1,
+                memory,
+                run_id.clone(),
+                shared.budgets,
+            );
             // A lead spawning members keeps them inside the team (ADR-032).
             run.team_id = crate::delegate::inherited_team(&shared, ctx, &child);
             let started = turn::emit(

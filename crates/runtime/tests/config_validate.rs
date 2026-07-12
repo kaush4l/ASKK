@@ -412,3 +412,46 @@ mod team_tests {
         assert_eq!(err.problems.len(), 1);
     }
 }
+
+mod budget_tests {
+    use askk_runtime::config::AgentConfig;
+
+    /// Every bad `budget.*` value — zero, out-of-range depth, non-numeric,
+    /// unknown subkey — lands in ONE error (ADR-007), beside the file's
+    /// other problems. (A duplicated key like a second `budget.max_turns`
+    /// is already a frontmatter-level duplicate-key error.)
+    #[test]
+    fn budget_bad_values_land_in_one_error() {
+        let text = "---\nid: a\nbudget.max_turns: 0\nbudget.depth: 99\n\
+                    budget.deadline_s: soon\nbudget.retries: 5\n---\n";
+        let err = AgentConfig::from_markdown("a.md", text).unwrap_err();
+        let joined = err.problems.join("\n");
+        assert!(joined.contains("`budget.max_turns` must be a positive integer, got '0'"));
+        assert!(joined.contains("`budget.depth` must be an integer 1..=8, got '99'"));
+        assert!(joined
+            .contains("`budget.deadline_s` must be a positive integer of seconds, got 'soon'"));
+        assert!(joined.contains("unknown budget field 'retries'"));
+        assert_eq!(err.problems.len(), 4);
+    }
+
+    /// Non-numeric max_turns is the same collected problem, not a panic or
+    /// an early return.
+    #[test]
+    fn budget_non_numeric_max_turns_is_a_problem() {
+        let err = AgentConfig::from_markdown("a.md", "---\nid: a\nbudget.max_turns: soon\n---\n")
+            .unwrap_err();
+        assert!(
+            err.problems[0].contains("`budget.max_turns` must be a positive integer, got 'soon'")
+        );
+    }
+
+    /// Boundary values survive: depth 8 is the last legal rung; 9 is not.
+    #[test]
+    fn budget_depth_boundaries() {
+        let ok = AgentConfig::from_markdown("a.md", "---\nid: a\nbudget.depth: 8\n---\n").unwrap();
+        assert_eq!(ok.budget.depth, Some(8));
+        let err =
+            AgentConfig::from_markdown("a.md", "---\nid: a\nbudget.depth: 9\n---\n").unwrap_err();
+        assert!(err.problems[0].contains("`budget.depth` must be an integer 1..=8"));
+    }
+}

@@ -180,6 +180,7 @@ mod tests {
                 0,
                 Default::default(),
                 RunId::new("run-t"),
+                Budgets::default(),
             );
             // A phase list validation would reject: the gate names itself.
             let gate = Phase {

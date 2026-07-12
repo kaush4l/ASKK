@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use askk_core::{Contract, LoopMode, OutputMode, Phase, Skill};
+use askk_core::{Budgets, Contract, LoopMode, OutputMode, Phase, Skill};
 
 use crate::config::env as env_presets;
 use crate::config::fields::{self, FieldDraft};
@@ -13,6 +13,35 @@ use crate::config::ConfigError;
 
 /// Turn budget for `loop` phases; mirrors `Budgets::default().max_turns`.
 pub const DEFAULT_LOOP_MAX_TURNS: u32 = 16;
+
+/// Runaway guard: the deepest delegation depth an agent may declare.
+pub const MAX_DECLARED_DEPTH: u8 = 8;
+
+/// `budget.*` frontmatter — an agent DECLARES its own thread length instead
+/// of inheriting the session's. Only the declared fields override; the rest
+/// of the session `Budgets` pass through untouched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BudgetOverride {
+    pub max_turns: Option<u32>,
+    pub deadline_ms: Option<u64>,
+    pub depth: Option<u8>,
+}
+
+impl BudgetOverride {
+    /// Session budgets with this agent's declared overrides applied.
+    pub fn apply(&self, mut base: Budgets) -> Budgets {
+        if let Some(n) = self.max_turns {
+            base.max_turns = n;
+        }
+        if let Some(ms) = self.deadline_ms {
+            base.deadline_ms = ms;
+        }
+        if let Some(d) = self.depth {
+            base.max_delegation_depth = d;
+        }
+        base
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgentConfig {
@@ -34,6 +63,8 @@ pub struct AgentConfig {
     /// `field.N.*` frontmatter → an agent-local contract named by the agent
     /// id; `resolve_contract` prefers it over the built-in registry.
     pub custom_contract: Option<Contract>,
+    /// `budget.*` frontmatter — declared overrides of the session budgets.
+    pub budget: BudgetOverride,
     /// Markdown body = the directive/role prompt.
     pub body: String,
     pub source_path: String,
@@ -55,6 +86,7 @@ impl AgentConfig {
             format: OutputMode::default(),
             phases: Vec::new(),
             custom_contract: None,
+            budget: BudgetOverride::default(),
             body: fm.body.trim().to_string(),
             source_path: path_label.to_string(),
         };
@@ -90,6 +122,9 @@ impl AgentConfig {
                         "{at}: `format` must be json|toon|text, got '{other}'"
                     )),
                 },
+                key if key.starts_with("budget.") => {
+                    budget_entry(entry, &at, &mut cfg.budget, &mut problems)
+                }
                 key if key.starts_with("phase.") => {
                     phase_entry(entry, &at, &mut drafts, &mut problems)
                 }
@@ -123,6 +158,35 @@ impl AgentConfig {
         } else {
             Err(ConfigError::new(problems))
         }
+    }
+}
+
+/// One `budget.<field>` entry → the typed override. Value validation lives
+/// here beside the parse (the `phase.N.max_turns` precedent), so every bad
+/// budget value joins the file's single ConfigError (ADR-007).
+fn budget_entry(entry: &Entry, at: &str, budget: &mut BudgetOverride, problems: &mut Vec<String>) {
+    let field = &entry.key["budget.".len()..];
+    let value = entry.value.as_str();
+    match field {
+        "max_turns" => match value.parse::<u32>() {
+            Ok(n) if n >= 1 => budget.max_turns = Some(n),
+            _ => problems.push(format!(
+                "{at}: `budget.max_turns` must be a positive integer, got '{value}'"
+            )),
+        },
+        "deadline_s" => match value.parse::<u64>() {
+            Ok(n) if n >= 1 => budget.deadline_ms = Some(n.saturating_mul(1000)),
+            _ => problems.push(format!(
+                "{at}: `budget.deadline_s` must be a positive integer of seconds, got '{value}'"
+            )),
+        },
+        "depth" => match value.parse::<u8>() {
+            Ok(n) if (1..=MAX_DECLARED_DEPTH).contains(&n) => budget.depth = Some(n),
+            _ => problems.push(format!(
+                "{at}: `budget.depth` must be an integer 1..={MAX_DECLARED_DEPTH}, got '{value}'"
+            )),
+        },
+        other => problems.push(format!("{at}: unknown budget field '{other}'")),
     }
 }
 
@@ -311,209 +375,4 @@ impl SkillConfig {
 /// soul.md is plain markdown — no frontmatter, no refs to validate.
 pub fn load_soul(text: &str) -> String {
     text.trim().to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// docs/MODELS.md §Agent configuration, verbatim.
-    const MODELS_MD_EXAMPLE: &str = "\
----
-id: coder                # slug, unique, validated
-name: Coder
-description: ...         # doubles as the tool card when delegated to
-enabled: true
-tools: file_read, file_write, run_js        # names resolved at load; unknown = hard error
-skills: concise                              # resolved at load; unknown = hard error
-provider: default                            # provider profile id
-contract: react                              # named contract (default: react)
-format: toon                                 # initial output mode
-phase.1.name: plan                           # optional phases → DeclaredStrategy
-phase.1.contract: plan
-phase.1.loop: one_shot
-phase.2.name: execute
-phase.2.contract: react
-phase.2.loop: loop
-phase.3.name: verify
-phase.3.contract: critique
-phase.3.gate: true
-phase.3.on_fail: plan
----
-(markdown body = the directive/role prompt)
-";
-
-    #[test]
-    fn models_md_example_parses_verbatim() {
-        let cfg = AgentConfig::from_markdown("agents/coder.md", MODELS_MD_EXAMPLE).unwrap();
-        assert_eq!(cfg.id, "coder");
-        assert_eq!(cfg.name, "Coder");
-        assert!(cfg.enabled);
-        assert_eq!(cfg.tools, vec!["file_read", "file_write", "run_js"]);
-        assert_eq!(cfg.skills, vec!["concise"]);
-        assert_eq!(cfg.provider, "default");
-        assert_eq!(cfg.contract, "react");
-        assert_eq!(cfg.format, OutputMode::Toon);
-        assert_eq!(cfg.body, "(markdown body = the directive/role prompt)");
-        assert_eq!(cfg.phases.len(), 3);
-        assert_eq!(cfg.phases[0].name, "plan");
-        assert_eq!(cfg.phases[0].contract, "plan");
-        assert_eq!(cfg.phases[0].loop_mode, LoopMode::OneShot);
-        assert!(!cfg.phases[0].gate);
-        assert_eq!(
-            cfg.phases[1].loop_mode,
-            LoopMode::Loop {
-                max_turns: DEFAULT_LOOP_MAX_TURNS
-            }
-        );
-        assert_eq!(cfg.phases[2].name, "verify");
-        assert!(cfg.phases[2].gate);
-        assert_eq!(cfg.phases[2].on_fail.as_deref(), Some("plan"));
-        assert_eq!(cfg.phases[2].loop_mode, LoopMode::OneShot); // default
-    }
-
-    #[test]
-    fn minimal_agent_gets_defaults() {
-        let cfg = AgentConfig::from_markdown("a.md", "---\nid: mini\n---\nBody.").unwrap();
-        assert_eq!(cfg.name, "mini"); // name defaults to id
-        assert!(cfg.enabled);
-        assert!(cfg.tools.is_empty());
-        assert_eq!(cfg.provider, "default");
-        assert_eq!(cfg.contract, "react");
-        assert_eq!(cfg.format, OutputMode::Toon);
-        assert!(cfg.phases.is_empty());
-        assert_eq!(cfg.body, "Body.");
-    }
-
-    #[test]
-    fn unknown_keys_fail_loud_with_line_numbers() {
-        let err = AgentConfig::from_markdown("a.md", "---\nid: a\ncolour: red\n---\n").unwrap_err();
-        assert_eq!(err.problems.len(), 1);
-        assert!(err.problems[0].contains("a.md:3"));
-        assert!(err.problems[0].contains("unknown key 'colour'"));
-    }
-
-    #[test]
-    fn bad_values_are_collected_into_one_error() {
-        let text = "---\nenabled: yep\nformat: xml\nphase.1.name: p\nphase.1.loop: forever\nphase.1.gate: maybe\n---\n";
-        let err = AgentConfig::from_markdown("a.md", text).unwrap_err();
-        let joined = err.problems.join("\n");
-        assert!(joined.contains("`enabled` must be true|false"));
-        assert!(joined.contains("`format` must be json|toon|text"));
-        assert!(joined.contains("`loop` must be one_shot|loop"));
-        assert!(joined.contains("`gate` must be true|false"));
-        assert!(joined.contains("missing required key `id`"));
-        assert_eq!(err.problems.len(), 5);
-    }
-
-    #[test]
-    fn phase_gaps_and_missing_names_are_errors() {
-        let text = "---\nid: a\nphase.1.name: plan\nphase.3.contract: react\n---\n";
-        let err = AgentConfig::from_markdown("a.md", text).unwrap_err();
-        let joined = err.problems.join("\n");
-        assert!(joined.contains("missing phase.2"));
-        assert!(joined.contains("missing `phase.3.name`"));
-    }
-
-    #[test]
-    fn malformed_phase_keys_are_errors() {
-        let text = "---\nid: a\nphase.x.name: p\nphase.1.speed: fast\nphase.one: p\n---\n";
-        let err = AgentConfig::from_markdown("a.md", text).unwrap_err();
-        let joined = err.problems.join("\n");
-        assert!(joined.contains("phase number must be an integer"));
-        assert!(joined.contains("unknown phase field 'speed'"));
-        assert!(joined.contains("phase.<n>.<field>"));
-    }
-
-    #[test]
-    fn max_turns_feeds_the_loop_clamp() {
-        let text = "---\nid: a\nphase.1.name: work\nphase.1.loop: loop\nphase.1.max_turns: 4\n\
-                    phase.2.name: more\nphase.2.max_turns: 2\n---\n";
-        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
-        assert_eq!(cfg.phases[0].loop_mode, LoopMode::Loop { max_turns: 4 });
-        // max_turns alone implies `loop: loop`.
-        assert_eq!(cfg.phases[1].loop_mode, LoopMode::Loop { max_turns: 2 });
-    }
-
-    #[test]
-    fn max_turns_rejects_one_shot_and_bad_values() {
-        let text = "---\nid: a\nphase.1.name: p\nphase.1.loop: one_shot\nphase.1.max_turns: 3\n\
-                    phase.2.name: q\nphase.2.max_turns: zero\n---\n";
-        let err = AgentConfig::from_markdown("a.md", text).unwrap_err();
-        let joined = err.problems.join("\n");
-        assert!(joined.contains("`max_turns` requires `loop: loop`"));
-        assert!(joined.contains("`max_turns` must be a positive integer"));
-    }
-
-    #[test]
-    fn fan_out_and_parts_land_on_the_phase() {
-        let text = "---\nid: a\ntools: worker\nphase.1.name: plan\nphase.1.contract: plan\n\
-                    phase.2.name: fan\nphase.2.fan_out: worker\nphase.2.parts: steps\n---\n";
-        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
-        assert_eq!(cfg.phases[1].fan_out.as_deref(), Some("worker"));
-        assert_eq!(cfg.phases[1].parts.as_deref(), Some("steps"));
-        assert_eq!(cfg.phases[0].fan_out, None);
-    }
-
-    #[test]
-    fn phase_tools_narrow_the_allowlist() {
-        let text = "---\nid: a\ntools: x, y\nphase.1.name: p\nphase.1.tools: x\n---\n";
-        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
-        assert_eq!(cfg.phases[0].tool_filter, Some(vec!["x".to_string()]));
-    }
-
-    #[test]
-    fn env_presets_expand_and_union_with_tools() {
-        // `shell` is already in `vm` (deduped); `fetch_url` is an extra.
-        let text = "---\nid: a\nenv: vm\ntools: fetch_url, shell\n---\n";
-        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
-        let want = [
-            "shell",
-            "write_file",
-            "read_file",
-            "list_files",
-            "edit_file",
-            "fetch_url",
-        ];
-        assert_eq!(cfg.tools, want);
-        // env alone == the hand-written equivalent list.
-        let by_env = AgentConfig::from_markdown("a.md", "---\nid: a\nenv: core\n---\n").unwrap();
-        let by_hand = AgentConfig::from_markdown(
-            "a.md",
-            "---\nid: a\ntools: echo, calc, now, js_eval\n---\n",
-        )
-        .unwrap();
-        assert_eq!(by_env.tools, by_hand.tools);
-    }
-
-    #[test]
-    fn unknown_env_preset_joins_the_other_problems() {
-        let text = "---\nenv: vm, matrix\nformat: xml\n---\n";
-        let err = AgentConfig::from_markdown("a.md", text).unwrap_err();
-        let joined = err.problems.join("\n");
-        assert!(joined.contains("a.md:2: unknown env preset 'matrix'"));
-        assert!(joined.contains("`format` must be json|toon|text"));
-        assert!(joined.contains("missing required key `id`"));
-        assert_eq!(err.problems.len(), 3);
-    }
-
-    #[test]
-    fn skill_config_parses_and_projects() {
-        let skill = SkillConfig::from_markdown(
-            "agents/skills/concise.md",
-            "---\nid: concise\nname: Concise\n---\nBe brief.",
-        )
-        .unwrap();
-        assert_eq!(skill.id, "concise");
-        let projected = skill.to_skill();
-        assert_eq!(projected.name, "Concise");
-        assert_eq!(projected.body, "Be brief.");
-        let err = SkillConfig::from_markdown("s.md", "---\nname: X\nfoo: y\n---\n").unwrap_err();
-        assert_eq!(err.problems.len(), 2); // unknown key + missing id
-    }
-
-    #[test]
-    fn load_soul_trims_plain_markdown() {
-        assert_eq!(load_soul("\n# Soul\ntext\n\n"), "# Soul\ntext");
-    }
 }

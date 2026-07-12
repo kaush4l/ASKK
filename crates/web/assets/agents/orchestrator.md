@@ -9,6 +9,8 @@ skills: concise
 provider: default
 contract: react
 format: toon
+budget.max_turns: 64
+budget.deadline_s: 1800
 phase.1.name: plan
 phase.1.contract: plan
 phase.1.header: Reorient from the BOARD block first — done cards stay done. Decompose the REMAINING goal into the smallest set of sub-goals (scenes). Mark which are independent of each other. Each sub-goal becomes a board card in dispatch.

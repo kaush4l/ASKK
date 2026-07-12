@@ -4,8 +4,8 @@ Native lane: **GREEN** (`cargo test -p askk-runtime --test acceptance`)
 
 ```
 test rows_md_test_names_exist ... ok
-test a1_fast_lane_js_eval ... ok
 test a7_budget_exhaustion_sibling_isolated ... ok
+test a1_fast_lane_js_eval ... ok
 test a5_foundation_replay_dedup_fence ... ok
 test a3_shell_files_grep ... ok
 test a2_write_run_fix_rerun ... ok
