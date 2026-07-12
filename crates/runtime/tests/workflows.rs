@@ -2037,3 +2037,190 @@ fn skill_read_unknown_id_names_the_valid_ids() {
         assert_eq!(f.mock.remaining(), 0);
     });
 }
+
+// --- spawn_agent: runtime sub-agents by specialization -----------------------
+
+const SPAWNER: (&str, &str) = (
+    "agents/spawner.md",
+    "---\nid: spawner\ndescription: Spawns specialized sub-agents.\n\
+     tools: echo, spawn_agent, deputy\n---\nYou spawn specialists.",
+);
+const DEPUTY: (&str, &str) = (
+    "agents/deputy.md",
+    "---\nid: deputy\ndescription: Mid-level worker that can spawn.\n\
+     tools: echo, spawn_agent\n---\nYou work and may spawn.",
+);
+
+/// (1) Happy path: the child runs under its synthesized id with the base's
+/// loop, the directive and replacement skill reach its prompt, and its
+/// answer comes back untrusted like any delegation.
+#[test]
+fn spawn_agent_specializes_and_answers() {
+    block_on(async {
+        let f = fixture(&[SPAWNER, DEPUTY, WORKER, HELPER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"spawn_agent\", \"arguments\": {\"base\": \"worker\", \
+             \"goal\": \"summarize x\", \"directive\": \"Be terse.\", \"tools\": [\"echo\"], \
+             \"skills\": [\"concise\"], \"max_turns\": 4}}",
+        );
+        f.mock.push_text("action: answer\nanswer: x summarized");
+        f.mock.push_text("action: answer\nanswer: relayed");
+        let run = f
+            .session
+            .submit("spawner", "spawn a summarizer")
+            .await
+            .unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("relayed"));
+        let signals = f.host.signals();
+        // The child ran as its own run under the synthesized id, with the
+        // same lifecycle signals as a delegated run.
+        assert!(signals.iter().any(|s| matches!(
+            &s.kind,
+            SignalKind::RunStarted { agent_id, goal }
+                if agent_id == "spawned-worker-1" && goal == "summarize x"
+        )));
+        // Its answer came back untrusted.
+        assert!(observations(&signals)
+            .iter()
+            .any(|o| o.contains("Result (untrusted): x summarized")));
+        // The directive and the replacement skill reached the child's prompt.
+        let child_request = f
+            .mock
+            .requests()
+            .into_iter()
+            .find(|r| r.sections.iter().any(|(_, s)| s.contains("summarize x")))
+            .expect("child request");
+        assert!(child_request
+            .sections
+            .iter()
+            .any(|(_, s)| s.contains("Be terse.")));
+        assert!(child_request
+            .sections
+            .iter()
+            .any(|(_, s)| s.contains("Be brief.")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// (2) A `tools` arg outside the base's toolset is a structured error
+/// observation — authority never widens — and no child run ever starts.
+#[test]
+fn spawn_agent_rejects_tools_outside_base() {
+    block_on(async {
+        let f = fixture(&[SPAWNER, DEPUTY, WORKER, HELPER]).await;
+        // `calc` is a registered tool, but not one of worker's.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"spawn_agent\", \"arguments\": {\"base\": \"worker\", \
+             \"goal\": \"g\", \"tools\": [\"calc\"]}}",
+        );
+        f.mock.push_text("action: answer\nanswer: gave up");
+        let run = f.session.submit("spawner", "try widening").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let signals = f.host.signals();
+        assert!(observations(&signals)
+            .iter()
+            .any(|o| o.contains("spawn_agent")
+                && o.contains("tool 'calc' is not in base agent 'worker'")));
+        assert!(
+            !signals.iter().any(|s| matches!(
+                &s.kind,
+                SignalKind::RunStarted { agent_id, .. } if agent_id.starts_with("spawned-")
+            )),
+            "no child run may start on a rejected spawn"
+        );
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// (3) An unknown skill id is a structured error observation; no child run.
+#[test]
+fn spawn_agent_rejects_unknown_skill() {
+    block_on(async {
+        let f = fixture(&[SPAWNER, DEPUTY, WORKER, HELPER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"spawn_agent\", \"arguments\": {\"base\": \"worker\", \
+             \"goal\": \"g\", \"skills\": [\"ghostskill\"]}}",
+        );
+        f.mock.push_text("action: answer\nanswer: gave up");
+        let run = f.session.submit("spawner", "bad skill").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let signals = f.host.signals();
+        assert!(observations(&signals)
+            .iter()
+            .any(|o| o.contains("spawn_agent: unknown skill 'ghostskill'")));
+        assert!(!signals.iter().any(|s| matches!(
+            &s.kind,
+            SignalKind::RunStarted { agent_id, .. } if agent_id.starts_with("spawned-")
+        )));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// (4) The same depth cap as delegation: at max depth, spawn_agent rejects
+/// before resolving anything and the caller reads the structured error.
+#[test]
+fn spawn_agent_depth_cap_rejects() {
+    block_on(async {
+        let budgets = Budgets {
+            max_delegation_depth: 1,
+            ..Budgets::default()
+        };
+        let f = fixture_with(
+            &[SPAWNER, DEPUTY, WORKER, HELPER],
+            budgets,
+            ActionPolicy::default(),
+        )
+        .await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"deputy\", \"arguments\": {\"goal\": \"go deep\"}}",
+        );
+        // deputy (depth 1) hits the cap trying to spawn.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"spawn_agent\", \"arguments\": {\"goal\": \"deeper\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: gave up");
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("spawner", "orchestrate").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert!(observations(&f.host.signals())
+            .iter()
+            .any(|o| o.contains("spawn_agent: delegation depth cap (1) reached")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// (5) The caller-allowlist clamp: the spawned child keeps only base tools
+/// the CALLER also holds — spawner has no `helper`, so the child spawned
+/// from worker (echo, helper) is clamped to [echo] and its `helper` call is
+/// rejected as unknown.
+#[test]
+fn spawn_agent_clamps_child_to_caller_allowlist() {
+    block_on(async {
+        let f = fixture(&[SPAWNER, DEPUTY, WORKER, HELPER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"spawn_agent\", \"arguments\": {\"base\": \"worker\", \
+             \"goal\": \"use helper\"}}",
+        );
+        // The child tries the base tool the caller does not hold.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"helper\", \"arguments\": {\"goal\": \"sub\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: fell back");
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("spawner", "clamp check").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        assert!(
+            obs.iter()
+                .any(|o| o.contains("unknown tool 'helper'") && o.contains("[echo]")),
+            "child allowlist must be base ∩ caller = [echo]: {obs:?}"
+        );
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}

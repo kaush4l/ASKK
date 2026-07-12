@@ -95,6 +95,28 @@ agent id (set `contract: <id>` to use it).
 Per-agent overrides of the session defaults: `budget.max_turns`,
 `budget.deadline_s`, `budget.depth`.
 
+## spawn_agent — runtime sub-agents by specialization (wave-19)
+
+An agent holding the `spawn_agent` tool can synthesize a sub-agent at run
+time. It never authors an agent from nothing — it SPECIALIZES a base roster
+agent and drives the child immediately (same loop, same lifecycle signals as
+a delegation; the answer comes back untrusted).
+
+| Arg | Meaning |
+|---|---|
+| `goal` | REQUIRED. Self-contained goal for the child. |
+| `base` | Roster agent id to specialize; default `worker`. Must be enabled. |
+| `directive` | Extra paragraph appended to the base's body prompt. |
+| `tools` | Replaces the base toolset; must be a SUBSET of the base's tools. |
+| `skills` | Replaces the base skills; each id must exist in `skills/`. |
+| `max_turns` | Child turn budget, clamped to 1..=64. |
+
+Narrowing rules: the child keeps the base's phases, contract, format, and
+provider; it runs at depth+1 under the same delegation depth cap; and its
+effective toolset is additionally intersected with the CALLER's allowlist —
+authority only narrows, never widens. Spawned agents are run-scoped: they
+never persist to this folder or any config store.
+
 ## team.md — a folder as one delegation boundary
 
 ```

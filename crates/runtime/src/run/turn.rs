@@ -180,10 +180,8 @@ pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(),
 /// One turn: assemble → infer → parse (bounded repairs) → absorb → act.
 async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreError> {
     let agent = shared
-        .agents
-        .get(&run.agent_id)
-        .expect("run built from a validated agent")
-        .clone();
+        .agent_config(&run.agent_id)
+        .expect("run built from a validated or spawned agent");
     let phase = run.phases[run.phase_idx].clone();
     let contract = resolve_contract(&agent, &phase.contract).expect("validated contract");
     let toolset = effective_toolset(shared, run)?;

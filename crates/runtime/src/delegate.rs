@@ -62,11 +62,11 @@ pub(crate) fn inherited_team(
 
 /// Resolve authority, spin the nested run, drive it to a terminal, and hand
 /// back `(status, final_text)` — the one child-run body shared by
-/// `DelegateTool`, `HandoffTool`, and `TeamTool`. `Err` is a readable message
-/// for the caller's observation. A `boundary` team RESETS authority to the
-/// team's own toolset (the micro-service boundary, ADR-032); without one,
-/// authority narrows as usual (child = parent ∩ child).
-async fn drive_child(
+/// `DelegateTool`, `HandoffTool`, `TeamTool`, and `SpawnAgentTool`. `Err` is
+/// a readable message for the caller's observation. A `boundary` team RESETS
+/// authority to the team's own toolset (the micro-service boundary, ADR-032);
+/// without one, authority narrows as usual (child = parent ∩ child).
+pub(crate) async fn drive_child(
     shared: &Shared,
     ctx: &ToolCtx,
     child: &AgentConfig,

@@ -64,16 +64,15 @@ pub(crate) async fn enqueue_fan_out(shared: &Shared, run: &mut RunState) -> Resu
         return Ok(());
     };
     let agent = shared
-        .agents
-        .get(&run.agent_id)
-        .expect("run built from a validated agent");
+        .agent_config(&run.agent_id)
+        .expect("run built from a validated or spawned agent");
     let items: Vec<String> = run
         .phase_idx
         .checked_sub(1)
         .map(|i| &run.phases[i])
         .and_then(|prev| {
             let (_, artifact) = run.artifacts.iter().rev().find(|(n, _)| *n == prev.name)?;
-            let contract = resolve_contract(agent, &prev.contract).ok()?;
+            let contract = resolve_contract(&agent, &prev.contract).ok()?;
             let parsed = contract.parse(&InferenceReply::text(artifact)).ok()?;
             Some(
                 parsed

@@ -14,6 +14,7 @@ pub mod registry;
 pub mod search;
 pub mod shell;
 pub mod skills;
+pub mod spawn;
 pub mod workspace;
 
 pub use artifact::register_artifacts;

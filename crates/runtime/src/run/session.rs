@@ -20,6 +20,7 @@ use crate::run::cancel::CancelToken;
 use crate::run::host::RunHost;
 use crate::run::{dispatch, turn};
 use crate::state::{BoardStore, MemoryStore, SessionStore, SignalLog};
+use crate::tools::spawn::SpawnAgentTool;
 use crate::tools::ToolRegistry;
 
 /// Provider lookup seam: profile id → provider instance. Tests inject
@@ -81,6 +82,11 @@ pub(crate) struct Shared {
     /// mid-inference (the turn loop races the token, GAPS 17).
     /// ponytail: entries live as long as the session, like `runs` itself.
     pub(crate) cancels: RefCell<BTreeMap<RunId, Rc<CancelToken>>>,
+    /// Run-scoped agents synthesized by `spawn_agent`: registered here BEFORE
+    /// the child drives, because the turn loop re-resolves the agent by id
+    /// every turn. Never persisted to any config store; entries live for the
+    /// session so terminal spawned runs stay resolvable.
+    pub(crate) spawned: RefCell<BTreeMap<String, AgentConfig>>,
     next_run: Cell<u64>,
 }
 
@@ -97,6 +103,16 @@ impl Shared {
             .get(run_id)
             .cloned()
             .expect("drive/resolve_action install the run's host before any turn runs")
+    }
+
+    /// Resolve an agent id: the validated roster first, then the run-scoped
+    /// spawned agents. Every mid-run resolution goes through here so a
+    /// `spawn_agent` child is findable on each of its turns.
+    pub(crate) fn agent_config(&self, id: &str) -> Option<AgentConfig> {
+        self.agents
+            .get(id)
+            .cloned()
+            .or_else(|| self.spawned.borrow().get(id).cloned())
     }
 }
 
@@ -318,6 +334,12 @@ impl RunSession {
                     .borrow_mut()
                     .push(format!("cannot register skill tools: {e}"));
             }
+            // spawn_agent (runtime specialization) — same reserved-name rule.
+            if let Err(e) = registry.register(Rc::new(SpawnAgentTool::new(weak.clone()))) {
+                problems
+                    .borrow_mut()
+                    .push(format!("cannot register spawn_agent tool: {e}"));
+            }
             // Validation universe = everything the registry holds; any agent
             // ref outside it is flagged by validate.
             let known_tools = registry.names();
@@ -351,6 +373,7 @@ impl RunSession {
                 runs: RefCell::new(BTreeMap::new()),
                 hosts: RefCell::new(BTreeMap::new()),
                 cancels: RefCell::new(BTreeMap::new()),
+                spawned: RefCell::new(BTreeMap::new()),
                 next_run: Cell::new(0),
             }
         });

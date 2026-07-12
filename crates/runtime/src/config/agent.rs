@@ -17,6 +17,10 @@ pub const DEFAULT_LOOP_MAX_TURNS: u32 = 16;
 /// Runaway guard: the deepest delegation depth an agent may declare.
 pub const MAX_DECLARED_DEPTH: u8 = 8;
 
+/// Runaway guard: the largest turn budget `spawn_agent` may put on a
+/// synthesized child (the MAX_DECLARED_DEPTH pattern, for turns).
+pub const MAX_SPAWNED_MAX_TURNS: u32 = 64;
+
 /// `budget.*` frontmatter — an agent DECLARES its own thread length instead
 /// of inheriting the session's. Only the declared fields override; the rest
 /// of the session `Budgets` pass through untouched.
@@ -158,6 +162,52 @@ impl AgentConfig {
         } else {
             Err(ConfigError::new(problems))
         }
+    }
+
+    /// Runtime specialization (`spawn_agent`): a run-scoped child config
+    /// derived from this base — same phases/contract/format/provider.
+    /// Authority only narrows: replacement `tools` must be a subset of the
+    /// base's, replacement `skills` must all be loaded, and `max_turns` is
+    /// clamped to 1..=MAX_SPAWNED_MAX_TURNS. Errors are plain strings the
+    /// tool turns into observations.
+    pub fn specialize(
+        &self,
+        id: String,
+        directive: Option<&str>,
+        tools: Option<Vec<String>>,
+        skills: Option<Vec<String>>,
+        max_turns: Option<u32>,
+        known_skills: &[String],
+    ) -> Result<AgentConfig, String> {
+        let mut cfg = self.clone();
+        cfg.id = id;
+        if let Some(tools) = tools {
+            if let Some(bad) = tools.iter().find(|t| !self.tools.contains(t)) {
+                return Err(format!(
+                    "tool '{bad}' is not in base agent '{}' tools [{}]",
+                    self.id,
+                    self.tools.join(", ")
+                ));
+            }
+            cfg.tools = tools;
+        }
+        if let Some(skills) = skills {
+            if let Some(bad) = skills.iter().find(|s| !known_skills.contains(s)) {
+                return Err(format!("unknown skill '{bad}'"));
+            }
+            cfg.skills = skills;
+        }
+        if let Some(directive) = directive {
+            cfg.body = if cfg.body.is_empty() {
+                directive.to_string()
+            } else {
+                format!("{}\n\n{directive}", cfg.body)
+            };
+        }
+        if let Some(n) = max_turns {
+            cfg.budget.max_turns = Some(n.clamp(1, MAX_SPAWNED_MAX_TURNS));
+        }
+        Ok(cfg)
     }
 }
 
@@ -378,4 +428,59 @@ impl SkillConfig {
 /// soul.md is plain markdown — no frontmatter, no refs to validate.
 pub fn load_soul(text: &str) -> String {
     text.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base() -> AgentConfig {
+        AgentConfig::from_markdown(
+            "agents/base.md",
+            "---\nid: base\ndescription: Base.\ntools: echo, calc\n---\nDo work.",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn specialize_appends_directive_and_clamps_turns() {
+        let child = base()
+            .specialize(
+                "spawned-base-1".into(),
+                Some("Be terse."),
+                None,
+                None,
+                Some(9999),
+                &[],
+            )
+            .unwrap();
+        assert_eq!(child.id, "spawned-base-1");
+        assert_eq!(child.body, "Do work.\n\nBe terse.");
+        assert_eq!(child.budget.max_turns, Some(MAX_SPAWNED_MAX_TURNS));
+        // Untouched knobs pass through from the base.
+        assert_eq!(child.tools, vec!["echo", "calc"]);
+        assert_eq!(child.provider, "default");
+    }
+
+    #[test]
+    fn specialize_rejects_widening_and_unknown_skills() {
+        let widened = base().specialize(
+            "s".into(),
+            None,
+            Some(vec!["shell".into()]),
+            None,
+            None,
+            &[],
+        );
+        assert!(widened.unwrap_err().contains("'shell'"));
+        let ghost = base().specialize(
+            "s".into(),
+            None,
+            None,
+            Some(vec!["ghost".into()]),
+            None,
+            &[],
+        );
+        assert_eq!(ghost.unwrap_err(), "unknown skill 'ghost'");
+    }
 }
