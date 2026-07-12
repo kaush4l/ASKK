@@ -146,6 +146,10 @@ pub(crate) struct RunState {
     pub(crate) final_text: Option<String>,
     /// Tool calls not yet dispatched when the run parked on a confirmation.
     pub(crate) queued_calls: Vec<ToolCall>,
+    /// Stall guard: (signature, consecutive count) of the last MUTATING tool
+    /// call. Dispatch refuses the 3rd identical issue (GAPS 50/61); an
+    /// answer resets it, Pure calls neither reset nor increment.
+    pub(crate) repeat_guard: Option<(String, u32)>,
     /// The parked confirmation this run is paused on.
     pub(crate) awaiting: Option<ActionId>,
     /// Cancel token shared with `Shared::cancels`, so `cancel` reaches this
@@ -216,6 +220,7 @@ impl RunState {
             status: RunStatus::Running,
             final_text: None,
             queued_calls: Vec::new(),
+            repeat_guard: None,
             awaiting: None,
             cancel_requested: Rc::new(CancelToken::default()),
             signals: Vec::new(),

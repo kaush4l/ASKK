@@ -1848,3 +1848,110 @@ fn phase_skill_filter_narrows_the_sheet() {
         assert_eq!(f.mock.remaining(), 0);
     });
 }
+
+// ---- Stall guard (repeat-identical-mutating-call refusal, GAPS 50/61) ----
+
+fn auto_mutating() -> ActionPolicy {
+    ActionPolicy {
+        mutating_default: PolicyDecision::Auto, // mutations flow, no gate parking
+        ..Default::default()
+    }
+}
+
+/// The 3rd consecutive identical mutating call is refused, not executed:
+/// the model reads the structured refusal and can still answer.
+#[test]
+fn stall_guard_refuses_third_identical_mutating_call() {
+    block_on(async {
+        let f = fixture_with(&[SOLO], Budgets::default(), auto_mutating()).await;
+        for _ in 0..3 {
+            f.mock.push_text(
+                "action: tool\nanswer: {\"name\": \"state_note\", \"arguments\": {\"note\": \"same\"}}",
+            );
+        }
+        f.mock.push_text("action: answer\nanswer: moving on");
+        let run = f.session.submit("solo", "note it").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("moving on"));
+        let obs = observations(&f.host.signals());
+        assert!(
+            obs.iter()
+                .any(|o| o.contains("repeat detected") && o.contains("state_note")),
+            "missing refusal: {obs:?}"
+        );
+        // Side-effect count: the note landed exactly twice, never a third time.
+        assert_eq!(obs.iter().filter(|o| o.contains("noted (")).count(), 2);
+        assert!(!obs.iter().any(|o| o.contains("noted (3 total)")));
+    });
+}
+
+/// Same tool, DIFFERENT args each time: no repeat, all three execute.
+#[test]
+fn stall_guard_ignores_same_tool_with_different_args() {
+    block_on(async {
+        let f = fixture_with(&[SOLO], Budgets::default(), auto_mutating()).await;
+        for i in 0..3 {
+            f.mock.push_text(&format!(
+                "action: tool\nanswer: {{\"name\": \"state_note\", \"arguments\": {{\"note\": \"n{i}\"}}}}"
+            ));
+        }
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("solo", "note things").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        assert!(
+            !obs.iter().any(|o| o.contains("repeat detected")),
+            "{obs:?}"
+        );
+        assert!(obs.iter().any(|o| o.contains("noted (3 total)")));
+    });
+}
+
+/// Pure tools are exempt: status-poll-style repetition is legitimate.
+#[test]
+fn stall_guard_exempts_pure_tools() {
+    block_on(async {
+        let f = fixture_with(&[SOLO], Budgets::default(), auto_mutating()).await;
+        for _ in 0..5 {
+            f.mock.push_text(
+                "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"poll\"}}",
+            );
+        }
+        f.mock.push_text("action: answer\nanswer: polled");
+        let run = f.session.submit("solo", "poll away").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        assert!(
+            !obs.iter().any(|o| o.contains("repeat detected")),
+            "{obs:?}"
+        );
+        assert_eq!(obs.iter().filter(|o| *o == "echo: poll").count(), 5);
+    });
+}
+
+/// A different mutating call in between resets the streak: A, A, B, A never
+/// reaches three consecutive.
+#[test]
+fn stall_guard_resets_on_a_different_mutating_call() {
+    block_on(async {
+        let f = fixture_with(&[SOLO], Budgets::default(), auto_mutating()).await;
+        for note in ["a", "a", "b", "a"] {
+            f.mock.push_text(&format!(
+                "action: tool\nanswer: {{\"name\": \"state_note\", \"arguments\": {{\"note\": \"{note}\"}}}}"
+            ));
+        }
+        f.mock.push_text("action: answer\nanswer: varied");
+        let run = f.session.submit("solo", "note it").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        assert!(
+            !obs.iter().any(|o| o.contains("repeat detected")),
+            "{obs:?}"
+        );
+        assert!(obs.iter().any(|o| o.contains("noted (4 total)")));
+    });
+}

@@ -267,7 +267,11 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
     sync_back(run, &sheet);
 
     match parsed.action.clone() {
-        Action::Answer(text) => handle_answer(shared, run, &phase, &parsed, text).await,
+        Action::Answer(text) => {
+            // An answer breaks any mutating-call stall streak (dispatch.rs).
+            run.repeat_guard = None;
+            handle_answer(shared, run, &phase, &parsed, text).await
+        }
         Action::ToolCalls(calls) => {
             run.queued_calls = calls;
             match dispatch_queued(shared, run).await? {

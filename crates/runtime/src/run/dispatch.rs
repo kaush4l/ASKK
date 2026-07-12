@@ -5,8 +5,8 @@
 use std::rc::Rc;
 
 use askk_core::{
-    ActionProposal, ActionRecord, RunStatus, SignalKind, Tool, ToolCall, ToolCtx, ToolResult,
-    Verdict,
+    ActionProposal, ActionRecord, Effect, RunStatus, SignalKind, Tool, ToolCall, ToolCtx,
+    ToolResult, Verdict,
 };
 use serde_json::json;
 
@@ -30,6 +30,10 @@ pub(crate) const PARENT_RUN_SLICE: &str = "parent_run_id";
 /// ToolCtx slice carrying the caller's team id: members delegated from
 /// inside a team inherit it, so the team's principles reach their prompts.
 pub(crate) const TEAM_SLICE: &str = "team_id";
+
+/// Consecutive identical mutating calls tolerated before dispatch refuses
+/// (Magentic-One stall guard: make the model re-plan, don't re-execute).
+const REPEAT_LIMIT: u32 = 3;
 
 #[derive(PartialEq, Eq)]
 pub(crate) enum Dispatch {
@@ -92,6 +96,37 @@ pub(crate) async fn dispatch_queued(
             .await?;
             continue;
         };
+        // Stall guard (GAPS 50/61): the live model chronically re-issues the
+        // SAME mutating call (publish → approve → identical publish). The
+        // guard tracks the last MUTATING call's signature — a different
+        // mutating call resets it, Pure calls in between neither reset nor
+        // increment, an answer resets it (turn.rs). The 3rd identical issue
+        // is refused HERE, before the action gate: a blocked repeat must
+        // never park a confirmation. Value's Display is canonical (key-sorted
+        // maps; preserve_order is off in this workspace).
+        if tool.spec().effect == Effect::Mutating {
+            let sig = format!("{} {}", call.name, call.args);
+            let count = match &run.repeat_guard {
+                Some((last, n)) if *last == sig => n + 1,
+                _ => 1,
+            };
+            run.repeat_guard = Some((sig, count));
+            if count >= REPEAT_LIMIT {
+                execute_batch(shared, run, &mut batch).await?;
+                observe(
+                    shared,
+                    run,
+                    format!(
+                        "repeat detected: '{}' called {count} times with identical \
+                         arguments; change the arguments or approach, or answer with \
+                         what you have",
+                        call.name
+                    ),
+                )
+                .await?;
+                continue;
+            }
+        }
         let host = shared.host(&run.id);
         let gate = ActionGate::new({
             let host = host.clone();
