@@ -24,9 +24,38 @@ mod imp {
         TransportError::Connect(format!("{ctx}: {}", js_msg(&e)))
     }
 
+    /// Abort the browser fetch if the request future is dropped mid-flight
+    /// (run cancel, GAPS 17); disarmed once the body is fully consumed.
+    struct AbortOnDrop(Option<web_sys::AbortController>);
+
+    impl AbortOnDrop {
+        fn new() -> Self {
+            // ponytail: a missing AbortController (None) just means no abort
+            // hook — the fetch itself still works.
+            Self(web_sys::AbortController::new().ok())
+        }
+
+        fn signal(&self) -> Option<web_sys::AbortSignal> {
+            self.0.as_ref().map(|c| c.signal())
+        }
+
+        fn disarm(&mut self) {
+            self.0 = None;
+        }
+    }
+
+    impl Drop for AbortOnDrop {
+        fn drop(&mut self) {
+            if let Some(controller) = self.0.take() {
+                controller.abort();
+            }
+        }
+    }
+
     /// Fetch + header extraction shared by the buffered and streaming paths.
     async fn do_fetch(
         req: &HttpRequest,
+        signal: Option<&web_sys::AbortSignal>,
     ) -> Result<(web_sys::Response, Vec<(String, String)>), TransportError> {
         let headers = web_sys::Headers::new().map_err(|e| connect("headers", e))?;
         for (name, value) in &req.headers {
@@ -37,6 +66,7 @@ mod imp {
         let init = web_sys::RequestInit::new();
         init.set_method(&req.method);
         init.set_headers(headers.as_ref());
+        init.set_signal(signal);
         if !req.body.is_empty() {
             init.set_body(&JsValue::from_str(&req.body));
         }
@@ -82,7 +112,7 @@ mod imp {
             headers: Vec::new(),
             body: String::new(),
         };
-        let (response, _) = do_fetch(&req).await.map_err(|e| format!("{e:?}"))?;
+        let (response, _) = do_fetch(&req, None).await.map_err(|e| format!("{e:?}"))?;
         if !(200..300).contains(&response.status()) {
             return Err(format!("GET {url}: status {}", response.status()));
         }
@@ -104,8 +134,10 @@ mod imp {
             req: HttpRequest,
         ) -> Pin<Box<dyn Future<Output = Result<HttpResponse, TransportError>> + '_>> {
             Box::pin(async move {
-                let (response, out_headers) = do_fetch(&req).await?;
+                let mut abort = AbortOnDrop::new();
+                let (response, out_headers) = do_fetch(&req, abort.signal().as_ref()).await?;
                 let body = read_text(&response).await?;
+                abort.disarm(); // fully consumed; nothing left to abort
                 Ok(HttpResponse {
                     status: response.status(),
                     headers: out_headers,
@@ -123,11 +155,13 @@ mod imp {
             on_chunk: &'a mut dyn FnMut(&str),
         ) -> Pin<Box<dyn Future<Output = Result<HttpResponse, TransportError>> + 'a>> {
             Box::pin(async move {
-                let (response, out_headers) = do_fetch(&req).await?;
+                let mut abort = AbortOnDrop::new();
+                let (response, out_headers) = do_fetch(&req, abort.signal().as_ref()).await?;
                 let status = response.status();
                 let Some(stream) = response.body() else {
                     let body = read_text(&response).await?;
                     on_chunk(&body);
+                    abort.disarm();
                     return Ok(HttpResponse {
                         status,
                         headers: out_headers,
@@ -157,6 +191,7 @@ mod imp {
                         body.push_str(&text);
                     }
                 }
+                abort.disarm(); // stream done; error paths stay armed on purpose
                 Ok(HttpResponse {
                     status,
                     headers: out_headers,

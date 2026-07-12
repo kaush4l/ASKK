@@ -9,7 +9,15 @@ use futures::future::LocalBoxFuture;
 use askk_core::provider::{Provider, ProviderError};
 use askk_core::request::{InferenceReply, InferenceRequest};
 
-type Script = RefCell<VecDeque<Result<InferenceReply, ProviderError>>>;
+#[derive(Debug)]
+enum Scripted {
+    Reply(Result<InferenceReply, ProviderError>),
+    /// Emits one delta then never resolves — a stalled stream for cancel
+    /// tests (GAPS 17). The caller must drop the future to get out.
+    Hang,
+}
+
+type Script = RefCell<VecDeque<Scripted>>;
 
 #[derive(Debug, Default)]
 pub struct MockProvider {
@@ -32,11 +40,20 @@ impl MockProvider {
     }
 
     pub fn push_reply(&self, reply: InferenceReply) {
-        self.script.borrow_mut().push_back(Ok(reply));
+        self.script
+            .borrow_mut()
+            .push_back(Scripted::Reply(Ok(reply)));
     }
 
     pub fn push_error(&self, error: ProviderError) {
-        self.script.borrow_mut().push_back(Err(error));
+        self.script
+            .borrow_mut()
+            .push_back(Scripted::Reply(Err(error)));
+    }
+
+    /// Script a call that streams one delta and then never completes.
+    pub fn push_hang(&self) {
+        self.script.borrow_mut().push_back(Scripted::Hang);
     }
 
     /// Build a provider from a fixture script: reply blocks separated by lines
@@ -89,8 +106,15 @@ impl Provider for MockProvider {
         let next = self.script.borrow_mut().pop_front();
         Box::pin(async move {
             // An exhausted script is a test bug — surface it loudly but typed.
-            let reply = next
-                .unwrap_or_else(|| Err(ProviderError::Malformed("mock script exhausted".into())))?;
+            let reply = match next {
+                Some(Scripted::Hang) => {
+                    on_delta("...");
+                    std::future::pending::<()>().await;
+                    unreachable!("pending never resolves")
+                }
+                Some(Scripted::Reply(reply)) => reply?,
+                None => return Err(ProviderError::Malformed("mock script exhausted".into())),
+            };
             if !reply.text.is_empty() {
                 on_delta(&reply.text);
             }
@@ -171,5 +195,24 @@ mod tests {
         let mock = MockProvider::new("mock/test");
         let err = block_on(mock.infer(&request("a"), &mut |_| {})).unwrap_err();
         assert!(matches!(err, ProviderError::Malformed(m) if m.contains("exhausted")));
+    }
+
+    #[test]
+    fn hang_streams_one_delta_then_never_resolves() {
+        use std::task::{Context, Waker};
+        let mock = MockProvider::new("mock/test");
+        mock.push_hang();
+        let req = request("q");
+        let mut deltas = Vec::new();
+        {
+            let mut sink = |d: &str| deltas.push(d.to_string());
+            let mut fut = mock.infer(&req, &mut sink);
+            let mut cx = Context::from_waker(Waker::noop());
+            for _ in 0..5 {
+                assert!(fut.as_mut().poll(&mut cx).is_pending());
+            }
+        } // dropping the future is the only way out — that is the point
+        assert_eq!(deltas, vec!["..."]);
+        assert_eq!(mock.remaining(), 0);
     }
 }

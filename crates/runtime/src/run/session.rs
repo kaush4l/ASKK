@@ -16,6 +16,7 @@ use askk_core::{
 use crate::actions::PendingActions;
 use crate::config::{validate, AgentConfig, ConfigError, SkillConfig};
 use crate::delegate::{DelegateTool, HandoffTool};
+use crate::run::cancel::CancelToken;
 use crate::run::host::RunHost;
 use crate::run::{dispatch, turn};
 use crate::state::{MemoryStore, SessionStore, SignalLog};
@@ -63,9 +64,10 @@ pub(crate) struct Shared {
     /// in-flight drives never stomp each other's host mid-turn.
     pub(crate) hosts: RefCell<BTreeMap<RunId, Rc<dyn RunHost>>>,
     /// Per-run cancel token. Survives the run's removal from `runs` while
-    /// driving, so `cancel` can reach an actively-driving run.
+    /// driving, so `cancel` can reach an actively-driving run — and wake it
+    /// mid-inference (the turn loop races the token, GAPS 17).
     /// ponytail: entries live as long as the session, like `runs` itself.
-    pub(crate) cancels: RefCell<BTreeMap<RunId, Rc<Cell<bool>>>>,
+    pub(crate) cancels: RefCell<BTreeMap<RunId, Rc<CancelToken>>>,
     next_run: Cell<u64>,
 }
 
@@ -123,7 +125,7 @@ pub(crate) struct RunState {
     pub(crate) awaiting: Option<ActionId>,
     /// Cancel token shared with `Shared::cancels`, so `cancel` reaches this
     /// run even while it is out of the map mid-drive.
-    pub(crate) cancel_requested: Rc<Cell<bool>>,
+    pub(crate) cancel_requested: Rc<CancelToken>,
     /// Every stamped signal of this run, in order — the run's own stream.
     pub(crate) signals: Vec<Signal>,
 }
@@ -182,7 +184,7 @@ impl RunState {
             final_text: None,
             queued_calls: Vec::new(),
             awaiting: None,
-            cancel_requested: Rc::new(Cell::new(false)),
+            cancel_requested: Rc::new(CancelToken::default()),
             signals: Vec::new(),
         }
     }
@@ -395,7 +397,7 @@ impl RunSession {
     pub async fn cancel(&self, run_id: &RunId) -> RunOutcome {
         let Some(mut run) = self.shared.runs.borrow_mut().remove(run_id) else {
             if let Some(token) = self.shared.cancels.borrow().get(run_id) {
-                token.set(true);
+                token.set();
                 return RunOutcome {
                     status: RunStatus::Running,
                     final_text: Some("cancellation requested".into()),
@@ -405,7 +407,7 @@ impl RunSession {
             return unknown_run(run_id);
         };
         if !run.status.is_terminal() {
-            run.cancel_requested.set(true);
+            run.cancel_requested.set();
             // Best-effort: the terminal must land even if the store is sick.
             let _ = turn::emit(&self.shared, &mut run, SignalKind::Interrupted).await;
             run.status = RunStatus::Interrupted;

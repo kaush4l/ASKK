@@ -8,8 +8,10 @@
 //! - [`answer`] — answer → phase routing (gate semantics, ADR-008).
 //! - [`dispatch`] — tool-call dispatch through the action gate.
 //! - [`flow`] — phase-boundary flow: declared fan-out, exhaustion rerouting.
+//! - [`cancel`] — wake-aware cancel token raced against in-flight calls.
 
 pub(crate) mod answer;
+pub(crate) mod cancel;
 pub(crate) mod dispatch;
 pub(crate) mod flow;
 pub mod host;

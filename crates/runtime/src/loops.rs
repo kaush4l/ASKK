@@ -477,7 +477,7 @@ impl Tool for CancelRun {
             let taken = shared.runs.borrow_mut().remove(&RunId::new(run_id));
             let Some(mut run) = taken else {
                 if let Some(token) = shared.cancels.borrow().get(&RunId::new(run_id)) {
-                    token.set(true);
+                    token.set();
                     return ToolResult::ok(format!(
                         "{run_id} is driving; it stops at its next loop iteration"
                     ));
@@ -485,7 +485,7 @@ impl Tool for CancelRun {
                 return ToolResult::err(format!("cancel_run: unknown run '{run_id}'"));
             };
             if !run.status.is_terminal() {
-                run.cancel_requested.set(true);
+                run.cancel_requested.set();
                 let _ = turn::emit(&shared, &mut run, SignalKind::Interrupted).await;
                 run.status = RunStatus::Interrupted;
             }

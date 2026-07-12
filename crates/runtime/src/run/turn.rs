@@ -8,6 +8,7 @@ use askk_core::{
     Message, OutputMode, ParsedFormat, ParsedResponse, PhaseFrame, ProviderError, Role, RunStatus,
     Sheet, Signal, SignalKind, Skill, ToolSet,
 };
+use futures::future::{select, Either};
 use serde_json::Map;
 
 use crate::assemble::{assemble, AssembleOverrides};
@@ -190,7 +191,7 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
     let (mut sheet, mut parsed) = loop {
         let sheet = build_sheet(shared, run, &agent, &phase, &contract, &toolset);
         let Some(reply) = infer_with_retry(shared, run, &agent, &sheet.render()).await? else {
-            return Ok(Turn::Terminal); // provider failed after retries
+            return Ok(Turn::Terminal); // provider failed after retries, or cancelled mid-call
         };
         match contract.parse(&reply) {
             Ok(parsed) => {
@@ -375,6 +376,8 @@ async fn infer_with_retry(
     };
     let host = shared.host(&run.id);
     let run_id = run.id.clone();
+    // Cloned Rc so no borrow of `run` is held across the select await.
+    let cancel = run.cancel_requested.clone();
     let mut last_error = None;
     for attempt in 0..MAX_PROVIDER_ATTEMPTS {
         // Deltas reach the host sink AS THEY ARRIVE (`on_delta` is sync; the
@@ -391,7 +394,21 @@ async fn infer_with_retry(
                 },
             });
         };
-        match provider.infer(request, &mut sink).await {
+        // Race the in-flight call against the run's cancel token (GAPS 17):
+        // on cancel the provider future is DROPPED mid-stream — FetchTransport
+        // aborts the browser fetch on drop — and the run lands the same
+        // Interrupted terminal as a between-turn cancel.
+        let infer = provider.infer(request, &mut sink);
+        let result = match select(infer, cancel.cancelled()).await {
+            Either::Left((result, _)) => result,
+            Either::Right(((), infer)) => {
+                drop(infer); // stop consuming; the transport aborts the fetch
+                emit(shared, run, SignalKind::Interrupted).await?;
+                run.status = RunStatus::Interrupted;
+                return Ok(None);
+            }
+        };
+        match result {
             Ok(reply) => {
                 emit(
                     shared,

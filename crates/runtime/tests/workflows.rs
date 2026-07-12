@@ -1116,3 +1116,52 @@ fn handoff_outside_allowlist_is_refused_and_run_continues() {
         assert_eq!(f.mock.remaining(), 0);
     });
 }
+
+/// GAPS 17: cancel must kill an IN-FLIGHT provider call, not wait for the
+/// turn to finish. The mock streams one delta then hangs forever, so the
+/// only way drive can reach Ready is by dropping the stream mid-flight.
+#[test]
+fn cancel_aborts_an_in_flight_llm_call() {
+    use std::future::Future;
+    use std::task::{Context, Poll, Waker};
+    let f = block_on(fixture(&[SOLO]));
+    f.mock.push_hang();
+    let run = block_on(f.session.submit("solo", "slow prefill")).unwrap();
+    let mut drive = Box::pin(f.session.drive(&run, f.host.clone()));
+    let mut cx = Context::from_waker(Waker::noop());
+    // The turn is mid-stream: one delta arrived, the reply never will.
+    for _ in 0..10 {
+        assert!(drive.as_mut().poll(&mut cx).is_pending());
+    }
+    assert!(f
+        .host
+        .signals()
+        .iter()
+        .any(|s| matches!(s.kind, SignalKind::LlmDelta { .. })));
+    // Cancel while the run is out of the map (actively driving).
+    let requested = block_on(f.session.cancel(&run));
+    assert_eq!(requested.status, RunStatus::Running); // "cancellation requested"
+                                                      // Bounded polls = "promptly"; Ready proves the hung stream was DROPPED,
+                                                      // because awaiting it out is impossible.
+    let mut out = None;
+    for _ in 0..100 {
+        if let Poll::Ready(o) = drive.as_mut().poll(&mut cx) {
+            out = Some(o);
+            break;
+        }
+    }
+    let out = out.expect("cancel must end the in-flight turn promptly");
+    assert_eq!(out.status, RunStatus::Interrupted);
+    assert!(f
+        .host
+        .signals()
+        .iter()
+        .any(|s| matches!(s.kind, SignalKind::Interrupted)));
+    // The hung call never produced a durable response.
+    assert!(!f
+        .host
+        .signals()
+        .iter()
+        .any(|s| matches!(s.kind, SignalKind::LlmResponse { .. })));
+    assert_eq!(f.mock.remaining(), 0);
+}
