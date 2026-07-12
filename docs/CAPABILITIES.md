@@ -119,3 +119,18 @@ projects today; richer toolchains wait on guest networking (GAPS 25).
   (`phase.N.fan_out` + `phase.N.parts`: one delegate call per item of the previous
   phase's list field, dispatched concurrently — deterministic parallelism that does not
   rely on the model emitting a multi-call turn).
+
+## Wave 14 (in flight)
+
+Being built in parallel right now — in-flight, not live; each row moves to the Live
+table only when live-verified.
+
+- Kanban board foundation (ADR-026): card model, KvStore-backed board, four tools
+  (add/list/move/check)
+- Board UI tab — the work board as a dashboard surface
+- Tester agent
+- MCP client — browser-direct MCP servers as ToolRegistry entries
+- Memory tools — `remember`/`recall` over the per-agent store
+- Env presets
+- Handoff between agents
+- Cancel = abort — AbortController through the streaming fetch
