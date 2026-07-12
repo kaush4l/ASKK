@@ -69,6 +69,13 @@ Numbered contiguously from 1. No phases = a single implicit react loop.
 | `phase.N.fan_out` | Agent/tool each part is fanned out to in parallel. |
 | `phase.N.parts` | Name of the prior-phase artifact field holding the parts list. |
 
+Per-phase `tools:` filters are the recommended lean-agent idiom: small
+models degrade with big tool catalogs, so each phase should see only the
+tools that phase needs (`orchestrator.md` is the worked example — board-only
+in plan, delegates + loop tools in dispatch, verification tools in verify).
+For delegated single tasks, `worker.md` is the generic spawnable agent:
+minimal tools, an execute loop, and a self-verify gate.
+
 ### Custom contracts (`field.N.*`)
 
 Declare the agent's own response format; it becomes a contract named by the

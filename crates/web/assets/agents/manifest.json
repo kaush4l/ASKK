@@ -7,6 +7,7 @@
     "coding/programmer.md",
     "coding/reviewer.md",
     "tester.md",
+    "worker.md",
     "orchestrator.md"
   ],
   "teams": ["coding/team.md"],
