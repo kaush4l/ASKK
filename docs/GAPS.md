@@ -199,3 +199,16 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
 60. The board digest injects at submit only — a long dispatch loop can drift
     from a board another run mutates mid-flight; a per-phase-entry refresh (or
     a board_digest tool the director calls) is the next increment.
+61. Wave-16 live e2e (hosted, gemma-12B, embedded browser pane): plan phase →
+    board_add cards → action gate → Board tab all work live; the model then
+    LOOPS re-adding near-identical cards (GAPS 50/52 pattern — click-per-write
+    Confirm feeds it) and never reaches the coding-team call in budget. The
+    TeamTool boundary, principles injection, per-agent budgets, and board
+    digest remain workflow-test-proven (743 green); their live confirmation
+    needs either a stronger model or a board_* Auto policy row.
+62. Embedded-pane storage split-brain: OPFS blob writes persist (signal log
+    segments survive reload) while OPFS kv writes silently vanish (kv/ dir
+    empty after stage-pref and approved board writes, NO degradation notice)
+    → board/prefs reset on reload in that pane, so the digest read an empty
+    board. Retest kv persistence in real Chrome; if it reproduces there, add
+    a kv write-through probe beside the existing blob probe at boot.
