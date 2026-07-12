@@ -221,6 +221,20 @@ Loop-exhaustion routing reuses `on_fail` (bounded by MAX_BACK_EDGES). New code s
 known-contracts registry extension (cross-agent leak), and a bespoke fan-out executor
 (dispatch already batches).
 
+## ADR-026 (A) — the kanban board is the work model: KvStore cards + four tools
+The "software team" goal lands as a persistent kanban board: pure `Card`/`CardStage`/
+`Criterion` in `core/board.rs` (one hard rule — Done requires every acceptance criterion met;
+backward moves, the planning↔testing bounce, always allowed), `BoardStore` over the existing
+KvStore seam under `board/<card-id>` (modeled on SessionStore; plain Results, no signals —
+the mutating tools already emit ToolRequested/ToolCompleted, which is what the UI refolds
+on), and four tools (`board_add`, `board_list`, `board_move`, `board_check`) registered like
+the knowledge bundle. Writers are `Effect::Mutating` (gate + dry_run). Cards carry goal,
+criteria+met, assignee, order, optional run link, and a note trail; ids are title slugs.
+Rejected: board state in the signal log (cross-run persistent config-shaped state, not run
+events, and replay must not replay card moves); a scheduler owning the board (agents move
+cards through the same tool gate as everything else, so the board stays inspectable and
+steerable).
+
 ## ADR-019 (A) — agents + custom tools are real served files, not hardcoded
 The `agents/` folder moved UNDER `crates/web/assets/agents/` so the SAME files are both baked
 (build.rs fallback) AND served verbatim at `/assets/agents/*`. Boot fetches the served

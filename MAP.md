@@ -46,6 +46,9 @@ core ← inference ← runtime ← web
 | news_search tool (Wikinews → GDELT) | `crates/runtime/src/tools/news.rs` |
 | OKF knowledge bundle tools (ADR-024) | `crates/runtime/src/tools/knowledge.rs` |
 | Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/runtime/src/loops.rs` |
+| Kanban card model + stage rules (ADR-026) | `crates/core/src/board.rs` |
+| Board persistence over KvStore | `crates/runtime/src/state/board.rs` |
+| Board tools (add/list/move/check) | `crates/runtime/src/tools/board.rs` |
 | shell tool (exec over VM serial) | `crates/runtime/src/tools/shell.rs` |
 | shell executor (browser serial bridge) | `crates/web/src/host/vm.rs` |
 | Agents/skills/tools loader (baked + live fetch) | `crates/web/src/host/config.rs` |

@@ -5,7 +5,9 @@
 use std::rc::Rc;
 
 use askk_core::signal::fold;
-use askk_core::{ActionId, ActionPolicy, Budgets, Provider, Role, RunStatus, Signal, SignalKind};
+use askk_core::{
+    ActionId, ActionPolicy, Budgets, PolicyDecision, Provider, Role, RunStatus, Signal, SignalKind,
+};
 use askk_inference::MockProvider;
 use askk_runtime::config::{AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunSession, SessionInit, TestHost};
@@ -41,6 +43,13 @@ const HELPER: (&str, &str) = (
     "agents/helper.md",
     "---\nid: helper\ndescription: Helps.\n---\nYou help.",
 );
+const SCRUM: (&str, &str) = (
+    "agents/scrum.md",
+    "---\nid: scrum\ndescription: Works the kanban board.\n\
+     tools: board_add, board_list, board_move, board_check\n---\n\
+     You track work on the kanban board.",
+);
+
 const ORCH: (&str, &str) = (
     "agents/orch.md",
     "---\nid: orch\ndescription: Manages loops.\n\
@@ -87,6 +96,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
         .unwrap();
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).unwrap();
+    askk_runtime::tools::register_board(&mut registry, Rc::new(MemKv::new())).unwrap();
     let agents: Vec<AgentConfig> = files
         .iter()
         .map(|(path, text)| AgentConfig::from_markdown(path, text).unwrap())
@@ -799,5 +809,55 @@ fn parallel_calls_fan_out_two_delegates() {
             .filter(|s| matches!(s.kind, SignalKind::ToolCompleted { ok: true, .. }))
             .count();
         assert_eq!(completed_ok, 2);
+    });
+}
+
+/// Board foundation smoke: an agent adds a card with criteria, gets refused
+/// Done while one is open, records the verdicts, then finishes the card —
+/// the whole kanban rule set exercised through the real loop.
+#[test]
+fn board_card_lifecycle_through_the_loop() {
+    block_on(async {
+        let policy = ActionPolicy {
+            mutating_default: PolicyDecision::Auto, // board writes flow in tests
+            ..Default::default()
+        };
+        let f = fixture_with(&[SCRUM], Budgets::default(), policy).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_add\", \"arguments\": \
+             {\"title\": \"Ship it\", \"goal\": \"build the thing\", \"criteria\": [\"works\"], \
+             \"stage\": \"doing\"}}",
+        );
+        // Premature finish: refused while the criterion is unmet.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_move\", \"arguments\": \
+             {\"id\": \"ship-it\", \"stage\": \"done\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_check\", \"arguments\": \
+             {\"id\": \"ship-it\", \"criterion\": 1, \"note\": \"ran it\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_move\", \"arguments\": \
+             {\"id\": \"ship-it\", \"stage\": \"done\"}}",
+        );
+        f.mock
+            .push_text("action: answer\nanswer: card done and verified");
+        let run = f.session.submit("scrum", "work the board").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        assert!(obs.iter().any(|o| o.contains("added [ship-it]")), "{obs:?}");
+        assert!(
+            obs.iter().any(|o| o.contains("unmet criteria")),
+            "premature done must be refused: {obs:?}"
+        );
+        assert!(obs.iter().any(|o| o.contains("0 unmet remain")), "{obs:?}");
+        assert!(
+            obs.iter()
+                .any(|o| o.contains("moved [ship-it] doing -> done")),
+            "{obs:?}"
+        );
+        assert_eq!(f.mock.remaining(), 0);
     });
 }

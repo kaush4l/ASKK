@@ -5,6 +5,7 @@
 //! Dependency rule 1: this crate imports nothing from the workspace.
 
 pub mod action;
+pub mod board;
 pub mod contract;
 pub mod contracts;
 pub mod element;
@@ -20,6 +21,7 @@ pub mod toolcall;
 pub mod toon;
 
 pub use action::{ActionId, ActionPolicy, ActionProposal, ActionRecord, PolicyDecision, Verdict};
+pub use board::{Card, CardStage, Criterion};
 pub use contract::{
     Action, Contract, FieldKind, FieldSpec, FormatNegotiator, OutputMode, ParseFailure,
     ParsedFormat, ParsedResponse,

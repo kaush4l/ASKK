@@ -3,6 +3,7 @@
 //! fail loud at build time. MCP / agent-as-tool / JS adapters arrive in
 //! later waves behind the same `dyn Tool` seam.
 
+pub mod board;
 pub mod builtin;
 pub mod knowledge;
 pub mod news;
@@ -11,6 +12,7 @@ pub mod search;
 pub mod shell;
 pub mod workspace;
 
+pub use board::register_board;
 pub use builtin::register_builtins;
 pub use knowledge::register_knowledge;
 pub use news::register_news;
