@@ -22,6 +22,10 @@ reference; kiln is the structure reference).
 | **VM: real x86 Linux in the browser (v86)** — serial console, manifest-driven images | `web/ui/vm.rs`, `assets/vm/` | wave 9 |
 | Signal-log persistence (OPFS, in-memory degrade), replay = projection | `runtime/state/log.rs` | workflows tests |
 | Action gate: mutating tools park for confirmation | `runtime/actions/` | workflows tests |
+| **Cross-tab mirror**: tabs broadcast signals; a second tab renders foreign runs live (ADR-031) | `web/host/bus.rs` | wave 15 |
+| **Dashboard wall**: big-numeral tile stage, `#/Dashboard` deep link, pop-out button | `web/ui/dashboard.rs` | wave 15 |
+| **Big artifacts**: `artifact_publish` (html/markdown/url) → gallery + sandboxed viewer; PDF via url kind | `runtime/tools/artifact.rs`, `web/ui/artifacts.rs` | wave 15 |
+| Markdown rendering in chat answers + artifact docs (in-repo subset renderer) | `web/ui/markdown.rs` | wave 15 |
 
 ## Queue (what would make it more of a workspace)
 

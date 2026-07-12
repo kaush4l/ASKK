@@ -169,3 +169,15 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     the stale roster for up to 10 min (live-hit: tester missing until cache
     refresh). Harmless-but-confusing; cache-busting query param on the manifest
     fetch is the one-line fix if it bites again.
+54. Cross-tab mirroring (ADR-031) is view-only: the OPFS signal log assumes one
+    writing tab (SignalLog::open bumps the epoch and fences prior non-terminal
+    runs). Two tabs RUNNING work concurrently interleave persistence epochs —
+    harmless for the live mirror, wrong for replay. Leader election (Web Locks
+    API is the natural primitive) is the upgrade before cross-tab run control.
+55. Foreign runs (mirrored from another tab) render but carry no controls:
+    steer/cancel/approve act only on locally-submitted runs. Cross-tab control
+    needs a command channel + the GAPS-54 single-writer story first.
+56. url-kind artifact embeds are only as good as the target site: X-Frame-Options
+    /frame-ancestors blockers render a blank frame (the open ↗ escape is always
+    visible). No in-viewer signal distinguishes "blocked" from "slow" — a load
+    timeout heuristic would need iframe onload plumbing.

@@ -51,6 +51,11 @@ core ← inference ← runtime ← web
 | Board tools (add/list/move/check) | `crates/runtime/src/tools/board.rs` |
 | Board UI tab (5-column live view) | `crates/web/src/ui/board.rs` |
 | Dashboard stage (wall display) | `crates/web/src/ui/dashboard.rs` |
+| Cross-tab signal bus (BroadcastChannel mirror, ADR-031) | `crates/web/src/host/bus.rs` |
+| artifact_publish tool (html/markdown/url blobs) | `crates/runtime/src/tools/artifact.rs` |
+| Artifact read side (blob docs → UI) | `crates/web/src/host/artifacts.rs` |
+| Artifacts stage (gallery + sandboxed viewer) | `crates/web/src/ui/artifacts.rs` |
+| Markdown subset renderer (chat + artifacts) | `crates/web/src/ui/markdown.rs` |
 | MCP client (browser-direct, ADR-028) | `crates/runtime/src/tools/mcp.rs` |
 | Memory tools (remember/recall/forget) | `crates/runtime/src/tools/memory_tools.rs` |
 | Env presets (`env:` frontmatter, ADR-027) | `crates/runtime/src/config/env.rs` |

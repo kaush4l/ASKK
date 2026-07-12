@@ -268,6 +268,20 @@ races `provider.infer` against a `CancelToken` (Cell flag + waker) at the one aw
 dropping the infer future drops the transport stream, and the wasm fetch aborts via
 AbortController (AbortOnDrop, disarmed on completion). No new SignalKinds for either.
 
+## ADR-031 (A) — cross-tab is signal MIRRORING over BroadcastChannel, not shared control
+Every locally-stamped signal is also broadcast on channel `askk-signals` inside a `{tab,
+signal}` JSON envelope (per-tab random id; echoes and malformed foreign envelopes dropped —
+a newer build in another tab must not wedge this one). Received foreign signals join
+`HarnessHandle.buffer` + notify, so the existing buffer-fold path renders foreign runs
+exactly like delegate runs, and the refold re-reads the shared OPFS board/artifacts. A
+"wall display" is just a tab parked on `#/Dashboard`. Ownership stays with the submitting
+tab: steer/cancel/approve act only on local runs (foreign runs carry no controls in v1).
+CAVEAT (documented, deferred): `SignalLog::open` bumps the persistence epoch and fences
+prior non-terminal runs — the OPFS log assumes ONE writing tab; concurrent writers interleave
+segments harmlessly for the mirror but leader election is the upgrade path before cross-tab
+run CONTROL. Rejected: SharedWorker owner (Safari gaps, big rewire); leader election now
+(complexity before need); storage-event polling (chatty, no payload).
+
 ## ADR-019 (A) — agents + custom tools are real served files, not hardcoded
 The `agents/` folder moved UNDER `crates/web/assets/agents/` so the SAME files are both baked
 (build.rs fallback) AND served verbatim at `/assets/agents/*`. Boot fetches the served
