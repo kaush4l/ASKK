@@ -17,6 +17,7 @@ use crate::host::speech::{self, SpeechConfig};
 use crate::ui::agents::AgentsStage;
 use crate::ui::board::BoardStage;
 use crate::ui::chat::ChatStage;
+use crate::ui::dashboard::{DashRun, DashboardStage};
 use crate::ui::manifest::Stage;
 use crate::ui::settings::SettingsStage;
 use crate::ui::shell::{AvatarBar, Header, LeftRail, RightRail};
@@ -146,11 +147,12 @@ pub fn App() -> Element {
     });
 
     // Board snapshot: board mutations happen through tools, whose signals
-    // bump `refold` — reading it here re-fetches the async kv read.
+    // bump `refold` — reading it here re-fetches the async kv read. The
+    // dashboard's board-mini tile reads the same snapshot.
     let mut board_cards = use_signal(Vec::<Card>::new);
     use_effect(move || {
         let _ = refold();
-        if stage() != Stage::Board {
+        if !matches!(stage(), Stage::Board | Stage::Dashboard) {
             return;
         }
         let Some(h) = handle() else { return };
@@ -189,6 +191,19 @@ pub fn App() -> Element {
         _ => String::new(),
     };
     let elapsed = elapsed_label(run_start());
+    // Wall tiles: the fold plus each run's live streaming tail — assembled
+    // only while the dashboard is the picked stage (draft scans the buffer).
+    let dash_runs: Vec<DashRun> = match (handle(), stage()) {
+        (Some(h), Stage::Dashboard) => runs_newest
+            .iter()
+            .map(|(id, proj)| DashRun {
+                id: id.clone(),
+                proj: proj.clone(),
+                draft: h.draft(id),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
     let agent_cards = handle().map(|h| h.agents()).unwrap_or_default();
     let agent_name = agent_cards
         .iter()
@@ -392,6 +407,9 @@ pub fn App() -> Element {
                         },
                         Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },
                         Stage::Board => rsx! { BoardStage { cards: board_cards() } },
+                        Stage::Dashboard => rsx! {
+                            DashboardStage { runs: dash_runs, cards: board_cards() }
+                        },
                         Stage::Settings => rsx! {
                             SettingsStage {
                                 key: "{profiles().active}",

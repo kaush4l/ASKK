@@ -21,6 +21,15 @@ mod imp {
         }
     }
 
+    /// Open the app in a new tab deep-linked to a stage (`#/Dashboard`) —
+    /// the wall-display pop-out. A fragment-only URL keeps the page's
+    /// origin, path, and query, so the gh-pages base path survives.
+    pub fn open_tab(key: &str) {
+        if let Some(window) = web_sys::window() {
+            let _ = window.open_with_url_and_target(&format!("#/{key}"), "_blank");
+        }
+    }
+
     /// Set `data-theme` on `<html>`; the `[data-theme]` CSS blocks recolor.
     pub fn apply_theme(id: &str) {
         let doc = web_sys::window().and_then(|w| w.document());
@@ -54,6 +63,8 @@ mod imp {
     }
 
     pub fn write_hash(_key: &str) {}
+
+    pub fn open_tab(_key: &str) {}
 
     pub fn apply_theme(_id: &str) {}
 

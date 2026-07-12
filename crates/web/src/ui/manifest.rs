@@ -9,6 +9,7 @@ pub enum Stage {
     Chat,
     Agents,
     Board,
+    Dashboard,
     Vm,
     Settings,
 }
@@ -19,13 +20,18 @@ impl Stage {
             Stage::Chat => "Chat",
             Stage::Agents => "Agents",
             Stage::Board => "Board",
+            Stage::Dashboard => "Dashboard",
             Stage::Vm => "VM",
             Stage::Settings => "Settings",
         }
     }
 
+    /// Case-insensitive so hand-typed deep links (`#/dashboard`) land too.
     pub fn from_key(key: &str) -> Option<Stage> {
-        COMPONENTS.iter().map(|c| c.stage).find(|s| s.key() == key)
+        COMPONENTS
+            .iter()
+            .map(|c| c.stage)
+            .find(|s| s.key().eq_ignore_ascii_case(key))
     }
 }
 
@@ -53,6 +59,11 @@ pub const COMPONENTS: &[Component] = &[
         meta: "team",
     },
     Component {
+        stage: Stage::Dashboard,
+        dot: "var(--blue-ink, #2f367e)",
+        meta: "wall",
+    },
+    Component {
         stage: Stage::Vm,
         dot: "var(--purple, #c678dd)",
         meta: "x86",
@@ -74,5 +85,11 @@ mod tests {
             assert_eq!(Stage::from_key(c.stage.key()), Some(c.stage));
         }
         assert_eq!(Stage::from_key("Nope"), None);
+    }
+
+    #[test]
+    fn from_key_ignores_case_for_deep_links() {
+        assert_eq!(Stage::from_key("dashboard"), Some(Stage::Dashboard));
+        assert_eq!(Stage::from_key("vm"), Some(Stage::Vm));
     }
 }

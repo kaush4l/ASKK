@@ -8,6 +8,7 @@ pub mod agents;
 pub mod app;
 pub mod board;
 pub mod chat;
+pub mod dashboard;
 pub mod manifest;
 pub mod settings;
 pub mod shell;

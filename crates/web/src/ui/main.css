@@ -417,6 +417,40 @@ input, textarea { font: inherit; }
 .card-run { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--cyan, #23b3d1); word-break: break-all; }
 .card-note { font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
 
+/* ── dashboard stage (wall display) ──────────────────────────────────────── */
+/* Calm editorial wall: big numerals, hairline tiles, generous whitespace.
+   The one accent on this view is cyan = live work (numeral, dot, tile rim). */
+.dash-wrap { height: 100%; display: flex; flex-direction: column; gap: clamp(12px, 1.8vh, 22px); padding: clamp(16px, 3vw, 40px); overflow: auto; }
+.dash-head { display: flex; align-items: baseline; gap: 14px; }
+.dash-live { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); }
+.dash-wrap .a-dot.s-running { background: var(--cyan, #23b3d1); }
+.wall-btn { margin-left: auto; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--hairline); background: var(--control-bg); font-size: var(--fs-xs); color: var(--text-muted); transition: background .15s var(--ease); }
+.wall-btn:hover { background: var(--control-bg-hover); color: var(--text); }
+.dash-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr)); gap: 10px; }
+.dash-num-cell { border: 1px solid var(--hairline); border-radius: var(--shape-sm); background: var(--card-solid); padding: clamp(12px, 1.8vw, 22px); display: flex; flex-direction: column; gap: 8px; }
+.dash-num { font-family: var(--font-display); font-size: clamp(34px, 4.6vw, 76px); line-height: 1; font-variant-numeric: tabular-nums; }
+.dash-num.live { color: var(--cyan, #23b3d1); }
+.dash-runs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 10px; }
+.dash-run { border: 1px solid var(--hairline); border-radius: var(--shape-sm); background: var(--card-solid); padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.dash-run.live { border-color: rgba(35, 179, 209, 0.35); }
+.dash-run-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dash-run-agent { flex: 1; font-family: var(--font-display); font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-run-goal { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dash-run-phase { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); }
+.dash-run-tail { font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--text-muted); background: var(--well); border-radius: 8px; padding: 7px 9px; line-height: 1.45; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dash-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 10px; }
+.dash-tile { border: 1px solid var(--hairline); border-radius: var(--shape-sm); background: var(--card-solid); padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.dash-label { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 2px; text-transform: uppercase; color: var(--text-faint); }
+.dash-board-counts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.dash-board-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dash-board-num { font-family: var(--font-display); font-size: clamp(22px, 2.4vw, 42px); line-height: 1; font-variant-numeric: tabular-nums; }
+.dash-board-title { display: flex; align-items: baseline; gap: 7px; min-width: 0; font-size: var(--fs-sm); }
+.dash-board-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-art { font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-quiet { margin: auto; text-align: center; }
+.dash-wordmark { font-family: var(--font-display); font-size: clamp(56px, 12vw, 140px); line-height: 1; color: var(--text-faint); letter-spacing: -1px; }
+.dash-quiet-sub { margin-top: 10px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint); }
+
 /* ── responsive + reduced motion ─────────────────────────────────────────── */
 @media (max-width: 900px) {
   body { padding: 0; }

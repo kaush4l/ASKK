@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 
 use askk_core::{Role, RunId, RunProjection, RunStatus};
 
-fn status_class(status: RunStatus) -> &'static str {
+pub(crate) fn status_class(status: RunStatus) -> &'static str {
     match status {
         RunStatus::Running => "a-dot s-running",
         RunStatus::Answered => "a-dot s-done",
@@ -17,7 +17,7 @@ fn status_class(status: RunStatus) -> &'static str {
     }
 }
 
-fn status_label(status: RunStatus) -> &'static str {
+pub(crate) fn status_label(status: RunStatus) -> &'static str {
     match status {
         RunStatus::Running => "running",
         RunStatus::Answered => "answered",
@@ -28,14 +28,14 @@ fn status_label(status: RunStatus) -> &'static str {
     }
 }
 
-/// `"run started: coder — fix the bug"` → `("coder", "fix the bug")`.
-fn agent_and_goal(proj: &RunProjection) -> (String, String) {
+/// `"run started: coder — fix the bug"` → `("coder", "fix the bug")`;
+/// `None` when the fold has no `RunStarted` line (callers pick a fallback).
+pub(crate) fn agent_and_goal(proj: &RunProjection) -> Option<(String, String)> {
     proj.timeline
         .iter()
         .find_map(|line| line.strip_prefix("run started: "))
         .and_then(|rest| rest.split_once(" — "))
         .map(|(agent, goal)| (agent.to_string(), goal.to_string()))
-        .unwrap_or_else(|| ("agent".into(), String::new()))
 }
 
 /// Tool rows: each `tool requested` timeline entry paired (by order) with
@@ -68,7 +68,8 @@ pub fn AgentsStage(runs: Vec<(RunId, RunProjection)>) -> Element {
             div { class: "tree",
                 for (run_id, proj) in runs.iter() {
                     {
-                        let (agent, goal) = agent_and_goal(proj);
+                        let (agent, goal) = agent_and_goal(proj)
+                            .unwrap_or_else(|| ("agent".into(), String::new()));
                         let rows = tool_rows(proj);
                         rsx! {
                             div { key: "{run_id.0}", class: "run-card",
@@ -122,8 +123,9 @@ mod tests {
         };
         assert_eq!(
             agent_and_goal(&proj),
-            ("coder".into(), "fix the bug".into())
+            Some(("coder".into(), "fix the bug".into()))
         );
+        assert_eq!(agent_and_goal(&RunProjection::default()), None);
         assert_eq!(
             tool_rows(&proj),
             vec![("echo".into(), "observation text".into())]
