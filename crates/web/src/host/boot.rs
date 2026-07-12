@@ -60,6 +60,9 @@ pub struct HarnessHandle {
     searxng: Rc<RefCell<String>>,
     /// The persistent kanban board — same kv the board tools write.
     board: askk_runtime::state::BoardStore,
+    /// Blob store shared with the signal log — `host::artifacts` reads
+    /// published `artifact/<slug>` docs from it.
+    pub(super) blobs: Rc<dyn askk_runtime::state::BlobStore>,
     /// Newline-separated MCP server URLs (pref mirror; registration happens
     /// at boot, so edits apply on the next reload).
     mcp_servers: RefCell<String>,
@@ -285,6 +288,7 @@ fn build_handle(
     resolver: ProviderResolver,
     log: SignalLog,
     kv: Rc<dyn KvStore>,
+    blobs: Rc<dyn askk_runtime::state::BlobStore>,
     host: Rc<dyn RunHost>,
     buffer: Rc<RefCell<Vec<Signal>>>,
     profiles: Rc<RefCell<ProfileSet>>,
@@ -321,40 +325,13 @@ fn build_handle(
         profiles,
         settings: SessionStore::new(kv.clone()),
         board: askk_runtime::state::BoardStore::new(kv),
+        blobs,
         current: RefCell::new(None),
         known_runs: RefCell::new(Vec::new()),
         storage_warning: None,
         searxng,
         mcp_servers: RefCell::new(String::new()),
     })
-}
-
-/// OPFS stores, verified writable end to end (some contexts — incognito,
-/// embedded webviews — grant OPFS but fail `createWritable` with quota
-/// errors at ~KB scale). The probe writes real payloads through both seams
-/// so a broken grant is caught at boot, not mid-run.
-#[cfg(target_arch = "wasm32")]
-async fn opfs_stores() -> Result<(Rc<dyn KvStore>, Rc<dyn askk_runtime::state::BlobStore>), String>
-{
-    use super::opfs::{OpfsBlob, OpfsKv};
-    use askk_runtime::state::BlobStore;
-
-    let kv: Rc<dyn KvStore> = Rc::new(OpfsKv::new().await.map_err(|e| e.to_string())?);
-    let blobs: Rc<dyn BlobStore> = Rc::new(OpfsBlob::new().await.map_err(|e| e.to_string())?);
-    kv.set("probe/kv", Value::from("ok"))
-        .await
-        .map_err(|e| e.to_string())?;
-    kv.remove("probe/kv").await.map_err(|e| e.to_string())?;
-    // ponytail: 64 KiB ≈ one busy run's log segment; the REWRITE of the same
-    // path matters — broken grants pass a single write and fail the second.
-    for _ in 0..2 {
-        blobs
-            .write("probe.bin", &vec![0u8; 64 * 1024])
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    blobs.remove("probe.bin").await.map_err(|e| e.to_string())?;
-    Ok((kv, blobs))
 }
 
 /// Browser bootstrap: OPFS stores (in-memory fallback when the browser's
@@ -368,7 +345,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     use askk_runtime::state::{BlobStore, MemBlob, MemKv};
 
     let (kv, blobs, storage_warning): (Rc<dyn KvStore>, Rc<dyn BlobStore>, Option<String>) =
-        match opfs_stores().await {
+        match super::opfs::stores().await {
             Ok((kv, blobs)) => (kv, blobs, None),
             Err(e) => (
                 Rc::new(MemKv::new()),
@@ -445,7 +422,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     register_knowledge(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
     register_memory_tools(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
     register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
-    register_artifacts(&mut registry, blobs, now).map_err(|e| e.to_string())?;
+    register_artifacts(&mut registry, blobs.clone(), now).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(super::vm::SerialShell::new());
     register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
     register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;
@@ -495,7 +472,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
         }
     };
     let mut handle = build_handle(
-        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles, searxng,
+        agents, skills, soul, registry, resolver, log, kv, blobs, host, buffer, profiles, searxng,
     )?;
     // One boot-degradation channel: broken storage and dead MCP servers both
     // surface once in the UI; neither fails boot.

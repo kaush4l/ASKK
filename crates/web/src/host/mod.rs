@@ -2,6 +2,7 @@
 //! `askk-runtime` / `askk-inference`. UI components talk to [`boot`]'s
 //! `HarnessHandle` facade and receive core types + plain structs only.
 
+pub mod artifacts;
 pub mod boot;
 pub mod browser;
 pub mod bus;

@@ -6,10 +6,12 @@
 pub mod actions;
 pub mod agents;
 pub mod app;
+pub mod artifacts;
 pub mod board;
 pub mod chat;
 pub mod dashboard;
 pub mod manifest;
+pub mod markdown;
 pub mod settings;
 pub mod shell;
 pub mod vm;

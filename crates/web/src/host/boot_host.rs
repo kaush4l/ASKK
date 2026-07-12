@@ -30,7 +30,7 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     register_knowledge(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
     register_memory_tools(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
     register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
-    register_artifacts(&mut registry, blobs, || 7).map_err(|e| e.to_string())?;
+    register_artifacts(&mut registry, blobs.clone(), || 7).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(crate::host::vm::SerialShell::new());
     register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
     register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;
@@ -49,7 +49,7 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     let profiles = Rc::new(RefCell::new(ProfileSet::default()));
     let (agents, skills, soul) = crate::host::config::baked_config()?;
     build_handle(
-        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles, searxng,
+        agents, skills, soul, registry, resolver, log, kv, blobs, host, buffer, profiles, searxng,
     )
 }
 

@@ -255,6 +255,39 @@ mod imp {
     }
 }
 
+/// OPFS stores, verified writable end to end (some contexts — incognito,
+/// embedded webviews — grant OPFS but fail `createWritable` with quota
+/// errors at ~KB scale). The probe writes real payloads through both seams
+/// so a broken grant is caught at boot, not mid-run.
+#[cfg(target_arch = "wasm32")]
+pub(super) async fn stores() -> Result<
+    (
+        std::rc::Rc<dyn askk_runtime::state::KvStore>,
+        std::rc::Rc<dyn askk_runtime::state::BlobStore>,
+    ),
+    String,
+> {
+    use askk_runtime::state::{BlobStore, KvStore};
+    use std::rc::Rc;
+
+    let kv: Rc<dyn KvStore> = Rc::new(OpfsKv::new().await.map_err(|e| e.to_string())?);
+    let blobs: Rc<dyn BlobStore> = Rc::new(OpfsBlob::new().await.map_err(|e| e.to_string())?);
+    kv.set("probe/kv", serde_json::Value::from("ok"))
+        .await
+        .map_err(|e| e.to_string())?;
+    kv.remove("probe/kv").await.map_err(|e| e.to_string())?;
+    // ponytail: 64 KiB ≈ one busy run's log segment; the REWRITE of the same
+    // path matters — broken grants pass a single write and fail the second.
+    for _ in 0..2 {
+        blobs
+            .write("probe.bin", &vec![0u8; 64 * 1024])
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    blobs.remove("probe.bin").await.map_err(|e| e.to_string())?;
+    Ok((kv, blobs))
+}
+
 /// Host stubs so the crate host-compiles; host runs inject the memory stores.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]

@@ -8,6 +8,7 @@ use askk_core::{ActionRecord, Role, RunProjection, RunStatus};
 
 use crate::host::boot::AgentCard;
 use crate::ui::actions::PendingActionsBar;
+use crate::ui::markdown;
 
 pub struct ChatItem {
     pub class: &'static str,
@@ -97,7 +98,12 @@ pub fn ChatStage(
                 for (i, item) in items.iter().enumerate() {
                     div { key: "{i}", class: "{item.class}",
                         div { class: "msg-role", "{item.role}" }
-                        div { class: "msg-body", "{item.content}" }
+                        // Answers render as markdown; user/tool text stays verbatim.
+                        if item.role == "assistant" {
+                            div { class: "msg-body", {markdown::render(&item.content)} }
+                        } else {
+                            div { class: "msg-body", "{item.content}" }
+                        }
                     }
                 }
                 if let Some(text) = notice {

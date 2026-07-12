@@ -26,7 +26,7 @@ pub fn decode(text: &str, own_tab: &str) -> Option<Signal> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use imp::{wire, Bus};
+pub use imp::wire;
 
 #[cfg(target_arch = "wasm32")]
 mod imp {

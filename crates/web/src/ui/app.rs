@@ -11,10 +11,12 @@ use dioxus::prelude::*;
 use askk_core::{Card, RunId, RunProjection, SignalKind};
 use serde_json::{json, Value};
 
+use crate::host::artifacts::ArtifactDoc;
 use crate::host::boot::{self, HarnessHandle, NamedProfile, ProfileSet};
 use crate::host::dom;
 use crate::host::speech::{self, SpeechConfig};
 use crate::ui::agents::AgentsStage;
+use crate::ui::artifacts::ArtifactsStage;
 use crate::ui::board::BoardStage;
 use crate::ui::chat::ChatStage;
 use crate::ui::dashboard::{DashRun, DashboardStage};
@@ -157,6 +159,18 @@ pub fn App() -> Element {
         }
         let Some(h) = handle() else { return };
         spawn(async move { board_cards.set(h.board_cards().await) });
+    });
+
+    // Artifact docs: published through a tool, whose signals bump `refold` —
+    // same live re-read shape as the board above.
+    let mut artifact_docs = use_signal(Vec::<ArtifactDoc>::new);
+    use_effect(move || {
+        let _ = refold();
+        if stage() != Stage::Artifacts {
+            return;
+        }
+        let Some(h) = handle() else { return };
+        spawn(async move { artifact_docs.set(h.artifacts().await) });
     });
 
     // The elapsed clock: ticks while a run drives (host stub never ticks).
@@ -409,6 +423,9 @@ pub fn App() -> Element {
                         Stage::Board => rsx! { BoardStage { cards: board_cards() } },
                         Stage::Dashboard => rsx! {
                             DashboardStage { runs: dash_runs, cards: board_cards() }
+                        },
+                        Stage::Artifacts => rsx! {
+                            ArtifactsStage { docs: artifact_docs(), now_ms: dom::now_ms() }
                         },
                         Stage::Settings => rsx! {
                             SettingsStage {
