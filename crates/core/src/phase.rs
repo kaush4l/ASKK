@@ -20,6 +20,9 @@ pub struct Phase {
     pub contract: String,
     /// None = the agent's full toolset; Some = narrowed allowlist.
     pub tool_filter: Option<Vec<String>>,
+    /// None = the agent's full skill set; Some = only these skills render.
+    #[serde(default)]
+    pub skill_filter: Option<Vec<String>>,
     pub loop_mode: LoopMode,
     /// Gate (verifier) phase: the only phase whose pass ends a run as success.
     pub gate: bool,
@@ -85,6 +88,7 @@ mod tests {
             name: "verify".into(),
             contract: "critique".into(),
             tool_filter: None,
+            skill_filter: None,
             loop_mode: LoopMode::OneShot,
             gate,
             on_fail: Some("plan".into()),

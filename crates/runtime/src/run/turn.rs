@@ -289,12 +289,17 @@ fn build_sheet(
     toolset: &ToolSet,
     live: &[(String, String)],
 ) -> Sheet {
+    // Phase skill filter (mirrors tool_filter): None = the agent's full
+    // skill set; Some = only those skills render this phase.
     let mut skills: Vec<Skill> = agent
         .skills
         .iter()
+        .filter(|id| phase.skill_filter.as_ref().is_none_or(|f| f.contains(id)))
         .filter_map(|id| shared.skills.iter().find(|s| &s.id == id))
         .map(|s| s.to_skill())
         .collect();
+    // The team-principles skill below is the team boundary contract — it
+    // renders in EVERY phase, never subject to skill_filter.
     // A run inside a team carries the team.md body — the folder's shared
     // principles — into every member's prompt, same spirit as soul/skills
     // (ADR-032). ponytail: rides the Skills element, no new Element variant.

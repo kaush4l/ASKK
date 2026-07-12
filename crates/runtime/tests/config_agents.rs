@@ -259,6 +259,14 @@ phase.3.on_fail: plan
     }
 
     #[test]
+    fn phase_skills_narrow_the_skill_set() {
+        let text = "---\nid: a\nskills: x, y\nphase.1.name: p\nphase.1.skills: x\n---\n";
+        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
+        assert_eq!(cfg.phases[0].skill_filter, Some(vec!["x".to_string()]));
+        assert_eq!(cfg.phases[0].tool_filter, None);
+    }
+
+    #[test]
     fn env_presets_expand_and_union_with_tools() {
         // `shell` is already in `vm` (deduped); `fetch_url` is an extra.
         let text = "---\nid: a\nenv: vm\ntools: fetch_url, shell\n---\n";

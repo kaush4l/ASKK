@@ -139,11 +139,18 @@ async fn fixture_full(
         .iter()
         .map(|(path, text)| TeamConfig::from_markdown(path, text).unwrap())
         .collect();
-    let skills = vec![SkillConfig::from_markdown(
-        "agents/skills/concise.md",
-        "---\nid: concise\n---\nBe brief.",
-    )
-    .unwrap()];
+    let skills = vec![
+        SkillConfig::from_markdown(
+            "agents/skills/concise.md",
+            "---\nid: concise\n---\nBe brief.",
+        )
+        .unwrap(),
+        SkillConfig::from_markdown(
+            "agents/skills/careful.md",
+            "---\nid: careful\n---\nDouble-check everything.",
+        )
+        .unwrap(),
+    ];
     let provider: Rc<dyn Provider> = mock.clone();
     let resolver: ProviderResolver = Box::new(move |_| Ok(provider.clone()));
     let session = RunSession::new(SessionInit {
@@ -1795,6 +1802,49 @@ fn declared_depth_budget_allows_deeper_chain() {
             !obs.iter().any(|o| o.contains("depth cap")),
             "no hop may hit the cap: {obs:?}"
         );
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+// Two skills on the agent; phase 1 narrows to one, phase 2 declares no
+// filter (B1, wave-19: a phase is a complete context recipe).
+const PHASED_SKILLS: (&str, &str) = (
+    "agents/prepper.md",
+    "---\nid: prepper\ndescription: Drafts then verifies.\nskills: concise, careful\n\
+     phase.1.name: draft\nphase.1.skills: concise\nphase.1.header: Draft it.\n\
+     phase.2.name: verify\nphase.2.contract: critique\nphase.2.gate: true\n---\nWork.",
+);
+
+/// `phase.N.skills` narrows which skills render THAT phase's sheet; a phase
+/// without the key gets the agent's full skill set (mirrors `phase.N.tools`).
+#[test]
+fn phase_skill_filter_narrows_the_sheet() {
+    block_on(async {
+        let f = fixture(&[PHASED_SKILLS]).await;
+        f.mock.push_text("action: answer\nanswer: drafted");
+        f.mock.push_text("verdict: pass");
+        let run = f.session.submit("prepper", "draft it").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let skills_section = |req: &askk_core::InferenceRequest| {
+            req.sections
+                .iter()
+                .find(|(k, _)| *k == askk_core::SectionKind::Skills)
+                .map(|(_, text)| text.clone())
+                .expect("Skills section in the sheet")
+        };
+        let requests = f.mock.requests();
+        // Call 1 (draft): only the filtered-in skill renders.
+        let draft = skills_section(&requests[0]);
+        assert!(draft.contains("Be brief."), "{draft}");
+        assert!(
+            !draft.contains("Double-check"),
+            "filtered-out skill leaked into the draft phase: {draft}"
+        );
+        // Call 2 (verify, no filter): the full skill set renders.
+        let verify = skills_section(&requests[1]);
+        assert!(verify.contains("Be brief."), "{verify}");
+        assert!(verify.contains("Double-check everything."), "{verify}");
         assert_eq!(f.mock.remaining(), 0);
     });
 }

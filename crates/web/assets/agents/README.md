@@ -61,6 +61,7 @@ Numbered contiguously from 1. No phases = a single implicit react loop.
 | `phase.N.name` | REQUIRED. Phase name (also the `on_fail` target label). |
 | `phase.N.contract` | Response contract for the phase; default `react`. |
 | `phase.N.tools` | Narrows the agent's tool allowlist for this phase. |
+| `phase.N.skills` | Narrows the agent's skill list for this phase. |
 | `phase.N.loop` | `one_shot` (default) or `loop`. |
 | `phase.N.max_turns` | Positive integer; implies `loop: loop` (contradiction with an explicit `one_shot`). Loop default: 16. |
 | `phase.N.gate` | `true|false`. Only a gate (verifier) phase can end the run verified. |

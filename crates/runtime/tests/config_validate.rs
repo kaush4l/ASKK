@@ -114,6 +114,24 @@ mod tests {
     }
 
     #[test]
+    fn phase_skills_must_subset_agent_skills() {
+        let a = agent(
+            "coder",
+            "---\nid: coder\nskills: tidy\nphase.1.name: p\nphase.1.skills: ghost\n---\n",
+        );
+        let err = validate(
+            &[a],
+            &[],
+            &strs(&[]),
+            &strs(&["tidy", "ghost"]),
+            &strs(&["react"]),
+            &strs(&["default"]),
+        )
+        .unwrap_err();
+        assert!(err.problems[0].contains("phase 'p' skill 'ghost' is not in the agent's skills"));
+    }
+
+    #[test]
     fn on_fail_must_target_an_earlier_phase() {
         // Gate naming itself, and a phase naming a LATER phase: both are
         // misrouted rewinds answer routing could never take — reject loud.

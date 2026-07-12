@@ -197,6 +197,7 @@ struct PhaseDraft {
     name: Option<String>,
     contract: Option<String>,
     tools: Option<Vec<String>>,
+    skills: Option<Vec<String>>,
     loop_mode: Option<LoopMode>,
     max_turns: Option<u32>,
     gate: Option<bool>,
@@ -238,6 +239,7 @@ fn phase_entry(
         "name" => draft.name = Some(value),
         "contract" => draft.contract = Some(value),
         "tools" => draft.tools = Some(frontmatter::split_list(&value)),
+        "skills" => draft.skills = Some(frontmatter::split_list(&value)),
         "loop" => match value.as_str() {
             "one_shot" => draft.loop_mode = Some(LoopMode::OneShot),
             "loop" => {
@@ -302,6 +304,7 @@ fn build_phases(
             name,
             contract: draft.contract.unwrap_or_else(|| "react".into()),
             tool_filter: draft.tools,
+            skill_filter: draft.skills,
             loop_mode,
             gate: draft.gate.unwrap_or(false),
             on_fail: draft.on_fail,

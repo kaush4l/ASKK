@@ -178,6 +178,7 @@ impl RunState {
                 name: "main".into(),
                 contract: agent.contract.clone(),
                 tool_filter: None,
+                skill_filter: None,
                 loop_mode: LoopMode::Loop {
                     max_turns: budgets.max_turns,
                 },

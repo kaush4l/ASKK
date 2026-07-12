@@ -105,6 +105,16 @@ pub fn validate(
                     }
                 }
             }
+            if let Some(filter) = &phase.skill_filter {
+                for skill in filter {
+                    if !agent.skills.contains(skill) {
+                        problems.push(format!(
+                            "{at}: phase '{}' skill '{skill}' is not in the agent's skills",
+                            phase.name
+                        ));
+                    }
+                }
+            }
             if let Some(target) = &phase.on_fail {
                 // A rewind edge must point strictly backwards: answer routing
                 // only searches phases before the failing one (ADR-008).

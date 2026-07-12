@@ -187,6 +187,7 @@ mod tests {
                 name: "verify".into(),
                 contract: "critique".into(),
                 tool_filter: None,
+                skill_filter: None,
                 loop_mode: LoopMode::OneShot,
                 gate: true,
                 on_fail: Some("verify".into()),
