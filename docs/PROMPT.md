@@ -76,8 +76,11 @@ Providers map, they never compose prompt text (ADR-002; request.rs:1-2).
 
 ## 4. Response format
 
-**Contract instructions** (crates/core/src/contract.rs:89-118) = mode preamble + field
-bullets. No worked example is rendered in this checkout.
+**Contract instructions** (crates/core/src/contract.rs) = mode preamble + field
+bullets + ONE worked example headed `Example (shape only):` — TOON: one `field: value`
+line per field (values from `FieldSpec.example`, else kind placeholders); JSON: one
+compact object; Text mode renders none. Curated examples ship on react/plan/critique
+(contracts.rs); agent authors set `field.N.example` in frontmatter.
 
 | Mode | Preamble (contract.rs:90-98) |
 |---|---|
@@ -150,11 +153,16 @@ History starts empty per run (crates/runtime/src/run/session.rs:177) and grows b
 | Phase-exhaustion reroute / empty fan-out notes | crates/runtime/src/run/flow.rs:40-48, 90-99 |
 | Final-turn nudge (Role::User, "answer now; do not call tools") | turn.rs:27, 124-135; Budgets::is_final_turn (crates/core/src/state.rs:79-81) |
 
-Bounds — Budgets (state.rs:52-71): `max_turns` 16, `deadline_ms` 300 000,
-`tool_timeout_ms` 30 000, `stream_idle_timeout_ms` 30 000, `max_delegation_depth` 2.
-There is no history windowing or max-context-chars bound in this checkout: within a run,
-history is bounded only by turns/deadline. Per-phase `max_turns` clamps loop phases
-(turn.rs:155-171).
+Bounds — Budgets (state.rs): `max_turns` 16, `deadline_ms` 300 000, `tool_timeout_ms`
+30 000, `stream_idle_timeout_ms` 30 000, `max_delegation_depth` 2, plus the context
+knobs `max_context_chars` 60 000 and `max_observation_chars` 6 000. Each request sends
+a WINDOWED VIEW of history (`window_history`, crates/core/src/context.rs): the first
+user message + the newest messages that fit, middle elided with one
+`[…N earlier messages elided…]` marker — durable history is never rewritten. Single
+observations clamp at `max_observation_chars` with an explicit clip suffix, and
+web_search/news_search/fetch_url/mcp_* observations carry an
+`(untrusted web content)` label (run/dispatch.rs). Per-phase `max_turns` clamps loop
+phases (turn.rs).
 
 Delegation: a child's answer returns as one observation `Result (untrusted): {text}`
 (delegate.rs:148-150); non-Answered terminals return as error observations (151-155).
