@@ -53,6 +53,10 @@ pub enum Element {
     /// json | toon | text — negotiated per failure count.
     OutputMode(OutputMode),
     PhaseFrame(PhaseFrame),
+    /// Live task state `(name, content)`, refreshed from its source before
+    /// EVERY call — the model sees only the latest version of each artifact,
+    /// never the mutation trail (ADR-033).
+    Artifacts(Vec<(String, String)>),
 }
 
 impl Element {
@@ -101,6 +105,18 @@ impl Element {
                     body.push_str(&format!("\n\n## artifact: {name}\n{content}"));
                 }
                 Some((SectionKind::Phase, body))
+            }
+            Element::Artifacts(blocks) => {
+                let text: Vec<String> = blocks
+                    .iter()
+                    .map(|(name, content)| {
+                        format!(
+                            "ARTIFACT {name} (live state — this is the LATEST \
+                             version; earlier copies in history are stale):\n{content}"
+                        )
+                    })
+                    .collect();
+                Some((SectionKind::Artifact, text.join("\n\n")))
             }
             Element::ToolManifest(_)
             | Element::Contract(_)
@@ -189,6 +205,11 @@ mod tests {
                 }),
                 SectionKind::Phase,
                 "## artifact: plan",
+            ),
+            (
+                Element::Artifacts(vec![("BOARD".into(), "backlog 2".into())]),
+                SectionKind::Artifact,
+                "ARTIFACT BOARD (live state",
             ),
         ];
         for (element, kind, needle) in cases {

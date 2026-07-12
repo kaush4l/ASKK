@@ -1364,13 +1364,56 @@ fn artifact_publish_lands_in_projection() {
     });
 }
 
-/// Reorientation (wave-16): a top-level run whose agent holds `board_list`
-/// starts with the durable board's digest as its first observation — in the
-/// signal stream AND in the prompt the model actually sees.
+/// ADR-033: a published deliverable joins the run's live blocks — the NEXT
+/// call's prompt carries the artifact's current body as latest state.
 #[test]
-fn board_digest_reorients_a_board_holding_run() {
+fn published_artifact_body_is_a_live_block_on_the_next_call() {
     block_on(async {
-        let f = fixture(&[SCRUM, SOLO]).await;
+        let policy = ActionPolicy {
+            mutating_default: PolicyDecision::Auto,
+            ..Default::default()
+        };
+        let f = fixture_with(&[PUBLISHER], Budgets::default(), policy).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"artifact_publish\", \"arguments\": \
+             {\"title\": \"Spec\", \"kind\": \"markdown\", \"content\": \"# Spec v1\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: drafted");
+        let run = f
+            .session
+            .submit("publisher", "draft the spec")
+            .await
+            .unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let requests = f.mock.requests();
+        // Call 1: nothing published yet → no artifact section.
+        assert!(!requests[0]
+            .sections
+            .iter()
+            .any(|(k, _)| *k == askk_core::SectionKind::Artifact));
+        // Call 2: the published body rides as live state, read from the blob.
+        let (_, text) = requests[1]
+            .sections
+            .iter()
+            .find(|(k, _)| *k == askk_core::SectionKind::Artifact)
+            .expect("ARTIFACT block after publish");
+        assert!(text.contains("ARTIFACT spec (live state"), "{text}");
+        assert!(text.contains("# Spec v1"), "{text}");
+    });
+}
+
+/// ADR-033: a board-holding run carries the board digest as a live ARTIFACT
+/// block, re-read before EVERY call — the model always sees the CURRENT
+/// board, and a mid-run mutation shows up in the very next call.
+#[test]
+fn board_artifact_block_refreshes_every_turn() {
+    block_on(async {
+        let policy = ActionPolicy {
+            mutating_default: PolicyDecision::Auto, // board writes flow in tests
+            ..Default::default()
+        };
+        let f = fixture_with(&[SCRUM, SOLO], Budgets::default(), policy).await;
         // Seed the durable board directly (same kv the session reads).
         let board = BoardStore::new(f.board_kv.clone());
         board
@@ -1382,10 +1425,11 @@ fn board_digest_reorients_a_board_holding_run() {
             )
             .await
             .unwrap();
-        board
-            .add("docs", "write docs", vec![], askk_core::CardStage::Backlog)
-            .await
-            .unwrap();
+        // Turn 1 adds a card via the tool; turn 2 answers.
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"board_add\", \"arguments\": \
+             {\"title\": \"docs\", \"goal\": \"write docs\"}}",
+        );
         f.mock.push_text("action: answer\nanswer: reoriented");
         let run = f
             .session
@@ -1394,38 +1438,39 @@ fn board_digest_reorients_a_board_holding_run() {
             .unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
-        // The digest is a durable ObservationAppended signal in the run's
-        // stream (emitted at submit, before drive installs the host sink —
-        // like RunStarted itself, it surfaces through the fold).
-        let proj = f.session.projection(&run).unwrap();
-        let digest = proj
-            .messages
-            .iter()
-            .filter(|m| m.role == Role::Tool)
-            .map(|m| m.content.clone())
-            .find(|t| t.starts_with("BOARD (durable state — reorient before planning):"))
-            .expect("digest observation");
-        assert!(
-            digest.contains("backlog 1 · planning 0 · doing 1 · testing 0 · done 0"),
-            "{digest}"
-        );
-        assert!(
-            digest.contains("- [doing] auth module — unmet: tests green"),
-            "{digest}"
-        );
-        // And the model saw it: the first request's history carries it.
-        let requests = f.mock.requests();
-        assert!(
-            requests[0]
-                .history
+        let board_section = |req: &askk_core::InferenceRequest| {
+            req.sections
                 .iter()
-                .any(|m| m.role == Role::Tool && m.content.contains("BOARD (durable state")),
-            "digest missing from the assembled prompt"
+                .find(|(k, _)| *k == askk_core::SectionKind::Artifact)
+                .map(|(_, text)| text.clone())
+        };
+        let requests = f.mock.requests();
+        // Call 1: the seeded board, as a live-state section (not history).
+        let first = board_section(&requests[0]).expect("BOARD artifact block in call 1");
+        assert!(first.contains("ARTIFACT BOARD (live state"), "{first}");
+        assert!(
+            first.contains("backlog 0 · planning 0 · doing 1 · testing 0 · done 0"),
+            "{first}"
         );
+        assert!(
+            first.contains("- [doing] auth module — unmet: tests green"),
+            "{first}"
+        );
+        // Call 2: the block was RE-READ — the card added in turn 1 is there.
+        let second = board_section(&requests[1]).expect("BOARD artifact block in call 2");
+        assert!(
+            second.contains("backlog 1 · planning 0 · doing 1 · testing 0 · done 0"),
+            "refresh missed the new card: {second}"
+        );
+        // The digest is a live section, never a history observation.
+        assert!(!requests[0]
+            .history
+            .iter()
+            .any(|m| m.content.contains("ARTIFACT BOARD")));
     });
 }
 
-/// No board tools on the agent → no digest; empty board → no digest either.
+/// No board tools on the agent → no BOARD block; empty board → none either.
 #[test]
 fn board_digest_skips_boardless_agents_and_empty_boards() {
     block_on(async {
@@ -1438,22 +1483,28 @@ fn board_digest_skips_boardless_agents_and_empty_boards() {
         f.mock.push_text("action: answer\nanswer: done");
         let run = f.session.submit("solo", "hi").await.unwrap();
         f.session.drive(&run, f.host.clone()).await;
-        let no_digest = |f: &Fixture, run: &askk_core::RunId| {
-            !f.session
-                .projection(run)
-                .unwrap()
-                .messages
-                .iter()
-                .any(|m| m.content.contains("BOARD (durable state"))
+        let no_board_block = |f: &Fixture| {
+            !f.mock.requests().iter().any(|req| {
+                req.sections
+                    .iter()
+                    .any(|(k, _)| *k == askk_core::SectionKind::Artifact)
+            })
         };
-        assert!(no_digest(&f, &run), "boardless agent must not get a digest");
+        assert!(
+            no_board_block(&f),
+            "boardless agent must not get a BOARD block"
+        );
 
         // Board-holding agent, EMPTY board → nothing injected.
         let f = fixture(&[SCRUM, SOLO]).await;
         f.mock.push_text("action: answer\nanswer: done");
         let run = f.session.submit("scrum", "hi").await.unwrap();
         f.session.drive(&run, f.host.clone()).await;
-        assert!(no_digest(&f, &run), "empty board must not inject a digest");
+        let _ = run;
+        assert!(
+            no_board_block(&f),
+            "empty board must not inject a BOARD block"
+        );
     });
 }
 

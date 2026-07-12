@@ -31,6 +31,7 @@ reference; kiln is the structure reference).
 | **Board reorientation**: durable-board digest injected at run start for board-holding agents | `runtime/state/board.rs`, `runtime/run/session.rs` | wave 16 |
 | Config surface documented in-folder | `crates/web/assets/agents/README.md` | wave 16 |
 | **Context diet**: history replays answers + id-less MCP calls only (scaffold-stripped fallbacks); news folded into `web_search news:true`; `echo` test-only | `core/toolcall.rs`, `core/sheet.rs`, `runtime/tools/search.rs` | wave 17 |
+| **Live artifacts (ADR-033)**: board digest + published docs re-read before EVERY call as latest-state ARTIFACT blocks — never history | `core/element.rs`, `runtime/run/turn.rs` | wave 18 |
 
 ## Queue (what would make it more of a workspace)
 

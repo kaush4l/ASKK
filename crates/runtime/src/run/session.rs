@@ -43,8 +43,9 @@ pub struct SessionInit {
     pub budgets: Budgets,
     pub policy: ActionPolicy,
     pub known_providers: Vec<String>,
-    /// The durable kanban board (same kv the board tools write). A top-level
-    /// run whose agent holds `board_list` reorients from its digest at start.
+    /// The durable kanban board (same kv the board tools write). A run whose
+    /// agent holds `board_list` carries its digest as a live ARTIFACT block,
+    /// refreshed before every call (ADR-033).
     pub board: Option<BoardStore>,
 }
 
@@ -66,8 +67,8 @@ pub(crate) struct Shared {
     pub(crate) session: SessionStore,
     pub(crate) budgets: Budgets,
     pub(crate) policy: ActionPolicy,
-    /// Durable board for the run-start reorientation digest (None in tests
-    /// that don't exercise it).
+    /// Durable board behind the per-turn BOARD artifact block (None in
+    /// tests that don't exercise it).
     pub(crate) board: Option<BoardStore>,
     pub(crate) pending: RefCell<PendingActions>,
     pub(crate) runs: RefCell<BTreeMap<RunId, RunState>>,
@@ -126,6 +127,10 @@ pub(crate) struct RunState {
     pub(crate) memory: MemoryBlock,
     /// (phase name, distilled answer) carried into later PhaseFrames.
     pub(crate) artifacts: Vec<(String, String)>,
+    /// Slugs this run published with `artifact_publish` — each is re-read
+    /// from the blob store before every call as a live ARTIFACT block
+    /// (latest state, not history; ADR-033).
+    pub(crate) published: Vec<String>,
     /// Effective allowlist: agent tools ∩ every ancestor's allowlist —
     /// except across a team boundary, which RESETS it to lead ∩ team.tools.
     pub(crate) allowed_tools: Vec<String>,
@@ -202,6 +207,7 @@ impl RunState {
             snapshot: StateSnapshot::default(),
             memory,
             artifacts: Vec::new(),
+            published: Vec::new(),
             allowed_tools,
             team_id: None,
             budgets,
@@ -376,25 +382,10 @@ impl RunSession {
         )
         .await
         .map_err(|e| ConfigError::one(e.to_string()))?;
-        // Reorientation (long-running goals): runs don't survive a reload,
-        // the board does. A top-level board-holding agent starts with the
-        // board digest as its first observation — durable in the log,
-        // replay-safe, folded into the projection. Children (depth > 0) are
-        // directed by their parent and never pass through submit.
-        if agent.tools.iter().any(|t| t == "board_list") {
-            if let Some(digest) = match &shared.board {
-                Some(board) => board.digest().await,
-                None => None,
-            } {
-                turn::observe(
-                    shared,
-                    &mut run,
-                    format!("BOARD (durable state — reorient before planning):\n{digest}"),
-                )
-                .await
-                .map_err(|e| ConfigError::one(e.to_string()))?;
-            }
-        }
+        // Reorientation moved to the turn loop (ADR-033): a board-holding
+        // agent gets a BOARD artifact block refreshed before EVERY call —
+        // always the latest state, visible mid-run, not a stale run-start
+        // observation (closes GAPS 60).
         shared
             .cancels
             .borrow_mut()

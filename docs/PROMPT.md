@@ -42,6 +42,7 @@ request fields in `Sheet::render` (sheet.rs:36-52).
 | 12 | ActionPolicy | text | `action_policy` | `Pure tools: X. Mutating tools: Y.` + per-tool overrides (crates/core/src/action.rs:92-102) |
 | 13 | OutputMode | structural | `req.contract.mode` | last OutputMode element wins (sheet.rs:24-32) |
 | 14 | PhaseFrame | text | `phase` | `# Phase: {name}\n{header}` + `## artifact: {n}\n{c}` per prior-phase artifact (98-104); only on declared strategies (turn.rs:291-295) |
+| 15 | Artifacts | text | `artifact` | `ARTIFACT {name} (live state — …)\n{content}` per block; appended AFTER assemble by turn.rs `build_sheet`, contents re-read from source each turn (`live_artifacts`, ADR-033) |
 
 Contract format instructions always render as the LAST section, wherever the Contract
 element sits (sheet.rs:60-62).
@@ -161,7 +162,11 @@ user message + the newest messages that fit, middle elided with one
 `[…N earlier messages elided…]` marker — durable history is never rewritten. Single
 observations clamp at `max_observation_chars` with an explicit clip suffix, and
 web_search/fetch_url/mcp_* observations carry an
-`(untrusted web content)` label (run/dispatch.rs). Per-phase `max_turns` clamps loop
+`(untrusted web content)` label (run/dispatch.rs). Live ARTIFACT blocks
+(ADR-033) are NOT history: the board digest (board-holding agents) and every
+body this run published re-render as latest-state sections, re-read from
+their sources before each call (turn.rs `live_artifacts`; per-artifact clamp
+4 000 chars). Per-phase `max_turns` clamps loop
 phases (turn.rs).
 
 Delegation: a child's answer returns as one observation `Result (untrusted): {text}`

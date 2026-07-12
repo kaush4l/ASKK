@@ -267,6 +267,11 @@ async fn absorb_result(
     // signal log stays the only run-state truth).
     if result.ok && call.name == ARTIFACT_TOOL {
         if let Some(slug) = published_slug(&result.content) {
+            // ...and joins the run's live ARTIFACT blocks: re-read from the
+            // blob store before every later call (latest state, ADR-033).
+            if !run.published.iter().any(|s| s == slug) {
+                run.published.push(slug.to_string());
+            }
             emit(
                 shared,
                 run,

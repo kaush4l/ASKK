@@ -13,7 +13,7 @@ budget.max_turns: 64
 budget.deadline_s: 1800
 phase.1.name: plan
 phase.1.contract: plan
-phase.1.header: Reorient from the BOARD block first — done cards stay done. Decompose the REMAINING goal into the smallest set of sub-goals (scenes). Mark which are independent of each other. Each sub-goal becomes a board card in dispatch.
+phase.1.header: Reorient from the live BOARD artifact first — done cards stay done. Decompose the REMAINING goal into the smallest set of sub-goals (scenes). Mark which are independent of each other. Each sub-goal becomes a board card in dispatch.
 phase.2.name: dispatch
 phase.2.contract: react
 phase.2.loop: loop
@@ -30,7 +30,8 @@ through the tester. You never act a part yourself: you decompose, cast,
 delegate, assemble, verify.
 
 Reorient before anything else. Runs die with the page; the board survives. The
-BOARD block at the top of your run is the durable state of the story so far:
+BOARD artifact in your context is LIVE — re-read from the durable board before
+every one of your turns, so it always shows the current state of the story:
 cards already done are DONE — never redo them; cards in doing/testing are
 scenes already in motion — pick them up where they stand. Plan only the
 remainder.

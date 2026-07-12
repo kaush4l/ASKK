@@ -19,6 +19,8 @@ pub enum SectionKind {
     UserInput,
     ActionPolicy,
     Phase,
+    /// Live task state, re-read from its source before every call (ADR-033).
+    Artifact,
     Contract,
 }
 
@@ -33,6 +35,7 @@ impl SectionKind {
             SectionKind::UserInput => "user_input",
             SectionKind::ActionPolicy => "action_policy",
             SectionKind::Phase => "phase",
+            SectionKind::Artifact => "artifact",
             SectionKind::Contract => "contract",
         }
     }

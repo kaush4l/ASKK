@@ -304,6 +304,26 @@ FSM beside the engine (the phase engine + board already are the strategy; new co
 duplicate declared config); global budget bumps (punishes every agent for one director);
 teams as mere name prefixes (no boundary, no principles seam).
 
+## ADR-033 (A) — artifacts are live state: re-read before every call, never history
+An artifact is task-scoped state whose LATEST version is all the model should see — the
+mutation trail is noise (the user's framing: actions update the artifact; the prompt
+carries the current state, not a message history of edits). New `Element::Artifacts` /
+`SectionKind::Artifact`: `(name, content)` blocks rendered as
+`ARTIFACT <name> (live state — latest version; earlier copies in history are stale)`.
+The turn loop re-reads every source ONCE per turn, before assemble — repairs reuse the
+same snapshot (no tool ran in between). Sources v1: the durable board for any
+board-holding agent (replaces the wave-16 submit-time digest observation — closes
+GAPS 60; the block is always current, so reload-reorientation AND mid-run drift are the
+same mechanism), and the body of every artifact this run `artifact_publish`ed
+(head-clamped at 4k chars, read back from the blob store — the agent iterating a
+document sees what it actually published, not what it remembers writing). Slugs ride
+`RunState.published`, fed by the same dispatch seam that emits `ArtifactAppended`.
+Rejected: artifacts as history observations (stale by definition, invisible mid-drive —
+the exact GAPS 60 failure); refreshing inside the repair loop (state cannot change
+between repairs; extra reads buy nothing); a generic ArtifactSource trait (two concrete
+sources today — the seam is one function, `live_artifacts`, extend it when a third
+source exists).
+
 ## ADR-019 (A) — agents + custom tools are real served files, not hardcoded
 The `agents/` folder moved UNDER `crates/web/assets/agents/` so the SAME files are both baked
 (build.rs fallback) AND served verbatim at `/assets/agents/*`. Boot fetches the served

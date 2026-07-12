@@ -199,6 +199,8 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
 60. The board digest injects at submit only — a long dispatch loop can drift
     from a board another run mutates mid-flight; a per-phase-entry refresh (or
     a board_digest tool the director calls) is the next increment.
+    CLOSED (wave-18, ADR-033): the digest is now a live ARTIFACT block re-read
+    before EVERY call; the submit-time observation is gone.
 61. Wave-16 live e2e (hosted, gemma-12B, embedded browser pane): plan phase →
     board_add cards → action gate → Board tab all work live; the model then
     LOOPS re-adding near-identical cards (GAPS 50/52 pattern — click-per-write

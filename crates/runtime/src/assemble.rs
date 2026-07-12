@@ -141,6 +141,7 @@ mod tests {
             Element::ActionPolicy(_) => "action_policy",
             Element::OutputMode(_) => "output_mode",
             Element::PhaseFrame(_) => "phase_frame",
+            Element::Artifacts(_) => "artifacts",
         }
     }
 

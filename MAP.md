@@ -56,6 +56,7 @@ core ← inference ← runtime ← web
 | Team delegation boundary (TeamTool, principles injection) | `crates/runtime/src/delegate.rs` |
 | Per-agent budgets (`budget.*` frontmatter) | `crates/runtime/src/config/agent.rs` |
 | Board digest (director reorientation) | `crates/runtime/src/state/board.rs` |
+| Live artifact blocks — latest-state refresh per call (ADR-033) | `crates/runtime/src/run/turn.rs` + `crates/core/src/element.rs` |
 | Agents-folder config reference | `crates/web/assets/agents/README.md` |
 | artifact_publish tool (html/markdown/url blobs) | `crates/runtime/src/tools/artifact.rs` |
 | Artifact read side (blob docs → UI) | `crates/web/src/host/artifacts.rs` |

@@ -15,6 +15,8 @@ pub(crate) mod cancel;
 pub(crate) mod dispatch;
 pub(crate) mod flow;
 pub mod host;
+/// Live artifact refresh — latest-state blocks per call (ADR-033).
+pub(crate) mod live;
 pub mod session;
 pub(crate) mod turn;
 

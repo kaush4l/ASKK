@@ -16,6 +16,7 @@ use crate::config::{resolve_contract, AgentConfig};
 use crate::run::answer::handle_answer;
 use crate::run::dispatch::{dispatch_queued, Dispatch};
 use crate::run::flow::{enqueue_fan_out, reroute_exhausted};
+use crate::run::live::live_artifacts;
 use crate::run::session::{RunState, Shared};
 use crate::state::StoreError;
 
@@ -187,9 +188,13 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
     let contract = resolve_contract(&agent, &phase.contract).expect("validated contract");
     let toolset = effective_toolset(shared, run)?;
 
+    // Latest-state refresh (ADR-033): sources are re-read HERE, once per
+    // turn, so every call sees current state — repairs within the turn reuse
+    // it (no tool ran in between).
+    let live = live_artifacts(shared, run, &agent).await;
     let mut repairs = 0u32;
     let (mut sheet, mut parsed) = loop {
-        let sheet = build_sheet(shared, run, &agent, &phase, &contract, &toolset);
+        let sheet = build_sheet(shared, run, &agent, &phase, &contract, &toolset, &live);
         let Some(reply) = infer_with_retry(shared, run, &agent, &sheet.render()).await? else {
             return Ok(Turn::Terminal); // provider failed after retries, or cancelled mid-call
         };
@@ -282,6 +287,7 @@ fn build_sheet(
     phase: &askk_core::Phase,
     contract: &Contract,
     toolset: &ToolSet,
+    live: &[(String, String)],
 ) -> Sheet {
     let mut skills: Vec<Skill> = agent
         .skills
@@ -314,7 +320,7 @@ fn build_sheet(
         directive: None,
         output_mode: (run.negotiator.mode() != agent.format).then(|| run.negotiator.mode()),
     };
-    assemble(
+    let mut sheet = assemble(
         agent,
         &shared.soul,
         skills,
@@ -333,7 +339,13 @@ fn build_sheet(
         },
         frame,
         overrides,
-    )
+    );
+    // Live artifacts render AFTER assemble's fixed order: latest task state,
+    // re-read from its source this turn (ADR-033) — never part of history.
+    if !live.is_empty() {
+        sheet.elements.push(Element::Artifacts(live.to_vec()));
+    }
+    sheet
 }
 
 /// Pull the absorb effects back out of the sheet into run state. The sheet's

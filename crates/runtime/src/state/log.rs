@@ -51,6 +51,12 @@ fn parse_epoch(name: &str) -> Option<u64> {
 }
 
 impl SignalLog {
+    /// The underlying blob store — shared read access for live-artifact
+    /// refresh (ADR-033); the log stays the only WRITER of its segments.
+    pub fn blobs(&self) -> Rc<dyn BlobStore> {
+        self.blobs.clone()
+    }
+
     /// Open the log: list segments, start epoch = max+1, replay every prior
     /// segment (unparseable lines are quarantined — skipped and counted,
     /// never fatal), then fence stale runs. Returns the log and the replayed
