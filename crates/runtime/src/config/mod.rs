@@ -6,9 +6,11 @@ pub mod agent;
 pub(crate) mod env;
 pub(crate) mod fields;
 pub mod frontmatter;
+pub mod team;
 pub mod validate;
 
 pub use agent::{load_soul, AgentConfig, SkillConfig};
+pub use team::TeamConfig;
 pub use validate::validate;
 
 use std::fmt;

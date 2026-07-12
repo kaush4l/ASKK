@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use askk_core::contracts;
-use askk_runtime::config::{load_soul, validate, AgentConfig, SkillConfig};
+use askk_runtime::config::{load_soul, validate, AgentConfig, SkillConfig, TeamConfig};
 
 fn agents_dir() -> PathBuf {
     // The agents folder lives under the web crate's served assets so the same
@@ -38,6 +38,7 @@ fn every_agent_file_parses_and_validates() {
     assert!(root.is_dir(), "agents/ missing at {}", root.display());
 
     let mut agents: Vec<AgentConfig> = Vec::new();
+    let mut teams: Vec<TeamConfig> = Vec::new();
     let mut skills: Vec<SkillConfig> = Vec::new();
     let mut soul: Option<String> = None;
     for path in md_files(&root) {
@@ -46,6 +47,8 @@ fn every_agent_file_parses_and_validates() {
         let text = fs::read_to_string(&path).expect("readable file");
         if rel == Path::new("soul.md") {
             soul = Some(load_soul(&text));
+        } else if rel.file_name().is_some_and(|n| n == "team.md") {
+            teams.push(TeamConfig::from_markdown(&label, &text).unwrap_or_else(|e| panic!("{e}")));
         } else if rel.starts_with("skills") {
             skills
                 .push(SkillConfig::from_markdown(&label, &text).unwrap_or_else(|e| panic!("{e}")));
@@ -70,11 +73,15 @@ fn every_agent_file_parses_and_validates() {
         known_tools.extend(agent.tools.iter().cloned());
         known_providers.push(agent.provider.clone());
     }
+    for team in &teams {
+        known_tools.extend(team.tools.iter().cloned());
+    }
     let known_skills: Vec<String> = skills.iter().map(|s| s.id.clone()).collect();
     let known_contracts: Vec<String> = contracts::NAMES.iter().map(|n| n.to_string()).collect();
 
     if let Err(e) = validate(
         &agents,
+        &teams,
         &known_tools,
         &known_skills,
         &known_contracts,

@@ -47,9 +47,10 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     let buffer: Rc<RefCell<Vec<Signal>>> = Rc::new(RefCell::new(Vec::new()));
     let host: Rc<dyn RunHost> = Rc::new(TestHost::new());
     let profiles = Rc::new(RefCell::new(ProfileSet::default()));
-    let (agents, skills, soul) = crate::host::config::baked_config()?;
+    let (agents, teams, skills, soul) = crate::host::config::baked_config()?;
     build_handle(
-        agents, skills, soul, registry, resolver, log, kv, blobs, host, buffer, profiles, searxng,
+        agents, teams, skills, soul, registry, resolver, log, kv, blobs, host, buffer, profiles,
+        searxng,
     )
 }
 

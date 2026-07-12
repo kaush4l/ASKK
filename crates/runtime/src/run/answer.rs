@@ -157,6 +157,7 @@ mod tests {
                 .unwrap();
             let session = RunSession::new(SessionInit {
                 agents: vec![],
+                teams: Vec::new(),
                 soul: String::new(),
                 skills: vec![],
                 registry: ToolRegistry::new(),

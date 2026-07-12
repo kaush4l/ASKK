@@ -111,6 +111,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
     let resolver: ProviderResolver = Box::new(move |_| Ok(provider.clone()));
     let session = RunSession::new(SessionInit {
         agents,
+        teams: Vec::new(),
         soul: "Be honest.".into(),
         skills,
         registry,

@@ -14,7 +14,7 @@ use askk_core::{
 };
 
 use crate::actions::PendingActions;
-use crate::config::{validate, AgentConfig, ConfigError, SkillConfig};
+use crate::config::{validate, AgentConfig, ConfigError, SkillConfig, TeamConfig};
 use crate::delegate::{DelegateTool, HandoffTool};
 use crate::run::cancel::CancelToken;
 use crate::run::host::RunHost;
@@ -30,6 +30,9 @@ pub type ProviderResolver = Box<dyn Fn(&str) -> Result<Rc<dyn Provider>, Provide
 /// `config::validate` and fails loud on any unknown reference (ADR-007).
 pub struct SessionInit {
     pub agents: Vec<AgentConfig>,
+    /// First-class teams (ADR-032). Loaded and validated here; the
+    /// delegation boundary semantics live in the team tool.
+    pub teams: Vec<TeamConfig>,
     pub soul: String,
     pub skills: Vec<SkillConfig>,
     pub registry: ToolRegistry,
@@ -45,6 +48,10 @@ pub struct SessionInit {
 /// Session internals shared with the turn loop and the delegation seam.
 pub(crate) struct Shared {
     pub(crate) agents: BTreeMap<String, AgentConfig>,
+    /// First-class teams (ADR-032); loaded + validated, consumed by the
+    /// team delegation boundary.
+    #[allow(dead_code)] // read once the team tool lands (wave-16 B)
+    pub(crate) teams: Vec<TeamConfig>,
     pub(crate) soul: String,
     pub(crate) skills: Vec<SkillConfig>,
     pub(crate) registry: ToolRegistry,
@@ -226,6 +233,7 @@ impl RunSession {
         let shared = Rc::new_cyclic(|weak| {
             let SessionInit {
                 agents,
+                teams,
                 soul,
                 skills,
                 mut registry,
@@ -268,6 +276,7 @@ impl RunSession {
                 contracts::NAMES.iter().map(|n| n.to_string()).collect();
             if let Err(e) = validate(
                 &agents,
+                &teams,
                 &known_tools,
                 &known_skills,
                 &known_contracts,
@@ -277,6 +286,7 @@ impl RunSession {
             }
             Shared {
                 agents: agents.into_iter().map(|a| (a.id.clone(), a)).collect(),
+                teams,
                 soul,
                 skills,
                 registry,

@@ -131,6 +131,7 @@ async fn row(
     });
     let session = RunSession::new(SessionInit {
         agents,
+        teams: Vec::new(),
         soul: "Be honest.".into(),
         skills,
         registry,

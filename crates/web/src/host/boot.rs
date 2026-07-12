@@ -282,6 +282,7 @@ impl HarnessHandle {
 #[allow(clippy::too_many_arguments)] // ponytail: one private assembly seam
 fn build_handle(
     agents: Vec<AgentConfig>,
+    teams: Vec<askk_runtime::config::TeamConfig>,
     skills: Vec<SkillConfig>,
     soul: String,
     registry: ToolRegistry,
@@ -305,6 +306,7 @@ fn build_handle(
         .collect();
     let session = RunSession::new(SessionInit {
         agents,
+        teams,
         soul,
         skills,
         registry,
@@ -464,7 +466,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let host: Rc<dyn RunHost> = Rc::new(BrowserHost::new(buffer.clone(), notify, tap));
     // fetched_config also registers any manifest-declared JS tools into the
     // registry, so it must run before the registry moves into build_handle.
-    let (agents, skills, soul) = match super::config::fetched_config(&mut registry).await {
+    let (agents, teams, skills, soul) = match super::config::fetched_config(&mut registry).await {
         Some(config) => config,
         None => {
             super::config::register_baked_tools(&mut registry);
@@ -472,7 +474,8 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
         }
     };
     let mut handle = build_handle(
-        agents, skills, soul, registry, resolver, log, kv, blobs, host, buffer, profiles, searxng,
+        agents, teams, skills, soul, registry, resolver, log, kv, blobs, host, buffer, profiles,
+        searxng,
     )?;
     // One boot-degradation channel: broken storage and dead MCP servers both
     // surface once in the UI; neither fails boot.

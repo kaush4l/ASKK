@@ -9,6 +9,7 @@
     "tester.md",
     "orchestrator.md"
   ],
+  "teams": [],
   "skills": ["skills/concise.md"],
   "tools": ["fetch_url.js", "js_eval.js"],
   "soul": "soul.md"
