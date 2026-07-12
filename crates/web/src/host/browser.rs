@@ -19,13 +19,25 @@ mod imp {
     pub struct BrowserHost {
         signals: Rc<RefCell<Vec<Signal>>>,
         notify: Box<dyn Fn()>,
+        /// Cross-tab mirror (ADR-031): every stamped signal is also handed
+        /// here; the bus broadcasts it to the other tabs of this origin.
+        tap: Box<dyn Fn(&Signal)>,
     }
 
     impl BrowserHost {
         /// `signals` is shared with the facade (the UI's live fold source);
-        /// `notify` is called after every push (bump a Dioxus counter).
-        pub fn new(signals: Rc<RefCell<Vec<Signal>>>, notify: Box<dyn Fn()>) -> Self {
-            Self { signals, notify }
+        /// `notify` is called after every push (bump a Dioxus counter);
+        /// `tap` sees each stamped signal (cross-tab publish).
+        pub fn new(
+            signals: Rc<RefCell<Vec<Signal>>>,
+            notify: Box<dyn Fn()>,
+            tap: Box<dyn Fn(&Signal)>,
+        ) -> Self {
+            Self {
+                signals,
+                notify,
+                tap,
+            }
         }
     }
 
@@ -37,6 +49,7 @@ mod imp {
 
         fn on_signal(&self, signal: &Signal) {
             self.signals.borrow_mut().push(signal.clone());
+            (self.tap)(signal);
             (self.notify)();
         }
 

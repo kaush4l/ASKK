@@ -4,6 +4,7 @@
 
 pub mod boot;
 pub mod browser;
+pub mod bus;
 pub mod config;
 pub mod dom;
 pub mod fetch;

@@ -479,7 +479,10 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     });
 
     let buffer: Rc<RefCell<Vec<Signal>>> = Rc::new(RefCell::new(Vec::new()));
-    let host: Rc<dyn RunHost> = Rc::new(BrowserHost::new(buffer.clone(), notify));
+    // Cross-tab mirror (ADR-031): local signals broadcast via the tap,
+    // foreign signals join the live buffer (rendered like delegate runs).
+    let (tap, notify) = super::bus::wire(buffer.clone(), notify);
+    let host: Rc<dyn RunHost> = Rc::new(BrowserHost::new(buffer.clone(), notify, tap));
     // fetched_config also registers any manifest-declared JS tools into the
     // registry, so it must run before the registry moves into build_handle.
     let (agents, skills, soul) = match super::config::fetched_config(&mut registry).await {

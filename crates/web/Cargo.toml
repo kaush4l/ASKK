@@ -44,6 +44,7 @@ web-sys = { version = "0.3", features = [
     "Worker",
     "WorkerOptions",
     "WorkerType",
+    "BroadcastChannel",
     "MessageEvent",
     "ErrorEvent",
 ] }
