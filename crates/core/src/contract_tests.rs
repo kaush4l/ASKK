@@ -209,6 +209,18 @@ fn named_tool_call_shape_is_recovered() {
 }
 
 #[test]
+fn string_answer_coerced_from_dash_list_reads_as_bullets() {
+    // Live gemma shape: `answer:` then markdown bullets — TOON decodes a
+    // list; the answer must come back as the dash lines, not a JSON dump.
+    let text = "action: answer\nanswer:\n- first finding\n- second finding";
+    let parsed = contracts::react().parse(&reply(text)).unwrap();
+    assert_eq!(
+        parsed.action,
+        Action::Answer("- first finding\n- second finding".into())
+    );
+}
+
+#[test]
 fn strip_scaffold_drops_working_notes_keeps_answer_and_prose() {
     let c = contracts::react();
     let raw = "observation:\n- saw the file\nplan:\n- fix it\naction: answer\nanswer: done deal\ntrailing prose";

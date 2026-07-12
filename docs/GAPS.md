@@ -212,3 +212,10 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     → board/prefs reset on reload in that pane, so the digest read an empty
     board. Retest kv persistence in real Chrome; if it reproduces there, add
     a kv write-through probe beside the existing blob probe at boot.
+63. Deploy skew on the unhashed agents/ folder: gh-pages serves the NEW hashed
+    wasm minutes before the NEW agents/*.md (CDN per-file lag + browser HTTP
+    cache), so a roster change that removes a tool boots with phantom
+    "unknown tool" config errors until the agent files refresh. Wave-17 hit
+    this live (news_search/echo). Fix candidates: fetch agents/ with
+    cache: "reload" at boot (one extra RTT per file), or version the manifest
+    (manifest.json?v=<build-hash>) and hard-refetch on mismatch.

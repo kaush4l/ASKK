@@ -383,6 +383,18 @@ fn coerce(spec: &FieldSpec, value: Value) -> Option<Value> {
         FieldKind::Str => match value {
             Value::String(s) => Some(Value::String(s)),
             Value::Null => None,
+            // Models bullet their TOON answers; a dash list under a string
+            // field reads back as the dash lines, not a JSON array dump.
+            Value::Array(items) => {
+                let lines: Vec<String> = items
+                    .into_iter()
+                    .map(|item| match item {
+                        Value::String(s) => format!("- {s}"),
+                        other => format!("- {other}"),
+                    })
+                    .collect();
+                Some(Value::String(lines.join("\n")))
+            }
             other => Some(Value::String(other.to_string())),
         },
         FieldKind::List => match value {
