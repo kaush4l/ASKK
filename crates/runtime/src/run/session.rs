@@ -153,6 +153,8 @@ impl RunState {
                 gate: true,
                 on_fail: None,
                 header: String::new(),
+                fan_out: None,
+                parts: None,
             }]
         };
         Self {
@@ -239,6 +241,15 @@ impl RunSession {
                         "{}: cannot register agent as delegate tool: {e}",
                         agent.source_path
                     ));
+                }
+            }
+            // Loop management tools (spawn/check/wait/steer/cancel) — their
+            // names are reserved beside agent ids in the one registry.
+            for tool in crate::loops::loop_tools(weak.clone()) {
+                if let Err(e) = registry.register(tool) {
+                    problems
+                        .borrow_mut()
+                        .push(format!("cannot register loop tool: {e}"));
                 }
             }
             // Validation universe = everything the registry holds; any agent

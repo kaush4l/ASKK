@@ -38,11 +38,13 @@ pub fn SettingsStage(
     profiles: ProfileSet,
     theme: String,
     speech: SpeechConfig,
+    searxng: String,
     on_save: EventHandler<NamedProfile>,
     on_select: EventHandler<String>,
     on_delete: EventHandler<String>,
     on_theme: EventHandler<String>,
     on_speech: EventHandler<SpeechConfig>,
+    on_searxng: EventHandler<String>,
 ) -> Element {
     let active = profiles.active_form();
     let mut name = use_signal(|| {
@@ -202,6 +204,19 @@ pub fn SettingsStage(
             }
             p { class: "hint",
                 "Bring your own key: profiles stay in this browser's private storage (OPFS) and each key is sent only to its base URL. The highlighted profile is the one runs use. Remote servers must allow this origin via CORS."
+            }
+            div { class: "settings-title", "Web search" }
+            label { class: "settings-row",
+                span { class: "settings-label", "SearXNG instance (blank = DuckDuckGo/Wikipedia only)" }
+                input {
+                    class: "field",
+                    placeholder: "https://search.rhscz.eu",
+                    value: "{searxng}",
+                    oninput: move |e: Event<FormData>| on_searxng.call(e.value()),
+                }
+            }
+            p { class: "hint",
+                "SearXNG is the primary engine when set; failures fall back to DuckDuckGo → Wikipedia. Public instances rarely allow JSON+CORS and rate-limit hard — self-host for reliability. The instance sees your queries."
             }
             div { class: "settings-title", "Speech (HF model ids, blank = default)" }
             label { class: "settings-row",

@@ -41,6 +41,36 @@ const HELPER: (&str, &str) = (
     "agents/helper.md",
     "---\nid: helper\ndescription: Helps.\n---\nYou help.",
 );
+const ORCH: (&str, &str) = (
+    "agents/orch.md",
+    "---\nid: orch\ndescription: Manages loops.\n\
+     tools: echo, worker, helper, spawn_run, check_run, wait_run, steer_run, cancel_run\n---\n\
+     You manage parallel loops.",
+);
+const CUSTOM: (&str, &str) = (
+    "agents/custom.md",
+    "---\nid: custom\ndescription: Uses its own response format.\ntools: echo\ncontract: custom\n\
+     field.1.name: observation\nfield.1.kind: list\nfield.1.required: false\n\
+     field.2.name: action\nfield.2.kind: enum: tool|answer\n\
+     field.3.name: answer\nfield.3.required: false\nfield.3.desc: final text or the tool call\n\
+     ---\nYou answer with your own format.",
+);
+const FAN: (&str, &str) = (
+    "agents/fan.md",
+    "---\nid: fan\ndescription: Plans then fans the steps out.\ntools: worker\n\
+     phase.1.name: plan\nphase.1.contract: plan\n\
+     phase.2.name: fanout\nphase.2.contract: react\nphase.2.loop: loop\n\
+     phase.2.fan_out: worker\nphase.2.parts: steps\n\
+     phase.3.name: verify\nphase.3.contract: critique\nphase.3.gate: true\n---\nFan out.",
+);
+const RETRY: (&str, &str) = (
+    "agents/retry.md",
+    "---\nid: retry\ndescription: Retries via prep when work stalls.\ntools: echo\n\
+     phase.1.name: prep\nphase.1.contract: react\n\
+     phase.2.name: work\nphase.2.contract: react\nphase.2.loop: loop\n\
+     phase.2.max_turns: 2\nphase.2.on_fail: prep\n\
+     phase.3.name: verify\nphase.3.contract: critique\nphase.3.gate: true\n---\nWork.",
+);
 
 struct Fixture {
     session: RunSession,
@@ -480,6 +510,222 @@ fn delegation_depth_cap_rejects() {
         assert!(observations(&f.host.signals())
             .iter()
             .any(|o| o.contains("delegation depth cap (1) reached")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// Loop management arc: spawn two parts, watch them, steer one, then wait —
+/// both loops drive CONCURRENTLY inside wait_run and the steering note is
+/// visible to the steered loop's model on its next (first) turn.
+#[test]
+fn spawn_check_steer_wait_collects_parallel_loops() {
+    block_on(async {
+        let f = fixture(&[ORCH, WORKER, HELPER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"spawn_run\", \"arguments\": {\"agent\": \"worker\", \"goal\": \"part one\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"spawn_run\", \"arguments\": {\"agent\": \"helper\", \"goal\": \"part two\"}}",
+        );
+        f.mock
+            .push_text("action: tool\nanswer: {\"name\": \"check_run\", \"arguments\": {}}");
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"steer_run\", \"arguments\": {\"run_id\": \"run-2\", \"note\": \"focus on brevity\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"wait_run\", \"arguments\": {\"run_ids\": [\"run-2\", \"run-3\"]}}",
+        );
+        f.mock.push_text("action: answer\nanswer: one done"); // worker (run-2)
+        f.mock.push_text("action: answer\nanswer: two done"); // helper (run-3)
+        f.mock
+            .push_text("action: answer\nanswer: both parts assembled");
+        let run = f.session.submit("orch", "do both parts").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("both parts assembled"));
+        let obs = observations(&f.host.signals());
+        // spawn returned ids immediately; check saw both parked and Running.
+        assert!(obs
+            .iter()
+            .any(|o| o.contains("spawned worker") && o.contains("run-2")));
+        assert!(obs
+            .iter()
+            .any(|o| o.contains("run-2") && o.contains("run-3") && o.contains("Running")));
+        // wait collected both answers, in id order.
+        let wait_obs = obs.iter().find(|o| o.contains("one done")).unwrap();
+        assert!(wait_obs.contains("run-2 (worker) answered (untrusted): one done"));
+        assert!(wait_obs.contains("run-3 (helper) answered (untrusted): two done"));
+        // The steering note reached the steered loop's model.
+        let steered_request = f
+            .mock
+            .requests()
+            .into_iter()
+            .find(|r| r.sections.iter().any(|(_, s)| s.contains("part one")))
+            .expect("worker request");
+        assert!(steered_request
+            .history
+            .iter()
+            .any(|m| m.content.contains("Steering note: focus on brevity")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// A spawned loop can be cancelled before it ever drives; wait_run on it
+/// reports the Interrupted terminal instead of an answer.
+#[test]
+fn spawned_loop_cancels_cleanly() {
+    block_on(async {
+        let f = fixture(&[ORCH, WORKER, HELPER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"spawn_run\", \"arguments\": {\"agent\": \"worker\", \"goal\": \"doomed part\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"cancel_run\", \"arguments\": {\"run_id\": \"run-2\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"wait_run\", \"arguments\": {\"run_ids\": [\"run-2\"]}}",
+        );
+        f.mock
+            .push_text("action: answer\nanswer: abandoned that part");
+        let run = f.session.submit("orch", "start then stop").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        assert!(obs.iter().any(|o| o.contains("run-2 ended Interrupted")));
+        assert!(obs
+            .iter()
+            .any(|o| o.contains("run-2 (worker) ended Interrupted")));
+        // The cancelled loop never consumed a provider reply.
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// Slice 1: a `field.N.*` custom contract drives a tool call then an answer
+/// end-to-end — the rendered contract is the agent's own, not a built-in.
+#[test]
+fn custom_contract_drives_tool_call_and_answer() {
+    block_on(async {
+        let f = fixture(&[CUSTOM]).await;
+        f.mock.push_text(
+            "observation:\n- need the echo\naction: tool\n\
+             answer: {\"name\": \"echo\", \"arguments\": {\"text\": \"hi\"}}",
+        );
+        f.mock
+            .push_text("observation:\n- echoed fine\naction: answer\nanswer: custom done");
+        let run = f.session.submit("custom", "echo hi").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("custom done"));
+        let signals = f.host.signals();
+        assert!(observations(&signals).iter().any(|o| o == "echo: hi"));
+        // Both parses succeeded against the custom contract, and the model
+        // was shown the custom contract by name.
+        assert!(parse_outcomes(&signals).iter().all(|(ok, _)| *ok));
+        assert!(f
+            .mock
+            .requests()
+            .iter()
+            .all(|r| r.contract.name == "custom"));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// Slice 3: plan → declared fan-out (one worker per plan step, concurrently)
+/// → gate. The two workers are ordinary delegate calls batched by dispatch.
+#[test]
+fn declared_fan_out_runs_workers_from_plan_steps() {
+    block_on(async {
+        let f = fixture(&[FAN, WORKER, HELPER]).await;
+        f.mock
+            .push_text("steps:\n- part one\n- part two\nrationale: split it");
+        f.mock.push_text("action: answer\nanswer: did one"); // worker 1
+        f.mock.push_text("action: answer\nanswer: did two"); // worker 2
+        f.mock.push_text("action: answer\nanswer: assembled"); // fanout phase turn
+        f.mock.push_text("verdict: pass"); // gate
+        let run = f.session.submit("fan", "do the parts").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let signals = f.host.signals();
+        // Child worker runs mirror their own "main" phase into the shared
+        // host log — the declared sequence is asserted on the parent only.
+        let parent: Vec<Signal> = signals
+            .iter()
+            .filter(|s| s.run_id == run)
+            .cloned()
+            .collect();
+        assert_eq!(phases_entered(&parent), vec!["plan", "fanout", "verify"]);
+        // Both workers ran as their own runs, spawned in step order.
+        let started: Vec<String> = signals
+            .iter()
+            .filter_map(|s| match &s.kind {
+                SignalKind::RunStarted { agent_id, goal } => Some(format!("{agent_id}:{goal}")),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(started, vec!["worker:part one", "worker:part two"]);
+        // Their results landed as ordinary observations, in call order,
+        // before the fanout phase's own turn answered.
+        let obs = observations(&signals);
+        let one = obs
+            .iter()
+            .position(|o| o.contains("Result (untrusted): did one"))
+            .expect("worker one result");
+        let two = obs
+            .iter()
+            .position(|o| o.contains("Result (untrusted): did two"))
+            .expect("worker two result");
+        assert!(one < two);
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// Slice 3 fallback: an artifact with no `parts` items degrades to an
+/// observation and the phase runs normally — never a hard failure.
+#[test]
+fn fan_out_without_items_degrades_to_observation() {
+    block_on(async {
+        let f = fixture(&[FAN, WORKER, HELPER]).await;
+        // A valid plan whose `steps` list is empty: nothing to fan out.
+        f.mock
+            .push_text(r#"{"steps": [], "rationale": "nothing to split"}"#);
+        f.mock.push_text("action: answer\nanswer: did it alone");
+        f.mock.push_text("verdict: pass");
+        let run = f.session.submit("fan", "do the parts").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert!(observations(&f.host.signals())
+            .iter()
+            .any(|o| o.contains("no 'steps' list items")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// Slice 2: a loop phase exhausting `max_turns` with a declared on_fail
+/// routes back like a failed gate; the gate must still pass to answer.
+#[test]
+fn loop_exhaustion_with_on_fail_routes_back() {
+    block_on(async {
+        let f = fixture(&[RETRY]).await;
+        f.mock.push_text("action: answer\nanswer: prepped"); // prep
+        for text in ["a", "b"] {
+            f.mock.push_text(&format!(
+                "action: tool\nanswer: {{\"name\": \"echo\", \"arguments\": {{\"text\": \"{text}\"}}}}"
+            )); // work turns 1-2 → exhausted
+        }
+        f.mock.push_text("action: answer\nanswer: prepped again"); // prep (rewound)
+        f.mock.push_text("action: answer\nanswer: work done"); // work (fresh clamp)
+        f.mock.push_text("verdict: pass"); // gate
+        let run = f.session.submit("retry", "do it").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let signals = f.host.signals();
+        assert_eq!(
+            phases_entered(&signals),
+            vec!["prep", "work", "prep", "work", "verify"]
+        );
+        assert!(observations(&signals)
+            .iter()
+            .any(|o| o.contains("exhausted its turn budget") && o.contains("'prep'")));
         assert_eq!(f.mock.remaining(), 0);
     });
 }

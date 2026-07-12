@@ -7,9 +7,11 @@
 //! - [`turn`] — the per-phase per-turn loop.
 //! - [`answer`] — answer → phase routing (gate semantics, ADR-008).
 //! - [`dispatch`] — tool-call dispatch through the action gate.
+//! - [`flow`] — phase-boundary flow: declared fan-out, exhaustion rerouting.
 
 pub(crate) mod answer;
 pub(crate) mod dispatch;
+pub(crate) mod flow;
 pub mod host;
 pub mod session;
 pub(crate) mod turn;

@@ -93,3 +93,29 @@ projects today; richer toolchains wait on guest networking (GAPS 25).
   provider errors) via `include_str!` — no runtime I/O, wasm-safe.
 - Gate now compiles wasm32 (`cargo check -p askk-web --target wasm32-unknown-unknown`)
   and regenerates the bench status on every run.
+
+## Wave 13 — modularity: managed loops, open search, OKF knowledge (2026-07-11)
+
+- **Managed parallel loops** (ADR-022): `spawn_run` / `check_run` / `wait_run` /
+  `steer_run` / `cancel_run` — an orchestrator spawns one loop per independent part,
+  watches status/digests, injects course corrections, cancels stragglers, and collects
+  everything concurrently in one `wait_run`. Orchestrator + dev-lead carry the tools and
+  directives.
+- **Open-source search default** (ADR-023): `web_search` tries a configured SearXNG
+  instance first (shipped default `search.rhscz.eu`; Settings row to point at your own;
+  blank disables) and falls back DDG → Wikipedia. New `news_search` = Wikinews
+  (newest-first) → GDELT best-effort.
+- **OKF knowledge bundle** (ADR-024): agents keep persistent curated knowledge in
+  Google's Open Knowledge Format v0.1 — `knowledge_write/read/list/search` over
+  OPFS-backed storage, conformant concepts + update log; the researcher saves durable
+  findings (news, facts, sources) as concepts.
+- **First-boot default profile**: a fresh browser seeds the manual-smoke profile
+  (`gemma-4-12B-it-qat-mxfp8` @ `http://127.0.0.1:8873/v1`, omlx) so the harness runs
+  before Settings is ever opened; saving any profile retires the seed (ADR-020 lane —
+  never CI-gated).
+- **agents.md metadata for multi-loops + modular response formats**: custom per-agent
+  contracts (`field.N.*` frontmatter — name/kind/required/desc), per-phase
+  `phase.N.max_turns`, loop-exhaustion `on_fail` routing, and declared fan-out
+  (`phase.N.fan_out` + `phase.N.parts`: one delegate call per item of the previous
+  phase's list field, dispatched concurrently — deterministic parallelism that does not
+  rely on the model emitting a multi-call turn).

@@ -4,6 +4,7 @@ pub mod actions;
 pub mod assemble;
 pub mod config;
 pub mod delegate;
+pub mod loops;
 pub mod run;
 pub mod state;
 pub mod tools;

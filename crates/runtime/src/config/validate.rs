@@ -4,8 +4,10 @@
 
 use std::collections::BTreeMap;
 
+use askk_core::{FieldKind, Phase};
+
 use crate::config::agent::AgentConfig;
-use crate::config::ConfigError;
+use crate::config::{resolve_contract, ConfigError};
 
 /// A slug: lowercase ascii letters, digits, `-`, `_`. Non-empty.
 fn is_slug(id: &str) -> bool {
@@ -52,7 +54,17 @@ pub fn validate(
                 problems.push(format!("{at}: unknown skill '{skill}'"));
             }
         }
-        if !known(known_contracts, &agent.contract) {
+        // A contract name resolves from the built-in registry OR the agent's
+        // OWN custom contract (agent-local: another agent's custom name is
+        // unknown here — resolve_contract could never honor it at runtime).
+        let contract_known = |name: &str| {
+            known(known_contracts, name)
+                || agent
+                    .custom_contract
+                    .as_ref()
+                    .is_some_and(|c| c.name == name)
+        };
+        if !contract_known(&agent.contract) {
             problems.push(format!("{at}: unknown contract '{}'", agent.contract));
         }
         if !known(known_providers, &agent.provider) {
@@ -72,13 +84,15 @@ pub fn validate(
                 gates.join(", ")
             ));
         }
+        check_custom_contract(agent, &mut problems);
         for (idx, phase) in agent.phases.iter().enumerate() {
-            if !known(known_contracts, &phase.contract) {
+            if !contract_known(&phase.contract) {
                 problems.push(format!(
                     "{at}: phase '{}' uses unknown contract '{}'",
                     phase.name, phase.contract
                 ));
             }
+            check_fan_out(agent, idx, phase, &mut problems);
             if let Some(filter) = &phase.tool_filter {
                 for tool in filter {
                     if !agent.tools.contains(tool) {
@@ -110,6 +124,107 @@ pub fn validate(
         Ok(())
     } else {
         Err(ConfigError::new(problems))
+    }
+}
+
+/// A custom contract must carry the fields the runtime reads wherever it is
+/// ACTIVE: `action`/`answer` for tool dispatch (core toolcall::derive_action)
+/// when tools are in reach, `verdict` for gate routing (run/answer.rs).
+/// Misconfig fails at load, never as runtime misbehavior.
+fn check_custom_contract(agent: &AgentConfig, problems: &mut Vec<String>) {
+    let Some(custom) = &agent.custom_contract else {
+        return;
+    };
+    let at = agent.source_path.as_str();
+    let field = |name: &str| custom.fields.iter().find(|f| f.name == name);
+    let has_enum_with = |name: &str, needed: &[&str]| {
+        field(name).is_some_and(|f| match &f.kind {
+            FieldKind::Enum(variants) => needed.iter().all(|n| variants.iter().any(|v| v == n)),
+            _ => false,
+        })
+    };
+    let phase_has_tools = |p: &Phase| match &p.tool_filter {
+        Some(filter) => filter.iter().any(|t| agent.tools.contains(t)),
+        None => !agent.tools.is_empty(),
+    };
+    let custom_with_tools = if agent.phases.is_empty() {
+        agent.contract == custom.name && !agent.tools.is_empty()
+    } else {
+        agent
+            .phases
+            .iter()
+            .any(|p| p.contract == custom.name && phase_has_tools(p))
+    };
+    if custom_with_tools {
+        if !has_enum_with("action", &["tool", "answer"]) {
+            problems.push(format!(
+                "{at}: custom contract '{}' is used with tools but has no `action` \
+                 enum field containing tool|answer",
+                custom.name
+            ));
+        }
+        if field("answer").is_none() {
+            problems.push(format!(
+                "{at}: custom contract '{}' is used with tools but has no `answer` field",
+                custom.name
+            ));
+        }
+    }
+    let on_gate = agent
+        .phases
+        .iter()
+        .any(|p| p.gate && p.contract == custom.name);
+    if on_gate && !has_enum_with("verdict", &["pass", "revise"]) {
+        problems.push(format!(
+            "{at}: custom contract '{}' is used on a gate phase but has no `verdict` \
+             enum field containing pass|revise",
+            custom.name
+        ));
+    }
+}
+
+/// `fan_out`/`parts` come as a pair: the tool must be in the agent's tools
+/// and `parts` must name a List field of the PREVIOUS phase's contract.
+fn check_fan_out(agent: &AgentConfig, idx: usize, phase: &Phase, problems: &mut Vec<String>) {
+    let at = agent.source_path.as_str();
+    let (tool, parts) = match (&phase.fan_out, &phase.parts) {
+        (None, None) => return,
+        (Some(tool), Some(parts)) => (tool, parts),
+        _ => {
+            problems.push(format!(
+                "{at}: phase '{}' needs both `fan_out` and `parts` (or neither)",
+                phase.name
+            ));
+            return;
+        }
+    };
+    if !agent.tools.contains(tool) {
+        problems.push(format!(
+            "{at}: phase '{}' fan_out tool '{tool}' is not in the agent's tools",
+            phase.name
+        ));
+    }
+    let Some(prev) = idx.checked_sub(1).map(|i| &agent.phases[i]) else {
+        problems.push(format!(
+            "{at}: phase '{}' declares fan_out but has no previous phase to take `parts` from",
+            phase.name
+        ));
+        return;
+    };
+    // Only checkable when the previous contract resolves; an unknown
+    // contract is already its own problem above.
+    if let Ok(contract) = resolve_contract(agent, &prev.contract) {
+        let is_list = contract
+            .fields
+            .iter()
+            .any(|f| &f.name == parts && f.kind == FieldKind::List);
+        if !is_list {
+            problems.push(format!(
+                "{at}: phase '{}' parts '{parts}' is not a List field of the previous \
+                 phase's contract '{}'",
+                phase.name, contract.name
+            ));
+        }
     }
 }
 
@@ -245,6 +360,117 @@ mod tests {
         );
         assert!(joined.contains("phase 'check' on_fail target 'fix' must name an earlier phase"));
         assert_eq!(err.problems.len(), 2);
+    }
+
+    /// A complete custom contract (action/answer/verdict) is accepted at
+    /// agent level, on phases, and on a gate.
+    #[test]
+    fn valid_custom_contract_passes() {
+        let a = agent(
+            "own",
+            "---\nid: own\ntools: read\ncontract: own\n\
+             field.1.name: action\nfield.1.kind: enum: tool|answer\n\
+             field.2.name: answer\nfield.2.required: false\n\
+             field.3.name: verdict\nfield.3.kind: enum: pass|revise\nfield.3.required: false\n\
+             phase.1.name: work\nphase.1.contract: own\n\
+             phase.2.name: check\nphase.2.contract: own\nphase.2.gate: true\n---\n",
+        );
+        validate(
+            &[a],
+            &strs(&["read"]),
+            &strs(&[]),
+            &strs(&["react", "plan", "critique"]),
+            &strs(&["default"]),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn custom_contract_with_tools_needs_action_and_answer() {
+        // Active custom contract, tools present, but only a `notes` field.
+        let a = agent(
+            "own",
+            "---\nid: own\ntools: read\ncontract: own\nfield.1.name: notes\n---\n",
+        );
+        let err = validate(
+            &[a],
+            &strs(&["read"]),
+            &strs(&[]),
+            &strs(&["react"]),
+            &strs(&["default"]),
+        )
+        .unwrap_err();
+        let joined = err.problems.join("\n");
+        assert!(joined.contains("no `action` enum field containing tool|answer"));
+        assert!(joined.contains("no `answer` field"));
+        assert_eq!(err.problems.len(), 2);
+    }
+
+    #[test]
+    fn custom_contract_on_gate_needs_verdict() {
+        let a = agent(
+            "own",
+            "---\nid: own\ncontract: react\nfield.1.name: score\n\
+             phase.1.name: work\nphase.2.name: check\nphase.2.contract: own\n\
+             phase.2.gate: true\n---\n",
+        );
+        let err = validate(
+            &[a],
+            &strs(&[]),
+            &strs(&[]),
+            &strs(&["react"]),
+            &strs(&["default"]),
+        )
+        .unwrap_err();
+        assert!(err.problems[0].contains("no `verdict` enum field containing pass|revise"));
+    }
+
+    /// Custom contracts are agent-local: another agent referencing one is an
+    /// unknown contract (resolve_contract could never honor it at runtime).
+    #[test]
+    fn custom_contracts_do_not_leak_across_agents() {
+        let a = agent("owner", "---\nid: owner\nfield.1.name: notes\n---\n");
+        let b = agent("thief", "---\nid: thief\ncontract: owner\n---\n");
+        let err = validate(
+            &[a, b],
+            &strs(&[]),
+            &strs(&[]),
+            &strs(&["react"]),
+            &strs(&["default"]),
+        )
+        .unwrap_err();
+        assert!(err.problems[0].contains("unknown contract 'owner'"));
+        assert_eq!(err.problems.len(), 1);
+    }
+
+    #[test]
+    fn fan_out_refs_are_checked() {
+        // ghost tool + parts naming a non-List field of the previous contract.
+        let a = agent(
+            "fan",
+            "---\nid: fan\ntools: worker\nphase.1.name: plan\nphase.1.contract: plan\n\
+             phase.2.name: out\nphase.2.fan_out: ghost\nphase.2.parts: rationale\n---\n",
+        );
+        // fan_out on the first phase + fan_out without parts.
+        let b = agent(
+            "first",
+            "---\nid: first\ntools: worker\nphase.1.name: out\nphase.1.fan_out: worker\n\
+             phase.1.parts: steps\nphase.2.name: half\nphase.2.fan_out: worker\n---\n",
+        );
+        let err = validate(
+            &[a, b],
+            &strs(&["worker", "ghost"]),
+            &strs(&[]),
+            &strs(&["react", "plan"]),
+            &strs(&["default"]),
+        )
+        .unwrap_err();
+        let joined = err.problems.join("\n");
+        assert!(joined.contains("fan_out tool 'ghost' is not in the agent's tools"));
+        assert!(joined.contains("parts 'rationale' is not a List field"));
+        assert!(joined.contains("has no previous phase"));
+        assert!(joined.contains("needs both `fan_out` and `parts`"));
+        assert_eq!(err.problems.len(), 4);
     }
 
     #[test]

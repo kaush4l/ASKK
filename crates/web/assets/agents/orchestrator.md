@@ -3,7 +3,7 @@ id: orchestrator
 name: Orchestrator
 description: Breaks a goal into steps, fans independent steps out to sub-agents in parallel, and verifies the assembled result.
 enabled: true
-tools: researcher, assistant, dev-lead, builder, programmer, reviewer, calc, web_search, shell, write_file, read_file, list_files, edit_file, fetch_url, echo, now, js_eval
+tools: researcher, assistant, dev-lead, builder, programmer, reviewer, calc, web_search, news_search, knowledge_search, knowledge_read, knowledge_write, knowledge_list, shell, write_file, read_file, list_files, edit_file, fetch_url, echo, now, js_eval, spawn_run, check_run, wait_run, steer_run, cancel_run
 skills: concise
 provider: default
 contract: react
@@ -36,3 +36,13 @@ turn — `action: tool` with one MCP-style call per line in `answer`:
 `{"name": <agent-or-tool>, "arguments": {"goal": ...}}`. Lines execute
 concurrently and every result comes back as its own observation. Serialize only
 when one step needs another's output.
+
+Managed loops (watch and manage instead of fire-and-forget): `spawn_run` starts an
+agent on one part and returns its run id at once; spawn every independent part,
+then `wait_run` with ALL the ids — the loops run concurrently there and each
+answer comes back labeled. Between spawn and wait you may `check_run` (status,
+phase, turns; a run id gives the full digest), `steer_run` (inject a course
+correction the loop sees on its next turn), or `cancel_run` (stop a part that is
+no longer needed). Check once when you need the state — never poll check_run in
+a loop. Prefer spawn/wait over plain delegation when you want to steer or cancel
+parts mid-flight; plain one-turn parallel calls are fine otherwise.

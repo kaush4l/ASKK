@@ -4,8 +4,9 @@
 
 use std::collections::BTreeMap;
 
-use askk_core::{LoopMode, OutputMode, Phase, Skill};
+use askk_core::{Contract, LoopMode, OutputMode, Phase, Skill};
 
+use crate::config::fields::{self, FieldDraft};
 use crate::config::frontmatter::{self, Entry};
 use crate::config::ConfigError;
 
@@ -29,6 +30,9 @@ pub struct AgentConfig {
     pub format: OutputMode,
     /// Declared strategy; empty = single implicit phase.
     pub phases: Vec<Phase>,
+    /// `field.N.*` frontmatter → an agent-local contract named by the agent
+    /// id; `resolve_contract` prefers it over the built-in registry.
+    pub custom_contract: Option<Contract>,
     /// Markdown body = the directive/role prompt.
     pub body: String,
     pub source_path: String,
@@ -49,10 +53,12 @@ impl AgentConfig {
             contract: "react".into(),
             format: OutputMode::default(),
             phases: Vec::new(),
+            custom_contract: None,
             body: fm.body.trim().to_string(),
             source_path: path_label.to_string(),
         };
         let mut drafts: BTreeMap<usize, PhaseDraft> = BTreeMap::new();
+        let mut field_drafts: BTreeMap<usize, FieldDraft> = BTreeMap::new();
         for entry in &fm.entries {
             let at = format!("{path_label}:{}", entry.line);
             match entry.key.as_str() {
@@ -81,6 +87,9 @@ impl AgentConfig {
                 key if key.starts_with("phase.") => {
                     phase_entry(entry, &at, &mut drafts, &mut problems)
                 }
+                key if key.starts_with("field.") => {
+                    fields::field_entry(entry, &at, &mut field_drafts, &mut problems)
+                }
                 other => problems.push(format!("{at}: unknown key '{other}'")),
             }
         }
@@ -91,6 +100,14 @@ impl AgentConfig {
             cfg.name = cfg.id.clone();
         }
         cfg.phases = build_phases(path_label, drafts, &mut problems);
+        let field_specs = fields::build_fields(path_label, field_drafts, &mut problems);
+        if !field_specs.is_empty() {
+            cfg.custom_contract = Some(Contract {
+                name: cfg.id.clone(),
+                version: 0,
+                fields: field_specs,
+            });
+        }
         if problems.is_empty() {
             Ok(cfg)
         } else {
@@ -107,9 +124,12 @@ struct PhaseDraft {
     contract: Option<String>,
     tools: Option<Vec<String>>,
     loop_mode: Option<LoopMode>,
+    max_turns: Option<u32>,
     gate: Option<bool>,
     on_fail: Option<String>,
     header: Option<String>,
+    fan_out: Option<String>,
+    parts: Option<String>,
 }
 
 fn phase_entry(
@@ -153,12 +173,20 @@ fn phase_entry(
             }
             other => problems.push(format!("{at}: `loop` must be one_shot|loop, got '{other}'")),
         },
+        "max_turns" => match value.parse::<u32>() {
+            Ok(n) if n >= 1 => draft.max_turns = Some(n),
+            _ => problems.push(format!(
+                "{at}: `max_turns` must be a positive integer, got '{value}'"
+            )),
+        },
         "gate" => match parse_bool(&value) {
             Some(b) => draft.gate = Some(b),
             None => problems.push(format!("{at}: `gate` must be true|false, got '{value}'")),
         },
         "on_fail" => draft.on_fail = Some(value),
         "header" => draft.header = Some(value),
+        "fan_out" => draft.fan_out = Some(value),
+        "parts" => draft.parts = Some(value),
         other => problems.push(format!("{at}: unknown phase field '{other}'")),
     }
 }
@@ -183,14 +211,29 @@ fn build_phases(
             ));
             String::new()
         });
+        // `max_turns` overrides the loop default (16); alone it implies
+        // `loop: loop`; with an explicit one_shot it is a contradiction.
+        let loop_mode = match (draft.loop_mode, draft.max_turns) {
+            (Some(LoopMode::OneShot), Some(_)) => {
+                problems.push(format!(
+                    "{path_label}:{}: phase.{n} `max_turns` requires `loop: loop`",
+                    draft.line
+                ));
+                LoopMode::OneShot
+            }
+            (_, Some(max_turns)) => LoopMode::Loop { max_turns },
+            (mode, None) => mode.unwrap_or(LoopMode::OneShot),
+        };
         phases.push(Phase {
             name,
             contract: draft.contract.unwrap_or_else(|| "react".into()),
             tool_filter: draft.tools,
-            loop_mode: draft.loop_mode.unwrap_or(LoopMode::OneShot),
+            loop_mode,
             gate: draft.gate.unwrap_or(false),
             on_fail: draft.on_fail,
             header: draft.header.unwrap_or_default(),
+            fan_out: draft.fan_out,
+            parts: draft.parts,
         });
     }
     phases
@@ -370,6 +413,36 @@ phase.3.on_fail: plan
         assert!(joined.contains("phase number must be an integer"));
         assert!(joined.contains("unknown phase field 'speed'"));
         assert!(joined.contains("phase.<n>.<field>"));
+    }
+
+    #[test]
+    fn max_turns_feeds_the_loop_clamp() {
+        let text = "---\nid: a\nphase.1.name: work\nphase.1.loop: loop\nphase.1.max_turns: 4\n\
+                    phase.2.name: more\nphase.2.max_turns: 2\n---\n";
+        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
+        assert_eq!(cfg.phases[0].loop_mode, LoopMode::Loop { max_turns: 4 });
+        // max_turns alone implies `loop: loop`.
+        assert_eq!(cfg.phases[1].loop_mode, LoopMode::Loop { max_turns: 2 });
+    }
+
+    #[test]
+    fn max_turns_rejects_one_shot_and_bad_values() {
+        let text = "---\nid: a\nphase.1.name: p\nphase.1.loop: one_shot\nphase.1.max_turns: 3\n\
+                    phase.2.name: q\nphase.2.max_turns: zero\n---\n";
+        let err = AgentConfig::from_markdown("a.md", text).unwrap_err();
+        let joined = err.problems.join("\n");
+        assert!(joined.contains("`max_turns` requires `loop: loop`"));
+        assert!(joined.contains("`max_turns` must be a positive integer"));
+    }
+
+    #[test]
+    fn fan_out_and_parts_land_on_the_phase() {
+        let text = "---\nid: a\ntools: worker\nphase.1.name: plan\nphase.1.contract: plan\n\
+                    phase.2.name: fan\nphase.2.fan_out: worker\nphase.2.parts: steps\n---\n";
+        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
+        assert_eq!(cfg.phases[1].fan_out.as_deref(), Some("worker"));
+        assert_eq!(cfg.phases[1].parts.as_deref(), Some("steps"));
+        assert_eq!(cfg.phases[0].fan_out, None);
     }
 
     #[test]

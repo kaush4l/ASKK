@@ -3,7 +3,7 @@ id: builder
 name: Builder
 description: A single self-sufficient coding agent (bolt.diy style) — plans, writes, runs, and iterates on a whole project alone with all the tools.
 enabled: true
-tools: shell, write_file, read_file, list_files, edit_file, fetch_url, web_search, js_eval
+tools: shell, write_file, read_file, list_files, edit_file, fetch_url, web_search, js_eval, knowledge_search, knowledge_read, knowledge_write, knowledge_list
 skills: concise
 provider: default
 contract: react

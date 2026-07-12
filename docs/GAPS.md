@@ -119,3 +119,20 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
 40. js_eval sandbox bounds (ADR-021): Worker isolation + shadowed fetch/XHR/WebSocket,
     terminate-on-timeout. Effect::Pure holds only while the worker has no real
     capabilities; gate it if that changes. Per-call Worker spawn (~ms) accepted.
+
+## Wave-13 (modularity: managed loops, open search, OKF) — live-found rows
+
+41. Spawned loops progress only inside `wait_run` (or a UI drive): between spawn and
+    wait a parked run sits idle — single-threaded model, no background scheduler
+    (ADR-022 states the bound). A cooperative "tick parked runs during idle awaits"
+    is the upgrade path if steering-before-wait needs to observe progress.
+42. SearXNG default (search.rhscz.eu) rate-limits under load; the chain absorbs it
+    (falls back DDG→Wikipedia) but a per-instance cooldown/backoff would stop paying
+    the timeout on every call in a burst. Self-hosting note is in Settings.
+43. GDELT news fallback serves 200-with-error-text under rate limit; handled as a
+    readable miss, but there is no third news source — Wikinews outage = no news.
+44. `phase.N.fan_out` items are strings only (list-field artifacts); structured parts
+    (objects with per-part context) would need a kind beyond `list`.
+45. Custom `field.N.*` contracts render TOON/JSON like built-ins but have no per-field
+    examples in the prompt; weak models may need a `field.N.example` key (add on
+    evidence from live runs).

@@ -27,6 +27,12 @@ pub struct Phase {
     pub on_fail: Option<String>,
     /// Prompt frame header rendered into the PhaseFrame element.
     pub header: String,
+    /// Declared fan-out: delegate tool called once per `parts` item on entry.
+    #[serde(default)]
+    pub fan_out: Option<String>,
+    /// List field of the PREVIOUS phase's contract that supplies the items.
+    #[serde(default)]
+    pub parts: Option<String>,
 }
 
 /// What a phase proposes when it stops.
@@ -83,6 +89,8 @@ mod tests {
             gate,
             on_fail: Some("plan".into()),
             header: "Verify the work.".into(),
+            fan_out: None,
+            parts: None,
         }
     }
 

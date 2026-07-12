@@ -188,6 +188,8 @@ mod tests {
                 gate: true,
                 on_fail: Some("verify".into()),
                 header: String::new(),
+                fan_out: None,
+                parts: None,
             };
             run.phases = vec![run.phases[0].clone(), gate.clone()];
             run.phase_idx = 1;

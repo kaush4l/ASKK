@@ -3,6 +3,7 @@
 //! listing ALL problems. Silent drops forbidden.
 
 pub mod agent;
+pub(crate) mod fields;
 pub mod frontmatter;
 pub mod validate;
 
@@ -10,6 +11,19 @@ pub use agent::{load_soul, AgentConfig, SkillConfig};
 pub use validate::validate;
 
 use std::fmt;
+
+/// Contract resolution: the agent's own custom contract (declared via
+/// `field.N.*`, named by its id) wins over the built-in registry. Custom
+/// contracts are agent-local — another agent's name never resolves here.
+pub fn resolve_contract(
+    agent: &AgentConfig,
+    name: &str,
+) -> Result<askk_core::Contract, askk_core::CoreError> {
+    match &agent.custom_contract {
+        Some(custom) if custom.name == name => Ok(custom.clone()),
+        _ => askk_core::contracts::lookup(name),
+    }
+}
 
 /// One error carrying EVERY problem found (ADR-007: fail loud, list all).
 /// Each problem string is self-contained: `path:line: what went wrong`.

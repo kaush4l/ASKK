@@ -4,16 +4,17 @@
 //! phase gate semantics (ADR-008). Every step emits a stamped signal.
 
 use askk_core::{
-    contracts, Action, Contract, Element, InferenceConfig, InferenceReply, InferenceRequest,
-    LoopMode, Message, OutputMode, ParsedFormat, ParsedResponse, PhaseFrame, ProviderError, Role,
-    RunStatus, Sheet, Signal, SignalKind, Skill, ToolSet,
+    Action, Contract, Element, InferenceConfig, InferenceReply, InferenceRequest, LoopMode,
+    Message, OutputMode, ParsedFormat, ParsedResponse, PhaseFrame, ProviderError, Role, RunStatus,
+    Sheet, Signal, SignalKind, Skill, ToolSet,
 };
 use serde_json::Map;
 
 use crate::assemble::{assemble, AssembleOverrides};
-use crate::config::AgentConfig;
+use crate::config::{resolve_contract, AgentConfig};
 use crate::run::answer::handle_answer;
 use crate::run::dispatch::{dispatch_queued, Dispatch};
+use crate::run::flow::{enqueue_fan_out, reroute_exhausted};
 use crate::run::session::{RunState, Shared};
 use crate::state::StoreError;
 
@@ -137,14 +138,24 @@ pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(),
             emit(shared, run, SignalKind::PhaseEntered { name }).await?;
             run.phase_entered = true;
             run.phase_turns = 0; // every (re-)entry gets a fresh clamp
+            if run.phases[run.phase_idx].fan_out.is_some() {
+                enqueue_fan_out(shared, run).await?;
+                if dispatch_queued(shared, run).await? == Dispatch::Paused {
+                    return Ok(());
+                }
+            }
         }
         // Per-phase clamp (ADR-011): a Loop phase spends at most its own
         // max_turns; min() with the global budget falls out of check order
         // (the global check above fires first when it is the tighter bound).
-        // Exhaustion without an answer is never success (ADR-008): no gate
-        // passed, so the run ends Unverified via the fall-off rules.
+        // Exhaustion without an answer is never success (ADR-008): with a
+        // declared on_fail it routes back like a failed gate (bounded);
+        // otherwise the run ends Unverified via the fall-off rules.
         if let LoopMode::Loop { max_turns } = run.phases[run.phase_idx].loop_mode {
             if run.phase_turns >= max_turns {
+                if reroute_exhausted(shared, run).await? {
+                    continue;
+                }
                 emit(
                     shared,
                     run,
@@ -172,7 +183,7 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
         .expect("run built from a validated agent")
         .clone();
     let phase = run.phases[run.phase_idx].clone();
-    let contract = contracts::lookup(&phase.contract).expect("validated contract");
+    let contract = resolve_contract(&agent, &phase.contract).expect("validated contract");
     let toolset = effective_toolset(shared, run)?;
 
     let mut repairs = 0u32;

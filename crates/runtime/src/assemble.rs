@@ -1,13 +1,12 @@
 //! Sheet assembly: pure element-list construction in docs/MODELS.md order.
 //! The runtime hands assemble the pieces; assemble only arranges them.
 
-use askk_core::contracts;
 use askk_core::{
     ActionPolicy, Contract, Directive, Element, Identity, InferenceConfig, MemoryBlock, Message,
     OutputMode, Part, PhaseFrame, Sheet, Skill, StateSnapshot, ToolSpec,
 };
 
-use crate::config::AgentConfig;
+use crate::config::{resolve_contract, AgentConfig};
 
 /// Per-turn overrides applied AT assembly (no post-assembly sheet patching):
 /// the phase's contract, a per-run directive, the negotiated output mode.
@@ -44,7 +43,7 @@ pub fn assemble(
     overrides: AssembleOverrides,
 ) -> Sheet {
     let contract = overrides.contract.unwrap_or_else(|| {
-        contracts::lookup(&agent.contract).unwrap_or_else(|e| {
+        resolve_contract(agent, &agent.contract).unwrap_or_else(|e| {
             panic!(
                 "{}: {e} — run config::validate before assemble",
                 agent.source_path

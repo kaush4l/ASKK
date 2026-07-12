@@ -10,7 +10,9 @@ use askk_core::{fold, ActionId, ActionPolicy, Budgets, RunId, RunProjection, Sig
 use askk_runtime::config::{AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
-use askk_runtime::tools::{register_builtins, register_web_search, ToolRegistry};
+use askk_runtime::tools::{
+    register_builtins, register_knowledge, register_news, register_web_search, ToolRegistry,
+};
 use serde_json::Value;
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -26,6 +28,13 @@ pub use askk_runtime::testutil::block_on;
 const PROFILE_ID: &str = "default";
 /// Pref key holding the active profile's name.
 const ACTIVE_PROFILE_PREF: &str = "active_profile";
+/// Pref key holding the SearXNG instance base URL ("" = disabled).
+const SEARXNG_PREF: &str = "searxng_url";
+/// Shipped default instance — the rare public one that serves JSON with
+/// CORS. It rate-limits under load (the chain falls back cleanly);
+/// point at a self-hosted instance for reliability.
+#[cfg(target_arch = "wasm32")]
+const SEARXNG_DEFAULT: &str = "https://search.rhscz.eu";
 
 /// The one facade the UI talks to.
 pub struct HarnessHandle {
@@ -43,6 +52,8 @@ pub struct HarnessHandle {
     known_runs: RefCell<Vec<RunId>>,
     /// Set when boot fell back to in-memory stores (broken OPFS grant).
     storage_warning: Option<String>,
+    /// Live SearXNG base URL cell shared with `web_search` ("" = disabled).
+    searxng: Rc<RefCell<String>>,
 }
 
 impl HarnessHandle {
@@ -218,6 +229,19 @@ impl HarnessHandle {
         self.persist_active().await
     }
 
+    /// Current SearXNG instance base URL ("" = disabled, fallback chain only).
+    pub fn searxng_url(&self) -> String {
+        self.searxng.borrow().clone()
+    }
+
+    /// Point `web_search` at a SearXNG instance (live cell — next call uses
+    /// it) and persist the choice. Empty disables SearXNG.
+    pub async fn set_searxng_url(&self, url: &str) {
+        let url = url.trim().to_string();
+        *self.searxng.borrow_mut() = url.clone();
+        self.set_pref(SEARXNG_PREF, Value::from(url)).await;
+    }
+
     async fn persist_active(&self) -> Result<(), String> {
         let active = self.profiles.borrow().active.clone();
         self.settings
@@ -239,6 +263,7 @@ fn build_handle(
     host: Rc<dyn RunHost>,
     buffer: Rc<RefCell<Vec<Signal>>>,
     profiles: Rc<RefCell<ProfileSet>>,
+    searxng: Rc<RefCell<String>>,
 ) -> Result<HarnessHandle, String> {
     let cards = agents
         .iter()
@@ -273,6 +298,7 @@ fn build_handle(
         current: RefCell::new(None),
         known_runs: RefCell::new(Vec::new()),
         storage_warning: None,
+        searxng,
     })
 }
 
@@ -348,6 +374,11 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
             });
         }
     }
+    // First boot (no saved profiles): seed the manual-smoke model so the
+    // harness can run before Settings is ever opened (ADR-020 smoke lane).
+    if set.profiles.is_empty() {
+        set = super::profile::seeded();
+    }
     set.active = settings
         .pref(ACTIVE_PROFILE_PREF)
         .await
@@ -359,10 +390,22 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
         .unwrap_or_default();
     let profiles = Rc::new(RefCell::new(set));
 
+    // SearXNG instance: pref if set (empty = user disabled), shipped
+    // default otherwise.
+    let searxng_url = match settings.pref(SEARXNG_PREF).await.ok().flatten() {
+        Some(v) => v.as_str().unwrap_or_default().to_string(),
+        None => SEARXNG_DEFAULT.to_string(),
+    };
+    let searxng = Rc::new(RefCell::new(searxng_url));
+
     let transport: Rc<dyn Transport> = Rc::new(FetchTransport::new());
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || js_sys::Date::now() as u64).map_err(|e| e.to_string())?;
-    register_web_search(&mut registry, transport.clone()).map_err(|e| e.to_string())?;
+    register_web_search(&mut registry, transport.clone(), searxng.clone())
+        .map_err(|e| e.to_string())?;
+    register_news(&mut registry, transport.clone()).map_err(|e| e.to_string())?;
+    register_knowledge(&mut registry, kv.clone(), || js_sys::Date::now() as u64)
+        .map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(super::vm::SerialShell::new());
     askk_runtime::tools::register_shell(&mut registry, shell_exec.clone())
         .map_err(|e| e.to_string())?;
@@ -400,7 +443,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
         }
     };
     let mut handle = build_handle(
-        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles,
+        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles, searxng,
     )?;
     handle.storage_warning = storage_warning;
     Ok(handle)
@@ -422,7 +465,15 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
         .map_err(|e| e.to_string())?;
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).map_err(|e| e.to_string())?;
-    register_web_search(&mut registry, Rc::new(MockTransport::new())).map_err(|e| e.to_string())?;
+    let searxng = Rc::new(RefCell::new(String::new()));
+    register_web_search(
+        &mut registry,
+        Rc::new(MockTransport::new()),
+        searxng.clone(),
+    )
+    .map_err(|e| e.to_string())?;
+    register_news(&mut registry, Rc::new(MockTransport::new())).map_err(|e| e.to_string())?;
+    register_knowledge(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(super::vm::SerialShell::new());
     askk_runtime::tools::register_shell(&mut registry, shell_exec.clone())
         .map_err(|e| e.to_string())?;
@@ -441,7 +492,7 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     let profiles = Rc::new(RefCell::new(ProfileSet::default()));
     let (agents, skills, soul) = super::config::baked_config()?;
     build_handle(
-        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles,
+        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles, searxng,
     )
 }
 

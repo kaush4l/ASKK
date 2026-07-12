@@ -42,7 +42,10 @@ core ← inference ← runtime ← web
 | Named contracts | `crates/core/src/contracts.rs` |
 | TOON | `crates/core/src/toon.rs` |
 | Tool trait + ToolSet | `crates/core/src/tool.rs` |
-| web_search tool (DDG + Wikipedia) | `crates/runtime/src/tools/search.rs` |
+| web_search tool (SearXNG primary → DDG → Wikipedia) | `crates/runtime/src/tools/search.rs` |
+| news_search tool (Wikinews → GDELT) | `crates/runtime/src/tools/news.rs` |
+| OKF knowledge bundle tools (ADR-024) | `crates/runtime/src/tools/knowledge.rs` |
+| Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/runtime/src/loops.rs` |
 | shell tool (exec over VM serial) | `crates/runtime/src/tools/shell.rs` |
 | shell executor (browser serial bridge) | `crates/web/src/host/vm.rs` |
 | Agents/skills/tools loader (baked + live fetch) | `crates/web/src/host/config.rs` |

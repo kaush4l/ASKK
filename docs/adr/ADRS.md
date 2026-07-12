@@ -162,6 +162,65 @@ determinism/gas-metering is a requirement. Effect stays Pure; raise to gated if 
 gains real capabilities (same ceiling note as shell). The VM must never be on this path (A1
 budget < 2 s vs a 30 s serial cap).
 
+## ADR-022 (A) — loop management = five tools over the existing run map; no scheduler
+Wave-13 goal: an orchestrator that watches and manages parallel loops. Mechanism: `spawn_run`
+(park a child run, return its id at once — the submit pattern reached from a tool),
+`check_run` (list runs / digest one via fold of its own stream), `wait_run` (drive several
+parked runs CONCURRENTLY via join_all inside the tool), `steer_run` (inject a user note into
+a parked run's next turn — the final-turn-nudge pattern), `cancel_run` (token + Interrupted).
+One new file `runtime/src/loops.rs`; registered beside the delegate tools, so the five names
+are reserved words next to agent ids. Same seams as delegation: authority narrows, depth
+capped, parent host serves children, no core/web changes. Honest bound (ADR-015 cooperative
+single thread): a spawned loop progresses only inside `wait_run` or a UI drive — spawn-then-
+wait is batched parallelism with a management window, not background threads. Deferred: a
+spawner seam (wasm spawn_local / LocalPool) if "child progresses while parent thinks" ever
+matters; additive `parent` field on RunStarted for spawn trees.
+
+## ADR-023 (A) — search defaults: SearXNG primary via a live cell; news = Wikinews→GDELT
+`web_search` gains an open-source primary: a SearXNG instance URL held in a shared
+`Rc<RefCell<String>>` (settings save applies on the next call — the provider-resolver cell
+idiom), tried first when non-empty; ANY failure falls through to the existing DDG→Wikipedia
+chain with the error named in the combined hint, so a bad instance can never brick search.
+Shipped default: `https://search.rhscz.eu` (live-probed: serves JSON with ACAO:* — the rare
+public instance that does; it rate-limits, which the fallback absorbs; the Settings row says
+self-host for reliability, blank disables). `news_search` is a separate tool: Wikinews
+full-text (key-free, origin=*, newest-first) primary, GDELT DOC 2.0 fallback — GDELT is
+broad+fresh but rate-limits/bans hard and serves 200-with-text errors (a parse failure is a
+per-source miss, never a run failure); it is deliberately NEVER primary. Config lives in a
+`searxng_url` pref (SessionStore), NOT the provider profile — switching LLM profiles must not
+swap search engines.
+
+## ADR-024 (A) — agent knowledge = an OKF v0.1 bundle in the KvStore
+Persistent agent knowledge ("latest knowledge and news" that survives runs and reloads)
+adopts Google's Open Knowledge Format v0.1 (June 2026): a bundle of markdown concept files
+with YAML frontmatter, `type` the only required field; reserved log.md = newest-first date
+groups. Storage: the existing KvStore seam under `okf/<concept-id>` (OPFS in the browser) —
+no new storage type; `okf/log` mirrors log.md. Four tools in `runtime/tools/knowledge.rs`:
+`knowledge_write` (composes a conformant concept, appends the log; Effect::Mutating — writes
+persist, so they route through the action gate), `knowledge_read`, `knowledge_list` (index
+view), `knowledge_search` (substring over ids+frontmatter+bodies). Ids are validated bundle
+paths (no `.md`, no `..`, `log` reserved). The researcher's directive tells it to save
+durable findings as concepts with `# Citations`. Rejected: a bespoke notes format (OKF is an
+open spec agents may exchange later); files-in-VM storage (guest FS is RAM, lost on reload).
+
+## ADR-025 (A) — modular contracts + multi-loop metadata live in agent frontmatter
+The "modular response formats / modular agents.md" goal lands as three flat-key frontmatter
+slices, all parsed at load time (never at run time): (1) `field.N.name|kind|required|desc`
+builds a per-agent custom Contract (kinds: text | list | `enum: a|b|c`), activated by naming
+the agent id in `contract:` / `phase.N.contract:` — validation is agent-local on purpose so
+one agent cannot reference another's custom contract and blow up later in assemble (pinned by
+`custom_contracts_do_not_leak_across_agents`); tool-bearing custom contracts must keep
+`action`+`answer` fields, gate phases must keep `verdict`. (2) `phase.N.max_turns` overrides
+the Loop clamp (alone it implies `loop: loop`; explicit `one_shot` + `max_turns` is a load
+error). (3) `phase.N.fan_out: <delegate-tool>` + `phase.N.parts: <list-field>` queues one
+concurrent `{"goal": item}` delegate call per item of the previous phase's list artifact
+through the NORMAL dispatch batch (ADR-015 join_all) — deterministic parallelism that does not
+depend on the model emitting a multi-call turn; an empty list degrades to an observation.
+Loop-exhaustion routing reuses `on_fail` (bounded by MAX_BACK_EDGES). New code split into
+`config/fields.rs` + `run/flow.rs` to hold the file-size cap. Rejected: a global
+known-contracts registry extension (cross-agent leak), and a bespoke fan-out executor
+(dispatch already batches).
+
 ## ADR-019 (A) — agents + custom tools are real served files, not hardcoded
 The `agents/` folder moved UNDER `crates/web/assets/agents/` so the SAME files are both baked
 (build.rs fallback) AND served verbatim at `/assets/agents/*`. Boot fetches the served

@@ -78,6 +78,26 @@ impl ProfileSet {
     }
 }
 
+/// First-boot seed: the manual-smoke model (ADR-020 — live local model,
+/// never CI-gated) so a fresh browser can run without visiting Settings.
+/// In-memory only until the user saves a profile; deleting every profile
+/// and reloading re-seeds it, so "no profiles" is not a persistent state.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(super) fn seeded() -> ProfileSet {
+    ProfileSet {
+        profiles: vec![NamedProfile {
+            name: "omlx".into(),
+            form: ProviderProfileForm {
+                base_url: "http://127.0.0.1:8873/v1".into(),
+                model: "gemma-4-12B-it-qat-mxfp8".into(),
+                // max_tokens stays None: boot's .or(Some(2048)) cap applies.
+                ..Default::default()
+            },
+        }],
+        active: "omlx".into(),
+    }
+}
+
 pub(super) fn profile_to_json(form: &ProviderProfileForm) -> Value {
     json!({
         "base_url": form.base_url,
@@ -160,6 +180,16 @@ mod tests {
         );
         set.active = "ghost".into();
         assert_eq!(set.active_form().model, "m");
+    }
+
+    #[test]
+    fn seeded_profile_is_the_smoke_model() {
+        let set = seeded();
+        assert_eq!(set.active, "omlx");
+        let form = set.active_form();
+        assert_eq!(form.base_url, "http://127.0.0.1:8873/v1");
+        assert_eq!(form.model, "gemma-4-12B-it-qat-mxfp8");
+        assert_eq!(form.max_tokens, None); // boot's 2048 cap applies
     }
 
     #[test]

@@ -1,8 +1,13 @@
-//! `web_search` — browser-direct search over CORS-open sources: DuckDuckGo
-//! Instant Answers first, Wikipedia full-text search as fallback. URL
-//! building and reply parsing are pure functions; the Transport is injected
-//! (ADR-009), so tests script it with `MockTransport`.
+//! `web_search` — browser-direct search over open sources: a configured
+//! SearXNG instance is the PRIMARY engine (open-source metasearch, full web;
+//! JSON+CORS instances are rare — self-hosting is the reliable path), with
+//! DuckDuckGo Instant Answers → Wikipedia as the always-on fallback chain.
+//! URL building and reply parsing are pure functions; the Transport is
+//! injected (ADR-009), so tests script it with `MockTransport`. The SearXNG
+//! base URL lives in a shared live cell — a settings save applies on the
+//! next call, no rebuild (same idiom as the provider resolver's profile cell).
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use askk_core::{Effect, Tool, ToolCtx, ToolResult, ToolSpec};
@@ -16,26 +21,31 @@ use super::registry::{RegistryError, ToolRegistry};
 const MAX_RESULTS: usize = 5;
 
 /// Registers `web_search` with the given transport (fetch in `web`, mock in
-/// host runs and tests).
+/// host runs and tests). `searxng` holds the instance base URL; empty =
+/// SearXNG disabled, fallback chain only.
 pub fn register_web_search(
     reg: &mut ToolRegistry,
     transport: Rc<dyn Transport>,
+    searxng: Rc<RefCell<String>>,
 ) -> Result<(), RegistryError> {
-    reg.register(Rc::new(WebSearch::new(transport)))
+    reg.register(Rc::new(WebSearch::new(transport, searxng)))
 }
 
 pub struct WebSearch {
     spec: ToolSpec,
     transport: Rc<dyn Transport>,
+    searxng: Rc<RefCell<String>>,
 }
 
 impl WebSearch {
-    pub fn new(transport: Rc<dyn Transport>) -> Self {
+    pub fn new(transport: Rc<dyn Transport>, searxng: Rc<RefCell<String>>) -> Self {
         Self {
             spec: ToolSpec {
                 name: "web_search".into(),
-                description: "Searches the web (DuckDuckGo instant answers, \
-                              Wikipedia fallback) and returns the top results."
+                description: "Searches the web (SearXNG metasearch when \
+                              configured, DuckDuckGo instant answers and \
+                              Wikipedia as fallback) and returns the top \
+                              results."
                     .into(),
                 input_schema: serde_json::json!({
                     "type": "object",
@@ -47,6 +57,7 @@ impl WebSearch {
                 effect: Effect::Pure,
             },
             transport,
+            searxng,
         }
     }
 
@@ -68,6 +79,25 @@ impl WebSearch {
     }
 
     async fn search(&self, query: &str) -> Result<String, String> {
+        // Primary: the configured SearXNG instance. Any failure (blocked
+        // JSON, CORS, rate limit, empty) falls through to the chain below so
+        // a bad instance can never brick web_search.
+        let base = self.searxng.borrow().trim().to_string();
+        let searx_err = if base.is_empty() {
+            None
+        } else {
+            match self.fetch_json(searx_url(&base, query)).await {
+                Ok(value) => {
+                    let lines = parse_searx(&value);
+                    if lines.is_empty() {
+                        Some("no results".to_string())
+                    } else {
+                        return Ok(lines.join("\n"));
+                    }
+                }
+                Err(e) => Some(e),
+            }
+        };
         let ddg = match self.fetch_json(ddg_url(query)).await {
             Ok(value) => {
                 let lines = parse_ddg(&value);
@@ -79,13 +109,15 @@ impl WebSearch {
             }
             Err(e) => Err(e),
         };
+        let prefix = searx_err
+            .map(|e| format!("searxng: {e}; "))
+            .unwrap_or_default();
         let lines = match ddg {
             Ok(lines) => lines,
             Err(ddg_err) => {
-                let value = self
-                    .fetch_json(wiki_url(query))
-                    .await
-                    .map_err(|wiki_err| format!("duckduckgo: {ddg_err}; wikipedia: {wiki_err}"))?;
+                let value = self.fetch_json(wiki_url(query)).await.map_err(|wiki_err| {
+                    format!("{prefix}duckduckgo: {ddg_err}; wikipedia: {wiki_err}")
+                })?;
                 let lines = parse_wiki(&value);
                 if lines.is_empty() {
                     return Err(format!("no results for '{query}'"));
@@ -121,7 +153,7 @@ impl Tool for WebSearch {
 }
 
 /// RFC 3986 unreserved stay literal; everything else percent-encodes.
-fn encode(query: &str) -> String {
+pub(super) fn encode(query: &str) -> String {
     let mut out = String::new();
     for byte in query.bytes() {
         match byte {
@@ -132,6 +164,31 @@ fn encode(query: &str) -> String {
         }
     }
     out
+}
+
+fn searx_url(base: &str, query: &str) -> String {
+    format!(
+        "{}/search?q={}&format=json",
+        base.trim_end_matches('/'),
+        encode(query)
+    )
+}
+
+/// SearXNG JSON: `results[].{title, url, content}`.
+fn parse_searx(value: &Value) -> Vec<String> {
+    let Some(results) = value.get("results").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    results
+        .iter()
+        .take(MAX_RESULTS)
+        .filter_map(|r| {
+            let title = r.get("title").and_then(Value::as_str)?;
+            let url = r.get("url").and_then(Value::as_str).unwrap_or("");
+            let content = r.get("content").and_then(Value::as_str).unwrap_or("");
+            Some(format!("- {title}: {content} ({url})"))
+        })
+        .collect()
 }
 
 fn ddg_url(query: &str) -> String {
@@ -216,7 +273,7 @@ fn parse_wiki(value: &Value) -> Vec<String> {
 }
 
 /// Drops `<...>` markup and decodes the entities Wikipedia snippets carry.
-fn strip_tags(html: &str) -> String {
+pub(super) fn strip_tags(html: &str) -> String {
     let mut out = String::new();
     let mut in_tag = false;
     for ch in html.chars() {
@@ -240,7 +297,11 @@ mod tests {
     use serde_json::json;
 
     fn call(transport: Rc<MockTransport>, args: Value) -> ToolResult {
-        let tool = WebSearch::new(transport);
+        call_with(transport, args, "")
+    }
+
+    fn call_with(transport: Rc<MockTransport>, args: Value, searxng: &str) -> ToolResult {
+        let tool = WebSearch::new(transport, Rc::new(RefCell::new(searxng.to_string())));
         block_on(tool.call(args, &mut ToolCtx::default()))
     }
 
@@ -248,6 +309,63 @@ mod tests {
     fn urls_encode_the_query() {
         assert!(ddg_url("rust & wasm?").contains("q=rust%20%26%20wasm%3F"));
         assert!(wiki_url("caffè").contains("srsearch=caff%C3%A8"));
+        assert_eq!(
+            searx_url("https://sx.example/", "a b"),
+            "https://sx.example/search?q=a%20b&format=json"
+        );
+    }
+
+    #[test]
+    fn searxng_is_primary_when_configured() {
+        let transport = Rc::new(MockTransport::new());
+        transport.push_ok(
+            200,
+            r#"{"results": [{"title": "Leptos", "url": "https://leptos.dev",
+                 "content": "Rust UI framework"}]}"#,
+        );
+        let out = call_with(
+            transport.clone(),
+            json!({"query": "leptos"}),
+            "https://sx.example",
+        );
+        assert!(out.ok, "{}", out.content);
+        assert!(out
+            .content
+            .contains("- Leptos: Rust UI framework (https://leptos.dev)"));
+        let requests = transport.requests.borrow();
+        assert_eq!(requests.len(), 1); // fallback chain never touched
+        assert!(requests[0].url.starts_with("https://sx.example/search"));
+    }
+
+    #[test]
+    fn blocked_searxng_falls_through_to_the_chain() {
+        let transport = Rc::new(MockTransport::new());
+        transport.push_ok(429, "Too Many Requests"); // public-instance habit
+        transport.push_ok(
+            200,
+            r#"{"AbstractText": "Answer.", "AbstractURL": "https://x"}"#,
+        );
+        let out = call_with(
+            transport.clone(),
+            json!({"query": "q"}),
+            "https://sx.example",
+        );
+        assert!(out.ok, "{}", out.content);
+        assert!(out.content.contains("Answer."));
+        assert_eq!(transport.requests.borrow().len(), 2);
+    }
+
+    #[test]
+    fn all_three_engines_failing_names_each_one() {
+        let transport = Rc::new(MockTransport::new());
+        transport.push_ok(403, "blocked json");
+        transport.push_ok(500, "boom");
+        transport.push_ok(500, "boom");
+        let out = call_with(transport, json!({"query": "q"}), "https://sx.example");
+        assert!(!out.ok);
+        for engine in ["searxng", "duckduckgo", "wikipedia"] {
+            assert!(out.content.contains(engine), "missing {engine} in error");
+        }
     }
 
     #[test]
