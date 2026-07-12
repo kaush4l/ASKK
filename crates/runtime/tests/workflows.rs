@@ -1165,3 +1165,106 @@ fn cancel_aborts_an_in_flight_llm_call() {
         .any(|s| matches!(s.kind, SignalKind::LlmResponse { .. })));
     assert_eq!(f.mock.remaining(), 0);
 }
+
+// --- context budgeting (window + observation clamp) ---------------------------
+
+/// A tiny context budget forces windowing: a later request carries a bounded
+/// history with ONE elision marker, the newest observation survives, and the
+/// goal still reaches the model (in this runtime the goal rides the
+/// user_input SECTION, not history — window_history's first-user-message pin
+/// is covered by core unit tests).
+#[test]
+fn context_window_bounds_later_request_history() {
+    block_on(async {
+        let budgets = Budgets {
+            max_context_chars: 300,
+            ..Budgets::default()
+        };
+        let f = fixture_with(&[SOLO], budgets, ActionPolicy::default()).await;
+        let filler = "0123456789".repeat(12); // 120 chars per echo result
+        for _ in 0..4 {
+            f.mock.push_text(&format!(
+                "action: tool\nanswer: {{\"name\": \"echo\", \"arguments\": {{\"text\": \"{filler}\"}}}}"
+            ));
+        }
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("solo", "budget goal").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let requests = f.mock.requests();
+        let last = requests.last().unwrap();
+        let markers: Vec<&askk_core::Message> = last
+            .history
+            .iter()
+            .filter(|m| m.content.contains("elided to fit the context budget"))
+            .collect();
+        assert_eq!(markers.len(), 1, "exactly one marker: {:?}", last.history);
+        let marker_chars = markers[0].content.chars().count();
+        let total: usize = last.history.iter().map(|m| m.content.chars().count()).sum();
+        assert!(
+            total <= 300 + marker_chars,
+            "history exceeds the context budget: {total} chars"
+        );
+        // The newest observation survived the window.
+        assert!(last.history.iter().any(|m| m.content.contains(&filler)));
+        // The goal still reaches the model through its user_input section.
+        assert!(last
+            .sections
+            .iter()
+            .any(|(k, text)| k.name() == "user_input" && text.contains("budget goal")));
+        // The run's durable history never lost anything: the FIRST request
+        // after windowing began still saw the marker, yet the final fold
+        // replays cleanly (drive finished Answered above).
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// An oversized tool result is clipped BEFORE it re-enters history as an
+/// observation; the durable ToolCompleted signal keeps the full content.
+#[test]
+fn oversized_observation_arrives_clipped() {
+    block_on(async {
+        let budgets = Budgets {
+            max_observation_chars: 40,
+            ..Budgets::default()
+        };
+        let f = fixture_with(&[SOLO], budgets, ActionPolicy::default()).await;
+        let big = "a".repeat(120);
+        f.mock.push_text(&format!(
+            "action: tool\nanswer: {{\"name\": \"echo\", \"arguments\": {{\"text\": \"{big}\"}}}}"
+        ));
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("solo", "echo big").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        let obs = observations(&f.host.signals());
+        let clipped = obs
+            .iter()
+            .find(|o| o.starts_with("echo: "))
+            .expect("echo observation");
+        assert_eq!(
+            *clipped,
+            format!("echo: {}…[clipped, kept 40 of 120 chars]", "a".repeat(40))
+        );
+        // Full fidelity stays on the durable signal.
+        assert!(f.host.signals().iter().any(|s| matches!(
+            &s.kind,
+            SignalKind::ToolCompleted { content, .. } if content.chars().count() == 120
+        )));
+        // The clipped observation (not the full result) is what the next
+        // request's history carries. The assistant's OWN tool-call message
+        // still holds the full arg text — that is the model's output, not a
+        // tool result — so the check targets the Tool-role observation.
+        let last = f.mock.requests();
+        let last = last.last().unwrap();
+        assert!(last
+            .history
+            .iter()
+            .any(|m| m.content.contains("[clipped, kept 40 of 120 chars]")));
+        assert!(!last
+            .history
+            .iter()
+            .any(|m| m.role == Role::Tool && m.content.contains(&big)));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}

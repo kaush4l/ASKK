@@ -6,6 +6,7 @@
 
 pub mod action;
 pub mod board;
+pub mod context;
 pub mod contract;
 pub mod contracts;
 pub mod element;
@@ -22,6 +23,7 @@ pub mod toon;
 
 pub use action::{ActionId, ActionPolicy, ActionProposal, ActionRecord, PolicyDecision, Verdict};
 pub use board::{Card, CardStage, Criterion};
+pub use context::window_history;
 pub use contract::{
     Action, Contract, FieldKind, FieldSpec, FormatNegotiator, OutputMode, ParseFailure,
     ParsedFormat, ParsedResponse,

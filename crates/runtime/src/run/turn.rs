@@ -4,9 +4,9 @@
 //! phase gate semantics (ADR-008). Every step emits a stamped signal.
 
 use askk_core::{
-    Action, Contract, Element, InferenceConfig, InferenceReply, InferenceRequest, LoopMode,
-    Message, OutputMode, ParsedFormat, ParsedResponse, PhaseFrame, ProviderError, Role, RunStatus,
-    Sheet, Signal, SignalKind, Skill, ToolSet,
+    window_history, Action, Contract, Element, InferenceConfig, InferenceReply, InferenceRequest,
+    LoopMode, Message, OutputMode, ParsedFormat, ParsedResponse, PhaseFrame, ProviderError, Role,
+    RunStatus, Sheet, Signal, SignalKind, Skill, ToolSet,
 };
 use futures::future::{select, Either};
 use serde_json::Map;
@@ -258,7 +258,7 @@ async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreErro
     for signal in sheet.absorb(&parsed) {
         emit(shared, run, signal.kind).await?;
     }
-    sync_back(run, &sheet);
+    sync_back(shared, run, &sheet);
 
     match parsed.action.clone() {
         Action::Answer(text) => handle_answer(shared, run, &phase, &parsed, text).await,
@@ -305,7 +305,9 @@ fn build_sheet(
         &run.goal,
         run.snapshot.clone(),
         run.memory.clone(),
-        run.history.clone(),
+        // The sheet carries a budgeted VIEW of the history; run.history
+        // stays the full log (sync_back appends, never replaces).
+        window_history(&run.history, shared.budgets.max_context_chars),
         toolset.specs(),
         Vec::new(),
         shared.policy.clone(),
@@ -318,11 +320,17 @@ fn build_sheet(
     )
 }
 
-/// Pull the absorb effects back out of the sheet into run state.
-fn sync_back(run: &mut RunState, sheet: &Sheet) {
+/// Pull the absorb effects back out of the sheet into run state. The sheet's
+/// history is the WINDOWED view build_sheet assembled; only the messages
+/// absorb appended beyond that view flow back — run.history stays the full
+/// log, and elision markers never become durable history.
+fn sync_back(shared: &Shared, run: &mut RunState, sheet: &Sheet) {
+    // Deterministic recompute: run.history has not changed since the final
+    // build_sheet, so this length equals the assembled view's length.
+    let shown = window_history(&run.history, shared.budgets.max_context_chars).len();
     for element in &sheet.elements {
         match element {
-            Element::History(h) => run.history = h.clone(),
+            Element::History(h) => run.history.extend(h.iter().skip(shown).cloned()),
             Element::StateSnapshot(s) => run.snapshot = s.clone(),
             _ => {}
         }

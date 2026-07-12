@@ -48,7 +48,7 @@ pub struct MemoryBlock {
     pub content: String,
 }
 
-/// Budgets: turns, wall clock, per-tool and stream-idle timeouts.
+/// Budgets: turns, wall clock, per-tool and stream-idle timeouts, context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Budgets {
     pub max_turns: u32,
@@ -56,6 +56,20 @@ pub struct Budgets {
     pub tool_timeout_ms: u64,
     pub stream_idle_timeout_ms: u64,
     pub max_delegation_depth: u8,
+    /// Total history chars one request may carry (see `window_history`).
+    #[serde(default = "default_max_context_chars")]
+    pub max_context_chars: usize,
+    /// Chars of one tool result that re-enter history as an observation.
+    #[serde(default = "default_max_observation_chars")]
+    pub max_observation_chars: usize,
+}
+
+fn default_max_context_chars() -> usize {
+    60_000
+}
+
+fn default_max_observation_chars() -> usize {
+    6_000
 }
 
 impl Default for Budgets {
@@ -66,6 +80,8 @@ impl Default for Budgets {
             tool_timeout_ms: 30_000,
             stream_idle_timeout_ms: 30_000,
             max_delegation_depth: 2,
+            max_context_chars: default_max_context_chars(),
+            max_observation_chars: default_max_observation_chars(),
         }
     }
 }
@@ -113,6 +129,17 @@ mod tests {
         let mut snap = StateSnapshot::default();
         snap.slices.insert("todo".into(), json!(["a", "b"]));
         assert_eq!(snap.slices["todo"], json!(["a", "b"]));
+    }
+
+    #[test]
+    fn budgets_context_fields_default_for_old_configs() {
+        // A config serialized before the context fields existed still loads.
+        let old = r#"{"max_turns":4,"deadline_ms":1,"tool_timeout_ms":1,
+                      "stream_idle_timeout_ms":1,"max_delegation_depth":1}"#;
+        let budgets: Budgets = serde_json::from_str(old).unwrap();
+        assert_eq!(budgets.max_turns, 4);
+        assert_eq!(budgets.max_context_chars, 60_000);
+        assert_eq!(budgets.max_observation_chars, 6_000);
     }
 
     #[test]

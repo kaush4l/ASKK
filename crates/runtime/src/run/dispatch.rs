@@ -236,7 +236,15 @@ async fn absorb_result(
         },
     )
     .await?;
-    observe(shared, run, format!("{}: {}", call.name, result.content)).await?;
+    // What re-enters the model's context is clamped and trust-labeled; the
+    // ToolCompleted signal above keeps the full content durable.
+    let content = clamp_observation(&result.content, shared.budgets.max_observation_chars);
+    let observation = if untrusted(&call.name) {
+        format!("{} (untrusted web content): {content}", call.name)
+    } else {
+        format!("{}: {content}", call.name)
+    };
+    observe(shared, run, observation).await?;
     // Handoff short-circuit: a successful full transfer ends the CALLING run
     // right here — Answered, the child's answer verbatim as final_text, the
     // same Result terminal the answer path lands. No extra parent turn.
@@ -253,6 +261,24 @@ async fn absorb_result(
         run.final_text = Some(result.content);
     }
     Ok(())
+}
+
+/// Tools whose results are web-originated content the model must not treat
+/// as instructions. ponytail: a plain name match for now; provenance should
+/// someday ride ToolSpec so tools self-declare their trust label.
+fn untrusted(name: &str) -> bool {
+    matches!(name, "web_search" | "news_search" | "fetch_url") || name.starts_with("mcp_")
+}
+
+/// Clamp one tool result to the observation budget (whole chars, never
+/// splits a UTF-8 scalar); oversize results carry a visible clip note.
+fn clamp_observation(content: &str, max_chars: usize) -> String {
+    let total = content.chars().count();
+    if total <= max_chars {
+        return content.to_string();
+    }
+    let kept: String = content.chars().take(max_chars).collect();
+    format!("{kept}…[clipped, kept {max_chars} of {total} chars]")
 }
 
 /// Apply a user's confirmation decision: approve executes the parked
@@ -307,5 +333,32 @@ pub(crate) async fn apply_resolution(
         )
         .await?;
         observe(shared, run, content).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_keeps_short_and_clips_long() {
+        assert_eq!(clamp_observation("short", 10), "short");
+        let clipped = clamp_observation(&"x".repeat(20), 5);
+        assert_eq!(clipped, "xxxxx…[clipped, kept 5 of 20 chars]");
+    }
+
+    #[test]
+    fn clamp_never_splits_a_utf8_scalar() {
+        let clipped = clamp_observation("ééééé", 3);
+        assert!(clipped.starts_with("ééé…"), "{clipped}");
+    }
+
+    #[test]
+    fn web_and_mcp_tools_are_untrusted() {
+        for name in ["web_search", "news_search", "fetch_url", "mcp_anything"] {
+            assert!(untrusted(name), "{name}");
+        }
+        assert!(!untrusted("echo"));
+        assert!(!untrusted("mcp")); // the prefix match needs the underscore
     }
 }
