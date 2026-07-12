@@ -55,6 +55,8 @@ pub struct HarnessHandle {
     storage_warning: Option<String>,
     /// Live SearXNG base URL cell shared with `web_search` ("" = disabled).
     searxng: Rc<RefCell<String>>,
+    /// The persistent kanban board — same kv the board tools write.
+    board: askk_runtime::state::BoardStore,
 }
 
 impl HarnessHandle {
@@ -192,6 +194,11 @@ impl HarnessHandle {
         })
     }
 
+    /// Kanban board snapshot, board order (the Board stage re-reads per refold).
+    pub async fn board_cards(&self) -> Vec<askk_core::Card> {
+        self.board.list().await.unwrap_or_default()
+    }
+
     pub fn get_profiles(&self) -> ProfileSet {
         self.profiles.borrow().clone()
     }
@@ -295,7 +302,8 @@ fn build_handle(
         buffer,
         cards,
         profiles,
-        settings: SessionStore::new(kv),
+        settings: SessionStore::new(kv.clone()),
+        board: askk_runtime::state::BoardStore::new(kv),
         current: RefCell::new(None),
         known_runs: RefCell::new(Vec::new()),
         storage_warning: None,

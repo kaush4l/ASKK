@@ -8,6 +8,7 @@ pub enum Stage {
     #[default]
     Chat,
     Agents,
+    Board,
     Vm,
     Settings,
 }
@@ -17,6 +18,7 @@ impl Stage {
         match self {
             Stage::Chat => "Chat",
             Stage::Agents => "Agents",
+            Stage::Board => "Board",
             Stage::Vm => "VM",
             Stage::Settings => "Settings",
         }
@@ -44,6 +46,11 @@ pub const COMPONENTS: &[Component] = &[
         stage: Stage::Agents,
         dot: "var(--green)",
         meta: "trace",
+    },
+    Component {
+        stage: Stage::Board,
+        dot: "var(--cyan, #23b3d1)",
+        meta: "team",
     },
     Component {
         stage: Stage::Vm,

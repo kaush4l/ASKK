@@ -400,6 +400,23 @@ input, textarea { font: inherit; }
 .step-obs { flex-basis: 100%; color: var(--text); white-space: pre-wrap; word-break: break-word; opacity: .82; padding-left: 65px; }
 .loop-empty { color: var(--text-faint); font-size: var(--fs-xs); }
 
+/* ── board stage (kanban) ────────────────────────────────────────────────── */
+.board-wrap { height: 100%; display: flex; flex-direction: column; gap: 12px; padding: clamp(16px, 4vw, 28px); overflow: auto; }
+.board { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(180px, 1fr)); gap: 10px; align-items: start; overflow: auto; }
+.board-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--shape-sm); background: var(--well); padding: 8px; }
+.col-head { display: flex; align-items: baseline; justify-content: space-between; padding: 2px 4px; }
+.col-name { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); }
+.col-count { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.board-card { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--hairline); border-radius: var(--shape-sm); background: var(--card-solid); padding: 9px 11px; }
+.card-title { font-size: var(--fs-sm); line-height: 1.35; }
+.card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.card-ticks { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); display: inline-flex; align-items: baseline; gap: 3px; }
+.tick.met { color: var(--green); }
+.tick-count { margin-left: 4px; font-variant-numeric: tabular-nums; }
+/* the one accent on this view: the live run chip */
+.card-run { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--cyan, #23b3d1); word-break: break-all; }
+.card-note { font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+
 /* ── responsive + reduced motion ─────────────────────────────────────────── */
 @media (max-width: 900px) {
   body { padding: 0; }

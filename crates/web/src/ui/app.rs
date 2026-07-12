@@ -8,13 +8,14 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 
-use askk_core::{RunId, RunProjection, SignalKind};
+use askk_core::{Card, RunId, RunProjection, SignalKind};
 use serde_json::{json, Value};
 
 use crate::host::boot::{self, HarnessHandle, NamedProfile, ProfileSet};
 use crate::host::dom;
 use crate::host::speech::{self, SpeechConfig};
 use crate::ui::agents::AgentsStage;
+use crate::ui::board::BoardStage;
 use crate::ui::chat::ChatStage;
 use crate::ui::manifest::Stage;
 use crate::ui::settings::SettingsStage;
@@ -140,6 +141,18 @@ pub fn App() -> Element {
             }
             Err(e) => boot_error.set(Some(e)),
         }
+    });
+
+    // Board snapshot: board mutations happen through tools, whose signals
+    // bump `refold` — reading it here re-fetches the async kv read.
+    let mut board_cards = use_signal(Vec::<Card>::new);
+    use_effect(move || {
+        let _ = refold();
+        if stage() != Stage::Board {
+            return;
+        }
+        let Some(h) = handle() else { return };
+        spawn(async move { board_cards.set(h.board_cards().await) });
     });
 
     // The elapsed clock: ticks while a run drives (host stub never ticks).
@@ -370,6 +383,7 @@ pub fn App() -> Element {
                             }
                         },
                         Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },
+                        Stage::Board => rsx! { BoardStage { cards: board_cards() } },
                         Stage::Settings => rsx! {
                             SettingsStage {
                                 key: "{profiles().active}",
