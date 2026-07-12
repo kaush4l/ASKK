@@ -137,6 +137,8 @@ impl Tool for SpawnRun {
             let run_id = shared.next_run_id();
             shared.hosts.borrow_mut().insert(run_id.clone(), host);
             let mut run = RunState::new(&child, goal, allowed, depth + 1, memory, run_id.clone());
+            // A lead spawning members keeps them inside the team (ADR-032).
+            run.team_id = crate::delegate::inherited_team(&shared, ctx, &child);
             let started = turn::emit(
                 &shared,
                 &mut run,

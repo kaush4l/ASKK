@@ -24,6 +24,9 @@ pub(crate) const PARENT_TOOLS_SLICE: &str = "parent_tools";
 /// ToolCtx slice carrying the caller's run id (DelegateTool resolves the
 /// parent's live host through it for the nested run).
 pub(crate) const PARENT_RUN_SLICE: &str = "parent_run_id";
+/// ToolCtx slice carrying the caller's team id: members delegated from
+/// inside a team inherit it, so the team's principles reach their prompts.
+pub(crate) const TEAM_SLICE: &str = "team_id";
 
 #[derive(PartialEq, Eq)]
 pub(crate) enum Dispatch {
@@ -189,6 +192,9 @@ fn make_ctx(run: &RunState) -> ToolCtx {
     ctx.set_slice(DEPTH_SLICE, json!(run.depth));
     ctx.set_slice(PARENT_TOOLS_SLICE, json!(effective_allow(run)));
     ctx.set_slice(PARENT_RUN_SLICE, json!(run.id.0));
+    if let Some(team) = &run.team_id {
+        ctx.set_slice(TEAM_SLICE, json!(team));
+    }
     ctx
 }
 
@@ -216,7 +222,11 @@ async fn absorb_result(
     // Lift back every slice the ctx now holds (ADR-005): ALL tool-written
     // keys — pre-declared or brand new — emit StateWritten on change.
     for key in ctx.slice_keys() {
-        if key == DEPTH_SLICE || key == PARENT_TOOLS_SLICE || key == PARENT_RUN_SLICE {
+        if key == DEPTH_SLICE
+            || key == PARENT_TOOLS_SLICE
+            || key == PARENT_RUN_SLICE
+            || key == TEAM_SLICE
+        {
             continue;
         }
         if let Some(value) = ctx.slice(&key) {

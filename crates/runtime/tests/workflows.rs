@@ -9,7 +9,7 @@ use askk_core::{
     ActionId, ActionPolicy, Budgets, PolicyDecision, Provider, Role, RunStatus, Signal, SignalKind,
 };
 use askk_inference::MockProvider;
-use askk_runtime::config::{AgentConfig, SkillConfig};
+use askk_runtime::config::{AgentConfig, SkillConfig, TeamConfig};
 use askk_runtime::run::{ProviderResolver, RunSession, SessionInit, TestHost};
 use askk_runtime::state::{
     BlobStore, BoardStore, KvStore, MemBlob, MemKv, MemoryStore, SessionStore, SignalLog,
@@ -83,6 +83,27 @@ const RETRY: (&str, &str) = (
      phase.3.name: verify\nphase.3.contract: critique\nphase.3.gate: true\n---\nWork.",
 );
 
+// A team boundary fixture (ADR-032): the client holds ONLY the team tool
+// (plus `now`), the team declares its own complete toolset, the lead's `now`
+// is deliberately outside it, and the body is the principles probe.
+const SQUAD_LEAD: (&str, &str) = (
+    "agents/squad/lead.md",
+    "---\nid: lead\ndescription: Leads the squad.\ntools: echo, mate, now\n---\nYou lead.",
+);
+const SQUAD_MATE: (&str, &str) = (
+    "agents/squad/mate.md",
+    "---\nid: mate\ndescription: Squad member.\ntools: calc\n---\nYou work.",
+);
+const SQUAD_TEAM: (&str, &str) = (
+    "agents/squad/team.md",
+    "---\nid: squad\nname: Squad\ndescription: Delegate squad work to the whole squad.\n\
+     lead: lead\ntools: echo, calc, mate\n---\nSquad principle: measure twice, cut once.",
+);
+const CLIENT: (&str, &str) = (
+    "agents/client.md",
+    "---\nid: client\ndescription: Calls the squad.\ntools: squad, now\n---\nYou call the squad.",
+);
+
 struct Fixture {
     session: RunSession,
     host: Rc<TestHost>,
@@ -93,7 +114,12 @@ struct Fixture {
     board_kv: Rc<dyn KvStore>,
 }
 
-async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPolicy) -> Fixture {
+async fn fixture_full(
+    files: &[(&str, &str)],
+    team_files: &[(&str, &str)],
+    budgets: Budgets,
+    policy: ActionPolicy,
+) -> Fixture {
     let mock = Rc::new(MockProvider::new("mock/test"));
     let blobs: Rc<dyn BlobStore> = Rc::new(MemBlob::new());
     let (log, _) = SignalLog::open(Rc::clone(&blobs), Box::new(|| 0))
@@ -108,6 +134,10 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
         .iter()
         .map(|(path, text)| AgentConfig::from_markdown(path, text).unwrap())
         .collect();
+    let teams: Vec<TeamConfig> = team_files
+        .iter()
+        .map(|(path, text)| TeamConfig::from_markdown(path, text).unwrap())
+        .collect();
     let skills = vec![SkillConfig::from_markdown(
         "agents/skills/concise.md",
         "---\nid: concise\n---\nBe brief.",
@@ -117,7 +147,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
     let resolver: ProviderResolver = Box::new(move |_| Ok(provider.clone()));
     let session = RunSession::new(SessionInit {
         agents,
-        teams: Vec::new(),
+        teams,
         soul: "Be honest.".into(),
         skills,
         registry,
@@ -138,6 +168,10 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
         blobs,
         board_kv,
     }
+}
+
+async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPolicy) -> Fixture {
+    fixture_full(files, &[], budgets, policy).await
 }
 
 async fn fixture(files: &[(&str, &str)]) -> Fixture {
@@ -1419,5 +1453,132 @@ fn board_digest_skips_boardless_agents_and_empty_boards() {
         let run = f.session.submit("scrum", "hi").await.unwrap();
         f.session.drive(&run, f.host.clone()).await;
         assert!(no_digest(&f, &run), "empty board must not inject a digest");
+    });
+}
+
+/// ADR-032 (a)+(c): delegating to a team drives the LEAD, the boundary RESETS
+/// authority (echo is callable inside although the CALLER never held it), and
+/// the team.md body reaches the lead's AND the delegated member's prompts —
+/// but never the outside caller's.
+#[test]
+fn team_boundary_resets_authority_and_injects_principles() {
+    block_on(async {
+        let f = fixture_full(
+            &[CLIENT, SQUAD_LEAD, SQUAD_MATE],
+            &[SQUAD_TEAM],
+            Budgets::default(),
+            ActionPolicy::default(),
+        )
+        .await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"squad\", \"arguments\": {\"goal\": \"build the module\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"inside\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"mate\", \"arguments\": {\"goal\": \"crunch numbers\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: crunched");
+        f.mock.push_text("action: answer\nanswer: module done");
+        f.mock.push_text("action: answer\nanswer: all done");
+        let run = f.session.submit("client", "need a module").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("all done"));
+        let signals = f.host.signals();
+        // The team tool drove the LEAD as its own run.
+        assert!(signals.iter().any(|s| matches!(
+            &s.kind,
+            SignalKind::RunStarted { agent_id, goal } if agent_id == "lead" && goal == "build the module"
+        )));
+        // Boundary reset: `echo` executed inside although the client lacks it.
+        let obs = observations(&signals);
+        assert!(obs.iter().any(|o| o == "echo: inside"));
+        assert!(obs
+            .iter()
+            .any(|o| o.contains("Result (untrusted): crunched")));
+        // Principles reached the lead and the member, not the caller.
+        let requests = f.mock.requests();
+        let section_text = |needle: &str| {
+            requests
+                .iter()
+                .find(|r| r.sections.iter().any(|(_, s)| s.contains(needle)))
+                .unwrap_or_else(|| panic!("no request containing '{needle}'"))
+        };
+        let has_principles = |r: &askk_core::InferenceRequest| {
+            r.sections
+                .iter()
+                .any(|(k, s)| k.name() == "skills" && s.contains("measure twice, cut once"))
+        };
+        assert!(has_principles(section_text("build the module")), "lead");
+        assert!(has_principles(section_text("crunch numbers")), "member");
+        assert!(!has_principles(section_text("need a module")), "caller");
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// ADR-032 (b): the team's toolset is the CEILING inside the boundary — the
+/// lead lists `now` and the caller even holds it, but the team does not
+/// declare it, so inside the team it is unknown.
+#[test]
+fn team_toolset_is_the_ceiling_inside_the_boundary() {
+    block_on(async {
+        let f = fixture_full(
+            &[CLIENT, SQUAD_LEAD, SQUAD_MATE],
+            &[SQUAD_TEAM],
+            Budgets::default(),
+            ActionPolicy::default(),
+        )
+        .await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"squad\", \"arguments\": {\"goal\": \"what time\"}}",
+        );
+        f.mock
+            .push_text("action: tool\nanswer: {\"name\": \"now\", \"arguments\": {}}");
+        f.mock.push_text("action: answer\nanswer: no clock in here");
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("client", "ask the squad").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert!(observations(&f.host.signals())
+            .iter()
+            .any(|o| o.contains("unknown tool 'now'") && o.contains("[echo, mate]")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// ADR-032 (e): the delegation depth cap counts through a team boundary — a
+/// team call spends a depth level like any delegation.
+#[test]
+fn depth_cap_holds_through_team_boundary() {
+    block_on(async {
+        let budgets = Budgets {
+            max_delegation_depth: 1,
+            ..Budgets::default()
+        };
+        let f = fixture_full(
+            &[CLIENT, SQUAD_LEAD, SQUAD_MATE],
+            &[SQUAD_TEAM],
+            budgets,
+            ActionPolicy::default(),
+        )
+        .await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"squad\", \"arguments\": {\"goal\": \"go deep\"}}",
+        );
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"mate\", \"arguments\": {\"goal\": \"deeper\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: gave up");
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("client", "push depth").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        // The lead (depth 1) hit the cap trying to reach its member.
+        assert!(observations(&f.host.signals())
+            .iter()
+            .any(|o| o.contains("delegation depth cap (1) reached")));
+        assert_eq!(f.mock.remaining(), 0);
     });
 }

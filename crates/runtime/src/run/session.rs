@@ -15,7 +15,7 @@ use askk_core::{
 
 use crate::actions::PendingActions;
 use crate::config::{validate, AgentConfig, ConfigError, SkillConfig, TeamConfig};
-use crate::delegate::{DelegateTool, HandoffTool};
+use crate::delegate::{DelegateTool, HandoffTool, TeamTool};
 use crate::run::cancel::CancelToken;
 use crate::run::host::RunHost;
 use crate::run::{dispatch, turn};
@@ -51,9 +51,8 @@ pub struct SessionInit {
 /// Session internals shared with the turn loop and the delegation seam.
 pub(crate) struct Shared {
     pub(crate) agents: BTreeMap<String, AgentConfig>,
-    /// First-class teams (ADR-032); loaded + validated, consumed by the
-    /// team delegation boundary.
-    #[allow(dead_code)] // read once the team tool lands (wave-16 B)
+    /// First-class teams (ADR-032); each enabled one registers a `TeamTool`,
+    /// and member runs look their principles body up here by id.
     pub(crate) teams: Vec<TeamConfig>,
     pub(crate) soul: String,
     pub(crate) skills: Vec<SkillConfig>,
@@ -127,8 +126,13 @@ pub(crate) struct RunState {
     pub(crate) memory: MemoryBlock,
     /// (phase name, distilled answer) carried into later PhaseFrames.
     pub(crate) artifacts: Vec<(String, String)>,
-    /// Effective allowlist: agent tools ∩ every ancestor's allowlist.
+    /// Effective allowlist: agent tools ∩ every ancestor's allowlist —
+    /// except across a team boundary, which RESETS it to lead ∩ team.tools.
     pub(crate) allowed_tools: Vec<String>,
+    /// The team this run executes inside (ADR-032): set by TeamTool for the
+    /// lead, inherited by members it delegates to. Drives the principles
+    /// injection in the sheet.
+    pub(crate) team_id: Option<String>,
     pub(crate) depth: u8,
     pub(crate) status: RunStatus,
     pub(crate) final_text: Option<String>,
@@ -192,6 +196,7 @@ impl RunState {
             memory,
             artifacts: Vec::new(),
             allowed_tools,
+            team_id: None,
             depth,
             status: RunStatus::Running,
             final_text: None,
@@ -257,6 +262,16 @@ impl RunSession {
                     problems.borrow_mut().push(format!(
                         "{}: cannot register agent as delegate tool: {e}",
                         agent.source_path
+                    ));
+                }
+            }
+            // Teams are delegate tools too (ADR-032): one per enabled team,
+            // sharing the agent id namespace (validate rejects collisions).
+            for team in teams.iter().filter(|t| t.enabled) {
+                if let Err(e) = registry.register(Rc::new(TeamTool::new(weak.clone(), team))) {
+                    problems.borrow_mut().push(format!(
+                        "{}: cannot register team as delegate tool: {e}",
+                        team.source_path
                     ));
                 }
             }

@@ -282,6 +282,28 @@ segments harmlessly for the mirror but leader election is the upgrade path befor
 run CONTROL. Rejected: SharedWorker owner (Safari gaps, big rewire); leader election now
 (complexity before need); storage-event polling (chatty, no payload).
 
+## ADR-032 (A) — the story-shaped strategy: director thread, teams as micro-service boundaries
+An agent project is ONE long-running thread progressing through declared scenes (phases)
+toward the climax (the verify gate) — not a parallel loop farm. The strategy layer is pure
+MD: the plan phase splits the goal into tasks (each a board card, criteria-gated); the
+dispatch loop phase IS the task scheduler — it runs through the cards in order, choosing
+per task an inline turn, a delegate expert, a TEAM, or a spawned loop (`phase.N.fan_out`/
+`parts` declares one delegate loop per planned task; `spawn_run`/`wait_run` cover ad-hoc
+parallelism WITHIN a scene). A broad task goes to a team: a folder with `team.md`
+{id, lead, tools, body=shared principles} is a first-class delegation boundary — ONE tool;
+delegating to it drives the LEAD, and the boundary RESETS authority to the team's declared
+toolset (lead ∩ team, not caller ∩ lead) — the micro-service analogy: a module carries its
+own complete requirements, and its principles (the DRY/SOLID of that module) are injected
+into every member driven inside it. Load-validation walls the boundary: outsiders may not
+name team members directly, lead must live in the folder, ids share one namespace,
+team-in-team rejected. Long threads are declared per agent (`budget.max_turns`/
+`deadline_s`/`depth` frontmatter overriding session defaults); goal continuity across
+reloads = the board digest observation at run start (durable board is the story's state;
+true run resume stays deferred behind the epoch fence). Rejected: a typed task-scheduler
+FSM beside the engine (the phase engine + board already are the strategy; new code would
+duplicate declared config); global budget bumps (punishes every agent for one director);
+teams as mere name prefixes (no boundary, no principles seam).
+
 ## ADR-019 (A) — agents + custom tools are real served files, not hardcoded
 The `agents/` folder moved UNDER `crates/web/assets/agents/` so the SAME files are both baked
 (build.rs fallback) AND served verbatim at `/assets/agents/*`. Boot fetches the served

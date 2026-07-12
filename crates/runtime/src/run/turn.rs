@@ -282,12 +282,27 @@ fn build_sheet(
     contract: &Contract,
     toolset: &ToolSet,
 ) -> Sheet {
-    let skills: Vec<Skill> = agent
+    let mut skills: Vec<Skill> = agent
         .skills
         .iter()
         .filter_map(|id| shared.skills.iter().find(|s| &s.id == id))
         .map(|s| s.to_skill())
         .collect();
+    // A run inside a team carries the team.md body — the folder's shared
+    // principles — into every member's prompt, same spirit as soul/skills
+    // (ADR-032). ponytail: rides the Skills element, no new Element variant.
+    if let Some(team) = run
+        .team_id
+        .as_ref()
+        .and_then(|id| shared.teams.iter().find(|t| &t.id == id))
+    {
+        if !team.body.is_empty() {
+            skills.push(Skill {
+                name: format!("{} principles", team.name),
+                body: team.body.clone(),
+            });
+        }
+    }
     let frame = run.declared.then(|| PhaseFrame {
         name: phase.name.clone(),
         header: phase.header.clone(),

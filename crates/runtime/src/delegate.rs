@@ -11,8 +11,8 @@ use std::rc::Weak;
 use askk_core::{Effect, RunId, RunStatus, SignalKind, Tool, ToolCtx, ToolResult, ToolSpec};
 use serde_json::{json, Value};
 
-use crate::config::AgentConfig;
-use crate::run::dispatch::{DEPTH_SLICE, PARENT_RUN_SLICE, PARENT_TOOLS_SLICE};
+use crate::config::{AgentConfig, TeamConfig};
+use crate::run::dispatch::{DEPTH_SLICE, PARENT_RUN_SLICE, PARENT_TOOLS_SLICE, TEAM_SLICE};
 use crate::run::session::{RunState, Shared};
 use crate::run::turn;
 use crate::state::LocalBoxFuture;
@@ -33,19 +33,40 @@ pub(crate) fn parent_tools(ctx: &ToolCtx) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The team a CHILD run inherits: the caller's team (TEAM_SLICE), but only
+/// when the child agent lives in that team's folder — membership is
+/// source-path containment (ADR-032). Outsiders never carry the team in.
+pub(crate) fn inherited_team(
+    shared: &Shared,
+    ctx: &ToolCtx,
+    child: &AgentConfig,
+) -> Option<String> {
+    let id = ctx.slice(TEAM_SLICE)?.as_str()?;
+    let team = shared.teams.iter().find(|t| t.id == id)?;
+    child
+        .source_path
+        .starts_with(team.folder())
+        .then(|| team.id.clone())
+}
+
 /// Resolve authority, spin the nested run, drive it to a terminal, and hand
 /// back `(status, final_text)` — the one child-run body shared by
-/// `DelegateTool` and `HandoffTool`. `Err` is a readable message for the
-/// caller's observation.
+/// `DelegateTool`, `HandoffTool`, and `TeamTool`. `Err` is a readable message
+/// for the caller's observation. A `boundary` team RESETS authority to the
+/// team's own toolset (the micro-service boundary, ADR-032); without one,
+/// authority narrows as usual (child = parent ∩ child).
 async fn drive_child(
     shared: &Shared,
     ctx: &ToolCtx,
     child: &AgentConfig,
     goal: &str,
     depth: u8,
+    boundary: Option<&TeamConfig>,
 ) -> Result<(RunStatus, String), String> {
-    // Authority narrows: child toolset = parent ∩ child.
-    let parent_tools = parent_tools(ctx);
+    let parent_tools = match boundary {
+        Some(team) => team.tools.clone(),
+        None => parent_tools(ctx),
+    };
     let allowed: Vec<String> = child
         .tools
         .iter()
@@ -68,6 +89,12 @@ async fn drive_child(
     let run_id = shared.next_run_id();
     shared.hosts.borrow_mut().insert(run_id.clone(), host);
     let mut run = RunState::new(child, goal, allowed, depth + 1, memory, run_id);
+    // The run carries its team: set by the boundary, or inherited when the
+    // caller runs inside a team and the child is a member of it.
+    run.team_id = match boundary {
+        Some(team) => Some(team.id.clone()),
+        None => inherited_team(shared, ctx, child),
+    };
     let started = turn::emit(
         shared,
         &mut run,
@@ -143,7 +170,7 @@ impl Tool for DelegateTool {
             let Some(child) = shared.agents.get(&self.child_id).cloned() else {
                 return ToolResult::err(format!("delegate: unknown agent '{}'", self.child_id));
             };
-            match drive_child(&shared, ctx, &child, goal, depth).await {
+            match drive_child(&shared, ctx, &child, goal, depth, None).await {
                 Err(e) => ToolResult::err(format!("delegate '{}': {e}", self.child_id)),
                 Ok((RunStatus::Answered, text)) => {
                     ToolResult::ok(format!("Result (untrusted): {text}"))
@@ -228,12 +255,94 @@ impl Tool for HandoffTool {
             let Some(child) = shared.agents.get(agent_id).cloned() else {
                 return ToolResult::err(format!("handoff: unknown agent '{agent_id}'"));
             };
-            match drive_child(&shared, ctx, &child, goal, depth).await {
+            match drive_child(&shared, ctx, &child, goal, depth, None).await {
                 Err(e) => ToolResult::err(format!("handoff '{agent_id}': {e}")),
                 // Verbatim: dispatch makes this text the caller's final answer.
                 Ok((RunStatus::Answered, text)) => ToolResult::ok(text),
                 Ok((status, text)) => ToolResult::err(format!(
                     "handoff '{agent_id}' ended {status:?} without a verified answer: {text}"
+                )),
+            }
+        })
+    }
+}
+
+/// Team-as-tool (ADR-032): delegating to a team drives its LEAD agent inside
+/// the team boundary. The boundary RESETS authority — the run's toolset is
+/// lead ∩ team.tools, NOT caller ∩ lead — because the folder declares its own
+/// complete requirements (the micro-service analogy). The team.md body rides
+/// the lead's run (and every member run it delegates to) as shared principles.
+pub struct TeamTool {
+    spec: ToolSpec,
+    team_id: String,
+    shared: Weak<Shared>,
+}
+
+impl TeamTool {
+    /// Tool card = the team's name + description, like an agent's.
+    pub(crate) fn new(shared: Weak<Shared>, team: &TeamConfig) -> Self {
+        Self {
+            spec: ToolSpec {
+                name: team.id.clone(),
+                description: format!(
+                    "Delegate a goal to the '{}' team. {}",
+                    team.name, team.description
+                ),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "goal": {
+                            "type": "string",
+                            "description": "The self-contained goal for the team."
+                        }
+                    },
+                    "required": ["goal"]
+                }),
+                effect: Effect::Pure,
+            },
+            team_id: team.id.clone(),
+            shared,
+        }
+    }
+}
+
+impl Tool for TeamTool {
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
+    }
+
+    fn call<'a>(&'a self, args: Value, ctx: &'a mut ToolCtx) -> LocalBoxFuture<'a, ToolResult> {
+        Box::pin(async move {
+            let Some(shared) = self.shared.upgrade() else {
+                return ToolResult::err("team: session is gone");
+            };
+            let depth = ctx.slice(DEPTH_SLICE).and_then(Value::as_u64).unwrap_or(0) as u8;
+            let cap = shared.budgets.max_delegation_depth;
+            if depth >= cap {
+                return ToolResult::err(format!(
+                    "delegation depth cap ({cap}) reached; handle the goal yourself or answer"
+                ));
+            }
+            let Some(goal) = args.get("goal").and_then(Value::as_str) else {
+                return ToolResult::err("team: missing string field 'goal'");
+            };
+            let Some(team) = shared.teams.iter().find(|t| t.id == self.team_id).cloned() else {
+                return ToolResult::err(format!("team: unknown team '{}'", self.team_id));
+            };
+            let Some(lead) = shared.agents.get(&team.lead).cloned() else {
+                return ToolResult::err(format!(
+                    "team '{}': unknown lead agent '{}'",
+                    team.id, team.lead
+                ));
+            };
+            match drive_child(&shared, ctx, &lead, goal, depth, Some(&team)).await {
+                Err(e) => ToolResult::err(format!("team '{}': {e}", team.id)),
+                Ok((RunStatus::Answered, text)) => {
+                    ToolResult::ok(format!("Result (untrusted): {text}"))
+                }
+                Ok((status, text)) => ToolResult::err(format!(
+                    "team '{}' ended {status:?} without a verified answer: {text}",
+                    team.id
                 )),
             }
         })

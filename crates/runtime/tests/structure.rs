@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use askk_runtime::config::{load_soul, AgentConfig, SkillConfig};
+use askk_runtime::config::{load_soul, AgentConfig, SkillConfig, TeamConfig};
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -172,6 +172,8 @@ fn every_agents_markdown_parses() {
             continue; // folder docs, not config (build.rs skips it too)
         } else if rel_path == Path::new("soul.md") {
             assert!(!load_soul(&text).is_empty(), "{label}: soul.md is empty");
+        } else if rel_path.file_name().is_some_and(|n| n == "team.md") {
+            TeamConfig::from_markdown(&label, &text).unwrap_or_else(|e| panic!("{e}"));
         } else if rel_path.starts_with("skills") {
             SkillConfig::from_markdown(&label, &text).unwrap_or_else(|e| panic!("{e}"));
         } else {

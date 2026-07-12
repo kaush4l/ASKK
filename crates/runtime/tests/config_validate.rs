@@ -340,4 +340,75 @@ mod team_tests {
         assert!(joined.contains("team folder holds no agents"));
         assert!(joined.contains("lead 'ghost' is not an agent in agents/a/b/"));
     }
+
+    /// ADR-032 member visibility: the team boundary is the only door in.
+    /// An outsider listing a member errors (with the fix named); members —
+    /// the lead included — listing each other inside the folder stays fine.
+    #[test]
+    fn outsider_listing_a_member_is_rejected_insiders_pass() {
+        let team = TeamConfig::from_markdown(
+            "agents/coding/team.md",
+            "---\nid: coding\nlead: dev-lead\ntools: shell, programmer\n---\nDRY.",
+        )
+        .unwrap();
+        let lead = AgentConfig::from_markdown(
+            "agents/coding/dev-lead.md",
+            "---\nid: dev-lead\ntools: programmer\n---\n",
+        )
+        .unwrap();
+        let member = agent("agents/coding/programmer.md", "programmer");
+        let insiders = vec![lead, member];
+        let tools = strs(&["shell", "programmer"]);
+        let contracts = strs(&["react"]);
+        let providers = strs(&["default"]);
+        validate(
+            &insiders,
+            std::slice::from_ref(&team),
+            &tools,
+            &[],
+            &contracts,
+            &providers,
+        )
+        .expect("insiders listing members are fine");
+
+        let outsider =
+            AgentConfig::from_markdown("agents/boss.md", "---\nid: boss\ntools: programmer\n---\n")
+                .unwrap();
+        let mut agents = insiders;
+        agents.push(outsider);
+        let err = validate(&agents, &[team], &tools, &[], &contracts, &providers).unwrap_err();
+        let joined = err.problems.join("\n");
+        assert!(joined.contains(
+            "agents/boss.md: tool 'programmer' is a member of team 'coding' \
+             (agents/coding/team.md); delegate to the team id 'coding' instead"
+        ));
+        assert_eq!(err.problems.len(), 1);
+    }
+
+    /// TeamTool drives the lead directly, so an enabled team with a disabled
+    /// lead is a load-time error, not a dead run.
+    #[test]
+    fn disabled_lead_is_rejected() {
+        let team = TeamConfig::from_markdown(
+            "agents/coding/team.md",
+            "---\nid: coding\nlead: dev-lead\n---\n",
+        )
+        .unwrap();
+        let lead = AgentConfig::from_markdown(
+            "agents/coding/dev-lead.md",
+            "---\nid: dev-lead\nenabled: false\n---\n",
+        )
+        .unwrap();
+        let err = validate(
+            &[lead],
+            &[team],
+            &[],
+            &[],
+            &strs(&["react"]),
+            &strs(&["default"]),
+        )
+        .unwrap_err();
+        assert!(err.problems[0].contains("lead 'dev-lead' is disabled"));
+        assert_eq!(err.problems.len(), 1);
+    }
 }

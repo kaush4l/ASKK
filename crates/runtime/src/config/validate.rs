@@ -178,6 +178,29 @@ fn check_team<'a>(
             team.folder()
         ));
     }
+    // TeamTool drives the lead directly (not via its delegate tool, which
+    // only exists for enabled agents) — a disabled lead must fail at load.
+    if team.enabled && members.iter().any(|m| m.id == team.lead && !m.enabled) {
+        problems.push(format!("{at}: lead '{}' is disabled", team.lead));
+    }
+    // Member visibility hygiene (ADR-032): the team boundary is the only door.
+    // Agents outside the folder must not hold member delegates directly;
+    // members (the lead included) listing each other stays fine.
+    let member_ids: Vec<&str> = members.iter().map(|m| m.id.as_str()).collect();
+    for agent in agents {
+        if agent.source_path.starts_with(team.folder()) {
+            continue;
+        }
+        for tool in &agent.tools {
+            if member_ids.contains(&tool.as_str()) {
+                problems.push(format!(
+                    "{}: tool '{tool}' is a member of team '{}' ({at}); \
+                     delegate to the team id '{}' instead",
+                    agent.source_path, team.id, team.id
+                ));
+            }
+        }
+    }
 }
 
 /// A custom contract must carry the fields the runtime reads wherever it is
