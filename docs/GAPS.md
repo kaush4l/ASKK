@@ -22,9 +22,8 @@ below is accepted, not pending.
 16. Delegation authority narrowing (child = parent ∩ child) means an orchestrator must
     list every transitive tool or sub-agents run with empty allowlists; orchestrator.md
     now carries the superset. Revisit if the tool count grows.
-17. Cancel sets the per-iteration token but does not abort an in-flight fetch; a slow
-    local-model prefill (observed: minutes at ~22 prompt-tok/s) keeps the run "busy"
-    until the call returns. Fix = AbortController plumbed through send_stream.
+17. CLOSED (wave 14): CancelToken races provider.infer; wasm fetch aborts via
+    AbortController on stream drop (run/cancel.rs, host/fetch.rs).
 18. Every LlmDelta notify refolds all runs in the UI; with a fast stream the main
     thread saturates (long evals time out mid-run). Fix = fold incrementally or
     throttle notify.
@@ -136,3 +135,15 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
 45. Custom `field.N.*` contracts render TOON/JSON like built-ins but have no per-field
     examples in the prompt; weak models may need a `field.N.example` key (add on
     evidence from live runs).
+
+## Wave-14 rows (live-found during the batch)
+
+46. MCP client skips notifications (beyond `initialized`), resources and prompts; tools
+    are listed once at boot (edit servers -> reload). Add per-call re-list when a live
+    server needs it.
+47. Local (transformers.js) provider allows ONE in-flight generate per page — a second
+    concurrent local run gets RateLimited. Pool workers if parallel local runs matter.
+48. Board UI is a live read view; cards move only through agent tools. Drag-and-drop
+    editing is a deliberate omission until a human-editing story is wanted.
+49. memory tools use a shared namespace (`notes/<slug>`) because ToolCtx does not carry
+    the calling agent id; per-agent scoping when it does.

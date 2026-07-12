@@ -235,6 +235,39 @@ events, and replay must not replay card moves); a scheduler owning the board (ag
 cards through the same tool gate as everything else, so the board stays inspectable and
 steerable).
 
+## ADR-027 (A) — env presets: agents declare an environment, not a tool list
+`env: vm|web|core|board` in agent frontmatter expands into the tools allowlist at LOAD time
+(union with explicit `tools:`, dedup, env-first order; unknown preset = collected load
+error; nothing stored on AgentConfig). The hermes-agent insight: a harness ships default
+environment assumptions — here the compiled-in environment (VM, browser web, board) IS the
+preset. Rejected: runtime expansion (validation must see final refs at load).
+
+## ADR-028 (A) — MCP client is browser-direct JSON-RPC over the Transport seam
+Remote Streamable-HTTP MCP servers register as ordinary `dyn Tool`s (`mcp_<slug>_<tool>`;
+`readOnlyHint`→Pure else Mutating, so remote mutations hit the action gate). One handshake
+per server at boot (initialize → initialized → tools/list); SSE-wrapped and plain-JSON
+responses both parse; `Mcp-Session-Id` echoes on every later call; a dead server is a boot
+warning, never a failure. Config = `mcp_servers` pref (newline URLs). Rejected: a separate
+MCP subsystem (old-ASKK style registry/worker) — the one tool registry already is the
+integration point; stdio/process servers need a bridge and wait for one.
+
+## ADR-029 (A) — local inference = vendored transformers.js worker behind the profile seam
+Profile `base_url: local` + a HF ONNX model id resolves to a wasm-only Provider that drives
+a vendored bun-built Web Worker (transformers.js + pinned ort runtime committed as assets,
+like speech): WebGPU q4f16, cpu-wasm q4 fallback, TextStreamer deltas into the existing
+streaming plumbing, model weights streamed from the HF hub and cached by the browser —
+never committed. Same-role messages merge (strict chat templates). One in-flight generate
+per page (RateLimited otherwise; pool workers when needed). Rejected: WebLLM/MLC (second
+runtime to vendor); committing weights (repo size, licensing).
+
+## ADR-030 (A) — handoff is a dispatch short-circuit; cancel is a wake-aware token race
+Two run-driver semantics: (1) `handoff {agent, goal}` = delegation through the single
+drive_child seam, then absorb_result ends the parent run Answered with the child's answer
+verbatim (same Result signal; no post-handoff turn — pinned by turns_used == 1). (2) Cancel
+races `provider.infer` against a `CancelToken` (Cell flag + waker) at the one await site;
+dropping the infer future drops the transport stream, and the wasm fetch aborts via
+AbortController (AbortOnDrop, disarmed on completion). No new SignalKinds for either.
+
 ## ADR-019 (A) — agents + custom tools are real served files, not hardcoded
 The `agents/` folder moved UNDER `crates/web/assets/agents/` so the SAME files are both baked
 (build.rs fallback) AND served verbatim at `/assets/agents/*`. Boot fetches the served

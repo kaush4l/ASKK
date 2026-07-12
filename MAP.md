@@ -49,6 +49,13 @@ core ← inference ← runtime ← web
 | Kanban card model + stage rules (ADR-026) | `crates/core/src/board.rs` |
 | Board persistence over KvStore | `crates/runtime/src/state/board.rs` |
 | Board tools (add/list/move/check) | `crates/runtime/src/tools/board.rs` |
+| Board UI tab (5-column live view) | `crates/web/src/ui/board.rs` |
+| MCP client (browser-direct, ADR-028) | `crates/runtime/src/tools/mcp.rs` |
+| Memory tools (remember/recall/forget) | `crates/runtime/src/tools/memory_tools.rs` |
+| Env presets (`env:` frontmatter, ADR-027) | `crates/runtime/src/config/env.rs` |
+| Handoff + delegation seam (ADR-030) | `crates/runtime/src/delegate.rs` |
+| Cancel token (races in-flight inference) | `crates/runtime/src/run/cancel.rs` |
+| Local LLM provider (transformers.js, ADR-029) | `crates/web/src/host/local_llm.rs` + `scripts/llm/` |
 | shell tool (exec over VM serial) | `crates/runtime/src/tools/shell.rs` |
 | shell executor (browser serial bridge) | `crates/web/src/host/vm.rs` |
 | Agents/skills/tools loader (baked + live fetch) | `crates/web/src/host/config.rs` |

@@ -128,17 +128,27 @@ projects today; richer toolchains wait on guest networking (GAPS 25).
   phase's list field, dispatched concurrently — deterministic parallelism that does not
   rely on the model emitting a multi-call turn).
 
-## Wave 14 (in flight)
+## Wave 14 — the software team + everywhere-inference (2026-07-12)
 
-Being built in parallel right now — in-flight, not live; each row moves to the Live
-table only when live-verified.
+All merged and gate-green; browser rows live-verified on https://kaush4l.github.io/ASKK/.
 
-- Kanban board foundation (ADR-026): card model, KvStore-backed board, four tools
-  (add/list/move/check)
-- Board UI tab — the work board as a dashboard surface
-- Tester agent
-- MCP client — browser-direct MCP servers as ToolRegistry entries
-- Memory tools — `remember`/`recall` over the per-agent store
-- Env presets
-- Handoff between agents
-- Cancel = abort — AbortController through the streaming fetch
+- **Kanban work model** (ADR-026): goal → cards with acceptance criteria → agents push
+  through backlog/planning/doing/testing/done; Done is criteria-gated; testing→planning
+  bounces are first-class. Four tools (board_add/list/move/check) + a live Board tab
+  (5 columns over the persistent OPFS board) + a `tester` agent that records
+  per-criterion verdicts; the orchestrator plans onto the board and bounces unmet cards.
+- **Browser-direct MCP client**: remote Streamable-HTTP MCP servers become ordinary
+  registry tools (`mcp_<server>_<tool>`, readOnlyHint→Pure); `mcp_servers` Settings
+  textarea; dead servers degrade to boot warnings.
+- **Memory tools**: `remember`/`recall`/`forget` over KvStore `notes/` — agents curate
+  durable notes; assistant + researcher carry directives.
+- **Env presets**: `env: vm|web|core|board` frontmatter expands into the tools allowlist
+  at load; agents declare their environment instead of enumerating tools.
+- **Handoff**: swarm-style full transfer — `handoff {agent, goal}` ends the caller's run
+  with the target's answer verbatim (no rephrasing turn).
+- **Cancel = abort** (GAPS 17 closed): wake-aware CancelToken races the in-flight
+  inference; wasm fetch aborts via AbortController on stream drop.
+- **In-browser LLM inference**: profile base_url `local` + a HF ONNX model id (e.g.
+  `onnx-community/gemma-4-E2B-it-ONNX`) runs the whole loop client-side via a vendored
+  transformers.js worker — WebGPU q4f16, wasm fallback, hub-streamed browser-cached
+  weights, token streaming into the normal loop.
