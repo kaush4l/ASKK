@@ -207,6 +207,9 @@ pub fn SettingsStage(
             p { class: "hint",
                 "Bring your own key: profiles stay in this browser's private storage (OPFS) and each key is sent only to its base URL. The highlighted profile is the one runs use. Remote servers must allow this origin via CORS."
             }
+            p { class: "hint",
+                "No server at all? Set base URL to `local` and model to a HuggingFace ONNX id (e.g. onnx-community/gemma-4-E2B-it-ONNX) to run fully in-browser — WebGPU when available, wasm fallback, no key. First use downloads the weights into the browser cache."
+            }
             div { class: "settings-title", "Web search" }
             label { class: "settings-row",
                 span { class: "settings-label", "SearXNG instance (blank = DuckDuckGo/Wikipedia only)" }

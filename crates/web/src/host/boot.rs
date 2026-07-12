@@ -459,6 +459,11 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let resolver_profiles = profiles.clone();
     let resolver: ProviderResolver = Box::new(move |profile_id| {
         let form = resolver_profiles.borrow().active_form();
+        // Base URL `local` (or a `local/` model prefix) → in-browser
+        // inference via the transformers.js worker; no server, no key.
+        if let Some(local) = super::local_llm::local_provider(profile_id, &form) {
+            return Ok(local);
+        }
         let mut providers = ProviderRegistry::new(transport.clone());
         providers.add_profile(ProviderProfile {
             id: profile_id.to_string(),

@@ -8,6 +8,7 @@ pub mod config;
 pub mod dom;
 pub mod fetch;
 pub mod jstool;
+pub mod local_llm;
 pub mod opfs;
 pub mod profile;
 pub mod speech;

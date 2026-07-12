@@ -1,0 +1,8 @@
+{
+  "name": "llm",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0"
+  }
+}
