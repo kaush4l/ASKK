@@ -11,7 +11,9 @@ use askk_core::{
 use askk_inference::MockProvider;
 use askk_runtime::config::{AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunSession, SessionInit, TestHost};
-use askk_runtime::state::{BlobStore, MemBlob, MemKv, MemoryStore, SessionStore, SignalLog};
+use askk_runtime::state::{
+    BlobStore, BoardStore, KvStore, MemBlob, MemKv, MemoryStore, SessionStore, SignalLog,
+};
 use askk_runtime::testutil::block_on;
 use askk_runtime::tools::{register_builtins, ToolRegistry};
 
@@ -86,6 +88,9 @@ struct Fixture {
     host: Rc<TestHost>,
     mock: Rc<MockProvider>,
     blobs: Rc<dyn BlobStore>,
+    /// Same kv the board tools AND the session's reorientation digest read —
+    /// tests seed cards through `BoardStore::new(kv)` directly.
+    board_kv: Rc<dyn KvStore>,
 }
 
 async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPolicy) -> Fixture {
@@ -96,7 +101,8 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
         .unwrap();
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).unwrap();
-    askk_runtime::tools::register_board(&mut registry, Rc::new(MemKv::new())).unwrap();
+    let board_kv: Rc<dyn KvStore> = Rc::new(MemKv::new());
+    askk_runtime::tools::register_board(&mut registry, board_kv.clone()).unwrap();
     askk_runtime::tools::register_artifacts(&mut registry, Rc::clone(&blobs), || 7).unwrap();
     let agents: Vec<AgentConfig> = files
         .iter()
@@ -122,6 +128,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
         budgets,
         policy,
         known_providers: vec!["default".into()],
+        board: Some(BoardStore::new(board_kv.clone())),
     })
     .unwrap();
     Fixture {
@@ -129,6 +136,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
         host: Rc::new(TestHost::new()),
         mock,
         blobs,
+        board_kv,
     }
 }
 
@@ -1318,5 +1326,98 @@ fn artifact_publish_lands_in_projection() {
         assert_eq!(doc["kind"], "markdown");
         assert!(doc["content"].as_str().unwrap().contains("All good"));
         assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+/// Reorientation (wave-16): a top-level run whose agent holds `board_list`
+/// starts with the durable board's digest as its first observation — in the
+/// signal stream AND in the prompt the model actually sees.
+#[test]
+fn board_digest_reorients_a_board_holding_run() {
+    block_on(async {
+        let f = fixture(&[SCRUM, SOLO]).await;
+        // Seed the durable board directly (same kv the session reads).
+        let board = BoardStore::new(f.board_kv.clone());
+        board
+            .add(
+                "auth module",
+                "build auth",
+                vec!["tests green".into()],
+                askk_core::CardStage::Doing,
+            )
+            .await
+            .unwrap();
+        board
+            .add("docs", "write docs", vec![], askk_core::CardStage::Backlog)
+            .await
+            .unwrap();
+        f.mock.push_text("action: answer\nanswer: reoriented");
+        let run = f
+            .session
+            .submit("scrum", "continue the goal")
+            .await
+            .unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        // The digest is a durable ObservationAppended signal in the run's
+        // stream (emitted at submit, before drive installs the host sink —
+        // like RunStarted itself, it surfaces through the fold).
+        let proj = f.session.projection(&run).unwrap();
+        let digest = proj
+            .messages
+            .iter()
+            .filter(|m| m.role == Role::Tool)
+            .map(|m| m.content.clone())
+            .find(|t| t.starts_with("BOARD (durable state — reorient before planning):"))
+            .expect("digest observation");
+        assert!(
+            digest.contains("backlog 1 · planning 0 · doing 1 · testing 0 · done 0"),
+            "{digest}"
+        );
+        assert!(
+            digest.contains("- [doing] auth module — unmet: tests green"),
+            "{digest}"
+        );
+        // And the model saw it: the first request's history carries it.
+        let requests = f.mock.requests();
+        assert!(
+            requests[0]
+                .history
+                .iter()
+                .any(|m| m.role == Role::Tool && m.content.contains("BOARD (durable state")),
+            "digest missing from the assembled prompt"
+        );
+    });
+}
+
+/// No board tools on the agent → no digest; empty board → no digest either.
+#[test]
+fn board_digest_skips_boardless_agents_and_empty_boards() {
+    block_on(async {
+        // Seeded board, but `solo` holds no board tools.
+        let f = fixture(&[SCRUM, SOLO]).await;
+        BoardStore::new(f.board_kv.clone())
+            .add("card", "goal", vec![], askk_core::CardStage::Doing)
+            .await
+            .unwrap();
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("solo", "hi").await.unwrap();
+        f.session.drive(&run, f.host.clone()).await;
+        let no_digest = |f: &Fixture, run: &askk_core::RunId| {
+            !f.session
+                .projection(run)
+                .unwrap()
+                .messages
+                .iter()
+                .any(|m| m.content.contains("BOARD (durable state"))
+        };
+        assert!(no_digest(&f, &run), "boardless agent must not get a digest");
+
+        // Board-holding agent, EMPTY board → nothing injected.
+        let f = fixture(&[SCRUM, SOLO]).await;
+        f.mock.push_text("action: answer\nanswer: done");
+        let run = f.session.submit("scrum", "hi").await.unwrap();
+        f.session.drive(&run, f.host.clone()).await;
+        assert!(no_digest(&f, &run), "empty board must not inject a digest");
     });
 }

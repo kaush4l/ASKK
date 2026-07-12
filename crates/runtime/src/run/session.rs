@@ -19,7 +19,7 @@ use crate::delegate::{DelegateTool, HandoffTool};
 use crate::run::cancel::CancelToken;
 use crate::run::host::RunHost;
 use crate::run::{dispatch, turn};
-use crate::state::{MemoryStore, SessionStore, SignalLog};
+use crate::state::{BoardStore, MemoryStore, SessionStore, SignalLog};
 use crate::tools::ToolRegistry;
 
 /// Provider lookup seam: profile id → provider instance. Tests inject
@@ -43,6 +43,9 @@ pub struct SessionInit {
     pub budgets: Budgets,
     pub policy: ActionPolicy,
     pub known_providers: Vec<String>,
+    /// The durable kanban board (same kv the board tools write). A top-level
+    /// run whose agent holds `board_list` reorients from its digest at start.
+    pub board: Option<BoardStore>,
 }
 
 /// Session internals shared with the turn loop and the delegation seam.
@@ -64,6 +67,9 @@ pub(crate) struct Shared {
     pub(crate) session: SessionStore,
     pub(crate) budgets: Budgets,
     pub(crate) policy: ActionPolicy,
+    /// Durable board for the run-start reorientation digest (None in tests
+    /// that don't exercise it).
+    pub(crate) board: Option<BoardStore>,
     pub(crate) pending: RefCell<PendingActions>,
     pub(crate) runs: RefCell<BTreeMap<RunId, RunState>>,
     /// Per-run live host, installed by `drive`/`resolve_action` (and by the
@@ -244,6 +250,7 @@ impl RunSession {
                 budgets,
                 policy,
                 known_providers,
+                board,
             } = init;
             for agent in agents.iter().filter(|a| a.enabled) {
                 if let Err(e) = registry.register(Rc::new(DelegateTool::new(weak.clone(), agent))) {
@@ -296,6 +303,7 @@ impl RunSession {
                 session,
                 budgets,
                 policy,
+                board,
                 pending: RefCell::new(PendingActions::new()),
                 runs: RefCell::new(BTreeMap::new()),
                 hosts: RefCell::new(BTreeMap::new()),
@@ -344,6 +352,25 @@ impl RunSession {
         )
         .await
         .map_err(|e| ConfigError::one(e.to_string()))?;
+        // Reorientation (long-running goals): runs don't survive a reload,
+        // the board does. A top-level board-holding agent starts with the
+        // board digest as its first observation — durable in the log,
+        // replay-safe, folded into the projection. Children (depth > 0) are
+        // directed by their parent and never pass through submit.
+        if agent.tools.iter().any(|t| t == "board_list") {
+            if let Some(digest) = match &shared.board {
+                Some(board) => board.digest().await,
+                None => None,
+            } {
+                turn::observe(
+                    shared,
+                    &mut run,
+                    format!("BOARD (durable state — reorient before planning):\n{digest}"),
+                )
+                .await
+                .map_err(|e| ConfigError::one(e.to_string()))?;
+            }
+        }
         shared
             .cancels
             .borrow_mut()

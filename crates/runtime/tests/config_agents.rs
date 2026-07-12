@@ -45,7 +45,9 @@ fn every_agent_file_parses_and_validates() {
         let rel = path.strip_prefix(&root).expect("under agents/");
         let label = format!("agents/{}", rel.display());
         let text = fs::read_to_string(&path).expect("readable file");
-        if rel == Path::new("soul.md") {
+        if rel.file_name().is_some_and(|n| n == "README.md") {
+            continue; // folder docs, not config (build.rs skips it too)
+        } else if rel == Path::new("soul.md") {
             soul = Some(load_soul(&text));
         } else if rel.file_name().is_some_and(|n| n == "team.md") {
             teams.push(TeamConfig::from_markdown(&label, &text).unwrap_or_else(|e| panic!("{e}")));

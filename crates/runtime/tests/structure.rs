@@ -168,7 +168,9 @@ fn every_agents_markdown_parses() {
         let label = rel(&root, &path);
         let text = fs::read_to_string(&path).expect("readable file");
         let rel_path = path.strip_prefix(&agents).expect("under agents/");
-        if rel_path == Path::new("soul.md") {
+        if rel_path.file_name().is_some_and(|n| n == "README.md") {
+            continue; // folder docs, not config (build.rs skips it too)
+        } else if rel_path == Path::new("soul.md") {
             assert!(!load_soul(&text).is_empty(), "{label}: soul.md is empty");
         } else if rel_path.starts_with("skills") {
             SkillConfig::from_markdown(&label, &text).unwrap_or_else(|e| panic!("{e}"));

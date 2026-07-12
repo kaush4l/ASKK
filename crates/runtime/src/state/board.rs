@@ -12,6 +12,9 @@ use super::store::{KvStore, StoreError};
 
 const PREFIX: &str = "board/";
 
+/// Digest line cap: counts line + card lines + a possible elision marker.
+const DIGEST_MAX_LINES: usize = 15;
+
 pub struct BoardStore {
     kv: Rc<dyn KvStore>,
 }
@@ -87,6 +90,62 @@ impl BoardStore {
         self.put(&card).await?;
         Ok(card)
     }
+
+    /// Reorientation digest of the whole board; `None` when the board is
+    /// empty or the store is sick (a broken board must never block a run).
+    pub async fn digest(&self) -> Option<String> {
+        digest_cards(&self.list().await.ok()?)
+    }
+}
+
+/// Compact reorientation block: one line of per-stage counts, then the
+/// in-flight (doing/testing) cards with their unmet criteria, capped at
+/// `DIGEST_MAX_LINES` with an elision marker. Empty board → `None`.
+fn digest_cards(cards: &[Card]) -> Option<String> {
+    if cards.is_empty() {
+        return None;
+    }
+    let counts = CardStage::ALL
+        .iter()
+        .map(|s| {
+            let n = cards.iter().filter(|c| c.stage == *s).count();
+            format!("{} {n}", s.name())
+        })
+        .collect::<Vec<_>>()
+        .join(" · ");
+    let mut lines = vec![counts];
+    let in_flight: Vec<&Card> = cards
+        .iter()
+        .filter(|c| matches!(c.stage, CardStage::Doing | CardStage::Testing))
+        .collect();
+    let room = DIGEST_MAX_LINES - 1; // the counts line is spent
+    let shown = if in_flight.len() > room {
+        room.saturating_sub(1) // leave a line for the elision marker
+    } else {
+        in_flight.len()
+    };
+    for card in &in_flight[..shown] {
+        let unmet: Vec<&str> = card
+            .criteria
+            .iter()
+            .filter(|c| !c.met)
+            .map(|c| c.text.as_str())
+            .collect();
+        lines.push(if unmet.is_empty() {
+            format!("- [{}] {}", card.stage.name(), card.title)
+        } else {
+            format!(
+                "- [{}] {} — unmet: {}",
+                card.stage.name(),
+                card.title,
+                unmet.join("; ")
+            )
+        });
+    }
+    if in_flight.len() > shown {
+        lines.push(format!("… {} more in flight", in_flight.len() - shown));
+    }
+    Some(lines.join("\n"))
 }
 
 fn key(id: &str) -> String {
@@ -161,5 +220,69 @@ mod tests {
             s.remove(&card.id).await.unwrap();
             assert!(s.get(&card.id).await.unwrap().is_none());
         });
+    }
+
+    #[test]
+    fn digest_empty_board_is_none() {
+        block_on(async {
+            assert_eq!(store().digest().await, None);
+            assert_eq!(digest_cards(&[]), None);
+        });
+    }
+
+    #[test]
+    fn digest_counts_stages_and_lists_unmet_criteria() {
+        block_on(async {
+            let s = store();
+            s.add("Backlog item", "", vec![], CardStage::Backlog)
+                .await
+                .unwrap();
+            let mut auth = s
+                .add(
+                    "auth module",
+                    "",
+                    vec!["tests green".into(), "reviewed".into()],
+                    CardStage::Doing,
+                )
+                .await
+                .unwrap();
+            auth.criteria[1].met = true;
+            s.put(&auth).await.unwrap();
+            s.add("clean card", "", vec![], CardStage::Testing)
+                .await
+                .unwrap();
+            let d = s.digest().await.unwrap();
+            let lines: Vec<&str> = d.lines().collect();
+            assert_eq!(
+                lines[0],
+                "backlog 1 · planning 0 · doing 1 · testing 1 · done 0"
+            );
+            assert_eq!(lines[1], "- [doing] auth module — unmet: tests green");
+            // Met criteria never appear; a criteria-free card has no suffix.
+            assert!(!d.contains("reviewed"));
+            assert_eq!(lines[2], "- [testing] clean card");
+            assert_eq!(lines.len(), 3);
+        });
+    }
+
+    #[test]
+    fn digest_caps_lines_with_an_elision_marker() {
+        let cards: Vec<Card> = (0..20)
+            .map(|i| Card {
+                id: format!("c{i}"),
+                title: format!("card {i}"),
+                goal: String::new(),
+                criteria: vec![],
+                stage: CardStage::Doing,
+                assignee: String::new(),
+                order: i,
+                run_id: None,
+                note: String::new(),
+            })
+            .collect();
+        let d = digest_cards(&cards).unwrap();
+        let lines: Vec<&str> = d.lines().collect();
+        assert_eq!(lines.len(), DIGEST_MAX_LINES);
+        assert_eq!(*lines.last().unwrap(), "… 7 more in flight");
     }
 }

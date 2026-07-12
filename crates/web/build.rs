@@ -95,15 +95,16 @@ fn main() {
     println!("cargo:rerun-if-changed={}", agents_dir.display());
 
     // Agents = every md under the folder tree EXCEPT soul.md, team.md files
-    // (a folder's team declaration, wave-16) and anything under skills/.
-    // A subfolder is a team; nested agents are discovered too.
+    // (a folder's team declaration, wave-16), README.md (folder docs) and
+    // anything under skills/. A subfolder is a team; nested agents are
+    // discovered too.
     let skills_dir = agents_dir.join("skills");
     let all = md_files(&agents_dir);
     let mut agent_files: Vec<PathBuf> = all
         .iter()
         .filter(|p| {
             p.file_name()
-                .is_some_and(|n| n != "soul.md" && n != "team.md")
+                .is_some_and(|n| n != "soul.md" && n != "team.md" && n != "README.md")
         })
         .filter(|p| !p.starts_with(&skills_dir))
         .cloned()

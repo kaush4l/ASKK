@@ -142,6 +142,7 @@ async fn row(
         budgets,
         policy: ActionPolicy::default(),
         known_providers: scripts.iter().map(|(id, _)| (*id).to_string()).collect(),
+        board: None,
     })
     .unwrap();
     Row {

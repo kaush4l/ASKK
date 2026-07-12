@@ -317,6 +317,9 @@ fn build_handle(
         budgets: Budgets::default(),
         policy: ActionPolicy::default(),
         known_providers: vec![PROFILE_ID.to_string()],
+        // Same kv the board tools write: top-level board-holding runs start
+        // with the durable board digest (reorientation after reload).
+        board: Some(askk_runtime::state::BoardStore::new(kv.clone())),
     })
     .map_err(|e| e.to_string())?;
     Ok(HarnessHandle {

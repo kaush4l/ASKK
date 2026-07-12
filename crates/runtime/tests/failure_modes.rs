@@ -139,6 +139,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, yielding: bool) 
         budgets,
         policy: ActionPolicy::default(),
         known_providers: vec!["default".into()],
+        board: None,
     })
     .unwrap();
     Fixture {
