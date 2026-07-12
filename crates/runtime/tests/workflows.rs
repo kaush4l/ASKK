@@ -1055,3 +1055,64 @@ fn tester_delegate_records_verdicts() {
         assert_eq!(f.mock.remaining(), 0);
     });
 }
+
+// --- handoff (full transfer) -------------------------------------------------
+
+const HAND: (&str, &str) = (
+    "agents/hand.md",
+    "---\nid: hand\ndescription: Hands work off.\ntools: handoff, helper, echo\n---\n\
+     You hand off when the rest of the job is someone else's.",
+);
+
+/// Swarm-style full transfer: `handoff {agent, goal}` runs the target and the
+/// PARENT run ends immediately as Answered with the child's answer VERBATIM —
+/// no parent turn is spent rephrasing.
+#[test]
+fn handoff_transfers_the_run() {
+    block_on(async {
+        let f = fixture(&[HAND, HELPER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"handoff\", \"arguments\": {\"agent\": \"helper\", \"goal\": \"finish this\"}}",
+        );
+        f.mock
+            .push_text("action: answer\nanswer: helper's final word"); // helper's turn
+        let run = f.session.submit("hand", "start this").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("helper's final word"));
+        // The parent consumed exactly ONE provider reply: no post-handoff turn.
+        assert_eq!(out.turns_used, 1);
+        assert_eq!(f.mock.remaining(), 0);
+        let signals = f.host.signals();
+        // The handoff ran the child as its own run...
+        assert!(signals.iter().any(|s| matches!(
+            &s.kind,
+            SignalKind::RunStarted { agent_id, goal } if agent_id == "helper" && goal == "finish this"
+        )));
+        // ...and the PARENT's own stream carries the Result terminal.
+        assert!(signals.iter().any(|s| s.run_id == run
+            && matches!(&s.kind, SignalKind::Result { final_text } if final_text == "helper's final word")));
+    });
+}
+
+/// Handing off to an agent outside the caller's tools is a readable tool
+/// error, not a transfer — the run continues and answers normally.
+#[test]
+fn handoff_outside_allowlist_is_refused_and_run_continues() {
+    block_on(async {
+        // `worker` exists in the session but is NOT in hand's tools.
+        let f = fixture(&[HAND, HELPER, WORKER]).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"handoff\", \"arguments\": {\"agent\": \"worker\", \"goal\": \"finish this\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: kept it myself");
+        let run = f.session.submit("hand", "start this").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        assert_eq!(out.final_text.as_deref(), Some("kept it myself"));
+        assert!(observations(&f.host.signals())
+            .iter()
+            .any(|o| o.contains("handoff: agent 'worker' is not in your tools")));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}

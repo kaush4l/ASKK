@@ -15,7 +15,7 @@ use askk_core::{
 
 use crate::actions::PendingActions;
 use crate::config::{validate, AgentConfig, ConfigError, SkillConfig};
-use crate::delegate::DelegateTool;
+use crate::delegate::{DelegateTool, HandoffTool};
 use crate::run::host::RunHost;
 use crate::run::{dispatch, turn};
 use crate::state::{MemoryStore, SessionStore, SignalLog};
@@ -251,6 +251,12 @@ impl RunSession {
                         .borrow_mut()
                         .push(format!("cannot register loop tool: {e}"));
                 }
+            }
+            // Handoff (full transfer) — same reserved-name rule.
+            if let Err(e) = registry.register(Rc::new(HandoffTool::new(weak.clone()))) {
+                problems
+                    .borrow_mut()
+                    .push(format!("cannot register handoff tool: {e}"));
             }
             // Validation universe = everything the registry holds; any agent
             // ref outside it is flagged by validate.

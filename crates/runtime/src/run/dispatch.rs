@@ -5,11 +5,13 @@
 use std::rc::Rc;
 
 use askk_core::{
-    ActionProposal, ActionRecord, SignalKind, Tool, ToolCall, ToolCtx, ToolResult, Verdict,
+    ActionProposal, ActionRecord, RunStatus, SignalKind, Tool, ToolCall, ToolCtx, ToolResult,
+    Verdict,
 };
 use serde_json::json;
 
 use crate::actions::ActionGate;
+use crate::delegate::HANDOFF_TOOL;
 use crate::run::session::{RunState, Shared};
 use crate::run::turn::{effective_allow, emit, observe};
 use crate::state::StoreError;
@@ -50,6 +52,13 @@ pub(crate) async fn dispatch_queued(
 ) -> Result<Dispatch, StoreError> {
     let mut batch: Vec<(ToolCall, Rc<dyn Tool>)> = Vec::new();
     while !run.queued_calls.is_empty() {
+        // A successful handoff in an earlier flush already ended the run:
+        // the rest of the queue is moot (the run answers with the child's
+        // text, no further calls dispatch).
+        if run.status.is_terminal() {
+            run.queued_calls.clear();
+            break;
+        }
         let call = run.queued_calls.remove(0);
         emit(
             shared,
@@ -105,6 +114,12 @@ pub(crate) async fn dispatch_queued(
             }
             Verdict::NeedsConfirmation => {
                 execute_batch(shared, run, &mut batch).await?;
+                if run.status.is_terminal() {
+                    // A handoff in that flush already answered the run; a
+                    // dangling park would outlive it. Drop the confirmation.
+                    run.queued_calls.clear();
+                    return Ok(Dispatch::Done);
+                }
                 run.awaiting = Some(record.proposal.id.clone());
                 emit(
                     shared,
@@ -221,7 +236,23 @@ async fn absorb_result(
         },
     )
     .await?;
-    observe(shared, run, format!("{}: {}", call.name, result.content)).await
+    observe(shared, run, format!("{}: {}", call.name, result.content)).await?;
+    // Handoff short-circuit: a successful full transfer ends the CALLING run
+    // right here — Answered, the child's answer verbatim as final_text, the
+    // same Result terminal the answer path lands. No extra parent turn.
+    if result.ok && call.name == HANDOFF_TOOL && !run.status.is_terminal() {
+        emit(
+            shared,
+            run,
+            SignalKind::Result {
+                final_text: result.content.clone(),
+            },
+        )
+        .await?;
+        run.status = RunStatus::Answered;
+        run.final_text = Some(result.content);
+    }
+    Ok(())
 }
 
 /// Apply a user's confirmation decision: approve executes the parked

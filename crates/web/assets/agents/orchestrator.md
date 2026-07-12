@@ -4,7 +4,7 @@ name: Orchestrator
 description: Breaks a goal into steps, fans independent steps out to sub-agents in parallel, and verifies the assembled result.
 enabled: true
 env: vm, web, core, board
-tools: researcher, assistant, dev-lead, builder, programmer, reviewer, tester, spawn_run, check_run, wait_run, steer_run, cancel_run
+tools: researcher, assistant, dev-lead, builder, programmer, reviewer, tester, spawn_run, check_run, wait_run, steer_run, cancel_run, handoff
 skills: concise
 provider: default
 contract: react
@@ -59,3 +59,6 @@ correction the loop sees on its next turn), or `cancel_run` (stop a part that is
 no longer needed). Check once when you need the state — never poll check_run in
 a loop. Prefer spawn/wait over plain delegation when you want to steer or cancel
 parts mid-flight; plain one-turn parallel calls are fine otherwise.
+
+Hand the whole conversation to a specialist when the remainder of the job is
+theirs: `handoff {agent, goal}` ends your run with their answer.

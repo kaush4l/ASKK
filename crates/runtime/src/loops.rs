@@ -18,7 +18,7 @@ use askk_core::{
 };
 use serde_json::{json, Value};
 
-use crate::run::dispatch::{DEPTH_SLICE, PARENT_RUN_SLICE, PARENT_TOOLS_SLICE};
+use crate::run::dispatch::{DEPTH_SLICE, PARENT_RUN_SLICE};
 use crate::run::session::{RunState, Shared};
 use crate::run::turn;
 use crate::state::LocalBoxFuture;
@@ -108,16 +108,7 @@ impl Tool for SpawnRun {
             };
             // The spawn target must be a delegate the CALLER holds — same
             // authority rule as calling the agent tool directly.
-            let parent_tools: Vec<String> = ctx
-                .slice(PARENT_TOOLS_SLICE)
-                .and_then(Value::as_array)
-                .map(|names| {
-                    names
-                        .iter()
-                        .filter_map(|n| n.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
+            let parent_tools = crate::delegate::parent_tools(ctx);
             if !parent_tools.contains(&agent_id.to_string()) {
                 return ToolResult::err(format!(
                     "spawn_run: agent '{agent_id}' is not in your tools"
