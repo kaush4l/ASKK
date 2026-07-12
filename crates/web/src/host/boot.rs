@@ -11,9 +11,8 @@ use askk_runtime::config::{AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
 use askk_runtime::tools::{
-    parse_server_list, register_board, register_builtins, register_knowledge, register_mcp,
-    register_memory_tools, register_news, register_shell, register_web_search, register_workspace,
-    ToolRegistry,
+    register_board, register_builtins, register_knowledge, register_mcp, register_memory_tools,
+    register_news, register_shell, register_web_search, register_workspace, ToolRegistry,
 };
 use serde_json::Value;
 
@@ -451,7 +450,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let mcp_problems = register_mcp(
         &mut registry,
         transport.clone(),
-        &parse_server_list(&mcp_text),
+        &askk_runtime::tools::parse_server_list(&mcp_text),
     )
     .await;
 
