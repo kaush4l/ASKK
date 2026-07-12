@@ -148,3 +148,24 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     editing is a deliberate omission until a human-editing story is wanted.
 49. memory tools use a shared namespace (`notes/<slug>`) because ToolCtx does not carry
     the calling agent id; per-agent scoping when it does.
+
+## Live e2e vs gemma-4-12B @8873 on the hosted page (2026-07-12, wave-14 build)
+
+50. PROVEN live: seeded profile streams; plan contract obeyed; schema validation
+    rejected a string `criteria` readably and the model self-corrected to an array
+    next turn (repair loop works on a real weak model); action gate parked every
+    Mutating board write (approve/deny both exercised); board persisted via OPFS;
+    Board tab rendered all 5 columns + cards live.
+51. gemma-12B LOOPS on multi-step kanban orchestration: re-planned and re-added the
+    same card 3x (kanban-summary, -2, -3) instead of progressing — GAPS 20/26 shape.
+    The deployed build predated wave-3 (few-shot example block + context window);
+    retest after this publish. If it persists: per-card dedupe hint in board_add's
+    error ("a card titled X already exists") is the cheap harness-side fix.
+52. Board writes under the default Confirm policy make agent-driven kanban a
+    click-per-write experience; a per-tool policy row in Settings (board_* = Auto)
+    is the ergonomic fix (policy plumbing already exists — per_tool map).
+53. Unhashed served config (assets/agents/*, manifest.json) rides HTTP cache
+    (max-age~600): after a deploy that ADDS an agent, a returning browser can show
+    the stale roster for up to 10 min (live-hit: tester missing until cache
+    refresh). Harmless-but-confusing; cache-busting query param on the manifest
+    fetch is the one-line fix if it bites again.
