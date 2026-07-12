@@ -27,6 +27,11 @@ pub(crate) const MAX_PROVIDER_ATTEMPTS: u32 = 3;
 /// Injected on the last budgeted turn (ADR-008 final-turn nudge).
 pub(crate) const FINAL_TURN_NUDGE: &str =
     "This is your final turn. Answer now with your best result; do not call tools.";
+/// A OneShot phase exists to produce ONE answer; tool calls get a small
+/// allowance (reorient-then-answer), never the whole run budget — a model
+/// that keeps calling tools must exhaust the phase, not the session
+/// (live wave-19 finding: gemma held `plan` open re-calling a filtered tool).
+pub(crate) const ONESHOT_MAX_TURNS: u32 = 4;
 
 pub(crate) enum Turn {
     Continue,
@@ -148,27 +153,30 @@ pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(),
             }
         }
         // Per-phase clamp (ADR-011): a Loop phase spends at most its own
-        // max_turns; min() with the global budget falls out of check order
-        // (the global check above fires first when it is the tighter bound).
-        // Exhaustion without an answer is never success (ADR-008): with a
-        // declared on_fail it routes back like a failed gate (bounded);
-        // otherwise the run ends Unverified via the fall-off rules.
-        if let LoopMode::Loop { max_turns } = run.phases[run.phase_idx].loop_mode {
-            if run.phase_turns >= max_turns {
-                if reroute_exhausted(shared, run).await? {
-                    continue;
-                }
-                emit(
-                    shared,
-                    run,
-                    SignalKind::StatusSet {
-                        status: RunStatus::Unverified,
-                    },
-                )
-                .await?;
-                run.status = RunStatus::Unverified;
-                return Ok(());
+        // max_turns, a OneShot phase its small fixed allowance; min() with
+        // the global budget falls out of check order (the global check
+        // above fires first when it is the tighter bound). Exhaustion
+        // without an answer is never success (ADR-008): with a declared
+        // on_fail it routes back like a failed gate (bounded); otherwise
+        // the run ends Unverified via the fall-off rules.
+        let phase_clamp = match run.phases[run.phase_idx].loop_mode {
+            LoopMode::Loop { max_turns } => max_turns,
+            LoopMode::OneShot => ONESHOT_MAX_TURNS,
+        };
+        if run.phase_turns >= phase_clamp {
+            if reroute_exhausted(shared, run).await? {
+                continue;
             }
+            emit(
+                shared,
+                run,
+                SignalKind::StatusSet {
+                    status: RunStatus::Unverified,
+                },
+            )
+            .await?;
+            run.status = RunStatus::Unverified;
+            return Ok(());
         }
         match one_turn(shared, run).await? {
             Turn::Continue => {}

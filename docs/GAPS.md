@@ -226,3 +226,16 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     past the signature check. If live e2e shows near-identical loops surviving,
     the next lever is a per-phase mutating-call budget or fuzzy signatures
     (name + normalized arg keys), not a bigger window.
+65. Wave-19 live e2e: gemma re-issued the IDENTICAL spawn_agent call every
+    dispatch turn (8 spawns of the same haiku worker, each child correct) —
+    Pure tools are exempt from the stall guard, so delegation-class loops
+    evade it entirely. Candidates: count spawn/delegate/team/handoff calls
+    in the guard despite Pure (they cost a whole child run), or a per-phase
+    delegation budget. Each child DID return `Result (untrusted): …` fine;
+    the substrate is correct, the model never consumes the result.
+66. FIXED same wave: OneShot phases had NO turn clamp — only Loop phases
+    were clamped (turn.rs), so a model that kept calling tools instead of
+    answering held `plan` open until the global budget (live: gemma re-called
+    the phase-filtered spawn_agent in plan for 200+ s). OneShot now exhausts
+    after ONESHOT_MAX_TURNS (4) through the same reroute/Unverified path
+    (`one_shot_phase_exhausts_after_its_allowance`).

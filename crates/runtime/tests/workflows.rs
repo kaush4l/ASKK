@@ -2224,3 +2224,36 @@ fn spawn_agent_clamps_child_to_caller_allowlist() {
         assert_eq!(f.mock.remaining(), 0);
     });
 }
+
+// A OneShot phase that never answers exhausts its small fixed allowance
+// instead of holding the phase open to the whole run budget (live wave-19
+// finding: gemma re-called a filtered tool in `plan` for minutes).
+const STUBBORN: (&str, &str) = (
+    "agents/stubborn.md",
+    "---\nid: stubborn\ndescription: Calls tools in plan forever.\ntools: echo\n\
+     phase.1.name: plan\nphase.1.header: Plan it.\n\
+     phase.2.name: do\nphase.2.gate: true\n---\nWork.",
+);
+
+#[test]
+fn one_shot_phase_exhausts_after_its_allowance() {
+    block_on(async {
+        let f = fixture(&[STUBBORN]).await;
+        for i in 0..4 {
+            f.mock.push_text(&format!(
+                "action: tool\nanswer: {{\"name\": \"echo\", \"arguments\": {{\"text\": \"{i}\"}}}}"
+            ));
+        }
+        let run = f
+            .session
+            .submit("stubborn", "plan something")
+            .await
+            .unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        // Exhaustion without an answer is never success (ADR-008); the
+        // gate phase was never reached, so the run ends Unverified.
+        assert_eq!(out.status, RunStatus::Unverified);
+        assert_eq!(phases_entered(&f.host.signals()), vec!["plan"]);
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
