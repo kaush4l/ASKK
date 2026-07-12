@@ -324,6 +324,30 @@ between repairs; extra reads buy nothing); a generic ArtifactSource trait (two c
 sources today — the seam is one function, `live_artifacts`, extend it when a third
 source exists).
 
+## ADR-034 (A) — curated context per phase; sub-agents are specialized, not authored
+A phase is a complete context recipe — {contract, tools, skills, header} — so a run
+carries only what its CURRENT task needs: `phase.N.skills` joins the existing
+`phase.N.tools` as a per-phase filter (None = the agent's full set; team principles
+always render — they are the boundary contract, not an optional skill). Runtime
+sub-agent generation is SPECIALIZATION of a roster base, never authoring from nothing
+(the hybrid-registry pattern: Hermes delegate_task / Claude SDK AgentDefinition):
+`spawn_agent {base?, goal, directive?, tools?, skills?, max_turns?}` synthesizes an
+AgentConfig from an enabled base (default `worker`) — directive appends to the body,
+tools must be ⊆ base.tools and are further clamped ∩ caller allowlist at drive time
+(authority only narrows), skills must exist, max_turns clamps to 1..=64 — and drives
+it through the same `drive_child` seam, depth cap, and untrusted-result wrapping as
+any delegation. Spawned configs live in a run-scoped `Shared.spawned` map (id
+`spawned-<base>-<n>`) resolved after the roster; they never persist. Two companions
+close the loop the research demanded: the stall guard (the 3rd consecutive identical
+Mutating call is refused with a structured observation instead of executed — the
+Magentic-One re-plan rule, aimed at GAPS 50/61) and skill progressive disclosure
+(`skill_list` index / `skill_read` body, opt-in tools, so an agent picks a technique
+at runtime instead of carrying every skill in every prompt). Rejected: free-form
+agent authoring (unguardable prompt surface; specialization keeps every knob
+subset-validated); a Strategy trait (strategy stays data — `Vec<Phase>`); tool-RAG /
+deferred tool search (loadout pruning via phase filters first — revisit if rosters
+outgrow it).
+
 ## ADR-019 (A) — agents + custom tools are real served files, not hardcoded
 The `agents/` folder moved UNDER `crates/web/assets/agents/` so the SAME files are both baked
 (build.rs fallback) AND served verbatim at `/assets/agents/*`. Boot fetches the served

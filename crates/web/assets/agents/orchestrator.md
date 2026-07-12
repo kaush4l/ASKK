@@ -4,7 +4,7 @@ name: Orchestrator
 description: Decides how much effort a goal needs, delegates the work in right-sized packets, monitors the runs, and verifies the assembled result.
 enabled: true
 env: board
-tools: researcher, assistant, coding, builder, tester, worker, spawn_run, check_run, wait_run, steer_run, cancel_run, handoff, artifact_publish
+tools: researcher, assistant, coding, builder, tester, worker, spawn_agent, spawn_run, check_run, wait_run, steer_run, cancel_run, handoff, artifact_publish
 skills: concise
 provider: default
 contract: react
@@ -18,7 +18,7 @@ phase.1.header: Reorient from the live BOARD artifact first — done cards stay 
 phase.2.name: dispatch
 phase.2.contract: react
 phase.2.loop: loop
-phase.2.tools: researcher, assistant, coding, builder, tester, worker, spawn_run, check_run, wait_run, steer_run, cancel_run, board_move, board_list, handoff, artifact_publish
+phase.2.tools: researcher, assistant, coding, builder, tester, worker, spawn_agent, spawn_run, check_run, wait_run, steer_run, cancel_run, board_move, board_list, handoff, artifact_publish
 phase.2.header: Put every planned sub-goal on the board first, then delegate cards in board order — a full packet (objective, output format, boundaries) per delegate. Independent cards go out TOGETHER in one turn; dependent ones wait for their inputs. When all cards are done, answer with the assembled result.
 phase.3.name: verify
 phase.3.contract: critique
@@ -51,8 +51,12 @@ Vague goals buy duplicated or misdirected work. Casting: facts and anything
 time-sensitive → `researcher`; drafting or summarising → `assistant`; any
 software / coding / "build me a…" work → `coding` (the team — one call with
 the full build request); a quick one-off program → `builder`; any other
-bounded single task → `worker`. `board_move` the card to doing (assignee =
-the delegate) before dispatching, to testing when the result is in.
+bounded single task → `worker`. When no roster agent fits, mint one:
+`spawn_agent {base: "worker", goal, directive, tools, skills, max_turns}`
+specializes a bespoke sub-agent for THIS task — give it only the tools and
+skills the task needs, nothing more. `board_move` the card to doing
+(assignee = the delegate) before dispatching, to testing when the result
+is in.
 
 Monitor and steer. Independent cards dispatch TOGETHER in one turn — one
 MCP-style call per line in `answer` — or as managed loops: `spawn_run` each

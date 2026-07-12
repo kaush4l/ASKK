@@ -17,6 +17,8 @@ pub(crate) mod flow;
 pub mod host;
 /// Live artifact refresh — latest-state blocks per call (ADR-033).
 pub(crate) mod live;
+/// Session tool registration (delegates, teams, loops, handoff, skills, spawn).
+pub(crate) mod register;
 pub mod session;
 pub(crate) mod turn;
 

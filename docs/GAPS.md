@@ -221,3 +221,8 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     this live (news_search/echo). Fix candidates: fetch agents/ with
     cache: "reload" at boot (one extra RTT per file), or version the manifest
     (manifest.json?v=<build-hash>) and hard-refetch on mismatch.
+64. Wave-19 stall guard covers only EXACT arg repeats: gemma's loop variants that
+    mutate a counter in the args (kanban-summary, -2, -3 — GAPS 55 shape) slip
+    past the signature check. If live e2e shows near-identical loops surviving,
+    the next lever is a per-phase mutating-call budget or fuzzy signatures
+    (name + normalized arg keys), not a bigger window.

@@ -190,5 +190,6 @@ All from `agents/` files, loaded fail-loud (crates/runtime/src/config/agent.rs).
 | `format: json\|toon\|text` | Initial OutputMode (agent.rs:85-92); negotiator may escalate to json (§4) |
 | `phase.N.header` | PhaseFrame header text (agent.rs:197, 244) |
 | `phase.N.contract` / `phase.N.tools` | Per-phase contract override + allowlist narrowing (turn.rs:296-299, 333-342) |
+| `phase.N.skills` | Per-phase skill narrowing — only the named skills render that phase's `skills` section; team principles always render (ADR-034) |
 | `env: vm\|web\|core\|board` | Tool bundles expanded into `tools:` at load (config/env.rs:11-33) |
 | `provider:` | Provider profile id on InferenceConfig (agent.rs:83; turn.rs:312-314) |

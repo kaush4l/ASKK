@@ -57,6 +57,9 @@ core ← inference ← runtime ← web
 | Per-agent budgets (`budget.*` frontmatter) | `crates/runtime/src/config/agent.rs` |
 | Board digest (director reorientation) | `crates/runtime/src/state/board.rs` |
 | Live artifact blocks — latest-state refresh per call (ADR-033) | `crates/runtime/src/run/turn.rs` + `crates/core/src/element.rs` |
+| spawn_agent — runtime sub-agent specialization (ADR-034) | `crates/runtime/src/tools/spawn.rs` + `AgentConfig::specialize` in `crates/runtime/src/config/agent.rs` |
+| Skill discovery tools (skill_list/skill_read) | `crates/runtime/src/tools/skills.rs` |
+| Stall guard — repeat-identical-mutating-call refusal | `crates/runtime/src/run/dispatch.rs` |
 | Agents-folder config reference | `crates/web/assets/agents/README.md` |
 | artifact_publish tool (html/markdown/url blobs) | `crates/runtime/src/tools/artifact.rs` |
 | Artifact read side (blob docs → UI) | `crates/web/src/host/artifacts.rs` |
