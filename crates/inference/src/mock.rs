@@ -39,6 +39,32 @@ impl MockProvider {
         self.script.borrow_mut().push_back(Err(error));
     }
 
+    /// Build a provider from a fixture script: reply blocks separated by lines
+    /// that are exactly `---`. A block that is exactly `!error: timeout` (or
+    /// `!error: malformed <msg>`) scripts a typed error instead of a reply.
+    /// Fixture files live beside the tests and load via `include_str!`, so the
+    /// same scripts work under any target with no runtime file I/O.
+    pub fn from_script(id: &str, script: &str) -> Self {
+        let mock = Self::new(id);
+        for block in script.split("\n---\n") {
+            let block = block.trim_matches('\n');
+            if block.is_empty() {
+                continue;
+            }
+            match block.strip_prefix("!error:").map(str::trim) {
+                Some("timeout") => mock.push_error(ProviderError::Timeout),
+                Some(rest) => mock.push_error(ProviderError::Malformed(
+                    rest.strip_prefix("malformed")
+                        .map(str::trim)
+                        .unwrap_or(rest)
+                        .to_string(),
+                )),
+                None => mock.push_text(block),
+            }
+        }
+        mock
+    }
+
     /// Every request this provider has seen, in order, for assertions.
     pub fn requests(&self) -> Vec<InferenceRequest> {
         self.requests.borrow().clone()
@@ -123,6 +149,21 @@ mod tests {
         let seen = mock.requests();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].sections[0].1, "what is 2+2");
+    }
+
+    #[test]
+    fn from_script_splits_blocks_and_scripts_errors() {
+        let mock = MockProvider::from_script(
+            "mock/test",
+            "action: tool\nanswer: {\"name\": \"echo\"}\n---\n!error: timeout\n---\nfinal answer\n",
+        );
+        assert_eq!(mock.remaining(), 3);
+        let reply = block_on(mock.infer(&request("a"), &mut |_| {})).unwrap();
+        assert!(reply.text.contains("echo"));
+        let err = block_on(mock.infer(&request("b"), &mut |_| {})).unwrap_err();
+        assert_eq!(err, ProviderError::Timeout);
+        let reply = block_on(mock.infer(&request("c"), &mut |_| {})).unwrap();
+        assert_eq!(reply.text, "final answer");
     }
 
     #[test]

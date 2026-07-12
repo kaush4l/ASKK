@@ -1,0 +1,14 @@
+action: tool
+answer: {"name": "write_file", "arguments": {"path": "bug.py", "content": "print(1/0)"}}
+---
+action: tool
+answer: {"name": "shell", "arguments": {"command": "python3 bug.py"}}
+---
+action: tool
+answer: {"name": "write_file", "arguments": {"path": "bug.py", "content": "print(42)"}}
+---
+action: tool
+answer: {"name": "shell", "arguments": {"command": "python3 bug.py"}}
+---
+action: answer
+answer: fixed, prints 42

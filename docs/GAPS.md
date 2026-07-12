@@ -90,3 +90,32 @@ below is accepted, not pending.
     converges reliably (verified: full write->run->answer in one build).
 32. edit_file uses busybox awk ENVIRON substring replace (first occurrence). No multi-file
     refactor / regex edit yet — write_file a fresh version for large changes.
+
+## Wave-12 (brief v4: acceptance benchmark + fast lane) — open rows
+
+The benchmark (bench/acceptance/ROWS.md, ADR-020) replaced "perfect" as the termination
+condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md:
+
+33. A5 resume: reopen fences non-terminal runs to Interrupted (state/log.rs epoch fence)
+    and boot discards replayed signals — no RunState rebuild, no dedup consumer. Effect
+    ids (`{run_id}-call-{seq}`) and deterministic replay are already green (pinned by
+    `a5_foundation_replay_dedup_fence`).
+34. A7 pause: BudgetExhausted is a TERMINAL status (ADR-008); the brief wants a resumable
+    `Paused(BudgetExhausted)`. Terminal→paused is a semantics change = HUMAN GATE before
+    building. Sibling isolation already green (pinned by a7 test). The confirmation park
+    (awaiting/resolve_action) is the template.
+35. A8 snapshot: `AskkV86.saveState()`/state-boot exist in the JS bundle, zero Rust
+    callers; needs save→OPFS blob (sha-256 key = content-addressed) + restore boot +
+    a picker entry (~100 lines glue).
+36. A4/A10 toolchain: no compiler/python3/JVM in committed images + no guest NIC ⇒
+    `apk add` can't fetch; needs a baked-apks image (asset pipeline work, zero Rust).
+37. exec hardening: serial tap buffers output unboundedly (only the 30 s timer bounds
+    it) and the Rust future has no independent timeout race — a wedged page-side exec
+    hangs it. Cap + race timer are small, do together.
+38. A6 lease: BLOCKED on a cross-device store (OPFS is device-local); do not build a
+    lease type until a synced KvStore/BlobStore exists.
+39. A9 size budget: favorable facts (vm/speech assets lazy) but unenforced — needs a
+    release-build cold-payload assertion; no release step exists in this rebuild yet.
+40. js_eval sandbox bounds (ADR-021): Worker isolation + shadowed fetch/XHR/WebSocket,
+    terminate-on-timeout. Effect::Pure holds only while the worker has no real
+    capabilities; gate it if that changes. Per-call Worker spawn (~ms) accepted.

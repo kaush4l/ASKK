@@ -3,7 +3,7 @@ id: orchestrator
 name: Orchestrator
 description: Breaks a goal into steps, fans independent steps out to sub-agents in parallel, and verifies the assembled result.
 enabled: true
-tools: researcher, assistant, dev-lead, builder, programmer, reviewer, calc, web_search, shell, write_file, read_file, list_files, edit_file, fetch_url, echo, now
+tools: researcher, assistant, dev-lead, builder, programmer, reviewer, calc, web_search, shell, write_file, read_file, list_files, edit_file, fetch_url, echo, now, js_eval
 skills: concise
 provider: default
 contract: react

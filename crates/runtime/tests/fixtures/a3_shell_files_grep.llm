@@ -1,0 +1,8 @@
+action: tool
+answer: {"name": "write_file", "arguments": {"path": "notes/a.txt", "content": "alpha needle one"}}
+---
+action: tool
+answer: {"name": "shell", "arguments": {"command": "grep -r needle notes/"}}
+---
+action: answer
+answer: found the needle in notes/a.txt

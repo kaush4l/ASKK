@@ -60,5 +60,9 @@ core ← inference ← runtime ← web
 | Transport seam | `crates/inference/src/transport.rs` |
 | Provider adapters | `crates/inference/src/{openai_compat,anthropic,mock}.rs` |
 | Provider registry | `crates/inference/src/registry.rs` |
+| Fast-lane JS eval (Worker sandbox, ADR-021) | `crates/web/assets/agents/js_eval.js` |
+| Acceptance rows — v0 termination (ADR-020) | `bench/acceptance/ROWS.md` → `crates/runtime/tests/acceptance.rs` |
+| ScriptedLlm fixtures | `crates/runtime/tests/fixtures/` (loader: `MockProvider::from_script`) |
+| Bench status generator (writes STATUS.md) | `scripts/bench-status.sh` |
 | Docs | `docs/` (GOAL, ARCHITECTURE, GLOSSARY, MODELS, TESTING, ROADMAP, adr/ADRS) |
-| Merge gate | `scripts/gate.sh` |
+| Merge gate (fmt, clippy, wasm32 check, tests, bench) | `scripts/gate.sh` |

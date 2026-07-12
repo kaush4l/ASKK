@@ -26,8 +26,15 @@ without tests is unfinished.
 7. **Structure tests** — file-size cap (~500 lines), dependency-rule assertions (no
    `dioxus`/`web-sys` outside `web`; no workspace imports in `core`), every doc-listed module
    exists (docs may not outrun code — kiln's docs-ahead-of-code drift).
-8. **Web/UI** — thin: `wasm-bindgen-test` for OPFS stores + fetch transport; UI logic stays in
-   projections (host-tested); components render projections.
+8. **Web/UI** — thin: UI logic stays in projections (host-tested); components render
+   projections. No wasm-bindgen tests exist yet (an earlier claim here outran the code —
+   docs/findings/code-vs-claims.md); the gate compiles wasm32
+   (`cargo check -p askk-web --target wasm32-unknown-unknown`) so web-only breakage can't
+   slip through, and browser-lane behavior is verified manually via `dx serve`.
+9. **Acceptance benchmark** (`runtime/tests/acceptance.rs` + `bench/acceptance/ROWS.md`) —
+   the v0 termination rows (ADR-020), driven through the real loop against
+   `MockProvider::from_script` fixture files; `scripts/bench-status.sh` regenerates
+   `bench/acceptance/STATUS.md` inside the gate.
 
 ## Gate (every merge)
 

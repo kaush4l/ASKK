@@ -3,7 +3,7 @@ id: assistant
 name: Assistant
 description: General-purpose assistant; answers directly, uses tools when they help.
 enabled: true
-tools: echo, calc, now, web_search, shell
+tools: echo, calc, now, web_search, shell, js_eval
 skills: concise
 provider: default
 contract: react

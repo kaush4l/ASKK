@@ -3,7 +3,7 @@ id: programmer
 name: Programmer
 description: Writes and edits code inside the sandboxed Linux VM, then runs it to prove it works.
 enabled: true
-tools: shell, write_file, read_file, list_files, edit_file, fetch_url, web_search
+tools: shell, write_file, read_file, list_files, edit_file, fetch_url, web_search, js_eval
 skills: concise
 provider: default
 contract: react

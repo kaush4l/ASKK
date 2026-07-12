@@ -1,0 +1,5 @@
+action: tool
+answer: {"name": "js_eval", "arguments": {"code": "console.log([1,2,3].map(x=>x*2).join(','))"}}
+---
+action: answer
+answer: 2,4,6

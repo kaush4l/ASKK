@@ -1,0 +1,5 @@
+action: tool
+answer: {"name": "echo", "arguments": {"text": "spin one"}}
+---
+action: tool
+answer: {"name": "echo", "arguments": {"text": "spin two"}}
