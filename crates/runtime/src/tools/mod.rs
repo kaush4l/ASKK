@@ -6,6 +6,7 @@
 pub mod board;
 pub mod builtin;
 pub mod knowledge;
+pub mod mcp;
 pub mod memory_tools;
 pub mod news;
 pub mod registry;
@@ -16,6 +17,7 @@ pub mod workspace;
 pub use board::register_board;
 pub use builtin::register_builtins;
 pub use knowledge::register_knowledge;
+pub use mcp::{parse_server_list, register_mcp};
 pub use memory_tools::register_memory_tools;
 pub use news::register_news;
 pub use registry::{RegistryError, RustTool, ToolRegistry};

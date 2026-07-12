@@ -223,3 +223,15 @@ fn prefs_round_trip_through_the_session_store() {
         assert_eq!(stored["theme"], "amber");
     });
 }
+
+#[test]
+fn mcp_servers_cell_and_pref_round_trip() {
+    block_on(async {
+        let handle = host_session().await.unwrap();
+        assert_eq!(handle.mcp_servers(), "");
+        handle.set_mcp_servers("https://a.example/mcp").await;
+        assert_eq!(handle.mcp_servers(), "https://a.example/mcp");
+        let stored = handle.get_pref("mcp_servers").await.unwrap();
+        assert_eq!(stored, serde_json::Value::from("https://a.example/mcp"));
+    });
+}

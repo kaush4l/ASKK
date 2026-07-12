@@ -11,8 +11,9 @@ use askk_runtime::config::{AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
 use askk_runtime::tools::{
-    register_board, register_builtins, register_knowledge, register_memory_tools, register_news,
-    register_shell, register_web_search, register_workspace, ToolRegistry,
+    parse_server_list, register_board, register_builtins, register_knowledge, register_mcp,
+    register_memory_tools, register_news, register_shell, register_web_search, register_workspace,
+    ToolRegistry,
 };
 use serde_json::Value;
 
@@ -31,6 +32,8 @@ const PROFILE_ID: &str = "default";
 const ACTIVE_PROFILE_PREF: &str = "active_profile";
 /// Pref key holding the SearXNG instance base URL ("" = disabled).
 const SEARXNG_PREF: &str = "searxng_url";
+/// Pref key holding newline-separated MCP server URLs ("" = none).
+const MCP_PREF: &str = "mcp_servers";
 /// Shipped default instance — the rare public one that serves JSON with
 /// CORS. It rate-limits under load (the chain falls back cleanly);
 /// point at a self-hosted instance for reliability.
@@ -57,6 +60,9 @@ pub struct HarnessHandle {
     searxng: Rc<RefCell<String>>,
     /// The persistent kanban board — same kv the board tools write.
     board: askk_runtime::state::BoardStore,
+    /// Newline-separated MCP server URLs (pref mirror; registration happens
+    /// at boot, so edits apply on the next reload).
+    mcp_servers: RefCell<String>,
 }
 
 impl HarnessHandle {
@@ -250,6 +256,17 @@ impl HarnessHandle {
         self.set_pref(SEARXNG_PREF, Value::from(url)).await;
     }
 
+    /// Configured MCP server URLs, one per line ("" = none).
+    pub fn mcp_servers(&self) -> String {
+        self.mcp_servers.borrow().clone()
+    }
+
+    /// Persist the MCP server list; tools (re)register on the next reload.
+    pub async fn set_mcp_servers(&self, text: &str) {
+        *self.mcp_servers.borrow_mut() = text.to_string();
+        self.set_pref(MCP_PREF, Value::from(text)).await;
+    }
+
     async fn persist_active(&self) -> Result<(), String> {
         let active = self.profiles.borrow().active.clone();
         self.settings
@@ -308,6 +325,7 @@ fn build_handle(
         known_runs: RefCell::new(Vec::new()),
         storage_warning: None,
         searxng,
+        mcp_servers: RefCell::new(String::new()),
     })
 }
 
@@ -407,6 +425,16 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     };
     let searxng = Rc::new(RefCell::new(searxng_url));
 
+    // MCP servers (newline-separated URLs; missing/empty = none). Tools
+    // register at boot, so a settings edit applies on the next reload.
+    let mcp_text = settings
+        .pref(MCP_PREF)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_default();
+
     let transport: Rc<dyn Transport> = Rc::new(FetchTransport::new());
     let mut registry = ToolRegistry::new();
     let now = || js_sys::Date::now() as u64;
@@ -420,6 +448,12 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let shell_exec = Rc::new(super::vm::SerialShell::new());
     register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
     register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;
+    let mcp_problems = register_mcp(
+        &mut registry,
+        transport.clone(),
+        &parse_server_list(&mcp_text),
+    )
+    .await;
 
     // The resolver reads the live profile-set cell per run: a settings save
     // or an active-profile switch is effective on the next run, no rebuild.
@@ -454,64 +488,23 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let mut handle = build_handle(
         agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles, searxng,
     )?;
-    handle.storage_warning = storage_warning;
+    // One boot-degradation channel: broken storage and dead MCP servers both
+    // surface once in the UI; neither fails boot.
+    let mut warnings: Vec<String> = storage_warning.into_iter().collect();
+    warnings.extend(mcp_problems);
+    handle.storage_warning = (!warnings.is_empty()).then(|| warnings.join("; "));
+    *handle.mcp_servers.borrow_mut() = mcp_text;
     Ok(handle)
 }
 
-/// Host bootstrap: memory stores + a scripted `MockProvider` — the living
-/// smoke session `main` drives (and tests assert on).
+/// Host-target bootstrap (`host_session` + the host `session` shim) — a
+/// `#[path]` child module (same privacy access as inline) under the ADR-012
+/// file-size cap.
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn host_session() -> Result<HarnessHandle, String> {
-    use askk_core::Provider;
-    use askk_inference::{MockProvider, MockTransport};
-    use askk_runtime::run::TestHost;
-    use askk_runtime::state::{BlobStore, MemBlob, MemKv};
-
-    let kv: Rc<dyn KvStore> = Rc::new(MemKv::new());
-    let blobs: Rc<dyn BlobStore> = Rc::new(MemBlob::new());
-    let (log, _replayed) = SignalLog::open(blobs, Box::new(|| 0))
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut registry = ToolRegistry::new();
-    register_builtins(&mut registry, || 7).map_err(|e| e.to_string())?;
-    let searxng = Rc::new(RefCell::new(String::new()));
-    register_web_search(
-        &mut registry,
-        Rc::new(MockTransport::new()),
-        searxng.clone(),
-    )
-    .map_err(|e| e.to_string())?;
-    register_news(&mut registry, Rc::new(MockTransport::new())).map_err(|e| e.to_string())?;
-    register_knowledge(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
-    register_memory_tools(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
-    register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
-    let shell_exec = Rc::new(super::vm::SerialShell::new());
-    register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
-    register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;
-    super::config::register_baked_tools(&mut registry);
-
-    let mock = Rc::new(MockProvider::new("default/mock"));
-    mock.push_text("action: tool\nanswer: {\"name\": \"echo\", \"arguments\": {\"text\": \"hello from the harness\"}}");
-    mock.push_text("action: answer\nanswer: echo returned: hello from the harness");
-    let provider: Rc<dyn Provider> = mock;
-    let resolver: ProviderResolver = Box::new(move |_| Ok(provider.clone()));
-
-    let buffer: Rc<RefCell<Vec<Signal>>> = Rc::new(RefCell::new(Vec::new()));
-    let host: Rc<dyn RunHost> = Rc::new(TestHost::new());
-    let profiles = Rc::new(RefCell::new(ProfileSet::default()));
-    let (agents, skills, soul) = super::config::baked_config()?;
-    build_handle(
-        agents, skills, soul, registry, resolver, log, kv, host, buffer, profiles, searxng,
-    )
-}
-
-/// One entry for the UI on both targets (the host branch exists so `ui/`
-/// compiles and previews without wasm; it is not launched by host `main`).
+#[path = "boot_host.rs"]
+mod boot_host;
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
-    let _ = notify; // TestHost records signals itself
-    host_session().await
-}
+pub use boot_host::{host_session, session};
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "boot_tests.rs"]

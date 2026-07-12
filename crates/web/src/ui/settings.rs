@@ -39,12 +39,14 @@ pub fn SettingsStage(
     theme: String,
     speech: SpeechConfig,
     searxng: String,
+    mcp_servers: String,
     on_save: EventHandler<NamedProfile>,
     on_select: EventHandler<String>,
     on_delete: EventHandler<String>,
     on_theme: EventHandler<String>,
     on_speech: EventHandler<SpeechConfig>,
     on_searxng: EventHandler<String>,
+    on_mcp_servers: EventHandler<String>,
 ) -> Element {
     let active = profiles.active_form();
     let mut name = use_signal(|| {
@@ -217,6 +219,20 @@ pub fn SettingsStage(
             }
             p { class: "hint",
                 "SearXNG is the primary engine when set; failures fall back to DuckDuckGo → Wikipedia. Public instances rarely allow JSON+CORS and rate-limit hard — self-host for reliability. The instance sees your queries."
+            }
+            div { class: "settings-title", "MCP servers" }
+            label { class: "settings-row",
+                span { class: "settings-label", "Streamable-HTTP MCP server URLs (one per line, blank = none)" }
+                textarea {
+                    class: "field",
+                    rows: "3",
+                    placeholder: "https://mcp.example.com/mcp",
+                    value: "{mcp_servers}",
+                    oninput: move |e: Event<FormData>| on_mcp_servers.call(e.value()),
+                }
+            }
+            p { class: "hint",
+                "Each server's tools join the registry as mcp_<server>_<tool> after a reload. Servers must speak Streamable HTTP and allow this origin via CORS."
             }
             div { class: "settings-title", "Speech (HF model ids, blank = default)" }
             label { class: "settings-row",

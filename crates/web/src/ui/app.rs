@@ -74,6 +74,7 @@ pub fn App() -> Element {
     let mut speech_busy = use_signal(|| false);
     let mut speech_cfg = use_signal(SpeechConfig::default);
     let mut searxng_url = use_signal(String::new);
+    let mut mcp_servers = use_signal(String::new);
     let mut run_start = use_signal(|| 0u64);
     // Persisted UI prefs (kiln appstate): stage, theme, rails, inspector tab.
     let mut stage = use_signal(|| Stage::Chat);
@@ -112,6 +113,7 @@ pub fn App() -> Element {
                     speech_cfg.set(SpeechConfig::from_json(&v));
                 }
                 searxng_url.set(h.searxng_url());
+                mcp_servers.set(h.mcp_servers());
                 if let Some(prefs) = h.get_pref("ui").await {
                     if let Some(t) = prefs.get("theme").and_then(Value::as_str) {
                         theme.set(t.to_string());
@@ -281,6 +283,12 @@ pub fn App() -> Element {
         searxng_url.set(url.clone());
         spawn(async move { h.set_searxng_url(&url).await });
     };
+    // Persist only: MCP tools register at boot, so edits apply on reload.
+    let on_mcp_servers = move |text: String| {
+        let Some(h) = handle() else { return };
+        mcp_servers.set(text.clone());
+        spawn(async move { h.set_mcp_servers(&text).await });
+    };
     // Mic = push-to-talk: first click records, second click transcribes and
     // sends the transcript to the active agent (RealtimeSTT's text() shape).
     let on_mic = move |_| {
@@ -391,12 +399,14 @@ pub fn App() -> Element {
                                 theme: theme(),
                                 speech: speech_cfg(),
                                 searxng: searxng_url(),
+                                mcp_servers: mcp_servers(),
                                 on_save: on_save_profile,
                                 on_select: on_select_profile,
                                 on_delete: on_delete_profile,
                                 on_theme,
                                 on_speech: on_speech_cfg,
                                 on_searxng,
+                                on_mcp_servers,
                             }
                         },
                     }
