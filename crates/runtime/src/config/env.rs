@@ -4,7 +4,7 @@
 //! `AgentConfig`; env only feeds the tools list. Presets:
 //! - `vm`: shell, write_file, read_file, list_files, edit_file
 //! - `web`: web_search, news_search, fetch_url, knowledge_search,
-//!   knowledge_read, knowledge_write, knowledge_list
+//!   knowledge_read, knowledge_write, knowledge_list, artifact_publish
 //! - `core`: echo, calc, now, js_eval
 //! - `board`: board_add, board_list, board_move, board_check
 
@@ -25,6 +25,7 @@ fn preset(name: &str) -> Option<&'static [&'static str]> {
             "knowledge_read",
             "knowledge_write",
             "knowledge_list",
+            "artifact_publish",
         ]),
         "core" => Some(&["echo", "calc", "now", "js_eval"]),
         "board" => Some(&["board_add", "board_list", "board_move", "board_check"]),
@@ -148,6 +149,7 @@ mod tests {
             "knowledge_read",
             "knowledge_write",
             "knowledge_list",
+            "artifact_publish",
         ]);
         assert!(problems.is_empty());
         assert_eq!(expanded, handwritten);

@@ -11,8 +11,9 @@ use askk_runtime::config::{AgentConfig, SkillConfig};
 use askk_runtime::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_runtime::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
 use askk_runtime::tools::{
-    register_board, register_builtins, register_knowledge, register_mcp, register_memory_tools,
-    register_news, register_shell, register_web_search, register_workspace, ToolRegistry,
+    register_artifacts, register_board, register_builtins, register_knowledge, register_mcp,
+    register_memory_tools, register_news, register_shell, register_web_search, register_workspace,
+    ToolRegistry,
 };
 use serde_json::Value;
 
@@ -378,7 +379,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
                 )),
             ),
         };
-    let (log, _replayed) = SignalLog::open(blobs, Box::new(|| js_sys::Date::now() as u64))
+    let (log, _replayed) = SignalLog::open(blobs.clone(), Box::new(|| js_sys::Date::now() as u64))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -444,6 +445,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     register_knowledge(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
     register_memory_tools(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
     register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
+    register_artifacts(&mut registry, blobs, now).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(super::vm::SerialShell::new());
     register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
     register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;

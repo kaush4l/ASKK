@@ -14,7 +14,7 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
 
     let kv: Rc<dyn KvStore> = Rc::new(MemKv::new());
     let blobs: Rc<dyn BlobStore> = Rc::new(MemBlob::new());
-    let (log, _replayed) = SignalLog::open(blobs, Box::new(|| 0))
+    let (log, _replayed) = SignalLog::open(blobs.clone(), Box::new(|| 0))
         .await
         .map_err(|e| e.to_string())?;
     let mut registry = ToolRegistry::new();
@@ -30,6 +30,7 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     register_knowledge(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
     register_memory_tools(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
     register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
+    register_artifacts(&mut registry, blobs, || 7).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(crate::host::vm::SerialShell::new());
     register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
     register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;

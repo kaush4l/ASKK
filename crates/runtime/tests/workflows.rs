@@ -97,6 +97,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, policy: ActionPo
     let mut registry = ToolRegistry::new();
     register_builtins(&mut registry, || 7).unwrap();
     askk_runtime::tools::register_board(&mut registry, Rc::new(MemKv::new())).unwrap();
+    askk_runtime::tools::register_artifacts(&mut registry, Rc::clone(&blobs), || 7).unwrap();
     let agents: Vec<AgentConfig> = files
         .iter()
         .map(|(path, text)| AgentConfig::from_markdown(path, text).unwrap())
@@ -1265,6 +1266,56 @@ fn oversized_observation_arrives_clipped() {
             .history
             .iter()
             .any(|m| m.role == Role::Tool && m.content.contains(&big)));
+        assert_eq!(f.mock.remaining(), 0);
+    });
+}
+
+const PUBLISHER: (&str, &str) = (
+    "agents/publisher.md",
+    "---\nid: publisher\ndescription: Publishes deliverables as artifacts.\n\
+     tools: artifact_publish\n---\nYou publish deliverables.",
+);
+
+/// The wave-15 artifact seam end to end: a scripted run publishes a markdown
+/// deliverable; the slug lands in `RunProjection.artifacts` (via the
+/// dispatch-emitted ArtifactAppended) and the blob is durable in the store.
+#[test]
+fn artifact_publish_lands_in_projection() {
+    block_on(async {
+        let policy = ActionPolicy {
+            mutating_default: PolicyDecision::Auto, // publishes flow in tests
+            ..Default::default()
+        };
+        let f = fixture_with(&[PUBLISHER], Budgets::default(), policy).await;
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"artifact_publish\", \"arguments\": \
+             {\"title\": \"Q3 Report\", \"kind\": \"markdown\", \"content\": \"# Q3\\n\\nAll good.\"}}",
+        );
+        f.mock.push_text("action: answer\nanswer: report published");
+        let run = f
+            .session
+            .submit("publisher", "publish the report")
+            .await
+            .unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        // The signal stream carries the emission, then the fold shows it.
+        assert!(tags(&f.host.signals()).contains(&"artifact_appended".to_string()));
+        let proj = f.session.projection(&run).unwrap();
+        assert_eq!(proj.artifacts, vec!["q3-report".to_string()]);
+        // The observation names the slug the viewer will open.
+        let obs = observations(&f.host.signals());
+        assert!(
+            obs.iter()
+                .any(|o| o.contains("published artifact [q3-report]")),
+            "{obs:?}"
+        );
+        // The blob round-trips as the JSON doc a viewer renders.
+        let bytes = f.blobs.read("artifact/q3-report").await.unwrap().unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(doc["title"], "Q3 Report");
+        assert_eq!(doc["kind"], "markdown");
+        assert!(doc["content"].as_str().unwrap().contains("All good"));
         assert_eq!(f.mock.remaining(), 0);
     });
 }

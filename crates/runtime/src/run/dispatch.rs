@@ -15,6 +15,7 @@ use crate::delegate::HANDOFF_TOOL;
 use crate::run::session::{RunState, Shared};
 use crate::run::turn::{effective_allow, emit, observe};
 use crate::state::StoreError;
+use crate::tools::artifact::{published_slug, ARTIFACT_TOOL};
 
 /// ToolCtx slice carrying the caller's delegation depth (read by DelegateTool).
 pub(crate) const DEPTH_SLICE: &str = "delegation_depth";
@@ -245,6 +246,22 @@ async fn absorb_result(
         format!("{}: {content}", call.name)
     };
     observe(shared, run, observation).await?;
+    // Artifact seam: a successful `artifact_publish` lands its slug in the
+    // run's projection via ArtifactAppended (same name-keyed detection as the
+    // handoff below; the slug rides the tool's own result text, so the
+    // signal log stays the only run-state truth).
+    if result.ok && call.name == ARTIFACT_TOOL {
+        if let Some(slug) = published_slug(&result.content) {
+            emit(
+                shared,
+                run,
+                SignalKind::ArtifactAppended {
+                    name: slug.to_string(),
+                },
+            )
+            .await?;
+        }
+    }
     // Handoff short-circuit: a successful full transfer ends the CALLING run
     // right here — Answered, the child's answer verbatim as final_text, the
     // same Result terminal the answer path lands. No extra parent turn.

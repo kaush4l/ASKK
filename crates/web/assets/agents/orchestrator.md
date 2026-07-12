@@ -4,7 +4,7 @@ name: Orchestrator
 description: Breaks a goal into steps, fans independent steps out to sub-agents in parallel, and verifies the assembled result.
 enabled: true
 env: vm, web, core, board
-tools: researcher, assistant, dev-lead, builder, programmer, reviewer, tester, spawn_run, check_run, wait_run, steer_run, cancel_run, handoff
+tools: researcher, assistant, dev-lead, builder, programmer, reviewer, tester, spawn_run, check_run, wait_run, steer_run, cancel_run, handoff, artifact_publish
 skills: concise
 provider: default
 contract: react
@@ -62,3 +62,6 @@ parts mid-flight; plain one-turn parallel calls are fine otherwise.
 
 Hand the whole conversation to a specialist when the remainder of the job is
 theirs: `handoff {agent, goal}` ends your run with their answer.
+
+Publish substantial deliverables — a written webpage, a long report — with
+`artifact_publish` so every tab can view them full-size.
