@@ -29,19 +29,22 @@ pub fn react() -> Contract {
                 FieldKind::List,
                 false,
                 "what you learned so far, one point per item",
-            ),
+            )
+            .with_example("the target file does not exist yet"),
             FieldSpec::new(
                 "plan",
                 FieldKind::List,
                 false,
                 "your next steps, one per item",
-            ),
+            )
+            .with_example("create it, then verify"),
             FieldSpec::new(
                 "action",
                 FieldKind::Enum(vec!["tool".into(), "answer".into()]),
                 true,
                 "the switch: call a tool or give the final answer",
-            ),
+            )
+            .with_example("tool"),
             FieldSpec::new(
                 "answer",
                 FieldKind::Str,
@@ -50,7 +53,8 @@ pub fn react() -> Contract {
                  {\"name\": \"<tool>\", \"arguments\": {...}} (MCP style; one \
                  object per line to run several in parallel). If action is \
                  answer: the final answer text.",
-            ),
+            )
+            .with_example("{\"name\": \"shell\", \"arguments\": {\"command\": \"ls\"}}"),
         ],
     }
 }
@@ -60,13 +64,15 @@ pub fn plan() -> Contract {
         name: "plan".into(),
         version: 1,
         fields: vec![
-            FieldSpec::new("steps", FieldKind::List, true, "ordered plan steps"),
+            FieldSpec::new("steps", FieldKind::List, true, "ordered plan steps")
+                .with_example("read the config | apply the fix"),
             FieldSpec::new(
                 "rationale",
                 FieldKind::Str,
                 false,
                 "why this plan will work",
-            ),
+            )
+            .with_example("smallest change that passes"),
         ],
     }
 }
@@ -81,13 +87,15 @@ pub fn critique() -> Contract {
                 FieldKind::Enum(vec!["pass".into(), "revise".into()]),
                 true,
                 "does the work meet the goal",
-            ),
+            )
+            .with_example("revise"),
             FieldSpec::new(
                 "feedback",
                 FieldKind::Str,
                 false,
                 "what to fix when verdict is revise",
-            ),
+            )
+            .with_example("step two skips validation"),
         ],
     }
 }
@@ -155,6 +163,39 @@ mod tests {
         let json_text = critique().instructions(OutputMode::Json);
         assert!(json_text.contains("single JSON object"));
         assert!(json_text.contains("pass | revise"));
+    }
+
+    #[test]
+    fn toon_example_renders_once_with_curated_react_values() {
+        let text = react().instructions(OutputMode::Toon);
+        assert_eq!(text.matches("Example (shape only):").count(), 1);
+        assert!(text.contains("observation:\n- the target file does not exist yet"));
+        assert!(text.contains("action: tool"));
+        assert!(text.contains(r#"answer: {"name": "shell", "arguments": {"command": "ls"}}"#));
+    }
+
+    #[test]
+    fn json_example_is_valid_json() {
+        for contract in [react(), plan(), critique()] {
+            let text = contract.instructions(OutputMode::Json);
+            let line = text
+                .lines()
+                .skip_while(|l| *l != "Example (shape only):")
+                .nth(1)
+                .expect("example line after heading");
+            let value: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert!(value.is_object(), "{}: not an object", contract.name);
+        }
+        // plan's curated `|`-separated steps land as two array items.
+        let text = plan().instructions(OutputMode::Json);
+        assert!(text.contains(r#""steps":["read the config","apply the fix"]"#));
+    }
+
+    #[test]
+    fn text_mode_renders_no_example() {
+        assert!(!react()
+            .instructions(OutputMode::Text)
+            .contains("Example (shape only):"));
     }
 
     #[test]

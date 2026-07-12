@@ -39,6 +39,26 @@ fn malformed_reply_missing_required_yields_repair_prompt() {
     assert_eq!(err.missing, vec!["action".to_string()]);
     assert!(err.repair_prompt.contains("action"));
     assert!(err.repair_prompt.contains("tool | answer"));
+    // ...and a shape reminder from the field's curated example.
+    assert!(err.repair_prompt.contains("`action: tool`"));
+}
+
+#[test]
+fn repair_prompt_shape_hint_falls_back_to_kind_placeholders() {
+    let contract = Contract {
+        name: "c".into(),
+        version: 1,
+        fields: vec![
+            FieldSpec::new("steps", FieldKind::List, true, ""),
+            FieldSpec::new("note", FieldKind::Str, true, ""),
+        ],
+    };
+    let err = contract.parse(&reply("prose only")).unwrap_err();
+    assert_eq!(err.missing, vec!["steps".to_string(), "note".to_string()]);
+    // The hint names the FIRST problem field, list-shaped.
+    assert!(err
+        .repair_prompt
+        .contains("`steps:` followed by `- item` lines"));
 }
 
 #[test]

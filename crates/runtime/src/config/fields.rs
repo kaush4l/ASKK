@@ -15,6 +15,7 @@ pub(crate) struct FieldDraft {
     kind: Option<FieldKind>,
     required: Option<bool>,
     desc: Option<String>,
+    example: Option<String>,
 }
 
 pub(crate) fn field_entry(
@@ -61,6 +62,7 @@ pub(crate) fn field_entry(
             )),
         },
         "desc" => draft.desc = Some(value),
+        "example" => draft.example = Some(value),
         other => problems.push(format!("{at}: unknown field key '{other}'")),
     }
 }
@@ -109,6 +111,7 @@ pub(crate) fn build_fields(
             kind: draft.kind.unwrap_or(FieldKind::Str),
             required: draft.required.unwrap_or(true),
             description: draft.desc.unwrap_or_default(),
+            example: draft.example,
         });
     }
     fields
@@ -141,6 +144,19 @@ mod tests {
         assert_eq!(contract.fields[2].kind, FieldKind::Str);
         assert!(contract.fields[2].required);
         assert_eq!(contract.fields[2].description, "final text");
+    }
+
+    #[test]
+    fn field_example_round_trips_into_the_rendered_example() {
+        let text = "---\nid: mine\nfield.1.name: action\n\
+                    field.1.kind: enum: tool|answer\nfield.1.example: tool\n\
+                    field.2.name: answer\nfield.2.required: false\n---\n";
+        let cfg = AgentConfig::from_markdown("a.md", text).unwrap();
+        let contract = cfg.custom_contract.unwrap();
+        assert_eq!(contract.fields[0].example.as_deref(), Some("tool"));
+        assert_eq!(contract.fields[1].example, None);
+        let toon = contract.instructions(askk_core::OutputMode::Toon);
+        assert!(toon.contains("Example (shape only):\naction: tool\nanswer: text…"));
     }
 
     #[test]

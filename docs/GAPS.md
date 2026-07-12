@@ -132,9 +132,10 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     readable miss, but there is no third news source — Wikinews outage = no news.
 44. `phase.N.fan_out` items are strings only (list-field artifacts); structured parts
     (objects with per-part context) would need a kind beyond `list`.
-45. Custom `field.N.*` contracts render TOON/JSON like built-ins but have no per-field
-    examples in the prompt; weak models may need a `field.N.example` key (add on
-    evidence from live runs).
+45. CLOSED (wave 15): `field.N.example` frontmatter key lands in `FieldSpec.example`;
+    `Contract::instructions` renders one worked `Example (shape only):` block (TOON +
+    JSON) from examples/placeholders, and the repair prompt names the first missing
+    field with a shape hint. Built-in react/plan/critique carry curated examples.
 
 ## Wave-14 rows (live-found during the batch)
 

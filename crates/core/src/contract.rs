@@ -34,6 +34,10 @@ pub struct FieldSpec {
     pub kind: FieldKind,
     pub required: bool,
     pub description: String,
+    /// Example value for the worked example + repair hint. List fields take
+    /// `|`-separated items. None = kind-derived placeholder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub example: Option<String>,
 }
 
 impl FieldSpec {
@@ -43,7 +47,13 @@ impl FieldSpec {
             kind,
             required,
             description: description.into(),
+            example: None,
         }
+    }
+
+    pub fn with_example(mut self, example: &str) -> Self {
+        self.example = Some(example.into());
+        self
     }
 }
 
@@ -114,7 +124,43 @@ impl Contract {
                 field.name, field.description
             );
         }
+        self.render_example(mode, &mut out);
         out
+    }
+
+    /// One short worked example after the field bullets — weak models copy
+    /// shape far better than they follow rules. Text mode renders none.
+    fn render_example(&self, mode: OutputMode, out: &mut String) {
+        match mode {
+            OutputMode::Text => {}
+            OutputMode::Toon => {
+                out.push_str("Example (shape only):\n");
+                for field in &self.fields {
+                    let items = example_items(field);
+                    if matches!(field.kind, FieldKind::List) {
+                        let _ = writeln!(out, "{}:", field.name);
+                        for item in items {
+                            let _ = writeln!(out, "- {item}");
+                        }
+                    } else {
+                        let _ = writeln!(out, "{}: {}", field.name, items[0]);
+                    }
+                }
+            }
+            OutputMode::Json => {
+                let mut obj = Map::new();
+                for field in &self.fields {
+                    let mut items = example_items(field);
+                    let value = if matches!(field.kind, FieldKind::List) {
+                        Value::Array(items.into_iter().map(Value::String).collect())
+                    } else {
+                        Value::String(items.remove(0))
+                    };
+                    obj.insert(field.name.clone(), value);
+                }
+                let _ = writeln!(out, "Example (shape only):\n{}", Value::Object(obj));
+            }
+        }
     }
 
     /// JSON Schema projection, used as the provider-native structured schema.
@@ -237,13 +283,13 @@ impl Contract {
         format: ParsedFormat,
     ) -> Result<ParsedResponse, ParseFailure> {
         let mut fields = Map::new();
-        let mut problems = Vec::new();
+        let mut problems: Vec<&FieldSpec> = Vec::new();
         for spec in &self.fields {
             match raw.remove(&spec.name).and_then(|v| coerce(spec, v)) {
                 Some(value) => {
                     fields.insert(spec.name.clone(), value);
                 }
-                None if spec.required => problems.push(describe(spec)),
+                None if spec.required => problems.push(spec),
                 None => {
                     if let Some(default) = default_for(&spec.kind) {
                         fields.insert(spec.name.clone(), default);
@@ -256,15 +302,15 @@ impl Contract {
             fields.entry(key).or_insert(value);
         }
         if !problems.is_empty() {
-            let names: Vec<String> = problems.iter().map(|p| p.0.clone()).collect();
-            let detail: Vec<String> = problems.into_iter().map(|p| p.1).collect();
+            let names: Vec<String> = problems.iter().map(|s| s.name.clone()).collect();
+            let detail: Vec<String> = problems.iter().map(|s| describe(s)).collect();
             return Err(ParseFailure {
                 missing: names,
                 repair_prompt: format!(
-                    "Your reply could not be used. Missing or invalid required \
-                     field(s): {}. Reply again following the format instructions, \
-                     including every required field.",
-                    detail.join(", ")
+                    "Missing or invalid required field(s): {} — expected e.g. {}. \
+                     Reply again with every required field.",
+                    detail.join(", "),
+                    shape_hint(problems[0]),
                 ),
             });
         }
@@ -277,12 +323,43 @@ impl Contract {
     }
 }
 
-fn describe(spec: &FieldSpec) -> (String, String) {
-    let detail = match &spec.kind {
+fn describe(spec: &FieldSpec) -> String {
+    match &spec.kind {
         FieldKind::Enum(variants) => format!("{} (one of: {})", spec.name, variants.join(" | ")),
         _ => spec.name.clone(),
-    };
-    (spec.name.clone(), detail)
+    }
+}
+
+/// Example values for one field: the curated example (lists split on `|`)
+/// or a kind-derived placeholder. Never empty.
+fn example_items(spec: &FieldSpec) -> Vec<String> {
+    if let Some(example) = &spec.example {
+        let items: Vec<String> = match spec.kind {
+            FieldKind::List => example
+                .split('|')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect(),
+            _ => vec![example.clone()],
+        };
+        if !items.is_empty() {
+            return items;
+        }
+    }
+    match &spec.kind {
+        FieldKind::Str => vec!["text…".into()],
+        FieldKind::List => vec!["first item".into()],
+        FieldKind::Enum(variants) => vec![variants.first().cloned().unwrap_or_default()],
+    }
+}
+
+/// One-line shape reminder for the repair prompt.
+fn shape_hint(spec: &FieldSpec) -> String {
+    match &spec.kind {
+        FieldKind::List => format!("`{}:` followed by `- item` lines", spec.name),
+        _ => format!("`{}: {}`", spec.name, example_items(spec)[0]),
+    }
 }
 
 fn default_for(kind: &FieldKind) -> Option<Value> {
