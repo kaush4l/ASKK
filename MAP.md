@@ -42,9 +42,15 @@ core ← inference ← runtime ← web
 | Named contracts | `crates/core/src/contracts.rs` |
 | TOON | `crates/core/src/toon.rs` |
 | Tool trait + ToolSet | `crates/core/src/tool.rs` |
+<<<<<<< HEAD
 | web_search tool (SearXNG primary → DDG → Wikipedia; `news: true` lane) | `crates/runtime/src/tools/search/engines.rs` |
 | web_search news lane sources (Wikinews → GDELT) | `crates/runtime/src/tools/search/news.rs` |
 | OKF knowledge bundle tools (ADR-024) | `crates/runtime/src/tools/knowledge.rs` |
+=======
+| web_search tool (SearXNG primary → DDG → Wikipedia; `news: true` lane) | `crates/runtime/src/tools/search.rs` |
+| web_search news lane sources (Wikinews → GDELT) | `crates/runtime/src/tools/news.rs` |
+| OKF knowledge bundle tools (ADR-024) | `crates/runtime/src/tools/knowledge/mod.rs` |
+>>>>>>> origin/worktree-agent-a03252500e7110a80
 | Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/runtime/src/loops.rs` |
 | Kanban card model + stage rules (ADR-026) | `crates/core/src/board.rs` |
 | Board persistence over KvStore | `crates/runtime/src/state/board.rs` |
@@ -66,7 +72,7 @@ core ← inference ← runtime ← web
 | Artifacts stage (gallery + sandboxed viewer) | `crates/web/src/ui/artifacts.rs` |
 | Markdown subset renderer (chat + artifacts) | `crates/web/src/ui/markdown.rs` |
 | MCP client (browser-direct, ADR-028) | `crates/runtime/src/tools/mcp.rs` |
-| Memory tools (remember/recall/forget) | `crates/runtime/src/tools/memory_tools.rs` |
+| Memory tools (remember/recall/forget) | `crates/runtime/src/tools/memory/mod.rs` |
 | Env presets (`env:` frontmatter, ADR-027) | `crates/runtime/src/config/env.rs` |
 | Handoff + delegation seam (ADR-030) | `crates/runtime/src/delegate.rs` |
 | Cancel token (races in-flight inference) | `crates/runtime/src/run/cancel.rs` |

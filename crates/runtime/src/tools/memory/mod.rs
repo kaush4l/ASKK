@@ -1,5 +1,8 @@
-//! Agent-curated memory notes — `remember` / `recall` / `forget` over the
-//! injected `KvStore`, following the knowledge-tools pattern. One note per
+//! FEATURE: agent-curated notes — `remember`/`recall`/`forget` over `KvStore`
+//! keys `notes/<slug>`; distinct from `state/memory.rs` per-agent digests;
+//! shared namespace across agents = GAPS 49.
+//!
+//! Follows the knowledge-tools pattern. One note per
 //! key `notes/<slug>` as `{ "text": .., "ts": .. }`; `recall` lists newest
 //! first (bounded) or substring-searches slugs + text.
 //!

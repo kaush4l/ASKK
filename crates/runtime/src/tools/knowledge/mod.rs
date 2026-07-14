@@ -1,4 +1,8 @@
-//! OKF knowledge bundle tools — the agents' curated, persistent knowledge
+//! FEATURE: OKF knowledge bundle — `knowledge_write`/`read`/`list`/`search`
+//! over `KvStore` keys `okf/<id>` + `okf/log` (ADR-024); persists across
+//! runs/reloads.
+//!
+//! The agents' curated, persistent knowledge
 //! layer in Google's Open Knowledge Format v0.1 (a directory of markdown
 //! concept files with YAML frontmatter; the only REQUIRED field is `type`).
 //! Concepts persist in the injected `KvStore` under `okf/<concept-id>`
