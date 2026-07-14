@@ -1,5 +1,8 @@
-//! The `shell` tool's browser executor: runs commands in the persistent v86
-//! guest over its serial line via `window.AskkV86.exec`. The VM boots once at
+//! The `shell` tool's browser executor: runs commands in the persistent
+//! in-browser guest over its serial line. Two engines share the console
+//! (see `ui::vm::VmConsole`): v86 (`window.AskkV86`) and container2wasm
+//! (`window.AskkC2W`) — the executor routes to whichever one currently has
+//! a ready shell. The VM boots once at
 //! app load (see `ui::vm::VmConsole`), so by the time an agent calls `shell`
 //! the guest is usually already at a prompt; the executor still waits (bounded)
 //! for `shellReady` so a command issued right after load doesn't race the boot.
@@ -35,9 +38,25 @@ mod imp {
         }
     }
 
-    fn api() -> Option<JsValue> {
-        let v = Reflect::get(&web_sys::window()?.into(), &JsValue::from_str("AskkV86")).ok()?;
+    fn global(name: &str) -> Option<JsValue> {
+        let v = Reflect::get(&web_sys::window()?.into(), &JsValue::from_str(name)).ok()?;
         (!v.is_undefined() && !v.is_null()).then_some(v)
+    }
+
+    fn ready(api: &JsValue) -> bool {
+        call(api, "shellReady", &[JsValue::from_str(SERIAL_HOST)])
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
+    /// Whichever engine currently has a ready shell (c2w checked first —
+    /// only one owns the console at a time, so order is cosmetic).
+    fn api() -> Option<JsValue> {
+        ["AskkC2W", "AskkV86"]
+            .iter()
+            .filter_map(|n| global(n))
+            .find(ready)
     }
 
     fn call(obj: &JsValue, name: &str, args: &[JsValue]) -> Result<JsValue, String> {
@@ -65,13 +84,7 @@ mod imp {
         let mut waited = 0u32;
         loop {
             if let Some(api) = api() {
-                let ready = call(&api, "shellReady", &[JsValue::from_str(SERIAL_HOST)])
-                    .ok()
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if ready {
-                    return Ok(api);
-                }
+                return Ok(api);
             }
             if waited >= READY_TIMEOUT_MS {
                 return Err("VM is not ready (no shell prompt within timeout)".into());

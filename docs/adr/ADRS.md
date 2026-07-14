@@ -358,3 +358,24 @@ files (`fetch_url.js`): each self-registers on `window.askkTools[name]` with an 
 wraps it as a `dyn Tool` the agent calls like any native tool. build.rs emits `TOOL_FILES` so
 host builds register inert name-stubs (config validation + smoke stay green without a DOM).
 Nothing about the roster is hardcoded — the folder is the whole configuration surface.
+
+## ADR-035 (A) — 64-bit guest via container2wasm beside v86, one console contract
+The VM stage gained a second engine: `alpine:latest` (x86_64, 3.24.1) converted by
+container2wasm into ONE WASI module (Bochs x86_64 emulator + kernel + rootfs,
+105 MB, wizer pre-booted) run in a worker behind xterm-pty, exposed as
+`window.AskkC2W` with the SAME wire contract as `AskkV86` (boot/exec/shellReady/
+destroy) — `host/vm.rs` routes the `shell` tool to whichever engine's shell is
+ready, and the picker swaps engines under one serial console. Readiness is
+probe-based (inject a split-marker `printf` until it echoes back), not
+prompt-regex, and two settle execs absorb the cursor-report garbage busybox's
+ASK_TERMINAL leaves on the first line. Measured vs v86: boot 2.8 s vs 6.3 s,
+exec roundtrip 6 ms vs 13 ms, sustained CPU ~5x SLOWER (Bochs interprets; the
+JIT'd TinyEMU path is riscv64-only) — v86 buildroot stays the default image.
+Costs accepted: SharedArrayBuffer required (dev: `dx serve
+--cross-origin-policy`; pages: publish.sh injects coi-serviceworker at the site
+root, COEP credentialless so cross-origin model fetches survive on Chromium/
+Firefox — Safari degrades to v86-only), and the 105 MB image is gitignored
+(GitHub's 100 MB cap) — staged locally per scripts/vm-c2w/README.md, split into
+50 MB chunks at publish (worker re-concatenates on 404 of the whole file).
+The 32-bit alpine bzimage+initrd+iso v86 path (~64 MB of assets) is deleted;
+build recipe + benchmarks live in Dev/c2w-alpine (RESULTS.md).

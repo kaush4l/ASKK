@@ -7,6 +7,13 @@
       "runtimeArgs": ["serve", "-p", "askk-web", "--platform", "web", "--port", "8081"],
       "port": 8081,
       "autoPort": false
+    },
+    {
+      "name": "askk-web-coi",
+      "runtimeExecutable": "dx",
+      "runtimeArgs": ["serve", "-p", "askk-web", "--platform", "web", "--port", "8082", "--cross-origin-policy"],
+      "port": 8082,
+      "autoPort": false
     }
   ]
 }

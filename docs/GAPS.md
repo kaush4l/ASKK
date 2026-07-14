@@ -239,3 +239,10 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     the phase-filtered spawn_agent in plan for 200+ s). OneShot now exhausts
     after ONESHOT_MAX_TURNS (4) through the same reroute/Unverified path
     (`one_shot_phase_exhausts_after_its_allowance`).
+67. c2w guest CPU is ~5.2x slower than v86 JIT on sustained compute (Bochs
+    x86_64 interpreter, 100k-loop 18.8 s vs 3.6 s) even unthrottled
+    (bochsrc ips=1G + sync=none; stock 40M ips cap was 7x worse). Interactive
+    exec is at parity (6 ms echo). Upstream x86_64 JIT would close it.
+68. c2w console needs crossOriginIsolated: Safari lacks COEP credentialless,
+    so on pages Safari keeps SAB off and alpine64 shows the explain-error;
+    v86 buildroot unaffected. Revisit if Safari ships credentialless.

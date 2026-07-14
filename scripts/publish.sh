@@ -20,6 +20,32 @@ dx build -p askk-web --web --release --base-path ASKK --debug-symbols false
 rm -rf "$DIST/assets/agents"
 cp -R crates/web/assets/agents "$DIST/assets/agents"
 
+# 2c. cross-origin isolation for the c2w VM (SharedArrayBuffer): GitHub Pages
+#     cannot send COOP/COEP, so the COI service worker ships at the site ROOT
+#     (SW scope covers the whole app) and its tag is injected as the FIRST
+#     script in <head>. Default mode is COEP:credentialless, so cross-origin
+#     model/CDN fetches keep working on Chromium/Firefox; browsers without
+#     credentialless stay un-isolated and the VM console explains itself.
+cp scripts/vm-c2w/vendor/coi-serviceworker.min.js "$DIST/coi-serviceworker.min.js"
+sed -i '' 's|<head>|<head><script src="/ASKK/coi-serviceworker.min.js"></script>|' "$DIST/index.html"
+grep -q 'coi-serviceworker' "$DIST/index.html"
+
+# 2d. GitHub hard-caps files at 100 MB: split the c2w VM image into 50 MB
+#     chunks; the worker probes `<name>.wasm00.wasm` when the whole file 404s
+#     and re-concatenates (scripts/vm-c2w/worker-entry.js fetchChunked).
+for W in "$DIST"/assets/alpine64-*.wasm; do
+  [ -f "$W" ] || continue
+  if [ "$(stat -f%z "$W")" -gt 99000000 ]; then
+    split -b 50m "$W" "$W.chunk."
+    n=0
+    for C in "$W".chunk.*; do
+      mv "$C" "$(printf '%s%02d.wasm' "$W" "$n")"
+      n=$((n + 1))
+    done
+    rm "$W"
+  fi
+done
+
 # 3. sanity: every path surface must carry the base path (the white-page trap)
 test -f "$DIST/index.html"
 grep -q 'src="/ASKK/' "$DIST/index.html"
