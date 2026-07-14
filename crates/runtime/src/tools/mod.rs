@@ -8,13 +8,8 @@ pub mod board;
 pub mod builtin;
 pub mod knowledge;
 pub mod mcp;
-<<<<<<< HEAD
-pub mod memory_tools;
-=======
 pub mod memory;
 pub use memory as memory_tools; // old path `tools::memory_tools::*` stays valid
-mod news;
->>>>>>> origin/worktree-agent-a03252500e7110a80
 pub mod registry;
 pub mod search;
 pub mod skills;
