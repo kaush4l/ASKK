@@ -35,7 +35,7 @@ grep -q 'coi-serviceworker' "$DIST/index.html"
 #     and re-concatenates (scripts/vm-c2w/worker-entry.js fetchChunked).
 for W in "$DIST"/assets/alpine64-*.wasm; do
   [ -f "$W" ] || continue
-  if [ "$(stat -f%z "$W")" -gt 99000000 ]; then
+  if [ "$(wc -c < "$W")" -gt 99000000 ]; then
     split -b 50m "$W" "$W.chunk."
     n=0
     for C in "$W".chunk.*; do
