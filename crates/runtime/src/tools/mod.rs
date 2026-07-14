@@ -11,10 +11,12 @@ pub mod mcp;
 pub mod memory_tools;
 pub mod registry;
 pub mod search;
-pub mod shell;
 pub mod skills;
 pub mod spawn;
-pub mod workspace;
+pub mod vm;
+
+// Shims: keep pre-move `tools::shell::*` / `tools::workspace::*` paths resolving.
+pub use vm::{shell, workspace};
 
 pub use artifacts as artifact; // ponytail: path shim, retire once callers say `artifacts`
 pub use artifacts::register_artifacts;

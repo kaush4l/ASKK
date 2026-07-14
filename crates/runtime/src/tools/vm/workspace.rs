@@ -13,8 +13,8 @@ use serde_json::{json, Value};
 
 use crate::state::LocalBoxFuture;
 
-use super::registry::{RegistryError, ToolRegistry};
 use super::shell::ShellExec;
+use crate::tools::registry::{RegistryError, ToolRegistry};
 
 /// Register the workspace file tools with the guest shell executor.
 pub fn register_workspace(

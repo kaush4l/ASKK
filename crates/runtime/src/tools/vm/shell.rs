@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::state::LocalBoxFuture;
 
-use super::registry::{RegistryError, ToolRegistry};
+use crate::tools::registry::{RegistryError, ToolRegistry};
 
 /// The one-method seam: run a shell command in the guest, get its output.
 pub trait ShellExec {
