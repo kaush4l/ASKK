@@ -1,7 +1,7 @@
 # Glossary
 
 - **Harness** — the top-level runtime coordinating sheets, agents, inference, tools, state,
-  actions, outputs. Code home: `crates/runtime`.
+  actions, outputs. Code home: `crates/engine` (+ `crates/features`, `crates/state`).
 - **Sheet** — the typed, serializable working surface for one agent invocation; an ordered
   collection of Elements. Rendering a sheet produces the exact `InferenceRequest` sent to a
   provider. The sheet is the only thing an agent "sees".

@@ -7,7 +7,7 @@
     "@xterm/xterm": "^6.0.0",
     "v86": "^0.5.224"
   },
-  "description": "Builds the v86 VM serial-console bundle (crates/web/assets/vm/v86.js) and stages the MATCHING v86.wasm from the installed package. Run `bun install && bun run build` after editing entry.js or bumping deps, then commit the regenerated assets.",
+  "description": "Builds the v86 VM serial-console bundle (crates/frontend/assets/vm/v86.js) and stages the MATCHING v86.wasm from the installed package. Run `bun install && bun run build` after editing entry.js or bumping deps, then commit the regenerated assets.",
   "scripts": {
     "build": "bun run build.mjs"
   }

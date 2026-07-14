@@ -17,7 +17,7 @@ const stubNodeBuiltins = {
   },
 };
 
-const OUT = "../../crates/web/assets/vm";
+const OUT = "../../crates/frontend/assets/vm";
 const result = await build({
   entrypoints: ["./entry.js"],
   outdir: OUT,
@@ -35,4 +35,4 @@ if (!result.success) {
 // The wasm MUST match the bundled libv86 version — stage it from the same
 // installed package, never hand-copy.
 copyFileSync("node_modules/v86/build/v86.wasm", `${OUT}/v86.wasm`);
-console.log("built crates/web/assets/vm/v86.js + staged matching v86.wasm");
+console.log("built crates/frontend/assets/vm/v86.js + staged matching v86.wasm");

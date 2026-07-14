@@ -8,7 +8,7 @@ bun install --frozen-lockfile 2>/dev/null || bun install
 
 bun build entry.js --target=browser --minify --outfile=dist/askk-llm.js
 
-ASSETS=../../crates/web/assets/llm
+ASSETS=../../crates/browser/assets/llm
 mkdir -p "$ASSETS"
 cp dist/askk-llm.js "$ASSETS/"
 

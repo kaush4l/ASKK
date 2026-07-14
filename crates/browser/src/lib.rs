@@ -1,0 +1,17 @@
+//! The host seam (ADR-009/013): the ONLY crate above the engine that imports
+//! `askk-engine` / `askk-inference`. Frontend UI components talk to [`boot`]'s
+//! `HarnessHandle` facade and receive core types + plain structs only.
+
+pub mod artifacts;
+pub mod boot;
+pub mod browser;
+pub mod bus;
+pub mod config;
+pub mod dom;
+pub mod fetch;
+pub mod jstool;
+pub mod local_llm;
+pub mod opfs;
+pub mod profile;
+pub mod speech;
+pub mod vm;

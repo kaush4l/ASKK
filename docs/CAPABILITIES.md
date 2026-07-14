@@ -10,13 +10,13 @@ reference; kiln is the structure reference).
 
 | Capability | Where | Proof |
 |---|---|---|
-| Chat + ReAct loop (TOON/JSON contracts, repair cascade) | `crates/core` contracts, `crates/runtime` turn loop | wave 7 e2e |
+| Chat + ReAct loop (TOON/JSON contracts, repair cascade) | `crates/core` contracts, `crates/engine` turn loop | wave 7 e2e |
 | True streaming (SSE, chunk-safe, UTF-8-safe) | `crates/inference/transport.rs`, `web/host/fetch.rs` | wave 7 e2e |
 | Named provider profiles (BYOK, per-profile model/max_tokens) | `web/host/profile.rs`, settings UI | wave 7 e2e |
 | web_search (DDG → Wikipedia fallback) | `runtime/tools/search.rs` | wave 7 e2e |
 | Delegation: every enabled agent is a tool; authority narrows | `runtime/delegate.rs` | wave 7 e2e |
 | **Parallel agents**: multi-call turns (`calls` list) join concurrently; UI drives N runs at once | `runtime/run/dispatch.rs`, `web/host/boot.rs` | wave 9 |
-| **Folder-is-config agents**: `agents/` decides set + order (build.rs bake, manifest.json runtime override on static hosts) | `crates/web/build.rs`, `web/host/boot.rs` | wave 9 |
+| **Folder-is-config agents**: `agents/` decides set + order (build.rs bake, manifest.json runtime override on static hosts) | `crates/browser/build.rs`, `web/host/boot.rs` | wave 9 |
 | **Orchestrator-managed loops**: plan → dispatch (loop) → verify (gate) declared phases | `agents/orchestrator.md` | wave 9 |
 | Speech: STT (whisper) + TTS (kokoro) behind HF-model-id seam | `web/host/speech.rs`, `scripts/speech/` | wave 8 round-trip |
 | **VM: real x86 Linux in the browser (v86)** — serial console, manifest-driven images | `web/ui/vm.rs`, `assets/vm/` | wave 9 |
@@ -29,7 +29,7 @@ reference; kiln is the structure reference).
 | **First-class teams**: folder + team.md = ONE delegate tool, boundary resets authority, shared principles injected (ADR-032) | `runtime/config/team.rs`, `runtime/delegate.rs` | wave 16 |
 | **Director thread**: per-agent `budget.*` in MD (max_turns/deadline_s/depth) | `runtime/config/agent.rs` | wave 16 |
 | **Board reorientation**: durable-board digest injected at run start for board-holding agents | `runtime/state/board.rs`, `runtime/run/session.rs` | wave 16 |
-| Config surface documented in-folder | `crates/web/assets/agents/README.md` | wave 16 |
+| Config surface documented in-folder | `crates/frontend/assets/agents/README.md` | wave 16 |
 | **Context diet**: history replays answers + id-less MCP calls only (scaffold-stripped fallbacks); news folded into `web_search news:true`; `echo` test-only | `core/toolcall.rs`, `core/sheet.rs`, `runtime/tools/search.rs` | wave 17 |
 | **Live artifacts (ADR-033)**: board digest + published docs re-read before EVERY call as latest-state ARTIFACT blocks — never history | `core/element.rs`, `runtime/run/turn.rs` | wave 18 |
 | **Curated context (ADR-034)**: `phase.N.skills` completes the per-phase recipe {contract, tools, skills, header}; lean director carries per-phase tool filters + effort tiers | `core/phase.rs`, `agents/orchestrator.md` | wave 19 |
@@ -82,7 +82,7 @@ is documented with file:line citations in `docs/PROMPT.md`.
   into a persistent console so `shell` works from any stage.
 - **react contract v2**: `observation`/`plan` string lists, `action` switch,
   `answer` = final text OR MCP-style call line `{"name","arguments"}` (ADR-017).
-- **Agents + custom JS tools are served files** under `crates/web/assets/agents/`
+- **Agents + custom JS tools are served files** under `crates/frontend/assets/agents/`
   (baked + live-fetch). `fetch_url.js` is the sample custom tool — self-registers
   an MCP card, wrapped as a `dyn Tool` (ADR-019).
 
@@ -114,9 +114,9 @@ projects today; richer toolchains wait on guest networking (GAPS 25).
   console capture, completion value, await support, terminate-on-timeout; live-verified
   at 6 ms round-trip. The VM never sees JS (ADR-021).
 - **`MockProvider::from_script`**: the ScriptedLlm rig loads canned reply sequences from
-  `crates/runtime/tests/fixtures/*.llm` (`---`-separated blocks, `!error:` for typed
+  `crates/engine/tests/fixtures/*.llm` (`---`-separated blocks, `!error:` for typed
   provider errors) via `include_str!` — no runtime I/O, wasm-safe.
-- Gate now compiles wasm32 (`cargo check -p askk-web --target wasm32-unknown-unknown`)
+- Gate now compiles wasm32 (`cargo check -p askk-frontend --target wasm32-unknown-unknown`)
   and regenerates the bench status on every run.
 
 ## Wave 13 — modularity: managed loops, open search, OKF knowledge (2026-07-11)

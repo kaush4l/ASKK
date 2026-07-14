@@ -9,7 +9,7 @@ bun install --frozen-lockfile 2>/dev/null || bun install
 bun build stt-entry.js --target=browser --minify --outfile=dist/askk-stt.js
 bun build tts-entry.js --target=browser --minify --outfile=dist/askk-tts.js
 
-ASSETS=../../crates/web/assets/speech
+ASSETS=../../crates/browser/assets/speech
 mkdir -p "$ASSETS"
 cp dist/askk-stt.js dist/askk-tts.js "$ASSETS/"
 

@@ -34,7 +34,7 @@ Live instance: **https://kaush4l.github.io/ASKK/**
 
 ## Agents are files
 
-The `crates/web/assets/agents/` folder IS the roster: one markdown file per agent —
+The `crates/frontend/assets/agents/` folder IS the roster: one markdown file per agent —
 frontmatter (id, tools, skills, provider, contract, `phase.N.*` workflow) plus a directive
 body. Subfolders are teams (`coding/` = dev-lead + programmer + reviewer). The deployed
 site fetches this folder at load, so on a static host you can drop a new `.md` into the
@@ -58,7 +58,7 @@ served `assets/agents/` folder, list it in `manifest.json`, and reload — no re
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install dioxus-cli        # dx 0.7
-dx serve -p askk-web --platform web --port 8081
+dx serve -p askk-frontend --platform web --port 8081
 ```
 
 Test and gate with `./scripts/gate.sh` (fmt, clippy `-D warnings`, wasm32 check, workspace

@@ -1,6 +1,14 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/inference", "crates/runtime", "crates/web"]
+members = [
+    "crates/core",
+    "crates/inference",
+    "crates/state",
+    "crates/features",
+    "crates/engine",
+    "crates/browser",
+    "crates/frontend",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,7 +21,10 @@ serde_json = "1"
 futures = "0.3"
 askk-core = { path = "crates/core" }
 askk-inference = { path = "crates/inference" }
-askk-runtime = { path = "crates/runtime" }
+askk-state = { path = "crates/state" }
+askk-features = { path = "crates/features" }
+askk-engine = { path = "crates/engine" }
+askk-browser = { path = "crates/browser" }
 
 [profile.release]
 opt-level = "z"

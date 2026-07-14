@@ -29,7 +29,7 @@ without tests is unfinished.
 8. **Web/UI** — thin: UI logic stays in projections (host-tested); components render
    projections. No wasm-bindgen tests exist yet (an earlier claim here outran the code —
    docs/findings/code-vs-claims.md); the gate compiles wasm32
-   (`cargo check -p askk-web --target wasm32-unknown-unknown`) so web-only breakage can't
+   (`cargo check -p askk-frontend --target wasm32-unknown-unknown`) so web-only breakage can't
    slip through, and browser-lane behavior is verified manually via `dx serve`.
 9. **Acceptance benchmark** (`runtime/tests/acceptance.rs` + `bench/acceptance/ROWS.md`) —
    the v0 termination rows (ADR-020), driven through the real loop against

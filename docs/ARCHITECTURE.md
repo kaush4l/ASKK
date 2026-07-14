@@ -2,13 +2,13 @@
 
 ## Overview
 
-Four Cargo crates, one-way dependency edges, enforced by the workspace graph:
+Seven Cargo crates, one-way dependency edges, enforced by the workspace graph:
 
 ```
-askk-core  ←  askk-inference  ←─┐
-   ↑                            │
-   └────────  askk-runtime  ←── askk-web
+core ← inference ← state ← features ← engine ← browser ← frontend
 ```
+
+(a DAG, not a chain — MAP.md carries the exact allowed-imports table)
 
 - **`crates/core`** — the domain. Sheet, Element, Contract, Tool trait, Action, Signal, State
   categories, the pure turn loop. No I/O, no wasm, no HTTP, no UI. Everything here is unit-testable
@@ -17,11 +17,16 @@ askk-core  ←  askk-inference  ←─┐
   adapters here build wire bodies and parse responses as **pure functions** over an injected
   `Transport` (HTTP/SSE seam). OpenAI-compatible, Anthropic, Mock. Local (transformers.js) implements
   the same trait in `web` because it needs JS interop.
-- **`crates/runtime`** — the harness. Config loading (soul.md / agent.md / skills), sheet assembly,
-  run orchestration, tool registry + dispatch, action gate + audit, signal log, state stores behind
-  traits (memory impl here; OPFS impl in web).
-- **`crates/web`** — Dioxus web app. UI surfaces (fold over signal log), web workers hosting runs,
-  OPFS persistence, fetch/SSE transport, local model provider, vendored JS where a widget is heavy.
+- **`crates/state`** — the state layer. KvStore/BlobStore seams (memory impls; OPFS impls in
+  browser), signal log, board/memory/session stores.
+- **`crates/features`** — config loading (soul.md / agent.md / skills) and the tool surface
+  (registry + one folder per feature: mcp, search, vm, board, artifacts, knowledge, memory, skills).
+- **`crates/engine`** — the harness engine. Run orchestration (incl. delegation), sheet assembly,
+  action gate + audit; integration tests live here.
+- **`crates/browser`** — the host seam. OPFS persistence, fetch/SSE transport, local model
+  provider, speech, VM serial bridge, boot facade (`HarnessHandle`).
+- **`crates/frontend`** — the Dioxus web app. UI surfaces (fold over signal log), assets,
+  the dx entrypoint. Imports core + browser only.
 
 `agents/` (repo root) holds configuration: `soul.md`, `<name>.md` agent files, `skills/`. Not code.
 
@@ -78,11 +83,11 @@ Key invariants (inherited, hard-won):
 |---|---|
 | Where is an agent defined? | `agents/<name>.md` (frontmatter + body); parsing in `runtime/src/config/` |
 | Where is a provider added? | `crates/inference/src/<name>.rs` (one adapter file) |
-| Where is a tool registered? | `crates/runtime/src/tools/` (one module per tool, registered in `registry.rs`) |
+| Where is a tool registered? | `crates/features/src/tools/` (one module per tool, registered in `registry.rs`) |
 | Where is a contract defined? | `crates/core/src/contract.rs` (+ named contracts in `contracts.rs`) |
-| Where is state read/written? | `crates/core/src/state.rs` (types) + `crates/runtime/src/state/` (stores) |
-| Where are actions validated? | `crates/runtime/src/actions/gate.rs` |
-| Where is execution orchestrated? | `crates/runtime/src/run.rs` |
-| Where are tests? | Inline `#[cfg(test)]` per module + `crates/runtime/tests/` workflows |
-| Where is UI connected? | `crates/web/src/` (projections + command channel) |
+| Where is state read/written? | `crates/core/src/state.rs` (types) + `crates/state/src/` (stores) |
+| Where are actions validated? | `crates/engine/src/actions/gate.rs` |
+| Where is execution orchestrated? | `crates/engine/src/run.rs` |
+| Where are tests? | Inline `#[cfg(test)]` per module + `crates/engine/tests/` workflows |
+| Where is UI connected? | `crates/frontend/src/` (projections + command channel) |
 | Where are decisions documented? | `docs/adr/ADRS.md` |

@@ -2,16 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "askk-web",
+      "name": "askk-frontend",
       "runtimeExecutable": "dx",
-      "runtimeArgs": ["serve", "-p", "askk-web", "--platform", "web", "--port", "8081"],
+      "runtimeArgs": ["serve", "-p", "askk-frontend", "--platform", "web", "--port", "8081"],
       "port": 8081,
       "autoPort": false
     },
     {
-      "name": "askk-web-coi",
+      "name": "askk-frontend-coi",
       "runtimeExecutable": "dx",
-      "runtimeArgs": ["serve", "-p", "askk-web", "--platform", "web", "--port", "8082", "--cross-origin-policy"],
+      "runtimeArgs": ["serve", "-p", "askk-frontend", "--platform", "web", "--port", "8082", "--cross-origin-policy"],
       "port": 8082,
       "autoPort": false
     }

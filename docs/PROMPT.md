@@ -6,9 +6,9 @@ code disagree, the code wins (log it in docs/findings/).
 ## 1. Pipeline
 
 ```
-turn.rs one_turn (crates/runtime/src/run/turn.rs:180-273)
+turn.rs one_turn (crates/engine/src/run/turn.rs:180-273)
   └─ build_sheet (turn.rs:277-319)
-       └─ assemble() → Sheet{ elements: Vec<Element> }   (crates/runtime/src/assemble.rs:30-86)
+       └─ assemble() → Sheet{ elements: Vec<Element> }   (crates/engine/src/assemble.rs:30-86)
             └─ Sheet::render() → InferenceRequest        (crates/core/src/sheet.rs:23-64)
                  { sections: Vec<(SectionKind, String)>, history, tools, contract, parts, config }
                                                           (crates/core/src/request.rs:124-132)
@@ -72,7 +72,7 @@ Providers map, they never compose prompt text (ADR-002; request.rs:1-2).
 - Assistant tool-call turns are stored as the JSON-stringified `Vec<ToolCall>`
   (sheet.rs:74-77).
 - Tool results are flat `Role::Tool` messages, `"{name}: {content}"` (turn.rs:60-67;
-  crates/runtime/src/run/dispatch.rs:239). Nothing round-trips provider-native
+  crates/engine/src/run/dispatch.rs:239). Nothing round-trips provider-native
   tool_use ids (turn.rs:245-256).
 
 ## 4. Response format
@@ -138,11 +138,11 @@ enum values matched case-insensitively.
 - Dispatch re-checks membership (dispatch.rs:35-41); an unknown tool becomes an
   observation listing the allowed names (dispatch.rs:73-86).
 - Delegate agents appear as tools named by agent id, card = name + description
-  (crates/runtime/src/run/delegation/delegate.rs:97-120); `handoff` transfers the whole run (163-198).
+  (crates/engine/src/run/delegation/delegate.rs:97-120); `handoff` transfers the whole run (163-198).
 
 ## 6. Context lifecycle
 
-History starts empty per run (crates/runtime/src/run/session.rs:177) and grows by:
+History starts empty per run (crates/engine/src/run/session.rs:177) and grows by:
 
 | Append | Where |
 |---|---|
@@ -150,8 +150,8 @@ History starts empty per run (crates/runtime/src/run/session.rs:177) and grows b
 | Tool observation `"{name}: {content}"` as Role::Tool | dispatch.rs:239; turn.rs:60-67 |
 | Unknown-tool / denial / delegated-confirmation observations | dispatch.rs:76-86, 103-113, 136-145 |
 | Repair prompts | turn.rs:235 |
-| Gate failure `Gate '{name}' failed — revise. {feedback}` | crates/runtime/src/run/answer.rs:89-98 |
-| Phase-exhaustion reroute / empty fan-out notes | crates/runtime/src/run/flow.rs:40-48, 90-99 |
+| Gate failure `Gate '{name}' failed — revise. {feedback}` | crates/engine/src/run/answer.rs:89-98 |
+| Phase-exhaustion reroute / empty fan-out notes | crates/engine/src/run/flow.rs:40-48, 90-99 |
 | Final-turn nudge (Role::User, "answer now; do not call tools") | turn.rs:27, 124-135; Budgets::is_final_turn (crates/core/src/state.rs:79-81) |
 
 Bounds — Budgets (state.rs): `max_turns` 16, `deadline_ms` 300 000, `tool_timeout_ms`
@@ -177,7 +177,7 @@ turn.rs:291-295).
 
 ## 7. Prompt-engineering knobs (agent authors)
 
-All from `agents/` files, loaded fail-loud (crates/runtime/src/config/agent.rs).
+All from `agents/` files, loaded fail-loud (crates/features/src/config/agent.rs).
 
 | Knob | Where it lands in the prompt |
 |---|---|

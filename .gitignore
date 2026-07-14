@@ -3,7 +3,7 @@ dist/
 node_modules/
 # 105 MB container2wasm image — over GitHub's 100 MB per-file push limit.
 # Stage locally per scripts/vm-c2w/README.md; publish.sh chunks it for pages.
-crates/web/assets/vm/alpine64.wasm
+crates/frontend/assets/vm/alpine64.wasm
 .DS_Store
 .claude/settings.local.json
 .claude/worktrees/

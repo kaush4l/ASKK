@@ -18,11 +18,62 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
+name = "askk-browser"
+version = "0.1.0"
+dependencies = [
+ "askk-core",
+ "askk-engine",
+ "askk-inference",
+ "dioxus",
+ "futures",
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "askk-core"
 version = "0.1.0"
 dependencies = [
  "futures",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "askk-engine"
+version = "0.1.0"
+dependencies = [
+ "askk-core",
+ "askk-features",
+ "askk-inference",
+ "askk-state",
+ "futures",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "askk-features"
+version = "0.1.0"
+dependencies = [
+ "askk-core",
+ "askk-inference",
+ "askk-state",
+ "futures",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "askk-frontend"
+version = "0.1.0"
+dependencies = [
+ "askk-browser",
+ "askk-core",
+ "dioxus",
  "serde_json",
 ]
 
@@ -37,30 +88,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "askk-runtime"
+name = "askk-state"
 version = "0.1.0"
 dependencies = [
  "askk-core",
- "askk-inference",
- "futures",
- "serde",
  "serde_json",
-]
-
-[[package]]
-name = "askk-web"
-version = "0.1.0"
-dependencies = [
- "askk-core",
- "askk-inference",
- "askk-runtime",
- "dioxus",
- "futures",
- "js-sys",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]

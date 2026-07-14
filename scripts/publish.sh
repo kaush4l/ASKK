@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 REMOTE=git@github.com:kaush4l/ASKK.git
-DIST=target/dx/askk-web/release/web/public
+DIST=target/dx/askk-frontend/release/web/public
 WT=target/gh-pages-worktree
 
 # 1. clean dist so the deploy is exactly this build (stale hashed assets linger otherwise)
@@ -13,12 +13,12 @@ rm -rf "$DIST"
 
 # 2. release build — the /ASKK/ base path is baked into HTML + JS glue + wasm
 #    (DIOXUS_ASSET_ROOT) at compile time; post-processing a dist cannot fix it.
-dx build -p askk-web --web --release --base-path ASKK --debug-symbols false
+dx build -p askk-frontend --web --release --base-path ASKK --debug-symbols false
 
 # 2b. the live agents config folder (ADR-019): dx only bundles asset!()-referenced
 #     files, so the folder must ship verbatim for runtime fetch + drop-in edits.
 rm -rf "$DIST/assets/agents"
-cp -R crates/web/assets/agents "$DIST/assets/agents"
+cp -R crates/frontend/assets/agents "$DIST/assets/agents"
 
 # 2c. cross-origin isolation for the c2w VM (SharedArrayBuffer): GitHub Pages
 #     cannot send COOP/COEP, so the COI service worker ships at the site ROOT
@@ -49,7 +49,7 @@ done
 # 3. sanity: every path surface must carry the base path (the white-page trap)
 test -f "$DIST/index.html"
 grep -q 'src="/ASKK/' "$DIST/index.html"
-grep -q '"/ASKK/assets/' "$DIST"/assets/askk-web-*.js
+grep -q '"/ASKK/assets/' "$DIST"/assets/askk-frontend-*.js
 test -f "$DIST/assets/agents/manifest.json"
 test -z "$(find "$DIST" -type f -size +99M)" # GitHub hard limit is 100MB/file
 
