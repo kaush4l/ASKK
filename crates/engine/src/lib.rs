@@ -1,6 +1,13 @@
-//! The harness engine: run orchestration, sheet assembly, action gating —
-//! plus crate-root re-exports that keep the pre-split facade paths alive
+//! askk-engine — the agent loop. [`run`] owns run orchestration: submit/
+//! steer/cancel, turns, tool dispatch, and delegation (incl. loops and
+//! `spawn`); [`assemble`] builds the sheet from elements; [`actions`]
+//! gates mutating tool calls behind the action policy + audit trail.
+//! Crate-root re-exports keep the pre-split facade paths alive
 //! (`config`/`tools` live in askk-features, `state` in askk-state).
+//!
+//! Imports: core, inference, state, features. Imported by: browser only.
+//!
+//! See MAP.md and docs/NAVIGATION.md.
 
 pub mod actions;
 pub mod assemble;

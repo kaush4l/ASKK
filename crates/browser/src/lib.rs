@@ -1,6 +1,13 @@
-//! The host seam (ADR-009/013): the ONLY crate above the engine that imports
-//! `askk-engine` / `askk-inference`. Frontend UI components talk to [`boot`]'s
-//! `HarnessHandle` facade and receive core types + plain structs only.
+//! askk-browser — the host seam (ADR-009/013): the ONLY wasm/web_sys crate,
+//! and the only crate that imports askk-engine. Host adapters live here —
+//! OPFS stores, fetch transport, DOM, cross-tab bus, VM serial, speech,
+//! local LLM, config loading — plus the [`boot`] facade: frontend talks to
+//! `HarnessHandle` and receives core types + plain structs only.
+//!
+//! May import anything below: core, inference, state, features, engine.
+//! Imported by: frontend only.
+//!
+//! See MAP.md and docs/NAVIGATION.md.
 
 pub mod artifacts;
 pub mod boot;

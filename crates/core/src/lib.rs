@@ -1,8 +1,12 @@
-//! askk-core — the pure domain. Sheet, Element, Contract, Tool, Action,
-//! Signal, State, Phase, and the Provider seam. No I/O, no wasm, no HTTP,
-//! no UI: everything here is host-testable with mocks (ADR-009).
+//! askk-core — the language-agnostic engine abstraction, pure domain only.
+//! Sheet, Element, Contract, the Tool trait, Action, Signal, State, Phase,
+//! and the Provider seam. No I/O, no wasm, no HTTP, no UI: everything here
+//! is host-testable with mocks (ADR-009).
 //!
-//! Dependency rule 1: this crate imports nothing from the workspace.
+//! Imports: nothing from the workspace (dependency rule 1). Imported by:
+//! every other crate.
+//!
+//! See MAP.md and docs/NAVIGATION.md.
 
 pub mod action;
 pub mod board;

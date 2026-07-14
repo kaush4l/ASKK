@@ -1,8 +1,13 @@
-//! askk-inference — provider adapters over an injected Transport (ADR-009).
-//! Body building and reply parsing are pure functions; retry/backoff lives
-//! at the runtime call site, not here.
+//! askk-inference — external-LLM provider adapters: each maps a core
+//! `InferenceRequest` to a provider's HTTP shape over an injected
+//! [`Transport`] (ADR-009). Body building and reply parsing are pure
+//! functions; retry/backoff lives at the runtime call site, not here.
+//! No UI, no storage.
 //!
-//! Dependency rule 2: imports `askk-core` only. No UI, no storage.
+//! Imports: core only (dependency rule 2). Imported by: features, engine,
+//! browser.
+//!
+//! See MAP.md and docs/NAVIGATION.md.
 
 pub mod anthropic;
 pub mod mock;

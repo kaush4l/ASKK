@@ -1,21 +1,18 @@
-//! State layer (MODELS.md §State model, ADR-003/005/009): what we store,
-//! where, and who talks to whom.
-//!
+//! askk-state — what we store (MODELS.md §State model, ADR-003/005/009).
 //! Two injected seams, both in [`store`]: [`KvStore`] (key → JSON) and
-//! [`BlobStore`] (path → bytes). Browser impls are `OpfsKv`/`OpfsBlob` in
-//! `web/src/host/opfs.rs`; [`MemKv`]/[`MemBlob`] here serve tests and host.
+//! [`BlobStore`] (path → bytes); browser impls are `OpfsKv`/`OpfsBlob` in
+//! `crates/browser/src/opfs.rs`, [`MemKv`]/[`MemBlob`] here serve tests
+//! and host. THE persistence truth is the append-only signal log ([`log`]):
+//! every durable *run* fact is a signal. The other stores are config-shaped
+//! conveniences over the KV seam, plain `Result`s, no signals: [`session`]
+//! (UI picks), [`memory`] (per-agent digests), [`board`] (kanban).
 //!
-//! THE persistence truth is the append-only signal log ([`log`]): every
-//! durable *run* fact is a signal. The other stores are config-shaped
-//! conveniences over the KV seam, plain `Result`s, no signals:
-//! [`session`] (UI picks), [`memory`] (per-agent digests), [`board`] (kanban).
+//! No pub/sub between agents: nested runs share one `Shared`
+//! (`crates/engine/src/run/session.rs`); the BroadcastChannel bus
+//! (`crates/browser/src/bus.rs`) mirrors signals across tabs, view-only.
 //!
-//! Who talks to whom: there is NO pub/sub between agents. Inter-agent
-//! communication is nested runs sharing one `Shared` (`run/session.rs`) via
-//! delegation/loops; signals (`core/src/signal.rs`) are the single run-state
-//! truth (UI = fold(signals)); and the BroadcastChannel bus
-//! (`web/src/host/bus.rs`) mirrors stamped signals across TABS, view-only —
-//! a tab owns only the runs it submitted.
+//! Imports: core only. May be imported by: features, engine, browser.
+//! See MAP.md and docs/NAVIGATION.md.
 
 pub mod board;
 pub mod log;

@@ -1,8 +1,15 @@
-//! askk-frontend: the Dioxus browser shell over the finished runtime.
+//! askk-frontend — Dioxus components only: UI = fold(signals). Views under
+//! `ui/` render projections from the `askk_browser` boot facade and send
+//! commands back through it; no engine, storage, or web_sys access here.
 //!
 //! wasm → `dioxus::launch(App)`. Host → a living smoke binary: boots the
 //! facade with a scripted MockProvider, drives one happy-path run, prints
 //! the folded timeline (`cargo run -p askk-frontend`).
+//!
+//! Imports: core and browser only (kiln rule: the app imports only the
+//! contracts). Imported by: nothing — this is the app.
+//!
+//! See MAP.md and docs/NAVIGATION.md.
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod ui;
