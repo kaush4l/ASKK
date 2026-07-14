@@ -1,5 +1,7 @@
 # ASKK
 
+> New here? Start with [docs/NAVIGATION.md](docs/NAVIGATION.md) — what runs where, and where new code goes.
+
 A browser-only agent workspace. Rust compiled to WebAssembly (Dioxus); everything runs
 client-side — the only network traffic is to the LLM endpoint you configure.
 
