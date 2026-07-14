@@ -1,11 +1,11 @@
 //! News lane of `web_search` (`news: true`) — pure URL builders and parsers
 //! for the CORS-open news sources: Wikinews full-text search (key-free,
 //! origin=*, reliable) and GDELT DOC 2.0 (broad + fresh but rate-limits/bans
-//! hard, so never primary). The chain itself lives in `search.rs`.
+//! hard, so never primary). The chain itself lives in `engines.rs`.
 
 use serde_json::Value;
 
-use super::search::{encode, strip_tags};
+use super::engines::{encode, strip_tags};
 
 const MAX_RESULTS: usize = 5;
 
@@ -71,9 +71,9 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use super::super::search::WebSearch;
-    use super::super::testutil::block_on;
+    use super::super::engines::WebSearch;
     use super::*;
+    use crate::testutil::block_on;
     use askk_core::{Tool, ToolCtx, ToolResult};
     use askk_inference::MockTransport;
     use serde_json::json;

@@ -17,7 +17,7 @@ use serde_json::Value;
 use crate::state::LocalBoxFuture;
 
 use super::news;
-use super::registry::{RegistryError, ToolRegistry};
+use crate::tools::registry::{RegistryError, ToolRegistry};
 
 const MAX_RESULTS: usize = 5;
 
@@ -334,8 +334,8 @@ pub(super) fn strip_tags(html: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::testutil::block_on;
     use super::*;
+    use crate::testutil::block_on;
     use askk_inference::MockTransport;
     use serde_json::json;
 

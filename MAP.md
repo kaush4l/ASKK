@@ -42,8 +42,8 @@ core ← inference ← runtime ← web
 | Named contracts | `crates/core/src/contracts.rs` |
 | TOON | `crates/core/src/toon.rs` |
 | Tool trait + ToolSet | `crates/core/src/tool.rs` |
-| web_search tool (SearXNG primary → DDG → Wikipedia; `news: true` lane) | `crates/runtime/src/tools/search.rs` |
-| web_search news lane sources (Wikinews → GDELT) | `crates/runtime/src/tools/news.rs` |
+| web_search tool (SearXNG primary → DDG → Wikipedia; `news: true` lane) | `crates/runtime/src/tools/search/engines.rs` |
+| web_search news lane sources (Wikinews → GDELT) | `crates/runtime/src/tools/search/news.rs` |
 | OKF knowledge bundle tools (ADR-024) | `crates/runtime/src/tools/knowledge.rs` |
 | Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/runtime/src/loops.rs` |
 | Kanban card model + stage rules (ADR-026) | `crates/core/src/board.rs` |

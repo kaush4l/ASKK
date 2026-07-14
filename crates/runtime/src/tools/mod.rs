@@ -9,7 +9,6 @@ pub mod builtin;
 pub mod knowledge;
 pub mod mcp;
 pub mod memory_tools;
-mod news;
 pub mod registry;
 pub mod search;
 pub mod shell;
