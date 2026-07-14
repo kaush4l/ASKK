@@ -1,17 +1,31 @@
 //! MCP client tests over the public registry surface: scripted
 //! `MockTransport` handshakes, prefixed registration, Pure/Mutating mapping
-//! from annotations, call round-trips, SSE-wrapped replies, and dead-server
-//! resilience. Zero network.
+//! from annotations, call round-trips, SSE-wrapped replies, dead-server
+//! resilience, JSON-vs-legacy config parsing, configured headers, disabled
+//! servers, and allowlist filtering. Zero network.
 
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use askk_core::{Effect, ToolCtx, ToolResult};
 use askk_inference::{HttpResponse, MockTransport};
 use askk_runtime::testutil::block_on;
-use askk_runtime::tools::{parse_server_list, register_mcp, ToolRegistry};
+use askk_runtime::tools::{
+    parse_server_list, parse_servers, register_mcp, McpServerConfig, McpServerStatus, ToolRegistry,
+};
 use serde_json::{json, Value};
 
 const SERVER: &str = "https://srv.example/mcp";
+
+fn cfg(url: &str) -> McpServerConfig {
+    McpServerConfig {
+        name: "srv".into(),
+        url: url.into(),
+        headers: BTreeMap::new(),
+        enabled: true,
+        allow: Vec::new(),
+    }
+}
 
 fn init_body() -> String {
     json!({"jsonrpc": "2.0", "id": 1, "result": {
@@ -39,10 +53,10 @@ fn script_handshake(transport: &MockTransport) {
     transport.push_ok(200, &tools_body());
 }
 
-fn registered(transport: Rc<MockTransport>) -> (ToolRegistry, Vec<String>) {
+fn registered(transport: Rc<MockTransport>) -> (ToolRegistry, Vec<McpServerStatus>) {
     let mut reg = ToolRegistry::new();
-    let problems = block_on(register_mcp(&mut reg, transport, &[SERVER.to_string()]));
-    (reg, problems)
+    let statuses = block_on(register_mcp(&mut reg, transport, &[cfg(SERVER)]));
+    (reg, statuses)
 }
 
 fn call(reg: &ToolRegistry, name: &str, args: Value) -> ToolResult {
@@ -54,12 +68,16 @@ fn call(reg: &ToolRegistry, name: &str, args: Value) -> ToolResult {
 fn remote_tools_register_with_prefixed_names_and_effects() {
     let transport = Rc::new(MockTransport::new());
     script_handshake(&transport);
-    let (reg, problems) = registered(transport.clone());
-    assert!(problems.is_empty(), "{problems:?}");
+    let (reg, statuses) = registered(transport.clone());
+    assert_eq!(statuses.len(), 1);
+    assert!(statuses[0].ok, "{:?}", statuses[0].error);
+    assert!(statuses[0].error.is_none());
     assert_eq!(
         reg.names(),
         vec!["mcp_srv_example_mcp_echo", "mcp_srv_example_mcp_write_file"]
     );
+    // The status lists exactly what got registered, by registry name.
+    assert_eq!(statuses[0].tools, reg.names());
     // readOnlyHint=true → Pure; no annotations → Mutating (gate default).
     let echo = reg.get("mcp_srv_example_mcp_echo").unwrap().spec();
     assert_eq!(echo.effect, Effect::Pure);
@@ -125,8 +143,8 @@ fn sse_wrapped_responses_parse_like_plain_json() {
     }));
     transport.push_ok(202, "");
     transport.push_ok(200, &format!("data: {}\n\n", tools_body()));
-    let (reg, problems) = registered(transport.clone());
-    assert!(problems.is_empty(), "{problems:?}");
+    let (reg, statuses) = registered(transport.clone());
+    assert!(statuses[0].ok, "{:?}", statuses[0].error);
     assert_eq!(reg.names().len(), 2);
 
     transport.push_ok(
@@ -143,19 +161,18 @@ fn sse_wrapped_responses_parse_like_plain_json() {
 }
 
 #[test]
-fn dead_server_is_a_problem_string_not_a_boot_failure() {
+fn dead_server_is_an_error_status_not_a_boot_failure() {
     // MockTransport with an empty script answers every send with a Connect
-    // error — the unreachable-server shape.
+    // error — the unreachable-server shape. Empty URLs are skipped silently.
     let transport = Rc::new(MockTransport::new());
     let mut reg = ToolRegistry::new();
-    let problems = block_on(register_mcp(
-        &mut reg,
-        transport,
-        &[SERVER.to_string(), String::new()],
-    ));
-    assert_eq!(problems.len(), 1);
-    assert!(problems[0].contains(SERVER.trim_end_matches('/')));
-    assert!(problems[0].contains("unreachable"), "{}", problems[0]);
+    let statuses = block_on(register_mcp(&mut reg, transport, &[cfg(SERVER), cfg("")]));
+    assert_eq!(statuses.len(), 1, "empty URL yields no status");
+    assert!(!statuses[0].ok);
+    assert_eq!(statuses[0].url, SERVER.trim_end_matches('/'));
+    let err = statuses[0].error.as_deref().unwrap();
+    assert!(err.contains("unreachable"), "{err}");
+    assert!(statuses[0].tools.is_empty());
     assert!(reg.names().is_empty());
 }
 
@@ -165,14 +182,20 @@ fn one_dead_server_does_not_block_the_next() {
     transport.push_ok(500, "boom"); // server A dies at initialize
     script_handshake(&transport); // server B is healthy
     let mut reg = ToolRegistry::new();
-    let problems = block_on(register_mcp(
+    let statuses = block_on(register_mcp(
         &mut reg,
         transport,
-        &["https://dead.example".to_string(), SERVER.to_string()],
+        &[cfg("https://dead.example"), cfg(SERVER)],
     ));
-    assert_eq!(problems.len(), 1);
-    assert!(problems[0].contains("dead.example"));
-    assert!(problems[0].contains("HTTP 500"), "{}", problems[0]);
+    assert_eq!(statuses.len(), 2);
+    assert!(!statuses[0].ok);
+    assert_eq!(statuses[0].url, "https://dead.example");
+    assert!(
+        statuses[0].error.as_deref().unwrap().contains("HTTP 500"),
+        "{:?}",
+        statuses[0].error
+    );
+    assert!(statuses[1].ok);
     assert_eq!(reg.names().len(), 2, "healthy server still registered");
 }
 
@@ -218,8 +241,8 @@ fn session_id_from_initialize_rides_every_later_request() {
     }));
     transport.push_ok(202, "");
     transport.push_ok(200, &tools_body());
-    let (_reg, problems) = registered(transport.clone());
-    assert!(problems.is_empty(), "{problems:?}");
+    let (_reg, statuses) = registered(transport.clone());
+    assert!(statuses[0].ok, "{:?}", statuses[0].error);
     let requests = transport.requests.borrow();
     let sid = |i: usize| {
         requests[i]
@@ -241,4 +264,96 @@ fn server_list_parses_lines_and_skips_blanks() {
     );
     assert!(parse_server_list("").is_empty());
     assert!(parse_server_list("  \n \n").is_empty());
+}
+
+#[test]
+fn json_config_parses_with_defaults_and_legacy_text_falls_back() {
+    let text = r#"[
+        {"url": "https://a.example/mcp",
+         "headers": {"Authorization": "Bearer k"}, "allow": ["echo"]},
+        {"name": "b", "url": "https://b.example", "enabled": false}
+    ]"#;
+    let configs = parse_servers(text);
+    assert_eq!(configs.len(), 2);
+    assert_eq!(configs[0].name, "a_example_mcp", "missing name → URL slug");
+    assert!(configs[0].enabled, "enabled defaults to true");
+    assert_eq!(configs[0].headers["Authorization"], "Bearer k");
+    assert_eq!(configs[0].allow, vec!["echo"]);
+    assert_eq!(configs[1].name, "b");
+    assert!(!configs[1].enabled);
+
+    // Legacy newline text still parses, mapping onto all-default configs.
+    let legacy = parse_servers("https://a.example/mcp\n\nhttps://b.example\n");
+    assert_eq!(legacy.len(), 2);
+    assert_eq!(legacy[0].url, "https://a.example/mcp");
+    assert_eq!(legacy[0].name, "a_example_mcp");
+    assert!(legacy[0].enabled && legacy[0].headers.is_empty() && legacy[0].allow.is_empty());
+    assert!(parse_servers("").is_empty());
+}
+
+#[test]
+fn configured_headers_ride_every_post_but_cannot_clobber_protocol() {
+    let transport = Rc::new(MockTransport::new());
+    script_handshake(&transport);
+    let mut server = cfg(SERVER);
+    server
+        .headers
+        .insert("Authorization".into(), "Bearer k".into());
+    server.headers.insert("content-type".into(), "evil".into());
+    server.headers.insert("Accept".into(), "evil".into());
+    let mut reg = ToolRegistry::new();
+    let statuses = block_on(register_mcp(&mut reg, transport.clone(), &[server]));
+    assert!(statuses[0].ok, "{:?}", statuses[0].error);
+    for r in transport.requests.borrow().iter() {
+        assert!(
+            r.headers
+                .iter()
+                .any(|(k, v)| k == "Authorization" && v == "Bearer k"),
+            "configured header missing on {}",
+            r.body
+        );
+        let content_types: Vec<&str> = r
+            .headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            .map(|(_, v)| v.as_str())
+            .collect();
+        assert_eq!(content_types, vec!["application/json"]);
+        let accepts: Vec<&str> = r
+            .headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("accept"))
+            .map(|(_, v)| v.as_str())
+            .collect();
+        assert_eq!(accepts, vec!["application/json, text/event-stream"]);
+    }
+}
+
+#[test]
+fn disabled_server_is_noted_but_never_contacted() {
+    let transport = Rc::new(MockTransport::new());
+    let mut server = cfg(SERVER);
+    server.enabled = false;
+    let mut reg = ToolRegistry::new();
+    let statuses = block_on(register_mcp(&mut reg, transport.clone(), &[server]));
+    assert_eq!(statuses.len(), 1);
+    assert!(!statuses[0].ok);
+    assert!(statuses[0].error.is_none(), "disabled is not an error");
+    assert!(statuses[0].tools.is_empty());
+    assert!(reg.names().is_empty());
+    assert!(transport.requests.borrow().is_empty(), "no wire traffic");
+}
+
+#[test]
+fn allowlist_filters_registration_and_status_lists_registered_tools() {
+    let transport = Rc::new(MockTransport::new());
+    script_handshake(&transport);
+    let mut server = cfg(SERVER);
+    server.allow = vec!["echo".into()];
+    let mut reg = ToolRegistry::new();
+    let statuses = block_on(register_mcp(&mut reg, transport, &[server]));
+    assert!(statuses[0].ok, "{:?}", statuses[0].error);
+    assert!(statuses[0].error.is_none(), "filtered-out is not an error");
+    assert_eq!(reg.names(), vec!["mcp_srv_example_mcp_echo"]);
+    assert_eq!(statuses[0].tools, vec!["mcp_srv_example_mcp_echo"]);
 }

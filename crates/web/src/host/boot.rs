@@ -20,6 +20,8 @@ use serde_json::Value;
 use super::profile::profile_from_json;
 use super::profile::profile_to_json;
 pub use super::profile::{AgentCard, NamedProfile, ProfileSet, ProviderProfileForm};
+/// Re-exported so the UI reads MCP boot statuses through the facade path.
+pub use askk_runtime::tools::McpServerStatus;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use askk_runtime::testutil::block_on;
@@ -62,9 +64,11 @@ pub struct HarnessHandle {
     /// Blob store shared with the signal log — `host::artifacts` reads
     /// published `artifact/<slug>` docs from it.
     pub(super) blobs: Rc<dyn askk_runtime::state::BlobStore>,
-    /// Newline-separated MCP server URLs (pref mirror; registration happens
-    /// at boot, so edits apply on the next reload).
+    /// Raw MCP server config text (pref mirror; registration happens at
+    /// boot, so edits apply on the next reload).
     mcp_servers: RefCell<String>,
+    /// Per-server MCP registration outcomes from boot (Settings status list).
+    mcp_status: Vec<McpServerStatus>,
 }
 
 impl HarnessHandle {
@@ -258,15 +262,21 @@ impl HarnessHandle {
         self.set_pref(SEARXNG_PREF, Value::from(url)).await;
     }
 
-    /// Configured MCP server URLs, one per line ("" = none).
+    /// Raw MCP server config text (JSON array or legacy URL lines, "" = none).
     pub fn mcp_servers(&self) -> String {
         self.mcp_servers.borrow().clone()
     }
 
-    /// Persist the MCP server list; tools (re)register on the next reload.
+    /// Persist the MCP server config; tools (re)register on the next reload.
     pub async fn set_mcp_servers(&self, text: &str) {
         *self.mcp_servers.borrow_mut() = text.to_string();
         self.set_pref(MCP_PREF, Value::from(text)).await;
+    }
+
+    /// Per-server MCP registration outcomes from this boot (read-only; a
+    /// config edit takes effect — and re-statuses — on the next reload).
+    pub fn mcp_status(&self) -> Vec<McpServerStatus> {
+        self.mcp_status.clone()
     }
 
     async fn persist_active(&self) -> Result<(), String> {
@@ -335,6 +345,7 @@ fn build_handle(
         storage_warning: None,
         searxng,
         mcp_servers: RefCell::new(String::new()),
+        mcp_status: Vec::new(),
     })
 }
 
@@ -406,8 +417,8 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     };
     let searxng = Rc::new(RefCell::new(searxng_url));
 
-    // MCP servers (newline-separated URLs; missing/empty = none). Tools
-    // register at boot, so a settings edit applies on the next reload.
+    // MCP servers (JSON config array or legacy newline URLs; missing/empty
+    // = none). Tools register at boot, so an edit applies on the next reload.
     let mcp_text = settings
         .pref(MCP_PREF)
         .await
@@ -429,10 +440,10 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     let shell_exec = Rc::new(super::vm::SerialShell::new());
     register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;
     register_workspace(&mut registry, shell_exec).map_err(|e| e.to_string())?;
-    let mcp_problems = register_mcp(
+    let mcp_status = register_mcp(
         &mut registry,
         transport.clone(),
-        &askk_runtime::tools::parse_server_list(&mcp_text),
+        &askk_runtime::tools::parse_servers(&mcp_text),
     )
     .await;
 
@@ -481,8 +492,13 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     // One boot-degradation channel: broken storage and dead MCP servers both
     // surface once in the UI; neither fails boot.
     let mut warnings: Vec<String> = storage_warning.into_iter().collect();
-    warnings.extend(mcp_problems);
+    warnings.extend(
+        mcp_status
+            .iter()
+            .filter_map(|s| s.error.as_ref().map(|e| format!("mcp {}: {e}", s.url))),
+    );
     handle.storage_warning = (!warnings.is_empty()).then(|| warnings.join("; "));
+    handle.mcp_status = mcp_status;
     *handle.mcp_servers.borrow_mut() = mcp_text;
     Ok(handle)
 }

@@ -139,9 +139,11 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
 
 ## Wave-14 rows (live-found during the batch)
 
-46. MCP client skips notifications (beyond `initialized`), resources and prompts; tools
-    are listed once at boot (edit servers -> reload). Add per-call re-list when a live
-    server needs it.
+46. PART-CLOSED (wave 20, ADR-036): structured JSON config (name/url/headers/enabled/
+    allow), per-server auth headers, allowlist filtering, and per-server boot statuses
+    in Settings shipped. Still open: notifications beyond `initialized`, resources and
+    prompts, stdio servers, and live re-list (tools are listed once at boot; edit
+    servers -> reload).
 47. Local (transformers.js) provider allows ONE in-flight generate per page — a second
     concurrent local run gets RateLimited. Pool workers if parallel local runs matter.
 48. Board UI is a live read view; cards move only through agent tools. Drag-and-drop

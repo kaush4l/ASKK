@@ -7,7 +7,7 @@
 
 use dioxus::prelude::*;
 
-use crate::host::boot::{NamedProfile, ProfileSet, ProviderProfileForm};
+use crate::host::boot::{McpServerStatus, NamedProfile, ProfileSet, ProviderProfileForm};
 use crate::host::speech::SpeechConfig;
 
 /// Mirrors the `[data-theme]` blocks in `main.css` — adding a theme = one
@@ -40,6 +40,7 @@ pub fn SettingsStage(
     speech: SpeechConfig,
     searxng: String,
     mcp_servers: String,
+    mcp_status: Vec<McpServerStatus>,
     on_save: EventHandler<NamedProfile>,
     on_select: EventHandler<String>,
     on_delete: EventHandler<String>,
@@ -225,7 +226,7 @@ pub fn SettingsStage(
             }
             div { class: "settings-title", "MCP servers" }
             label { class: "settings-row",
-                span { class: "settings-label", "Streamable-HTTP MCP server URLs (one per line, blank = none)" }
+                span { class: "settings-label", "Streamable-HTTP MCP servers (URLs one per line, or a JSON array; blank = none)" }
                 textarea {
                     class: "field",
                     rows: "3",
@@ -235,7 +236,10 @@ pub fn SettingsStage(
                 }
             }
             p { class: "hint",
-                "Each server's tools join the registry as mcp_<server>_<tool> after a reload. Servers must speak Streamable HTTP and allow this origin via CORS."
+                "Plain lines: one URL per line. JSON form adds per-server options: [{{\"name\":\"docs\",\"url\":\"https://…/mcp\",\"headers\":{{\"Authorization\":\"Bearer …\"}},\"enabled\":true,\"allow\":[\"search\"]}}] — empty allow = all tools. Each server's tools join the registry as mcp_<server>_<tool> after a reload. Servers must speak Streamable HTTP and allow this origin via CORS."
+            }
+            for s in mcp_status.iter() {
+                p { class: "hint", key: "{s.url}", "{mcp_status_line(s)}" }
             }
             div { class: "settings-title", "Speech (HF model ids, blank = default)" }
             label { class: "settings-row",
@@ -278,5 +282,25 @@ pub fn SettingsStage(
                 "Models download from the Hugging Face hub on first use and cache in this browser. Speech runs fully locally (ONNX wasm) — nothing leaves the machine."
             }
         }
+    }
+}
+
+/// One read-only status row per configured MCP server (boot outcomes):
+/// connected → registered tool names, failed → the error, disabled → noted.
+fn mcp_status_line(s: &McpServerStatus) -> String {
+    if s.ok {
+        let tools = if s.tools.is_empty() {
+            "no tools registered".to_string()
+        } else {
+            s.tools.join(", ")
+        };
+        match &s.error {
+            Some(e) => format!("✓ {} ({}) — {tools}; {e}", s.name, s.url),
+            None => format!("✓ {} ({}) — {tools}", s.name, s.url),
+        }
+    } else if let Some(e) = &s.error {
+        format!("✗ {} ({}) — {e}", s.name, s.url)
+    } else {
+        format!("○ {} ({}) — disabled", s.name, s.url)
     }
 }

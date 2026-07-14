@@ -65,7 +65,7 @@ core ← inference ← runtime ← web
 | Artifact read side (blob docs → UI) | `crates/web/src/host/artifacts.rs` |
 | Artifacts stage (gallery + sandboxed viewer) | `crates/web/src/ui/artifacts.rs` |
 | Markdown subset renderer (chat + artifacts) | `crates/web/src/ui/markdown.rs` |
-| MCP client (browser-direct, ADR-028) | `crates/runtime/src/tools/mcp.rs` |
+| MCP feature (config + client + registration, ADR-028/036) | `crates/runtime/src/tools/mcp/` |
 | Memory tools (remember/recall/forget) | `crates/runtime/src/tools/memory/mod.rs` |
 | Env presets (`env:` frontmatter, ADR-027) | `crates/runtime/src/config/env.rs` |
 | Handoff + delegation seam (ADR-030) | `crates/runtime/src/run/delegation/delegate.rs` |

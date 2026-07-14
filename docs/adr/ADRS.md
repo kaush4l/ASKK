@@ -379,3 +379,19 @@ Firefox — Safari degrades to v86-only), and the 105 MB image is gitignored
 50 MB chunks at publish (worker re-concatenates on 404 of the whole file).
 The 32-bit alpine bzimage+initrd+iso v86 path (~64 MB of assets) is deleted;
 build recipe + benchmarks live in Dev/c2w-alpine (RESULTS.md).
+
+## ADR-036 (A) — structured MCP config in the same pref, per-server statuses on the boot handle
+The `mcp_servers` pref now parses as EITHER a JSON array of `{name, url, headers, enabled,
+allow}` objects OR the legacy newline-URL list (defaults: name = URL slug, enabled, no
+headers, all tools) — one textarea, two formats, no migration. `tools/mcp.rs` became the
+feature folder `tools/mcp/` (config / client / registration) under the 400-line cap.
+Configured headers ride every POST (Authorization for gated servers) but can never clobber
+the protocol's own Content-Type / Accept / Mcp-Session-Id; empty `allow` = every remote
+tool, otherwise only allowlisted remote names register. `register_mcp` returns one
+`McpServerStatus` `{name, url, ok, tools, error}` per server: the boot handle exposes them
+(`mcp_status`) and Settings renders a read-only status list under the textarea; error
+statuses still fold into the single boot-warning channel (a dead server never fails boot;
+disabled = noted, never contacted). Rejected: a form-per-server editor (modal state and
+validation UI for a power-user surface the JSON textarea already covers legibly) and
+persisting statuses (they are boot-time facts, not config). Still open per GAPS 46:
+resources, prompts, stdio servers, live re-list.

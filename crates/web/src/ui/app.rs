@@ -12,7 +12,7 @@ use askk_core::{Card, RunId, RunProjection, SignalKind};
 use serde_json::{json, Value};
 
 use crate::host::artifacts::ArtifactDoc;
-use crate::host::boot::{self, HarnessHandle, NamedProfile, ProfileSet};
+use crate::host::boot::{self, HarnessHandle, McpServerStatus, NamedProfile, ProfileSet};
 use crate::host::dom;
 use crate::host::speech::{self, SpeechConfig};
 use crate::ui::agents::AgentsStage;
@@ -78,6 +78,7 @@ pub fn App() -> Element {
     let mut speech_cfg = use_signal(SpeechConfig::default);
     let mut searxng_url = use_signal(String::new);
     let mut mcp_servers = use_signal(String::new);
+    let mut mcp_status = use_signal(Vec::<McpServerStatus>::new);
     let mut run_start = use_signal(|| 0u64);
     // Persisted UI prefs (kiln appstate): stage, theme, rails, inspector tab.
     let mut stage = use_signal(|| Stage::Chat);
@@ -117,6 +118,7 @@ pub fn App() -> Element {
                 }
                 searxng_url.set(h.searxng_url());
                 mcp_servers.set(h.mcp_servers());
+                mcp_status.set(h.mcp_status());
                 if let Some(prefs) = h.get_pref("ui").await {
                     if let Some(t) = prefs.get("theme").and_then(Value::as_str) {
                         theme.set(t.to_string());
@@ -435,6 +437,7 @@ pub fn App() -> Element {
                                 speech: speech_cfg(),
                                 searxng: searxng_url(),
                                 mcp_servers: mcp_servers(),
+                                mcp_status: mcp_status(),
                                 on_save: on_save_profile,
                                 on_select: on_select_profile,
                                 on_delete: on_delete_profile,

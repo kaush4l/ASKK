@@ -1,11 +1,11 @@
-//! Browser-direct MCP client (Streamable HTTP): each configured remote
-//! server's tools join the ONE registry (ADR-004) as ordinary `dyn Tool`s
-//! named `mcp_<server-slug>_<toolname>`. JSON-RPC 2.0 rides the injected
-//! `Transport` (ADR-009) — one POST per message; the response body is plain
-//! JSON or a single-event SSE stream, both parsed. A dead server yields a
-//! problem string at registration, never a boot failure.
+//! MCP wire client: `McpEndpoint` speaks JSON-RPC 2.0 over Streamable HTTP
+//! (initialize → notifications/initialized → tools/list, `Mcp-Session-Id`
+//! echo, SSE-or-JSON reply bodies, configured extra headers on every POST)
+//! and `McpTool` exposes one remote tool as a local `dyn Tool`
+//! (`readOnlyHint` → Pure, else Mutating — the ADR-006 gate default).
 
 use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use askk_core::{Effect, Tool, ToolCtx, ToolResult, ToolSpec};
@@ -14,72 +14,41 @@ use serde_json::{json, Value};
 
 use crate::state::LocalBoxFuture;
 
-use super::registry::ToolRegistry;
+use super::config::server_slug;
 
 /// Latest MCP revision that specifies the Streamable HTTP transport.
 const PROTOCOL_VERSION: &str = "2025-03-26";
 
-/// Newline-separated pref text → trimmed, non-empty server URLs.
-pub fn parse_server_list(text: &str) -> Vec<String> {
-    text.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(String::from)
-        .collect()
-}
-
-/// Connect each server (initialize → initialized → tools/list) and register
-/// its tools. Returns human-readable problems — an unreachable server or a
-/// bad tool definition is reported and skipped, so boot always completes.
-pub async fn register_mcp(
-    reg: &mut ToolRegistry,
-    transport: Rc<dyn Transport>,
-    servers: &[String],
-) -> Vec<String> {
-    let mut problems = Vec::new();
-    for url in servers {
-        let url = url.trim().trim_end_matches('/');
-        if url.is_empty() {
-            continue;
-        }
-        let endpoint = Rc::new(McpEndpoint::new(transport.clone(), url));
-        let defs = match endpoint.connect().await {
-            Ok(defs) => defs,
-            Err(e) => {
-                problems.push(format!("mcp {url}: {e}"));
-                continue;
-            }
-        };
-        for def in &defs {
-            match McpTool::from_def(endpoint.clone(), def) {
-                Some(tool) => {
-                    if let Err(e) = reg.register(Rc::new(tool)) {
-                        problems.push(format!("mcp {url}: {e}"));
-                    }
-                }
-                None => problems.push(format!("mcp {url}: tool definition without a name")),
-            }
-        }
-    }
-    problems
-}
+/// Headers the protocol owns; configured extras must never clobber them.
+const RESERVED_HEADERS: &[&str] = &["content-type", "accept", "mcp-session-id"];
 
 /// One remote server: URL + request-id counter + the `Mcp-Session-Id` the
 /// server may hand back on `initialize` (echoed on every later request).
-struct McpEndpoint {
+pub(super) struct McpEndpoint {
     transport: Rc<dyn Transport>,
     url: String,
-    slug: String,
+    pub(super) slug: String,
+    /// Configured extra headers (reserved protocol headers pre-filtered).
+    extra_headers: Vec<(String, String)>,
     session: RefCell<Option<String>>,
     next_id: Cell<u64>,
 }
 
 impl McpEndpoint {
-    fn new(transport: Rc<dyn Transport>, url: &str) -> Self {
+    pub(super) fn new(
+        transport: Rc<dyn Transport>,
+        url: &str,
+        headers: &BTreeMap<String, String>,
+    ) -> Self {
         Self {
             transport,
             url: url.to_string(),
             slug: server_slug(url),
+            extra_headers: headers
+                .iter()
+                .filter(|(k, _)| !RESERVED_HEADERS.contains(&k.to_ascii_lowercase().as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
             session: RefCell::new(None),
             next_id: Cell::new(1),
         }
@@ -93,6 +62,7 @@ impl McpEndpoint {
                 "application/json, text/event-stream".to_string(),
             ),
         ];
+        headers.extend(self.extra_headers.iter().cloned());
         if let Some(sid) = self.session.borrow().clone() {
             headers.push(("Mcp-Session-Id".to_string(), sid));
         }
@@ -148,7 +118,7 @@ impl McpEndpoint {
     }
 
     /// The MCP bring-up handshake; returns the advertised tool definitions.
-    async fn connect(&self) -> Result<Vec<Value>, String> {
+    pub(super) async fn connect(&self) -> Result<Vec<Value>, String> {
         self.rpc(
             "initialize",
             json!({
@@ -170,14 +140,14 @@ impl McpEndpoint {
 
 /// A remote tool behind the local `dyn Tool` seam. Mutating unless the
 /// server's annotations carry `readOnlyHint: true` (ADR-006 gate default).
-struct McpTool {
+pub(super) struct McpTool {
     spec: ToolSpec,
     endpoint: Rc<McpEndpoint>,
     remote_name: String,
 }
 
 impl McpTool {
-    fn from_def(endpoint: Rc<McpEndpoint>, def: &Value) -> Option<Self> {
+    pub(super) fn from_def(endpoint: Rc<McpEndpoint>, def: &Value) -> Option<Self> {
         let remote_name = def.get("name").and_then(Value::as_str)?.to_string();
         let read_only = def["annotations"]["readOnlyHint"]
             .as_bool()
@@ -271,19 +241,4 @@ fn joined_text(result: &Value) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-/// `https://mcp.example.com/api` → `mcp_example_com_api`: scheme dropped,
-/// non-alphanumerics collapsed to single underscores.
-fn server_slug(url: &str) -> String {
-    let stripped = url.split("://").last().unwrap_or(url);
-    let mut out = String::new();
-    for ch in stripped.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-        } else if !out.ends_with('_') && !out.is_empty() {
-            out.push('_');
-        }
-    }
-    out.trim_end_matches('_').to_string()
 }

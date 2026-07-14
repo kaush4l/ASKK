@@ -27,7 +27,7 @@ pub use artifacts::register_artifacts;
 pub use board::register_board;
 pub use builtin::{register_builtins, register_echo};
 pub use knowledge::register_knowledge;
-pub use mcp::{parse_server_list, register_mcp};
+pub use mcp::{parse_server_list, parse_servers, register_mcp, McpServerConfig, McpServerStatus};
 pub use memory::register_memory_tools;
 pub use registry::{RegistryError, RustTool, ToolRegistry};
 pub use search::register_web_search;
