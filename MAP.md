@@ -48,7 +48,7 @@ core ← inference ← runtime ← web
 | Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/runtime/src/loops.rs` |
 | Kanban card model + stage rules (ADR-026) | `crates/core/src/board.rs` |
 | Board persistence over KvStore | `crates/runtime/src/state/board.rs` |
-| Board tools (add/list/move/check) | `crates/runtime/src/tools/board.rs` |
+| Board tools (add/list/move/check) | `crates/runtime/src/tools/board/mod.rs` |
 | Board UI tab (5-column live view) | `crates/web/src/ui/board.rs` |
 | Dashboard stage (wall display) | `crates/web/src/ui/dashboard.rs` |
 | Cross-tab signal bus (BroadcastChannel mirror, ADR-031) | `crates/web/src/host/bus.rs` |
@@ -61,7 +61,7 @@ core ← inference ← runtime ← web
 | Skill discovery tools (skill_list/skill_read) | `crates/runtime/src/tools/skills.rs` |
 | Stall guard — repeat-identical-mutating-call refusal | `crates/runtime/src/run/dispatch.rs` |
 | Agents-folder config reference | `crates/web/assets/agents/README.md` |
-| artifact_publish tool (html/markdown/url blobs) | `crates/runtime/src/tools/artifact.rs` |
+| artifact_publish tool (html/markdown/url blobs) | `crates/runtime/src/tools/artifacts/mod.rs` |
 | Artifact read side (blob docs → UI) | `crates/web/src/host/artifacts.rs` |
 | Artifacts stage (gallery + sandboxed viewer) | `crates/web/src/ui/artifacts.rs` |
 | Markdown subset renderer (chat + artifacts) | `crates/web/src/ui/markdown.rs` |

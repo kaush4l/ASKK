@@ -3,7 +3,7 @@
 //! fail loud at build time. MCP / agent-as-tool / JS adapters arrive in
 //! later waves behind the same `dyn Tool` seam.
 
-pub mod artifact;
+pub mod artifacts;
 pub mod board;
 pub mod builtin;
 pub mod knowledge;
@@ -17,7 +17,8 @@ pub mod skills;
 pub mod spawn;
 pub mod workspace;
 
-pub use artifact::register_artifacts;
+pub use artifacts as artifact; // ponytail: path shim, retire once callers say `artifacts`
+pub use artifacts::register_artifacts;
 pub use board::register_board;
 pub use builtin::{register_builtins, register_echo};
 pub use knowledge::register_knowledge;

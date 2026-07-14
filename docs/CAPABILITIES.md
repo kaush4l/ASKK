@@ -24,7 +24,7 @@ reference; kiln is the structure reference).
 | Action gate: mutating tools park for confirmation | `runtime/actions/` | workflows tests |
 | **Cross-tab mirror**: tabs broadcast signals; a second tab renders foreign runs live (ADR-031) | `web/host/bus.rs` | wave 15 |
 | **Dashboard wall**: big-numeral tile stage, `#/Dashboard` deep link, pop-out button | `web/ui/dashboard.rs` | wave 15 |
-| **Big artifacts**: `artifact_publish` (html/markdown/url) → gallery + sandboxed viewer; PDF via url kind | `runtime/tools/artifact.rs`, `web/ui/artifacts.rs` | wave 15 |
+| **Big artifacts**: `artifact_publish` (html/markdown/url) → gallery + sandboxed viewer; PDF via url kind | `runtime/tools/artifacts/mod.rs`, `web/ui/artifacts.rs` | wave 15 |
 | Markdown rendering in chat answers + artifact docs (in-repo subset renderer) | `web/ui/markdown.rs` | wave 15 |
 | **First-class teams**: folder + team.md = ONE delegate tool, boundary resets authority, shared principles injected (ADR-032) | `runtime/config/team.rs`, `runtime/delegate.rs` | wave 16 |
 | **Director thread**: per-agent `budget.*` in MD (max_turns/deadline_s/depth) | `runtime/config/agent.rs` | wave 16 |

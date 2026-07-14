@@ -1,3 +1,7 @@
+//! FEATURE: kanban board tools — add/list/move/check over `BoardStore`
+//! (runtime/src/state/board.rs); pure card model in core/src/board.rs; UI
+//! stages ui/board.rs + ui/dashboard.rs; digest feeds run/live.rs BOARD block.
+//!
 //! Board tools: how agents work the kanban board (ADR-026). `board_add`
 //! creates cards from a plan, `board_list` reads the board, `board_move`
 //! pushes a card to its next stage (Done is criteria-gated in core),

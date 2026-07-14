@@ -1,3 +1,7 @@
+//! FEATURE: artifacts — `artifact_publish` writes blob `artifact/<slug>`;
+//! read side web/src/host/artifacts.rs; gallery ui/artifacts.rs; live re-read
+//! run/live.rs.
+//!
 //! `artifact_publish` — agents publish BIG deliverables (a full HTML page, a
 //! markdown report, an external URL/PDF) as named blobs a viewer can render
 //! full-size in every tab. One blob per artifact under `artifact/<slug>`;
