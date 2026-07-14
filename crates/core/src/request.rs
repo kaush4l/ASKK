@@ -13,6 +13,8 @@ use crate::tool::ToolSpec;
 pub enum SectionKind {
     Identity,
     Directive,
+    /// Current wall-clock time, injected at assembly (no `now` tool).
+    Time,
     Skills,
     State,
     Memory,
@@ -29,6 +31,7 @@ impl SectionKind {
         match self {
             SectionKind::Identity => "identity",
             SectionKind::Directive => "directive",
+            SectionKind::Time => "time",
             SectionKind::Skills => "skills",
             SectionKind::State => "state",
             SectionKind::Memory => "memory",

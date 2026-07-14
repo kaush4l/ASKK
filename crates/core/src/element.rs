@@ -36,6 +36,9 @@ pub struct Skill {
 pub enum Element {
     Identity(Identity),
     Directive(Directive),
+    /// Current time as unix milliseconds, injected at assembly right after
+    /// the soul/agent framing — a standing context section, not a tool.
+    Clock(u64),
     Skills(Vec<Skill>),
     /// What the model is SHOWN (⊆ the dispatch allowlist).
     ToolManifest(Vec<ToolSpec>),
@@ -79,6 +82,10 @@ impl Element {
                 Some((SectionKind::Identity, parts.join("\n\n")))
             }
             Element::Directive(directive) => Some((SectionKind::Directive, directive.text.clone())),
+            Element::Clock(ms) => Some((
+                SectionKind::Time,
+                format!("Current time: {} (unix ms {ms})", format_utc(*ms)),
+            )),
             Element::Skills(skills) => {
                 let body = skills
                     .iter()
@@ -125,6 +132,50 @@ impl Element {
             | Element::InferenceConfig(_)
             | Element::OutputMode(_) => None,
         }
+    }
+}
+
+/// Unix ms → `YYYY-MM-DD HH:MM UTC`, dependency-free (civil-from-days,
+/// Hinnant's algorithm). Good for any date the app will ever see.
+fn format_utc(ms: u64) -> String {
+    let secs = ms / 1000;
+    let (mins, s_rem) = (secs / 60, secs % 60);
+    let _ = s_rem;
+    let (hours, minute) = (mins / 60, mins % 60);
+    let (days, hour) = (hours / 24, hours % 24);
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { year + 1 } else { year };
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02} UTC")
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::*;
+
+    #[test]
+    fn clock_section_renders_utc_and_unix_ms() {
+        // 2026-07-14 18:00:00 UTC
+        let (kind, text) = Element::Clock(1_784_052_000_000).section().unwrap();
+        assert_eq!(kind.name(), "time");
+        assert_eq!(
+            text,
+            "Current time: 2026-07-14 18:00 UTC (unix ms 1784052000000)"
+        );
+    }
+
+    #[test]
+    fn format_utc_epoch_and_leap_day() {
+        assert_eq!(format_utc(0), "1970-01-01 00:00 UTC");
+        // 2024-02-29 12:34 UTC
+        assert_eq!(format_utc(1_709_210_040_000), "2024-02-29 12:34 UTC");
     }
 }
 

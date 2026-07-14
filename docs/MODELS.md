@@ -13,6 +13,7 @@ pub struct Sheet {
 pub enum Element {                    // closed enum: serializable, exhaustive render (ADR-001)
     Identity(Identity),               // soul + "You are {name}" + role body
     Directive(Directive),             // the current task/goal framing
+    Clock(u64),                       // current time (unix ms), injected at assembly — no `now` tool
     Skills(Vec<Skill>),               // named markdown fragments
     ToolManifest(Vec<ToolSpec>),      // what the model is SHOWN (⊆ dispatch allowlist)
     Contract(Contract),               // response schema + format instructions (rendered LAST)

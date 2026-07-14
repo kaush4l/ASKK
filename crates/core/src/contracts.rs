@@ -15,14 +15,16 @@ pub fn lookup(name: &str) -> Result<Contract, CoreError> {
     }
 }
 
-/// The default turn contract (v2): explore in lists, then flip ONE switch.
+/// The default turn contract (v3): explore in lists, then flip ONE switch.
 /// `observation`/`plan` are string lists (as many items as the model needs);
-/// `action` picks tool|answer; `answer` carries EITHER the final text OR the
-/// tool call itself as one MCP-style JSON object per line.
+/// `action` picks tool|reply; `answer` carries EITHER the final text OR the
+/// tool call itself as one MCP-style JSON object per line. The switch value
+/// is `reply` (not `answer`) so it never collides with the `answer:` key on
+/// the next line — small models were echoing the pair into confusion.
 pub fn react() -> Contract {
     Contract {
         name: "react".into(),
-        version: 2,
+        version: 3,
         fields: vec![
             FieldSpec::new(
                 "observation",
@@ -40,9 +42,9 @@ pub fn react() -> Contract {
             .with_example("create it, then verify"),
             FieldSpec::new(
                 "action",
-                FieldKind::Enum(vec!["tool".into(), "answer".into()]),
+                FieldKind::Enum(vec!["tool".into(), "reply".into()]),
                 true,
-                "the switch: call a tool or give the final answer",
+                "the switch: call a tool, or reply to the user",
             )
             .with_example("tool"),
             FieldSpec::new(
@@ -52,7 +54,7 @@ pub fn react() -> Contract {
                 "if action is tool: the call on a single line as \
                  {\"name\": \"<tool>\", \"arguments\": {...}} (MCP style; one \
                  object per line to run several in parallel). If action is \
-                 answer: the final answer text.",
+                 reply: the final reply text.",
             )
             .with_example("{\"name\": \"shell\", \"arguments\": {\"command\": \"ls\"}}"),
         ],
@@ -131,9 +133,17 @@ mod tests {
     }
 
     #[test]
-    fn react_round_trips_json_answer_turn() {
-        let text = r#"{"plan": ["easy"], "action": "answer", "answer": "42"}"#;
+    fn react_round_trips_json_reply_turn() {
+        let text = r#"{"plan": ["easy"], "action": "reply", "answer": "42"}"#;
         let parsed = react().parse(&InferenceReply::text(text)).unwrap();
+        assert_eq!(parsed.action, Action::Answer("42".into()));
+    }
+
+    #[test]
+    fn legacy_action_answer_still_parses_as_reply() {
+        let text = r#"{"action": "answer", "answer": "42"}"#;
+        let parsed = react().parse(&InferenceReply::text(text)).unwrap();
+        assert_eq!(parsed.fields["action"], json!("reply"));
         assert_eq!(parsed.action, Action::Answer("42".into()));
     }
 
@@ -159,7 +169,7 @@ mod tests {
         for field in ["observation", "plan", "action", "answer"] {
             assert!(text.contains(field), "missing {field} in:\n{text}");
         }
-        assert!(text.contains("one of: tool | answer"));
+        assert!(text.contains("one of: tool | reply"));
         let json_text = critique().instructions(OutputMode::Json);
         assert!(json_text.contains("single JSON object"));
         assert!(json_text.contains("pass | revise"));
@@ -204,7 +214,7 @@ mod tests {
         assert_eq!(schema["required"], json!(["action"]));
         assert_eq!(
             schema["properties"]["action"]["enum"],
-            json!(["tool", "answer"])
+            json!(["tool", "reply"])
         );
     }
 }

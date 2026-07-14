@@ -203,7 +203,7 @@ mod tests {
         )
         .unwrap_err();
         let joined = err.problems.join("\n");
-        assert!(joined.contains("no `action` enum field containing tool|answer"));
+        assert!(joined.contains("no `action` enum field containing tool|reply"));
         assert!(joined.contains("no `answer` field"));
         assert_eq!(err.problems.len(), 2);
     }

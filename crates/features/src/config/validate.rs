@@ -242,10 +242,14 @@ fn check_custom_contract(agent: &AgentConfig, problems: &mut Vec<String>) {
             .any(|p| p.contract == custom.name && phase_has_tools(p))
     };
     if custom_with_tools {
-        if !has_enum_with("action", &["tool", "answer"]) {
+        // `reply` is the current switch value; `answer` is the legacy alias
+        // (react v2) that older custom contracts still declare.
+        if !has_enum_with("action", &["tool", "reply"])
+            && !has_enum_with("action", &["tool", "answer"])
+        {
             problems.push(format!(
                 "{at}: custom contract '{}' is used with tools but has no `action` \
-                 enum field containing tool|answer",
+                 enum field containing tool|reply",
                 custom.name
             ));
         }

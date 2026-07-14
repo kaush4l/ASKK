@@ -49,7 +49,7 @@ format: toon             # json|toon|text; initial output mode. Default toon.
 - `vm`: shell, write_file, read_file, list_files, edit_file
 - `web`: web_search, fetch_url, knowledge_search, knowledge_read,
   knowledge_write, knowledge_list, artifact_publish
-- `core`: calc, now, js_eval
+- `core`: calc, js_eval
 - `board`: board_add, board_list, board_move, board_check
 
 ### Phases (`phase.N.*`) — the multi-scene strategy

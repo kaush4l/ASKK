@@ -417,6 +417,13 @@ fn coerce(spec: &FieldSpec, value: Value) -> Option<Value> {
                 .iter()
                 .find(|v| v.eq_ignore_ascii_case(s))
                 .map(|v| Value::String(v.clone()))
+                .or_else(|| {
+                    // Legacy alias: `action: answer` predates the tool|reply
+                    // switch (react v3); old fixtures and habituated models
+                    // still emit it.
+                    (s.eq_ignore_ascii_case("answer") && variants.iter().any(|v| v == "reply"))
+                        .then(|| Value::String("reply".into()))
+                })
         }
     }
 }

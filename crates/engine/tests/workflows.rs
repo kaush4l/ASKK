@@ -89,11 +89,11 @@ const RETRY: (&str, &str) = (
 );
 
 // A team boundary fixture (ADR-032): the client holds ONLY the team tool
-// (plus `now`), the team declares its own complete toolset, the lead's `now`
+// (plus `state_note`), the team declares its own complete toolset, the lead's `state_note`
 // is deliberately outside it, and the body is the principles probe.
 const SQUAD_LEAD: (&str, &str) = (
     "agents/squad/lead.md",
-    "---\nid: lead\ndescription: Leads the squad.\ntools: echo, mate, now\n---\nYou lead.",
+    "---\nid: lead\ndescription: Leads the squad.\ntools: echo, mate, state_note\n---\nYou lead.",
 );
 const SQUAD_MATE: (&str, &str) = (
     "agents/squad/mate.md",
@@ -106,7 +106,7 @@ const SQUAD_TEAM: (&str, &str) = (
 );
 const CLIENT: (&str, &str) = (
     "agents/client.md",
-    "---\nid: client\ndescription: Calls the squad.\ntools: squad, now\n---\nYou call the squad.",
+    "---\nid: client\ndescription: Calls the squad.\ntools: squad, state_note\n---\nYou call the squad.",
 );
 
 struct Fixture {
@@ -131,7 +131,7 @@ async fn fixture_full(
         .await
         .unwrap();
     let mut registry = ToolRegistry::new();
-    register_builtins(&mut registry, || 7).unwrap();
+    register_builtins(&mut registry).unwrap();
     register_echo(&mut registry).unwrap();
     let board_kv: Rc<dyn KvStore> = Rc::new(MemKv::new());
     askk_engine::tools::register_board(&mut registry, board_kv.clone()).unwrap();
@@ -1588,7 +1588,7 @@ fn team_boundary_resets_authority_and_injects_principles() {
 }
 
 /// ADR-032 (b): the team's toolset is the CEILING inside the boundary — the
-/// lead lists `now` and the caller even holds it, but the team does not
+/// lead lists `state_note` and the caller even holds it, but the team does not
 /// declare it, so inside the team it is unknown.
 #[test]
 fn team_toolset_is_the_ceiling_inside_the_boundary() {
@@ -1603,8 +1603,9 @@ fn team_toolset_is_the_ceiling_inside_the_boundary() {
         f.mock.push_text(
             "action: tool\nanswer: {\"name\": \"squad\", \"arguments\": {\"goal\": \"what time\"}}",
         );
-        f.mock
-            .push_text("action: tool\nanswer: {\"name\": \"now\", \"arguments\": {}}");
+        f.mock.push_text(
+            "action: tool\nanswer: {\"name\": \"state_note\", \"arguments\": {\"note\": \"x\"}}",
+        );
         f.mock.push_text("action: answer\nanswer: no clock in here");
         f.mock.push_text("action: answer\nanswer: done");
         let run = f.session.submit("client", "ask the squad").await.unwrap();
@@ -1612,7 +1613,7 @@ fn team_toolset_is_the_ceiling_inside_the_boundary() {
         assert_eq!(out.status, RunStatus::Answered);
         assert!(observations(&f.host.signals())
             .iter()
-            .any(|o| o.contains("unknown tool 'now'") && o.contains("[echo, mate]")));
+            .any(|o| o.contains("unknown tool 'state_note'") && o.contains("[echo, mate]")));
         assert_eq!(f.mock.remaining(), 0);
     });
 }

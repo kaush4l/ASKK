@@ -1,5 +1,6 @@
-//! Builtin tools — plain `RustTool`s with honest JSON schemas. `now` takes an
-//! injected clock so everything below `web` stays clock-free (ADR-009).
+//! Builtin tools — plain `RustTool`s with honest JSON schemas. There is no
+//! `now` tool: the current time is a standing sheet section injected at
+//! assembly (`Element::Clock`), not something the model must fetch.
 
 use askk_core::{Effect, ToolResult, ToolSpec};
 use serde_json::{json, Value};
@@ -9,14 +10,9 @@ use super::registry::{RegistryError, RustTool, ToolRegistry};
 /// The `ToolCtx` slice `state_note` appends to — declared, explicit (ADR-005).
 pub const NOTES_SLICE: &str = "notes";
 
-/// Registers every builtin. `now_ms` is the injected clock (web passes
-/// `Date.now`, tests pass a constant).
-pub fn register_builtins(
-    reg: &mut ToolRegistry,
-    now_ms: impl Fn() -> u64 + 'static,
-) -> Result<(), RegistryError> {
+/// Registers every builtin.
+pub fn register_builtins(reg: &mut ToolRegistry) -> Result<(), RegistryError> {
     reg.register(calc())?;
-    reg.register(now(now_ms))?;
     reg.register(state_note())?;
     Ok(())
 }
@@ -86,18 +82,6 @@ fn calc() -> std::rc::Rc<dyn askk_core::Tool> {
     )
 }
 
-fn now(now_ms: impl Fn() -> u64 + 'static) -> std::rc::Rc<dyn askk_core::Tool> {
-    RustTool::shared(
-        ToolSpec {
-            name: "now".into(),
-            description: "Returns the current time as unix milliseconds.".into(),
-            input_schema: json!({ "type": "object", "properties": {} }),
-            effect: Effect::Pure,
-        },
-        move |_args, _ctx| ToolResult::ok(now_ms().to_string()),
-    )
-}
-
 fn state_note() -> std::rc::Rc<dyn askk_core::Tool> {
     RustTool::shared(
         ToolSpec {
@@ -141,7 +125,7 @@ mod tests {
 
     fn builtins() -> ToolRegistry {
         let mut reg = ToolRegistry::new();
-        register_builtins(&mut reg, || 42).unwrap();
+        register_builtins(&mut reg).unwrap();
         register_echo(&mut reg).unwrap();
         reg
     }
@@ -153,18 +137,18 @@ mod tests {
     #[test]
     fn all_builtins_register_and_resolve() {
         let reg = builtins();
-        let names: Vec<String> = ["echo", "calc", "now", "state_note"]
+        let names: Vec<String> = ["echo", "calc", "state_note"]
             .iter()
             .map(|n| n.to_string())
             .collect();
         let set = reg.build_tool_set(&names).unwrap();
-        assert_eq!(set.len(), 4);
+        assert_eq!(set.len(), 3);
         // Effects are honest: only state_note routes through the action gate.
         assert_eq!(
             set.get("state_note").unwrap().spec().effect,
             Effect::Mutating
         );
-        for name in ["echo", "calc", "now"] {
+        for name in ["echo", "calc"] {
             assert_eq!(set.get(name).unwrap().spec().effect, Effect::Pure);
         }
     }
@@ -172,7 +156,7 @@ mod tests {
     #[test]
     fn echo_is_opt_in_not_a_production_builtin() {
         let mut reg = ToolRegistry::new();
-        register_builtins(&mut reg, || 42).unwrap();
+        register_builtins(&mut reg).unwrap();
         assert!(reg.get("echo").is_none());
         register_echo(&mut reg).unwrap();
         assert!(reg.get("echo").is_some());
@@ -218,13 +202,6 @@ mod tests {
         assert!(!call(&tool, json!({"op": "+", "a": "x", "b": 2})).ok);
         assert!(!call(&tool, json!({"op": "%", "a": 1, "b": 2})).ok);
         assert!(!call(&tool, json!({})).ok);
-    }
-
-    #[test]
-    fn now_uses_the_injected_clock() {
-        let out = call(&now(|| 1_234), json!({}));
-        assert!(out.ok);
-        assert_eq!(out.content, "1234");
     }
 
     #[test]

@@ -338,6 +338,7 @@ fn build_sheet(
     let mut sheet = assemble(
         agent,
         &shared.soul,
+        shared.host(&run.id).now_ms(),
         skills,
         &run.goal,
         run.snapshot.clone(),

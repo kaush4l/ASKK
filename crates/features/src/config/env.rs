@@ -26,7 +26,7 @@ fn preset(name: &str) -> Option<&'static [&'static str]> {
             "knowledge_list",
             "artifact_publish",
         ]),
-        "core" => Some(&["calc", "now", "js_eval"]),
+        "core" => Some(&["calc", "js_eval"]),
         "board" => Some(&["board_add", "board_list", "board_move", "board_check"]),
         _ => None,
     }
@@ -87,7 +87,6 @@ mod tests {
             tools,
             strs(&[
                 "calc",
-                "now",
                 "js_eval",
                 "board_add",
                 "board_list",

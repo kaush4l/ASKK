@@ -20,9 +20,13 @@ pub struct AssembleOverrides {
 
 /// Build the sheet for one agent invocation.
 ///
-/// Element order (docs/MODELS.md): Identity, Directive, Skills, ToolManifest,
-/// Contract, StateSnapshot, Memory, History, UserInput, Multimodal (only when
-/// parts exist), InferenceConfig, ActionPolicy, OutputMode, PhaseFrame (opt).
+/// Element order (docs/MODELS.md): Identity, Directive, Clock, Skills,
+/// ToolManifest, Contract, StateSnapshot, Memory, History, UserInput,
+/// Multimodal (only when parts exist), InferenceConfig, ActionPolicy,
+/// OutputMode, PhaseFrame (opt).
+///
+/// `clock_ms` is the injected wall clock (unix ms) — rendered as a standing
+/// "time" section right after the soul/agent framing; there is no `now` tool.
 ///
 /// Precondition: `agent` passed `config::validate` — the contract name must
 /// resolve. An unvalidated config panics here rather than silently degrading.
@@ -30,6 +34,7 @@ pub struct AssembleOverrides {
 pub fn assemble(
     agent: &AgentConfig,
     soul: &str,
+    clock_ms: u64,
     skills: Vec<Skill>,
     input: &str,
     snapshot: StateSnapshot,
@@ -63,6 +68,7 @@ pub fn assemble(
                 .directive
                 .unwrap_or_else(|| agent.description.clone()),
         }),
+        Element::Clock(clock_ms),
         Element::Skills(skills),
         Element::ToolManifest(tool_specs),
         Element::Contract(contract),
@@ -103,6 +109,7 @@ mod tests {
         assemble(
             &agent(),
             "Be honest.",
+            1_784_052_000_000,
             vec![Skill {
                 name: "concise".into(),
                 body: "brief".into(),
@@ -129,6 +136,7 @@ mod tests {
         match element {
             Element::Identity(_) => "identity",
             Element::Directive(_) => "directive",
+            Element::Clock(_) => "clock",
             Element::Skills(_) => "skills",
             Element::ToolManifest(_) => "tool_manifest",
             Element::Contract(_) => "contract",
@@ -164,6 +172,7 @@ mod tests {
             vec![
                 "identity",
                 "directive",
+                "clock",
                 "skills",
                 "tool_manifest",
                 "contract",
@@ -197,6 +206,7 @@ mod tests {
             vec![
                 "identity",
                 "directive",
+                "time",
                 "skills",
                 "state",
                 "memory",
@@ -229,6 +239,7 @@ mod tests {
         assemble(
             &bad,
             "",
+            0,
             vec![],
             "",
             StateSnapshot::default(),
@@ -248,6 +259,7 @@ mod tests {
         let sheet = assemble(
             &agent(),
             "",
+            0,
             vec![],
             "go",
             StateSnapshot::default(),

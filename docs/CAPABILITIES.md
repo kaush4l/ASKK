@@ -68,7 +68,7 @@ is documented with file:line citations in `docs/PROMPT.md`.
   preset names expanded into `tools` at load time (env tools first, then
   explicit `tools:` extras, deduplicated): `vm` (shell, write_file, read_file,
   list_files, edit_file), `web` (web_search, fetch_url,
-  knowledge_search/read/write/list, artifact_publish), `core` (calc, now,
+  knowledge_search/read/write/list, artifact_publish), `core` (calc,
   js_eval), `board` (board_add/list/move/check). Unknown preset names are load
   errors, listed with the other config problems.
 - `agents/soul.md` — shared identity prelude.

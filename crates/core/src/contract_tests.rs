@@ -25,10 +25,10 @@ fn json_embedded_in_prose_is_found() {
 
 #[test]
 fn truncated_json_falls_back_to_toon_recovery() {
-    let text = "{\"action\": \"answer\",\n\"answer\": \"partial";
+    let text = "{\"action\": \"reply\",\n\"answer\": \"partial";
     let parsed = contracts::react().parse(&reply(text)).unwrap();
     assert_eq!(parsed.format, ParsedFormat::Toon);
-    assert_eq!(parsed.fields["action"], "answer");
+    assert_eq!(parsed.fields["action"], "reply");
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn malformed_reply_missing_required_yields_repair_prompt() {
         .unwrap_err();
     assert_eq!(err.missing, vec!["action".to_string()]);
     assert!(err.repair_prompt.contains("action"));
-    assert!(err.repair_prompt.contains("tool | answer"));
+    assert!(err.repair_prompt.contains("tool | reply"));
     // ...and a shape reminder from the field's curated example.
     assert!(err.repair_prompt.contains("`action: tool`"));
 }

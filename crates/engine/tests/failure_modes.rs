@@ -95,7 +95,7 @@ async fn fixture_with(files: &[(&str, &str)], budgets: Budgets, yielding: bool) 
         .await
         .unwrap();
     let mut registry = ToolRegistry::new();
-    register_builtins(&mut registry, || 7).unwrap();
+    register_builtins(&mut registry).unwrap();
     register_echo(&mut registry).unwrap();
     // A tool that writes a slice NOBODY pre-declared — the lift-back must
     // still see it (ToolCtx::slice_keys, ADR-005).
@@ -388,6 +388,7 @@ fn multimodal_parts_ignored_by_provider_still_completes() {
         let sheet = assemble(
             &agent,
             "Be honest.",
+            0,
             vec![],
             "describe the image",
             Default::default(),

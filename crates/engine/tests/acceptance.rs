@@ -105,7 +105,7 @@ async fn row(
         .await
         .unwrap();
     let mut registry = ToolRegistry::new();
-    register_builtins(&mut registry, || 7).unwrap();
+    register_builtins(&mut registry).unwrap();
     register_echo(&mut registry).unwrap();
     register_shell(&mut registry, shell.clone()).unwrap();
     register_workspace(&mut registry, shell).unwrap();
