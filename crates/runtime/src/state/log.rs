@@ -1,10 +1,16 @@
-//! The signal log (ADR-003): append-only JSONL over a `BlobStore`, epoch
-//! segments, replay-from-0, single writer.
+//! The signal log (ADR-003): append-only JSONL over a [`BlobStore`], one
+//! segment `seg-<epoch>.jsonl` per session, single writer.
 //!
-//! Every `open()` starts a new epoch segment `seg-<epoch>.jsonl` and replays
-//! all prior segments. Runs replayed without a terminal status are zombies
-//! from a dead epoch: the fence appends synthesized terminals to the NEW
-//! segment so fold shows them terminated, deterministically.
+//! Every `open()` starts a new epoch segment and replays all prior segments.
+//! Runs replayed without a terminal status are zombies from a dead epoch:
+//! the fence appends synthesized terminals to the NEW segment so fold shows
+//! them terminated, deterministically.
+//!
+//! Degrade-don't-die: a failed segment write flips the log to in-memory
+//! only instead of erroring — losing persistence must never kill a live
+//! run. Note: the boot path currently DISCARDS the replayed signals
+//! (`web/src/host/boot.rs`) — the fence runs, but there is no resume of
+//! prior runs (GAPS A5).
 
 use std::collections::BTreeMap;
 use std::rc::Rc;

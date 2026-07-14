@@ -1,7 +1,14 @@
-//! Storage seams (ADR-009): `KvStore` and `BlobStore` are the traits the
-//! runtime persists through. Memory impls here for tests/host; OPFS impls
-//! live in `crates/web`. The traits assume nothing beyond path-string
-//! semantics — no directories, no metadata, no atomicity guarantees.
+//! Storage seams (ADR-009): [`KvStore`] (key → JSON) and [`BlobStore`]
+//! (path → bytes) are the two traits the runtime persists through.
+//! Implementors: [`MemKv`]/[`MemBlob`] here (tests + host runs),
+//! `OpfsKv`/`OpfsBlob` in `web/src/host/opfs.rs` (browser). The traits
+//! assume nothing beyond flat path-string semantics — no directories, no
+//! metadata, no atomicity guarantees.
+//!
+//! Namespacing is by prefix convention, one owner per prefix. KV keys:
+//! `session/*` (`SessionStore`), `memory/<agent_id>` (`MemoryStore`),
+//! `board/<id>` (`BoardStore`), `notes/<slug>` (`tools/memory_tools.rs`).
+//! Blob paths: `seg-<epoch>.jsonl` (`SignalLog`).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -45,7 +52,9 @@ impl From<serde_json::Error> for StoreError {
     }
 }
 
-/// Key → JSON value store. Dyn-safe; local boxed futures, no Send bounds.
+/// Key → JSON value store. Dyn-safe; local boxed futures, no Send bounds
+/// (single-threaded browser). Keys are flat strings; namespacing is by the
+/// prefix conventions in the module banner. Last write wins.
 pub trait KvStore {
     fn get(&self, key: &str) -> LocalBoxFuture<'_, Result<Option<Value>, StoreError>>;
     fn set(&self, key: &str, value: Value) -> LocalBoxFuture<'_, Result<(), StoreError>>;
@@ -54,8 +63,9 @@ pub trait KvStore {
     fn list_prefix(&self, prefix: &str) -> LocalBoxFuture<'_, Result<Vec<String>, StoreError>>;
 }
 
-/// Path → byte blob store. Whole-blob read/write; append is the caller's
-/// concern (see `SignalLog`).
+/// Path → byte blob store. Whole-blob read/write — no append primitive;
+/// appending is the caller's concern (`SignalLog` rewrites its whole
+/// segment per append).
 pub trait BlobStore {
     fn read(&self, path: &str) -> LocalBoxFuture<'_, Result<Option<Vec<u8>>, StoreError>>;
     fn write(&self, path: &str, bytes: &[u8]) -> LocalBoxFuture<'_, Result<(), StoreError>>;

@@ -1,8 +1,14 @@
-//! `BoardStore`: the persistent kanban board over a `KvStore` (OPFS in the
-//! browser, memory on host). One key per card under `board/`; cards are
-//! plain `askk_core::Card` JSON. Board writes are config-shaped (plain
-//! `Result`s, no signals) — the mutating *tools* that drive them already
-//! emit ToolRequested/ToolCompleted, which is what the UI refolds on.
+//! `BoardStore`: the persistent kanban board over a [`KvStore`] (OPFS in
+//! the browser, memory on host). One key per card: `board/<id>`; cards are
+//! plain `askk_core::Card` JSON.
+//!
+//! [`BoardStore::digest`] is the reorientation summary agents re-read
+//! between turns. Writers: the board tools (`tools/board.rs`). Readers: the
+//! board UI (`web/src/ui/board.rs`), the dashboard wall
+//! (`web/src/ui/dashboard.rs`), and the latest-state artifact refresh
+//! (`run/live.rs`). Board writes are config-shaped (plain `Result`s, no
+//! signals) — the mutating *tools* that drive them already emit
+//! ToolRequested/ToolCompleted, which is what the UI refolds on.
 
 use std::rc::Rc;
 

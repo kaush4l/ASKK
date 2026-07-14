@@ -1,6 +1,12 @@
-//! Agent memory (MODELS.md §State model): per-agent digest entries, bounded
-//! drop-oldest, composed onto the sheet as a `MemoryBlock`. Written by the
-//! absorb path.
+//! Agent memory (MODELS.md §State model): per-agent digest entries over a
+//! [`KvStore`], key `memory/<agent_id>` → JSON array of entry strings,
+//! oldest first, bounded drop-oldest (default 64, [`DEFAULT_MAX_ENTRIES`]).
+//! Written by the absorb path after each run; read back onto the sheet as a
+//! [`MemoryBlock`] (entries joined by newlines).
+//!
+//! Distinct from the note tools (`tools/memory_tools.rs`), which own
+//! `notes/<slug>`: this store is the agent's automatic digest, notes are
+//! explicit tool writes.
 
 use std::rc::Rc;
 

@@ -1,5 +1,12 @@
 //! The signal log is the sole run-state truth; UI = fold(signals) (ADR-003).
 //! Unknown kinds are skipped, never panicked on — forward compatibility.
+//!
+//! Signals are the communication AND persistence spine: agents never
+//! pub/sub each other — a run emits signals, the runtime's `SignalLog`
+//! (`runtime/src/state/log.rs`) appends them to an epoch-segmented JSONL
+//! blob, every view is a fold over them, and the web host's
+//! BroadcastChannel bus (`web/src/host/bus.rs`) mirrors stamped signals to
+//! other tabs, view-only.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

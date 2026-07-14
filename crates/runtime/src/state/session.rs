@@ -1,7 +1,10 @@
-//! Session state (MODELS.md §State model): UI picks that survive a reload —
-//! active agent, provider profiles, misc prefs. Written by UI commands,
-//! mirrored through whatever `KvStore` is injected (memory on host, OPFS in
-//! web). Plain `Result`s; session writes are not run events, so no signals.
+//! Session state (MODELS.md §State model): UI picks that survive a reload,
+//! over whatever [`KvStore`] is injected (memory on host, OPFS in web).
+//! Keys: `session/active_agent` (last-picked agent id),
+//! `session/provider/<id>` (BYOK provider profiles, opaque JSON — the
+//! config layer owns their shape), `session/pref/<name>` (misc prefs, e.g.
+//! `mcp_servers`). Written by UI commands; plain `Result`s — session writes
+//! are not run events, so no signals.
 
 use std::rc::Rc;
 

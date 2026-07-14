@@ -1,15 +1,21 @@
-//! State layer (MODELS.md §State model, ADR-003/005/009):
+//! State layer (MODELS.md §State model, ADR-003/005/009): what we store,
+//! where, and who talks to whom.
 //!
-//! - [`store`] — the injected seams: `KvStore` + `BlobStore` traits, memory
-//!   impls for tests/host. OPFS impls live in `crates/web`.
-//! - [`log`] — `SignalLog`: append-only JSONL signal log, epoch segments,
-//!   replay, epoch fence. The sole run-state truth.
-//! - [`session`] — `SessionStore`: reload-safe UI state over a `KvStore`.
-//! - [`memory`] — `MemoryStore`: bounded per-agent memory digests.
-//! - [`board`] — `BoardStore`: the persistent kanban board (`Card`s).
+//! Two injected seams, both in [`store`]: [`KvStore`] (key → JSON) and
+//! [`BlobStore`] (path → bytes). Browser impls are `OpfsKv`/`OpfsBlob` in
+//! `web/src/host/opfs.rs`; [`MemKv`]/[`MemBlob`] here serve tests and host.
 //!
-//! Every durable *run* write is traceable to a signal; session/memory/board
-//! writes are config-shaped and use plain `Result`s.
+//! THE persistence truth is the append-only signal log ([`log`]): every
+//! durable *run* fact is a signal. The other stores are config-shaped
+//! conveniences over the KV seam, plain `Result`s, no signals:
+//! [`session`] (UI picks), [`memory`] (per-agent digests), [`board`] (kanban).
+//!
+//! Who talks to whom: there is NO pub/sub between agents. Inter-agent
+//! communication is nested runs sharing one `Shared` (`run/session.rs`) via
+//! delegation/loops; signals (`core/src/signal.rs`) are the single run-state
+//! truth (UI = fold(signals)); and the BroadcastChannel bus
+//! (`web/src/host/bus.rs`) mirrors stamped signals across TABS, view-only —
+//! a tab owns only the runs it submitted.
 
 pub mod board;
 pub mod log;
