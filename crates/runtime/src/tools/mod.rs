@@ -13,11 +13,14 @@ pub use memory as memory_tools; // old path `tools::memory_tools::*` stays valid
 pub mod registry;
 pub mod search;
 pub mod skills;
-pub mod spawn;
 pub mod vm;
 
 // Shims: keep pre-move `tools::shell::*` / `tools::workspace::*` paths resolving.
 pub use vm::{shell, workspace};
+
+// Path shim: spawn moved to the engine side (run/delegation/spawn.rs); the
+// old `tools::spawn` path stays valid.
+pub use crate::run::delegation::spawn;
 
 pub use artifacts as artifact; // ponytail: path shim, retire once callers say `artifacts`
 pub use artifacts::register_artifacts;

@@ -138,7 +138,7 @@ enum values matched case-insensitively.
 - Dispatch re-checks membership (dispatch.rs:35-41); an unknown tool becomes an
   observation listing the allowed names (dispatch.rs:73-86).
 - Delegate agents appear as tools named by agent id, card = name + description
-  (crates/runtime/src/delegate.rs:97-120); `handoff` transfers the whole run (163-198).
+  (crates/runtime/src/run/delegation/delegate.rs:97-120); `handoff` transfers the whole run (163-198).
 
 ## 6. Context lifecycle
 

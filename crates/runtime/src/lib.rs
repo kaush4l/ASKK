@@ -3,11 +3,14 @@
 pub mod actions;
 pub mod assemble;
 pub mod config;
-pub mod delegate;
-pub mod loops;
 pub mod run;
 pub mod state;
 pub mod tools;
+
+// Path shims: delegation moved under the run engine (run/delegation/); old
+// crate-root paths stay valid so downstream imports need no change.
+pub use run::delegation::delegate;
+pub use run::delegation::loops;
 
 /// Test-only helper shared by unit and workflow tests. Public (hidden) so
 /// `tests/` integration crates can reuse it — runtime takes no executor dep.

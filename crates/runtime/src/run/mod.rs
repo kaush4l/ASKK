@@ -12,6 +12,8 @@
 
 pub(crate) mod answer;
 pub(crate) mod cancel;
+/// Engine-side delegation tools (delegate, loops, spawn_agent).
+pub mod delegation;
 pub(crate) mod dispatch;
 pub(crate) mod flow;
 pub mod host;

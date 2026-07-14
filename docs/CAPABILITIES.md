@@ -33,7 +33,7 @@ reference; kiln is the structure reference).
 | **Context diet**: history replays answers + id-less MCP calls only (scaffold-stripped fallbacks); news folded into `web_search news:true`; `echo` test-only | `core/toolcall.rs`, `core/sheet.rs`, `runtime/tools/search.rs` | wave 17 |
 | **Live artifacts (ADR-033)**: board digest + published docs re-read before EVERY call as latest-state ARTIFACT blocks — never history | `core/element.rs`, `runtime/run/turn.rs` | wave 18 |
 | **Curated context (ADR-034)**: `phase.N.skills` completes the per-phase recipe {contract, tools, skills, header}; lean director carries per-phase tool filters + effort tiers | `core/phase.rs`, `agents/orchestrator.md` | wave 19 |
-| **Runtime sub-agents**: `spawn_agent` specializes a roster base (directive/tools/skills/max_turns, authority only narrows) into a run-scoped child | `runtime/tools/spawn.rs`, `runtime/config/agent.rs` | wave 19 |
+| **Runtime sub-agents**: `spawn_agent` specializes a roster base (directive/tools/skills/max_turns, authority only narrows) into a run-scoped child | `runtime/run/delegation/spawn.rs`, `runtime/config/agent.rs` | wave 19 |
 | **Stall guard**: 3rd consecutive identical mutating call refused with a structured observation (anti-loop, GAPS 50/61) | `runtime/run/dispatch.rs` | wave 19 |
 | **Skill progressive disclosure**: `skill_list` index + `skill_read` body on demand — agents pick techniques at runtime | `runtime/tools/skills.rs` | wave 19 |
 

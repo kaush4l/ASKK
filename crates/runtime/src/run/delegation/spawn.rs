@@ -14,8 +14,8 @@ use std::rc::Weak;
 use askk_core::{Effect, RunStatus, Tool, ToolCtx, ToolResult, ToolSpec};
 use serde_json::{json, Value};
 
+use super::delegate::{depth_cap, drive_child};
 use crate::config::agent::MAX_SPAWNED_MAX_TURNS;
-use crate::delegate::{depth_cap, drive_child};
 use crate::run::dispatch::DEPTH_SLICE;
 use crate::run::session::Shared;
 use crate::state::LocalBoxFuture;

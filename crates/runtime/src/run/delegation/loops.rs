@@ -96,7 +96,7 @@ impl Tool for SpawnRun {
                 Err(e) => return e,
             };
             let depth = ctx.slice(DEPTH_SLICE).and_then(Value::as_u64).unwrap_or(0) as u8;
-            let cap = crate::delegate::depth_cap(&shared, ctx);
+            let cap = super::delegate::depth_cap(&shared, ctx);
             if depth >= cap {
                 return ToolResult::err(format!("spawn_run: delegation depth cap ({cap}) reached"));
             }
@@ -108,7 +108,7 @@ impl Tool for SpawnRun {
             };
             // The spawn target must be a delegate the CALLER holds — same
             // authority rule as calling the agent tool directly.
-            let parent_tools = crate::delegate::parent_tools(ctx);
+            let parent_tools = super::delegate::parent_tools(ctx);
             if !parent_tools.contains(&agent_id.to_string()) {
                 return ToolResult::err(format!(
                     "spawn_run: agent '{agent_id}' is not in your tools"
@@ -146,7 +146,7 @@ impl Tool for SpawnRun {
                 shared.budgets,
             );
             // A lead spawning members keeps them inside the team (ADR-032).
-            run.team_id = crate::delegate::inherited_team(&shared, ctx, &child);
+            run.team_id = super::delegate::inherited_team(&shared, ctx, &child);
             let started = turn::emit(
                 &shared,
                 &mut run,

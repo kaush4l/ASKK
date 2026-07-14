@@ -6,9 +6,8 @@ use std::cell::RefCell;
 use std::rc::Weak;
 
 use crate::config::{AgentConfig, SkillConfig, TeamConfig};
-use crate::delegate::{DelegateTool, HandoffTool, TeamTool};
+use crate::run::delegation::{DelegateTool, HandoffTool, SpawnAgentTool, TeamTool};
 use crate::run::session::Shared;
-use crate::tools::spawn::SpawnAgentTool;
 use crate::tools::ToolRegistry;
 use std::rc::Rc;
 
@@ -42,7 +41,7 @@ pub(crate) fn register_session_tools(
     }
     // Loop management tools (spawn/check/wait/steer/cancel) — their
     // names are reserved beside agent ids in the one registry.
-    for tool in crate::loops::loop_tools(weak.clone()) {
+    for tool in crate::run::delegation::loops::loop_tools(weak.clone()) {
         if let Err(e) = registry.register(tool) {
             problems
                 .borrow_mut()

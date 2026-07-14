@@ -11,7 +11,7 @@ use askk_core::{
 use serde_json::json;
 
 use crate::actions::ActionGate;
-use crate::delegate::HANDOFF_TOOL;
+use crate::run::delegation::delegate::HANDOFF_TOOL;
 use crate::run::session::{RunState, Shared};
 use crate::run::turn::{effective_allow, emit, observe};
 use crate::state::StoreError;

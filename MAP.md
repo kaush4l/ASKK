@@ -45,7 +45,7 @@ core ← inference ← runtime ← web
 | web_search tool (SearXNG primary → DDG → Wikipedia; `news: true` lane) | `crates/runtime/src/tools/search/engines.rs` |
 | web_search news lane sources (Wikinews → GDELT) | `crates/runtime/src/tools/search/news.rs` |
 | OKF knowledge bundle tools (ADR-024) | `crates/runtime/src/tools/knowledge/mod.rs` |
-| Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/runtime/src/loops.rs` |
+| Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/runtime/src/run/delegation/loops.rs` |
 | Kanban card model + stage rules (ADR-026) | `crates/core/src/board.rs` |
 | Board persistence over KvStore | `crates/runtime/src/state/board.rs` |
 | Board tools (add/list/move/check) | `crates/runtime/src/tools/board/mod.rs` |
@@ -53,11 +53,11 @@ core ← inference ← runtime ← web
 | Dashboard stage (wall display) | `crates/web/src/ui/dashboard.rs` |
 | Cross-tab signal bus (BroadcastChannel mirror, ADR-031) | `crates/web/src/host/bus.rs` |
 | Team config (folder team.md, ADR-032) | `crates/runtime/src/config/team.rs` |
-| Team delegation boundary (TeamTool, principles injection) | `crates/runtime/src/delegate.rs` |
+| Team delegation boundary (TeamTool, principles injection) | `crates/runtime/src/run/delegation/delegate.rs` |
 | Per-agent budgets (`budget.*` frontmatter) | `crates/runtime/src/config/agent.rs` |
 | Board digest (director reorientation) | `crates/runtime/src/state/board.rs` |
 | Live artifact blocks — latest-state refresh per call (ADR-033) | `crates/runtime/src/run/turn.rs` + `crates/core/src/element.rs` |
-| spawn_agent — runtime sub-agent specialization (ADR-034) | `crates/runtime/src/tools/spawn.rs` + `AgentConfig::specialize` in `crates/runtime/src/config/agent.rs` |
+| spawn_agent — runtime sub-agent specialization (ADR-034) | `crates/runtime/src/run/delegation/spawn.rs` + `AgentConfig::specialize` in `crates/runtime/src/config/agent.rs` |
 | Skill discovery tools (skill_list/skill_read) | `crates/runtime/src/tools/skills.rs` |
 | Stall guard — repeat-identical-mutating-call refusal | `crates/runtime/src/run/dispatch.rs` |
 | Agents-folder config reference | `crates/web/assets/agents/README.md` |
@@ -68,7 +68,7 @@ core ← inference ← runtime ← web
 | MCP client (browser-direct, ADR-028) | `crates/runtime/src/tools/mcp.rs` |
 | Memory tools (remember/recall/forget) | `crates/runtime/src/tools/memory/mod.rs` |
 | Env presets (`env:` frontmatter, ADR-027) | `crates/runtime/src/config/env.rs` |
-| Handoff + delegation seam (ADR-030) | `crates/runtime/src/delegate.rs` |
+| Handoff + delegation seam (ADR-030) | `crates/runtime/src/run/delegation/delegate.rs` |
 | Cancel token (races in-flight inference) | `crates/runtime/src/run/cancel.rs` |
 | Local LLM provider (transformers.js, ADR-029) | `crates/web/src/host/local_llm.rs` + `scripts/llm/` |
 | shell tool (exec over VM serial) | `crates/runtime/src/tools/vm/shell.rs` |
