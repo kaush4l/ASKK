@@ -129,7 +129,10 @@ impl Utf8Accumulator {
                 }
                 Err(e) => {
                     let valid = e.valid_up_to();
-                    out.push_str(std::str::from_utf8(&self.pending[..valid]).unwrap());
+                    // `valid` is a UTF-8 boundary from `valid_up_to()`, so this
+                    // slice always decodes; use a non-panicking form regardless
+                    // so a malformed stream can never panic the decoder (ADR-042).
+                    out.push_str(std::str::from_utf8(&self.pending[..valid]).unwrap_or_default());
                     match e.error_len() {
                         Some(bad) => {
                             out.push('\u{FFFD}');
@@ -294,6 +297,14 @@ mod tests {
         assert_eq!(acc.feed(&euro[1..]), "€");
         assert_eq!(acc.feed(b"ok"), "ok");
         assert_eq!(acc.feed(&[0xFF, b'x']), "\u{FFFD}x");
+    }
+
+    #[test]
+    fn utf8_accumulator_decodes_valid_prefix_before_invalid_byte() {
+        // valid_up_to()=1 ("a"), then an invalid byte (→ U+FFFD), then "b":
+        // the non-empty valid prefix must decode without a panic (ADR-042).
+        let mut acc = Utf8Accumulator::new();
+        assert_eq!(acc.feed(&[b'a', 0xFF, b'b']), "a\u{FFFD}b");
     }
 
     #[test]

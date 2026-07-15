@@ -18,7 +18,7 @@ use crate::config::{validate, AgentConfig, ConfigError, SkillConfig, TeamConfig}
 use crate::run::cancel::CancelToken;
 use crate::run::host::RunHost;
 use crate::run::{dispatch, turn};
-use crate::state::{MemoryStore, SessionStore, SignalLog};
+use crate::state::{LocalBoxFuture, MemoryStore, SessionStore, SignalLog};
 use crate::tools::ToolRegistry;
 
 /// Provider lookup seam: profile id → provider instance. Tests inject
@@ -93,7 +93,11 @@ impl Shared {
             .borrow()
             .get(run_id)
             .cloned()
-            .expect("drive/resolve_action install the run's host before any turn runs")
+            // `drive`/`resolve_action` install the host before any turn runs.
+            // If that invariant ever breaks, fall back to an inert host so the
+            // run degrades to its turn-budget bound instead of panicking
+            // (ADR-042).
+            .unwrap_or_else(|| Rc::new(NullHost))
     }
 
     /// Resolve an agent id: the validated roster first, then the run-scoped
@@ -104,6 +108,25 @@ impl Shared {
             .get(id)
             .cloned()
             .or_else(|| self.spawned.borrow().get(id).cloned())
+    }
+}
+
+/// Inert fallback host (see `Shared::host`): time frozen at 0, never
+/// interrupted, signals dropped, sleeps ready. Only reached on a broken
+/// "host installed" invariant — the run then ends on its turn budget rather
+/// than panicking (ADR-042).
+struct NullHost;
+
+impl RunHost for NullHost {
+    fn interrupted(&self) -> bool {
+        false
+    }
+    fn on_signal(&self, _signal: &Signal) {}
+    fn now_ms(&self) -> u64 {
+        0
+    }
+    fn sleep(&self, _ms: u64) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async {})
     }
 }
 
@@ -473,5 +496,22 @@ impl RunSession {
     /// Test seam: unit tests drive `handle_answer` against the real Shared.
     pub(crate) fn shared(&self) -> &Rc<Shared> {
         &self.shared
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testutil::block_on;
+
+    /// The fallback `Shared::host` returns when no host is installed is inert,
+    /// not a panic (ADR-042): time 0, never interrupted, sleeps ready.
+    #[test]
+    fn null_host_is_inert_not_panic() {
+        let host = NullHost;
+        assert_eq!(host.now_ms(), 0);
+        assert!(!host.interrupted());
+        host.on_signal(&Signal::unstamped(SignalKind::LlmRequest));
+        block_on(host.sleep(5));
     }
 }

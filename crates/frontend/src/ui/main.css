@@ -536,3 +536,8 @@ details[open] > .reasoning-toggle::before { content: "▾ "; }
 
 .vm-console { cursor: text; }
 .vm-hint { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); margin-left: auto; padding-right: 8px; }
+
+/* Fleet stage (ADR-042): launch grid over the live-run grid; reuses .feat-*
+   (launch tiles) and .dash-* (run tiles). */
+.fleet-wrap { height: 100%; display: flex; flex-direction: column; gap: 14px; padding: clamp(16px, 3vw, 34px); overflow: auto; width: 100%; max-width: 920px; margin: 0 auto; }
+.fleet-cancel { align-self: flex-start; margin-top: 2px; }

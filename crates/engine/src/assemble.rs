@@ -28,8 +28,10 @@ pub struct AssembleOverrides {
 /// `clock_ms` is the injected wall clock (unix ms) — rendered as a standing
 /// "time" section right after the soul/agent framing; there is no `now` tool.
 ///
-/// Precondition: `agent` passed `config::validate` — the contract name must
-/// resolve. An unvalidated config panics here rather than silently degrading.
+/// Precondition: `agent` passed `config::validate`, so its `contract` name
+/// resolves. If a broken invariant ever slips a bad name through mid-run,
+/// assemble degrades to the built-in `react` contract (ADR-042) rather than
+/// panicking the hot path.
 #[allow(clippy::too_many_arguments)] // the pieces are explicit params by design
 pub fn assemble(
     agent: &AgentConfig,
@@ -47,13 +49,11 @@ pub fn assemble(
     phase_frame: Option<PhaseFrame>,
     overrides: AssembleOverrides,
 ) -> Sheet {
+    // A validated agent's contract name always resolves; a broken invariant
+    // degrades to the built-in `react` default (ADR-042) so the run keeps
+    // moving with a sane contract instead of crashing the loop.
     let contract = overrides.contract.unwrap_or_else(|| {
-        resolve_contract(agent, &agent.contract).unwrap_or_else(|e| {
-            panic!(
-                "{}: {e} — run config::validate before assemble",
-                agent.source_path
-            )
-        })
+        resolve_contract(agent, &agent.contract).unwrap_or_else(|_| askk_core::contracts::react())
     });
     let mut elements = vec![
         Element::Identity(Identity {
@@ -231,12 +231,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "run config::validate before assemble")]
-    fn unvalidated_contract_panics_loudly() {
+    fn unvalidated_contract_degrades_to_react_not_panic() {
+        // A contract name that would fail validation no longer panics
+        // assemble: it falls back to the built-in `react` contract so the run
+        // keeps moving (ADR-042).
         let mut bad = agent();
         bad.contract = "mystery".into();
-        full_sheet(vec![], None); // sanity: builder itself is fine
-        assemble(
+        let sheet = assemble(
             &bad,
             "",
             0,
@@ -252,6 +253,7 @@ mod tests {
             None,
             AssembleOverrides::default(),
         );
+        assert_eq!(sheet.render().contract.name, "react");
     }
 
     #[test]
