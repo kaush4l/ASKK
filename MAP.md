@@ -76,6 +76,9 @@ A DAG, not a chain — the true allowed-imports table:
 | Markdown subset renderer (chat + artifacts) | `crates/frontend/src/ui/markdown.rs` |
 | MCP feature (config + client + registration, ADR-028/036) | `crates/features/src/tools/mcp/` |
 | Memory tools (remember/recall/forget) | `crates/features/src/tools/memory/mod.rs` |
+| Browser capability probe + capture helpers (camera/mic/screen/geo/clipboard/notify/vibrate/share, ADR-041) | `crates/browser/src/capabilities/` |
+| In-browser one-shot generate (lab helper over LocalLlm) | `crates/browser/src/local_llm.rs` |
+| Features lab stage (capability probe + in-browser model/sense testers, engine untouched, ADR-041) | `crates/frontend/src/ui/features/` |
 | Env presets (`env:` frontmatter, ADR-027) | `crates/features/src/config/env.rs` |
 | Handoff + delegation seam (ADR-030) | `crates/engine/src/run/delegation/delegate.rs` |
 | Cancel token (races in-flight inference) | `crates/engine/src/run/cancel.rs` |

@@ -498,3 +498,42 @@ degrade on); half-gutting the two agents into boardless shells (their reason to
 exist WAS the board). Aligns with the project goal: a Jarvis-standard single
 personal agent, with the browser's own senses (mic/webcam/camera) as the next input
 surface, not a kanban wall.
+
+## ADR-041 — Features lab: a browser-capability test surface (engine untouched)
+
+Context: the project targets a Jarvis-standard single personal agent that leverages
+the browser's own senses. Before wiring any of that into the agent loop, the owner
+wants a bench to test every browser-provided capability (camera/mic/screen,
+geolocation, clipboard, notifications, sensors, WebGPU, storage, connectivity) and
+the in-browser models (transformers.js WebGPU LLMs, Whisper STT, Kokoro TTS), and to
+tune each one's parameters — explicitly WITHOUT adding features to the engine yet.
+The prior "capabilities" probe + capture helpers existed only on `origin/legacy`
+(the pre-crate-split monolith), never ported into the 7-crate layout.
+
+Decision: add a 7th frontend stage, `Stage::Features`, as a pure test/inspection
+surface. Port `capabilities/{mod,media,system}.rs` from legacy into `crates/browser`
+(the only web-sys crate) — probe() sweeps ~45 surfaces into a `CapabilityReport`;
+media/system expose one-shot camera/mic/screen capture + geolocation/clipboard/
+notify/browser-TTS, plus new `vibrate`/`web_share` (Safari/iOS OS reach, via
+`Reflect` so no extra web-sys feature). Add `local_llm::generate_once` — a one-shot
+over the existing `LocalLlm` `Provider` so the lab can run in-browser inference
+without building an `InferenceRequest`. The frontend stage is a tab strip over five
+leaf panel modules (probe, sensors, llm_lab, speech_lab, platform); each panel calls
+those free functions and holds its own param signals. The in-browser LLM is exposed
+as an ADDITIONAL provider (an "Add as provider" button upserts a dedicated
+`in-browser` profile WITHOUT activating it) — it augments the provider set, it does
+not replace the external default.
+
+Consequences: NOTHING is registered as an agent tool and no engine/state/features/
+inference code changes — the page-op proxy + the 10 legacy sense *tools* are
+deliberately NOT ported (that is the engine wiring this ADR defers). Blast radius is
+additive: a new browser module + a new frontend stage; among existing files only
+`browser/{lib.rs,Cargo.toml,local_llm.rs}` and `frontend/ui/{manifest,mod,app}.rs` +
+`main.css`. Reversible: delete the `capabilities` module + `features/` stage + the
+stage enum variant. Not chosen: porting the sense tools now (the owner said "do not
+add features to the engine yet"); reseeding the shipped default profile to a local
+model (would force a large first-run download on every new user — the lab's opt-in
+"add as provider" is the additive alternative); native `<select>`/`<range>` controls
+(no precedent in the codebase — chip buttons + text fields match settings.rs).
+Built as a foundation-then-fan-out batch: one shared substrate commit, then five
+independent worktree panels (one file each, zero shared-file edits).
