@@ -1,6 +1,7 @@
-//! `shell` — run a command line in the in-browser Linux VM (v86) and return
-//! its output. The executor is injected (ADR-009): the web host wires it to
-//! `window.AskkV86.exec` over the guest serial line; host runs and tests use
+//! `shell` — run a command line in the in-browser Linux VM (container2wasm
+//! Alpine) and return its output. The executor is injected (ADR-009): the
+//! browser host wires it to `window.AskkC2W.exec` over the guest serial line;
+//! host runs and tests use
 //! a scripted `MockShell`. The VM is a sandbox — no host filesystem, no
 //! network, no persistence — so the call is `Effect::Pure` (auto-runs, no
 //! confirmation gate); a compromised command can only touch the throwaway

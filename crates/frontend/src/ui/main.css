@@ -504,13 +504,11 @@ input, textarea { font: inherit; }
   .pulse-dot, .dot-busy, .caret, .a-dot.s-running { animation: none; }
 }
 
-/* --- VM stage (v86 serial console) --- */
+/* --- VM stage (container2wasm Alpine serial console) --- */
 .vm-stage { display: flex; flex-direction: column; height: 100%; gap: 10px; }
 .vm-bar { display: flex; align-items: center; gap: 12px; }
 .vm-title { font-weight: 600; }
 .vm-sub { color: var(--muted); font-size: 12px; }
-.vm-picker { margin-left: auto; background: var(--panel); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
 .vm-status { font-size: 12px; color: var(--muted); }
 .vm-status-ready { color: var(--green); }
 .vm-status-error { color: var(--red, #ff6b81); }

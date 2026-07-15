@@ -9,7 +9,8 @@
 The browser hosts the entire full-stack app. All the Rust in `crates/` compiles
 to WebAssembly and runs client-side inside a Dioxus page (`crates/frontend/src/main.rs`);
 storage is the browser's OPFS (`crates/browser/src/opfs.rs`), the execution
-sandbox is an x86 Linux VM emulated in a tab (v86, `crates/browser/src/vm.rs`).
+sandbox is a 64-bit Alpine Linux VM emulated in a tab (container2wasm,
+`crates/browser/src/vm.rs`).
 The only thing outside the browser is the LLM itself: an OpenAI-compatible or
 Anthropic endpoint you configure (`crates/inference/`), or an in-browser model
 via transformers.js (`crates/browser/src/local_llm.rs`). There is no server of

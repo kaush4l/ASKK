@@ -1,6 +1,7 @@
 //! FEATURE: execution environment — the VM vertical: these tools run inside
 //! the guest via the injected `ShellExec` seam; browser glue =
-//! web/src/host/vm.rs (v86 + container2wasm); console UI = web/src/ui/vm.rs.
+//! crates/browser/src/vm.rs (container2wasm Alpine); console UI =
+//! crates/frontend/src/ui/vm.rs.
 
 pub mod shell;
 pub mod workspace;

@@ -1,7 +1,7 @@
 //! Acceptance benchmark rows (bench/acceptance/ROWS.md): the v0 termination
 //! condition, driven end-to-end through the real agent loop against fixture
 //! scripts (`MockProvider::from_script`, files in tests/fixtures/). Native
-//! lane only — browser-lane rows (real v86 guest) are manual/nightly and
+//! lane only — browser-lane rows (real container2wasm guest) are manual/nightly and
 //! tracked in the generated bench/acceptance/STATUS.md.
 //!
 //! Every test asserts BOTH the row's pass condition and its budget (turns +

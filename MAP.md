@@ -91,8 +91,8 @@ A DAG, not a chain — the true allowed-imports table:
 | Custom JS tool wrapper (MCP card) | `crates/browser/src/jstool.rs` |
 | Agents + custom tools (served config) | `crates/frontend/assets/agents/` |
 | Agents-folder config bake (glob + manifest order) | `crates/browser/build.rs` |
-| VM stage (v86 serial console) | `crates/frontend/src/ui/vm.rs` |
-| VM bundle source (v86 + xterm) | `scripts/vm/entry.js` + `build.mjs` |
+| VM stage (container2wasm Alpine serial console) | `crates/frontend/src/ui/vm.rs` |
+| VM bundle source (c2w + xterm-pty) | `scripts/vm-c2w/entry.js` + `build.mjs` |
 | Speech seam (STT/TTS, HF model ids) | `crates/browser/src/speech.rs` |
 | Speech engine bundles (source) | `scripts/speech/{stt,tts}-entry.js` + `build.sh` |
 | Actions + policy | `crates/core/src/action.rs` |

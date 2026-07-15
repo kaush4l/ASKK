@@ -395,3 +395,16 @@ disabled = noted, never contacted). Rejected: a form-per-server editor (modal st
 validation UI for a power-user surface the JSON textarea already covers legibly) and
 persisting statuses (they are boot-time facts, not config). Still open per GAPS 46:
 resources, prompts, stdio servers, live re-list.
+
+## ADR-037 (A) — VM = container2wasm Alpine only; v86/Buildroot removed (supersedes ADR-016/035 dual-engine)
+The VM shipped as a test with two engines under one console (ADR-016 v86, ADR-035
+c2w). Alpine (c2w) proved solid, so v86 is deleted: assets (`v86.js`, `v86.wasm`,
+`seabios.bin`, `vgabios.bin`, `buildroot.iso`), the `scripts/vm/` bundle source, the
+`AskkV86` branch of `browser::vm`'s executor, and the frontend engine picker (one
+image = no picker). c2w is now the sole `shell` backend. Costs accepted: c2w needs
+cross-origin isolation (SharedArrayBuffer), so browsers without `COEP: credentialless`
+— Safari — now have NO VM at all (v86 was the only fallback there), and sustained
+guest CPU stays ~5x slower than v86's JIT. Reversible: v86 lives in git history; a
+fast-JIT tier can return behind the same boot/exec/shellReady/destroy contract if a
+non-isolated fallback is ever needed. The `askk-v86-serial` DOM id is kept verbatim
+(cosmetic legacy name, shared across the eval boundary — not worth the churn).

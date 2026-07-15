@@ -1,27 +1,19 @@
-//! VM stage — a real x86 Linux guest in the browser, presented as a raw
-//! serial console. Two engines behind one picker:
+//! VM stage — a real x86_64 Linux guest in the browser, presented as a raw
+//! serial console.
 //!
-//! - **v86** (`assets/vm/v86.js`, from `scripts/vm/`): 32-bit x86 with a
-//!   JIT — fast CPU, boots the Buildroot serial-console CD in seconds.
-//!   Exposes `window.AskkV86`.
-//! - **container2wasm** (`assets/vm/c2w.js`, from `scripts/vm-c2w/`):
-//!   64-bit Alpine — the whole container + Bochs x86_64 emulator is ONE
-//!   WASI module (`alpine64.wasm`) run in a worker, wired to the console
-//!   via xterm-pty. Wizer pre-boot makes it prompt-ready in ~3 s, but the
-//!   interpreter CPU is ~5x slower than v86's JIT (measured). Exposes
-//!   `window.AskkC2W`. Needs cross-origin isolation (SharedArrayBuffer);
-//!   without it the console explains and stays on v86 images.
+//! **container2wasm** (`assets/vm/c2w.js`, from `scripts/vm-c2w/`): 64-bit
+//! Alpine — the whole container + Bochs x86_64 emulator is ONE WASI module
+//! (`alpine64.wasm`) run in a worker, wired to the console via xterm-pty.
+//! Wizer pre-boot makes it prompt-ready in ~3 s. Exposes `window.AskkC2W`.
 //!
-//! ponytail: image list is baked (two images) — a manifest-driven picker
-//! returns when a third image exists.
+//! Needs cross-origin isolation (SharedArrayBuffer): the console explains and
+//! stays "boot failed" on browsers without it (e.g. Safari, which lacks
+//! `COEP: credentialless`). The old 32-bit v86/Buildroot engine that used to
+//! back a second "image" here was removed once Alpine was solid — git history
+//! has it if a fast-JIT fallback is ever needed again.
 
 use dioxus::prelude::*;
 
-const V86_BUNDLE: Asset = asset!("/assets/vm/v86.js");
-const V86_WASM: Asset = asset!("/assets/vm/v86.wasm");
-const V86_BIOS: Asset = asset!("/assets/vm/seabios.bin");
-const V86_VGABIOS: Asset = asset!("/assets/vm/vgabios.bin");
-const BUILDROOT_ISO: Asset = asset!("/assets/vm/buildroot.iso");
 const C2W_BUNDLE: Asset = asset!("/assets/vm/c2w.js");
 const C2W_WASM: Asset = asset!("/assets/vm/alpine64.wasm");
 const C2W_WORKER: Asset = asset!("/assets/vm/c2w/worker.js");
@@ -31,96 +23,42 @@ const C2W_WASI_DEFS: Asset = asset!("/assets/vm/c2w/wasi_shim_wasi_defs.js");
 const C2W_WORKER_UTIL: Asset = asset!("/assets/vm/c2w/worker-util.js");
 const C2W_WASI_UTIL: Asset = asset!("/assets/vm/c2w/wasi-util.js");
 
-/// Boot-selectable images; ids are shared with the eval glue.
-pub const IMAGE_IDS: &[(&str, &str)] = &[
-    (
-        "buildroot",
-        "Buildroot — busybox (v86 JIT), boots in seconds",
-    ),
-    ("alpine64", "Alpine x86_64 — container2wasm (Bochs)"),
-];
-
 // Lifecycle messages arrive as `{ state }` JSON via `dioxus.send`; parsed
 // as a plain Value (no serde derive dependency in the web crate).
 
-/// Glue executed via `document::eval`: waits for the bundle global + host
-/// element, boots the default image, re-boots on `{cmd:"boot", id}`.
-/// Token-guarded teardown against remount races (bundle-owned).
-const V86_GLUE: &str = r#"
+/// Glue executed via `document::eval`: waits for the c2w bundle global + host
+/// element, boots Alpine, tears down on `{cmd:"close"}`. Token-guarded
+/// teardown against remount races (bundle-owned). `SERIAL_HOST` keeps its
+/// legacy `askk-v86-serial` id — shared verbatim with `browser::vm` and the
+/// c2w bundle, so it is not worth churning across the eval boundary.
+const VM_GLUE: &str = r#"
 const SERIAL_HOST = "askk-v86-serial";
-while (!(window.AskkV86 && window.AskkC2W && document.getElementById(SERIAL_HOST))) {
+while (!(window.AskkC2W && document.getElementById(SERIAL_HOST))) {
     await new Promise((resolve) => setTimeout(resolve, 50));
 }
-const COMMON = "tsc=reliable mitigations=off random.trust_cpu=on";
-const IMAGES = [
-    {
-        id: "buildroot",
-        engine: "v86",
-        imageUrl: "__BUILDROOT_ISO__",
-        imageType: "cdrom",
-        memMB: 128,
-        cmdline: COMMON,
+const engine = window.AskkC2W;
+const token = engine.boot(SERIAL_HOST, {
+    serialHostId: SERIAL_HOST,
+    wasmUrl: "__C2W_WASM__",
+    workerUrl: "__C2W_WORKER__",
+    supportUrls: {
+        workerTools: "__C2W_WORKER_TOOLS__",
+        wasiShimIndex: "__C2W_WASI_INDEX__",
+        wasiDefs: "__C2W_WASI_DEFS__",
+        workerUtil: "__C2W_WORKER_UTIL__",
+        wasiUtil: "__C2W_WASI_UTIL__",
     },
-    {
-        id: "alpine64",
-        engine: "c2w",
-    },
-];
-let token = 0;
-let engine = null;
-const bootImage = (img) => {
-    // Tear down whichever engine currently owns the console.
-    if (engine) engine.destroy(SERIAL_HOST, token);
-    if (img.engine === "c2w") {
-        engine = window.AskkC2W;
-        token = engine.boot(SERIAL_HOST, {
-            serialHostId: SERIAL_HOST,
-            wasmUrl: "__C2W_WASM__",
-            workerUrl: "__C2W_WORKER__",
-            supportUrls: {
-                workerTools: "__C2W_WORKER_TOOLS__",
-                wasiShimIndex: "__C2W_WASI_INDEX__",
-                wasiDefs: "__C2W_WASI_DEFS__",
-                workerUtil: "__C2W_WORKER_UTIL__",
-                wasiUtil: "__C2W_WASI_UTIL__",
-            },
-            onState: (state) => dioxus.send({ state }),
-        });
-        return;
-    }
-    engine = window.AskkV86;
-    token = engine.boot(SERIAL_HOST, {
-        serialHostId: SERIAL_HOST,
-        imageUrl: img.imageUrl,
-        imageType: img.imageType,
-        initrdUrl: img.initrdUrl,
-        cdromUrl: img.cdromUrl,
-        memMB: img.memMB,
-        wasmUrl: "__V86_WASM__",
-        biosUrl: "__V86_BIOS__",
-        vgaBiosUrl: "__V86_VGABIOS__",
-        cmdline: img.cmdline,
-        onState: (state) => dioxus.send({ state }),
-    });
-};
-bootImage(IMAGES[0]);
+    onState: (state) => dioxus.send({ state }),
+});
 for (;;) {
     const msg = await dioxus.recv();
     if (!msg || msg.cmd === "close") break;
-    if (msg.cmd === "boot") {
-        const img = IMAGES.find((i) => i.id === msg.id);
-        if (img) bootImage(img);
-    }
 }
-if (engine) engine.destroy(SERIAL_HOST, token);
+engine.destroy(SERIAL_HOST, token);
 "#;
 
 fn glue() -> String {
-    V86_GLUE
-        .replace("__BUILDROOT_ISO__", &BUILDROOT_ISO.to_string())
-        .replace("__V86_WASM__", &V86_WASM.to_string())
-        .replace("__V86_BIOS__", &V86_BIOS.to_string())
-        .replace("__V86_VGABIOS__", &V86_VGABIOS.to_string())
+    VM_GLUE
         .replace("__C2W_WASM__", &C2W_WASM.to_string())
         .replace("__C2W_WORKER_TOOLS__", &C2W_WORKER_TOOLS.to_string())
         .replace("__C2W_WORKER_UTIL__", &C2W_WORKER_UTIL.to_string())
@@ -146,7 +84,6 @@ fn state_label(state: &str) -> &'static str {
 pub fn VmConsole(visible: bool) -> Element {
     let mut controller = use_signal(|| Option::<document::Eval>::None);
     let mut vm_state = use_signal(|| "starting".to_string());
-    let mut selected = use_signal(|| "buildroot".to_string());
 
     // The console is ALWAYS mounted (boots at app load so the `shell` tool
     // works from any stage); `visible` only toggles whether it is on-screen.
@@ -166,27 +103,11 @@ pub fn VmConsole(visible: bool) -> Element {
     });
 
     rsx! {
-        document::Script { src: V86_BUNDLE }
         document::Script { src: C2W_BUNDLE }
         div { class: "{wrap}",
             header { class: "vm-bar",
                 span { class: "vm-title", "Linux VM" }
-                span { class: "vm-sub", "x86 · serial console · in-browser (v86 / c2w)" }
-                select {
-                    class: "vm-picker",
-                    value: "{selected}",
-                    onchange: move |e| {
-                        let id = e.value();
-                        selected.set(id.clone());
-                        vm_state.set("booting".to_string());
-                        if let Some(eval) = controller.peek().as_ref() {
-                            let _ = eval.send(serde_json::json!({ "cmd": "boot", "id": id }));
-                        }
-                    },
-                    for (id, label) in IMAGE_IDS {
-                        option { value: *id, selected: selected() == *id, "{label}" }
-                    }
-                }
+                span { class: "vm-sub", "Alpine x86_64 · serial console · in-browser (container2wasm)" }
                 span { class: "vm-status vm-status-{vm_state}", "{state_label(&vm_state())}" }
                 span { class: "vm-hint", "click the console and type — it's a live shell" }
             }
@@ -229,9 +150,8 @@ mod tests {
     }
 
     #[test]
-    fn glue_covers_every_image_id() {
-        for (id, _) in IMAGE_IDS {
-            assert!(V86_GLUE.contains(&format!("id: \"{id}\"")), "{id} missing");
-        }
+    fn glue_boots_c2w() {
+        assert!(VM_GLUE.contains("window.AskkC2W"), "c2w engine not wired");
+        assert!(!VM_GLUE.contains("AskkV86"), "stale v86 reference in glue");
     }
 }
