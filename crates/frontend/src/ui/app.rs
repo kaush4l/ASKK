@@ -8,12 +8,11 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 
-use askk_core::{Card, RunId, RunProjection, SignalKind};
+use askk_core::{RunId, RunProjection, SignalKind};
 use serde_json::{json, Value};
 
 use crate::ui::agents::AgentsStage;
 use crate::ui::artifacts::ArtifactsStage;
-use crate::ui::board::BoardStage;
 use crate::ui::chat::ChatStage;
 use crate::ui::dashboard::{DashRun, DashboardStage};
 use crate::ui::manifest::Stage;
@@ -163,19 +162,6 @@ pub fn App() -> Element {
             }
             Err(e) => boot_error.set(Some(e)),
         }
-    });
-
-    // Board snapshot: board mutations happen through tools, whose signals
-    // bump `refold` — reading it here re-fetches the async kv read. The
-    // dashboard's board-mini tile reads the same snapshot.
-    let mut board_cards = use_signal(Vec::<Card>::new);
-    use_effect(move || {
-        let _ = refold();
-        if !matches!(stage(), Stage::Board | Stage::Dashboard) {
-            return;
-        }
-        let Some(h) = handle() else { return };
-        spawn(async move { board_cards.set(h.board_cards().await) });
     });
 
     // Artifact docs: published through a tool, whose signals bump `refold` —
@@ -466,10 +452,7 @@ pub fn App() -> Element {
                             }
                         },
                         Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },
-                        Stage::Board => rsx! { BoardStage { cards: board_cards() } },
-                        Stage::Dashboard => rsx! {
-                            DashboardStage { runs: dash_runs, cards: board_cards() }
-                        },
+                        Stage::Dashboard => rsx! { DashboardStage { runs: dash_runs } },
                         Stage::Artifacts => rsx! {
                             ArtifactsStage { docs: artifact_docs(), now_ms: dom::now_ms() }
                         },

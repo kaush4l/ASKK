@@ -119,8 +119,9 @@ pub fn ChatStage(
                 for (i, item) in items.iter().enumerate() {
                     if item.collapsible {
                         // Intermediate working (tool call + its observation) —
-                        // a collapsed native disclosure, closed by default.
-                        details { key: "{i}", class: "msg role-reasoning",
+                        // a native disclosure, OPEN by default (never auto-hide
+                        // the stream); the user can collapse it manually.
+                        details { key: "{i}", class: "msg role-reasoning", open: true,
                             summary { class: "reasoning-toggle", "working" }
                             pre { class: "reasoning-body", "{item.content}" }
                         }

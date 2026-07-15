@@ -63,8 +63,7 @@ A DAG, not a chain — the true allowed-imports table:
 | Kanban card model + stage rules (ADR-026) | `crates/core/src/board.rs` |
 | Board persistence over KvStore | `crates/state/src/board.rs` |
 | Board tools (add/list/move/check) | `crates/features/src/tools/board/mod.rs` |
-| Board UI tab (5-column live view) | `crates/frontend/src/ui/board.rs` |
-| Dashboard stage (wall display) | `crates/frontend/src/ui/dashboard.rs` |
+| Dashboard stage (wall display + tool-activity matrix) | `crates/frontend/src/ui/dashboard.rs` |
 | Cross-tab signal bus (BroadcastChannel mirror, ADR-031) | `crates/browser/src/bus.rs` |
 | Team config (folder team.md, ADR-032) | `crates/features/src/config/team.rs` |
 | Team delegation boundary (TeamTool, principles injection) | `crates/engine/src/run/delegation/delegate.rs` |

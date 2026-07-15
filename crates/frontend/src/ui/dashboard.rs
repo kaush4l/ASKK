@@ -7,7 +7,9 @@
 
 use dioxus::prelude::*;
 
-use askk_core::{Card, CardStage, RunId, RunProjection, RunStatus};
+use std::collections::BTreeMap;
+
+use askk_core::{RunId, RunProjection, RunStatus};
 
 use crate::ui::agents::{agent_and_goal, status_class, status_label};
 use askk_browser::dom;
@@ -84,15 +86,30 @@ fn recent_artifacts(runs: &[DashRun], max: usize) -> Vec<String> {
         .collect()
 }
 
+/// Tool-usage matrix across the session: tool name → how many times it was
+/// requested, busiest first (ties broken by name). Parsed from the timelines'
+/// `tool requested: <name> (<id>)` lines — no extra plumbing.
+fn tool_activity(runs: &[DashRun]) -> Vec<(String, usize)> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for line in runs.iter().flat_map(|r| r.proj.timeline.iter()) {
+        if let Some(rest) = line.strip_prefix("tool requested: ") {
+            let name = rest.split(" (").next().unwrap_or(rest).trim();
+            if !name.is_empty() {
+                *counts.entry(name.to_string()).or_default() += 1;
+            }
+        }
+    }
+    let mut rows: Vec<(String, usize)> = counts.into_iter().collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    rows
+}
+
 #[component]
-pub fn DashboardStage(runs: Vec<DashRun>, cards: Vec<Card>) -> Element {
+pub fn DashboardStage(runs: Vec<DashRun>) -> Element {
     let (n_runs, n_live, n_answered, n_tools, n_turns) = totals(&runs);
     let artifacts = recent_artifacts(&runs, 8);
-    let in_flight: Vec<&Card> = cards
-        .iter()
-        .filter(|c| matches!(c.stage, CardStage::Doing | CardStage::Testing))
-        .collect();
-    let quiet = runs.is_empty() && cards.is_empty();
+    let tools_used = tool_activity(&runs);
+    let quiet = runs.is_empty();
     let numerals = [
         (n_runs.to_string(), "runs", false),
         (n_live.to_string(), "live", true),
@@ -166,21 +183,14 @@ pub fn DashboardStage(runs: Vec<DashRun>, cards: Vec<Card>) -> Element {
                 }
                 div { class: "dash-row",
                     div { class: "dash-tile",
-                        div { class: "dash-label", "Board" }
-                        div { class: "dash-board-counts",
-                            for stage in CardStage::ALL {
-                                div { key: "{stage.name()}", class: "dash-board-col",
-                                    div { class: "dash-board-num",
-                                        "{cards.iter().filter(|c| c.stage == stage).count()}"
-                                    }
-                                    div { class: "dash-label", "{stage.name()}" }
-                                }
-                            }
+                        div { class: "dash-label", "Tool activity" }
+                        if tools_used.is_empty() {
+                            div { class: "hint", "no tools used yet" }
                         }
-                        for c in in_flight.iter() {
-                            div { key: "{c.id}", class: "dash-board-title",
-                                span { class: "meta-tag", "{c.stage.name()}" }
-                                span { class: "dash-board-text", "{c.title}" }
+                        for (name, count) in tools_used.iter() {
+                            div { key: "{name}", class: "dash-board-title",
+                                span { class: "meta-tag", "{count}" }
+                                span { class: "dash-board-text", "{name}" }
                             }
                         }
                     }
@@ -255,6 +265,36 @@ mod tests {
         assert_eq!(draft_tail("short", 10), "short");
         assert_eq!(draft_tail("abcdefghij", 4), "…ghij");
         assert_eq!(draft_tail("trailing ws  \n", 20), "trailing ws");
+    }
+
+    #[test]
+    fn tool_activity_counts_requests_busiest_first() {
+        let a = run(
+            "r1",
+            RunProjection {
+                timeline: vec![
+                    "tool requested: web_search (c1)".into(),
+                    "tool requested: web_search (c2)".into(),
+                    "tool requested: calc (c3)".into(),
+                ],
+                ..Default::default()
+            },
+            "",
+        );
+        let b = run(
+            "r2",
+            RunProjection {
+                timeline: vec!["tool requested: calc (c4)".into()],
+                ..Default::default()
+            },
+            "",
+        );
+        // web_search 2, calc 2 → tie broken by name; then no others.
+        assert_eq!(
+            tool_activity(&[a, b]),
+            vec![("calc".into(), 2), ("web_search".into(), 2)]
+        );
+        assert_eq!(tool_activity(&[]), Vec::<(String, usize)>::new());
     }
 
     #[test]

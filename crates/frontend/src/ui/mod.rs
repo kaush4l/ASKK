@@ -7,7 +7,6 @@ pub mod actions;
 pub mod agents;
 pub mod app;
 pub mod artifacts;
-pub mod board;
 pub mod chat;
 pub mod dashboard;
 pub mod manifest;
