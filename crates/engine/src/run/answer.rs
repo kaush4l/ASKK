@@ -106,7 +106,7 @@ pub(crate) async fn handle_answer(
     }
 }
 
-async fn finish_unverified(
+pub(crate) async fn finish_unverified(
     shared: &Shared,
     run: &mut RunState,
     text: String,
@@ -184,6 +184,7 @@ mod tests {
             // A phase list validation would reject: the gate names itself.
             let gate = Phase {
                 name: "verify".into(),
+                step: askk_core::PhaseStep::Llm,
                 contract: "critique".into(),
                 tool_filter: None,
                 skill_filter: None,

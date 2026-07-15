@@ -6,6 +6,7 @@ pub mod agent;
 pub(crate) mod env;
 pub(crate) mod fields;
 pub mod frontmatter;
+pub(crate) mod phases;
 pub mod team;
 pub mod validate;
 

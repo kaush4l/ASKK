@@ -105,6 +105,14 @@ impl HarnessHandle {
         }
     }
 
+    /// Cancel a SPECIFIC run by id — the Fleet surface (ADR-042) steers many
+    /// parallel loops, so it cancels by id rather than only the current run.
+    /// A parked run lands Interrupted at once; a driving run's cancel token
+    /// trips on its next loop check.
+    pub async fn cancel_run(&self, run_id: &RunId) {
+        let _ = self.session.cancel(run_id).await;
+    }
+
     /// Every run this page session has seen, newest first, each with its
     /// fold. Delegate runs never submitted through the facade surface via
     /// their signals in the live buffer.

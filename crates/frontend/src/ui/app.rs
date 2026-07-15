@@ -16,6 +16,8 @@ use crate::ui::artifacts::ArtifactsStage;
 use crate::ui::chat::ChatStage;
 use crate::ui::dashboard::{DashRun, DashboardStage};
 use crate::ui::features::FeaturesStage;
+use crate::ui::fleet::FleetStage;
+use crate::ui::fonts::{font_css, FAVICON};
 use crate::ui::manifest::Stage;
 use crate::ui::settings::SettingsStage;
 use crate::ui::shell::{AvatarBar, Header, LeftRail, RightRail};
@@ -27,25 +29,6 @@ use askk_browser::dom;
 use askk_browser::speech::{self, SpeechConfig};
 
 const CSS: &str = include_str!("main.css");
-const FAVICON: Asset = asset!("/assets/favicon.svg");
-const AMARANTE_LATIN: Asset = asset!("/assets/amarante-latin.woff2");
-const AMARANTE_LATIN_EXT: Asset = asset!("/assets/amarante-latin-ext.woff2");
-
-/// Self-hosted Amarante (`--font-sans`/`--font-display` in main.css); the
-/// unicode-range split matches the kiln next/font export.
-fn font_css() -> String {
-    format!(
-        "@font-face{{font-family:Amarante;font-style:normal;font-weight:400;font-display:swap;\
-         src:url('{AMARANTE_LATIN}') format('woff2');\
-         unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,\
-         U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}}\
-         @font-face{{font-family:Amarante;font-style:normal;font-weight:400;font-display:swap;\
-         src:url('{AMARANTE_LATIN_EXT}') format('woff2');\
-         unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,\
-         U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,\
-         U+2C60-2C7F,U+A720-A7FF;}}"
-    )
-}
 
 /// Latest loop signal → the plain-language phase label; the bool marks
 /// external (tool) work — the warm accent, kiln-style.
@@ -115,13 +98,12 @@ pub fn App() -> Element {
                     ui_error.set(Some(w));
                 }
                 profiles.set(h.get_profiles());
-                // Single-agent chat: the Assistant answers directly and uses
-                // its own tools (web_search etc.) — no director, no delegation.
-                // Fall back to the first card if it isn't configured.
+                // Default agent = the Orchestrator (ADR-042): a Jarvis director
+                // that delegates to sub-agents. Falls back to the first card.
                 let cards = h.agents();
                 if let Some(a) = cards
                     .iter()
-                    .find(|a| a.id == "assistant")
+                    .find(|a| a.id == "orchestrator")
                     .or_else(|| cards.first())
                 {
                     agent_id.set(a.id.clone());
@@ -214,7 +196,7 @@ pub fn App() -> Element {
     // Wall tiles: the fold plus each run's live streaming tail — assembled
     // only while the dashboard is the picked stage (draft scans the buffer).
     let dash_runs: Vec<DashRun> = match (handle(), stage()) {
-        (Some(h), Stage::Dashboard) => runs_newest
+        (Some(h), Stage::Dashboard | Stage::Fleet) => runs_newest
             .iter()
             .map(|(id, proj)| DashRun {
                 id: id.clone(),
@@ -276,6 +258,19 @@ pub fn App() -> Element {
     let on_stop = move |_| {
         let Some(h) = handle() else { return };
         spawn(async move { h.cancel().await });
+    };
+    // Fleet (ADR-042): launch a chosen agent as its own parallel loop by
+    // reusing the chat submit path — set the agent, then send. Cancel targets
+    // one run by id.
+    let on_launch = move |(agent, goal): (String, String)| {
+        agent_id.set(agent);
+        let mut send = on_send;
+        send(goal);
+    };
+    let on_cancel_run = move |run_id: RunId| {
+        if let Some(h) = handle() {
+            spawn(async move { h.cancel_run(&run_id).await });
+        }
     };
     let on_resolve = move |(action_id, approve): (String, bool)| {
         let Some(h) = handle() else { return };
@@ -449,16 +444,10 @@ pub fn App() -> Element {
                                 phase: phase.clone(),
                                 warm,
                                 agent: agent_name,
-                                // Single-agent chat: only the Assistant (picker
-                                // hidden); full list if no assistant configured.
-                                agents: {
-                                    let one: Vec<_> = agent_cards
-                                        .iter()
-                                        .filter(|c| c.id == "assistant")
-                                        .cloned()
-                                        .collect();
-                                    if one.is_empty() { agent_cards.clone() } else { one }
-                                },
+                                // Multi-agent (ADR-042): the picker shows every
+                                // enabled agent — Orchestrator, specialists, or
+                                // launch a whole fleet from the Fleet stage.
+                                agents: agent_cards.clone(),
                                 active_agent: agent_id(),
                                 elapsed: elapsed.clone(),
                                 notice,
@@ -467,6 +456,14 @@ pub fn App() -> Element {
                                 on_agent: move |id: String| agent_id.set(id),
                                 on_stop,
                                 on_resolve,
+                            }
+                        },
+                        Stage::Fleet => rsx! {
+                            FleetStage {
+                                agents: agent_cards.clone(),
+                                runs: dash_runs,
+                                on_launch,
+                                on_cancel: on_cancel_run,
                             }
                         },
                         Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },

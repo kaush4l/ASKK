@@ -7,6 +7,7 @@
 pub enum Stage {
     #[default]
     Chat,
+    Fleet,
     Agents,
     Dashboard,
     Artifacts,
@@ -19,6 +20,7 @@ impl Stage {
     pub fn key(self) -> &'static str {
         match self {
             Stage::Chat => "Chat",
+            Stage::Fleet => "Fleet",
             Stage::Agents => "Agents",
             Stage::Dashboard => "Dashboard",
             Stage::Artifacts => "Artifacts",
@@ -49,6 +51,11 @@ pub const COMPONENTS: &[Component] = &[
         stage: Stage::Chat,
         dot: "var(--blue)",
         meta: "agent",
+    },
+    Component {
+        stage: Stage::Fleet,
+        dot: "var(--cyan, #23b3d1)",
+        meta: "loops",
     },
     Component {
         stage: Stage::Agents,

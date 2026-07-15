@@ -32,7 +32,9 @@ pub use contract::{
 };
 pub use element::{Directive, Element, Identity, Skill};
 pub use error::CoreError;
-pub use phase::{route, LoopMode, Phase, PhaseFrame, RouteOutcome, Routing, MAX_BACK_EDGES};
+pub use phase::{
+    route, LoopMode, Phase, PhaseFrame, PhaseStep, RouteOutcome, Routing, MAX_BACK_EDGES,
+};
 pub use provider::{Provider, ProviderError};
 pub use request::{
     ContractWire, InferenceConfig, InferenceReply, InferenceRequest, Message, Part, Role,

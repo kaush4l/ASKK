@@ -95,6 +95,17 @@ pub fn validate(
                 ));
             }
             check_fan_out(agent, idx, phase, &mut problems);
+            // Workflow-path step (ADR-042): a scripted `tool` must be one the
+            // agent may call. The pure-vs-mutating guard is a run-time concern
+            // (the registry, not this config set, knows a tool's Effect).
+            if let askk_core::PhaseStep::Tool { tool, .. } = &phase.step {
+                if !agent.tools.contains(tool) {
+                    problems.push(format!(
+                        "{at}: phase '{}' scripted tool '{tool}' is not in the agent's tools",
+                        phase.name
+                    ));
+                }
+            }
             if let Some(filter) = &phase.tool_filter {
                 for tool in filter {
                     if !agent.tools.contains(tool) {

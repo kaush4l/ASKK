@@ -188,6 +188,7 @@ impl RunState {
             // `budget.max_turns` must not die on the 16-turn loop default).
             vec![Phase {
                 name: "main".into(),
+                step: askk_core::PhaseStep::Llm,
                 contract: agent.contract.clone(),
                 tool_filter: None,
                 skill_filter: None,

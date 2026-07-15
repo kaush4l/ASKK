@@ -537,3 +537,62 @@ model (would force a large first-run download on every new user — the lab's op
 (no precedent in the codebase — chip buttons + text fields match settings.rs).
 Built as a foundation-then-fan-out batch: one shared substrate commit, then five
 independent worktree panels (one file each, zero shared-file edits).
+
+## ADR-042 — Workflow-path step, orchestrator-by-default, and a Fleet surface
+
+Context: the owner wants three things legible in code — (1) "the LLM does not have to
+drive everything; repeated deterministic paths are written as workflow-path code", (2)
+the default experience to be "Jarvis": a director that delegates to sub-agents, and (3)
+multi-agent loops that run individually. Research against the code (code-is-truth) found
+that most of the machinery ALREADY exists: each run carries its own history/toolset/
+agent.md (`RunState`), any enabled agent already launches as its own parallel top-level
+loop (`submit` + per-run `drive_run`), delegation already runs a child through the same
+loop at `depth+1` (`drive_child`), and the error-swallowing "structural" layer already
+exists (`dispatch` tool-errors→observations, `log` degrade-don't-die). So this ADR is
+four narrow deltas, not a rewrite.
+
+Decision A — the workflow-path primitive is a deterministic `Phase` STEP, not a new
+type. `core::Phase` gains `step: PhaseStep` where `PhaseStep::{Llm (default), Tool{tool,
+args}}` (`#[serde(default)]`, so all existing phases/snapshots are unaffected). A `Tool`
+step runs the named tool once with fixed args (`{goal}` substituted) and advances — NO
+`infer` call — reusing dispatch's error-swallowing. An agent's `phases:` frontmatter is
+therefore already "workflow-path code": the author scripts the deterministic steps as
+phases (`phase.N.tool`/`phase.N.args`), the LLM only fills the judgment phases. Scripted
+steps run PURE (read-only) tools only — a mutating tool is refused as an observation
+(no unconfirmed mutation from author-scripted code); a scripted step cannot be a gate.
+Rejected: a separate `Workflow{steps}` object — it would duplicate phase routing/budget/
+gate/error-swallowing.
+
+Decision B — orchestrator by default, REVERSING ADR-039's single-agent default. A new
+enabled `orchestrator.md` (listed first, the boot default) is a lean SINGLE-PHASE react
+agent with the delegation toolset (`researcher`/`worker`/`builder` + the loop tools +
+`handoff`) and `budget.*` caps (max_turns 24, depth 3). Deliberately NOT a plan→execute→
+verify phase machine: ADR-039/the lean-react finding showed that machine looped weak/
+local models on `MAX_REPAIRS` — the proven orchestrator is "single-phase react +
+delegation tools". Known limitation (documented, not silent): a weak/local active
+provider may still loop; the single-agent `assistant` stays one click away in the
+now-unfiltered picker.
+
+Decision C — a Fleet stage (`Stage::Fleet`) to launch/monitor/cancel N agents as
+individual parallel loops. The engine already backgrounds each `submit`+`drive_run`; the
+only new surface code is a stage + a per-run `cancel_run` facade. v1 = launch + monitor +
+cancel. No scheduler (per-run drive already backgrounds each loop); no mid-loop steer
+(deferred). Launch reuses the chat submit path (set agent, then send).
+
+Decision D — structural hardening: the residual `expect()`/`panic!` sites in the run hot
+path degrade to a terminal instead of panicking, so "keep the application moving" is
+literally true. This ADR does the two `turn.rs` sites (validated-agent/contract invariant,
+and the retry failure path); the rest (`assemble`/`flow`/`session`/`transport`) follow in
+the same batch.
+
+Consequences: `core::Phase` grew one defaulted field; `turn.rs` split into `run/infer.rs`
+(LLM call + retry) and `run/scripted.rs` (workflow-path step) to stay under the size cap;
+`config/agent.rs` split its phase parsing into `config/phases.rs`; `app.rs` flipped the
+default agent, dropped the assistant-only picker filter, mounted the Fleet stage, and
+moved its font/favicon block into `ui/fonts.rs` (cap headroom). Blast radius: the phase
+machine (every declared agent), the boot default agent, and one new UI stage. Reversible:
+`PhaseStep` defaults to `Llm` (drop it and every phase is unchanged); re-list `assistant`
+first to restore the ADR-039 default; delete the Fleet stage variant. Built
+foundation-then-fan-out: the interconnected core (PhaseStep, turn hardening, orchestrator/
+default flip, Fleet shell) inline, then worktree workers for the Fleet UI body, the rest
+of the hardening, the orchestrator/example refinement, and the navigation docs.

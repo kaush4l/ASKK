@@ -10,6 +10,8 @@ pub mod artifacts;
 pub mod chat;
 pub mod dashboard;
 pub mod features;
+pub mod fleet;
+pub mod fonts;
 pub mod manifest;
 pub mod markdown;
 pub mod settings;

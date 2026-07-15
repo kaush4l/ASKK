@@ -4,11 +4,12 @@
 
 use std::collections::BTreeMap;
 
-use askk_core::{Budgets, Contract, LoopMode, OutputMode, Phase, Skill};
+use askk_core::{Budgets, Contract, OutputMode, Phase, Skill};
 
 use crate::config::env as env_presets;
 use crate::config::fields::{self, FieldDraft};
 use crate::config::frontmatter::{self, Entry};
+use crate::config::phases::{build_phases, phase_entry, PhaseDraft};
 use crate::config::ConfigError;
 
 /// Turn budget for `loop` phases; mirrors `Budgets::default().max_turns`.
@@ -240,133 +241,7 @@ fn budget_entry(entry: &Entry, at: &str, budget: &mut BudgetOverride, problems: 
     }
 }
 
-/// Accumulates `phase.N.*` keys until all lines are seen.
-#[derive(Default)]
-struct PhaseDraft {
-    line: usize,
-    name: Option<String>,
-    contract: Option<String>,
-    tools: Option<Vec<String>>,
-    skills: Option<Vec<String>>,
-    loop_mode: Option<LoopMode>,
-    max_turns: Option<u32>,
-    gate: Option<bool>,
-    on_fail: Option<String>,
-    header: Option<String>,
-    fan_out: Option<String>,
-    parts: Option<String>,
-}
-
-fn phase_entry(
-    entry: &Entry,
-    at: &str,
-    drafts: &mut BTreeMap<usize, PhaseDraft>,
-    problems: &mut Vec<String>,
-) {
-    let rest = &entry.key["phase.".len()..];
-    let Some((number, field)) = rest.split_once('.') else {
-        problems.push(format!(
-            "{at}: phase keys are `phase.<n>.<field>`, got '{}'",
-            entry.key
-        ));
-        return;
-    };
-    let n = match number.parse::<usize>() {
-        Ok(n) if n >= 1 => n,
-        _ => {
-            problems.push(format!(
-                "{at}: phase number must be an integer >= 1, got '{number}'"
-            ));
-            return;
-        }
-    };
-    let draft = drafts.entry(n).or_default();
-    if draft.line == 0 {
-        draft.line = entry.line;
-    }
-    let value = entry.value.clone();
-    match field {
-        "name" => draft.name = Some(value),
-        "contract" => draft.contract = Some(value),
-        "tools" => draft.tools = Some(frontmatter::split_list(&value)),
-        "skills" => draft.skills = Some(frontmatter::split_list(&value)),
-        "loop" => match value.as_str() {
-            "one_shot" => draft.loop_mode = Some(LoopMode::OneShot),
-            "loop" => {
-                draft.loop_mode = Some(LoopMode::Loop {
-                    max_turns: DEFAULT_LOOP_MAX_TURNS,
-                })
-            }
-            other => problems.push(format!("{at}: `loop` must be one_shot|loop, got '{other}'")),
-        },
-        "max_turns" => match value.parse::<u32>() {
-            Ok(n) if n >= 1 => draft.max_turns = Some(n),
-            _ => problems.push(format!(
-                "{at}: `max_turns` must be a positive integer, got '{value}'"
-            )),
-        },
-        "gate" => match parse_bool(&value) {
-            Some(b) => draft.gate = Some(b),
-            None => problems.push(format!("{at}: `gate` must be true|false, got '{value}'")),
-        },
-        "on_fail" => draft.on_fail = Some(value),
-        "header" => draft.header = Some(value),
-        "fan_out" => draft.fan_out = Some(value),
-        "parts" => draft.parts = Some(value),
-        other => problems.push(format!("{at}: unknown phase field '{other}'")),
-    }
-}
-
-fn build_phases(
-    path_label: &str,
-    drafts: BTreeMap<usize, PhaseDraft>,
-    problems: &mut Vec<String>,
-) -> Vec<Phase> {
-    let mut phases = Vec::new();
-    for (position, (n, draft)) in drafts.into_iter().enumerate() {
-        if n != position + 1 {
-            problems.push(format!(
-                "{path_label}: phase numbers must be contiguous from 1; missing phase.{}",
-                position + 1
-            ));
-        }
-        let name = draft.name.unwrap_or_else(|| {
-            problems.push(format!(
-                "{path_label}:{}: phase.{n} is missing `phase.{n}.name`",
-                draft.line
-            ));
-            String::new()
-        });
-        // `max_turns` overrides the loop default (16); alone it implies
-        // `loop: loop`; with an explicit one_shot it is a contradiction.
-        let loop_mode = match (draft.loop_mode, draft.max_turns) {
-            (Some(LoopMode::OneShot), Some(_)) => {
-                problems.push(format!(
-                    "{path_label}:{}: phase.{n} `max_turns` requires `loop: loop`",
-                    draft.line
-                ));
-                LoopMode::OneShot
-            }
-            (_, Some(max_turns)) => LoopMode::Loop { max_turns },
-            (mode, None) => mode.unwrap_or(LoopMode::OneShot),
-        };
-        phases.push(Phase {
-            name,
-            contract: draft.contract.unwrap_or_else(|| "react".into()),
-            tool_filter: draft.tools,
-            skill_filter: draft.skills,
-            loop_mode,
-            gate: draft.gate.unwrap_or(false),
-            on_fail: draft.on_fail,
-            header: draft.header.unwrap_or_default(),
-            fan_out: draft.fan_out,
-            parts: draft.parts,
-        });
-    }
-    phases
-}
-
-fn parse_bool(value: &str) -> Option<bool> {
+pub(crate) fn parse_bool(value: &str) -> Option<bool> {
     match value {
         "true" => Some(true),
         "false" => Some(false),
@@ -432,6 +307,8 @@ pub fn load_soul(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use askk_core::PhaseStep;
+
     use super::*;
 
     fn base() -> AgentConfig {
@@ -460,6 +337,65 @@ mod tests {
         // Untouched knobs pass through from the base.
         assert_eq!(child.tools, vec!["echo", "calc"]);
         assert_eq!(child.provider, "default");
+    }
+
+    #[test]
+    fn scripted_phase_step_parses_tool_and_args() {
+        let cfg = AgentConfig::from_markdown(
+            "agents/flow.md",
+            "---\nid: flow\ntools: web_search\n\
+             phase.1.name: search\nphase.1.tool: web_search\nphase.1.args: {\"query\": \"{goal}\"}\n\
+             phase.2.name: answer\nphase.2.gate: true\n---\nSummarize.",
+        )
+        .unwrap();
+        assert_eq!(cfg.phases.len(), 2);
+        match &cfg.phases[0].step {
+            PhaseStep::Tool { tool, args } => {
+                assert_eq!(tool, "web_search");
+                // The `{goal}` template is stored verbatim; substitution is a
+                // run-time concern (turn.rs::substitute_goal).
+                assert_eq!(args["query"], "{goal}");
+            }
+            other => panic!("expected a scripted Tool step, got {other:?}"),
+        }
+        // A bare LLM phase is the default.
+        assert_eq!(cfg.phases[1].step, PhaseStep::Llm);
+    }
+
+    #[test]
+    fn scripted_tool_only_defaults_args_to_empty_object() {
+        let cfg = AgentConfig::from_markdown(
+            "agents/f.md",
+            "---\nid: f\ntools: calc\nphase.1.name: run\nphase.1.tool: calc\n---\n",
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.phases[0].step,
+            PhaseStep::Tool {
+                tool: "calc".into(),
+                args: serde_json::json!({}),
+            }
+        );
+    }
+
+    #[test]
+    fn scripted_step_cannot_be_a_gate() {
+        let err = AgentConfig::from_markdown(
+            "agents/bad.md",
+            "---\nid: bad\ntools: calc\nphase.1.name: s\nphase.1.tool: calc\nphase.1.gate: true\n---\n",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("cannot be both"), "{err}");
+    }
+
+    #[test]
+    fn scripted_step_rejects_non_object_args() {
+        let err = AgentConfig::from_markdown(
+            "agents/bad.md",
+            "---\nid: bad\ntools: calc\nphase.1.name: s\nphase.1.tool: calc\nphase.1.args: 42\n---\n",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("must be a JSON object"), "{err}");
     }
 
     #[test]

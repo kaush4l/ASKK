@@ -1,5 +1,6 @@
 {
   "agents": [
+    "orchestrator.md",
     "assistant.md",
     "researcher.md",
     "builder.md",

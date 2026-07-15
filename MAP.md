@@ -96,7 +96,12 @@ A DAG, not a chain — the true allowed-imports table:
 | Actions + policy | `crates/core/src/action.rs` |
 | Signals + fold | `crates/core/src/signal.rs` |
 | Statuses, budgets, snapshots | `crates/core/src/state.rs` |
-| Phases + routing | `crates/core/src/phase.rs` |
+| Phases + routing (incl. `PhaseStep` workflow-path, ADR-042) | `crates/core/src/phase.rs` |
+| Workflow-path step (deterministic no-LLM phase, ADR-042) | `crates/engine/src/run/scripted.rs` |
+| LLM call + bounded retry (split from turn) | `crates/engine/src/run/infer.rs` |
+| Phase parsing (`phase.N.*` → `Phase`) | `crates/features/src/config/phases.rs` |
+| Fleet stage (launch/monitor parallel loops, ADR-042) | `crates/frontend/src/ui/fleet.rs` |
+| Default agent = Orchestrator (Jarvis director, ADR-042) | `crates/frontend/assets/agents/orchestrator.md` |
 | Transport seam | `crates/inference/src/transport.rs` |
 | Provider adapters | `crates/inference/src/{openai_compat,anthropic,mock}.rs` |
 | Provider registry | `crates/inference/src/registry.rs` |

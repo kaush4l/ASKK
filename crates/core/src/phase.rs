@@ -2,6 +2,7 @@
 //! phase's Done ends a run as success; back-edges are bounded.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Maximum times a strategy may route backwards before the run is Unverified.
 pub const MAX_BACK_EDGES: u32 = 2;
@@ -13,9 +14,33 @@ pub enum LoopMode {
     Loop { max_turns: u32 },
 }
 
+/// How a phase runs one step — the workflow-path primitive (ADR-042).
+///
+/// `Llm` (default) is the ReAct turn: the model drives, picking a tool or
+/// answering. `Tool` is a **deterministic, author-scripted** step — it runs
+/// the named tool once with fixed args and advances, with NO LLM call. This
+/// is how "repeated paths become workflow-path code": the agent author scripts
+/// the deterministic steps as phases; the LLM only fills the judgment phases.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum PhaseStep {
+    /// The model drives the turn (ReAct): pick a tool or answer.
+    #[default]
+    Llm,
+    /// Run `tool` once with `args` deterministically, then advance. `{goal}`
+    /// inside a string arg is substituted with the run goal (v1 templating —
+    /// richer templating can come later without touching this shape).
+    Tool { tool: String, args: Value },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Phase {
     pub name: String,
+    /// How this phase runs: an LLM turn (default) or a scripted tool step
+    /// (ADR-042 workflow-path). `#[serde(default)]` keeps existing phases and
+    /// persisted snapshots compatible — an absent field means `Llm`.
+    #[serde(default)]
+    pub step: PhaseStep,
     /// Named contract this phase runs under.
     pub contract: String,
     /// None = the agent's full toolset; Some = narrowed allowlist.
@@ -86,6 +111,7 @@ mod tests {
     fn phase(gate: bool) -> Phase {
         Phase {
             name: "verify".into(),
+            step: PhaseStep::Llm,
             contract: "critique".into(),
             tool_filter: None,
             skill_filter: None,

@@ -17,10 +17,14 @@ pub mod delegation;
 pub(crate) mod dispatch;
 pub(crate) mod flow;
 pub mod host;
+/// One LLM call with bounded retries + cancel race (split from `turn`).
+pub(crate) mod infer;
 /// Live artifact refresh — latest-state blocks per call (ADR-033).
 pub(crate) mod live;
 /// Session tool registration (delegates, teams, loops, handoff, skills, spawn).
 pub(crate) mod register;
+/// Deterministic workflow-path phase steps (ADR-042).
+pub(crate) mod scripted;
 pub mod session;
 pub(crate) mod turn;
 

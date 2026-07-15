@@ -366,6 +366,51 @@ fn gate_phase_fail_revise_pass() {
     });
 }
 
+/// ADR-042 workflow-path: a scripted `phase.N.tool` step runs its tool
+/// DETERMINISTICALLY — no LLM call — then advances to the LLM phase, which sees
+/// the tool result. The mock supplies exactly ONE reply (the gate), proving the
+/// scripted phase never touched the provider, and `{goal}` is substituted in.
+#[test]
+fn scripted_phase_runs_tool_without_an_llm_call() {
+    block_on(async {
+        const FLOW: (&str, &str) = (
+            "agents/flow.md",
+            "---\nid: flow\ndescription: Scripted fetch then verify.\ntools: echo\n\
+             phase.1.name: fetch\nphase.1.tool: echo\nphase.1.args: {\"text\": \"{goal}\"}\n\
+             phase.2.name: verify\nphase.2.contract: critique\nphase.2.gate: true\n---\nSummarize.",
+        );
+        let f = fixture(&[FLOW]).await;
+        f.mock.push_text("verdict: pass"); // ONLY the gate phase calls the LLM
+        let run = f.session.submit("flow", "berlin weather").await.unwrap();
+        let out = f.session.drive(&run, f.host.clone()).await;
+        assert_eq!(out.status, RunStatus::Answered);
+        // Exactly one provider call — the scripted phase made none.
+        assert_eq!(f.mock.requests().len(), 1);
+        assert_eq!(f.mock.remaining(), 0);
+        let signals = f.host.signals();
+        // `{goal}` was substituted into the scripted tool's args.
+        assert!(
+            observations(&signals)
+                .iter()
+                .any(|o| o == "echo: berlin weather"),
+            "{:?}",
+            observations(&signals)
+        );
+        // Deterministic: the scripted tool_requested has NO preceding llm_request.
+        let stream = tags(&signals);
+        let first_llm = stream.iter().position(|t| t == "llm_request");
+        let first_tool = stream
+            .iter()
+            .position(|t| t == "tool_requested")
+            .expect("scripted tool ran");
+        assert!(
+            first_llm.is_none_or(|i| i > first_tool),
+            "scripted tool must run before any LLM call: {stream:?}"
+        );
+        assert_eq!(phases_entered(&signals), vec!["fetch", "verify"]);
+    });
+}
+
 #[test]
 fn budget_exhaustion_with_final_turn_nudge() {
     block_on(async {

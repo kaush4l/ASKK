@@ -4,11 +4,10 @@
 //! phase gate semantics (ADR-008). Every step emits a stamped signal.
 
 use askk_core::{
-    window_history, Action, Contract, Element, InferenceConfig, InferenceReply, InferenceRequest,
-    LoopMode, Message, OutputMode, ParsedFormat, ParsedResponse, PhaseFrame, ProviderError, Role,
-    RunStatus, Sheet, Signal, SignalKind, Skill, ToolSet,
+    window_history, Action, Contract, Element, InferenceConfig, LoopMode, Message, OutputMode,
+    ParsedFormat, ParsedResponse, PhaseFrame, PhaseStep, Role, RunStatus, Sheet, Signal,
+    SignalKind, Skill, ToolSet,
 };
-use futures::future::{select, Either};
 use serde_json::Map;
 
 use crate::assemble::{assemble, AssembleOverrides};
@@ -16,7 +15,9 @@ use crate::config::{resolve_contract, AgentConfig};
 use crate::run::answer::handle_answer;
 use crate::run::dispatch::{dispatch_queued, Dispatch};
 use crate::run::flow::{enqueue_fan_out, reroute_exhausted};
+use crate::run::infer::infer_with_retry;
 use crate::run::live::live_artifacts;
+use crate::run::scripted::scripted_turn;
 use crate::run::session::{RunState, Shared};
 use crate::state::StoreError;
 
@@ -178,7 +179,14 @@ pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(),
             run.status = RunStatus::Unverified;
             return Ok(());
         }
-        match one_turn(shared, run).await? {
+        // Workflow-path branch (ADR-042): a scripted `Tool` phase runs a fixed
+        // tool deterministically (no LLM); an `Llm` phase is the ReAct turn.
+        let turn = if matches!(run.phases[run.phase_idx].step, PhaseStep::Tool { .. }) {
+            scripted_turn(shared, run).await?
+        } else {
+            one_turn(shared, run).await?
+        };
+        match turn {
             Turn::Continue => {}
             Turn::Paused | Turn::Terminal => return Ok(()),
         }
@@ -187,11 +195,26 @@ pub(crate) async fn drive_run(shared: &Shared, run: &mut RunState) -> Result<(),
 
 /// One turn: assemble → infer → parse (bounded repairs) → absorb → act.
 async fn one_turn(shared: &Shared, run: &mut RunState) -> Result<Turn, StoreError> {
-    let agent = shared
-        .agent_config(&run.agent_id)
-        .expect("run built from a validated or spawned agent");
+    // Invariants (a run is built from a validated/spawned agent, whose contract
+    // passed config::validate). If either ever breaks mid-run, fail the run —
+    // structural resilience: degrade to a terminal, never panic the loop.
+    let Some(agent) = shared.agent_config(&run.agent_id) else {
+        fail_run(
+            shared,
+            run,
+            &StoreError::new(format!("agent '{}' unavailable mid-run", run.agent_id)),
+        )
+        .await;
+        return Ok(Turn::Terminal);
+    };
     let phase = run.phases[run.phase_idx].clone();
-    let contract = resolve_contract(&agent, &phase.contract).expect("validated contract");
+    let contract = match resolve_contract(&agent, &phase.contract) {
+        Ok(contract) => contract,
+        Err(e) => {
+            fail_run(shared, run, &StoreError::new(e.to_string())).await;
+            return Ok(Turn::Terminal);
+        }
+    };
     let toolset = effective_toolset(shared, run)?;
 
     // Latest-state refresh (ADR-033): sources are re-read HERE, once per
@@ -398,98 +421,6 @@ pub(crate) fn effective_toolset(shared: &Shared, run: &RunState) -> Result<ToolS
         .registry
         .build_tool_set(&effective_allow(run))
         .map_err(|e| StoreError::new(e.to_string()))
-}
-
-/// One LLM call: ≤3 attempts with host-owned backoff. `None` = the run
-/// failed terminally (Error signal already emitted).
-async fn infer_with_retry(
-    shared: &Shared,
-    run: &mut RunState,
-    agent: &AgentConfig,
-    request: &InferenceRequest,
-) -> Result<Option<InferenceReply>, StoreError> {
-    emit(shared, run, SignalKind::LlmRequest).await?;
-    run.turns += 1;
-    run.phase_turns += 1;
-    let provider = match (shared.resolver)(&agent.provider) {
-        Ok(provider) => provider,
-        Err(e) => {
-            emit(
-                shared,
-                run,
-                SignalKind::Error {
-                    message: e.to_string(),
-                },
-            )
-            .await?;
-            run.status = RunStatus::Failed;
-            return Ok(None);
-        }
-    };
-    let host = shared.host(&run.id);
-    let run_id = run.id.clone();
-    // Cloned Rc so no borrow of `run` is held across the select await.
-    let cancel = run.cancel_requested.clone();
-    let mut last_error = None;
-    for attempt in 0..MAX_PROVIDER_ATTEMPTS {
-        // Deltas reach the host sink AS THEY ARRIVE (`on_delta` is sync; the
-        // log writer is async). They are transient UI signals — seq 0, never
-        // logged: `LlmResponse` is the durable record and fold ignores
-        // LlmDelta either way (ADR-003).
-        let mut sink = |delta: &str| {
-            host.on_signal(&Signal {
-                seq: 0,
-                run_id: run_id.clone(),
-                ts_ms: host.now_ms(),
-                kind: SignalKind::LlmDelta {
-                    text: delta.to_string(),
-                },
-            });
-        };
-        // Race the in-flight call against the run's cancel token (GAPS 17):
-        // on cancel the provider future is DROPPED mid-stream — FetchTransport
-        // aborts the browser fetch on drop — and the run lands the same
-        // Interrupted terminal as a between-turn cancel.
-        let infer = provider.infer(request, &mut sink);
-        let result = match select(infer, cancel.cancelled()).await {
-            Either::Left((result, _)) => result,
-            Either::Right(((), infer)) => {
-                drop(infer); // stop consuming; the transport aborts the fetch
-                emit(shared, run, SignalKind::Interrupted).await?;
-                run.status = RunStatus::Interrupted;
-                return Ok(None);
-            }
-        };
-        match result {
-            Ok(reply) => {
-                emit(
-                    shared,
-                    run,
-                    SignalKind::LlmResponse {
-                        text: reply.text.clone(),
-                    },
-                )
-                .await?;
-                return Ok(Some(reply));
-            }
-            Err(e) => {
-                let backoff = match &e {
-                    ProviderError::RateLimited {
-                        retry_after_ms: Some(ms),
-                    } => *ms,
-                    _ => 250 * (u64::from(attempt) + 1),
-                };
-                last_error = Some(e);
-                if attempt + 1 < MAX_PROVIDER_ATTEMPTS {
-                    host.sleep(backoff).await;
-                }
-            }
-        }
-    }
-    let message = last_error.expect("loop ran at least once").to_string();
-    emit(shared, run, SignalKind::Error { message }).await?;
-    run.status = RunStatus::Failed;
-    Ok(None)
 }
 
 fn format_str(format: ParsedFormat) -> &'static str {
