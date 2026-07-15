@@ -340,6 +340,13 @@ input, textarea { font: inherit; }
 .role-user .msg-body { color: var(--on-accent); }
 .role-tool { background: var(--tool-bg); color: var(--tool-ink); font-family: var(--font-mono); font-size: var(--fs-mono); }
 .role-error { align-self: stretch; max-width: 100%; background: var(--error-bg); border-color: var(--error-border); color: var(--error-ink); font-family: var(--font-mono); font-size: var(--fs-mono); }
+/* Collapsed raw generation (observation/plan/scaffold) — a bare toggle, not a bubble. */
+.role-reasoning { align-self: flex-start; max-width: 78%; padding: 0; background: transparent; border-color: transparent; }
+.reasoning-toggle { cursor: pointer; list-style: none; user-select: none; font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-faint); padding: 2px 4px; }
+.reasoning-toggle::-webkit-details-marker { display: none; }
+.reasoning-toggle::before { content: "▸ "; }
+details[open] > .reasoning-toggle::before { content: "▾ "; }
+.reasoning-body { margin: 4px 0 0; padding: 10px 12px; background: var(--tool-bg); color: var(--tool-ink); border: 1px solid var(--hairline); border-radius: var(--shape); font-family: var(--font-mono); font-size: var(--fs-mono); white-space: pre-wrap; word-break: break-word; }
 .composer { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--hairline); background: var(--control-bg); }
 .agent-picker { padding: 10px 18px 0; border-top: 1px solid var(--hairline); background: var(--control-bg); }
 .input { flex: 1; resize: none; max-height: 140px; padding: 11px 14px; border-radius: var(--shape-sm); border: 1px solid var(--hairline); background: var(--input-bg); outline: none; font-size: var(--fs-base); line-height: 1.5; }

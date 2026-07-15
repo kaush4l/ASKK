@@ -14,6 +14,11 @@ pub struct ChatItem {
     pub class: &'static str,
     pub role: &'static str,
     pub content: String,
+    /// True for the raw generation turn (the observation/plan/action/answer
+    /// scaffold that only exists to steer the model's thinking): render it as
+    /// a collapsed toggle, not a full bubble. The clean answer that follows is
+    /// the real message.
+    pub collapsible: bool,
 }
 
 /// Flatten the run folds (oldest first) into one bubble list: messages in
@@ -22,17 +27,25 @@ pub struct ChatItem {
 pub fn build_items(runs: &[RunProjection]) -> Vec<ChatItem> {
     let mut out = Vec::new();
     for run in runs {
-        for m in &run.messages {
+        for (i, m) in run.messages.iter().enumerate() {
             let (class, role) = match m.role {
                 Role::User => ("msg role-user", "user"),
                 Role::Assistant => ("msg role-assistant", "assistant"),
                 Role::Tool => ("msg role-tool", "tool"),
                 Role::System => continue,
             };
+            // The raw generation (scaffold) is an assistant message emitted
+            // right before the clean answer's assistant message — collapse it.
+            let collapsible = m.role == Role::Assistant
+                && run
+                    .messages
+                    .get(i + 1)
+                    .is_some_and(|n| n.role == Role::Assistant);
             out.push(ChatItem {
                 class,
                 role,
                 content: m.content.clone(),
+                collapsible,
             });
         }
         for line in &run.timeline {
@@ -41,6 +54,7 @@ pub fn build_items(runs: &[RunProjection]) -> Vec<ChatItem> {
                     class: "msg role-error",
                     role: "error",
                     content: message.to_string(),
+                    collapsible: false,
                 });
             }
         }
@@ -49,6 +63,7 @@ pub fn build_items(runs: &[RunProjection]) -> Vec<ChatItem> {
                 class: "msg role-error",
                 role: "error",
                 content: "Stopped.".into(),
+                collapsible: false,
             });
         }
     }
@@ -96,13 +111,22 @@ pub fn ChatStage(
                     }
                 }
                 for (i, item) in items.iter().enumerate() {
-                    div { key: "{i}", class: "{item.class}",
-                        div { class: "msg-role", "{item.role}" }
-                        // Answers render as markdown; user/tool text stays verbatim.
-                        if item.role == "assistant" {
-                            div { class: "msg-body", {markdown::render(&item.content)} }
-                        } else {
-                            div { class: "msg-body", "{item.content}" }
+                    if item.collapsible {
+                        // The raw generation (observation/plan/scaffold) — a
+                        // collapsed native disclosure, closed by default.
+                        details { key: "{i}", class: "msg role-reasoning",
+                            summary { class: "reasoning-toggle", "reasoning" }
+                            pre { class: "reasoning-body", "{item.content}" }
+                        }
+                    } else {
+                        div { key: "{i}", class: "{item.class}",
+                            div { class: "msg-role", "{item.role}" }
+                            // Answers render as markdown; user/tool text stays verbatim.
+                            if item.role == "assistant" {
+                                div { class: "msg-body", {markdown::render(&item.content)} }
+                            } else {
+                                div { class: "msg-body", "{item.content}" }
+                            }
                         }
                     }
                 }
@@ -209,5 +233,24 @@ mod tests {
             ]
         );
         assert_eq!(items[4].content, "Stopped.");
+    }
+
+    #[test]
+    fn raw_generation_collapses_before_the_clean_answer() {
+        let run = RunProjection {
+            messages: vec![
+                Message::new(Role::User, "q"),
+                Message::new(
+                    Role::Assistant,
+                    "observation:\n- x\naction: reply\nanswer: OK",
+                ),
+                Message::new(Role::Assistant, "OK"),
+            ],
+            ..Default::default()
+        };
+        let items = build_items(&[run]);
+        assert!(!items[0].collapsible); // user prompt
+        assert!(items[1].collapsible); // raw generation → toggle
+        assert!(!items[2].collapsible); // clean answer → normal bubble
     }
 }
