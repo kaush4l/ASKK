@@ -121,6 +121,10 @@ pub fn step(mut proj: RunProjection, signal: &Signal) -> RunProjection {
             proj.status = RunStatus::Running;
             proj.timeline
                 .push(format!("run started: {agent_id} — {goal}"));
+            // The goal IS the user's message — surface it as the opening
+            // Role::User bubble (chat renders proj.messages; without this the
+            // user's own prompt never appears).
+            proj.messages.push(Message::new(Role::User, goal.clone()));
         }
         SignalKind::PhaseEntered { name } => {
             proj.timeline.push(format!("phase: {name}"));
@@ -281,7 +285,8 @@ mod tests {
         let proj = fold(&script);
         assert_eq!(proj.status, RunStatus::Answered);
         assert_eq!(proj.turns_used, 2);
-        assert_eq!(proj.messages.len(), 3); // 2 assistant + 1 observation
+        assert_eq!(proj.messages.len(), 4); // 1 user goal + 2 assistant + 1 observation
+        assert_eq!(proj.messages[0].role, Role::User); // the goal opens the log
         assert_eq!(proj.artifacts, vec!["main.rs".to_string()]);
         assert!(proj.pending_actions.is_empty()); // confirmed action completed
         assert!(proj.timeline.iter().any(|t| t.contains("phase: execute")));

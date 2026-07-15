@@ -153,6 +153,17 @@ pub fn ChatStage(
                     placeholder: "Message the assistant…",
                     value: "{input}",
                     oninput: move |e| input.set(e.value()),
+                    // Enter sends; Shift+Enter inserts a newline.
+                    onkeydown: move |e| {
+                        if e.key() == Key::Enter && !e.modifiers().contains(Modifiers::SHIFT) {
+                            e.prevent_default();
+                            let text = input().trim().to_string();
+                            if !text.is_empty() {
+                                input.set(String::new());
+                                on_send.call(text);
+                            }
+                        }
+                    },
                 }
                 if busy {
                     button { class: "send stop", onclick: move |_| on_stop.call(()), "Stop" }
