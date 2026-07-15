@@ -112,12 +112,13 @@ pub fn App() -> Element {
                     ui_error.set(Some(w));
                 }
                 profiles.set(h.get_profiles());
-                // Default the driver to the Orchestrator (topic-routing) —
-                // fall back to the first card if it isn't configured.
+                // Single-agent chat: the Assistant answers directly and uses
+                // its own tools (web_search etc.) — no director, no delegation.
+                // Fall back to the first card if it isn't configured.
                 let cards = h.agents();
                 if let Some(a) = cards
                     .iter()
-                    .find(|a| a.id == "orchestrator")
+                    .find(|a| a.id == "assistant")
                     .or_else(|| cards.first())
                 {
                     agent_id.set(a.id.clone());
@@ -442,18 +443,17 @@ pub fn App() -> Element {
                                 phase: phase.clone(),
                                 warm,
                                 agent: agent_name,
-                                // Chat routes through the Orchestrator only —
-                                // it reads the topic and delegates; the other
-                                // agents stay as its delegation targets, not
-                                // user-pickable. Fall back to the full list if
-                                // no orchestrator is configured.
+                                // Single-agent chat: only the Assistant. The
+                                // picker collapses to nothing (chat.rs hides a
+                                // one-agent row). Fall back to the full list if
+                                // no assistant is configured.
                                 agents: {
-                                    let orch: Vec<_> = agent_cards
+                                    let one: Vec<_> = agent_cards
                                         .iter()
-                                        .filter(|c| c.id == "orchestrator")
+                                        .filter(|c| c.id == "assistant")
                                         .cloned()
                                         .collect();
-                                    if orch.is_empty() { agent_cards.clone() } else { orch }
+                                    if one.is_empty() { agent_cards.clone() } else { one }
                                 },
                                 active_agent: agent_id(),
                                 elapsed: elapsed.clone(),

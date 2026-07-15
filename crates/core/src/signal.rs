@@ -130,10 +130,11 @@ pub fn step(mut proj: RunProjection, signal: &Signal) -> RunProjection {
             proj.timeline.push(format!("phase: {name}"));
         }
         SignalKind::LlmRequest => proj.turns_used += 1,
-        SignalKind::LlmResponse { text } => {
-            proj.messages
-                .push(Message::new(Role::Assistant, text.clone()));
-        }
+        // The raw model output is TRANSIENT: it streams live via LlmDelta and
+        // can fire several times per turn (once per repair attempt), scaffold
+        // and all. The durable, deduplicated assistant turn is HistoryAppended
+        // (the absorbed content) — so LlmResponse no longer pushes a message.
+        SignalKind::LlmResponse { .. } => {}
         SignalKind::ToolRequested { call_id, name, .. } => {
             proj.timeline
                 .push(format!("tool requested: {name} ({call_id})"));
@@ -234,6 +235,14 @@ mod tests {
                     text: "calling tool".into(),
                 },
             ),
+            // absorb records the assistant's tool-call turn (durable).
+            sig(
+                4,
+                SignalKind::HistoryAppended {
+                    role: Role::Assistant,
+                    text: r#"[{"name":"write","arguments":{}}]"#.into(),
+                },
+            ),
             sig(
                 5,
                 SignalKind::ToolRequested {
@@ -270,6 +279,14 @@ mod tests {
                     text: "all done".into(),
                 },
             ),
+            // absorb records the assistant's answer turn (durable).
+            sig(
+                11,
+                SignalKind::HistoryAppended {
+                    role: Role::Assistant,
+                    text: "all done".into(),
+                },
+            ),
             sig(
                 12,
                 SignalKind::Result {
@@ -294,7 +311,9 @@ mod tests {
 
     #[test]
     fn pending_action_stays_until_completed() {
-        let script = &full_run_script()[..6]; // through ActionVerdict
+        // Through ActionVerdict (RunStarted, PhaseEntered, LlmRequest,
+        // LlmResponse, HistoryAppended, ToolRequested, ActionVerdict).
+        let script = &full_run_script()[..7];
         let proj = fold(script);
         assert_eq!(proj.pending_actions.len(), 1);
         assert_eq!(proj.pending_actions[0].proposal.tool, "write");

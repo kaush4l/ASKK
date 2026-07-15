@@ -442,3 +442,32 @@ revert. Tests: `spawn_agent_clamps_child_to_caller_allowlist` became
 `spawn_agent_child_runs_with_base_toolset` (asserts the child uses a base tool
 the caller lacks); `spawn_agent_rejects_tools_outside_base` (base⊆ clamp) and
 `team_toolset_is_the_ceiling_inside_the_boundary` (ADR-032) are unchanged.
+
+## ADR-039 (A) — the openai_compat provider sends ONE assembled prompt string (single user message), not a role-tagged messages array
+Chat requests split the sheet into a `system` message + role-tagged `history` +
+trailing `user` message; the LLM server's chat template then stitched them into
+the actual prompt. For a picky local model (gemma via omlx at 127.0.0.1:8873)
+that hands prompt construction to the server and hides the exact context from
+ASKK. Owner ask: "I am sending the string for the generation, not a list of
+messages the API formats."
+
+Decision: `openai_compat::build_body` now renders the WHOLE context —
+system-side sections, the tool list AS TEXT, the running history as labelled
+turns, then the user input — into one string via `build_prompt`, sent as a
+single `{"role":"user"}` message. No native `tools` array (the react/toon
+contract parses tool calls from the reply, so tools must appear in the prompt
+text — they were previously conveyed ONLY through the native array, i.e. via
+the server template). The react loop appends each observation into `history`,
+so the growing context rides in this same string every turn. `response_format`
+json_object is still set in JSON mode. Anthropic provider unchanged (native
+system/messages/ tools are first-class there); the in-browser transformers.js
+path (`browser/local_llm.rs`) still builds a worker messages array — both are
+non-default here. Costs: a single user turn loses the model's system-vs-user
+weighting (fine for a local model; the whole context is one deliberate blob),
+and tools-as-text is more verbose than a native array. Reversible: `build_body`
+is a pure function with a golden test; restoring the messages array is a local
+revert. Not chosen: raw `/v1/completions` (endpoint may not expose it — a
+single user message is the universal, non-breaking way to send one ASKK-owned
+string). Pairs with single-agent chat (default `assistant`, no delegation) and
+the UI fix (LlmResponse is transient; HistoryAppended is the one durable
+assistant turn, so no double-render; tool-call turns + observations collapse).

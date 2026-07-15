@@ -11,6 +11,7 @@ use askk_core::contract::OutputMode;
 use askk_core::provider::{Provider, ProviderError};
 use askk_core::request::{InferenceReply, InferenceRequest, Role, SectionKind, ToolCall, Usage};
 
+use crate::sse_acc::StreamAcc;
 use crate::transport::{HttpRequest, HttpResponse, SseAssembler, Transport, TransportError};
 
 pub struct OpenAiCompat {
@@ -48,9 +49,8 @@ pub(crate) fn role_str(role: Role) -> &'static str {
     }
 }
 
-/// Sections (except user input) become one system message; user-input
-/// sections become the trailing user message. The provider maps — it never
-/// composes prompt text (ADR-002).
+/// Sections (except user input) become the system-side text; user-input
+/// sections are the trailing user turn.
 pub(crate) fn split_sections(req: &InferenceRequest) -> (String, Vec<&str>) {
     let mut system = String::new();
     let mut user_inputs = Vec::new();
@@ -67,34 +67,52 @@ pub(crate) fn split_sections(req: &InferenceRequest) -> (String, Vec<&str>) {
     (system, user_inputs)
 }
 
-/// Pure body builder — golden-tested, no I/O.
-pub fn build_body(req: &InferenceRequest, model: &str) -> Value {
+/// The WHOLE context as one prompt string (ADR-039): the system-side sections,
+/// the tool list rendered AS TEXT (the react/toon contract parses tool calls
+/// from the reply, so the model must see the tools in the prompt — they are
+/// not sent as a native `tools` array), the running history as labelled turns,
+/// then the current user input. ASKK owns the entire context; the react loop
+/// appends each observation into `history`, so the growing context rides in
+/// this same string every turn. Pure — golden-tested.
+pub fn build_prompt(req: &InferenceRequest) -> String {
     let (system, user_inputs) = split_sections(req);
-    let mut messages = Vec::new();
-    if !system.is_empty() {
-        messages.push(json!({"role": "system", "content": system}));
+    let mut prompt = system;
+    if !req.tools.is_empty() {
+        if !prompt.is_empty() {
+            prompt.push_str("\n\n");
+        }
+        prompt.push_str("## tools\nUse one with `action: tool`. Available tools:");
+        for spec in &req.tools {
+            prompt.push_str(&format!(
+                "\n- {}: {} — parameters: {}",
+                spec.name, spec.description, spec.input_schema
+            ));
+        }
     }
     for message in &req.history {
-        messages.push(json!({"role": role_str(message.role), "content": message.content}));
+        prompt.push_str(&format!(
+            "\n\n{}: {}",
+            role_str(message.role),
+            message.content
+        ));
     }
     for input in user_inputs {
-        messages.push(json!({"role": "user", "content": input}));
+        if !prompt.is_empty() {
+            prompt.push_str("\n\n");
+        }
+        prompt.push_str(input);
     }
-    let mut body = json!({"model": model, "messages": messages});
-    if !req.tools.is_empty() {
-        let tools: Vec<Value> = req
-            .tools
-            .iter()
-            .map(|spec| {
-                json!({"type": "function", "function": {
-                    "name": spec.name,
-                    "description": spec.description,
-                    "parameters": spec.input_schema,
-                }})
-            })
-            .collect();
-        body["tools"] = Value::Array(tools);
-    }
+    prompt
+}
+
+/// Pure body builder — one assembled prompt string as a single `user` message
+/// (ADR-039). No native `tools` array (tools live in the prompt text) and no
+/// server-side multi-message chat template to reformat the context.
+pub fn build_body(req: &InferenceRequest, model: &str) -> Value {
+    let mut body = json!({
+        "model": model,
+        "messages": [{"role": "user", "content": build_prompt(req)}],
+    });
     if let Some(temperature) = req.config.temperature {
         body["temperature"] = json!(temperature);
     }
@@ -177,86 +195,6 @@ pub(crate) fn transport_to_error(err: TransportError, base_url: &str) -> Provide
                  CORS headers on the endpoint, and the API key"
             ),
         },
-    }
-}
-
-/// Streamed reply accumulator: content deltas pass through `on_delta` as
-/// they arrive; tool_call deltas merge by index (id/name land once,
-/// arguments concatenate); usage rides the final chunk.
-#[derive(Default)]
-pub(crate) struct StreamAcc {
-    pub saw_event: bool,
-    text: String,
-    usage: Option<Usage>,
-    calls: Vec<PartialCall>,
-}
-
-#[derive(Default)]
-struct PartialCall {
-    id: String,
-    name: String,
-    args: String,
-}
-
-impl StreamAcc {
-    pub(crate) fn absorb(&mut self, data: &str, on_delta: &mut dyn FnMut(&str)) {
-        if data == "[DONE]" {
-            self.saw_event = true;
-            return;
-        }
-        let Ok(value) = serde_json::from_str::<Value>(data) else {
-            return; // tolerate keepalives / partial junk
-        };
-        self.saw_event = true;
-        let delta = &value["choices"][0]["delta"];
-        if let Some(chunk) = delta["content"].as_str() {
-            if !chunk.is_empty() {
-                self.text.push_str(chunk);
-                on_delta(chunk);
-            }
-        }
-        if let Some(calls) = delta["tool_calls"].as_array() {
-            for call in calls {
-                let index = call["index"].as_u64().unwrap_or(0) as usize;
-                while self.calls.len() <= index {
-                    self.calls.push(PartialCall::default());
-                }
-                let slot = &mut self.calls[index];
-                if let Some(id) = call["id"].as_str() {
-                    if !id.is_empty() {
-                        slot.id = id.into();
-                    }
-                }
-                if let Some(name) = call["function"]["name"].as_str() {
-                    if !name.is_empty() {
-                        slot.name = name.into();
-                    }
-                }
-                if let Some(args) = call["function"]["arguments"].as_str() {
-                    slot.args.push_str(args);
-                }
-            }
-        }
-        if let Some(u) = parse_usage(&value["usage"], "prompt_tokens", "completion_tokens") {
-            self.usage = Some(u);
-        }
-    }
-
-    pub(crate) fn into_reply(self) -> InferenceReply {
-        InferenceReply {
-            text: self.text,
-            native_tool_calls: self
-                .calls
-                .into_iter()
-                .filter(|c| !c.name.is_empty())
-                .map(|c| ToolCall {
-                    id: c.id,
-                    name: c.name,
-                    args: serde_json::from_str(&c.args).unwrap_or_else(|_| json!({})),
-                })
-                .collect(),
-            usage: self.usage,
-        }
     }
 }
 
@@ -353,21 +291,35 @@ mod tests {
     fn build_body_golden() {
         let body = build_body(&request(), "gpt-4o-mini");
         assert_eq!(body["model"], "gpt-4o-mini");
+        // One assembled prompt string as a single user message (ADR-039).
         let messages = body["messages"].as_array().unwrap();
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[0]["role"], "system");
-        assert!(messages[0]["content"]
-            .as_str()
-            .unwrap()
-            .contains("## identity\nYou are X."));
-        assert_eq!(messages[1]["role"], "assistant");
-        assert_eq!(messages[2], json!({"role": "user", "content": "hello"}));
-        assert_eq!(body["tools"][0]["function"]["name"], "read");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+        let prompt = messages[0]["content"].as_str().unwrap();
+        // The whole context is in the string: identity, tools-as-text, the
+        // prior turn (labelled), and the current user input — in order.
+        assert!(prompt.contains("## identity\nYou are X."));
+        assert!(prompt.contains("## tools\nUse one with `action: tool`"));
+        assert!(prompt.contains("- read: read a file"));
+        assert!(prompt.contains("assistant: earlier"));
+        assert!(prompt.trim_end().ends_with("hello"));
+        // No native tools array — tools ride in the prompt text.
+        assert!(body.get("tools").is_none());
         assert_eq!(body["temperature"], 0.5);
         assert_eq!(body["max_tokens"], 100);
         assert!(body.get("response_format").is_none());
         assert_eq!(body["stream"], true);
         assert_eq!(body["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn prompt_orders_context_system_tools_history_then_input() {
+        let prompt = build_prompt(&request());
+        let identity = prompt.find("## identity").unwrap();
+        let tools = prompt.find("## tools").unwrap();
+        let history = prompt.find("assistant: earlier").unwrap();
+        let input = prompt.rfind("hello").unwrap();
+        assert!(identity < tools && tools < history && history < input);
     }
 
     #[test]

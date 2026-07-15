@@ -14,11 +14,19 @@ pub struct ChatItem {
     pub class: &'static str,
     pub role: &'static str,
     pub content: String,
-    /// True for the raw generation turn (the observation/plan/action/answer
-    /// scaffold that only exists to steer the model's thinking): render it as
-    /// a collapsed toggle, not a full bubble. The clean answer that follows is
-    /// the real message.
+    /// True for intermediate "working" turns — the assistant's tool-call turn
+    /// (JSON like `[{"name":…,"arguments":…}]`) and the tool observations it
+    /// produced. These collapse into a toggle; only the user's message and the
+    /// assistant's clean answer render as full bubbles.
     pub collapsible: bool,
+}
+
+/// The absorbed content of an assistant tool-call turn is a JSON array of
+/// `{name, arguments}` objects — recognise it so it collapses into the
+/// "working" toggle instead of rendering as an answer bubble.
+fn is_tool_call(content: &str) -> bool {
+    let t = content.trim_start();
+    t.starts_with('[') && content.contains("\"name\"") && content.contains("\"arguments\"")
 }
 
 /// Flatten the run folds (oldest first) into one bubble list: messages in
@@ -27,20 +35,18 @@ pub struct ChatItem {
 pub fn build_items(runs: &[RunProjection]) -> Vec<ChatItem> {
     let mut out = Vec::new();
     for run in runs {
-        for (i, m) in run.messages.iter().enumerate() {
+        for m in &run.messages {
             let (class, role) = match m.role {
                 Role::User => ("msg role-user", "user"),
                 Role::Assistant => ("msg role-assistant", "assistant"),
                 Role::Tool => ("msg role-tool", "tool"),
                 Role::System => continue,
             };
-            // The raw generation (scaffold) is an assistant message emitted
-            // right before the clean answer's assistant message — collapse it.
-            let collapsible = m.role == Role::Assistant
-                && run
-                    .messages
-                    .get(i + 1)
-                    .is_some_and(|n| n.role == Role::Assistant);
+            // Intermediate working = the assistant's tool-call turn and every
+            // tool observation; only the user turn and the assistant's clean
+            // answer render as full bubbles.
+            let collapsible =
+                m.role == Role::Tool || (m.role == Role::Assistant && is_tool_call(&m.content));
             out.push(ChatItem {
                 class,
                 role,
@@ -112,10 +118,10 @@ pub fn ChatStage(
                 }
                 for (i, item) in items.iter().enumerate() {
                     if item.collapsible {
-                        // The raw generation (observation/plan/scaffold) — a
-                        // collapsed native disclosure, closed by default.
+                        // Intermediate working (tool call + its observation) —
+                        // a collapsed native disclosure, closed by default.
                         details { key: "{i}", class: "msg role-reasoning",
-                            summary { class: "reasoning-toggle", "reasoning" }
+                            summary { class: "reasoning-toggle", "working" }
                             pre { class: "reasoning-body", "{item.content}" }
                         }
                     } else {
@@ -156,17 +162,21 @@ pub fn ChatStage(
             if !pending.is_empty() {
                 PendingActionsBar { records: pending, on_resolve }
             }
-            div { class: "presets agent-picker",
-                for card in agents.iter() {
-                    button {
-                        key: "{card.id}",
-                        class: if active_agent == card.id { "preset on" } else { "preset" },
-                        title: "{card.description}",
-                        onclick: {
-                            let id = card.id.clone();
-                            move |_| on_agent.call(id.clone())
-                        },
-                        "{card.name}"
+            // Single-agent chat: no picker. Only show it when more than one
+            // agent is offered.
+            if agents.len() > 1 {
+                div { class: "presets agent-picker",
+                    for card in agents.iter() {
+                        button {
+                            key: "{card.id}",
+                            class: if active_agent == card.id { "preset on" } else { "preset" },
+                            title: "{card.description}",
+                            onclick: {
+                                let id = card.id.clone();
+                                move |_| on_agent.call(id.clone())
+                            },
+                            "{card.name}"
+                        }
                     }
                 }
             }
@@ -236,21 +246,23 @@ mod tests {
     }
 
     #[test]
-    fn raw_generation_collapses_before_the_clean_answer() {
+    fn tool_call_and_observation_collapse_the_clean_answer_stays() {
         let run = RunProjection {
             messages: vec![
-                Message::new(Role::User, "q"),
+                Message::new(Role::User, "search the news"),
                 Message::new(
                     Role::Assistant,
-                    "observation:\n- x\naction: reply\nanswer: OK",
+                    r#"[{"name":"web_search","arguments":{"query":"news"}}]"#,
                 ),
-                Message::new(Role::Assistant, "OK"),
+                Message::new(Role::Tool, "web_search: ...results..."),
+                Message::new(Role::Assistant, "Here is what I found."),
             ],
             ..Default::default()
         };
         let items = build_items(&[run]);
-        assert!(!items[0].collapsible); // user prompt
-        assert!(items[1].collapsible); // raw generation → toggle
-        assert!(!items[2].collapsible); // clean answer → normal bubble
+        assert!(!items[0].collapsible); // user prompt → bubble
+        assert!(items[1].collapsible); // tool-call turn → working toggle
+        assert!(items[2].collapsible); // observation → working toggle
+        assert!(!items[3].collapsible); // clean answer → bubble
     }
 }

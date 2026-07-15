@@ -13,6 +13,7 @@ pub mod anthropic;
 pub mod mock;
 pub mod openai_compat;
 pub mod registry;
+pub(crate) mod sse_acc;
 pub mod transport;
 
 pub use anthropic::Anthropic;

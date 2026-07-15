@@ -21,10 +21,11 @@ pub fn hf_model_id(model: &str) -> &str {
     model.strip_prefix("local/").unwrap_or(model)
 }
 
-/// Render the request into the worker's `messages` array, mirroring
-/// `openai_compat::build_body`: non-user-input sections join into one
-/// leading system message, history follows, user-input sections trail as
-/// user messages. Two local-template accommodations: `Role::Tool` maps to
+/// Render the request into the worker's `messages` array for the in-browser
+/// transformers.js path (the external openai_compat path now sends ONE
+/// assembled prompt string instead — ADR-039): non-user-input sections join
+/// into one leading system message, history follows, user-input sections
+/// trail as user messages. Two local-template accommodations: `Role::Tool` maps to
 /// `user` (gemma-family chat templates reject a `tool` role) and
 /// consecutive same-role messages merge (the same templates enforce strict
 /// user/assistant alternation — a tool turn followed by user input would
