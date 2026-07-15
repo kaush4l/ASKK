@@ -9,6 +9,7 @@ pub mod app;
 pub mod artifacts;
 pub mod chat;
 pub mod dashboard;
+pub mod features;
 pub mod manifest;
 pub mod markdown;
 pub mod settings;

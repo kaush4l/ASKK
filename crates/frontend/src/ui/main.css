@@ -386,6 +386,33 @@ details[open] > .reasoning-toggle::before { content: "▾ "; }
 .field { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--hairline); background: var(--input-bg); outline: none; font-size: var(--fs-base); }
 .field:focus { border-color: var(--blue); }
 .save { align-self: flex-start; padding: 10px 22px; border-radius: var(--shape-sm); font-weight: 500; color: var(--on-accent); background: var(--blue); }
+
+/* Features lab: a scroll column of capability panels. The .feat-* toolkit is
+   shared by every panel module so panels add no CSS of their own. */
+.features-wrap { height: 100%; display: flex; flex-direction: column; gap: 14px; padding: clamp(16px, 3vw, 34px); overflow: auto; width: 100%; max-width: 920px; margin: 0 auto; }
+.feat-sub { font-size: var(--fs-sm); color: var(--text-muted); margin-top: -6px; }
+.feat-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.feat-body { display: flex; flex-direction: column; gap: 14px; }
+.feat-stub { padding: 40px; text-align: center; color: var(--text-faint); border: 1px dashed var(--hairline); border-radius: var(--shape-sm); background: var(--card-solid); }
+.feat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+.feat-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--hairline); border-radius: var(--shape-sm); background: var(--card-solid); }
+.feat-card-title { font-family: var(--font-display); font-size: var(--fs-base); font-weight: 500; }
+.feat-card-title .feat-status { margin-left: 8px; }
+.feat-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.feat-label { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); }
+.feat-detail { font-size: var(--fs-sm); color: var(--text-muted); word-break: break-word; }
+.feat-out { padding: 10px 12px; background: var(--well); border: 1px solid var(--hairline); border-radius: var(--shape-sm); font-family: var(--font-mono); font-size: var(--fs-mono); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+.feat-media { max-width: 100%; border-radius: var(--shape-sm); border: 1px solid var(--hairline); }
+.feat-num { width: 92px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--hairline); background: var(--input-bg); outline: none; font-size: var(--fs-sm); font-family: var(--font-mono); }
+.feat-num:focus { border-color: var(--blue); }
+.feat-group-title { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-faint); margin: 6px 0 2px; }
+/* status dot: yes = green, partial = amber, no = faint */
+.feat-status { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-muted); }
+.feat-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--gray); }
+.feat-status.s-yes::before { background: var(--green); }
+.feat-status.s-partial::before { background: var(--orange); }
+.feat-status.s-no::before { background: var(--text-faint); }
+.feat-err { color: var(--orange); font-size: var(--fs-sm); word-break: break-word; }
 .hint { font-size: var(--fs-xs); color: var(--text-faint); line-height: 1.5; }
 
 /* ── agents stage ─────────────────────────────────────────────────────────── */

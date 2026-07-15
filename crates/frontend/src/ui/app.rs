@@ -15,11 +15,14 @@ use crate::ui::agents::AgentsStage;
 use crate::ui::artifacts::ArtifactsStage;
 use crate::ui::chat::ChatStage;
 use crate::ui::dashboard::{DashRun, DashboardStage};
+use crate::ui::features::FeaturesStage;
 use crate::ui::manifest::Stage;
 use crate::ui::settings::SettingsStage;
 use crate::ui::shell::{AvatarBar, Header, LeftRail, RightRail};
 use askk_browser::artifacts::ArtifactDoc;
-use askk_browser::boot::{self, HarnessHandle, McpServerStatus, NamedProfile, ProfileSet};
+use askk_browser::boot::{
+    self, HarnessHandle, McpServerStatus, NamedProfile, ProfileSet, ProviderProfileForm,
+};
 use askk_browser::dom;
 use askk_browser::speech::{self, SpeechConfig};
 
@@ -313,6 +316,22 @@ pub fn App() -> Element {
         speech_cfg.set(cfg.clone());
         spawn(async move { h.set_pref("speech", cfg.to_json()).await });
     };
+    // Features lab "use as default": upsert a dedicated in-browser profile and
+    // activate it, so the external endpoints stay intact (ADR-041 — the engine
+    // just gets a new active provider; no new wiring).
+    let on_use_default = move |model: String| {
+        let Some(h) = handle() else { return };
+        spawn(async move {
+            let form = ProviderProfileForm {
+                base_url: "local".into(),
+                model: format!("local/{model}"),
+                ..ProviderProfileForm::default()
+            };
+            let _ = h.save_profile("in-browser", form).await;
+            let _ = h.activate_profile("in-browser").await;
+            profiles.set(h.get_profiles());
+        });
+    };
     // Live cell: the next web_search call uses the new instance, no rebuild.
     let on_searxng = move |url: String| {
         let Some(h) = handle() else { return };
@@ -451,6 +470,7 @@ pub fn App() -> Element {
                             }
                         },
                         Stage::Agents => rsx! { AgentsStage { runs: runs_newest.clone() } },
+                        Stage::Features => rsx! { FeaturesStage { on_use_default } },
                         Stage::Dashboard => rsx! { DashboardStage { runs: dash_runs } },
                         Stage::Artifacts => rsx! {
                             ArtifactsStage { docs: artifact_docs(), now_ms: dom::now_ms() }

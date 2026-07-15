@@ -190,6 +190,33 @@ mod imp {
         )))
     }
 
+    /// Features-lab helper: run one in-browser generation, streaming deltas via
+    /// `on_delta`, and return the full text. Wraps the `Provider` path with a
+    /// throwaway single-turn request so the lab need not build one — the engine
+    /// is untouched (ADR-041).
+    pub async fn generate_once(
+        model: &str,
+        prompt: &str,
+        max_tokens: u32,
+        mut on_delta: impl FnMut(&str),
+    ) -> Result<String, String> {
+        use askk_core::request::{InferenceConfig, InferenceRequest, SectionKind};
+
+        let llm = LocalLlm::new("lab", super::hf_model_id(model), max_tokens);
+        let req = InferenceRequest {
+            sections: vec![(SectionKind::UserInput, prompt.to_string())],
+            config: InferenceConfig {
+                max_tokens: Some(max_tokens),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        llm.infer(&req, &mut on_delta)
+            .await
+            .map(|reply| reply.text)
+            .map_err(|err| format!("{err:?}"))
+    }
+
     /// In-browser provider: one `infer` = one worker `generate` round trip.
     pub struct LocalLlm {
         id: String,
@@ -301,7 +328,18 @@ mod imp {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use imp::local_provider;
+pub use imp::{generate_once, local_provider};
+
+/// Host stub for the lab's one-shot generate (wasm-only at runtime).
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn generate_once(
+    _model: &str,
+    _prompt: &str,
+    _max_tokens: u32,
+    _on_delta: impl FnMut(&str),
+) -> Result<String, String> {
+    Err("in-browser generation requires the wasm build".to_string())
+}
 
 #[cfg(test)]
 mod tests {

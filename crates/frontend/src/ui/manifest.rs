@@ -11,6 +11,7 @@ pub enum Stage {
     Dashboard,
     Artifacts,
     Vm,
+    Features,
     Settings,
 }
 
@@ -22,6 +23,7 @@ impl Stage {
             Stage::Dashboard => "Dashboard",
             Stage::Artifacts => "Artifacts",
             Stage::Vm => "VM",
+            Stage::Features => "Features",
             Stage::Settings => "Settings",
         }
     }
@@ -67,6 +69,11 @@ pub const COMPONENTS: &[Component] = &[
         stage: Stage::Vm,
         dot: "var(--purple, #c678dd)",
         meta: "x86",
+    },
+    Component {
+        stage: Stage::Features,
+        dot: "var(--cyan, #23b3d1)",
+        meta: "lab",
     },
     Component {
         stage: Stage::Settings,
