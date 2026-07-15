@@ -27,7 +27,7 @@ pub fn Header(
                     aria_label: "Toggle components drawer",
                     aria_expanded: left_open,
                     onclick: move |_| on_toggle_left.call(()),
-                    "⬛"
+                    "◧"
                 }
                 div { class: "brand",
                     span { class: "logo", "ASKK" }
@@ -46,7 +46,7 @@ pub fn Header(
                     aria_label: "Toggle inspector drawer",
                     aria_expanded: right_open,
                     onclick: move |_| on_toggle_right.call(()),
-                    "⬜"
+                    "◨"
                 }
             }
         }
