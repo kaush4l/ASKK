@@ -83,8 +83,10 @@ pub fn App() -> Element {
     // Persisted UI prefs (kiln appstate): stage, theme, rails, inspector tab.
     let mut stage = use_signal(|| Stage::Chat);
     let mut theme = use_signal(|| "paper".to_string());
-    let mut left_open = use_signal(|| true);
-    let mut right_open = use_signal(|| true);
+    // Overlay mode (≤900px) starts with both drawers closed; docked mode
+    // starts open (persisted prefs may override, see the boot block).
+    let mut left_open = use_signal(|| dom::viewport_width() > 900);
+    let mut right_open = use_signal(|| dom::viewport_width() > 900);
     let mut tab = use_signal(|| "Skills".to_string());
 
     let persist = move || {
@@ -128,11 +130,16 @@ pub fn App() -> Element {
                             stage.set(s);
                         }
                     }
-                    if let Some(b) = prefs.get("left_open").and_then(Value::as_bool) {
-                        left_open.set(b);
-                    }
-                    if let Some(b) = prefs.get("right_open").and_then(Value::as_bool) {
-                        right_open.set(b);
+                    // Narrow viewports render drawers as overlays that cover
+                    // the stage — never boot with them open there, whatever a
+                    // wider session persisted.
+                    if dom::viewport_width() > 900 {
+                        if let Some(b) = prefs.get("left_open").and_then(Value::as_bool) {
+                            left_open.set(b);
+                        }
+                        if let Some(b) = prefs.get("right_open").and_then(Value::as_bool) {
+                            right_open.set(b);
+                        }
                     }
                     if let Some(t) = prefs.get("tab").and_then(Value::as_str) {
                         tab.set(t.to_string());
@@ -230,6 +237,11 @@ pub fn App() -> Element {
     let on_pick = move |s: Stage| {
         stage.set(s);
         dom::write_hash(s.key());
+        // Overlay mode: picking a stage is a destination — close the drawer
+        // so the stage is immediately visible and clickable.
+        if dom::viewport_width() <= 900 {
+            left_open.set(false);
+        }
         persist();
     };
     let on_theme = move |id: String| {
@@ -395,6 +407,19 @@ pub fn App() -> Element {
                 on_toggle_right: move |_| { right_open.toggle(); persist(); },
             }
             div { class: "body", style: "{cols}",
+                // Overlay-mode scrim: sits under the fixed drawers (≤900px
+                // only, display:none otherwise); a tap closes whatever is
+                // open instead of the drawer swallowing stage clicks.
+                if left_open() || right_open() {
+                    div {
+                        class: "scrim",
+                        onclick: move |_| {
+                            left_open.set(false);
+                            right_open.set(false);
+                            persist();
+                        },
+                    }
+                }
                 LeftRail { stage: stage(), open: left_open(), on_pick }
                 main { class: "stage",
                     // Persistent VM console: mounted once, booted at load,

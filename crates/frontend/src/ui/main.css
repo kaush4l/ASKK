@@ -286,6 +286,8 @@ input, textarea { font: inherit; }
 .meta-tag { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); background: var(--control-bg); border: 1px solid var(--hairline); border-radius: 6px; padding: 2px 7px; }
 
 .stage { position: relative; overflow: hidden; display: flex; flex-direction: column; background: var(--stage); min-height: 0; }
+/* Overlay-mode backdrop for the fixed drawers; inert on docked layouts. */
+.scrim { display: none; }
 .stage > * { position: relative; z-index: 1; flex: 1; min-height: 0; }
 
 /* right inspector */
@@ -493,6 +495,7 @@ input, textarea { font: inherit; }
   .panel-right { right: 0; }
   .panel-left.closed { transform: translateX(-110%); box-shadow: none; }
   .panel-right.closed { transform: translateX(110%); box-shadow: none; }
+  .scrim { display: block; position: fixed; top: var(--header-h); bottom: var(--avatar-h); left: 0; right: 0; z-index: 35; background: rgba(24, 22, 34, 0.35); }
   .msg { max-width: 90%; }
   .composer { padding: 12px 14px; }
 }
@@ -518,3 +521,6 @@ input, textarea { font: inherit; }
    any stage; NOT display:none (that zeroes xterm and kills the fit). */
 .vm-parked { position: absolute; left: -100000px; top: 0;
   width: 1000px; height: 600px; pointer-events: none; }
+
+.vm-console { cursor: text; }
+.vm-hint { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); margin-left: auto; padding-right: 8px; }

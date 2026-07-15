@@ -42,6 +42,16 @@ mod imp {
         js_sys::Date::now() as u64
     }
 
+    /// Viewport width in CSS px — the UI uses it to pick drawer behavior
+    /// (docked columns vs overlay-with-scrim at narrow widths).
+    pub fn viewport_width() -> u32 {
+        web_sys::window()
+            .and_then(|w| w.inner_width().ok())
+            .and_then(|v| v.as_f64())
+            .map(|f| f as u32)
+            .unwrap_or(1280)
+    }
+
     /// `setTimeout` as a future — drives the elapsed-clock tick loop.
     pub async fn sleep_ms(ms: u64) {
         let promise = js_sys::Promise::new(&mut |resolve, _reject| {
@@ -60,6 +70,10 @@ mod imp {
 mod imp {
     pub fn read_hash() -> Option<String> {
         None
+    }
+
+    pub fn viewport_width() -> u32 {
+        1280
     }
 
     pub fn write_hash(_key: &str) {}

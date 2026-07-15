@@ -183,12 +183,11 @@ const api = {
         // Settle exec before declaring ready. busybox ash (ASK_TERMINAL)
         // sends a cursor-position query at every echoing prompt; xterm's
         // answer lands on the next command line and corrupts its first
-        // token. Running `stty -echo` INSIDE a marker-delimited exec both
-        // absorbs that garbage (the capture is discarded) and turns the
-        // queries off — commands after the first `;` still run even when
-        // the leading printf token is corrupted, and DONE still prints.
+        // token. Echo stays ON (humans type here); each exec() defends
+        // itself with a \x15 kill-line prefix, and these two settle execs
+        // absorb the boot-time garbage the first prompts leave behind.
         api
-          .exec(key, "stty -echo 2>/dev/null; PS2=''", 15000)
+          .exec(key, "PS2=''", 15000)
           .catch(() => {})
           // Second settle: the guest tty still owes one garbage line after
           // the first (observed: exactly the first post-ready exec eats it,

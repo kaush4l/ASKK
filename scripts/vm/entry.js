@@ -269,12 +269,15 @@ const api = {
             record.tail = "";
           }
           if (/[#%$] $/.test(record.tail)) {
-            // First time at a shell prompt: turn OFF input echo AND blank the
-            // heredoc continuation prompt (PS2) so exec() captures ONLY the
-            // command's real stdout — not the echoed command, heredoc `>`
-            // lines, or prompts (which otherwise pollute a tool's observation).
+            // First time at a shell prompt: blank the heredoc continuation
+            // prompt (PS2). Echo stays ON — a human typing into the console
+            // must see their keystrokes. exec() capture is echo-safe: the
+            // BEG/DONE markers are sent as split string halves, so the
+            // echoed command line never contains the assembled marker and
+            // everything echoed lands BEFORE the printed BEG — outside the
+            // capture window.
             if (!record.shellSeen) {
-              emulator.serial0_send("stty -echo 2>/dev/null; PS2=''\n");
+              emulator.serial0_send("PS2=''\n");
             }
             record.shellSeen = true;
           }
@@ -354,7 +357,7 @@ const api = {
       }, timeoutMs || 30000);
       record.taps.add(tap);
       record.emulator.serial0_send(
-        `printf '__ASKK_''BEG_${n}__\\n'; ${cmd}; printf '__ASKK_''DONE_${n}__%s\\n' $?\n`
+        `\u0015printf '__ASKK_''BEG_${n}__\\n'; ${cmd}; printf '__ASKK_''DONE_${n}__%s\\n' $?\n`
       );
     });
   },

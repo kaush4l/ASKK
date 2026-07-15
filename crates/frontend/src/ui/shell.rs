@@ -24,6 +24,8 @@ pub fn Header(
                 button {
                     class: if left_open { "icon-btn on" } else { "icon-btn" },
                     title: "Toggle components",
+                    aria_label: "Toggle components drawer",
+                    aria_expanded: left_open,
                     onclick: move |_| on_toggle_left.call(()),
                     "⬛"
                 }
@@ -41,6 +43,8 @@ pub fn Header(
                 button {
                     class: if right_open { "icon-btn on" } else { "icon-btn" },
                     title: "Toggle inspector",
+                    aria_label: "Toggle inspector drawer",
+                    aria_expanded: right_open,
                     onclick: move |_| on_toggle_right.call(()),
                     "⬜"
                 }
@@ -60,6 +64,8 @@ pub fn LeftRail(stage: Stage, open: bool, on_pick: EventHandler<Stage>) -> Eleme
                         button {
                             key: "{c.stage.key()}",
                             class: if stage == c.stage { "module-row active" } else { "module-row" },
+                            aria_label: "Open {c.stage.key()}",
+                            aria_current: if stage == c.stage { "page" } else { "false" },
                             onclick: move |_| on_pick.call(c.stage),
                             span { class: "dot", style: "background:{c.dot}" }
                             span { class: "module-name", "{c.stage.key()}" }

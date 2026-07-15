@@ -188,6 +188,7 @@ pub fn VmConsole(visible: bool) -> Element {
                     }
                 }
                 span { class: "vm-status vm-status-{vm_state}", "{state_label(&vm_state())}" }
+                span { class: "vm-hint", "click the console and type — it's a live shell" }
             }
             div {
                 id: "askk-v86-serial",
