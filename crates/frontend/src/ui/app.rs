@@ -316,9 +316,9 @@ pub fn App() -> Element {
         speech_cfg.set(cfg.clone());
         spawn(async move { h.set_pref("speech", cfg.to_json()).await });
     };
-    // Features lab "use as default": upsert a dedicated in-browser profile and
-    // activate it, so the external endpoints stay intact (ADR-041 — the engine
-    // just gets a new active provider; no new wiring).
+    // Features lab "add as provider": the in-browser model is an ADDITION, not a
+    // substitute — upsert a dedicated "in-browser" profile ALONGSIDE the external
+    // ones without switching to it (the user activates it in Settings if wanted).
     let on_use_default = move |model: String| {
         let Some(h) = handle() else { return };
         spawn(async move {
@@ -328,7 +328,6 @@ pub fn App() -> Element {
                 ..ProviderProfileForm::default()
             };
             let _ = h.save_profile("in-browser", form).await;
-            let _ = h.activate_profile("in-browser").await;
             profiles.set(h.get_profiles());
         });
     };
