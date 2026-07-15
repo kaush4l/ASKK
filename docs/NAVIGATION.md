@@ -25,7 +25,7 @@ Import rule (one-way DAG, structure-tested — see `MAP.md` for the full table):
 |---|---|---|
 | Pure domain: Sheet, Element, Contract, Tool trait, Signal, Phase, Provider seam | `crates/core` | No I/O, no wasm, imports nothing from the workspace (`src/lib.rs`) |
 | LLM adapters | `crates/inference` | Provider adapters over an injected `Transport`; body build + reply parse are pure fns (`src/lib.rs`) |
-| What we store + how agents communicate | `crates/state` | `KvStore`/`BlobStore` seams, append-only `SignalLog` (THE run truth), session/memory/board stores (`src/lib.rs`) |
+| What we store + how agents communicate | `crates/state` | `KvStore`/`BlobStore` seams, append-only `SignalLog` (THE run truth), session/memory stores (`src/lib.rs`) |
 | Self-contained features: config parsing + the tool surface | `crates/features` | `src/config/` (agent/team/env/skill md parsing) + `src/tools/` (one folder per feature); never imports engine or browser |
 | The agent loop: run/turn/dispatch/delegation/actions | `crates/engine` | Run orchestration, sheet assembly, action gating (`src/lib.rs`); delegation incl. `spawn` under `src/run/delegation/` |
 | Browser adapters: OPFS, fetch, VM glue, speech, boot facade | `crates/browser` | The host seam — the ONLY crate above the engine allowed to import it; UI talks to `boot::HarnessHandle` only (`src/lib.rs`) |
@@ -40,7 +40,6 @@ a browser adapter and a frontend stage. Columns verified against the file tree.
 |---|---|---|---|---|
 | VM shell + workspace files | `crates/features/src/tools/vm/` (`shell.rs`, `workspace.rs`) | `crates/browser/src/vm.rs` (serial bridge) | `crates/frontend/src/ui/vm.rs` (console) | none — guest is throwaway |
 | Web + news search | `crates/features/src/tools/search/` (`engines.rs`, `news.rs`) | `crates/browser/src/fetch.rs` (Transport) | results land in chat | none (`Effect::Pure`) |
-| Kanban board | `crates/features/src/tools/board/mod.rs` | — (KvStore via OPFS) | `crates/frontend/src/ui/board.rs` + `dashboard.rs` | `crates/state/src/board.rs` (`BoardStore`) |
 | Artifacts | `crates/features/src/tools/artifacts/mod.rs` | `crates/browser/src/artifacts.rs` (read side) | `crates/frontend/src/ui/artifacts.rs` (gallery) | blob `artifact/<slug>` (`BlobStore`) |
 | Knowledge (OKF) | `crates/features/src/tools/knowledge/mod.rs` | — | — | `KvStore` keys `okf/<id>` + `okf/log` |
 | Memory notes | `crates/features/src/tools/memory/mod.rs` | — | — | `KvStore` keys `notes/<slug>` |

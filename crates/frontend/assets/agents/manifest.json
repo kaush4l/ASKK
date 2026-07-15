@@ -6,9 +6,7 @@
     "coding/dev-lead.md",
     "coding/programmer.md",
     "coding/reviewer.md",
-    "tester.md",
-    "worker.md",
-    "orchestrator.md"
+    "worker.md"
   ],
   "teams": ["coding/team.md"],
   "skills": ["skills/concise.md"],

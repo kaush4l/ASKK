@@ -10,22 +10,14 @@ use crate::run::session::{RunState, Shared};
 const ARTIFACT_PROMPT_CHARS: usize = 4_000;
 
 /// The run's live ARTIFACT blocks, re-read from their sources NOW (ADR-033):
-/// the durable board for board-holding agents (refreshed every turn — the
-/// reorientation story), plus the latest body of every artifact this run
-/// published. Latest state only; the mutation trail stays out of context.
+/// the latest body of every artifact this run published. Latest state only;
+/// the mutation trail stays out of context.
 pub(crate) async fn live_artifacts(
     shared: &Shared,
     run: &RunState,
-    agent: &AgentConfig,
+    _agent: &AgentConfig,
 ) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    if agent.tools.iter().any(|t| t == "board_list") {
-        if let Some(board) = &shared.board {
-            if let Some(digest) = board.digest().await {
-                out.push(("BOARD".to_string(), digest));
-            }
-        }
-    }
     if !run.published.is_empty() {
         let blobs = shared.log.lock().await.blobs();
         for slug in &run.published {

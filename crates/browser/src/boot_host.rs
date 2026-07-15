@@ -27,7 +27,6 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     )
     .map_err(|e| e.to_string())?;
     register_knowledge(&mut registry, kv.clone(), || 7).map_err(|e| e.to_string())?;
-    register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
     register_artifacts(&mut registry, blobs.clone(), || 7).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(crate::vm::SerialShell::new());
     register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;

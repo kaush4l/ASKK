@@ -5,7 +5,7 @@
 //! and host. THE persistence truth is the append-only signal log ([`log`]):
 //! every durable *run* fact is a signal. The other stores are config-shaped
 //! conveniences over the KV seam, plain `Result`s, no signals: [`session`]
-//! (UI picks), [`memory`] (per-agent digests), [`board`] (kanban).
+//! (UI picks), [`memory`] (per-agent digests).
 //!
 //! No pub/sub between agents: nested runs share one `Shared`
 //! (`crates/engine/src/run/session.rs`); the BroadcastChannel bus
@@ -14,13 +14,11 @@
 //! Imports: core only. May be imported by: features, engine, browser.
 //! See MAP.md and docs/NAVIGATION.md.
 
-pub mod board;
 pub mod log;
 pub mod memory;
 pub mod session;
 pub mod store;
 
-pub use board::BoardStore;
 pub use log::{Clock, SignalLog};
 pub use memory::{MemoryStore, DEFAULT_MAX_ENTRIES};
 pub use session::SessionStore;

@@ -2,7 +2,7 @@
 //! other tabs of this origin over a `BroadcastChannel`; received foreign
 //! signals join the live buffer, so foreign runs render exactly like
 //! delegate runs observed mid-drive, and the notify refold re-reads the
-//! shared OPFS board/artifacts. Mirror, not control — a tab owns only the
+//! shared OPFS artifacts. Mirror, not control — a tab owns only the
 //! runs it submitted.
 
 #[cfg(any(target_arch = "wasm32", test))]

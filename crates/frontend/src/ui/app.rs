@@ -164,8 +164,7 @@ pub fn App() -> Element {
         }
     });
 
-    // Artifact docs: published through a tool, whose signals bump `refold` —
-    // same live re-read shape as the board above.
+    // Artifact docs: published through a tool, whose signals bump `refold`.
     let mut artifact_docs = use_signal(Vec::<ArtifactDoc>::new);
     use_effect(move || {
         let _ = refold();

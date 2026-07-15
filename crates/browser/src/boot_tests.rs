@@ -3,7 +3,7 @@
 //! privacy access as an inline `mod tests`.
 
 use super::*;
-use askk_core::{CardStage, RunStatus, SignalKind};
+use askk_core::{RunStatus, SignalKind};
 
 #[test]
 fn baked_agents_surface_as_cards() {
@@ -14,13 +14,7 @@ fn baked_agents_surface_as_cards() {
         // The roster is whatever the served agents/ folder holds (top-level +
         // nested team members); assert the known anchors are present, not an
         // exact list, so adding an agent file is a no-code change.
-        for anchor in [
-            "assistant",
-            "researcher",
-            "orchestrator",
-            "dev-lead",
-            "programmer",
-        ] {
+        for anchor in ["assistant", "researcher", "dev-lead", "programmer"] {
             assert!(
                 ids.contains(&anchor),
                 "missing agent card '{anchor}' in {ids:?}"
@@ -179,35 +173,6 @@ fn draft_accumulates_deltas_and_clears_on_response() {
             text: "hello".into(),
         });
         assert_eq!(handle.draft(&run_id), "");
-    });
-}
-
-#[test]
-fn board_cards_reads_the_persistent_board_in_order() {
-    block_on(async {
-        let handle = host_session().await.unwrap();
-        assert!(handle.board_cards().await.is_empty());
-        // Same store the board tools mutate (shared kv).
-        handle
-            .board
-            .add(
-                "Ship it",
-                "goal",
-                vec!["renders".into()],
-                CardStage::Backlog,
-            )
-            .await
-            .unwrap();
-        handle
-            .board
-            .add("Second", "", vec![], CardStage::Doing)
-            .await
-            .unwrap();
-        let cards = handle.board_cards().await;
-        let ids: Vec<&str> = cards.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(ids, vec!["ship-it", "second"]);
-        assert_eq!(cards[0].stage, CardStage::Backlog);
-        assert!(!cards[0].criteria[0].met);
     });
 }
 

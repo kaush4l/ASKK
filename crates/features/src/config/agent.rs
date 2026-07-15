@@ -112,7 +112,7 @@ impl AgentConfig {
                     )),
                 },
                 "tools" => cfg.tools = frontmatter::split_list(&entry.value),
-                // Environment presets (vm|web|core|board — see config::env):
+                // Environment presets (vm|web|core — see config::env):
                 // expanded into `tools` at load, nothing stored on the config.
                 "env" => env = Some((frontmatter::split_list(&entry.value), at.clone())),
                 "skills" => cfg.skills = frontmatter::split_list(&entry.value),

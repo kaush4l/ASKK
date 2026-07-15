@@ -6,7 +6,6 @@
 //! - `web`: web_search, fetch_url, knowledge_search, knowledge_read,
 //!   knowledge_write, knowledge_list, artifact_publish
 //! - `core`: calc, now, js_eval
-//! - `board`: board_add, board_list, board_move, board_check
 
 fn preset(name: &str) -> Option<&'static [&'static str]> {
     match name {
@@ -27,7 +26,6 @@ fn preset(name: &str) -> Option<&'static [&'static str]> {
             "artifact_publish",
         ]),
         "core" => Some(&["calc", "js_eval"]),
-        "board" => Some(&["board_add", "board_list", "board_move", "board_check"]),
         _ => None,
     }
 }
@@ -55,7 +53,7 @@ pub(crate) fn expand(
                 }
             }
             None => problems.push(format!(
-                "{at}: unknown env preset '{name}' (known: vm, web, core, board)"
+                "{at}: unknown env preset '{name}' (known: vm, web, core)"
             )),
         }
     }
@@ -76,22 +74,20 @@ mod tests {
     #[test]
     fn env_expands_presets_in_order() {
         let mut problems = Vec::new();
-        let tools = expand(
-            &strs(&["core", "board"]),
-            Vec::new(),
-            "a.md:2",
-            &mut problems,
-        );
+        let tools = expand(&strs(&["core", "web"]), Vec::new(), "a.md:2", &mut problems);
         assert!(problems.is_empty());
         assert_eq!(
             tools,
             strs(&[
                 "calc",
                 "js_eval",
-                "board_add",
-                "board_list",
-                "board_move",
-                "board_check"
+                "web_search",
+                "fetch_url",
+                "knowledge_search",
+                "knowledge_read",
+                "knowledge_write",
+                "knowledge_list",
+                "artifact_publish"
             ])
         );
     }

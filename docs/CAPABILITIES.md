@@ -28,11 +28,10 @@ reference; kiln is the structure reference).
 | Markdown rendering in chat answers + artifact docs (in-repo subset renderer) | `web/ui/markdown.rs` | wave 15 |
 | **First-class teams**: folder + team.md = ONE delegate tool, boundary resets authority, shared principles injected (ADR-032) | `runtime/config/team.rs`, `runtime/delegate.rs` | wave 16 |
 | **Director thread**: per-agent `budget.*` in MD (max_turns/deadline_s/depth) | `runtime/config/agent.rs` | wave 16 |
-| **Board reorientation**: durable-board digest injected at run start for board-holding agents | `runtime/state/board.rs`, `runtime/run/session.rs` | wave 16 |
 | Config surface documented in-folder | `crates/frontend/assets/agents/README.md` | wave 16 |
 | **Context diet**: history replays answers + id-less MCP calls only (scaffold-stripped fallbacks); news folded into `web_search news:true`; `echo` test-only | `core/toolcall.rs`, `core/sheet.rs`, `runtime/tools/search.rs` | wave 17 |
-| **Live artifacts (ADR-033)**: board digest + published docs re-read before EVERY call as latest-state ARTIFACT blocks — never history | `core/element.rs`, `runtime/run/turn.rs` | wave 18 |
-| **Curated context (ADR-034)**: `phase.N.skills` completes the per-phase recipe {contract, tools, skills, header}; lean director carries per-phase tool filters + effort tiers | `core/phase.rs`, `agents/orchestrator.md` | wave 19 |
+| **Live artifacts (ADR-033)**: published docs re-read before EVERY call as latest-state ARTIFACT blocks — never history | `core/element.rs`, `runtime/run/turn.rs` | wave 18 |
+| **Curated context (ADR-034)**: `phase.N.skills` completes the per-phase recipe {contract, tools, skills, header}; lean agents carry per-phase tool filters + effort tiers | `core/phase.rs`, `agents/coding/dev-lead.md` | wave 19 |
 | **Runtime sub-agents**: `spawn_agent` specializes a roster base (directive/tools/skills/max_turns, authority only narrows) into a run-scoped child | `runtime/run/delegation/spawn.rs`, `runtime/config/agent.rs` | wave 19 |
 | **Stall guard**: 3rd consecutive identical mutating call refused with a structured observation (anti-loop, GAPS 50/61) | `runtime/run/dispatch.rs` | wave 19 |
 | **Skill progressive disclosure**: `skill_list` index + `skill_read` body on demand — agents pick techniques at runtime | `runtime/tools/skills.rs` | wave 19 |
@@ -69,7 +68,7 @@ is documented with file:line citations in `docs/PROMPT.md`.
   explicit `tools:` extras, deduplicated): `vm` (shell, write_file, read_file,
   list_files, edit_file), `web` (web_search, fetch_url,
   knowledge_search/read/write/list, artifact_publish), `core` (calc,
-  js_eval), `board` (board_add/list/move/check). Unknown preset names are load
+  js_eval). Unknown preset names are load
   errors, listed with the other config problems.
 - `agents/soul.md` — shared identity prelude.
 - `agents/skills/*.md` — reusable prompt fragments agents opt into.
@@ -149,17 +148,12 @@ projects today; richer toolchains wait on guest networking (GAPS 25).
 
 All merged and gate-green; browser rows live-verified on https://kaush4l.github.io/ASKK/.
 
-- **Kanban work model** (ADR-026): goal → cards with acceptance criteria → agents push
-  through backlog/planning/doing/testing/done; Done is criteria-gated; testing→planning
-  bounces are first-class. Four tools (board_add/list/move/check) + a live Board tab
-  (5 columns over the persistent OPFS board) + a `tester` agent that records
-  per-criterion verdicts; the orchestrator plans onto the board and bounces unmet cards.
 - **Browser-direct MCP client**: remote Streamable-HTTP MCP servers become ordinary
   registry tools (`mcp_<server>_<tool>`, readOnlyHint→Pure); `mcp_servers` Settings
   textarea; dead servers degrade to boot warnings.
 - **Memory tools**: `remember`/`recall`/`forget` over KvStore `notes/` — agents curate
   durable notes; assistant + researcher carry directives.
-- **Env presets**: `env: vm|web|core|board` frontmatter expands into the tools allowlist
+- **Env presets**: `env: vm|web|core` frontmatter expands into the tools allowlist
   at load; agents declare their environment instead of enumerating tools.
 - **Handoff**: swarm-style full transfer — `handoff {agent, goal}` ends the caller's run
   with the target's answer verbatim (no rephrasing turn).

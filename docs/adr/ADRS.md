@@ -471,3 +471,30 @@ single user message is the universal, non-breaking way to send one ASKK-owned
 string). Pairs with single-agent chat (default `assistant`, no delegation) and
 the UI fix (LlmResponse is transient; HistoryAppended is the one durable
 assistant turn, so no double-render; tool-call turns + observations collapse).
+
+## ADR-040 (A) — remove the kanban board component (unused under single-agent Jarvis; supersedes ADR-026)
+ADR-026 shipped a kanban board as the multi-agent work model: `Card`/`CardStage`/
+`Criterion` (`core/board.rs`), a `BoardStore` over KvStore (`state/board.rs`), four
+tools (`board_add/list/move/check`), an `env: board` preset, a live-refreshed BOARD
+artifact digest for board-holding agents (ADR-033), and a `tester` verifier that
+recorded per-criterion verdicts. It only made sense as scaffolding for an
+orchestrator decomposing a goal across a delegate team. The single-agent cutover
+(ADR-039: chat = one `assistant`, no delegation/picker) left the board with no live
+user: the Board UI tab was already removed, and no shipped default flow writes cards.
+
+Decision: delete the board component whole. Gone — `core/board.rs`,
+`state/board.rs`, `features/tools/board/`, the `env: board` preset, the
+`Shared.board` field + `SessionInit.board` + `boot` wiring + `live_artifacts` BOARD
+branch, and the two board-only agents (`orchestrator.md`, `tester.md`, the sole
+consumers of the board tools). `Card`/`CardStage`/`Criterion` leave `askk-core`.
+Consequences: `live_artifacts` now surfaces only published artifact bodies (the
+other ADR-033 source is unaffected); the Dashboard's tool-activity matrix replaces
+the old board mirror; the delegation seam, teams (ADR-032), spawn, and the coding
+team stay — the board was orthogonal to them. Reversible: the board was a
+self-contained feature behind the `dyn Tool` seam + a KvStore prefix; restoring it
+is a git revert. Not chosen: keeping the board tools registered but hidden (dead
+tools still validate into agent toolsets and bloat the prompt catalog small models
+degrade on); half-gutting the two agents into boardless shells (their reason to
+exist WAS the board). Aligns with the project goal: a Jarvis-standard single
+personal agent, with the browser's own senses (mic/webcam/camera) as the next input
+surface, not a kanban wall.

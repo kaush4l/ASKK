@@ -18,7 +18,7 @@ use crate::config::{validate, AgentConfig, ConfigError, SkillConfig, TeamConfig}
 use crate::run::cancel::CancelToken;
 use crate::run::host::RunHost;
 use crate::run::{dispatch, turn};
-use crate::state::{BoardStore, MemoryStore, SessionStore, SignalLog};
+use crate::state::{MemoryStore, SessionStore, SignalLog};
 use crate::tools::ToolRegistry;
 
 /// Provider lookup seam: profile id → provider instance. Tests inject
@@ -42,10 +42,6 @@ pub struct SessionInit {
     pub budgets: Budgets,
     pub policy: ActionPolicy,
     pub known_providers: Vec<String>,
-    /// The durable kanban board (same kv the board tools write). A run whose
-    /// agent holds `board_list` carries its digest as a live ARTIFACT block,
-    /// refreshed before every call (ADR-033).
-    pub board: Option<BoardStore>,
 }
 
 /// Session internals shared with the turn loop and the delegation seam.
@@ -66,9 +62,6 @@ pub(crate) struct Shared {
     pub(crate) session: SessionStore,
     pub(crate) budgets: Budgets,
     pub(crate) policy: ActionPolicy,
-    /// Durable board behind the per-turn BOARD artifact block (None in
-    /// tests that don't exercise it).
-    pub(crate) board: Option<BoardStore>,
     pub(crate) pending: RefCell<PendingActions>,
     pub(crate) runs: RefCell<BTreeMap<RunId, RunState>>,
     /// Per-run live host, installed by `drive`/`resolve_action` (and by the
@@ -290,7 +283,6 @@ impl RunSession {
                 budgets,
                 policy,
                 known_providers,
-                board,
             } = init;
             crate::run::register::register_session_tools(
                 weak,
@@ -328,7 +320,6 @@ impl RunSession {
                 session,
                 budgets,
                 policy,
-                board,
                 pending: RefCell::new(PendingActions::new()),
                 runs: RefCell::new(BTreeMap::new()),
                 hosts: RefCell::new(BTreeMap::new()),
@@ -379,10 +370,6 @@ impl RunSession {
         )
         .await
         .map_err(|e| ConfigError::one(e.to_string()))?;
-        // Reorientation moved to the turn loop (ADR-033): a board-holding
-        // agent gets a BOARD artifact block refreshed before EVERY call —
-        // always the latest state, visible mid-run, not a stale run-start
-        // observation (closes GAPS 60).
         shared
             .cancels
             .borrow_mut()

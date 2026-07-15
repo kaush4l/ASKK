@@ -168,7 +168,6 @@ mod tests {
                 budgets: Budgets::default(),
                 policy: ActionPolicy::default(),
                 known_providers: vec![],
-                board: None,
             })
             .unwrap();
             let shared = session.shared();

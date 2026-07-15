@@ -11,8 +11,8 @@ use askk_engine::config::{AgentConfig, SkillConfig};
 use askk_engine::run::{ProviderResolver, RunHost, RunSession, SessionInit};
 use askk_engine::state::{KvStore, MemoryStore, SessionStore, SignalLog, DEFAULT_MAX_ENTRIES};
 use askk_engine::tools::{
-    register_artifacts, register_board, register_builtins, register_knowledge, register_mcp,
-    register_shell, register_web_search, register_workspace, ToolRegistry,
+    register_artifacts, register_builtins, register_knowledge, register_mcp, register_shell,
+    register_web_search, register_workspace, ToolRegistry,
 };
 use serde_json::Value;
 
@@ -59,8 +59,6 @@ pub struct HarnessHandle {
     storage_warning: Option<String>,
     /// Live SearXNG base URL cell shared with `web_search` ("" = disabled).
     searxng: Rc<RefCell<String>>,
-    /// The persistent kanban board — same kv the board tools write.
-    board: askk_engine::state::BoardStore,
     /// Blob store shared with the signal log — `host::artifacts` reads
     /// published `artifact/<slug>` docs from it.
     pub(super) blobs: Rc<dyn askk_engine::state::BlobStore>,
@@ -206,11 +204,6 @@ impl HarnessHandle {
         })
     }
 
-    /// Kanban board snapshot, board order (the Board stage re-reads per refold).
-    pub async fn board_cards(&self) -> Vec<askk_core::Card> {
-        self.board.list().await.unwrap_or_default()
-    }
-
     pub fn get_profiles(&self) -> ProfileSet {
         self.profiles.borrow().clone()
     }
@@ -326,9 +319,6 @@ fn build_handle(
         budgets: Budgets::default(),
         policy: ActionPolicy::default(),
         known_providers: vec![PROFILE_ID.to_string()],
-        // Same kv the board tools write: top-level board-holding runs start
-        // with the durable board digest (reorientation after reload).
-        board: Some(askk_engine::state::BoardStore::new(kv.clone())),
     })
     .map_err(|e| e.to_string())?;
     Ok(HarnessHandle {
@@ -338,7 +328,6 @@ fn build_handle(
         cards,
         profiles,
         settings: SessionStore::new(kv.clone()),
-        board: askk_engine::state::BoardStore::new(kv),
         blobs,
         current: RefCell::new(None),
         known_runs: RefCell::new(Vec::new()),
@@ -434,7 +423,6 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
     register_web_search(&mut registry, transport.clone(), searxng.clone())
         .map_err(|e| e.to_string())?;
     register_knowledge(&mut registry, kv.clone(), now).map_err(|e| e.to_string())?;
-    register_board(&mut registry, kv.clone()).map_err(|e| e.to_string())?;
     register_artifacts(&mut registry, blobs.clone(), now).map_err(|e| e.to_string())?;
     let shell_exec = Rc::new(super::vm::SerialShell::new());
     register_shell(&mut registry, shell_exec.clone()).map_err(|e| e.to_string())?;

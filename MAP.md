@@ -60,15 +60,11 @@ A DAG, not a chain — the true allowed-imports table:
 | web_search news lane sources (Wikinews → GDELT) | `crates/features/src/tools/search/news.rs` |
 | OKF knowledge bundle tools (ADR-024) | `crates/features/src/tools/knowledge/mod.rs` |
 | Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/engine/src/run/delegation/loops.rs` |
-| Kanban card model + stage rules (ADR-026) | `crates/core/src/board.rs` |
-| Board persistence over KvStore | `crates/state/src/board.rs` |
-| Board tools (add/list/move/check) | `crates/features/src/tools/board/mod.rs` |
 | Dashboard stage (wall display + tool-activity matrix) | `crates/frontend/src/ui/dashboard.rs` |
 | Cross-tab signal bus (BroadcastChannel mirror, ADR-031) | `crates/browser/src/bus.rs` |
 | Team config (folder team.md, ADR-032) | `crates/features/src/config/team.rs` |
 | Team delegation boundary (TeamTool, principles injection) | `crates/engine/src/run/delegation/delegate.rs` |
 | Per-agent budgets (`budget.*` frontmatter) | `crates/features/src/config/agent.rs` |
-| Board digest (director reorientation) | `crates/state/src/board.rs` |
 | Live artifact blocks — latest-state refresh per call (ADR-033) | `crates/engine/src/run/turn.rs` + `crates/core/src/element.rs` |
 | spawn_agent — runtime sub-agent specialization (ADR-034) | `crates/engine/src/run/delegation/spawn.rs` + `AgentConfig::specialize` in `crates/features/src/config/agent.rs` |
 | Skill discovery tools (skill_list/skill_read) | `crates/features/src/tools/skills.rs` |

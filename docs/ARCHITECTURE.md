@@ -18,9 +18,9 @@ core ← inference ← state ← features ← engine ← browser ← frontend
   `Transport` (HTTP/SSE seam). OpenAI-compatible, Anthropic, Mock. Local (transformers.js) implements
   the same trait in `web` because it needs JS interop.
 - **`crates/state`** — the state layer. KvStore/BlobStore seams (memory impls; OPFS impls in
-  browser), signal log, board/memory/session stores.
+  browser), signal log, memory/session stores.
 - **`crates/features`** — config loading (soul.md / agent.md / skills) and the tool surface
-  (registry + one folder per feature: mcp, search, vm, board, artifacts, knowledge, memory, skills).
+  (registry + one folder per feature: mcp, search, vm, artifacts, knowledge, memory, skills).
 - **`crates/engine`** — the harness engine. Run orchestration (incl. delegation), sheet assembly,
   action gate + audit; integration tests live here.
 - **`crates/browser`** — the host seam. OPFS persistence, fetch/SSE transport, local model

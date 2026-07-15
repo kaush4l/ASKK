@@ -163,10 +163,9 @@ user message + the newest messages that fit, middle elided with one
 observations clamp at `max_observation_chars` with an explicit clip suffix, and
 web_search/fetch_url/mcp_* observations carry an
 `(untrusted web content)` label (run/dispatch.rs). Live ARTIFACT blocks
-(ADR-033) are NOT history: the board digest (board-holding agents) and every
-body this run published re-render as latest-state sections, re-read from
-their sources before each call (turn.rs `live_artifacts`; per-artifact clamp
-4 000 chars). Per-phase `max_turns` clamps loop
+(ADR-033) are NOT history: every body this run published re-renders as
+latest-state sections, re-read from its source before each call (turn.rs
+`live_artifacts`; per-artifact clamp 4 000 chars). Per-phase `max_turns` clamps loop
 phases (turn.rs).
 
 Delegation: a child's answer returns as one observation `Result (untrusted): {text}`
@@ -191,5 +190,5 @@ All from `agents/` files, loaded fail-loud (crates/features/src/config/agent.rs)
 | `phase.N.header` | PhaseFrame header text (agent.rs:197, 244) |
 | `phase.N.contract` / `phase.N.tools` | Per-phase contract override + allowlist narrowing (turn.rs:296-299, 333-342) |
 | `phase.N.skills` | Per-phase skill narrowing — only the named skills render that phase's `skills` section; team principles always render (ADR-034) |
-| `env: vm\|web\|core\|board` | Tool bundles expanded into `tools:` at load (config/env.rs:11-33) |
+| `env: vm\|web\|core` | Tool bundles expanded into `tools:` at load (config/env.rs:11-33) |
 | `provider:` | Provider profile id on InferenceConfig (agent.rs:83; turn.rs:312-314) |

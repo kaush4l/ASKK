@@ -50,7 +50,6 @@ format: toon             # json|toon|text; initial output mode. Default toon.
 - `web`: web_search, fetch_url, knowledge_search, knowledge_read,
   knowledge_write, knowledge_list, artifact_publish
 - `core`: calc, js_eval
-- `board`: board_add, board_list, board_move, board_check
 
 ### Phases (`phase.N.*`) — the multi-scene strategy
 
@@ -72,10 +71,10 @@ Numbered contiguously from 1. No phases = a single implicit react loop.
 
 Per-phase `tools:` filters are the recommended lean-agent idiom: small
 models degrade with big tool catalogs, so each phase should see only the
-tools that phase needs (`orchestrator.md` is the worked example — board-only
-in plan, delegates + loop tools in dispatch, verification tools in verify).
-For delegated single tasks, `worker.md` is the generic spawnable agent:
-minimal tools, an execute loop, and a self-verify gate.
+tools that phase needs (`coding/dev-lead.md` is the worked example — plan
+tools in plan, delegates + loop tools in dispatch, verification tools in
+verify). For delegated single tasks, `worker.md` is the generic spawnable
+agent: minimal tools, an execute loop, and a self-verify gate.
 
 ### Custom contracts (`field.N.*`)
 

@@ -4,7 +4,6 @@
 //! later waves behind the same `dyn Tool` seam.
 
 pub mod artifacts;
-pub mod board;
 pub mod builtin;
 pub mod knowledge;
 pub mod mcp;
@@ -20,7 +19,6 @@ pub use vm::{shell, workspace};
 
 pub use artifacts as artifact; // ponytail: path shim, retire once callers say `artifacts`
 pub use artifacts::register_artifacts;
-pub use board::register_board;
 pub use builtin::{register_builtins, register_echo};
 pub use knowledge::register_knowledge;
 pub use mcp::{parse_server_list, parse_servers, register_mcp, McpServerConfig, McpServerStatus};

@@ -7,7 +7,7 @@
 //!
 //! Namespacing is by prefix convention, one owner per prefix. KV keys:
 //! `session/*` (`SessionStore`), `memory/<agent_id>` (`MemoryStore`),
-//! `board/<id>` (`BoardStore`), `notes/<slug>` (`tools/memory_tools.rs`).
+//! `notes/<slug>` (`tools/memory_tools.rs`).
 //! Blob paths: `seg-<epoch>.jsonl` (`SignalLog`).
 
 use std::cell::RefCell;
