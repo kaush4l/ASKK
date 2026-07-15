@@ -311,19 +311,19 @@ input, textarea { font: inherit; }
 }
 .avatar-controls { display: flex; align-items: center; gap: 10px; }
 .avatar-controls.right { justify-content: flex-end; }
-.activity-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 90px; }
+.activity-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 48px; }
 .activity-elapsed { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .avatar-orb {
-  width: 84px; height: 84px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, var(--orb-hi), var(--blue) 60%, var(--blue-ink));
-  box-shadow: 0 10px 30px -8px rgba(91,106,224,0.6), inset 0 -6px 14px rgba(0,0,0,0.2);
+  box-shadow: 0 6px 18px -8px rgba(91,106,224,0.6), inset 0 -4px 10px rgba(0,0,0,0.2);
   transition: transform .3s var(--ease);
 }
-.orb-label { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 2px; text-transform: uppercase; color: var(--text-faint); text-align: center; margin-top: 6px; }
+.orb-label { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 2px; text-transform: uppercase; color: var(--text-faint); text-align: center; margin-top: 2px; }
 
 /* the CSS loader (no web-component dep): a pulsing dot; warm = tool work */
 .pulse-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; flex-shrink: 0; background: var(--blue); animation: pulse 1s var(--ease) infinite; }
-.pulse-dot.lg { width: 34px; height: 34px; }
+.pulse-dot.lg { width: 22px; height: 22px; }
 .pulse-dot.warm { background: var(--orange); }
 
 /* ── chat stage ───────────────────────────────────────────────────────────── */
