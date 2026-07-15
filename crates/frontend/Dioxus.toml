@@ -1,0 +1,8 @@
+[application]
+name = "askk-frontend"
+
+# Static HTML shell title (the pre-boot value before wasm sets document::Title).
+# Base path is passed on the CLI (`--base-path ASKK` in scripts/publish.sh), so it
+# is intentionally not pinned here.
+[web.app]
+title = "ASKK"

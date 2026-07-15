@@ -27,6 +27,7 @@ use askk_browser::dom;
 use askk_browser::speech::{self, SpeechConfig};
 
 const CSS: &str = include_str!("main.css");
+const FAVICON: Asset = asset!("/assets/favicon.svg");
 const AMARANTE_LATIN: Asset = asset!("/assets/amarante-latin.woff2");
 const AMARANTE_LATIN_EXT: Asset = asset!("/assets/amarante-latin-ext.woff2");
 
@@ -406,6 +407,8 @@ pub fn App() -> Element {
     let notice = boot_error().or(ui_error());
 
     rsx! {
+        document::Title { "ASKK" }
+        document::Link { rel: "icon", r#type: "image/svg+xml", href: FAVICON.to_string() }
         document::Style { {CSS} }
         document::Style { {font_face} }
         div { class: "app",
@@ -446,10 +449,8 @@ pub fn App() -> Element {
                                 phase: phase.clone(),
                                 warm,
                                 agent: agent_name,
-                                // Single-agent chat: only the Assistant. The
-                                // picker collapses to nothing (chat.rs hides a
-                                // one-agent row). Fall back to the full list if
-                                // no assistant is configured.
+                                // Single-agent chat: only the Assistant (picker
+                                // hidden); full list if no assistant configured.
                                 agents: {
                                     let one: Vec<_> = agent_cards
                                         .iter()
