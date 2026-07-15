@@ -1,8 +1,10 @@
 //! Agent-as-tool: the ONE delegation seam (ADR-004). Every enabled agent is
 //! registered as a `DelegateTool`; calling it runs a nested bounded loop.
-//! Authority narrows (child toolset = parent ∩ child), depth is capped by
-//! `Budgets::max_delegation_depth`, and the child's answer comes back as an
-//! untrusted observation string. `HandoffTool` is the full-transfer variant:
+//! A delegation crosses an authority BOUNDARY (ADR-038): the child runs with
+//! its OWN declared toolset — a lean director delegates work it holds no tools
+//! for. Depth is capped by `Budgets::max_delegation_depth`, and the child's
+//! answer comes back as an untrusted observation string. `HandoffTool` is the
+//! full-transfer variant:
 //! the child's answer verbatim ends the CALLING run (run/dispatch.rs keys the
 //! short-circuit on `HANDOFF_TOOL`).
 
@@ -63,9 +65,16 @@ pub(crate) fn inherited_team(
 /// Resolve authority, spin the nested run, drive it to a terminal, and hand
 /// back `(status, final_text)` — the one child-run body shared by
 /// `DelegateTool`, `HandoffTool`, `TeamTool`, and `SpawnAgentTool`. `Err` is
-/// a readable message for the caller's observation. A `boundary` team RESETS
-/// authority to the team's own toolset (the micro-service boundary, ADR-032);
-/// without one, authority narrows as usual (child = parent ∩ child).
+/// a readable message for the caller's observation.
+///
+/// A delegation crosses an authority BOUNDARY (ADR-038): the child runs with
+/// its OWN declared toolset, NOT the caller ∩ child intersection — the whole
+/// point of a specialist is the capability the lean director lacks. WHO you
+/// may delegate to is still gated (the delegate must be in your tools; handoff
+/// and spawn_run check that explicitly). A `boundary` team additionally caps
+/// the child at the team's declared toolset (the micro-service boundary,
+/// ADR-032). `spawn_agent`'s tools are already clamped ⊆ its base at config
+/// time, so its child toolset is bounded there.
 pub(crate) async fn drive_child(
     shared: &Shared,
     ctx: &ToolCtx,
@@ -74,16 +83,15 @@ pub(crate) async fn drive_child(
     depth: u8,
     boundary: Option<&TeamConfig>,
 ) -> Result<(RunStatus, String), String> {
-    let parent_tools = match boundary {
-        Some(team) => team.tools.clone(),
-        None => parent_tools(ctx),
+    let allowed: Vec<String> = match boundary {
+        Some(team) => child
+            .tools
+            .iter()
+            .filter(|t| team.tools.contains(t))
+            .cloned()
+            .collect(),
+        None => child.tools.clone(),
     };
-    let allowed: Vec<String> = child
-        .tools
-        .iter()
-        .filter(|t| parent_tools.contains(t))
-        .cloned()
-        .collect();
     let memory = shared
         .memory
         .load(&child.id)

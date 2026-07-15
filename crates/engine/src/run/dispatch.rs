@@ -22,7 +22,9 @@ pub(crate) const DEPTH_SLICE: &str = "delegation_depth";
 /// ToolCtx slice carrying the calling RUN's resolved depth cap (the driving
 /// parent is out of `shared.runs` mid-drive, so the cap rides the ctx too).
 pub(crate) const MAX_DEPTH_SLICE: &str = "delegation_max_depth";
-/// ToolCtx slice carrying the caller's effective allowlist (authority narrows).
+/// ToolCtx slice carrying the caller's effective allowlist — the membership
+/// guard for `handoff`/`spawn_run` (you may only delegate to an agent in your
+/// tools). It no longer narrows the child's toolset (ADR-038).
 pub(crate) const PARENT_TOOLS_SLICE: &str = "parent_tools";
 /// ToolCtx slice carrying the caller's run id (DelegateTool resolves the
 /// parent's live host through it for the nested run).

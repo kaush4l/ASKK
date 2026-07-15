@@ -1,7 +1,9 @@
 //! Engine-side delegation — deliberately under `run/`, not `tools/`: these
 //! tools hold a `Weak<Shared>` into the live engine and drive nested child
-//! runs through the same turn loop as the parent. The authority-narrowing
-//! invariant (child toolset = parent ∩ child, depth capped) lives here.
+//! runs through the same turn loop as the parent. The authority-boundary
+//! invariant (ADR-038: a child runs with its OWN declared toolset — WHO you
+//! may delegate to is gated, not WHAT the specialist may then use; depth
+//! capped) lives here.
 //!
 //! - [`delegate`] — agent-as-tool seam: `DelegateTool` / `HandoffTool` /
 //!   `TeamTool` (ADR-004/030/032).

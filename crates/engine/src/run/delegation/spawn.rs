@@ -3,8 +3,9 @@
 //! it SPECIALIZES a base roster agent at call time — narrowed tools,
 //! replaced skills, an extra directive paragraph, a clamped turn budget —
 //! and drives the child through the same delegation seam as `DelegateTool`.
-//! Authority only narrows: replacement tools must be ⊆ the base's, and the
-//! child's run allowlist is additionally ∩ the caller's, like any delegation.
+//! Authority is bounded at config time: replacement tools must be ⊆ the
+//! base's. The child then runs with that declared toolset (a delegation is an
+//! authority boundary, ADR-038) — it is NOT further ∩ the caller's.
 //! Spawned configs are run-scoped: they live in `Shared::spawned` for the
 //! session (the turn loop re-resolves the agent by id every turn) and are
 //! never persisted to any config store.

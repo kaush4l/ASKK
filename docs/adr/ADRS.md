@@ -408,3 +408,37 @@ guest CPU stays ~5x slower than v86's JIT. Reversible: v86 lives in git history;
 fast-JIT tier can return behind the same boot/exec/shellReady/destroy contract if a
 non-isolated fallback is ever needed. The `askk-v86-serial` DOM id is kept verbatim
 (cosmetic legacy name, shared across the eval boundary — not worth the churn).
+
+## ADR-038 (A) — a delegation is an authority BOUNDARY: the child runs with its own toolset (supersedes the parent ∩ child narrowing)
+The delegation seam narrowed a child's allowlist to `parent ∩ child` — a child
+could use only tools its whole caller-chain also held. Combined with the lean
+Orchestrator (ADR: sole chat agent holds only delegation + board tools, no leaf
+tools), this stripped EVERY delegated specialist to the intersection: the
+`researcher` (env `web` → web_search/fetch_url/knowledge_*/artifact_publish)
+delegated by the Orchestrator ran with `[artifact_publish]` only, so its
+`web_search` came back "unknown tool" and the run looped (or answered from
+memory). The narrowing model and the "lean director + powerful specialists"
+design are mutually exclusive — a specialist exists precisely for the
+capability the director lacks.
+
+Decision: a roster delegation (`DelegateTool`), a full transfer (`HandoffTool`),
+and a background spawn (`spawn_run`) each cross an authority BOUNDARY — the
+child runs with its OWN declared toolset, not `parent ∩ child`. What stays:
+(1) the membership guard — you may only delegate to an agent listed in your
+tools (`handoff`/`spawn_run` check it explicitly; `DelegateTool` exists only
+because the caller listed the agent), so WHO you may call is still gated;
+(2) the team boundary (ADR-032) still caps a member run at `child ∩ team.tools`;
+(3) `spawn_agent`'s config-time clamp — replacement tools must be ⊆ the base —
+still bounds a spawned agent; (4) phase filters still narrow within a run.
+Only WHAT a delegated specialist may use changed: its own declared tools.
+
+Rationale: least-privilege escalation is not a threat in a single-user,
+author-declared, browser-sandboxed agent fleet — the narrowing was ceremony
+guarding a threat model that does not apply here, at the cost of breaking the
+product's flagship route-to-specialist flow. Reversible: the `parent ∩ child`
+filter is one line in `drive_child`/`spawn_run`; `PARENT_TOOLS_SLICE` is still
+plumbed (now feeding only the membership guard) so re-narrowing is a small
+revert. Tests: `spawn_agent_clamps_child_to_caller_allowlist` became
+`spawn_agent_child_runs_with_base_toolset` (asserts the child uses a base tool
+the caller lacks); `spawn_agent_rejects_tools_outside_base` (base⊆ clamp) and
+`team_toolset_is_the_ceiling_inside_the_boundary` (ADR-032) are unchanged.

@@ -7,8 +7,10 @@
 //! (ADR-015): a spawned loop progresses during `wait_run` (or a UI drive),
 //! not in the background — spawn several parts, then wait on them together.
 //!
-//! Same seams as delegation: authority narrows (child = parent ∩ child),
-//! depth capped, parent's live host serves the children. Spawned loops run
+//! Same seams as delegation: a spawned run gets the child's OWN declared
+//! toolset (an authority boundary, ADR-038; the membership guard gates WHO
+//! may be spawned), depth capped, parent's live host serves the children.
+//! Spawned loops run
 //! at depth ≥ 1, so confirmation-gated actions degrade to denials (GAPS 9).
 
 use std::rc::{Rc, Weak};
@@ -117,12 +119,10 @@ impl Tool for SpawnRun {
             let Some(child) = shared.agents.get(agent_id).cloned() else {
                 return ToolResult::err(format!("spawn_run: unknown agent '{agent_id}'"));
             };
-            let allowed: Vec<String> = child
-                .tools
-                .iter()
-                .filter(|t| parent_tools.contains(t))
-                .cloned()
-                .collect();
+            // The background run gets the child's OWN declared toolset — a
+            // delegation is an authority boundary (ADR-038). The membership
+            // guard above already gates WHO may be spawned.
+            let allowed: Vec<String> = child.tools.clone();
             let memory = match shared.memory.load(&child.id).await {
                 Ok(memory) => memory,
                 Err(e) => return ToolResult::err(format!("spawn_run: {e}")),

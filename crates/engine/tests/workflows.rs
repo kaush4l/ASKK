@@ -1753,9 +1753,10 @@ fn budget_override_composes_with_session_fields() {
     });
 }
 
-// A four-agent chain: each ancestor carries the rest of the chain's delegate
-// tools (authority narrows: child toolset = parent ∩ child). dhelper — the
-// run CALLING the third delegation — declares `budget.depth: 3`.
+// A four-agent chain: each link lists the next agent as a delegate tool (the
+// membership guard gates WHO you may call; each child then runs with its own
+// toolset, ADR-038). dhelper — the run CALLING the third delegation —
+// declares `budget.depth: 3`.
 const DPARENT: (&str, &str) = (
     "agents/dparent.md",
     "---\nid: dparent\ndescription: Top of the chain.\ntools: dworker, dhelper, dleaf\n---\nDelegate down.",
@@ -2195,33 +2196,36 @@ fn spawn_agent_depth_cap_rejects() {
     });
 }
 
-/// (5) The caller-allowlist clamp: the spawned child keeps only base tools
-/// the CALLER also holds — spawner has no `helper`, so the child spawned
-/// from worker (echo, helper) is clamped to [echo] and its `helper` call is
-/// rejected as unknown.
+/// (5) A delegation is an authority boundary (ADR-038): the spawned child runs
+/// with its BASE agent's declared toolset, so it may use a base tool the CALLER
+/// does not hold — spawner has no `helper`, yet the worker-based child
+/// (echo, helper) uses it successfully. The base⊆ clamp
+/// (`spawn_agent_rejects_tools_outside_base`) is the only tool ceiling; the
+/// caller's toolset is not.
 #[test]
-fn spawn_agent_clamps_child_to_caller_allowlist() {
+fn spawn_agent_child_runs_with_base_toolset() {
     block_on(async {
         let f = fixture(&[SPAWNER, DEPUTY, WORKER, HELPER]).await;
         f.mock.push_text(
             "action: tool\nanswer: {\"name\": \"spawn_agent\", \"arguments\": {\"base\": \"worker\", \
              \"goal\": \"use helper\"}}",
         );
-        // The child tries the base tool the caller does not hold.
+        // The child uses a base tool the caller (spawner) does not hold.
         f.mock.push_text(
             "action: tool\nanswer: {\"name\": \"helper\", \"arguments\": {\"goal\": \"sub\"}}",
         );
-        f.mock.push_text("action: answer\nanswer: fell back");
-        f.mock.push_text("action: answer\nanswer: done");
-        let run = f.session.submit("spawner", "clamp check").await.unwrap();
+        f.mock.push_text("action: answer\nanswer: helped"); // helper
+        f.mock.push_text("action: answer\nanswer: used helper"); // child
+        f.mock.push_text("action: answer\nanswer: done"); // spawner
+        let run = f.session.submit("spawner", "boundary check").await.unwrap();
         let out = f.session.drive(&run, f.host.clone()).await;
         assert_eq!(out.status, RunStatus::Answered);
         let obs = observations(&f.host.signals());
         assert!(
-            obs.iter()
-                .any(|o| o.contains("unknown tool 'helper'") && o.contains("[echo]")),
-            "child allowlist must be base ∩ caller = [echo]: {obs:?}"
+            !obs.iter().any(|o| o.contains("unknown tool 'helper'")),
+            "child must run with the base's toolset, not caller ∩ base: {obs:?}"
         );
+        assert!(obs.iter().any(|o| o.contains("Result (untrusted): helped")));
         assert_eq!(f.mock.remaining(), 0);
     });
 }

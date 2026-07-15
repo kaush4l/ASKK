@@ -145,8 +145,9 @@ pub(crate) struct RunState {
     /// from the blob store before every call as a live ARTIFACT block
     /// (latest state, not history; ADR-033).
     pub(crate) published: Vec<String>,
-    /// Effective allowlist: agent tools ∩ every ancestor's allowlist —
-    /// except across a team boundary, which RESETS it to lead ∩ team.tools.
+    /// Effective allowlist: the agent's OWN declared toolset (a delegation is
+    /// an authority boundary, ADR-038) — a team boundary caps it to
+    /// child ∩ team.tools, and phase filters narrow it within the run.
     pub(crate) allowed_tools: Vec<String>,
     /// The team this run executes inside (ADR-032): set by TeamTool for the
     /// lead, inherited by members it delegates to. Drives the principles
