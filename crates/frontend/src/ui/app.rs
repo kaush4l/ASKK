@@ -112,8 +112,15 @@ pub fn App() -> Element {
                     ui_error.set(Some(w));
                 }
                 profiles.set(h.get_profiles());
-                if let Some(first) = h.agents().first() {
-                    agent_id.set(first.id.clone());
+                // Default the driver to the Orchestrator (topic-routing) —
+                // fall back to the first card if it isn't configured.
+                let cards = h.agents();
+                if let Some(a) = cards
+                    .iter()
+                    .find(|a| a.id == "orchestrator")
+                    .or_else(|| cards.first())
+                {
+                    agent_id.set(a.id.clone());
                 }
                 if let Some(v) = h.get_pref("speech").await {
                     speech_cfg.set(SpeechConfig::from_json(&v));
@@ -435,7 +442,19 @@ pub fn App() -> Element {
                                 phase: phase.clone(),
                                 warm,
                                 agent: agent_name,
-                                agents: agent_cards.clone(),
+                                // Chat routes through the Orchestrator only —
+                                // it reads the topic and delegates; the other
+                                // agents stay as its delegation targets, not
+                                // user-pickable. Fall back to the full list if
+                                // no orchestrator is configured.
+                                agents: {
+                                    let orch: Vec<_> = agent_cards
+                                        .iter()
+                                        .filter(|c| c.id == "orchestrator")
+                                        .cloned()
+                                        .collect();
+                                    if orch.is_empty() { agent_cards.clone() } else { orch }
+                                },
                                 active_agent: agent_id(),
                                 elapsed: elapsed.clone(),
                                 notice,
