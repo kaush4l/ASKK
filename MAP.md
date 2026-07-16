@@ -84,12 +84,12 @@ A DAG, not a chain — the true allowed-imports table:
 | Cancel token (races in-flight inference) | `crates/engine/src/run/cancel.rs` |
 | Local LLM provider (transformers.js, ADR-029) | `crates/browser/src/local_llm.rs` + `scripts/llm/` |
 | shell tool (exec over VM serial) | `crates/features/src/tools/vm/shell.rs` |
-| shell executor (browser serial bridge) | `crates/browser/src/vm.rs` |
+| VM host wiring (c2w console glue + serial shell bridge, ADR-045) | `crates/browser/src/vm.rs` + `crates/browser/assets/vm/` |
 | Agents/skills/tools loader (baked + live fetch) | `crates/browser/src/config.rs` |
 | Custom JS tool wrapper (MCP card) | `crates/browser/src/jstool.rs` |
 | Agents + custom tools (served config) | `crates/frontend/assets/agents/` |
 | Agents-folder config bake (glob + manifest order) | `crates/browser/build.rs` |
-| VM stage (container2wasm Alpine serial console) | `crates/frontend/src/ui/features/vm.rs` |
+| VM stage (console component over `askk_browser::vm`) | `crates/frontend/src/ui/features/vm.rs` |
 | VM bundle source (c2w + xterm-pty) | `scripts/vm-c2w/entry.js` + `build.mjs` |
 | Speech seam (STT/TTS, HF model ids) | `crates/browser/src/speech.rs` |
 | Speech engine bundles (source) | `scripts/speech/{stt,tts}-entry.js` + `build.sh` |

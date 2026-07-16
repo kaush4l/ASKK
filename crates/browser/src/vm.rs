@@ -1,15 +1,109 @@
-//! The `shell` tool's browser executor: runs commands in the persistent
-//! in-browser guest (container2wasm Alpine, `window.AskkC2W`) over its serial
-//! line. The VM boots once at app load (see `ui::vm::VmConsole`), so by the
-//! time an agent calls `shell` the guest is usually already at a prompt; the
-//! executor still waits (bounded) for `shellReady` so a command issued right
-//! after load doesn't race the boot.
+//! The container2wasm VM engine's host wiring — BOTH halves live here
+//! (ADR-045): the console boot glue the frontend's `VmConsole` mounts
+//! ([`console_bundle`]/[`console_boot`]/[`console_destroy`]/[`state_label`])
+//! and the `shell` tool's browser executor ([`SerialShell`]), which runs
+//! commands in the same persistent guest over its serial line.
+//!
+//! **container2wasm** (`assets/vm/c2w.js`, from `scripts/vm-c2w/`): 64-bit
+//! Alpine — the whole container + Bochs x86_64 emulator is ONE WASI module
+//! (`alpine64.wasm`) run in a worker, wired to the console via xterm-pty.
+//! Wizer pre-boot makes it prompt-ready in ~3 s. Exposes `window.AskkC2W`.
+//!
+//! Needs cross-origin isolation (SharedArrayBuffer): the console explains and
+//! stays "boot failed" on browsers without it (e.g. Safari, which lacks
+//! `COEP: credentialless`). The VM boots once at app load, so by the time an
+//! agent calls `shell` the guest is usually already at a prompt; the executor
+//! still waits (bounded) for `shellReady` so a command issued right after
+//! load doesn't race the boot.
 
-/// The DOM id of the persistent serial console (shared verbatim with `ui::vm`
-/// and the c2w bundle). Keeps its legacy `askk-v86-serial` value to avoid
-/// churning the id across the eval boundary. Read only from the wasm executor.
+use dioxus::document::Eval;
+use dioxus::prelude::*;
+
+/// The DOM id of the persistent serial console (shared verbatim with the
+/// frontend's `VmConsole` and the c2w bundle). Keeps its legacy
+/// `askk-v86-serial` value to avoid churning the id across the eval boundary.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub const SERIAL_HOST: &str = "askk-v86-serial";
+
+const C2W_BUNDLE: Asset = asset!("/assets/vm/c2w.js");
+const C2W_WASM: Asset = asset!("/assets/vm/alpine64.wasm");
+const C2W_WORKER: Asset = asset!("/assets/vm/c2w/worker.js");
+const C2W_WORKER_TOOLS: Asset = asset!("/assets/vm/c2w/workerTools.js");
+const C2W_WASI_INDEX: Asset = asset!("/assets/vm/c2w/wasi_shim_index.js");
+const C2W_WASI_DEFS: Asset = asset!("/assets/vm/c2w/wasi_shim_wasi_defs.js");
+const C2W_WORKER_UTIL: Asset = asset!("/assets/vm/c2w/worker-util.js");
+const C2W_WASI_UTIL: Asset = asset!("/assets/vm/c2w/wasi-util.js");
+
+/// Glue executed via `document::eval`: waits for the c2w bundle global + host
+/// element, boots Alpine, tears down on `{cmd:"close"}`. Token-guarded
+/// teardown against remount races (bundle-owned). The JS-side `SERIAL_HOST`
+/// mirrors [`SERIAL_HOST`] verbatim.
+const VM_GLUE: &str = r#"
+const SERIAL_HOST = "askk-v86-serial";
+while (!(window.AskkC2W && document.getElementById(SERIAL_HOST))) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+}
+const engine = window.AskkC2W;
+const token = engine.boot(SERIAL_HOST, {
+    serialHostId: SERIAL_HOST,
+    wasmUrl: "__C2W_WASM__",
+    workerUrl: "__C2W_WORKER__",
+    supportUrls: {
+        workerTools: "__C2W_WORKER_TOOLS__",
+        wasiShimIndex: "__C2W_WASI_INDEX__",
+        wasiDefs: "__C2W_WASI_DEFS__",
+        workerUtil: "__C2W_WORKER_UTIL__",
+        wasiUtil: "__C2W_WASI_UTIL__",
+    },
+    onState: (state) => dioxus.send({ state }),
+});
+for (;;) {
+    const msg = await dioxus.recv();
+    if (!msg || msg.cmd === "close") break;
+}
+engine.destroy(SERIAL_HOST, token);
+"#;
+
+fn glue() -> String {
+    VM_GLUE
+        .replace("__C2W_WASM__", &C2W_WASM.to_string())
+        .replace("__C2W_WORKER_TOOLS__", &C2W_WORKER_TOOLS.to_string())
+        .replace("__C2W_WORKER_UTIL__", &C2W_WORKER_UTIL.to_string())
+        .replace("__C2W_WORKER__", &C2W_WORKER.to_string())
+        .replace("__C2W_WASI_INDEX__", &C2W_WASI_INDEX.to_string())
+        .replace("__C2W_WASI_DEFS__", &C2W_WASI_DEFS.to_string())
+        .replace("__C2W_WASI_UTIL__", &C2W_WASI_UTIL.to_string())
+}
+
+/// The main-thread engine bundle — the `document::Script` src the console
+/// component renders.
+pub fn console_bundle() -> Asset {
+    C2W_BUNDLE
+}
+
+/// Boot the guest into the mounted serial host element. The returned channel
+/// reports `{state}` lifecycle messages (`recv`) and accepts `{cmd:"close"}`
+/// (`send`, see [`console_destroy`]).
+pub fn console_boot() -> Eval {
+    dioxus::document::eval(&glue())
+}
+
+/// Tear the guest down. Remount-safe: the glue's token guard ignores stale
+/// closes.
+pub fn console_destroy(eval: &Eval) {
+    let _ = eval.send(serde_json::json!({ "cmd": "close" }));
+}
+
+/// Human label for the `{state}` lifecycle messages the glue reports.
+pub fn state_label(state: &str) -> &'static str {
+    match state {
+        "downloading" => "downloading image…",
+        "booting" => "booting guest…",
+        "ready" => "shell ready",
+        "error" => "boot failed",
+        _ => "starting…",
+    }
+}
 
 #[cfg(target_arch = "wasm32")]
 pub use imp::SerialShell;
@@ -135,5 +229,30 @@ mod stub {
         fn exec<'a>(&'a self, _command: &'a str) -> LocalBoxFuture<'a, Result<String, String>> {
             Box::pin(async { Err("shell is wasm-only (needs the in-browser VM)".to_string()) })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_label_covers_the_lifecycle() {
+        assert_eq!(state_label("downloading"), "downloading image…");
+        assert_eq!(state_label("booting"), "booting guest…");
+        assert_eq!(state_label("ready"), "shell ready");
+        assert_eq!(state_label("error"), "boot failed");
+        assert_eq!(state_label("x"), "starting…");
+    }
+
+    #[test]
+    fn glue_placeholders_all_replaced() {
+        assert!(!glue().contains("__"), "unreplaced placeholder remains");
+    }
+
+    #[test]
+    fn glue_boots_c2w() {
+        assert!(VM_GLUE.contains("window.AskkC2W"), "c2w engine not wired");
+        assert!(!VM_GLUE.contains("AskkV86"), "stale v86 reference in glue");
     }
 }

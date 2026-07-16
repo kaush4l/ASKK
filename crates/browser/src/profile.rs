@@ -23,6 +23,18 @@ pub struct ProviderProfileForm {
     pub max_tokens: Option<u32>,
 }
 
+/// The in-browser (transformers.js) provider profile for a lab model —
+/// the ONE constructor for the `local` / `local/<model>` magic strings
+/// (interpreted by boot's resolver via [`crate::local_llm::is_local`] and
+/// stripped back to the HF id by [`crate::local_llm::hf_model_id`]).
+pub fn local_profile_form(model: &str) -> ProviderProfileForm {
+    ProviderProfileForm {
+        base_url: "local".into(),
+        model: format!("local/{model}"),
+        ..Default::default()
+    }
+}
+
 /// One saved provider profile: a user-chosen name over the form fields.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct NamedProfile {
@@ -189,6 +201,22 @@ mod tests {
         let form = set.active_form();
         assert_eq!(form.base_url, "http://127.0.0.1:8873/v1");
         assert_eq!(form.model, "gemma-4-12B-it-qat-mxfp8");
+        assert_eq!(form.max_tokens, None); // boot's 2048 cap applies
+    }
+
+    #[test]
+    fn local_profile_form_is_what_the_resolver_recognizes() {
+        // ADR-045: the constructed form must satisfy the resolver predicate
+        // (`local_llm::local_provider`'s gate) and strip back to the HF id.
+        let form = local_profile_form("onnx-community/gemma-4-E2B-it-ONNX");
+        assert_eq!(form.base_url, "local");
+        assert_eq!(form.model, "local/onnx-community/gemma-4-E2B-it-ONNX");
+        assert!(crate::local_llm::is_local(&form.base_url, &form.model));
+        assert_eq!(
+            crate::local_llm::hf_model_id(&form.model),
+            "onnx-community/gemma-4-E2B-it-ONNX"
+        );
+        assert_eq!(form.api_key, "");
         assert_eq!(form.max_tokens, None); // boot's 2048 cap applies
     }
 

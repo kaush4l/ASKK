@@ -23,9 +23,7 @@ use crate::ui::features::fleet::FleetStage;
 use crate::ui::features::lab::FeaturesStage;
 use crate::ui::features::settings::SettingsStage;
 use askk_browser::artifacts::ArtifactDoc;
-use askk_browser::boot::{
-    self, HarnessHandle, McpServerStatus, NamedProfile, ProfileSet, ProviderProfileForm,
-};
+use askk_browser::boot::{self, HarnessHandle, McpServerStatus, NamedProfile, ProfileSet};
 use askk_browser::dom;
 use askk_browser::speech::{self, SpeechConfig};
 
@@ -87,14 +85,12 @@ pub fn App() -> Element {
                     ui_error.set(Some(w));
                 }
                 profiles.set(h.get_profiles());
-                // Default agent = the Orchestrator (ADR-042): a Jarvis director
-                // that delegates to sub-agents. Falls back to the first card.
-                let cards = h.agents();
-                if let Some(a) = cards
-                    .iter()
-                    .find(|a| a.id == "orchestrator")
-                    .or_else(|| cards.first())
-                {
+                // Default agent = FIRST ENABLED agent in manifest order
+                // (ADR-045): build_handle assembles cards in manifest order
+                // filtered by enabled, so reordering assets/agents/
+                // manifest.json IS how the default is changed — no
+                // hardcoded id in the UI.
+                if let Some(a) = h.agents().first() {
                     agent_id.set(a.id.clone());
                 }
                 if let Some(v) = h.get_pref("speech").await {
@@ -314,11 +310,7 @@ pub fn App() -> Element {
     let on_use_default = move |model: String| {
         let Some(h) = handle() else { return };
         spawn(async move {
-            let form = ProviderProfileForm {
-                base_url: "local".into(),
-                model: format!("local/{model}"),
-                ..ProviderProfileForm::default()
-            };
+            let form = askk_browser::profile::local_profile_form(&model);
             let _ = h.save_profile("in-browser", form).await;
             profiles.set(h.get_profiles());
         });

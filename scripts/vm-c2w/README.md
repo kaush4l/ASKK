@@ -1,7 +1,7 @@
 # vm-c2w — container2wasm 64-bit Alpine VM bundle
 
-Builds `crates/frontend/assets/vm/c2w.js` (main-thread engine, `window.AskkC2W`)
-and stages the classic-script worker files into `crates/frontend/assets/vm/c2w/`.
+Builds `crates/browser/assets/vm/c2w.js` (main-thread engine, `window.AskkC2W`)
+and stages the classic-script worker files into `crates/browser/assets/vm/c2w/`.
 
 ```sh
 bun install && bun run build   # then commit the regenerated assets
@@ -9,7 +9,7 @@ bun install && bun run build   # then commit the regenerated assets
 
 ## The VM image (NOT in git)
 
-`crates/frontend/assets/vm/alpine64.wasm` (~105 MB) exceeds GitHub's 100 MB
+`crates/browser/assets/vm/alpine64.wasm` (~105 MB) exceeds GitHub's 100 MB
 per-file limit, so it is gitignored. `dx build` fails without it (`asset!`).
 Produce it with the sibling build project:
 
@@ -18,7 +18,7 @@ Produce it with the sibling build project:
 cd ../../../c2w-alpine
 c2w --dockerfile container2wasm/Dockerfile --assets container2wasm \
     alpine:latest out/alpine-amd64.wasm
-cp out/alpine-amd64.wasm ../ASKK/crates/frontend/assets/vm/alpine64.wasm
+cp out/alpine-amd64.wasm ../ASKK/crates/browser/assets/vm/alpine64.wasm
 ```
 
 The bochsrc in that clone is patched to `cpu: ips=1000000000` +

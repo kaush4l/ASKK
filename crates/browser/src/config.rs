@@ -120,3 +120,22 @@ pub async fn fetched_config(registry: &mut askk_engine::tools::ToolRegistry) -> 
     };
     Some((agents, teams, skills, soul))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ADR-045: the default chat agent is the FIRST ENABLED agent in
+    /// manifest order — no hardcoded id anywhere. Reordering
+    /// `assets/agents/manifest.json` is how the default is changed; this
+    /// pins that the manifest currently leads with the orchestrator.
+    #[test]
+    fn first_enabled_baked_agent_is_the_orchestrator() {
+        let (agents, _, _, _) = baked_config().expect("baked config parses");
+        let first = agents
+            .iter()
+            .find(|a| a.enabled)
+            .expect("at least one enabled agent");
+        assert_eq!(first.id, "orchestrator");
+    }
+}

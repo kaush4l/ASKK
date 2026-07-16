@@ -673,3 +673,42 @@ the inspector rail's stub tabs (Skills/Supplies) became Messages/Signals (stale 
 tab prefs normalize to Messages). Blast radius: boot assembly (both targets), the state
 log's degrade flag representation (`bool` → `Rc<Cell<bool>>`, getters unchanged), and the
 right rail. Reversible: drop the two facade reads and pass an empty `replayed`.
+
+## ADR-045 — Boot ownership: manifest-order default, local profile constructor, VM glue in app-core
+
+Context: ADR-043 named the browser crate the app-core package ("every component
+pertaining to its duty"), but three pieces of boot/config/host wiring still lived in the
+UI: `app.rs` hardcoded `orchestrator` as the default-agent id, the Features lab's "add as
+provider" handler hand-built the `local`/`local/<model>` magic strings inline, and
+`ui/features/vm.rs` embedded the whole container2wasm host wiring (asset consts, eval
+glue, lifecycle labels) while `browser/vm.rs` held the OTHER half of the same engine (the
+serial `shell` executor).
+
+Decision A — default agent = FIRST ENABLED agent in manifest order. `build_handle`
+already assembles cards in manifest order filtered by enabled, so `cards.first()` is the
+whole implementation; the `.find("orchestrator")` hardcode is deleted. Rejected: a facade
+method or a frontmatter `default:` flag — reordering `assets/agents/manifest.json`
+expresses the same intent with zero new surface. NOTE the contract: the default agent
+silently changes if someone reorders the manifest — that IS the mechanism now, pinned by
+a `config.rs` test asserting the first enabled baked agent is the orchestrator.
+
+Decision B — `profile::local_profile_form(model)` is the ONE constructor for the
+in-browser provider's magic strings (`base_url: "local"`, `model: "local/<model>"`,
+recognized by `local_llm::is_local`). The UI holds zero provider magic strings; a
+profile.rs test pins the constructed form against the resolver predicate.
+
+Decision C — the c2w engine's two halves live in one crate: the console glue (asset
+consts, `VM_GLUE`, boot/teardown evals, `state_label`) moves into `browser/vm.rs` as
+`console_bundle`/`console_boot`/`console_destroy`/`state_label`; `document::eval` is host
+wiring, not rsx, so the no-rsx-in-browser rule holds. `assets/vm/` moves with the consts
+(`asset!` paths are crate-relative) to `crates/browser/assets/vm/`; the gitignored 105 MB
+`alpine64.wasm` is staged by hand at the new path (`scripts/vm-c2w/README.md`).
+publish.sh needs no change — its chunker targets the hashed dist output
+(`assets/alpine64-*.wasm`), which is source-crate independent.
+
+Consequences: `ui/features/vm.rs` shrinks to the Dioxus lifecycle (~65 lines);
+`browser/vm.rs` carries both halves (~260 lines, under the cap); the 3 glue tests move
+verbatim; `scripts/vm-c2w/{build.mjs,README.md,package.json}` and `.gitignore` re-path.
+Blast radius: boot's default-agent pick, the lab's add-as-provider path, and every VM
+asset URL (dx re-bundles from the new crate). Reversible: re-add the `.find` arm, inline
+the form, and git-mv the glue + assets back.

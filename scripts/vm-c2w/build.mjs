@@ -1,12 +1,12 @@
 // Build the c2w VM main-thread bundle + stage the worker and its
-// classic-script dependencies into crates/frontend/assets/vm/c2w/.
+// classic-script dependencies into crates/browser/assets/vm/c2w/.
 // The multi-hundred-MB alpine64.wasm is NOT staged here — see
 // scripts/vm-c2w/README.md for how it is produced (container2wasm) and
 // where it lands.
 import { build } from "bun";
 import { copyFileSync, mkdirSync } from "fs";
 
-const OUT = "../../crates/frontend/assets/vm";
+const OUT = "../../crates/browser/assets/vm";
 const SUPPORT = `${OUT}/c2w`;
 mkdirSync(SUPPORT, { recursive: true });
 
