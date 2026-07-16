@@ -103,6 +103,7 @@ A DAG, not a chain — the true allowed-imports table:
 | Fleet stage (launch/monitor parallel loops, ADR-042) | `crates/frontend/src/ui/features/fleet.rs` |
 | Shared run-card helpers (status/activity/tail, ADR-043) | `crates/frontend/src/ui/components/runcard.rs` |
 | Handle facade methods (split from boot, ADR-043) | `crates/browser/src/boot_handle.rs` |
+| Clear chat — archive truncation + terminal-run drop (ADR-046) | `crates/state/src/log.rs` (`clear`) + `crates/engine/src/run/session.rs` (`clear_history`) |
 | Default agent = Orchestrator (Jarvis director, ADR-042) | `crates/frontend/assets/agents/orchestrator.md` |
 | Transport seam | `crates/inference/src/transport.rs` |
 | Provider adapters | `crates/inference/src/{openai_compat,anthropic,mock}.rs` |

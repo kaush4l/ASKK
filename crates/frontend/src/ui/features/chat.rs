@@ -93,15 +93,22 @@ pub fn ChatStage(
     on_send: EventHandler<String>,
     on_agent: EventHandler<String>,
     on_stop: EventHandler<()>,
+    on_clear: EventHandler<()>,
     on_resolve: EventHandler<(String, bool)>,
 ) -> Element {
     let mut input = use_signal(String::new);
+    // Clearing drops the history for good — the first click arms, the second
+    // fires (a two-step button, not a modal).
+    let mut arm_clear = use_signal(|| false);
     let items = build_items(&runs);
     let empty = items.is_empty() && !busy && notice.is_none();
     let send = move |_| {
         let text = input().trim().to_string();
         if !text.is_empty() {
             input.set(String::new());
+            // New history disarms the clear — an armed button must never sit
+            // waiting to wipe a conversation the user has moved on to.
+            arm_clear.set(false);
             on_send.call(text);
         }
     };
@@ -182,6 +189,24 @@ pub fn ChatStage(
                 }
             }
             div { class: "composer",
+                // Nothing to clear on an empty log — the button stays out of
+                // the way until there is history to remove.
+                if !items.is_empty() {
+                    button {
+                        class: if arm_clear() { "send stop" } else { "icon-btn" },
+                        title: "Clear finished conversations — cannot be undone (a run still working is kept)",
+                        aria_label: "Clear the chat history",
+                        onclick: move |_| {
+                            if arm_clear() {
+                                arm_clear.set(false);
+                                on_clear.call(());
+                            } else {
+                                arm_clear.set(true);
+                            }
+                        },
+                        if arm_clear() { "Clear?" } else { "🗑" }
+                    }
+                }
                 textarea {
                     class: "input",
                     rows: 1,
@@ -195,6 +220,7 @@ pub fn ChatStage(
                             let text = input().trim().to_string();
                             if !text.is_empty() {
                                 input.set(String::new());
+                                arm_clear.set(false);
                                 on_send.call(text);
                             }
                         }

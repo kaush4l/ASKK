@@ -156,7 +156,7 @@ mod tests {
                 known_providers: vec![],
             })
             .unwrap();
-            let shared = session.shared();
+            let shared = &session.shared;
             let agent = AgentConfig::from_markdown("agents/t.md", "---\nid: t\n---\n").unwrap();
             let mut run = RunState::new(
                 &agent,

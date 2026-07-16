@@ -98,6 +98,33 @@ impl HarnessHandle {
             .map(|s| s.kind.clone())
     }
 
+    /// Clear the chat history (ADR-046): drop the durable archive and forget
+    /// every TERMINAL run — live runs survive with their signals, so a clear
+    /// mid-run never blanks the answer still being written (their pre-clear
+    /// signals do leave the archive; they persist again as the run appends).
+    /// The live view clears even when the store refuses part of the archive —
+    /// the error is returned so the UI can say the reload may bring some back.
+    /// ponytail: a live run that never appends again (parked, then reloaded)
+    /// leaves no trace at all — it is not there to fence. Accepted: the user
+    /// asked for the history to go.
+    pub async fn clear_history(&self) -> Result<(), String> {
+        let alive: Vec<RunId> = self
+            .runs()
+            .into_iter()
+            .filter(|(_, proj)| !proj.status.is_terminal())
+            .map(|(id, _)| id)
+            .collect();
+        let cleared = self.session.clear_history().await;
+        self.buffer
+            .borrow_mut()
+            .retain(|s| alive.contains(&s.run_id));
+        self.known_runs.borrow_mut().retain(|id| alive.contains(id));
+        if !self.current_run().is_some_and(|id| alive.contains(&id)) {
+            *self.current.borrow_mut() = None;
+        }
+        cleared.map_err(|e| e.to_string())
+    }
+
     /// UI preference (stage/theme/rails), persisted in the session store.
     pub async fn get_pref(&self, name: &str) -> Option<Value> {
         self.settings.pref(name).await.ok().flatten()

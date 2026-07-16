@@ -712,3 +712,60 @@ verbatim; `scripts/vm-c2w/{build.mjs,README.md,package.json}` and `.gitignore` r
 Blast radius: boot's default-agent pick, the lab's add-as-provider path, and every VM
 asset URL (dx re-bundles from the new crate). Reversible: re-add the `.find` arm, inline
 the form, and git-mv the glue + assets back.
+
+## ADR-046 — Clear chat: the archive is droppable, the log stays append-only
+
+Context: the chat log is the fold of every signal the session has ever seen, and ADR-044
+made it survive reloads (replayed segments seed the live buffer). There was no way to
+end a conversation — history only grew, on screen and in OPFS. "Clear the chat" is a
+personal-agent staple, but the signal log is ADR-003's append-only audit trail, so a
+delete cannot be a mutation of records.
+
+Decision — clearing DROPS THE ARCHIVE rather than editing it. `SignalLog::clear` removes
+every `seg-*.jsonl` blob and empties the current epoch's in-memory buffer; the next
+append rewrites the epoch's segment from empty, so cleared signals cannot come back. The
+log stays strictly append-only *within* an archive — this is the truncation the
+`build_handle` resume comment already anticipated ("add segment compaction … when history
+growth hurts"), taken to its limit. `next_seq` keeps climbing for the live session; a
+later reopen restarts it, colliding with nothing, because nothing survived.
+
+Decision B — a clear is scoped to TERMINAL runs. `RunSession::clear_history` truncates
+the log and retains non-terminal runs in the map; `HarnessHandle::clear_history` computes
+the live set from the folds first, then keeps only those runs' signals in the buffer and
+their ids in `known_runs`, dropping the current-run focus only if it was cleared. So a
+clear pressed mid-run empties the finished conversation without blanking the answer still
+streaming. A live run's PRE-clear signals do leave the archive; they re-persist as it
+appends. Alternative rejected: a `cleared_seq` cutoff pref (UI-only filter) — smaller, but
+it leaves every signal on disk while the button claims removal, and the Inspector,
+Dashboard and Fleet would each need the same filter to keep the lie consistent.
+
+Decision C — the UI gate is a two-click arm ("🗑" → "Clear?") in the composer, shown only
+when there is history. No modal, no undo: the archive is gone. A send disarms it (an armed
+button must not sit waiting to wipe a conversation the user moved on to), and the title
+says what it really does — "Clear finished conversations … (a run still working is kept)"
+— because Decision B means a live run is NOT cleared.
+
+Ceilings accepted (review found these; each is a deliberate stop, not an oversight):
+(a) `clear` is best-effort per segment — one refusing blob must not strand the rest, so
+every removal is attempted, the in-memory buffer always empties, and the first error rides
+out to the UI. A partial clear can therefore resurrect part of the history on the next
+reload; the caller says so rather than reporting a clean wipe.
+(b) A live run's pre-clear signals leave the archive and only re-persist as it appends —
+so a run that is parked when cleared, and never appends again before a reload, leaves no
+trace at all: it is not there for the epoch fence to terminate. Accepted; the user asked
+for the history to go.
+(c) `Shared::cancels`/`hosts` keep entries for cleared runs, so `cancel(erased_id)` returns
+a fabricated `Running`/"cancellation requested" outcome. Inert (both facade callers discard
+the outcome), and NOT pruned on purpose: a DRIVING run is out of `runs` by design, so
+retaining those maps against the surviving-run set would strand the token that `cancel`
+needs to reach the very runs a clear spares.
+
+Consequences: `RunSession.shared` becomes `pub(crate)` (the `#[cfg(test)]` accessor it
+replaces freed the lines `clear_history` needed under the ADR-012 cap; `flow.rs` and
+`answer.rs` tests read the field). Agent memory (`memory/<agent_id>` digests) and notes
+(`notes/<agent>/<slug>`) are NOT touched — clearing the chat is not amnesia; a separate
+control would own that. Blast radius: every run list (chat, Agents forest, Dashboard,
+Fleet) reads `runs()`, so a clear empties all of them at once; the Inspector's Signals tab
+and the epoch chip stay live (epoch does not reset — the segment names do not survive to
+be counted). Reversible: drop `clear`/`clear_history` and the button; nothing else reads
+them.

@@ -251,6 +251,19 @@ pub fn App() -> Element {
         let Some(h) = handle() else { return };
         spawn(async move { h.cancel().await });
     };
+    // Clear the chat: terminal runs go, live ones stay (ADR-046) — read the
+    // focus back from the facade, which drops it only if it was cleared.
+    let on_clear = move |_| {
+        let Some(h) = handle() else { return };
+        spawn(async move {
+            if let Err(e) = h.clear_history().await {
+                ui_error.set(Some(e));
+            }
+            current.set(h.current_run());
+            let mut counter = refold;
+            counter += 1;
+        });
+    };
     // Fleet (ADR-042): launch a chosen agent as its own parallel loop by
     // reusing the chat submit path — set the agent, then send. Cancel targets
     // one run by id.
@@ -443,6 +456,7 @@ pub fn App() -> Element {
                                 on_send,
                                 on_agent: move |id: String| agent_id.set(id),
                                 on_stop,
+                                on_clear,
                                 on_resolve,
                             }
                         },

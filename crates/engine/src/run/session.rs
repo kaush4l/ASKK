@@ -284,7 +284,7 @@ fn unknown_run(run_id: &RunId) -> RunOutcome {
 }
 
 pub struct RunSession {
-    shared: Rc<Shared>,
+    pub(crate) shared: Rc<Shared>,
 }
 
 impl RunSession {
@@ -475,6 +475,17 @@ impl RunSession {
         self.finish(run_id, run)
     }
 
+    /// Forget the past (ADR-046): drop the log's whole archive and every TERMINAL
+    /// run's state. Live runs keep theirs — a driving run is out of the map and
+    /// keeps appending, so its post-clear signals re-persist into the emptied
+    /// segment. A refused removal still clears memory; the error rides to the UI.
+    pub async fn clear_history(&self) -> Result<(), crate::state::StoreError> {
+        let cleared = self.shared.log.lock().await.clear().await;
+        let mut runs = self.shared.runs.borrow_mut();
+        runs.retain(|_, r| !r.status.is_terminal());
+        cleared
+    }
+
     /// Fold of the run's own signal stream — the observable behavior.
     pub fn projection(&self, run_id: &RunId) -> Option<RunProjection> {
         self.shared
@@ -488,14 +499,6 @@ impl RunSession {
         let outcome = run.outcome();
         self.shared.runs.borrow_mut().insert(run_id.clone(), run);
         outcome
-    }
-}
-
-#[cfg(test)]
-impl RunSession {
-    /// Test seam: unit tests drive `handle_answer` against the real Shared.
-    pub(crate) fn shared(&self) -> &Rc<Shared> {
-        &self.shared
     }
 }
 

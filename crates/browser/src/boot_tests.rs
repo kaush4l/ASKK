@@ -250,6 +250,50 @@ fn resume_seeds_prior_epoch_runs_and_surfaces_log_health() {
 }
 
 #[test]
+fn clear_history_forgets_terminal_runs_and_the_archive_but_spares_live_ones() {
+    use askk_engine::state::{BlobStore, MemBlob};
+
+    block_on(async {
+        let blobs: Rc<dyn BlobStore> = Rc::new(MemBlob::new());
+        let handle = host_session_with(blobs.clone()).await.unwrap();
+        let done = handle.submit("assistant", "say hello").await.unwrap();
+        handle.drive().await;
+        assert_eq!(handle.projection(&done).status, RunStatus::Answered);
+        assert!(!blobs.list("seg-").await.unwrap().is_empty());
+        // A REAL non-terminal run: submitted, in the session map, never driven.
+        let parked = handle.submit("assistant", "wait for me").await.unwrap();
+        // A run still driving (out of the session map, live in the buffer).
+        let live = RunId::new("still-driving");
+        handle.buffer.borrow_mut().push(Signal {
+            seq: 99,
+            run_id: live.clone(),
+            ts_ms: 0,
+            kind: SignalKind::PhaseEntered {
+                name: "main".into(),
+            },
+        });
+
+        handle.clear_history().await.unwrap();
+
+        // The answered run is gone from the list, the fold, and the archive;
+        // both live runs — the real parked one and the driving one — stay.
+        let ids: Vec<RunId> = handle.runs().into_iter().map(|(id, _)| id).collect();
+        assert_eq!(ids, vec![live.clone(), parked.clone()]);
+        assert!(handle.projection(&done).messages.is_empty());
+        assert!(blobs.list("seg-").await.unwrap().is_empty());
+        // Focus survives on a run that survived.
+        assert_eq!(handle.current_run(), Some(parked.clone()));
+        // A clear mid-run is not a wipe: the parked run keeps its whole fold,
+        // and the driving run keeps its live signals.
+        let proj = handle.projection(&parked);
+        assert_eq!(proj.status, RunStatus::Running);
+        assert!(proj.timeline.iter().any(|t| t.contains("wait for me")));
+        assert_eq!(handle.projection(&live).status, RunStatus::Running);
+        assert!(!handle.signals(&live).is_empty());
+    });
+}
+
+#[test]
 fn prefs_round_trip_through_the_session_store() {
     block_on(async {
         let handle = host_session().await.unwrap();
