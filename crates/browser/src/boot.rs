@@ -41,10 +41,25 @@ const MCP_PREF: &str = "mcp_servers";
 #[cfg(target_arch = "wasm32")]
 const SEARXNG_DEFAULT: &str = "https://search.rhscz.eu";
 
+/// Snapshot of the signal log's health, read through the facade (plain
+/// struct — the facade passes only core types + plain structs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogHealth {
+    /// This session's segment epoch (>= 2 means prior sessions exist).
+    pub epoch: u64,
+    /// True once a segment write failed — signals flow in memory only.
+    pub degraded: bool,
+    /// Replayed lines skipped at open because they would not parse.
+    pub quarantined: u64,
+}
+
 /// The one facade the UI talks to.
 pub struct HarnessHandle {
     session: RunSession,
     host: Rc<dyn RunHost>,
+    /// Live health probe taken from the log at boot (the log itself moves
+    /// into the session); `log_health()` snapshots it.
+    health: askk_engine::state::HealthProbe,
     /// Live signal buffer fed by the host sink — the fold source for a run
     /// that is mid-drive (and therefore out of the session's run map).
     buffer: Rc<RefCell<Vec<Signal>>>,
@@ -97,7 +112,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
                 )),
             ),
         };
-    let (log, _replayed) = SignalLog::open(blobs.clone(), Box::new(|| js_sys::Date::now() as u64))
+    let (log, replayed) = SignalLog::open(blobs.clone(), Box::new(|| js_sys::Date::now() as u64))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -210,8 +225,8 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
         }
     };
     let mut handle = build_handle(
-        agents, teams, skills, soul, registry, resolver, log, kv, blobs, host, buffer, profiles,
-        searxng,
+        agents, teams, skills, soul, registry, resolver, log, kv, blobs, host, buffer, replayed,
+        profiles, searxng,
     )?;
     // One boot-degradation channel: broken storage and dead MCP servers both
     // surface once in the UI; neither fails boot.
@@ -234,7 +249,7 @@ pub async fn session(notify: Box<dyn Fn()>) -> Result<HarnessHandle, String> {
 #[path = "boot_host.rs"]
 mod boot_host;
 #[cfg(not(target_arch = "wasm32"))]
-pub use boot_host::{host_session, session};
+pub use boot_host::{host_session, host_session_with, session};
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "boot_tests.rs"]

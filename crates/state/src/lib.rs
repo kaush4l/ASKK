@@ -19,7 +19,7 @@ pub mod memory;
 pub mod session;
 pub mod store;
 
-pub use log::{Clock, SignalLog};
+pub use log::{Clock, HealthProbe, SignalLog};
 pub use memory::{MemoryStore, DEFAULT_MAX_ENTRIES};
 pub use session::SessionStore;
 pub use store::{BlobStore, KvStore, LocalBoxFuture, MemBlob, MemKv, StoreError};

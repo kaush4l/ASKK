@@ -177,6 +177,79 @@ fn draft_accumulates_deltas_and_clears_on_response() {
 }
 
 #[test]
+fn resume_seeds_prior_epoch_runs_and_surfaces_log_health() {
+    use askk_engine::state::{BlobStore, MemBlob};
+
+    block_on(async {
+        let blobs: Rc<dyn BlobStore> = Rc::new(MemBlob::new());
+        // Epoch 1: one terminal run and one zombie (RunStarted only), then
+        // the session dies without cleanup.
+        {
+            let (mut log, _) = SignalLog::open(blobs.clone(), Box::new(|| 0))
+                .await
+                .unwrap();
+            let done = RunId::new("old-done");
+            log.append(
+                SignalKind::RunStarted {
+                    agent_id: "assistant".into(),
+                    goal: "old goal".into(),
+                },
+                done.clone(),
+            )
+            .await
+            .unwrap();
+            log.append(
+                SignalKind::StatusSet {
+                    status: RunStatus::Answered,
+                },
+                done,
+            )
+            .await
+            .unwrap();
+            log.append(
+                SignalKind::RunStarted {
+                    agent_id: "assistant".into(),
+                    goal: "hang forever".into(),
+                },
+                RunId::new("old-zombie"),
+            )
+            .await
+            .unwrap();
+        }
+
+        // Epoch 2 boots over the same store: replay + fence + seed.
+        let handle = host_session_with(blobs).await.unwrap();
+        let statuses: Vec<(RunId, RunStatus)> = handle
+            .runs()
+            .into_iter()
+            .map(|(id, proj)| (id, proj.status))
+            .collect();
+        assert_eq!(
+            statuses,
+            vec![
+                (RunId::new("old-zombie"), RunStatus::Interrupted), // fenced
+                (RunId::new("old-done"), RunStatus::Answered),
+            ]
+        );
+        // Raw signals are observable per run and filtered by id.
+        assert!(!handle.signals(&RunId::new("old-done")).is_empty());
+        assert!(handle.signals(&RunId::new("someone-else")).is_empty());
+        let health = handle.log_health();
+        assert!(health.epoch >= 2, "epoch: {}", health.epoch);
+        assert!(!health.degraded);
+        assert_eq!(health.quarantined, 0);
+
+        // A fresh submit sorts ABOVE the prior-epoch exhibits.
+        let fresh = handle.submit("assistant", "new work").await.unwrap();
+        let ids: Vec<RunId> = handle.runs().into_iter().map(|(id, _)| id).collect();
+        assert_eq!(
+            ids,
+            vec![fresh, RunId::new("old-zombie"), RunId::new("old-done")]
+        );
+    });
+}
+
+#[test]
 fn prefs_round_trip_through_the_session_store() {
     block_on(async {
         let handle = host_session().await.unwrap();

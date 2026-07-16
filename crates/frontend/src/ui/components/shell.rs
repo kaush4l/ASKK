@@ -5,9 +5,34 @@
 
 use dioxus::prelude::*;
 
-use askk_core::Message;
+use askk_browser::boot::LogHealth;
+use askk_core::{Message, Signal};
 
 use crate::ui::components::manifest::{Stage, COMPONENTS};
+
+/// Inspector row for one raw signal: the serde `kind` tag + a short summary
+/// of the payload fields (truncated ~120 chars).
+fn signal_row(s: &Signal) -> (String, String) {
+    let value = serde_json::to_value(&s.kind).unwrap_or_default();
+    let kind = value
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let mut payload = match &value {
+        serde_json::Value::Object(map) => map
+            .iter()
+            .filter(|(k, _)| k.as_str() != "kind")
+            .map(|(k, v)| format!("{k}: {v}"))
+            .collect::<Vec<_>>()
+            .join("  "),
+        _ => String::new(),
+    };
+    if payload.chars().count() > 120 {
+        payload = payload.chars().take(120).collect::<String>() + "…";
+    }
+    (kind, payload)
+}
 
 #[component]
 pub fn Header(
@@ -78,26 +103,53 @@ pub fn LeftRail(stage: Stage, open: bool, on_pick: EventHandler<Stage>) -> Eleme
     }
 }
 
-/// Inspector rail. Kiln stubs Skills/Supplies; here the body shows the
-/// active run's raw messages in mono when a run exists.
+/// Inspector rail: Messages = the active run's raw prompt messages,
+/// Signals = the run's raw stamped signals, plus a log-health chip.
 #[component]
 pub fn RightRail(
     open: bool,
     tab: String,
     agent: Option<String>,
     messages: Vec<Message>,
+    signals: Vec<Signal>,
+    health: Option<LogHealth>,
     on_tab: EventHandler<String>,
 ) -> Element {
     let sub = agent.unwrap_or_else(|| "—".into());
+    // Stale persisted tab prefs ("Skills"/"Supplies") normalize to Messages.
+    let tab = if tab == "Signals" {
+        tab
+    } else {
+        "Messages".to_string()
+    };
+    // At most the last ~200 signals — the rail is a peek, not the archive.
+    let rows: Vec<(String, String)> = signals
+        .iter()
+        .skip(signals.len().saturating_sub(200))
+        .map(signal_row)
+        .collect();
     rsx! {
         aside { class: if open { "panel panel-right" } else { "panel panel-right closed" },
             div { class: "panel-inner",
                 div { class: "inspector-head",
                     span { class: "inspector-title", "Inspector" }
+                    if let Some(h) = health {
+                        if h.degraded || h.quarantined > 0 {
+                            span { class: "ready-pill",
+                                title: "degraded: {h.degraded}, quarantined: {h.quarantined}",
+                                span { class: "dot-busy" }
+                                "epoch {h.epoch}"
+                            }
+                        } else {
+                            span { class: "meta-tag", title: "signal log healthy",
+                                "epoch {h.epoch}"
+                            }
+                        }
+                    }
                     span { class: "inspector-sub", "{sub}" }
                 }
                 div { class: "tabs",
-                    for name in ["Skills", "Supplies"] {
+                    for name in ["Messages", "Signals"] {
                         button {
                             key: "{name}",
                             class: if tab == name { "tab on" } else { "tab" },
@@ -106,10 +158,21 @@ pub fn RightRail(
                         }
                     }
                 }
-                if messages.is_empty() {
-                    div { class: "inspector-empty",
-                        if tab == "Skills" { "no skills loaded" } else { "nothing to inspect yet" }
+                if tab == "Signals" {
+                    if rows.is_empty() {
+                        div { class: "inspector-empty", "no signals yet" }
+                    } else {
+                        div { class: "prompt",
+                            for (i, (kind, payload)) in rows.iter().enumerate() {
+                                div { key: "{i}", class: "prompt-msg",
+                                    div { class: "prompt-role", "{kind}" }
+                                    pre { class: "prompt-content", "{payload}" }
+                                }
+                            }
+                        }
                     }
+                } else if messages.is_empty() {
+                    div { class: "inspector-empty", "nothing to inspect yet" }
                 } else {
                     div { class: "prompt",
                         for (i, m) in messages.iter().enumerate() {
@@ -175,5 +238,42 @@ pub fn AvatarBar(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use askk_core::{RunId, SignalKind};
+
+    fn sig(kind: SignalKind) -> Signal {
+        Signal {
+            seq: 1,
+            run_id: RunId::new("r1"),
+            ts_ms: 0,
+            kind,
+        }
+    }
+
+    #[test]
+    fn signal_row_tags_kind_and_summarizes_payload() {
+        let (kind, payload) = signal_row(&sig(SignalKind::PhaseEntered {
+            name: "plan".into(),
+        }));
+        assert_eq!(kind, "phase_entered");
+        assert!(payload.contains("name") && payload.contains("plan"));
+        // Field-less kinds row cleanly with an empty payload.
+        let (kind, payload) = signal_row(&sig(SignalKind::LlmRequest));
+        assert_eq!(kind, "llm_request");
+        assert!(payload.is_empty());
+    }
+
+    #[test]
+    fn signal_row_truncates_long_payloads() {
+        let (_, payload) = signal_row(&sig(SignalKind::LlmResponse {
+            text: "x".repeat(500),
+        }));
+        assert!(payload.chars().count() <= 121, "len: {}", payload.len());
+        assert!(payload.ends_with('…'));
     }
 }

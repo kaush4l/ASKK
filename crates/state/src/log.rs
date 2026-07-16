@@ -8,10 +8,12 @@
 //!
 //! Degrade-don't-die: a failed segment write flips the log to in-memory
 //! only instead of erroring — losing persistence must never kill a live
-//! run. Note: the boot path currently DISCARDS the replayed signals
-//! (`web/src/host/boot.rs`) — the fence runs, but there is no resume of
-//! prior runs (GAPS A5).
+//! run. The boot path (`crates/browser/src/boot.rs`) seeds the replayed
+//! signals into the live buffer, so prior-epoch runs resume as read-only
+//! exhibits (GAPS A5 closed, ADR-044). [`HealthProbe`] is the cloneable
+//! read side of the degrade flag.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -42,7 +44,34 @@ pub struct SignalLog {
     /// Set on the first failed segment write: persistence is lost for this
     /// epoch but signals keep flowing in memory — durability degrades, runs
     /// never die on a storage fault (observed: broken OPFS quota grants).
-    degraded: bool,
+    /// Shared cell so [`HealthProbe`] clones read the live value.
+    degraded: Rc<Cell<bool>>,
+}
+
+/// Cloneable read-only health view of a [`SignalLog`]: `epoch` and
+/// `quarantined` are fixed at open; `degraded` reads the log's live shared
+/// cell, so a probe taken at boot observes a later persistence failure.
+#[derive(Clone)]
+pub struct HealthProbe {
+    epoch: u64,
+    quarantined: u64,
+    degraded: Rc<Cell<bool>>,
+}
+
+impl HealthProbe {
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    /// Lines skipped during replay because they would not parse.
+    pub fn quarantined(&self) -> u64 {
+        self.quarantined
+    }
+
+    /// Live read: true once a segment write has failed.
+    pub fn degraded(&self) -> bool {
+        self.degraded.get()
+    }
 }
 
 fn seg_path(epoch: u64) -> String {
@@ -106,7 +135,7 @@ impl SignalLog {
             buf: String::new(),
             next_seq,
             quarantined,
-            degraded: false,
+            degraded: Rc::new(Cell::new(false)),
         };
 
         // Epoch fence: synthesize terminals for every replayed run that has
@@ -158,8 +187,8 @@ impl SignalLog {
         let line = serde_json::to_string(&signal)?;
         self.buf.push_str(&line);
         self.buf.push('\n');
-        if !self.degraded {
-            self.degraded = !self.persist().await;
+        if !self.degraded.get() {
+            self.degraded.set(!self.persist().await);
         }
         self.next_seq += 1;
         Ok(signal)
@@ -189,12 +218,22 @@ impl SignalLog {
     /// True once a segment write has failed; signals still flow in memory
     /// but will not survive a reload.
     pub fn degraded(&self) -> bool {
-        self.degraded
+        self.degraded.get()
     }
 
     /// Lines skipped during replay because they would not parse.
     pub fn quarantined(&self) -> u64 {
         self.quarantined
+    }
+
+    /// A cloneable health probe: take it at open, read it after the log has
+    /// moved into the session — the degrade flag is shared, not snapshotted.
+    pub fn health_probe(&self) -> HealthProbe {
+        HealthProbe {
+            epoch: self.epoch,
+            quarantined: self.quarantined,
+            degraded: Rc::clone(&self.degraded),
+        }
     }
 }
 
@@ -392,6 +431,25 @@ mod tests {
             assert!(log.degraded());
             let second = log.append(SignalKind::LlmRequest, run("r1")).await.unwrap();
             assert_eq!(second.seq, first.seq + 1);
+        });
+    }
+
+    #[test]
+    fn health_probe_reads_degradation_live() {
+        block_on(async {
+            let blobs: Rc<dyn BlobStore> = Rc::new(LyingBlob {
+                inner: MemBlob::new(),
+            });
+            let (mut log, _) = open(&blobs).await;
+            let probe = log.health_probe();
+            assert_eq!(probe.epoch(), log.epoch());
+            assert_eq!(probe.quarantined(), log.quarantined());
+            assert!(!probe.degraded());
+            // The lying write fails size-verify → the shared cell flips and
+            // the probe taken BEFORE the failure observes it.
+            log.append(SignalKind::LlmRequest, run("r1")).await.unwrap();
+            assert!(log.degraded());
+            assert!(probe.degraded());
         });
     }
 

@@ -7,14 +7,21 @@ use super::*;
 /// Host bootstrap: memory stores + a scripted `MockProvider` — the living
 /// smoke session `main` drives (and tests assert on).
 pub async fn host_session() -> Result<HarnessHandle, String> {
+    host_session_with(Rc::new(askk_engine::state::MemBlob::new())).await
+}
+
+/// The injection seam: boot over a CALLER-OWNED blob store, so tests can
+/// pre-write segments and assert the resume path (GAPS A5).
+pub async fn host_session_with(
+    blobs: Rc<dyn askk_engine::state::BlobStore>,
+) -> Result<HarnessHandle, String> {
     use askk_core::Provider;
     use askk_engine::run::TestHost;
-    use askk_engine::state::{BlobStore, MemBlob, MemKv};
+    use askk_engine::state::MemKv;
     use askk_inference::{MockProvider, MockTransport};
 
     let kv: Rc<dyn KvStore> = Rc::new(MemKv::new());
-    let blobs: Rc<dyn BlobStore> = Rc::new(MemBlob::new());
-    let (log, _replayed) = SignalLog::open(blobs.clone(), Box::new(|| 0))
+    let (log, replayed) = SignalLog::open(blobs.clone(), Box::new(|| 0))
         .await
         .map_err(|e| e.to_string())?;
     let mut registry = ToolRegistry::new();
@@ -46,8 +53,8 @@ pub async fn host_session() -> Result<HarnessHandle, String> {
     let profiles = Rc::new(RefCell::new(ProfileSet::default()));
     let (agents, teams, skills, soul) = crate::config::baked_config()?;
     build_handle(
-        agents, teams, skills, soul, registry, resolver, log, kv, blobs, host, buffer, profiles,
-        searxng,
+        agents, teams, skills, soul, registry, resolver, log, kv, blobs, host, buffer, replayed,
+        profiles, searxng,
     )
 }
 

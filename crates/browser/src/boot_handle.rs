@@ -139,6 +139,28 @@ impl HarnessHandle {
             .await;
     }
 
+    /// Raw stamped signals of one run, in arrival order (clone of the live
+    /// buffer slice — replayed prior-epoch signals were seeded there at boot,
+    /// live ones arrive via the host sink, mirroring `draft`).
+    pub fn signals(&self, run_id: &RunId) -> Vec<Signal> {
+        self.buffer
+            .borrow()
+            .iter()
+            .filter(|s| &s.run_id == run_id)
+            .cloned()
+            .collect()
+    }
+
+    /// Snapshot of the signal log's health probe (epoch/quarantined fixed at
+    /// open; degraded reads the log's live cell).
+    pub fn log_health(&self) -> LogHealth {
+        LogHealth {
+            epoch: self.health.epoch(),
+            degraded: self.health.degraded(),
+            quarantined: self.health.quarantined(),
+        }
+    }
+
     /// Fold of the run's signals. Parked/terminal runs come from the session
     /// (complete stream); a run mid-drive folds from the live buffer.
     pub fn projection(&self, run_id: &RunId) -> RunProjection {
@@ -238,9 +260,28 @@ pub(super) fn build_handle(
     blobs: Rc<dyn askk_engine::state::BlobStore>,
     host: Rc<dyn RunHost>,
     buffer: Rc<RefCell<Vec<Signal>>>,
+    replayed: Vec<Signal>,
     profiles: Rc<RefCell<ProfileSet>>,
     searxng: Rc<RefCell<String>>,
 ) -> Result<HarnessHandle, String> {
+    // Resume (GAPS A5, ADR-044): seed every replayed durable signal into the
+    // live buffer so prior-epoch runs fold like any other, and list their ids
+    // (first-seen order) in known_runs BEFORE any fresh submit — `runs()`
+    // reverses, so fresh submissions sort ABOVE them (newest-first). The
+    // epoch fence already made every replayed run terminal; the cross-tab
+    // bus tap only fires in the host sink, so seeding never rebroadcasts.
+    // ponytail: seeds every prior durable signal; add segment compaction /
+    // last-N-runs cap when history growth hurts (the log never compacts
+    // today either).
+    let mut known_runs: Vec<RunId> = Vec::new();
+    for signal in &replayed {
+        if !known_runs.contains(&signal.run_id) {
+            known_runs.push(signal.run_id.clone());
+        }
+    }
+    buffer.borrow_mut().extend(replayed);
+    // The probe outlives the log, which moves into the session below.
+    let health = log.health_probe();
     let cards = agents
         .iter()
         .filter(|a| a.enabled)
@@ -268,13 +309,14 @@ pub(super) fn build_handle(
     Ok(HarnessHandle {
         session,
         host,
+        health,
         buffer,
         cards,
         profiles,
         settings: SessionStore::new(kv.clone()),
         blobs,
         current: RefCell::new(None),
-        known_runs: RefCell::new(Vec::new()),
+        known_runs: RefCell::new(known_runs),
         storage_warning: None,
         searxng,
         mcp_servers: RefCell::new(String::new()),

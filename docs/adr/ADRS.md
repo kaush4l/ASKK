@@ -632,3 +632,44 @@ Consequences: 18 file moves inside `crates/frontend/src/ui/` (git-mv, behavior
 identical), MAP.md rows re-pathed, one new structure test, boot.rs 512→~240 lines.
 Blast radius: frontend module paths + the browser boot file layout; no engine/state
 change. Reversible: git mv back and delete the structure test.
+
+## ADR-044 — App-core observe surface + resume (GAPS A5)
+
+Context: ADR-043 named the browser crate the app-core package — import, initialize,
+start, and OBSERVE the application. The facade could start and fold runs but exposed no
+raw view: no per-run signal stream, no log health, and `SignalLog::open`'s replayed
+signals were discarded at boot (GAPS A5) — prior sessions' runs vanished on reload even
+though the log kept and fenced them.
+
+Decision A — observe = two facade reads, plain structs only (the boot.rs banner rule):
+`signals(&run_id) -> Vec<Signal>` (raw stamped signals of one run, in arrival order — a
+clone of the live buffer slice, mirroring `draft`) and `log_health() -> LogHealth`
+(`{epoch, degraded, quarantined}`). Backing it, `state::SignalLog` grew a cloneable
+`HealthProbe` (`Rc<Cell<bool>>` share of the degrade flag; epoch/quarantined fixed at
+open) taken by `build_handle` before the log moves into the session. The inspector rail
+renders both: Messages/Signals tabs plus an `epoch N` health chip that warns when
+degraded or quarantined.
+
+Decision B — resume = seed everything. `build_handle` gains the `replayed` vector:
+prior-epoch run ids land in `known_runs` (first-seen order, BEFORE any fresh submit, so
+`runs()`'s reverse keeps newest-first) and the signals extend the live buffer, where the
+existing buffer-fold projection path picks them up unchanged. Prior-epoch runs are
+read-only exhibits: the epoch fence already appended Error + Interrupted terminals for
+zombies, so every replayed run folds terminal and cancel is a no-op. Safety facts that
+make seeding sound: the cross-tab bus tap fires only in the host sink (seeding never
+rebroadcasts), and LlmDelta is never persisted (no stale drafts replay). Rejected:
+rebuilding RunState objects per replayed run — the projection IS the view state; nothing
+needs the mutable run machinery for a terminal exhibit. No compaction yet: the seed
+grows with the log (which never compacts either); add segment compaction or a
+last-N-runs cap when history growth hurts. `host_session_with(blobs)` is the host-side
+injection seam that lets tests pre-write segments and boot over them.
+
+Known limitation, documented not fixed: two LIVE tabs already violate the log's
+single-writer contract — tab B's boot fences tab A's in-flight runs as stale. That is
+pre-existing epoch-fence behavior, now merely VISIBLE through the resumed run list.
+
+Consequences: `HarnessHandle` carries a `HealthProbe`; `build_handle` takes `replayed`;
+the inspector rail's stub tabs (Skills/Supplies) became Messages/Signals (stale persisted
+tab prefs normalize to Messages). Blast radius: boot assembly (both targets), the state
+log's degrade flag representation (`bool` → `Rc<Cell<bool>>`, getters unchanged), and the
+right rail. Reversible: drop the two facade reads and pass an empty `replayed`.

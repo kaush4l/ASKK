@@ -95,10 +95,13 @@ below is accepted, not pending.
 The benchmark (bench/acceptance/ROWS.md, ADR-020) replaced "perfect" as the termination
 condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md:
 
-33. A5 resume: reopen fences non-terminal runs to Interrupted (state/log.rs epoch fence)
-    and boot discards replayed signals — no RunState rebuild, no dedup consumer. Effect
-    ids (`{run_id}-call-{seq}`) and deterministic replay are already green (pinned by
-    `a5_foundation_replay_dedup_fence`).
+33. CLOSED (ADR-044): A5 resume — boot now seeds every replayed signal into the live
+    buffer and lists prior-epoch runs in `known_runs` (`build_handle`), so they resume
+    as read-only exhibits (fenced terminal by the state/log.rs epoch fence; fresh
+    submits sort above them). No RunState rebuild — the buffer-fold projection IS the
+    consumer. Effect ids and deterministic replay were already green (pinned by
+    `a5_foundation_replay_dedup_fence`; the seed by
+    `resume_seeds_prior_epoch_runs_and_surfaces_log_health`).
 34. A7 pause: BudgetExhausted is a TERMINAL status (ADR-008); the brief wants a resumable
     `Paused(BudgetExhausted)`. Terminal→paused is a semantics change = HUMAN GATE before
     building. Sibling isolation already green (pinned by a7 test). The confirmation park

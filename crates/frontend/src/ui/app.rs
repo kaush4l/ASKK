@@ -195,6 +195,13 @@ pub fn App() -> Element {
             .collect(),
         _ => Vec::new(),
     };
+    // Inspector rail data, only while the rail is open (signals clone the
+    // live buffer slice — skip that on every refold when the rail is closed).
+    let (rail_signals, rail_health) = match (handle(), current(), right_open()) {
+        (Some(h), Some(id), true) => (h.signals(&id), Some(h.log_health())),
+        (Some(h), None, true) => (Vec::new(), Some(h.log_health())),
+        _ => (Vec::new(), None),
+    };
     let agent_cards = handle().map(|h| h.agents()).unwrap_or_default();
     let agent_name = agent_cards
         .iter()
@@ -486,6 +493,8 @@ pub fn App() -> Element {
                     tab: tab(),
                     agent: current().map(|_| agent_id()),
                     messages: projection.map(|p| p.messages).unwrap_or_default(),
+                    signals: rail_signals,
+                    health: rail_health,
                     on_tab: move |t: String| { tab.set(t); persist(); },
                 }
             }
