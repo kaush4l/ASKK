@@ -1,19 +1,25 @@
-//! FEATURE: agent-curated notes — `remember`/`recall`/`forget` over `KvStore`
-//! keys `notes/<slug>`; distinct from `state/memory.rs` per-agent digests;
-//! shared namespace across agents = GAPS 49.
+//! FEATURE: agent-curated notes — `remember`/`recall`/`forget` over `KvStore`;
+//! distinct from `state/memory.rs` per-agent digests.
 //!
-//! Follows the knowledge-tools pattern. One note per
-//! key `notes/<slug>` as `{ "text": .., "ts": .. }`; `recall` lists newest
-//! first (bounded) or substring-searches slugs + text.
+//! Follows the knowledge-tools pattern: one note per key as
+//! `{ "text": .., "ts": .. }`; `recall` lists newest first (bounded) or
+//! substring-searches slugs + text.
 //!
-//! ponytail: shared memory namespace; per-agent scoping when ToolCtx carries
-//! the caller. Prefix is `notes/` NOT `memory/` — `memory/<agent_id>` is
-//! owned by `MemoryStore` digests and a slug equal to an agent id would
-//! clobber that agent's memory.
+//! Scoping (closes GAPS 49): when the ctx carries `AGENT_ID_SLICE` (set by
+//! tool dispatch), notes live under `notes/<agent_id>/<slug>` — writes are
+//! per-agent, `recall`/`forget` fall back to legacy shared `notes/<slug>`
+//! keys (readable/deletable by all; a scoped note shadows a legacy slug tie).
+//! A ctx without the slice (direct/test callers) keeps the flat legacy view.
+//! Unambiguous by construction: slugs reject `/` (`valid_slug`) and agent
+//! ids are validated slugs, so `notes/x` and `notes/a/x` never collide.
+//! Prefix is `notes/` NOT `memory/` — `memory/<agent_id>` is owned by
+//! `MemoryStore` digests and a slug equal to an agent id would clobber
+//! that agent's memory.
 
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use askk_core::{Effect, Tool, ToolCtx, ToolResult, ToolSpec};
+use askk_core::{Effect, Tool, ToolCtx, ToolResult, ToolSpec, AGENT_ID_SLICE};
 use serde_json::{json, Value};
 
 use askk_state::{KvStore, LocalBoxFuture};
@@ -45,8 +51,17 @@ pub fn register_memory_tools(
     }))
 }
 
-fn key(slug: &str) -> String {
-    format!("{PREFIX}{slug}")
+/// The caller's namespace: `notes/<agent_id>/` when the ctx carries the
+/// dispatch-supplied agent id, else the legacy shared `notes/`.
+fn prefix(ctx: &ToolCtx) -> String {
+    match ctx.slice(AGENT_ID_SLICE).and_then(Value::as_str) {
+        Some(id) if !id.is_empty() => format!("{PREFIX}{id}/"),
+        _ => PREFIX.to_string(),
+    }
+}
+
+fn key(ctx: &ToolCtx, slug: &str) -> String {
+    format!("{}{slug}", prefix(ctx))
 }
 
 fn valid_slug(slug: &str) -> bool {
@@ -85,24 +100,50 @@ fn auto_slug(text: &str) -> String {
     }
 }
 
-/// All stored notes as (slug, text, ts), newest first (ties: slug order).
-async fn load_notes(kv: &Rc<dyn KvStore>) -> Result<Vec<(String, String, u64)>, String> {
+/// Tolerant read of one note value: malformed entries are skipped, not fatal.
+async fn read_note(kv: &Rc<dyn KvStore>, key: &str) -> Option<(String, u64)> {
+    let value = kv.get(key).await.ok()??;
+    let text = value.get("text").and_then(Value::as_str)?.to_string();
+    let ts = value.get("ts").and_then(Value::as_u64).unwrap_or(0);
+    Some((text, ts))
+}
+
+/// The caller's visible notes as (slug, text, ts), newest first (ties: slug
+/// order). A scoped caller sees its own `notes/<agent_id>/<slug>` notes plus
+/// the legacy shared `notes/<slug>` keys (scoped wins on slug ties); an
+/// unscoped caller keeps the flat legacy view of everything under `notes/`.
+async fn load_notes(
+    kv: &Rc<dyn KvStore>,
+    ctx: &ToolCtx,
+) -> Result<Vec<(String, String, u64)>, String> {
+    let scope = prefix(ctx);
     let keys = kv
         .list_prefix(PREFIX)
         .await
         .map_err(|e| format!("store: {e:?}"))?;
-    let mut notes = Vec::new();
+    let mut by_slug: BTreeMap<String, (String, u64)> = BTreeMap::new();
+    // Legacy pass: bare `notes/<slug>` keys when scoped; every key when not.
     for k in &keys {
-        // Tolerant read: malformed values are skipped, not fatal.
-        let Ok(Some(value)) = kv.get(k).await else {
-            continue;
-        };
-        let Some(text) = value.get("text").and_then(Value::as_str) else {
-            continue;
-        };
-        let ts = value.get("ts").and_then(Value::as_u64).unwrap_or(0);
-        notes.push((k[PREFIX.len()..].to_string(), text.to_string(), ts));
+        let rem = &k[PREFIX.len()..];
+        if scope != PREFIX && rem.contains('/') {
+            continue; // some agent's scoped note; own scope reads below
+        }
+        if let Some(note) = read_note(kv, k).await {
+            by_slug.insert(rem.to_string(), note);
+        }
     }
+    // Scoped pass second: a scoped note shadows a legacy slug tie.
+    if scope != PREFIX {
+        for k in keys.iter().filter(|k| k.starts_with(&scope)) {
+            if let Some(note) = read_note(kv, k).await {
+                by_slug.insert(k[scope.len()..].to_string(), note);
+            }
+        }
+    }
+    let mut notes: Vec<(String, String, u64)> = by_slug
+        .into_iter()
+        .map(|(slug, (text, ts))| (slug, text, ts))
+        .collect();
     notes.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
     Ok(notes)
 }
@@ -166,7 +207,7 @@ impl Tool for Remember {
                 return ToolResult::ok(format!("would remember '{slug}'"));
             }
             let note = json!({ "text": text, "ts": (self.now_ms)() });
-            match self.kv.set(&key(&slug), note).await {
+            match self.kv.set(&key(ctx, &slug), note).await {
                 Ok(()) => ToolResult::ok(format!("remembered '{slug}'")),
                 Err(e) => ToolResult::err(format!("remember: store: {e:?}")),
             }
@@ -201,14 +242,14 @@ impl Tool for Recall {
         &self.spec
     }
 
-    fn call<'a>(&'a self, args: Value, _ctx: &'a mut ToolCtx) -> LocalBoxFuture<'a, ToolResult> {
+    fn call<'a>(&'a self, args: Value, ctx: &'a mut ToolCtx) -> LocalBoxFuture<'a, ToolResult> {
         Box::pin(async move {
             let query = args
                 .get("query")
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|q| !q.is_empty());
-            let mut notes = match load_notes(&self.kv).await {
+            let mut notes = match load_notes(&self.kv, ctx).await {
                 Ok(notes) => notes,
                 Err(e) => return ToolResult::err(format!("recall: {e}")),
             };
@@ -268,15 +309,24 @@ impl Tool for Forget {
             else {
                 return ToolResult::err("forget: missing non-empty string field 'slug'");
             };
-            match self.kv.get(&key(slug)).await {
-                Ok(Some(_)) => {}
+            // Scoped key first, legacy shared `notes/<slug>` as fallback —
+            // legacy notes stay deletable by everyone (GAPS 49 migration).
+            let scoped = key(ctx, slug);
+            let legacy = format!("{PREFIX}{slug}");
+            let target = match self.kv.get(&scoped).await {
+                Ok(Some(_)) => scoped,
+                Ok(None) if scoped != legacy => match self.kv.get(&legacy).await {
+                    Ok(Some(_)) => legacy,
+                    Ok(None) => return ToolResult::err(format!("forget: no note '{slug}'")),
+                    Err(e) => return ToolResult::err(format!("forget: store: {e:?}")),
+                },
                 Ok(None) => return ToolResult::err(format!("forget: no note '{slug}'")),
                 Err(e) => return ToolResult::err(format!("forget: store: {e:?}")),
-            }
+            };
             if ctx.dry_run {
                 return ToolResult::ok(format!("would forget '{slug}'"));
             }
-            match self.kv.remove(&key(slug)).await {
+            match self.kv.remove(&target).await {
                 Ok(()) => ToolResult::ok(format!("forgot '{slug}'")),
                 Err(e) => ToolResult::err(format!("forget: store: {e:?}")),
             }
@@ -285,172 +335,4 @@ impl Tool for Forget {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::cell::Cell;
-
-    use super::super::testutil::block_on;
-    use super::*;
-    use askk_state::MemKv;
-
-    /// Registry over MemKv with a ticking clock (each remember is newer).
-    fn setup() -> (ToolRegistry, Rc<MemKv>) {
-        let kv = Rc::new(MemKv::new());
-        let mut reg = ToolRegistry::new();
-        let tick = Rc::new(Cell::new(0u64));
-        let now = move || {
-            tick.set(tick.get() + 1);
-            tick.get()
-        };
-        register_memory_tools(&mut reg, kv.clone(), now).unwrap();
-        (reg, kv)
-    }
-
-    fn call(reg: &ToolRegistry, name: &str, args: Value) -> ToolResult {
-        let set = reg
-            .build_tool_set(&["remember".into(), "recall".into(), "forget".into()])
-            .unwrap();
-        block_on(set.get(name).unwrap().call(args, &mut ToolCtx::default()))
-    }
-
-    #[test]
-    fn remember_recall_round_trip_newest_first() {
-        let (reg, _) = setup();
-        for (slug, text) in [("likes-rust", "prefers Rust"), ("hates-yaml", "avoid YAML")] {
-            let out = call(&reg, "remember", json!({"slug": slug, "text": text}));
-            assert!(out.ok, "{}", out.content);
-            assert_eq!(out.content, format!("remembered '{slug}'"));
-        }
-        let out = call(&reg, "recall", json!({}));
-        assert!(out.ok);
-        assert_eq!(
-            out.content,
-            "* hates-yaml — avoid YAML\n* likes-rust — prefers Rust"
-        );
-    }
-
-    #[test]
-    fn auto_slug_comes_from_the_first_words() {
-        let (reg, kv) = setup();
-        let out = call(
-            &reg,
-            "remember",
-            json!({"text": "User prefers dark mode, always."}),
-        );
-        assert!(out.ok);
-        assert_eq!(out.content, "remembered 'user-prefers-dark-mode-always'");
-        assert!(block_on(kv.get("notes/user-prefers-dark-mode-always"))
-            .unwrap()
-            .is_some());
-        // All-symbol text still lands somewhere deterministic.
-        assert_eq!(auto_slug("!!! ???"), "note");
-    }
-
-    #[test]
-    fn same_slug_overwrites() {
-        let (reg, _) = setup();
-        call(&reg, "remember", json!({"slug": "pref", "text": "v1"}));
-        call(&reg, "remember", json!({"slug": "pref", "text": "v2"}));
-        let out = call(&reg, "recall", json!({}));
-        assert_eq!(out.content, "* pref — v2");
-    }
-
-    #[test]
-    fn recall_substring_matches_slugs_and_text_case_insensitively() {
-        let (reg, _) = setup();
-        call(
-            &reg,
-            "remember",
-            json!({"slug": "editor", "text": "uses Helix"}),
-        );
-        call(
-            &reg,
-            "remember",
-            json!({"slug": "os", "text": "runs NixOS"}),
-        );
-        let by_text = call(&reg, "recall", json!({"query": "HELIX"}));
-        assert_eq!(by_text.content, "* editor — uses Helix");
-        let by_slug = call(&reg, "recall", json!({"query": "os"}));
-        assert!(by_slug.content.contains("* os — runs NixOS"));
-        let none = call(&reg, "recall", json!({"query": "absent"}));
-        assert!(none.ok);
-        assert_eq!(none.content, "no notes match 'absent'");
-    }
-
-    #[test]
-    fn recall_is_bounded_and_empty_store_reads_readably() {
-        let (reg, _) = setup();
-        assert_eq!(
-            call(&reg, "recall", json!({})).content,
-            "(no memory notes yet)"
-        );
-        for i in 0..10 {
-            call(
-                &reg,
-                "remember",
-                json!({"slug": format!("n{i}"), "text": "x"}),
-            );
-        }
-        let out = call(&reg, "recall", json!({}));
-        assert_eq!(out.content.lines().count(), MAX_NOTES);
-        assert!(out.content.starts_with("* n9 — x")); // newest first
-    }
-
-    #[test]
-    fn forget_removes_and_misses_readably() {
-        let (reg, kv) = setup();
-        call(&reg, "remember", json!({"slug": "gone", "text": "bye"}));
-        let out = call(&reg, "forget", json!({"slug": "gone"}));
-        assert!(out.ok);
-        assert_eq!(out.content, "forgot 'gone'");
-        assert!(block_on(kv.get("notes/gone")).unwrap().is_none());
-        let miss = call(&reg, "forget", json!({"slug": "gone"}));
-        assert!(!miss.ok);
-        assert_eq!(miss.content, "forget: no note 'gone'");
-    }
-
-    #[test]
-    fn invalid_inputs_fail_readably() {
-        let (reg, _) = setup();
-        assert!(!call(&reg, "remember", json!({})).ok);
-        assert!(!call(&reg, "remember", json!({"text": "  "})).ok);
-        // Empty slug counts as omitted → auto-slug, not an error.
-        let out = call(
-            &reg,
-            "remember",
-            json!({"slug": "", "text": "empty slug ok"}),
-        );
-        assert_eq!(out.content, "remembered 'empty-slug-ok'");
-        for bad in ["has space", "a/b", "x".repeat(65).as_str()] {
-            let out = call(&reg, "remember", json!({"slug": bad, "text": "t"}));
-            assert!(!out.ok, "slug '{bad}' should be rejected");
-        }
-        assert!(!call(&reg, "forget", json!({})).ok);
-    }
-
-    #[test]
-    fn dry_run_touches_nothing() {
-        let (reg, kv) = setup();
-        call(&reg, "remember", json!({"slug": "keep", "text": "stays"}));
-        let set = reg
-            .build_tool_set(&["remember".into(), "forget".into()])
-            .unwrap();
-        let mut ctx = ToolCtx::default();
-        ctx.dry_run = true;
-        let out = block_on(
-            set.get("remember")
-                .unwrap()
-                .call(json!({"slug": "ghost", "text": "boo"}), &mut ctx),
-        );
-        assert!(out.ok);
-        assert_eq!(out.content, "would remember 'ghost'");
-        assert!(block_on(kv.get("notes/ghost")).unwrap().is_none());
-        let out = block_on(
-            set.get("forget")
-                .unwrap()
-                .call(json!({"slug": "keep"}), &mut ctx),
-        );
-        assert!(out.ok);
-        assert_eq!(out.content, "would forget 'keep'");
-        assert!(block_on(kv.get("notes/keep")).unwrap().is_some());
-    }
-}
+mod tests;

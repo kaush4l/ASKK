@@ -151,8 +151,11 @@ condition; these are its named red rows, ranked in docs/findings/brief-v4-gap.md
     concurrent local run gets RateLimited. Pool workers if parallel local runs matter.
 48. Board UI is a live read view; cards move only through agent tools. Drag-and-drop
     editing is a deliberate omission until a human-editing story is wanted.
-49. memory tools use a shared namespace (`notes/<slug>`) because ToolCtx does not carry
-    the calling agent id; per-agent scoping when it does.
+49. CLOSED (ADR-043 batch): memory notes are per-agent — dispatch's ToolCtx now
+    carries the caller (`AGENT_ID_SLICE`), `remember` writes `notes/<agent_id>/<slug>`,
+    and `recall`/`forget` fall back to legacy shared `notes/<slug>` keys (readable and
+    deletable by all; a scoped note shadows a legacy slug tie). No one-shot migration:
+    legacy notes were semantically shared, so they stay shared.
 
 ## Live e2e vs gemma-4-12B @8873 on the hosted page (2026-07-12, wave-14 build)
 

@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use askk_core::{
     ActionProposal, ActionRecord, Effect, RunStatus, SignalKind, Tool, ToolCall, ToolCtx,
-    ToolResult, Verdict,
+    ToolResult, Verdict, AGENT_ID_SLICE,
 };
 use serde_json::json;
 
@@ -233,6 +233,7 @@ fn make_ctx(run: &RunState) -> ToolCtx {
     ctx.set_slice(MAX_DEPTH_SLICE, json!(run.budgets.max_delegation_depth));
     ctx.set_slice(PARENT_TOOLS_SLICE, json!(effective_allow(run)));
     ctx.set_slice(PARENT_RUN_SLICE, json!(run.id.0));
+    ctx.set_slice(AGENT_ID_SLICE, json!(run.agent_id));
     if let Some(team) = &run.team_id {
         ctx.set_slice(TEAM_SLICE, json!(team));
     }
@@ -263,12 +264,7 @@ async fn absorb_result(
     // Lift back every slice the ctx now holds (ADR-005): ALL tool-written
     // keys — pre-declared or brand new — emit StateWritten on change.
     for key in ctx.slice_keys() {
-        if key == DEPTH_SLICE
-            || key == MAX_DEPTH_SLICE
-            || key == PARENT_TOOLS_SLICE
-            || key == PARENT_RUN_SLICE
-            || key == TEAM_SLICE
-        {
+        if plumbing_slice(&key) {
             continue;
         }
         if let Some(value) = ctx.slice(&key) {
@@ -335,6 +331,17 @@ async fn absorb_result(
         run.final_text = Some(result.content);
     }
     Ok(())
+}
+
+/// Dispatch-supplied plumbing slices: excluded from lift-back so they never
+/// land in the run snapshot or emit StateWritten.
+fn plumbing_slice(key: &str) -> bool {
+    key == DEPTH_SLICE
+        || key == MAX_DEPTH_SLICE
+        || key == PARENT_TOOLS_SLICE
+        || key == PARENT_RUN_SLICE
+        || key == TEAM_SLICE
+        || key == AGENT_ID_SLICE
 }
 
 /// Tools whose results are web-originated content the model must not treat
@@ -434,5 +441,38 @@ mod tests {
         }
         assert!(!untrusted("echo"));
         assert!(!untrusted("mcp")); // the prefix match needs the underscore
+    }
+
+    #[test]
+    fn ctx_carries_the_calling_agent_id() {
+        use crate::config::AgentConfig;
+        use askk_core::{Budgets, RunId};
+        let agent = AgentConfig::from_markdown("agents/t.md", "---\nid: t\n---\n").unwrap();
+        let run = RunState::new(
+            &agent,
+            "goal",
+            vec![],
+            0,
+            Default::default(),
+            RunId::new("run-t"),
+            Budgets::default(),
+        );
+        let ctx = make_ctx(&run);
+        assert_eq!(ctx.slice(AGENT_ID_SLICE), Some(&json!("t")));
+    }
+
+    #[test]
+    fn plumbing_slices_are_excluded_from_lift_back() {
+        for key in [
+            DEPTH_SLICE,
+            MAX_DEPTH_SLICE,
+            PARENT_TOOLS_SLICE,
+            PARENT_RUN_SLICE,
+            TEAM_SLICE,
+            AGENT_ID_SLICE,
+        ] {
+            assert!(plumbing_slice(key), "{key}");
+        }
+        assert!(!plumbing_slice("cwd")); // tool-written keys still lift back
     }
 }

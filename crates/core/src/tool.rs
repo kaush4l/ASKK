@@ -47,6 +47,11 @@ impl ToolResult {
     }
 }
 
+/// ToolCtx slice carrying the calling agent's id, set by tool dispatch.
+/// Lives in core because features cannot import engine; tools (e.g. the
+/// memory notes) read it to scope their state per agent.
+pub const AGENT_ID_SLICE: &str = "agent_id";
+
 /// The explicit state slices a tool declared — no shared mutable world
 /// (ADR-005). The runtime extends this via composition, not inheritance.
 #[derive(Debug, Default)]

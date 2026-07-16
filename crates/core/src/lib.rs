@@ -43,4 +43,4 @@ pub use request::{
 pub use sheet::Sheet;
 pub use signal::{fold, step, RunProjection, Signal, SignalKind};
 pub use state::{Budgets, MemoryBlock, RunId, RunStatus, StateSnapshot};
-pub use tool::{Effect, Tool, ToolCtx, ToolResult, ToolSet, ToolSpec};
+pub use tool::{Effect, Tool, ToolCtx, ToolResult, ToolSet, ToolSpec, AGENT_ID_SLICE};
