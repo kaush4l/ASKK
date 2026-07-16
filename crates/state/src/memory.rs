@@ -4,7 +4,7 @@
 //! Written by the absorb path after each run; read back onto the sheet as a
 //! [`MemoryBlock`] (entries joined by newlines).
 //!
-//! Distinct from the note tools (`tools/memory_tools.rs`), which own
+//! Distinct from the note tools (`crates/features/src/tools/memory/`), which own
 //! `notes/<slug>`: this store is the agent's automatic digest, notes are
 //! explicit tool writes.
 
