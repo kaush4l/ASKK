@@ -1,6 +1,8 @@
 # ASKK
 
-> New here? Start with [docs/NAVIGATION.md](docs/NAVIGATION.md) — what runs where, and where new code goes.
+> New here? Start with [docs/NAVIGATION.md](docs/NAVIGATION.md) — what runs where, where
+> new code goes, and the three-package map (core elements / app-core / UI) over the
+> crates (ADR-043).
 
 A browser-only agent workspace. Rust compiled to WebAssembly (Dioxus); everything runs
 client-side — the only network traffic is to the LLM endpoint you configure.

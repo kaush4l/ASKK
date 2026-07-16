@@ -27,6 +27,20 @@ to see what each piece is *for*.
 | **Abstract / object** | The pure domain vocabulary + the objects that carry a run. Host-testable, no I/O. | `crates/core`: `Phase`/`PhaseStep`, `Contract`, the `Tool` trait, `Signal` + `fold`, `Sheet`, `Action`/policy, `State` (imports nothing — `src/lib.rs`). The concrete lifecycle objects sit one crate up: `RunSession` / `Shared` / `RunState` (`crates/engine/src/run/session.rs`). |
 | **Orchestration-by-md** | Agents are data: markdown files declare who does what and drive the engine. Nothing hardcodes an agent. | `crates/frontend/assets/agents/*.md` (frontmatter id/tools/skills/provider/contract + `phase.N.*` workflow + directive body) → parsed by `crates/features/src/config/` (`agent.rs`, `phases.rs`, `team.rs`, `env.rs`) → driven by `crates/engine/src/run/`. The boot default is `orchestrator.md`, a Jarvis director that delegates (ADR-042). |
 
+### The three packages (ADR-043)
+
+A second, coarser grouping over the crates — the elizaOS shape the owner uses as
+reference (eliza's core package ↔ core elements; eliza's clients/app ↔ app-core).
+ADR-043 keeps the 7 crates; the packages are the *documented* grouping, and
+`crates/engine/tests/structure.rs` enforces it (`import_direction_is_one_way` +
+`frontend_ui_top_level_is_components_plus_features`).
+
+| Package | Crates | Duty |
+|---|---|---|
+| **core elements** | `crates/core` (pure vocabulary: `Tool` trait, `Contract`/TOON structured response, `Phase`/`PhaseStep`, signals + fold) · `crates/inference` (provider adapters) · `crates/state` (signal log = persistence truth, KV/blob seams, per-agent memory digest) · `crates/features` (agent/team/skill config parsing + tool implementations, incl. the `remember`/`recall`/`forget` notes) · `crates/engine` (the agent loop: `RunSession`/`drive_run`/`one_turn`, dispatch, delegation, action gate) | Agent loop, tools, structured response, memory — all host-testable, no wasm |
+| **app-core** | `crates/browser` | Import/initialize/start + observe the state. The ONLY wasm/web-sys crate: boot + the `HarnessHandle` facade, OPFS stores, transports, host adapters, capabilities, local LLM, speech, VM serial |
+| **UI** | `crates/frontend` | Dioxus only: `ui/app.rs` composition root, `ui/components/` shared primitives, `ui/features/` one module per stage (incl. `lab/`) |
+
 ## 3. Taxonomy → crate
 
 Import rule (one-way DAG, structure-tested — see `MAP.md` for the full table):
@@ -40,7 +54,7 @@ Import rule (one-way DAG, structure-tested — see `MAP.md` for the full table):
 | Self-contained features: config parsing + the tool surface | `crates/features` | `src/config/` (agent/team/env/skill md parsing) + `src/tools/` (one folder per feature); never imports engine or browser |
 | The agent loop: run/turn/dispatch/delegation/actions | `crates/engine` | Run orchestration, sheet assembly, action gating (`src/lib.rs`); delegation incl. `spawn` under `src/run/delegation/` |
 | Browser adapters: OPFS, fetch, VM glue, speech, boot facade | `crates/browser` | The host seam — the ONLY crate above the engine allowed to import it; UI talks to `boot::HarnessHandle` only (`src/lib.rs`) |
-| UI components and stages | `crates/frontend` | Dioxus shell; `src/ui/` imports core + browser only (`src/ui/mod.rs`) |
+| UI components and stages | `crates/frontend` | Dioxus shell; `src/ui/` = `app.rs` + `components/` + `features/`, imports core + browser only (`src/ui/mod.rs`) |
 
 ### ADR-042 surfaces — where the newest primitives live
 
@@ -48,7 +62,7 @@ Import rule (one-way DAG, structure-tested — see `MAP.md` for the full table):
 |---|---|
 | **Workflow-path step** (a deterministic, no-LLM phase — "repeated paths become code") | `core::PhaseStep::{Llm, Tool{tool,args}}` (`crates/core/src/phase.rs`) runs in `crates/engine/src/run/scripted.rs`; authored as `phase.N.tool` / `phase.N.args` and parsed in `crates/features/src/config/phases.rs`. Scripted steps run **pure** tools only; a gate can't be scripted. |
 | **LLM call split out of the turn** | `crates/engine/src/run/infer.rs` (one call, ≤3 retries, cancel race); the per-turn loop stays `assemble → infer → parse → act` in `turn.rs`. |
-| **Fleet stage** (launch / monitor / cancel N agents as parallel loops) | `Stage::Fleet` (`crates/frontend/src/ui/manifest.rs`) + `crates/frontend/src/ui/fleet.rs`; reuses `submit` + per-run `drive_run` for backgrounding. |
+| **Fleet stage** (launch / monitor / cancel N agents as parallel loops) | `Stage::Fleet` (`crates/frontend/src/ui/components/manifest.rs`) + `crates/frontend/src/ui/features/fleet.rs`; reuses `submit` + per-run `drive_run` for backgrounding. |
 | **Orchestrator = default agent** (Jarvis director, reverses ADR-039's single-agent default) | `crates/frontend/assets/agents/orchestrator.md` (lean single-phase react + delegation toolset); boot picks it in `crates/frontend/src/ui/app.rs` (falls back to the first card). |
 
 ## 4. Feature verticals
@@ -58,14 +72,14 @@ a browser adapter and a frontend stage. Columns verified against the file tree.
 
 | Feature | Tools | Browser adapter | Frontend stage | State it touches |
 |---|---|---|---|---|
-| VM shell + workspace files | `crates/features/src/tools/vm/` (`shell.rs`, `workspace.rs`) | `crates/browser/src/vm.rs` (serial bridge) | `crates/frontend/src/ui/vm.rs` (console) | none — guest is throwaway |
+| VM shell + workspace files | `crates/features/src/tools/vm/` (`shell.rs`, `workspace.rs`) | `crates/browser/src/vm.rs` (serial bridge) | `crates/frontend/src/ui/features/vm.rs` (console) | none — guest is throwaway |
 | Web + news search | `crates/features/src/tools/search/` (`engines.rs`, `news.rs`) | `crates/browser/src/fetch.rs` (Transport) | results land in chat | none (`Effect::Pure`) |
-| Artifacts | `crates/features/src/tools/artifacts/mod.rs` | `crates/browser/src/artifacts.rs` (read side) | `crates/frontend/src/ui/artifacts.rs` (gallery) | blob `artifact/<slug>` (`BlobStore`) |
+| Artifacts | `crates/features/src/tools/artifacts/mod.rs` | `crates/browser/src/artifacts.rs` (read side) | `crates/frontend/src/ui/features/artifacts.rs` (gallery) | blob `artifact/<slug>` (`BlobStore`) |
 | Knowledge (OKF) | `crates/features/src/tools/knowledge/mod.rs` | — | — | `KvStore` keys `okf/<id>` + `okf/log` |
 | Memory notes | `crates/features/src/tools/memory/mod.rs` | — | — | `KvStore` keys `notes/<slug>` |
 | Skills discovery | `crates/features/src/tools/skills.rs` | `crates/browser/src/config.rs` (loader) | — | pure reads over session config |
-| MCP client | `crates/features/src/tools/mcp/` | `crates/browser/src/fetch.rs` (Transport) | `crates/frontend/src/ui/settings.rs` (server list) | `mcp_servers` pref (`crates/browser/src/boot.rs`) |
-| Speech (STT/TTS) | — (UI-level, not a tool) | `crates/browser/src/speech.rs` | `crates/frontend/src/ui/shell.rs` + `app.rs` | none |
+| MCP client | `crates/features/src/tools/mcp/` | `crates/browser/src/fetch.rs` (Transport) | `crates/frontend/src/ui/features/settings.rs` (server list) | `mcp_servers` pref (`crates/browser/src/boot.rs`) |
+| Speech (STT/TTS) | — (UI-level, not a tool) | `crates/browser/src/speech.rs` | `crates/frontend/src/ui/components/shell.rs` + `ui/app.rs` | none |
 | Local LLM | — (a provider, not a tool) | `crates/browser/src/local_llm.rs` | picked in settings | profile prefs |
 | Delegation / loops / spawn_agent | `crates/engine/src/run/delegation/` (`delegate.rs`, `loops.rs`, `spawn.rs`) | — | — | nested runs share `Shared` |
 
@@ -77,9 +91,11 @@ may never import the engine (import rule above).
 - **New tool** → new folder (or file) under `crates/features/src/tools/`, impl
   `askk_core::Tool`, add a `register_*` fn, wire it in `crates/browser/src/boot.rs`.
 - **New UI stage** → add a `Stage` variant + a `COMPONENTS` row in
-  `crates/frontend/src/ui/manifest.rs`, a body module `crates/frontend/src/ui/<stage>.rs`,
-  and a match arm in `app.rs`'s stage switch (the recipe is spelled out in the
-  `manifest.rs` banner). Import core + the `boot` facade only.
+  `crates/frontend/src/ui/components/manifest.rs`, a body module at
+  `crates/frontend/src/ui/features/<stage>.rs`, and a match arm in
+  `crates/frontend/src/ui/app.rs`'s stage switch (the recipe is spelled out in the
+  `manifest.rs` banner). Shared primitives go in `ui/components/`; the structure
+  test rejects anything else at the ui/ root. Import core + the `boot` facade only.
 - **New browser reach** (a Web API, sensor, or JS bundle) → a free fn in
   `crates/browser/src/`, exposed to features as an injected trait (like
   `ShellExec` in `tools/vm/shell.rs`). The frontend has **no** `web-sys` — every
