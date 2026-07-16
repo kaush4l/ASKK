@@ -60,7 +60,7 @@ A DAG, not a chain — the true allowed-imports table:
 | web_search news lane sources (Wikinews → GDELT) | `crates/features/src/tools/search/news.rs` |
 | OKF knowledge bundle tools (ADR-024) | `crates/features/src/tools/knowledge/mod.rs` |
 | Loop management tools (spawn/check/wait/steer/cancel, ADR-022) | `crates/engine/src/run/delegation/loops.rs` |
-| Dashboard stage (wall display + tool-activity matrix) | `crates/frontend/src/ui/dashboard.rs` |
+| Dashboard stage (wall display + tool-activity matrix) | `crates/frontend/src/ui/features/dashboard.rs` |
 | Cross-tab signal bus (BroadcastChannel mirror, ADR-031) | `crates/browser/src/bus.rs` |
 | Team config (folder team.md, ADR-032) | `crates/features/src/config/team.rs` |
 | Team delegation boundary (TeamTool, principles injection) | `crates/engine/src/run/delegation/delegate.rs` |
@@ -72,13 +72,13 @@ A DAG, not a chain — the true allowed-imports table:
 | Agents-folder config reference | `crates/frontend/assets/agents/README.md` |
 | artifact_publish tool (html/markdown/url blobs) | `crates/features/src/tools/artifacts/mod.rs` |
 | Artifact read side (blob docs → UI) | `crates/browser/src/artifacts.rs` |
-| Artifacts stage (gallery + sandboxed viewer) | `crates/frontend/src/ui/artifacts.rs` |
-| Markdown subset renderer (chat + artifacts) | `crates/frontend/src/ui/markdown.rs` |
+| Artifacts stage (gallery + sandboxed viewer) | `crates/frontend/src/ui/features/artifacts.rs` |
+| Markdown subset renderer (chat + artifacts) | `crates/frontend/src/ui/components/markdown.rs` |
 | MCP feature (config + client + registration, ADR-028/036) | `crates/features/src/tools/mcp/` |
 | Memory tools (remember/recall/forget) | `crates/features/src/tools/memory/mod.rs` |
 | Browser capability probe + capture helpers (camera/mic/screen/geo/clipboard/notify/vibrate/share, ADR-041) | `crates/browser/src/capabilities/` |
 | In-browser one-shot generate (lab helper over LocalLlm) | `crates/browser/src/local_llm.rs` |
-| Features lab stage (capability probe + in-browser model/sense testers, engine untouched, ADR-041) | `crates/frontend/src/ui/features/` |
+| Features lab stage (capability probe + in-browser model/sense testers, engine untouched, ADR-041) | `crates/frontend/src/ui/features/lab/` |
 | Env presets (`env:` frontmatter, ADR-027) | `crates/features/src/config/env.rs` |
 | Handoff + delegation seam (ADR-030) | `crates/engine/src/run/delegation/delegate.rs` |
 | Cancel token (races in-flight inference) | `crates/engine/src/run/cancel.rs` |
@@ -89,7 +89,7 @@ A DAG, not a chain — the true allowed-imports table:
 | Custom JS tool wrapper (MCP card) | `crates/browser/src/jstool.rs` |
 | Agents + custom tools (served config) | `crates/frontend/assets/agents/` |
 | Agents-folder config bake (glob + manifest order) | `crates/browser/build.rs` |
-| VM stage (container2wasm Alpine serial console) | `crates/frontend/src/ui/vm.rs` |
+| VM stage (container2wasm Alpine serial console) | `crates/frontend/src/ui/features/vm.rs` |
 | VM bundle source (c2w + xterm-pty) | `scripts/vm-c2w/entry.js` + `build.mjs` |
 | Speech seam (STT/TTS, HF model ids) | `crates/browser/src/speech.rs` |
 | Speech engine bundles (source) | `scripts/speech/{stt,tts}-entry.js` + `build.sh` |
@@ -100,7 +100,9 @@ A DAG, not a chain — the true allowed-imports table:
 | Workflow-path step (deterministic no-LLM phase, ADR-042) | `crates/engine/src/run/scripted.rs` |
 | LLM call + bounded retry (split from turn) | `crates/engine/src/run/infer.rs` |
 | Phase parsing (`phase.N.*` → `Phase`) | `crates/features/src/config/phases.rs` |
-| Fleet stage (launch/monitor parallel loops, ADR-042) | `crates/frontend/src/ui/fleet.rs` |
+| Fleet stage (launch/monitor parallel loops, ADR-042) | `crates/frontend/src/ui/features/fleet.rs` |
+| Shared run-card helpers (status/activity/tail, ADR-043) | `crates/frontend/src/ui/components/runcard.rs` |
+| Handle facade methods (split from boot, ADR-043) | `crates/browser/src/boot_handle.rs` |
 | Default agent = Orchestrator (Jarvis director, ADR-042) | `crates/frontend/assets/agents/orchestrator.md` |
 | Transport seam | `crates/inference/src/transport.rs` |
 | Provider adapters | `crates/inference/src/{openai_compat,anthropic,mock}.rs` |

@@ -6,8 +6,8 @@ use dioxus::prelude::*;
 
 use askk_core::{ActionRecord, Role, RunProjection, RunStatus};
 
-use crate::ui::actions::PendingActionsBar;
-use crate::ui::markdown;
+use crate::ui::components::actions::PendingActionsBar;
+use crate::ui::components::markdown;
 use askk_browser::boot::AgentCard;
 
 pub struct ChatItem {

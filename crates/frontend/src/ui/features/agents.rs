@@ -5,38 +5,9 @@
 
 use dioxus::prelude::*;
 
-use askk_core::{Role, RunId, RunProjection, RunStatus};
+use askk_core::{Role, RunId, RunProjection};
 
-pub(crate) fn status_class(status: RunStatus) -> &'static str {
-    match status {
-        RunStatus::Running => "a-dot s-running",
-        RunStatus::Answered => "a-dot s-done",
-        RunStatus::Failed => "a-dot s-error",
-        RunStatus::Interrupted => "a-dot s-aborted",
-        RunStatus::Unverified | RunStatus::BudgetExhausted => "a-dot",
-    }
-}
-
-pub(crate) fn status_label(status: RunStatus) -> &'static str {
-    match status {
-        RunStatus::Running => "running",
-        RunStatus::Answered => "answered",
-        RunStatus::Unverified => "unverified",
-        RunStatus::BudgetExhausted => "budget exhausted",
-        RunStatus::Interrupted => "interrupted",
-        RunStatus::Failed => "failed",
-    }
-}
-
-/// `"run started: coder — fix the bug"` → `("coder", "fix the bug")`;
-/// `None` when the fold has no `RunStarted` line (callers pick a fallback).
-pub(crate) fn agent_and_goal(proj: &RunProjection) -> Option<(String, String)> {
-    proj.timeline
-        .iter()
-        .find_map(|line| line.strip_prefix("run started: "))
-        .and_then(|rest| rest.split_once(" — "))
-        .map(|(agent, goal)| (agent.to_string(), goal.to_string()))
-}
+use crate::ui::components::runcard::{agent_and_goal, status_class, status_label};
 
 /// Tool rows: each `tool requested` timeline entry paired (by order) with
 /// its Tool-role observation, truncated kiln-style at 200 chars.
@@ -108,7 +79,7 @@ pub fn AgentsStage(runs: Vec<(RunId, RunProjection)>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use askk_core::Message;
+    use askk_core::{Message, RunStatus};
 
     #[test]
     fn header_and_tool_rows_parse_from_the_fold() {

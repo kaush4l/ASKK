@@ -8,7 +8,7 @@
 
 use dioxus::prelude::*;
 
-use crate::ui::markdown;
+use crate::ui::components::markdown;
 use askk_browser::artifacts::ArtifactDoc;
 
 /// Compact age chip ("3h" etc); 0 (unstamped) or a future stamp hides it.

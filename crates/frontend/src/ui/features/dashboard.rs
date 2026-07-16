@@ -2,8 +2,8 @@
 //! work — foreign tabs' runs arrive through the shared signal mirror, so a
 //! second tab opened at `#/Dashboard` is a passive command-center screen.
 //! Pure data component (askk-core types only, ADR-013): `app.rs` assembles
-//! `DashRun`s from the host facade per refold; the one browser side effect
-//! (pop-out tab) goes through `host::dom` like every other stage.
+//! `DashRun`s (`ui::components::runcard`) from the host facade per refold;
+//! the one browser side effect (pop-out tab) goes through `host::dom`.
 
 use dioxus::prelude::*;
 
@@ -11,50 +11,15 @@ use std::collections::BTreeMap;
 
 use askk_core::{RunId, RunProjection, RunStatus};
 
-use crate::ui::agents::{agent_and_goal, status_class, status_label};
+use crate::ui::components::runcard::{
+    agent_and_goal, draft_tail, run_phase, status_class, status_label, DashRun,
+};
 use askk_browser::dom;
-
-/// One run's wall data: the fold plus its live streaming tail.
-#[derive(Clone, PartialEq)]
-pub struct DashRun {
-    pub id: RunId,
-    pub proj: RunProjection,
-    pub draft: String,
-}
 
 /// Agent + goal from the fold's `run started:` line; a foreign or partial
 /// fold without one shows its run id instead.
 fn tile_name(id: &RunId, proj: &RunProjection) -> (String, String) {
     agent_and_goal(proj).unwrap_or_else(|| (id.0.clone(), String::new()))
-}
-
-/// The latest named activity: the newest `phase:` or `tool requested:`
-/// timeline entry, whichever happened last.
-fn run_phase(proj: &RunProjection) -> String {
-    proj.timeline
-        .iter()
-        .rev()
-        .find_map(|line| {
-            line.strip_prefix("phase: ")
-                .map(str::to_string)
-                .or_else(|| {
-                    line.strip_prefix("tool requested: ")
-                        .map(|rest| rest.split(" (").next().unwrap_or(rest).to_string())
-                })
-        })
-        .unwrap_or_default()
-}
-
-/// Last `max` chars of the streaming draft — the wall shows the tail, not
-/// the whole answer.
-fn draft_tail(draft: &str, max: usize) -> String {
-    let trimmed = draft.trim_end();
-    let count = trimmed.chars().count();
-    if count <= max {
-        return trimmed.to_string();
-    }
-    let tail: String = trimmed.chars().skip(count - max).collect();
-    format!("…{tail}")
 }
 
 /// Session numerals: (runs, live, answered, tools completed, turns) —
@@ -238,33 +203,6 @@ mod tests {
             tile_name(&RunId::new("r2"), &RunProjection::default()),
             ("r2".into(), String::new())
         );
-    }
-
-    #[test]
-    fn run_phase_names_the_latest_activity() {
-        let proj = RunProjection {
-            timeline: vec![
-                "run started: coder — fix".into(),
-                "phase: plan".into(),
-                "tool requested: shell (c1)".into(),
-                "tool completed (c1): ok=true".into(),
-            ],
-            ..Default::default()
-        };
-        assert_eq!(run_phase(&proj), "shell"); // the tool came after the phase
-        let planning = RunProjection {
-            timeline: vec!["phase: plan".into()],
-            ..Default::default()
-        };
-        assert_eq!(run_phase(&planning), "plan");
-        assert_eq!(run_phase(&RunProjection::default()), "");
-    }
-
-    #[test]
-    fn draft_tail_keeps_the_end() {
-        assert_eq!(draft_tail("short", 10), "short");
-        assert_eq!(draft_tail("abcdefghij", 4), "…ghij");
-        assert_eq!(draft_tail("trailing ws  \n", 20), "trailing ws");
     }
 
     #[test]

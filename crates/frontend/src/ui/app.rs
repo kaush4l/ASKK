@@ -8,19 +8,20 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 
-use askk_core::{RunId, RunProjection, SignalKind};
+use askk_core::{RunId, RunProjection};
 use serde_json::{json, Value};
 
-use crate::ui::agents::AgentsStage;
-use crate::ui::artifacts::ArtifactsStage;
-use crate::ui::chat::ChatStage;
-use crate::ui::dashboard::{DashRun, DashboardStage};
-use crate::ui::features::FeaturesStage;
-use crate::ui::fleet::FleetStage;
-use crate::ui::fonts::{font_css, FAVICON};
-use crate::ui::manifest::Stage;
-use crate::ui::settings::SettingsStage;
-use crate::ui::shell::{AvatarBar, Header, LeftRail, RightRail};
+use crate::ui::components::fonts::{font_css, FAVICON};
+use crate::ui::components::manifest::Stage;
+use crate::ui::components::runcard::{phase_label, DashRun};
+use crate::ui::components::shell::{AvatarBar, Header, LeftRail, RightRail};
+use crate::ui::features::agents::AgentsStage;
+use crate::ui::features::artifacts::ArtifactsStage;
+use crate::ui::features::chat::ChatStage;
+use crate::ui::features::dashboard::DashboardStage;
+use crate::ui::features::fleet::FleetStage;
+use crate::ui::features::lab::FeaturesStage;
+use crate::ui::features::settings::SettingsStage;
 use askk_browser::artifacts::ArtifactDoc;
 use askk_browser::boot::{
     self, HarnessHandle, McpServerStatus, NamedProfile, ProfileSet, ProviderProfileForm,
@@ -29,18 +30,6 @@ use askk_browser::dom;
 use askk_browser::speech::{self, SpeechConfig};
 
 const CSS: &str = include_str!("main.css");
-
-/// Latest loop signal → the plain-language phase label; the bool marks
-/// external (tool) work — the warm accent, kiln-style.
-fn phase_label(kind: Option<SignalKind>) -> (String, bool) {
-    match kind {
-        Some(SignalKind::LlmRequest) => ("thinking".into(), false),
-        Some(SignalKind::ParseOutcome { .. }) => ("parsing".into(), false),
-        Some(SignalKind::ToolRequested { name, .. }) => (format!("acting: {name}"), true),
-        Some(SignalKind::ToolCompleted { .. }) => ("observing".into(), true),
-        _ => ("working".into(), false),
-    }
-}
 
 fn elapsed_label(start_ms: u64) -> String {
     let ms = dom::now_ms().saturating_sub(start_ms);
@@ -433,7 +422,7 @@ pub fn App() -> Element {
                 main { class: "stage",
                     // Persistent VM console: mounted once, booted at load,
                     // visible only on the VM stage (so `shell` works anywhere).
-                    crate::ui::vm::VmConsole { visible: stage() == Stage::Vm }
+                    crate::ui::features::vm::VmConsole { visible: stage() == Stage::Vm }
                     match stage() {
                         Stage::Vm => rsx! {},
                         Stage::Chat => rsx! {

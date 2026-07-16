@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 
 use askk_core::Message;
 
-use crate::ui::manifest::{Stage, COMPONENTS};
+use crate::ui::components::manifest::{Stage, COMPONENTS};
 
 #[component]
 pub fn Header(

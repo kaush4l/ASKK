@@ -596,3 +596,39 @@ first to restore the ADR-039 default; delete the Fleet stage variant. Built
 foundation-then-fan-out: the interconnected core (PhaseStep, turn hardening, orchestrator/
 default flip, Fleet shell) inline, then worktree workers for the Fleet UI body, the rest
 of the hardening, the orchestrator/example refinement, and the navigation docs.
+
+## ADR-043 — Eliza-style 3-package formalization (grouping, UI split, app-core seam)
+
+Context: the owner's reference architecture is elizaOS — a core-elements package (agent
+loop, tools, structured response, memory), a UI package (components + features), and an
+app-core package (import/initialize/start + observe the state), with "every component
+pertaining to its duty". Research against the code (3 explore + 2 plan agents) found the
+7-crate DAG already realizes the shape with ZERO import violations: core+inference+state+
+features+engine = the core-elements package, browser = app-core, frontend = UI.
+
+Decision A — keep the 7 crates; the 3 packages are the DOCUMENTED grouping over them, not
+a physical merge. Rejected: merging into 3 Cargo crates — ~27k LOC re-pathed, loses the
+finer structure-tested DAG and per-crate compile boundaries, gains no behavior. Eliza
+itself nests many packages under its umbrella groups.
+
+Decision B — the UI package gets its literal components/features split: `ui/components/`
+(shell chrome, stage manifest, fonts, markdown, pending-actions bar, run-card helpers) and
+`ui/features/` (one module per Stage: chat, dashboard, fleet, agents, artifacts, vm,
+settings, and `lab/` — the ADR-041 capability lab, renamed from the colliding
+`ui/features/` path). `app.rs` stays at the root as the composition root. The former
+triplicated run-card helpers (`run_phase`/`draft_tail` in dashboard + fleet,
+status/agent_and_goal in agents) collapse into ONE `components/runcard.rs`. A new
+structure test pins the layout: the ui/ top level may only contain app.rs, mod.rs,
+main.css, components/, features/.
+
+Decision C — app-core (browser crate) owns boot AND observation. `boot.rs` splits its
+`HarnessHandle` impl + `build_handle` into a `#[path]` child `boot_handle.rs` (cap
+headroom for the observe surface); follow-up units add `signals(run_id)`/`log_health()`
+accessors + replay seeding (GAPS A5), move the remaining boot logic out of the UI
+(default-agent rule, local-provider profile form, VM glue), and scope memory notes
+per-agent (GAPS 49) — each recorded in its own ADR/GAPS entry.
+
+Consequences: 18 file moves inside `crates/frontend/src/ui/` (git-mv, behavior
+identical), MAP.md rows re-pathed, one new structure test, boot.rs 512→~240 lines.
+Blast radius: frontend module paths + the browser boot file layout; no engine/state
+change. Reversible: git mv back and delete the structure test.

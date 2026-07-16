@@ -1,19 +1,9 @@
 //! UI surfaces = fold(signals) rendered by Dioxus (MAP hop 12). These
-//! modules import askk-core and the host facade only — never askk-runtime
-//! or askk-inference (ADR-013). Layout is kiln's: a persistent shell
-//! (header / rails / avatar bar) around one swappable stage.
+//! modules import askk-core and the host facade only — never askk-engine
+//! or askk-inference (ADR-013). Layout (ADR-043, the eliza-style UI
+//! package): `app.rs` is the composition root; `components/` holds shared
+//! primitives; `features/` holds one module per stage.
 
-pub mod actions;
-pub mod agents;
 pub mod app;
-pub mod artifacts;
-pub mod chat;
-pub mod dashboard;
+pub mod components;
 pub mod features;
-pub mod fleet;
-pub mod fonts;
-pub mod manifest;
-pub mod markdown;
-pub mod settings;
-pub mod shell;
-pub mod vm;

@@ -161,6 +161,29 @@ fn import_direction_is_one_way() {
     );
 }
 
+#[test]
+fn frontend_ui_top_level_is_components_plus_features() {
+    // ADR-043 (eliza-style UI package): ui/ root holds only the composition
+    // root and its css — primitives live in components/, stage surfaces in
+    // features/. A new stage goes in features/<stage>.rs, a new shared
+    // primitive in components/<name>.rs; nothing else lands at the root.
+    let root = workspace_root();
+    let ui = root.join("crates/frontend/src/ui");
+    let allowed = ["app.rs", "mod.rs", "main.css", "components", "features"];
+    let stray: Vec<String> = fs::read_dir(&ui)
+        .expect("ui/ exists")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .filter(|name| !allowed.contains(&name.as_str()))
+        .collect();
+    assert!(
+        stray.is_empty(),
+        "ui/ top level may only contain app.rs, mod.rs, main.css, components/, features/ (ADR-043):\n  {}",
+        stray.join("\n  ")
+    );
+    assert!(ui.join("components").is_dir(), "ui/components/ missing");
+    assert!(ui.join("features").is_dir(), "ui/features/ missing");
+}
+
 /// Backticked `crates/...` tokens in a MAP.md table row, with planned (⏳)
 /// entries dropped and `{a,b}` alternation expanded.
 fn row_paths(line: &str) -> Vec<String> {

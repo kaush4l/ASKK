@@ -11,41 +11,11 @@
 use dioxus::prelude::*;
 
 use askk_browser::boot::AgentCard;
-use askk_core::{RunId, RunProjection};
+use askk_core::RunId;
 
-use crate::ui::agents::{agent_and_goal, status_class, status_label};
-use crate::ui::dashboard::DashRun;
-
-// ponytail: duplicates dashboard.rs's private `run_phase`/`draft_tail`; those
-// are not `pub(crate)` and this unit may only touch fleet.rs + main.css. Promote
-// + share if a third caller ever appears.
-
-/// The latest named activity: newest `phase:` or `tool requested:` line.
-fn activity(proj: &RunProjection) -> String {
-    proj.timeline
-        .iter()
-        .rev()
-        .find_map(|line| {
-            line.strip_prefix("phase: ")
-                .map(str::to_string)
-                .or_else(|| {
-                    line.strip_prefix("tool requested: ")
-                        .map(|rest| rest.split(" (").next().unwrap_or(rest).to_string())
-                })
-        })
-        .unwrap_or_default()
-}
-
-/// Last `max` chars of the streaming draft — the tail, not the whole answer.
-fn tail(draft: &str, max: usize) -> String {
-    let trimmed = draft.trim_end();
-    let count = trimmed.chars().count();
-    if count <= max {
-        return trimmed.to_string();
-    }
-    let end: String = trimmed.chars().skip(count - max).collect();
-    format!("…{end}")
-}
+use crate::ui::components::runcard::{
+    agent_and_goal, draft_tail, run_phase, status_class, status_label, DashRun,
+};
 
 #[component]
 pub fn FleetStage(
@@ -128,8 +98,8 @@ fn LaunchCard(agent: AgentCard, on_launch: EventHandler<(String, String)>) -> El
 fn RunCard(run: DashRun, on_cancel: EventHandler<RunId>) -> Element {
     let (agent, goal) =
         agent_and_goal(&run.proj).unwrap_or_else(|| (run.id.0.clone(), String::new()));
-    let act = activity(&run.proj);
-    let end = tail(&run.draft, 160);
+    let act = run_phase(&run.proj);
+    let end = draft_tail(&run.draft, 160);
     let live = !run.proj.status.is_terminal();
     let id = run.id.clone();
     rsx! {
@@ -157,36 +127,5 @@ fn RunCard(run: DashRun, on_cancel: EventHandler<RunId>) -> Element {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn activity_names_the_latest_phase_or_tool() {
-        let proj = RunProjection {
-            timeline: vec![
-                "run started: coder — fix".into(),
-                "phase: plan".into(),
-                "tool requested: shell (c1)".into(),
-            ],
-            ..Default::default()
-        };
-        assert_eq!(activity(&proj), "shell");
-        let planning = RunProjection {
-            timeline: vec!["phase: plan".into()],
-            ..Default::default()
-        };
-        assert_eq!(activity(&planning), "plan");
-        assert_eq!(activity(&RunProjection::default()), "");
-    }
-
-    #[test]
-    fn tail_keeps_the_end() {
-        assert_eq!(tail("short", 10), "short");
-        assert_eq!(tail("abcdefghij", 4), "…ghij");
-        assert_eq!(tail("trailing ws  \n", 20), "trailing ws");
     }
 }
