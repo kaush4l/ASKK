@@ -1,0 +1,172 @@
+#!/opt/python/bin/python3
+"""askk-wsbridge — guest half of the WS-over-relay tunnel (CONTRACTS.md).
+
+The dashboard iframe's WebSocket polyfill (docs/askk-ws.js) tunnels frames
+as plain HTTP through the ingress relay; askk-ingressd routes /__ws/* here.
+This daemon holds the REAL WebSocket connections to the hermes dashboard on
+127.0.0.1:9119 and exposes them as:
+
+    POST /__ws/open        {"path": "/api/events?token=..."} -> {"id": n}
+    GET  /__ws/recv/<id>   -> {"msgs":[{"t":"txt","d":s}|{"t":"bin","d":b64}
+                                       |{"t":"close","c":code}]} | 204
+    POST /__ws/send/<id>   {"t":"txt"|"bin","d":...} -> 204
+    POST /__ws/close/<id>  {"c":code} -> 204
+
+Runs only after the hermes bringup (needs /opt/python + the websockets and
+uvicorn packages hermes ships). Listens on 127.0.0.1:9219 — never exposed;
+only the relay reaches it. Recv hold is short (RECV_HOLD_S guest-seconds):
+the guest clock is skewed vs real time, and each 204 just costs one relay
+cycle. Sockets idle (no recv poll) for IDLE_DROP_S guest-seconds are closed.
+"""
+
+import asyncio
+import base64
+import json
+
+import uvicorn
+import websockets
+
+HERMES_WS = "ws://127.0.0.1:9119"
+LISTEN_HOST, LISTEN_PORT = "127.0.0.1", 9219
+RECV_HOLD_S = 3.0
+IDLE_DROP_S = 600.0
+MAX_QUEUE = 4096
+
+_socks = {}
+_next_id = 0
+
+
+class Sock:
+    def __init__(self, ws):
+        self.ws = ws
+        self.q = asyncio.Queue(MAX_QUEUE)
+        self.last_poll = asyncio.get_event_loop().time()
+        self.reader = asyncio.create_task(self._read())
+
+    async def _read(self):
+        try:
+            async for msg in self.ws:
+                if isinstance(msg, bytes):
+                    frame = {"t": "bin", "d": base64.b64encode(msg).decode()}
+                else:
+                    frame = {"t": "txt", "d": msg}
+                await self.q.put(frame)
+        except websockets.ConnectionClosed as e:
+            await self.q.put({"t": "close", "c": e.code or 1006})
+        except Exception:
+            await self.q.put({"t": "close", "c": 1006})
+        else:
+            await self.q.put({"t": "close", "c": self.ws.close_code or 1000})
+
+
+async def _reaper():
+    while True:
+        await asyncio.sleep(60)
+        now = asyncio.get_event_loop().time()
+        for sid in list(_socks):
+            s = _socks[sid]
+            if now - s.last_poll > IDLE_DROP_S:
+                _socks.pop(sid, None)
+                s.reader.cancel()
+                try:
+                    await s.ws.close()
+                except Exception:
+                    pass
+
+
+async def _body(receive):
+    chunks = []
+    while True:
+        ev = await receive()
+        chunks.append(ev.get("body", b""))
+        if not ev.get("more_body"):
+            return b"".join(chunks)
+
+
+async def _reply(send, status, obj=None):
+    body = json.dumps(obj).encode() if obj is not None else b""
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"application/json")]})
+    await send({"type": "http.response.body", "body": body})
+
+
+async def app(scope, receive, send):
+    global _next_id
+    if scope["type"] != "http":
+        return
+    path = scope["path"]
+    method = scope["method"]
+
+    if method == "POST" and path == "/__ws/open":
+        try:
+            req = json.loads((await _body(receive)) or b"{}")
+            target = str(req.get("path") or "/")
+            if not target.startswith("/"):
+                raise ValueError("path must be absolute")
+            ws = await asyncio.wait_for(
+                websockets.connect(HERMES_WS + target, max_size=None), 30)
+        except Exception as e:
+            await _reply(send, 502, {"error": str(e)})
+            return
+        _next_id += 1
+        _socks[str(_next_id)] = Sock(ws)
+        await _reply(send, 200, {"id": str(_next_id)})
+        return
+
+    parts = path.split("/")  # '', '__ws', verb, id
+    verb = parts[2] if len(parts) > 3 else ""
+    sock = _socks.get(parts[3]) if len(parts) > 3 else None
+    if sock is None:
+        await _reply(send, 404, {"error": "unknown socket"})
+        return
+
+    if method == "GET" and verb == "recv":
+        sock.last_poll = asyncio.get_event_loop().time()
+        msgs = []
+        try:
+            msgs.append(await asyncio.wait_for(sock.q.get(), RECV_HOLD_S))
+            while not sock.q.empty():
+                msgs.append(sock.q.get_nowait())
+        except asyncio.TimeoutError:
+            pass
+        if not msgs:
+            await _reply(send, 204)
+            return
+        if any(m["t"] == "close" for m in msgs):
+            _socks.pop(parts[3], None)
+        await _reply(send, 200, {"msgs": msgs})
+        return
+
+    if method == "POST" and verb == "send":
+        try:
+            frame = json.loads((await _body(receive)) or b"{}")
+            data = (base64.b64decode(frame["d"]) if frame.get("t") == "bin"
+                    else str(frame.get("d", "")))
+            await sock.ws.send(data)
+            await _reply(send, 204)
+        except Exception as e:
+            await _reply(send, 502, {"error": str(e)})
+        return
+
+    if method == "POST" and verb == "close":
+        _socks.pop(parts[3], None)
+        sock.reader.cancel()
+        try:
+            await sock.ws.close()
+        except Exception:
+            pass
+        await _reply(send, 204)
+        return
+
+    await _reply(send, 404, {"error": "bad route"})
+
+
+async def main():
+    asyncio.get_event_loop().create_task(_reaper())
+    cfg = uvicorn.Config(app, host=LISTEN_HOST, port=LISTEN_PORT,
+                         log_level="warning", lifespan="off")
+    await uvicorn.Server(cfg).serve()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

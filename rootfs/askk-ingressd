@@ -1,0 +1,156 @@
+#!/bin/sh
+# askk-ingressd — guest-side ingress relay (ADR-047 unit 4).
+#
+# Long-polls the service worker for queued browser requests, replays them
+# against the local hermes dashboard (http://127.0.0.1:9119), and posts the
+# answer back. 4 concurrent pollers. busybox-ash POSIX sh + curl + base64.
+#
+# WIRE: CONTRACTS.md's schema is JSON; this client opts into the additive
+# `?fmt=raw` line framing served by docs/askk-sw.js (unit 4 owns both ends)
+# because busybox has no JSON parser. Framing:
+#   poll body:  line1 id / line2 method / line3 path?query
+#               then `h <name_b64> <value_b64>` per header
+#               last `b <body_b64>` (always present, may be empty)
+#   resp body:  line1 status, then the same h/b lines
+# Bodies stay base64 in temp files end to end — no command substitution on
+# request/response bodies, so multi-MB dashboard bundles are safe.
+
+# Overridable for tests only; real boot uses the defaults.
+ENV_FILE="${ASKK_ENV_FILE:-/etc/askk/env}"
+LOG="${ASKK_LOG:-/var/log/askk/ingressd.log}"
+WORKDIR="${ASKK_WORKDIR:-/tmp/askk-ingress}"
+HERMES="${ASKK_HERMES_URL:-http://127.0.0.1:9119}"
+
+[ -f "$ENV_FILE" ] && . "$ENV_FILE"
+
+log() {
+    printf '%s ingressd %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*" >> "$LOG"
+}
+
+# Replay one framed request from $1/wire against hermes, post the answer back.
+handle_one() {
+    d="$1"
+    id="$(sed -n '1p' "$d/wire")"
+    method="$(sed -n '2p' "$d/wire")"
+    path="$(sed -n '3p' "$d/wire")"
+    if [ -z "$id" ] || [ -z "$method" ] || [ -z "$path" ]; then
+        log "bad wire message (missing id/method/path)"
+        return 1
+    fi
+
+    # request headers -> curl args (base64 name/value per line; values are
+    # small, command substitution is fine here — only bodies must stay files)
+    set --
+    grep '^h ' "$d/wire" > "$d/req_hdrs" || :
+    while read -r _ nb vb; do
+        n="$(printf '%s' "$nb" | base64 -d)" || continue
+        v="$(printf '%s' "$vb" | base64 -d)" || continue
+        case "$n" in
+            # curl derives these for the local replay
+            [Hh]ost|[Cc]onnection|[Cc]ontent-[Ll]ength|[Aa]ccept-[Ee]ncoding) ;;
+            *) set -- "$@" -H "$n: $v" ;;
+        esac
+    done < "$d/req_hdrs"
+
+    # request body: b64 line -> bytes in a temp file
+    sed -n 's/^b //p' "$d/wire" | tr -d '\r\n' | base64 -d > "$d/req_body" 2>/dev/null || :
+    [ -s "$d/req_body" ] && set -- "$@" --data-binary @"$d/req_body"
+
+    if [ "$method" = "HEAD" ]; then
+        set -- "$@" --head
+    else
+        set -- "$@" -X "$method"
+    fi
+
+    # /__ws/* is the WS-over-relay tunnel — routed to askk-wsbridge, which
+    # holds the real WebSocket connections to hermes (CONTRACTS.md).
+    case "$path" in
+        /__ws/*) upstream="${ASKK_WSBRIDGE_URL:-http://127.0.0.1:9219}" ;;
+        *)       upstream="$HERMES" ;;
+    esac
+    # no -L: redirects relay back to the browser, the SW rewrites Location
+    # -m 1800 GUEST seconds: the guest clock runs several times faster than
+    # real time, and slow hermes endpoints (model options, config writes)
+    # need minutes of real time under emulation — 300 guest-s aborted them
+    # before the SW's 180s orphan window was even half spent.
+    status="$(curl -sS -m 1800 "$@" -D "$d/resp_hdrs" -o "$d/resp_body" \
+        -w '%{http_code}' "$upstream$path" 2>>"$LOG")" || status=""
+    case "$status" in
+        [1-5][0-9][0-9]) ;;
+        *) status=502; : > "$d/resp_hdrs"; : > "$d/resp_body" ;;
+    esac
+
+    # build the framed resp wire; body streamed through base64, never a var
+    {
+        printf '%s\n' "$status"
+        # ponytail: sed 1d assumes a single header block (no 100-continue)
+        sed '1d' "$d/resp_hdrs" 2>/dev/null | tr -d '\r' | while IFS=: read -r hn hv; do
+            [ -n "$hn" ] || continue
+            hv="${hv# }"
+            case "$hn" in
+                [Tt]ransfer-[Ee]ncoding|[Cc]onnection|[Cc]ontent-[Ll]ength|[Kk]eep-[Aa]live) ;;
+                *) printf 'h %s %s\n' \
+                    "$(printf '%s' "$hn" | base64 | tr -d '\n')" \
+                    "$(printf '%s' "$hv" | base64 | tr -d '\n')" ;;
+            esac
+        done
+        printf 'b '
+        base64 < "$d/resp_body" | tr -d '\n'
+        printf '\n'
+    } > "$d/resp_wire"
+
+    if curl -fsS -m 300 -X POST --data-binary @"$d/resp_wire" \
+        "$ASKK_INGRESS_URL/__ingress/resp/$id?fmt=raw" >/dev/null 2>>"$LOG"; then
+        log "$method $path -> $status (id $id)"
+    else
+        log "resp post FAILED for id $id ($method $path -> $status)"
+        return 1
+    fi
+}
+
+poller() {
+    wid="$1"
+    backoff=1
+    while :; do
+        d="$WORKDIR/w$wid"
+        rm -rf "$d" && mkdir -p "$d"
+        # -m is GUEST time: under Bochs sync=none the guest clock runs several
+        # times faster than the wall clock, so a 30s budget expires before the
+        # SW's 25s (real) long-poll hold ever answers. 300 guest-seconds
+        # comfortably covers the hold at any observed skew.
+        code="$(curl -sS -m 300 -o "$d/wire" -w '%{http_code}' \
+            "$ASKK_INGRESS_URL/__ingress/poll?fmt=raw" 2>>"$LOG")" || code=000
+        case "$code" in
+            200)
+                backoff=1
+                handle_one "$d" || log "worker $wid: handle failed"
+                ;;
+            204)
+                backoff=1 # empty long-poll: go right back
+                ;;
+            *)
+                log "worker $wid: poll failed (code $code), backoff ${backoff}s"
+                sleep "$backoff"
+                backoff=$((backoff * 2))
+                [ "$backoff" -gt 30 ] && backoff=30
+                ;;
+        esac
+    done
+}
+
+main() {
+    mkdir -p "${LOG%/*}" "$WORKDIR"
+    if [ -z "$ASKK_INGRESS_URL" ]; then
+        log "FATAL: ASKK_INGRESS_URL unset (checked $ENV_FILE)"
+        exit 1
+    fi
+    log "starting: 4 pollers -> $ASKK_INGRESS_URL, hermes at $HERMES"
+    for i in 1 2 3 4; do
+        poller "$i" &
+    done
+    trap 'kill $(jobs -p) 2>/dev/null' TERM INT
+    wait
+}
+
+# Test hook: sourcing with ASKK_INGRESSD_TEST=1 loads functions only.
+[ -n "$ASKK_INGRESSD_TEST" ] || main

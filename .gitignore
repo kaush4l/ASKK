@@ -1,0 +1,19 @@
+out/
+docs/wasm/
+# build-time copy of rootfs/startup.sh for the page's startup editor
+docs/startup.default.sh
+# shelf bundles: built by image/bundles.sh, deployed to gh-pages only —
+# large binaries never land on main (small helpers like hello-askk do).
+docs/bin/*.tar.gz
+docs/bin/*.part-*
+docs/bin/*.parts
+docs/bin/SIZES.txt
+docs/bin/BUNDLES.json
+docs/bin/curl
+docs/bin/bun
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/settings.local.json
+.claude/worktrees/

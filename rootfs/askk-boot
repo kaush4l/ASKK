@@ -1,0 +1,51 @@
+#!/bin/sh
+# ASKK guest — PID1 entrypoint under container2wasm init (busybox ash).
+# Prints the boot markers CONTRACTS.md pins (split literals so a command
+# echo can never self-match), snapshots the injected env, runs the startup
+# seam, then respawns the console session. No /bin/login, no credentials.
+
+printf '@ASKK:''BOOT@\n'
+
+# c2w init may hand us a bare env — pin the basics before anything else.
+export HOME="${HOME:-/root}"
+export PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+
+mkdir -p /etc/askk /var/log/askk
+
+# Snapshot runtime env for later shells (respawned sessions get a fresh env).
+# Same pattern as Eliza's eliza-boot.
+{
+    echo "# generated at boot by /sbin/askk-boot"
+    for var in SSL_CERT_FILE http_proxy https_proxy HTTP_PROXY HTTPS_PROXY \
+               no_proxy NO_PROXY ASKK_MODEL_URL ASKK_MODEL_NAME \
+               ASKK_PERSIST_URL ASKK_INGRESS_URL ASKK_BIN_URL; do
+        eval "val=\${$var:-}"
+        [ -n "$val" ] && printf 'export %s="%s"\n' "$var" "$val"
+    done
+    # Loopback must never route through the wasm net proxy.
+    printf 'export no_proxy="localhost,127.0.0.1${no_proxy:+,$no_proxy}"\n'
+    printf 'export NO_PROXY="$no_proxy"\n'
+} > /etc/askk/env
+chmod 644 /etc/askk/env
+
+# 2>/dev/null first: ash reports a failed > redirect on the original stderr.
+echo askk 2>/dev/null > /proc/sys/kernel/hostname || true
+
+# Startup seam: a persisted startup.sh (uploaded via the page) overrides the
+# baked one; else run the baked /etc/askk/startup.sh.
+STARTUP=/etc/askk/startup.sh
+if [ -n "${ASKK_PERSIST_URL:-}" ]; then
+    if wget -q -T 15 -O /tmp/startup.sh "$ASKK_PERSIST_URL/startup.sh" 2>/dev/null \
+        && [ -s /tmp/startup.sh ]; then
+        STARTUP=/tmp/startup.sh
+        echo "askk-boot: using persisted startup.sh override"
+    fi
+fi
+sh "$STARTUP" || printf '@ASKK:''ERR:startup-script-failed@\n'
+
+# Respawn the interactive console session forever (we are PID1).
+while true; do
+    /usr/local/bin/askk-session
+    echo "Session ended. Respawning."
+    sleep 2
+done

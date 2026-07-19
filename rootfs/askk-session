@@ -1,0 +1,29 @@
+#!/bin/sh
+# ASKK console session — banner + interactive shell (respawned by askk-boot).
+
+[ -f /etc/askk/env ] && . /etc/askk/env
+# The shelf python/hermes land under /opt/python once startup.sh pulls them.
+export PATH="/opt/python/bin:$PATH" HOME="${HOME:-/root}"
+cd "$HOME" 2>/dev/null || true
+
+cat <<'EOF'
+
+     _    ____  _  __ _  __
+    / \  / ___|| |/ /| |/ /
+   / _ \ \___ \| ' / | ' /
+  / ___ \ ___) | . \ | . \
+ /_/   \_\____/|_|\_\|_|\_\
+
+  ASKK guest -- minimal Alpine in your browser
+
+  askk-get <name>           pull a tool from the page's bin store
+                            (tarballs extract: askk-get hermes.tar.gz /)
+  hermes                    the agent (auto-started; log /var/log/askk/)
+  vi /etc/askk/startup.sh   edit the boot startup script
+                            (persist as 'startup.sh' via the page to
+                             override at every boot)
+  logs: /var/log/askk/
+
+EOF
+
+exec /bin/sh -i
