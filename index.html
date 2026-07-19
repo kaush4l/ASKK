@@ -69,6 +69,7 @@
 
     <script src="./vendor/xterm.min.js"></script>
     <script src="./vendor/xterm-addon-fit.js"></script>
+    <script src="./vendor/xterm-addon-webgl.js"></script>
     <script src="./vendor/xterm-pty.js"></script>
     <script src="./stack.js"></script>
     <script src="./boot.js"></script>
@@ -249,6 +250,21 @@
           fitAddon = new FitAddon.FitAddon();
           xterm.loadAddon(fitAddon);
           xterm.open(termHost);
+          // GPU-accelerated terminal rendering: offloads glyph drawing to the
+          // GPU so the CPU stays with the emulator. Must load after open()
+          // (needs the DOM element); context creation can fail (headless,
+          // blocklisted driver, context-limit) — canvas renderer stays the
+          // silent fallback, and contextloss hands back to canvas too.
+          if (typeof WebglAddon !== "undefined") {
+            try {
+              const webgl = new WebglAddon.WebglAddon();
+              webgl.onContextLoss(() => webgl.dispose());
+              xterm.loadAddon(webgl);
+              window.__askkTermRenderer = "webgl";
+            } catch (e) {
+              window.__askkTermRenderer = "canvas";
+            }
+          }
           window.addEventListener("resize", refit);
           // Programmatic input seam (Eliza parity): automation and future
           // chrome features paste into the guest through the same pty.
