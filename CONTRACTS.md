@@ -108,6 +108,9 @@ terminal/console only. Same split-literal printing rule.
 - Vendored xterm/xterm-pty UMD bundles expose the same globals the Eliza page
   uses from CDN (`Terminal`, `FitAddon`, `openpty`/`TtyServer`/`TtyClient`).
   Match Eliza's proven version pair (xterm 4.17.0 + xterm-pty 0.9.4).
+  `WebglAddon` (xterm-addon-webgl 0.11.4) adds GPU-accelerated terminal
+  rendering; `window.__askkTermRenderer` reports `"webgl"` or `"canvas"`
+  (diagnostic only — canvas is the silent fallback when a GL context fails).
 
 ## manifest.json (docs/wasm/, gitignored — build output)
 
