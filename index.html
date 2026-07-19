@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ASKK — hermes in your browser</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+    <!-- unit 4's service worker (coi-serviceworker pattern): self-registers,
+         provides COOP/COEP for SharedArrayBuffer plus the /__persist/ blob
+         store and the /__hermes/ ingress relay. Must load before anything. -->
+    <script src="./askk-sw.js"></script>
+    <link rel="stylesheet" href="./vendor/xterm.css">
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <header id="topbar">
+      <div id="bar"><div id="barfill"></div></div>
+      <div id="toprow">
+        <span id="brand"><img src="./assets/favicon.svg" alt="" width="20" height="20">ASKK</span>
+        <span id="status">preparing…</span>
+        <div id="llm">
+          <label for="llmurl">backend</label>
+          <input id="llmurl" size="28" spellcheck="false" autocomplete="off"
+                 title="OpenAI-compatible base URL (LM Studio, Ollama, llama.cpp… — read live, applies to the next request)">
+          <label for="llmmodel">model</label>
+          <input id="llmmodel" size="24" spellcheck="false" autocomplete="off"
+                 title="model id sent to the backend">
+          <button id="startupbtn" type="button"
+                  title="edit the guest startup script (persisted override, applies on next boot)">startup</button>
+        </div>
+      </div>
+    </header>
+
+    <div id="stage">
+      <div id="startuppanel" hidden>
+        <div id="startuphead">
+          <strong>guest startup script</strong>
+          <span id="startupstate"></span>
+          <span class="spacer"></span>
+          <button id="startupsave" type="button">save override</button>
+          <button id="startuprevert" type="button">revert to default</button>
+          <button id="startupclose" type="button">close</button>
+        </div>
+        <p id="startuphint">Runs as the guest's boot script (busybox POSIX sh — no bashisms).
+          Pull tools with <code>askk-get &lt;name&gt; [dest]</code>; whatever your script serves on
+          <code>127.0.0.1:9119</code> appears in this window through the relay — print the
+          HERMES boot marker once it answers (copy the split-literal printf from the default
+          script). Saved overrides apply on the <em>next boot</em>: reload the page after
+          saving. A broken script prints <code>ERR:startup-script-failed</code> in the
+          terminal — revert here, then reload.</p>
+        <textarea id="startuptext" spellcheck="false" autocomplete="off"
+                  autocapitalize="off" autocorrect="off"></textarea>
+      </div>
+      <iframe id="dashboard" src="./__hermes/" title="hermes dashboard"></iframe>
+      <div id="overlay">
+        <div id="overlaybox">
+          <p id="overlaybrand">ASKK</p>
+          <span class="pulse" aria-hidden="true"></span>
+          <p id="overlaymsg">waiting for guest — first boot under emulation takes a few minutes…</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="divider" role="separator" aria-orientation="horizontal"
+         title="drag to resize the terminal">
+      <button id="collapse" type="button" aria-label="collapse or restore the terminal pane">▼</button>
+    </div>
+    <div id="terminal"></div>
+
+    <script src="./vendor/xterm.min.js"></script>
+    <script src="./vendor/xterm-addon-fit.js"></script>
+    <script src="./vendor/xterm-pty.js"></script>
+    <script src="./stack.js"></script>
+    <script src="./boot.js"></script>
+    <script>
+      // Page chrome only (unit 5): settings, split pane, overlay, boot wiring.
+      // The VM/pty/net logic lives in boot.js (unit 2) + stack.js (unit 3).
+      (() => {
+        "use strict";
+        const $ = (id) => document.getElementById(id);
+        const statusEl = $("status");
+        const barfill = $("barfill");
+
+        const setStatus = (msg, pct, isErr) => {
+          statusEl.textContent = msg;
+          statusEl.classList.toggle("err", !!isErr);
+          if (pct !== undefined && pct !== null) barfill.style.width = pct + "%";
+        };
+
+        // ---- backend settings (CONTRACTS: localStorage["askk-llm"] = {url, model}) ----
+        const LS_LLM = "askk-llm";
+        // Local dev: serve.py reverse-proxies /v1 to the LLM — same-origin,
+        // no CORS. Published: the user's endpoint must allow CORS; the field
+        // is editable either way.
+        const LOCAL = /^(localhost|127\.)/.test(location.hostname);
+        const DEF = {
+          url: LOCAL ? new URL("./v1", location.href).href.replace(/\/$/, "")
+                     : "http://localhost:8873/v1",
+          model: "gemma-4-12B-it-qat-mxfp8",
+        };
+        const urlIn = $("llmurl");
+        const modelIn = $("llmmodel");
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(LS_LLM)) || {}; } catch (e) { /* corrupt entry → defaults */ }
+        urlIn.value = saved.url || DEF.url;
+        modelIn.value = saved.model || DEF.model;
+
+        // Read per request by the net stack, so edits apply live (CONTRACTS).
+        // The sentinel map substitutes this for http://llm.askk.internal/v1,
+        // so the url must be a full OpenAI-compatible /v1 base (Eliza pattern).
+        const getBackend = () => {
+          const base = (urlIn.value.trim() || DEF.url).replace(/\/+$/, "");
+          return {
+            url: /\/v1$/.test(base) ? base : base + "/v1",
+            model: modelIn.value.trim() || DEF.model,
+          };
+        };
+        const saveBackend = () => {
+          const b = getBackend();
+          window.__backend = b.url; // CONTRACTS: current LLM base URL, as a string
+          try { localStorage.setItem(LS_LLM, JSON.stringify(b)); } catch (e) { /* private mode */ }
+        };
+        urlIn.addEventListener("change", saveBackend);
+        modelIn.addEventListener("change", saveBackend);
+        window.getBackend = getBackend;
+        saveBackend();
+
+        // ---- startup-script editor (persist-override seam, CONTRACTS) ----
+        // askk-boot fetches $ASKK_PERSIST_URL/startup.sh before falling back
+        // to the baked script; the SW's /__persist/ Cache-API store holds the
+        // override. This panel is the only writer of that file.
+        const panel = $("startuppanel");
+        const stext = $("startuptext");
+        const sstate = $("startupstate");
+        const setSState = (msg) => { sstate.textContent = msg; };
+        const loadStartup = async () => {
+          setSState("loading…");
+          try {
+            const o = await fetch("./__persist/startup.sh", { cache: "no-store" });
+            if (o.ok) {
+              stext.value = await o.text();
+              setSState("override active — applies on next boot");
+              return;
+            }
+          } catch (e) { /* SW not controlling yet — fall through to default */ }
+          try {
+            const d = await fetch("./startup.default.sh", { cache: "no-store" });
+            if (d.ok) {
+              stext.value = await d.text();
+              setSState("baked default (no override saved)");
+              return;
+            }
+          } catch (e) { /* no default shipped */ }
+          stext.value = "#!/bin/sh\n# startup.default.sh not found — write your own.\n";
+          setSState("no default found");
+        };
+        $("startupbtn").addEventListener("click", () => {
+          panel.hidden = !panel.hidden;
+          if (!panel.hidden) loadStartup();
+        });
+        $("startupclose").addEventListener("click", () => { panel.hidden = true; });
+        $("startupsave").addEventListener("click", async () => {
+          setSState("saving…");
+          try {
+            const r = await fetch("./__persist/startup.sh", { method: "PUT", body: stext.value });
+            setSState(r.ok ? "override saved — reload the page to boot with it"
+                           : "save failed: HTTP " + r.status);
+          } catch (e) { setSState("save failed: " + e.message); }
+        });
+        $("startuprevert").addEventListener("click", async () => {
+          setSState("reverting…");
+          try {
+            const r = await fetch("./__persist/startup.sh", { method: "DELETE" });
+            if (r.ok || r.status === 404) {
+              await loadStartup();
+              setSState("override removed — next boot uses the baked default");
+            } else setSState("revert failed: HTTP " + r.status);
+          } catch (e) { setSState("revert failed: " + e.message); }
+        });
+
+        // ---- resizable terminal pane ----
+        const LS_SPLIT = "askk-split";
+        const MAX_SPLIT = 0.8;
+        const DEF_SPLIT = 0.35;
+        const termHost = $("terminal");
+        const divider = $("divider");
+        const toggle = $("collapse");
+        let split = DEF_SPLIT;
+        let lastOpen = DEF_SPLIT;
+        const storedSplit = parseFloat(localStorage.getItem(LS_SPLIT));
+        if (Number.isFinite(storedSplit)) split = Math.min(MAX_SPLIT, Math.max(0, storedSplit));
+        if (split > 0) lastOpen = split;
+
+        let fitAddon = null;
+        const refit = () => {
+          if (!fitAddon || split === 0) return;
+          requestAnimationFrame(() => { try { fitAddon.fit(); } catch (e) { /* zero-size race */ } });
+        };
+        const applySplit = () => {
+          termHost.style.flexBasis = (split * 100) + "%";
+          toggle.textContent = split === 0 ? "▲" : "▼";
+          refit();
+        };
+        const persistSplit = () => {
+          try { localStorage.setItem(LS_SPLIT, String(split)); } catch (e) { /* private mode */ }
+        };
+
+        divider.addEventListener("pointerdown", (e) => {
+          if (e.target === toggle) return;
+          e.preventDefault();
+          divider.setPointerCapture(e.pointerId);
+          document.body.classList.add("dragging"); // iframe stops eating pointer events
+          const move = (ev) => {
+            split = Math.min(MAX_SPLIT, Math.max(0, (window.innerHeight - ev.clientY) / window.innerHeight));
+            applySplit();
+          };
+          const up = () => {
+            divider.removeEventListener("pointermove", move);
+            divider.removeEventListener("pointerup", up);
+            divider.removeEventListener("pointercancel", up);
+            document.body.classList.remove("dragging");
+            if (split > 0) lastOpen = split;
+            persistSplit();
+          };
+          divider.addEventListener("pointermove", move);
+          divider.addEventListener("pointerup", up);
+          divider.addEventListener("pointercancel", up);
+        });
+        toggle.addEventListener("click", () => {
+          split = split === 0 ? lastOpen : 0;
+          applySplit();
+          persistSplit();
+        });
+
+        // ---- terminal (instance is chrome's; boot.js gets it and wires the pty) ----
+        let xterm = null;
+        if (typeof Terminal !== "undefined" && typeof FitAddon !== "undefined") {
+          xterm = new Terminal({
+            fontSize: 13,
+            scrollback: 4000,
+            theme: {
+              background: "#0d0b12",
+              foreground: "#dcd9e4",
+              cursor: "#23b3d1",
+              cursorAccent: "#131019",
+              selection: "rgba(35,179,209,.30)",
+            },
+          });
+          fitAddon = new FitAddon.FitAddon();
+          xterm.loadAddon(fitAddon);
+          xterm.open(termHost);
+          window.addEventListener("resize", refit);
+          // Programmatic input seam (Eliza parity): automation and future
+          // chrome features paste into the guest through the same pty.
+          window.__term = xterm;
+        }
+        applySplit();
+
+        // ---- dashboard overlay + boot markers (CONTRACTS: @ASKK:<NAME>@) ----
+        const frame = $("dashboard");
+        const overlay = $("overlay");
+        const overlayMsg = $("overlaymsg");
+        const MARKS = {
+          BOOT: "kernel up — guest booting…",
+          NET: "network stack attached…",
+          HERMES: "hermes starting…",
+        };
+        // Reveal the dashboard only if something in the guest actually
+        // answers on the virtual origin; a minimal image has no agent
+        // until startup.sh finishes the bundle bringup (ADR-048), and a
+        // raw 404/502 page is not a dashboard.
+        const revealIfDashboard = (waitingMsg) =>
+          fetch("./__hermes/", { cache: "no-store" }).then((r) => {
+            if (r.ok) {
+              frame.src = frame.getAttribute("src");
+              overlay.hidden = true;
+              setStatus("ready — dashboard live", 100);
+            } else {
+              overlayMsg.textContent = waitingMsg;
+            }
+          }).catch(() => {
+            overlayMsg.textContent =
+              "guest is up — dashboard origin unreachable; terminal below is live.";
+          });
+        // A refresh kills the VM (no snapshot — CONTRACTS ceiling); once the
+        // guest is live, make leaving the page a deliberate act.
+        let guestLive = false;
+        window.addEventListener("beforeunload", (e) => {
+          if (!guestLive) return;
+          e.preventDefault();
+          e.returnValue = ""; // legacy engines need a truthy-ish returnValue
+        });
+        const onMarker = (name) => {
+          name = String(name);
+          if (name === "READY") {
+            guestLive = true;
+            setStatus("ready — guest shell live", 100);
+            revealIfDashboard(
+              "guest is up — hermes is being pulled off the shelf and " +
+              "started (watch the terminal below; the big downloads take " +
+              "a while under emulation).");
+          } else if (name === "HERMES") {
+            // The guest says the dashboard answered locally — hook it up.
+            revealIfDashboard("hermes reports up — connecting the dashboard…");
+          } else if (name.indexOf("ERR") === 0) {
+            setStatus("guest error: " + (name.replace(/^ERR:?\s*/, "") || "unknown"), null, true);
+            overlayMsg.textContent = "guest error — details in the terminal";
+          } else if (MARKS[name]) {
+            overlayMsg.textContent = MARKS[name];
+          }
+        };
+        const onStatus = (pct, msg) => setStatus(msg, pct);
+
+        // ---- unsupported panel (honest verdict instead of a stuck spinner) ----
+        // Replaces the overlay content when the SW's one-shot reload already
+        // ran and SharedArrayBuffer STILL isn't there (Safari without
+        // credentialless COEP, any unsupported browser, phones).
+        const showUnsupported = (reason) => {
+          const isoFail = reason === "no-isolation";
+          setStatus("unsupported browser — " + (isoFail
+            ? "cross-origin isolation (COOP/COEP) unavailable"
+            : "SharedArrayBuffer unavailable"), 0, true);
+          const pulse = $("overlaybox").querySelector(".pulse");
+          if (pulse) pulse.remove(); // no spinner on a terminal verdict
+          overlayMsg.textContent = "This browser can't run the ASKK VM: " + (isoFail
+            ? "cross-origin isolation (COOP/COEP) never came up, so SharedArrayBuffer stays disabled."
+            : "SharedArrayBuffer is still unavailable even though the page is cross-origin isolated.");
+          const hints = document.createElement("div");
+          hints.style.cssText = "margin:1em auto 0;max-width:44ch;color:var(--ink-dim);font-size:.92em";
+          const line = (text) => {
+            const p = document.createElement("p");
+            p.style.margin = ".6em 0 0";
+            p.textContent = text;
+            hints.appendChild(p);
+            return p;
+          };
+          if (/iPhone|iPad|Android/i.test(navigator.userAgent)) {
+            line("This device can't run the ~1 GB VM — the guest alone needs "
+              + "1 GB of memory. A lightweight mobile companion is on the roadmap.");
+          } else {
+            const retry = new URL(location.href);
+            retry.searchParams.set("coep", "require-corp");
+            const p = line("Safari: ");
+            const a = document.createElement("a");
+            a.href = retry.href; // same URL — the SW picks the query up
+            a.textContent = "retry with ?coep=require-corp";
+            a.style.color = "var(--cyan)";
+            p.appendChild(a);
+            line("Otherwise use a current desktop Chrome, Edge, or Firefox "
+              + "with ~2 GB of memory to spare.");
+          }
+          $("overlaybox").appendChild(hints);
+        };
+
+        // ---- auto-boot (capability gate, pure logic in boot.js AskkGateCore) ----
+        if (!window.AskkBoot || !window.AskkGateCore || !xterm) {
+          // ponytail: cross-unit files 404 in a lone worktree; name the gap instead of a blank page
+          setStatus((xterm ? "boot.js" : "vendor xterm") + " missing — cross-unit integration pending.", 0, true);
+        } else {
+          let reloaded = false;
+          try { reloaded = !!sessionStorage.getItem("askk-sw-reloaded"); } catch (e) { /* storage off */ }
+          const gate = window.AskkGateCore.decide({
+            sab: typeof SharedArrayBuffer !== "undefined",
+            reloaded,
+            coi: !!window.crossOriginIsolated,
+          });
+          if (gate.action === "boot") {
+            window.AskkBoot.start({ terminal: xterm, getBackend, onStatus, onMarker });
+          } else if (gate.action === "reload-wait") {
+            // SW install + one-shot auto-reload (askk-sw.js window half) is
+            // still in flight — unchanged waiting message.
+            setStatus("SharedArrayBuffer unavailable — reload once while the service worker installs.", 0, true);
+            overlayMsg.textContent = "reload once while the service worker installs";
+          } else {
+            showUnsupported(gate.reason);
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>
