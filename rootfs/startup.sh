@@ -139,6 +139,17 @@ printf '@ASKK:''READY@\n'
         sleep 3
     done
     printf '@ASKK:''T:hermes_up=%s@\n' "$(( $(date +%s) - t0 ))"
+    # Chat gateway (ADR-050): the `hermes dashboard` web server and the agent
+    # GATEWAY are separate processes — the dashboard serves the UI, the gateway
+    # answers /api/ws (chat) and drives the model. Without it the chat socket
+    # 403s and the UI shows "WebSocket connection failed" / MODEL error, i.e.
+    # "not connecting to any model" even though the backend is reachable. Start
+    # it after the dashboard is up (it registers with it); inherit the env
+    # (proxy included) so its outbound model calls route like the dashboard's.
+    # Long-running (also runs cron); backgrounded so bringup continues.
+    if command -v hermes >/dev/null 2>&1; then
+        hermes gateway restart > /var/log/askk/gateway.log 2>&1 &
+    fi
     # WS-over-relay bridge (CONTRACTS.md): holds real WebSocket connections
     # to the dashboard so the iframe's polyfilled sockets (chat, events
     # feed) work through the ingress relay. Needs hermes' python packages —
