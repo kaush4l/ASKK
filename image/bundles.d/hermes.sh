@@ -20,7 +20,7 @@ docker exec "$C" sh -eu -c '
     mkdir -p /opt && tar -xzf /tmp/python.tgz -C /opt   # -> /opt/python
     export PATH=/opt/python/bin:$PATH HOME=/root
     python3 --version
-    pip3 install --no-cache-dir --no-compile "hermes-agent[web,pty]" 2>&1 | tail -3
+    pip3 install --no-cache-dir --no-compile "hermes-agent[web,pty]==0.19.0" 2>&1 | tail -3
     hermes --version || hermes --help | head -5
 '
 

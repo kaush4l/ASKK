@@ -19,7 +19,7 @@ RUN mkdir -p /opt && curl -fL "$PBS_URL" -o /tmp/python.tgz \
     && rm /tmp/python.tgz            # -> /opt/python
 ENV PATH=/opt/python/bin:$PATH HOME=/root
 RUN python3 --version \
-    && pip3 install --no-cache-dir --no-compile "hermes-agent[web,pty]" 2>&1 | tail -3 \
+    && pip3 install --no-cache-dir --no-compile "hermes-agent[web,pty]==0.19.0" 2>&1 | tail -3 \
     && ( hermes --version || hermes --help | head -5 )
 
 # Prewarm the TUI bundle: Node builds it on the dashboard's first launch, and
