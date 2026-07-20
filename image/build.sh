@@ -5,11 +5,13 @@
 #   image/build.sh --skip-docker   reuse the existing askk-guest image
 #   image/build.sh --dev           verbose guest boot (kernel loglevel 7 + init debug)
 #   image/build.sh --test-manifest self-check the manifest writer and exit
-# Env: C2W_SRC (container2wasm clone), GUEST_RAM_MB (default 1024 — the
-# shipped default: the hermes profile fits, and the tmpfs rootfs means
-# extracted bundles consume guest RAM. 2048 is opt-in AND wizer-incompatible
-# (see the stage 3 WIZER note); 512 sufficed for the bare shell. Guest RAM
-# = wasm linear memory = browser tab commit),
+# Env: C2W_SRC (container2wasm clone), GUEST_RAM_MB (default 512 — the
+# shipped default since ADR-051: python+hermes are BAKED onto the read-only
+# ISO and read from there, so nothing extracts into the tmpfs upper and the
+# hermes profile boots in 512 (verified: HERMES at 512, tab ~794MB). Bump to
+# 1024 if a startup script pulls a heavy toolchain into tmpfs at runtime.
+# 2048 is opt-in AND wizer-incompatible (see the stage 3 WIZER note). Guest
+# RAM = wasm linear memory = browser tab commit),
 #      WIZER=1 (default; WIZER=0 opts out of wizer pre-boot — needed for
 #      big-RAM builds, see stage 3),
 #      WASMOPT=1 (wasm-opt -Oz shrink, see stage 3.5; 0 = escape hatch),
@@ -18,7 +20,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 C2W_SRC="${C2W_SRC:-$HOME/Downloads/Dev/c2w-alpine/container2wasm}"
-GUEST_RAM_MB="${GUEST_RAM_MB:-1024}"
+GUEST_RAM_MB="${GUEST_RAM_MB:-512}"
 GZIP_LEVEL="${GZIP_LEVEL:-6}"
 WASM_OUT=out/askk-amd64.wasm
 

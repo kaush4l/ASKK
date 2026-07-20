@@ -7,11 +7,14 @@ the pattern proven in [Eliza](https://github.com/kaush4l/Eliza) and the
 sibling `c2w-alpine` bench). The browser is the client: the page boots the
 VM in a worker and gives you an xterm.js terminal in a resizable pane.
 
-Nothing heavyweight is baked into the image. Runtimes and tools (python,
-rust, bun, the hermes agent, …) live on the **public binary shelf**
-(`docs/bin/`) and are pulled *into the running guest* over the fetch-proxy
-network with `askk-get <name>` (ADR-048). The dashboard iframe lights up
-once an injected agent serves it; until then the terminal is the whole show.
+The hermes agent (python + hermes) is **baked into the image** — it ships
+inside the one wasm, so the page needs no runtime download and there is no
+build/assemble step (ADR-051). The dashboard iframe lights up once hermes
+answers; until then the terminal is the whole show. *Optional* extra tools
+(rust, bun, other runtimes) still live on the **public binary shelf**
+(`docs/bin/`) and can be pulled into the running guest on demand with
+`askk-get <name>` (ADR-048/049) — that path is dormant unless a startup
+script uses it.
 
 No server-side compute. The published page runs entirely in your browser.
 

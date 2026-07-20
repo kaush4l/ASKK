@@ -19,13 +19,12 @@ index.html ──registers──▶ askk-sw.js (SW: /__hermes/ rewrite, /__ingre
 guest: askk-boot (env snapshot → @ASKK:BOOT@) ──▶ /etc/askk/startup.sh
     ├──▶ net probe → @ASKK:NET@ → @ASKK:READY@ (shell live immediately;
     │    a failed LLM probe is a warning, never a gate — ADR-050)
-    ├──▶ backgrounded bringup (always runs): parallel askk-get pulls
-    │    off the shelf (curl first — ingressd self-heals; then the app's
-    │    toolchain subset, e.g. python311+hermes), each phase timed with
-    │    @ASKK:T:<phase>=<s>@ markers (parallel pulls land with this batch)
-    │    → render ~/.hermes/config.yaml from tmpl (ASKK_MODEL_*) →
-    │    hermes dashboard :9119 → @ASKK:HERMES@
-    ├──▶ askk-get <name>: wget bin.askk.internal/<name> → /usr/local/bin;
+    ├──▶ backgrounded bringup (always runs): python+hermes are BAKED into
+    │    the image (ADR-051), so no download — render ~/.hermes/config.yaml
+    │    from tmpl (ASKK_MODEL_*) → hermes dashboard :9119 → gateway restart
+    │    → wsbridge → @ASKK:HERMES@ (phases timed with @ASKK:T:<phase>=<s>@)
+    ├──▶ askk-get <name> (OPTIONAL, dormant for hermes — ADR-049 tools only):
+    │    wget bin.askk.internal/<name> → /usr/local/bin;
     │    *.tar.gz stream-extracts to a dest dir
     │    (browser-side remap → same-origin ./bin/<name>, the public shelf)
     └──▶ askk-ingressd: long-poll SW /__ingress/poll → hit :9119 →

@@ -145,4 +145,4 @@ split at 94371840 bytes (90 MiB), Eliza schema verbatim.
 | 5 chrome | `docs/index.html`, `docs/style.css`, `docs/assets/*`, `docs/vendor/*` (except c2w-net-proxy.wasm) |
 | 6 host tooling | `serve.py`, `publish.sh` |
 | 7 docs | `README.md`, `CLAUDE.md`, `MAP.md`, `docs/adr/ADR-047-rewrite-c2w-base.md`, `docs/BACKLOG.md` |
-| coordinator | `docs/bin/*` (the public binary shelf: small demo binaries committed; large runtime tarballs — python, GraalVM, hermes — staged locally/gh-pages only) |
+| coordinator | `docs/bin/*` (the public binary shelf: small demo binaries committed; large runtime tarballs — GraalVM, rust, bun — staged locally/gh-pages only). **python + hermes are BAKED into the image (ADR-051), not on the shelf** — the shelf is now only for *optional* on-demand tools. |
