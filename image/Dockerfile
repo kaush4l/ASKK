@@ -77,8 +77,13 @@ RUN set -eu; \
 FROM --platform=linux/amd64 alpine:latest
 # curl: askk-ingressd's long-poll relay needs it (busybox wget can't).
 # ca-certificates: none of the loopback traffic is TLS, but keep it for any
-# future TLS-through-proxy. Everything else stays busybox-minimal.
-RUN apk add --no-cache curl ca-certificates
+# future TLS-through-proxy.
+# nodejs: the dashboard Chat tab's terminal is /api/pty, which spawns the
+# hermes Ink TUI under node (main.py _make_tui_argv -> `node <dist>`). Without
+# it every chat closes 1006 / orphans at 180s ("chat not working") even though
+# the python /api/ws sidecar shows the model. The prewarmed TUI dist is already
+# baked; node only needs to RUN it — no npm (runtime doesn't build anything).
+RUN apk add --no-cache curl ca-certificates nodejs
 
 COPY --from=hermes-build /opt/python /opt/python
 COPY --from=hermes-build /root/.hermes /root/.hermes
@@ -106,7 +111,13 @@ RUN set -eu; \
 # PATH/PYTHONDONTWRITEBYTECODE are re-exported by startup.sh too (the flatten
 # import in build.sh only re-stamps TERM/LANG), so hermes runs even if a boot
 # path skips this ENV. Keeping them here makes an interactive shell sane.
+# HERMES_SKIP_NODE_BOOTSTRAP: node is baked but npm is not — without this,
+# _ensure_tui_node would try to install node (fnm/nvm/brew cascade) via a bash
+# subprocess on every chat, hanging the guest (no bash, no network for that).
+# With node present + bootstrap skipped, _make_tui_argv runs `node <dist>`
+# straight off.
 ENV TERM=linux LANG=C.UTF-8 \
     PATH=/opt/python/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    HERMES_SKIP_NODE_BOOTSTRAP=1
 ENTRYPOINT ["/sbin/askk-boot"]

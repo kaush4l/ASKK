@@ -138,15 +138,26 @@ poller() {
     done
 }
 
+# Poller count. Each active WS-over-relay socket's recv loop holds ONE poller
+# continuously (it long-polls /__ws/recv, immediately re-polls on 204). The
+# dashboard Chat tab opens ~4 sockets at once (/api/pty, /api/ws, /api/events,
+# /api/pub), so 4 pollers get fully consumed by recv holds and every regular
+# request (a new /__ws/open, /api/status, …) starves — orphaning at the SW's
+# 180s window and coming back as a 1006 "chat connection interrupted". 16
+# gives headroom for the chat's sockets plus normal traffic.
+POLLERS="${ASKK_POLLERS:-16}"
+
 main() {
     mkdir -p "${LOG%/*}" "$WORKDIR"
     if [ -z "$ASKK_INGRESS_URL" ]; then
         log "FATAL: ASKK_INGRESS_URL unset (checked $ENV_FILE)"
         exit 1
     fi
-    log "starting: 4 pollers -> $ASKK_INGRESS_URL, hermes at $HERMES"
-    for i in 1 2 3 4; do
+    log "starting: $POLLERS pollers -> $ASKK_INGRESS_URL, hermes at $HERMES"
+    i=1
+    while [ "$i" -le "$POLLERS" ]; do
         poller "$i" &
+        i=$((i + 1))
     done
     trap 'kill $(jobs -p) 2>/dev/null' TERM INT
     wait
