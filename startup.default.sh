@@ -7,6 +7,9 @@
 [ -f /etc/askk/env ] && . /etc/askk/env
 mkdir -p /var/log/askk
 export PATH=/opt/python/bin:$PATH HOME=/root PYTHONDONTWRITEBYTECODE=1
+# node is baked (dashboard Chat /api/pty spawns the Ink TUI under it); npm is
+# not, so tell hermes not to try installing node on the first chat.
+export HERMES_SKIP_NODE_BOOTSTRAP=1
 
 # Ingress relay (unit 4's daemon) — optional, guard its absence.
 if command -v askk-ingressd >/dev/null 2>&1; then
