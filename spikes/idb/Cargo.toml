@@ -1,0 +1,40 @@
+# Spike D — IndexedDB-from-Rust probe. Standalone; not part of any workspace.
+[package]
+name = "idb-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Pinned per the G0 spike brief; js-sys/web-sys resolve to their matching 0.3.x.
+wasm-bindgen = "=0.2.121"
+js-sys = "0.3"
+# JsFuture: the only callback->Future bridge we use.
+wasm-bindgen-futures = "0.4"
+# Value is the KV payload type (mirrors the old KvStore seam).
+serde_json = "1"
+
+[dependencies.web-sys]
+version = "0.3"
+# Only the IndexedDB surface + Window (factory access) + Performance (timing probe).
+features = [
+  "Window",
+  "Performance",
+  "IdbFactory",
+  "IdbOpenDbRequest",
+  "IdbRequest",
+  "IdbDatabase",
+  "IdbObjectStore",
+  "IdbTransaction",
+  "IdbTransactionMode",
+  "IdbKeyRange",
+  "DomException",
+]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[workspace]
