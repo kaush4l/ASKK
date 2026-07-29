@@ -1,0 +1,36 @@
+//! Effects (§11, GLOSSARY): serializable descriptions of something to be
+//! done. The output of `step`; executed by the `core` runtime through ports;
+//! results return as the next Event. Coarse on purpose (ARCHITECTURE §1c:
+//! one CallModel, one InvokeTool — never micro-effects), so one Work turn is
+//! one step in, one effect out, one event back.
+
+use serde::{Deserialize, Serialize};
+
+use context::{Document, ProviderFormat};
+use kernel::{AgentId, EndpointName, EventKind, ToolId};
+
+/// The closed set of things an agent can ask the runtime to do — the §11
+/// list, typed. Serializable because pending effects must survive a refresh
+/// (replay reloads state + effects from the log, I11).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Effect {
+    /// Call the model with an assembled paper (I13: nothing reaches a model
+    /// except as a Document — this variant's type makes ad-hoc strings
+    /// unrepresentable).
+    CallModel {
+        document: Document,
+        format: ProviderFormat,
+        endpoint: EndpointName,
+    },
+    /// Run one tool through its granted capability (Work's single action).
+    InvokeTool { tool: ToolId, args_json: String },
+    /// Record a fact (I8) beyond what the runtime already logs.
+    Emit { kind: EventKind },
+    /// Write through StorePort — the agent persists state as data, never
+    /// holds a connection (I2).
+    Persist { key: String, value_json: String },
+    /// Wake me later (heartbeat, retries with backoff).
+    Sleep { ms: u64 },
+    /// Start another agent in its own Worker (§10 Tier 2).
+    Spawn { agent: AgentId },
+}

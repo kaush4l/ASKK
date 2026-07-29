@@ -1,0 +1,16 @@
+[package]
+name = "script"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Embedded Rhai interpreter + capability binding (ADR-003, Spike B shape)"
+
+[dependencies]
+kernel = { path = "../kernel" }
+# rhai: quarantined here so the pure domain's compile graph and dependency
+# audit stay clean (ARCHITECTURE §1a) — the crate exists FOR this dependency.
+rhai = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

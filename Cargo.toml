@@ -1,0 +1,27 @@
+# HARNESS workspace — G3 interface freeze.
+# Spikes stay standalone (G0 throwaway probes, never workspace members).
+
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+exclude = ["spikes/seam", "spikes/forge", "spikes/paper", "spikes/idb"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+# serde: the one serialization story (events, effects, manifests persist as data).
+# Removal cost: hand-rolled JSON in every persisting type — not worth it.
+serde = { version = "1", features = ["derive"] }
+# rhai: the ADR-003 script engine, quarantined in `script` (ARCHITECTURE §1a).
+rhai = "1"
+# wasm-bindgen pinned exact per G0 coordination; appears only under adapters_web.
+wasm-bindgen = "=0.2.121"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = "0.3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

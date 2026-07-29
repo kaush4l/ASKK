@@ -1,0 +1,39 @@
+[package]
+name = "adapters_web"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "wasm-bindgen port impls + the Wasm composition root (the only browser-aware crate)"
+
+[lib]
+# cdylib for the wasm-bindgen build; rlib so `cargo check --workspace` links.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+kernel = { path = "../kernel" }
+core = { path = "../core" }
+# The one JS/Wasm FFI layer; pinned exact per G0 coordination. The layering
+# check asserts it appears in THIS crate's closure only (I3, mechanically).
+wasm-bindgen = { workspace = true }
+# Required by #[wasm_bindgen] async methods (Promise <-> Future bridge).
+wasm-bindgen-futures = { workspace = true }
+js-sys = { workspace = true }
+
+[dependencies.web-sys]
+workspace = true
+# Only the IndexedDB surface + fetch + crypto — the ports we actually adapt.
+features = [
+  "Window",
+  "IdbFactory",
+  "IdbOpenDbRequest",
+  "IdbRequest",
+  "IdbDatabase",
+  "IdbObjectStore",
+  "IdbTransaction",
+  "IdbTransactionMode",
+  "Crypto",
+  "DomException",
+]
+
+[lints]
+workspace = true

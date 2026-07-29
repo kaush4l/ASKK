@@ -1,0 +1,13 @@
+[package]
+name = "context"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "The Context Document: Section/Document/Part, pure assemble + render (ADR-009)"
+
+[dependencies]
+kernel = { path = "../kernel" }
+serde = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "adapters_test"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "In-memory port implementations for host cargo test (never shipped)"
+
+[dependencies]
+kernel = { path = "../kernel" }
+
+[lints]
+workspace = true
