@@ -1,19 +1,19 @@
-out/
-docs/wasm/
-# build-time copy of rootfs/startup.sh for the page's startup editor
-docs/startup.default.sh
-# shelf bundles: built by image/bundles.sh, deployed to gh-pages only —
-# large binaries never land on main (small helpers like hello-askk do).
-docs/bin/*.tar.gz
-docs/bin/*.part-*
-docs/bin/*.parts
-docs/bin/SIZES.txt
-docs/bin/BUNDLES.json
-docs/bin/curl
-docs/bin/bun
+# Rust
+target/
+Cargo.lock
+
+# wasm-pack / bundler output
+pkg/
 node_modules/
-__pycache__/
-*.pyc
+
+# OS
 .DS_Store
+
+# Claude Code local state
 .claude/settings.local.json
 .claude/worktrees/
+
+# Legacy ASKK build artifacts kept on disk (recoverable only from gh-pages / slow rebuild)
+out/
+docs/bin/
+docs/wasm/
