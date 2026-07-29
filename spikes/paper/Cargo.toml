@@ -1,0 +1,13 @@
+# Spike C — the Context Document ("the paper"), PROMPT.md §8.
+# Standalone crate; native `cargo test` is the e2e.
+[package]
+name = "paper-spike"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# serde: derive Serialize for provider messages; golden tests compare JSON byte-for-byte.
+# Removal cost: hand-rolled JSON writer (~100 lines, escaping bugs). Not worth it.
+serde = { version = "1", features = ["derive"] }
+# serde_json: the golden snapshot format and the OpenAI wire shape are JSON.
+serde_json = "1"
