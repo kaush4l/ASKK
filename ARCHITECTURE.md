@@ -107,9 +107,9 @@ as a rule: effects stay **coarse** (one `CallModel`, one `InvokeTool` — never 
 one Work-phase turn is one step in, one effect out, one event back (§9's "one step per call"
 already guarantees this granularity), and the runtime loop lives in `core` at under 40 lines.
 **Recommendation: `step()`.** Streaming is the one open threat — token deltas as Events could
-flood the log or force fine-grained effects. `TBD(spike-A)`: streaming answer per ADR-002 decides
-whether deltas bypass the log as a Volatile channel with only the completed message becoming an
-Event. Replay-from-log granularity is proven or broken there.
+flood the log or force fine-grained effects. RESOLVED(spike-A → ADR-002): streaming is
+core-driven htmx chaining — each chunk is an ordinary `Request → Response` cycle, deltas never
+enter the event log, and only the completed message becomes an Event. Replay granularity holds.
 
 ### 1d. Where the Worker boundary sits
 
@@ -131,9 +131,11 @@ killing the observability and abortability the forge pipeline promises (§7). Sc
 mitigate but only the Worker makes the UI's liveness independent of the core's worst module.
 Tier 2 (§10) already commits to Workers for multi-agent; one Worker from day one is the same
 mental model, not a new one. **Recommendation: Design 2 — core in a Worker from the start.**
-`PROVISIONAL`, and `TBD(spike-A)`: the seam spike must drive htmx through the Worker transport;
-if postMessage latency or Wasm-in-Worker init is somehow prohibitive, Design 1 is the fallback
-and the move is transport-only (the §3 seam is unchanged). The service worker remains caching
+`PROVISIONAL`, and PARTIALLY RESOLVED(spike-A): the seam spike proved the transport with the
+Wasm on the **main thread** (Design 1) — real htmx, 2/2 headless tests, zero app-route network
+requests. The Worker variant remains unproven; G4 must drive the same transport through
+postMessage, and if that is somehow prohibitive the fallback is the already-proven Design 1 —
+the move is transport-only (the §3 seam is unchanged). The service worker remains caching
 and updates only (ADR-002, ADR-007) — never a state holder.
 
 ---
@@ -143,12 +145,12 @@ and updates only (ADR-002, ADR-007) — never a state holder.
 | Crate | Purpose (one line) | Must NOT absorb |
 |---|---|---|
 | `kernel` | Leaf vocabulary: ids, typed errors, Event + event log types, `Request`/`Response`, port traits (`ModelPort`, `StorePort`, `NetPort`, `ClockPort`, `RngPort`) | Any behavior; routing dispatch; HTML; anything importing another workspace crate |
-| `context` | `Document`, `Section`, stability classes, budget/compaction, pure `assemble` + `render` (§8) | The module registry; model transport; any I/O. `TBD(spike-C)` on final Section part types |
-| `script` | Embedded interpreter (Rhai per ADR-003) + capability binding table | Knowledge of agents, phases, or the registry; any ambient capability. `TBD(spike-B)` on the binding surface |
+| `context` | `Document`, `Section`, stability classes, budget/compaction, pure `assemble` + `render` (§8) | The module registry; model transport; any I/O. RESOLVED(spike-C): Part = Text/Image/Audio/File/Fragment carrying bytes not URLs (R2), proven under golden + prefix-identity tests |
+| `script` | Embedded interpreter (Rhai per ADR-003) + capability binding table | Knowledge of agents, phases, or the registry; any ambient capability. RESOLVED(spike-B): binding = per-module Engine with capability closures, effective grants = manifest ∩ host-granted |
 | `module` | Module trait + manifest + registry + generated Affordance document (§6, ADR-004); `view` submodule: escaping, page shell, `hx-*` builders, Fragment type | Business logic of any specific module; the interpreter itself (it *invokes* `script`) |
 | `agent` | Pure `step()`, `AgentState`, the phase machine (§9, ADR-010), Scout + Forge roles; forge pipeline as a built-in module (§7) | I/O of any kind; port implementations; rendering beyond its own fragments |
 | `core` | The seam: `handle(Request) -> Response` (§3); routing dispatch; effect-runtime loop (≤40 lines); wiring + built-in module registration | Domain logic; direct Web APIs; anything an adapter should own |
-| `adapters_web` | wasm-bindgen port impls: fetch, IndexedDB (ADR-005, `TBD(spike-idb)`), OPFS, WebCrypto, Worker glue; the composition root that owns the Wasm entry | Domain types beyond `kernel`'s; any logic that could run on the host |
+| `adapters_web` | wasm-bindgen port impls: fetch, IndexedDB (ADR-005; RESOLVED(spike-idb): hand-rolled web-sys, no wrapper crate — 52-crate tree + pin conflict), OPFS, WebCrypto, Worker glue; the composition root that owns the Wasm entry | Domain types beyond `kernel`'s; any logic that could run on the host |
 | `adapters_test` | In-memory port impls for `cargo test` (dev-dependency of the pure crates) | Anything shipped to production |
 
 `web/` is unchanged from §11: `index.html` (htmx + root element), `transport.js` (~50 lines,
@@ -196,8 +198,8 @@ Intra-domain direction is `agent → module → {context, script}` and is **decl
 straw-man's table never did** — its four rows left the seven domain crates free to import each
 other arbitrarily; the split was partly ceremonial for exactly that reason. `module → context`
 (a module can provide a Section, so it needs the Section type) is the assumed direction —
-`TBD(spike-C)` if assembly ergonomics demand the reverse, which would force re-splitting
-section types into `kernel`.
+RESOLVED(spike-C): assembly ergonomics raised no pressure for the reverse direction;
+`module → context` stands.
 
 ---
 
@@ -248,7 +250,8 @@ the phase machine, the forge pipeline, the registry, the script engine. Effect o
 - **Core in a Worker (1d):** no effect — the Worker is an `adapters_web`/`web/` runtime concern;
   no pure crate knows it exists.
 - **Rhai in `script` (ADR-003):** Rhai is pure Rust, so forged-module logic itself is exercised
-  by host tests — `TBD(spike-B)` confirms the capability-denied dry run works under `cargo test`.
+  by host tests — RESOLVED(spike-B): the capability-denied dry run runs under plain
+  `cargo test` (6/6 green, typed denial errors, no browser).
 
 ---
 
