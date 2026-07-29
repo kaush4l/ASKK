@@ -1,0 +1,28 @@
+# Spike A — the seam. Standalone crate; not part of any workspace.
+[package]
+name = "spike-seam"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# cdylib for wasm-pack, rlib so native `cargo test` links the crate.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# wasm-bindgen: the only JS/Wasm FFI layer; pinned exact per G0 coordination.
+wasm-bindgen = "=0.2.121"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+# wasm-bindgen-test: headless-browser test runner (proves the fragment lands in a DOM).
+wasm-bindgen-test = "0.3"
+# js-sys: eval vendored htmx + Reflect access to event.detail in the browser test.
+js-sys = "0.3"
+# wasm-bindgen-futures: await a setTimeout tick so htmx's async swap can settle.
+wasm-bindgen-futures = "0.4"
+# web-sys: DOM handles (document, elements, events) for the browser test only.
+web-sys = { version = "0.3", features = [
+  "Window", "Document", "Element", "HtmlElement", "Event", "EventTarget",
+] }
+
+[workspace]
+# empty: keep this spike out of any parent workspace resolution

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HARNESS — Spike A</title>
+  <script src="vendor/htmx.min.js"></script>
+  <script type="module" src="transport.js"></script>
+</head>
+<body hx-ext="wasm-seam">
+  <div id="root">
+    <button hx-get="/panel" hx-target="#out" hx-swap="innerHTML">Panel</button>
+    <button hx-get="/about" hx-target="#out" hx-swap="innerHTML">About</button>
+    <button hx-get="/stream/0" hx-target="#out" hx-swap="innerHTML">Stream</button>
+    <div id="out"></div>
+  </div>
+</body>
+</html>
