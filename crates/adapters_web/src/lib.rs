@@ -1,46 +1,81 @@
 //! The driving adapter AND composition root (ARCHITECTURE §4's fixed
 //! straw-man bug): the only crate that knows browsers exist. Builds the real
-//! ports, boots `core`, and exposes the seam to `transport.js` over
-//! postMessage (§5 option B; Worker-hosted per ARCHITECTURE §1d).
+//! ports, boots `core`, and exposes the seam to `transport.js`.
 //!
-//! G3 interface freeze: types and signatures only; bodies are `todo!()`.
+//! G4 note (ARCHITECTURE §1d): the core runs on the MAIN thread — the
+//! Spike-A-proven fallback the architecture explicitly reserved. The Worker
+//! move is transport-only (the seam is unchanged); it lands when a runaway
+//! module can actually exist (the forge, G5+).
 
-// G3 freeze: private fields are unread while bodies are todo!(); lift at G4.
-#![allow(dead_code)]
+use std::cell::RefCell;
+use std::rc::Rc;
 
 mod error;
+mod idb;
+mod idb_bridge;
 mod ports;
 
 pub use error::WebError;
-pub use ports::{BrowserClock, BrowserRng, FetchModel, FetchNet, IdbStore};
+pub use idb::IdbStore;
+pub use ports::{BrowserClock, BrowserRng, FetchModel, FetchNet};
 
 use wasm_bindgen::prelude::*;
 
-/// The booted application, held by the Worker for its lifetime. Exists as a
-/// wasm-bindgen class (rather than a global) so ownership is explicit and a
-/// future multi-agent Worker can hold its own instance (§10 Tier 2).
+/// The booted application, held for the page's lifetime. A wasm-bindgen
+/// class (rather than a global) so ownership is explicit and a future
+/// multi-agent Worker can hold its own instance (§10 Tier 2). Inner shape is
+/// `Rc<RefCell<…>>` because the async runtime half (`core::drive`) runs as
+/// spawned tasks that share the app with the sync seam.
 #[wasm_bindgen]
 pub struct WebApp {
-    app: Option<core::App>,
+    app: Rc<RefCell<core::App>>,
+}
+
+fn js_err(e: impl std::fmt::Debug) -> JsValue {
+    JsValue::from_str(&format!("{e:?}"))
 }
 
 #[wasm_bindgen]
 impl WebApp {
     /// The composition root: construct the browser ports (IndexedDB store,
-    /// fetch model/net brokers, real clock, WebCrypto rng), inject them as
-    /// `dyn` objects, run `core::boot` (migrations, registry replay,
-    /// built-in registration). The ONLY place adapters meet the core.
+    /// fetch model/net brokers, real clock, WebCrypto rng), inject them,
+    /// run `core::boot` (migrations, event replay, built-in registration).
+    /// The ONLY place adapters meet the core.
     pub async fn boot() -> Result<WebApp, JsValue> {
-        todo!("G4")
+        let store = Rc::new(IdbStore::open("harness").await.map_err(js_err)?);
+        let ports = core::Ports {
+            model: Rc::new(FetchModel::new("config/keys/")),
+            store,
+            net: Rc::new(FetchNet::new(Vec::new())),
+            clock: Rc::new(BrowserClock),
+            rng: Rc::new(BrowserRng),
+        };
+        let app = core::boot(ports).await.map_err(js_err)?;
+        Ok(WebApp {
+            app: Rc::new(RefCell::new(app)),
+        })
     }
 
-    /// The seam, transport-shaped: `transport.js` postMessages a JSON
-    /// Request; this deserializes, calls `core::handle`, and returns the
-    /// JSON Response whose body htmx swaps. JSON (not structured types)
-    /// because the message channel is the one place both sides already
-    /// speak it — no second wire format to keep honest (I4, I5).
+    /// The seam, transport-shaped: `transport.js` passes a JSON Request;
+    /// this deserializes, calls `core::handle`, kicks the async runtime half
+    /// (agent pump + event persistence) as a background task, and returns
+    /// the JSON Response whose body htmx swaps. JSON because the boundary
+    /// already speaks it — no second wire format to keep honest (I4, I5).
     pub fn handle_request(&mut self, request_json: &str) -> String {
-        let _ = request_json;
-        todo!("G4")
+        let response = match serde_json::from_str::<kernel::Request>(request_json) {
+            Ok(req) => core::handle(&mut self.app.borrow_mut(), req),
+            Err(e) => kernel::Response {
+                status: 400,
+                headers: vec![("content-type".into(), "text/html; charset=utf-8".into())],
+                body: format!("<div class=\"error\">malformed transport request: {e}</div>"),
+            },
+        };
+        let app = Rc::clone(&self.app);
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Err(e) = core::drive(app).await {
+                web_sys::console::error_1(&js_err(e));
+            }
+        });
+        serde_json::to_string(&response).expect("Response serializes")
     }
 }

@@ -59,7 +59,12 @@ impl Fidelity {
     /// One degradation step; `None` at the end of the ladder. Public so the
     /// compaction loop and its tests share one definition of "next".
     pub fn next(self) -> Option<Fidelity> {
-        todo!("G4")
+        match self {
+            Fidelity::Full => Some(Fidelity::Summarized),
+            Fidelity::Summarized => Some(Fidelity::Pointer),
+            Fidelity::Pointer => Some(Fidelity::Elided),
+            Fidelity::Elided => None,
+        }
     }
 }
 
@@ -109,7 +114,9 @@ pub struct Budget {
 impl Budget {
     /// For golden snapshots: assembly with nothing degraded (Spike C pattern).
     pub fn unlimited() -> Budget {
-        todo!("G4")
+        Budget {
+            max_tokens: u32::MAX,
+        }
     }
 }
 

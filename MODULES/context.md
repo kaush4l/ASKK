@@ -48,3 +48,10 @@ prefix byte-identical; (3) degradation ladder is deterministic, recorded, floor-
 
 **Blast radius:** every model call and every golden file; `Section` field changes ripple to
 `module` manifests (`SectionSpec`) and stored provider definitions.
+
+**G4 status:** implemented per contract; goldens currently cover ×1 provider
+(OpenAiChat) — Anthropic/Gemini render arms are `todo!(G5)`. PROVISIONAL additions:
+`openai_request_body` / `openai_reply_text` (the provider wire writer/reader had no
+home in the freeze; provider quirks live here, `core::execute_effect` calls them,
+ports keep moving uninterpreted bytes). `assemble` outputs sections carrying their
+EFFECTIVE parts at the chosen fidelity (the document is what the model sees).

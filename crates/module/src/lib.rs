@@ -13,11 +13,13 @@
 
 mod affordance;
 mod error;
+mod install;
 mod manifest;
 mod registry;
 pub mod view;
 
 pub use affordance::affordances;
 pub use error::ModuleError;
+pub use install::run_install_tests;
 pub use manifest::{Assertion, Case, DataSchema, Manifest, RouteSpec, SectionSpec, SlotSpec, Tier};
-pub use registry::{run_install_tests, Logic, Registered, Registry, RegistryEvent};
+pub use registry::{Logic, Registered, Registry, RegistryEvent};

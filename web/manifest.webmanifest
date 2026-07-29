@@ -1,0 +1,18 @@
+{
+  "name": "HARNESS",
+  "short_name": "HARNESS",
+  "description": "A browser-only environment an agent lives inside and can extend.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#10222b",
+  "theme_color": "#10222b",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

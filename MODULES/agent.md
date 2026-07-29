@@ -48,3 +48,9 @@ phases as code (ADR-010 Option B — answers the phase-cut question by recompili
 
 **Blast radius:** every turn of every agent; `Effect` variants are consumed by `core::runtime`
 and persisted — a variant change is a data migration, not just a recompile.
+
+**G4 status:** one Work-phase turn implemented (UserMessage → CallModel(Document) →
+ModelReplied → quiescent) under the Answer contract; the agent seeds and mutates its
+own §8.2 paper in `paper.rs` (section-providers-as-modules replace this at G5+).
+`parse_reply` is total for Answer; structured contracts, guards-in-anger, and the
+forge remain `todo!(G5)`. Tests: effect-sequence golden, determinism, quiescence.

@@ -15,6 +15,7 @@ publish = false
 # serde: the one serialization story (events, effects, manifests persist as data).
 # Removal cost: hand-rolled JSON in every persisting type — not worth it.
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # rhai: the ADR-003 script engine, quarantined in `script` (ARCHITECTURE §1a).
 rhai = "1"
 # wasm-bindgen pinned exact per G0 coordination; appears only under adapters_web.

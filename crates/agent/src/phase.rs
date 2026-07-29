@@ -87,5 +87,48 @@ pub struct PhaseConfig {
 /// the cheap exit (RESEARCH phase-cut softening of §9's symmetric cut —
 /// changing this back is a config edit, which is the point of Option C).
 pub fn v1_phases() -> Vec<PhaseConfig> {
-    todo!("G4")
+    let all_full = |ids: &[&str]| -> Vec<(SectionId, Fidelity)> {
+        ids.iter()
+            .map(|id| (SectionId((*id).into()), Fidelity::Full))
+            .collect()
+    };
+    // The §8.2 starter set, canonical order.
+    let sections = [
+        "soul",
+        "identity",
+        "operating_rules",
+        "response_contract",
+        "affordances",
+        "user",
+        "memory",
+        "environment",
+        "task",
+        "history",
+        "observations",
+    ];
+    vec![
+        // G4 Work: a conversational turn — Answer contract, no tools yet
+        // (ToolEnvelope arrives with the first real tool, G5).
+        PhaseConfig {
+            phase: PhaseId::Work,
+            sections: all_full(&sections),
+            contract: ResponseContract::Answer,
+            tools: ToolScope::None,
+            budget: Budget { max_tokens: 4096 },
+            exits: vec![(ExitCondition::AnswerProduced, PhaseExit::Answer)],
+        },
+        // Verify: configured but unreachable until Work emits tool effects.
+        PhaseConfig {
+            phase: PhaseId::Verify,
+            sections: all_full(&sections),
+            contract: ResponseContract::Verdict,
+            tools: ToolScope::None,
+            budget: Budget { max_tokens: 2048 },
+            exits: vec![
+                (ExitCondition::VerdictPass, PhaseExit::Answer),
+                (ExitCondition::VerdictRetry, PhaseExit::To(PhaseId::Work)),
+                (ExitCondition::VerdictReplan, PhaseExit::To(PhaseId::Plan)),
+            ],
+        },
+    ]
 }

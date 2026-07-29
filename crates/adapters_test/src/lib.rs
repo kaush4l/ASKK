@@ -3,109 +3,23 @@
 //! network (I3). Imports `kernel` only; consumed as a dev-dependency. Never
 //! shipped to production — that is its entire "must not absorb" list.
 //!
-//! G3 interface freeze: types and signatures only; bodies are `todo!()`.
-
-// G3 freeze: private fields are unread while bodies are todo!(); lift at G4.
-#![allow(dead_code)]
+//! Every future here is immediately ready — a single poll with a noop waker
+//! resolves it, which is what lets `core`'s tests drive the async runtime
+//! loop without an executor dependency.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 
 use kernel::{
-    BlobStore, BoxFuture, BrokeredRequest, BrokeredResponse, ClockPort, EndpointName, KvStore,
-    ModelError, ModelPort, ModelReply, NetError, NetPort, RngPort, StoreError, StorePort,
-    Timestamp,
+    BoxFuture, BrokeredRequest, BrokeredResponse, ClockPort, EndpointName, ModelError, ModelPort,
+    ModelReply, NetError, NetPort, RngPort, Timestamp,
 };
 
-/// HashMap-backed `KvStore`. `RefCell` because ports take `&self` (the wasm
-/// host is single-threaded and tests are too — no lock needed or wanted).
-#[derive(Debug, Default)]
-pub struct MemKv {
-    map: RefCell<HashMap<String, String>>,
-}
+mod stores;
 
-impl MemKv {
-    /// Empty store; tests seed it through the trait like production would.
-    pub fn new() -> MemKv {
-        todo!("G3-test")
-    }
-}
+pub use stores::{MemBlob, MemKv, MemStore};
 
-impl KvStore for MemKv {
-    fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<String>, StoreError>> {
-        let _ = key;
-        todo!("G4")
-    }
-    fn put<'a>(&'a self, key: &'a str, value: &'a str) -> BoxFuture<'a, Result<(), StoreError>> {
-        let _ = (key, value);
-        todo!("G4")
-    }
-    fn delete<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<(), StoreError>> {
-        let _ = key;
-        todo!("G4")
-    }
-    fn list_prefix<'a>(
-        &'a self,
-        prefix: &'a str,
-    ) -> BoxFuture<'a, Result<Vec<String>, StoreError>> {
-        let _ = prefix;
-        todo!("G4")
-    }
-}
-
-/// HashMap-backed `BlobStore`, same shape and reasons as `MemKv`.
-#[derive(Debug, Default)]
-pub struct MemBlob {
-    map: RefCell<HashMap<String, Vec<u8>>>,
-}
-
-impl MemBlob {
-    /// Empty blob store.
-    pub fn new() -> MemBlob {
-        todo!("G3-test")
-    }
-}
-
-impl BlobStore for MemBlob {
-    fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, Result<Option<Vec<u8>>, StoreError>> {
-        let _ = path;
-        todo!("G4")
-    }
-    fn write<'a>(
-        &'a self,
-        path: &'a str,
-        bytes: &'a [u8],
-    ) -> BoxFuture<'a, Result<(), StoreError>> {
-        let _ = (path, bytes);
-        todo!("G4")
-    }
-    fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, Result<(), StoreError>> {
-        let _ = path;
-        todo!("G4")
-    }
-    fn list_prefix<'a>(
-        &'a self,
-        prefix: &'a str,
-    ) -> BoxFuture<'a, Result<Vec<String>, StoreError>> {
-        let _ = prefix;
-        todo!("G4")
-    }
-}
-
-/// Both in-memory stores behind the one storage port (ADR-005 seam).
-#[derive(Debug, Default)]
-pub struct MemStore {
-    pub kv: MemKv,
-    pub blob: MemBlob,
-}
-
-impl StorePort for MemStore {
-    fn kv(&self) -> &dyn KvStore {
-        todo!("G4")
-    }
-    fn blob(&self) -> &dyn BlobStore {
-        todo!("G4")
-    }
+pub(crate) fn ready<'a, T: 'a>(value: T) -> BoxFuture<'a, T> {
+    Box::pin(std::future::ready(value))
 }
 
 /// A clock that reads whatever the test set (I7: time is injected data —
@@ -118,14 +32,13 @@ pub struct FixedClock {
 impl FixedClock {
     /// Pin time to `now`; determinism follows.
     pub fn at(now: Timestamp) -> FixedClock {
-        let _ = now;
-        todo!("G3-test")
+        FixedClock { now }
     }
 }
 
 impl ClockPort for FixedClock {
     fn now(&self) -> Timestamp {
-        todo!("G4")
+        self.now
     }
 }
 
@@ -138,21 +51,29 @@ pub struct SeededRng {
 impl SeededRng {
     /// Seeded; not cryptographic, deliberately (tests want repeatability).
     pub fn seeded(seed: u64) -> SeededRng {
-        let _ = seed;
-        todo!("G3-test")
+        SeededRng {
+            state: RefCell::new(seed.max(1)),
+        }
     }
 }
 
 impl RngPort for SeededRng {
     fn fill(&self, buf: &mut [u8]) {
-        let _ = buf;
-        todo!("G4")
+        // xorshift64 — tiny, deterministic, plenty for test identity.
+        let mut s = self.state.borrow_mut();
+        for b in buf.iter_mut() {
+            *s ^= *s << 13;
+            *s ^= *s >> 7;
+            *s ^= *s << 17;
+            *b = (*s & 0xff) as u8;
+        }
     }
 }
 
 /// A model that replays scripted replies in order (ADR-010: "tests on the
-/// host with a scripted model port"). The whole orchestration cycle runs
-/// against this with no network and no fakes beyond it.
+/// host with a scripted model port"). Replies are ALREADY provider-shaped
+/// chat-completion JSON bodies; `text_reply` wraps plain text for the common
+/// case. An exhausted script returns a Transport error — the honest failure.
 #[derive(Debug)]
 pub struct ScriptedModel {
     replies: RefCell<Vec<String>>,
@@ -161,19 +82,57 @@ pub struct ScriptedModel {
 impl ScriptedModel {
     /// Queue the replies the test's turns will consume, first to last.
     pub fn with_replies(replies: Vec<String>) -> ScriptedModel {
-        let _ = replies;
-        todo!("G3-test")
+        ScriptedModel {
+            replies: RefCell::new(replies),
+        }
     }
+
+    /// A chat-completion body whose assistant message is `text`.
+    pub fn text_reply(text: &str) -> String {
+        format!(
+            "{{\"choices\":[{{\"message\":{{\"role\":\"assistant\",\"content\":{}}}}}]}}",
+            serde_json_escape(text)
+        )
+    }
+}
+
+/// Minimal JSON string literal (kernel-only crate: no serde_json here).
+fn serde_json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 impl ModelPort for ScriptedModel {
     fn call<'a>(
         &'a self,
-        endpoint: &'a EndpointName,
-        body_json: &'a str,
+        _endpoint: &'a EndpointName,
+        _body_json: &'a str,
     ) -> BoxFuture<'a, Result<ModelReply, ModelError>> {
-        let _ = (endpoint, body_json);
-        todo!("G4")
+        let mut replies = self.replies.borrow_mut();
+        let result = if replies.is_empty() {
+            Err(ModelError::Transport {
+                message: "scripted model exhausted".into(),
+            })
+        } else {
+            Ok(ModelReply {
+                body_json: replies.remove(0),
+                usage: None,
+            })
+        };
+        ready(result)
     }
 }
 
@@ -187,9 +146,10 @@ impl NetPort for DenyAllNet {
     fn fetch<'a>(
         &'a self,
         endpoint: &'a EndpointName,
-        req: BrokeredRequest,
+        _req: BrokeredRequest,
     ) -> BoxFuture<'a, Result<BrokeredResponse, NetError>> {
-        let _ = (endpoint, req);
-        todo!("G4")
+        ready(Err(NetError::Denied {
+            endpoint: endpoint.0.clone(),
+        }))
     }
 }

@@ -12,6 +12,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 kernel = { path = "../kernel" }
 core = { path = "../core" }
+# The transport wire format (Request/Response JSON) — see WebApp::handle_request.
+serde_json = { workspace = true }
 # The one JS/Wasm FFI layer; pinned exact per G0 coordination. The layering
 # check asserts it appears in THIS crate's closure only (I3, mechanically).
 wasm-bindgen = { workspace = true }
@@ -31,9 +33,20 @@ features = [
   "IdbObjectStore",
   "IdbTransaction",
   "IdbTransactionMode",
+  "IdbKeyRange",
   "Crypto",
   "DomException",
+  "Request",
+  "RequestInit",
+  "Response",
+  "Headers",
+  "console",
 ]
+
+# rhai → ahash → getrandom needs the JS backend on wasm32; the matching
+# `--cfg getrandom_backend="wasm_js"` rustflag lives in /.cargo/config.toml.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [lints]
 workspace = true

@@ -9,6 +9,7 @@
 mod effect;
 mod error;
 mod forge;
+mod paper;
 mod phase;
 mod state;
 mod step;

@@ -1,0 +1,5 @@
+# getrandom 0.3 (pulled by rhai -> ahash) refuses wasm32-unknown-unknown
+# unless the JS backend is chosen explicitly; the feature flag half lives in
+# crates/adapters_web/Cargo.toml.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

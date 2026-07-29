@@ -2,16 +2,47 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>HARNESS — Spike A</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HARNESS</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#10222b">
   <script src="vendor/htmx.min.js"></script>
   <script type="module" src="transport.js"></script>
+  <style>
+    /* Shell chrome only — every element inside #root is core-rendered. */
+    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 42rem;
+           background: #10222b; color: #dce8ee; }
+    h1 { font-size: 1.2rem; letter-spacing: 0.2em; }
+    .panel { border: 1px solid #23b3d1; border-radius: 6px; padding: 0.5rem 1rem;
+             margin: 0.5rem 0; }
+    #chat-log { margin: 1rem 0; }
+    .msg { padding: 0.4rem 0.7rem; margin: 0.3rem 0; border-radius: 6px; }
+    .msg.user { background: #1b3a49; }
+    .msg.assistant { background: #17303c; }
+    .msg.pending { color: #7fa4b3; font-style: italic; }
+    .msg.error, .error { background: #3c1717; color: #eebbbb; }
+    form { display: flex; gap: 0.5rem; }
+    input[type="text"] { flex: 1; padding: 0.4rem; background: #0b181f;
+                         color: inherit; border: 1px solid #23b3d1; border-radius: 4px; }
+    button { background: #23b3d1; color: #06141a; border: 0; border-radius: 4px;
+             padding: 0.4rem 1rem; cursor: pointer; }
+  </style>
 </head>
 <body hx-ext="wasm-seam">
-  <div id="root">
-    <button hx-get="/panel" hx-target="#out" hx-swap="innerHTML">Panel</button>
-    <button hx-get="/about" hx-target="#out" hx-swap="innerHTML">About</button>
-    <button hx-get="/stream/0" hx-target="#out" hx-swap="innerHTML">Stream</button>
-    <div id="out"></div>
+  <!-- The §11 promise: htmx, a root element, nothing else. The dashboard is
+       pulled through the seam the moment the wasm core is booted. -->
+  <div id="root" hx-get="/" hx-trigger="harness:ready from:body">
+    <p class="msg pending">booting the core…</p>
   </div>
+  <script>
+    // sw.js is caching-and-updates ONLY (ADR-007); registration failure is
+    // non-fatal — the page just isn't installable/offline yet.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch(function (e) {
+        console.warn("sw register failed:", e);
+      });
+    }
+  </script>
 </body>
 </html>

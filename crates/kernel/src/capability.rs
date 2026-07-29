@@ -55,6 +55,13 @@ impl CapabilityGrant {
     /// Which capability this grant scopes; exists so manifest declarations
     /// (ids) and grants (scoped) can be intersected without string matching.
     pub fn id(&self) -> CapabilityId {
-        todo!("G4")
+        match self {
+            CapabilityGrant::Kv { .. } => CapabilityId::Kv,
+            CapabilityGrant::Net { .. } => CapabilityId::Net,
+            CapabilityGrant::Model { .. } => CapabilityId::Model,
+            CapabilityGrant::Clock => CapabilityId::Clock,
+            CapabilityGrant::Rng => CapabilityId::Rng,
+            CapabilityGrant::Emit => CapabilityId::Emit,
+        }
     }
 }

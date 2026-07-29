@@ -49,3 +49,16 @@ fine-grained effects in the runtime (ARCHITECTURE §1c mitigation: coarse effect
 
 **Blast radius:** the seam signature is the system's one entry — changing it touches the
 transport, every test, and every module's invocation; that is why it is frozen first.
+
+**G4 status (walking skeleton — PROVISIONAL interface changes):** `pump` became SYNC
+(`(App, Event) -> Vec<Effect>`) and `execute_effect` returns a `'static` future from
+Rc-cloned ports; the new `drive(Rc<RefCell<App>>)` loop replaces the frozen async pump
+— holding `&mut App` across a model await would wedge every seam round-trip (the chat
+poll) for the whole fetch. `Ports` fields are `Rc`, not `Box`, for the same reason.
+`Ctx.emit` is a drained buffer of `EventKind` (not a Custom-only closure) and `Ctx`
+gained read-only `panels`/`recent` projections pending the real capability story.
+Test contract as implemented (crates/core/tests/skeleton.rs): (1) dashboard composes
+the slotted panel, 404 is a fragment; (2) full chat turn through the seam vs a
+scripted model; (3) model failure renders the typed error fragment; (4) events persist
+through StorePort and replay across boot; (5) newer schema refuses boot. The scripted
+Work→Verify walk arrives with tool phases (G5).

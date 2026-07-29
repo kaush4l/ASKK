@@ -8,12 +8,15 @@
 
 mod assemble;
 mod error;
+mod openai;
 mod render;
 mod state;
 mod types;
 
 pub use assemble::{assemble, validate};
 pub use error::ContextError;
+// PROVISIONAL (G4): the provider wire writer/reader — see openai.rs.
+pub use openai::{openai_reply_text, openai_request_body};
 pub use render::{content_hash, render, ContentPart, Message, ProviderFormat, Role};
 pub use state::{SectionSource, State};
 pub use types::{

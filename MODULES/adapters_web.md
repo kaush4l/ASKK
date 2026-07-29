@@ -50,3 +50,12 @@ the main thread (ARCHITECTURE §1d — a runaway forged module would freeze the 
 
 **Blast radius:** confined by design — this crate can be rewritten (new storage substrate, COI,
 SW transport) with zero pure-crate changes; that containment is its reason to exist.
+
+**G4 status:** core runs on the MAIN thread — ARCHITECTURE §1d's explicitly reserved
+Spike-A fallback; the Worker move is transport-only and waits for the first runaway
+module risk (forge, G5). Implemented: IdbStore (kv+blob object stores, spike-idb
+plumbing), FetchModel against the same-origin `/v1` proxy with PROVISIONAL model-id
+discovery via `/v1/models` (no settings module yet; the adapter attaches the model
+name exactly like it would a credential), BrowserClock/BrowserRng, WebApp
+boot/handle_request (+ background `core::drive` after every request). Headless
+wasm-bindgen tests deferred; verified live in the browser instead.

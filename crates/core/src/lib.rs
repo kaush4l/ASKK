@@ -9,15 +9,18 @@
 
 mod app;
 mod boot;
+mod builtins;
 mod dispatch;
 mod error;
+mod form;
 mod runtime;
 
 pub use app::{App, Ports};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
 pub use error::CoreError;
-pub use runtime::{execute_effect, pump};
+// `drive` is PROVISIONAL (G4): the async runtime loop — see runtime.rs.
+pub use runtime::{drive, execute_effect, pump};
 
 use kernel::{Request, Response};
 
@@ -32,6 +35,10 @@ use kernel::{Request, Response};
 /// asynchronously by the runtime. If a route ever "needs" async here, state
 /// is living outside the log — that is the bug.
 pub fn handle(app: &mut App, req: Request) -> Response {
-    let _ = (app, req);
-    todo!("G4")
+    let response = dispatch::dispatch(app, &req);
+    app.append(kernel::EventKind::RequestHandled {
+        path: req.path,
+        status: response.status,
+    });
+    response
 }

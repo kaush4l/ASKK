@@ -47,3 +47,9 @@ central template crate (ARCHITECTURE §1b — built-ins and forged would render 
 
 **Blast radius:** manifest field changes touch storage schema (ADR-005), the forge generator, and
 every stored module; registry semantics changes touch boot and dispatch.
+
+**G4 status:** registry fold implemented (install/apply/deactivate/resolve/replay);
+`reactivate`, `affordances`, `run_install_tests`, and `page_shell` remain `todo!(G5)`
+— tests (2), (5) plus deactivate-half of (3) are green, (1) holds by construction
+(install delegates to apply). PROVISIONAL addition: `FragmentBuilder::attr(name,
+value)` — the frozen surface could not express a form input's `name`/`type`.

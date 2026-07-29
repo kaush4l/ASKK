@@ -90,14 +90,16 @@ pub struct EventLog {
 impl EventLog {
     /// Exists so boot can start an empty log before any segment is replayed.
     pub fn new() -> EventLog {
-        todo!("G4")
+        EventLog { events: Vec::new() }
     }
 
     /// Append one fact; assigns `seq`. The only mutation the log permits —
     /// no edit, no delete — which is what makes views trustworthy projections.
-    pub fn append(&mut self, event: Event) {
-        let _ = event;
-        todo!("G4")
+    pub fn append(&mut self, mut event: Event) {
+        let seq = self.events.len() as u64;
+        event.seq = seq;
+        event.id = EventId(seq);
+        self.events.push(event);
     }
 
     /// Read the whole history in order; replay and the trace viewer are
@@ -109,11 +111,11 @@ impl EventLog {
     /// Next sequence number; public so persistence can name the segment
     /// boundary it has reached.
     pub fn len(&self) -> u64 {
-        todo!("G4")
+        self.events.len() as u64
     }
 
     /// Clippy pairing for `len`; an empty log is the first-boot signal.
     pub fn is_empty(&self) -> bool {
-        todo!("G4")
+        self.events.is_empty()
     }
 }

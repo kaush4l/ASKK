@@ -56,26 +56,85 @@ pub struct Registered {
 #[derive(Debug, Default)]
 pub struct Registry {
     active: Vec<Registered>,
+    /// Every (id, version) ever installed — versions are immutable history
+    /// even after deactivation (§7).
+    installed: Vec<(ModuleId, Version)>,
 }
 
 impl Registry {
     /// Empty registry; boot replays events into it.
     pub fn new() -> Registry {
-        todo!("G4")
+        Registry::default()
     }
 
     /// Rebuild the fold from history — the boot path AND the time-travel
     /// path; one function so they cannot diverge (I8).
     pub fn replay(events: &[RegistryEvent]) -> Result<Registry, ModuleError> {
-        let _ = events;
-        todo!("G4")
+        let mut reg = Registry::new();
+        for event in events {
+            reg.apply(event.clone())?;
+        }
+        Ok(reg)
     }
 
     /// Apply one fact. Rejects route conflicts and duplicate versions at
     /// apply time so the fold is always internally consistent.
     pub fn apply(&mut self, event: RegistryEvent) -> Result<(), ModuleError> {
-        let _ = event;
-        todo!("G4")
+        match event {
+            RegistryEvent::Installed { manifest, logic } => {
+                self.check_admissible(&manifest)?;
+                self.installed.push((manifest.id.clone(), manifest.version));
+                self.active.push(Registered { manifest, logic });
+                Ok(())
+            }
+            RegistryEvent::Deactivated { id, version } => {
+                if !self.installed.contains(&(id.clone(), version)) {
+                    return Err(ModuleError::UnknownVersion { id, version });
+                }
+                self.active
+                    .retain(|r| !(r.manifest.id == id && r.manifest.version == version));
+                Ok(())
+            }
+            // Reactivation needs the deactivated manifest bodies retained in
+            // the fold — arrives with the forge's rollback story.
+            RegistryEvent::Reactivated { .. } => todo!("G5: reactivate"),
+        }
+    }
+
+    /// The shared admission judge for install-time and replay-time.
+    fn check_admissible(&self, manifest: &Manifest) -> Result<(), ModuleError> {
+        if manifest.id.0.is_empty() {
+            return Err(ModuleError::InvalidManifest {
+                id: manifest.id.clone(),
+                message: "empty module id".into(),
+            });
+        }
+        if let Some(section) = &manifest.section {
+            if section.intent.trim().is_empty() {
+                return Err(ModuleError::InvalidManifest {
+                    id: manifest.id.clone(),
+                    message: format!("section '{}' has empty intent (§8.2)", section.id.0),
+                });
+            }
+        }
+        if self
+            .installed
+            .contains(&(manifest.id.clone(), manifest.version))
+        {
+            return Err(ModuleError::VersionExists {
+                id: manifest.id.clone(),
+                version: manifest.version,
+            });
+        }
+        for route in &manifest.routes {
+            if let Some(holder) = self.resolve_route(&route.method, &route.path) {
+                return Err(ModuleError::RouteConflict {
+                    path: route.path.clone(),
+                    holder: holder.manifest.id.clone(),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Validate + admit a new module version; returns the event to append.
@@ -86,8 +145,9 @@ impl Registry {
         manifest: Manifest,
         logic: Logic,
     ) -> Result<RegistryEvent, ModuleError> {
-        let _ = (manifest, logic);
-        todo!("G4")
+        let event = RegistryEvent::Installed { manifest, logic };
+        self.apply(event.clone())?;
+        Ok(event)
     }
 
     /// Roll back / uninstall one version; returns the event to append.
@@ -96,8 +156,12 @@ impl Registry {
         id: &ModuleId,
         version: Version,
     ) -> Result<RegistryEvent, ModuleError> {
-        let _ = (id, version);
-        todo!("G4")
+        let event = RegistryEvent::Deactivated {
+            id: id.clone(),
+            version,
+        };
+        self.apply(event.clone())?;
+        Ok(event)
     }
 
     /// Restore a previously deactivated version (every version is kept).
@@ -107,7 +171,7 @@ impl Registry {
         version: Version,
     ) -> Result<RegistryEvent, ModuleError> {
         let _ = (id, version);
-        todo!("G4")
+        todo!("G5: reactivate")
     }
 
     /// Everything currently alive — the affordance generator's input.
@@ -117,23 +181,16 @@ impl Registry {
 
     /// Route → module: the registry lookup dispatch consults (I4 data flow).
     pub fn resolve_route(&self, method: &str, path: &str) -> Option<&Registered> {
-        let _ = (method, path);
-        todo!("G4")
+        self.active.iter().find(|r| {
+            r.manifest
+                .routes
+                .iter()
+                .any(|route| route.method == method && route.path == path)
+        })
     }
 
     /// The active version of one module, if any.
     pub fn get(&self, id: &ModuleId) -> Option<&Registered> {
-        let _ = id;
-        todo!("G4")
+        self.active.iter().find(|r| &r.manifest.id == id)
     }
-}
-
-/// Execute a manifest's declared cases against its logic with all
-/// capabilities denied plus case-declared stubs (ADR-004 test-before-install;
-/// §7's contract-test stage). Tier-1 logic runs through `script` here; tier-0
-/// built-ins run the identical cases from `core`'s own tests — same runner,
-/// hosted natively (I3).
-pub fn run_install_tests(manifest: &Manifest, logic: &Logic) -> Result<(), ModuleError> {
-    let _ = (manifest, logic);
-    todo!("G4")
 }

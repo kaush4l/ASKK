@@ -41,14 +41,24 @@ pub struct AgentState {
 }
 
 impl AgentState {
-    /// A fresh idle agent — the boot and the tests start here.
+    /// A fresh idle agent — the boot and the tests start here. Work is the
+    /// resting phase (Plan-on-demand, RESEARCH phase-cut); the paper is the
+    /// seeded §8.2 starter set.
     pub fn new() -> AgentState {
-        todo!("G4")
+        AgentState {
+            phase: PhaseId::Work,
+            task: None,
+            plan: Vec::new(),
+            cursor: 0,
+            retries: 0,
+            replans: 0,
+            paper: crate::paper::seed(),
+        }
     }
 }
 
 impl Default for AgentState {
     fn default() -> AgentState {
-        todo!("G4")
+        AgentState::new()
     }
 }

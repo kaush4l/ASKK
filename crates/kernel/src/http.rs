@@ -17,8 +17,12 @@ impl Request {
     /// Shorthand for the common case; exists so tests and transports read as
     /// `handle(Request::get("/dashboard"))` — the §3 promise, verbatim.
     pub fn get(path: &str) -> Request {
-        let _ = path;
-        todo!("G4")
+        Request {
+            method: "GET".into(),
+            path: path.into(),
+            headers: Vec::new(),
+            body: String::new(),
+        }
     }
 }
 

@@ -12,6 +12,8 @@ script = { path = "../script" }
 module = { path = "../module" }
 agent = { path = "../agent" }
 serde = { workspace = true }
+# G4: event persistence and error payloads are JSON records.
+serde_json = { workspace = true }
 
 [dev-dependencies]
 adapters_test = { path = "../adapters_test" }
