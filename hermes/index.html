@@ -1,0 +1,140 @@
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Hermes in the browser</title>
+    <link rel="stylesheet" href="./vendor/xterm.css">
+    <style>
+      body { margin: 0; background: #0d1117; color: #c9d1d9;
+             font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+               padding: 8px 12px; border-bottom: 1px solid #21262d; }
+      input { background: #010409; color: #c9d1d9; border: 1px solid #30363d;
+              border-radius: 4px; padding: 4px 6px; font: inherit; }
+      button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+               border-radius: 4px; padding: 4px 10px; font: inherit;
+               cursor: pointer; }
+      #status { margin-left: auto; opacity: .75; }
+      #panes { display: flex; height: calc(100vh - 45px); }
+      #terminal { padding: 8px; flex: 0 0 auto; }
+      #dashwrap { flex: 1 1 auto; border-left: 1px solid #21262d; display: none; }
+      #dashwrap.on { display: block; }
+      #dashboard { width: 100%; height: 100%; border: 0; background: #fff; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <label>LLM <input id="url" size="30" placeholder="http://127.0.0.1:8873/v1"></label>
+      <label>model <input id="model" size="26" placeholder="gemma-4-12B-it-qat-mxfp8"></label>
+      <label>key <input id="key" size="10" placeholder="sk-local"></label>
+      <button id="boot">Boot</button>
+      <button id="dash" disabled>Dashboard</button>
+      <span id="status">idle</span>
+    </header>
+    <div id="panes">
+      <div id="terminal"></div>
+      <div id="dashwrap"><iframe id="dashboard" title="hermes dashboard"></iframe></div>
+    </div>
+
+    <!-- Registers itself as the service worker: cross-origin isolation on a
+         host that sends no COOP/COEP (gh-pages), plus the browser->guest
+         relay that the dashboard iframe below is served through. -->
+    <script src="./hermes-sw.js"></script>
+    <script src="./vendor/xterm.min.js"></script>
+    <script src="./vendor/xterm-pty.js"></script>
+    <script src="./dist/runcontainer.js"></script>
+    <script>
+      // The LLM endpoint is page state, not image state. c2w's container info
+      // block carries `env: K=V` lines straight into the WASI environment
+      // (worker-util.js -> new WASI(args, env, fds)), so pointing Hermes at a
+      // different provider is a form field, not an image rebuild.
+      const $ = (id) => document.getElementById(id);
+      const DEFAULTS = {
+        url: "http://127.0.0.1:8873/v1",
+        model: "gemma-4-12B-it-qat-mxfp8",
+        key: "sk-local",
+      };
+      for (const k of Object.keys(DEFAULTS)) {
+        $(k).value = localStorage.getItem("hermes." + k) || DEFAULTS[k];
+      }
+
+      const xterm = new Terminal({ cols: 120, rows: 34 });
+      xterm.open($("terminal"));
+      const { master, slave } = openpty();
+      const t = slave.ioctl("TCGETS");
+      t.iflag &= ~(ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+      t.oflag &= ~(OPOST);
+      t.lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+      slave.ioctl("TCSETS", new Termios(t.iflag, t.oflag, t.cflag, t.lflag, t.cc));
+      xterm.loadAddon(master);
+      window.xterm = xterm;
+
+      let booted = false;
+      $("boot").onclick = async () => {
+        if (booted) { location.reload(); return; }
+        booted = true;
+        $("boot").textContent = "Restart";
+        const cfg = {};
+        for (const k of Object.keys(DEFAULTS)) {
+          cfg[k] = $(k).value.trim() || DEFAULTS[k];
+          localStorage.setItem("hermes." + k, cfg[k]);
+        }
+        // The worker performs the model fetch, so it needs the real endpoint;
+        // the guest only ever sees the sentinel name.
+        const sw = navigator.serviceWorker.controller;
+        if (!sw) {
+          $("status").textContent = "service worker not controlling — reload";
+          booted = false;
+          return;
+        }
+        sw.postMessage({ type: "llmBase", value: cfg.url });
+
+        $("status").textContent = "pulling image…";
+
+        const worker = new Worker("./worker.js");
+        const base = location.origin + location.pathname.replace(/\/[^/]*$/, "");
+        const info = await RunContainer.createContainerWASI(
+          base + "/out.wasm.gzip",
+          base + "/img",
+          base + "/dist/stack-worker.js",
+          base + "/imagemounter.wasm.gzip");
+
+        // Config rides argv: worker-util.js builds the WASI env array itself
+        // (proxy vars, cert path) with no page hook, but concatenates these
+        // args onto the container command. `info` is an object — appending
+        // env: lines to it, as the QEMU path allows, silently stringifies it.
+        $("status").textContent = "booting…";
+        worker.postMessage({
+          type: "init",
+          info: info,
+          args: ["/sbin/hermes-boot",
+                 "http://llm.hermes.internal/v1", cfg.model, cfg.key],
+        });
+        new TtyServer(slave).start(worker);
+      };
+
+      // Surface the guest's readiness markers without parsing the whole stream.
+      xterm.onLineFeed(() => {
+        const b = xterm.buffer.active;
+        const line = b.getLine(b.baseY + b.cursorY - 1);
+        if (!line) return;
+        const s = line.translateToString(true);
+        if (s.includes("@HERMES:READY@")) $("status").textContent = "shell ready";
+        if (s.includes("@HERMES:UP@")) {
+          $("status").textContent = "dashboard up";
+          $("dash").disabled = false;
+        }
+        if (s.includes("@HERMES:ERR:")) $("status").textContent = "error — see console";
+      });
+
+      // The iframe's src is a virtual origin: the service worker turns every
+      // request under __hermes/ into a queued job the guest's relay daemon
+      // replays against the dashboard on 127.0.0.1:9119. Nothing is exposed
+      // on a real port, which matters because hermes refuses to bind
+      // anything but loopback without an auth provider configured.
+      $("dash").onclick = () => {
+        $("dashwrap").classList.add("on");
+        if (!$("dashboard").src) $("dashboard").src = "./__hermes/";
+      };
+    </script>
+  </body>
+</html>
