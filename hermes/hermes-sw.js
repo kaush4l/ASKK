@@ -278,10 +278,13 @@ if (typeof ServiceWorkerGlobalScope !== "undefined" &&
     return llmBase;
   }
 
-  // 180s: hermes endpoints under an x86 interpreter routinely need far more
-  // than 30s of real time (model probes, config writes). 30s orphaned them
-  // and every dashboard mutation returned "guest did not answer".
-  const q = core.createQueue({ orphanMs: 180000 });
+  // 600s. ASKK used 180s against this same hermes version; measured here the
+  // dashboard's own /api/status still orphaned at 180s while the SPA was
+  // loading, because every asset it pulls shares these pollers and a single
+  // relay round trip is ~20s under the interpreter. Orphaning turns a slow
+  // answer into a hard 502, which reads as a broken dashboard rather than a
+  // slow one.
+  const q = core.createQueue({ orphanMs: 600000 });
   const POLL_MS = 25000;
 
   // credentialless default; the page flips it to require-corp (coi pattern)
