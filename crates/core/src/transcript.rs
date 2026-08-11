@@ -45,7 +45,7 @@ fn belongs_to(kind: &EventKind, me: &str, who: &str) -> bool {
         EventKind::ToolInvoked { .. } => who == me,
         EventKind::Custom { kind, payload_json } => match kind.as_str() {
             "core.note" | "core.error" => who == me,
-            "core.agent_error" => crate::failure::agent_of(payload_json) == who,
+            "core.agent_error" => crate::told::agent_of(payload_json) == who,
             _ => false,
         },
         _ => false,
@@ -96,7 +96,7 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
             // one presentation, and the cause reachable from either.
             EventKind::Custom { kind, payload_json } if kind == "core.agent_error" => {
                 failures += 1;
-                list = list.child(crate::failure::agent_failure(payload_json, who, failures));
+                list = list.child(crate::told::agent_failure(payload_json, who, failures));
                 (awaiting, count) = (false, count + 1);
             }
             EventKind::Custom { kind, payload_json } if kind == "core.error" => {
@@ -146,37 +146,5 @@ fn header(ctx: &Ctx, who: &str) -> String {
         .text(&format!("{} — {}", spec.name, spec.description))
         .build()
         .into_html();
-    format!("{line}{}", memory(ctx, who))
-}
-
-/// What this agent still HOLDS, which after a compaction is not what is on
-/// screen: the transcript keeps every turn, the window keeps a summary and the
-/// tail. Rendered only for this process's own agent — another agent's window
-/// lives in its own Worker, and guessing at it would be a made-up number.
-fn memory(ctx: &Ctx, who: &str) -> String {
-    if who != ctx.me {
-        return String::new();
-    }
-    let compacted = ctx
-        .window
-        .first()
-        .is_some_and(|line| line.contains(agent::SUMMARY_HEADING));
-    let said = match compacted {
-        true => "the oldest turns are now a summary the summarizer wrote",
-        false => "every turn, in full",
-    };
-    FragmentBuilder::new("p")
-        .class("agent-memory")
-        .attr("data-window", &ctx.window.len().to_string())
-        .attr("data-compacted", &compacted.to_string())
-        .text(&format!(
-            "Working memory: {} {} — {said}.",
-            ctx.window.len(),
-            match ctx.window.len() {
-                1 => "entry",
-                _ => "entries",
-            }
-        ))
-        .build()
-        .into_html()
+    format!("{line}{}", crate::memory::memory(ctx, who))
 }

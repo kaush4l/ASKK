@@ -21,6 +21,7 @@ mod tools;
 mod turn;
 mod settings;
 mod settings_view;
+mod space;
 
 fn main() {
     // The same Wasm bundle is imported by every agent's Worker (increment 06),
@@ -117,6 +118,7 @@ fn shell() -> Element {
                 tabs::AgentTabs { loaded, selected }
                 chat::ChatPane { web, endpoint_set, tick, agent: selected }
                 board::AgentBoard { web, tick }
+                space::SpaceInspector { web, tick }
                 tools::ToolTrace { web, tick }
                 {agent_panel(agents)}
                 settings::Settings { web, endpoint_set, tick }

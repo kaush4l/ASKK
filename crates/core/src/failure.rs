@@ -21,43 +21,11 @@ pub(crate) fn failure(payload_json: &str, nth: usize) -> Fragment {
     )
 }
 
-/// A SUB-AGENT's failed turn, in the same card. It used to render as
-/// `researcher: The model endpoint could not be reached…` — a failure
-/// attributed to the agent as something it SAID, with no technical detail
-/// reachable at all, while the identical failure on `main` was a card with a
-/// disclosure (`ux-walker`, increment 07b). One failure now has one
-/// presentation, whichever agent it happened to.
-pub(crate) fn agent_failure(payload_json: &str, who: &str, nth: usize) -> Fragment {
-    // The sub-agent's Worker sends back the raw `core.error` payload when it
-    // has one, so the cause survives the `postMessage` boundary typed. Older
-    // records carry the SENTENCE instead; that is still the sentence, and the
-    // payload is still the detail.
-    let raw = message_of(payload_json);
-    card(&told(&raw, who), told_kind(&raw), payload_json, nth)
-}
-
-/// A sub-agent's failure in the words a person reads, whether its Worker sent
-/// the typed payload (this build) or the sentence (records already written).
-pub(crate) fn told(message: &str, who: &str) -> String {
-    match serde_json::from_str::<crate::error::CoreError>(message) {
-        Ok(_) => failure_line(message),
-        Err(_) => readable(message, who),
-    }
-}
-
-/// The disclosure's name for the same two shapes.
-fn told_kind(message: &str) -> &'static str {
-    match serde_json::from_str::<crate::error::CoreError>(message) {
-        Ok(_) => failure_kind(message),
-        Err(_) => "reported by the sub-agent",
-    }
-}
-
 /// The one failure card: the actionable sentence first, the typed error folded
 /// away behind a disclosure named for THIS failure — every disclosure called
 /// "Technical detail" is the same control to a screen reader (`ux-walker`,
 /// increment 04).
-fn card(sentence: &str, kind: &str, detail: &str, nth: usize) -> Fragment {
+pub(crate) fn card(sentence: &str, kind: &str, detail: &str, nth: usize) -> Fragment {
     FragmentBuilder::new("div")
         .class("msg error")
         .child(FragmentBuilder::new("p").text(sentence).build())
@@ -88,56 +56,8 @@ pub(crate) fn sentence_of(payload_json: &str) -> String {
     failure_line(payload_json)
 }
 
-/// A sub-agent's turn that raised, as a fact scoped to THAT agent's
-/// conversation: `{"agent": …, "message": …}`. One shape, two readers below,
-/// so the transcript and the board cannot disagree about whose failure it was.
-pub(crate) fn agent_error(agent: &str, message: &str) -> String {
-    serde_json::json!({ "agent": agent, "message": message }).to_string()
-}
-
-/// Whose failure it was — the empty string if the payload will not read, which
-/// scopes it to nobody rather than to the wrong conversation.
-pub(crate) fn agent_of(payload_json: &str) -> String {
-    field(payload_json, "agent")
-}
-
-/// The sub-agent's OWN words about why its turn failed. Before increment 07
-/// this was always "<name> produced no answer" — four words naming no cause,
-/// where the lead's own failure said which endpoint was unreachable and why.
-pub(crate) fn message_of(payload_json: &str) -> String {
-    field(payload_json, "message")
-}
-
-/// The same message as a person must READ it. A record is written once and
-/// replays forever, so records already in a store carry the shapes earlier
-/// builds wrote: the Rust debug wrapper `JsValue("…")` around a rejected
-/// Worker string, and the agent's own name in front of a sentence the
-/// transcript already attributes to it — `researcher: JsValue("researcher: The
-/// model endpoint could not be reached…")` (`ux-walker`, increment 07). Both
-/// were fixed at the source; this is the guard for everyone who used the
-/// build before that, and it costs one pass over one string.
-pub(crate) fn readable(message: &str, who: &str) -> String {
-    let unwrapped = match message.strip_prefix("JsValue(\"").and_then(|s| s.strip_suffix("\")")) {
-        Some(inner) => inner.replace("\\\"", "\"").replace("\\n", "\n"),
-        None => message.to_string(),
-    };
-    match unwrapped.strip_prefix(&format!("{who}: ")) {
-        Some(said) => said.to_string(),
-        None => unwrapped,
-    }
-}
-
-/// One string field of an `agent_error` payload. Through serde, not a substring
-/// scan: a model endpoint's own words routinely contain quotes and braces.
-fn field(payload_json: &str, name: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(payload_json)
-        .ok()
-        .and_then(|v| Some(v.get(name)?.as_str()?.to_string()))
-        .unwrap_or_default()
-}
-
 /// Which failure this was, in two or three words — the disclosure's name.
-fn failure_kind(payload_json: &str) -> &'static str {
+pub(crate) fn failure_kind(payload_json: &str) -> &'static str {
     use kernel::ModelError::{EndpointUnknown, Provider, Transport, Unsupported};
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
         Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => "no endpoint configured",
@@ -150,7 +70,7 @@ fn failure_kind(payload_json: &str) -> &'static str {
 
 /// The actionable sentence, chosen on the typed variant — not by grepping the
 /// payload. Each names its own fix; the fallback admits it has none.
-fn failure_line(payload_json: &str) -> String {
+pub(crate) fn failure_line(payload_json: &str) -> String {
     use kernel::ModelError::{EndpointUnknown, Provider, Transport, Unsupported};
     // The Local Network Access prompt is about LOOPBACK, and this sentence
     // named it while calling `https://198.51.100.7/v1` — sending the reader

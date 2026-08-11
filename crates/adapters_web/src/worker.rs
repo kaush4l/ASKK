@@ -21,6 +21,11 @@ use crate::{js_err, BrowserClock, BrowserRng, FetchModel, FetchNet, IdbStore};
 /// the page's. Sharing one would replay the lead's whole event log into every
 /// sub-agent and fight it for the `events/` keyspace; a database per agent is
 /// the Python's folder per agent, and it is one string.
+/// The one database every SPACE lives in — the browser's answer to "the same
+/// object for every caller" (Python `get_space`). One name, so the page and a
+/// Worker cannot open two different ones.
+pub(crate) const SPACES_DB: &str = "harness-spaces";
+
 fn database(name: &str) -> String {
     format!("harness-agent-{name}")
 }
@@ -57,6 +62,14 @@ impl AgentWorker {
         let ports = core::Ports {
             model: Rc::clone(&model) as Rc<dyn kernel::ModelPort>,
             store: Rc::new(IdbStore::open(&database(&name)).await.map_err(js_err)?),
+            // Its own log, but the SAME spaces database the page opened: that
+            // shared keyspace is what makes one space one space across
+            // Workers that share no memory (increment 09).
+            spaces: Rc::new(
+                IdbStore::open(SPACES_DB)
+                    .await
+                    .map_err(js_err)?,
+            ) as Rc<dyn kernel::KvStore>,
             net: Rc::new(FetchNet::new(Vec::new())),
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
@@ -75,6 +88,16 @@ impl AgentWorker {
             app: Rc::new(RefCell::new(app)),
             name,
         })
+    }
+
+    /// What this agent HOLDS right now: the size of its window and whether its
+    /// oldest turns are a summary. The page cannot work this out — the window
+    /// lives in this Wasm instance — so the Worker says, and the page prints
+    /// what it was told (`ux-walker`, increment 08: a sub-agent had no memory
+    /// indicator at all).
+    pub fn memory(&self) -> String {
+        let (entries, summary) = core::memory_held(&self.app.borrow());
+        serde_json::json!({ "window": entries, "summary": summary }).to_string()
     }
 
     /// Take one turn on this agent's own loop and hand back what it said —

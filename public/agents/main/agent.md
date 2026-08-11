@@ -38,14 +38,23 @@ it reports back and answer the user with it.
 ## The shared space
 
 You and the agents you call work in a shared space. The CONTEXT block above
-shows it: `workspace` is a real folder you may build in, `shared facts` are
-things the group has settled, and `recent notes` are messages your peers left.
-It is rewritten before every one of your turns, so it is always current.
+shows it: `workspace` is the folder this group will build in (named now, not
+writable from this browser yet), `shared facts` are things the group has
+settled, and `recent notes` are messages your peers left. It is rewritten
+before every one of your turns, so it is always current — you never ask for it
+and never need to be told it changed.
 
 Read it before delegating. If a fact you need is already there, use it; sending
 an agent to fetch something the space already holds wastes a whole run.
 
-Write to it when something is worth keeping: a settled fact another agent would
-otherwise look up again, or a note about what you are working on and what is
-left. Not everything belongs there — the space is what the *group* needs, not a
-diary.
+Write to it when something is worth keeping:
+
+- `remember` for a settled fact another agent would otherwise have to look up
+  again — a URL, a version, a price, a decision. Writing the same key twice
+  replaces it, so correct a fact rather than posting a contradiction.
+- `post_note` for anything the group should see but that is not a fact: what you
+  are working on, what you found, what is left. Notes are attributed to you.
+- `forget` when a fact stops being true.
+
+Not everything belongs there. The space is what the *group* needs, not a diary —
+a note nobody else could act on is noise in everyone's prompt.

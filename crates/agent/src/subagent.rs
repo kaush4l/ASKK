@@ -22,8 +22,15 @@ use crate::tools::{builtin_tools, Tool};
 /// nothing is attached that an agent did not ask for.
 pub fn toolbox_for(spec: &AgentSpec, peers: &[AgentSpec]) -> Toolbox {
     let builtins = builtin_tools().tools;
+    // A space's three tools are attached to whoever NAMES the space, on top of
+    // the declared list rather than inside it: writing them out under `space:`
+    // would only be a second place to keep in step (Python `utils.load_agent`).
+    let space = match crate::space::Space::named(&spec.space) {
+        Some(_) => crate::space::space_tools(),
+        None => Vec::new(),
+    };
     if spec.tools.is_empty() {
-        return Toolbox::of(builtins);
+        return Toolbox::of([builtins, space].concat());
     }
     let mut tools: Vec<Tool> = Vec::new();
     for name in &spec.tools {
@@ -33,6 +40,7 @@ pub fn toolbox_for(spec: &AgentSpec, peers: &[AgentSpec]) -> Toolbox {
             tools.push(Tool::from_engine(&p.name, &p.description));
         }
     }
+    tools.extend(space);
     Toolbox::of(tools)
 }
 

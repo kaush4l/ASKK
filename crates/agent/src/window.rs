@@ -105,7 +105,9 @@ pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect
     paper::set_text(&mut sheet, "identity", "Name: summarizer.");
     paper::set_text(&mut sheet, "affordances", "");
     paper::set_text(&mut sheet, "response_contract", "Reply with the notes and nothing else.");
-    paper::set_dynamic(&mut sheet, "environment", &crate::now::environment(at), at);
+    // No space: the summarizer reads the transcript and nothing else, and the
+    // group's facts are not part of the conversation it is compressing.
+    paper::set_dynamic(&mut sheet, "environment", &crate::now::environment(at, None), at);
     paper::set_task(&mut sheet, &transcript, at);
     paper::set_history(&mut sheet, &[], at);
     Some(Effect::CallModel {

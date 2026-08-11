@@ -22,7 +22,7 @@ use wasm_bindgen_futures::JsFuture;
 
 use kernel::{AgentPort, BoxFuture, DelegateError, Status};
 
-use crate::spawn::{ask, bundle_urls, listen, start, Boot, Live};
+use crate::spawn::{ask, bundle_urls, listen, start, Boot, Live, Memory};
 
 /// A lifecycle fact the page has not told the core about yet.
 type Report = (String, Status, String);
@@ -33,6 +33,9 @@ pub struct AgentWorkers {
     /// into the core: these arrive from a JS callback, where the app is
     /// already borrowed by whatever handler is running.
     reports: Rc<RefCell<Vec<Report>>>,
+    /// What each Worker last said about its own window. Same queue discipline
+    /// as `reports`, and for the same reason: it arrives on a JS callback.
+    memory: Rc<RefCell<Vec<Memory>>>,
 }
 
 impl AgentWorkers {
@@ -40,6 +43,7 @@ impl AgentWorkers {
         AgentWorkers {
             live: RefCell::new(HashMap::new()),
             reports: Rc::new(RefCell::new(Vec::new())),
+            memory: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -48,6 +52,12 @@ impl AgentWorkers {
     /// through (I8).
     pub fn take_reports(&self) -> Vec<Report> {
         std::mem::take(&mut self.reports.borrow_mut())
+    }
+
+    /// Every window a Worker has reported since the last call, drained by the
+    /// composition root into `core::report_memory`.
+    pub fn take_memory(&self) -> Vec<Memory> {
+        std::mem::take(&mut self.memory.borrow_mut())
     }
 
     /// Start a Worker for every agent except the one the page itself is.
@@ -81,7 +91,12 @@ impl AgentWorkers {
             match start(name, &glue, &wasm, &boot) {
                 Ok(worker) => {
                     self.report(name, Status::Starting, "");
-                    let live = listen(name, worker, Rc::clone(&self.reports));
+                    let live = listen(
+                        name,
+                        worker,
+                        Rc::clone(&self.reports),
+                        Rc::clone(&self.memory),
+                    );
                     self.live.borrow_mut().insert(name.clone(), live);
                 }
                 Err(e) => self.report(name, Status::Failed, &crate::wire::js_message(&e)),

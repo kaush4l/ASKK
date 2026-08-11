@@ -95,6 +95,10 @@ pub fn adopt_spec(
     peers: &[crate::spec::AgentSpec],
 ) {
     state.model = spec.model.clone();
+    // Naming the space IS the request: the tools come with it rather than
+    // having to be listed too (Python `utils.load_agent`), and a name that
+    // could walk out of `spaces/` attaches nothing at all.
+    state.space = crate::space::Space::named(&spec.space);
     state.toolbox = crate::subagent::toolbox_for(spec, peers);
     (state.compact_at, state.keep_recent) = (spec.compact_at, spec.keep_recent);
     // The summarizer is an ordinary agent, found among the peers by name — the

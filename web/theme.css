@@ -207,3 +207,29 @@ form.stacked .row button { flex: 0 0 auto; }
   max-height: 14rem;
   overflow: auto;
 }
+
+/* The shared space (increment 09): facts one agent settled and notes it left,
+   read by every agent in the space on every turn. Styled as a list of pairs
+   because that is what a fact is — and it still reads as one with the
+   stylesheet off, which is why the markup is <dl> and <ul>. */
+#space { margin-top: 0.5rem; }
+.space-name { color: var(--accent); margin: 0; }
+.space-path { color: var(--ink-dim); font-size: 0.9rem; margin: 0 0 0.5rem; font-family: var(--mono, monospace); }
+#space h3 { margin: 0.75rem 0 0.25rem; font-size: 0.95rem; }
+.space-facts { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.75rem; }
+.space-facts dt { color: var(--ink-dim); }
+.space-facts dd { margin: 0; }
+.space-notes { margin: 0; padding-left: 1.1rem; }
+.space-notes li { margin: 0.15rem 0; }
+
+/* The summary a compaction produced (increment 09, from the 08 walk): the one
+   artifact that says what happened to the turns that left the window. */
+.agent-summary { margin: 0 0 0.5rem; font-size: 0.9rem; }
+.agent-summary pre {
+  white-space: pre-wrap;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.5rem;
+  max-height: 14rem;
+  overflow: auto;
+}

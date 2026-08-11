@@ -12,6 +12,19 @@ pub fn window(app: &App) -> Vec<String> {
     agent::window(&app.agent.paper)
 }
 
+/// What this process's agent HOLDS: how many entries are in its window, and —
+/// when the oldest of them have been compacted — the summary that replaced
+/// them. What a Worker reports about itself, so a sub-agent's pane prints a
+/// fact rather than a guess, and its summary is readable where the page's is.
+pub fn memory_held(app: &App) -> (usize, Option<String>) {
+    let window = window(app);
+    let summary = window
+        .first()
+        .filter(|line| line.contains(agent::SUMMARY_HEADING))
+        .cloned();
+    (window.len(), summary)
+}
+
 /// Queue whatever writes bring the log level with the window. Called after
 /// every pump, so an append is queued the moment the turn produces it and a
 /// compaction's rewrite lands BEHIND the appends already waiting.
@@ -88,5 +101,34 @@ pub async fn restore_log(app: &mut App) -> Result<(), CoreError> {
     let at = app.ports.clock.now();
     agent::set_window(&mut app.agent.paper, &lines, at);
     app.logbook = Logbook::restored(lines.len());
+    Ok(())
+}
+
+/// Write every unpersisted log entry through `StorePort` (`events/<seq>`).
+/// The log is truth in memory the moment it is appended; the store catches up
+/// here, and a failed write is itself a fact.
+pub(crate) async fn persist(app: &std::rc::Rc<std::cell::RefCell<App>>) -> Result<(), CoreError> {
+    let (store, batch) = {
+        let mut a = app.borrow_mut();
+        (
+            std::rc::Rc::clone(&a.ports.store),
+            std::mem::take(&mut a.unpersisted),
+        )
+    };
+    for event in batch {
+        let key = format!("events/{:08}", event.seq);
+        let value = serde_json::to_string(&event).map_err(|e| {
+            CoreError::Store(kernel::StoreError::Backend {
+                message: e.to_string(),
+            })
+        })?;
+        if let Err(e) = store.kv().put(&key, &value).await {
+            app.borrow_mut().append(kernel::EventKind::StoreFailed {
+                key,
+                message: format!("{e:?}"),
+            });
+            return Err(CoreError::Store(e));
+        }
+    }
     Ok(())
 }

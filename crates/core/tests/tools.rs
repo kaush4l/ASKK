@@ -34,6 +34,7 @@ fn booted(replies: &[&str]) -> Rc<RefCell<App>> {
         net: Rc::new(DenyAllNet),
         clock: Rc::new(FixedClock::at(Timestamp(1_753_800_000_000))),
         rng: Rc::new(SeededRng::seeded(7)),
+        spaces: Rc::new(adapters_test::MemKv::new()),
         agents: Rc::new(ScriptedAgents::none()),
     };
     let mut app = block_on(boot(ports)).expect("boot succeeds");

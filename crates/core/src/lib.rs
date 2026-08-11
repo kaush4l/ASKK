@@ -18,22 +18,26 @@ mod dispatch;
 mod error;
 mod failure;
 mod form;
+mod inspector;
 mod install;
 mod logbook;
 mod logs;
+mod memory;
 mod runtime;
+mod space;
+mod told;
 mod tools;
 mod transcript;
 mod trace;
 
-pub use install::{builtin_files, install_agents, install_agents_as, report_agent};
+pub use install::{builtin_files, install_agents, install_agents_as, report_agent, report_memory};
 pub use app::{App, Ports, ENTRY_AGENT};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
 pub use error::CoreError;
 // `drive` is PROVISIONAL (G4): the async runtime loop — see runtime.rs.
 pub use runtime::{drive, execute_effect, pump};
-pub use logs::{restore_log, window};
+pub use logs::{memory_held, restore_log, window};
 
 use kernel::{Request, Response};
 

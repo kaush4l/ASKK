@@ -90,6 +90,10 @@ pub struct Ctx {
     /// conversation the model still sees, which after a compaction is not the
     /// same thing as how much of it is on screen.
     pub window: Vec<String>,
+    /// The shared space this process's agent works in, as last read from the
+    /// store (increment 09) — a projection like `board`, so the inspector
+    /// cannot show facts the agent's own prompt does not have.
+    pub space: Option<agent::Space>,
 }
 
 /// A tier-0 built-in's logic. A plain fn pointer, not a trait object: no
@@ -107,6 +111,7 @@ pub fn builtin_entry(id: &ModuleId) -> Option<BuiltinHandler> {
         "agents" => Some(crate::agents::agents),
         "tools" => Some(crate::tools::tools),
         "board" => Some(crate::board::board),
+        "space" => Some(crate::inspector::space),
         "status" => Some(builtins::status),
         _ => None,
     }
@@ -153,6 +158,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         board: app.board.snapshot().to_vec(),
         me: app.me().to_string(),
         window: crate::logs::window(app),
+        space: app.agent.space.clone(),
     };
 
     let response = match logic {

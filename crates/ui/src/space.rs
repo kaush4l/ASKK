@@ -1,0 +1,46 @@
+//! `SpaceInspector` — facts, notes and the workspace path (plan, "UI shape";
+//! Python counterpart `core/space.py`). It owns nothing but the fetch: the
+//! content is the core's own read of the shared store, so what this shows and
+//! what is in every agent's prompt are the same read.
+
+use std::rc::Rc;
+
+use adapters_web::{sleep, WebApp};
+use dioxus::prelude::*;
+use kernel::Request;
+
+/// A space changes when ANOTHER Worker writes to it, which happens on nobody's
+/// schedule — so this pane keeps its own slow clock while the page is open.
+/// 2 s, not 400 ms: a note is read by a person, not raced for.
+const TICK_MS: i32 = 2000;
+
+#[component]
+pub fn SpaceInspector(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element {
+    let mut panel = use_signal(String::new);
+    use_effect(move || {
+        let _ = tick();
+        let Some(app) = web.read().clone() else { return };
+        panel.set(app.handle(Request::get("/space")).body);
+        spawn(async move {
+            loop {
+                if sleep(TICK_MS).await.is_err() {
+                    return;
+                }
+                let Some(app) = web.peek().clone() else { return };
+                panel.set(app.handle(Request::get("/space")).body);
+            }
+        });
+    });
+    rsx! {
+        section { class: "panel", aria_label: "Shared space",
+            h2 { "Shared space" }
+            p { class: "note",
+                "Every agent whose file names this space reads it — each one in its own \
+                 Worker, out of one shared store — and writes to it with remember, forget \
+                 and post_note. It goes into their prompts before every turn, so a fact \
+                 recorded here is one nobody has to be asked for again."
+            }
+            div { aria_live: "polite", dangerous_inner_html: "{panel}" }
+        }
+    }
+}

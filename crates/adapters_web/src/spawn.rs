@@ -86,12 +86,30 @@ pub(crate) struct Live {
     _handler: Closure<dyn FnMut(MessageEvent)>,
 }
 
+/// What a Worker said about its own window, waiting to be drained: the agent,
+/// how many entries, and the summary that replaced the oldest, if any.
+pub(crate) type Memory = (String, usize, Option<String>);
+
+/// Read the `memory` field off a Worker's message. Absent (an older bundle, or
+/// a failure) means it said nothing, which the pane prints as "not reported"
+/// rather than as a made-up number.
+fn memory_of(data: &JsValue, who: &str) -> Option<Memory> {
+    let raw = Reflect::get(data, &"memory".into()).ok()?.as_string()?;
+    let value = serde_json::from_str::<serde_json::Value>(&raw).ok()?;
+    Some((
+        who.to_string(),
+        value.get("window")?.as_u64()? as usize,
+        value.get("summary").and_then(|s| s.as_str()).map(str::to_string),
+    ))
+}
+
 /// The ONE message handler for this Worker: `ready` is a lifecycle fact,
 /// anything else is the answer to the turn in flight.
 pub(crate) fn listen(
     name: &str,
     worker: Worker,
     queue: Rc<RefCell<Vec<(String, Status, String)>>>,
+    memory: Rc<RefCell<Vec<Memory>>>,
 ) -> Live {
     let waiting: Rc<RefCell<Option<(Function, Function)>>> = Rc::new(RefCell::new(None));
     let (pending, who) = (Rc::clone(&waiting), name.to_string());
@@ -100,6 +118,9 @@ pub(crate) fn listen(
         let read = |k: &str| Reflect::get(&data, &k.into()).unwrap_or(JsValue::UNDEFINED);
         let text = read("text").as_string().unwrap_or_default();
         let ok = read("ok").as_bool().unwrap_or(false);
+        if let Some(said) = memory_of(&data, &who) {
+            memory.borrow_mut().push(said);
+        }
         if read("kind").as_string().as_deref() == Some("ready") {
             let status = match ok {
                 true => Status::Idle,

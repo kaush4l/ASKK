@@ -102,7 +102,8 @@ fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effect {
     paper::set_text(&mut state.paper, "response_contract", &contract_text(&cfg, &tools));
     // Fresh every request, never cached: a cached clock is a wrong clock
     // (Python `Engine.context`).
-    paper::set_dynamic(&mut state.paper, "environment", &crate::now::environment(at), at);
+    let environment = crate::now::environment(at, state.space.as_ref());
+    paper::set_dynamic(&mut state.paper, "environment", &environment, at);
     Effect::CallModel {
         document: context::assemble(&state.paper, state.phase, cfg.budget),
         // G4 target: the local OpenAI-compatible proxy, text-only.

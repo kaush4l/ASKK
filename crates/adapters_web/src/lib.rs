@@ -32,6 +32,7 @@ pub use idb::IdbStore;
 pub use model::FetchModel;
 pub use ports::{sleep, BrowserClock, BrowserRng, FetchNet};
 pub use worker::AgentWorker;
+
 pub use workers::AgentWorkers;
 
 use wasm_bindgen::prelude::*;
@@ -70,6 +71,9 @@ impl WebApp {
     /// The ONLY place adapters meet the core.
     pub async fn boot() -> Result<WebApp, JsValue> {
         let store = Rc::new(IdbStore::open("harness").await.map_err(js_err)?);
+        // Opened by the page and by every Worker: a space that lived in this
+        // agent's own store would be a space nobody could share.
+        let spaces = Rc::new(IdbStore::open(worker::SPACES_DB).await.map_err(js_err)?);
         let model = Rc::new(FetchModel::new("config/keys/"));
         let agents = Rc::new(AgentWorkers::none());
         // The shipped catalogue FIRST, then the user's layer over it: an
@@ -91,6 +95,7 @@ impl WebApp {
             net: Rc::new(FetchNet::new(Vec::new())),
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
+            spaces: spaces as Rc<dyn kernel::KvStore>,
             agents: Rc::clone(&agents) as Rc<dyn kernel::AgentPort>,
         };
         let mut app = core::boot(ports).await.map_err(js_err)?;
@@ -105,7 +110,7 @@ impl WebApp {
         core::restore_log(&mut app).await.map_err(js_err)?;
         // Every agent that is not this page gets its own Worker — its own JS
         // context, its own Wasm instance, its own event loop (Python
-        // `AgentThread`). Started at boot, the way the registry starts every
+        // `AgentThread`), started at boot the way the registry starts every
         // thread at load, so the board is honest the moment the page paints.
         let names: Vec<String> = core::agent_names(&app);
         agents.spawn(
@@ -175,6 +180,12 @@ impl WebApp {
         // there and land in the log HERE, through the one status door (I8).
         for (agent, status, detail) in self.workers.take_reports() {
             core::report_agent(&mut self.app.borrow_mut(), &agent, status, &detail);
+        }
+        // …and what each Worker last said about its own window, so a sub-agent's
+        // pane shows a number IT reported and not one this side guessed.
+        for (agent, window, summary) in self.workers.take_memory() {
+            let mut app = self.app.borrow_mut();
+            core::report_memory(&mut app, &agent, window, summary.as_deref());
         }
         let response = core::handle(&mut self.app.borrow_mut(), req);
         let app = Rc::clone(&self.app);

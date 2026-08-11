@@ -110,6 +110,10 @@ pub fn execute_effect(
 pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), CoreError>> {
     Box::pin(async move {
         loop {
+            // The space, re-read before every pass — the reason the clock is
+            // not cached applies twice over: a peer on another Worker may have
+            // written to it since the last turn (Python `Engine.context`).
+            crate::space::refresh(&app).await;
             let Some(event) = ({
                 let mut a = app.borrow_mut();
                 if a.pending.is_empty() {
@@ -171,30 +175,7 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
         }
         // The agent's own log first, in the order the Python writes it.
         crate::logs::drain(&app).await;
-        // Persistence: the log is truth in memory the moment it is appended;
-        // the store catches up here. A failed write is itself a fact.
-        let (store, batch) = {
-            let mut a = app.borrow_mut();
-            (
-                Rc::clone(&a.ports.store),
-                std::mem::take(&mut a.unpersisted),
-            )
-        };
-        for event in batch {
-            let key = format!("events/{:08}", event.seq);
-            let value = serde_json::to_string(&event).map_err(|e| {
-                CoreError::Store(kernel::StoreError::Backend {
-                    message: e.to_string(),
-                })
-            })?;
-            if let Err(e) = store.kv().put(&key, &value).await {
-                app.borrow_mut().append(EventKind::StoreFailed {
-                    key,
-                    message: format!("{e:?}"),
-                });
-                return Err(CoreError::Store(e));
-            }
-        }
+        crate::logs::persist(&app).await?;
         Ok(())
     })
 }

@@ -30,6 +30,11 @@ pub struct Ports {
     pub net: Rc<dyn NetPort>,
     pub clock: Rc<dyn ClockPort>,
     pub rng: Rc<dyn RngPort>,
+    /// Where every SHARED SPACE lives (increment 09). A separate injection
+    /// from `store`, because `store` is this agent's own — its log and its
+    /// events — and a space is by definition the one thing two agents in
+    /// different Workers must both be able to read and write.
+    pub spaces: Rc<dyn kernel::KvStore>,
     /// The other agents, each in its own Worker (increment 06). A port, not a
     /// field of handles: the core names an agent and waits for an answer, and
     /// cannot reach into its loop even by accident (ADR-008).

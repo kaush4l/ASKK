@@ -51,6 +51,7 @@ fn booted_as(store: Rc<Recording>, me: &str, replies: &[&str]) -> Rc<RefCell<App
         net: Rc::new(DenyAllNet),
         clock: Rc::new(FixedClock::at(Timestamp(1_753_800_000_000))),
         rng: Rc::new(SeededRng::seeded(7)),
+        spaces: Rc::new(adapters_test::MemKv::new()),
         agents: Rc::new(ScriptedAgents::none()),
     };
     let mut app = block_on(boot(ports)).expect("boot succeeds");
@@ -164,4 +165,82 @@ fn each_agent_writes_and_reads_its_own_log() {
         core::window(&mine.borrow()),
         "and the lead's is untouched by it"
     );
+}
+
+fn chat(app: &Rc<RefCell<App>>, who: &str) -> String {
+    let mut req = Request::get("/chat");
+    req.headers.push(("x-agent".into(), who.to_string()));
+    handle(&mut app.borrow_mut(), req).body
+}
+
+/// The memory line after a compaction, which is where four findings from the
+/// increment-08 walk landed: the summary is READABLE, the count has a unit and
+/// a denominator, the copy says nothing was lost, and the line is a live region
+/// so the change is announced rather than silent.
+#[test]
+fn the_memory_line_shows_the_summary_the_denominator_and_the_reassurance() {
+    let store = Rc::new(Recording::default());
+    let app = booted_as(Rc::clone(&store), "main", &["one", "NOTES", "two"]);
+    say(&app, "hi");
+    say(&app, "again");
+
+    let html = chat(&app, "main");
+    assert!(html.contains(r#"data-compacted="true""#), "{html}");
+    assert!(
+        html.contains("compaction runs at 4 entries and keeps the newest 2"),
+        "the number a reader can anticipate the drop from: {html}"
+    );
+    assert!(
+        html.contains("Nothing was lost: the transcript below still holds every turn"),
+        "{html}"
+    );
+    assert!(html.contains(r#"role="status""#), "a compaction is announced: {html}");
+    assert!(
+        html.contains("The summary that replaced the oldest turns for main"),
+        "the summary has a disclosure of its own: {html}"
+    );
+    assert!(
+        html.contains("NOTES"),
+        "…and the summarizer's actual words are inside it: {html}"
+    );
+}
+
+/// A sub-agent's window lives in its Worker, so the pane prints what that
+/// Worker REPORTED — and says so plainly until it has reported anything. An
+/// increment about per-agent memory that showed one agent out of three is the
+/// finding this closes.
+#[test]
+fn a_sub_agents_memory_is_what_its_worker_reported_or_plainly_unknown() {
+    let store = Rc::new(Recording::default());
+    let app = booted_as(Rc::clone(&store), "main", &["one"]);
+
+    let before = chat(&app, "researcher");
+    assert!(
+        before.contains("researcher has not reported it yet"),
+        "not silence, and not a guess: {before}"
+    );
+
+    core::report_memory(
+        &mut app.borrow_mut(),
+        "researcher",
+        5,
+        Some("system: Summary of the conversation so far:\nIT SAID THIS"),
+    );
+    let after = chat(&app, "researcher");
+    assert!(after.contains(r#"data-window="5""#), "{after}");
+    assert!(
+        after.contains("the oldest turns are now a summary the summarizer wrote"),
+        "{after}"
+    );
+    assert!(
+        after.contains("compaction runs at 75 entries and keeps the newest 24"),
+        "its own file's setting, not the lead's: {after}"
+    );
+    assert!(
+        after.contains("The summary that replaced the oldest turns for researcher")
+            && after.contains("IT SAID THIS"),
+        "a sub-agent's summary is readable too, not only the page's: {after}"
+    );
+    // The lead's own line is unchanged by its sub-agent's report.
+    assert!(chat(&app, "main").contains(r#"data-compacted="false""#));
 }

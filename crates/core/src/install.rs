@@ -134,3 +134,38 @@ pub fn report_agent(app: &mut App, agent: &str, status: Status, detail: &str) {
     }
     app.set_status(agent, status, detail);
 }
+
+/// What a sub-agent's Worker says about its OWN working memory: how many
+/// entries it holds and whether the oldest are a summary. The page cannot
+/// compute this — that window lives in another Wasm instance — and an
+/// increment whose headline is per-agent memory that showed one agent out of
+/// three was the finding this closes (`ux-walker`, increment 08).
+///
+/// Not the seam (I4): the host reporting a fact, exactly like `report_agent`,
+/// and it lands as an event so the pane stays a projection (I8). Unchanged
+/// reports are dropped — a number that did not move is not news.
+pub fn report_memory(app: &mut App, agent: &str, window: usize, summary: Option<&str>) {
+    let payload = serde_json::json!({
+        "agent": agent,
+        "window": window,
+        "summary": summary,
+    })
+    .to_string();
+    let already = app
+        .log
+        .iter()
+        .filter_map(|e| match &e.kind {
+            EventKind::Custom { kind, payload_json } if kind == "core.agent_memory" => {
+                (crate::told::agent_of(payload_json) == agent).then(|| payload_json.clone())
+            }
+            _ => None,
+        })
+        .last();
+    if already.as_deref() == Some(payload.as_str()) {
+        return;
+    }
+    app.append(EventKind::Custom {
+        kind: "core.agent_memory".into(),
+        payload_json: payload,
+    });
+}

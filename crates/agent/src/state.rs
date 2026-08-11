@@ -81,6 +81,12 @@ pub struct AgentState {
     pub summarizer_prompt: String,
     #[serde(default)]
     pub summarizer_model: String,
+    /// The shared space this agent works in, as of the last time it was read
+    /// — its facts and notes go into CONTEXT on every call. `None` means the
+    /// agent's file named no space, so it works alone (Python: `space` is an
+    /// optional frontmatter key).
+    #[serde(default)]
+    pub space: Option<crate::space::Space>,
     /// The paper's assembly inputs — gathered section sources, refreshed by
     /// `core` (affordances from the registry, observations from effects)
     /// before each step. Inside AgentState so one snapshot restores the
@@ -121,6 +127,7 @@ impl AgentState {
             compactions: 0,
             summarizer_prompt: String::new(),
             summarizer_model: String::new(),
+            space: None,
             paper: crate::paper::seed(),
         }
     }

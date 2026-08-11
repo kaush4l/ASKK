@@ -66,11 +66,11 @@ pub(crate) async fn run_on(
             // The RECORD keeps the typed payload the Worker sent, so the card
             // can carry its disclosure; the BOARD gets the sentence, because a
             // status row is one line a person reads at a glance.
-            let said = crate::failure::told(&message, agent);
+            let said = crate::told::told(&message, agent);
             a.set_status(agent, Status::Failed, &said);
             a.append(EventKind::Custom {
                 kind: "core.agent_error".into(),
-                payload_json: crate::failure::agent_error(agent, &message),
+                payload_json: crate::told::agent_error(agent, &message),
             });
             Err(said)
         }
@@ -133,6 +133,14 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
     // A tool runs against the app, synchronously, and its envelope is the fact
     // that comes back (I8) — including a refusal.
     if let Effect::InvokeTool { tool, args_json } = &effect {
+        // A space's tools write to the SHARED store, so they are the one tool
+        // family that cannot run inside a borrow of the app.
+        if let Some(kind) = crate::space::run(app, tool, args_json).await {
+            let mut a = app.borrow_mut();
+            let appended = a.append(kind);
+            a.pending.push(appended);
+            return;
+        }
         let mut a = app.borrow_mut();
         let kind = crate::tools::run(&a, tool, args_json);
         let appended = a.append(kind);

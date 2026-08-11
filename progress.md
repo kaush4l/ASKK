@@ -20,7 +20,8 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 | 06 | One Worker per agent + the supervisor board: six statuses, sub-agents as tools, and the nine walk findings | 67 green (52 + 7 supervisor/sub-agent + 7 delegation + 1 override-pinning) | fresh install, real omlx on 8873: the lead delegates and the board goes `main:working` → `researcher:working` → `researcher:idle` → `main:waiting` LIVE during the turn, three model calls (lead, sub-agent-in-its-Worker, lead again), and the lead answers with what the sub-agent returned; `researcher({})` is REFUSED and the sub-agent never runs; at 390px the document no longer scrolls sideways | ⬜ pending `ux-walker` | `6ea8c79` | Live at https://kaush4l.github.io/ASKK/. Hosted: `crossOriginIsolated: true`, two Workers boot (one per sub-agent), the board and the agent list are walkable, the Agents card now prints the REAL toolbox (`tools: now, list_agents, read_agent, researcher`) instead of "no tools yet", and the turn dies at the documented loopback boundary — the board then shows `main failed — 1 turn` WITH the endpoint message rather than a lead stuck in `working`. NOT demonstrated live: two sub-agents running at the same instant. The code path exists and its ordering is pinned on the host (`one_line_of_delegations_is_one_batch_and_the_next_line_follows_it`), but the local gemma would not emit two calls on one line after three attempts, so simultaneity is unproven in a browser. |
 | 07 | Chat with any agent individually: per-agent conversations, observable Worker lifecycle, and the seven walk findings | 78 green (67 + 8 per-agent conversations + 3 lifecycle) | fresh install, real omlx on 8873: `researcher` answered a question typed straight to it while `main`'s transcript stayed untouched; delegating through `main` put the sub-agent's turn in the SUB-AGENT's history attributed to `main`; a reload rebuilt every conversation AND both turn counts (2 and 2); the board settles `starting` → `idle` as each Worker reports | ⬜ pending `ux-walker` | `23560d4` | Live at https://kaush4l.github.io/ASKK/. Hosted: `crossOriginIsolated: true`, the agent tabs switch, per-agent histories persist across reload and across a browser restart, the board reads `idle — it answered, and nobody is waiting on it — 4 turns`, and a turn dies at the documented loopback boundary — the sub-agent's failure now names ITS OWN cause (`The model endpoint could not be reached… Chrome 142+ asks permission…`) instead of "researcher produced no answer". |
 | 07b | `ux-walker` FAILED 07: the crossed projection, the global composer lock, invisible tab labels — plus three lower-severity findings from the same walk | 83 green (78 + 5: one read names one agent, one agent's turn does not report another busy, two agents in flight at once, a rebooting Worker does not erase a failure, an old record does not replay Rust debug syntax) | fresh install, real omlx on 8873 (127.0.0.1:8901 → dist): started a turn on `main`, clicked `summarizer` mid-turn and polled 1 s × 10 — heading, pane `aria-label`, agent-header line and composer label all read `summarizer` and the transcript stayed empty every tick, never crossed; with `main` mid-turn `summarizer`'s composer was live (`inputDisabled:false`, Send reads "Send") and a second turn ran to a real gemma answer while `main`'s was still running; tab labels compute 16:1 on the body background (was 1.02:1); a sub-agent whose only turn failed still reads `failed` after a reload and after its Worker re-boots; an `agent_error` record injected in the OLD shape (`JsValue("researcher: …")`) renders as `researcher: The model endpoint could not be reached.` — one speaker, no wrapper; saving a new endpoint restarts every Worker with no `closed` row | ⬜ pending `ux-walker` | `304e1a4` | Live at https://kaush4l.github.io/ASKK/. 07's row was a FAIL — this row is the answer to it, and 07 does not close until this one is walked. HOSTED, after wiping the service worker, caches and IndexedDB (the walker was served a stale build ~4 min after the deploy; the bundle hash in `index.html` is the check — `ui-cc88c6ef827508a2.js` matches `dist/`): the same walk passes — `main` mid-turn against a black-holed endpoint, `summarizer` never crossed over 10 polls, both boards read `working` AT ONCE (`main:working`, `summarizer:working`), which is the "two at once" 06 and 07 could not demonstrate through the interface at all; after both turns failed a reload left `main:failed` AND `summarizer:failed` — a Worker agent and the page's own agent now mean the same thing on a fresh load. WHAT CHANGED: the pane renders from ONE value (`turn::Shown { who, html, pending }`) and shows a transcript only while `who` is the selected agent, so a heading and a body from different agents is not expressible; a turn's poller belongs to the agent it started on and returns the moment the selection moves; in-flight is per agent, read from that agent's own `x-turn`; `.agent-tabs .tab` re-states `color: var(--ink)` (it had inherited `button`'s ink for a background it no longer has); `core::report_agent` refuses to let a `Starting`/`Idle` reboot report overwrite a `Failed` row — a reboot is not an outcome; `failure::readable` strips an older build's `JsValue("…")` wrapper and the duplicated speaker name at RENDER time, so records already written stay readable; `close_all` no longer writes `Closed`, which was assigned and replaced in one tick and could never be seen (the variant stays in `kernel` because logs written by the 07 build carry it and a replay that cannot deserialize refuses boot). |
-| 08 | Per-agent logs, the rolling window and the built-in summarizer — plus the three 07b walk findings | 93 green (83 + 6 window/compaction + 4 per-agent log) | fresh install, real omlx on 8873: four turns drove `main` past `compact_at: 8` and the SUMMARIZER AGENT compacted it live — the window went 7 → 5 with `data-compacted="true"`, and the stored `log/main/*` in IndexedDB is exactly that window (summary + `keep_recent: 3` tail); a reload rebuilt the same 5; `researcher` did the same INSIDE ITS OWN WORKER against its own database (`harness-agent-researcher`, `log/researcher/*`), compacted at 6, and after a page reload its next turn continued from the restored window rather than an empty paper; the ARIA tablist answers ArrowLeft/Right (wrapping), Home and End with a roving tabindex | ⬜ pending `ux-walker` | `87780ee` | Live at https://kaush4l.github.io/ASKK/. HOSTED (bundle hash in `index.html` checked against `dist/` — `ui-5f603ad7507e1067.js`, matched on the third poll): `crossOriginIsolated: true`, three tabs read `tab, main, selected` to a screen reader, the memory line renders, and BOTH failures at the loopback boundary now render as the SAME card — `main`'s and `researcher`'s are byte-identical sentences with the identical `Technical detail for failure 1 — the endpoint was unreachable` disclosure, the sub-agent's carrying the typed payload its Worker sent across `postMessage`. With every stylesheet removed the current tab reads `▸ **researcher**` while the others are plain. NOT demonstrated hosted: a live compaction — it needs a reachable model, and the hosted page still dies on Chrome's Local Network Access gate (02's row). |
+| 08 | Per-agent logs, the rolling window and the built-in summarizer — plus the three 07b walk findings | 93 green (83 + 6 window/compaction + 4 per-agent log) | fresh install, real omlx on 8873: four turns drove `main` past `compact_at: 8` and the SUMMARIZER AGENT compacted it live — the window went 7 → 5 with `data-compacted="true"`, and the stored `log/main/*` in IndexedDB is exactly that window (summary + `keep_recent: 3` tail); a reload rebuilt the same 5; `researcher` did the same INSIDE ITS OWN WORKER against its own database (`harness-agent-researcher`, `log/researcher/*`), compacted at 6, and after a page reload its next turn continued from the restored window rather than an empty paper; the ARIA tablist answers ArrowLeft/Right (wrapping), Home and End with a roving tabindex | ⬜ pending `ux-walker` | `87780ee` | Live at https://kaush4l.github.io/ASKK/. HOSTED (bundle hash in `index.html` checked against `dist/` — `ui-5f603ad7507e1067.js`, matched on the third poll): `crossOriginIsolated: true`, three tabs read `tab, main, selected` to a screen reader, the memory line renders, and BOTH failures at the loopback boundary now render as the SAME card — `main`'s and `researcher`'s are byte-identical sentences with the identical `Technical detail for failure 1 — the endpoint was unreachable` disclosure, the sub-agent's carrying the typed payload its Worker sent across `postMessage`. With every stylesheet removed the current tab reads `▸ **researcher**` while the others are plain. NOT demonstrated hosted: a live compaction — it needs a reachable model, and the hosted page still dies on Chrome's Local Network Access gate (02's row). **CORRECTED by 09:** the hosted bundle for this row was `ui-879974ab6513cd49.js` (gh-pages `deploy 87780ee`); `ui-5f603ad7507e1067.js` above is 07b's bundle, written into the 08 row by mistake — the row's verdict stands, the hash did not. |
+| 09 | Shared spaces: facts, an attributed noticeboard and a named workspace, one space across Workers — plus the six memory findings from the 08 walk and the ledger correction | 109 green (93 + 9 space rules on the host + 5 through the whole seam with two Apps on one store + 2 memory line) | fresh install, real omlx on 8873 (127.0.0.1:8901 → dist): `main` delegated to `researcher` with the goal 'record omlx port = 8873 with remember, then post_note', and the Shared space panel went `0f/0n → 1f/1n` WHILE `researcher` was still `working` — a write from another Wasm instance, seen with nobody told to look; `researcher`'s turn count moved 0 → 1, so the fact was recorded by the sub-agent and not by the lead. The next turn — "what port is omlx on, and what note did the researcher leave? Both are in the CONTEXT block" — answered `The omlx port is 8873, and the researcher left the note "checked the models endpoint."` with `researcher` still at 1 turn and the tool-call count still at 1: answered from CONTEXT, delegating to nobody. The note renders `[researcher] checked the models endpoint.` — attributed by the tool, never by the model. Four turns on `researcher` then crossed its `compact_at: 6`: its pane read `Working memory: 4 of 6 entries — the oldest turns are now a summary the summarizer wrote; compaction runs at 6 entries and keeps the newest 2. Nothing was lost: the transcript below still holds every turn.`, with the summary itself readable behind `The summary that replaced the oldest turns for researcher`. | ⬜ pending `ux-walker` | `TBD` | Live at https://kaush4l.github.io/ASKK/ — hosted bundle `ui-8b9480ef9f17ddd4.js`, matching `dist/` and `gh-pages deploy 7a21cbf`. HOSTED, after wiping IndexedDB, caches and the service worker: `crossOriginIsolated: true`, no console errors, six panels including **Shared space**, and the four databases the design implies (`harness`, `harness-agent-researcher`, `harness-agent-summarizer`, `harness-spaces`). A model is still unreachable from the hosted origin (02's row), so the hosted walk goes up to the loopback boundary: a fact and a note written into `harness-spaces` FROM PAGE JS — outside the Wasm instance entirely, which is exactly what another Worker is — appeared in the inspector within one pass (`1f/1n`, `[researcher] wrote this from another context`) and survived a reload. The Agents card lists `remember, forget, post_note` in both agents' resolved toolboxes, so it cannot disagree with what the model is told. |
 
 ## Parity with the Python project
 
@@ -41,9 +42,9 @@ feature "exists".
 | `core/tools.py` | Batch layout: same line concurrent, new line sequential | ✅ |
 | `core/tools.py` | Unreadable arguments refused with a repair message, never an empty call | ✅ |
 | `core/tools.py` | Sub-agent callable as an ordinary tool | ✅ |
-| `core/space.py` | One space object per name, shared across threads | ⬜ |
-| `core/space.py` | Attributed notes, 20-note cap, atomic persistence | ⬜ |
-| `core/space.py` | Facts render into CONTEXT; a stale value never lingers | ⬜ |
+| `core/space.py` | One space object per name, shared across threads | ✅ |
+| `core/space.py` | Attributed notes, 20-note cap, atomic persistence | ✅ |
+| `core/space.py` | Facts render into CONTEXT; a stale value never lingers | ✅ |
 | `core/inference.py` | Model catalogue keyed by name, not a provider table | ✅ |
 | `core/utils.py` | `agent.md` frontmatter: model, temperature, engine, tools, space | ✅ |
 | `core/agents/summarizer` | Built-in summarizer compresses history | ✅ |
@@ -516,3 +517,72 @@ they are `node` inside the VM, priced after increment 10.
   sub-agent's window was verified through its own pane; a compaction that fires DURING a delegation
   is the same code path and was not separately driven. A live hosted compaction needs a reachable
   model, which the hosted origin still does not have (02's row).
+
+### Increment 09
+
+- **A space cannot be an object here, so it is a KEYSPACE.** The Python's `get_space` hands every
+  agent naming `research` the same `Space` and takes a lock around each mutation. A Worker has its
+  own Wasm instance and no shared memory (ADR-008), so "the same object" has to become "the same
+  place both can see": ONE IndexedDB database (`harness-spaces`), injected as `Ports::spaces`,
+  opened by the page and by every Worker. Two `App`s over one injected store is what the host tests
+  drive, which is why increment 09 tests on the host at all (I3).
+- **One key per fact and one key per note, not one document per space.** A document would have made
+  every write a read-modify-write, and two Workers writing at once would silently lose one of them.
+  One entry per key makes each mutation exactly ONE store operation — and there is no half of one
+  put, which is the property the Python's tmp-then-`replace` buys. `remember` is a put (so writing a
+  key twice replaces it by construction), `forget` is a delete, `post_note` is a put under a
+  time-ordered key plus a delete of anything past the cap.
+- **The note key carries the author, and the racing test is what found that.** With the key as
+  `<ms>-<nonce>` two agents posting in the same millisecond from the same seeded RNG wrote the same
+  key and one note vanished with nobody told. It is `<ms>-<author>-<nonce>` now. The same test also
+  needed a clock that MOVES: under a frozen one every note shared a timestamp, the cap fell back to
+  tie-breaking by author, and it dropped one agent's notes wholesale — an artifact of the fixture,
+  but only a moving clock proves it was one.
+- **The cap is applied on READ as well as on write.** A reader arriving between a post and its trim
+  would otherwise see 21 notes. Trimming is a delete of keys that are already surplus, so two agents
+  trimming at once cannot remove a note either of them still needed.
+- **The space is re-read at the top of every `drive` pass** — the reason the clock is not cached,
+  twice over (Python `Engine.context`). That is what makes "every agent observes changes without
+  being told to look" true rather than aspirational: it was watched happening in the page, the
+  inspector going `0f/0n → 1f/1n` while the sub-agent that wrote them was still working.
+- **The space renders into the ENVIRONMENT section**, beside the clock, because that is the Python's
+  CONTEXT block: `Engine.context` returns the time facts merged with `space.context()`. No new
+  seeded section, so the §8.2 starter set and its goldens are untouched. The SUMMARIZER's paper gets
+  `None`: it reads the transcript and nothing else, and the group's facts are not part of the
+  conversation it is compressing.
+- **The workspace path is NAMED, not promised.** `workspace: spaces/research (named; not writable
+  from this browser yet)` — the physical half is increment 10's Alpine workspace, and a prompt that
+  told the model it had a folder it cannot write to would be the same lie the transcript/board split
+  was in 07. Both shipped agent files say the same thing in their own words.
+- **Naming the space IS asking for its tools** (Python `utils.load_agent`): `remember`, `forget` and
+  `post_note` are appended to whatever the file's `tools:` list declared, rather than having to be
+  listed under it — a second place to keep in step. A name that could walk out of `spaces/`
+  (`../etc`, `a/b`, empty) attaches nothing at all and gets no space.
+- **The AUTHOR is bound where the tool runs, not where the model writes.** The Python closes over
+  the agent's name in `tools_for`; here it is taken from `App::me()` at execution. A model asked to
+  write its own name into a note could write anyone's.
+- **The summary the summarizer wrote is now readable** (08 walk, finding 1), behind the same
+  disclosure pattern the failure card ships, named per agent. For a sub-agent too: its Worker
+  reports the summary text with its window, so one compaction has one presentation wherever it
+  happened.
+- **A sub-agent's memory is a fact it REPORTED, never a number this side guessed** (finding 2). The
+  Worker sends `{window, summary}` with its `ready` and with every answer; the page drains it
+  through `core::report_memory` into an event, exactly as `report_agent` drains a status, so the
+  pane stays a projection (I8). Until a Worker has said anything, the pane says so in words.
+- **The count has a denominator and a rule** (finding 3) and says nothing was lost (finding 4):
+  "Working memory: 4 of 6 entries — the oldest turns are now a summary the summarizer wrote;
+  compaction runs at 6 entries and keeps the newest 2. Nothing was lost: the transcript below still
+  holds every turn." The denominator is that agent's OWN `compact_at`, read from its file.
+- **A compaction is announced** (finding 5): `.agent-memory` sits outside the transcript's
+  `role="log" aria-live="polite"` region, so it carries `role="status"` and the one number it moves
+  is spoken when it moves.
+- **A sub-agent's technical payload is no longer double-encoded** (finding 6): the disclosure shows
+  the Worker's own typed payload (`{"Model":…}`) when it sent one, not the envelope it travelled in.
+- **Ledger accuracy** (finding 7): the `08` row's bundle hash was 07b's. The row now carries the
+  correction beside the original claim rather than a quiet edit.
+- **Not done here:** the space is per-ORIGIN, not per-tab — two tabs share one `harness-spaces`, and
+  nothing yet tells a tab that another tab wrote (the 2 s poll and the per-turn read are what carry
+  it, which is enough for one page and its Workers). A hosted LIVE space test still needs a
+  reachable model, which the hosted origin does not have (02's row); the hosted walk goes to the
+  loopback boundary and proves the sharing with a write made from outside the Wasm instance. The
+  space's files (`spaces/<name>/`) are still only a path in a prompt.

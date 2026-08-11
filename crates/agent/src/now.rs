@@ -34,17 +34,25 @@ const DAYS: [&str; 7] = [
     "Wednesday",
 ];
 
-/// The environment block for THIS call: what time it is, and what day. The
-/// Python's two context keys, in the order it writes them.
-pub fn environment(at: Timestamp) -> String {
+/// The environment block for THIS call: what time it is, what day, and the
+/// shared space as of right now. The Python's context keys, in the order it
+/// writes them — the space merged into the same block by `Engine.context`,
+/// and for the same reason the clock is here: a peer on another Worker may
+/// have written to it since the last turn.
+pub fn environment(at: Timestamp, space: Option<&crate::space::Space>) -> String {
     let ms = at.0;
     let days = ms.div_euclid(86_400_000);
     let rest = ms.rem_euclid(86_400_000) / 1000;
     let (y, m, d) = civil(days);
     let (hh, mm, ss) = (rest / 3600, (rest % 3600) / 60, rest % 60);
     let day = DAYS[days.rem_euclid(7) as usize];
-    format!(
+    let mut block = format!(
         "current time: {y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02} UTC\nday: {day}\n\
          device: a browser tab."
-    )
+    );
+    if let Some(space) = space {
+        block.push('\n');
+        block.push_str(&space.context());
+    }
+    block
 }
