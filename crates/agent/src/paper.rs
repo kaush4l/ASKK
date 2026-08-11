@@ -154,6 +154,14 @@ pub(crate) fn set_task(paper: &mut State, text: &str, at: Timestamp) {
     s.section.provenance.produced_at = at;
 }
 
+/// Replace a whole section's text. The toolbox reaches the model through
+/// `affordances` and `response_contract` and through nothing else: there is no
+/// prompt string in this codebase that could name a tool (I13).
+pub(crate) fn set_text(paper: &mut State, id: &str, text: &str) {
+    let s = find(paper, id);
+    s.section.parts = vec![Part::Text { text: text.into() }];
+}
+
 /// Append one turn to the history section.
 pub(crate) fn push_history(paper: &mut State, role: &str, text: &str, at: Timestamp) {
     let s = find(paper, "history");

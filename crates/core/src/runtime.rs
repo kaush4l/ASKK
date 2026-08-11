@@ -80,9 +80,11 @@ pub fn execute_effect(
                 at: clock.now(),
                 kind,
             }),
+            // Tools run in `drive` (sync, against the app), not here: every
+            // tool this build ships reads local state. See `tools::run`.
+            Effect::InvokeTool { .. } => unreachable!("InvokeTool is executed by drive"),
             // The rest of the closed set lands with its first emitter.
-            Effect::InvokeTool { .. }
-            | Effect::Persist { .. }
+            Effect::Persist { .. }
             | Effect::Sleep { .. }
             | Effect::Spawn { .. } => todo!("G5: first emitter of this effect"),
         }
@@ -110,6 +112,15 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             };
             let effects = pump(&mut app.borrow_mut(), event);
             for effect in effects {
+                // A tool runs against the app, synchronously, and its envelope
+                // is the fact that comes back (I8) — including a refusal.
+                if let Effect::InvokeTool { tool, args_json } = &effect {
+                    let mut a = app.borrow_mut();
+                    let kind = crate::tools::run(&a, tool, args_json);
+                    let appended = a.append(kind);
+                    a.pending.push(appended);
+                    continue;
+                }
                 let fut = execute_effect(&app.borrow().ports, effect);
                 let result = fut.await;
                 let mut a = app.borrow_mut();

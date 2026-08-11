@@ -11,6 +11,7 @@ use module::view::{Fragment, FragmentBuilder};
 use module::{DataSchema, Manifest, RouteSpec, Tier};
 
 use crate::dispatch::{error_fragment, html, Ctx};
+use crate::failure::failure;
 use crate::form::form_value;
 
 pub(crate) fn manifest() -> Manifest {
@@ -87,8 +88,24 @@ fn transcript(ctx: &Ctx, appended: Option<&str>) -> Response {
                 list = list.child(msg("msg user", text));
                 (awaiting, count) = (true, count + 1);
             }
+            // A reply that CALLS tools has not answered anything: the turn is
+            // still running, and the pane must keep watching (the trace panel
+            // owns what was called).
+            EventKind::ModelReplied { text } if agent::has_calls(text) => {
+                list = list.child(msg("msg tool", "calling tools — see the tool trace below"));
+                (awaiting, count) = (true, count + 1);
+            }
             EventKind::ModelReplied { text } => {
                 list = list.child(msg("msg assistant", text));
+                (awaiting, count) = (false, count + 1);
+            }
+            // A tool result means another model call is coming.
+            EventKind::ToolInvoked { .. } => awaiting = true,
+            // The machine's own word to the user (the tool loop gave up).
+            EventKind::Custom { kind, payload_json } if kind == "core.note" => {
+                let note = serde_json::from_str::<String>(payload_json)
+                    .unwrap_or_else(|_| payload_json.clone());
+                list = list.child(msg("msg pending", &note));
                 (awaiting, count) = (false, count + 1);
             }
             EventKind::Custom { kind, payload_json } if kind == "core.error" => {
@@ -131,58 +148,16 @@ fn agent_header(ctx: &Ctx) -> String {
             .build()
             .into_html();
     };
-    let model = match spec.model.is_empty() {
-        true => "default model".to_string(),
-        false => format!("model: {}", spec.model),
-    };
+    // The MODEL is deliberately absent here: this file knows what the agent
+    // file asked for, not what Settings overrode it with, and printing
+    // "(model: local)" while the next turn calls openrouter is a lie the pane
+    // told for a whole increment (`ux-walker`). The UI reads the broker and
+    // renders the effective endpoint beside this line.
     FragmentBuilder::new("p")
         .class("agent-header")
         .attr("data-agent", &spec.name)
-        .text(&format!("{} — {} ({model})", spec.name, spec.description))
+        .text(&format!("{} — {}", spec.name, spec.description))
         .build()
         .into_html()
 }
 
-/// A failed turn: the sentence a person can act on FIRST, the typed error
-/// folded away behind it. The raw error is still there verbatim (a failure is
-/// never smoothed into a reply) — it just no longer reads like a crash.
-fn failure(payload_json: &str) -> Fragment {
-    FragmentBuilder::new("div")
-        .class("msg error")
-        .child(FragmentBuilder::new("p").text(&failure_line(payload_json)).build())
-        .child(
-            FragmentBuilder::new("details")
-                .child(FragmentBuilder::new("summary").text("Technical detail").build())
-                .child(FragmentBuilder::new("pre").text(payload_json).build())
-                .build(),
-        )
-        .build()
-}
-
-/// The actionable sentence, chosen on the typed variant — not by grepping the
-/// payload. Each names its own fix; the fallback admits it has none.
-fn failure_line(payload_json: &str) -> String {
-    use kernel::ModelError::{EndpointUnknown, Provider, Transport, Unsupported};
-    match serde_json::from_str::<crate::error::CoreError>(payload_json) {
-        Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => {
-            "No model endpoint is set yet. Add one in Settings below — a local \
-             OpenAI-compatible server, or a provider's base URL and API key."
-        }
-        Ok(crate::error::CoreError::Model(Transport { .. })) => {
-            "The model endpoint could not be reached. Check the endpoint in Settings: \
-             it must send CORS headers, and Chrome 142+ asks permission before a page \
-             may call a local address."
-        }
-        Ok(crate::error::CoreError::Model(Unsupported { .. })) => {
-            "That model catalogue entry speaks a wire protocol this build does not. \
-             Pick an OpenAI-compatible entry in Settings below — the detail names \
-             which protocol the entry asked for."
-        }
-        Ok(crate::error::CoreError::Model(Provider { .. })) => {
-            "The model endpoint answered, but refused the request. Check the base URL \
-             and API key in Settings — the provider's own words are below."
-        }
-        _ => "The turn failed before it produced an answer.",
-    }
-    .to_string()
-}

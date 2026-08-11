@@ -4,13 +4,20 @@
 //! returned effects (ARCHITECTURE §5).
 
 use context::ProviderFormat;
-use kernel::{EndpointName, Event, EventKind};
+use kernel::{EndpointName, Event, EventKind, ToolId};
 
+use crate::calls::Call;
 use crate::effect::Effect;
-use crate::error::AgentError;
 use crate::paper;
-use crate::phase::{v1_phases, ResponseContract, Verdict};
-use crate::state::{AgentState, PlanStep};
+use crate::phase::{v1_phases, PhaseConfig, ResponseContract};
+use crate::reply::{parse_reply, ParsedReply};
+use crate::state::AgentState;
+use crate::tools::{ToolResult, Toolbox};
+
+/// How many times one turn may go round the call-a-tool loop before the agent
+/// stops and says so. A looping model must terminate deterministically, and it
+/// terminates on a counter in state, never on prose (ADR-010).
+const MAX_TOOL_ROUNDS: u8 = 4;
 
 /// The frozen §11 signature. Owns ALL transitions: parse the event against
 /// the current phase's contract, match the result against its exits, emit
@@ -28,66 +35,151 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
             state.task = Some(text.clone());
             paper::set_task(&mut state.paper, &text, input.at);
             paper::push_history(&mut state.paper, "user", &text, input.at);
-            let cfg = v1_phases()
-                .into_iter()
-                .find(|c| c.phase == state.phase)
-                .expect("current phase is configured");
-            let document = context::assemble(&state.paper, state.phase, cfg.budget);
-            let effects = vec![Effect::CallModel {
-                document,
-                // G4 target: the local OpenAI-compatible proxy, text-only.
-                format: ProviderFormat::OpenAiChat {
-                    vision: false,
-                    audio: false,
-                },
-                endpoint: EndpointName("model".into()),
-                model: state.model.clone(),
-            }];
-            (state, effects)
+            (state.pending_tools, state.tool_rounds) = (0, 0);
+            let effect = call_model(&mut state);
+            (state, vec![effect])
         }
-        // The completed reply (ADR-002: deltas never reach the log). Under
-        // the G4 Answer contract this ends the turn: record it, go quiescent.
-        EventKind::ModelReplied { text } => {
-            match parse_reply(ResponseContract::Answer, &text) {
-                Ok(ParsedReply::Answer(answer)) => {
-                    paper::push_history(&mut state.paper, "assistant", &answer, input.at);
-                    state.task = None;
-                    state.retries = 0;
-                }
-                // Answer parsing is total today; other contracts land at G5.
-                _ => unreachable!("Answer contract parses totally"),
-            }
-            (state, Vec::new())
+        // The completed reply (ADR-002: deltas never reach the log): either
+        // tool calls to run, or the answer that ends the turn.
+        EventKind::ModelReplied { text } => on_reply(state, &text, input.at),
+        // One tool came back. The batch is done when the last result lands,
+        // and then — and only then — the model sees them all.
+        EventKind::ToolInvoked { tool, ok, output, .. } => {
+            let result = ToolResult {
+                tool: tool.0,
+                ok,
+                output: output.clone(),
+                error: output,
+            };
+            on_tool_result(state, &result, input.at)
         }
-        // Facts the machine observes but does not act on (yet): request
-        // traffic, registry changes, module errors. Quiescence, not effects.
+        // Facts the machine observes but does not act on: request traffic,
+        // registry changes, module errors. Quiescence, not effects.
         _ => (state, Vec::new()),
     }
 }
 
-/// A model reply, parsed against a contract. Typed so `step`'s transition
-/// match is exhaustive — a reply shape the contract doesn't name cannot
-/// reach the exit table.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParsedReply {
-    Plan(Vec<PlanStep>),
-    Tool { tool: String, args_json: String },
-    Verdict { verdict: Verdict, reason: String },
-    Answer(String),
+/// This agent's phase configuration.
+fn config(state: &AgentState) -> PhaseConfig {
+    v1_phases()
+        .into_iter()
+        .find(|c| c.phase == state.phase)
+        .expect("current phase is configured")
 }
 
-/// Parse one raw reply against one contract. Public and separate from `step`
-/// so contract parsing is unit-testable against recorded model output
-/// without driving the whole machine.
-pub fn parse_reply(contract: ResponseContract, raw: &str) -> Result<ParsedReply, AgentError> {
-    match contract {
-        // Prose is always well-formed prose.
-        ResponseContract::Answer => Ok(ParsedReply::Answer(raw.trim().to_string())),
-        // Structured contracts arrive with the first tool phase (G5).
-        ResponseContract::PlanSteps
-        | ResponseContract::ToolEnvelope
-        | ResponseContract::Verdict => {
-            todo!("G5: structured contracts")
-        }
+/// The toolbox this phase grants — the ONLY source of what the model is told
+/// it can call (ADR-010's `ToolScope`).
+fn scoped_tools(cfg: &PhaseConfig) -> Toolbox {
+    crate::tools::builtin_tools().scoped(&cfg.tools)
+}
+
+/// Assemble the paper and ask the model. The affordances and response-contract
+/// sections are rewritten from the phase's granted toolbox first, so what the
+/// model may call and what it is told it may call cannot drift (I13).
+fn call_model(state: &mut AgentState) -> Effect {
+    let cfg = config(state);
+    let tools = scoped_tools(&cfg);
+    paper::set_text(&mut state.paper, "affordances", &tools.instructions());
+    paper::set_text(&mut state.paper, "response_contract", &contract_text(&cfg, &tools));
+    Effect::CallModel {
+        document: context::assemble(&state.paper, state.phase, cfg.budget),
+        // G4 target: the local OpenAI-compatible proxy, text-only.
+        format: ProviderFormat::OpenAiChat {
+            vision: false,
+            audio: false,
+        },
+        endpoint: EndpointName("model".into()),
+        model: state.model.clone(),
     }
+}
+
+/// What the phase demands back, in words the model can obey.
+fn contract_text(cfg: &PhaseConfig, tools: &Toolbox) -> String {
+    match (cfg.contract, tools.is_empty()) {
+        (ResponseContract::ToolEnvelope, false) => "Either answer the user in plain prose, or \
+             call tools by writing the calls exactly as AFFORDANCES shows them and nothing \
+             else. Results come back on lines beginning `Result:` — read them, then answer."
+            .into(),
+        _ => "Reply in plain prose to the user's message. Be concise.".into(),
+    }
+}
+
+/// One reply against the phase's contract. Tool calls act; anything else is
+/// the answer that ends the turn — the cheap exit every graph must have.
+fn on_reply(mut state: AgentState, text: &str, at: kernel::Timestamp) -> (AgentState, Vec<Effect>) {
+    let cfg = config(&state);
+    let batches = match parse_reply(cfg.contract, text) {
+        Ok(ParsedReply::Tools(batches)) if !batches.is_empty() => batches,
+        _ => {
+            paper::push_history(&mut state.paper, "assistant", text.trim(), at);
+            (state.task, state.retries, state.tool_rounds) = (None, 0, 0);
+            return (state, Vec::new());
+        }
+    };
+    paper::push_history(&mut state.paper, "assistant", text.trim(), at);
+    state.tool_rounds += 1;
+    // Batch ORDER is the schedule: a later line's calls are emitted after an
+    // earlier line's, and the model sees no result until every call it wrote
+    // has come back. (Within-batch concurrency is invisible on this
+    // single-threaded host; it becomes real with Workers, increment 06.)
+    let tools = scoped_tools(&cfg);
+    let effects: Vec<Effect> = batches
+        .into_iter()
+        .flatten()
+        .map(|call| invoke_or_refuse(&tools, call))
+        .collect();
+    state.pending_tools = effects.len();
+    (state, effects)
+}
+
+/// Run the call, or refuse it in the words that let the model rewrite it. A
+/// refusal is a recorded tool result, not a dropped call: a call whose
+/// arguments could not be read must never be delivered as a call with none.
+fn invoke_or_refuse(tools: &Toolbox, call: Call) -> Effect {
+    match tools.check(&call) {
+        Ok(tool) => Effect::InvokeTool {
+            tool: ToolId(tool.name.clone()),
+            args_json: call.args_json,
+        },
+        Err(refusal) => Effect::Emit {
+            kind: EventKind::ToolInvoked {
+                tool: ToolId(refusal.tool),
+                args: call.args_json,
+                ok: false,
+                output: refusal.error,
+            },
+        },
+    }
+}
+
+/// One tool result. The batch is not done until the last one lands; when it
+/// is, the model gets them all at once and the loop goes round — up to
+/// `MAX_TOOL_ROUNDS`, after which the agent says it stopped.
+fn on_tool_result(
+    mut state: AgentState,
+    result: &ToolResult,
+    at: kernel::Timestamp,
+) -> (AgentState, Vec<Effect>) {
+    paper::push_history(&mut state.paper, "Result", &result.line(), at);
+    paper::set_text(&mut state.paper, "observations", &result.line());
+    state.pending_tools = state.pending_tools.saturating_sub(1);
+    if state.pending_tools > 0 {
+        return (state, Vec::new());
+    }
+    if state.tool_rounds >= MAX_TOOL_ROUNDS {
+        state.task = None;
+        return (
+            state,
+            vec![Effect::Emit {
+                kind: EventKind::Custom {
+                    kind: "core.note".into(),
+                    payload_json: format!(
+                        "\"Stopped after {MAX_TOOL_ROUNDS} rounds of tool calls without an answer.\""
+                    ),
+                },
+            }],
+        );
+    }
+    let effect = call_model(&mut state);
+    (state, vec![effect])
 }

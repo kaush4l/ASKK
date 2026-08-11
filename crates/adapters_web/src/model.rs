@@ -14,7 +14,9 @@ use kernel::{BoxFuture, EndpointName, ModelError, ModelPort, ModelReply};
 /// browser refuses (COEP, Chrome 142+ Local Network Access) can hang forever.
 const TIMEOUT_MS: f64 = 30_000.0;
 
-use crate::endpoint::{stamp_model, Endpoint};
+use crate::endpoint::Endpoint;
+use crate::overrides::stamp_model;
+use crate::wire::{asked_model, js_message, read_reply};
 
 pub struct FetchModel {
     /// `config/keys/model` (ADR-005 record layout).
@@ -71,6 +73,29 @@ impl FetchModel {
             .unwrap_or_default()
     }
 
+    /// Whether THAT entry has a key of its own — keys are per entry, so the
+    /// question only makes sense with a name attached.
+    pub fn entry_has_key(&self, name: &str) -> bool {
+        self.endpoint.borrow().has_key(name)
+    }
+
+    /// Why this build cannot call that entry, if it cannot — asked when the
+    /// entry is PICKED, so the pane refuses at selection rather than promising
+    /// a call that fails one send later (`ux-walker`, increment 04).
+    pub fn entry_problem(&self, name: &str) -> Option<String> {
+        let c = self.endpoint.borrow().catalogue();
+        match c.resolve(name)?.chat_url() {
+            Ok(_) => None,
+            Err(kernel::ModelError::Unsupported { detail }) => Some(detail),
+            Err(e) => Some(format!("{e:?}")),
+        }
+    }
+
+    /// Forget the pick, the overrides and every saved key.
+    pub fn reset(&self) {
+        self.endpoint.borrow_mut().reset();
+    }
+
     pub fn profile_json(&self) -> String {
         self.endpoint.borrow().profile_json()
     }
@@ -85,8 +110,10 @@ impl FetchModel {
         self.endpoint.borrow().summary()
     }
 
-    /// One request with the credential attached: the last stop before the wire.
-    fn request(&self, url: &str, body: &str) -> Result<web_sys::Request, ModelError> {
+    /// One request with THAT ENTRY's credential attached: the last stop before
+    /// the wire. `entry` is the catalogue entry this URL belongs to, so a key
+    /// saved for one entry can never ride a call to another's origin.
+    fn request(&self, url: &str, body: &str, entry: &str) -> Result<web_sys::Request, ModelError> {
         let transport = |m: String| ModelError::Transport { message: m };
         let init = web_sys::RequestInit::new();
         init.set_method("POST");
@@ -100,7 +127,7 @@ impl FetchModel {
                 .map_err(|e| transport(format!("headers: {e:?}")))
         };
         set("content-type", "application/json")?;
-        let key = self.endpoint.borrow().api_key().to_string();
+        let key = self.endpoint.borrow().api_key_for(entry).to_string();
         if !key.is_empty() {
             set("authorization", &format!("Bearer {key}"))?;
         }
@@ -125,12 +152,16 @@ impl ModelPort for FetchModel {
             })?;
             // The core speaks the SYMBOLIC name (the agent's `model:` key);
             // the catalogue turns it into an endpoint and a model id here.
-            let (body, url) = {
+            let (body, url, name) = {
                 let e = self.endpoint.borrow();
                 let entry = e.resolve(&asked_model(body_json))?;
-                (stamp_model(body_json, &entry.model), entry.chat_url()?)
+                (
+                    stamp_model(body_json, &entry.model),
+                    entry.chat_url()?,
+                    entry.name,
+                )
             };
-            let request = self.request(&url, &body)?;
+            let request = self.request(&url, &body, &name)?;
             let resp = JsFuture::from(window.fetch_with_request(&request))
                 .await
                 .map_err(|e| ModelError::Transport {
@@ -139,42 +170,4 @@ impl ModelPort for FetchModel {
             read_reply(resp.unchecked_into()).await
         })
     }
-}
-
-/// The catalogue key the core asked for, out of the request body it wrote.
-fn asked_model(body_json: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(body_json)
-        .ok()
-        .and_then(|v| v.get("model")?.as_str().map(str::to_string))
-        .unwrap_or_default()
-}
-
-/// A JS exception in one readable sentence: `{:?}` on a `JsValue` prints the
-/// whole wasm stack trace, which is noise in a message a person must read.
-fn js_message(value: &JsValue) -> String {
-    value
-        .dyn_ref::<js_sys::Error>()
-        .map(|e| String::from(e.message()))
-        .unwrap_or_else(|| format!("{value:?}"))
-}
-
-/// Non-2xx is the provider's own words — never smoothed into a reply.
-async fn read_reply(resp: web_sys::Response) -> Result<ModelReply, ModelError> {
-    let transport = |m: String| ModelError::Transport { message: m };
-    let status = resp.status();
-    let text = JsFuture::from(resp.text().map_err(|e| transport(format!("text(): {e:?}")))?)
-        .await
-        .map_err(|e| transport(format!("body read: {e:?}")))?
-        .as_string()
-        .unwrap_or_default();
-    if !(200..300).contains(&status) {
-        return Err(ModelError::Provider {
-            status,
-            message: text,
-        });
-    }
-    Ok(ModelReply {
-        body_json: text,
-        usage: None,
-    })
 }

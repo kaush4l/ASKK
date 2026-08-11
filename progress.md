@@ -16,6 +16,7 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 
 | 03 | Agents loaded from `public/agents/` | 35 green (28 + 7 agent-spec) | agents fetched at boot, `main`'s prompt comes from the file, a malformed `agent.md` is skipped and the page still works with zero console errors | ⬜ pending `ux-walker` | `dfe25b4` | Live at https://kaush4l.github.io/ASKK/. Hosted hot-reload proved BOTH ways: edited `description`/prompt in `public/agents/main/agent.md` → `./publish.sh` → load → header reads the edit; reverted → publish → load → header reads the clean text. No Rust change in either step. Cache note: agent files are fetched `cache: "no-cache"` and the service worker serves `/agents/` network-first, so the FILES track a deploy immediately; the Wasm bundle still rides GitHub Pages' 600 s `max-age` on `index.html`, so a same-URL reload inside that window can still run the previous build. |
 | 04 | Model catalogue (`public/models.json`) + the four standing UX findings | 40 green (35 + 10 catalogue/endpoint − 5 replaced) | fresh install has a real default endpoint and answers live from omlx 8873 with NOTHING configured; an agent `model:` key that is not in the catalogue is sent as a model id to the default endpoint; a `kind: anthropic` entry refuses in words; a malformed agent.md is named on screen | ⬜ pending `ux-walker` | `83905e6` | Live at https://kaush4l.github.io/ASKK/. Hosted: the catalogue loads (4 entries), the pick persists across reload, and the `local` turn fails as recorded — "Permission was denied for this request to access the `loopback` address space" — with the plain sentence first and the raw error in a collapsed `<details>`. |
+| 05 | Toolbox: batch layout, refused arguments, generated usage lines, a tool trace — plus per-entry API keys and six walk findings | 52 green (40 + 6 toolbox + 3 tool turn + 3 keys/reset) | a real turn against omlx 8873: the model called `list_agents()`, then `read_agent({"name": "summarizer"})`, and answered from both results; the trace shows call, args and output; a key saved for `openrouter` is not offered for `openai`, `local` or `sonnet`; Reset returns to the catalogue default | ⬜ pending `ux-walker` | `PENDING` | Live at https://kaush4l.github.io/ASKK/. Hosted: the page loads with the tool trace panel, the chat sub-line reports the ENDPOINT (`This turn calls local — gemma-4-12B-it-qat-mxfp8 at http://127.0.0.1:8873/v1, with no key.`) rather than the agent file's `model:` key, selecting `sonnet` refuses at selection, Reset works, and the `local` turn still dies on Chrome's loopback gate with the disclosure now named `Technical detail — the endpoint was unreachable`. A live hosted tool turn needs a BYOK key (none available). |
 
 ## Parity with the Python project
 
@@ -24,7 +25,7 @@ feature "exists".
 
 | Python | Behaviour that must match | Done |
 |---|---|---|
-| `core/engine.py` | ReAct turn: answer / tool call / failure exits | ⬜ |
+| `core/engine.py` | ReAct turn: answer / tool call / failure exits | ✅ |
 | `core/engine.py` | Rolling window compaction, summary + retained tail | ⬜ |
 | `core/engine.py` | CONTEXT block assembled fresh every request | ⬜ |
 | `core/engine.py` | Log mirrors the window exactly after compaction; writes drain first | ⬜ |
@@ -32,9 +33,9 @@ feature "exists".
 | `core/state.py` | `Waiting` (entry agent) distinct from `Idle` | ⬜ |
 | `core/registry.py` | One private event loop per agent; failure records the message | ⬜ |
 | `core/registry.py` | Built-in agents override-able by a project agent of the same name | ✅ |
-| `core/tools.py` | Batch layout: same line concurrent, new line sequential | ⬜ |
-| `core/tools.py` | Unreadable arguments refused with a repair message, never an empty call | ⬜ |
-| `core/tools.py` | Sub-agent callable as an ordinary tool | ⬜ |
+| `core/tools.py` | Batch layout: same line concurrent, new line sequential | ✅ |
+| `core/tools.py` | Unreadable arguments refused with a repair message, never an empty call | ✅ |
+| `core/tools.py` | Sub-agent callable as an ordinary tool | ⬜ structural only (`Tool::from_engine` renders the descriptor; the thread behind it is increment 06) |
 | `core/space.py` | One space object per name, shared across threads | ⬜ |
 | `core/space.py` | Attributed notes, 20-note cap, atomic persistence | ⬜ |
 | `core/space.py` | Facts render into CONTEXT; a stale value never lingers | ⬜ |
@@ -216,3 +217,59 @@ they are `node` inside the VM, priced after increment 10.
   skipping stays correct, the silence is gone. (4) Each prompt disclosure is named for its own agent
   (`System prompt for summarizer (from public/agents/summarizer/agent.md)`), so two disclosures are
   no longer the same control to a screen reader.
+
+### Increment 05
+
+- **The credential leak is closed: one key per ENTRY.** `Endpoint` holds `keys: {entry -> key}`, the
+  only reader is `api_key_for(entry)`, and `model.rs` looks the key up by the name of the entry it
+  just resolved the URL from — so a key physically cannot ride a call to another entry's origin.
+  Before this, entering a key under `openrouter` and switching entries sent that key to
+  `api.openai.com`, `api.anthropic.com` and `127.0.0.1`. Pinned by
+  `a_key_saved_for_one_entry_is_not_sent_to_another`, and walked in the page: `openrouter` reads
+  "a key is saved for openrouter" while `openai`, `local` and `sonnet` each read "leave empty".
+- **The single key already stored is migrated, not dropped.** A profile carrying the old
+  `api_key` string lands on the entry it was last used with — the explicit pick, or the default it
+  silently was. `a_single_stored_key_migrates_onto_the_entry_it_was_used_with`.
+- **There is a way back.** `Reset to the catalogue default` clears the pick, the overrides and every
+  saved key, and says so. The walker previously had to delete the IndexedDB database.
+- **Layout is the schedule, and `parse_batches` is the reference.** Calls on one line are one batch;
+  a newline starts the next. `step` emits the batches' effects IN ORDER and asks the model again
+  only when the last result of the last batch has landed (`pending_tools` reaching zero). Within-
+  batch concurrency is invisible on a single-threaded host — it becomes real with Workers (06), and
+  the ordering guarantee this ships is the stronger one either way.
+- **Unreadable arguments are refused, never delivered empty.** `Call.args_error` is a typed field
+  rather than the Python's `__arg_error__` sentinel key, so "a call whose arguments could not be
+  read" is unrepresentable as "a call with no arguments". The refusal quotes the tool's own
+  `usage()`, which is what lets the model rewrite the call — proven end to end in
+  `an_unreadable_call_is_refused_and_the_model_can_correct_it`: unescaped quotes, refusal, corrected
+  call, answer.
+- **One deliberate deviation from the Python parser:** the argument scan is brace- and string-aware,
+  so a NESTED JSON object is read rather than refused. The Python regex (`\{.*?\}`) stopped at the
+  first `}` and refused it — refusing an argument a real MCP tool would send is a bug, and the
+  refusal machinery is unchanged for everything else.
+- **A usage line is generated from name, description and argument names.** `Tool::new(name, desc,
+  args)` builds it; nobody writes one by hand, so a sub-agent (`Tool::from_engine`), a built-in and
+  a future script tool read identically to the model (I9).
+- **Tools reach the model only through the phase and the Document.** `PhaseId::Work` now carries
+  `ResponseContract::ToolEnvelope` and `ToolScope::Only([now, list_agents, read_agent])`; `step`
+  rewrites the `affordances` and `response_contract` sections from exactly that scoped toolbox
+  before assembling. There is no prompt string in the codebase that names a tool (I13), and a phase
+  granting `None` renders no tool at all.
+- **`parse_reply`'s `ToolEnvelope` contract is real, and total:** text with no call in it is the
+  answer that ends the turn, which is what keeps "just answer me" a legal reply under a tool phase.
+- **Declaration and execution are split the way modules are.** `agent::builtin_tools()` declares
+  descriptors; `core::tools::run` is the ONE place a tool runs, matched by name like
+  `dispatch::builtin_entry`. A declared tool with no executor refuses as an unknown tool instead of
+  pretending to have run. Tools execute synchronously in `drive` because all three read local state;
+  the first networked tool goes through `execute_effect`'s async path instead.
+- **`ToolInvoked` carries `args`.** A trace without what the tool was asked is not a trace. The
+  `/tools` route projects those events and the `ToolTrace` component renders them — refusals
+  included, in the same `ToolResult::line` the model read.
+- **A looping model terminates on a counter, not on prose.** `MAX_TOOL_ROUNDS = 4`; the fifth round
+  ends the turn with a `core.note` fact the chat pane shows.
+- **The four remaining walk findings, closed.** The chat sub-line now reports what will ACTUALLY be
+  called (read from the broker, not from the agent file's `model:` key — `core/chat.rs` no longer
+  prints a model at all). Selecting `sonnet` refuses at selection instead of promising a call that
+  fails one send later. The pane three messages call "Settings" is now titled Settings. Placeholders
+  and values come from the selected entry. Each failure disclosure is named for its own failure
+  (`Technical detail — the endpoint was unreachable`).

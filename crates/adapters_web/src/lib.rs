@@ -17,6 +17,8 @@ mod error;
 mod idb;
 mod idb_bridge;
 mod model;
+mod overrides;
+mod wire;
 mod ports;
 
 pub use endpoint::Endpoint;
@@ -166,5 +168,25 @@ impl WebApp {
 
     pub fn entry_fields(&self, name: &str) -> (String, String, String) {
         self.model.entry_fields(name)
+    }
+
+    /// Per-entry facts Settings needs the moment the pick changes: does THIS
+    /// entry have a key, and can this build call it at all.
+    pub fn entry_has_key(&self, name: &str) -> bool {
+        self.model.entry_has_key(name)
+    }
+
+    pub fn entry_problem(&self, name: &str) -> Option<String> {
+        self.model.entry_problem(name)
+    }
+
+    /// Back to the shipped catalogue, and persist that. Same door as
+    /// `set_endpoint` — the core is not told, because keys are not its business.
+    pub async fn reset_endpoint(&self) -> Result<(), WebError> {
+        self.model.reset();
+        kernel::StorePort::kv(self.store.as_ref())
+            .put(self.model.profile_key(), &self.model.profile_json())
+            .await
+            .map_err(WebError::Store)
     }
 }

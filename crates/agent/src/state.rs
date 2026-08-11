@@ -38,6 +38,15 @@ pub struct AgentState {
     /// deterministically because these live here, not in prose (ADR-010).
     pub retries: u8,
     pub replans: u8,
+    /// Tool results still outstanding from the batch the model just wrote.
+    /// The model sees none of them until this reaches zero — that is what
+    /// makes one line of calls one observation (Python `core/tools.py`).
+    #[serde(default)]
+    pub pending_tools: usize,
+    /// How many times this turn has already gone round the tool loop. A
+    /// looping model terminates on this counter, never on prose.
+    #[serde(default)]
+    pub tool_rounds: u8,
     /// The paper's assembly inputs — gathered section sources, refreshed by
     /// `core` (affordances from the registry, observations from effects)
     /// before each step. Inside AgentState so one snapshot restores the
@@ -58,6 +67,8 @@ impl AgentState {
             cursor: 0,
             retries: 0,
             replans: 0,
+            pending_tools: 0,
+            tool_rounds: 0,
             paper: crate::paper::seed(),
         }
     }

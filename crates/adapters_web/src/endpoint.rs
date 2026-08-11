@@ -1,13 +1,15 @@
 //! The user's layer over the catalogue: which entry is selected, what they
-//! changed about it, and the one API key. Pure (host-tested): this is where a
-//! secret gets lost, and losing one silently is what the tests refuse.
+//! changed about it, and ONE API KEY PER ENTRY. Pure (host-tested): this is
+//! where a secret gets lost — or sent to the wrong origin — and both are what
+//! the tests refuse.
 //! `catalogue.rs` owns the rules, `model.rs` owns the wire, this owns choice.
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use kernel::ModelError;
 
 use crate::catalogue::{Catalogue, Entry};
+use crate::overrides::merge_overrides;
 
 /// The catalogue as shipped, plus the user's persisted layer on it.
 ///
@@ -21,7 +23,10 @@ pub struct Endpoint {
     file: Catalogue,
     overrides: Value,
     selected: String,
-    api_key: String,
+    /// Entry name → that entry's key. One key per entry, never one key for
+    /// the catalogue: `openrouter`'s key must not travel to `api.openai.com`,
+    /// to `api.anthropic.com`, or to `127.0.0.1` (`ux-walker`, increment 04).
+    keys: Map<String, Value>,
 }
 
 impl Endpoint {
@@ -61,12 +66,19 @@ impl Endpoint {
     /// Override the current entry (a user action in Settings). A blank field
     /// means "unchanged" throughout: blank base URL or model falls back to the
     /// shipped entry, and `api_key: None` KEEPS the stored key — the key field
-    /// is write-only, so a blank one must never wipe a saved secret.
+    /// is write-only, so a blank one must never wipe a saved secret. The key
+    /// is stored against THIS entry only.
     pub fn set(&mut self, base_url: &str, api_key: Option<&str>, model: &str) {
-        if let Some(key) = api_key {
-            self.api_key = key.trim().to_string();
-        }
         let name = self.current();
+        match api_key.map(str::trim) {
+            Some("") => {
+                self.keys.remove(&name);
+            }
+            Some(key) => {
+                self.keys.insert(name.clone(), Value::String(key.to_string()));
+            }
+            None => {}
+        }
         let patch = json!({"models": {name: {
             "base_url": base_url.trim().trim_end_matches('/'),
             "model": model.trim(),
@@ -96,18 +108,42 @@ impl Endpoint {
     /// saved, model name, and the env var the Python reads — never the key.
     pub fn summary(&self) -> (String, bool, String, String) {
         let e = self.catalogue().resolve(&self.current()).unwrap_or_default();
-        (e.base_url, !self.api_key.is_empty(), e.model, e.api_key_env)
+        let has_key = self.has_key(&self.current());
+        (e.base_url, has_key, e.model, e.api_key_env)
     }
 
+    /// The key for ONE named entry — the only way to read a key out, so a
+    /// caller physically cannot attach entry A's key to entry B's request.
+    pub fn api_key_for(&self, entry: &str) -> &str {
+        self.keys.get(entry).and_then(Value::as_str).unwrap_or("")
+    }
+
+    pub fn has_key(&self, entry: &str) -> bool {
+        !self.api_key_for(entry).is_empty()
+    }
+
+    /// The key of the entry Settings is editing.
     pub fn api_key(&self) -> &str {
-        &self.api_key
+        self.keys
+            .get(&self.current())
+            .and_then(Value::as_str)
+            .unwrap_or("")
     }
 
-    /// The stored record — the one place the key is serialized.
+    /// Back to the shipped catalogue: forget the pick, the overrides and every
+    /// saved key. Without this the first Save is permanent — the walker had to
+    /// delete the IndexedDB database to get back to the default (increment 04).
+    pub fn reset(&mut self) {
+        self.selected = String::new();
+        self.overrides = Value::Null;
+        self.keys = Map::new();
+    }
+
+    /// The stored record — the one place the keys are serialized.
     pub fn profile_json(&self) -> String {
         json!({
             "selected": self.selected,
-            "api_key": self.api_key,
+            "keys": Value::Object(self.keys.clone()),
             "overrides": self.overrides,
         })
         .to_string()
@@ -123,49 +159,22 @@ impl Endpoint {
         };
         let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default();
         self.selected = s("selected").trim().to_string();
-        self.api_key = s("api_key").trim().to_string();
+        if let Some(k) = v.get("keys").and_then(Value::as_object) {
+            self.keys = k.clone();
+        }
         if let Some(o) = v.get("overrides").filter(|o| o.is_object()) {
             self.overrides = o.clone();
+        }
+        // A record from before keys were per entry carried ONE key. It goes to
+        // the entry it was last used with — the pick, or the default it
+        // silently was — rather than being dropped or, worse, kept for all.
+        let legacy_key = s("api_key").trim().to_string();
+        if !legacy_key.is_empty() {
+            self.keys.insert(self.current(), Value::String(legacy_key));
         }
         let legacy = s("base_url");
         if !legacy.is_empty() {
             self.set(legacy, None, s("model"));
         }
     }
-}
-
-/// Merge one patch document into the stored overrides, entry by entry, so
-/// editing one catalogue entry never drops what was saved for another.
-fn merge_overrides(into: &mut Value, patch: &Value) {
-    let (Some(dst), Some(src)) = (
-        into.get_mut("models").and_then(Value::as_object_mut),
-        patch.get("models").and_then(Value::as_object),
-    ) else {
-        *into = patch.clone();
-        return;
-    };
-    for (name, fields) in src {
-        let slot = dst
-            .entry(name.clone())
-            .or_insert_with(|| Value::Object(Default::default()));
-        match (slot.as_object_mut(), fields.as_object()) {
-            (Some(existing), Some(new)) => existing.extend(new.clone()),
-            _ => *slot = fields.clone(),
-        }
-    }
-}
-
-/// Stamp the entry's model id into the core's request body. The core speaks
-/// the symbolic catalogue key; the concrete model id is the adapter's job,
-/// like a credential.
-pub fn stamp_model(body_json: &str, model: &str) -> String {
-    if model.is_empty() {
-        return body_json.to_string();
-    }
-    serde_json::from_str::<Value>(body_json)
-        .map(|mut v| {
-            v["model"] = Value::String(model.to_string());
-            v.to_string()
-        })
-        .unwrap_or_else(|_| body_json.to_string())
 }

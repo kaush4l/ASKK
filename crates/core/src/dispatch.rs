@@ -93,6 +93,7 @@ pub fn builtin_entry(id: &ModuleId) -> Option<BuiltinHandler> {
         "dashboard" => Some(builtins::dashboard),
         "chat" => Some(crate::chat::chat),
         "agents" => Some(crate::agents::agents),
+        "tools" => Some(crate::tools::tools),
         "status" => Some(builtins::status),
         _ => None,
     }

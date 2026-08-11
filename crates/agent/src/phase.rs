@@ -107,15 +107,26 @@ pub fn v1_phases() -> Vec<PhaseConfig> {
         "observations",
     ];
     vec![
-        // G4 Work: a conversational turn — Answer contract, no tools yet
-        // (ToolEnvelope arrives with the first real tool, G5).
+        // Work: one conversational turn that may act. The contract is
+        // ToolEnvelope — prose is still a legal reply and ends the turn (the
+        // cheap exit), tool calls run and come back as observations. The scope
+        // is what the model is TOLD it has: `render` builds the affordances
+        // section from exactly this list, so no ad-hoc prompt string can name
+        // a tool the phase did not grant (ADR-010, I13).
         PhaseConfig {
             phase: PhaseId::Work,
             sections: all_full(&sections),
-            contract: ResponseContract::Answer,
-            tools: ToolScope::None,
+            contract: ResponseContract::ToolEnvelope,
+            tools: ToolScope::Only(vec![
+                ToolId("now".into()),
+                ToolId("list_agents".into()),
+                ToolId("read_agent".into()),
+            ]),
             budget: Budget { max_tokens: 4096 },
-            exits: vec![(ExitCondition::AnswerProduced, PhaseExit::Answer)],
+            exits: vec![
+                (ExitCondition::ToolResultReceived, PhaseExit::To(PhaseId::Work)),
+                (ExitCondition::AnswerProduced, PhaseExit::Answer),
+            ],
         },
         // Verify: configured but unreachable until Work emits tool effects.
         PhaseConfig {

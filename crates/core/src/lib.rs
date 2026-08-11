@@ -14,8 +14,10 @@ mod builtins;
 mod chat;
 mod dispatch;
 mod error;
+mod failure;
 mod form;
 mod runtime;
+mod tools;
 
 pub use agents::{builtin_files, install_agents};
 pub use app::{App, Ports};

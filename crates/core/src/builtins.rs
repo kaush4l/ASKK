@@ -30,6 +30,7 @@ pub(crate) fn manifests() -> Vec<Manifest> {
         },
         crate::chat::manifest(),
         crate::agents::manifest(),
+        crate::tools::manifest(),
         Manifest {
             id: ModuleId("status".into()),
             name: "Status".into(),

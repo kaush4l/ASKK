@@ -10,6 +10,8 @@ use adapters_web::{sleep, WebApp};
 use dioxus::prelude::*;
 use kernel::{Request, Response};
 
+use crate::composer::Composer;
+
 /// Poll interval and patience for one turn: 400 ms × 90 = 36 s, a little past
 /// the 30 s the model broker aborts a request at, so the broker's own typed
 /// error is what the user normally sees.
@@ -29,6 +31,8 @@ struct Turn {
     note: Signal<String>,
     elapsed: Signal<u32>,
     stopped: Signal<bool>,
+    /// Bumped on every projection so the tool trace follows the turn live.
+    tick: Signal<u32>,
 }
 
 /// Apply one seam response: the transcript is the body, and whether a turn is
@@ -44,6 +48,8 @@ fn show(res: Response, mut turn: Turn) {
         .set(header("x-turn").as_deref() == Some("pending"));
     turn.agent.set(header("x-agent").unwrap_or_default());
     turn.log.set(res.body);
+    let n = turn.tick.peek().to_owned();
+    turn.tick.set(n + 1);
 }
 
 /// Watch one turn to its end: re-project after every tick until the core stops
@@ -95,8 +101,35 @@ fn waiting_row(turn: Turn) -> Element {
     }
 }
 
+/// What the next turn ACTUALLY calls — read from the broker, not from the
+/// agent file. The agent's `model:` key is a default that Settings overrides,
+/// and printing the key while calling something else is a lie the pane told
+/// for a whole increment (`ux-walker`, increment 04).
+fn endpoint_line(web: Signal<Option<Rc<WebApp>>>) -> String {
+    let Some(app) = web.read().clone() else {
+        return String::new();
+    };
+    let (url, has_key, model, _) = app.endpoint_summary();
+    if url.is_empty() {
+        return "No endpoint yet — this turn cannot be sent.".into();
+    }
+    let entry = app.current_entry();
+    let key = match has_key {
+        true => "with the key saved for it",
+        false => "with no key",
+    };
+    match app.entry_problem(&entry) {
+        Some(detail) => format!("This build cannot call {entry}: {detail}"),
+        None => format!("This turn calls {entry} — {model} at {url}, {key}."),
+    }
+}
+
 #[component]
-pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>, endpoint_set: Signal<bool>) -> Element {
+pub fn ChatPane(
+    web: Signal<Option<Rc<WebApp>>>,
+    endpoint_set: Signal<bool>,
+    tick: Signal<u32>,
+) -> Element {
     let turn = Turn {
         log: use_signal(String::new),
         agent: use_signal(String::new),
@@ -104,9 +137,16 @@ pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>, endpoint_set: Signal<bool>) -> 
         note: use_signal(String::new),
         elapsed: use_signal(|| 0),
         stopped: use_signal(|| false),
+        tick,
     };
     let mut note = turn.note;
     let agent = turn.agent;
+    // Reading `tick` subscribes this pane to every settings change, so the
+    // endpoint line below is recomputed the moment the endpoint moves.
+    let endpoint = {
+        let _ = tick();
+        endpoint_line(web)
+    };
     let title = match agent.read().is_empty() {
         true => "Chat — no agent loaded".to_string(),
         false => format!("Chat with {}", agent.read()),
@@ -139,6 +179,7 @@ pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>, endpoint_set: Signal<bool>) -> 
                      and this agent can answer."
                 }
             }
+            if !endpoint.is_empty() { p { class: "note", "{endpoint}" } }
             div { class: "chat-log", dangerous_inner_html: "{turn.log}" }
             {waiting_row(turn)}
             if !note.read().is_empty() { p { class: "error", "{note}" } }
@@ -152,48 +193,3 @@ pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>, endpoint_set: Signal<bool>) -> 
     }
 }
 
-/// The composer: a real form, so Enter submits and the button is a submit
-/// button — with the default navigation prevented, because the seam is the only
-/// transport. That is what stops the message becoming a query string. With no
-/// endpoint configured it does not send: the first-run path is a sentence, not
-/// a request that cannot work.
-#[component]
-fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<String>) -> Element {
-    // The field says who it is addressing: two panes with the same accessible
-    // name would be indistinguishable to a screen reader.
-    let label = match agent.is_empty() {
-        true => "Message to the agent".to_string(),
-        false => format!("Message to {agent}"),
-    };
-    let mut draft = use_signal(String::new);
-    let mut submit = move || {
-        let text = draft().trim().to_string();
-        if text.is_empty() || busy || !ready {
-            return;
-        }
-        draft.set(String::new());
-        on_send.call(text);
-    };
-    rsx! {
-        form {
-            onsubmit: move |e| {
-                e.prevent_default();
-                submit();
-            },
-            input {
-                r#type: "text",
-                value: "{draft}",
-                aria_label: "{label}",
-                placeholder: if ready { "Ask the agent something…" } else { "Set a model endpoint first" },
-                autocomplete: "off",
-                disabled: busy || !ready,
-                oninput: move |e| draft.set(e.value()),
-            }
-            button {
-                r#type: "submit",
-                disabled: busy || !ready,
-                if busy { "Sending…" } else { "Send" }
-            }
-        }
-    }
-}

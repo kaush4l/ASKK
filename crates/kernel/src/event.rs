@@ -62,8 +62,14 @@ pub enum EventKind {
         text: String,
     },
     /// A tool ran through a granted capability; its envelope is the fact.
+    /// `args` rides with it because the trace the user reads is worthless
+    /// without what the tool was ASKED (plan, "UI shape": `ToolTrace` owns
+    /// calls, args, results and errors). Refusals are facts too: `ok: false`
+    /// with the repair message in `output`.
     ToolInvoked {
         tool: ToolId,
+        #[serde(default)]
+        args: String,
         ok: bool,
         output: String,
     },

@@ -14,7 +14,10 @@ use dioxus::prelude::*;
 use kernel::Request;
 
 mod chat;
+mod composer;
+mod tools;
 mod settings;
+mod settings_view;
 
 fn main() {
     dioxus::launch(shell);
@@ -73,6 +76,9 @@ fn shell() -> Element {
     // broker), `ChatPane` needs it (a send with no endpoint is a request that
     // cannot work), so the shell owns the one signal between them.
     let endpoint_set = use_signal(|| false);
+    // "something moved": bumped by a turn and by a settings save, read by the
+    // panes that must redraw from the core when it does.
+    let tick = use_signal(|| 0u32);
 
     use_effect(move || adopt(&booted.read(), web, fragment, agents, failure));
 
@@ -91,9 +97,10 @@ fn shell() -> Element {
                 // The fragment is built by the core's escaping primitives
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
-                chat::ChatPane { web, endpoint_set }
+                chat::ChatPane { web, endpoint_set, tick }
+                tools::ToolTrace { web, tick }
                 {agent_panel(agents)}
-                settings::Settings { web, endpoint_set }
+                settings::Settings { web, endpoint_set, tick }
             }
         }
     }
