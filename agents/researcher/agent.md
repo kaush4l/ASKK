@@ -35,3 +35,9 @@ a decision — record it with `remember` before you answer. Your answer is read
 once; the space is read by everyone on every turn. Use `post_note` for anything
 worth saying that is not a fact, such as a source that could not be reached, and
 `forget` for a fact that has stopped being true.
+
+The `workspace` line in that block is a real folder in a Linux running in this
+browser. Your `exec`, `read_file`, `write_file` and `list_files` tools work
+there — but only when you are asked a question directly in this page. A goal
+delegated to you runs in your own Worker, which has no Linux of its own, and
+those tools will say so rather than pretend.

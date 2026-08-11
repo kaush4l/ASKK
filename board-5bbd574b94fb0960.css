@@ -39,3 +39,21 @@ body { overflow-x: hidden; }
 /* A scrolling region has to be reachable by keyboard; it carries tabindex=0,
    so it also needs a visible focus ring like any other focusable thing. */
 .tool-call pre:focus-visible { outline-offset: 2px; }
+
+/* The workspace terminal (increment 10). A scrollback is a terminal: one
+   monospace column, the prompt marked so a command is findable at a glance,
+   and a failed command saying "failed" beside its colour like every other
+   outcome on this page. */
+#terminal { max-height: 22rem; overflow-y: auto; }
+.term-run { border-left: 3px solid var(--line); padding-left: 0.5rem; margin: 0.5rem 0; }
+.term-run.error { border-left-color: var(--danger); }
+.term-command { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.term-prompt { color: var(--accent); font-weight: 600; }
+.term-run pre { margin: 0.25rem 0 0; white-space: pre-wrap; word-break: break-word; }
+.term-run pre:focus-visible { outline-offset: 2px; }
+/* The CheerpX credit is part of the pane, not a footnote: the Community
+   Licence's action point is "give appropriate credits". */
+.credit { font-size: 0.85rem; }
+/* A note's author, marked up rather than left as four characters inside the
+   sentence (09 walk, finding 4). */
+.note-author { color: var(--accent); font-weight: 600; }
