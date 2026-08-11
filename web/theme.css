@@ -23,14 +23,8 @@ body {
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* WRAPS. From 12d the header carries a real sentence — what the next turn
-   actually calls — between the wordmark and the toggle, and a non-wrapping
-   flex row put 353px of content on a 345px screen in the plain skin. The
-   machine layer had `flex-wrap: wrap` already; a fallback that overflows is
-   not a fallback. */
 header {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--gap);
   padding: var(--gap);
