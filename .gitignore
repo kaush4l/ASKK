@@ -18,3 +18,4 @@ node_modules/
 out/
 docs/bin/
 docs/wasm/
+.gstack/

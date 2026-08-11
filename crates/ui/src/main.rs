@@ -51,6 +51,10 @@ fn shell() -> Element {
     let web = use_signal(|| None::<Rc<WebApp>>);
     let fragment = use_signal(String::new);
     let failure = use_signal(String::new);
+    // Whether an endpoint is configured: `Settings` knows (it reads the
+    // broker), `ChatPane` needs it (a send with no endpoint is a request that
+    // cannot work), so the shell owns the one signal between them.
+    let endpoint_set = use_signal(|| false);
 
     use_effect(move || adopt(&booted.read(), web, fragment, failure));
 
@@ -69,8 +73,8 @@ fn shell() -> Element {
                 // The fragment is built by the core's escaping primitives
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
-                chat::ChatPane { web }
-                settings::Settings { web }
+                chat::ChatPane { web, endpoint_set }
+                settings::Settings { web, endpoint_set }
             }
         }
     }

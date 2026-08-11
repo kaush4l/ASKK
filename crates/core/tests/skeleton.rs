@@ -26,9 +26,9 @@ fn block_on<F: Future>(fut: F) -> F::Output {
     panic!("future not ready under in-memory ports");
 }
 
-fn ports(model: ScriptedModel, store: Rc<MemStore>) -> Ports {
+fn ports(model: Rc<dyn kernel::ModelPort>, store: Rc<MemStore>) -> Ports {
     Ports {
-        model: Rc::new(model),
+        model,
         store,
         net: Rc::new(DenyAllNet),
         clock: Rc::new(FixedClock::at(Timestamp(1_753_800_000_000))),
@@ -39,11 +39,27 @@ fn ports(model: ScriptedModel, store: Rc<MemStore>) -> Ports {
 fn booted(replies: Vec<String>) -> (Rc<RefCell<App>>, Rc<MemStore>) {
     let store = Rc::new(MemStore::default());
     let app = block_on(boot(ports(
-        ScriptedModel::with_replies(replies),
+        Rc::new(ScriptedModel::with_replies(replies)),
         Rc::clone(&store),
     )))
     .expect("boot succeeds");
     (Rc::new(RefCell::new(app)), store)
+}
+
+/// The first-run browser state: nothing configured, so there is no endpoint —
+/// exactly what `adapters_web::FetchModel` returns with a blank base URL.
+struct UnconfiguredModel;
+
+impl kernel::ModelPort for UnconfiguredModel {
+    fn call<'a>(
+        &'a self,
+        _endpoint: &'a kernel::EndpointName,
+        _body_json: &'a str,
+    ) -> kernel::BoxFuture<'a, Result<kernel::ModelReply, kernel::ModelError>> {
+        Box::pin(std::future::ready(Err(kernel::ModelError::EndpointUnknown {
+            endpoint: "model".into(),
+        })))
+    }
 }
 
 fn get(app: &Rc<RefCell<App>>, path: &str) -> kernel::Response {
@@ -95,7 +111,11 @@ fn root_page_has_no_dead_form_and_one_heading() {
     assert!(!res.body.contains("<form"), "{}", res.body);
     assert!(!res.body.contains("hx-"), "{}", res.body);
     assert_eq!(res.body.matches("<h1").count(), 1, "{}", res.body);
-    assert!(res.body.contains("class=\"panel pending\""), "{}", res.body);
+    assert!(res.body.contains("panel pending"), "{}", res.body);
+    // The placeholder is a sentence a user can read; the route it will serve
+    // is an attribute, not developer text in the page's most prominent slot.
+    assert!(!res.body.contains("mounted"), "{}", res.body);
+    assert!(res.body.contains("data-panel=\"/panels/status\""), "{}", res.body);
 }
 
 /// (3): the full turn through the seam — submit, drive, read the transcript.
@@ -162,7 +182,7 @@ fn transcript_survives_reboot() {
     block_on(drive(Rc::clone(&app))).expect("drive succeeds");
 
     let app2 = block_on(boot(ports(
-        ScriptedModel::with_replies(vec![]),
+        Rc::new(ScriptedModel::with_replies(vec![])),
         Rc::clone(&store),
     )))
     .expect("reboot succeeds");
@@ -180,12 +200,15 @@ fn model_failure_renders_typed_error_fragment() {
     // The turn's drive fails internally; the error becomes a fact.
     let _ = block_on(drive(Rc::clone(&app)));
     let res = get(&app, "/chat");
-    assert!(res.body.contains("turn failed"), "{}", res.body);
-    assert!(res.body.contains("Transport"), "{}", res.body);
     assert!(res.body.contains("msg error"));
-    // An unreachable endpoint says what to do about it, and the pane stops
-    // claiming to be thinking.
+    // The actionable sentence LEADS; the typed error is still there verbatim,
+    // but folded behind the expander instead of opening the message.
+    let lead = res.body.find("could not be reached").expect(&res.body);
+    let raw = res.body.find("Transport").expect(&res.body);
+    assert!(lead < raw, "raw error before the sentence: {}", res.body);
+    assert!(res.body.contains("<details>"), "{}", res.body);
     assert!(res.body.contains("Settings"), "{}", res.body);
+    // …and the pane stops claiming to be thinking.
     assert!(!res.body.contains("thinking"), "{}", res.body);
 }
 
@@ -210,7 +233,7 @@ fn events_persist_and_replay_across_boot() {
     // Reboot on the same store: the log replays; the status panel counts
     // MORE facts than a fresh boot would alone.
     let app2 = block_on(boot(ports(
-        ScriptedModel::with_replies(vec![]),
+        Rc::new(ScriptedModel::with_replies(vec![])),
         Rc::clone(&store),
     )))
     .expect("reboot succeeds");
@@ -235,7 +258,7 @@ fn newer_schema_refuses_boot() {
     let store = Rc::new(MemStore::default());
     block_on(kernel::StorePort::kv(store.as_ref()).put("meta/schema_version", "999")).unwrap();
     let result = block_on(boot(ports(
-        ScriptedModel::with_replies(vec![]),
+        Rc::new(ScriptedModel::with_replies(vec![])),
         Rc::clone(&store),
     )));
     match result {
@@ -246,4 +269,21 @@ fn newer_schema_refuses_boot() {
         Err(other) => panic!("wrong error: {other:?}"),
         Ok(_) => panic!("boot must refuse a newer store"),
     }
+}
+
+/// The path EVERY new visitor takes: no endpoint configured. It must say so in
+/// words that name the fix — not dump a typed error, and not POST at whatever
+/// a bare `/v1` resolves to on the host.
+#[test]
+fn unconfigured_endpoint_says_what_to_do() {
+    let store = Rc::new(MemStore::default());
+    let app = block_on(boot(ports(Rc::new(UnconfiguredModel), Rc::clone(&store))))
+        .expect("boot succeeds");
+    let app = Rc::new(RefCell::new(app));
+    post(&app, "/chat", "message=hello");
+    let _ = block_on(drive(Rc::clone(&app)));
+    let body = get(&app, "/chat").body;
+    assert!(body.contains("No model endpoint is set yet"), "{body}");
+    assert!(body.contains("Settings"), "{body}");
+    assert!(!body.contains("thinking"), "{body}");
 }

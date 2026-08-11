@@ -92,7 +92,7 @@ fn transcript(ctx: &Ctx, appended: Option<&str>) -> Response {
                 (awaiting, count) = (false, count + 1);
             }
             EventKind::Custom { kind, payload_json } if kind == "core.error" => {
-                list = list.child(msg("msg error", &failure_line(payload_json)));
+                list = list.child(failure(payload_json));
                 (awaiting, count) = (false, count + 1);
             }
             _ => {}
@@ -114,16 +114,41 @@ fn transcript(ctx: &Ctx, appended: Option<&str>) -> Response {
     response
 }
 
-/// A failed turn, said plainly. The typed error is shown verbatim (never a
-/// faked reply), and the one cause that actually bites in a browser — an
-/// endpoint the page cannot reach — names its own fix.
+/// A failed turn: the sentence a person can act on FIRST, the typed error
+/// folded away behind it. The raw error is still there verbatim (a failure is
+/// never smoothed into a reply) — it just no longer reads like a crash.
+fn failure(payload_json: &str) -> Fragment {
+    FragmentBuilder::new("div")
+        .class("msg error")
+        .child(FragmentBuilder::new("p").text(&failure_line(payload_json)).build())
+        .child(
+            FragmentBuilder::new("details")
+                .child(FragmentBuilder::new("summary").text("Technical detail").build())
+                .child(FragmentBuilder::new("pre").text(payload_json).build())
+                .build(),
+        )
+        .build()
+}
+
+/// The actionable sentence, chosen on the typed variant — not by grepping the
+/// payload. Each names its own fix; the fallback admits it has none.
 fn failure_line(payload_json: &str) -> String {
-    let hint = if payload_json.contains("Transport") {
-        " — the model endpoint could not be reached. Check the endpoint in Settings: \
-         it must send CORS headers, and Chrome 142+ asks permission before a page \
-         may call a local address."
-    } else {
-        ""
-    };
-    format!("turn failed: {payload_json}{hint}")
+    use kernel::ModelError::{EndpointUnknown, Provider, Transport};
+    match serde_json::from_str::<crate::error::CoreError>(payload_json) {
+        Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => {
+            "No model endpoint is set yet. Add one in Settings below — a local \
+             OpenAI-compatible server, or a provider's base URL and API key."
+        }
+        Ok(crate::error::CoreError::Model(Transport { .. })) => {
+            "The model endpoint could not be reached. Check the endpoint in Settings: \
+             it must send CORS headers, and Chrome 142+ asks permission before a page \
+             may call a local address."
+        }
+        Ok(crate::error::CoreError::Model(Provider { .. })) => {
+            "The model endpoint answered, but refused the request. Check the base URL \
+             and API key in Settings — the provider's own words are below."
+        }
+        _ => "The turn failed before it produced an answer.",
+    }
+    .to_string()
 }

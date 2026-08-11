@@ -88,15 +88,18 @@ pub(crate) fn dashboard(req: &Request, ctx: &mut Ctx) -> Response {
 
 /// Slot-declaring modules, listed but not yet mounted: htmx is gone, so the
 /// old `hx-get` self-loader was a dead attribute pretending to be a spinner.
-/// Marked `pending` (dim, italic) until the status board lands (increment 06)
-/// — a placeholder that says what it is beats one that lies about loading.
+/// Marked `pending` (dim, italic) until the status board lands (increment 06).
+/// The route it will serve rides as `data-panel` — a machine-readable
+/// attribute, because the most prominent slot on the page is no place for a
+/// sentence about mounting.
 fn root(ctx: &mut Ctx) -> Response {
     let mut panels = FragmentBuilder::new("div").id("panels");
     for path in &ctx.panels {
         panels = panels.child(
             FragmentBuilder::new("div")
                 .class("panel pending")
-                .text(&format!("panel {path} is not mounted yet"))
+                .attr("data-panel", path)
+                .text("This panel arrives in a later update.")
                 .build(),
         );
     }

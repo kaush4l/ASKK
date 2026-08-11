@@ -10,6 +10,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+mod endpoint;
 mod error;
 mod idb;
 mod idb_bridge;
@@ -118,16 +119,24 @@ impl WebApp {
     /// IndexedDB. Option B (WebCrypto-wrapped at rest) is a HUMAN GATE and is
     /// one adapter file away; the UI states the trust model where keys are
     /// entered.
-    pub async fn set_endpoint(&self, base_url: &str, api_key: &str) -> Result<(), WebError> {
-        self.model.set_endpoint(base_url, api_key);
+    /// `api_key: None` means "leave the stored key alone" — the settings field
+    /// is write-only, so a blank field must not wipe a saved secret.
+    pub async fn set_endpoint(
+        &self,
+        base_url: &str,
+        api_key: Option<&str>,
+        model: &str,
+    ) -> Result<(), WebError> {
+        self.model.set_endpoint(base_url, api_key, model);
         kernel::StorePort::kv(self.store.as_ref())
             .put(self.model.profile_key(), &self.model.profile_json())
             .await
             .map_err(WebError::Store)
     }
 
-    /// The configured base URL and whether a key is set — never the key.
-    pub fn endpoint_summary(&self) -> (String, bool) {
+    /// The configured base URL, whether a key is set, and the model name —
+    /// never the key.
+    pub fn endpoint_summary(&self) -> (String, bool, String) {
         self.model.endpoint_summary()
     }
 }
