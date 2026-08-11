@@ -157,8 +157,15 @@ fn shell() -> Element {
                 aside {
                     class: "rail",
                     id: "rail",
-                    aria_label: "Live instruments",
+                    // WHOSE instruments. Selecting Setup leaves the rail
+                    // pointed at the agent you were last talking to — which is
+                    // correct, it is the agent the deck edits — but nothing on
+                    // screen said so, and it read as the deck's own state
+                    // (13 walk, finding 3). The name is in the label and in
+                    // the visible caption below it.
+                    aria_label: "Live instruments for {selected}",
                     hidden: !rail_open(),
+                    p { class: "rail-who", "Instruments · " strong { "{selected}" } }
                     board::AgentBoard { web, tick }
                     tools::ToolTrace { web, tick, agent: selected }
                     terminal::Terminal { web, tick, agent: selected }
