@@ -11,7 +11,7 @@
 // safely. Bump VERSION on release to drop the old cache.
 importScripts("coi-sw.js");
 
-const VERSION = "03-0.3.0";
+const VERSION = "04-0.4.0";
 const CACHE = "askk-" + VERSION;
 
 // Only the unhashed shell is pre-cached; trunk fingerprints the JS and Wasm,
@@ -52,8 +52,12 @@ async function respond(request) {
   // so their filenames never change — cache-first would serve yesterday's
   // prompt forever. Network-first with a cache fallback: a reload after a
   // deploy shows the edited agent.md, and an offline load still has one.
-  const isAgentFile = new URL(request.url).pathname.includes("/agents/");
-  if (request.mode === "navigate" || isAgentFile) {
+  // models.json is the same kind of thing (increment 04): a hand-edited
+  // catalogue with a fixed filename, so cache-first would pin the app to a
+  // stale endpoint after a deploy.
+  const path = new URL(request.url).pathname;
+  const isData = path.includes("/agents/") || path.endsWith("/models.json");
+  if (request.mode === "navigate" || isData) {
     // Network-first: a stale index.html would point at asset names that no
     // longer exist, and refresh is the update channel (I11). Same reason the
     // agent files ride this branch.
