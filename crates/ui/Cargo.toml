@@ -1,0 +1,23 @@
+[package]
+name = "ui"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "L3 Dioxus app: the shell, rendering through core::handle (I4)"
+
+[[bin]]
+name = "ui"
+path = "src/main.rs"
+
+[dependencies]
+kernel = { path = "../kernel" }
+# The composition root that owns boot and the browser ports; the UI never
+# builds a port itself.
+adapters_web = { path = "../adapters_web" }
+# dioxus: the UI runtime that replaces htmx. Event handlers call the seam
+# directly, so no application logic survives in JS (I5). Removal cost: back to
+# a hand-written JS transport, which is exactly what this deletes.
+dioxus = { version = "0.7", features = ["web"] }
+
+[lints]
+workspace = true

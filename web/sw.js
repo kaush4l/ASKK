@@ -1,23 +1,23 @@
-// HARNESS service worker — caching and updates ONLY (ADR-007). No routing,
-// no state, no logic: the Wasm core never depends on this file existing.
+// ASKK service worker — caching and updates (ADR-007). No routing, no state,
+// no logic: the Wasm core never depends on this file existing.
 //
-// UPDATE PATH (= refresh, I11): bump VERSION on every release. A new VERSION
-// is a new cache name; install pre-caches the shell, activate deletes every
-// old cache and claims clients, so one refresh after deploy serves the new
-// bytes. Nothing else in this file should ever need to change.
-const VERSION = "g4-0.1.0";
-const CACHE = "harness-" + VERSION;
+// It also carries the cross-origin isolation headers, but does not own them:
+// coi-sw.js owns that policy and exposes one function. A worker may call
+// respondWith once per fetch, so the two responsibilities compose here rather
+// than in two workers, which the platform does not permit in one scope.
+//
+// UPDATE PATH (= refresh, I11): navigations are network-first, so a deploy is
+// live on the next load; hashed asset filenames make the rest cache-first
+// safely. Bump VERSION on release to drop the old cache.
+importScripts("coi-sw.js");
 
-const SHELL = [
-  "./",
-  "./index.html",
-  "./transport.js",
-  "./vendor/htmx.min.js",
-  "./manifest.webmanifest",
-  "./icon.svg",
-  "./pkg/adapters_web.js",
-  "./pkg/adapters_web_bg.wasm",
-];
+const VERSION = "01-0.2.0";
+const CACHE = "askk-" + VERSION;
+
+// Only the unhashed shell is pre-cached; trunk fingerprints the JS and Wasm,
+// so those are picked up by the runtime cache under names that change on every
+// build (which is what makes cache-first correct for them).
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -39,26 +39,31 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+function store(request, response) {
+  if (response.ok) {
+    const copy = response.clone();
+    caches.open(CACHE).then((cache) => cache.put(request, copy));
+  }
+  return response;
+}
+
+async function respond(request) {
+  if (request.mode === "navigate") {
+    // Network-first: a stale index.html would point at asset names that no
+    // longer exist, and refresh is the update channel (I11).
+    try {
+      return store(request, await fetch(request));
+    } catch (e) {
+      return (await caches.match(request)) || Response.error();
+    }
+  }
+  return (await caches.match(request)) || store(request, await fetch(request));
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  // Never touch the model proxy or cross-origin traffic; cache-first for
-  // same-origin GETs (offline = serve current cache, full stop).
+  // Never touch cross-origin traffic or writes; same-origin GETs only.
   if (event.request.method !== "GET") return;
   if (url.origin !== location.origin) return;
-  if (url.pathname.startsWith("/v1/")) return;
-  event.respondWith(
-    caches.match(event.request, { ignoreSearch: false }).then(
-      (hit) =>
-        hit ||
-        fetch(event.request).then((resp) => {
-          // Cache successful same-origin fetches into the CURRENT cache so
-          // a first load without install still converges.
-          if (resp.ok) {
-            const copy = resp.clone();
-            caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-          }
-          return resp;
-        })
-    )
-  );
+  event.respondWith(respond(event.request).then(self.withCoiHeaders));
 });

@@ -1,0 +1,12 @@
+# Trunk builds the `ui` bin (Dioxus) from web/index.html into dist/, which is
+# what publish.sh deploys. public_url is RELATIVE on purpose: the site is served
+# from a repo subpath (kaush4l.github.io/ASKK/) and an origin-absolute asset
+# path white-pages the page with no console error.
+[build]
+target = "web/index.html"
+dist = "dist"
+public_url = "./"
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 8080

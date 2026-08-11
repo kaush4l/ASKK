@@ -2,7 +2,8 @@
 target/
 Cargo.lock
 
-# wasm-pack / bundler output
+# trunk / wasm-pack output
+dist/
 pkg/
 node_modules/
 

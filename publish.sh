@@ -1,34 +1,41 @@
 #!/usr/bin/env bash
-# Deploy a static directory to the gh-pages branch via a git worktree.
-# Usage: publish.sh [--dry-run] <dir>   (e.g. publish.sh web)
-# Gates hard before touching git; --dry-run runs every gate, prints the
-# file list, and stops before push.
+# Build the Dioxus app with trunk and deploy dist/ to the ROOT of gh-pages via
+# a git worktree. Usage: publish.sh [--dry-run]
+# Gates hard before touching git; --dry-run runs every gate, prints the file
+# list, and stops before push.
 #
-# DO NOT RUN YET: gh-pages currently serves the old ASKK page; replacing it
-# is a human gate. Committed for later use only.
+# gh-pages root is the new app (plan: "gh-pages root is replaced now"); the old
+# c2w page survives in history at `deploy 80564a2`.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 DRY_RUN=0
 if [ "${1:-}" = "--dry-run" ]; then DRY_RUN=1; shift; fi
-DIR="${1:?usage: publish.sh [--dry-run] <dir>}"
+DIR=dist
 WT=out/gh-pages-worktree
 
 fail() { echo "GATE FAIL: $*" >&2; exit 1; }
 
+trunk build --release   # Trunk.toml: web/index.html -> dist/, public_url "./"
+
 # ---- gates ------------------------------------------------------------------
 [ -d "$DIR" ] || fail "deploy dir not found: $DIR"
 [ -f "$DIR/index.html" ] || fail "missing $DIR/index.html"
+[ -f "$DIR/sw.js" ] && [ -f "$DIR/coi-sw.js" ] || fail "isolation worker missing from $DIR"
 
 # GitHub hard-caps files at 100MB; refuse anything >= 99MB
 big=$(find "$DIR" -type f -size +$((99 * 1024 * 1024 - 1))c)
 [ -z "$big" ] || fail "file(s) >= 99MB: $big"
 
-# relative-URL rule: the site lives under a subpath, so an absolute src/href
-# white-pages in production. grep exits 1 on no match — that is the PASS
-# case, hence || true (pipefail hygiene).
+# relative-URL rule: the site lives under the /ASKK/ subpath, so an absolute
+# src/href — or an absolute service-worker scope — white-pages production with
+# no console error. grep exits 1 on no match: that is the PASS case, hence
+# `|| true` (pipefail hygiene).
 bad=$(find "$DIR" -name '*.html' -exec grep -nE '(src|href)="/' /dev/null {} + 2>/dev/null || true)
 [ -z "$bad" ] || fail "absolute URLs in HTML: $bad"
+bad=$(find "$DIR" -name '*.html' -o -name '*.js' \
+  | xargs grep -nE 'serviceWorker\.register\(["'"'"']/' 2>/dev/null || true)
+[ -z "$bad" ] || fail "absolute service-worker path: $bad"
 
 echo "deploy size: $(du -sh "$DIR" | cut -f1)"
 

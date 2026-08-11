@@ -7,7 +7,7 @@
 3. Encode the §4 table as an allowlist map; any edge not in the map fails
    with the offending `from -> to` pair printed.
 4. Assert wasm-bindgen/web-sys/js-sys appear in the transitive
-   normal-dependency closure of adapters_web ONLY (I3 as a mechanical check).
+   normal-dependency closure of the L3 crates ONLY (I3 as a mechanical check).
 
 Exit 0 = layering holds. Any violation exits 1.
 """
@@ -27,10 +27,12 @@ ALLOWED = {
     "core": {"kernel", "context", "script", "module", "agent"},
     "adapters_web": {"kernel", "core"},
     "adapters_test": {"kernel"},
+    "ui": {"kernel", "adapters_web"},
 }
 
 WASM_CRATES = {"wasm-bindgen", "web-sys", "js-sys"}
-WASM_ALLOWED_IN = "adapters_web"
+# L3 is the browser layer: the composition root and the Dioxus app it drives.
+WASM_ALLOWED_IN = {"adapters_web", "ui"}
 
 
 def host_triple():
@@ -105,13 +107,13 @@ def main():
         return {pkg_by_id[i]["name"] for i in seen if i in pkg_by_id}
 
     for pkg_id, name in members.items():
-        if name == WASM_ALLOWED_IN:
+        if name in WASM_ALLOWED_IN:
             continue
         hit = WASM_CRATES & normal_closure(pkg_id)
         if hit:
             failures.append(
                 f"wasm leakage: {name} transitively depends on {sorted(hit)} "
-                f"(allowed only in {WASM_ALLOWED_IN})"
+                f"(allowed only in {sorted(WASM_ALLOWED_IN)})"
             )
 
     if failures:

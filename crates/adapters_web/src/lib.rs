@@ -63,19 +63,29 @@ impl WebApp {
     /// already speaks it — no second wire format to keep honest (I4, I5).
     pub fn handle_request(&mut self, request_json: &str) -> String {
         let response = match serde_json::from_str::<kernel::Request>(request_json) {
-            Ok(req) => core::handle(&mut self.app.borrow_mut(), req),
+            Ok(req) => self.handle(req),
             Err(e) => kernel::Response {
                 status: 400,
                 headers: vec![("content-type".into(), "text/html; charset=utf-8".into())],
                 body: format!("<div class=\"error\">malformed transport request: {e}</div>"),
             },
         };
+        serde_json::to_string(&response).expect("Response serializes")
+    }
+}
+
+impl WebApp {
+    /// The seam for a Rust caller — the `ui` crate's Dioxus event handlers
+    /// (I4: same `core::handle`, no JSON hop, no second wire format). `&self`
+    /// because the mutation is behind the `RefCell` the async half shares.
+    pub fn handle(&self, req: kernel::Request) -> kernel::Response {
+        let response = core::handle(&mut self.app.borrow_mut(), req);
         let app = Rc::clone(&self.app);
         wasm_bindgen_futures::spawn_local(async move {
             if let Err(e) = core::drive(app).await {
                 web_sys::console::error_1(&js_err(e));
             }
         });
-        serde_json::to_string(&response).expect("Response serializes")
+        response
     }
 }

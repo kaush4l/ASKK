@@ -152,9 +152,12 @@ and updates only (ADR-002, ADR-007) — never a state holder.
 | `core` | The seam: `handle(Request) -> Response` (§3); routing dispatch; effect-runtime loop (≤40 lines); wiring + built-in module registration | Domain logic; direct Web APIs; anything an adapter should own |
 | `adapters_web` | wasm-bindgen port impls: fetch, IndexedDB (ADR-005; RESOLVED(spike-idb): hand-rolled web-sys, no wrapper crate — 52-crate tree + pin conflict), OPFS, WebCrypto, Worker glue; the composition root that owns the Wasm entry | Domain types beyond `kernel`'s; any logic that could run on the host |
 | `adapters_test` | In-memory port impls for `cargo test` (dev-dependency of the pure crates) | Anything shipped to production |
+| `ui` | The Dioxus app (increment 01): layout, theme, and the event handlers that call `core::handle` via `adapters_web::WebApp` | Any application logic; direct port construction; content it did not get back from the seam |
 
-`web/` is unchanged from §11: `index.html` (htmx + root element), `transport.js` (~50 lines,
-option B, Worker postMessage), `sw.js` (caching/updates only).
+`web/` is the trunk source dir: `index.html` (the `ui` bin + relative asset links), `theme.css`,
+`sw.js` (caching/updates only, ADR-007) which `importScripts("coi-sw.js")` for the cross-origin
+isolation headers. `transport.js` and `vendor/htmx.min.js` are deleted — Dioxus supersedes ADR-002's
+transport half.
 
 ---
 
@@ -214,6 +217,7 @@ RESOLVED(spike-C): assembly ergonomics raised no pressure for the reverse direct
 | L2 | `core` | all L0–L1 | `adapters_*` |
 | L3 | `adapters_web` | `kernel`, `core` | `agent`, `module`, `context`, `script` directly |
 | L3 | `adapters_test` | `kernel` | everything else (pure crates take it as a dev-dependency) |
+| L3 | `ui` | `kernel`, `adapters_web` | `core`, `agent`, `module`, `context`, `script` directly |
 
 **Straw-man bug, fixed here:** §11 forbade `adapters_*` from importing `core` *and* `core` from
 importing adapters — leaving no crate able to wire the application without a fourteenth it never
