@@ -10,15 +10,17 @@ mod event;
 mod http;
 mod ids;
 mod ports;
+mod status;
 
 pub use capability::{CapabilityGrant, CapabilityId};
-pub use error::{ModelError, NetError, StoreError};
+pub use error::{DelegateError, ModelError, NetError, StoreError};
+pub use status::Status;
 pub use event::{Event, EventKind, EventLog};
 pub use http::{Request, Response};
 pub use ids::{
     AgentId, EndpointName, EventId, ModuleId, PhaseId, SectionId, Timestamp, ToolId, Version,
 };
 pub use ports::{
-    BlobStore, BoxFuture, BrokeredRequest, BrokeredResponse, ClockPort, KvStore, ModelPort,
-    ModelReply, NetPort, RngPort, StorePort, Usage,
+    AgentPort, BlobStore, BoxFuture, BrokeredRequest, BrokeredResponse, ClockPort, KvStore,
+    ModelPort, ModelReply, NetPort, RngPort, StorePort, Usage,
 };

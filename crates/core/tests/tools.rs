@@ -8,7 +8,7 @@ use std::pin::pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
-use adapters_test::{DenyAllNet, FixedClock, MemStore, ScriptedModel, SeededRng};
+use adapters_test::{DenyAllNet, FixedClock, MemStore, ScriptedAgents, ScriptedModel, SeededRng};
 use core::{boot, drive, handle, install_agents, App, Ports};
 use kernel::{Request, Timestamp};
 
@@ -34,9 +34,18 @@ fn booted(replies: &[&str]) -> Rc<RefCell<App>> {
         net: Rc::new(DenyAllNet),
         clock: Rc::new(FixedClock::at(Timestamp(1_753_800_000_000))),
         rng: Rc::new(SeededRng::seeded(7)),
+        agents: Rc::new(ScriptedAgents::none()),
     };
     let mut app = block_on(boot(ports)).expect("boot succeeds");
-    install_agents(&mut app, Vec::new());
+    // A `main` agent with an empty `tools:` list gets every built-in — the
+    // Python rule, and what decides the toolbox since increment 06.
+    install_agents(
+        &mut app,
+        vec![(
+            "main".to_string(),
+            "---\nname: main\ndescription: the lead\ntools: []\n---\nbody".to_string(),
+        )],
+    );
     Rc::new(RefCell::new(app))
 }
 

@@ -18,19 +18,24 @@
 //! names, so a sub-agent, a script tool and a built-in are indistinguishable
 //! to the model (I9).
 
-use kernel::ToolId;
+use serde::{Deserialize, Serialize};
 
-use crate::calls::Call;
-use crate::phase::ToolScope;
+use crate::toolbox::Toolbox;
 
 /// One callable the model can name. No function pointer: a descriptor is data,
 /// and the executor lives behind the seam in `core` (like `builtin_entry`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tool {
     pub name: String,
     pub description: String,
     /// The argument shape, generated — never hand-written prose.
     pub usage_args: String,
+    /// This tool IS another agent, so calling it means handing a goal to
+    /// another Worker rather than running code here. The MODEL is never told
+    /// which is which — everything is invoked identically, and the
+    /// distinction would only be noise in the prompt (Python `core/tools.py`).
+    #[serde(default)]
+    pub agent: bool,
 }
 
 impl Tool {
@@ -42,17 +47,20 @@ impl Tool {
             name: name.into(),
             description: description.into(),
             usage_args: format!("{{{}}}", pairs.join(", ")),
+            agent: false,
         }
     }
 
     /// A sub-agent as a tool (Python `Tool.from_engine`): its own name and
     /// description are the tool's, and the whole task is one `query` string.
-    /// Structural here — the thread behind it arrives with Workers (06).
+    /// The Worker behind it is wired in `core`; see `subagent::goal_from` for
+    /// the argument reading this constructor promises.
     pub fn from_engine(name: &str, description: &str) -> Tool {
         Tool {
             name: name.into(),
             description: description.into(),
             usage_args: "{\"query\": \"<your detailed task description>\"}".into(),
+            agent: true,
         }
     }
 
@@ -111,83 +119,3 @@ pub fn builtin_tools() -> Toolbox {
         ),
     ])
 }
-
-/// The set of tools one agent may call.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Toolbox {
-    pub tools: Vec<Tool>,
-}
-
-impl Toolbox {
-    pub fn of(tools: Vec<Tool>) -> Toolbox {
-        Toolbox { tools }
-    }
-
-    pub fn get(&self, name: &str) -> Option<&Tool> {
-        self.tools.iter().find(|t| t.name == name)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.tools.is_empty()
-    }
-
-    /// The phase's grant applied (ADR-010): `None` yields an EMPTY toolbox, so
-    /// a phase that may not act cannot even name a tool in its Document.
-    pub fn scoped(&self, scope: &ToolScope) -> Toolbox {
-        match scope {
-            ToolScope::None => Toolbox::default(),
-            ToolScope::Only(ids) => Toolbox::of(
-                self.tools
-                    .iter()
-                    .filter(|t| ids.contains(&ToolId(t.name.clone())))
-                    .cloned()
-                    .collect(),
-            ),
-        }
-    }
-
-    /// The toolbox rendered for the model — one line per tool, then the layout
-    /// rule. This text reaches a model only as a Document section (I13).
-    pub fn instructions(&self) -> String {
-        if self.tools.is_empty() {
-            return "No tools are installed; answer from what you know.".into();
-        }
-        let lines: Vec<String> = self.tools.iter().map(Tool::usage).collect();
-        format!(
-            "AVAILABLE TOOLS\n\n{}\n\nCall them exactly as written above. Calls that do not \
-             depend on each other go on one line, separated by commas, and run at the same \
-             time. A call that needs an earlier call's result goes on its own line — lines \
-             run in order, top to bottom. Results come back labelled with the tool name, in \
-             the order you wrote the calls.",
-            lines.join("\n")
-        )
-    }
-
-    /// Check one call before it can run. `Err` is the refusal to hand back to
-    /// the model verbatim; nothing else may run.
-    pub fn check(&self, call: &Call) -> Result<&Tool, ToolResult> {
-        let Some(tool) = self.get(&call.tool) else {
-            let names: Vec<&str> = self.tools.iter().map(|t| t.name.as_str()).collect();
-            let available = match names.is_empty() {
-                true => "none".to_string(),
-                false => names.join(", "),
-            };
-            return Err(ToolResult::failed(
-                &call.tool,
-                format!("Tool not found. Available: {available}"),
-            ));
-        };
-        match &call.args_error {
-            None => Ok(tool),
-            Some(problem) => Err(ToolResult::failed(
-                &call.tool,
-                format!(
-                    "Could not read the arguments: {problem}. Write them as JSON on one line, \
-                     escaping any \" inside a string and using \\n for a line break — {}",
-                    tool.usage()
-                ),
-            )),
-        }
-    }
-}
-

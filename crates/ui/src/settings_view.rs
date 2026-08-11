@@ -33,9 +33,24 @@ fn entry_picker(web: Signal<Option<Rc<WebApp>>>, f: Fields) -> Element {
 /// the key belongs to it and to nothing else.
 fn key_row(web: Signal<Option<Rc<WebApp>>>, f: Fields, endpoint_set: Signal<bool>) -> Element {
     let (mut key, has_key, entry) = (f.key, f.has_key, f.entry);
-    let label = match has_key() {
-        true => format!("API key — a key is saved for {entry}; type here only to replace it"),
-        false => format!("API key for {entry} (leave empty for a local server)"),
+    // "leave empty for a local server" was printed for `openai`, `openrouter`
+    // and `sonnet` too, where it is the opposite of the truth (`ux-walker`,
+    // increment 05). What that sentence was ever about is the ADDRESS: a
+    // loopback endpoint is your own machine and wants no credential; anything
+    // else is somebody's API and does. Every catalogue entry names an
+    // `api_key_env`, including `local`, so that field cannot decide it.
+    let url = f.base.read().clone();
+    let is_local = url.contains("127.0.0.1") || url.contains("localhost") || url.contains("[::1]");
+    let label = match (has_key(), is_local) {
+        (true, _) => format!("API key — a key is saved for {entry}; type here only to replace it"),
+        (false, true) => {
+            format!("API key for {entry} — a server on this machine needs none; leave it empty")
+        }
+        (false, false) => format!(
+            "API key for {entry} — this endpoint is remote and needs one (the Python reads it \
+             from {})",
+            f.key_env
+        ),
     };
     rsx! {
         label { r#for: "endpoint-key", "{label}" }

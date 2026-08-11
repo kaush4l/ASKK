@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{EventId, ModuleId, PhaseId, Timestamp, ToolId, Version};
+use crate::status::Status;
 
 /// One recorded fact. Public: the whole system communicates through these —
 /// the log persists them, `step()` consumes them, views project them.
@@ -72,6 +73,16 @@ pub enum EventKind {
         args: String,
         ok: bool,
         output: String,
+    },
+    /// One agent's status moved (Python `core/state.py`: the table is written
+    /// by whichever thread changed something). A fact, not a table read: the
+    /// board is the fold of these over the log, so what the user watched is
+    /// what the log says happened. `detail` carries a failure's own message.
+    AgentStatus {
+        agent: String,
+        status: Status,
+        #[serde(default)]
+        detail: String,
     },
     /// A storage write failed (ADR-005: quota errors surface, never silent).
     StoreFailed {

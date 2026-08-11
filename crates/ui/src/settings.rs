@@ -27,6 +27,10 @@ pub(crate) struct Fields {
     pub status: Signal<String>,
     /// Whether the SELECTED entry has a key — never "some key exists".
     pub has_key: Signal<bool>,
+    /// The env var this entry's key comes from in the Python catalogue.
+    /// Empty means the entry asks for no key at all — which is how the pane
+    /// knows whether "leave this empty" is true for THIS entry.
+    pub key_env: Signal<String>,
     pub names: Signal<Vec<String>>,
     /// "something moved" — bumped after every save so the chat pane's
     /// endpoint line and the tool trace redraw against the new truth.
@@ -36,13 +40,14 @@ pub(crate) struct Fields {
 /// Fill the pane from the broker. The key itself is never read back out.
 fn show_current(web: Signal<Option<Rc<WebApp>>>, mut f: Fields, mut endpoint_set: Signal<bool>) {
     if let Some(app) = web.read().clone() {
-        let (url, has_key, model, _) = app.endpoint_summary();
+        let (url, has_key, model, key_env) = app.endpoint_summary();
         endpoint_set.set(!url.is_empty());
         f.names.set(app.catalogue_names());
         f.entry.set(app.current_entry());
         f.base.set(url);
         f.model.set(model);
         f.has_key.set(has_key);
+        f.key_env.set(key_env);
     }
 }
 
@@ -51,9 +56,10 @@ fn show_current(web: Signal<Option<Rc<WebApp>>>, mut f: Fields, mut endpoint_set
 /// send before the refusal used to arrive.
 pub(crate) fn pick_entry(web: Signal<Option<Rc<WebApp>>>, mut f: Fields, name: String) {
     let Some(app) = web.peek().clone() else { return };
-    let (base, model, _) = app.entry_fields(&name);
+    let (base, model, key_env) = app.entry_fields(&name);
     f.base.set(base);
     f.model.set(model);
+    f.key_env.set(key_env);
     f.has_key.set(app.entry_has_key(&name));
     f.status.set(match app.entry_problem(&name) {
         Some(detail) => format!("This build cannot call {name}: {detail}"),
@@ -93,9 +99,10 @@ pub(crate) fn save_endpoint(
         match app.set_endpoint(&entry, &url, key.as_deref(), &model).await {
             Ok(()) => {
                 f.key.set(String::new());
-                let (url, has_key, model, _) = app.endpoint_summary();
+                let (url, has_key, model, key_env) = app.endpoint_summary();
                 endpoint_set.set(!url.is_empty());
                 f.has_key.set(has_key);
+                f.key_env.set(key_env);
                 f.base.set(url.clone());
                 f.model.set(model.clone());
                 f.status.set(saved_line(&app, &entry, &url, &model, has_key));
@@ -138,6 +145,7 @@ pub fn Settings(
         model: use_signal(String::new),
         status: use_signal(String::new),
         has_key: use_signal(|| false),
+        key_env: use_signal(String::new),
         names: use_signal(Vec::new),
         tick,
     };
@@ -149,7 +157,16 @@ pub fn Settings(
             // Settings (`ux-walker`, increment 04).
             h2 { "Settings" }
             {endpoint_form(web, f, endpoint_set)}
-            if !status.read().is_empty() { p { class: "pending", "{status}" } }
+            // A refusal is a BLOCKING condition, not help text: styled as the
+            // error it is, and announced, rather than reading like the note
+            // beneath it (`ux-walker`, increment 05).
+            if !status.read().is_empty() {
+                p {
+                    class: if status.read().contains("cannot call") { "error" } else { "pending" },
+                    role: "status",
+                    "{status}"
+                }
+            }
             TrustNote {}
         }
     }

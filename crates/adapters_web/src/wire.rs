@@ -24,6 +24,23 @@ pub(crate) fn js_message(value: &JsValue) -> String {
         .unwrap_or_else(|| format!("{value:?}"))
 }
 
+/// `fetch()` from whatever global this code is running in. `web_sys::window()`
+/// is `None` inside a Worker, and since increment 06 every agent runs in one —
+/// so reaching for the window here would mean a sub-agent could never call a
+/// model at all. Reflected off `globalThis`, which both contexts have.
+pub(crate) fn global_fetch(request: &web_sys::Request) -> Result<js_sys::Promise, ModelError> {
+    let transport = |m: String| ModelError::Transport { message: m };
+    let global = js_sys::global();
+    let f: js_sys::Function = js_sys::Reflect::get(&global, &"fetch".into())
+        .map_err(|e| transport(format!("no fetch here: {}", js_message(&e))))?
+        .dyn_into()
+        .map_err(|_| transport("fetch is not callable here".into()))?;
+    f.call1(&global, request)
+        .map_err(|e| transport(js_message(&e)))?
+        .dyn_into()
+        .map_err(|_| transport("fetch did not return a promise".into()))
+}
+
 /// Non-2xx is the provider's own words — never smoothed into a reply.
 pub(crate) async fn read_reply(resp: web_sys::Response) -> Result<ModelReply, ModelError> {
     let transport = |m: String| ModelError::Transport { message: m };

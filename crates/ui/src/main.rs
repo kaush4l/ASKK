@@ -13,6 +13,7 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
+mod board;
 mod chat;
 mod composer;
 mod tools;
@@ -20,6 +21,13 @@ mod settings;
 mod settings_view;
 
 fn main() {
+    // The same Wasm bundle is imported by every agent's Worker (increment 06),
+    // where there is no window and no document — it is loaded there for its
+    // exported `AgentWorker`, not to mount a UI. Launching Dioxus in that
+    // context would only throw. One `if` is the whole cost of one build.
+    if web_sys::window().is_none() {
+        return;
+    }
     dioxus::launch(shell);
 }
 
@@ -98,6 +106,7 @@ fn shell() -> Element {
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
                 chat::ChatPane { web, endpoint_set, tick }
+                board::AgentBoard { web, tick }
                 tools::ToolTrace { web, tick }
                 {agent_panel(agents)}
                 settings::Settings { web, endpoint_set, tick }

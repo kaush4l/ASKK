@@ -36,6 +36,15 @@ features = [
   "IdbKeyRange",
   "Crypto",
   "DomException",
+  # One Worker per agent (increment 06) and the DOM read that finds this
+  # build's fingerprinted bundle to hand them.
+  "Worker",
+  "WorkerOptions",
+  "WorkerType",
+  "MessageEvent",
+  "Document",
+  "Element",
+  "NodeList",
   "AbortSignal",
   "Request",
   "RequestInit",

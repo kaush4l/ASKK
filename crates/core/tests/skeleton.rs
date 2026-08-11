@@ -9,7 +9,7 @@ use std::pin::pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
-use adapters_test::{DenyAllNet, FixedClock, MemStore, ScriptedModel, SeededRng};
+use adapters_test::{DenyAllNet, FixedClock, MemStore, ScriptedAgents, ScriptedModel, SeededRng};
 use core::{boot, drive, handle, App, Ports};
 use kernel::{Request, Timestamp};
 
@@ -33,6 +33,7 @@ fn ports(model: Rc<dyn kernel::ModelPort>, store: Rc<MemStore>) -> Ports {
         net: Rc::new(DenyAllNet),
         clock: Rc::new(FixedClock::at(Timestamp(1_753_800_000_000))),
         rng: Rc::new(SeededRng::seeded(7)),
+        agents: Rc::new(ScriptedAgents::none()),
     }
 }
 

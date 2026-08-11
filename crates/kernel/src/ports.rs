@@ -8,12 +8,16 @@ use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{ModelError, NetError, StoreError};
+use crate::error::{DelegateError, ModelError, NetError, StoreError};
 use crate::ids::{EndpointName, Timestamp};
 
-/// Dyn-compatible future alias. No `Send` bound on purpose: the Wasm host is
-/// single-threaded, and demanding `Send` would poison every adapter (PROVISIONAL
-/// — revisit if a port is ever driven from a second host thread).
+/// Dyn-compatible future alias. No `Send` bound, and increment 06 is the
+/// promised revisit: every agent now owns a dedicated Worker. A Worker is its
+/// own JS context with its own Wasm instance, so nothing Rust-side is shared
+/// across threads — the only thing that crosses is a structured-cloned
+/// message. `Send` is therefore still not needed, and the bound stays off.
+/// (Still PROVISIONAL for the day a port is driven from a shared-memory
+/// thread, which `SharedArrayBuffer` threading for the core would be.)
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
 /// Injected time (I7: the core never reads a real clock). Sync because time
@@ -104,6 +108,19 @@ pub struct BrokeredRequest {
 pub struct BrokeredResponse {
     pub status: u16,
     pub body: Vec<u8>,
+}
+
+/// Another agent, reachable only by message (ARCHITECTURE §10, ADR-008: one
+/// Worker per agent, `postMessage`, no shared memory). The core names an agent
+/// and hands it a goal; it never holds that agent's loop, its engine, or its
+/// state — which is exactly what the Python's `AgentThread.run` marshalling
+/// guarantees and what a Worker enforces structurally.
+pub trait AgentPort {
+    fn delegate<'a>(
+        &'a self,
+        agent: &'a str,
+        goal: &'a str,
+    ) -> BoxFuture<'a, Result<String, DelegateError>>;
 }
 
 /// Brokered general network (ADR-006: no module gets fetch). Distinct from

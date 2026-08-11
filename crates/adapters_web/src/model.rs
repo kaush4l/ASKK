@@ -147,9 +147,6 @@ impl ModelPort for FetchModel {
                     endpoint: endpoint.0.clone(),
                 });
             }
-            let window = web_sys::window().ok_or_else(|| ModelError::Transport {
-                message: "no window".into(),
-            })?;
             // The core speaks the SYMBOLIC name (the agent's `model:` key);
             // the catalogue turns it into an endpoint and a model id here.
             let (body, url, name) = {
@@ -162,7 +159,9 @@ impl ModelPort for FetchModel {
                 )
             };
             let request = self.request(&url, &body, &name)?;
-            let resp = JsFuture::from(window.fetch_with_request(&request))
+            // `global_fetch`, not `window.fetch`: a sub-agent's turn runs
+            // inside its own Worker, where there is no window (increment 06).
+            let resp = JsFuture::from(crate::wire::global_fetch(&request)?)
                 .await
                 .map_err(|e| ModelError::Transport {
                     message: format!("{url} unreachable: {}", js_message(&e)),

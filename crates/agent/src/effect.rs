@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use context::{Document, ProviderFormat};
-use kernel::{AgentId, EndpointName, EventKind, ToolId};
+use kernel::{EndpointName, EventKind, ToolId};
 
 /// The closed set of things an agent can ask the runtime to do — the §11
 /// list, typed. Serializable because pending effects must survive a refresh
@@ -35,6 +35,20 @@ pub enum Effect {
     Persist { key: String, value_json: String },
     /// Wake me later (heartbeat, retries with backoff).
     Sleep { ms: u64 },
-    /// Start another agent in its own Worker (§10 Tier 2).
-    Spawn { agent: AgentId },
+    /// Hand a goal to another agent running in its own Worker (§10 Tier 2,
+    /// ADR-008), and take its answer back as an observation. This is the
+    /// Python `Tool.from_engine`: the caller never touches the sub-agent's
+    /// loop, it sends it a message and waits.
+    ///
+    /// `batch` is the LINE the call was written on. Calls sharing a batch were
+    /// written on one line, which in the Python means "independent, run at the
+    /// same time"; the runtime awaits a batch together and the next batch only
+    /// afterwards. Increment 05 shipped the ordering half of that rule on a
+    /// single-threaded host — one Worker per agent is what makes the
+    /// concurrency half real.
+    Delegate {
+        agent: String,
+        goal: String,
+        batch: u16,
+    },
 }

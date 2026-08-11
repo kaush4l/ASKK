@@ -18,6 +18,9 @@ adapters_web = { path = "../adapters_web" }
 # directly, so no application logic survives in JS (I5). Removal cost: back to
 # a hand-written JS transport, which is exactly what this deletes.
 dioxus = { version = "0.7", features = ["web"] }
+# web-sys: ONE call — `window()`, to tell a page apart from an agent's Worker,
+# which imports this same bundle for its exported AgentWorker (increment 06).
+web-sys = { workspace = true, features = ["Window"] }
 
 [lints]
 workspace = true

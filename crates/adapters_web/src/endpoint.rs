@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 use kernel::ModelError;
 
 use crate::catalogue::{Catalogue, Entry};
-use crate::overrides::merge_overrides;
+use crate::overrides::pin;
 
 /// The catalogue as shipped, plus the user's persisted layer on it.
 ///
@@ -79,15 +79,30 @@ impl Endpoint {
             }
             None => {}
         }
-        let patch = json!({"models": {name: {
-            "base_url": base_url.trim().trim_end_matches('/'),
-            "model": model.trim(),
-        }}});
-        match self.overrides.as_object_mut() {
-            Some(_) => merge_overrides(&mut self.overrides, &patch),
-            None => self.overrides = patch,
+        // A field equal to what the FILE says is not an override, it is
+        // agreement — and storing it pins this browser to today's models.json
+        // forever. The fields are pre-filled from the entry, so before this
+        // every Save pinned every field and "blank uses this entry's own" was
+        // unreachable (`ux-walker`, increment 05). Blank still means the same
+        // thing; matching the file now means it too.
+        let shipped = self.file.resolve(&name).unwrap_or_default();
+        let keep = |typed: &str, own: &str| -> Option<String> {
+            let typed = typed.trim().trim_end_matches('/').to_string();
+            match typed.is_empty() || typed == own.trim_end_matches('/') {
+                true => None,
+                false => Some(typed),
+            }
+        };
+        let mut fields = Map::new();
+        if let Some(url) = keep(base_url, &shipped.base_url) {
+            fields.insert("base_url".into(), Value::String(url));
         }
+        if let Some(m) = keep(model, &shipped.model) {
+            fields.insert("model".into(), Value::String(m));
+        }
+        pin(&mut self.overrides, &name, fields);
     }
+
 
     /// Which entry answers a call that asked for `asked` (the agent's `model:`
     /// key, as it arrives in the request body). The user's explicit Settings

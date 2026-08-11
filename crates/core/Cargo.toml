@@ -14,6 +14,10 @@ agent = { path = "../agent" }
 serde = { workspace = true }
 # G4: event persistence and error payloads are JSON records.
 serde_json = { workspace = true }
+# futures: `join_all` is the whole of "calls written on one line run at the
+# same time" (increment 06). Removal cost: a hand-written Future impl to poll
+# a Vec of delegations — more code than the dependency, and easy to get wrong.
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 adapters_test = { path = "../adapters_test" }

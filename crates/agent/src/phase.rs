@@ -14,6 +14,10 @@ use kernel::{PhaseId, SectionId, ToolId};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToolScope {
     None,
+    /// Everything THIS agent's `agent.md` gave it. The per-agent decision is
+    /// the frontmatter's (Python: `tools:` is the toolkit); the phase's job is
+    /// only to say whether this phase may act at all.
+    All,
     Only(Vec<ToolId>),
 }
 
@@ -109,19 +113,17 @@ pub fn v1_phases() -> Vec<PhaseConfig> {
     vec![
         // Work: one conversational turn that may act. The contract is
         // ToolEnvelope — prose is still a legal reply and ends the turn (the
-        // cheap exit), tool calls run and come back as observations. The scope
-        // is what the model is TOLD it has: `render` builds the affordances
-        // section from exactly this list, so no ad-hoc prompt string can name
-        // a tool the phase did not grant (ADR-010, I13).
+        // cheap exit), tool calls run and come back as observations. `All`
+        // means "this agent's own toolbox", which `agent.md`'s `tools:` key
+        // decides; `render` builds the affordances section from exactly that
+        // toolbox, so no ad-hoc prompt string can name a tool the agent was
+        // not given (ADR-010, I13). A hardcoded list here was the bug the
+        // Agents card exposed: the file said `tools:` and nothing read it.
         PhaseConfig {
             phase: PhaseId::Work,
             sections: all_full(&sections),
             contract: ResponseContract::ToolEnvelope,
-            tools: ToolScope::Only(vec![
-                ToolId("now".into()),
-                ToolId("list_agents".into()),
-                ToolId("read_agent".into()),
-            ]),
+            tools: ToolScope::All,
             budget: Budget { max_tokens: 4096 },
             exits: vec![
                 (ExitCondition::ToolResultReceived, PhaseExit::To(PhaseId::Work)),

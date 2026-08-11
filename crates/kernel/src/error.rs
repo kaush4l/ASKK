@@ -34,6 +34,19 @@ pub enum ModelError {
     Unsupported { detail: String },
 }
 
+/// Delegation failures (`AgentPort`): one agent handing a goal to another.
+/// Typed because "there is no such agent" and "that agent's turn raised" have
+/// different fixes — the first is a wiring mistake, the second is recorded
+/// against the agent as `Status::Failed` with its message (Python
+/// `ThreadedAgent.invoke`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DelegateError {
+    /// No agent of that name is loaded in this browser.
+    Unknown { agent: String },
+    /// The agent ran and its turn failed; the message is its own words.
+    Failed { agent: String, message: String },
+}
+
 /// Brokered-network failures (`NetPort`). Public for the same match-don't-parse
 /// reason; `Denied` exists because the allowlist is a real boundary (ADR-006)
 /// and its refusals must be visible, auditable facts.

@@ -20,12 +20,17 @@ mod model;
 mod overrides;
 mod wire;
 mod ports;
+mod settings;
+mod worker;
+mod workers;
 
 pub use endpoint::Endpoint;
 pub use error::WebError;
 pub use idb::IdbStore;
 pub use model::FetchModel;
 pub use ports::{sleep, BrowserClock, BrowserRng, FetchNet};
+pub use worker::AgentWorker;
+pub use workers::AgentWorkers;
 
 use wasm_bindgen::prelude::*;
 
@@ -57,10 +62,12 @@ impl WebApp {
     pub async fn boot() -> Result<WebApp, JsValue> {
         let store = Rc::new(IdbStore::open("harness").await.map_err(js_err)?);
         let model = Rc::new(FetchModel::new("config/keys/"));
+        let agents = Rc::new(AgentWorkers::none());
         // The shipped catalogue FIRST, then the user's layer over it: an
         // override must land on top of whatever this deploy's file says.
-        if let Some(raw) = assets::fetch_models().await {
-            model.set_catalogue(&raw);
+        let models_json = assets::fetch_models().await.unwrap_or_default();
+        if !models_json.is_empty() {
+            model.set_catalogue(&models_json);
         }
         // The user's configured endpoint, restored before the first turn.
         if let Ok(Some(raw)) = kernel::StorePort::kv(store.as_ref())
@@ -75,11 +82,26 @@ impl WebApp {
             net: Rc::new(FetchNet::new(Vec::new())),
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
+            agents: Rc::clone(&agents) as Rc<dyn kernel::AgentPort>,
         };
         let mut app = core::boot(ports).await.map_err(js_err)?;
         // Agents are data fetched from `public/agents/`, not code compiled in:
         // built-ins first so a project agent of the same name replaces one.
-        core::install_agents(&mut app, assets::fetch_agents().await);
+        let files = assets::fetch_agents().await;
+        let files_json = serde_json::to_string(&files).unwrap_or_else(|_| "[]".into());
+        core::install_agents(&mut app, files);
+        // Every agent that is not this page gets its own Worker — its own JS
+        // context, its own Wasm instance, its own event loop (Python
+        // `AgentThread`). Started at boot, the way the registry starts every
+        // thread at load, so the board is honest the moment the page paints.
+        let names: Vec<String> = core::agent_names(&app);
+        agents.spawn(
+            &names,
+            core::ENTRY_AGENT,
+            &files_json,
+            &models_json,
+            &model.profile_json(),
+        );
         Ok(WebApp {
             app: Rc::new(RefCell::new(app)),
             model,
@@ -118,75 +140,5 @@ impl WebApp {
             }
         });
         response
-    }
-}
-
-impl WebApp {
-    /// Point the model broker at an endpoint and persist the profile. NOT on
-    /// the seam, deliberately: `handle` writes an Event for every request
-    /// (I8), and an event log is exactly where a credential must never
-    /// appear. The base URL and key go straight from the settings pane to the
-    /// broker and to `config/keys/model` in IndexedDB — the core is not told.
-    ///
-    /// PROVISIONAL (ADR-006 secret storage, Option A): the record is plain in
-    /// IndexedDB. Option B (WebCrypto-wrapped at rest) is a HUMAN GATE and is
-    /// one adapter file away; the UI states the trust model where keys are
-    /// entered.
-    /// `api_key: None` means "leave the stored key alone" — the settings field
-    /// is write-only, so a blank field must not wipe a saved secret. `entry`
-    /// is the catalogue key the user picked; `base_url`/`model` are their
-    /// override of it, blank meaning "whatever models.json says".
-    pub async fn set_endpoint(
-        &self,
-        entry: &str,
-        base_url: &str,
-        api_key: Option<&str>,
-        model: &str,
-    ) -> Result<(), WebError> {
-        self.model.set_endpoint(entry, base_url, api_key, model);
-        kernel::StorePort::kv(self.store.as_ref())
-            .put(self.model.profile_key(), &self.model.profile_json())
-            .await
-            .map_err(WebError::Store)
-    }
-
-    /// The current entry's base URL, whether a key is set, the model name, and
-    /// the env var the Python reads for it — never the key.
-    pub fn endpoint_summary(&self) -> (String, bool, String, String) {
-        self.model.endpoint_summary()
-    }
-
-    /// The catalogue: every entry name, which one is current, and what a named
-    /// entry resolves to (so Settings can prefill when the pick changes).
-    pub fn catalogue_names(&self) -> Vec<String> {
-        self.model.catalogue_names()
-    }
-
-    pub fn current_entry(&self) -> String {
-        self.model.current_entry()
-    }
-
-    pub fn entry_fields(&self, name: &str) -> (String, String, String) {
-        self.model.entry_fields(name)
-    }
-
-    /// Per-entry facts Settings needs the moment the pick changes: does THIS
-    /// entry have a key, and can this build call it at all.
-    pub fn entry_has_key(&self, name: &str) -> bool {
-        self.model.entry_has_key(name)
-    }
-
-    pub fn entry_problem(&self, name: &str) -> Option<String> {
-        self.model.entry_problem(name)
-    }
-
-    /// Back to the shipped catalogue, and persist that. Same door as
-    /// `set_endpoint` — the core is not told, because keys are not its business.
-    pub async fn reset_endpoint(&self) -> Result<(), WebError> {
-        self.model.reset();
-        kernel::StorePort::kv(self.store.as_ref())
-            .put(self.model.profile_key(), &self.model.profile_json())
-            .await
-            .map_err(WebError::Store)
     }
 }

@@ -78,6 +78,9 @@ pub struct Ctx {
     pub agents: Vec<agent::AgentSpec>,
     /// The agent files that would not parse — shown, never swallowed.
     pub agent_problems: Vec<String>,
+    /// What every agent is doing (increment 06) — a projection like `recent`,
+    /// cloned so a handler cannot move a status by writing to it.
+    pub board: Vec<agent::AgentRow>,
 }
 
 /// A tier-0 built-in's logic. A plain fn pointer, not a trait object: no
@@ -94,6 +97,7 @@ pub fn builtin_entry(id: &ModuleId) -> Option<BuiltinHandler> {
         "chat" => Some(crate::chat::chat),
         "agents" => Some(crate::agents::agents),
         "tools" => Some(crate::tools::tools),
+        "board" => Some(crate::board::board),
         "status" => Some(builtins::status),
         _ => None,
     }
@@ -137,6 +141,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         recent: app.log.iter().map(|e| e.kind.clone()).collect(),
         agents: app.agents.clone(),
         agent_problems: app.agent_problems.clone(),
+        board: app.board.snapshot().to_vec(),
     };
 
     let response = match logic {

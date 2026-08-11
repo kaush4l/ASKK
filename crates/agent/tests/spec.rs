@@ -20,7 +20,9 @@ fn parses_every_frontmatter_key_and_the_body() {
     assert_eq!(spec.temperature, Some(0.7));
     assert_eq!(spec.engine, "react");
     assert_eq!(spec.space, "research");
-    assert!(spec.tools.is_empty(), "tools: [] is an empty toolkit");
+    // The shipped file now NAMES its toolkit, and that list is what decides
+    // the agent's toolbox (increment 06) rather than a hardcoded phase list.
+    assert_eq!(spec.tools, ["now", "list_agents", "read_agent", "researcher"]);
     // The body after the frontmatter IS the system prompt — no fence, no
     // frontmatter, and not truncated.
     assert!(spec.prompt.starts_with("You are a helpful assistant."));
@@ -95,7 +97,7 @@ fn the_loaded_prompt_becomes_the_agents_own_words() {
     let mut state = agent::AgentState::new();
     let before = format!("{:?}", state.paper);
     assert!(before.contains("You are HARNESS"), "seeded prompt to start");
-    agent::adopt_spec(&mut state, &spec);
+    agent::adopt_spec(&mut state, &spec, &[]);
     let after = format!("{:?}", state.paper);
     assert!(!after.contains("You are HARNESS"), "hardcoded prompt is gone");
     assert!(after.contains("You are a helpful assistant."));

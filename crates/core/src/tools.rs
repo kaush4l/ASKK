@@ -1,4 +1,4 @@
-//! The tool executor and the trace the user reads.
+//! The tool executor. The trace the user reads is `trace.rs`.
 //!
 //! `agent::tools` DECLARES what exists (descriptors, usage lines, the refusal
 //! rules); this file is the one place a tool actually runs, exactly as
@@ -10,13 +10,11 @@
 //! `EventKind::ToolInvoked`, and the `/tools` route projects those events
 //! (I8) — that projection is the `ToolTrace` component's whole content.
 
-use agent::ToolResult;
 use kernel::{EventKind, ModuleId, Request, Response, ToolId, Version};
-use module::view::{Fragment, FragmentBuilder};
 use module::{DataSchema, Manifest, RouteSpec, Tier};
 
 use crate::app::App;
-use crate::dispatch::{error_fragment, html, Ctx};
+use crate::dispatch::{error_fragment, Ctx};
 
 pub(crate) fn manifest() -> Manifest {
     Manifest {
@@ -46,7 +44,7 @@ pub(crate) fn manifest() -> Manifest {
 /// Named ONLY from `dispatch::builtin_entry` (ADR-004).
 pub(crate) fn tools(req: &Request, ctx: &mut Ctx) -> Response {
     match (req.method.as_str(), req.path.as_str()) {
-        ("GET", "/tools") => trace(ctx),
+        ("GET", "/tools") => crate::trace::trace(ctx),
         _ => error_fragment(404, "tools: unknown subroute"),
     }
 }
@@ -128,57 +126,4 @@ fn read_agent(app: &App, args_json: &str) -> Result<String, String> {
                 .join(", ")
         )),
     }
-}
-
-/// The trace: every call this session, in log order, with its arguments and
-/// what came back. A projection of the log and nothing else (I8).
-fn trace(ctx: &Ctx) -> Response {
-    let mut list = FragmentBuilder::new("div").id("tool-trace");
-    let mut count = 0usize;
-    for kind in &ctx.recent {
-        if let EventKind::ToolInvoked {
-            tool,
-            args,
-            ok,
-            output,
-        } = kind
-        {
-            list = list.child(row(&tool.0, args, *ok, output));
-            count += 1;
-        }
-    }
-    if count == 0 {
-        list = list.child(
-            FragmentBuilder::new("p")
-                .class("pending")
-                .text("No tool has been called yet.")
-                .build(),
-        );
-    }
-    html(200, list.build().into_html())
-}
-
-/// One call. The result line is rendered by the same `ToolResult::line` the
-/// model reads, so the user sees what the model saw.
-fn row(tool: &str, args: &str, ok: bool, output: &str) -> Fragment {
-    let result = ToolResult {
-        tool: tool.to_string(),
-        ok,
-        output: output.to_string(),
-        error: output.to_string(),
-    };
-    FragmentBuilder::new("div")
-        .class(match ok {
-            true => "tool-call",
-            false => "tool-call error",
-        })
-        .attr("data-tool", tool)
-        .child(
-            FragmentBuilder::new("p")
-                .class("tool-args")
-                .text(&format!("{tool}({args})"))
-                .build(),
-        )
-        .child(FragmentBuilder::new("pre").text(&result.line()).build())
-        .build()
 }

@@ -128,8 +128,18 @@ fn a_tool_reply_becomes_effects_and_the_model_waits_for_every_result() {
         at: Timestamp(1_753_800_000_000),
         kind,
     };
+    // An agent's toolbox comes from its own file now (increment 06); an
+    // empty `tools:` list means every built-in, exactly as the Python's
+    // `declared or all locals` does.
+    let mut fresh = AgentState::new();
+    let spec = agent::parse_agent_file(
+        "main",
+        "---\nname: main\ndescription: d\ntools: []\n---\nbody",
+    )
+    .expect("spec parses");
+    agent::adopt_spec(&mut fresh, &spec, &[]);
     let (state, _) = step(
-        AgentState::new(),
+        fresh,
         ev(EventKind::UserMessage {
             text: "what is loaded?".into(),
         }),

@@ -117,3 +117,32 @@ fn without_a_catalogue_there_is_a_typed_error_and_a_way_out() {
     e.set("http://127.0.0.1:8873/v1", None, "local-model");
     assert_eq!(e.resolve("").unwrap().base_url, "http://127.0.0.1:8873/v1");
 }
+
+/// Saving the values the pane PRE-FILLED is agreement, not an override. Before
+/// increment 06 every Save pinned every field — the fields are never blank, so
+/// "blank uses this entry's own" was unreachable and a later `models.json`
+/// edit could never reach anyone who had pressed Save (`ux-walker`).
+#[test]
+fn saving_the_prefilled_values_pins_nothing() {
+    let mut e = shipped();
+    e.select("local");
+    // Exactly what the pane shows for this entry, saved back unchanged.
+    let (url, _, model, _) = e.summary();
+    e.set(&url, Some("k"), &model);
+    assert!(
+        !e.profile_json().contains("127.0.0.1"),
+        "no override was stored: {}",
+        e.profile_json()
+    );
+
+    // The endpoint moves when the FILE moves — which is the whole point.
+    e.set_catalogue(&FILE.replace("127.0.0.1:8873", "127.0.0.1:9999"));
+    assert_eq!(e.summary().0, "http://127.0.0.1:9999/v1");
+    assert_eq!(e.api_key_for("local"), "k", "the key is untouched");
+
+    // A value that really differs is still an override, and still reverts.
+    e.set("http://127.0.0.1:1234/v1", None, "");
+    assert_eq!(e.summary().0, "http://127.0.0.1:1234/v1");
+    e.set("", None, "");
+    assert_eq!(e.summary().0, "http://127.0.0.1:9999/v1", "blank reverts");
+}

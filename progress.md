@@ -17,6 +17,7 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 | 03 | Agents loaded from `public/agents/` | 35 green (28 + 7 agent-spec) | agents fetched at boot, `main`'s prompt comes from the file, a malformed `agent.md` is skipped and the page still works with zero console errors | ⬜ pending `ux-walker` | `dfe25b4` | Live at https://kaush4l.github.io/ASKK/. Hosted hot-reload proved BOTH ways: edited `description`/prompt in `public/agents/main/agent.md` → `./publish.sh` → load → header reads the edit; reverted → publish → load → header reads the clean text. No Rust change in either step. Cache note: agent files are fetched `cache: "no-cache"` and the service worker serves `/agents/` network-first, so the FILES track a deploy immediately; the Wasm bundle still rides GitHub Pages' 600 s `max-age` on `index.html`, so a same-URL reload inside that window can still run the previous build. |
 | 04 | Model catalogue (`public/models.json`) + the four standing UX findings | 40 green (35 + 10 catalogue/endpoint − 5 replaced) | fresh install has a real default endpoint and answers live from omlx 8873 with NOTHING configured; an agent `model:` key that is not in the catalogue is sent as a model id to the default endpoint; a `kind: anthropic` entry refuses in words; a malformed agent.md is named on screen | ⬜ pending `ux-walker` | `83905e6` | Live at https://kaush4l.github.io/ASKK/. Hosted: the catalogue loads (4 entries), the pick persists across reload, and the `local` turn fails as recorded — "Permission was denied for this request to access the `loopback` address space" — with the plain sentence first and the raw error in a collapsed `<details>`. |
 | 05 | Toolbox: batch layout, refused arguments, generated usage lines, a tool trace — plus per-entry API keys and six walk findings | 52 green (40 + 6 toolbox + 3 tool turn + 3 keys/reset) | a real turn against omlx 8873: the model called `list_agents()`, then `read_agent({"name": "summarizer"})`, and answered from both results; the trace shows call, args and output; a key saved for `openrouter` is not offered for `openai`, `local` or `sonnet`; Reset returns to the catalogue default | ⬜ pending `ux-walker` | `98e3cf3` | Live at https://kaush4l.github.io/ASKK/. Hosted: the page loads with the tool trace panel, the chat sub-line reports the ENDPOINT (`This turn calls local — gemma-4-12B-it-qat-mxfp8 at http://127.0.0.1:8873/v1, with no key.`) rather than the agent file's `model:` key, selecting `sonnet` refuses at selection, Reset works, and the `local` turn still dies on Chrome's loopback gate with the disclosure now named `Technical detail — the endpoint was unreachable`. A live hosted tool turn needs a BYOK key (none available). |
+| 06 | One Worker per agent + the supervisor board: six statuses, sub-agents as tools, and the nine walk findings | 67 green (52 + 7 supervisor/sub-agent + 7 delegation + 1 override-pinning) | fresh install, real omlx on 8873: the lead delegates and the board goes `main:working` → `researcher:working` → `researcher:idle` → `main:waiting` LIVE during the turn, three model calls (lead, sub-agent-in-its-Worker, lead again), and the lead answers with what the sub-agent returned; `researcher({})` is REFUSED and the sub-agent never runs; at 390px the document no longer scrolls sideways | ⬜ pending `ux-walker` | `PENDING` | Live at https://kaush4l.github.io/ASKK/. Hosted: `crossOriginIsolated: true`, two Workers boot (one per sub-agent), the board and the agent list are walkable, the Agents card now prints the REAL toolbox (`tools: now, list_agents, read_agent, researcher`) instead of "no tools yet", and the turn dies at the documented loopback boundary — the board then shows `main failed — 1 turn` WITH the endpoint message rather than a lead stuck in `working`. NOT demonstrated live: two sub-agents running at the same instant. The code path exists and its ordering is pinned on the host (`one_line_of_delegations_is_one_batch_and_the_next_line_follows_it`), but the local gemma would not emit two calls on one line after three attempts, so simultaneity is unproven in a browser. |
 
 ## Parity with the Python project
 
@@ -29,13 +30,13 @@ feature "exists".
 | `core/engine.py` | Rolling window compaction, summary + retained tail | ⬜ |
 | `core/engine.py` | CONTEXT block assembled fresh every request | ⬜ |
 | `core/engine.py` | Log mirrors the window exactly after compaction; writes drain first | ⬜ |
-| `core/state.py` | Six statuses; `turns` increments only on entry to Working | ⬜ |
-| `core/state.py` | `Waiting` (entry agent) distinct from `Idle` | ⬜ |
-| `core/registry.py` | One private event loop per agent; failure records the message | ⬜ |
+| `core/state.py` | Six statuses; `turns` increments only on entry to Working | ✅ |
+| `core/state.py` | `Waiting` (entry agent) distinct from `Idle` | ✅ |
+| `core/registry.py` | One private event loop per agent; failure records the message | ✅ |
 | `core/registry.py` | Built-in agents override-able by a project agent of the same name | ✅ |
 | `core/tools.py` | Batch layout: same line concurrent, new line sequential | ✅ |
 | `core/tools.py` | Unreadable arguments refused with a repair message, never an empty call | ✅ |
-| `core/tools.py` | Sub-agent callable as an ordinary tool | ⬜ structural only (`Tool::from_engine` renders the descriptor; the thread behind it is increment 06) |
+| `core/tools.py` | Sub-agent callable as an ordinary tool | ✅ |
 | `core/space.py` | One space object per name, shared across threads | ⬜ |
 | `core/space.py` | Attributed notes, 20-note cap, atomic persistence | ⬜ |
 | `core/space.py` | Facts render into CONTEXT; a stale value never lingers | ⬜ |
@@ -273,3 +274,90 @@ they are `node` inside the VM, priced after increment 10.
   fails one send later. The pane three messages call "Settings" is now titled Settings. Placeholders
   and values come from the selected entry. Each failure disclosure is named for its own failure
   (`Technical detail — the endpoint was unreachable`).
+
+### Increment 06
+
+- **A Worker IS the private event loop.** The Python gives every agent its own thread with its own
+  `asyncio` loop because an agent's resources belong to the loop that created them; the browser has
+  exactly one equivalent, and `ARCHITECTURE §10` + ADR-008 already chose it. Each agent gets a
+  dedicated Worker running its own Wasm instance of the SAME build (`AgentWorker::boot`), reached
+  only by `postMessage`. There is no shared memory to be tempted by, and one agent's slow turn
+  occupies only its own thread — verified in the page: the board repainted every 400 ms while
+  `researcher` spent twelve seconds generating.
+- **The `Send` bound stayed off, and this was the promised revisit.** `kernel::ports` marked
+  `BoxFuture` PROVISIONAL — "revisit if a port is ever driven from a second host thread". It now is,
+  and the bound is still not needed: a Worker is a separate JS context with its own Wasm instance,
+  so nothing Rust-side is shared across threads; the only thing that crosses is a structured-cloned
+  message. The comment says so instead of pretending nobody checked. `cargo check --target
+  wasm32-unknown-unknown` compiling `AgentWorkers` (which holds a `!Send` `web_sys::Worker`) behind
+  `dyn AgentPort` is the proof.
+- **`AgentPort` is a sixth port, not a field of Worker handles.** The core names an agent and waits
+  for an answer; it cannot reach into that agent's loop, its engine or its state even by accident —
+  which is the property the Python gets from marshalling onto the owning loop. `ScriptedAgents` is
+  its host fake, so every delegation rule tests with no browser (I3).
+- **The board is a FOLD of `AgentStatus` facts, not a table somebody writes.** `App::append` is the
+  single place a status moves, so what a person watched and what the log says happened cannot
+  disagree (I8). Registration is deliberately NOT an event: a reload is a new process and starts
+  everyone fresh, which is also why replaying an old log cannot leave a stale `working` on the board.
+- **`turns` counts entries to Working and nothing else,** and `Waiting` is only ever the entry agent
+  — a sub-agent goes back to `Idle` because its caller already has what it asked for. Both are the
+  Python's rules, both have their own host test, and both are visible on the board in words.
+- **A failed turn is `Failed` WITH the message.** The Python's `ThreadedAgent.invoke` records
+  `str(e)`; here the entry agent does too, and the quiescence rule only moves an agent OUT of
+  Working, so "waiting for you" can never erase a failure. Found by walking the hosted page: before
+  this, the loopback refusal left `main` reading "working — inside a turn" for the whole session.
+- **The seam spawns a `drive` per request, so `drive` must be re-entrant.** Two bugs came out of
+  that and both are fixed with the reason written down: a `RefCell` guard held across an await
+  (`execute_effect(&app.borrow().ports, e).await` keeps the borrow alive for the whole model call,
+  and the chat pane's 400 ms poll starts a second `drive` inside that window — instant panic, page
+  frozen), and a second `drive` finding nothing pending and reporting the agent as waiting in the
+  middle of its own turn.
+- **The frontmatter `tools:` list now decides the toolbox, which is the honest fix the Agents card
+  demanded.** `ToolScope::Only([…])` hardcoded in the phase table meant the file said one thing and
+  the model got another — the card read `tools:` and printed "no tools yet" about an agent with
+  three. Work's scope is now `All`, meaning "this agent's own toolbox", and `subagent::toolbox_for`
+  builds it by the Python's rule: an EMPTY list is every built-in, a named list is a filter over
+  built-ins and peers together, and a peer is attached ONLY when named — the summarizer is nobody's
+  tool by default. The card prints the resolved list, so it cannot be wrong without the model being
+  wrong too.
+- **A sub-agent is checked twice.** Once as any tool, and again for a goal it can work from.
+  `goal_from` takes `query`, or whatever single string the caller did write (a model that says
+  `{"task": …}` meant the same thing), and refuses when there is nothing usable — because a
+  sub-agent cannot tell an empty goal from a hard one and will answer either way. Proven in the
+  browser: `researcher({})` renders `REFUSED` and the Worker was never messaged.
+- **One line of calls is one batch, and now that is true in both halves.** `Effect::Delegate`
+  carries the line it was written on; `batch::run_effects` awaits a run of same-line delegations
+  together and the next line only afterwards, with results appended in WRITTEN order so the
+  transcript stays reproducible. Increment 05 shipped the ordering half; Workers are what make the
+  concurrency half real. Pinned on the host; two sub-agents running at the same instant is not yet
+  demonstrated in a browser (the local model would not write two calls on one line).
+- **A sub-agent's store is in memory, not IndexedDB.** Sharing the page's database would replay the
+  lead's whole history into every sub-agent and fight it for the `events/` keyspace. A sub-agent's
+  own persistent log is increment 08, and this is the honest scope of what a delegation needs today.
+- **The Worker is handed its world, it does not re-fetch it.** Agent files, catalogue and endpoint
+  profile ride the boot message: one page, one download, and a sub-agent calls the endpoint the user
+  configured on the page it was opened from. A same-origin Worker is inside the same trust boundary
+  as the page that spawned it (ADR-006).
+- **One build, two entry points.** `main()` returns immediately when there is no `window`, because
+  the Worker imports this same bundle for its exported `AgentWorker` rather than to mount a UI. One
+  `if` beats a second binary, a second wasm-bindgen target and a second thing to keep in sync.
+  `FetchModel` reaches `fetch` off `globalThis` for the same reason — `web_sys::window()` is `None`
+  in a Worker, so reaching for the window there would mean a sub-agent could never call a model.
+- **`agent-worker.js` is the third fixed-name file whose content changes with a deploy,** so the
+  service worker serves it network-first beside `/agents/` and `models.json`, and `publish.sh` gates
+  on it: a deploy without it is a page with no sub-agents at all.
+- **The nine walk findings, closed.** (1) The button row wraps and no control may exceed its row —
+  at 390px `scrollWidth == innerWidth`, measured hosted. (2) A tool call says `RAN` or `REFUSED` in
+  a word, with `data-outcome` beside it; colour is the second signal, never the only one. (3) The
+  Agents card prints the resolved toolbox (above). (4) Saving the values the pane PRE-FILLED now
+  pins nothing — a field equal to the file is agreement, not an override — so a later `models.json`
+  edit reaches a user who pressed Save, pinned by `saving_the_prefilled_values_pins_nothing`. (5)
+  "leave empty for a local server" is decided by the ADDRESS, not by `api_key_env` (every entry
+  names one, including `local`). (6) Failures are numbered: "Technical detail for failure 3 — the
+  endpoint was unreachable". (7) A refusal is styled as the blocking condition it is, with
+  `role="status"`. (8) Long tool output is `tabindex="0"` with a `role`/`aria-label` naming which
+  tool it came from. (9) The trace says what it is: read back from the stored log, still there after
+  a reload.
+- **Known overrun:** `crates/core/tests/delegation.rs` is 213 lines against the 200-line rule,
+  alongside the pre-existing `core/tests/skeleton.rs` (290) and `context/tests/fixture/mod.rs`
+  (210). Every source file is inside the rule.

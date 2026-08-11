@@ -82,6 +82,7 @@ fn transcript(ctx: &Ctx, appended: Option<&str>) -> Response {
         .attr("aria-live", "polite");
     let mut awaiting = false;
     let mut count = 0usize;
+    let mut failures = 0usize;
     for kind in &ctx.recent {
         match kind {
             EventKind::UserMessage { text } => {
@@ -109,7 +110,8 @@ fn transcript(ctx: &Ctx, appended: Option<&str>) -> Response {
                 (awaiting, count) = (false, count + 1);
             }
             EventKind::Custom { kind, payload_json } if kind == "core.error" => {
-                list = list.child(failure(payload_json));
+                failures += 1;
+                list = list.child(failure(payload_json, failures));
                 (awaiting, count) = (false, count + 1);
             }
             _ => {}

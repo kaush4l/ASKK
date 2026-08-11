@@ -13,8 +13,13 @@
        production and publish.sh gates on it. -->
   <link data-trunk rel="rust" href="../crates/ui/Cargo.toml" data-bin="ui" data-wasm-opt="z">
   <link data-trunk rel="css" href="theme.css">
+  <link data-trunk rel="css" href="board.css">
   <link data-trunk rel="copy-file" href="sw.js">
   <link data-trunk rel="copy-file" href="coi-sw.js">
+  <!-- One Worker per agent (increment 06). Transport only: it imports this
+       build's own fingerprinted wasm bundle, whose URL the page reads off its
+       own preload links and sends in the boot message. -->
+  <link data-trunk rel="copy-file" href="agent-worker.js">
   <link data-trunk rel="copy-file" href="manifest.webmanifest">
   <link data-trunk rel="copy-file" href="icon.svg">
   <!-- The agents are data, not code: served as static files and fetched at

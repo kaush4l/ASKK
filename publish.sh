@@ -30,6 +30,9 @@ trunk build --release   # Trunk.toml: web/index.html -> dist/, public_url "./"
 # The model catalogue (increment 04): without it the page has no endpoint at
 # all and every turn fails on EndpointUnknown.
 [ -f "$DIR/models.json" ] || fail "model catalogue missing: $DIR/models.json"
+# Every agent runs in its own Worker (increment 06); without this shim there
+# are no sub-agents and every delegation refuses as an unknown agent.
+[ -f "$DIR/agent-worker.js" ] || fail "agent worker missing: $DIR/agent-worker.js"
 
 # GitHub hard-caps files at 100MB; refuse anything >= 99MB
 big=$(find "$DIR" -type f -size +$((99 * 1024 * 1024 - 1))c)

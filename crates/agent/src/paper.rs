@@ -175,8 +175,16 @@ pub(crate) fn push_history(paper: &mut State, role: &str, text: &str, at: Timest
 /// agent's system prompt (the `soul` section), and its description is the
 /// identity line. Nothing about `main` is hardcoded here afterwards — that
 /// is what makes the `public/agents/` loader real rather than decorative.
-pub fn adopt_spec(state: &mut crate::state::AgentState, spec: &crate::spec::AgentSpec) {
+/// `peers` are the other loaded agents, from which this one's `tools:` list
+/// picks its sub-agents — so a change to the file changes the toolbox with no
+/// rebuild, exactly as it changes the prompt.
+pub fn adopt_spec(
+    state: &mut crate::state::AgentState,
+    spec: &crate::spec::AgentSpec,
+    peers: &[crate::spec::AgentSpec],
+) {
     state.model = spec.model.clone();
+    state.toolbox = crate::subagent::toolbox_for(spec, peers);
     let soul = find(&mut state.paper, "soul");
     soul.section.parts = vec![Part::Text {
         text: spec.prompt.clone(),

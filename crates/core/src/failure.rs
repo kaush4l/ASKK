@@ -8,7 +8,11 @@ use module::view::{Fragment, FragmentBuilder};
 /// A failed turn: the sentence a person can act on FIRST, the typed error
 /// folded away behind it. The raw error is still there verbatim (a failure is
 /// never smoothed into a reply) — it just no longer reads like a crash.
-pub(crate) fn failure(payload_json: &str) -> Fragment {
+/// `nth` is which failure this is IN THIS transcript. Two failures of the same
+/// KIND were still "Technical detail — the provider refused" twice, which is
+/// one control to a screen reader (`ux-walker`, increment 05); the instance
+/// number is what tells them apart, and it is also what a person says out loud.
+pub(crate) fn failure(payload_json: &str, nth: usize) -> Fragment {
     FragmentBuilder::new("div")
         .class("msg error")
         .child(FragmentBuilder::new("p").text(&failure_line(payload_json)).build())
@@ -19,13 +23,24 @@ pub(crate) fn failure(payload_json: &str) -> Fragment {
                     // "Technical detail" is the same control to a screen
                     // reader (`ux-walker`, increment 04).
                     FragmentBuilder::new("summary")
-                        .text(&format!("Technical detail — {}", failure_kind(payload_json)))
+                        .text(&format!(
+                            "Technical detail for failure {nth} — {}",
+                            failure_kind(payload_json)
+                        ))
                         .build(),
                 )
                 .child(FragmentBuilder::new("pre").text(payload_json).build())
                 .build(),
         )
         .build()
+}
+
+/// The same actionable sentence, for a caller that has the typed error rather
+/// than its JSON — the board's failure detail. One definition, so the board
+/// and the transcript cannot say different things about one failure.
+pub(crate) fn sentence(error: &crate::error::CoreError) -> String {
+    let payload = serde_json::to_string(error).unwrap_or_default();
+    failure_line(&payload)
 }
 
 /// Which failure this was, in two or three words — the disclosure's name.

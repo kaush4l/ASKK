@@ -4,15 +4,15 @@
 //! returned effects (ARCHITECTURE §5).
 
 use context::ProviderFormat;
-use kernel::{EndpointName, Event, EventKind, ToolId};
+use kernel::{EndpointName, Event, EventKind};
 
-use crate::calls::Call;
 use crate::effect::Effect;
 use crate::paper;
 use crate::phase::{v1_phases, PhaseConfig, ResponseContract};
 use crate::reply::{parse_reply, ParsedReply};
 use crate::state::AgentState;
-use crate::tools::{ToolResult, Toolbox};
+use crate::toolbox::Toolbox;
+use crate::tools::ToolResult;
 
 /// How many times one turn may go round the call-a-tool loop before the agent
 /// stops and says so. A looping model must terminate deterministically, and it
@@ -68,9 +68,10 @@ fn config(state: &AgentState) -> PhaseConfig {
 }
 
 /// The toolbox this phase grants — the ONLY source of what the model is told
-/// it can call (ADR-010's `ToolScope`).
-fn scoped_tools(cfg: &PhaseConfig) -> Toolbox {
-    crate::tools::builtin_tools().scoped(&cfg.tools)
+/// it can call: THIS agent's toolbox (its `agent.md` `tools:` list, resolved
+/// by `subagent::toolbox_for`) narrowed by the phase's `ToolScope`.
+fn scoped_tools(state: &AgentState, cfg: &PhaseConfig) -> Toolbox {
+    state.toolbox.scoped(&cfg.tools)
 }
 
 /// Assemble the paper and ask the model. The affordances and response-contract
@@ -78,7 +79,7 @@ fn scoped_tools(cfg: &PhaseConfig) -> Toolbox {
 /// model may call and what it is told it may call cannot drift (I13).
 fn call_model(state: &mut AgentState) -> Effect {
     let cfg = config(state);
-    let tools = scoped_tools(&cfg);
+    let tools = scoped_tools(state, &cfg);
     paper::set_text(&mut state.paper, "affordances", &tools.instructions());
     paper::set_text(&mut state.paper, "response_contract", &contract_text(&cfg, &tools));
     Effect::CallModel {
@@ -120,36 +121,22 @@ fn on_reply(mut state: AgentState, text: &str, at: kernel::Timestamp) -> (AgentS
     state.tool_rounds += 1;
     // Batch ORDER is the schedule: a later line's calls are emitted after an
     // earlier line's, and the model sees no result until every call it wrote
-    // has come back. (Within-batch concurrency is invisible on this
-    // single-threaded host; it becomes real with Workers, increment 06.)
-    let tools = scoped_tools(&cfg);
+    // has come back. The batch INDEX rides out on each delegation, so the
+    // runtime can run one line's sub-agents at the same time in their own
+    // Workers — the concurrency half of the layout rule (increment 06).
+    let tools = scoped_tools(&state, &cfg);
     let effects: Vec<Effect> = batches
         .into_iter()
-        .flatten()
-        .map(|call| invoke_or_refuse(&tools, call))
+        .enumerate()
+        .flat_map(|(line, calls)| {
+            let tools = &tools;
+            calls
+                .into_iter()
+                .map(move |call| crate::subagent::invoke_or_refuse(tools, call, line as u16))
+        })
         .collect();
     state.pending_tools = effects.len();
     (state, effects)
-}
-
-/// Run the call, or refuse it in the words that let the model rewrite it. A
-/// refusal is a recorded tool result, not a dropped call: a call whose
-/// arguments could not be read must never be delivered as a call with none.
-fn invoke_or_refuse(tools: &Toolbox, call: Call) -> Effect {
-    match tools.check(&call) {
-        Ok(tool) => Effect::InvokeTool {
-            tool: ToolId(tool.name.clone()),
-            args_json: call.args_json,
-        },
-        Err(refusal) => Effect::Emit {
-            kind: EventKind::ToolInvoked {
-                tool: ToolId(refusal.tool),
-                args: call.args_json,
-                ok: false,
-                output: refusal.error,
-            },
-        },
-    }
 }
 
 /// One tool result. The batch is not done until the last one lands; when it

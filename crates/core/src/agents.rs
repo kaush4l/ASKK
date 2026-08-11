@@ -31,12 +31,41 @@ pub fn builtin_files() -> Vec<(String, String)> {
 /// agent, never the boot), and `main`'s prompt adopted by the running agent.
 /// Called by the composition root right after `boot`.
 pub fn install_agents(app: &mut App, fetched: Vec<(String, String)>) {
+    install_agents_as(app, fetched, crate::app::ENTRY_AGENT)
+}
+
+/// The same install, for an agent that is NOT `main` — a sub-agent booting in
+/// its own Worker adopts its own file and gets its own toolbox (increment 06).
+/// One function, two callers, so a sub-agent's engine is built exactly the way
+/// the lead's is (I9).
+pub fn install_agents_as(app: &mut App, fetched: Vec<(String, String)>, adopt: &str) {
+    let from_project: Vec<String> = fetched.iter().map(|(n, _)| n.clone()).collect();
+    let compiled_in: Vec<String> = builtin_files().into_iter().map(|(n, _)| n).collect();
     let files = builtin_files().into_iter().chain(fetched);
     let (specs, problems) = agent::load_agents(files);
     app.agents = specs;
     app.agent_problems = problems;
-    if let Some(main) = app.agents.iter().find(|s| s.name == "main").cloned() {
-        agent::adopt_spec(&mut app.agent, &main);
+    // Every loaded agent gets a row, the way the Python registers one per
+    // thread. Registration is NOT an event: a reload is a new process and
+    // starts everyone fresh, which is also why replaying an old log's
+    // statuses cannot leave a stale `working` on the board.
+    let now = app.ports.clock.now();
+    let peers = app.agents.clone();
+    for spec in &peers {
+        // A project agent of the same name REPLACES the built-in (increment
+        // 03); the row says "agents" because the file that won is the
+        // project's, exactly as the Python's `_agent_dirs` decides the origin.
+        let is_builtin = compiled_in.contains(&spec.name) && !from_project.contains(&spec.name);
+        app.board.register(&spec.name, is_builtin, now);
+        let entry = spec.name == adopt;
+        let status = match entry {
+            true => kernel::Status::Waiting,
+            false => kernel::Status::Idle,
+        };
+        app.board.set(&spec.name, status, "", now);
+    }
+    if let Some(mine) = peers.iter().find(|s| s.name == adopt) {
+        agent::adopt_spec(&mut app.agent, mine, &peers);
     }
     let names: Vec<&str> = app.agents.iter().map(|s| s.name.as_str()).collect();
     app.append(EventKind::Custom {
@@ -95,7 +124,7 @@ fn listing(ctx: &Ctx) -> Response {
         );
     }
     for spec in &ctx.agents {
-        list = list.child(card(spec));
+        list = list.child(card(spec, &ctx.agents));
     }
     for problem in &ctx.agent_problems {
         list = list.child(
@@ -108,15 +137,22 @@ fn listing(ctx: &Ctx) -> Response {
     html(200, list.build().into_html())
 }
 
-/// The settings line: what the file asked for, in the file's own words.
-fn meta_line(spec: &AgentSpec) -> String {
+/// The settings line: what the file asked for, and — for tools — what that
+/// actually RESOLVES to. The card used to print the frontmatter's `tools:`
+/// while the phase table decided the real toolbox, so it said "no tools yet"
+/// about an agent with three (`ux-walker`, increment 05). It now prints the
+/// same list `step` renders into AFFORDANCES, so the card cannot be wrong
+/// without the model being wrong too.
+fn meta_line(spec: &AgentSpec, peers: &[AgentSpec]) -> String {
     let temperature = spec
         .temperature
         .map(|t| format!(", temperature {t}"))
         .unwrap_or_default();
-    let tools = match spec.tools.is_empty() {
-        true => "no tools yet".to_string(),
-        false => format!("tools: {}", spec.tools.join(", ")),
+    let box_ = agent::toolbox_for(spec, peers);
+    let names: Vec<&str> = box_.tools.iter().map(|t| t.name.as_str()).collect();
+    let tools = match names.is_empty() {
+        true => "no tools".to_string(),
+        false => format!("tools: {}", names.join(", ")),
     };
     let space = match spec.space.is_empty() {
         true => "no space".to_string(),
@@ -131,7 +167,7 @@ fn meta_line(spec: &AgentSpec) -> String {
 
 /// One agent, as its file declares it. The prompt is shown verbatim behind a
 /// disclosure: it is the whole point of the file, and also the longest part.
-fn card(spec: &AgentSpec) -> Fragment {
+fn card(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
     FragmentBuilder::new("div")
         .class("agent-card")
         .attr("data-agent", &spec.name)
@@ -140,7 +176,7 @@ fn card(spec: &AgentSpec) -> Fragment {
         .child(
             FragmentBuilder::new("p")
                 .class("agent-meta")
-                .text(&meta_line(spec))
+                .text(&meta_line(spec, peers))
                 .build(),
         )
         .child(

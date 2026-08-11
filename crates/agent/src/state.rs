@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use context::State;
 use kernel::PhaseId;
 
+use crate::toolbox::Toolbox;
+
 /// One planned step with its own success criteria — Verify judges against
 /// these, not vibes (ADR-010: "the judge reads the spec").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +49,12 @@ pub struct AgentState {
     /// looping model terminates on this counter, never on prose.
     #[serde(default)]
     pub tool_rounds: u8,
+    /// What THIS agent may call: its `agent.md` `tools:` list resolved
+    /// against the built-ins and its peers (`subagent::toolbox_for`). In
+    /// state, not in the phase table, because it is the agent's property and
+    /// not the machine's — the phase only decides whether this phase may act.
+    #[serde(default)]
+    pub toolbox: Toolbox,
     /// The paper's assembly inputs — gathered section sources, refreshed by
     /// `core` (affordances from the registry, observations from effects)
     /// before each step. Inside AgentState so one snapshot restores the
@@ -69,6 +77,10 @@ impl AgentState {
             replans: 0,
             pending_tools: 0,
             tool_rounds: 0,
+            // No agent file adopted yet: an agent with no spec has no tools,
+            // which is the honest default (nothing is attached that an agent
+            // did not ask for).
+            toolbox: Toolbox::default(),
             paper: crate::paper::seed(),
         }
     }

@@ -1,0 +1,41 @@
+/* Increment 06: the status board, the outcome word on a tool call, and the
+   phone-width fix for the button row. Its own file because theme.css is at
+   the 200-line rule (I12); one stylesheet per increment beats one long one. */
+/* The button row must survive a phone. `flex: 0 0 auto` let "Reset to the
+   catalogue default" claim its full 252px on a 390px screen, clipping the
+   label and scrolling the whole document sideways (`ux-walker`, increment 05).
+   Wrapping plus a shrink allowance is the fix; no control may be wider than
+   its row. */
+form.stacked .row { flex-wrap: wrap; }
+form.stacked .row button { flex: 0 1 auto; max-width: 100%; }
+
+/* The one rule that makes a sideways scroll impossible rather than unlikely. */
+body { overflow-x: hidden; }
+
+/* The status board (increment 06). The status is a WORD; the colour is only
+   an accent on it, so the board still reads with the stylesheet off, in
+   monochrome, and to a screen reader. */
+.board { display: grid; gap: 0.5rem; }
+.agent-row {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  padding: 0.5rem;
+}
+.agent-row h3 { margin: 0; color: var(--accent); }
+.agent-status { margin: 0.25rem 0 0; color: var(--ink-dim); font-size: 0.9rem; }
+.agent-row.status-working { border-left-color: var(--accent); }
+.agent-row.status-failed { border-left-color: var(--danger); }
+
+/* A refused tool call says "refused" — the colour is the second signal, never
+   the only one (`ux-walker`, increment 05). */
+.tool-outcome {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+.tool-call.error .tool-outcome { color: var(--danger); }
+
+/* A scrolling region has to be reachable by keyboard; it carries tabindex=0,
+   so it also needs a visible focus ring like any other focusable thing. */
+.tool-call pre:focus-visible { outline-offset: 2px; }

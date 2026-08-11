@@ -23,8 +23,13 @@ pub fn ToolTrace(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element 
         section { class: "panel", aria_label: "Tool trace",
             h2 { "Tools" }
             p { class: "note",
-                "Every tool the agent called this session, with the arguments it \
-                 wrote and what came back — including calls that were refused."
+                // Not "this session": the trace is a projection of the
+                // persisted log, so it survives a reload. Saying less than
+                // that undersold it (`ux-walker`, increment 05).
+                "Every tool call in this conversation's history, with the arguments \
+                 the agent wrote and what came back — including calls that were \
+                 refused. It is read back from the stored log, so it is still here \
+                 after a reload."
             }
             div { dangerous_inner_html: "{trace}" }
         }

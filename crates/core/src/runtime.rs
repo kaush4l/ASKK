@@ -80,13 +80,16 @@ pub fn execute_effect(
                 at: clock.now(),
                 kind,
             }),
-            // Tools run in `drive` (sync, against the app), not here: every
-            // tool this build ships reads local state. See `tools::run`.
-            Effect::InvokeTool { .. } => unreachable!("InvokeTool is executed by drive"),
+            // Tools run against the app (sync) and delegations run as a batch;
+            // both live in `batch.rs`, which is the only caller of this fn's
+            // siblings. See `batch::run_effects`.
+            Effect::InvokeTool { .. } | Effect::Delegate { .. } => {
+                unreachable!("executed by batch::run_effects")
+            }
             // The rest of the closed set lands with its first emitter.
-            Effect::Persist { .. }
-            | Effect::Sleep { .. }
-            | Effect::Spawn { .. } => todo!("G5: first emitter of this effect"),
+            Effect::Persist { .. } | Effect::Sleep { .. } => {
+                todo!("G5: first emitter of this effect")
+            }
         }
     }
 }
@@ -110,34 +113,34 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             }) else {
                 break;
             };
-            let effects = pump(&mut app.borrow_mut(), event);
-            for effect in effects {
-                // A tool runs against the app, synchronously, and its envelope
-                // is the fact that comes back (I8) — including a refusal.
-                if let Effect::InvokeTool { tool, args_json } = &effect {
-                    let mut a = app.borrow_mut();
-                    let kind = crate::tools::run(&a, tool, args_json);
-                    let appended = a.append(kind);
-                    a.pending.push(appended);
-                    continue;
-                }
-                let fut = execute_effect(&app.borrow().ports, effect);
-                let result = fut.await;
-                let mut a = app.borrow_mut();
-                match result {
-                    Ok(event) => {
-                        let appended = a.append(event.kind);
-                        a.pending.push(appended);
-                    }
-                    Err(e) => {
-                        a.append(EventKind::Custom {
-                            kind: "core.error".into(),
-                            payload_json: serde_json::to_string(&e)
-                                .unwrap_or_else(|_| "\"unserializable error\"".into()),
-                        });
-                    }
-                }
+            // The entry agent enters Working the moment a person speaks to
+            // it, and `turns` counts exactly these entries (Python
+            // `State.set`: `turns + (status is WORKING)`).
+            if matches!(event.kind, EventKind::UserMessage { .. }) {
+                app.borrow_mut()
+                    .set_status(crate::app::ENTRY_AGENT, kernel::Status::Working, "");
             }
+            let effects = pump(&mut app.borrow_mut(), event);
+            crate::batch::run_effects(&app, effects).await;
+        }
+        // Quiescent AND no task outstanding: the turn is over, so the next
+        // move is the person's — `Waiting`, which only the entry agent may be
+        // in. The task check matters because the seam spawns a `drive` per
+        // request: while one is awaiting the model, the chat poll starts
+        // another that finds nothing pending, and without this it would report
+        // the agent as waiting in the middle of its own turn.
+        // …and only OUT OF Working: a turn that raised is already `Failed`
+        // with its message, and "waiting for you" would erase it.
+        let finished = {
+            let a = app.borrow();
+            a.agent.task.is_none()
+                && a.board
+                    .get(crate::app::ENTRY_AGENT)
+                    .is_some_and(|r| r.status == kernel::Status::Working)
+        };
+        if finished {
+            app.borrow_mut()
+                .set_status(crate::app::ENTRY_AGENT, kernel::Status::Waiting, "");
         }
         // Persistence: the log is truth in memory the moment it is appended;
         // the store catches up here. A failed write is itself a fact.

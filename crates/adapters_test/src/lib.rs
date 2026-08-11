@@ -14,8 +14,10 @@ use kernel::{
     ModelReply, NetError, NetPort, RngPort, Timestamp,
 };
 
+mod agents;
 mod stores;
 
+pub use agents::ScriptedAgents;
 pub use stores::{MemBlob, MemKv, MemStore};
 
 pub(crate) fn ready<'a, T: 'a>(value: T) -> BoxFuture<'a, T> {
