@@ -166,3 +166,20 @@ const BLANK: &str = "---\nname: \ndescription: \nmodel: \nengine: react\nspace: 
                      # tools: [] means every built-in tool, write_agent included;\n\
                      # tools: [now] is only that one.\n\
                      tools: []\ncompact_at: 8\nkeep_recent: 3\n---\n\nYou are …\n";
+
+/// Who is loaded, and where from. Its own fn because the shell composes the
+/// page and owns no content (plan, "UI shape").
+pub(crate) fn agent_panel(agents: Signal<String>) -> Element {
+    rsx! {
+        section { class: "panel", aria_label: "Agents",
+            h2 { "Agents" }
+            p { class: "note",
+                "Loaded from public/agents/ at boot — edit an agent.md, redeploy, reload, \
+                 and the agent changes with no rebuild. An agent written in this browser is \
+                 the same file, kept here instead, and each card says which it is and what \
+                 its space granted it."
+            }
+            div { dangerous_inner_html: "{agents}" }
+        }
+    }
+}

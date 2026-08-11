@@ -15,13 +15,17 @@
 
 use dioxus::prelude::*;
 
+/// The deck's own tab id. Its own constant rather than `tab-{name}` so an agent
+/// somebody names `setup` cannot collide with it.
+const DECK_ID: &str = "deck-tab";
+
 /// Move focus to a tab by id. The roving tabindex means the newly selected tab
 /// is the only one in the tab order, so focus has to follow it or the next Tab
 /// press leaves the strip from a control that is no longer reachable.
-fn focus(name: &str) {
+fn focus(id: &str) {
     let Some(element) = web_sys::window()
         .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id(&format!("tab-{name}")))
+        .and_then(|d| d.get_element_by_id(id))
     else {
         return;
     };
@@ -43,6 +47,21 @@ fn target(key: &Key, at: usize, count: usize) -> Option<usize> {
     }
 }
 
+/// Route to tab `next`: an agent, or — one past the end — the deck.
+fn go(next: usize, names: &[String], mut selected: Signal<String>, mut deck: Signal<bool>) {
+    match names.get(next) {
+        Some(name) => {
+            deck.set(false);
+            selected.set(name.clone());
+            focus(&format!("tab-{name}"));
+        }
+        None => {
+            deck.set(true);
+            focus(DECK_ID);
+        }
+    }
+}
+
 /// Who you are talking to, and how to talk to somebody else. One tab per loaded
 /// agent; the selected one is what `ChatPane` is the conversation with.
 #[component]
@@ -55,18 +74,26 @@ pub fn AgentTabs(
     /// conversation's own header; this is the mark that sends you to it.
     authored: ReadSignal<Vec<String>>,
     selected: Signal<String>,
+    /// The fourth region. Write an agent, Agents and Settings used to be a row
+    /// UNDER the console, so the page was one screen sitting on a 1400px
+    /// manual: you scrolled off the instrument to reach them, in the vocabulary
+    /// 12c had just spent itself replacing (12c walk, finding 1). They are a
+    /// tab now — same strip, same roving tabindex, same arrows.
+    deck: Signal<bool>,
 ) -> Element {
     let names = loaded.read().clone();
     let current = selected.read().clone();
     let written = authored.read().clone();
+    let on_deck = deck();
+    let count = names.len() + 1;
     rsx! {
         div { class: "agent-tabs", role: "tablist", aria_label: "Which agent to talk to",
             for (index, name) in names.iter().cloned().enumerate() {
                 {
-                    let mine = name == current;
+                    let mine = !on_deck && name == current;
                     let here = written.contains(&name);
-                    let (names, name_for_key, name_for_click) =
-                        (names.clone(), name.clone(), name.clone());
+                    let (names, click_names, name_for_key) =
+                        (names.clone(), names.clone(), name.clone());
                     rsx! {
                         button {
                             r#type: "button",
@@ -81,18 +108,13 @@ pub fn AgentTabs(
                             // order, and arrows move between them.
                             tabindex: if mine { "0" } else { "-1" },
                             onkeydown: move |event: KeyboardEvent| {
-                                let Some(next) = target(&event.key(), index, names.len()) else {
+                                let Some(next) = target(&event.key(), index, count) else {
                                     return;
                                 };
                                 event.prevent_default();
-                                let mut selected = selected;
-                                selected.set(names[next].clone());
-                                focus(&names[next]);
+                                go(next, &names, selected, deck);
                             },
-                            onclick: move |_| {
-                                let mut selected = selected;
-                                selected.set(name_for_click.clone());
-                            },
+                            onclick: move |_| go(index, &click_names, selected, deck),
                             // Visible with the stylesheet off: the marker and
                             // the bold name are UA-styled, `aria-selected` is
                             // not, and the fallback skin is permanent.
@@ -109,6 +131,40 @@ pub fn AgentTabs(
                             if here {
                                 span { class: "tab-origin", " · written here" }
                             }
+                        }
+                    }
+                }
+            }
+            // The fourth region, last in the strip because it is what you do
+            // BETWEEN turns. Same roving tabindex, same arrows, same Home/End —
+            // `count` above already includes it.
+            {
+                let names = names.clone();
+                rsx! {
+                    button {
+                        r#type: "button",
+                        id: DECK_ID,
+                        role: "tab",
+                        class: if on_deck { "tab current" } else { "tab" },
+                        aria_selected: if on_deck { "true" } else { "false" },
+                        aria_controls: "deck-panel",
+                        tabindex: if on_deck { "0" } else { "-1" },
+                        onkeydown: move |event: KeyboardEvent| {
+                            let Some(next) = target(&event.key(), count - 1, count) else {
+                                return;
+                            };
+                            event.prevent_default();
+                            go(next, &names, selected, deck);
+                        },
+                        onclick: move |_| {
+                            let mut deck = deck;
+                            deck.set(true);
+                        },
+                        if on_deck {
+                            span { aria_hidden: "true", "▸ " }
+                            strong { "Setup" }
+                        } else {
+                            "Setup"
                         }
                     }
                 }

@@ -1,0 +1,75 @@
+<!doctype html>
+<!-- The layout probe (increment 12d). It is NOT the app: it is the app's shell
+     markup — the same wrappers, classes and ids `crates/ui/src/main.rs` emits —
+     linked against the BUILT stylesheets out of dist/, so what it measures is
+     what a browser is actually shipped. `check-layout.sh` fills the links in
+     and runs it at four widths in both skins.
+
+     It exists because the 12b sticky rail painted on top of the whole deck at
+     every width >= 1100px for three increments and three walks read past it:
+     nothing anybody ran ever asked "what does a click at this point hit?".
+     That question is the OVERLAP and HITTEST checks below. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ASKK layout probe</title>
+<!--CSS-->
+</head>
+<body>
+<!-- Dioxus mounts the whole app into this div (web/index.html), so `header`
+     and `main` are ITS children and not the body's. The probe missed the 12d
+     one-screen bug once by leaving it out. -->
+<div id="main">
+<header>
+  <div class="wordmark">ASKK</div>
+  <p class="chat-endpoint" role="status">This turn calls local — gemma-4-12B-it-qat-mxfp8 at http://127.0.0.1:8873/v1, with no key.</p>
+  <button type="button" class="skin-toggle" aria-pressed="false">Simple skin</button>
+</header>
+<main>
+  <div class="primary">
+    <div class="masthead"><h1>HARNESS</h1></div>
+    <div class="agent-tabs" role="tablist" aria-label="Which agent to talk to">
+      <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="chat-panel" tabindex="0"><span aria-hidden="true">▸ </span><strong>main</strong></button>
+      <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">author</button>
+      <button type="button" id="deck-tab" role="tab" class="tab" aria-selected="false" aria-controls="deck-panel" tabindex="-1">Setup</button>
+    </div>
+    <section class="panel" id="chat-panel" role="tabpanel" aria-labelledby="tab-main" aria-label="Chat with main">
+      <h2>Chat with main</h2>
+      <div id="chat-scroll" class="chat-log">
+        <div id="chat-log">
+          <div class="msg user"><span class="speaker">you</span> uname -a</div>
+          <div class="msg assistant"><span class="speaker">main</span> <span class="said">Linux localhost 5.15.0 x86_64 GNU/Linux</span></div>
+          <div class="msg error"><p>The turn failed.</p><details><summary>Technical detail for failure 1</summary><pre>{"kind":"EndpointUnreachable"}</pre></details></div>
+        </div>
+      </div>
+      <p class="pending wait-clock" role="status">waiting for the model — 4s <button type="button">Stop waiting</button></p>
+      <form><label for="c">Message</label><textarea id="c" rows="2"></textarea><button type="button">Send</button></form>
+    </section>
+    <section class="deck" id="deck-panel" role="tabpanel" aria-labelledby="deck-tab" aria-label="Setup" hidden>
+      <section class="panel" aria-label="Write an agent"><h2>Write an agent</h2><p class="note">An agent is a file. Write one here and it is kept in this browser.</p><textarea id="agent-md" rows="8"></textarea><div class="editor-picks"><button type="button">Save</button><button type="button">Delete</button></div></section>
+      <section class="panel" aria-label="Agents"><h2>Agents</h2><p class="note">Loaded from public/agents/ at boot.</p>
+        <div class="agent-card"><h3>main</h3><p class="agent-meta">the lead</p><details><summary>System prompt for main</summary><pre>you are main</pre></details></div>
+        <div class="agent-card"><h3>author</h3><p class="agent-meta">writes agents</p><details><summary>System prompt for author</summary><pre>you are author</pre></details></div>
+      </section>
+      <section class="panel" aria-label="Settings"><h2>Settings</h2><form><label for="u">Base URL</label><input id="u"><label for="k">API key</label><input id="k"><div class="row"><button type="button">Save endpoint</button><button type="button">Clear key</button></div></form></section>
+    </section>
+  </div>
+  <aside class="rail" aria-label="Live instruments">
+    <section class="panel" aria-label="Agent board"><h2>Agents running</h2>
+      <div class="board" aria-live="polite">
+        <div class="agent-row" data-status="working"><h3>main</h3><p class="agent-status">working — inside a turn</p><p class="agent-live">4s · llm.call</p></div>
+        <div class="agent-row" data-status="idle"><h3>summarizer</h3><p class="agent-status">idle — nobody has called it</p></div>
+      </div>
+      <p class="pending board-busy" role="status">an agent is working…</p>
+      <details class="panel-note"><summary>How the board is produced</summary><p class="note">Every agent runs in its own Worker.</p></details>
+    </section>
+    <section class="panel" aria-label="Tool trace"><h2>Tools</h2><div class="tool-call"><p class="tool-args">shell.run {"cmd":"uname -a"}</p><pre>Linux localhost</pre></div></section>
+    <section class="panel" aria-label="Workspace"><h2>Workspace</h2><div id="terminal"><div class="term-run"><p class="term-command"><span class="term-prompt">$</span> uname -a</p><pre>Linux localhost</pre></div></div></section>
+    <section class="panel" aria-label="Shared space"><h2>Shared space</h2><p class="space-name">research</p><p class="space-path">/root/spaces/research</p><dl class="space-facts"><dt>host</dt><dd>localhost</dd></dl></section>
+  </aside>
+</main>
+</div>
+<pre id="report"></pre>
+<script src="layout-probe.js"></script>
+</body>
+</html>

@@ -19,6 +19,13 @@ html:not([data-skin="plain"]) {
      measured can only go up against a darker background. */
   --bg: #120b1a;
   --surface: #1b1327;
+  /* 12d — the second tone, and the only one. Everything on this page was one
+     purple ink on one purple ground, so a label, a machine value and a
+     sentence separated by SIZE alone; a cooler tone for what the machine
+     produced is depth no amount of layout can buy. It is a TONE, not a second
+     accent: purple stays the single accent, and this measures 10.88:1 on --bg,
+     above the 9.76 floor of the --ink-dim it replaces. */
+  --machine: #a9c6e0;
   --glow: color-mix(in srgb, var(--accent) 22%, transparent);
   --edge: color-mix(in srgb, var(--accent) 30%, var(--line));
 

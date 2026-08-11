@@ -78,23 +78,6 @@ fn watch_agents(
     authored.set(app.authored_names());
 }
 
-/// Who is loaded, and where from. Its own fn because the shell composes the
-/// page and owns no content (plan, "UI shape").
-fn agent_panel(agents: Signal<String>) -> Element {
-    rsx! {
-        section { class: "panel", aria_label: "Agents",
-            h2 { "Agents" }
-            p { class: "note",
-                "Loaded from public/agents/ at boot — edit an agent.md, redeploy, reload, \
-                 and the agent changes with no rebuild. An agent written in this browser is \
-                 the same file, kept here instead, and each card says which it is and what \
-                 its space granted it."
-            }
-            div { dangerous_inner_html: "{agents}" }
-        }
-    }
-}
-
 /// Boot is async (IndexedDB), so the shell paints immediately and the page
 /// fills when the core is up. A boot failure is shown, never swallowed.
 fn shell() -> Element {
@@ -135,12 +118,28 @@ fn shell() -> Element {
     // after an override had installed, and the deleted one after a delete —
     // two projections of one agent's identity disagreeing on screen (11b walk).
     let roster = use_memo(move || agents());
+    // WHICH region the primary column shows. The deck — Write an agent, Agents,
+    // Settings — used to be a row under the console, so the page was one screen
+    // sitting on a 1400px manual and reaching Settings meant scrolling off the
+    // instrument (12c walk, finding 1). It is a routed region now.
+    let deck = use_signal(|| false);
+    // The one sentence that says what the next turn actually calls. It was
+    // prose in the chat pane; it is the same sentence, unchanged, typeset into
+    // the header strip that used to be 77px holding two words (12c walk).
+    // Reading `tick` is what makes it follow a settings save.
+    let endpoint = {
+        let _ = tick();
+        chat::endpoint_line(web)
+    };
 
     rsx! {
         header {
             // Not an <h1>: the page's one heading is the dashboard's title,
             // and a wordmark is a logo, not a level-one heading.
             div { class: "wordmark", "ASKK" }
+            if !endpoint.is_empty() {
+                p { class: "chat-endpoint", role: "status", "{endpoint}" }
+            }
             skin::SkinToggle {}
         }
         main {
@@ -162,19 +161,30 @@ fn shell() -> Element {
                     // The fragment is built by the core's escaping primitives
                     // (module::view) — the one scar the htmx design leaves.
                     div { class: "masthead", dangerous_inner_html: "{fragment}" }
-                    tabs::AgentTabs { loaded, authored, selected }
-                    chat::ChatPane { web, endpoint_set, tick, roster, agent: selected }
+                    tabs::AgentTabs { loaded, authored, selected, deck }
+                    chat::ChatPane {
+                        web, endpoint_set, tick, roster, agent: selected, hidden: deck(),
+                    }
+                    // The routed deck: the tabpanel half of the fourth tab.
+                    // Both regions stay MOUNTED and one is `hidden` — dropping
+                    // the chat pane would drop the poller following a turn.
+                    section {
+                        class: "deck",
+                        id: "deck-panel",
+                        role: "tabpanel",
+                        aria_labelledby: "deck-tab",
+                        aria_label: "Setup",
+                        hidden: !deck(),
+                        authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
+                        {authoring::agent_panel(agents)}
+                        settings::Settings { web, endpoint_set, tick }
+                    }
                 }
                 aside { class: "rail", aria_label: "Live instruments",
                     board::AgentBoard { web, tick }
                     tools::ToolTrace { web, tick, agent: selected }
                     terminal::Terminal { web, tick, agent: selected }
                     space::SpaceInspector { web, tick, agent: selected }
-                }
-                div { class: "deck",
-                    authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
-                    {agent_panel(agents)}
-                    settings::Settings { web, endpoint_set, tick }
                 }
             }
         }

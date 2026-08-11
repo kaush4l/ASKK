@@ -22,7 +22,9 @@ use crate::turn::{show, to, waiting_row, watch, Shown, Turn};
 /// agent file. The agent's `model:` key is a default that Settings overrides,
 /// and printing the key while calling something else is a lie the pane told
 /// for a whole increment (`ux-walker`, increment 04).
-fn endpoint_line(web: Signal<Option<Rc<WebApp>>>) -> String {
+/// Read by the SHELL, not by this pane: from 12d the sentence is typeset into
+/// the header strip — the 77px that held two words — and said once.
+pub(crate) fn endpoint_line(web: Signal<Option<Rc<WebApp>>>) -> String {
     let Some(app) = web.read().clone() else {
         return String::new();
     };
@@ -57,6 +59,10 @@ pub fn ChatPane(
     /// switching agents re-projects: the same component, one instance per
     /// agent, never a mode flag (plan: `ChatPane` owns one conversation).
     agent: ReadSignal<String>,
+    /// Routed away: the primary column is showing the deck instead. The pane
+    /// stays MOUNTED — its poller belongs to a turn in flight and killing it
+    /// would leave the turn unwatched — so the region is hidden, not dropped.
+    hidden: bool,
 ) -> Element {
     let turn = Turn {
         shown: use_signal(Shown::default),
@@ -66,12 +72,6 @@ pub fn ChatPane(
         tick,
     };
     let mut note = turn.note;
-    // Reading `tick` subscribes this pane to every settings change, so the
-    // endpoint line below is recomputed the moment the endpoint moves.
-    let endpoint = {
-        let _ = tick();
-        endpoint_line(web)
-    };
     // From the PROP, not from the last response: the heading must name the
     // agent you just switched to before its transcript has arrived, or the
     // page briefly says you are talking to the previous one.
@@ -118,6 +118,7 @@ pub fn ChatPane(
             role: "tabpanel",
             aria_labelledby: "tab-{agent}",
             aria_label: "{title}",
+            hidden,
             h2 { "{title}" }
             if !endpoint_set() {
                 p { class: "pending",
@@ -126,12 +127,10 @@ pub fn ChatPane(
                      and {agent} can answer."
                 }
             }
-            // The ONE live line that stays in front of the conversation: what
-            // the next turn actually calls. Provenance and the space grant moved
-            // behind the agent's name in the projection's own disclosure (12
-            // walk, "density") — this one cannot, because it changes with
-            // Settings and it decides whether the next message can be sent.
-            if !endpoint.is_empty() { p { class: "note chat-endpoint", "{endpoint}" } }
+            // What the next turn actually calls used to be a paragraph here.
+            // It is the same sentence, unchanged, typeset into the header strip
+            // (12c walk: "move it") — no duplication, nothing cut, and the most
+            // valuable strip on a console stops holding two words.
             if mine {
                 // The id is the scroll target: from 12c the conversation is
                 // the child that grows inside a full-height column, so the
