@@ -1,0 +1,199 @@
+/* Increment 12c — a console, not cards. The 12b walk called the page
+   "organised, which it was not — and organisation is the prerequisite. Not yet
+   beautiful." Five moves, in its own order of payoff:
+
+   1. FILL THE GLASS. `.primary` measured 387px against a rail of 868px, with
+      ~400px of flat background under the conversation while the rail beside it
+      scrolled internally. The region is the height of the viewport now, the
+      log grows and scrolls inside it, and the composer is pinned to the bottom
+      — the difference between cards in columns and a console.
+   2. DENSITY, everywhere. Three rail panes still spent four to six lines of
+      explanation in front of one or two lines of signal. Same fix the chat
+      pane got and not one word cut: the live thing first, the paragraph behind
+      a disclosure.
+   3. THE RAIL SAYS IT SCROLLS. Clipped mid-line at the top edge with no fade,
+      no rule and no scrollbar: a 24px mask at both ends, a thin persistent
+      scrollbar, and a tick strip that stays put while the panes move past it.
+   4. THREE TYPE SIZES, not five inside a 1.6px band. ~11px tracked mono for
+      labels and machine values, 16px for the conversation, and one readout —
+      the clock on a turn in flight, which is the only number on the page a
+      person is actually waiting on.
+   5. MEASURE, not cards. Hairline rules instead of rounded borders, ticks on
+      the rail, and the masthead as a strip rather than 78px holding two words.
+
+   Same rule as the two files under it: nothing here invents state, no ink
+   colour moves, machine skin only — the plain skin remains the complete
+   one-column fallback. */
+
+html:not([data-skin="plain"]) {
+  /* ---- 4. three steps, and only three ---------------------------------- */
+  /* 11px tracked mono: a label, or a value the machine produced. */
+  --t-label: 0.6875rem;
+  /* 16px body: what a person wrote or a model said. The conversation. */
+  --t-read: 1rem;
+  /* The one readout. Nothing else on the page is allowed to be this big. */
+  --t-readout: clamp(1.3rem, 5vw, 1.9rem);
+
+  h1 {
+    font-size: var(--t-label);
+    letter-spacing: 0.34em;
+    margin: 0;
+  }
+  h2 { font-size: var(--t-label); letter-spacing: 0.18em; }
+  h3 { font-size: var(--t-read); letter-spacing: 0.02em; }
+
+  /* Everything the machine produced, at one size. These were 12.8, 13.12,
+     13.6 and 14.4px — four sizes inside 1.6px, which is noise, not hierarchy. */
+  .agent-status,
+  .agent-meta,
+  .agent-live,
+  .agent-memory,
+  .agent-origin,
+  .agent-header,
+  .chat-endpoint,
+  .credit,
+  .note,
+  .panel-note > summary,
+  .space-path,
+  .space-facts dt,
+  .tab,
+  .tab-origin,
+  .tool-args,
+  .tool-outcome,
+  .term-command,
+  form label,
+  .msg .speaker { font-size: var(--t-label); letter-spacing: 0.04em; }
+
+  /* …and the conversation is the one thing that reads like prose. */
+  .msg .said, .msg p, .space-facts dd, .space-notes li { font-size: var(--t-read); }
+  /* An empty instrument reports its emptiness as a machine value, not as
+     16px italic body copy — which is what made "No tool has been called yet."
+     the largest thing in the rail. */
+  .rail .pending, .space-name { font-size: var(--t-label); font-style: normal; }
+
+  /* The readout: the clock on a turn in flight, tabular so the digits do not
+     jump, and the way out beside it at label size. It is the largest thing on
+     the page for exactly as long as something is running. */
+  .wait-clock {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0 0.75rem;
+    font-size: var(--t-readout);
+    font-variant-numeric: tabular-nums;
+    font-style: normal;
+    color: var(--ink);
+    margin: 0.4rem 0;
+  }
+  .wait-clock button { font-size: var(--t-label); letter-spacing: 0.08em; }
+
+  /* ---- 2. the disclosure that carries the explanation ------------------- */
+  /* The paragraph is behind it, word for word — these sentences are what
+     thirteen walks were built on and none of them is cut. */
+  .panel-note { margin: 0.5rem 0 0; }
+  .panel-note > summary { cursor: pointer; color: var(--ink-dim); letter-spacing: 0.1em; }
+  .panel-note > .note { margin: 0.35rem 0 0; }
+
+  /* ---- 5. measure, not cards ------------------------------------------- */
+  .masthead {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0 0 0.5rem;
+    border-bottom: 1px solid var(--edge);
+    margin-bottom: 0.6rem;
+  }
+}
+
+/* ---- 1./3./5. the console proper, from 1100px up ------------------------ */
+
+@media (min-width: 1100px) {
+  html:not([data-skin="plain"]) {
+    /* One height for both columns: the header (78px) plus main's own top
+       padding, and a gap under it. The two regions then start and end on the
+       same two lines, which is most of what "instrument" means. */
+    --console: calc(100vh - 8rem);
+
+    .primary {
+      height: var(--console);
+      display: flex;
+      flex-direction: column;
+      /* A flex child's `auto` minimum is its content; without this the log
+         refuses to shrink and the composer leaves the bottom of the screen. */
+      min-height: 0;
+    }
+    /* The conversation IS the region: it takes what the masthead and the tabs
+       leave, and it is the thing that scrolls. */
+    .primary #chat-panel {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .primary .chat-log {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--edge) transparent;
+      /* Room for the fade below, so nothing is read through it. */
+      padding-bottom: 0.5rem;
+    }
+    /* The conversation sits ON the composer and grows upward, the way every
+       console a person has used does. `margin-top: auto` rather than
+       `justify-content: flex-end`, because an auto margin collapses to zero
+       the moment the content overflows and the flex-end version leaves the
+       oldest message clipped above the scroll origin, unreachable. This is
+       what closes the last of the void: a two-message conversation ends where
+       the box you type into begins. */
+    /* Hairlines. A panel inside the console is a region of one surface, not a
+       card floating on it — the rounded border, the gradient and the drop
+       shadow were the last of the "styled document" vocabulary. */
+    .primary #chat-panel,
+    .deck .panel,
+    .rail .panel {
+      border: 0;
+      border-top: 1px solid var(--edge);
+      border-radius: 0;
+      background: none;
+      box-shadow: none;
+      padding: 0.5rem 0 0.75rem;
+      margin: 0 0 0.6rem;
+    }
+    .primary #chat-panel { border-top: 0; padding-top: 0; }
+
+    .rail {
+      height: var(--console);
+      max-height: none;
+      /* The rail scrolls and now says so three ways: it fades at both ends
+         where content is cut, it keeps a thin scrollbar rather than an
+         overlay one that appears only while moving, and the ticks down its
+         left edge stay put while the panes travel past them. */
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.5rem,
+                                          #000 calc(100% - 1.5rem), transparent 100%);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 1.5rem,
+                                  #000 calc(100% - 1.5rem), transparent 100%);
+      scrollbar-width: thin;
+      scrollbar-color: var(--edge) transparent;
+      padding: 1.5rem 0 1.5rem 0.9rem;
+      /* Attachment `scroll` (the default) pins this to the element, not to the
+         content — which is what makes it a ruler and not wallpaper. */
+      background-image: repeating-linear-gradient(to bottom,
+        var(--edge) 0 1px, transparent 1px 0.75rem);
+      background-repeat: no-repeat;
+      background-size: 4px 100%;
+    }
+  }
+}
+
+/* Written flat rather than nested: the build's CSS pass silently DROPPED
+   `& .primary .chat-log > #chat-log` and the void it closes came straight
+   back, which a nested rule that compiles to nothing is very good at hiding. */
+@media (min-width: 1100px) {
+  html:not([data-skin="plain"]) .primary .chat-log > #chat-log { margin-top: auto; }
+}
+
+/* The mask is decoration; the scrollbar and the ticks carry the same fact
+   without it, and a reduced-motion request changes nothing here — none of it
+   moves. */

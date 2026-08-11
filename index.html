@@ -13,8 +13,8 @@
        production and publish.sh gates on it. -->
   
 <script type="module">
-import init, * as bindings from './ui-e561b90b799265ea.js';
-const wasm = await init({ module_or_path: './ui-e561b90b799265ea_bg.wasm' });
+import init, * as bindings from './ui-e449778a113d806b.js';
+const wasm = await init({ module_or_path: './ui-e449778a113d806b_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -24,14 +24,18 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
   <link rel="stylesheet" href="./theme-11a182d959b81353.css" integrity="sha384-Y3220skNVrp2+RLADKsqYVWpnvWGcWzr9eNJ4eKWMTBdVN9xs//71AemLqTn2pSS"/>
-  <link rel="stylesheet" href="./board-52c13ce23e1a4cda.css" integrity="sha384-kQ7UXapJM0wiOp9R1ZcVRDLHXpTKakVjQ1ZLf0SWcAzKa5U/IgA3pkULB8E70scc"/>
+  <link rel="stylesheet" href="./board-9e696fb44eaaa323.css" integrity="sha384-q6j7BU7tw5XrPpXxN391LRXDWxNgMWJdFew1A/h9I6x9OVs4vHRv7M/Qp6rSjXin"/>
   <!-- The machine layer (increment 12). Last, because it layers on the tokens
        the two above define; switched off by data-skin="plain" on <html>. -->
   <link rel="stylesheet" href="./aaa-aaff17ee0b4544b3.css" integrity="sha384-s62fumr+diYdzBquHUBKvlUfQKD5B9V1fRLSTpaP/XZ3IZfs4ZZCKDq/iuCl5OiS"/>
   <!-- The instrument layer (increment 12b): layout, type, and the six statuses
        the board reads at a glance. Last, because it composes over the two
        above; same switch — data-skin="plain" takes all of it off. -->
-  <link rel="stylesheet" href="./instrument-2cbf157c186c7ccb.css" integrity="sha384-e9ajjF2Edhs32hB3zJuNFRsOhS5/3Qihj167y0JGGpzgLSp43NzdHfhzZqWTFRNl"/>
+  <link rel="stylesheet" href="./instrument-ef0b5201fb429bb.css" integrity="sha384-FxRr3WoK8VM3kguU6cU3OcGP/KJLu2CnN6RYKHNZFSjcjJ7nxfwTXmJn9DHI3aDz"/>
+  <!-- The console layer (increment 12c): the primary column fills its glass,
+       the rail says it scrolls, three type sizes, and hairlines instead of
+       cards. Last again, same switch — data-skin="plain" takes all of it off. -->
+  <link rel="stylesheet" href="./console-bb5925fef3dc0432.css" integrity="sha384-rCj59ojVjr+9EZwZ4GPeJJ5uV6OD2U8X8lKiAyKNYyM2cuJl8pR8xLAzCbqtXpES"/>
   
   
   <!-- One Worker per agent (increment 06). Transport only: it imports this
@@ -48,7 +52,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
   <!-- The model catalogue, same deal: a named entry per endpoint, edited and
        redeployed without a rebuild (increment 04). -->
   
-<link rel="modulepreload" href="./ui-e561b90b799265ea.js" crossorigin="anonymous" integrity="sha384-yVz59lTzRQZE4GBzLF2amjbw3u01W6hxHdZfuxk328rK237sWOs3CGxGoNWTIHwn"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/inline0.js" crossorigin="anonymous" integrity="sha384-zYN7fDp3Oc3s/6VoBHYcmgSXhmkcRNY5Hm9rxENuJajscrc2t7NZ69NzBse6Iwn9"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="preload" href="./ui-e561b90b799265ea_bg.wasm" crossorigin="anonymous" integrity="sha384-0lYnGgGtm86z4oxtsuhl2XlaXBQsw93JNgwjhT8EczQMqx1yS3L875K9/QiCRjoM" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./ui-e449778a113d806b.js" crossorigin="anonymous" integrity="sha384-8OhhvrqwWfzXsT8v+FNDe/7o/1cvNB5oNztlJ5btq0V68Ta9BqMvduJpCOu4vOAp"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/inline0.js" crossorigin="anonymous" integrity="sha384-zYN7fDp3Oc3s/6VoBHYcmgSXhmkcRNY5Hm9rxENuJajscrc2t7NZ69NzBse6Iwn9"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="preload" href="./ui-e449778a113d806b_bg.wasm" crossorigin="anonymous" integrity="sha384-kf70cHbGvMULgV1/xaLKuQyY0BGDOeaYm8GLet8mahpkJdn8ga4cP66N+dfNaRP4" as="fetch" type="application/wasm"></head>
 <body>
   <div id="main"></div>
   <noscript>

@@ -51,8 +51,8 @@ html:not([data-skin="plain"]) {
   .msg .speaker,
   .space-path,
   .space-facts dt { font-family: var(--mono); }
-  .agent-status, .agent-live, .agent-meta, .chat-endpoint, .wait-clock { font-size: 0.82rem; }
-  .tab { font-size: 0.85rem; letter-spacing: 0.02em; }
+  /* Their SIZE moved to console.css, which owns the three-step scale (12c):
+     0.82rem, 0.85rem, 0.9rem and 1.05rem were four sizes inside 1.6px. */
 
   /* ---- 5. density ------------------------------------------------------- */
 
@@ -108,8 +108,8 @@ html:not([data-skin="plain"]) {
   /* ---- 2. the live row earns the space ---------------------------------- */
 
   .agent-row[data-status="working"] { padding: 0.6rem 0.7rem; }
-  .agent-row[data-status="working"] h3 { font-size: 1.05rem; }
-  .agent-row[data-status="working"] .agent-status { color: var(--ink); font-size: 0.85rem; }
+  .agent-row[data-status="working"] h3 { font-size: var(--t-read); }
+  .agent-row[data-status="working"] .agent-status { color: var(--ink); font-size: var(--t-label); }
   .agent-live { margin: 0.15rem 0 0; color: var(--accent); }
   /* Everything not in a turn compresses to one dense line — the same words,
      the same contrast, one row of height. */
@@ -120,9 +120,9 @@ html:not([data-skin="plain"]) {
     gap: 0 0.6rem;
     padding: 0.3rem 0.5rem;
   }
-  .agent-row:not([data-status="working"]) h3 { font-size: 0.9rem; }
+  .agent-row:not([data-status="working"]) h3 { font-size: var(--t-label); }
   .agent-row:not([data-status="working"]) .agent-status { margin: 0; }
-  .agent-row .error { flex-basis: 100%; margin: 0.1rem 0 0; font-size: 0.82rem; }
+  .agent-row .error { flex-basis: 100%; margin: 0.1rem 0 0; font-size: var(--t-label); }
 }
 
 /* ---- 1. layout: three regions, from 1100px up --------------------------- */
@@ -146,7 +146,7 @@ html:not([data-skin="plain"]) {
   /* Every note in the rail keeps every word — they are the sentences the walks
      were built on — at the size of a caption rather than of body copy, so four
      instruments fit in one viewport instead of one and a half. */
-  html:not([data-skin="plain"]) .rail .note { font-size: 0.8rem; }
+  html:not([data-skin="plain"]) .rail .note { font-size: var(--t-label); }
   html:not([data-skin="plain"]) .rail #terminal { max-height: 13rem; }
   html:not([data-skin="plain"]) .rail .tool-call pre { max-height: 8rem; }
   html:not([data-skin="plain"]) .rail {
