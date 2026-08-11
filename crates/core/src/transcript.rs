@@ -70,6 +70,38 @@ fn belongs_to(kind: &EventKind, me: &str, who: &str) -> bool {
     }
 }
 
+/// Whether something is really DRIVING this agent's turn. `awaiting` is only
+/// the shape of the log — the last thing said was a person's — and a reload
+/// replays that shape with no fetch behind it: the pane sat disabled on
+/// "thinking…" with a frozen clock while the board beside it correctly read
+/// idle, and only wiping storage recovered it (12 walk, finding 1).
+///
+/// Three sources, all of them state this process really holds: the utterance
+/// this request just accepted, the pump queue it is about to enter, and the
+/// board — itself the fold of `AgentStatus` facts, so this is the log asking the
+/// log. None of them survives a reload, which is the whole point.
+fn driven(ctx: &Ctx, who: &str, accepted: bool) -> bool {
+    accepted
+        || ctx.queued.iter().any(|a| a == who)
+        || ctx.board.iter().any(|r| r.name == who && r.status.is_busy())
+}
+
+/// The last line of a conversation, when the conversation itself does not
+/// finish the story: a turn still running, a turn nothing is running any more,
+/// or an agent nobody has said anything to yet.
+fn tail(pending: bool, awaiting: bool, count: usize, who: &str) -> Option<Fragment> {
+    match (pending, awaiting, count) {
+        (true, _, _) => Some(msg("msg pending", "", "thinking…")),
+        (false, true, _) => Some(msg("msg pending", "", ORPHANED)),
+        (false, false, 0) => Some(msg(
+            "msg pending",
+            "",
+            &format!("No messages yet — ask {who} something."),
+        )),
+        _ => None,
+    }
+}
+
 /// The whole conversation with ONE agent, in log order. A turn is in flight
 /// when the last message-shaped fact is a `UserMessage` — that is also the
 /// `x-turn: pending` header, which is how the UI knows to keep watching
@@ -149,27 +181,11 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
         list = list.child(msg("msg user", "You", text));
         (awaiting, count) = (true, count + 1);
     }
-    // A turn is IN FLIGHT only while something is driving it. `awaiting` is the
-    // shape of the log — the last thing said was a person's — and a reload
-    // replays that shape with no fetch behind it: the pane sat disabled on
-    // "thinking…" with a frozen clock while the board beside it correctly read
-    // idle, and only wiping storage recovered it (12 walk, finding 1). Three
-    // sources, all of them state this process really has: the utterance this
-    // request just accepted, the pump queue it is about to enter, and the board
-    // — itself the fold of `AgentStatus` facts, so this is the log asking the
-    // log. None of them survives a reload, which is the whole point.
-    let driven = appended.is_some()
-        || ctx.queued.iter().any(|a| a == who)
-        || ctx.board.iter().any(|r| r.name == who && r.status.is_busy());
-    let pending = awaiting && driven;
-    if pending {
-        list = list.child(msg("msg pending", "", "thinking…"));
-    } else if awaiting {
-        list = list.child(msg("msg pending", "", ORPHANED));
-    } else if count == 0 {
-        list = list.child(msg("msg pending", "", &format!("No messages yet — ask {who} something.")));
+    let pending = awaiting && driven(ctx, who, appended.is_some());
+    if let Some(tail) = tail(pending, awaiting, count, who) {
+        list = list.child(tail);
     }
-    let body = format!("{}{}", header(ctx, who), list.build().into_html());
+    let body = format!("{}{}", crate::identity::header(ctx, who), list.build().into_html());
     let mut response = html(200, body);
     // WHO this conversation is with, as a header rather than a sentence in the
     // body: the pane must be able to title itself without parsing the fragment
@@ -179,66 +195,4 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
         response.headers.push(("x-turn".into(), "pending".into()));
     }
     response
-}
-
-/// Whose conversation this is, as `public/agents/<who>/agent.md` declares it.
-/// The MODEL is deliberately absent: this file knows what the agent file asked
-/// for, not what Settings overrode it with, and printing "(model: local)" while
-/// the next turn calls openrouter is a lie the pane told for a whole increment.
-///
-/// WHO WROTE IT is here too (increment 12). The record has always distinguished
-/// "written by you in this browser" from "written by the author agent", and an
-/// agent holding a `space:` has a real root shell — but that sentence lived
-/// only in the Agents panel, five thousand pixels down. The same
-/// `authoring::origin_line` renders in both places, so the two cannot disagree.
-fn header(ctx: &Ctx, who: &str) -> String {
-    let Some(spec) = ctx.agents.iter().find(|s| s.name == who) else {
-        return FragmentBuilder::new("p")
-            .class("agent-header pending")
-            .text(&format!("No agent called {who} is loaded."))
-            .build()
-            .into_html();
-    };
-    let mine = ctx
-        .authored
-        .iter()
-        .find(|(n, _)| *n == spec.name)
-        .map(|(_, by)| by.as_str());
-    let origin = match mine {
-        Some("") => "authored",
-        Some(_) => "authored-by-agent",
-        None => "shipped",
-    };
-    // An agent with no `description:` used to render `note-taker — ` with
-    // nothing after the dash (12 walk, finding 4). The separator belongs to the
-    // second half; with no second half there is no separator.
-    let identity = match spec.description.trim().is_empty() {
-        true => spec.name.clone(),
-        false => format!("{} — {}", spec.name, spec.description),
-    };
-    // Behind the agent's own name, not stacked in front of the conversation.
-    // Both sentences are long and neither changes while you talk; three
-    // paragraphs of true prose before the first message made the primary
-    // surface read like documentation (12 walk, "density"). Nothing is lost —
-    // a `details` is open to find, to search, and to a screen reader.
-    let disclosure = FragmentBuilder::new("details")
-        .class("agent-identity")
-        .attr("data-origin", origin)
-        .child(
-            FragmentBuilder::new("summary")
-                .class("agent-header")
-                .attr("data-agent", &spec.name)
-                .attr("data-origin", origin)
-                .text(&identity)
-                .build(),
-        )
-        .child(
-            FragmentBuilder::new("p")
-                .class("agent-origin")
-                .text(&crate::authoring::origin_line(spec, mine))
-                .build(),
-        )
-        .build()
-        .into_html();
-    format!("{disclosure}{}", crate::memory::memory(ctx, who))
 }

@@ -96,15 +96,7 @@ fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
         1 => "1 turn".to_string(),
         n => format!("{n} turns"),
     };
-    // Every row used to say "from public/agents/", including rows for agents
-    // written in this browser — the Agents card three panels below said the
-    // opposite about the same agent (11b walk). One rule, three origins.
-    let origin = match (authored.iter().find(|(n, _)| *n == agent.name), agent.builtin) {
-        (Some((_, by)), _) if by.is_empty() => "written in this browser".to_string(),
-        (Some((_, by)), _) => format!("written in this browser by {by}"),
-        (None, true) => "built in to this build".to_string(),
-        (None, false) => "from public/agents/".to_string(),
-    };
+    let origin = origin(agent, authored);
     let mut card = FragmentBuilder::new("div")
         .class(&format!("agent-row status-{}", agent.status.label()))
         .attr("data-agent", &agent.name)
@@ -119,13 +111,9 @@ fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
                 .text(&format!("{} — {turns}, {origin}", gloss(agent)))
                 .build(),
         );
-    // The row that is inside a turn is the one worth looking at, so it is the
-    // one that says more: how long it has been in this turn, and — for the
-    // agent whose loop this process IS — what it last called. Five rows of
-    // identical height, the busy one distinguished by a sweep alone, made the
-    // board a list instead of an instrument (12 walk, "give the live row
-    // priority"). Every other row stays exactly as legible; it just stops
-    // claiming the same weight as the one that is running.
+    // The row inside a turn is the one worth looking at, so it says more (12
+    // walk, "give the live row priority"). Every other row stays exactly as
+    // legible; it stops claiming the same weight as the one that is running.
     if agent.status.is_busy() {
         if let Some(live) = live_line(agent, ctx) {
             card = card.child(FragmentBuilder::new("p").class("agent-live").text(&live).build());
@@ -140,6 +128,19 @@ fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
         );
     }
     card.build()
+}
+
+/// Where this agent came from. Every row used to say "from public/agents/",
+/// including rows for agents written in this browser — the Agents card three
+/// panels below said the opposite about the same agent (11b walk). One rule,
+/// three origins.
+fn origin(agent: &AgentRow, authored: &[(String, String)]) -> String {
+    match (authored.iter().find(|(n, _)| *n == agent.name), agent.builtin) {
+        (Some((_, by)), _) if by.is_empty() => "written in this browser".to_string(),
+        (Some((_, by)), _) => format!("written in this browser by {by}"),
+        (None, true) => "built in to this build".to_string(),
+        (None, false) => "from public/agents/".to_string(),
+    }
 }
 
 /// How long this turn has been running, and what it last called. Both are

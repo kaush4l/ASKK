@@ -18,9 +18,8 @@ use crate::app::{App, Ports};
 use crate::error::CoreError;
 
 /// Feed one event to `agent::step` and log what moved (I8). Sync — thinking
-/// never does I/O. This is the ONLY caller of `step` at runtime, so the wall
-/// between thinking and doing has exactly one door. Returns the effects for
-/// `execute_effect`.
+/// never does I/O. The ONLY caller of `step` at runtime, so the wall between
+/// thinking and doing has one door. Returns the effects for `execute_effect`.
 pub fn pump(app: &mut App, event: Event) -> Vec<Effect> {
     let phase_before = app.agent.phase;
     let state = std::mem::take(&mut app.agent);
@@ -73,9 +72,8 @@ pub fn execute_effect(
                     kind: EventKind::ModelReplied {
                         text,
                         // Whose words these are. Empty is this process's own
-                        // agent — the reply to the call IT made; `summarizer`
-                        // is a compaction, an ordinary agent's turn taken on
-                        // this agent's behalf.
+                        // agent — the reply to the call IT made; `summarizer` is
+                        // a compaction, a turn taken on this agent's behalf.
                         agent: speaker,
                     },
                 })
@@ -86,9 +84,8 @@ pub fn execute_effect(
                 at: clock.now(),
                 kind,
             }),
-            // Tools run against the app (sync) and delegations run as a batch;
-            // both live in `batch.rs`, which is the only caller of this fn's
-            // siblings. See `batch::run_effects`.
+            // Tools run against the app (sync) and delegations as a batch; both
+            // live in `batch.rs`. See `batch::run_effects`.
             Effect::InvokeTool { .. } | Effect::Delegate { .. } => {
                 unreachable!("executed by batch::run_effects")
             }
@@ -109,9 +106,8 @@ pub fn execute_effect(
 pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), CoreError>> {
     Box::pin(async move {
         loop {
-            // The space, re-read before every pass — the reason the clock is
-            // not cached applies twice over: a peer on another Worker may have
-            // written to it since the last turn (Python `Engine.context`).
+            // The space, re-read before every pass: a peer on another Worker may
+            // have written to it since the last turn (Python `Engine.context`).
             crate::space::refresh(&app).await;
             let Some(event) = ({
                 let mut a = app.borrow_mut();
@@ -125,10 +121,9 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             };
             // A message ADDRESSED TO ANOTHER AGENT never enters this engine
             // (increment 07): its turn runs on that agent's own Worker and is
-            // recorded in that agent's own history, so two conversations on
-            // one page cannot cross. This is also why it is not pumped — a
-            // pumped foreign message would put someone else's words into this
-            // agent's paper.
+            // recorded in that agent's own history, so two conversations on one
+            // page cannot cross. It is not pumped for the same reason: a pumped
+            // foreign message puts someone else's words into this agent's paper.
             if let EventKind::UserMessage { text, agent, .. } = &event.kind {
                 let (goal, to) = (text.clone(), agent.clone());
                 let mine = { to.is_empty() || to == app.borrow().me() };
@@ -142,10 +137,10 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
                 let me = app.borrow().me().to_string();
                 app.borrow_mut().set_status(&me, kernel::Status::Working, "");
             }
-            // A command a PERSON typed into the terminal (increment 10). It is
-            // not an agent turn, so it never enters `step`: it runs in this
-            // agent's own workspace, under the same grant, and its result is
-            // the same `ToolInvoked` fact the agent's own calls produce.
+            // A command a PERSON typed into the terminal (increment 10). Not an
+            // agent turn, so it never enters `step`: it runs in this agent's own
+            // workspace, under the same grant, and its result is the same
+            // `ToolInvoked` fact the agent's own calls produce.
             if let EventKind::Custom { kind, payload_json } = &event.kind {
                 if kind == crate::terminal::EXEC_REQUEST {
                     let command = serde_json::from_str::<String>(payload_json)
@@ -155,11 +150,10 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
                 }
                 // The person stopped waiting (11b walk): the turn is over, so
                 // the task is cleared exactly as a failed turn clears it — and
-                // the swap `reconcile` was deferring can land below.
-                // …and only when it is THIS agent's turn that was stopped: a
-                // stop on a Worker's pane ends the wait in the log the page
-                // projects, and clearing the lead's task on it would abandon a
-                // turn nobody asked to end (12b).
+                // the swap `reconcile` was deferring can land below. Only when
+                // the turn that ended is THIS agent's: a stop on a Worker's
+                // pane ends the wait in the log the page projects, and clearing
+                // the lead's task on it would abandon a turn nobody ended (12b).
                 if kind == crate::chat::TURN_STOPPED {
                     let named = crate::chat::stopped_agent(payload_json);
                     if named.is_empty() || named == app.borrow().me() {
@@ -178,13 +172,12 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             };
             crate::batch::run_effects(&app, effects).await;
         }
-        // Quiescent AND no task outstanding: the turn is over, so the next
-        // move is the person's — `Waiting`, which only the entry agent may be
-        // in. The task check matters because the seam spawns a `drive` per
-        // request: while one is awaiting the model, the chat poll starts
-        // another that finds nothing pending, and it would otherwise report the
-        // agent as waiting in the middle of its own turn. And only OUT OF
-        // Working: a raised turn is already `Failed`, with its message.
+        // Quiescent AND no task outstanding: the turn is over, so the next move
+        // is the person's — `Waiting`, which only the entry agent may be in. The
+        // task check matters because the seam spawns a `drive` per request:
+        // while one awaits the model, the chat poll starts another that finds
+        // nothing pending, and it would report the agent as waiting mid-turn.
+        // Only OUT OF Working: a raised turn is already `Failed`, with its why.
         let me = app.borrow().me().to_string();
         let finished = {
             let a = app.borrow();

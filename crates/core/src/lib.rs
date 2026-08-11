@@ -20,6 +20,7 @@ mod dispatch;
 mod error;
 mod failure;
 mod form;
+mod identity;
 mod inspector;
 mod install;
 mod logbook;
