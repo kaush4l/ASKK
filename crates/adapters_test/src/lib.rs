@@ -15,9 +15,11 @@ use kernel::{
 };
 
 mod agents;
+mod shell;
 mod stores;
 
 pub use agents::ScriptedAgents;
+pub use shell::FakeShell;
 pub use stores::{MemBlob, MemKv, MemStore};
 
 pub(crate) fn ready<'a, T: 'a>(value: T) -> BoxFuture<'a, T> {

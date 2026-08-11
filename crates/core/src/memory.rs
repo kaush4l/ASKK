@@ -69,14 +69,23 @@ fn said(who: &str, spec: &agent::AgentSpec, entries: usize, compacted: bool) -> 
             spec.keep_recent
         ),
     };
-    let of = spec.compact_at.max(entries);
+    // The denominator is the TRIGGER, never `max(entries)`: raising it to the
+    // count made the line read "10 of 10 entries … compaction runs at 8" —
+    // two numbers contradicting each other in one sentence, always reading
+    // full, and never showing how close the next compaction was (09 walk,
+    // finding 2). An agent that never compacts has no denominator at all,
+    // because there is nothing to be a fraction of.
+    let held = match spec.compact_at {
+        0 => format!("{entries} entries"),
+        at => format!("{entries} of {at} entries"),
+    };
     match compacted {
         true => format!(
-            "Working memory: {entries} of {of} entries — the oldest turns are now a summary \
+            "Working memory: {held} — the oldest turns are now a summary \
              the summarizer wrote; {rule}. Nothing was lost: the transcript below still \
              holds every turn."
         ),
-        false => format!("Working memory: {entries} of {of} entries, every turn in full — {rule}."),
+        false => format!("Working memory: {held}, every turn in full — {rule}."),
     }
 }
 

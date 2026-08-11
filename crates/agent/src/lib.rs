@@ -24,6 +24,7 @@ mod supervisor;
 mod toolbox;
 mod tools;
 mod window;
+mod workspace;
 
 pub use calls::{has_calls, parse_batches, Call};
 pub use effect::Effect;
@@ -38,6 +39,7 @@ pub use paper::adopt_spec;
 pub use now::environment;
 pub use window::{compacted, due, set_window, transcript, window, SUMMARY_HEADING};
 pub use space::{is_space_tool, space_tools, Change, Space, NOTE_LIMIT};
+pub use workspace::{is_workspace_tool, relative_path, workspace_tools};
 pub use spec::{load_agents, parse_agent_file, AgentSpec};
 pub use state::{AgentState, PlanStep};
 pub use reply::{parse_reply, ParsedReply};

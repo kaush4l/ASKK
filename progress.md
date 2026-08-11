@@ -22,6 +22,7 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 | 07b | `ux-walker` FAILED 07: the crossed projection, the global composer lock, invisible tab labels — plus three lower-severity findings from the same walk | 83 green (78 + 5: one read names one agent, one agent's turn does not report another busy, two agents in flight at once, a rebooting Worker does not erase a failure, an old record does not replay Rust debug syntax) | fresh install, real omlx on 8873 (127.0.0.1:8901 → dist): started a turn on `main`, clicked `summarizer` mid-turn and polled 1 s × 10 — heading, pane `aria-label`, agent-header line and composer label all read `summarizer` and the transcript stayed empty every tick, never crossed; with `main` mid-turn `summarizer`'s composer was live (`inputDisabled:false`, Send reads "Send") and a second turn ran to a real gemma answer while `main`'s was still running; tab labels compute 16:1 on the body background (was 1.02:1); a sub-agent whose only turn failed still reads `failed` after a reload and after its Worker re-boots; an `agent_error` record injected in the OLD shape (`JsValue("researcher: …")`) renders as `researcher: The model endpoint could not be reached.` — one speaker, no wrapper; saving a new endpoint restarts every Worker with no `closed` row | ⬜ pending `ux-walker` | `304e1a4` | Live at https://kaush4l.github.io/ASKK/. 07's row was a FAIL — this row is the answer to it, and 07 does not close until this one is walked. HOSTED, after wiping the service worker, caches and IndexedDB (the walker was served a stale build ~4 min after the deploy; the bundle hash in `index.html` is the check — `ui-cc88c6ef827508a2.js` matches `dist/`): the same walk passes — `main` mid-turn against a black-holed endpoint, `summarizer` never crossed over 10 polls, both boards read `working` AT ONCE (`main:working`, `summarizer:working`), which is the "two at once" 06 and 07 could not demonstrate through the interface at all; after both turns failed a reload left `main:failed` AND `summarizer:failed` — a Worker agent and the page's own agent now mean the same thing on a fresh load. WHAT CHANGED: the pane renders from ONE value (`turn::Shown { who, html, pending }`) and shows a transcript only while `who` is the selected agent, so a heading and a body from different agents is not expressible; a turn's poller belongs to the agent it started on and returns the moment the selection moves; in-flight is per agent, read from that agent's own `x-turn`; `.agent-tabs .tab` re-states `color: var(--ink)` (it had inherited `button`'s ink for a background it no longer has); `core::report_agent` refuses to let a `Starting`/`Idle` reboot report overwrite a `Failed` row — a reboot is not an outcome; `failure::readable` strips an older build's `JsValue("…")` wrapper and the duplicated speaker name at RENDER time, so records already written stay readable; `close_all` no longer writes `Closed`, which was assigned and replaced in one tick and could never be seen (the variant stays in `kernel` because logs written by the 07 build carry it and a replay that cannot deserialize refuses boot). |
 | 08 | Per-agent logs, the rolling window and the built-in summarizer — plus the three 07b walk findings | 93 green (83 + 6 window/compaction + 4 per-agent log) | fresh install, real omlx on 8873: four turns drove `main` past `compact_at: 8` and the SUMMARIZER AGENT compacted it live — the window went 7 → 5 with `data-compacted="true"`, and the stored `log/main/*` in IndexedDB is exactly that window (summary + `keep_recent: 3` tail); a reload rebuilt the same 5; `researcher` did the same INSIDE ITS OWN WORKER against its own database (`harness-agent-researcher`, `log/researcher/*`), compacted at 6, and after a page reload its next turn continued from the restored window rather than an empty paper; the ARIA tablist answers ArrowLeft/Right (wrapping), Home and End with a roving tabindex | ⬜ pending `ux-walker` | `87780ee` | Live at https://kaush4l.github.io/ASKK/. HOSTED (bundle hash in `index.html` checked against `dist/` — `ui-5f603ad7507e1067.js`, matched on the third poll): `crossOriginIsolated: true`, three tabs read `tab, main, selected` to a screen reader, the memory line renders, and BOTH failures at the loopback boundary now render as the SAME card — `main`'s and `researcher`'s are byte-identical sentences with the identical `Technical detail for failure 1 — the endpoint was unreachable` disclosure, the sub-agent's carrying the typed payload its Worker sent across `postMessage`. With every stylesheet removed the current tab reads `▸ **researcher**` while the others are plain. NOT demonstrated hosted: a live compaction — it needs a reachable model, and the hosted page still dies on Chrome's Local Network Access gate (02's row). **CORRECTED by 09:** the hosted bundle for this row was `ui-879974ab6513cd49.js` (gh-pages `deploy 87780ee`); `ui-5f603ad7507e1067.js` above is 07b's bundle, written into the 08 row by mistake — the row's verdict stands, the hash did not. |
 | 09 | Shared spaces: facts, an attributed noticeboard and a named workspace, one space across Workers — plus the six memory findings from the 08 walk and the ledger correction | 109 green (93 + 9 space rules on the host + 5 through the whole seam with two Apps on one store + 2 memory line) | fresh install, real omlx on 8873 (127.0.0.1:8901 → dist): `main` delegated to `researcher` with the goal 'record omlx port = 8873 with remember, then post_note', and the Shared space panel went `0f/0n → 1f/1n` WHILE `researcher` was still `working` — a write from another Wasm instance, seen with nobody told to look; `researcher`'s turn count moved 0 → 1, so the fact was recorded by the sub-agent and not by the lead. The next turn — "what port is omlx on, and what note did the researcher leave? Both are in the CONTEXT block" — answered `The omlx port is 8873, and the researcher left the note "checked the models endpoint."` with `researcher` still at 1 turn and the tool-call count still at 1: answered from CONTEXT, delegating to nobody. The note renders `[researcher] checked the models endpoint.` — attributed by the tool, never by the model. Four turns on `researcher` then crossed its `compact_at: 6`: its pane read `Working memory: 4 of 6 entries — the oldest turns are now a summary the summarizer wrote; compaction runs at 6 entries and keeps the newest 2. Nothing was lost: the transcript below still holds every turn.`, with the summary itself readable behind `The summary that replaced the oldest turns for researcher`. | ⬜ pending `ux-walker` | `9bd5523` | Live at https://kaush4l.github.io/ASKK/ — hosted bundle `ui-8b9480ef9f17ddd4.js`, matching `dist/` and `gh-pages deploy 7a21cbf`. HOSTED, after wiping IndexedDB, caches and the service worker: `crossOriginIsolated: true`, no console errors, six panels including **Shared space**, and the four databases the design implies (`harness`, `harness-agent-researcher`, `harness-agent-summarizer`, `harness-spaces`). A model is still unreachable from the hosted origin (02's row), so the hosted walk goes up to the loopback boundary: a fact and a note written into `harness-spaces` FROM PAGE JS — outside the Wasm instance entirely, which is exactly what another Worker is — appeared in the inspector within one pass (`1f/1n`, `[researcher] wrote this from another context`) and survived a reload. The Agents card lists `remember, forget, post_note` in both agents' resolved toolboxes, so it cannot disagree with what the model is told. |
+| 10 | The Alpine workspace: CheerpX behind `WorkspacePort`, an `exec` toolbox gated on the agent's space, a Terminal pane, and the five findings from the 09 walk | 122 green (109 + 6 workspace rules on the host against a fake shell + 3 walk findings + 3 pure unit tests, +1 in-place: a typed command must not read as a turn) | LOCAL (127.0.0.1:8901 → dist, COI on): first command in a fresh page with an empty overlay boots the Linux and returns in **2.2–4.2 s** — `uname -a` → `Linux 4.15.0-54-cheerpx i386 Linux`; after a reload, with the overlay already in IndexedDB, boot **and** the command take **1.2 s**. `awk 'BEGIN{s=0;for(i=0;i<3000000;i++)s+=i;print s}'` runs in **6.1 s** in the VM (twice, warm, ±0.05 s) against **0.073 s** natively — **≈84×**. With the real omlx on 8873 the AGENT wrote a file: `write_file({"path": "agent-note.md", "contents": "increment 10 works."})` → `wrote agent-note.md`, and after a reload `ls -l; cat agent-note.md` showed it still there beside the `proof.txt` written from the terminal. | ✅ HOSTED, walked here: boot + `uname -a` + `echo hosted-proof > hosted.txt` in **2.2 s** on the deployed page, then a full reload and `cat hosted.txt` → `hosted-proof` in **1.2 s**. `crossOriginIsolated: true`, no console errors, the CheerpX credit visible in the pane. | `TBD` | Live at https://kaush4l.github.io/ASKK/ — hosted bundle `ui-b8f5f684d2845a26_bg.wasm`, sha256 `03c67b83…6ea13b`, byte-identical to `dist/`. The VM has nothing to do with the model endpoint, so unlike every row since 02 the hosted journey is the WHOLE journey. **The engine is 1.3.1, not the 1.2.8 the research quoted**: with 1.2.8 `CheerpX.Linux.create` never resolved on this Alpine image — measured twice at a 120 s timeout, no error, no console output; 1.3.1 mounts the same image in 2.2 s. A sub-agent's Worker has no workspace and says so (see Decisions). |
 
 ## Parity with the Python project
 
@@ -52,7 +53,7 @@ feature "exists".
 | — | Chat with any agent individually | ✅ |
 | — | Agents hot-reloaded from `public/agents/` | ✅ |
 | — | New agents added in the browser, persisted, exportable | ⬜ |
-| — | Alpine workspace: run a command, write a file, survive a refresh | ⬜ |
+| — | Alpine workspace: run a command, write a file, survive a refresh | ✅ |
 
 Dropped deliberately (not parity failures): `core/cron.py` — no crontab in a tab. MCP subprocesses —
 they are `node` inside the VM, priced after increment 10.
@@ -586,3 +587,87 @@ they are `node` inside the VM, priced after increment 10.
   reachable model, which the hosted origin does not have (02's row); the hosted walk goes to the
   loopback boundary and proves the sharing with a write made from outside the Wasm instance. The
   space's files (`spaces/<name>/`) are still only a path in a prompt.
+
+### Increment 10
+
+- **`WorkspacePort` is a port, so the agent core never learns that Linux exists.** `exec` is the
+  only method an adapter must write; `read`, `write` and `list` are DEFAULTS built on it (`cat`,
+  a base64 `printf | base64 -d`, `ls -1A`), because reading a file in a Unix is a command and three
+  more adapter methods would be three more things to get right. `FakeShell` overrides those three —
+  there is no shell on the host — so the exec tool, its gate, its path rule and its degradation all
+  test with `cargo test` and no browser (I3).
+- **The capability gate is the SPACE.** Increment 09 shipped `spaces/<name>` as a path "named; not
+  writable from this browser yet"; naming a space now attaches `exec`, `read_file`, `write_file` and
+  `list_files` on top of the space's own three, and the grant (`CapabilityGrant::Workspace { root }`)
+  carries the folder. An agent with no space is never handed the tools at all — default deny is
+  structural, not a runtime check — and a person typing into the Terminal meets the same gate in
+  `core::workspace::grant`, which is the one definition of who may run a command (ADR-006, I6).
+- **The model never names the root.** It writes paths relative to the workspace and `relative_path`
+  REFUSES one that starts with `/` or contains `..` rather than clamping it: a silently rewritten
+  path writes a file the agent cannot find, and the refusal is what lets it correct itself.
+- **CheerpX 1.3.1, and the version is load-bearing.** The plan quoted `1.2.8/cx.js` from WebVM's
+  own page. With 1.2.8 and `alpine_20251007.ext2`, `CloudDevice`, `IDBDevice` and `OverlayDevice`
+  all resolve in ~350 ms and `Linux.create` then hangs forever — twice, at a 120 s timeout, with no
+  error and nothing on the console. 1.3.1 mounts the identical image in 2.2 s. The engine and the
+  disk are published separately, so the PAIR is pinned; neither is pinned to "latest".
+- **No `/sbin/init`, no display, no login.** WebVM's Alpine config boots init and wants a terminal;
+  nothing here does. Every command is a direct `cx.run("/bin/sh", ["-c", …])` with `cwd`, `uid` and
+  `gid` supplied, which is why the first shell is 2 s and not a boot sequence. Alpine over their
+  Debian for the same reason: busybox is one binary, so fewer disk blocks have to stream before
+  `sh` can run.
+- **The overlay IS the workspace.** `CloudDevice` (read-only base image, streamed over `wss://` —
+  never downloaded, the 1.5 GB image is why that matters) under an `IDBDevice`, in an
+  `OverlayDevice`. Every write lands in IndexedDB under `cjFS_/askk-workspace/`, which is what makes
+  "the file is still there after a reload" true, hosted, on a static page with no server.
+- **It boots on the first command and not before.** Nothing — engine, disk, worker — is fetched on
+  a page load that never runs anything; `cx.js` is injected by the adapter, not by a `<script>` tag
+  in `index.html`. The pane says a boot is happening in words rather than leaving a person watching
+  an unchanged panel.
+- **The credit is a feature, not a footnote.** The CheerpX Community Licence covers this use
+  ("individuals … any personal projects") with the action point "give appropriate credits", and
+  self-hosting the RUNTIME would need a commercial licence — so the engine loads from
+  `cxrtnc.leaningtech.com` (which sends `cross-origin-resource-policy: cross-origin`, satisfying
+  COEP) and the Terminal pane carries a visible credit to CheerpX / Leaning Tech and to WebVM for
+  the disk image.
+- **A sub-agent's Worker has no workspace, and says so.** A Worker has no `document` to load the
+  engine into, and two `OverlayDevice`s over one IndexedDB cache would be two writers on one disk.
+  The same adapter is injected there and refuses in words — "No workspace is available here: the
+  workspace runs in the page, not in an agent's Worker" — rather than quietly corrupting the page's.
+  Routing a Worker's exec back to the page is not done; `researcher`'s file says so in its own words.
+- **The Terminal is a projection, not a widget** (I8). One scrollback holds the agent's `exec` calls
+  and the commands a person typed, in log order, read back from the stored log — which is why it is
+  still there after a reload even when the VM is not. A typed command emits `core.exec_request` and
+  runs in the async half, exactly as a model call does, because the seam is synchronous by design.
+- **Found by walking this increment: a typed command read as a TURN.** `ToolInvoked` set the chat
+  pane's `awaiting` flag unconditionally, so running a command yourself left the composer disabled
+  and "thinking…" under the transcript for the rest of the session, over a turn nobody had started.
+  Inside a turn that flag is already true, so the arm had nothing to set; it now sets nothing.
+- **Finding 1 (09), closed at the root.** A failed compaction is not a failed turn. `failure::record`
+  is the one place a failed effect lands, and when the agent is compacting it records
+  `core.compaction_failed` and FEEDS IT BACK instead of `core.error`; `step` clears `compacting` and
+  takes the turn that was actually asked for. Before: exactly one request went out — the
+  summarisation — the user's question was never put to the agent, and its failure was shown as the
+  user's own turn failing. Pinned by asserting on the model calls themselves: three calls, the third
+  one carrying the question, the answer in the transcript, the window untouched (so the next turn
+  retries), and a `role="status"` line naming the background summarisation.
+- **Finding 2, closed.** The denominator is the TRIGGER (`spec.compact_at`), never `max(entries)` —
+  "10 of 10 entries … compaction runs at 8" was two numbers contradicting each other in one
+  sentence, always reading full. An agent that never compacts gets no denominator at all.
+- **Findings 3 and 5, closed.** `/space` and `/tools` take the same `x-agent` header `/chat` has
+  taken since 07. The space pane reads the SELECTED agent's own `space:` key, so `summarizer` is
+  told it works alone instead of being shown `research`; an agent in a different space is named
+  without its facts being guessed. The tool trace says a peer's calls are recorded in its own Worker
+  rather than showing it five calls it never made.
+- **Finding 4, closed twice over.** `post_note` refuses an identical line in words ("That note is
+  already on the research board") rather than putting the same sentence in every agent's prompt
+  twice, and the inspector renders the author as an element with `data-author`, not as four
+  characters inside the sentence. The stored line keeps its `[main] ` prefix, because that is what
+  the model reads.
+- **`spikes/vm/index.html` did not exist** — only `spikes/vm/sw.js`, already promoted to `web/` in
+  01. Nothing was left dangling.
+- **Not done here:** a sub-agent cannot run a command (above). The VM is one per PAGE, so two tabs
+  would be two overlays over one IndexedDB cache — the same hazard, unguarded. `read_file` on a
+  binary file returns whatever `cat` writes to the console. Every seam request appends a
+  `RequestHandled` fact, and the Terminal's 700 ms watch makes that visible: a long boot writes
+  hundreds of them. That is pre-existing (the chat and space panes poll too) and is a log-retention
+  question, not this increment's.

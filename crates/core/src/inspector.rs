@@ -39,7 +39,12 @@ pub(crate) fn manifest() -> Manifest {
 /// Named ONLY from `dispatch::builtin_entry` (ADR-004).
 pub(crate) fn space(req: &Request, ctx: &mut Ctx) -> Response {
     match (req.method.as_str(), req.path.as_str()) {
-        ("GET", "/space") => panel(ctx),
+        // WHOSE space (09 walk, finding 3): the pane was global, so selecting
+        // the one agent with no space still showed "Space: research".
+        ("GET", "/space") => panel(ctx, match req.header("x-agent").unwrap_or_default() {
+            "" => &ctx.me,
+            named => named,
+        }),
         _ => error_fragment(404, "space: unknown subroute"),
     }
 }
@@ -48,14 +53,39 @@ fn line(class: &str, text: &str) -> Fragment {
     FragmentBuilder::new("p").class(class).text(text).build()
 }
 
-fn panel(ctx: &Ctx) -> Response {
-    let Some(space) = &ctx.space else {
+fn panel(ctx: &Ctx, who: &str) -> Response {
+    // The space a person is asking about is the SELECTED agent's, read from
+    // its own file. The contents shown are this page's read of the store, so
+    // an agent in a DIFFERENT space is named without its facts being guessed.
+    let named = ctx
+        .agents
+        .iter()
+        .find(|s| s.name == who)
+        .map(|s| s.space.trim().to_string())
+        .unwrap_or_default();
+    if named.is_empty() {
         return html(
             200,
             line(
                 "pending",
-                "This agent's file names no space, so it works alone. Add `space: <name>` \
-                 to public/agents/<agent>/agent.md to put it in one.",
+                &format!(
+                    "{who}'s file names no space, so it works alone. Add `space: <name>` \
+                     to public/agents/{who}/agent.md to put it in one."
+                ),
+            )
+            .into_html(),
+        );
+    }
+    let Some(space) = ctx.space.as_ref().filter(|s| s.name == named) else {
+        return html(
+            200,
+            line(
+                "pending",
+                &format!(
+                    "{who} works in the {named} space. This page reads the {} space, so \
+                     what is in {named} is not shown here.",
+                    ctx.space.as_ref().map(|s| s.name.clone()).unwrap_or_else(|| "no".into())
+                ),
             )
             .into_html(),
         );
@@ -66,20 +96,22 @@ fn panel(ctx: &Ctx) -> Response {
     );
     let panel = FragmentBuilder::new("div")
         .id("space")
+        .attr("data-agent", who)
         .attr("data-space", &space.name)
         .attr("data-facts", &space.facts.len().to_string())
         .attr("data-notes", &space.notes.len().to_string())
         .child(line(
             "space-name",
             &format!(
-                "Space: {} — shared with every agent whose file names it.",
+                "Space: {} — {who} works here, with every other agent whose file names it.",
                 space.name
             ),
         ))
         .child(line(
             "space-path",
             &format!(
-                "Workspace: {} — named, not writable from this browser yet.",
+                "Workspace: {} — a real folder in the Linux below. What is written there \
+                 survives a reload.",
                 space.path()
             ),
         ))
@@ -109,6 +141,31 @@ fn facts(space: &Space) -> Fragment {
         .build()
 }
 
+/// One note, with its AUTHOR as an element rather than as four characters
+/// inside the sentence. The stored line is `[main] …` because that is what the
+/// model must read in its prompt; a person scanning a column of them could not
+/// find who wrote what (09 walk, finding 4), so here the name is marked up,
+/// carried on `data-author`, and the note reads as a note.
+fn note_row(note: &str) -> Fragment {
+    let split = note
+        .strip_prefix('[')
+        .and_then(|rest| rest.split_once("] "))
+        .map(|(author, said)| (author.to_string(), said.to_string()));
+    let Some((author, said)) = split else {
+        return FragmentBuilder::new("li").text(note).build();
+    };
+    FragmentBuilder::new("li")
+        .attr("data-author", &author)
+        .child(
+            FragmentBuilder::new("span")
+                .class("note-author")
+                .text(&format!("{author}: "))
+                .build(),
+        )
+        .child(FragmentBuilder::new("span").class("note-said").text(&said).build())
+        .build()
+}
+
 /// The noticeboard, oldest first — each note already carries the name of the
 /// agent that left it, because the tool bound the author, not the model.
 fn notes(space: &Space) -> Fragment {
@@ -117,7 +174,7 @@ fn notes(space: &Space) -> Fragment {
     }
     let mut list = FragmentBuilder::new("ul").class("space-notes");
     for note in &space.notes {
-        list = list.child(FragmentBuilder::new("li").text(note).build());
+        list = list.child(note_row(note));
     }
     FragmentBuilder::new("section")
         .attr("aria-label", "Recent notes")

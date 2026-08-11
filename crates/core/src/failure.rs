@@ -42,6 +42,73 @@ pub(crate) fn card(sentence: &str, kind: &str, detail: &str, nth: usize) -> Frag
         .build()
 }
 
+/// A background summarisation that failed, said as what it is: the older
+/// turns were not compacted, the conversation continued in full, and the next
+/// turn will try again. Same disclosure shape as every other failure, so the
+/// cause is one click away — but no `msg error` card, because the turn the
+/// person asked for did not fail.
+pub(crate) fn compaction_failed(payload_json: &str, nth: usize) -> Fragment {
+    FragmentBuilder::new("div")
+        .class("msg pending")
+        .attr("role", "status")
+        .child(
+            FragmentBuilder::new("p")
+                .text(
+                    "A background summarisation of the older turns failed, so nothing was \
+                     summarised and this turn ran with the whole history. It will be tried \
+                     again on the next turn.",
+                )
+                .build(),
+        )
+        .child(
+            FragmentBuilder::new("details")
+                .child(
+                    FragmentBuilder::new("summary")
+                        .text(&format!(
+                            "Technical detail for failure {nth} — {}",
+                            failure_kind(payload_json)
+                        ))
+                        .build(),
+                )
+                .child(FragmentBuilder::new("pre").text(payload_json).build())
+                .build(),
+        )
+        .build()
+}
+
+/// A failed effect, recorded. Two kinds of failure meet here:
+///
+/// - a failed COMPACTION is not a failed turn. The Python warns and carries on
+///   ("summarizer returned nothing, keeping the history"); reporting it as the
+///   user's own failure dropped the question they asked — one request went
+///   out, none of it was theirs, and nothing said a background summarisation
+///   had failed (09 walk, finding 1). Its own kind, fed back, so `step` takes
+///   the turn that was actually asked for;
+/// - anything else raised the TURN. The Python marks the agent Failed and
+///   records the message (`ThreadedAgent.invoke`); without that the entry
+///   agent stays Working forever on the board — the one status a person reads
+///   as "still going".
+pub(crate) fn record(app: &mut crate::app::App, e: crate::error::CoreError) {
+    let payload_json =
+        serde_json::to_string(&e).unwrap_or_else(|_| "\"unserializable error\"".into());
+    if app.agent.compacting {
+        let event = app.append(kernel::EventKind::Custom {
+            kind: "core.compaction_failed".into(),
+            payload_json,
+        });
+        app.pending.push(event);
+        return;
+    }
+    app.append(kernel::EventKind::Custom {
+        kind: "core.error".into(),
+        payload_json,
+    });
+    app.agent.task = None;
+    let message = sentence(&e);
+    let me = app.me().to_string();
+    app.set_status(&me, kernel::Status::Failed, &message);
+}
+
 /// The same actionable sentence, for a caller that has the typed error rather
 /// than its JSON — the board's failure detail. One definition, so the board
 /// and the transcript cannot say different things about one failure.

@@ -51,6 +51,7 @@ fn booted(replies: &[&str], agents: Rc<ScriptedAgents>) -> Rc<RefCell<App>> {
         clock: Rc::new(FixedClock::at(Timestamp(1_753_800_000_000))),
         rng: Rc::new(SeededRng::seeded(7)),
         spaces: Rc::new(adapters_test::MemKv::new()),
+        workspace: Rc::new(adapters_test::FakeShell::new()),
         agents,
     };
     let mut app = block_on(boot(ports)).expect("boot succeeds");

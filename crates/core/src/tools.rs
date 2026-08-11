@@ -44,7 +44,13 @@ pub(crate) fn manifest() -> Manifest {
 /// Named ONLY from `dispatch::builtin_entry` (ADR-004).
 pub(crate) fn tools(req: &Request, ctx: &mut Ctx) -> Response {
     match (req.method.as_str(), req.path.as_str()) {
-        ("GET", "/tools") => crate::trace::trace(ctx),
+        // WHOSE calls (09 walk, finding 5): the pane was global, so the
+        // summarizer's tab showed five calls it never made. Same `x-agent`
+        // header the chat route already takes.
+        ("GET", "/tools") => crate::trace::trace(ctx, match req.header("x-agent").unwrap_or_default() {
+            "" => &ctx.me,
+            named => named,
+        }),
         _ => error_fragment(404, "tools: unknown subroute"),
     }
 }

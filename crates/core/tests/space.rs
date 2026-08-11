@@ -102,6 +102,7 @@ fn booted_at(
         clock,
         rng: Rc::new(SeededRng::seeded(7)),
         spaces,
+        workspace: Rc::new(adapters_test::FakeShell::new()),
         agents: Rc::new(ScriptedAgents::none()),
     };
     let mut app = block_on(boot(ports)).expect("boot succeeds");
@@ -142,8 +143,8 @@ fn a_fact_one_agent_records_is_in_the_other_agents_prompt() {
     assert!(prompt.contains("omlx port: 8873"), "the fact reached the model: {prompt}");
     assert!(prompt.contains("space: research"), "{prompt}");
     assert!(
-        prompt.contains("workspace: spaces/research"),
-        "the workspace is NAMED, even before it is writable: {prompt}"
+        prompt.contains("workspace: /root/spaces/research"),
+        "the workspace is a real folder now, and the prompt says where: {prompt}"
     );
     // And nobody was delegated to: the answer came out of CONTEXT.
     let log = core::log_kinds(&main.borrow());
@@ -242,9 +243,15 @@ fn forget_removes_the_key_and_reports_plainly_the_second_time() {
 #[test]
 fn fifty_racing_writes_leave_the_store_valid_and_in_agreement() {
     let shared: Rc<dyn KvStore> = Rc::new(SlowKv::default());
-    let script: Vec<&str> = (0..50)
-        .map(|_| "post_note({\"note\": \"working\"})")
-        .flat_map(|call| [call, "posted"])
+    // Every note DIFFERENT, because identical notes are now one note (09
+    // walk, finding 4) and the race this test exists for is about two writers
+    // racing for a key, not about the dedupe.
+    let calls: Vec<String> = (0..50)
+        .map(|i| format!("post_note({{\"note\": \"working {i}\"}})"))
+        .collect();
+    let script: Vec<&str> = calls
+        .iter()
+        .flat_map(|call| [call.as_str(), "posted"])
         .collect();
     let clock: Rc<dyn kernel::ClockPort> = Rc::new(StepClock::default());
     let main = booted_at("main", Recorder::with(&script), Rc::clone(&shared), Rc::clone(&clock));
@@ -269,7 +276,7 @@ fn fifty_racing_writes_leave_the_store_valid_and_in_agreement() {
     for key in &keys {
         let value = block_on(shared.get(key)).expect("readable").expect("present");
         assert!(
-            value == "[main] working" || value == "[researcher] working",
+            value.starts_with("[main] working ") || value.starts_with("[researcher] working "),
             "every note is valid and attributed: {value}"
         );
         stored.push(value);
@@ -279,10 +286,20 @@ fn fifty_racing_writes_leave_the_store_valid_and_in_agreement() {
 
     // …and in agreement with memory: both agents, refreshed, show the same
     // twenty notes the store holds.
+    // The two panes differ only in WHOSE space they say it is (09 walk,
+    // finding 3): the notes they show are the same twenty, because it is one
+    // space seen from two agents.
     let (a, b) = (inspector(&main), inspector(&sub));
-    assert_eq!(a, b, "two agents, one space");
-    assert_eq!(a.matches("<li>").count(), 20, "{a}");
+    let notes = |html: &str| html.split("<ul").nth(1).unwrap_or_default().to_string();
+    assert_eq!(notes(&a), notes(&b), "two agents, one space");
+    assert!(a.contains("data-agent=\"main\""), "{a}");
+    assert!(b.contains("data-agent=\"researcher\""), "{b}");
+    assert_eq!(a.matches("<li ").count(), 20, "{a}");
     for note in &stored {
-        assert!(a.contains(note.as_str()), "{note} is missing from {a}");
+        let (author, said) = note.trim_start_matches('[').split_once("] ").expect("attributed");
+        assert!(
+            a.contains(&format!("data-author=\"{author}\"")) && a.contains(said),
+            "{note} is missing from {a}"
+        );
     }
 }

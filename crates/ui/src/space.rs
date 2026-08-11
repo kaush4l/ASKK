@@ -15,19 +15,33 @@ use kernel::Request;
 const TICK_MS: i32 = 2000;
 
 #[component]
-pub fn SpaceInspector(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element {
+pub fn SpaceInspector(
+    web: Signal<Option<Rc<WebApp>>>,
+    tick: Signal<u32>,
+    /// WHOSE space (09 walk, finding 3). The pane was global, so selecting
+    /// the one agent with no space still showed "Space: research" — the same
+    /// `x-agent` addressing every other per-agent read uses.
+    agent: ReadSignal<String>,
+) -> Element {
     let mut panel = use_signal(String::new);
+    let read = move || match web.peek().clone() {
+        Some(app) => app
+            .handle(Request::get("/space").with_header("x-agent", &agent()))
+            .body,
+        None => String::new(),
+    };
     use_effect(move || {
-        let _ = tick();
-        let Some(app) = web.read().clone() else { return };
-        panel.set(app.handle(Request::get("/space")).body);
+        let _ = (tick(), agent());
+        if web.read().is_none() {
+            return;
+        }
+        panel.set(read());
         spawn(async move {
             loop {
                 if sleep(TICK_MS).await.is_err() {
                     return;
                 }
-                let Some(app) = web.peek().clone() else { return };
-                panel.set(app.handle(Request::get("/space")).body);
+                panel.set(read());
             }
         });
     });

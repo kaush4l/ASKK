@@ -23,6 +23,8 @@ pub enum CapabilityId {
     Rng,
     /// Append a Custom event to the log.
     Emit,
+    /// Run commands in a workspace, rooted at one directory (ADR-013).
+    Workspace,
 }
 
 /// One scoped grant (ADR-006 Option B). The scope rides the grant so the
@@ -49,6 +51,12 @@ pub enum CapabilityGrant {
     Clock,
     Rng,
     Emit,
+    /// A workspace confined to ONE directory. The root rides the grant, so a
+    /// command runs where the grant says and nowhere else — the model names a
+    /// path relative to it and can never name the root itself (I6).
+    Workspace {
+        root: String,
+    },
 }
 
 impl CapabilityGrant {
@@ -62,6 +70,7 @@ impl CapabilityGrant {
             CapabilityGrant::Clock => CapabilityId::Clock,
             CapabilityGrant::Rng => CapabilityId::Rng,
             CapabilityGrant::Emit => CapabilityId::Emit,
+            CapabilityGrant::Workspace { .. } => CapabilityId::Workspace,
         }
     }
 }

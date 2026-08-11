@@ -1,9 +1,7 @@
 //! Spaces (Python `core/space.py`): a folder agents build in, and the state
-//! they share while doing it. Pure — this file holds the space's *decisions*
-//! (what a name may be, what replaces what, what the model is shown, what the
-//! agent is told back); the bytes are moved by `core::space` through the
-//! store, because in a browser the "same object for every agent" cannot be an
-//! object at all.
+//! they share while doing it. Pure — this file holds the space's *decisions*;
+//! the bytes are moved by `core::space` through the store, because in a
+//! browser "the same object for every agent" cannot be an object at all.
 //!
 //! That is the one place the port is not a transliteration. The Python hands
 //! every agent naming `research` the SAME `Space` instance and takes a lock
@@ -61,18 +59,21 @@ impl Space {
         })
     }
 
-    /// The folder this space's agents share. Increment 10 makes it writable;
-    /// until then it is a name, and the prompt says so rather than promising a
-    /// disk that is not there.
+    /// The folder this space's agents share, as a path in the workspace's own
+    /// Linux (increment 10). It is under `/root` because that is where the
+    /// image puts a home; the model never writes this path itself — it names
+    /// files relative to it and the grant supplies the root (I6).
     pub fn path(&self) -> String {
-        format!("spaces/{}", self.name)
+        format!("/root/spaces/{}", self.name)
     }
 
     /// The space as CONTEXT lines — what goes into the prompt, as of right
     /// now. Empty areas render nothing at all (Python `Space.context`).
     pub fn context(&self) -> String {
         let mut out = format!(
-            "space: {}\nworkspace: {} (named; not writable from this browser yet)",
+            "space: {}\nworkspace: {} (a real folder in a Linux running in this browser \
+             — reach it with exec, read_file, write_file and list_files; what you write \
+             there is still there after a reload)",
             self.name,
             self.path()
         );
@@ -140,6 +141,14 @@ impl Space {
             return ("Nothing posted: the note was empty.".into(), None);
         }
         let line = format!("[{author}] {note}");
+        // The same note twice is one fact: the board is read inside every
+        // agent's prompt (09 walk). Told plainly, so nobody thinks it landed.
+        if self.notes.contains(&line) {
+            return (
+                format!("That note is already on the {} board.", self.name),
+                None,
+            );
+        }
         self.notes.push(line.clone());
         self.trim();
         (

@@ -10,13 +10,22 @@ use dioxus::prelude::*;
 use kernel::Request;
 
 #[component]
-pub fn ToolTrace(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element {
+pub fn ToolTrace(
+    web: Signal<Option<Rc<WebApp>>>,
+    tick: Signal<u32>,
+    /// WHOSE calls (09 walk, finding 5): the pane was global, so the
+    /// summarizer's tab showed five tool calls it never made.
+    agent: ReadSignal<String>,
+) -> Element {
     let mut trace = use_signal(String::new);
     // Re-projected whenever a turn moves; the pane holds no state of its own.
     use_effect(move || {
         let _ = tick();
         if let Some(app) = web.read().clone() {
-            trace.set(app.handle(Request::get("/tools")).body);
+            trace.set(
+                app.handle(Request::get("/tools").with_header("x-agent", &agent()))
+                    .body,
+            );
         }
     });
     rsx! {

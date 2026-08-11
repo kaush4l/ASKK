@@ -17,6 +17,7 @@ mod board;
 mod chat;
 mod composer;
 mod tabs;
+mod terminal;
 mod tools;
 mod turn;
 mod settings;
@@ -118,8 +119,9 @@ fn shell() -> Element {
                 tabs::AgentTabs { loaded, selected }
                 chat::ChatPane { web, endpoint_set, tick, agent: selected }
                 board::AgentBoard { web, tick }
-                space::SpaceInspector { web, tick }
-                tools::ToolTrace { web, tick }
+                space::SpaceInspector { web, tick, agent: selected }
+                terminal::Terminal { web, tick }
+                tools::ToolTrace { web, tick, agent: selected }
                 {agent_panel(agents)}
                 settings::Settings { web, endpoint_set, tick }
             }

@@ -25,8 +25,11 @@ pub fn toolbox_for(spec: &AgentSpec, peers: &[AgentSpec]) -> Toolbox {
     // A space's three tools are attached to whoever NAMES the space, on top of
     // the declared list rather than inside it: writing them out under `space:`
     // would only be a second place to keep in step (Python `utils.load_agent`).
+    // …and its WORKSPACE tools with them (increment 10): the folder is the
+    // space's, so the capability to build in it arrives with the space and
+    // with nothing else. No space, no workspace — default deny (ADR-006).
     let space = match crate::space::Space::named(&spec.space) {
-        Some(_) => crate::space::space_tools(),
+        Some(_) => [crate::space::space_tools(), crate::workspace::workspace_tools()].concat(),
         None => Vec::new(),
     };
     if spec.tools.is_empty() {

@@ -11,8 +11,27 @@ use crate::dispatch::{html, Ctx};
 
 /// The trace: every call this session, in log order, with its arguments and
 /// what came back. A projection of the log and nothing else (I8).
-pub(crate) fn trace(ctx: &Ctx) -> Response {
-    let mut list = FragmentBuilder::new("div").id("tool-trace");
+pub(crate) fn trace(ctx: &Ctx, who: &str) -> Response {
+    let mut list = FragmentBuilder::new("div")
+        .id("tool-trace")
+        .attr("data-agent", who);
+    // A tool call happens inside the calling agent's own loop, so the ONLY
+    // calls this log holds are this process's agent's. Another agent's run in
+    // its own Worker and are recorded there — saying so is the honest answer,
+    // and it is the same rule the transcript folds by (`belongs_to`).
+    if who != ctx.me {
+        let said = format!(
+            "{who} runs in its own Worker, and its tool calls are recorded there. This \
+             page's trace shows {}'s calls — including the turns it handed to {who}.",
+            ctx.me
+        );
+        return html(
+            200,
+            list.child(FragmentBuilder::new("p").class("pending").text(&said).build())
+                .build()
+                .into_html(),
+        );
+    }
     let mut count = 0usize;
     for kind in &ctx.recent {
         if let EventKind::ToolInvoked {

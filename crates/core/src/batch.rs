@@ -135,6 +135,14 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
     if let Effect::InvokeTool { tool, args_json } = &effect {
         // A space's tools write to the SHARED store, so they are the one tool
         // family that cannot run inside a borrow of the app.
+        // A workspace tool runs a command in a Linux, which is I/O and cannot
+        // happen inside a borrow of the app either.
+        if let Some(kind) = crate::workspace::run(app, tool, args_json).await {
+            let mut a = app.borrow_mut();
+            let appended = a.append(kind);
+            a.pending.push(appended);
+            return;
+        }
         if let Some(kind) = crate::space::run(app, tool, args_json).await {
             let mut a = app.borrow_mut();
             let appended = a.append(kind);
@@ -159,21 +167,6 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
             let appended = a.append(event.kind);
             a.pending.push(appended);
         }
-        Err(e) => {
-            a.append(EventKind::Custom {
-                kind: "core.error".into(),
-                payload_json: serde_json::to_string(&e)
-                    .unwrap_or_else(|_| "\"unserializable error\"".into()),
-            });
-            // The turn RAISED. The Python marks the agent Failed and records
-            // the message (`ThreadedAgent.invoke`); without this the entry
-            // agent stays Working forever on the board, which is the one
-            // status a person reads as "still going" — a hosted failed turn
-            // left it there for the whole session.
-            a.agent.task = None;
-            let message = crate::failure::sentence(&e);
-            let me = a.me().to_string();
-            a.set_status(&me, Status::Failed, &message);
-        }
+        Err(e) => crate::failure::record(&mut a, e),
     }
 }

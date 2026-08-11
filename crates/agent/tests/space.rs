@@ -117,6 +117,24 @@ fn a_note_is_folded_onto_one_line() {
     assert_eq!(space.notes[0], "[main] found it on page two");
 }
 
+/// The same note twice is one note (09 walk, finding 4): identical lines
+/// rendered as identical lines, and each one spends prompt budget saying what
+/// the one above it already said. Refused in words, never silently.
+#[test]
+fn the_same_note_twice_is_one_note() {
+    let mut space = Space::named("research").expect("a usable name");
+    let (_, first) = space.post("main", "the port is 8873");
+    let (said, again) = space.post("main", "the port is 8873");
+    assert!(first.is_some(), "the first one landed");
+    assert!(again.is_none(), "the second one did not");
+    assert_eq!(space.notes.len(), 1);
+    assert!(said.contains("already on the research board"), "{said}");
+    // …but the same words from ANOTHER agent are another agent's note.
+    let (_, theirs) = space.post("researcher", "the port is 8873");
+    assert!(theirs.is_some());
+    assert_eq!(space.notes.len(), 2);
+}
+
 /// Naming the space IS the request for its tools (Python `load_agent`): they
 /// arrive on top of whatever the file declared, and an unusable name attaches
 /// nothing at all.
@@ -124,7 +142,16 @@ fn a_note_is_folded_onto_one_line() {
 fn naming_a_space_attaches_its_three_tools_and_a_bad_name_attaches_none() {
     let named = toolbox_for(&spec("research", "[now]"), &[]);
     let names: Vec<&str> = named.tools.iter().map(|t| t.name.as_str()).collect();
-    assert_eq!(names, ["now", "remember", "forget", "post_note"]);
+    // The workspace's four arrive with the space's three: the folder belongs
+    // to the space, so the capability to build in it arrives with it
+    // (increment 10).
+    assert_eq!(
+        names,
+        [
+            "now", "remember", "forget", "post_note", "exec", "read_file", "write_file",
+            "list_files"
+        ]
+    );
 
     let empty_list = toolbox_for(&spec("research", "[]"), &[]);
     assert!(empty_list.get("post_note").is_some(), "an empty tools: list still gets the space");
@@ -132,8 +159,10 @@ fn naming_a_space_attaches_its_three_tools_and_a_bad_name_attaches_none() {
 
     let no_space = toolbox_for(&spec("", "[now]"), &[]);
     assert!(no_space.get("remember").is_none());
+    assert!(no_space.get("exec").is_none(), "no space, no workspace — default deny");
     let bad_space = toolbox_for(&spec("../etc", "[now]"), &[]);
     assert!(bad_space.get("remember").is_none());
+    assert!(bad_space.get("exec").is_none());
 }
 
 /// An empty space renders its name and its workspace and nothing else — the
@@ -142,7 +171,10 @@ fn naming_a_space_attaches_its_three_tools_and_a_bad_name_attaches_none() {
 fn an_empty_space_renders_no_empty_headings() {
     let space = Space::named("research").expect("a usable name");
     let context = space.context();
-    assert!(context.starts_with("space: research\nworkspace: spaces/research"), "{context}");
+    assert!(
+        context.starts_with("space: research\nworkspace: /root/spaces/research"),
+        "{context}"
+    );
     assert!(!context.contains("shared facts"), "{context}");
     assert!(!context.contains("recent notes"), "{context}");
 }

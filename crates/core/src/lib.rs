@@ -29,6 +29,8 @@ mod told;
 mod tools;
 mod transcript;
 mod trace;
+mod terminal;
+mod workspace;
 
 pub use install::{builtin_files, install_agents, install_agents_as, report_agent, report_memory};
 pub use app::{App, Ports, ENTRY_AGENT};

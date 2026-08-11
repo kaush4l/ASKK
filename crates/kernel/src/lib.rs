@@ -11,10 +11,12 @@ mod http;
 mod ids;
 mod ports;
 mod status;
+mod workspace;
 
 pub use capability::{CapabilityGrant, CapabilityId};
 pub use error::{DelegateError, ModelError, NetError, StoreError};
 pub use status::Status;
+pub use workspace::{base64, shell_quote, Execution, WorkspaceError, WorkspacePort};
 pub use event::{Event, EventKind, EventLog};
 pub use http::{Request, Response};
 pub use ids::{

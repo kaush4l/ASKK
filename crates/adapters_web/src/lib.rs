@@ -1,16 +1,13 @@
 //! The driving adapter AND composition root (ARCHITECTURE §4's fixed
 //! straw-man bug): the only crate that knows browsers exist. Builds the real
-//! ports, boots `core`, and exposes the seam to `transport.js`.
-//!
-//! G4 note (ARCHITECTURE §1d): the core runs on the MAIN thread — the
-//! Spike-A-proven fallback the architecture explicitly reserved. The Worker
-//! move is transport-only (the seam is unchanged); it lands when a runaway
-//! module can actually exist (the forge, G5+).
+//! ports, boots `core`, and exposes the seam. The core runs on the MAIN
+//! thread (ARCHITECTURE §1d) — the Spike-A-proven fallback.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 mod assets;
+mod cheerpx;
 pub mod catalogue;
 mod endpoint;
 mod error;
@@ -26,6 +23,7 @@ mod spawn;
 mod worker;
 mod workers;
 
+pub use cheerpx::CheerpxWorkspace;
 pub use endpoint::Endpoint;
 pub use error::WebError;
 pub use idb::IdbStore;
@@ -96,6 +94,9 @@ impl WebApp {
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
             spaces: spaces as Rc<dyn kernel::KvStore>,
+            // The Linux, not booted: nothing is fetched until a command is
+            // run (increment 10), so a page that never uses it pays nothing.
+            workspace: Rc::new(CheerpxWorkspace),
             agents: Rc::clone(&agents) as Rc<dyn kernel::AgentPort>,
         };
         let mut app = core::boot(ports).await.map_err(js_err)?;

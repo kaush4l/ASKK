@@ -143,6 +143,18 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
                 let me = app.borrow().me().to_string();
                 app.borrow_mut().set_status(&me, kernel::Status::Working, "");
             }
+            // A command a PERSON typed into the terminal (increment 10). It is
+            // not an agent turn, so it never enters `step`: it runs in this
+            // agent's own workspace, under the same grant, and its result is
+            // the same `ToolInvoked` fact the agent's own calls produce.
+            if let EventKind::Custom { kind, payload_json } = &event.kind {
+                if kind == crate::terminal::EXEC_REQUEST {
+                    let command = serde_json::from_str::<String>(payload_json)
+                        .unwrap_or_else(|_| payload_json.clone());
+                    crate::workspace::run_typed(&app, &command).await;
+                    continue;
+                }
+            }
             // `record` queues what the log owes the store: the entries this
             // pump appended, or the rewrite a compaction made due.
             let effects = {

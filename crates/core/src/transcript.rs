@@ -44,7 +44,7 @@ fn belongs_to(kind: &EventKind, me: &str, who: &str) -> bool {
         }
         EventKind::ToolInvoked { .. } => who == me,
         EventKind::Custom { kind, payload_json } => match kind.as_str() {
-            "core.note" | "core.error" => who == me,
+            "core.note" | "core.error" | "core.compaction_failed" => who == me,
             "core.agent_error" => crate::told::agent_of(payload_json) == who,
             _ => false,
         },
@@ -83,8 +83,13 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
                 list = list.child(msg("msg assistant", who, text));
                 (awaiting, count) = (false, count + 1);
             }
-            // A tool result means another model call is coming.
-            EventKind::ToolInvoked { .. } => awaiting = true,
+            // A tool result inside a TURN means another model call is coming,
+            // and inside a turn `awaiting` is already true — so this arm has
+            // nothing to set. It must not set it: a command a person typed
+            // into the terminal is a `ToolInvoked` too, and asserting it here
+            // left the chat pane saying "Sending…" with the composer disabled
+            // for the rest of the session, over a turn nobody had started.
+            EventKind::ToolInvoked { .. } => {}
             // The machine's own word to the user (the tool loop gave up).
             EventKind::Custom { kind, payload_json } if kind == "core.note" => {
                 let note = serde_json::from_str::<String>(payload_json)
@@ -98,6 +103,15 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
                 failures += 1;
                 list = list.child(crate::told::agent_failure(payload_json, who, failures));
                 (awaiting, count) = (false, count + 1);
+            }
+            // A background summarisation that failed. It is NOT this turn's
+            // failure — the turn carried on with the full history — so it is
+            // not a failure card and does not end the wait. Saying nothing at
+            // all was the bug: one request went out, it was not the user's,
+            // and the transcript showed their question failing (09 walk).
+            EventKind::Custom { kind, payload_json } if kind == "core.compaction_failed" => {
+                failures += 1;
+                list = list.child(crate::failure::compaction_failed(payload_json, failures));
             }
             EventKind::Custom { kind, payload_json } if kind == "core.error" => {
                 failures += 1;
