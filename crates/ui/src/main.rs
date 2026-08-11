@@ -41,6 +41,21 @@ fn adopt(
     }
 }
 
+/// Who is loaded, and where from. Its own fn because the shell composes the
+/// page and owns no content (plan, "UI shape").
+fn agent_panel(agents: Signal<String>) -> Element {
+    rsx! {
+        section { class: "panel", aria_label: "Agents",
+            h2 { "Agents" }
+            p { class: "note",
+                "Loaded from public/agents/ at boot — edit an agent.md, redeploy, reload, \
+                 and the agent changes with no rebuild."
+            }
+            div { dangerous_inner_html: "{agents}" }
+        }
+    }
+}
+
 /// Boot is async (IndexedDB), so the shell paints immediately and the page
 /// fills when the core is up. A boot failure is shown, never swallowed.
 fn shell() -> Element {
@@ -52,9 +67,7 @@ fn shell() -> Element {
     });
     let web = use_signal(|| None::<Rc<WebApp>>);
     let fragment = use_signal(String::new);
-    // Who is loaded, from public/agents/ — projected by the core, like
-    // everything else on the page (I8).
-    let agents = use_signal(String::new);
+    let agents = use_signal(String::new); // the public/agents/ listing (I8)
     let failure = use_signal(String::new);
     // Whether an endpoint is configured: `Settings` knows (it reads the
     // broker), `ChatPane` needs it (a send with no endpoint is a request that
@@ -79,14 +92,7 @@ fn shell() -> Element {
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
                 chat::ChatPane { web, endpoint_set }
-                section { class: "panel", aria_label: "Agents",
-                    h2 { "Agents" }
-                    p { class: "note",
-                        "Loaded from public/agents/ at boot — edit an agent.md, redeploy, \
-                         reload, and the agent changes with no rebuild."
-                    }
-                    div { dangerous_inner_html: "{agents}" }
-                }
+                {agent_panel(agents)}
                 settings::Settings { web, endpoint_set }
             }
         }

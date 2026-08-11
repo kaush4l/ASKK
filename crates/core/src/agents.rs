@@ -43,6 +43,14 @@ pub fn install_agents(app: &mut App, fetched: Vec<(String, String)>) {
     });
 }
 
+/// How this agent names its model — a catalogue key, never a URL.
+fn model_line(spec: &AgentSpec) -> String {
+    match spec.model.is_empty() {
+        true => "default model".to_string(),
+        false => format!("model: {}", spec.model),
+    }
+}
+
 pub(crate) fn manifest() -> Manifest {
     Manifest {
         id: ModuleId("agents".into()),
@@ -90,9 +98,8 @@ fn listing(ctx: &Ctx) -> Response {
     html(200, list.build().into_html())
 }
 
-/// One agent, as its file declares it. The prompt is shown verbatim behind a
-/// disclosure: it is the whole point of the file, and also the longest part.
-fn card(spec: &AgentSpec) -> Fragment {
+/// The settings line: what the file asked for, in the file's own words.
+fn meta_line(spec: &AgentSpec) -> String {
     let temperature = spec
         .temperature
         .map(|t| format!(", temperature {t}"))
@@ -105,10 +112,16 @@ fn card(spec: &AgentSpec) -> Fragment {
         true => "no space".to_string(),
         false => format!("space: {}", spec.space),
     };
-    let model = match spec.model.is_empty() {
-        true => "default model".to_string(),
-        false => format!("model: {}", spec.model),
-    };
+    format!(
+        "{}{temperature}, engine: {}, {space}, {tools}",
+        model_line(spec),
+        spec.engine
+    )
+}
+
+/// One agent, as its file declares it. The prompt is shown verbatim behind a
+/// disclosure: it is the whole point of the file, and also the longest part.
+fn card(spec: &AgentSpec) -> Fragment {
     FragmentBuilder::new("div")
         .class("agent-card")
         .attr("data-agent", &spec.name)
@@ -117,10 +130,7 @@ fn card(spec: &AgentSpec) -> Fragment {
         .child(
             FragmentBuilder::new("p")
                 .class("agent-meta")
-                .text(&format!(
-                    "{model}{temperature}, engine: {}, {space}, {tools}",
-                    spec.engine
-                ))
+                .text(&meta_line(spec))
                 .build(),
         )
         .child(

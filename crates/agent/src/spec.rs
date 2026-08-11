@@ -81,34 +81,39 @@ fn read_frontmatter(frontmatter: &str, spec: &mut AgentSpec) -> Result<(), Agent
             }
             continue;
         }
-        in_tools = false;
-        let Some((key, value)) = trimmed.split_once(':') else {
-            continue;
+        in_tools = match trimmed.split_once(':') {
+            Some((key, value)) => set_field(spec, key.trim(), &unquote(value.trim()))?,
+            None => false,
         };
-        let value = unquote(value.trim());
-        match key.trim() {
-            "name" => spec.name = value,
-            "description" => spec.description = value,
-            "model" => spec.model = value,
-            "engine" => spec.engine = value,
-            "space" => spec.space = value,
-            "temperature" => {
-                spec.temperature = Some(value.parse::<f32>().map_err(|_| {
-                    AgentError::MalformedAgentFile {
-                        agent: spec.name.clone(),
-                        message: format!("temperature '{value}' is not a number"),
-                    }
-                })?)
-            }
-            "tools" => match value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
-                // Inline form; the block form arrives on the following lines.
-                Some(inline) => spec.tools = split_inline(inline),
-                None => in_tools = value.is_empty(),
-            },
-            _ => {}
-        }
     }
     Ok(())
+}
+
+/// One `key: value` pair onto the spec. Returns whether the following lines
+/// are this key's block list (only `tools:` has one).
+fn set_field(spec: &mut AgentSpec, key: &str, value: &str) -> Result<bool, AgentError> {
+    match key {
+        "name" => spec.name = value.into(),
+        "description" => spec.description = value.into(),
+        "model" => spec.model = value.into(),
+        "engine" => spec.engine = value.into(),
+        "space" => spec.space = value.into(),
+        "temperature" => {
+            spec.temperature = Some(value.parse::<f32>().map_err(|_| {
+                AgentError::MalformedAgentFile {
+                    agent: spec.name.clone(),
+                    message: format!("temperature '{value}' is not a number"),
+                }
+            })?)
+        }
+        // Inline form here; the block form arrives on the following lines.
+        "tools" => match value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
+            Some(inline) => spec.tools = split_inline(inline),
+            None => return Ok(value.is_empty()),
+        },
+        _ => {}
+    }
+    Ok(false)
 }
 
 fn unquote(value: &str) -> String {
