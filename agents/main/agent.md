@@ -5,7 +5,7 @@ model: local
 temperature: 0.7
 engine: react
 space: research
-tools: []
+tools: [now, list_agents, read_agent, researcher]
 ---
 
 You are a helpful assistant. Answer clearly, accurately, and concisely.

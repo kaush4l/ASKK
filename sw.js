@@ -11,7 +11,7 @@
 // safely. Bump VERSION on release to drop the old cache.
 importScripts("coi-sw.js");
 
-const VERSION = "04-0.4.0";
+const VERSION = "06-0.6.0";
 const CACHE = "askk-" + VERSION;
 
 // Only the unhashed shell is pre-cached; trunk fingerprints the JS and Wasm,
@@ -56,7 +56,13 @@ async function respond(request) {
   // catalogue with a fixed filename, so cache-first would pin the app to a
   // stale endpoint after a deploy.
   const path = new URL(request.url).pathname;
-  const isData = path.includes("/agents/") || path.endsWith("/models.json");
+  // agent-worker.js is the third file with a FIXED name whose content
+  // changes with a deploy (increment 06); cache-first would boot every
+  // sub-agent from the previous build's shim.
+  const isData =
+    path.includes("/agents/") ||
+    path.endsWith("/models.json") ||
+    path.endsWith("/agent-worker.js");
   if (request.mode === "navigate" || isData) {
     // Network-first: a stale index.html would point at asset names that no
     // longer exist, and refresh is the update channel (I11). Same reason the
