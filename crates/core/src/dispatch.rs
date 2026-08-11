@@ -87,6 +87,7 @@ pub type BuiltinHandler = fn(&Request, &mut Ctx) -> Response;
 pub fn builtin_entry(id: &ModuleId) -> Option<BuiltinHandler> {
     match id.0.as_str() {
         "dashboard" => Some(builtins::dashboard),
+        "chat" => Some(crate::chat::chat),
         "status" => Some(builtins::status),
         _ => None,
     }

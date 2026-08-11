@@ -12,4 +12,7 @@ pub enum WebError {
     MissingApi { api: String },
     /// A JS exception that fit no port error; message preserved for the log.
     Js { message: String },
+    /// A write this crate owns outright (the endpoint profile, which never
+    /// crosses the seam) failed in storage.
+    Store(kernel::StoreError),
 }

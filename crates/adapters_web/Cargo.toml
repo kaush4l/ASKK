@@ -36,6 +36,7 @@ features = [
   "IdbKeyRange",
   "Crypto",
   "DomException",
+  "AbortSignal",
   "Request",
   "RequestInit",
   "Response",

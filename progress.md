@@ -11,6 +11,7 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 | # | Feature | Host tests | Headless | Hosted (ux-walker) | Commit | Notes |
 |---|---|---|---|---|---|---|
 | 01 | Dioxus shell, cross-origin isolation, deploy | 19 green | renders, `crossOriginIsolated: true`, no console errors | ⬜ pending `ux-walker` | `a650573` | Live at https://kaush4l.github.io/ASKK/. The dashboard fragment's `hx-*` panel loader is inert (htmx gone) — it shows "loading panel…" until fragments land in increment 02. |
+| 02 | Chat with the main agent: `ChatPane`, endpoint settings, ux-walker fixes | 22 green | send → live reply in the DOM, URL unchanged, transcript survives reload; real turn against omlx same-origin AND cross-origin | ⬜ pending `ux-walker` | `PENDING` | Live model turn verified LOCALLY (127.0.0.1:8901 → omlx 8873, via the same-origin proxy and via a configured cross-origin endpoint under COEP). From the hosted origin Chrome refuses the localhost call outright: "Access to fetch at 'http://127.0.0.1:8873/v1/models' from origin 'https://kaush4l.github.io' has been blocked by CORS policy: Permission was denied for this request to access the `loopback` address space" — the Chrome 142+ Local Network Access gate `RESEARCH.md` predicted, with no prompt available in headless. The hosted page reports that failure in words instead of hanging; the hosted path to a model is a BYOK provider (untested — no key). |
 
 ## Parity with the Python project
 
@@ -36,7 +37,7 @@ feature "exists".
 | `core/inference.py` | Model catalogue keyed by name, not a provider table | ⬜ |
 | `core/utils.py` | `agent.md` frontmatter: model, temperature, engine, tools, space | ⬜ |
 | `core/agents/summarizer` | Built-in summarizer compresses history | ⬜ |
-| — | Chat with the main agent in the UI | ⬜ |
+| — | Chat with the main agent in the UI | ✅ |
 | — | Chat with any agent individually | ⬜ |
 | — | Agents hot-reloaded from `public/agents/` | ⬜ |
 | — | New agents added in the browser, persisted, exportable | ⬜ |
@@ -73,3 +74,33 @@ they are `node` inside the VM, priced after increment 10.
 - **Credits are owed.** CheerpX's Community License covers this use; its action point is "give
   appropriate credits", and the runtime is loaded from `cxrtnc.leaningtech.com` because self-hosting
   it requires a commercial licence.
+
+### Increment 02
+
+- **The chat form is a Dioxus component, not a core fragment.** The `hx-post` form the core emitted
+  had no htmx behind it, so Send did a native GET and leaked the message into the URL. The core now
+  renders only the transcript; `ChatPane` owns the composer and calls the seam from `onsubmit` with
+  the default prevented. Verified in a browser: after Send and after Enter, the URL is unchanged.
+- **`chat` is its own built-in module**, split out of `dashboard`. `GET /chat` is the whole
+  conversation folded out of the event log (I8) and `POST /chat` emits the utterance; there is no
+  UI-side message list, which is why a reload redraws the same conversation from replay.
+- **`x-turn: pending` is a response header, not a marker in the HTML.** The pane must know whether a
+  turn is running; parsing its own rendered fragment to find out would be application logic in the
+  view. The header is the projection saying so.
+- **Endpoint configuration does NOT cross the seam.** `handle` writes an Event for every request
+  (I8), and a credential must never enter the log, a Document, or a module. `Settings` calls
+  `WebApp::set_endpoint` on the composition root, which sets the broker and writes
+  `config/keys/model`; the core is never told. PROVISIONAL under ADR-006: storage is Option A (plain
+  IndexedDB record) — Option B (WebCrypto-wrapped at rest) stays a human gate and is one adapter
+  file away. The browser-visible-key trust model is stated in the settings pane itself.
+- **Every model call carries a 30 s abort signal.** A page that cannot reach its endpoint must say
+  so, not hang; the pane gives up on the same budget and says the turn produced nothing.
+- **Chrome's Local Network Access gate is real and hosted-fatal for localhost.** The deployed origin
+  cannot call `http://127.0.0.1:8873` (evidence in the 02 row). The local server stays the local
+  target; the hosted target is a BYOK provider that sends CORS headers.
+- **`Request::post_form` lives in `kernel`,** so the encoder sits beside the seam type it builds and
+  is the stated inverse of `core::form::form_value` — a message containing `&` cannot truncate
+  itself on the way through.
+- **The panel placeholder stopped pretending to load.** With htmx gone, its `hx-get` was a dead
+  attribute under a live-looking "loading panel…"; it is now `class="panel pending"` and says it is
+  not mounted. The status board lands in increment 06.

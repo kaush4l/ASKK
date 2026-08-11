@@ -2,35 +2,53 @@
 //! An event handler calls `core::handle` directly through `WebApp::handle`, so
 //! the seam is unchanged (I4) and no application logic is left in JS (I5).
 //!
-//! This crate owns layout and nothing else — every byte of content in `main`
-//! comes back from the core as a fragment (I8).
+//! This crate owns layout and component boundaries and nothing else — every
+//! byte of conversation content comes back from the core as a projection of
+//! the event log (I8). Components segregate by concept (plan, "UI shape"):
+//! `ChatPane` owns one conversation, `Settings` owns endpoints and keys.
+
+use std::rc::Rc;
 
 use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
+mod chat;
+mod settings;
+
 fn main() {
     dioxus::launch(shell);
 }
 
-/// Boot is async (IndexedDB), so the shell paints immediately and the main
-/// region fills when the core is up. A boot failure is shown, never swallowed.
+/// Boot is async (IndexedDB), so the shell paints immediately and the page
+/// fills when the core is up. A boot failure is shown, never swallowed.
 fn shell() -> Element {
-    let booted = use_resource(|| async { WebApp::boot().await.map_err(|e| format!("{e:?}")) });
+    let booted = use_resource(|| async {
+        WebApp::boot()
+            .await
+            .map(Rc::new)
+            .map_err(|e| format!("{e:?}"))
+    });
+    let mut web = use_signal(|| None::<Rc<WebApp>>);
     let mut fragment = use_signal(String::new);
     let mut failure = use_signal(String::new);
 
     // The first trip through the seam: `GET /` is the dashboard route the
     // registry already owns. Runs once, when the resource resolves.
     use_effect(move || match &*booted.read() {
-        Some(Ok(web)) => fragment.set(web.handle(Request::get("/")).body),
+        Some(Ok(app)) => {
+            fragment.set(app.handle(Request::get("/")).body);
+            web.set(Some(Rc::clone(app)));
+        }
         Some(Err(e)) => failure.set(e.clone()),
         None => {}
     });
 
     rsx! {
         header {
-            h1 { "ASKK" }
+            // Not an <h1>: the page's one heading is the dashboard's title,
+            // and a wordmark is a logo, not a level-one heading.
+            div { class: "wordmark", "ASKK" }
         }
         main {
             if !failure.read().is_empty() {
@@ -41,6 +59,8 @@ fn shell() -> Element {
                 // The fragment is built by the core's escaping primitives
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
+                chat::ChatPane { web }
+                settings::Settings { web }
             }
         }
     }

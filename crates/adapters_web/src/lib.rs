@@ -13,11 +13,13 @@ use std::rc::Rc;
 mod error;
 mod idb;
 mod idb_bridge;
+mod model;
 mod ports;
 
 pub use error::WebError;
 pub use idb::IdbStore;
-pub use ports::{BrowserClock, BrowserRng, FetchModel, FetchNet};
+pub use model::FetchModel;
+pub use ports::{sleep, BrowserClock, BrowserRng, FetchNet};
 
 use wasm_bindgen::prelude::*;
 
@@ -29,6 +31,11 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct WebApp {
     app: Rc<RefCell<core::App>>,
+    /// The credential broker, held so settings can repoint it. Kept OUT of
+    /// `core::Ports`' reach as a concrete type: the core only ever sees the
+    /// `ModelPort` trait object, so nothing in the core can read a key (I6).
+    model: Rc<FetchModel>,
+    store: Rc<IdbStore>,
 }
 
 fn js_err(e: impl std::fmt::Debug) -> JsValue {
@@ -43,9 +50,17 @@ impl WebApp {
     /// The ONLY place adapters meet the core.
     pub async fn boot() -> Result<WebApp, JsValue> {
         let store = Rc::new(IdbStore::open("harness").await.map_err(js_err)?);
+        let model = Rc::new(FetchModel::new("config/keys/"));
+        // The user's configured endpoint, restored before the first turn.
+        if let Ok(Some(raw)) = kernel::StorePort::kv(store.as_ref())
+            .get(model.profile_key())
+            .await
+        {
+            model.load_profile(&raw);
+        }
         let ports = core::Ports {
-            model: Rc::new(FetchModel::new("config/keys/")),
-            store,
+            model: Rc::clone(&model) as Rc<dyn kernel::ModelPort>,
+            store: Rc::clone(&store) as Rc<dyn kernel::StorePort>,
             net: Rc::new(FetchNet::new(Vec::new())),
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
@@ -53,6 +68,8 @@ impl WebApp {
         let app = core::boot(ports).await.map_err(js_err)?;
         Ok(WebApp {
             app: Rc::new(RefCell::new(app)),
+            model,
+            store,
         })
     }
 
@@ -87,5 +104,30 @@ impl WebApp {
             }
         });
         response
+    }
+}
+
+impl WebApp {
+    /// Point the model broker at an endpoint and persist the profile. NOT on
+    /// the seam, deliberately: `handle` writes an Event for every request
+    /// (I8), and an event log is exactly where a credential must never
+    /// appear. The base URL and key go straight from the settings pane to the
+    /// broker and to `config/keys/model` in IndexedDB — the core is not told.
+    ///
+    /// PROVISIONAL (ADR-006 secret storage, Option A): the record is plain in
+    /// IndexedDB. Option B (WebCrypto-wrapped at rest) is a HUMAN GATE and is
+    /// one adapter file away; the UI states the trust model where keys are
+    /// entered.
+    pub async fn set_endpoint(&self, base_url: &str, api_key: &str) -> Result<(), WebError> {
+        self.model.set_endpoint(base_url, api_key);
+        kernel::StorePort::kv(self.store.as_ref())
+            .put(self.model.profile_key(), &self.model.profile_json())
+            .await
+            .map_err(WebError::Store)
+    }
+
+    /// The configured base URL and whether a key is set — never the key.
+    pub fn endpoint_summary(&self) -> (String, bool) {
+        self.model.endpoint_summary()
     }
 }

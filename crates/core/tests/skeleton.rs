@@ -72,12 +72,7 @@ fn dashboard_panel_and_404() {
     let (app, _store) = booted(vec![]);
     let res = get(&app, "/");
     assert_eq!(res.status, 200);
-    assert!(
-        res.body.contains("hx-get=\"/panels/status\""),
-        "{}",
-        res.body
-    );
-    assert!(res.body.contains("hx-post=\"/chat\""));
+    assert!(res.body.contains("/panels/status"), "{}", res.body);
 
     let res = get(&app, "/panels/status");
     assert_eq!(res.status, 200);
@@ -89,7 +84,21 @@ fn dashboard_panel_and_404() {
     assert!(res.body.starts_with("<div class=\"error\">"));
 }
 
-/// (3): the full turn through the seam — submit, drive, poll the reply.
+/// Increment 02, the ux-walker findings that live in the core: the root page
+/// carries NO form and no dead htmx attribute (the Send button that navigated
+/// to `?message=…` was exactly that form), exactly one `<h1>`, and the panel
+/// placeholder is marked as the placeholder it is.
+#[test]
+fn root_page_has_no_dead_form_and_one_heading() {
+    let (app, _store) = booted(vec![]);
+    let res = get(&app, "/");
+    assert!(!res.body.contains("<form"), "{}", res.body);
+    assert!(!res.body.contains("hx-"), "{}", res.body);
+    assert_eq!(res.body.matches("<h1").count(), 1, "{}", res.body);
+    assert!(res.body.contains("class=\"panel pending\""), "{}", res.body);
+}
+
+/// (3): the full turn through the seam — submit, drive, read the transcript.
 #[test]
 fn chat_turn_through_seam_with_scripted_model() {
     let (app, _store) = booted(vec![ScriptedModel::text_reply(
@@ -99,15 +108,17 @@ fn chat_turn_through_seam_with_scripted_model() {
     let res = post(&app, "/chat", "message=hi+there%21");
     assert_eq!(res.status, 200);
     assert!(res.body.contains("hi there!"), "{}", res.body);
-    assert!(res.body.contains("hx-get=\"/chat/poll\""), "{}", res.body);
+    // In flight: the transcript says so, and says so in a header the UI can
+    // read without parsing HTML.
+    assert!(res.body.contains("thinking"), "{}", res.body);
+    assert!(res.headers.contains(&("x-turn".into(), "pending".into())));
 
-    // Before the drive, the poll honestly says: still thinking.
-    let res = get(&app, "/chat/poll");
+    let res = get(&app, "/chat");
     assert!(res.body.contains("thinking"), "{}", res.body);
 
     block_on(drive(Rc::clone(&app))).expect("drive succeeds");
 
-    let res = get(&app, "/chat/poll");
+    let res = get(&app, "/chat");
     assert_eq!(res.status, 200);
     assert!(
         res.body.contains("Hello from the scripted model."),
@@ -115,8 +126,50 @@ fn chat_turn_through_seam_with_scripted_model() {
         res.body
     );
     assert!(res.body.contains("msg assistant"));
-    // The chain terminates: no further self-poll in the reply fragment.
-    assert!(!res.body.contains("hx-get"));
+    // The turn is over: no pending marker, no pending header.
+    assert!(!res.body.contains("thinking"), "{}", res.body);
+    assert!(!res.headers.iter().any(|(k, _)| k == "x-turn"));
+}
+
+/// The transcript is a PROJECTION of the log (I8), not a list the UI keeps:
+/// both turns are in it, in log order, and every message came from an event.
+#[test]
+fn transcript_projects_the_whole_conversation_in_order() {
+    let (app, _store) = booted(vec![
+        ScriptedModel::text_reply("first answer"),
+        ScriptedModel::text_reply("second answer"),
+    ]);
+    post(&app, "/chat", "message=one");
+    block_on(drive(Rc::clone(&app))).expect("drive succeeds");
+    post(&app, "/chat", "message=two");
+    block_on(drive(Rc::clone(&app))).expect("drive succeeds");
+
+    let body = get(&app, "/chat").body;
+    let at = |needle: &str| body.find(needle).unwrap_or_else(|| panic!("{needle}: {body}"));
+    assert!(at(">one<") < at("first answer"));
+    assert!(at("first answer") < at(">two<"));
+    assert!(at(">two<") < at("second answer"));
+    assert_eq!(body.matches("msg user").count(), 2, "{body}");
+    assert_eq!(body.matches("msg assistant").count(), 2, "{body}");
+}
+
+/// Reload the page and the conversation is still there: a rebooted app
+/// replays the log and the same fold produces the same transcript.
+#[test]
+fn transcript_survives_reboot() {
+    let (app, store) = booted(vec![ScriptedModel::text_reply("remembered")]);
+    post(&app, "/chat", "message=do+you+remember");
+    block_on(drive(Rc::clone(&app))).expect("drive succeeds");
+
+    let app2 = block_on(boot(ports(
+        ScriptedModel::with_replies(vec![]),
+        Rc::clone(&store),
+    )))
+    .expect("reboot succeeds");
+    let app2 = Rc::new(RefCell::new(app2));
+    let body = get(&app2, "/chat").body;
+    assert!(body.contains("do you remember"), "{body}");
+    assert!(body.contains("remembered"), "{body}");
 }
 
 /// Model failure surfaces as the typed error fragment — never a faked reply.
@@ -126,10 +179,14 @@ fn model_failure_renders_typed_error_fragment() {
     post(&app, "/chat", "message=hello");
     // The turn's drive fails internally; the error becomes a fact.
     let _ = block_on(drive(Rc::clone(&app)));
-    let res = get(&app, "/chat/poll");
+    let res = get(&app, "/chat");
     assert!(res.body.contains("turn failed"), "{}", res.body);
     assert!(res.body.contains("Transport"), "{}", res.body);
     assert!(res.body.contains("msg error"));
+    // An unreachable endpoint says what to do about it, and the pane stops
+    // claiming to be thinking.
+    assert!(res.body.contains("Settings"), "{}", res.body);
+    assert!(!res.body.contains("thinking"), "{}", res.body);
 }
 
 /// (4)+persistence: every handled request/turn is an Event written through

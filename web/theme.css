@@ -31,8 +31,9 @@ header {
   border-bottom: 1px solid var(--line);
 }
 
-header h1 {
-  margin: 0;
+/* The wordmark is a logo, not the page heading — the one <h1> is the page
+   title the core renders. */
+header .wordmark {
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.28em;
@@ -66,6 +67,8 @@ input, textarea, select, button {
   border-radius: 6px;
   border: 1px solid var(--line);
   padding: 0.45rem 0.7rem;
+  /* 44px: the touch target a thumb can actually hit (WCAG 2.2 target size). */
+  min-height: 44px;
 }
 
 input, textarea, select {
@@ -89,3 +92,21 @@ button {
 }
 
 a { color: var(--accent); }
+
+/* Settings stacks; the chat composer stays a single row. */
+form.stacked { flex-direction: column; align-items: stretch; }
+form.stacked label { font-size: 0.9rem; color: var(--ink-dim); }
+
+/* The conversation. Every message here came from an event in the log. */
+.chat-log { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: var(--gap); }
+.msg {
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.msg.user { border-color: var(--accent); }
+.msg.assistant { background: var(--bg); }
+.msg.pending { border-style: dashed; }
+.msg.error { border-color: var(--danger); color: var(--danger); }

@@ -10,6 +10,7 @@
 mod app;
 mod boot;
 mod builtins;
+mod chat;
 mod dispatch;
 mod error;
 mod form;
