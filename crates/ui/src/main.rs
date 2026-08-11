@@ -17,6 +17,7 @@ mod board;
 mod chat;
 mod composer;
 mod tools;
+mod turn;
 mod settings;
 mod settings_view;
 

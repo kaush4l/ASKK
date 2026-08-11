@@ -92,10 +92,14 @@ impl AgentWorkers {
     /// Stop every Worker (Python `aclose`: close, stop the thread, mark the row
     /// CLOSED). Called before the page restarts them with a changed endpoint —
     /// a Worker was handed its profile at boot and cannot learn a new one.
+    /// No `Closed` row is written. Stopping a Worker only ever happens as the
+    /// first half of replacing it, and both facts drained in the same tick — so
+    /// "closed — its Worker is stopped" was a board state no person could ever
+    /// see (`ux-walker`, increment 07). The truthful row for this moment is the
+    /// `Starting` the respawn writes a line later.
     pub fn close_all(&self) {
-        for (name, live) in self.live.borrow_mut().drain() {
+        for (_, live) in self.live.borrow_mut().drain() {
             live.worker.terminate();
-            self.report(&name, Status::Closed, "");
         }
     }
 

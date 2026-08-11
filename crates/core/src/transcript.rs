@@ -93,7 +93,7 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
                 (awaiting, count) = (false, count + 1);
             }
             EventKind::Custom { kind, payload_json } if kind == "core.agent_error" => {
-                let said = crate::failure::message_of(payload_json);
+                let said = crate::failure::readable(&crate::failure::message_of(payload_json), who);
                 list = list.child(msg("msg error", who, &said));
                 (awaiting, count) = (false, count + 1);
             }

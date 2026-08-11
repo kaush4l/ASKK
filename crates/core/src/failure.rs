@@ -69,6 +69,25 @@ pub(crate) fn message_of(payload_json: &str) -> String {
     field(payload_json, "message")
 }
 
+/// The same message as a person must READ it. A record is written once and
+/// replays forever, so records already in a store carry the shapes earlier
+/// builds wrote: the Rust debug wrapper `JsValue("…")` around a rejected
+/// Worker string, and the agent's own name in front of a sentence the
+/// transcript already attributes to it — `researcher: JsValue("researcher: The
+/// model endpoint could not be reached…")` (`ux-walker`, increment 07). Both
+/// were fixed at the source; this is the guard for everyone who used the
+/// build before that, and it costs one pass over one string.
+pub(crate) fn readable(message: &str, who: &str) -> String {
+    let unwrapped = match message.strip_prefix("JsValue(\"").and_then(|s| s.strip_suffix("\")")) {
+        Some(inner) => inner.replace("\\\"", "\"").replace("\\n", "\n"),
+        None => message.to_string(),
+    };
+    match unwrapped.strip_prefix(&format!("{who}: ")) {
+        Some(said) => said.to_string(),
+        None => unwrapped,
+    }
+}
+
 /// One string field of an `agent_error` payload. Through serde, not a substring
 /// scan: a model endpoint's own words routinely contain quotes and braces.
 fn field(payload_json: &str, name: &str) -> String {

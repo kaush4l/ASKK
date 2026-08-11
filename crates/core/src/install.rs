@@ -118,5 +118,19 @@ pub fn install_agents_as(app: &mut App, fetched: Vec<(String, String)>, adopt: &
 /// lifecycle fact, and it lands as an `AgentStatus` event like every other
 /// status move (I8).
 pub fn report_agent(app: &mut App, agent: &str, status: Status, detail: &str) {
+    // A REBOOT IS NOT AN OUTCOME. Every sub-agent's Worker is constructed again
+    // on every page load and announces `Starting` then `Idle`; letting that
+    // overwrite a replayed `Failed` made the board say "idle — it answered"
+    // beside a transcript in which every turn of that agent had failed, while
+    // `main` — which has no Worker — correctly stayed failed (`ux-walker`,
+    // increment 07). A fresh load means the same thing for both kinds of agent
+    // now: the last recorded outcome, until a new turn produces another one.
+    let failed = app
+        .board
+        .get(agent)
+        .is_some_and(|r| r.status == Status::Failed);
+    if failed && matches!(status, Status::Starting | Status::Idle) {
+        return;
+    }
     app.set_status(agent, status, detail);
 }

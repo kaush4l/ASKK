@@ -131,7 +131,11 @@ form.stacked label { font-size: 0.9rem; color: var(--ink-dim); }
 /* One tab per agent: every agent owns a Worker, so every agent is a
    conversation you can open (increment 07). */
 .agent-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
-.agent-tabs .tab { background: transparent; border: 1px solid var(--line); }
+/* A transparent tab is NOT a button on --accent any more, so it must re-state
+   its ink: inheriting `button`'s #1a0f2b left the agent names at 1.02:1 on the
+   page background — three empty boxes to a sighted user, while the names read
+   fine with CSS off (`ux-walker`, increment 07). */
+.agent-tabs .tab { background: transparent; color: var(--ink); border: 1px solid var(--line); }
 .agent-tabs .tab.current {
   border-color: var(--accent);
   border-bottom-width: 3px;
