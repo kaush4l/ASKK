@@ -39,6 +39,7 @@ features = [
   "AbortSignal",
   "Request",
   "RequestInit",
+  "RequestCache",
   "Response",
   "Headers",
   "console",

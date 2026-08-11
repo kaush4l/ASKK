@@ -162,3 +162,18 @@ pub(crate) fn push_history(paper: &mut State, role: &str, text: &str, at: Timest
     });
     s.section.provenance.produced_at = at;
 }
+
+/// Adopt an agent's own file: the markdown body of `agent.md` IS this
+/// agent's system prompt (the `soul` section), and its description is the
+/// identity line. Nothing about `main` is hardcoded here afterwards — that
+/// is what makes the `public/agents/` loader real rather than decorative.
+pub fn adopt_spec(state: &mut crate::state::AgentState, spec: &crate::spec::AgentSpec) {
+    let soul = find(&mut state.paper, "soul");
+    soul.section.parts = vec![Part::Text {
+        text: spec.prompt.clone(),
+    }];
+    let identity = find(&mut state.paper, "identity");
+    identity.section.parts = vec![Part::Text {
+        text: format!("Name: {}. {}", spec.name, spec.description),
+    }];
+}

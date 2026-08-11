@@ -107,11 +107,34 @@ fn transcript(ctx: &Ctx, appended: Option<&str>) -> Response {
     } else if count == 0 {
         list = list.child(msg("msg pending", "No messages yet — ask the agent something."));
     }
-    let mut response = html(200, list.build().into_html());
+    let mut response = html(200, format!("{}{}", agent_header(ctx), list.build().into_html()));
     if awaiting {
         response.headers.push(("x-turn".into(), "pending".into()));
     }
     response
+}
+
+/// Whose conversation this is: the `main` agent as `public/agents/main/agent.md`
+/// declares it. Rendered from the loaded spec, so an edited file changes what
+/// this says — the pane is the agent, not a generic box.
+fn agent_header(ctx: &Ctx) -> String {
+    let Some(spec) = ctx.agents.iter().find(|s| s.name == "main") else {
+        return FragmentBuilder::new("p")
+            .class("agent-header pending")
+            .text("No main agent loaded — public/agents/main/agent.md did not load.")
+            .build()
+            .into_html();
+    };
+    let model = match spec.model.is_empty() {
+        true => "default model".to_string(),
+        false => format!("model: {}", spec.model),
+    };
+    FragmentBuilder::new("p")
+        .class("agent-header")
+        .attr("data-agent", &spec.name)
+        .text(&format!("{} — {} ({model})", spec.name, spec.description))
+        .build()
+        .into_html()
 }
 
 /// A failed turn: the sentence a person can act on FIRST, the typed error

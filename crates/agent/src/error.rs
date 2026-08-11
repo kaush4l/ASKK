@@ -21,4 +21,6 @@ pub enum AgentError {
     ReplansExhausted,
     /// An event arrived that no rule in the current phase consumes.
     UnexpectedEvent { phase: PhaseId, message: String },
+    /// An `agent.md` could not be read. Costs that agent, never the boot.
+    MalformedAgentFile { agent: String, message: String },
 }

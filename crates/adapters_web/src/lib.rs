@@ -10,6 +10,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+mod assets;
 mod endpoint;
 mod error;
 mod idb;
@@ -66,7 +67,10 @@ impl WebApp {
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
         };
-        let app = core::boot(ports).await.map_err(js_err)?;
+        let mut app = core::boot(ports).await.map_err(js_err)?;
+        // Agents are data fetched from `public/agents/`, not code compiled in:
+        // built-ins first so a project agent of the same name replaces one.
+        core::install_agents(&mut app, assets::fetch_agents().await);
         Ok(WebApp {
             app: Rc::new(RefCell::new(app)),
             model,

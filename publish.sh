@@ -23,6 +23,11 @@ trunk build --release   # Trunk.toml: web/index.html -> dist/, public_url "./"
 [ -f "$DIR/index.html" ] || fail "missing $DIR/index.html"
 [ -f "$DIR/sw.js" ] && [ -f "$DIR/coi-sw.js" ] || fail "isolation worker missing from $DIR"
 
+# Agents are fetched at runtime from these static files; without them the page
+# boots with the compiled-in built-ins only and no main agent (increment 03).
+[ -f "$DIR/agents/index.json" ] || fail "agent manifest missing: $DIR/agents/index.json"
+[ -f "$DIR/agents/main/agent.md" ] || fail "main agent missing: $DIR/agents/main/agent.md"
+
 # GitHub hard-caps files at 100MB; refuse anything >= 99MB
 big=$(find "$DIR" -type f -size +$((99 * 1024 * 1024 - 1))c)
 [ -z "$big" ] || fail "file(s) >= 99MB: $big"

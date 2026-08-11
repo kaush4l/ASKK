@@ -126,3 +126,28 @@ form.stacked label { font-size: 0.9rem; color: var(--ink-dim); }
 /* Buttons that sit side by side (Save endpoint / Clear key). */
 form.stacked .row { display: flex; gap: 0.5rem; }
 form.stacked .row button { flex: 0 0 auto; }
+
+/* Agents (increment 03): loaded from public/agents/, shown as they declare
+   themselves. The prompt is long by nature, so it folds away. */
+.agent-header {
+  margin: 0 0 0.5rem;
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+}
+.agent-card {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+}
+.agent-card h3 { margin: 0; color: var(--accent); }
+.agent-card p { margin: 0.25rem 0; }
+.agent-meta { color: var(--ink-dim); font-size: 0.9rem; }
+.agent-card pre {
+  white-space: pre-wrap;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.5rem;
+  max-height: 18rem;
+  overflow: auto;
+}
+.note { color: var(--ink-dim); font-size: 0.9rem; }

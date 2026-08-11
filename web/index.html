@@ -17,6 +17,11 @@
   <link data-trunk rel="copy-file" href="coi-sw.js">
   <link data-trunk rel="copy-file" href="manifest.webmanifest">
   <link data-trunk rel="copy-file" href="icon.svg">
+  <!-- The agents are data, not code: served as static files and fetched at
+       boot, so editing one and redeploying changes its behaviour with no
+       rebuild. public/agents/index.json is the manifest (a static host cannot
+       list a directory). -->
+  <link data-trunk rel="copy-dir" href="../public/agents">
 </head>
 <body>
   <div id="main"></div>

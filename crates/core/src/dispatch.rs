@@ -74,6 +74,8 @@ pub struct Ctx {
     /// real capability/section story at G5.
     pub panels: Vec<String>,
     pub recent: Vec<EventKind>,
+    /// The loaded agent specs (increment 03) — a projection like `recent`.
+    pub agents: Vec<agent::AgentSpec>,
 }
 
 /// A tier-0 built-in's logic. A plain fn pointer, not a trait object: no
@@ -88,6 +90,7 @@ pub fn builtin_entry(id: &ModuleId) -> Option<BuiltinHandler> {
     match id.0.as_str() {
         "dashboard" => Some(builtins::dashboard),
         "chat" => Some(crate::chat::chat),
+        "agents" => Some(crate::agents::agents),
         "status" => Some(builtins::status),
         _ => None,
     }
@@ -129,6 +132,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
             .then(Vec::new),
         panels,
         recent: app.log.iter().map(|e| e.kind.clone()).collect(),
+        agents: app.agents.clone(),
     };
 
     let response = match logic {

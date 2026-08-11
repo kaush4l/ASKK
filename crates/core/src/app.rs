@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use agent::{AgentState, PhaseConfig};
+use agent::{AgentSpec, AgentState, PhaseConfig};
 use kernel::{ClockPort, Event, EventKind, EventLog, ModelPort, NetPort, RngPort, StorePort};
 use module::Registry;
 
@@ -40,6 +40,10 @@ pub struct App {
     pub(crate) pending: Vec<Event>,
     /// Log entries not yet written through `StorePort` — drained by `drive`.
     pub(crate) unpersisted: Vec<Event>,
+    /// The agents loaded from `public/agents/` (plus the compiled-in
+    /// built-ins they may override). Data, not code: installed after boot by
+    /// `agents::install_agents`, replaced wholesale when the files change.
+    pub(crate) agents: Vec<AgentSpec>,
 }
 
 impl App {

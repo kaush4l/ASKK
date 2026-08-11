@@ -7,6 +7,7 @@
 // G3 freeze: private fields are unread while bodies are todo!(); lift at G4.
 #![allow(dead_code)]
 
+mod agents;
 mod app;
 mod boot;
 mod builtins;
@@ -16,6 +17,7 @@ mod error;
 mod form;
 mod runtime;
 
+pub use agents::{builtin_files, install_agents};
 pub use app::{App, Ports};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};

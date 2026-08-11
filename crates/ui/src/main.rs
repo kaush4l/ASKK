@@ -27,11 +27,13 @@ fn adopt(
     booted: &Option<Result<Rc<WebApp>, String>>,
     mut web: Signal<Option<Rc<WebApp>>>,
     mut fragment: Signal<String>,
+    mut agents: Signal<String>,
     mut failure: Signal<String>,
 ) {
     match booted {
         Some(Ok(app)) => {
             fragment.set(app.handle(Request::get("/")).body);
+            agents.set(app.handle(Request::get("/agents")).body);
             web.set(Some(Rc::clone(app)));
         }
         Some(Err(e)) => failure.set(e.clone()),
@@ -50,13 +52,16 @@ fn shell() -> Element {
     });
     let web = use_signal(|| None::<Rc<WebApp>>);
     let fragment = use_signal(String::new);
+    // Who is loaded, from public/agents/ — projected by the core, like
+    // everything else on the page (I8).
+    let agents = use_signal(String::new);
     let failure = use_signal(String::new);
     // Whether an endpoint is configured: `Settings` knows (it reads the
     // broker), `ChatPane` needs it (a send with no endpoint is a request that
     // cannot work), so the shell owns the one signal between them.
     let endpoint_set = use_signal(|| false);
 
-    use_effect(move || adopt(&booted.read(), web, fragment, failure));
+    use_effect(move || adopt(&booted.read(), web, fragment, agents, failure));
 
     rsx! {
         header {
@@ -74,6 +79,14 @@ fn shell() -> Element {
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
                 chat::ChatPane { web, endpoint_set }
+                section { class: "panel", aria_label: "Agents",
+                    h2 { "Agents" }
+                    p { class: "note",
+                        "Loaded from public/agents/ at boot — edit an agent.md, redeploy, \
+                         reload, and the agent changes with no rebuild."
+                    }
+                    div { dangerous_inner_html: "{agents}" }
+                }
                 settings::Settings { web, endpoint_set }
             }
         }

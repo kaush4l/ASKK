@@ -11,6 +11,7 @@ mod error;
 mod forge;
 mod paper;
 mod phase;
+mod spec;
 mod state;
 mod step;
 
@@ -20,5 +21,7 @@ pub use forge::{forge_manifest, forge_step, Draft, ForgeRun, ForgeStage};
 pub use phase::{
     v1_phases, ExitCondition, PhaseConfig, PhaseExit, ResponseContract, ToolScope, Verdict,
 };
+pub use paper::adopt_spec;
+pub use spec::{load_agents, parse_agent_file, AgentSpec};
 pub use state::{AgentState, PlanStep};
 pub use step::{parse_reply, step, ParsedReply};
