@@ -11,8 +11,8 @@ use dioxus::prelude::*;
 use kernel::{Request, Response};
 
 /// Poll interval and patience for one turn: 400 ms × 75 = 30 s, the same
-/// budget the model broker aborts a request at. Past it the pane says the
-/// turn produced nothing rather than spinning forever.
+/// budget the model broker aborts a request at. Past it the pane says the turn
+/// produced nothing rather than spinning forever.
 const TICK_MS: i32 = 400;
 const TICKS: u32 = 75;
 
@@ -43,16 +43,17 @@ async fn watch(
         }
     }
     pending.set(false);
-    note.set("No reply in 30 seconds. The turn was interrupted, or the model \
-              endpoint accepted the request and never answered — check Settings."
-        .into());
+    note.set(
+        "No reply in 30 seconds. The turn was interrupted, or the model endpoint \
+         accepted the request and never answered — check Settings."
+            .into(),
+    );
 }
 
 #[component]
 pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>) -> Element {
     let log = use_signal(String::new);
     let pending = use_signal(|| false);
-    let mut draft = use_signal(String::new);
     let mut note = use_signal(String::new);
 
     // The pane's first paint is the projection, not an empty box.
@@ -65,15 +66,11 @@ pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>) -> Element {
         }
     });
 
-    let mut send = move || {
-        let text = draft().trim().to_string();
+    let send = move |text: String| {
         let Some(app) = web.peek().clone() else { return };
-        if text.is_empty() || pending() {
-            return;
-        }
-        draft.set(String::new());
         note.set(String::new());
-        show(app.handle(Request::post_form("/chat", &[("message", &text)])), log, pending);
+        let req = Request::post_form("/chat", &[("message", &text)]);
+        show(app.handle(req), log, pending);
         spawn(watch(web, log, pending, note));
     };
 
@@ -82,28 +79,44 @@ pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>) -> Element {
             h2 { "Chat" }
             div { class: "chat-log", dangerous_inner_html: "{log}" }
             if !note.read().is_empty() { p { class: "error", "{note}" } }
-            // A real form (Enter submits, the button is a submit button) whose
-            // default navigation is prevented: the seam is the only transport,
-            // so the message never becomes a query string in the URL bar.
-            form {
-                onsubmit: move |e| {
-                    e.prevent_default();
-                    send();
-                },
-                input {
-                    r#type: "text",
-                    value: "{draft}",
-                    aria_label: "Message to the agent",
-                    placeholder: "Ask the agent something…",
-                    autocomplete: "off",
-                    disabled: pending(),
-                    oninput: move |e| draft.set(e.value()),
-                }
-                button {
-                    r#type: "submit",
-                    disabled: pending(),
-                    if pending() { "Sending…" } else { "Send" }
-                }
+            Composer { busy: pending(), on_send: send }
+        }
+    }
+}
+
+/// The composer: a real form, so Enter submits and the button is a submit
+/// button — with the default navigation prevented, because the seam is the only
+/// transport. That is what stops the message becoming a query string.
+#[component]
+fn Composer(busy: bool, on_send: EventHandler<String>) -> Element {
+    let mut draft = use_signal(String::new);
+    let mut submit = move || {
+        let text = draft().trim().to_string();
+        if text.is_empty() || busy {
+            return;
+        }
+        draft.set(String::new());
+        on_send.call(text);
+    };
+    rsx! {
+        form {
+            onsubmit: move |e| {
+                e.prevent_default();
+                submit();
+            },
+            input {
+                r#type: "text",
+                value: "{draft}",
+                aria_label: "Message to the agent",
+                placeholder: "Ask the agent something…",
+                autocomplete: "off",
+                disabled: busy,
+                oninput: move |e| draft.set(e.value()),
+            }
+            button {
+                r#type: "submit",
+                disabled: busy,
+                if busy { "Sending…" } else { "Send" }
             }
         }
     }

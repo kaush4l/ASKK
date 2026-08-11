@@ -1,28 +1,25 @@
-//! `ModelPort` over fetch, and the ADR-006 credential broker.
-//!
-//! The endpoint the user configures lives HERE and nowhere upstream: `core`,
-//! the agent, the Document and the event log all speak the symbolic name
-//! "model", and this file is the one place that knows a base URL, attaches an
-//! `Authorization` header, and touches the network (I6, I13). A key therefore
-//! cannot reach a module, an event, or a prompt — there is no code path.
+//! `ModelPort` over fetch, and the ADR-006 credential broker. The configured
+//! endpoint lives HERE and nowhere upstream: `core`, the agent, the Document
+//! and the event log all speak the symbolic name "model", and this is the one
+//! file that knows a base URL, attaches an `Authorization` header, and touches
+//! the network (I6, I13). A key cannot reach a module, an event, or a prompt —
+//! there is no code path.
 
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
 use kernel::{BoxFuture, EndpointName, ModelError, ModelPort, ModelReply};
 
-/// A page that cannot reach the endpoint must SAY so, not hang: a cross-origin
-/// call the browser refuses (COEP, mixed content, Chrome 142+ Local Network
-/// Access) can otherwise sit there indefinitely.
+/// A page that cannot reach its endpoint must SAY so, not hang: a call the
+/// browser refuses (COEP, Chrome 142+ Local Network Access) can hang forever.
 const TIMEOUT_MS: f64 = 30_000.0;
 
-/// The same-origin proxy (`serve.py`, or a hosting reverse proxy) — the
-/// default so a fresh install works with no configuration at all (I15).
+/// The same-origin proxy (`serve.py`, or a hosting reverse proxy) — the default
+/// so a fresh install works with no configuration at all (I15).
 const DEFAULT_BASE: &str = "/v1";
 
-/// One configured model endpoint. `api_key` is the credential; it is written
-/// to storage by the composition root and read back into this struct, and it
-/// leaves the process only in the `Authorization` header of a call.
+/// One configured endpoint. `api_key` leaves this process only in the
+/// `Authorization` header of a call.
 #[derive(Clone, Default)]
 struct Endpoint {
     base_url: String,
@@ -52,9 +49,8 @@ impl FetchModel {
         &self.profile_key
     }
 
-    /// Point the broker at an endpoint (settings, a user action — never a
-    /// module grant). Clears the discovered model id: a new endpoint serves
-    /// different models.
+    /// Point the broker at an endpoint (settings, a user action — never a module
+    /// grant). Clears the model id: a new endpoint serves different models.
     pub fn set_endpoint(&self, base_url: &str, api_key: &str) {
         *self.endpoint.borrow_mut() = Endpoint {
             base_url: base_url.trim().trim_end_matches('/').to_string(),
@@ -63,15 +59,14 @@ impl FetchModel {
         *self.model_id.borrow_mut() = None;
     }
 
-    /// The profile as the record stored under `profile_key` — the only place
-    /// the key is serialized, and it never leaves `adapters_web`.
+    /// The stored record — the one place the key is serialized.
     pub fn profile_json(&self) -> String {
         let e = self.endpoint.borrow();
         serde_json::json!({ "base_url": e.base_url, "api_key": e.api_key }).to_string()
     }
 
-    /// Load that record back (boot). Unreadable records are ignored: a broken
-    /// profile degrades to the same-origin default, it does not fail boot.
+    /// Load that record back (boot). An unreadable record degrades to the
+    /// same-origin default rather than failing boot (I15).
     pub fn load_profile(&self, raw: &str) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
             let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or_default();
@@ -95,8 +90,7 @@ impl FetchModel {
         }
     }
 
-    /// Build one request with the credential attached — the last stop before
-    /// the network, and the only caller of `set` for `Authorization`.
+    /// One request with the credential attached: the last stop before the wire.
     fn request(&self, url: &str, body: Option<&str>) -> Result<web_sys::Request, ModelError> {
         let transport = |m: String| ModelError::Transport { message: m };
         let init = web_sys::RequestInit::new();
@@ -121,8 +115,7 @@ impl FetchModel {
     }
 
     /// First model id the upstream advertises, cached. Failure is fine: the
-    /// request goes out with the placeholder and the provider's own error
-    /// surfaces (honest, typed) instead of a guessed name.
+    /// provider's own typed error surfaces instead of a guessed name.
     async fn discover_model(&self, window: &web_sys::Window) -> Option<String> {
         if let Some(id) = self.model_id.borrow().clone() {
             return Some(id);
@@ -153,8 +146,8 @@ impl ModelPort for FetchModel {
             let window = web_sys::window().ok_or_else(|| ModelError::Transport {
                 message: "no window".into(),
             })?;
-            // Attach the profile's model name — the adapter's job, exactly
-            // like a credential: the core never knows the concrete model.
+            // The model name is the adapter's job, like a credential: the
+            // core never knows which concrete model answered.
             let body = match self.discover_model(&window).await {
                 Some(id) => serde_json::from_str::<serde_json::Value>(body_json)
                     .map(|mut v| {
@@ -176,8 +169,8 @@ impl ModelPort for FetchModel {
     }
 }
 
-/// A JS exception in one readable sentence. `{:?}` on a `JsValue` prints the
-/// whole wasm stack trace, which is noise in a message a person has to read.
+/// A JS exception in one readable sentence: `{:?}` on a `JsValue` prints the
+/// whole wasm stack trace, which is noise in a message a person must read.
 fn js_message(value: &JsValue) -> String {
     value
         .dyn_ref::<js_sys::Error>()
@@ -185,8 +178,7 @@ fn js_message(value: &JsValue) -> String {
         .unwrap_or_else(|| format!("{value:?}"))
 }
 
-/// Body in, typed outcome out. Non-2xx is the provider's own words — never
-/// smoothed into a reply.
+/// Non-2xx is the provider's own words — never smoothed into a reply.
 async fn read_reply(resp: web_sys::Response) -> Result<ModelReply, ModelError> {
     let transport = |m: String| ModelError::Transport { message: m };
     let status = resp.status();

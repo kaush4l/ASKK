@@ -20,6 +20,25 @@ fn main() {
     dioxus::launch(shell);
 }
 
+/// The first trip through the seam once boot resolves: `GET /` is the
+/// dashboard route the registry already owns, and the booted app becomes
+/// available to every component that talks to the core.
+fn adopt(
+    booted: &Option<Result<Rc<WebApp>, String>>,
+    mut web: Signal<Option<Rc<WebApp>>>,
+    mut fragment: Signal<String>,
+    mut failure: Signal<String>,
+) {
+    match booted {
+        Some(Ok(app)) => {
+            fragment.set(app.handle(Request::get("/")).body);
+            web.set(Some(Rc::clone(app)));
+        }
+        Some(Err(e)) => failure.set(e.clone()),
+        None => {}
+    }
+}
+
 /// Boot is async (IndexedDB), so the shell paints immediately and the page
 /// fills when the core is up. A boot failure is shown, never swallowed.
 fn shell() -> Element {
@@ -29,20 +48,11 @@ fn shell() -> Element {
             .map(Rc::new)
             .map_err(|e| format!("{e:?}"))
     });
-    let mut web = use_signal(|| None::<Rc<WebApp>>);
-    let mut fragment = use_signal(String::new);
-    let mut failure = use_signal(String::new);
+    let web = use_signal(|| None::<Rc<WebApp>>);
+    let fragment = use_signal(String::new);
+    let failure = use_signal(String::new);
 
-    // The first trip through the seam: `GET /` is the dashboard route the
-    // registry already owns. Runs once, when the resource resolves.
-    use_effect(move || match &*booted.read() {
-        Some(Ok(app)) => {
-            fragment.set(app.handle(Request::get("/")).body);
-            web.set(Some(Rc::clone(app)));
-        }
-        Some(Err(e)) => failure.set(e.clone()),
-        None => {}
-    });
+    use_effect(move || adopt(&booted.read(), web, fragment, failure));
 
     rsx! {
         header {
