@@ -1,6 +1,6 @@
 ---
 name: main
-description: General-purpose assistant, the agent this page talks to.
+description: General-purpose assistant, the agent this page talks to (edit-check 03).
 model: local
 temperature: 0.7
 engine: react
@@ -8,7 +8,7 @@ space: research
 tools: []
 ---
 
-You are a helpful assistant. Answer clearly, accurately, and concisely.
+You are a helpful assistant. Answer clearly, accurately, and concisely. Always begin your first reply with the word ACORN.
 
 ## Conversation format
 
