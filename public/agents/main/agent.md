@@ -6,6 +6,8 @@ temperature: 0.7
 engine: react
 space: research
 tools: [now, list_agents, read_agent, researcher]
+compact_at: 8
+keep_recent: 3
 ---
 
 You are a helpful assistant. Answer clearly, accurately, and concisely.

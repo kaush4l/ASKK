@@ -13,23 +13,62 @@ use module::view::{Fragment, FragmentBuilder};
 /// one control to a screen reader (`ux-walker`, increment 05); the instance
 /// number is what tells them apart, and it is also what a person says out loud.
 pub(crate) fn failure(payload_json: &str, nth: usize) -> Fragment {
+    card(
+        &failure_line(payload_json),
+        failure_kind(payload_json),
+        payload_json,
+        nth,
+    )
+}
+
+/// A SUB-AGENT's failed turn, in the same card. It used to render as
+/// `researcher: The model endpoint could not be reached…` — a failure
+/// attributed to the agent as something it SAID, with no technical detail
+/// reachable at all, while the identical failure on `main` was a card with a
+/// disclosure (`ux-walker`, increment 07b). One failure now has one
+/// presentation, whichever agent it happened to.
+pub(crate) fn agent_failure(payload_json: &str, who: &str, nth: usize) -> Fragment {
+    // The sub-agent's Worker sends back the raw `core.error` payload when it
+    // has one, so the cause survives the `postMessage` boundary typed. Older
+    // records carry the SENTENCE instead; that is still the sentence, and the
+    // payload is still the detail.
+    let raw = message_of(payload_json);
+    card(&told(&raw, who), told_kind(&raw), payload_json, nth)
+}
+
+/// A sub-agent's failure in the words a person reads, whether its Worker sent
+/// the typed payload (this build) or the sentence (records already written).
+pub(crate) fn told(message: &str, who: &str) -> String {
+    match serde_json::from_str::<crate::error::CoreError>(message) {
+        Ok(_) => failure_line(message),
+        Err(_) => readable(message, who),
+    }
+}
+
+/// The disclosure's name for the same two shapes.
+fn told_kind(message: &str) -> &'static str {
+    match serde_json::from_str::<crate::error::CoreError>(message) {
+        Ok(_) => failure_kind(message),
+        Err(_) => "reported by the sub-agent",
+    }
+}
+
+/// The one failure card: the actionable sentence first, the typed error folded
+/// away behind a disclosure named for THIS failure — every disclosure called
+/// "Technical detail" is the same control to a screen reader (`ux-walker`,
+/// increment 04).
+fn card(sentence: &str, kind: &str, detail: &str, nth: usize) -> Fragment {
     FragmentBuilder::new("div")
         .class("msg error")
-        .child(FragmentBuilder::new("p").text(&failure_line(payload_json)).build())
+        .child(FragmentBuilder::new("p").text(sentence).build())
         .child(
             FragmentBuilder::new("details")
                 .child(
-                    // Named for its own failure: every disclosure called
-                    // "Technical detail" is the same control to a screen
-                    // reader (`ux-walker`, increment 04).
                     FragmentBuilder::new("summary")
-                        .text(&format!(
-                            "Technical detail for failure {nth} — {}",
-                            failure_kind(payload_json)
-                        ))
+                        .text(&format!("Technical detail for failure {nth} — {kind}"))
                         .build(),
                 )
-                .child(FragmentBuilder::new("pre").text(payload_json).build())
+                .child(FragmentBuilder::new("pre").text(detail).build())
                 .build(),
         )
         .build()

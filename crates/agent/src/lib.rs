@@ -7,10 +7,12 @@
 //! G3 interface freeze: types and signatures only; bodies are `todo!()`.
 
 mod calls;
+mod now;
 mod effect;
 mod error;
 mod forge;
 mod paper;
+mod seed;
 mod phase;
 mod reply;
 mod spec;
@@ -20,6 +22,7 @@ mod subagent;
 mod supervisor;
 mod toolbox;
 mod tools;
+mod window;
 
 pub use calls::{has_calls, parse_batches, Call};
 pub use effect::Effect;
@@ -31,6 +34,8 @@ pub use phase::{
     v1_phases, ExitCondition, PhaseConfig, PhaseExit, ResponseContract, ToolScope, Verdict,
 };
 pub use paper::adopt_spec;
+pub use now::environment;
+pub use window::{compacted, due, set_window, transcript, window, SUMMARY_HEADING};
 pub use spec::{load_agents, parse_agent_file, AgentSpec};
 pub use state::{AgentState, PlanStep};
 pub use reply::{parse_reply, ParsedReply};

@@ -16,6 +16,7 @@ use kernel::Request;
 mod board;
 mod chat;
 mod composer;
+mod tabs;
 mod tools;
 mod turn;
 mod settings;
@@ -52,31 +53,6 @@ fn adopt(
         }
         Some(Err(e)) => failure.set(e.clone()),
         None => {}
-    }
-}
-
-/// Who you are talking to, and how to talk to somebody else. Every agent owns
-/// a Worker and is separately addressable (increment 07), so every agent gets
-/// a conversation — one `ChatPane` per agent, switched here, never a pane with
-/// a mode flag. `aria-current` and the pressed state carry the answer to "who
-/// am I talking to?" with the stylesheet off as well as on.
-fn agent_switcher(loaded: Signal<Vec<String>>, mut selected: Signal<String>) -> Element {
-    rsx! {
-        nav { class: "agent-tabs", aria_label: "Which agent to talk to",
-            for name in loaded.read().iter().cloned() {
-                button {
-                    r#type: "button",
-                    key: "{name}",
-                    class: if name == *selected.read() { "tab current" } else { "tab" },
-                    aria_current: if name == *selected.read() { "true" } else { "false" },
-                    onclick: {
-                        let name = name.clone();
-                        move |_| selected.set(name.clone())
-                    },
-                    "{name}"
-                }
-            }
-        }
     }
 }
 
@@ -138,7 +114,7 @@ fn shell() -> Element {
                 // The fragment is built by the core's escaping primitives
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
-                {agent_switcher(loaded, selected)}
+                tabs::AgentTabs { loaded, selected }
                 chat::ChatPane { web, endpoint_set, tick, agent: selected }
                 board::AgentBoard { web, tick }
                 tools::ToolTrace { web, tick }

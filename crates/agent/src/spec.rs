@@ -26,6 +26,12 @@ pub struct AgentSpec {
     pub engine: String,
     pub tools: Vec<String>,
     pub space: String,
+    /// Compact once the history reaches this many entries; 0 never compacts
+    /// (Python forwards any `Engine` field from the frontmatter, and the
+    /// shipped summarizer sets `compact_at: 0` so it never summarises itself).
+    pub compact_at: usize,
+    /// How many of the newest entries survive a compaction verbatim.
+    pub keep_recent: usize,
     /// The markdown body: this agent's system prompt.
     pub prompt: String,
 }
@@ -57,6 +63,8 @@ pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> 
         engine: "base".into(),
         tools: Vec::new(),
         space: String::new(),
+        compact_at: crate::state::default_compact_at(),
+        keep_recent: crate::state::default_keep_recent(),
         prompt: body.trim().to_string(),
     };
     read_frontmatter(frontmatter, &mut spec)?;
@@ -98,6 +106,8 @@ fn set_field(spec: &mut AgentSpec, key: &str, value: &str) -> Result<bool, Agent
         "model" => spec.model = value.into(),
         "engine" => spec.engine = value.into(),
         "space" => spec.space = value.into(),
+        "compact_at" => spec.compact_at = number(spec, key, value)?,
+        "keep_recent" => spec.keep_recent = number(spec, key, value)?,
         "temperature" => {
             spec.temperature = Some(value.parse::<f32>().map_err(|_| {
                 AgentError::MalformedAgentFile {
@@ -114,6 +124,16 @@ fn set_field(spec: &mut AgentSpec, key: &str, value: &str) -> Result<bool, Agent
         _ => {}
     }
     Ok(false)
+}
+
+/// One non-negative frontmatter integer, refused rather than defaulted: a
+/// `compact_at: lots` that silently became 75 would be a setting that looks
+/// applied and is not.
+fn number(spec: &AgentSpec, key: &str, value: &str) -> Result<usize, AgentError> {
+    value.parse::<usize>().map_err(|_| AgentError::MalformedAgentFile {
+        agent: spec.name.clone(),
+        message: format!("{key} '{value}' is not a whole number"),
+    })
 }
 
 fn unquote(value: &str) -> String {

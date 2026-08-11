@@ -19,6 +19,8 @@ fn spec(name: &str, tools: &[&str]) -> AgentSpec {
         engine: "react".into(),
         tools: tools.iter().map(|t| (*t).to_string()).collect(),
         space: String::new(),
+        compact_at: 75,
+        keep_recent: 24,
         prompt: "body".into(),
     }
 }

@@ -15,72 +15,14 @@ use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
 
-use crate::{js_err, BrowserClock, BrowserRng, FetchModel, FetchNet};
+use crate::{js_err, BrowserClock, BrowserRng, FetchModel, FetchNet, IdbStore};
 
-/// Storage for a sub-agent's turn: in memory, gone with the Worker.
-///
-/// ponytail: NOT IndexedDB. A sub-agent's own persistent log is increment 08;
-/// sharing the page's database here would replay the lead's whole history into
-/// every sub-agent and fight it for the `events/` keyspace. In-memory is the
-/// honest scope of what a delegation needs today.
-#[derive(Default)]
-struct TurnStore {
-    kv: RefCell<std::collections::HashMap<String, String>>,
-}
-
-fn ready<'a, T: 'a>(value: T) -> kernel::BoxFuture<'a, T> {
-    Box::pin(std::future::ready(value))
-}
-
-impl kernel::KvStore for TurnStore {
-    fn get<'a>(&'a self, key: &'a str) -> kernel::BoxFuture<'a, Result<Option<String>, kernel::StoreError>> {
-        ready(Ok(self.kv.borrow().get(key).cloned()))
-    }
-    fn put<'a>(&'a self, key: &'a str, value: &'a str) -> kernel::BoxFuture<'a, Result<(), kernel::StoreError>> {
-        self.kv.borrow_mut().insert(key.into(), value.into());
-        ready(Ok(()))
-    }
-    fn delete<'a>(&'a self, key: &'a str) -> kernel::BoxFuture<'a, Result<(), kernel::StoreError>> {
-        self.kv.borrow_mut().remove(key);
-        ready(Ok(()))
-    }
-    fn list_prefix<'a>(&'a self, prefix: &'a str) -> kernel::BoxFuture<'a, Result<Vec<String>, kernel::StoreError>> {
-        let mut keys: Vec<String> = self
-            .kv
-            .borrow()
-            .keys()
-            .filter(|k| k.starts_with(prefix))
-            .cloned()
-            .collect();
-        keys.sort();
-        ready(Ok(keys))
-    }
-}
-
-/// No blobs in a Worker turn: nothing here writes one, and a store that
-/// pretends otherwise would be a lie with a HashMap behind it.
-impl kernel::BlobStore for TurnStore {
-    fn read<'a>(&'a self, _p: &'a str) -> kernel::BoxFuture<'a, Result<Option<Vec<u8>>, kernel::StoreError>> {
-        ready(Ok(None))
-    }
-    fn write<'a>(&'a self, _p: &'a str, _b: &'a [u8]) -> kernel::BoxFuture<'a, Result<(), kernel::StoreError>> {
-        ready(Ok(()))
-    }
-    fn delete<'a>(&'a self, _p: &'a str) -> kernel::BoxFuture<'a, Result<(), kernel::StoreError>> {
-        ready(Ok(()))
-    }
-    fn list_prefix<'a>(&'a self, _p: &'a str) -> kernel::BoxFuture<'a, Result<Vec<String>, kernel::StoreError>> {
-        ready(Ok(Vec::new()))
-    }
-}
-
-impl kernel::StorePort for TurnStore {
-    fn kv(&self) -> &dyn kernel::KvStore {
-        self
-    }
-    fn blob(&self) -> &dyn kernel::BlobStore {
-        self
-    }
+/// Where one sub-agent's own storage lives: its OWN database, not a corner of
+/// the page's. Sharing one would replay the lead's whole event log into every
+/// sub-agent and fight it for the `events/` keyspace; a database per agent is
+/// the Python's folder per agent, and it is one string.
+fn database(name: &str) -> String {
+    format!("harness-agent-{name}")
 }
 
 /// One sub-agent, booted in its Worker and answering goals one at a time.
@@ -114,7 +56,7 @@ impl AgentWorker {
         }
         let ports = core::Ports {
             model: Rc::clone(&model) as Rc<dyn kernel::ModelPort>,
-            store: Rc::new(TurnStore::default()),
+            store: Rc::new(IdbStore::open(&database(&name)).await.map_err(js_err)?),
             net: Rc::new(FetchNet::new(Vec::new())),
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
@@ -125,6 +67,10 @@ impl AgentWorker {
         let files: Vec<(String, String)> = serde_json::from_str(&agents_json).unwrap_or_default();
         let mut app = core::boot(ports).await.map_err(js_err)?;
         core::install_agents_as(&mut app, files, &name);
+        // A reload is a new Worker, but it is not a new conversation: this
+        // agent's own window comes back out of its own log (increment 08 —
+        // the open item 07 recorded).
+        core::restore_log(&mut app).await.map_err(js_err)?;
         Ok(AgentWorker {
             app: Rc::new(RefCell::new(app)),
             name,
@@ -154,8 +100,11 @@ impl AgentWorker {
         // The cause, in the sentence the page would have shown for its own
         // turn — unprefixed, because the transcript and the board already say
         // which agent this is and a doubled name reads as a stutter.
-        Err(JsValue::from_str(&match core::last_failure(&app) {
-            Some(why) => why,
+        // The TYPED payload, not the rendered sentence: the page re-renders it
+        // into the same failure card — with the same disclosure — that it shows
+        // for its own turns (`ux-walker`, increment 07b).
+        Err(JsValue::from_str(&match core::last_failure_payload(&app) {
+            Some(payload) => payload,
             None => format!("{} produced no answer", self.name),
         }))
     }

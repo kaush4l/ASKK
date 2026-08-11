@@ -181,9 +181,18 @@ fn an_old_record_does_not_replay_rust_debug_syntax_at_the_reader() {
     block_on(drive(Rc::clone(&app))).expect("the turn drives");
 
     let theirs = chat_with(&app, "researcher").body;
-    assert!(!theirs.contains("JsValue"), "no debug wrapper: {theirs}");
+    // The SENTENCE a person reads is clean; the record itself is still shown
+    // verbatim behind the disclosure, which is the point of the disclosure.
+    let (sentence, detail) = theirs.split_once("<details>").expect("a failure card: {theirs}");
+    assert!(!sentence.contains("JsValue"), "no debug wrapper: {sentence}");
     assert!(
-        theirs.contains(r#"<span class="speaker">researcher: </span><span class="said">The model endpoint could not be reached."#),
-        "named once, by the transcript: {theirs}"
+        sentence.contains("<p>The model endpoint could not be reached.</p>"),
+        "the sentence, named once: {sentence}"
+    );
+    // One failure, one presentation: the sub-agent's failure is the same card
+    // with the same reachable detail as the page's own (increment 07b).
+    assert!(
+        detail.contains("Technical detail for failure 1"),
+        "the cause is reachable: {detail}"
     );
 }

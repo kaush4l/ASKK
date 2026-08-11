@@ -12,6 +12,7 @@ use crate::phase::{v1_phases, PhaseConfig, ResponseContract};
 use crate::reply::{parse_reply, ParsedReply};
 use crate::state::AgentState;
 use crate::toolbox::Toolbox;
+use crate::window;
 use crate::tools::ToolResult;
 
 /// How many times one turn may go round the call-a-tool loop before the agent
@@ -36,7 +37,24 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
             paper::set_task(&mut state.paper, &text, input.at);
             paper::push_history(&mut state.paper, "user", &text, input.at);
             (state.pending_tools, state.tool_rounds) = (0, 0);
-            let effect = call_model(&mut state);
+            // Compaction runs at the TOP of a turn, with the question just
+            // asked already in the window — Python `_step`, and the reason it
+            // is there: summarise the question away and the model answers one
+            // it can no longer see, confidently.
+            let effect = window::compaction(&mut state, input.at)
+                .unwrap_or_else(|| call_model(&mut state, input.at));
+            (state, vec![effect])
+        }
+        // The summary is back. It REPLACES the older window, and then the turn
+        // the person actually asked for is taken against the compacted paper.
+        // The reply is the summarizer's, not this agent's, which is why it
+        // never reaches `on_reply` and never becomes an answer.
+        EventKind::ModelReplied { text, .. } if state.compacting => {
+            state.compacting = false;
+            if window::compacted(&mut state.paper, &text, state.keep_recent, input.at) {
+                state.compactions += 1;
+            }
+            let effect = call_model(&mut state, input.at);
             (state, vec![effect])
         }
         // The completed reply (ADR-002: deltas never reach the log): either
@@ -77,11 +95,14 @@ fn scoped_tools(state: &AgentState, cfg: &PhaseConfig) -> Toolbox {
 /// Assemble the paper and ask the model. The affordances and response-contract
 /// sections are rewritten from the phase's granted toolbox first, so what the
 /// model may call and what it is told it may call cannot drift (I13).
-fn call_model(state: &mut AgentState) -> Effect {
+fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effect {
     let cfg = config(state);
     let tools = scoped_tools(state, &cfg);
     paper::set_text(&mut state.paper, "affordances", &tools.instructions());
     paper::set_text(&mut state.paper, "response_contract", &contract_text(&cfg, &tools));
+    // Fresh every request, never cached: a cached clock is a wrong clock
+    // (Python `Engine.context`).
+    paper::set_dynamic(&mut state.paper, "environment", &crate::now::environment(at), at);
     Effect::CallModel {
         document: context::assemble(&state.paper, state.phase, cfg.budget),
         // G4 target: the local OpenAI-compatible proxy, text-only.
@@ -91,8 +112,10 @@ fn call_model(state: &mut AgentState) -> Effect {
         },
         endpoint: EndpointName("model".into()),
         model: state.model.clone(),
+        speaker: String::new(), // this agent's own turn
     }
 }
+
 
 /// What the phase demands back, in words the model can obey.
 fn contract_text(cfg: &PhaseConfig, tools: &Toolbox) -> String {
@@ -167,6 +190,6 @@ fn on_tool_result(
             }],
         );
     }
-    let effect = call_model(&mut state);
+    let effect = call_model(&mut state, at);
     (state, vec![effect])
 }

@@ -63,12 +63,16 @@ pub(crate) async fn run_on(
                 // a sub-agent's failure names its cause the way the lead's does.
                 DelegateError::Failed { message, .. } => message,
             };
-            a.set_status(agent, Status::Failed, &message);
+            // The RECORD keeps the typed payload the Worker sent, so the card
+            // can carry its disclosure; the BOARD gets the sentence, because a
+            // status row is one line a person reads at a glance.
+            let said = crate::failure::told(&message, agent);
+            a.set_status(agent, Status::Failed, &said);
             a.append(EventKind::Custom {
                 kind: "core.agent_error".into(),
                 payload_json: crate::failure::agent_error(agent, &message),
             });
-            Err(message)
+            Err(said)
         }
     }
 }

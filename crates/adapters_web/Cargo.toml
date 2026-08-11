@@ -42,6 +42,9 @@ features = [
   "WorkerOptions",
   "WorkerType",
   "MessageEvent",
+  # A sub-agent's Worker opens its OWN IndexedDB, and a Worker has no window
+  # (increment 08).
+  "WorkerGlobalScope",
   "Document",
   "Element",
   "NodeList",

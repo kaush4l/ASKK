@@ -102,7 +102,15 @@ pub fn ChatPane(
     };
 
     rsx! {
-        section { class: "panel", aria_label: "{title}",
+        section {
+            class: "panel",
+            // The tabpanel half of the ARIA tabs pattern (increment 08): the
+            // strip's `aria-controls` points here, and the panel is named by
+            // the tab that selected it rather than by a duplicate label.
+            id: "chat-panel",
+            role: "tabpanel",
+            aria_labelledby: "tab-{agent}",
+            aria_label: "{title}",
             h2 { "{title}" }
             if !endpoint_set() {
                 p { class: "pending",

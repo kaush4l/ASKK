@@ -42,6 +42,28 @@ pub trait KvStore {
     fn delete<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<(), StoreError>>;
     fn list_prefix<'a>(&'a self, prefix: &'a str)
         -> BoxFuture<'a, Result<Vec<String>, StoreError>>;
+
+    /// Replace everything under `prefix` with `entries`, ATOMICALLY where the
+    /// substrate can — the Python's `_replace_log`, which writes a temporary
+    /// beside the log and `replace`s it so "a reader sees the old file or the
+    /// new one and never half of either". An adapter that cannot be atomic
+    /// still gets the right content from the default below (I15); IndexedDB
+    /// overrides it with one transaction.
+    fn replace_prefix<'a>(
+        &'a self,
+        prefix: &'a str,
+        entries: &'a [(String, String)],
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            for key in self.list_prefix(prefix).await? {
+                self.delete(&key).await?;
+            }
+            for (key, value) in entries {
+                self.put(key, value).await?;
+            }
+            Ok(())
+        })
+    }
 }
 
 /// Path → bytes store for large append-heavy payloads (event segments,

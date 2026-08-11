@@ -92,9 +92,11 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
                 list = list.child(msg("msg pending", "", &note));
                 (awaiting, count) = (false, count + 1);
             }
+            // The same card as a failure on this page's own agent: one failure,
+            // one presentation, and the cause reachable from either.
             EventKind::Custom { kind, payload_json } if kind == "core.agent_error" => {
-                let said = crate::failure::readable(&crate::failure::message_of(payload_json), who);
-                list = list.child(msg("msg error", who, &said));
+                failures += 1;
+                list = list.child(crate::failure::agent_failure(payload_json, who, failures));
                 (awaiting, count) = (false, count + 1);
             }
             EventKind::Custom { kind, payload_json } if kind == "core.error" => {
@@ -138,10 +140,43 @@ fn header(ctx: &Ctx, who: &str) -> String {
             .build()
             .into_html();
     };
-    FragmentBuilder::new("p")
+    let line = FragmentBuilder::new("p")
         .class("agent-header")
         .attr("data-agent", &spec.name)
         .text(&format!("{} — {}", spec.name, spec.description))
+        .build()
+        .into_html();
+    format!("{line}{}", memory(ctx, who))
+}
+
+/// What this agent still HOLDS, which after a compaction is not what is on
+/// screen: the transcript keeps every turn, the window keeps a summary and the
+/// tail. Rendered only for this process's own agent — another agent's window
+/// lives in its own Worker, and guessing at it would be a made-up number.
+fn memory(ctx: &Ctx, who: &str) -> String {
+    if who != ctx.me {
+        return String::new();
+    }
+    let compacted = ctx
+        .window
+        .first()
+        .is_some_and(|line| line.contains(agent::SUMMARY_HEADING));
+    let said = match compacted {
+        true => "the oldest turns are now a summary the summarizer wrote",
+        false => "every turn, in full",
+    };
+    FragmentBuilder::new("p")
+        .class("agent-memory")
+        .attr("data-window", &ctx.window.len().to_string())
+        .attr("data-compacted", &compacted.to_string())
+        .text(&format!(
+            "Working memory: {} {} — {said}.",
+            ctx.window.len(),
+            match ctx.window.len() {
+                1 => "entry",
+                _ => "entries",
+            }
+        ))
         .build()
         .into_html()
 }

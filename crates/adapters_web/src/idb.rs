@@ -11,27 +11,19 @@ use crate::idb_bridge::{await_request, err};
 
 use kernel::{BlobStore, BoxFuture, KvStore, StoreError, StorePort};
 
-const KV: &str = "kv";
+pub(crate) const KV: &str = "kv";
 const BLOB: &str = "blob";
 
 /// `StorePort` over one IndexedDB database, two object stores (`kv`, `blob`
 /// — ADR-005: prefixes migrate in data, not in DDL).
 pub struct IdbStore {
-    db: IdbDatabase,
+    pub(crate) db: IdbDatabase,
 }
 
 impl IdbStore {
     /// Open (creating the two object stores on first run), version 1.
     pub async fn open(name: &str) -> Result<IdbStore, StoreError> {
-        let factory = web_sys::window()
-            .ok_or_else(|| StoreError::Backend {
-                message: "no window (worker hosting is a later move)".into(),
-            })?
-            .indexed_db()
-            .map_err(|e| err("factory", e))?
-            .ok_or_else(|| StoreError::Backend {
-                message: "indexedDB unavailable".into(),
-            })?;
+        let factory = factory()?;
         let open_req = factory.open_with_u32(name, 1).map_err(|e| err("open", e))?;
         let for_upgrade = open_req.clone();
         let on_upgrade = Closure::once(move |_: JsValue| {
@@ -49,7 +41,7 @@ impl IdbStore {
         })
     }
 
-    fn request(
+    pub(crate) fn request(
         &self,
         store: &str,
         mode: IdbTransactionMode,
@@ -64,7 +56,7 @@ impl IdbStore {
     }
 
     /// Sorted keys of `store` starting with `prefix`.
-    async fn keys_with_prefix(&self, store: &str, prefix: &str) -> Result<Vec<String>, StoreError> {
+    pub(crate) async fn keys_with_prefix(&self, store: &str, prefix: &str) -> Result<Vec<String>, StoreError> {
         // ponytail: upper bound = prefix + U+10FFFF (spike-idb); a key
         // containing U+10FFFF could escape the range — cursor if it matters.
         let upper = format!("{prefix}\u{10FFFF}");
@@ -81,48 +73,27 @@ impl IdbStore {
     }
 }
 
-impl KvStore for IdbStore {
-    fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<String>, StoreError>> {
-        Box::pin(async move {
-            let req = self.request(KV, IdbTransactionMode::Readonly, |s| {
-                s.get(&JsValue::from_str(key))
-            })?;
-            let val = await_request(req).await.map_err(|e| err("get", e))?;
-            if val.is_undefined() {
-                return Ok(None);
-            }
-            val.as_string()
-                .map(Some)
-                .ok_or_else(|| StoreError::Corrupt {
-                    key: key.into(),
-                    message: "stored value not a string".into(),
-                })
-        })
+/// The `indexedDB` factory of whatever global this code is running in. A page
+/// has `window`; a sub-agent's Worker has `WorkerGlobalScope` and no window at
+/// all — and a sub-agent whose store is a HashMap loses its whole conversation
+/// on every reload, which is the open item increment 07 recorded.
+fn factory() -> Result<web_sys::IdbFactory, StoreError> {
+    let missing = || StoreError::Backend {
+        message: "indexedDB unavailable in this context".into(),
+    };
+    let global = js_sys::global();
+    if let Some(window) = global.dyn_ref::<web_sys::Window>() {
+        return window
+            .indexed_db()
+            .map_err(|e| err("factory", e))?
+            .ok_or_else(missing);
     }
-    fn put<'a>(&'a self, key: &'a str, value: &'a str) -> BoxFuture<'a, Result<(), StoreError>> {
-        Box::pin(async move {
-            let req = self.request(KV, IdbTransactionMode::Readwrite, |s| {
-                s.put_with_key(&JsValue::from_str(value), &JsValue::from_str(key))
-            })?;
-            await_request(req).await.map_err(|e| err("put", e))?;
-            Ok(())
-        })
-    }
-    fn delete<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<(), StoreError>> {
-        Box::pin(async move {
-            let req = self.request(KV, IdbTransactionMode::Readwrite, |s| {
-                s.delete(&JsValue::from_str(key))
-            })?;
-            await_request(req).await.map_err(|e| err("delete", e))?;
-            Ok(())
-        })
-    }
-    fn list_prefix<'a>(
-        &'a self,
-        prefix: &'a str,
-    ) -> BoxFuture<'a, Result<Vec<String>, StoreError>> {
-        Box::pin(self.keys_with_prefix(KV, prefix))
-    }
+    global
+        .dyn_ref::<web_sys::WorkerGlobalScope>()
+        .ok_or_else(missing)?
+        .indexed_db()
+        .map_err(|e| err("factory", e))?
+        .ok_or_else(missing)
 }
 
 impl BlobStore for IdbStore {

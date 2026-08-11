@@ -4,11 +4,10 @@
 //!
 //! PROVISIONAL (G4 discovery, the shape change this gate exists to find):
 //! the frozen `pump(app, event) -> BoxFuture` held `&mut App` across the
-//! model await — under a browser host that wedges every seam round-trip
-//! (the 400 ms chat polls) for the whole fetch. Split instead: `pump` is the
-//! SYNC thinking half (step + log), `execute_effect` returns a `'static`
-//! future built from Rc-cloned ports (the doing half), and `drive` is the
-//! loop that only borrows the app between awaits, never across one.
+//! model await — wedging every seam round-trip for the whole fetch. Split
+//! instead: `pump` is the SYNC thinking half, `execute_effect` returns a
+//! `'static` future built from Rc-cloned ports, and `drive` is the loop that
+//! only borrows the app between awaits, never across one.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -52,6 +51,7 @@ pub fn execute_effect(
                 format,
                 endpoint,
                 model: model_key,
+                speaker,
             } => {
                 let messages = context::render(&document, format);
                 // The catalogue KEY, not a model id: `adapters_web` resolves
@@ -73,8 +73,11 @@ pub fn execute_effect(
                     at: clock.now(),
                     kind: EventKind::ModelReplied {
                         text,
-                        // This process's own agent: the reply to the call IT made.
-                        agent: String::new(),
+                        // Whose words these are. Empty is this process's own
+                        // agent — the reply to the call IT made; `summarizer`
+                        // is a compaction, an ordinary agent's turn taken on
+                        // this agent's behalf.
+                        agent: speaker,
                     },
                 })
             }
@@ -136,7 +139,14 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
                 let me = app.borrow().me().to_string();
                 app.borrow_mut().set_status(&me, kernel::Status::Working, "");
             }
-            let effects = pump(&mut app.borrow_mut(), event);
+            // `record` queues what the log owes the store: the entries this
+            // pump appended, or the rewrite a compaction made due.
+            let effects = {
+                let mut a = app.borrow_mut();
+                let effects = pump(&mut a, event);
+                crate::logs::record(&mut a);
+                effects
+            };
             crate::batch::run_effects(&app, effects).await;
         }
         // Quiescent AND no task outstanding: the turn is over, so the next
@@ -159,6 +169,8 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             app.borrow_mut()
                 .set_status(&me, kernel::Status::Waiting, "");
         }
+        // The agent's own log first, in the order the Python writes it.
+        crate::logs::drain(&app).await;
         // Persistence: the log is truth in memory the moment it is appended;
         // the store catches up here. A failed write is itself a fact.
         let (store, batch) = {

@@ -20,6 +20,7 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 | 06 | One Worker per agent + the supervisor board: six statuses, sub-agents as tools, and the nine walk findings | 67 green (52 + 7 supervisor/sub-agent + 7 delegation + 1 override-pinning) | fresh install, real omlx on 8873: the lead delegates and the board goes `main:working` → `researcher:working` → `researcher:idle` → `main:waiting` LIVE during the turn, three model calls (lead, sub-agent-in-its-Worker, lead again), and the lead answers with what the sub-agent returned; `researcher({})` is REFUSED and the sub-agent never runs; at 390px the document no longer scrolls sideways | ⬜ pending `ux-walker` | `6ea8c79` | Live at https://kaush4l.github.io/ASKK/. Hosted: `crossOriginIsolated: true`, two Workers boot (one per sub-agent), the board and the agent list are walkable, the Agents card now prints the REAL toolbox (`tools: now, list_agents, read_agent, researcher`) instead of "no tools yet", and the turn dies at the documented loopback boundary — the board then shows `main failed — 1 turn` WITH the endpoint message rather than a lead stuck in `working`. NOT demonstrated live: two sub-agents running at the same instant. The code path exists and its ordering is pinned on the host (`one_line_of_delegations_is_one_batch_and_the_next_line_follows_it`), but the local gemma would not emit two calls on one line after three attempts, so simultaneity is unproven in a browser. |
 | 07 | Chat with any agent individually: per-agent conversations, observable Worker lifecycle, and the seven walk findings | 78 green (67 + 8 per-agent conversations + 3 lifecycle) | fresh install, real omlx on 8873: `researcher` answered a question typed straight to it while `main`'s transcript stayed untouched; delegating through `main` put the sub-agent's turn in the SUB-AGENT's history attributed to `main`; a reload rebuilt every conversation AND both turn counts (2 and 2); the board settles `starting` → `idle` as each Worker reports | ⬜ pending `ux-walker` | `23560d4` | Live at https://kaush4l.github.io/ASKK/. Hosted: `crossOriginIsolated: true`, the agent tabs switch, per-agent histories persist across reload and across a browser restart, the board reads `idle — it answered, and nobody is waiting on it — 4 turns`, and a turn dies at the documented loopback boundary — the sub-agent's failure now names ITS OWN cause (`The model endpoint could not be reached… Chrome 142+ asks permission…`) instead of "researcher produced no answer". |
 | 07b | `ux-walker` FAILED 07: the crossed projection, the global composer lock, invisible tab labels — plus three lower-severity findings from the same walk | 83 green (78 + 5: one read names one agent, one agent's turn does not report another busy, two agents in flight at once, a rebooting Worker does not erase a failure, an old record does not replay Rust debug syntax) | fresh install, real omlx on 8873 (127.0.0.1:8901 → dist): started a turn on `main`, clicked `summarizer` mid-turn and polled 1 s × 10 — heading, pane `aria-label`, agent-header line and composer label all read `summarizer` and the transcript stayed empty every tick, never crossed; with `main` mid-turn `summarizer`'s composer was live (`inputDisabled:false`, Send reads "Send") and a second turn ran to a real gemma answer while `main`'s was still running; tab labels compute 16:1 on the body background (was 1.02:1); a sub-agent whose only turn failed still reads `failed` after a reload and after its Worker re-boots; an `agent_error` record injected in the OLD shape (`JsValue("researcher: …")`) renders as `researcher: The model endpoint could not be reached.` — one speaker, no wrapper; saving a new endpoint restarts every Worker with no `closed` row | ⬜ pending `ux-walker` | `304e1a4` | Live at https://kaush4l.github.io/ASKK/. 07's row was a FAIL — this row is the answer to it, and 07 does not close until this one is walked. HOSTED, after wiping the service worker, caches and IndexedDB (the walker was served a stale build ~4 min after the deploy; the bundle hash in `index.html` is the check — `ui-cc88c6ef827508a2.js` matches `dist/`): the same walk passes — `main` mid-turn against a black-holed endpoint, `summarizer` never crossed over 10 polls, both boards read `working` AT ONCE (`main:working`, `summarizer:working`), which is the "two at once" 06 and 07 could not demonstrate through the interface at all; after both turns failed a reload left `main:failed` AND `summarizer:failed` — a Worker agent and the page's own agent now mean the same thing on a fresh load. WHAT CHANGED: the pane renders from ONE value (`turn::Shown { who, html, pending }`) and shows a transcript only while `who` is the selected agent, so a heading and a body from different agents is not expressible; a turn's poller belongs to the agent it started on and returns the moment the selection moves; in-flight is per agent, read from that agent's own `x-turn`; `.agent-tabs .tab` re-states `color: var(--ink)` (it had inherited `button`'s ink for a background it no longer has); `core::report_agent` refuses to let a `Starting`/`Idle` reboot report overwrite a `Failed` row — a reboot is not an outcome; `failure::readable` strips an older build's `JsValue("…")` wrapper and the duplicated speaker name at RENDER time, so records already written stay readable; `close_all` no longer writes `Closed`, which was assigned and replaced in one tick and could never be seen (the variant stays in `kernel` because logs written by the 07 build carry it and a replay that cannot deserialize refuses boot). |
+| 08 | Per-agent logs, the rolling window and the built-in summarizer — plus the three 07b walk findings | 93 green (83 + 6 window/compaction + 4 per-agent log) | fresh install, real omlx on 8873: four turns drove `main` past `compact_at: 8` and the SUMMARIZER AGENT compacted it live — the window went 7 → 5 with `data-compacted="true"`, and the stored `log/main/*` in IndexedDB is exactly that window (summary + `keep_recent: 3` tail); a reload rebuilt the same 5; `researcher` did the same INSIDE ITS OWN WORKER against its own database (`harness-agent-researcher`, `log/researcher/*`), compacted at 6, and after a page reload its next turn continued from the restored window rather than an empty paper; the ARIA tablist answers ArrowLeft/Right (wrapping), Home and End with a roving tabindex | ⬜ pending `ux-walker` | `PENDING` | Live at https://kaush4l.github.io/ASKK/. HOSTED (bundle hash in `index.html` checked against `dist/` — `ui-5f603ad7507e1067.js`, matched on the third poll): `crossOriginIsolated: true`, three tabs read `tab, main, selected` to a screen reader, the memory line renders, and BOTH failures at the loopback boundary now render as the SAME card — `main`'s and `researcher`'s are byte-identical sentences with the identical `Technical detail for failure 1 — the endpoint was unreachable` disclosure, the sub-agent's carrying the typed payload its Worker sent across `postMessage`. With every stylesheet removed the current tab reads `▸ **researcher**` while the others are plain. NOT demonstrated hosted: a live compaction — it needs a reachable model, and the hosted page still dies on Chrome's Local Network Access gate (02's row). |
 
 ## Parity with the Python project
 
@@ -29,9 +30,9 @@ feature "exists".
 | Python | Behaviour that must match | Done |
 |---|---|---|
 | `core/engine.py` | ReAct turn: answer / tool call / failure exits | ✅ |
-| `core/engine.py` | Rolling window compaction, summary + retained tail | ⬜ |
-| `core/engine.py` | CONTEXT block assembled fresh every request | ⬜ |
-| `core/engine.py` | Log mirrors the window exactly after compaction; writes drain first | ⬜ |
+| `core/engine.py` | Rolling window compaction, summary + retained tail | ✅ |
+| `core/engine.py` | CONTEXT block assembled fresh every request | ✅ |
+| `core/engine.py` | Log mirrors the window exactly after compaction; writes drain first | ✅ |
 | `core/state.py` | Six statuses; `turns` increments only on entry to Working | ✅ |
 | `core/state.py` | `Waiting` (entry agent) distinct from `Idle` | ✅ |
 | `core/registry.py` | One private event loop per agent; failure records the message | ✅ |
@@ -45,7 +46,7 @@ feature "exists".
 | `core/space.py` | Facts render into CONTEXT; a stale value never lingers | ⬜ |
 | `core/inference.py` | Model catalogue keyed by name, not a provider table | ✅ |
 | `core/utils.py` | `agent.md` frontmatter: model, temperature, engine, tools, space | ✅ |
-| `core/agents/summarizer` | Built-in summarizer compresses history | ⬜ |
+| `core/agents/summarizer` | Built-in summarizer compresses history | ✅ |
 | — | Chat with the main agent in the UI | ✅ |
 | — | Chat with any agent individually | ✅ |
 | — | Agents hot-reloaded from `public/agents/` | ✅ |
@@ -440,3 +441,78 @@ they are `node` inside the VM, priced after increment 10.
   reload is the PAGE's record of that conversation, which is what every pane projects and what a
   person reads; the agent itself starts the next turn without it. That is the same scope 06
   shipped, and 08 is where it changes.
+
+### Increment 08
+
+- **Compaction produces an artifact; assembly only reads it back.** I14 says `assemble` is pure and
+  golden-tested, and `RESEARCH.md` says summaries must be precomputed artifacts in `State` — a pure
+  assembler cannot author one. So `step` never summarises: when the window reaches `compact_at` it
+  emits a model call whose reply IS the summary, and the summary is written into the window before
+  the turn the person asked for is taken. `assemble` still never calls a model.
+- **The summarizer is an ordinary agent, not machinery.** Its `public/agents/summarizer/agent.md`
+  body is the system block of the compaction call and its `model:` key is what the call is made
+  with, both read off the peer of that name at `adopt_spec` — the Python registry's rule exactly
+  ("the summarizer is nobody's tool; it is what every other engine hands its history to"). The call
+  carries a `speaker` (`Effect::CallModel.speaker`), so the reply is logged as `ModelReplied { agent:
+  "summarizer" }` and can never be mistaken for this agent's answer: `core::answer` skips it, and it
+  lands in the summarizer's own conversation, where it is readable.
+- **It is a MODEL call, not a delegation.** A sub-agent's Worker has no `AgentPort` (one level deep,
+  so a cycle cannot exist), so routing compaction through `delegate` would have meant no sub-agent
+  could ever compact — and it would have written the whole transcript into the summarizer's visible
+  history as a question somebody asked it. The summarizer's paper is built fresh, toolless and with
+  an empty history: it reads the transcript and nothing else, so the calling agent's prompt and
+  tools cannot steer it (Python `compact`).
+- **The window arithmetic is pinned against the Python's OUTPUT, not against a reading of it.**
+  `core/engine.py` was run with a stub summarizer at `compact_at=6, keep_recent=2`; the transcript it
+  handed over, the window it kept (`[system "Summary of the conversation so far:\n…", m5, m6]`) and
+  its `len(messages) <= keep` no-op are what `crates/agent/tests/window.rs` asserts.
+- **One ordered queue is what makes "drain before the rewrite" true.** `App.unlogged` holds
+  `Append`s and `Rewrite`s in the order they became due; a compaction's rewrite is pushed BEHIND the
+  appends already waiting, and `drive` drains in order. That is the Python's `_rewrite_log` awaiting
+  every in-flight append before replacing the file — "letting it land afterwards would put it below
+  the summary that already covers it" — and it is asserted on the op sequence, not inferred.
+- **`KvStore::replace_prefix` is the atomic tmp-then-replace.** IndexedDB does it in ONE readwrite
+  transaction (delete the range, put the new entries); the trait's default body does the same writes
+  separately, so a store that cannot be atomic still ends up with the right content (I15).
+- **Each agent's log is keyed by the agent** (`log/<name>/<nnnnnnnn>`), the way the Python gives
+  each agent its own folder, and a sub-agent's Worker now opens its OWN IndexedDB database
+  (`harness-agent-<name>`) instead of a HashMap. Sharing the page's database would have replayed the
+  lead's whole event log into every sub-agent and fought it for the `events/` keyspace; a database
+  per agent is one string. `IdbStore` now takes its factory from `WorkerGlobalScope` as well as
+  `Window`, which is what makes that possible at all.
+- **A reload is a new process but not a new conversation.** `core::restore_log` reads the stored log
+  back into the window at boot, for the page and for every Worker. This closes the item increment 07
+  left open: a sub-agent's own history now survives a reload, verified by continuing a compacted
+  conversation across one.
+- **Preloading is the default here, not opt-in.** The Python's `preload_history` is opt-in because a
+  new run usually wants a clean slate; a browser RELOAD is not a new run, and an agent that forgot
+  everything on refresh while the screen still showed it would be the same lie the transcript/board
+  split was in 07.
+- **The pane says what the agent HOLDS, not just what is on screen.** After a compaction the
+  transcript still shows every turn and the window does not, so the chat header carries one line —
+  "Working memory: 5 entries — the oldest turns are now a summary the summarizer wrote" — with
+  `data-window` and `data-compacted` on it. Only for this process's own agent: another agent's
+  window lives in its Worker, and a guess would be a made-up number.
+- **`compact_at`/`keep_recent` are frontmatter keys** (Python forwards any `Engine` field), refused
+  rather than defaulted when they are not whole numbers. The shipped files are `main` 8/3 and
+  `researcher` 6/2 rather than the Python's 75/24: a 75-entry window is far past what the local
+  gemma this project is walked against will take, and a setting nobody can reach is a setting that
+  is never tested. `summarizer` keeps its own `compact_at: 0` — it never summarises itself.
+- **One failure, one presentation** (07b finding 1). `core.error` and `core.agent_error` now render
+  through the same card with the same "Technical detail for failure N — <kind>" disclosure, and a
+  sub-agent's Worker sends back the TYPED payload rather than the rendered sentence, so the cause is
+  reachable from a sub-agent's turn exactly as it is from the page's. The board still gets the
+  sentence, because a status row is one line read at a glance. Records written by older builds carry
+  the sentence instead, and still render as that sentence.
+- **The tab strip is a real ARIA tablist** (07b finding 2): `role="tablist"`/`role="tab"`,
+  `aria-selected`, roving tabindex, ArrowLeft/ArrowRight with wrap-around, Home and End, automatic
+  activation, `aria-controls` to a `role="tabpanel"` chat pane named by its tab. A screen reader now
+  hears "tab, main, selected" where it heard "button, main".
+- **The plain fallback answers "which tab am I in?" on its own** (07b finding 3): `aria-current` and
+  `aria-selected` get no UA styling, so the current tab is now marked `▸` and its name is a
+  `<strong>` — both visible with every stylesheet removed, which was checked by removing them.
+- **Not done here:** the summarizer's `stateless: true` frontmatter key is still ignored — nothing
+  routes a turn through its Worker, so it has no history to be stateless about. Compaction of a
+  sub-agent's window was verified through its own pane; a compaction that fires DURING a delegation
+  is the same code path and was not separately driven. A live hosted compaction needs a reachable
+  model, which the hosted origin still does not have (02's row).

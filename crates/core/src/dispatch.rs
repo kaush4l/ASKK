@@ -85,6 +85,11 @@ pub struct Ctx {
     /// with no name on it belongs to this one; `/chat` projects one agent's
     /// history and defaults to it.
     pub me: String,
+    /// What THIS process's agent actually holds — its window (increment 08).
+    /// A projection like `board`: the pane can say how much of the
+    /// conversation the model still sees, which after a compaction is not the
+    /// same thing as how much of it is on screen.
+    pub window: Vec<String>,
 }
 
 /// A tier-0 built-in's logic. A plain fn pointer, not a trait object: no
@@ -147,6 +152,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         agent_problems: app.agent_problems.clone(),
         board: app.board.snapshot().to_vec(),
         me: app.me().to_string(),
+        window: crate::logs::window(app),
     };
 
     let response = match logic {

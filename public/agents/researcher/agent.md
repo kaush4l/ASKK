@@ -6,6 +6,8 @@ temperature: 0.3
 engine: react
 space: research
 tools: []
+compact_at: 6
+keep_recent: 2
 ---
 
 You are given one goal by another agent, not by a person. It arrives as a

@@ -25,6 +25,11 @@ pub enum Effect {
         /// adapter resolves it against `public/models.json`, so no URL and no
         /// concrete model id exists anywhere upstream of the broker (I6).
         model: String,
+        /// WHICH AGENT this reply belongs to; empty is the process's own
+        /// agent. Compaction is a turn taken by the `summarizer` — an ordinary
+        /// agent, with its own file and its own conversation — so the reply
+        /// must be recorded as its words and never as this agent's answer.
+        speaker: String,
     },
     /// Run one tool through its granted capability (Work's single action).
     InvokeTool { tool: ToolId, args_json: String },

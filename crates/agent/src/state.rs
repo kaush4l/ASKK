@@ -55,11 +55,45 @@ pub struct AgentState {
     /// not the machine's — the phase only decides whether this phase may act.
     #[serde(default)]
     pub toolbox: Toolbox,
+    /// Compact once the window reaches this many entries; 0 never compacts
+    /// (Python `Engine.compact_at`, default 75, overridable in frontmatter).
+    #[serde(default = "default_compact_at")]
+    pub compact_at: usize,
+    /// How many of the newest entries survive a compaction verbatim (Python
+    /// `Engine.keep_recent`, default 24).
+    #[serde(default = "default_keep_recent")]
+    pub keep_recent: usize,
+    /// The reply now in flight is the SUMMARIZER's, not this agent's answer.
+    /// A summary is an artifact compaction produces and assembly reads back —
+    /// `assemble` is pure and cannot author one (I14, RESEARCH).
+    #[serde(default)]
+    pub compacting: bool,
+    /// How many times this window has been compacted. The log mirrors the
+    /// window, and this counter is what tells the mirror a REWRITE is due
+    /// rather than another append.
+    #[serde(default)]
+    pub compactions: u32,
+    /// The summarizer agent's own prompt and catalogue key, taken from the
+    /// peer of that name at adoption. The Python registry hands the summarizer
+    /// to every other engine as the thing that compacts a history rather than
+    /// as a tool anyone calls — it is an ordinary agent, and this is its file.
+    #[serde(default)]
+    pub summarizer_prompt: String,
+    #[serde(default)]
+    pub summarizer_model: String,
     /// The paper's assembly inputs — gathered section sources, refreshed by
     /// `core` (affordances from the registry, observations from effects)
     /// before each step. Inside AgentState so one snapshot restores the
     /// whole thinking context.
     pub paper: State,
+}
+
+/// Python `Engine.compact_at` / `keep_recent` defaults, in one audited place.
+pub(crate) fn default_compact_at() -> usize {
+    75
+}
+pub(crate) fn default_keep_recent() -> usize {
+    24
 }
 
 impl AgentState {
@@ -81,6 +115,12 @@ impl AgentState {
             // which is the honest default (nothing is attached that an agent
             // did not ask for).
             toolbox: Toolbox::default(),
+            compact_at: default_compact_at(),
+            keep_recent: default_keep_recent(),
+            compacting: false,
+            compactions: 0,
+            summarizer_prompt: String::new(),
+            summarizer_model: String::new(),
             paper: crate::paper::seed(),
         }
     }

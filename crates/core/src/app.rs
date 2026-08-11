@@ -51,6 +51,12 @@ pub struct App {
     pub(crate) pending: Vec<Event>,
     /// Log entries not yet written through `StorePort` — drained by `drive`.
     pub(crate) unpersisted: Vec<Event>,
+    /// This agent's OWN log — the Python's `agents/<name>/log.txt` — as writes
+    /// waiting for the store, in the order they must happen. One ordered queue
+    /// is what makes "drain before the rewrite" true by construction.
+    pub(crate) unlogged: Vec<crate::logbook::LogOp>,
+    /// How much of the window the log already holds.
+    pub(crate) logbook: crate::logbook::Logbook,
     /// The agents loaded from `public/agents/` (plus the compiled-in
     /// built-ins they may override). Data, not code: installed after boot by
     /// `agents::install_agents`, replaced wholesale when the files change.

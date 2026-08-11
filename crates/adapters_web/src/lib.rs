@@ -15,6 +15,7 @@ pub mod catalogue;
 mod endpoint;
 mod error;
 mod idb;
+mod idb_kv;
 mod idb_bridge;
 mod model;
 mod overrides;
@@ -98,6 +99,10 @@ impl WebApp {
         let files = assets::fetch_agents().await;
         let files_json = serde_json::to_string(&files).unwrap_or_else(|_| "[]".into());
         core::install_agents(&mut app, files);
+        // This page's agent holds its conversation across a reload the way
+        // every sub-agent now does — from its own log, not from the transcript
+        // the screen happens to show (increment 08).
+        core::restore_log(&mut app).await.map_err(js_err)?;
         // Every agent that is not this page gets its own Worker — its own JS
         // context, its own Wasm instance, its own event loop (Python
         // `AgentThread`). Started at boot, the way the registry starts every

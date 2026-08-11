@@ -38,6 +38,7 @@ fn work_turn_user_message_to_call_model_to_reply() {
         format,
         endpoint,
         model,
+        ..
     } = &effects[0]
     else {
         panic!("expected CallModel, got {effects:?}");

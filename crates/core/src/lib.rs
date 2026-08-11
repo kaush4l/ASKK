@@ -19,6 +19,8 @@ mod error;
 mod failure;
 mod form;
 mod install;
+mod logbook;
+mod logs;
 mod runtime;
 mod tools;
 mod transcript;
@@ -31,6 +33,7 @@ pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
 pub use error::CoreError;
 // `drive` is PROVISIONAL (G4): the async runtime loop — see runtime.rs.
 pub use runtime::{drive, execute_effect, pump};
+pub use logs::{restore_log, window};
 
 use kernel::{Request, Response};
 
@@ -72,11 +75,19 @@ pub fn answer(app: &App) -> Option<String> {
 /// four words naming nothing, where the page's own failure named the endpoint
 /// and why it could not be reached (`ux-walker`, increment 06).
 pub fn last_failure(app: &App) -> Option<String> {
+    last_failure_payload(app).map(|payload| failure::sentence_of(&payload))
+}
+
+/// The same failure as the TYPED payload it was logged as — what a sub-agent's
+/// Worker hands back across `postMessage`, so the agent that called it can show
+/// the identical card, with the identical disclosure, that the page shows for
+/// its own turn (`ux-walker`, increment 07b: one failure, one presentation).
+pub fn last_failure_payload(app: &App) -> Option<String> {
     app.log
         .iter()
         .filter_map(|event| match &event.kind {
             kernel::EventKind::Custom { kind, payload_json } if kind == "core.error" => {
-                Some(failure::sentence_of(payload_json))
+                Some(payload_json.clone())
             }
             _ => None,
         })

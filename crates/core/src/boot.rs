@@ -103,6 +103,8 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
             ports,
             pending: Vec::new(),
             unpersisted: Vec::new(),
+            unlogged: Vec::new(),
+            logbook: crate::logbook::Logbook::default(),
             agents: Vec::new(),
             agent_problems: Vec::new(),
             board: agent::Board::default(),
