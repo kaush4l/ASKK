@@ -21,7 +21,11 @@ fn user(text: &str) -> Event {
 /// The Work-turn effect sequence, asserted end to end.
 #[test]
 fn work_turn_user_message_to_call_model_to_reply() {
-    let (state, effects) = step(AgentState::new(), user("Hello there"));
+    // The agent's `model:` catalogue key rides out on the effect (increment
+    // 04) — the adapter resolves it, nothing here knows a URL.
+    let mut start = AgentState::new();
+    start.model = "local".into();
+    let (state, effects) = step(start, user("Hello there"));
     assert_eq!(state.phase, PhaseId::Work);
     assert_eq!(state.task.as_deref(), Some("Hello there"));
     assert_eq!(effects.len(), 1, "one coarse effect per turn (§1c)");
@@ -29,11 +33,13 @@ fn work_turn_user_message_to_call_model_to_reply() {
         document,
         format,
         endpoint,
+        model,
     } = &effects[0]
     else {
         panic!("expected CallModel, got {effects:?}");
     };
     assert_eq!(endpoint.0, "model");
+    assert_eq!(model, "local", "the catalogue key the agent file named");
     assert_eq!(
         *format,
         ProviderFormat::OpenAiChat {

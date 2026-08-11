@@ -108,6 +108,12 @@ fn transcript(ctx: &Ctx, appended: Option<&str>) -> Response {
         list = list.child(msg("msg pending", "No messages yet — ask the agent something."));
     }
     let mut response = html(200, format!("{}{}", agent_header(ctx), list.build().into_html()));
+    // WHO this conversation is with, as a header rather than a sentence in the
+    // body: the pane must be able to title itself without parsing the fragment
+    // or leaning on an editable `description` line (`ux-walker`, increment 03).
+    if let Some(spec) = ctx.agents.iter().find(|s| s.name == "main") {
+        response.headers.push(("x-agent".into(), spec.name.clone()));
+    }
     if awaiting {
         response.headers.push(("x-turn".into(), "pending".into()));
     }
@@ -156,7 +162,7 @@ fn failure(payload_json: &str) -> Fragment {
 /// The actionable sentence, chosen on the typed variant — not by grepping the
 /// payload. Each names its own fix; the fallback admits it has none.
 fn failure_line(payload_json: &str) -> String {
-    use kernel::ModelError::{EndpointUnknown, Provider, Transport};
+    use kernel::ModelError::{EndpointUnknown, Provider, Transport, Unsupported};
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
         Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => {
             "No model endpoint is set yet. Add one in Settings below — a local \
@@ -166,6 +172,11 @@ fn failure_line(payload_json: &str) -> String {
             "The model endpoint could not be reached. Check the endpoint in Settings: \
              it must send CORS headers, and Chrome 142+ asks permission before a page \
              may call a local address."
+        }
+        Ok(crate::error::CoreError::Model(Unsupported { .. })) => {
+            "That model catalogue entry speaks a wire protocol this build does not. \
+             Pick an OpenAI-compatible entry in Settings below — the detail names \
+             which protocol the entry asked for."
         }
         Ok(crate::error::CoreError::Model(Provider { .. })) => {
             "The model endpoint answered, but refused the request. Check the base URL \

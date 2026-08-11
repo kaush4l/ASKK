@@ -21,6 +21,10 @@ const TICKS: u32 = 90;
 #[derive(Clone, Copy)]
 struct Turn {
     log: Signal<String>,
+    /// Which agent this pane is talking to, from the seam's `x-agent` header.
+    /// The INTERFACE owns this fact — before, the only cue was the agent's
+    /// own editable description line (`ux-walker`, increment 03).
+    agent: Signal<String>,
     pending: Signal<bool>,
     note: Signal<String>,
     elapsed: Signal<u32>,
@@ -30,8 +34,15 @@ struct Turn {
 /// Apply one seam response: the transcript is the body, and whether a turn is
 /// still running is the `x-turn` header — the UI never parses HTML to find out.
 fn show(res: Response, mut turn: Turn) {
+    let header = |name: &str| {
+        res.headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.clone())
+    };
     turn.pending
-        .set(res.headers.iter().any(|(k, v)| k == "x-turn" && v == "pending"));
+        .set(header("x-turn").as_deref() == Some("pending"));
+    turn.agent.set(header("x-agent").unwrap_or_default());
     turn.log.set(res.body);
 }
 
@@ -88,12 +99,18 @@ fn waiting_row(turn: Turn) -> Element {
 pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>, endpoint_set: Signal<bool>) -> Element {
     let turn = Turn {
         log: use_signal(String::new),
+        agent: use_signal(String::new),
         pending: use_signal(|| false),
         note: use_signal(String::new),
         elapsed: use_signal(|| 0),
         stopped: use_signal(|| false),
     };
     let mut note = turn.note;
+    let agent = turn.agent;
+    let title = match agent.read().is_empty() {
+        true => "Chat — no agent loaded".to_string(),
+        false => format!("Chat with {}", agent.read()),
+    };
 
     // The pane's first paint is the projection, not an empty box.
     use_effect(move || {
@@ -113,8 +130,8 @@ pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>, endpoint_set: Signal<bool>) -> 
     };
 
     rsx! {
-        section { class: "panel", aria_label: "Chat",
-            h2 { "Chat" }
+        section { class: "panel", aria_label: "{title}",
+            h2 { "{title}" }
             if !endpoint_set() {
                 p { class: "pending",
                     "No model endpoint yet. Add one in Settings below — a local \
@@ -125,7 +142,12 @@ pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>, endpoint_set: Signal<bool>) -> 
             div { class: "chat-log", dangerous_inner_html: "{turn.log}" }
             {waiting_row(turn)}
             if !note.read().is_empty() { p { class: "error", "{note}" } }
-            Composer { busy: turn.pending.cloned(), ready: endpoint_set(), on_send: send }
+            Composer {
+                busy: turn.pending.cloned(),
+                ready: endpoint_set(),
+                agent: agent(),
+                on_send: send,
+            }
         }
     }
 }
@@ -136,7 +158,13 @@ pub fn ChatPane(web: Signal<Option<Rc<WebApp>>>, endpoint_set: Signal<bool>) -> 
 /// endpoint configured it does not send: the first-run path is a sentence, not
 /// a request that cannot work.
 #[component]
-fn Composer(busy: bool, ready: bool, on_send: EventHandler<String>) -> Element {
+fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<String>) -> Element {
+    // The field says who it is addressing: two panes with the same accessible
+    // name would be indistinguishable to a screen reader.
+    let label = match agent.is_empty() {
+        true => "Message to the agent".to_string(),
+        false => format!("Message to {agent}"),
+    };
     let mut draft = use_signal(String::new);
     let mut submit = move || {
         let text = draft().trim().to_string();
@@ -155,7 +183,7 @@ fn Composer(busy: bool, ready: bool, on_send: EventHandler<String>) -> Element {
             input {
                 r#type: "text",
                 value: "{draft}",
-                aria_label: "Message to the agent",
+                aria_label: "{label}",
                 placeholder: if ready { "Ask the agent something…" } else { "Set a model endpoint first" },
                 autocomplete: "off",
                 disabled: busy || !ready,

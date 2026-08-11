@@ -44,6 +44,10 @@ pub struct App {
     /// built-ins they may override). Data, not code: installed after boot by
     /// `agents::install_agents`, replaced wholesale when the files change.
     pub(crate) agents: Vec<AgentSpec>,
+    /// One sentence per `agent.md` that could not be read. Skipping a broken
+    /// file is correct; staying silent about it is not (`ux-walker`), so the
+    /// Agents panel projects this list beside what did load.
+    pub(crate) agent_problems: Vec<String>,
 }
 
 impl App {

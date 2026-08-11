@@ -76,6 +76,8 @@ pub struct Ctx {
     pub recent: Vec<EventKind>,
     /// The loaded agent specs (increment 03) — a projection like `recent`.
     pub agents: Vec<agent::AgentSpec>,
+    /// The agent files that would not parse — shown, never swallowed.
+    pub agent_problems: Vec<String>,
 }
 
 /// A tier-0 built-in's logic. A plain fn pointer, not a trait object: no
@@ -133,6 +135,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         panels,
         recent: app.log.iter().map(|e| e.kind.clone()).collect(),
         agents: app.agents.clone(),
+        agent_problems: app.agent_problems.clone(),
     };
 
     let response = match logic {

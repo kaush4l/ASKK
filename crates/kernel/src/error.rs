@@ -27,6 +27,11 @@ pub enum ModelError {
     Provider { status: u16, message: String },
     /// The network layer never got an answer.
     Transport { message: String },
+    /// The endpoint is configured and reachable, but asks for a wire protocol
+    /// this build does not speak (a catalogue entry's `kind`/`api`). Distinct
+    /// from `EndpointUnknown` on purpose: "unconfigured" and "configured for
+    /// something else" have different fixes, and the UI says so.
+    Unsupported { detail: String },
 }
 
 /// Brokered-network failures (`NetPort`). Public for the same match-don't-parse

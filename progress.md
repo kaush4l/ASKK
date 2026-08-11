@@ -15,6 +15,7 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 | 02b | ux-walker fixes: first run, key preservation, error shape, a way out, dead `/v1/models`, panel wording | 28 green (22 + 5 pure endpoint-broker + 1 unconfigured-first-run) | cold start sends nothing and says why; save-with-blank-key preserves the stored key (read back from `kv/config/keys/model`); Stop waiting frees the composer at 4 s; the 30 s abort fires on a blackholed IP (error at <38 s); live turn against omlx replies | ⬜ pending `ux-walker` | `2da6890` | Live at https://kaush4l.github.io/ASKK/. Hosted checks: cold start posts nothing (network log empty), key survives a re-save, the failure message leads with the sentence and the raw error is a collapsed `<details>`. Live model turns are still local-only (Chrome's Local Network Access gate, 02 row). |
 
 | 03 | Agents loaded from `public/agents/` | 35 green (28 + 7 agent-spec) | agents fetched at boot, `main`'s prompt comes from the file, a malformed `agent.md` is skipped and the page still works with zero console errors | ⬜ pending `ux-walker` | `dfe25b4` | Live at https://kaush4l.github.io/ASKK/. Hosted hot-reload proved BOTH ways: edited `description`/prompt in `public/agents/main/agent.md` → `./publish.sh` → load → header reads the edit; reverted → publish → load → header reads the clean text. No Rust change in either step. Cache note: agent files are fetched `cache: "no-cache"` and the service worker serves `/agents/` network-first, so the FILES track a deploy immediately; the Wasm bundle still rides GitHub Pages' 600 s `max-age` on `index.html`, so a same-URL reload inside that window can still run the previous build. |
+| 04 | Model catalogue (`public/models.json`) + the four standing UX findings | 40 green (35 + 10 catalogue/endpoint − 5 replaced) | fresh install has a real default endpoint and answers live from omlx 8873 with NOTHING configured; an agent `model:` key that is not in the catalogue is sent as a model id to the default endpoint; a `kind: anthropic` entry refuses in words; a malformed agent.md is named on screen | ⬜ pending `ux-walker` | `<commit>` | Live at https://kaush4l.github.io/ASKK/. Hosted: the catalogue loads (4 entries), the pick persists across reload, and the `local` turn fails as recorded — "Permission was denied for this request to access the `loopback` address space" — with the plain sentence first and the raw error in a collapsed `<details>`. |
 
 ## Parity with the Python project
 
@@ -37,7 +38,7 @@ feature "exists".
 | `core/space.py` | One space object per name, shared across threads | ⬜ |
 | `core/space.py` | Attributed notes, 20-note cap, atomic persistence | ⬜ |
 | `core/space.py` | Facts render into CONTEXT; a stale value never lingers | ⬜ |
-| `core/inference.py` | Model catalogue keyed by name, not a provider table | ⬜ |
+| `core/inference.py` | Model catalogue keyed by name, not a provider table | ✅ |
 | `core/utils.py` | `agent.md` frontmatter: model, temperature, engine, tools, space | ✅ |
 | `core/agents/summarizer` | Built-in summarizer compresses history | ⬜ |
 | — | Chat with the main agent in the UI | ✅ |
@@ -165,3 +166,53 @@ they are `node` inside the VM, priced after increment 10.
 - **`publish.sh` gates on the agent files.** A deploy missing `agents/index.json` or
   `agents/main/agent.md` is a page with no main agent, which is a white-page-class failure with no
   console error; it now fails the gate instead.
+
+### Increment 04
+
+- **`public/models.json` is a catalogue keyed by NAME, not a provider table.** The Python decision
+  ports whole: nearly every server speaks the OpenAI protocol and differs only in its `base_url`, so
+  a provider name bought nothing but a place to hardcode a URL. An entry holds `model`, `base_url`,
+  `api`, `kind`, `api_key_env`; `default` names one; and a key that is NOT in the catalogue is taken
+  as a model id served by the default entry's endpoint — which is why `model: local` in an
+  `agent.md` is a catalogue key while an arbitrary model id still works. Proven live both ways:
+  `model: local` answered from omlx, and `model: qwen-does-not-exist` came back
+  `Model 'qwen-does-not-exist' not found` FROM 127.0.0.1:8873, i.e. the key became the model id on
+  the default endpoint.
+- **The one API bug the Python fixed is not reintroduced.** `Catalogue::resolve(name)` and
+  `Endpoint::resolve(asked)` take the catalogue KEY; the concrete model id is a field on the
+  resolved `Entry`. There is no parameter called `model` shadowing the override.
+- **There IS a default endpoint again, and it is honest.** 02b was right to delete `/v1` (it
+  resolved to the origin root and 405'd); the fix is a real named endpoint, not no endpoint. A fresh
+  install now resolves to `local` → `http://127.0.0.1:8873/v1` → `gemma-4-12B-it-qat-mxfp8` and
+  answers with nothing configured — locally. From the hosted origin the same turn still dies on
+  Chrome's Local Network Access gate, which is documented in the pane rather than hidden.
+- **Per-user overrides are per ENTRY, layered on the file, and stored in IndexedDB.** The profile
+  record is `{selected, api_key, overrides:{models:{…}}}`; the effective catalogue is recomputed as
+  file + overrides on every read, so clearing a field REVERTS to the shipped value instead of
+  leaving a hole. Editing `openai` never disturbs what was saved for `local`. A pre-catalogue
+  profile carrying a bare `base_url` migrates to an override of the current entry, so no saved
+  endpoint was lost by this increment.
+- **Precedence is stated and pinned:** the user's explicit pick in Settings outranks the agent's
+  `model:` key, which outranks the catalogue's `default`. A pick is an explicit act; a frontmatter
+  key is a default.
+- **The agent's `model:` key now actually travels.** `AgentState.model` (set by `adopt_spec`) rides
+  out on `Effect::CallModel { model }` and becomes the body's `model` field — the symbolic name the
+  core speaks. `runtime.rs` no longer hardcodes `"local"`. Nothing upstream of the broker knows a
+  URL or a concrete model id (I6, I13).
+- **`kind` and `api` are honoured by REFUSING what this build cannot speak.** A new
+  `ModelError::Unsupported { detail }` names the entry and the protocol it asked for. The `sonnet`
+  entry is shipped for parity and, when picked, says so in one sentence instead of POSTing
+  chat-completions bytes at the Messages API. `claude-cli` from the Python catalogue is dropped
+  deliberately: there is no subprocess in a browser.
+- **`models.json` is cache-hostile like the agent files.** `sw.js` serves it network-first (VERSION
+  bumped to `04-0.4.0`) and the loader fetches `cache: "no-cache"`; `publish.sh` gates on it,
+  because a deploy without it is a page with no endpoint at all.
+- **The four standing `ux-walker` findings, closed.** (1) Disabled controls now read as disabled —
+  `opacity: .6`, `cursor: not-allowed`, no accent fill; measured in the hosted DOM against the live
+  Save button beside it. (2) The chat pane titles itself `Chat with main` from an `x-agent` response
+  header, so the interface owns that fact rather than borrowing an editable `description` line; the
+  composer's accessible name follows it. (3) `agent::load_agents` returns `(specs, problems)` and
+  the Agents card prints `Skipped — wrecked/agent.md could not be read: missing YAML frontmatter` —
+  skipping stays correct, the silence is gone. (4) Each prompt disclosure is named for its own agent
+  (`System prompt for summarizer (from public/agents/summarizer/agent.md)`), so two disclosures are
+  no longer the same control to a screen reader.

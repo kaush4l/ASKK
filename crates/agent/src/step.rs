@@ -41,6 +41,7 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
                     audio: false,
                 },
                 endpoint: EndpointName("model".into()),
+                model: state.model.clone(),
             }];
             (state, effects)
         }

@@ -139,14 +139,28 @@ fn split_inline(inline: &str) -> Vec<String> {
 /// running beside it (Python `registry._agent_dirs`). A file that will not
 /// parse costs that one agent and nothing else: the rest still load, and the
 /// app still boots. Result order is by name, so the UI is deterministic.
-pub fn load_agents<I>(files: I) -> Vec<AgentSpec>
+///
+/// Skipping is correct; SILENCE is not (`ux-walker`, increment 03). The second
+/// return is one sentence per file that could not be read, for the UI to show
+/// — a page that quietly runs with fewer agents than its manifest names is a
+/// page lying about what is loaded.
+pub fn load_agents<I>(files: I) -> (Vec<AgentSpec>, Vec<String>)
 where
     I: IntoIterator<Item = (String, String)>,
 {
     let mut found: Vec<AgentSpec> = Vec::new();
+    let mut problems: Vec<String> = Vec::new();
     for (dir, text) in files {
-        let Ok(spec) = parse_agent_file(&dir, &text) else {
-            continue;
+        let spec = match parse_agent_file(&dir, &text) {
+            Ok(spec) => spec,
+            Err(AgentError::MalformedAgentFile { message, .. }) => {
+                problems.push(format!("{dir}/agent.md could not be read: {message}"));
+                continue;
+            }
+            Err(other) => {
+                problems.push(format!("{dir}/agent.md could not be read: {other:?}"));
+                continue;
+            }
         };
         match found.iter().position(|s| s.name == spec.name) {
             Some(i) => found[i] = spec,
@@ -154,5 +168,5 @@ where
         }
     }
     found.sort_by(|a, b| a.name.cmp(&b.name));
-    found
+    (found, problems)
 }

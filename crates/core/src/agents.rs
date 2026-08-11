@@ -32,7 +32,9 @@ pub fn builtin_files() -> Vec<(String, String)> {
 /// Called by the composition root right after `boot`.
 pub fn install_agents(app: &mut App, fetched: Vec<(String, String)>) {
     let files = builtin_files().into_iter().chain(fetched);
-    app.agents = agent::load_agents(files);
+    let (specs, problems) = agent::load_agents(files);
+    app.agents = specs;
+    app.agent_problems = problems;
     if let Some(main) = app.agents.iter().find(|s| s.name == "main").cloned() {
         agent::adopt_spec(&mut app.agent, &main);
     }
@@ -95,6 +97,14 @@ fn listing(ctx: &Ctx) -> Response {
     for spec in &ctx.agents {
         list = list.child(card(spec));
     }
+    for problem in &ctx.agent_problems {
+        list = list.child(
+            FragmentBuilder::new("p")
+                .class("error")
+                .text(&format!("Skipped — {problem}"))
+                .build(),
+        );
+    }
     html(200, list.build().into_html())
 }
 
@@ -136,8 +146,14 @@ fn card(spec: &AgentSpec) -> Fragment {
         .child(
             FragmentBuilder::new("details")
                 .child(
+                    // Named per agent: two disclosures with the same
+                    // accessible name are indistinguishable to a screen
+                    // reader (`ux-walker`, increment 03).
                     FragmentBuilder::new("summary")
-                        .text("System prompt (from public/agents/)")
+                        .text(&format!(
+                            "System prompt for {} (from public/agents/{}/agent.md)",
+                            spec.name, spec.name
+                        ))
                         .build(),
                 )
                 .child(FragmentBuilder::new("pre").text(&spec.prompt).build())

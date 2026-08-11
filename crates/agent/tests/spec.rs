@@ -61,10 +61,11 @@ fn a_project_agent_replaces_the_builtin_of_the_same_name() {
         "---\nname: summarizer\ndescription: mine\n---\nMy own summarizer.".to_string(),
     );
     // Built-ins FIRST, project second — the Python `_agent_dirs` walk order.
-    let loaded = load_agents(vec![builtin, project]);
+    let (loaded, problems) = load_agents(vec![builtin, project]);
     assert_eq!(loaded.len(), 1, "one summarizer, not two");
     assert_eq!(loaded[0].description, "mine");
     assert_eq!(loaded[0].prompt, "My own summarizer.");
+    assert!(problems.is_empty(), "nothing was skipped");
 }
 
 #[test]
@@ -78,9 +79,14 @@ fn a_malformed_file_costs_that_agent_and_nothing_else() {
         ),
         ("summarizer".to_string(), SUMMARIZER.to_string()),
     ];
-    let loaded = load_agents(files);
+    let (loaded, problems) = load_agents(files);
     let names: Vec<&str> = loaded.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(names, vec!["main", "summarizer"]);
+    // Skipping is correct; silence is not (`ux-walker`). Each skipped file is
+    // named, with the reason it could not be read.
+    assert_eq!(problems.len(), 2, "both broken files are reported: {problems:?}");
+    assert!(problems.iter().any(|p| p.contains("broken/agent.md") && p.contains("frontmatter")));
+    assert!(problems.iter().any(|p| p.contains("worse/agent.md") && p.contains("temperature")));
 }
 
 #[test]

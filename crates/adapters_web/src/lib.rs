@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 mod assets;
+pub mod catalogue;
 mod endpoint;
 mod error;
 mod idb;
@@ -18,6 +19,7 @@ mod idb_bridge;
 mod model;
 mod ports;
 
+pub use endpoint::Endpoint;
 pub use error::WebError;
 pub use idb::IdbStore;
 pub use model::FetchModel;
@@ -53,6 +55,11 @@ impl WebApp {
     pub async fn boot() -> Result<WebApp, JsValue> {
         let store = Rc::new(IdbStore::open("harness").await.map_err(js_err)?);
         let model = Rc::new(FetchModel::new("config/keys/"));
+        // The shipped catalogue FIRST, then the user's layer over it: an
+        // override must land on top of whatever this deploy's file says.
+        if let Some(raw) = assets::fetch_models().await {
+            model.set_catalogue(&raw);
+        }
         // The user's configured endpoint, restored before the first turn.
         if let Ok(Some(raw)) = kernel::StorePort::kv(store.as_ref())
             .get(model.profile_key())
@@ -124,23 +131,40 @@ impl WebApp {
     /// one adapter file away; the UI states the trust model where keys are
     /// entered.
     /// `api_key: None` means "leave the stored key alone" — the settings field
-    /// is write-only, so a blank field must not wipe a saved secret.
+    /// is write-only, so a blank field must not wipe a saved secret. `entry`
+    /// is the catalogue key the user picked; `base_url`/`model` are their
+    /// override of it, blank meaning "whatever models.json says".
     pub async fn set_endpoint(
         &self,
+        entry: &str,
         base_url: &str,
         api_key: Option<&str>,
         model: &str,
     ) -> Result<(), WebError> {
-        self.model.set_endpoint(base_url, api_key, model);
+        self.model.set_endpoint(entry, base_url, api_key, model);
         kernel::StorePort::kv(self.store.as_ref())
             .put(self.model.profile_key(), &self.model.profile_json())
             .await
             .map_err(WebError::Store)
     }
 
-    /// The configured base URL, whether a key is set, and the model name —
-    /// never the key.
-    pub fn endpoint_summary(&self) -> (String, bool, String) {
+    /// The current entry's base URL, whether a key is set, the model name, and
+    /// the env var the Python reads for it — never the key.
+    pub fn endpoint_summary(&self) -> (String, bool, String, String) {
         self.model.endpoint_summary()
+    }
+
+    /// The catalogue: every entry name, which one is current, and what a named
+    /// entry resolves to (so Settings can prefill when the pick changes).
+    pub fn catalogue_names(&self) -> Vec<String> {
+        self.model.catalogue_names()
+    }
+
+    pub fn current_entry(&self) -> String {
+        self.model.current_entry()
+    }
+
+    pub fn entry_fields(&self, name: &str) -> (String, String, String) {
+        self.model.entry_fields(name)
     }
 }

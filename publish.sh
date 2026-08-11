@@ -27,6 +27,9 @@ trunk build --release   # Trunk.toml: web/index.html -> dist/, public_url "./"
 # boots with the compiled-in built-ins only and no main agent (increment 03).
 [ -f "$DIR/agents/index.json" ] || fail "agent manifest missing: $DIR/agents/index.json"
 [ -f "$DIR/agents/main/agent.md" ] || fail "main agent missing: $DIR/agents/main/agent.md"
+# The model catalogue (increment 04): without it the page has no endpoint at
+# all and every turn fails on EndpointUnknown.
+[ -f "$DIR/models.json" ] || fail "model catalogue missing: $DIR/models.json"
 
 # GitHub hard-caps files at 100MB; refuse anything >= 99MB
 big=$(find "$DIR" -type f -size +$((99 * 1024 * 1024 - 1))c)

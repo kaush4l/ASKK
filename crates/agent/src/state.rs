@@ -21,6 +21,11 @@ pub struct PlanStep {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentState {
     pub phase: PhaseId,
+    /// This agent's `model:` frontmatter key — a MODEL CATALOGUE key, never a
+    /// URL (increment 04). It rides out on `Effect::CallModel` so the adapter
+    /// can resolve it; empty means "the catalogue's default entry".
+    #[serde(default)]
+    pub model: String,
     /// What is being attempted; `None` = idle, awaiting a task.
     pub task: Option<String>,
     /// The current plan; empty in Work-first flows (RESEARCH phase-cut:
@@ -47,6 +52,7 @@ impl AgentState {
     pub fn new() -> AgentState {
         AgentState {
             phase: PhaseId::Work,
+            model: String::new(),
             task: None,
             plan: Vec::new(),
             cursor: 0,

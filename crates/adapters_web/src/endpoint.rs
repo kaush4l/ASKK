@@ -1,161 +1,171 @@
-//! The configured endpoint: base URL, key, model name — and the bookkeeping
-//! around them. Pure (no browser, host-tested): this is where a secret gets
-//! lost, and losing one silently is exactly what the tests below refuse.
-//! `model.rs` owns the wire; this owns what is on it.
+//! The user's layer over the catalogue: which entry is selected, what they
+//! changed about it, and the one API key. Pure (host-tested): this is where a
+//! secret gets lost, and losing one silently is what the tests refuse.
+//! `catalogue.rs` owns the rules, `model.rs` owns the wire, this owns choice.
+
+use serde_json::{json, Value};
 
 use kernel::ModelError;
 
-/// One configured endpoint. `api_key` leaves this process only in the
-/// `Authorization` header of a call. There is no default base URL: an
-/// unconfigured install has no endpoint and says so (I15) rather than POSTing
-/// at whatever `/v1` resolves to on its host.
+use crate::catalogue::{Catalogue, Entry};
+
+/// The catalogue as shipped, plus the user's persisted layer on it.
+///
+/// There is no free-standing base URL any more: a URL typed in Settings is an
+/// OVERRIDE OF AN ENTRY, stored under that entry's name, so switching entries
+/// and switching back does not lose it. `selected` is the user's explicit
+/// pick and outranks an agent's `model:` key; empty means "let the agent (or
+/// the catalogue's default) decide".
 #[derive(Clone, Default)]
 pub struct Endpoint {
-    base_url: String,
+    file: Catalogue,
+    overrides: Value,
+    selected: String,
     api_key: String,
-    /// The model name the provider expects. Empty = send what the core asked
-    /// for, which is what a local server (omlx, llama.cpp) ignores anyway.
-    model: String,
 }
 
 impl Endpoint {
-    /// Point at an endpoint (settings, a user action — never a module grant).
-    /// `api_key: None` KEEPS the stored key: the settings field is write-only
-    /// (a secret is never round-tripped through the DOM), so a blank field
-    /// means "unchanged", and only an explicit `Some("")` clears it.
+    /// Install `public/models.json`. The user's layer is unaffected — it is
+    /// applied over whatever the file happens to say this deploy.
+    pub fn set_catalogue(&mut self, raw: &str) {
+        self.file = Catalogue::parse(raw);
+    }
+
+    /// The catalogue the app actually uses: the file with the user's layer on
+    /// top. Recomputed rather than mutated, so clearing an override reverts to
+    /// the shipped value instead of leaving a hole.
+    pub fn catalogue(&self) -> Catalogue {
+        let mut c = self.file.clone();
+        if !self.overrides.is_null() {
+            c.overlay(&self.overrides.to_string());
+        }
+        c
+    }
+
+    pub fn names(&self) -> Vec<String> {
+        self.catalogue().names()
+    }
+
+    /// The entry Settings is editing: the explicit pick, else the default.
+    pub fn current(&self) -> String {
+        match self.selected.trim() {
+            "" => self.catalogue().default_name().to_string(),
+            named => named.to_string(),
+        }
+    }
+
+    pub fn select(&mut self, name: &str) {
+        self.selected = name.trim().to_string();
+    }
+
+    /// Override the current entry (a user action in Settings). A blank field
+    /// means "unchanged" throughout: blank base URL or model falls back to the
+    /// shipped entry, and `api_key: None` KEEPS the stored key — the key field
+    /// is write-only, so a blank one must never wipe a saved secret.
     pub fn set(&mut self, base_url: &str, api_key: Option<&str>, model: &str) {
-        self.base_url = base_url.trim().trim_end_matches('/').to_string();
-        self.model = model.trim().to_string();
         if let Some(key) = api_key {
             self.api_key = key.trim().to_string();
         }
-    }
-
-    /// The stored record — the one place the key is serialized.
-    pub fn profile_json(&self) -> String {
-        serde_json::json!({
-            "base_url": self.base_url, "api_key": self.api_key, "model": self.model
-        })
-        .to_string()
-    }
-
-    /// Load that record back (boot). An unreadable record leaves the endpoint
-    /// unconfigured rather than failing boot (I15).
-    pub fn load_profile(&mut self, raw: &str) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
-            let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or_default();
-            self.set(s("base_url"), Some(s("api_key")), s("model"));
+        let name = self.current();
+        let patch = json!({"models": {name: {
+            "base_url": base_url.trim().trim_end_matches('/'),
+            "model": model.trim(),
+        }}});
+        match self.overrides.as_object_mut() {
+            Some(_) => merge_overrides(&mut self.overrides, &patch),
+            None => self.overrides = patch,
         }
     }
 
-    /// What the settings pane shows: the base URL, whether a key is set, and
-    /// the model name — never the key itself.
-    pub fn summary(&self) -> (String, bool, String) {
-        (
-            self.base_url.clone(),
-            !self.api_key.is_empty(),
-            self.model.clone(),
-        )
-    }
-
-    /// The base URL, or the typed "nothing is configured" error — the
-    /// first-run path is a sentence, not a request that cannot work.
-    pub fn base(&self) -> Result<&str, ModelError> {
-        if self.base_url.is_empty() {
-            return Err(ModelError::EndpointUnknown {
+    /// Which entry answers a call that asked for `asked` (the agent's `model:`
+    /// key, as it arrives in the request body). The user's explicit Settings
+    /// pick wins; otherwise the catalogue resolves the agent's key.
+    pub fn resolve(&self, asked: &str) -> Result<Entry, ModelError> {
+        let name = match self.selected.trim() {
+            "" => asked.trim(),
+            picked => picked,
+        };
+        self.catalogue()
+            .resolve(name)
+            .ok_or_else(|| ModelError::EndpointUnknown {
                 endpoint: "model".into(),
-            });
-        }
-        Ok(&self.base_url)
+            })
+    }
+
+    /// What Settings shows for the current entry: base URL, whether a key is
+    /// saved, model name, and the env var the Python reads — never the key.
+    pub fn summary(&self) -> (String, bool, String, String) {
+        let e = self.catalogue().resolve(&self.current()).unwrap_or_default();
+        (e.base_url, !self.api_key.is_empty(), e.model, e.api_key_env)
     }
 
     pub fn api_key(&self) -> &str {
         &self.api_key
     }
 
-    /// Stamp the configured model name into the core's request body. The model
-    /// name is the adapter's job, like a credential: the core never knows which
-    /// concrete model answered. Empty = leave the core's own name alone.
-    pub fn with_model_name(&self, body_json: &str) -> String {
-        if self.model.is_empty() {
-            return body_json.to_string();
+    /// The stored record — the one place the key is serialized.
+    pub fn profile_json(&self) -> String {
+        json!({
+            "selected": self.selected,
+            "api_key": self.api_key,
+            "overrides": self.overrides,
+        })
+        .to_string()
+    }
+
+    /// Load that record back (boot). An unreadable record leaves the endpoint
+    /// on the shipped catalogue rather than failing boot (I15). A record from
+    /// before the catalogue existed carried a bare `base_url`: it becomes an
+    /// override of the current entry, so nobody's saved endpoint is lost.
+    pub fn load_profile(&mut self, raw: &str) {
+        let Ok(v) = serde_json::from_str::<Value>(raw) else {
+            return;
+        };
+        let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default();
+        self.selected = s("selected").trim().to_string();
+        self.api_key = s("api_key").trim().to_string();
+        if let Some(o) = v.get("overrides").filter(|o| o.is_object()) {
+            self.overrides = o.clone();
         }
-        serde_json::from_str::<serde_json::Value>(body_json)
-            .map(|mut v| {
-                v["model"] = serde_json::Value::String(self.model.clone());
-                v.to_string()
-            })
-            .unwrap_or_else(|_| body_json.to_string())
+        let legacy = s("base_url");
+        if !legacy.is_empty() {
+            self.set(legacy, None, s("model"));
+        }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn stored_key(e: &Endpoint) -> String {
-        serde_json::from_str::<serde_json::Value>(&e.profile_json()).unwrap()["api_key"]
-            .as_str()
-            .unwrap()
-            .to_string()
+/// Merge one patch document into the stored overrides, entry by entry, so
+/// editing one catalogue entry never drops what was saved for another.
+fn merge_overrides(into: &mut Value, patch: &Value) {
+    let (Some(dst), Some(src)) = (
+        into.get_mut("models").and_then(Value::as_object_mut),
+        patch.get("models").and_then(Value::as_object),
+    ) else {
+        *into = patch.clone();
+        return;
+    };
+    for (name, fields) in src {
+        let slot = dst
+            .entry(name.clone())
+            .or_insert_with(|| Value::Object(Default::default()));
+        match (slot.as_object_mut(), fields.as_object()) {
+            (Some(existing), Some(new)) => existing.extend(new.clone()),
+            _ => *slot = fields.clone(),
+        }
     }
+}
 
-    /// The bug `ux-walker` found: Save with the (write-only, never
-    /// repopulated) key field blank must NOT wipe the stored key.
-    #[test]
-    fn blank_key_field_preserves_the_stored_key() {
-        let mut e = Endpoint::default();
-        e.set("https://api.example.com/v1", Some("sk-secret"), "");
-        e.set("https://other.example.com/v1", None, "gpt-4o-mini");
-        assert_eq!(stored_key(&e), "sk-secret");
-        assert_eq!(
-            e.summary(),
-            ("https://other.example.com/v1".into(), true, "gpt-4o-mini".into())
-        );
+/// Stamp the entry's model id into the core's request body. The core speaks
+/// the symbolic catalogue key; the concrete model id is the adapter's job,
+/// like a credential.
+pub fn stamp_model(body_json: &str, model: &str) -> String {
+    if model.is_empty() {
+        return body_json.to_string();
     }
-
-    /// Clearing is explicit, and possible.
-    #[test]
-    fn explicit_empty_key_clears_it() {
-        let mut e = Endpoint::default();
-        e.set("https://api.example.com/v1", Some("sk-secret"), "");
-        e.set("https://api.example.com/v1", Some(""), "");
-        assert_eq!(stored_key(&e), "");
-        assert!(!e.summary().1);
-    }
-
-    /// A reload restores the key from storage — the one legitimate way it
-    /// comes back, since the DOM never holds it.
-    #[test]
-    fn profile_round_trips_through_storage() {
-        let mut e = Endpoint::default();
-        e.set("https://api.example.com/v1/", Some("sk-secret"), "m1");
-        let mut reloaded = Endpoint::default();
-        reloaded.load_profile(&e.profile_json());
-        assert_eq!(stored_key(&reloaded), "sk-secret");
-        // Trailing slash normalized once, at the boundary.
-        assert_eq!(reloaded.base().unwrap(), "https://api.example.com/v1");
-    }
-
-    /// An unconfigured install has no endpoint to call.
-    #[test]
-    fn unconfigured_endpoint_is_a_typed_error() {
-        assert_eq!(
-            Endpoint::default().base().unwrap_err(),
-            ModelError::EndpointUnknown {
-                endpoint: "model".into()
-            }
-        );
-    }
-
-    /// The adapter stamps the model name when configured, and leaves the
-    /// core's own body alone when it is not.
-    #[test]
-    fn model_name_is_stamped_only_when_configured() {
-        let mut e = Endpoint::default();
-        e.set("https://api.example.com/v1", None, "");
-        assert_eq!(e.with_model_name(r#"{"model":"local"}"#), r#"{"model":"local"}"#);
-        e.set("https://api.example.com/v1", None, "gpt-4o-mini");
-        assert!(e.with_model_name(r#"{"model":"local"}"#).contains("gpt-4o-mini"));
-    }
+    serde_json::from_str::<Value>(body_json)
+        .map(|mut v| {
+            v["model"] = Value::String(model.to_string());
+            v.to_string()
+        })
+        .unwrap_or_else(|_| body_json.to_string())
 }

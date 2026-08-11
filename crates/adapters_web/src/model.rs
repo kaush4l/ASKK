@@ -14,7 +14,7 @@ use kernel::{BoxFuture, EndpointName, ModelError, ModelPort, ModelReply};
 /// browser refuses (COEP, Chrome 142+ Local Network Access) can hang forever.
 const TIMEOUT_MS: f64 = 30_000.0;
 
-use crate::endpoint::Endpoint;
+use crate::endpoint::{stamp_model, Endpoint};
 
 pub struct FetchModel {
     /// `config/keys/model` (ADR-005 record layout).
@@ -36,11 +36,39 @@ impl FetchModel {
         &self.profile_key
     }
 
-    /// Point the broker at an endpoint. A `None` key keeps the stored one
-    /// (`Endpoint::set`), which is what stops Save wiping a secret the field
-    /// never held.
-    pub fn set_endpoint(&self, base_url: &str, api_key: Option<&str>, model: &str) {
-        self.endpoint.borrow_mut().set(base_url, api_key, model);
+    /// Install `public/models.json` — the shipped catalogue, before the
+    /// user's stored layer goes on top of it.
+    pub fn set_catalogue(&self, raw: &str) {
+        self.endpoint.borrow_mut().set_catalogue(raw);
+    }
+
+    /// Pick a catalogue entry and override it. A `None` key keeps the stored
+    /// one (`Endpoint::set`), which is what stops Save wiping a secret the
+    /// write-only field never held.
+    pub fn set_endpoint(&self, entry: &str, base_url: &str, api_key: Option<&str>, model: &str) {
+        let mut e = self.endpoint.borrow_mut();
+        e.select(entry);
+        e.set(base_url, api_key, model);
+    }
+
+    /// The catalogue entry names, and which one is current.
+    pub fn catalogue_names(&self) -> Vec<String> {
+        self.endpoint.borrow().names()
+    }
+
+    pub fn current_entry(&self) -> String {
+        self.endpoint.borrow().current()
+    }
+
+    /// What one named entry resolves to today — `(base_url, model, api_key_env)`,
+    /// so Settings can prefill the fields when the selection changes.
+    pub fn entry_fields(&self, name: &str) -> (String, String, String) {
+        self.endpoint
+            .borrow()
+            .catalogue()
+            .resolve(name)
+            .map(|e| (e.base_url, e.model, e.api_key_env))
+            .unwrap_or_default()
     }
 
     pub fn profile_json(&self) -> String {
@@ -51,8 +79,9 @@ impl FetchModel {
         self.endpoint.borrow_mut().load_profile(raw);
     }
 
-    /// The base URL, whether a key is set, and the model name — never the key.
-    pub fn endpoint_summary(&self) -> (String, bool, String) {
+    /// The base URL, whether a key is set, the model name, and the env var the
+    /// Python reads for this entry — never the key itself.
+    pub fn endpoint_summary(&self) -> (String, bool, String, String) {
         self.endpoint.borrow().summary()
     }
 
@@ -94,9 +123,12 @@ impl ModelPort for FetchModel {
             let window = web_sys::window().ok_or_else(|| ModelError::Transport {
                 message: "no window".into(),
             })?;
+            // The core speaks the SYMBOLIC name (the agent's `model:` key);
+            // the catalogue turns it into an endpoint and a model id here.
             let (body, url) = {
                 let e = self.endpoint.borrow();
-                (e.with_model_name(body_json), format!("{}/chat/completions", e.base()?))
+                let entry = e.resolve(&asked_model(body_json))?;
+                (stamp_model(body_json, &entry.model), entry.chat_url()?)
             };
             let request = self.request(&url, &body)?;
             let resp = JsFuture::from(window.fetch_with_request(&request))
@@ -107,6 +139,14 @@ impl ModelPort for FetchModel {
             read_reply(resp.unchecked_into()).await
         })
     }
+}
+
+/// The catalogue key the core asked for, out of the request body it wrote.
+fn asked_model(body_json: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(body_json)
+        .ok()
+        .and_then(|v| v.get("model")?.as_str().map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// A JS exception in one readable sentence: `{:?}` on a `JsValue` prints the

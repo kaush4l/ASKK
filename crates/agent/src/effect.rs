@@ -21,6 +21,10 @@ pub enum Effect {
         document: Document,
         format: ProviderFormat,
         endpoint: EndpointName,
+        /// The agent's `model:` catalogue key (increment 04). Symbolic: the
+        /// adapter resolves it against `public/models.json`, so no URL and no
+        /// concrete model id exists anywhere upstream of the broker (I6).
+        model: String,
     },
     /// Run one tool through its granted capability (Work's single action).
     InvokeTool { tool: ToolId, args_json: String },

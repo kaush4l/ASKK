@@ -168,6 +168,7 @@ pub(crate) fn push_history(paper: &mut State, role: &str, text: &str, at: Timest
 /// identity line. Nothing about `main` is hardcoded here afterwards — that
 /// is what makes the `public/agents/` loader real rather than decorative.
 pub fn adopt_spec(state: &mut crate::state::AgentState, spec: &crate::spec::AgentSpec) {
+    state.model = spec.model.clone();
     let soul = find(&mut state.paper, "soul");
     soul.section.parts = vec![Part::Text {
         text: spec.prompt.clone(),

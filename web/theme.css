@@ -85,6 +85,22 @@ button {
   font-weight: 600;
 }
 
+/* A disabled control must LOOK disabled. It used to be styled identically to
+   the live button beside it (`ux-walker`, increment 02) — a control that lies
+   about its state is worse than no control. */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+button:disabled {
+  background: transparent;
+  color: var(--ink-dim);
+  border-color: var(--line);
+}
+
 /* Focus is never removed and never subtle — it is the keyboard user's cursor. */
 :focus-visible {
   outline: 3px solid var(--accent);

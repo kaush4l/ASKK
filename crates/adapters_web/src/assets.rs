@@ -33,6 +33,17 @@ async fn fetch_text(path: &str) -> Option<String> {
     JsFuture::from(response.text().ok()?).await.ok()?.as_string()
 }
 
+/// The model catalogue, `public/models.json` (increment 04). Same file as the
+/// Python project's, same no-cache rule as the agents: it is editable data
+/// redeployed without a rebuild, so a stale copy is a wrong endpoint.
+pub async fn fetch_models() -> Option<String> {
+    let raw = fetch_text("models.json").await;
+    if raw.is_none() {
+        web_sys::console::warn_1(&"models.json not found; no model catalogue".into());
+    }
+    raw
+}
+
 /// Every agent file the manifest names, as `(folder, text)` pairs in
 /// manifest order. An unreadable manifest means no project agents — the
 /// compiled-in built-ins still load, so the app still runs.
