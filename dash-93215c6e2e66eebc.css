@@ -1,0 +1,117 @@
+/* Increment 13 — the dashboard shell.
+
+   Both skins were the same document with different ink. The machine skin put
+   two columns on screen above 1100px and stacked NINE panels below it; the
+   plain skin stacked them at every width. Neither had furniture: no way to put
+   a region away, so "where am I" and "what is running" and "what am I doing"
+   all competed for the same scroll.
+
+   Three regions now, and the two outer ones fold:
+
+     nav#nav      WHERE you are   — one entry per agent, then Setup
+     .stage       WHAT you do     — the conversation, or the setup deck
+     aside#rail   WHAT IS RUNNING — board, tools, terminal, space
+
+   The fold is the `hidden` attribute (dash.rs), which screen.css already makes
+   absolute with `[hidden] { display: none !important }`. That is deliberate:
+   the plain skin gets the collapse too. A fallback that cannot put the rail
+   away is exactly the complaint this increment answers, and it needs no rule
+   from this file to do it.
+
+   Same discipline as the four layers under it: no new state, no ink colour
+   moves down, machine skin only below the first block. */
+
+/* The header's controls are a GROUP, in both skins — three buttons that were
+   drifting apart as the strip wrapped. `margin-left: auto` here replaces the
+   one aaa.css put on the skin toggle alone. */
+.switches { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
+
+/* ---- the three-column grid ---------------------------------------------- */
+
+@media (min-width: 1100px) {
+  /* `auto` for the two outer tracks, not a fixed width: a folded region is
+     `display: none`, so its track has no item and collapses to zero and the
+     stage takes the space back. A `minmax()` track would hold the gap open for
+     a panel that is not there. */
+  html:not([data-skin="plain"]) main {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  html:not([data-skin="plain"]) .nav {
+    width: 13rem;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--edge, var(--line)) transparent;
+    padding-right: var(--gap);
+    border-right: 1px solid var(--edge, var(--line));
+  }
+
+  /* The rail sizes itself now that its track is `auto` — it used to be a
+     `minmax(21rem, 26rem)` column, and those numbers are carried over rather
+     than re-invented. It keeps its own scroll from console.css. */
+  html:not([data-skin="plain"]) .rail {
+    width: clamp(21rem, 26vw, 26rem);
+    border-left: 1px solid var(--edge, var(--line));
+  }
+}
+
+/* ---- the nav is a list, not a row of pills ------------------------------ */
+
+/* One entry per line, left-aligned, selection carried by an edge rather than a
+   filled pill: six agents wrapped into three ragged rows of buttons is a
+   toolbar, and a person reads a sidebar as an index. The marker and the
+   <strong> that tabs.rs renders are untouched — they are what says "you are
+   here" with the stylesheet off, and that has to keep being true. */
+html:not([data-skin="plain"]) .nav .agent-tabs {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 0;
+  margin: 0;
+}
+
+html:not([data-skin="plain"]) .nav .tab {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.35rem 0.5rem;
+  background: none;
+}
+
+html:not([data-skin="plain"]) .nav .tab.current {
+  border-left-color: var(--accent);
+  background: none;
+  color: var(--ink);
+}
+
+/* "written here" is a second line at caption size — on one line it doubled the
+   width of every authored entry and pushed the column past 13rem. */
+html:not([data-skin="plain"]) .nav .tab-origin {
+  display: block;
+  font-size: var(--t-label, 0.8125rem);
+}
+
+/* ---- the switches ------------------------------------------------------- */
+
+/* They look like what they are: the same hairline vocabulary as everything
+   else, with the ▾/▸ marker dash.rs renders carrying the state for a person
+   and `aria-expanded` carrying it for a screen reader. */
+html:not([data-skin="plain"]) .panel-toggle {
+  background: none;
+  color: var(--machine, var(--ink-dim));
+  border: 1px solid var(--edge, var(--line));
+  border-radius: 0;
+  padding: 0.2rem 0.5rem;
+  font-size: var(--t-label, 0.8125rem);
+  letter-spacing: 0.04em;
+}
+
+html:not([data-skin="plain"]) .panel-toggle.open {
+  color: var(--ink);
+  border-color: var(--accent);
+}
