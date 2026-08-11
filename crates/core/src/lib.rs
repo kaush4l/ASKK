@@ -9,6 +9,7 @@
 
 mod agents;
 mod app;
+mod authoring;
 mod batch;
 mod board;
 mod boot;
@@ -23,7 +24,9 @@ mod install;
 mod logbook;
 mod logs;
 mod memory;
+mod roster;
 mod runtime;
+mod scrollback;
 mod space;
 mod told;
 mod tools;
@@ -33,6 +36,7 @@ mod terminal;
 mod workspace;
 
 pub use install::{builtin_files, install_agents, install_agents_as, report_agent, report_memory};
+pub use roster::{authored_here, report_authored};
 pub use app::{App, Ports, ENTRY_AGENT};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
@@ -47,6 +51,18 @@ use kernel::{Request, Response};
 /// know which Workers to start (increment 06).
 pub fn agent_names(app: &App) -> Vec<String> {
     app.agents.iter().map(|s| s.name.clone()).collect()
+}
+
+/// Every agent FILE this app is running from, in precedence order — built-ins,
+/// `public/agents/`, then whatever this browser authored (increment 11). What a
+/// Worker must be booted with, so a sub-agent sees the same agents the page
+/// does, including one written here a moment ago.
+pub fn agent_files(app: &App) -> Vec<(String, String)> {
+    install::builtin_files()
+        .into_iter()
+        .chain(app.files.clone())
+        .chain(app.authored.clone())
+        .collect()
 }
 
 /// Every fact so far, in order — the log itself (I8). Public because a test
@@ -111,7 +127,15 @@ pub fn last_failure_payload(app: &App) -> Option<String> {
 /// asynchronously by the runtime. If a route ever "needs" async here, state
 /// is living outside the log — that is the bug.
 pub fn handle(app: &mut App, req: Request) -> Response {
+    // Anything authored since the last request becomes REAL here, before the
+    // read that is about to project it — and never in the middle of a turn
+    // (`roster::reconcile`). One door, so a page cannot show an agent the core
+    // has not installed, or install one the page cannot see.
+    roster::reconcile(app);
     let response = dispatch::dispatch(app, &req);
+    // …and again, so a request that AUTHORED an agent has installed it by the
+    // time it returns: "no reload" should not mean "one request later".
+    roster::reconcile(app);
     app.append(kernel::EventKind::RequestHandled {
         path: req.path,
         status: response.status,

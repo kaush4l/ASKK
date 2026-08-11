@@ -117,5 +117,19 @@ pub fn builtin_tools() -> Toolbox {
             "One agent's definition: its model, its tools and its system prompt.",
             &["name"],
         ),
+        // Increment 11. A model authoring an agent that then runs with real
+        // capabilities is a decision the user made explicitly; it is an
+        // ORDINARY tool because a built-in agent and an authored one must be
+        // indistinguishable to the system (I9), and the capability an authored
+        // agent ends up with still comes from its space and from nowhere else.
+        Tool::new(
+            "write_agent",
+            "Create or replace an agent in this browser: it is installed immediately, gets its \
+             own Worker and is listed beside the shipped agents. 'tools' is a comma-separated \
+             list of tool and agent names ('' means every built-in tool). 'space' is the shared \
+             space it works in; naming one also grants it a real shell in this browser's Linux, \
+             so leave it empty unless the agent needs to run commands.",
+            &["name", "description", "prompt", "tools", "space"],
+        ),
     ])
 }

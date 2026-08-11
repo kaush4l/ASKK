@@ -9,11 +9,12 @@
 //! like a model call, because the seam is synchronous by design.
 
 use kernel::{CapabilityId, EventKind, ModuleId, Request, Response, Version};
-use module::view::{Fragment, FragmentBuilder};
+use module::view::FragmentBuilder;
 use module::{DataSchema, Manifest, RouteSpec, Tier};
 
 use crate::dispatch::{error_fragment, html, Ctx};
 use crate::form::form_value;
+use crate::scrollback::{command_of, echoed, note, ran, ran_count};
 
 /// The fact a typed command becomes. Its own kind, so the transcript never
 /// mistakes a command for something a person said to the agent.
@@ -49,9 +50,17 @@ pub(crate) fn manifest() -> Manifest {
 
 /// Named ONLY from `dispatch::builtin_entry` (ADR-004).
 pub(crate) fn terminal(req: &Request, ctx: &mut Ctx) -> Response {
+    // WHOSE workspace (10 walk, finding 3): this was the one per-agent read
+    // that took no `x-agent`, so with `summarizer` selected the pane said "the
+    // agents in this space build here" directly beneath a space pane saying
+    // summarizer works alone.
+    let who = match req.header("x-agent").unwrap_or_default() {
+        "" => ctx.me.clone(),
+        named => named.to_string(),
+    };
     match (req.method.as_str(), req.path.as_str()) {
-        ("GET", "/terminal") => html(200, panel(ctx)),
-        ("POST", "/terminal") => run(req, ctx),
+        ("GET", "/terminal") => html(200, panel(ctx, &who)),
+        ("POST", "/terminal") => run(req, ctx, &who),
         _ => error_fragment(404, "terminal: unknown subroute"),
     }
 }
@@ -59,7 +68,7 @@ pub(crate) fn terminal(req: &Request, ctx: &mut Ctx) -> Response {
 /// Queue one typed command. It leaves as a fact and runs in the async half —
 /// the answer to THIS request is the pane with the command already in it, so
 /// nothing appears to have been swallowed while the VM boots.
-fn run(req: &Request, ctx: &mut Ctx) -> Response {
+fn run(req: &Request, ctx: &mut Ctx, who: &str) -> Response {
     let Some(command) = form_value(&req.body, "command").filter(|c| !c.trim().is_empty()) else {
         return error_fragment(400, "terminal: empty command");
     };
@@ -70,35 +79,27 @@ fn run(req: &Request, ctx: &mut Ctx) -> Response {
         }),
         None => return error_fragment(500, "terminal: Emit capability not granted"),
     }
-    let mut response = html(200, format!("{}{}", panel(ctx), echoed(&command).into_html()));
+    let before = ran_count(ctx);
+    let mut response = html(
+        200,
+        format!("{}{}", panel(ctx, who), echoed(&command, before).into_html()),
+    );
     response.headers.push(("x-running".into(), "1".into()));
     response
 }
 
-/// The command just typed, shown before it has run. Without it the pane would
-/// look identical for however long the first boot takes.
-fn echoed(command: &str) -> Fragment {
-    FragmentBuilder::new("div")
-        .class("term-run pending")
-        .attr("role", "status")
-        .child(prompt_line(command))
-        .child(
-            FragmentBuilder::new("pre")
-                .text("running… the first command also boots the Linux, which takes a moment.")
-                .build(),
-        )
-        .build()
-}
-
-/// The whole scrollback: every `exec` this agent has run, in log order.
-fn panel(ctx: &Ctx) -> String {
-    let mut list = FragmentBuilder::new("div").id("terminal").attr(
-        "data-workspace",
-        &ctx.space
-            .as_ref()
-            .map(|s| s.path())
-            .unwrap_or_else(|| "none".into()),
-    );
+/// The whole scrollback: every `exec` this page's agent has run, in log order.
+fn panel(ctx: &Ctx, who: &str) -> String {
+    let mut list = FragmentBuilder::new("div")
+        .id("terminal")
+        .attr("data-agent", who)
+        .attr(
+            "data-workspace",
+            &ctx.space
+                .as_ref()
+                .map(|s| s.path())
+                .unwrap_or_else(|| "none".into()),
+        );
     let mut count = 0usize;
     for kind in &ctx.recent {
         if let EventKind::ToolInvoked { tool, args, ok, output } = kind {
@@ -120,49 +121,13 @@ fn panel(ctx: &Ctx) -> String {
                 .build(),
         );
     }
-    list.attr("data-commands", &count.to_string())
-        .build()
-        .into_html()
-}
-
-/// The command out of the JSON the tool was called with; the raw arguments if
-/// it was something else, because a trace that hides what was asked is not one.
-fn command_of(args_json: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(args_json)
-        .ok()
-        .and_then(|v| Some(v.get("command")?.as_str()?.to_string()))
-        .unwrap_or_else(|| args_json.to_string())
-}
-
-fn prompt_line(command: &str) -> Fragment {
-    FragmentBuilder::new("p")
-        .class("term-command")
-        .child(FragmentBuilder::new("span").class("term-prompt").text("$ ").build())
-        .child(FragmentBuilder::new("span").text(command).build())
-        .build()
-}
-
-/// One finished command. The outcome is a WORD beside the colour, the same
-/// rule the tool trace follows.
-fn ran(command: &str, ok: bool, output: &str) -> Fragment {
-    let word = match ok {
-        true => "ok",
-        false => "failed",
-    };
-    FragmentBuilder::new("div")
-        .class(match ok {
-            true => "term-run",
-            false => "term-run error",
-        })
-        .attr("data-outcome", word)
-        .child(prompt_line(command))
-        .child(
-            FragmentBuilder::new("pre")
-                .attr("tabindex", "0")
-                .attr("role", "region")
-                .attr("aria-label", &format!("output of {command}"))
-                .text(output)
-                .build(),
-        )
-        .build()
+    // The note stays OUTSIDE `#terminal`: that element is the scroller, and it
+    // is scrolled to the newest output, so anything inside it scrolls away.
+    format!(
+        "{}{}",
+        note(ctx, who).into_html(),
+        list.attr("data-commands", &count.to_string())
+            .build()
+            .into_html()
+    )
 }

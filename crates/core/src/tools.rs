@@ -62,11 +62,15 @@ pub(crate) fn tools(req: &Request, ctx: &mut Ctx) -> Response {
 /// ponytail: sync because every tool this build ships is local (the clock, the
 /// loaded agents). The first tool that needs the network or the VM goes
 /// through `execute_effect`'s async path instead — same event either way.
-pub(crate) fn run(app: &App, tool: &ToolId, args_json: &str) -> EventKind {
+pub(crate) fn run(app: &mut App, tool: &ToolId, args_json: &str) -> EventKind {
     let result = match tool.0.as_str() {
         "now" => Ok(format!("{} ms since the Unix epoch", app.ports.clock.now().0)),
         "list_agents" => Ok(list_agents(app)),
         "read_agent" => read_agent(app, args_json),
+        // The only tool that writes a fact of its own before its envelope: it
+        // AUTHORS an agent (increment 11), which the roster then installs at
+        // the end of this turn.
+        "write_agent" => crate::roster::write_agent(app, args_json),
         _ => Err(format!(
             "Tool not found. Available: {}",
             agent::builtin_tools()

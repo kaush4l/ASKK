@@ -107,6 +107,15 @@ impl AgentWorker {
         serde_json::json!({ "window": entries, "summary": summary }).to_string()
     }
 
+    /// Every agent THIS one wrote with `write_agent` (increment 11). Its own
+    /// log is not the page's, so without this the create-agent superagent would
+    /// author into a Worker nobody reads. The page adopts them through
+    /// `core::report_authored`, which records the same fact its own form does.
+    pub fn authored(&self) -> String {
+        serde_json::to_string(&core::authored_here(&self.app.borrow()))
+            .unwrap_or_else(|_| "[]".into())
+    }
+
     /// Take one turn on this agent's own loop and hand back what it said —
     /// the Python `ThreadedAgent.invoke`, minus the marshalling, because the
     /// message already crossed the boundary. An answerless turn is an error,

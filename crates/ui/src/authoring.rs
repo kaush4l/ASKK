@@ -1,0 +1,149 @@
+//! `AgentEditor` — writing an agent in the browser (plan, increment 11). It
+//! owns the textarea and nothing else: the list beside it, who authored what
+//! and what each one's space granted are all the core's `/agents` projection,
+//! and every write crosses the same seam as everything else (I4).
+//!
+//! Loading, saving, exporting and deleting are pure browser work — no model is
+//! involved in any of them, which is why they all work on the hosted page.
+
+use std::rc::Rc;
+
+use adapters_web::WebApp;
+use dioxus::prelude::*;
+use kernel::Request;
+
+use crate::agentfile::{export, load, post};
+
+/// The row that loads an existing agent into the editor, or starts a blank
+/// one. Its own fn so the pane's body stays inside the 40-line rule (I12).
+fn picker(
+    web: Signal<Option<Rc<WebApp>>>,
+    loaded: Signal<Vec<String>>,
+    mut draft: Signal<String>,
+    mut name: Signal<String>,
+    mut editing: Signal<String>,
+) -> Element {
+    rsx! {
+    div { class: "editor-picks",
+        for who in loaded.read().clone() {
+            button {
+                r#type: "button",
+                key: "{who}",
+                onclick: {
+            let who = who.clone();
+            move |_| {
+                if let Some(text) = load(&web, &who) {
+                    draft.set(text);
+                    name.set(who.clone());
+                    editing.set(who.clone());
+                }
+            }
+                },
+                "Load {who}"
+            }
+        }
+        button {
+            r#type: "button",
+            onclick: move |_| {
+                editing.set(String::new());
+                name.set(String::new());
+                draft.set(BLANK.to_string());
+            },
+            "New agent"
+        }
+            }
+    }
+}
+
+#[component]
+pub fn AgentEditor(
+    web: Signal<Option<Rc<WebApp>>>,
+    tick: Signal<u32>,
+    loaded: Signal<Vec<String>>,
+    agent: ReadSignal<String>,
+) -> Element {
+    let mut draft = use_signal(String::new);
+    let mut name = use_signal(String::new);
+    let status = use_signal(String::new);
+    let refused = use_signal(|| false);
+    let mut editing = use_signal(String::new);
+    rsx! {
+        section { class: "panel", aria_label: "Write an agent",
+            h2 { "Write an agent" }
+            p { class: "note",
+                "An agent is an agent.md: YAML frontmatter, then the system prompt. What you \
+                 write here is kept in this browser and takes effect at the end of the current \
+                 turn — no reload. It beats a shipped agent of the same name, so writing one \
+                 called main replaces main until you delete it again. Export gives you the \
+                 same file public/agents/ serves, ready to commit."
+            }
+            {picker(web, loaded, draft, name, editing)}
+            form {
+                onsubmit: move |e| {
+                    e.prevent_default();
+                    post(web, status, refused, tick, Request::post_form(
+                        "/agents",
+                        &[("name", &name.peek().clone()), ("text", &draft.peek().clone())],
+                    ));
+                },
+                label { r#for: "agent-name", "Folder name" }
+                input {
+                    id: "agent-name",
+                    r#type: "text",
+                    value: "{name}",
+                    placeholder: "note-taker",
+                    autocomplete: "off",
+                    oninput: move |e| name.set(e.value()),
+                }
+                label { r#for: "agent-md", "agent.md" }
+                textarea {
+                    id: "agent-md",
+                    rows: 14,
+                    spellcheck: false,
+                    value: "{draft}",
+                    oninput: move |e| draft.set(e.value()),
+                }
+                button { r#type: "submit", "Save agent" }
+                button {
+                    r#type: "button",
+                    disabled: draft.read().is_empty(),
+                    onclick: move |_| {
+                        let who = match name.peek().trim().is_empty() {
+                            true => "agent".to_string(),
+                            false => name.peek().trim().to_string(),
+                        };
+                        export(&who, &draft.peek().clone());
+                    },
+                    "Export as a file"
+                }
+                button {
+                    r#type: "button",
+                    disabled: editing.read().is_empty(),
+                    onclick: move |_| {
+                        post(web, status, refused, tick, Request::post_form(
+                            "/agents/delete",
+                            &[("name", &editing.peek().clone())],
+                        ));
+                    },
+                    "Delete {editing}"
+                }
+            }
+            if !status.read().is_empty() {
+                p {
+                    class: if refused() { "error" } else { "pending" },
+                    role: "status",
+                    "{status}"
+                }
+            }
+            p { class: "note",
+                "Selected: {agent}. Every agent's origin and what its space granted it are on \
+                 its card in the Agents panel below."
+            }
+        }
+    }
+}
+
+/// The starting point for a new agent: every key the loader reads, so nobody
+/// has to remember which ones exist.
+const BLANK: &str = "---\nname: \ndescription: \nmodel: \nengine: react\nspace: \n\
+                     tools: []\ncompact_at: 8\nkeep_recent: 3\n---\n\nYou are …\n";

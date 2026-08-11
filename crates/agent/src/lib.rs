@@ -6,6 +6,7 @@
 //!
 //! G3 interface freeze: types and signatures only; bodies are `todo!()`.
 
+mod author;
 mod calls;
 mod now;
 mod effect;
@@ -40,6 +41,7 @@ pub use now::environment;
 pub use window::{compacted, due, set_window, transcript, window, SUMMARY_HEADING};
 pub use space::{is_space_tool, space_tools, Change, Space, NOTE_LIMIT};
 pub use workspace::{is_workspace_tool, relative_path, workspace_tools};
+pub use author::{new_spec, render_agent_file, usable_agent_name};
 pub use spec::{load_agents, parse_agent_file, AgentSpec};
 pub use state::{AgentState, PlanStep};
 pub use reply::{parse_reply, ParsedReply};

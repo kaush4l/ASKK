@@ -57,3 +57,12 @@ body { overflow-x: hidden; }
 /* A note's author, marked up rather than left as four characters inside the
    sentence (09 walk, finding 4). */
 .note-author { color: var(--accent); font-weight: 600; }
+
+/* Increment 11 — writing an agent in the browser. */
+.editor-picks { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0; }
+#agent-md { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: .82rem; line-height: 1.45; }
+.agent-origin { font-size: .82rem; opacity: .85; }
+/* Authored here, not shipped: said in words on the card, and marked so the
+   two kinds of agent are also tellable apart at a glance. */
+.agent-card[data-origin="authored"] { border-left: 3px solid var(--accent, #a06cd5); }

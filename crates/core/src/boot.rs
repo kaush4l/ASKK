@@ -106,6 +106,8 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
             unlogged: Vec::new(),
             logbook: crate::logbook::Logbook::default(),
             agents: Vec::new(),
+            files: Vec::new(),
+            authored: Vec::new(),
             agent_problems: Vec::new(),
             board: agent::Board::default(),
             me: crate::app::ENTRY_AGENT.to_string(),

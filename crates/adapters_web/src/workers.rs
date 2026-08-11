@@ -22,7 +22,7 @@ use wasm_bindgen_futures::JsFuture;
 
 use kernel::{AgentPort, BoxFuture, DelegateError, Status};
 
-use crate::spawn::{ask, bundle_urls, listen, start, Boot, Live, Memory};
+use crate::spawn::{ask, bundle_urls, listen, start, Authored, Boot, Live, Memory};
 
 /// A lifecycle fact the page has not told the core about yet.
 type Report = (String, Status, String);
@@ -36,6 +36,10 @@ pub struct AgentWorkers {
     /// What each Worker last said about its own window. Same queue discipline
     /// as `reports`, and for the same reason: it arrives on a JS callback.
     memory: Rc<RefCell<Vec<Memory>>>,
+    /// Agents a Worker WROTE with `write_agent` (increment 11). Same queue as
+    /// `memory`: a sub-agent's log is not the page's, so an agent it authored
+    /// reaches the roster only because the Worker says so.
+    written: Rc<RefCell<Vec<Authored>>>,
 }
 
 impl AgentWorkers {
@@ -44,6 +48,7 @@ impl AgentWorkers {
             live: RefCell::new(HashMap::new()),
             reports: Rc::new(RefCell::new(Vec::new())),
             memory: Rc::new(RefCell::new(Vec::new())),
+            written: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -58,6 +63,12 @@ impl AgentWorkers {
     /// composition root into `core::report_memory`.
     pub fn take_memory(&self) -> Vec<Memory> {
         std::mem::take(&mut self.memory.borrow_mut())
+    }
+
+    /// Every agent a Worker has reported writing since the last call, drained
+    /// by the composition root into `core::report_authored`.
+    pub fn take_authored(&self) -> Vec<Authored> {
+        std::mem::take(&mut self.written.borrow_mut())
     }
 
     /// Start a Worker for every agent except the one the page itself is.
@@ -96,6 +107,7 @@ impl AgentWorkers {
                         worker,
                         Rc::clone(&self.reports),
                         Rc::clone(&self.memory),
+                        Rc::clone(&self.written),
                     );
                     self.live.borrow_mut().insert(name.clone(), live);
                 }

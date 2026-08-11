@@ -18,6 +18,7 @@ mod model;
 mod overrides;
 mod wire;
 mod ports;
+mod roster;
 mod settings;
 mod spawn;
 mod worker;
@@ -52,9 +53,14 @@ pub struct WebApp {
     /// the core delegates through the port, but only the composition root may
     /// start, stop or report on a Worker's LIFE (increment 07).
     workers: Rc<AgentWorkers>,
-    /// What every sub-agent Worker was booted with, so restarting them after
-    /// an endpoint change hands them the new one (a Worker cannot learn it).
-    world: RefCell<(String, String)>,
+    /// The model catalogue every sub-agent Worker was booted with, so
+    /// restarting them hands them the same one (a Worker cannot learn it).
+    models: RefCell<String>,
+    /// The agent FILES every live Worker was booted from. Compared after every
+    /// seam round-trip, so an agent authored in the browser gets its own Worker
+    /// with no reload, a deleted one loses it, and an EDITED prompt reaches the
+    /// Worker that has to use it (`roster.rs`).
+    spawned: RefCell<String>,
 }
 
 fn js_err(e: impl std::fmt::Debug) -> JsValue {
@@ -103,16 +109,18 @@ impl WebApp {
         // Agents are data fetched from `public/agents/`, not code compiled in:
         // built-ins first so a project agent of the same name replaces one.
         let files = assets::fetch_agents().await;
-        let files_json = serde_json::to_string(&files).unwrap_or_else(|_| "[]".into());
         core::install_agents(&mut app, files);
+        // …merged with whatever this browser AUTHORED, which the replayed log
+        // already holds (increment 11): a Worker boots from the same roster the
+        // page runs, or `main` could not delegate to an agent written here.
+        let files_json =
+            serde_json::to_string(&core::agent_files(&app)).unwrap_or_else(|_| "[]".into());
         // This page's agent holds its conversation across a reload the way
         // every sub-agent now does — from its own log, not from the transcript
         // the screen happens to show (increment 08).
         core::restore_log(&mut app).await.map_err(js_err)?;
-        // Every agent that is not this page gets its own Worker — its own JS
-        // context, its own Wasm instance, its own event loop (Python
-        // `AgentThread`), started at boot the way the registry starts every
-        // thread at load, so the board is honest the moment the page paints.
+        // Every agent that is not this page gets its own Worker (Python
+        // `AgentThread`), started at boot so the board is honest on first paint.
         let names: Vec<String> = core::agent_names(&app);
         agents.spawn(
             &names,
@@ -126,15 +134,14 @@ impl WebApp {
             model,
             store,
             workers: agents,
-            world: RefCell::new((files_json, models_json)),
+            models: RefCell::new(models_json),
+            spawned: RefCell::new(files_json),
         })
     }
 
-    /// The seam, transport-shaped: `transport.js` passes a JSON Request;
-    /// this deserializes, calls `core::handle`, kicks the async runtime half
-    /// (agent pump + event persistence) as a background task, and returns
-    /// the JSON Response whose body htmx swaps. JSON because the boundary
-    /// already speaks it — no second wire format to keep honest (I4, I5).
+    /// The seam, transport-shaped: a JSON Request in, the JSON Response out.
+    /// JSON because the boundary already speaks it — no second wire format to
+    /// keep honest (I4, I5).
     pub fn handle_request(&mut self, request_json: &str) -> String {
         let response = match serde_json::from_str::<kernel::Request>(request_json) {
             Ok(req) => self.handle(req),
@@ -155,23 +162,6 @@ impl WebApp {
         core::agent_names(&self.app.borrow())
     }
 
-    /// Stop every sub-agent Worker and start it again on the CURRENT endpoint.
-    /// A Worker is handed its profile once, at boot; without this, changing
-    /// the endpoint in Settings left every sub-agent calling the old one while
-    /// the page called the new — the same question answered two ways depending
-    /// on which pane you asked.
-    pub fn restart_agents(&self) {
-        self.workers.close_all();
-        let (files, models) = self.world.borrow().clone();
-        self.workers.spawn(
-            &self.agent_names(),
-            core::ENTRY_AGENT,
-            &files,
-            &models,
-            &self.model.profile_json(),
-        );
-    }
-
     /// The seam for a Rust caller — the `ui` crate's Dioxus event handlers
     /// (I4: same `core::handle`, no JSON hop, no second wire format). `&self`
     /// because the mutation is behind the `RefCell` the async half shares.
@@ -184,11 +174,21 @@ impl WebApp {
         }
         // …and what each Worker last said about its own window, so a sub-agent's
         // pane shows a number IT reported and not one this side guessed.
+        // …and any agent a Worker WROTE (increment 11): the create-agent
+        // superagent runs in its own Worker, so the agent it authored reaches
+        // the page's roster through the same one-door discipline.
+        for (name, text) in self.workers.take_authored() {
+            core::report_authored(&mut self.app.borrow_mut(), &name, &text);
+        }
         for (agent, window, summary) in self.workers.take_memory() {
             let mut app = self.app.borrow_mut();
             core::report_memory(&mut app, &agent, window, summary.as_deref());
         }
         let response = core::handle(&mut self.app.borrow_mut(), req);
+        // An agent authored (or deleted) by that request needs its Worker
+        // started (or stopped) before anyone can talk to it — increment 11's
+        // "initialized in place, no reload" (`roster.rs`).
+        self.sync_workers();
         let app = Rc::clone(&self.app);
         wasm_bindgen_futures::spawn_local(async move {
             if let Err(e) = core::drive(app).await {

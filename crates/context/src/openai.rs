@@ -77,10 +77,10 @@ pub fn openai_request_body(messages: &[Message], model: &str) -> String {
 /// typed model error, never a fake reply.
 pub fn openai_reply_text(body_json: &str) -> Option<String> {
     let v: Value = serde_json::from_str(body_json).ok()?;
-    let content = v.get("choices")?.get(0)?.get("message")?.get("content")?;
-    match content {
-        Value::String(s) => Some(s.clone()),
-        Value::Array(parts) => Some(
+    let message = v.get("choices")?.get(0)?.get("message")?;
+    let text = match message.get("content") {
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::Array(parts)) => Some(
             parts
                 .iter()
                 .filter_map(|p| p.get("text").and_then(Value::as_str))
@@ -88,5 +88,41 @@ pub fn openai_reply_text(body_json: &str) -> Option<String> {
                 .join(""),
         ),
         _ => None,
+    };
+    match text.filter(|t| !t.trim().is_empty()) {
+        Some(text) => Some(text),
+        // A reply with NO content but native `tool_calls`. This build asks for
+        // calls as text (the Python's layout rule is a text rule), but a
+        // provider may answer in its own tool-call shape anyway — omlx does,
+        // for a prompt whose affordances mention tools. Reading that as "no
+        // reply" would discard a call the model really made and stall the turn
+        // on "unrecognizable completion body". Rendered into the ONE call
+        // syntax the parser reads, so nothing downstream learns a second one.
+        None => native_calls(message),
+    }
+}
+
+/// `tool_calls` as the text this build's parser already understands: one call
+/// per line, which is also the layout rule's "these run in order".
+fn native_calls(message: &Value) -> Option<String> {
+    let calls = message.get("tool_calls")?.as_array()?;
+    let lines: Vec<String> = calls
+        .iter()
+        .filter_map(|call| {
+            let f = call.get("function")?;
+            // Providers namespace the name (`tools:list_agents`); the toolbox
+            // knows the bare one, and an unknown tool is refused in words.
+            let name = f.get("name")?.as_str()?.rsplit(':').next()?;
+            let args = match f.get("arguments") {
+                Some(Value::String(s)) if !s.trim().is_empty() => s.trim().to_string(),
+                Some(Value::Object(o)) => Value::Object(o.clone()).to_string(),
+                _ => "{}".to_string(),
+            };
+            Some(format!("{name}({args})"))
+        })
+        .collect();
+    match lines.is_empty() {
+        true => None,
+        false => Some(lines.join("\n")),
     }
 }

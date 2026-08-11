@@ -185,6 +185,9 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             app.borrow_mut()
                 .set_status(&me, kernel::Status::Waiting, "");
         }
+        // The turn is over, so this is the boundary an agent authored or
+        // edited during it may be installed at (increment 11).
+        crate::roster::reconcile(&mut app.borrow_mut());
         // The agent's own log first, in the order the Python writes it.
         crate::logs::drain(&app).await;
         crate::logs::persist(&app).await?;

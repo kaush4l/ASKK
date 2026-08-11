@@ -23,6 +23,7 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 | 08 | Per-agent logs, the rolling window and the built-in summarizer — plus the three 07b walk findings | 93 green (83 + 6 window/compaction + 4 per-agent log) | fresh install, real omlx on 8873: four turns drove `main` past `compact_at: 8` and the SUMMARIZER AGENT compacted it live — the window went 7 → 5 with `data-compacted="true"`, and the stored `log/main/*` in IndexedDB is exactly that window (summary + `keep_recent: 3` tail); a reload rebuilt the same 5; `researcher` did the same INSIDE ITS OWN WORKER against its own database (`harness-agent-researcher`, `log/researcher/*`), compacted at 6, and after a page reload its next turn continued from the restored window rather than an empty paper; the ARIA tablist answers ArrowLeft/Right (wrapping), Home and End with a roving tabindex | ⬜ pending `ux-walker` | `87780ee` | Live at https://kaush4l.github.io/ASKK/. HOSTED (bundle hash in `index.html` checked against `dist/` — `ui-5f603ad7507e1067.js`, matched on the third poll): `crossOriginIsolated: true`, three tabs read `tab, main, selected` to a screen reader, the memory line renders, and BOTH failures at the loopback boundary now render as the SAME card — `main`'s and `researcher`'s are byte-identical sentences with the identical `Technical detail for failure 1 — the endpoint was unreachable` disclosure, the sub-agent's carrying the typed payload its Worker sent across `postMessage`. With every stylesheet removed the current tab reads `▸ **researcher**` while the others are plain. NOT demonstrated hosted: a live compaction — it needs a reachable model, and the hosted page still dies on Chrome's Local Network Access gate (02's row). **CORRECTED by 09:** the hosted bundle for this row was `ui-879974ab6513cd49.js` (gh-pages `deploy 87780ee`); `ui-5f603ad7507e1067.js` above is 07b's bundle, written into the 08 row by mistake — the row's verdict stands, the hash did not. |
 | 09 | Shared spaces: facts, an attributed noticeboard and a named workspace, one space across Workers — plus the six memory findings from the 08 walk and the ledger correction | 109 green (93 + 9 space rules on the host + 5 through the whole seam with two Apps on one store + 2 memory line) | fresh install, real omlx on 8873 (127.0.0.1:8901 → dist): `main` delegated to `researcher` with the goal 'record omlx port = 8873 with remember, then post_note', and the Shared space panel went `0f/0n → 1f/1n` WHILE `researcher` was still `working` — a write from another Wasm instance, seen with nobody told to look; `researcher`'s turn count moved 0 → 1, so the fact was recorded by the sub-agent and not by the lead. The next turn — "what port is omlx on, and what note did the researcher leave? Both are in the CONTEXT block" — answered `The omlx port is 8873, and the researcher left the note "checked the models endpoint."` with `researcher` still at 1 turn and the tool-call count still at 1: answered from CONTEXT, delegating to nobody. The note renders `[researcher] checked the models endpoint.` — attributed by the tool, never by the model. Four turns on `researcher` then crossed its `compact_at: 6`: its pane read `Working memory: 4 of 6 entries — the oldest turns are now a summary the summarizer wrote; compaction runs at 6 entries and keeps the newest 2. Nothing was lost: the transcript below still holds every turn.`, with the summary itself readable behind `The summary that replaced the oldest turns for researcher`. | ⬜ pending `ux-walker` | `9bd5523` | Live at https://kaush4l.github.io/ASKK/ — hosted bundle `ui-8b9480ef9f17ddd4.js`, matching `dist/` and `gh-pages deploy 7a21cbf`. HOSTED, after wiping IndexedDB, caches and the service worker: `crossOriginIsolated: true`, no console errors, six panels including **Shared space**, and the four databases the design implies (`harness`, `harness-agent-researcher`, `harness-agent-summarizer`, `harness-spaces`). A model is still unreachable from the hosted origin (02's row), so the hosted walk goes up to the loopback boundary: a fact and a note written into `harness-spaces` FROM PAGE JS — outside the Wasm instance entirely, which is exactly what another Worker is — appeared in the inspector within one pass (`1f/1n`, `[researcher] wrote this from another context`) and survived a reload. The Agents card lists `remember, forget, post_note` in both agents' resolved toolboxes, so it cannot disagree with what the model is told. |
 | 10 | The Alpine workspace: CheerpX behind `WorkspacePort`, an `exec` toolbox gated on the agent's space, a Terminal pane, and the five findings from the 09 walk | 122 green (109 + 6 workspace rules on the host against a fake shell + 3 walk findings + 3 pure unit tests, +1 in-place: a typed command must not read as a turn) | LOCAL (127.0.0.1:8901 → dist, COI on): first command in a fresh page with an empty overlay boots the Linux and returns in **2.2–4.2 s** — `uname -a` → `Linux 4.15.0-54-cheerpx i386 Linux`; after a reload, with the overlay already in IndexedDB, boot **and** the command take **1.2 s**. `awk 'BEGIN{s=0;for(i=0;i<3000000;i++)s+=i;print s}'` runs in **6.1 s** in the VM (twice, warm, ±0.05 s) against **0.073 s** natively — **≈84×**. With the real omlx on 8873 the AGENT wrote a file: `write_file({"path": "agent-note.md", "contents": "increment 10 works."})` → `wrote agent-note.md`, and after a reload `ls -l; cat agent-note.md` showed it still there beside the `proof.txt` written from the terminal. | ✅ HOSTED, walked here: boot + `uname -a` + `echo hosted-proof > hosted.txt` in **2.2 s** on the deployed page, then a full reload and `cat hosted.txt` → `hosted-proof` in **1.2 s**. `crossOriginIsolated: true`, no console errors, the CheerpX credit visible in the pane. | `68b5fd1` | Live at https://kaush4l.github.io/ASKK/ — hosted bundle `ui-b8f5f684d2845a26_bg.wasm`, sha256 `03c67b83…6ea13b`, byte-identical to `dist/`. The VM has nothing to do with the model endpoint, so unlike every row since 02 the hosted journey is the WHOLE journey. **The engine is 1.3.1, not the 1.2.8 the research quoted**: with 1.2.8 `CheerpX.Linux.create` never resolved on this Alpine image — measured twice at a 120 s timeout, no error, no console output; 1.3.1 mounts the same image in 2.2 s. A sub-agent's Worker has no workspace and says so (see Decisions). |
+| 11 | Agents authored in the browser: written, live-edited, exported and deleted — plus the create-agent superagent, and the four findings from the 10 walk | 140 green (122 + 5 export/round-trip/native-tool-calls + 10 authoring through the seam + 3 walk findings) | LOCAL (127.0.0.1:8901 -> dist, COI on), real omlx on 8873: an agent.md TYPED IN THE PAGE became `note-taker` with its own tab and its own Worker with no reload; it answered `I have noted that the deploy is scheduled for Tuesday.`, survived a reload, and answered `You said the deploy is on Tuesday.` from its restored window; its prompt was then EDITED in place and the very next turn obeyed the new one (`MEMO: I am tracking the deployment schedule.`) with all three earlier turns still in the transcript; the `author` superagent was given "write me an agent called haiku-writer" in plain English, wrote the folder, installed it live (`haiku-writer:authored` appeared in the list on the third poll with no reload), and the agent it made then answered `Steel limbs move through ferns, / Silent gears in ancient woods, / One spark in the deep.`; deleting an authored agent removed it and refusing to delete a shipped one named the reason; the VM booted and ran, the scrollback ended pinned at `scrollTop=4714, scrollHeight=5066, clientHeight=352` with `200` the last line on screen, and the fourth command in a booted VM said `running…` and not `boots the Linux` | ✅ HOSTED, walked here on `ui-5486c3e1ee3ac16b_bg.wasm`: `crossOriginIsolated: true`, no console errors, five panels plus **Write an agent**. Wrote `hosted-scribe` from the textarea — appeared as `hosted-scribe:authored` beside four `:shipped` agents with no reload, survived a full reload, loaded back into the editor as the same `agent.md`, gained a real shell the moment `space: research` was added to it (the card said so in words), and was deleted back out again; `main` refused deletion with "it comes from this deploy's public/agents/ folder". The VM booted and ran `uname -a` in **3 s** and `seq 1 200` left the pane scrolled to `200`. Creating, editing, exporting and deleting are pure browser work, so the whole of that is hosted; only the superagent needs a model, and it was driven locally against omlx | `PENDING` | Live at https://kaush4l.github.io/ASKK/ — hosted bundle `ui-5486c3e1ee3ac16b_bg.wasm`, sha256 `a6c7a411…`, byte-identical to `dist/`. **This closes the parity table.** An authored agent is not a second kind of agent: it is the same `agent.md`, held as a fact in the event log instead of as a file on a static host, so it replays at boot, deletes as another fact, and exports to bytes that drop straight into `public/agents/` (round-tripped against all four shipped files on the host). **A bug found by the walk and fixed here:** omlx answers a prompt whose affordances mention tools with a NATIVE `tool_calls` message and no `content`, which this build read as "unrecognizable completion body" and threw away — the superagent could not take a single turn. `openai_reply_text` now renders `tool_calls` into the one text call syntax the parser reads, so a call the model really made is not discarded. |
 
 ## Parity with the Python project
 
@@ -52,7 +53,7 @@ feature "exists".
 | — | Chat with the main agent in the UI | ✅ |
 | — | Chat with any agent individually | ✅ |
 | — | Agents hot-reloaded from `public/agents/` | ✅ |
-| — | New agents added in the browser, persisted, exportable | ⬜ |
+| — | New agents added in the browser, persisted, exportable | ✅ |
 | — | Alpine workspace: run a command, write a file, survive a refresh | ✅ |
 
 Dropped deliberately (not parity failures): `core/cron.py` — no crontab in a tab. MCP subprocesses —
@@ -671,3 +672,63 @@ they are `node` inside the VM, priced after increment 10.
   `RequestHandled` fact, and the Terminal's 700 ms watch makes that visible: a long boot writes
   hundreds of them. That is pre-existing (the chat and space panes poll too) and is a log-retention
   question, not this increment's.
+
+### Increment 11
+
+- **An authored agent is a FACT, not a second store.** `core.agent_authored {name, agent.md}` in the
+  event log, folded by `roster::authored`. That is why it survives a refresh (the log replays at
+  boot), why deleting one is `core.agent_deleted` and therefore undoable (I10), and why there is one
+  record rather than a kv table beside the log that could disagree with it (I8).
+- **PRECEDENCE, one rule:** compiled-in built-ins, then `public/agents/`, then what this browser
+  authored. Last wins — the Python `registry._agent_dirs` order with one step added. So writing an
+  agent called `main` REPLACES the shipped `main`, and deleting that record reverts to the file.
+  Editing a running agent's prompt is exactly this and nothing else; there is no separate edit path.
+- **The swap happens at a TURN BOUNDARY.** `roster::reconcile` refuses while `app.agent.task` is
+  `Some` — which is exactly from the utterance that starts a turn to the answer that ends it.
+  Swapping between the model call and the reply it is waiting for would finish the turn out of one
+  agent's file and another's history, which is the crossed-projection class 07b already cost a walk.
+  The paper's HISTORY is untouched by `adopt_spec`, so the conversation survives the swap.
+- **Export is `render_agent_file`, the stated inverse of `parse_agent_file`,** and the stored record
+  is the CANONICAL render — so what is kept, what is exported and what would round-trip are one
+  string. `GET /agents/file` answers with `content-type: text/markdown` and the file as the body,
+  not a fragment: the editor and the download need the text, and reading it back out of rendered
+  HTML would be the view-scraping this codebase refuses everywhere else.
+- **`write_agent` is an ORDINARY built-in tool** and the create-agent superagent is an ordinary
+  `public/agents/author/agent.md`. I9 says built-in and authored agents are indistinguishable to the
+  system, so the model's route and the person's route append the same fact. The consequence, taken
+  deliberately: "empty `tools:` means every built-in" is the Python rule, so an agent with an empty
+  list can author agents. Carving `write_agent` out would make it the one capability the toolbox
+  resolves differently. The Agents card prints the RESOLVED toolbox, so it is stated rather than
+  hidden.
+- **A Worker reports what it authored.** The superagent runs in its own Wasm instance with its own
+  event log, so `write_agent` there records the fact THERE and the page would never see it — it
+  reported success and installed nothing. `AgentWorker::authored()` rides back on the same message
+  as `memory`, and `core::report_authored` lands it on the page through the one status door, exactly
+  as `report_agent` and `report_memory` do.
+- **Workers are respawned when the FILES change, not when the names do.** Editing a prompt changes
+  no name, and a Worker is handed its file once at boot; without this the page adopted the new prompt
+  while the sub-agent kept answering from the old one. Coarse — every Worker is replaced — because a
+  Worker cannot learn one new agent, and `main` must be able to delegate to one written a moment ago.
+- **A model's `tool_calls` reply is read as the calls it made.** omlx answers a prompt whose
+  affordances mention tools with a native `tool_calls` message and no `content`; this build asked for
+  calls as text and read that as no reply at all, failing the turn on "unrecognizable completion
+  body". `openai_reply_text` now renders them into the one call syntax the parser reads (one per
+  line, which is also the layout rule's "in order"), stripping any `tools:` namespace prefix.
+  Discarding a call the model really made is not a defensible reading of a 200.
+- **What a small model actually sends is cleaned up, narrowly.** A `space` that could never be a
+  space is dropped (it grants nothing, and keeping it would put a capability line on the card that
+  means nothing), and a prompt whose newlines arrived still escaped is unescaped — only when there
+  is no real newline to lose.
+- **The four findings from the 10 walk.** (1) `#terminal` is scrolled to `scrollHeight` after a
+  command lands, so the answer is on screen instead of 1300 px below the fold; the pane's NOTE moved
+  outside the scroller so it is not what scrolls away. (2) The boot sentence is told once, on the
+  command that actually boots the Linux. (3) `/terminal` takes `x-agent` like `/space` and `/tools`,
+  so with `summarizer` selected the pane says summarizer has no workspace and names whose commands
+  the scrollback below actually is. (4) The path rule is stated honestly wherever it is summarised:
+  `exec` is a real shell that can read anything in the VM, so the path check on the other three tools
+  is legibility rather than containment, and the Linux in the tab is the sandbox. The same sentence
+  is on every Agents card that has a space, because a space IS the grant.
+- **Legibility, not a permission dialog.** No dialog was added. Each card states who wrote the agent
+  (`data-origin="authored" | "shipped"`), what its space granted it in words, and its resolved
+  toolbox; an authored card carries an accent rule down its left edge. Delete is a button beside the
+  editor, and deleting an authored override of a shipped agent puts the shipped file back.

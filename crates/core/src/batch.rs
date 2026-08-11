@@ -150,7 +150,7 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
             return;
         }
         let mut a = app.borrow_mut();
-        let kind = crate::tools::run(&a, tool, args_json);
+        let kind = crate::tools::run(&mut a, tool, args_json);
         let appended = a.append(kind);
         a.pending.push(appended);
         return;

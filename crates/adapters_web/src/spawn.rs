@@ -90,6 +90,20 @@ pub(crate) struct Live {
 /// how many entries, and the summary that replaced the oldest, if any.
 pub(crate) type Memory = (String, usize, Option<String>);
 
+/// An agent a Worker WROTE, waiting to be drained: `(name, agent.md)`. Same
+/// queue discipline as `Memory`, and for the same reason — it arrives on a JS
+/// callback, where the app is already borrowed.
+pub(crate) type Authored = (String, String);
+
+/// Read the `authored` field off a Worker's message: every agent it has
+/// written with `write_agent`. Absent means it wrote none.
+fn authored_in(data: &JsValue) -> Vec<Authored> {
+    let Some(raw) = Reflect::get(data, &"authored".into()).ok().and_then(|v| v.as_string()) else {
+        return Vec::new();
+    };
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
 /// Read the `memory` field off a Worker's message. Absent (an older bundle, or
 /// a failure) means it said nothing, which the pane prints as "not reported"
 /// rather than as a made-up number.
@@ -110,6 +124,7 @@ pub(crate) fn listen(
     worker: Worker,
     queue: Rc<RefCell<Vec<(String, Status, String)>>>,
     memory: Rc<RefCell<Vec<Memory>>>,
+    written: Rc<RefCell<Vec<Authored>>>,
 ) -> Live {
     let waiting: Rc<RefCell<Option<(Function, Function)>>> = Rc::new(RefCell::new(None));
     let (pending, who) = (Rc::clone(&waiting), name.to_string());
@@ -121,6 +136,7 @@ pub(crate) fn listen(
         if let Some(said) = memory_of(&data, &who) {
             memory.borrow_mut().push(said);
         }
+        written.borrow_mut().extend(authored_in(&data));
         if read("kind").as_string().as_deref() == Some("ready") {
             let status = match ok {
                 true => Status::Idle,

@@ -71,6 +71,15 @@ pub struct App {
     /// built-ins they may override). Data, not code: installed after boot by
     /// `agents::install_agents`, replaced wholesale when the files change.
     pub(crate) agents: Vec<AgentSpec>,
+    /// The `public/agents/` files exactly as fetched, kept so an agent
+    /// authored in the browser can be merged over them WITHOUT a reload
+    /// (increment 11) — the composition root fetches them once, at boot.
+    pub(crate) files: Vec<(String, String)>,
+    /// What this browser itself authored, `(name, agent.md)` — the fold of the
+    /// log that `roster::reconcile` last applied. Held so a request can tell
+    /// "nothing changed" from "an agent was written" without re-installing on
+    /// every seam round-trip.
+    pub(crate) authored: Vec<(String, String)>,
     /// One sentence per `agent.md` that could not be read. Skipping a broken
     /// file is correct; staying silent about it is not (`ux-walker`), so the
     /// Agents panel projects this list beside what did load.

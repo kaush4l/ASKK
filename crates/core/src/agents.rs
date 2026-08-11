@@ -21,13 +21,27 @@ pub(crate) fn manifest() -> Manifest {
         id: ModuleId("agents".into()),
         name: "Agents".into(),
         version: Version(1),
-        description: "The agents loaded from public/agents/: name, description, model, prompt."
+        description: "Every loaded agent — shipped or authored here — and the writing of one."
             .into(),
-        capabilities: vec![],
-        routes: vec![RouteSpec {
-            method: "GET".into(),
-            path: "/agents".into(),
-        }],
+        capabilities: vec![kernel::CapabilityId::Emit],
+        routes: vec![
+            RouteSpec {
+                method: "GET".into(),
+                path: "/agents".into(),
+            },
+            RouteSpec {
+                method: "GET".into(),
+                path: "/agents/file".into(),
+            },
+            RouteSpec {
+                method: "POST".into(),
+                path: "/agents".into(),
+            },
+            RouteSpec {
+                method: "POST".into(),
+                path: "/agents/delete".into(),
+            },
+        ],
         slots: vec![],
         section: None,
         schema: DataSchema {
@@ -43,6 +57,9 @@ pub(crate) fn manifest() -> Manifest {
 pub(crate) fn agents(req: &Request, ctx: &mut Ctx) -> Response {
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/agents") => listing(ctx),
+        ("GET", "/agents/file") => crate::authoring::file(req, ctx),
+        ("POST", "/agents") => crate::authoring::write(req, ctx),
+        ("POST", "/agents/delete") => crate::authoring::delete(req, ctx),
         _ => error_fragment(404, "agents: unknown subroute"),
     }
 }
@@ -58,7 +75,7 @@ fn listing(ctx: &Ctx) -> Response {
         );
     }
     for spec in &ctx.agents {
-        list = list.child(card(spec, &ctx.agents));
+        list = list.child(card(spec, &ctx.agents, &ctx.authored));
     }
     for problem in &ctx.agent_problems {
         list = list.child(
@@ -122,12 +139,23 @@ fn meta_line(spec: &AgentSpec, peers: &[AgentSpec]) -> String {
 
 /// One agent, as its file declares it. The prompt is shown verbatim behind a
 /// disclosure: it is the whole point of the file, and also the longest part.
-fn card(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
+fn card(spec: &AgentSpec, peers: &[AgentSpec], authored: &[String]) -> Fragment {
+    let mine = authored.contains(&spec.name);
     FragmentBuilder::new("div")
         .class("agent-card")
         .attr("data-agent", &spec.name)
+        .attr("data-origin", match mine {
+            true => "authored",
+            false => "shipped",
+        })
         .child(FragmentBuilder::new("h3").text(&spec.name).build())
         .child(FragmentBuilder::new("p").text(&spec.description).build())
+        .child(
+            FragmentBuilder::new("p")
+                .class("agent-origin")
+                .text(&crate::authoring::origin_line(spec, mine))
+                .build(),
+        )
         .child(
             FragmentBuilder::new("p")
                 .class("agent-meta")
@@ -142,8 +170,12 @@ fn card(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
                     // reader (`ux-walker`, increment 03).
                     FragmentBuilder::new("summary")
                         .text(&format!(
-                            "System prompt for {} (from public/agents/{}/agent.md)",
-                            spec.name, spec.name
+                            "System prompt for {} ({})",
+                            spec.name,
+                            match mine {
+                                true => "authored in this browser".to_string(),
+                                false => format!("from public/agents/{}/agent.md", spec.name),
+                            }
                         ))
                         .build(),
                 )

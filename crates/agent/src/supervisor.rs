@@ -110,6 +110,14 @@ impl Board {
         }
     }
 
+    /// Drop an agent's row — the agent is no longer loaded (increment 11: an
+    /// authored agent deleted in the browser). The counterpart of `register`;
+    /// a board that kept a row for an agent nobody can call would be a board
+    /// offering a conversation that cannot happen.
+    pub fn forget(&mut self, name: &str) {
+        self.rows.retain(|r| r.name != name);
+    }
+
     pub fn get(&self, name: &str) -> Option<&AgentRow> {
         self.rows.iter().find(|r| r.name == name)
     }

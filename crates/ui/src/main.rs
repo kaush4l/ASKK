@@ -13,6 +13,8 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
+mod agentfile;
+mod authoring;
 mod board;
 mod chat;
 mod composer;
@@ -58,6 +60,15 @@ fn adopt(
     }
 }
 
+/// Re-read the listing whenever anything moves. An agent can now be written,
+/// edited or deleted while the page is open (increment 11), so a panel painted
+/// once at boot would show a roster the core no longer has.
+fn watch_agents(web: Signal<Option<Rc<WebApp>>>, mut agents: Signal<String>, mut loaded: Signal<Vec<String>>) {
+    let Some(app) = web.peek().clone() else { return };
+    agents.set(app.handle(Request::get("/agents")).body);
+    loaded.set(app.agent_names());
+}
+
 /// Who is loaded, and where from. Its own fn because the shell composes the
 /// page and owns no content (plan, "UI shape").
 fn agent_panel(agents: Signal<String>) -> Element {
@@ -66,7 +77,9 @@ fn agent_panel(agents: Signal<String>) -> Element {
             h2 { "Agents" }
             p { class: "note",
                 "Loaded from public/agents/ at boot — edit an agent.md, redeploy, reload, \
-                 and the agent changes with no rebuild."
+                 and the agent changes with no rebuild. An agent written in this browser is \
+                 the same file, kept here instead, and each card says which it is and what \
+                 its space granted it."
             }
             div { dangerous_inner_html: "{agents}" }
         }
@@ -100,6 +113,10 @@ fn shell() -> Element {
     let tick = use_signal(|| 0u32);
 
     use_effect(move || adopt(&booted.read(), web, fragment, agents, failure, loaded));
+    use_effect(move || {
+        let _ = tick();
+        watch_agents(web, agents, loaded);
+    });
 
     rsx! {
         header {
@@ -120,8 +137,9 @@ fn shell() -> Element {
                 chat::ChatPane { web, endpoint_set, tick, agent: selected }
                 board::AgentBoard { web, tick }
                 space::SpaceInspector { web, tick, agent: selected }
-                terminal::Terminal { web, tick }
+                terminal::Terminal { web, tick, agent: selected }
                 tools::ToolTrace { web, tick, agent: selected }
+                authoring::AgentEditor { web, tick, loaded, agent: selected }
                 {agent_panel(agents)}
                 settings::Settings { web, endpoint_set, tick }
             }

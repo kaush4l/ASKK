@@ -29,22 +29,44 @@ fn commands_in(html: &str) -> usize {
         .unwrap_or(0)
 }
 
-/// Re-read the scrollback from the core.
-fn scrollback(web: &Signal<Option<Rc<WebApp>>>) -> String {
+/// Re-read the scrollback from the core, for the SELECTED agent (10 walk,
+/// finding 3): this was the one per-agent read that sent no `x-agent`.
+fn scrollback(web: &Signal<Option<Rc<WebApp>>>, agent: &str) -> String {
     match web.peek().clone() {
-        Some(app) => app.handle(Request::get("/terminal")).body,
+        Some(app) => {
+            app.handle(Request::get("/terminal").with_header("x-agent", agent))
+                .body
+        }
         None => String::new(),
     }
 }
 
+/// Put the newest output where it can be read (10 walk, finding 1): the pane
+/// is a fixed-height scroller and nothing ever moved it, so a command's answer
+/// was LESS visible after it finished than while it ran — 1300px below the
+/// fold, with `scrollTop` still 0. Not application logic (I5): it is a scroll
+/// position, and it is set from Rust.
+fn show_newest() {
+    if let Some(pane) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("terminal"))
+    {
+        pane.set_scroll_top(pane.scroll_height());
+    }
+}
+
 #[component]
-pub fn Terminal(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element {
+pub fn Terminal(
+    web: Signal<Option<Rc<WebApp>>>,
+    tick: Signal<u32>,
+    agent: ReadSignal<String>,
+) -> Element {
     let mut panel = use_signal(String::new);
     let mut draft = use_signal(String::new);
     let mut running = use_signal(|| false);
     use_effect(move || {
-        let _ = tick();
-        panel.set(scrollback(&web));
+        let _ = (tick(), agent());
+        panel.set(scrollback(&web, &agent()));
     });
     let mut submit = move || {
         let command = draft().trim().to_string();
@@ -56,10 +78,16 @@ pub fn Terminal(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element {
         draft.set(String::new());
         running.set(true);
         panel.set(
-            app.handle(Request::post_form("/terminal", &[("command", &command)]))
-                .body,
+            app.handle(
+                Request::post_form("/terminal", &[("command", &command)])
+                    .with_header("x-agent", &agent()),
+            )
+            .body,
         );
         spawn(async move {
+            // The echoed "running…" is at the bottom of the scrollback too.
+            let _ = sleep(30).await;
+            show_newest();
             // Watch until the command COUNT rises — not until the pane stops
             // changing. A first boot streams a disk over the network and can
             // take a minute; "the pane looks the same as last tick" is true
@@ -69,9 +97,13 @@ pub fn Terminal(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element {
                 if sleep(TICK_MS).await.is_err() {
                     break;
                 }
-                let next = scrollback(&web);
+                let next = scrollback(&web, &agent());
                 if commands_in(&next) > before {
                     panel.set(next);
+                    // The DOM catches up on the next frame; then scroll, or
+                    // the output that just arrived stays below the fold.
+                    let _ = sleep(30).await;
+                    show_newest();
                     break;
                 }
             }
@@ -81,13 +113,6 @@ pub fn Terminal(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element {
     rsx! {
         section { class: "panel", aria_label: "Workspace terminal",
             h2 { "Workspace" }
-            p { class: "note",
-                "A real Linux, running in this tab. The agents in this space build here with \
-                 exec, read_file, write_file and list_files, and you can run a command \
-                 yourself. It boots on the first command — the disk streams over the \
-                 network, so that one takes a while and the rest do not. What is written \
-                 here is kept in this browser and is still there after a reload."
-            }
             div { aria_live: "polite", dangerous_inner_html: "{panel}" }
             form {
                 onsubmit: move |e| {

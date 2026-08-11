@@ -64,9 +64,18 @@ fn replayed(log: &EventLog, name: &str) -> (u32, Option<String>) {
 /// One function, two callers, so a sub-agent's engine is built exactly the way
 /// the lead's is (I9).
 pub fn install_agents_as(app: &mut App, fetched: Vec<(String, String)>, adopt: &str) {
-    let from_project: Vec<String> = fetched.iter().map(|(n, _)| n.clone()).collect();
+    // Precedence, one rule (`roster.rs`): built-ins, then `public/agents/`,
+    // then what THIS BROWSER authored — last wins, so an agent written here
+    // overrides a shipped file of the same name and deleting it reverts.
+    app.files = fetched;
+    app.authored = crate::roster::authored(&app.log);
+    let authored_names: Vec<String> = app.authored.iter().map(|(n, _)| n.clone()).collect();
+    let from_project: Vec<String> = app.files.iter().map(|(n, _)| n.clone()).collect();
     let compiled_in: Vec<String> = builtin_files().into_iter().map(|(n, _)| n).collect();
-    let files = builtin_files().into_iter().chain(fetched);
+    let files = builtin_files()
+        .into_iter()
+        .chain(app.files.clone())
+        .chain(app.authored.clone());
     let (specs, problems) = agent::load_agents(files);
     app.agents = specs;
     app.agent_problems = problems;
@@ -80,7 +89,9 @@ pub fn install_agents_as(app: &mut App, fetched: Vec<(String, String)>, adopt: &
         // A project agent of the same name REPLACES the built-in (increment
         // 03); the row says "agents" because the file that won is the
         // project's, exactly as the Python's `_agent_dirs` decides the origin.
-        let is_builtin = compiled_in.contains(&spec.name) && !from_project.contains(&spec.name);
+        let is_builtin = compiled_in.contains(&spec.name)
+            && !from_project.contains(&spec.name)
+            && !authored_names.contains(&spec.name);
         app.board.register(&spec.name, is_builtin, now);
         let (turns, failure) = replayed(&app.log, &spec.name);
         app.board.restore(&spec.name, turns);

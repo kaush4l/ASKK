@@ -122,7 +122,13 @@ fn the_frontmatter_tools_list_decides_the_toolbox() {
 
     let all = toolbox_for(&spec("main", &[]), &peers);
     let names: Vec<&str> = all.tools.iter().map(|t| t.name.as_str()).collect();
-    assert_eq!(names, ["now", "list_agents", "read_agent"]);
+    // `write_agent` is in this list from increment 11 on, and deliberately:
+    // "empty means every built-in" is the Python rule, and carving one tool
+    // out of it would make authoring a privileged capability the toolbox
+    // resolves differently from every other (I9). The consequence is that an
+    // agent with an empty `tools:` can author agents — which is why the Agents
+    // card prints the RESOLVED toolbox rather than the frontmatter's.
+    assert_eq!(names, ["now", "list_agents", "read_agent", "write_agent"]);
     assert!(all.tools.iter().all(|t| !t.agent), "no peer was attached");
 
     let picked = toolbox_for(&spec("main", &["now", "researcher"]), &peers);
