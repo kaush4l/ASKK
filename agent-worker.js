@@ -27,7 +27,9 @@ self.onmessage = (event) => {
   if (m.kind === "boot") {
     ready = boot(m);
     ready.then(
-      () => self.postMessage({ kind: "ready", ok: true, text: "" }),
+      // The window it came up holding, so the page can show a sub-agent's
+      // memory before it has answered anything (increment 09).
+      (agent) => self.postMessage({ kind: "ready", ok: true, text: "", memory: agent.memory() }),
       // A Worker that cannot build its agent is FAILED with its reason, not a
       // console line: this is the one row that must say the agent is unusable.
       (e) => self.postMessage({ kind: "ready", ok: false, text: reason(e) }),
@@ -40,6 +42,13 @@ self.onmessage = (event) => {
   }
   ready
     .then((agent) => agent.run(m.goal))
-    .then((text) => self.postMessage({ kind: "answer", ok: true, text }))
+    .then(async (text) =>
+      self.postMessage({
+        kind: "answer",
+        ok: true,
+        text,
+        memory: (await ready).memory(),
+      }),
+    )
     .catch((e) => self.postMessage({ kind: "answer", ok: false, text: reason(e) }));
 };
