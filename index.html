@@ -13,8 +13,8 @@
        production and publish.sh gates on it. -->
   
 <script type="module">
-import init, * as bindings from './ui-e98680b0bff1d45b.js';
-const wasm = await init({ module_or_path: './ui-e98680b0bff1d45b_bg.wasm' });
+import init, * as bindings from './ui-4df67df7ac8c0864.js';
+const wasm = await init({ module_or_path: './ui-4df67df7ac8c0864_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -23,12 +23,17 @@ window.wasmBindings = bindings;
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
-  <link rel="stylesheet" href="./theme-26b93515ff5e9529.css" integrity="sha384-HlW4w0QIkfUsE7/fW2p8wJB0ff+qHd3IFj7qgeDCX7L+neqYalk1Mo7NO+0iFZfA"/>
+  <link rel="stylesheet" href="./theme-68d2e686e51724e8.css" integrity="sha384-fd7few3kTo4h5sc/f2yCcW/UipY+yftajJhsJi8tXsLBfRDQEZmQhaanQ/pQ5Wav"/>
   
   
   
   
-<link rel="modulepreload" href="./ui-e98680b0bff1d45b.js" crossorigin="anonymous" integrity="sha384-EzuTTWChAfkKMrq+SFvjVfI7I4KRCMjzWiwIruXsyDleapO9TjmeAV3RcaS517hg"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="preload" href="./ui-e98680b0bff1d45b_bg.wasm" crossorigin="anonymous" integrity="sha384-H1qbp3XxOQK/awmOv4uDWS9CWi9VacyyaUo7NecDMo8YUfohoAUdC9RdEvLrjiXE" as="fetch" type="application/wasm"></head>
+  <!-- The agents are data, not code: served as static files and fetched at
+       boot, so editing one and redeploying changes its behaviour with no
+       rebuild. public/agents/index.json is the manifest (a static host cannot
+       list a directory). -->
+  
+<link rel="modulepreload" href="./ui-4df67df7ac8c0864.js" crossorigin="anonymous" integrity="sha384-4vIAAnx6HYdpETgcuSUII27aiCXFdEt10WKjJCmKVKrhoemSgvZPgZ0g+kBJs9BH"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="preload" href="./ui-4df67df7ac8c0864_bg.wasm" crossorigin="anonymous" integrity="sha384-/BviV0fz9Q+nF4AvGmSS91Z7FO+znrRFHR8ruqvBbc88gEIOGXCAx5xRS6fSZ57j" as="fetch" type="application/wasm"></head>
 <body>
   <div id="main"></div>
   <noscript>

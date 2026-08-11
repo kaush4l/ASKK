@@ -11,7 +11,7 @@
 // safely. Bump VERSION on release to drop the old cache.
 importScripts("coi-sw.js");
 
-const VERSION = "01-0.2.0";
+const VERSION = "03-0.3.0";
 const CACHE = "askk-" + VERSION;
 
 // Only the unhashed shell is pre-cached; trunk fingerprints the JS and Wasm,
@@ -48,9 +48,15 @@ function store(request, response) {
 }
 
 async function respond(request) {
-  if (request.mode === "navigate") {
+  // Agents are DATA, edited and redeployed without a rebuild (increment 03),
+  // so their filenames never change — cache-first would serve yesterday's
+  // prompt forever. Network-first with a cache fallback: a reload after a
+  // deploy shows the edited agent.md, and an offline load still has one.
+  const isAgentFile = new URL(request.url).pathname.includes("/agents/");
+  if (request.mode === "navigate" || isAgentFile) {
     // Network-first: a stale index.html would point at asset names that no
-    // longer exist, and refresh is the update channel (I11).
+    // longer exist, and refresh is the update channel (I11). Same reason the
+    // agent files ride this branch.
     try {
       return store(request, await fetch(request));
     } catch (e) {

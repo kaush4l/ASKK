@@ -1,0 +1,4 @@
+{
+  "comment": "The agent manifest. A static host cannot list a directory, so this file IS the directory listing: add a folder under public/agents/ and add its name here, or the app will never fetch it. Order is irrelevant; the loader sorts by name.",
+  "agents": ["main", "summarizer"]
+}
