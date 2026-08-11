@@ -60,7 +60,14 @@ main {
 
 h2, h3 { margin: 0 0 0.5rem; font-size: 1rem; }
 
-form { display: flex; gap: 0.5rem; }
+/* A form STACKS. It used to be a non-wrapping ROW by default, with column as
+   an opt-in class, so the agent editor's label, name box, textarea and three
+   buttons crushed into one line: the textarea measured 24px wide and the pane
+   was the sole cause of a 635px document on a 390px screen (11b walk). The
+   two forms that ARE one row say so. */
+form { display: flex; flex-direction: column; align-items: stretch; gap: 0.5rem; }
+form label { font-size: 0.9rem; color: var(--ink-dim); }
+form.oneline { flex-direction: row; align-items: center; flex-wrap: wrap; }
 
 input, textarea, select, button {
   font: inherit;
@@ -109,10 +116,6 @@ button:disabled {
 
 a { color: var(--accent); }
 
-/* Settings stacks; the chat composer stays a single row. */
-form.stacked { flex-direction: column; align-items: stretch; }
-form.stacked label { font-size: 0.9rem; color: var(--ink-dim); }
-
 /* The conversation. Every message here came from an event in the log. */
 .chat-log { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: var(--gap); }
 .msg {
@@ -160,8 +163,8 @@ form.stacked label { font-size: 0.9rem; color: var(--ink-dim); }
 }
 
 /* Buttons that sit side by side (Save endpoint / Clear key). */
-form.stacked .row { display: flex; gap: 0.5rem; }
-form.stacked .row button { flex: 0 0 auto; }
+form .row { display: flex; gap: 0.5rem; }
+form .row button { flex: 0 0 auto; }
 
 /* Agents (increment 03): loaded from public/agents/, shown as they declare
    themselves. The prompt is long by nature, so it folds away. */
