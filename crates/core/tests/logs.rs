@@ -192,10 +192,20 @@ fn the_memory_line_shows_the_summary_the_denominator_and_the_reassurance() {
         "the number a reader can anticipate the drop from: {html}"
     );
     assert!(
-        html.contains("Nothing was lost: the transcript below still holds every turn"),
+        html.contains("Nothing was lost: the transcript still holds every turn"),
         "{html}"
     );
-    assert!(html.contains(r#"role="status""#), "a compaction is announced: {html}");
+    // Announced, and only the part that MOVED: a live region around the whole
+    // sentence re-read twenty words every turn to report one number (12b walk,
+    // finding 3). The rule after the count is outside it.
+    assert!(
+        html.contains(r#"<span class="wm-count" role="status">Working memory: 4 of 4 entries</span>"#),
+        "the live region is the count alone: {html}"
+    );
+    assert!(
+        !html.contains(r#"role="status">Working memory: 4 of 4 entries — "#),
+        "the rule is not inside the live region: {html}"
+    );
     assert!(
         html.contains("The summary that replaced the oldest turns for main"),
         "the summary has a disclosure of its own: {html}"

@@ -48,13 +48,19 @@ pub fn SpaceInspector(
     rsx! {
         section { class: "panel", aria_label: "Shared space",
             h2 { "Shared space" }
-            p { class: "note",
-                "Every agent whose file names this space reads it — each one in its own \
-                 Worker, out of one shared store — and writes to it with remember, forget \
-                 and post_note. It goes into their prompts before every turn, so a fact \
-                 recorded here is one nobody has to be asked for again."
-            }
             div { aria_live: "polite", dangerous_inner_html: "{panel}" }
+            // Five lines in front of "No shared facts yet." (12b walk, finding
+            // D2). The live read comes first now and the paragraph is behind
+            // the marker, unchanged.
+            details { class: "panel-note",
+                summary { "How the shared space is read and written" }
+                p { class: "note",
+                    "Every agent whose file names this space reads it — each one in its own \
+                     Worker, out of one shared store — and writes to it with remember, forget \
+                     and post_note. It goes into their prompts before every turn, so a fact \
+                     recorded here is one nobody has to be asked for again."
+                }
+            }
         }
     }
 }

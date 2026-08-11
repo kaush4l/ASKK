@@ -133,7 +133,11 @@ pub fn ChatPane(
             // Settings and it decides whether the next message can be sent.
             if !endpoint.is_empty() { p { class: "note chat-endpoint", "{endpoint}" } }
             if mine {
-                div { class: "chat-log", dangerous_inner_html: "{shown.html}" }
+                // The id is the scroll target: from 12c the conversation is
+                // the child that grows inside a full-height column, so the
+                // newest message is below its own fold unless something moves
+                // it — the terminal's problem, and the terminal's fix.
+                div { id: "chat-scroll", class: "chat-log", dangerous_inner_html: "{shown.html}" }
             } else {
                 p { class: "pending", "opening {agent}'s conversation…" }
             }

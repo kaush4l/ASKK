@@ -31,16 +31,22 @@ pub fn ToolTrace(
     rsx! {
         section { class: "panel", aria_label: "Tool trace",
             h2 { "Tools" }
-            p { class: "note",
-                // Not "this session": the trace is a projection of the
-                // persisted log, so it survives a reload. Saying less than
-                // that undersold it (`ux-walker`, increment 05).
-                "Every tool call in this conversation's history, with the arguments \
-                 the agent wrote and what came back — including calls that were \
-                 refused. It is read back from the stored log, so it is still here \
-                 after a reload."
-            }
             div { dangerous_inner_html: "{trace}" }
+            // Four lines of explanation in front of "No tool has been called
+            // yet." is the footnote outnumbering the signal 4:1 (12b walk,
+            // finding D2). Behind the disclosure, word for word.
+            details { class: "panel-note",
+                summary { "What the tool trace holds" }
+                p { class: "note",
+                    // Not "this session": the trace is a projection of the
+                    // persisted log, so it survives a reload. Saying less than
+                    // that undersold it (`ux-walker`, increment 05).
+                    "Every tool call in this conversation's history, with the arguments \
+                     the agent wrote and what came back — including calls that were \
+                     refused. It is read back from the stored log, so it is still here \
+                     after a reload."
+                }
+            }
         }
     }
 }

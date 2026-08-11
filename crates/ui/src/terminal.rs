@@ -50,10 +50,14 @@ fn scrollback(web: &Signal<Option<Rc<WebApp>>>, agent: &str) -> (String, bool) {
 /// was LESS visible after it finished than while it ran — 1300px below the
 /// fold, with `scrollTop` still 0. Not application logic (I5): it is a scroll
 /// position, and it is set from Rust.
-fn show_newest() {
+///
+/// Takes the element now: the conversation became a scroller of its own in
+/// 12c (the primary column is the height of the viewport), and it has exactly
+/// this problem for exactly this reason.
+pub(crate) fn show_newest(id: &str) {
     if let Some(pane) = web_sys::window()
         .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id("terminal"))
+        .and_then(|d| d.get_element_by_id(id))
     {
         pane.set_scroll_top(pane.scroll_height());
     }
@@ -94,7 +98,7 @@ pub fn Terminal(
         spawn(async move {
             // The echoed "running…" is at the bottom of the scrollback too.
             let _ = sleep(30).await;
-            show_newest();
+            show_newest("terminal");
             // Watch until the command COUNT rises — not until the pane stops
             // changing. A first boot streams a disk over the network and can
             // take a minute; "the pane looks the same as last tick" is true
@@ -110,7 +114,7 @@ pub fn Terminal(
                     // The DOM catches up on the next frame; then scroll, or
                     // the output that just arrived stays below the fold.
                     let _ = sleep(30).await;
-                    show_newest();
+                    show_newest("terminal");
                     break;
                 }
             }
@@ -142,11 +146,17 @@ pub fn Terminal(
                     if running() { "Running…" } else { "Run" }
                 }
             }
-            p { class: "note credit",
-                "The Linux runs on "
-                a { href: "https://cheerpx.io/", rel: "noopener", "CheerpX" }
-                " by Leaning Tech, loaded from their CDN under the CheerpX Community \
-                 Licence, with the Alpine disk image published by the WebVM project."
+            // Six lines of explanation above two lines of shell output was the
+            // worst of the three (12b walk, finding D2). The credit is part of
+            // the pane and stays a credit — one click, every word.
+            details { class: "panel-note",
+                summary { "What runs these commands" }
+                p { class: "note credit",
+                    "The Linux runs on "
+                    a { href: "https://cheerpx.io/", rel: "noopener", "CheerpX" }
+                    " by Leaning Tech, loaded from their CDN under the CheerpX Community \
+                     Licence, with the Alpine disk image published by the WebVM project."
+                }
             }
         }
     }

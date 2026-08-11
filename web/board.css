@@ -12,6 +12,16 @@ form .row button { flex: 0 1 auto; max-width: 100%; }
 /* The one rule that makes a sideways scroll impossible rather than unlikely. */
 body { overflow-x: hidden; }
 
+/* A disclosure marker is a CONTROL, and 12c put five more of them on the page
+   (the explanation behind each rail pane). At 17px tall they were a target a
+   thumb cannot hit; 44px is the same rule every button on this page already
+   obeys. Only where a thumb is plausible — the console at 1100px and up is
+   mouse-shaped and stays dense — and in both skins, because a target size is
+   not a decoration. */
+@media (max-width: 1099px) {
+  summary { min-height: 44px; padding: 0.6rem 0; }
+}
+
 /* The status board (increment 06). The status is a WORD; the colour is only
    an accent on it, so the board still reads with the stylesheet off, in
    monochrome, and to a screen reader. */

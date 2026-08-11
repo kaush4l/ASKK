@@ -77,17 +77,24 @@ pub fn AgentBoard(web: Signal<Option<Rc<WebApp>>>, mut tick: Signal<u32>) -> Ele
     rsx! {
         section { class: "panel", aria_label: "Agent board",
             h2 { "Agents running" }
-            p { class: "note",
-                "Every agent loaded in this browser runs in its own Worker — its own \
-                 event loop — so one agent's slow turn cannot hold up another's. This \
-                 is what each is doing right now."
-            }
             div { class: "board", aria_live: "polite", dangerous_inner_html: "{rows}" }
             // Always in the tree, empty when nothing is running: a live region
             // announces CHANGES to itself, so one that is inserted at the same
             // moment as its text is a status a screen reader may never hear.
             p { class: "pending board-busy", role: "status",
                 if busy() { "an agent is working…" }
+            }
+            // The explanation goes BEHIND the rows, not in front of them: this
+            // pane spent three lines of prose above two lines of signal, in the
+            // region that is meant to be the live instrument face (12b walk,
+            // finding D2). Not one word of it is cut.
+            details { class: "panel-note",
+                summary { "How the board is produced" }
+                p { class: "note",
+                    "Every agent loaded in this browser runs in its own Worker — its own \
+                     event loop — so one agent's slow turn cannot hold up another's. This \
+                     is what each is doing right now."
+                }
             }
         }
     }

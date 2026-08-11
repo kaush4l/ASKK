@@ -161,11 +161,14 @@ fn panel(ctx: &Ctx, who: &str) -> String {
     }
     // The note stays OUTSIDE `#terminal`: that element is the scroller, and it
     // is scrolled to the newest output, so anything inside it scrolls away.
+    // And AFTER it: the shell output is the signal, the note is its footnote,
+    // and the footnote was three times the size of the thing it annotated
+    // (12b walk, finding D2).
     format!(
         "{}{}",
-        note(ctx, who).into_html(),
         list.attr("data-commands", &count.to_string())
             .build()
-            .into_html()
+            .into_html(),
+        note(ctx, who).into_html()
     )
 }

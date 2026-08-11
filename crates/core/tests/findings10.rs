@@ -103,8 +103,9 @@ fn the_workspace_pane_is_scoped_to_the_selected_agent() {
         !theirs.contains("/root/spaces/research — the same folder"),
         "an agent with no space is not told about somebody else's: {theirs}"
     );
-    // …and it says whose commands the scrollback below actually is.
-    assert!(theirs.contains("The commands below are main"), "{theirs}");
+    // …and it says whose commands the scrollback in this pane actually is.
+    // "below" was a direction, and the note moved under the scrollback in 12c.
+    assert!(theirs.contains("The commands in this pane are main"), "{theirs}");
 
     let mine = handle(
         &mut app.borrow_mut(),
@@ -113,7 +114,15 @@ fn the_workspace_pane_is_scoped_to_the_selected_agent() {
     .body;
     assert!(mine.contains("main works in the research space"), "{mine}");
     assert!(mine.contains("/root/spaces/research"), "{mine}");
-    assert!(!mine.contains("The commands below are"), "no aside needed: {mine}");
+    // 12c: the signal comes first and the explanation is behind a disclosure —
+    // six lines of note in front of two lines of shell output was the footnote
+    // outweighing the thing it annotates (12b walk, finding D2).
+    let (scrollback, disclosure) = (
+        mine.find("data-commands").expect("the scrollback is there"),
+        mine.find("<details class=\"panel-note\"").expect("the note is a disclosure"),
+    );
+    assert!(scrollback < disclosure, "the note is under the scrollback: {mine}");
+    assert!(!mine.contains("The commands in this pane are"), "no aside needed: {mine}");
 }
 
 /// FINDING 4. The path rule stated honestly, wherever the UI summarises it:

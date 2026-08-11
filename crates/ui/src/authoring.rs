@@ -153,7 +153,7 @@ pub fn AgentEditor(
             }
             p { class: "note",
                 "Selected: {agent}. Every agent's origin, who wrote it and what its space \
-                 granted it are on its card in the Agents panel below."
+                 granted it are on its card in the Agents panel."
             }
         }
     }

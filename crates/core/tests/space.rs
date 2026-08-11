@@ -204,6 +204,13 @@ fn an_overwrite_leaves_no_stale_value_in_the_store() {
     let panel = inspector(&main);
     assert!(panel.contains("8873"), "{panel}");
     assert!(!panel.contains("8000"), "{panel}");
+    // The workspace sentence names the PANEL, not a direction: the rail puts
+    // Workspace ABOVE Shared space from 1100px up, so "the Linux below" was
+    // pointing the wrong way on every wide screen (12b walk, finding 1).
+    assert!(
+        panel.contains("the Linux the Workspace panel runs") && !panel.contains("Linux below"),
+        "{panel}"
+    );
 }
 
 /// `forget` through the whole path: the key leaves the store, and asking again

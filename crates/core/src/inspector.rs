@@ -110,8 +110,8 @@ fn panel(ctx: &Ctx, who: &str) -> Response {
         .child(line(
             "space-path",
             &format!(
-                "Workspace: {} — a real folder in the Linux below. What is written there \
-                 survives a reload.",
+                "Workspace: {} — a real folder in the Linux the Workspace panel runs. What \
+                 is written there survives a reload.",
                 space.path()
             ),
         ))

@@ -41,35 +41,27 @@ pub(crate) fn ran_count(ctx: &Ctx) -> usize {
 /// can actually do. The path rule is stated honestly (10 walk, finding 4):
 /// `exec` is a full shell and `cat /etc/passwd` works from it, so the path
 /// check on the other three is legibility and the VM is the containment.
+///
+/// Six lines of it stood in front of two lines of shell output (12b walk,
+/// finding D2), so it is a disclosure now: the summary is the one machine
+/// value a person scans for — the path itself — and every word of the
+/// explanation is behind it, unchanged.
 pub(crate) fn note(ctx: &Ctx, who: &str) -> Fragment {
     let theirs = ctx
         .agents
         .iter()
         .find(|s| s.name == who)
         .and_then(|s| agent::Space::named(&s.space));
-    let text = match &theirs {
-        None => format!(
-            "{who}'s file names no space, so it has no workspace and cannot run commands. \
-             What is below ran in {}'s.",
-            ctx.me
-        ),
-        Some(space) => format!(
-            "{who} works in the {} space, so its workspace is {} — the same folder as every \
-             other agent whose file names that space. exec runs a shell command there. It is a \
-             REAL shell, not a restricted one: it can read anything in this Linux, so the path \
-             check on read_file, write_file and list_files is legibility rather than \
-             containment — the Linux running in this tab is what the agent is confined to. \
-             What is written there is kept in this browser and is still there after a reload.",
-            space.name,
-            space.path()
-        ),
-    };
-    let mut lines = FragmentBuilder::new("div").child(
-        FragmentBuilder::new("p")
-            .class("note")
-            .text(&text)
-            .build(),
-    );
+    let (summary, text) = workspace_said(&theirs, who, &ctx.me);
+    let mut lines = FragmentBuilder::new("details")
+        .class("panel-note")
+        .child(
+            FragmentBuilder::new("summary")
+                .class("space-path")
+                .text(&summary)
+                .build(),
+        )
+        .child(FragmentBuilder::new("p").class("note").text(&text).build());
     // The scrollback is this PAGE's log and cannot be another Worker's, so
     // when they differ the pane says so instead of implying otherwise.
     if who != ctx.me {
@@ -77,15 +69,42 @@ pub(crate) fn note(ctx: &Ctx, who: &str) -> Fragment {
             FragmentBuilder::new("p")
                 .class("note")
                 .text(&format!(
-                    "The commands below are {me}'s — this page's own. A sub-agent's commands \
-                     run in its Worker and are in its own trace, and the box below is {me}'s \
-                     shell: it takes a command only with {me} selected.",
+                    "The commands in this pane are {me}'s — this page's own. A sub-agent's \
+                     commands run in its Worker and are in its own trace, and this pane's \
+                     command box is {me}'s shell: it takes a command only with {me} selected.",
                     me = ctx.me
                 ))
                 .build(),
         );
     }
     lines.build()
+}
+
+/// The scanned line and the paragraph behind it. Its own fn for the 40-line
+/// rule (I12), and because the two halves are one decision.
+fn workspace_said(theirs: &Option<agent::Space>, who: &str, me: &str) -> (String, String) {
+    match theirs {
+        None => (
+            format!("No workspace for {who}"),
+            format!(
+                "{who}'s file names no space, so it has no workspace and cannot run commands. \
+                 The commands in this pane ran in {me}'s."
+            ),
+        ),
+        Some(space) => (
+            format!("Workspace: {}", space.path()),
+            format!(
+                "{who} works in the {} space, so its workspace is {} — the same folder as every \
+                 other agent whose file names that space. exec runs a shell command there. It is a \
+                 REAL shell, not a restricted one: it can read anything in this Linux, so the path \
+                 check on read_file, write_file and list_files is legibility rather than \
+                 containment — the Linux running in this tab is what the agent is confined to. \
+                 What is written there is kept in this browser and is still there after a reload.",
+                space.name,
+                space.path()
+            ),
+        ),
+    }
 }
 
 /// The command out of the JSON the tool was called with; the raw arguments if

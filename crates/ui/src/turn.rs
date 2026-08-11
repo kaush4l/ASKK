@@ -69,6 +69,14 @@ pub(crate) fn show(asked: &str, res: Response, mut turn: Turn) {
     });
     let n = turn.tick.peek().to_owned();
     turn.tick.set(n + 1);
+    // The newest message, where it can be read. From 12c the conversation is a
+    // scroller inside a full-height column, so it has the terminal's old
+    // problem — the answer LESS visible after it lands than while it ran — and
+    // the terminal's fix. The DOM catches up on the next frame, so this waits.
+    spawn(async move {
+        let _ = sleep(30).await;
+        crate::terminal::show_newest("chat-scroll");
+    });
 }
 
 /// Watch one turn to its end: re-project after every tick until the core stops
@@ -131,7 +139,7 @@ pub(crate) async fn watch(
 /// TURN does, across the seam, or the swap `roster::reconcile` defers while a
 /// task is outstanding never lands — a prompt saved mid-flight stayed
 /// uninstalled 45s after the press, until a reload (11b walk).
-fn stop_waiting(web: Signal<Option<Rc<WebApp>>>, mut turn: Turn, who: &str) {
+fn stop_waiting(web: Signal<Option<Rc<WebApp>>>, turn: Turn, who: &str) {
     if let Some(app) = web.peek().clone() {
         show(who, app.handle(to(who, Request::post_form("/chat/stop", &[]))), turn);
     }
@@ -141,11 +149,11 @@ fn stop_waiting(web: Signal<Option<Rc<WebApp>>>, mut turn: Turn, who: &str) {
     // composer disabled for the rest of the timeout (12 walk, finding 2). The
     // stop is a FACT now, for any agent, so the projection answers correctly
     // and the pane has nothing to override.
-    turn.note.set(
-        "Stopped waiting, and ended the turn. A reply that arrives after this is in the \
-         log; anything you saved takes effect now."
-            .into(),
-    );
+    //
+    // And no note. The transcript the line above just re-read already ends
+    // with `transcript::STOPPED`, which said the same thing in nearly the same
+    // words one line lower: one event, said twice, is the page disagreeing
+    // with itself about how many things happened (12b walk, finding 2).
 }
 
 /// While a turn is in flight: how long it has been, and the way out.

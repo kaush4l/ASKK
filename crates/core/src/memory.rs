@@ -61,7 +61,13 @@ fn held(ctx: &Ctx, who: &str) -> Option<(usize, Option<String>)> {
 
 /// The sentence itself: how much is held out of how much triggers a
 /// compaction, what a compaction does to it, and that nothing was lost.
-fn said(who: &str, spec: &agent::AgentSpec, entries: usize, compacted: bool) -> String {
+///
+/// Two halves, because only the first one CHANGES: the count is what moves
+/// every turn and the rule behind it is fixed by the agent file. `line` makes
+/// the first half the live region and leaves the other twenty words out of it
+/// — a `role="status"` around the whole sentence re-announced all of it every
+/// turn to say one number had gone up (12b walk, finding 3).
+fn said(who: &str, spec: &agent::AgentSpec, entries: usize, compacted: bool) -> (String, String) {
     let rule = match spec.compact_at {
         0 => format!("{who} never compacts, so it keeps every turn"),
         at => format!(
@@ -79,14 +85,14 @@ fn said(who: &str, spec: &agent::AgentSpec, entries: usize, compacted: bool) -> 
         0 => format!("{entries} entries"),
         at => format!("{entries} of {at} entries"),
     };
-    match compacted {
+    let rest = match compacted {
         true => format!(
-            "Working memory: {held} — the oldest turns are now a summary \
-             the summarizer wrote; {rule}. Nothing was lost: the transcript below still \
-             holds every turn."
+            " — the oldest turns are now a summary the summarizer wrote; {rule}. \
+             Nothing was lost: the transcript still holds every turn."
         ),
-        false => format!("Working memory: {held}, every turn in full — {rule}."),
-    }
+        false => format!(", every turn in full — {rule}."),
+    };
+    (format!("Working memory: {held}"), rest)
 }
 
 /// The memory line for one agent, and — when it has compacted — the summary
@@ -96,14 +102,13 @@ pub(crate) fn memory(ctx: &Ctx, who: &str) -> String {
         return String::new();
     };
     let Some((entries, summary)) = held(ctx, who) else {
-        let unknown = format!(
-            "Working memory: {who} has not reported it yet — it runs in its own Worker, \
-             and says how much it holds when it answers."
-        );
-        return line(&unknown, 0, false).into_html();
+        let unknown = format!("Working memory: {who} has not reported it yet");
+        let why = " — it runs in its own Worker, and says how much it holds when it answers.";
+        return line(&unknown, why, 0, false).into_html();
     };
     let compacted = summary.is_some();
-    let mut html = line(&said(who, spec, entries, compacted), entries, compacted).into_html();
+    let (count, rest) = said(who, spec, entries, compacted);
+    let mut html = line(&count, &rest, entries, compacted).into_html();
     // The summary itself, whether this agent is the page's or a Worker's: one
     // compaction, one presentation, and the artifact readable in both.
     if let Some(summary) = &summary {
@@ -116,13 +121,23 @@ pub(crate) fn memory(ctx: &Ctx, who: &str) -> String {
 /// no announcement: `.agent-memory` sits OUTSIDE the transcript's
 /// `role="log" aria-live="polite"` region, so a compaction was silent to a
 /// screen-reader user watching the one number it moves.
-fn line(said: &str, entries: usize, compacted: bool) -> Fragment {
+///
+/// It wraps the COUNT only. The rule after it does not change while the page
+/// is open, and announcing it again on every turn buried the one word that
+/// did move under nineteen that did not.
+fn line(count: &str, rest: &str, entries: usize, compacted: bool) -> Fragment {
     FragmentBuilder::new("p")
         .class("agent-memory")
-        .attr("role", "status")
         .attr("data-window", &entries.to_string())
         .attr("data-compacted", &compacted.to_string())
-        .text(said)
+        .child(
+            FragmentBuilder::new("span")
+                .class("wm-count")
+                .attr("role", "status")
+                .text(count)
+                .build(),
+        )
+        .child(FragmentBuilder::new("span").class("wm-rest").text(rest).build())
         .build()
 }
 
