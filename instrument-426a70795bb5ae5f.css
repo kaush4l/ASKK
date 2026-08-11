@@ -162,7 +162,11 @@ html:not([data-skin="plain"]) {
     padding: var(--gap);
     display: grid;
     gap: 0 var(--gap);
-    grid-template-columns: minmax(0, 1fr) minmax(21rem, 26rem);
+    /* The template moved to dash.css in increment 13 — three regions, not two.
+       It is DELETED rather than left to be overridden: this selector is
+       (0,1,2) and the one that supersedes it is (0,0,1), so source order never
+       got a say. The stage landed in THIS rule's rail track and was capped at
+       26rem — 416px, in every fold state, at every width (13b walk). */
   }
   /* `min-width: 0` on both: a grid item's default `auto` minimum is its
      content, which is how one long unbroken tool argument widens a column
