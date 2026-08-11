@@ -64,6 +64,7 @@ html:not([data-skin="plain"]) {
   form label,
   .msg .speaker { font-size: var(--t-label); letter-spacing: 0.04em; }
 
+
   /* …and the conversation is the one thing that reads like prose. */
   .msg .said, .msg p, .space-facts dd, .space-notes li { font-size: var(--t-read); }
   /* An empty instrument reports its emptiness as a machine value, not as
@@ -109,19 +110,33 @@ html:not([data-skin="plain"]) {
 
 @media (min-width: 1100px) {
   html:not([data-skin="plain"]) {
-    /* One height for both columns: the header (78px) plus main's own top
-       padding, and a gap under it. The two regions then start and end on the
-       same two lines, which is most of what "instrument" means. */
-    --console: calc(100vh - 8rem);
-
+    /* No `--console: calc(100vh - 8rem)` any more. That number encoded a 78px
+       header and main's padding, and it was wrong the moment either moved —
+       which 12d moves. `body` is the flex column and `main` the row that fills
+       it (instrument.css), so both regions are simply stretched to whatever is
+       left, and the two columns start and end on the same two lines by
+       construction rather than by arithmetic. */
     .primary {
-      height: var(--console);
       display: flex;
       flex-direction: column;
       /* A flex child's `auto` minimum is its content; without this the log
          refuses to shrink and the composer leaves the bottom of the screen. */
       min-height: 0;
     }
+    /* The two routed regions: whichever is showing IS the rest of the column,
+       and it is the thing that scrolls. */
+    .primary > #chat-panel,
+    .primary > .deck {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .primary > .deck {
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--edge) transparent;
+    }
+    header button { min-height: 32px; }
     /* The conversation IS the region: it takes what the masthead and the tabs
        leave, and it is the thing that scrolls. */
     .primary #chat-panel {
@@ -147,24 +162,10 @@ html:not([data-skin="plain"]) {
        oldest message clipped above the scroll origin, unreachable. This is
        what closes the last of the void: a two-message conversation ends where
        the box you type into begins. */
-    /* Hairlines. A panel inside the console is a region of one surface, not a
-       card floating on it — the rounded border, the gradient and the drop
-       shadow were the last of the "styled document" vocabulary. */
-    .primary #chat-panel,
-    .deck .panel,
-    .rail .panel {
-      border: 0;
-      border-top: 1px solid var(--edge);
-      border-radius: 0;
-      background: none;
-      box-shadow: none;
-      padding: 0.5rem 0 0.75rem;
-      margin: 0 0 0.6rem;
-    }
-    .primary #chat-panel { border-top: 0; padding-top: 0; }
+    /* The hairlines moved OUT of this media query in 12d — a phone gets the
+       same vocabulary. Only the console's own geometry is left here. */
 
     .rail {
-      height: var(--console);
       max-height: none;
       /* The rail scrolls and now says so three ways: it fades at both ends
          where content is cut, it keeps a thin scrollbar rather than an
@@ -178,9 +179,8 @@ html:not([data-skin="plain"]) {
       scrollbar-color: var(--edge) transparent;
       padding: 1.5rem 0 1.5rem 0.9rem;
       /* Attachment `scroll` (the default) pins this to the element, not to the
-         content — which is what makes it a ruler and not wallpaper. */
-      background-image: repeating-linear-gradient(to bottom,
-        var(--edge) 0 1px, transparent 1px 0.75rem);
+         content — which is what makes it a ruler and not wallpaper. The tick
+         strip itself, and the mark that travels it, are in screen.css (12d). */
       background-repeat: no-repeat;
       background-size: 4px 100%;
     }

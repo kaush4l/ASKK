@@ -125,50 +125,67 @@ html:not([data-skin="plain"]) {
   .agent-row .error { flex-basis: 100%; margin: 0.1rem 0 0; font-size: var(--t-label); }
 }
 
-/* ---- 1. layout: three regions, from 1100px up --------------------------- */
+/* ---- 1. layout: two regions on one screen, from 1100px up ---------------- */
 
+/* 12d. This grid used to have a second row — `"deck deck"` — under the console,
+   and `.rail` used to be `position: sticky; top: var(--gap)` inside it. A
+   sticky item's constraint rectangle is its CONTAINING BLOCK, which for a grid
+   item Chrome takes as the grid container and not the grid area: the rail
+   escaped its row and painted on top of the whole deck at every width >= 1100px
+   — rail text over the Agents column, both illegible, and hit-testing showed
+   the rail swallowing the clicks for 416px of it. It shipped in 12b and three
+   walks read past it.
+   The row is gone: the deck is a routed region inside `.primary` now, so `main`
+   is one row of two columns, the document is exactly one screen, and the rail
+   needs no sticky at all — it is a full-height column that scrolls inside
+   itself, which is what "never scrolls away" actually wanted. */
 @media (min-width: 1100px) {
+  /* One screen, and the page itself never scrolls: the two regions scroll
+     inside themselves. `100dvh`, so a mobile browser's collapsing toolbar
+     cannot leave the composer under the chrome.
+     `#main` is in the chain because it is REAL: Dioxus mounts the app into
+     `<div id="main">`, so `header` and `main` are its children and not the
+     body's. A flex column on `body` alone constrains that one div and nothing
+     inside it — measured on the running app at 1440, 1631px of document. */
+  html:not([data-skin="plain"]) body,
+  html:not([data-skin="plain"]) body > #main {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  html:not([data-skin="plain"]) body > #main { height: 100%; }
   html:not([data-skin="plain"]) main {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
     max-width: 96rem;
+    padding: var(--gap);
     display: grid;
-    align-items: start;
     gap: 0 var(--gap);
     grid-template-columns: minmax(0, 1fr) minmax(21rem, 26rem);
-    grid-template-areas:
-      "primary rail"
-      "deck    deck";
   }
   /* `min-width: 0` on both: a grid item's default `auto` minimum is its
      content, which is how one long unbroken tool argument widens a column
-     until the document scrolls sideways. */
-  html:not([data-skin="plain"]) .primary { grid-area: primary; min-width: 0; }
-  html:not([data-skin="plain"]) .deck { grid-area: deck; min-width: 0; }
+     until the document scrolls sideways. `min-height: 0` for the same reason
+     downward, now that both regions are stretched to the row. */
+  html:not([data-skin="plain"]) .primary,
+  html:not([data-skin="plain"]) .rail { min-width: 0; min-height: 0; }
   /* Every note in the rail keeps every word — they are the sentences the walks
      were built on — at the size of a caption rather than of body copy, so four
      instruments fit in one viewport instead of one and a half. */
   html:not([data-skin="plain"]) .rail .note { font-size: var(--t-label); }
   html:not([data-skin="plain"]) .rail #terminal { max-height: 13rem; }
   html:not([data-skin="plain"]) .rail .tool-call pre { max-height: 8rem; }
-  html:not([data-skin="plain"]) .rail {
-    grid-area: rail;
-    min-width: 0;
-    /* Never scrolls away from the conversation that is driving it — the whole
-       point of the region. It scrolls INSIDE itself when it outgrows the
-       viewport, so the board stays pinned at the top of it. */
-    position: sticky;
-    top: var(--gap);
-    max-height: calc(100vh - 2rem);
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-  }
+  html:not([data-skin="plain"]) .rail { overflow-y: auto; scrollbar-gutter: stable; }
 }
 
 @media (min-width: 1400px) {
   /* The deck is reference, not motion, so it pairs up rather than running one
      panel per screen-width. */
-  html:not([data-skin="plain"]) .deck {
+  html:not([data-skin="plain"]) .deck:not([hidden]) {
     display: grid;
-    align-items: start;
+    align-content: start;
     gap: 0 var(--gap);
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
