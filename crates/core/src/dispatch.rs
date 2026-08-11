@@ -79,10 +79,11 @@ pub struct Ctx {
     /// The agent files that would not parse — shown, never swallowed.
     pub agent_problems: Vec<String>,
     /// Which of `agents` were AUTHORED IN THIS BROWSER rather than shipped in
-    /// `public/agents/` (increment 11). A model can now write an agent that
-    /// runs with real capabilities, so who wrote one is a fact the page states
-    /// rather than a difference a person has to infer.
-    pub authored: Vec<String>,
+    /// `public/agents/`, and BY WHOM — empty for the person at the keyboard,
+    /// otherwise the agent that called `write_agent` (increment 11, 11b). A
+    /// model can write an agent that runs with real capabilities, so who wrote
+    /// one is a fact the page states rather than a difference to infer.
+    pub authored: Vec<(String, String)>,
     /// What every agent is doing (increment 06) — a projection like `recent`,
     /// cloned so a handler cannot move a status by writing to it.
     pub board: Vec<agent::AgentRow>,
@@ -161,7 +162,11 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         recent: app.log.iter().map(|e| e.kind.clone()).collect(),
         agents: app.agents.clone(),
         agent_problems: app.agent_problems.clone(),
-        authored: app.authored.iter().map(|(n, _)| n.clone()).collect(),
+        authored: app
+            .authored
+            .iter()
+            .map(|(n, _, by)| (n.clone(), by.clone()))
+            .collect(),
         board: app.board.snapshot().to_vec(),
         me: app.me().to_string(),
         window: crate::logs::window(app),

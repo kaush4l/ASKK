@@ -68,14 +68,14 @@ pub fn install_agents_as(app: &mut App, fetched: Vec<(String, String)>, adopt: &
     // then what THIS BROWSER authored — last wins, so an agent written here
     // overrides a shipped file of the same name and deleting it reverts.
     app.files = fetched;
-    app.authored = crate::roster::authored(&app.log);
-    let authored_names: Vec<String> = app.authored.iter().map(|(n, _)| n.clone()).collect();
+    app.authored = crate::authored::set(&app.log);
+    let authored_names: Vec<String> = app.authored.iter().map(|(n, ..)| n.clone()).collect();
     let from_project: Vec<String> = app.files.iter().map(|(n, _)| n.clone()).collect();
     let compiled_in: Vec<String> = builtin_files().into_iter().map(|(n, _)| n).collect();
     let files = builtin_files()
         .into_iter()
         .chain(app.files.clone())
-        .chain(app.authored.clone());
+        .chain(crate::authored::files(&app.authored));
     let (specs, problems) = agent::load_agents(files);
     app.agents = specs;
     app.agent_problems = problems;

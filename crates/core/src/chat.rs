@@ -31,6 +31,10 @@ pub(crate) fn manifest() -> Manifest {
                 method: "POST".into(),
                 path: "/chat".into(),
             },
+            RouteSpec {
+                method: "POST".into(),
+                path: "/chat/stop".into(),
+            },
         ],
         slots: vec![],
         section: None,
@@ -55,8 +59,42 @@ pub(crate) fn chat(req: &Request, ctx: &mut Ctx) -> Response {
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/chat") => transcript(ctx, &who, None),
         ("POST", "/chat") => submit(req, ctx, &who),
+        ("POST", "/chat/stop") => stop(ctx, &who),
         _ => error_fragment(404, "chat: unknown subroute"),
     }
+}
+
+/// The fact a stopped wait becomes. Its own kind: a turn the person ended is
+/// not a failure, and not an answer either.
+pub(crate) const TURN_STOPPED: &str = "core.turn_stopped";
+
+/// `POST /chat/stop` — the person stopped waiting, so the TURN ends, not just
+/// the polling. Pressing it used to leave the task outstanding, which defers
+/// an agent swap forever (`roster::reconcile`): saving a prompt mid-flight and
+/// then stopping left the edit uninstalled until a reload (11b walk).
+///
+/// Only this process's own agent: another agent's turn runs in its own Worker,
+/// and a fact recorded here could not reach it.
+fn stop(ctx: &mut Ctx, who: &str) -> Response {
+    if who != ctx.me {
+        return error_fragment(
+            400,
+            &format!("{who}'s turn runs in its own Worker, so it cannot be stopped from here."),
+        );
+    }
+    let fact = EventKind::Custom {
+        kind: TURN_STOPPED.into(),
+        payload_json: "\"\"".into(),
+    };
+    match ctx.emit.as_mut() {
+        Some(buf) => buf.push(fact.clone()),
+        None => return error_fragment(500, "chat: Emit capability not granted"),
+    }
+    // Into THIS request's projection too, so the answer to the press already
+    // shows the turn ended — the fact is real either way; the log gets it when
+    // the dispatcher drains the buffer.
+    ctx.recent.push(fact);
+    transcript(ctx, who, None)
 }
 
 /// Start a turn: the utterance becomes a fact ADDRESSED TO ONE AGENT, and the

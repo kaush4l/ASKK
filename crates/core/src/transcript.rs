@@ -12,6 +12,10 @@ use module::view::{Fragment, FragmentBuilder};
 use crate::dispatch::{html, Ctx};
 use crate::failure::failure;
 
+/// What a stopped turn leaves on the transcript.
+const STOPPED: &str = "You stopped waiting, so the turn ended here. A reply that arrives \
+                       after this is in the log; anything you saved takes effect now.";
+
 /// One message, with WHO SAID IT in words. The speaker used to be carried by
 /// the class alone, so with the stylesheet off a question and its answer were
 /// two identical paragraphs (`ux-walker`, increment 06) — the same reasoning
@@ -45,6 +49,7 @@ fn belongs_to(kind: &EventKind, me: &str, who: &str) -> bool {
         EventKind::ToolInvoked { .. } => who == me,
         EventKind::Custom { kind, payload_json } => match kind.as_str() {
             "core.note" | "core.error" | "core.compaction_failed" => who == me,
+            k if k == crate::chat::TURN_STOPPED => who == me,
             "core.agent_error" => crate::told::agent_of(payload_json) == who,
             _ => false,
         },
@@ -112,6 +117,12 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
             EventKind::Custom { kind, payload_json } if kind == "core.compaction_failed" => {
                 failures += 1;
                 list = list.child(crate::failure::compaction_failed(payload_json, failures));
+            }
+            // The person pressed Stop waiting. The turn ended; nothing is
+            // owed, so the pane must not keep saying "thinking…".
+            EventKind::Custom { kind, .. } if kind == crate::chat::TURN_STOPPED => {
+                list = list.child(msg("msg pending", "", STOPPED));
+                (awaiting, count) = (false, count + 1);
             }
             EventKind::Custom { kind, payload_json } if kind == "core.error" => {
                 failures += 1;

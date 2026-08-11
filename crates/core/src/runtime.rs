@@ -1,13 +1,12 @@
 //! The effect runtime loop (§11, ARCHITECTURE §1c). `step` describes; this
-//! executes through ports and feeds results back as Events — event
-//! sourcing's other half, not an extra system.
+//! executes through ports and feeds results back as Events — event sourcing's
+//! other half, not an extra system.
 //!
-//! PROVISIONAL (G4 discovery, the shape change this gate exists to find):
-//! the frozen `pump(app, event) -> BoxFuture` held `&mut App` across the
-//! model await — wedging every seam round-trip for the whole fetch. Split
-//! instead: `pump` is the SYNC thinking half, `execute_effect` returns a
-//! `'static` future built from Rc-cloned ports, and `drive` is the loop that
-//! only borrows the app between awaits, never across one.
+//! PROVISIONAL (G4 discovery, the shape change this gate exists to find): the
+//! frozen `pump(app, event) -> BoxFuture` held `&mut App` across the model
+//! await — wedging every seam round-trip for the whole fetch. Split instead:
+//! `pump` is the SYNC thinking half, `execute_effect` returns a `'static`
+//! future built from Rc-cloned ports, and `drive` only borrows between awaits.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -154,6 +153,13 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
                     crate::workspace::run_typed(&app, &command).await;
                     continue;
                 }
+                // The person stopped waiting (11b walk): the turn is over, so
+                // the task is cleared exactly as a failed turn clears it — and
+                // the swap `reconcile` was deferring can land below.
+                if kind == crate::chat::TURN_STOPPED {
+                    app.borrow_mut().agent.task = None;
+                    continue;
+                }
             }
             // `record` queues what the log owes the store: the entries this
             // pump appended, or the rewrite a compaction made due.
@@ -169,10 +175,9 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
         // move is the person's — `Waiting`, which only the entry agent may be
         // in. The task check matters because the seam spawns a `drive` per
         // request: while one is awaiting the model, the chat poll starts
-        // another that finds nothing pending, and without this it would report
-        // the agent as waiting in the middle of its own turn.
-        // …and only OUT OF Working: a turn that raised is already `Failed`
-        // with its message, and "waiting for you" would erase it.
+        // another that finds nothing pending, and it would otherwise report the
+        // agent as waiting in the middle of its own turn. And only OUT OF
+        // Working: a raised turn is already `Failed`, with its message.
         let me = app.borrow().me().to_string();
         let finished = {
             let a = app.borrow();
@@ -185,10 +190,9 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             app.borrow_mut()
                 .set_status(&me, kernel::Status::Waiting, "");
         }
-        // The turn is over, so this is the boundary an agent authored or
-        // edited during it may be installed at (increment 11).
+        // The turn is over: the boundary an agent authored during it installs
+        // at (increment 11). Then the agent's own log, in the Python's order.
         crate::roster::reconcile(&mut app.borrow_mut());
-        // The agent's own log first, in the order the Python writes it.
         crate::logs::drain(&app).await;
         crate::logs::persist(&app).await?;
         Ok(())

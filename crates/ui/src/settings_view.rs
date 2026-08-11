@@ -100,7 +100,6 @@ pub(crate) fn endpoint_form(
     };
     rsx! {
         form {
-            class: "stacked",
             onsubmit: move |e| {
                 e.prevent_default();
                 let typed = key.peek().trim().to_string();

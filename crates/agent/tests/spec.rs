@@ -103,3 +103,46 @@ fn the_loaded_prompt_becomes_the_agents_own_words() {
     assert!(after.contains("You are a helpful assistant."));
     assert!(after.contains("Name: main."));
 }
+
+/// A `tools:` value that is not a list is REFUSED, not discarded. Discarding
+/// it left the list empty, and an empty list is every built-in — so
+/// `tools: now` granted `write_agent` as well (11b walk). The same parser
+/// already refuses `compact_at: lots`; failing towards MORE capability is the
+/// one direction a silent default must never take.
+#[test]
+fn a_tools_line_that_is_not_a_list_is_refused_rather_than_granting_everything() {
+    let file = "---\nname: narrow\ndescription: d\ntools: now\n---\nYou are narrow.";
+    let error = parse_agent_file("narrow", file).expect_err("refused");
+    let message = format!("{error:?}");
+    assert!(message.contains("tools 'now' is not a list"), "{message}");
+
+    // The two shapes it DOES read still read, and both mean what they say.
+    let inline = parse_agent_file(
+        "narrow",
+        "---\nname: narrow\ntools: [now]\n---\nYou are narrow.",
+    )
+    .expect("inline list");
+    assert_eq!(inline.tools, vec!["now".to_string()]);
+    let block = parse_agent_file(
+        "narrow",
+        "---\nname: narrow\ntools:\n  - now\n  - read_agent\n---\nYou are narrow.",
+    )
+    .expect("block list");
+    assert_eq!(block.tools, vec!["now".to_string(), "read_agent".to_string()]);
+    // …and the empty list is the maximal grant it has always been.
+    let all = parse_agent_file("wide", "---\nname: wide\ntools: []\n---\nYou are wide.")
+        .expect("empty list");
+    assert!(all.tools.is_empty());
+}
+
+/// An empty `name:` falls back to the folder — which is what the browser
+/// editor's "Folder name" field is (11b walk). It used to be an error, so the
+/// blank template the pane ships could not be saved at all.
+#[test]
+fn an_empty_frontmatter_name_falls_back_to_the_folder() {
+    let spec = parse_agent_file("scribe", "---\nname: \ndescription: d\n---\nYou write.")
+        .expect("parses");
+    assert_eq!(spec.name, "scribe");
+    let nameless = parse_agent_file("", "---\nname: \n---\nbody").expect_err("no name anywhere");
+    assert!(format!("{nameless:?}").contains("name"), "{nameless:?}");
+}

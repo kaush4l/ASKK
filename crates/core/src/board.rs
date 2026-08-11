@@ -55,7 +55,7 @@ fn table(ctx: &Ctx) -> Response {
         );
     }
     for agent in &ctx.board {
-        list = list.child(row(agent));
+        list = list.child(row(agent, &ctx.authored));
     }
     let mut response = html(200, list.build().into_html());
     // Whether anything is working, as a header: the pane must be able to keep
@@ -74,14 +74,19 @@ fn table(ctx: &Ctx) -> Response {
 /// One agent's row. The status is a WORD, not only a colour: a row that
 /// differs from its neighbour by hue alone says nothing with the stylesheet
 /// off, and nothing at all to a screen reader.
-fn row(agent: &AgentRow) -> Fragment {
+fn row(agent: &AgentRow, authored: &[(String, String)]) -> Fragment {
     let turns = match agent.turns {
         1 => "1 turn".to_string(),
         n => format!("{n} turns"),
     };
-    let origin = match agent.builtin {
-        true => "built in",
-        false => "public/agents/",
+    // Every row used to say "from public/agents/", including rows for agents
+    // written in this browser — the Agents card three panels below said the
+    // opposite about the same agent (11b walk). One rule, three origins.
+    let origin = match (authored.iter().find(|(n, _)| *n == agent.name), agent.builtin) {
+        (Some((_, by)), _) if by.is_empty() => "written in this browser".to_string(),
+        (Some((_, by)), _) => format!("written in this browser by {by}"),
+        (None, true) => "built in to this build".to_string(),
+        (None, false) => "from public/agents/".to_string(),
     };
     let mut card = FragmentBuilder::new("div")
         .class(&format!("agent-row status-{}", agent.status.label()))
@@ -94,7 +99,7 @@ fn row(agent: &AgentRow) -> Fragment {
                 // The accessible name says which agent, so two agents in the
                 // same status are not the same control to a screen reader.
                 .attr("aria-label", &format!("{} is {}", agent.name, gloss(agent)))
-                .text(&format!("{} — {turns}, from {origin}", gloss(agent)))
+                .text(&format!("{} — {turns}, {origin}", gloss(agent)))
                 .build(),
         );
     if !agent.detail.is_empty() {

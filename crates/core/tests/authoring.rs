@@ -88,7 +88,7 @@ fn an_agent_written_in_the_browser_joins_the_roster() {
     let listing = body(&app, Request::get("/agents"));
     assert!(listing.contains("data-agent=\"scribe\""), "{listing}");
     assert!(
-        listing.contains("Authored in this browser"),
+        listing.contains("Written by you in this browser"),
         "an authored agent is named as one: {listing}"
     );
     assert!(
@@ -259,7 +259,9 @@ fn the_model_authors_an_agent_with_an_ordinary_tool() {
     let names = core::agent_names(&app.borrow());
     assert!(names.contains(&"haiku".to_string()), "{names:?}");
     let listing = body(&app, Request::get("/agents"));
-    assert!(listing.contains("Authored in this browser"), "{listing}");
+    // WHO wrote it, on the record (11b walk): a model-written agent must not
+    // read as the person's own work — it may carry a space, which is a shell.
+    assert!(listing.contains("Written by the main agent"), "{listing}");
     assert!(listing.contains("Writes haiku."), "{listing}");
     // Its file is the same format everything else exports in.
     let res = handle(
@@ -310,7 +312,7 @@ fn an_authored_agent_survives_a_reload() {
     assert!(names.contains(&"scribe".to_string()), "{names:?}");
     let listing = handle(&mut again, Request::get("/agents")).body;
     assert!(listing.contains("You write things down."), "{listing}");
-    assert!(listing.contains("Authored in this browser"), "{listing}");
+    assert!(listing.contains("Written by you in this browser"), "{listing}");
 }
 
 /// What a small local model actually sends. A space that could never be one is

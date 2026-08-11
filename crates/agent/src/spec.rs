@@ -1,14 +1,13 @@
 //! `agent.md` → `AgentSpec`. The Python `core/utils.py::parse_agent_file`
 //! ported: YAML frontmatter for metadata, the markdown body for the system
-//! prompt. Pure — the bytes arrive from wherever the host got them (in the
-//! browser, a fetch of `public/agents/<name>/agent.md`), so this file tests
-//! on the host with no network (I3).
+//! prompt. Pure — the bytes arrive from wherever the host got them, so this
+//! file tests on the host with no network (I3).
 //!
-//! The frontmatter subset is deliberate, not a YAML parser: `key: value`,
-//! a block list under a bare `key:`, and the inline `[a, b]` form. That is
-//! every shape the shipped agents use, and a whole YAML dependency to read
-//! seven keys would be the tail wagging the dog. Anything else in the file
-//! is ignored the way Python forwards unknown keys it has no use for yet.
+//! The frontmatter subset is deliberate, not a YAML parser: `key: value`, a
+//! block list under a bare `key:`, and the inline `[a, b]` form — every shape
+//! the shipped agents use, without a YAML dependency to read seven keys.
+//! Unknown keys are ignored; a key whose VALUE is a shape this cannot read is
+//! refused, never defaulted.
 
 use serde::{Deserialize, Serialize};
 
@@ -27,8 +26,7 @@ pub struct AgentSpec {
     pub tools: Vec<String>,
     pub space: String,
     /// Compact once the history reaches this many entries; 0 never compacts
-    /// (Python forwards any `Engine` field from the frontmatter, and the
-    /// shipped summarizer sets `compact_at: 0` so it never summarises itself).
+    /// (the shipped summarizer sets 0, so it never summarises itself).
     pub compact_at: usize,
     /// How many of the newest entries survive a compaction verbatim.
     pub keep_recent: usize,
@@ -36,12 +34,9 @@ pub struct AgentSpec {
     pub prompt: String,
 }
 
-/// Parse one agent file. `dir` is the folder the file came from — the
-/// agent's name when the frontmatter does not give one, exactly as the
-/// Python loader defaults `name` to the directory.
-///
-/// Malformed frontmatter is an error, never a silently empty spec: an agent
-/// with no prompt would only surface later as a confusing bad model call.
+/// Parse one agent file. `dir` is the folder the file came from — the agent's
+/// name when the frontmatter gives none, as the Python loader defaults it.
+/// Malformed frontmatter is an error, never a silently empty spec.
 pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> {
     let bad = |m: &str| AgentError::MalformedAgentFile {
         agent: dir.to_string(),
@@ -74,8 +69,8 @@ pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> 
     Ok(spec)
 }
 
-/// Fill the spec from the frontmatter lines. Separate so `parse_agent_file`
-/// stays inside the 40-line rule and this stays one loop.
+/// Fill the spec from the frontmatter lines — separate so `parse_agent_file`
+/// stays inside the 40-line rule (I12) and this stays one loop.
 fn read_frontmatter(frontmatter: &str, spec: &mut AgentSpec) -> Result<(), AgentError> {
     let mut in_tools = false;
     for line in frontmatter.lines() {
@@ -101,7 +96,10 @@ fn read_frontmatter(frontmatter: &str, spec: &mut AgentSpec) -> Result<(), Agent
 /// are this key's block list (only `tools:` has one).
 fn set_field(spec: &mut AgentSpec, key: &str, value: &str) -> Result<bool, AgentError> {
     match key {
-        "name" => spec.name = value.into(),
+        // An EMPTY `name:` falls back to the folder, exactly as an absent one
+        // does — the editor's "Folder name" field IS that folder (11b walk).
+        "name" if !value.is_empty() => spec.name = value.into(),
+        "name" => {}
         "description" => spec.description = value.into(),
         "model" => spec.model = value.into(),
         "engine" => spec.engine = value.into(),
@@ -110,30 +108,44 @@ fn set_field(spec: &mut AgentSpec, key: &str, value: &str) -> Result<bool, Agent
         "keep_recent" => spec.keep_recent = number(spec, key, value)?,
         "temperature" => {
             spec.temperature = Some(value.parse::<f32>().map_err(|_| {
-                AgentError::MalformedAgentFile {
-                    agent: spec.name.clone(),
-                    message: format!("temperature '{value}' is not a number"),
-                }
+                malformed(spec, format!("temperature '{value}' is not a number"))
             })?)
         }
         // Inline form here; the block form arrives on the following lines.
         "tools" => match value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
             Some(inline) => spec.tools = split_inline(inline),
-            None => return Ok(value.is_empty()),
+            // A bare `tools:` opens the block list. Anything else is REFUSED,
+            // exactly as `compact_at: lots` is (11b walk): a dropped tools line
+            // leaves the list empty, and empty means EVERY built-in, including
+            // `write_agent`. Silence must never fail towards more capability.
+            None if value.is_empty() => return Ok(true),
+            None => {
+                return Err(malformed(
+                    spec,
+                    format!(
+                        "tools '{value}' is not a list — write tools: [a, b], or a bare \
+                         'tools:' with '- name' lines under it, or tools: [] for all of them"
+                    ),
+                ))
+            }
         },
         _ => {}
     }
     Ok(false)
 }
 
+/// One frontmatter line this file cannot honour, as the typed error.
+fn malformed(spec: &AgentSpec, message: String) -> AgentError {
+    let agent = spec.name.clone();
+    AgentError::MalformedAgentFile { agent, message }
+}
+
 /// One non-negative frontmatter integer, refused rather than defaulted: a
-/// `compact_at: lots` that silently became 75 would be a setting that looks
-/// applied and is not.
+/// `compact_at: lots` silently becoming 75 is a setting that looks applied.
 fn number(spec: &AgentSpec, key: &str, value: &str) -> Result<usize, AgentError> {
-    value.parse::<usize>().map_err(|_| AgentError::MalformedAgentFile {
-        agent: spec.name.clone(),
-        message: format!("{key} '{value}' is not a whole number"),
-    })
+    value
+        .parse::<usize>()
+        .map_err(|_| malformed(spec, format!("{key} '{value}' is not a whole number")))
 }
 
 fn unquote(value: &str) -> String {
@@ -147,23 +159,16 @@ fn unquote(value: &str) -> String {
 }
 
 fn split_inline(inline: &str) -> Vec<String> {
-    inline
-        .split(',')
-        .map(unquote)
-        .filter(|s| !s.is_empty())
-        .collect()
+    inline.split(',').map(unquote).filter(|s| !s.is_empty()).collect()
 }
 
-/// Every agent, from files given built-ins FIRST and the project's second —
-/// so a project agent of the same name REPLACES the built-in rather than
-/// running beside it (Python `registry._agent_dirs`). A file that will not
-/// parse costs that one agent and nothing else: the rest still load, and the
-/// app still boots. Result order is by name, so the UI is deterministic.
+/// Every agent, from files given built-ins FIRST and the project's second — so
+/// a project agent of the same name REPLACES the built-in (Python
+/// `registry._agent_dirs`). A file that will not parse costs that one agent:
+/// the rest still load. Result order is by name, so the UI is deterministic.
 ///
 /// Skipping is correct; SILENCE is not (`ux-walker`, increment 03). The second
-/// return is one sentence per file that could not be read, for the UI to show
-/// — a page that quietly runs with fewer agents than its manifest names is a
-/// page lying about what is loaded.
+/// return is one sentence per unreadable file, for the UI to show.
 pub fn load_agents<I>(files: I) -> (Vec<AgentSpec>, Vec<String>)
 where
     I: IntoIterator<Item = (String, String)>,

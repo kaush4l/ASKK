@@ -75,11 +75,12 @@ pub struct App {
     /// authored in the browser can be merged over them WITHOUT a reload
     /// (increment 11) — the composition root fetches them once, at boot.
     pub(crate) files: Vec<(String, String)>,
-    /// What this browser itself authored, `(name, agent.md)` — the fold of the
-    /// log that `roster::reconcile` last applied. Held so a request can tell
-    /// "nothing changed" from "an agent was written" without re-installing on
-    /// every seam round-trip.
-    pub(crate) authored: Vec<(String, String)>,
+    /// What this browser itself authored, `(name, agent.md, author)` — the
+    /// fold of the log that `roster::reconcile` last applied. Held so a request
+    /// can tell "nothing changed" from "an agent was written" without
+    /// re-installing on every seam round-trip. An empty author is the person at
+    /// the keyboard; anything else is the agent that wrote it (11b walk).
+    pub(crate) authored: Vec<crate::authored::Authored>,
     /// One sentence per `agent.md` that could not be read. Skipping a broken
     /// file is correct; staying silent about it is not (`ux-walker`), so the
     /// Agents panel projects this list beside what did load.

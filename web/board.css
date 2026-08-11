@@ -6,8 +6,8 @@
    label and scrolling the whole document sideways (`ux-walker`, increment 05).
    Wrapping plus a shrink allowance is the fix; no control may be wider than
    its row. */
-form.stacked .row { flex-wrap: wrap; }
-form.stacked .row button { flex: 0 1 auto; max-width: 100%; }
+form .row { flex-wrap: wrap; }
+form .row button { flex: 0 1 auto; max-width: 100%; }
 
 /* The one rule that makes a sideways scroll impossible rather than unlikely. */
 body { overflow-x: hidden; }

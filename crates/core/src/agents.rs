@@ -137,16 +137,32 @@ fn meta_line(spec: &AgentSpec, peers: &[AgentSpec]) -> String {
     )
 }
 
+/// The prompt disclosure's own name. Named per agent: two disclosures with the
+/// same accessible name are indistinguishable to a screen reader (`ux-walker`,
+/// increment 03), and WHO wrote it belongs in that name too (11b walk).
+fn disclosure(spec: &AgentSpec, mine: Option<&str>) -> String {
+    let origin = match mine {
+        Some("") => "written by you in this browser".to_string(),
+        Some(by) => format!("written by the {by} agent"),
+        None => format!("from public/agents/{}/agent.md", spec.name),
+    };
+    format!("System prompt for {} ({origin})", spec.name)
+}
+
 /// One agent, as its file declares it. The prompt is shown verbatim behind a
 /// disclosure: it is the whole point of the file, and also the longest part.
-fn card(spec: &AgentSpec, peers: &[AgentSpec], authored: &[String]) -> Fragment {
-    let mine = authored.contains(&spec.name);
+fn card(spec: &AgentSpec, peers: &[AgentSpec], authored: &[(String, String)]) -> Fragment {
+    let mine = authored
+        .iter()
+        .find(|(n, _)| *n == spec.name)
+        .map(|(_, by)| by.as_str());
     FragmentBuilder::new("div")
         .class("agent-card")
         .attr("data-agent", &spec.name)
         .attr("data-origin", match mine {
-            true => "authored",
-            false => "shipped",
+            Some("") => "authored",
+            Some(_) => "authored-by-agent",
+            None => "shipped",
         })
         .child(FragmentBuilder::new("h3").text(&spec.name).build())
         .child(FragmentBuilder::new("p").text(&spec.description).build())
@@ -164,21 +180,7 @@ fn card(spec: &AgentSpec, peers: &[AgentSpec], authored: &[String]) -> Fragment 
         )
         .child(
             FragmentBuilder::new("details")
-                .child(
-                    // Named per agent: two disclosures with the same
-                    // accessible name are indistinguishable to a screen
-                    // reader (`ux-walker`, increment 03).
-                    FragmentBuilder::new("summary")
-                        .text(&format!(
-                            "System prompt for {} ({})",
-                            spec.name,
-                            match mine {
-                                true => "authored in this browser".to_string(),
-                                false => format!("from public/agents/{}/agent.md", spec.name),
-                            }
-                        ))
-                        .build(),
-                )
+                .child(FragmentBuilder::new("summary").text(&disclosure(spec, mine)).build())
                 .child(FragmentBuilder::new("pre").text(&spec.prompt).build())
                 .build(),
         )

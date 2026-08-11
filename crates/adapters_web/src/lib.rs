@@ -177,8 +177,8 @@ impl WebApp {
         // …and any agent a Worker WROTE (increment 11): the create-agent
         // superagent runs in its own Worker, so the agent it authored reaches
         // the page's roster through the same one-door discipline.
-        for (name, text) in self.workers.take_authored() {
-            core::report_authored(&mut self.app.borrow_mut(), &name, &text);
+        for (name, text, author) in self.workers.take_authored() {
+            core::report_authored(&mut self.app.borrow_mut(), &name, &text, &author);
         }
         for (agent, window, summary) in self.workers.take_memory() {
             let mut app = self.app.borrow_mut();

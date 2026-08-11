@@ -93,8 +93,14 @@ pub(crate) async fn watch(
         if *agent.peek() != who {
             return;
         }
+        // The press already ended the turn and wrote the note. One last
+        // projection before this loop lets go: ending the turn happens in the
+        // ASYNC half — it is what lets a deferred agent swap install — and a
+        // pane that stopped reading at the press would show the world as it
+        // was one tick before the swap landed (11b walk).
         if turn.stopped.peek().to_owned() {
-            stop_waiting(turn);
+            let Some(app) = web.peek().clone() else { return };
+            show(&who, app.handle(to(&who, Request::get("/chat"))), turn);
             return;
         }
         turn.elapsed.set(tick * TICK_MS as u32 / 1000);
@@ -111,27 +117,44 @@ pub(crate) async fn watch(
     );
 }
 
-/// The user stopped waiting: the pane stops polling, and says plainly that the
-/// request may still land — it is the WAIT that ended, not the turn.
-fn stop_waiting(mut turn: Turn) {
+/// The user stopped waiting. The wait is not the only thing that ends: the
+/// TURN does, across the seam, or the swap `roster::reconcile` defers while a
+/// task is outstanding never lands — a prompt saved mid-flight stayed
+/// uninstalled 45s after the press, until a reload (11b walk).
+fn stop_waiting(web: Signal<Option<Rc<WebApp>>>, mut turn: Turn, who: &str) {
+    if let Some(app) = web.peek().clone() {
+        show(who, app.handle(to(who, Request::post_form("/chat/stop", &[]))), turn);
+    }
     let mut shown = turn.shown.peek().clone();
     shown.pending = false;
     turn.shown.set(shown);
     turn.note.set(
-        "Stopped waiting. The request may still be in flight — a reply that \
-         arrives is in the log, and a reload will show it."
+        "Stopped waiting, and ended the turn. A reply that arrives after this is in the \
+         log; anything you saved takes effect now."
             .into(),
     );
 }
 
 /// While a turn is in flight: how long it has been, and the way out.
-pub(crate) fn waiting_row(turn: Turn, busy: bool) -> Element {
+pub(crate) fn waiting_row(
+    web: Signal<Option<Rc<WebApp>>>,
+    turn: Turn,
+    busy: bool,
+    who: String,
+) -> Element {
     let mut stopped = turn.stopped;
     rsx! {
         if busy {
             p { class: "pending",
                 "waiting for the model — {turn.elapsed}s "
-                button { r#type: "button", onclick: move |_| stopped.set(true), "Stop waiting" }
+                button {
+                    r#type: "button",
+                    onclick: move |_| {
+                        stopped.set(true);
+                        stop_waiting(web, turn, &who);
+                    },
+                    "Stop waiting"
+                }
             }
         }
     }

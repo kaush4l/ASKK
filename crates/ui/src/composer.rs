@@ -27,6 +27,7 @@ pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<St
     };
     rsx! {
         form {
+            class: "oneline",
             onsubmit: move |e| {
                 e.prevent_default();
                 submit();

@@ -9,6 +9,7 @@
 
 mod agents;
 mod app;
+mod authored;
 mod authoring;
 mod batch;
 mod board;
@@ -36,7 +37,7 @@ mod terminal;
 mod workspace;
 
 pub use install::{builtin_files, install_agents, install_agents_as, report_agent, report_memory};
-pub use roster::{authored_here, report_authored};
+pub use authored::{authored_here, report_authored};
 pub use app::{App, Ports, ENTRY_AGENT};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
@@ -61,7 +62,7 @@ pub fn agent_files(app: &App) -> Vec<(String, String)> {
     install::builtin_files()
         .into_iter()
         .chain(app.files.clone())
-        .chain(app.authored.clone())
+        .chain(authored::files(&app.authored))
         .collect()
 }
 

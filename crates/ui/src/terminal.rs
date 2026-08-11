@@ -31,14 +31,18 @@ fn commands_in(html: &str) -> usize {
 
 /// Re-read the scrollback from the core, for the SELECTED agent (10 walk,
 /// finding 3): this was the one per-agent read that sent no `x-agent`.
-fn scrollback(web: &Signal<Option<Rc<WebApp>>>, agent: &str) -> String {
-    match web.peek().clone() {
-        Some(app) => {
-            app.handle(Request::get("/terminal").with_header("x-agent", agent))
-                .body
-        }
-        None => String::new(),
-    }
+///
+/// The second return is whether a command TYPED here would run in the
+/// workspace this pane names — the core's own answer, on a header, because the
+/// box was live for every agent while always executing in this page's own
+/// space (11b walk).
+fn scrollback(web: &Signal<Option<Rc<WebApp>>>, agent: &str) -> (String, bool) {
+    let Some(app) = web.peek().clone() else {
+        return (String::new(), false);
+    };
+    let res = app.handle(Request::get("/terminal").with_header("x-agent", agent));
+    let typeable = res.headers.iter().any(|(k, v)| k == "x-typeable" && v == "1");
+    (res.body, typeable)
 }
 
 /// Put the newest output where it can be read (10 walk, finding 1): the pane
@@ -64,13 +68,16 @@ pub fn Terminal(
     let mut panel = use_signal(String::new);
     let mut draft = use_signal(String::new);
     let mut running = use_signal(|| false);
+    let mut typeable = use_signal(|| false);
     use_effect(move || {
         let _ = (tick(), agent());
-        panel.set(scrollback(&web, &agent()));
+        let (body, can_type) = scrollback(&web, &agent());
+        panel.set(body);
+        typeable.set(can_type);
     });
     let mut submit = move || {
         let command = draft().trim().to_string();
-        if command.is_empty() || running() {
+        if command.is_empty() || running() || !typeable() {
             return;
         }
         let Some(app) = web.peek().clone() else { return };
@@ -97,7 +104,7 @@ pub fn Terminal(
                 if sleep(TICK_MS).await.is_err() {
                     break;
                 }
-                let next = scrollback(&web, &agent());
+                let (next, _) = scrollback(&web, &agent());
                 if commands_in(&next) > before {
                     panel.set(next);
                     // The DOM catches up on the next frame; then scroll, or
@@ -115,6 +122,7 @@ pub fn Terminal(
             h2 { "Workspace" }
             div { aria_live: "polite", dangerous_inner_html: "{panel}" }
             form {
+                class: "oneline",
                 onsubmit: move |e| {
                     e.prevent_default();
                     submit();
@@ -125,12 +133,12 @@ pub fn Terminal(
                     aria_label: "Command to run in the workspace",
                     placeholder: "uname -a",
                     autocomplete: "off",
-                    disabled: running(),
+                    disabled: running() || !typeable(),
                     oninput: move |e| draft.set(e.value()),
                 }
                 button {
                     r#type: "submit",
-                    disabled: running(),
+                    disabled: running() || !typeable(),
                     if running() { "Running…" } else { "Run" }
                 }
             }

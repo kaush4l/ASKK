@@ -47,12 +47,14 @@ fn adopt(
     mut agents: Signal<String>,
     mut failure: Signal<String>,
     mut loaded: Signal<Vec<String>>,
+    mut authored: Signal<Vec<String>>,
 ) {
     match booted {
         Some(Ok(app)) => {
             fragment.set(app.handle(Request::get("/")).body);
             agents.set(app.handle(Request::get("/agents")).body);
             loaded.set(app.agent_names());
+            authored.set(app.authored_names());
             web.set(Some(Rc::clone(app)));
         }
         Some(Err(e)) => failure.set(e.clone()),
@@ -63,10 +65,16 @@ fn adopt(
 /// Re-read the listing whenever anything moves. An agent can now be written,
 /// edited or deleted while the page is open (increment 11), so a panel painted
 /// once at boot would show a roster the core no longer has.
-fn watch_agents(web: Signal<Option<Rc<WebApp>>>, mut agents: Signal<String>, mut loaded: Signal<Vec<String>>) {
+fn watch_agents(
+    web: Signal<Option<Rc<WebApp>>>,
+    mut agents: Signal<String>,
+    mut loaded: Signal<Vec<String>>,
+    mut authored: Signal<Vec<String>>,
+) {
     let Some(app) = web.peek().clone() else { return };
     agents.set(app.handle(Request::get("/agents")).body);
     loaded.set(app.agent_names());
+    authored.set(app.authored_names());
 }
 
 /// Who is loaded, and where from. Its own fn because the shell composes the
@@ -103,6 +111,8 @@ fn shell() -> Element {
     // conversation with. `main` by default: it is the agent a person opens the
     // page to talk to (Python `ThreadedAgent.entry`).
     let loaded = use_signal(Vec::<String>::new);
+    // Which of them this browser wrote — the editor's Delete needs it.
+    let authored = use_signal(Vec::<String>::new);
     let selected = use_signal(|| "main".to_string());
     // Whether an endpoint is configured: `Settings` knows (it reads the
     // broker), `ChatPane` needs it (a send with no endpoint is a request that
@@ -112,11 +122,18 @@ fn shell() -> Element {
     // panes that must redraw from the core when it does.
     let tick = use_signal(|| 0u32);
 
-    use_effect(move || adopt(&booted.read(), web, fragment, agents, failure, loaded));
+    use_effect(move || adopt(&booted.read(), web, fragment, agents, failure, loaded, authored));
     use_effect(move || {
         let _ = tick();
-        watch_agents(web, agents, loaded);
+        watch_agents(web, agents, loaded, authored);
     });
+    // The roster's own fingerprint: the listing changes exactly when an agent's
+    // identity does. A memo, so it propagates only on a REAL change — `tick`
+    // fires on every projection, and `ChatPane` re-reads its transcript from
+    // this. Without it the chat header kept naming the shipped description
+    // after an override had installed, and the deleted one after a delete —
+    // two projections of one agent's identity disagreeing on screen (11b walk).
+    let roster = use_memo(move || agents());
 
     rsx! {
         header {
@@ -134,12 +151,12 @@ fn shell() -> Element {
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
                 tabs::AgentTabs { loaded, selected }
-                chat::ChatPane { web, endpoint_set, tick, agent: selected }
+                chat::ChatPane { web, endpoint_set, tick, roster, agent: selected }
                 board::AgentBoard { web, tick }
                 space::SpaceInspector { web, tick, agent: selected }
                 terminal::Terminal { web, tick, agent: selected }
                 tools::ToolTrace { web, tick, agent: selected }
-                authoring::AgentEditor { web, tick, loaded, agent: selected }
+                authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
                 {agent_panel(agents)}
                 settings::Settings { web, endpoint_set, tick }
             }

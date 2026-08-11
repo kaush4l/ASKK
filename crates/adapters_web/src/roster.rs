@@ -41,6 +41,16 @@ impl WebApp {
         );
     }
 
+    /// Every agent THIS BROWSER authored — the only ones the editor's Delete
+    /// can do anything about (11b walk). From the core's own fold, so the
+    /// button and the card cannot disagree about who wrote what.
+    pub fn authored_names(&self) -> Vec<String> {
+        core::authored_here(&self.app.borrow())
+            .into_iter()
+            .map(|(name, ..)| name)
+            .collect()
+    }
+
     /// Every agent file, as the JSON blob a Worker boots from — read from the
     /// core rather than remembered here, so an agent authored a moment ago is
     /// in it (`core::agent_files` owns the precedence rule).

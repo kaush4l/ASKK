@@ -46,6 +46,13 @@ pub fn ChatPane(
     web: Signal<Option<Rc<WebApp>>>,
     endpoint_set: Signal<bool>,
     tick: Signal<u32>,
+    /// The roster's fingerprint (`main::shell`). Read by the effect below, so
+    /// an agent swapped under this pane re-projects the conversation — the
+    /// header is part of the projection, and it was the last thing on screen
+    /// still naming the shipped description after an override installed (11b
+    /// walk). It changes only when an agent's identity does, so this cannot
+    /// loop against `tick`.
+    roster: ReadSignal<String>,
     /// WHICH agent this pane is the conversation with. A `ReadSignal` so
     /// switching agents re-projects: the same component, one instance per
     /// agent, never a mode flag (plan: `ChatPane` owns one conversation).
@@ -82,7 +89,7 @@ pub fn ChatPane(
 
     // The pane's first paint is the projection, not an empty box.
     use_effect(move || {
-        let who = agent();
+        let (who, _) = (agent(), roster());
         if let Some(app) = web.read().clone() {
             note.set(String::new());
             show(&who, app.handle(to(&who, Request::get("/chat"))), turn);
@@ -125,7 +132,7 @@ pub fn ChatPane(
             } else {
                 p { class: "pending", "opening {agent}'s conversation…" }
             }
-            {waiting_row(turn, busy)}
+            {waiting_row(web, turn, busy, agent())}
             if !note.read().is_empty() { p { class: "error", "{note}" } }
             Composer {
                 busy,

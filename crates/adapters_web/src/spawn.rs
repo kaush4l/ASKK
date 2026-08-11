@@ -90,10 +90,10 @@ pub(crate) struct Live {
 /// how many entries, and the summary that replaced the oldest, if any.
 pub(crate) type Memory = (String, usize, Option<String>);
 
-/// An agent a Worker WROTE, waiting to be drained: `(name, agent.md)`. Same
-/// queue discipline as `Memory`, and for the same reason — it arrives on a JS
-/// callback, where the app is already borrowed.
-pub(crate) type Authored = (String, String);
+/// An agent a Worker WROTE, waiting to be drained: `(name, agent.md, author)`.
+/// Same queue discipline as `Memory`, and for the same reason — it arrives on
+/// a JS callback, where the app is already borrowed.
+pub(crate) type Authored = (String, String, String);
 
 /// Read the `authored` field off a Worker's message: every agent it has
 /// written with `write_agent`. Absent means it wrote none.

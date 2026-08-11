@@ -1,77 +1,17 @@
 //! WHO is loaded, once agents can be authored in the browser (increment 11):
-//! the authored set folded out of the log, and the one function that makes the
-//! running app agree with it. The ROUTES are `authoring.rs`.
-//!
-//! An authored agent is not a second kind of agent: it is the same `agent.md`
-//! `public/agents/` serves, held as a fact in the event log instead of as a
-//! file on a static host — which is why it survives a refresh (the log is
-//! replayed at boot), why deleting one is just another fact (I10), and why it
-//! is projected rather than stored twice (I8).
+//! the one function that makes the running app agree with the authored set,
+//! and the tool a model writes one with. The SET is `authored.rs`, the ROUTES
+//! are `authoring.rs`.
 //!
 //! PRECEDENCE, one rule — the Python `registry._agent_dirs` order plus one
 //! step: built-ins, then `public/agents/`, then what this browser authored.
 //! Last wins, so authoring `main` OVERRIDES the shipped `main` and deleting
 //! that record reverts to the file. A live prompt edit is exactly this.
 
-use kernel::{EventKind, EventLog, Status};
+use kernel::{EventKind, Status};
 
 use crate::app::App;
-
-/// An agent was written or replaced in this browser. Payload: `[name, text]`.
-pub(crate) const AUTHORED: &str = "core.agent_authored";
-/// An authored record was removed. Payload: the name.
-pub(crate) const DELETED: &str = "core.agent_deleted";
-
-/// Every agent this browser has authored and not deleted, as `(name, text)`
-/// in the order they were first written — a fold over the log, like every
-/// other view (I8).
-pub(crate) fn authored(log: &EventLog) -> Vec<(String, String)> {
-    let mut found: Vec<(String, String)> = Vec::new();
-    for event in log.iter() {
-        let EventKind::Custom { kind, payload_json } = &event.kind else {
-            continue;
-        };
-        if kind == DELETED {
-            if let Ok(name) = serde_json::from_str::<String>(payload_json) {
-                found.retain(|(n, _)| *n != name);
-            }
-        } else if kind == AUTHORED {
-            if let Ok((name, text)) = serde_json::from_str::<(String, String)>(payload_json) {
-                match found.iter().position(|(n, _)| *n == name) {
-                    Some(i) => found[i].1 = text,
-                    None => found.push((name, text)),
-                }
-            }
-        }
-    }
-    found
-}
-
-/// What THIS process authored — what a Worker hands back (`report_authored`).
-pub fn authored_here(app: &App) -> Vec<(String, String)> {
-    authored(&app.log)
-}
-
-/// An agent a SUB-AGENT wrote, adopted by the page. A Worker is its own Wasm
-/// instance with its own event log, so `write_agent` called there records the
-/// fact THERE and the page would never see it — the create-agent superagent
-/// would report success and install nothing. Not the seam (I4): the host
-/// reporting a fact, exactly like `report_agent` and `report_memory`, landing
-/// as the same event the page's own form emits so there is one record and one
-/// precedence rule. An identical repeat is dropped — a Worker re-reports its
-/// whole authored set every turn.
-pub fn report_authored(app: &mut App, name: &str, text: &str) {
-    if authored(&app.log)
-        .iter()
-        .any(|(n, t)| n == name && t == text)
-    {
-        return;
-    }
-    app.append(EventKind::Custom {
-        kind: AUTHORED.into(),
-        payload_json: serde_json::to_string(&(name, text)).unwrap_or_default(),
-    });
-}
+use crate::authored::{files, set, AUTHORED};
 
 /// Make the running app agree with the authored set the log now holds.
 ///
@@ -82,14 +22,14 @@ pub fn report_authored(app: &mut App, name: &str, text: &str) {
 /// from the utterance that starts a turn to the answer that ends it, so this
 /// takes effect at a TURN BOUNDARY and the conversation is never disturbed.
 pub(crate) fn reconcile(app: &mut App) {
-    let want = authored(&app.log);
-    if want == app.authored || app.agent.task.is_some() {
+    let want = set(&app.log);
+    if want == app.authored || app.agent.task.is_some() || accepted(app) {
         return;
     }
     let files = crate::install::builtin_files()
         .into_iter()
         .chain(app.files.clone())
-        .chain(want.clone());
+        .chain(files(&want));
     let (specs, problems) = agent::load_agents(files);
     let gone: Vec<String> = app
         .agents
@@ -117,6 +57,18 @@ pub(crate) fn reconcile(app: &mut App) {
         kind: "core.agents_loaded".into(),
         payload_json: serde_json::to_string(&names).unwrap_or_else(|_| "[]".into()),
     });
+}
+
+/// An utterance to THIS agent that the async half has not taken yet. `task` is
+/// only set once `drive` pumps it, so between the seam accepting a message and
+/// that pump there is a window where the turn has begun and `task` is still
+/// None — a save landing in it swapped the agent under a turn already accepted
+/// (11b walk, hit in the browser at ~100ms).
+fn accepted(app: &App) -> bool {
+    let me = app.me().to_string();
+    app.pending.iter().any(|e| {
+        matches!(&e.kind, EventKind::UserMessage { agent, .. } if agent.is_empty() || *agent == me)
+    })
 }
 
 /// Board rows for agents that just appeared or went away. Only those:
@@ -174,9 +126,12 @@ pub(crate) fn write_agent(app: &mut App, args_json: &str) -> Result<String, Stri
     let space = agent::Space::named(&field("space")).map(|s| s.name).unwrap_or_default();
     let spec = agent::new_spec(&name, &field("description"), &unescaped(&prompt), &tools, &space);
     let text = agent::render_agent_file(&spec);
+    // WHO wrote it: this process's own agent, on the record with the file, so
+    // the card can say "written by main" rather than claiming your work (11b).
+    let author = app.me().to_string();
     app.append(EventKind::Custom {
         kind: AUTHORED.into(),
-        payload_json: serde_json::to_string(&(name.clone(), text)).unwrap_or_default(),
+        payload_json: serde_json::to_string(&(name.clone(), text, author)).unwrap_or_default(),
     });
     Ok(format!(
         "Wrote {name}. It is installed in this browser as soon as this turn ends — it has its \

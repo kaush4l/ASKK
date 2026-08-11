@@ -77,9 +77,10 @@ pub(crate) fn note(ctx: &Ctx, who: &str) -> Fragment {
             FragmentBuilder::new("p")
                 .class("note")
                 .text(&format!(
-                    "The commands below are {}'s — this page's own. A sub-agent's commands run \
-                     in its Worker and are in its own trace.",
-                    ctx.me
+                    "The commands below are {me}'s — this page's own. A sub-agent's commands \
+                     run in its Worker and are in its own trace, and the box below is {me}'s \
+                     shell: it takes a command only with {me} selected.",
+                    me = ctx.me
                 ))
                 .build(),
         );

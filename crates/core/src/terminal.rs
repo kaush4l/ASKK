@@ -59,10 +59,30 @@ pub(crate) fn terminal(req: &Request, ctx: &mut Ctx) -> Response {
         named => named.to_string(),
     };
     match (req.method.as_str(), req.path.as_str()) {
-        ("GET", "/terminal") => html(200, panel(ctx, &who)),
+        ("GET", "/terminal") => typeable(html(200, panel(ctx, &who)), ctx, &who),
         ("POST", "/terminal") => run(req, ctx, &who),
         _ => error_fragment(404, "terminal: unknown subroute"),
     }
+}
+
+/// Whether a command typed here would run in the workspace this pane NAMES.
+/// It runs in this process's agent's space and nowhere else, so with anyone
+/// else selected the box is main's shell wearing another agent's label — it
+/// executed in main's space while the prose described the other's, and it was
+/// live even for an agent the same pane said cannot run commands (11b walk).
+fn can_type(ctx: &Ctx, who: &str) -> bool {
+    who == ctx.me && ctx.space.is_some()
+}
+
+/// The same answer as a header, so the pane can disable the box without
+/// parsing its own fragment (the rule `x-turn` and `x-busy` already follow).
+fn typeable(mut response: Response, ctx: &Ctx, who: &str) -> Response {
+    let flag = match can_type(ctx, who) {
+        true => "1",
+        false => "0",
+    };
+    response.headers.push(("x-typeable".into(), flag.into()));
+    response
 }
 
 /// Queue one typed command. It leaves as a fact and runs in the async half —
@@ -72,6 +92,13 @@ fn run(req: &Request, ctx: &mut Ctx, who: &str) -> Response {
     let Some(command) = form_value(&req.body, "command").filter(|c| !c.trim().is_empty()) else {
         return error_fragment(400, "terminal: empty command");
     };
+    // Only the foreign-agent case is refused here. An agent of this page's own
+    // with no space is refused by the workspace GATE, which names the missing
+    // `space: <name>` and leaves the refusal in the scrollback where the person
+    // typing can read it — a better answer than this one.
+    if who != ctx.me {
+        return error_fragment(400, &refusal(ctx, who));
+    }
     match ctx.emit.as_mut() {
         Some(buf) => buf.push(EventKind::Custom {
             kind: EXEC_REQUEST.into(),
@@ -85,7 +112,18 @@ fn run(req: &Request, ctx: &mut Ctx, who: &str) -> Response {
         format!("{}{}", panel(ctx, who), echoed(&command, before).into_html()),
     );
     response.headers.push(("x-running".into(), "1".into()));
-    response
+    typeable(response, ctx, who)
+}
+
+/// Why this box cannot take a command, in the words that name the way round.
+fn refusal(ctx: &Ctx, who: &str) -> String {
+    match who == ctx.me {
+        true => format!("{who} names no space, so it has no workspace to run a command in."),
+        false => format!(
+            "A command typed here runs in {}'s workspace, not {who}'s — {who} runs its own              commands in its own Worker. Select {} to type one, or ask {who} in the chat.",
+            ctx.me, ctx.me
+        ),
+    }
 }
 
 /// The whole scrollback: every `exec` this page's agent has run, in log order.
