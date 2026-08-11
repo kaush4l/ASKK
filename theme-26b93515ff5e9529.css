@@ -110,3 +110,19 @@ form.stacked label { font-size: 0.9rem; color: var(--ink-dim); }
 .msg.assistant { background: var(--bg); }
 .msg.pending { border-style: dashed; }
 .msg.error { border-color: var(--danger); color: var(--danger); }
+
+/* A failed turn leads with the sentence; the typed error is folded behind the
+   expander, readable but no longer the first thing on screen. */
+.msg.error p { margin: 0; }
+.msg.error details { margin-top: 0.5rem; }
+.msg.error summary { cursor: pointer; font-size: 0.9rem; }
+.msg.error pre {
+  margin: 0.4rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+
+/* Buttons that sit side by side (Save endpoint / Clear key). */
+form.stacked .row { display: flex; gap: 0.5rem; }
+form.stacked .row button { flex: 0 0 auto; }
