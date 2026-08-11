@@ -67,8 +67,11 @@ fn board(app: &Rc<RefCell<App>>) -> String {
 }
 
 /// A fresh page: every agent has a row, the entry agent is waiting on the
-/// person and everybody else is idle. Both words appear, because the board is
-/// the only place a person can see the difference.
+/// person and everybody else is STARTING — its Worker is coming up (Python
+/// `_start`: register STARTING, then IDLE once the engine is built). Both
+/// words appear, because the board is the only place a person can see the
+/// difference, and "idle — nobody has called it" was what an agent with no
+/// Worker at all used to say (increment 07).
 #[test]
 fn every_loaded_agent_has_a_row_and_the_entry_agent_is_waiting() {
     let app = booted(&[], Rc::new(ScriptedAgents::none()));
@@ -77,8 +80,9 @@ fn every_loaded_agent_has_a_row_and_the_entry_agent_is_waiting() {
     assert!(html.contains(r#"data-agent="researcher""#), "{html}");
     assert!(html.contains(r#"data-agent="summarizer""#), "{html}");
     assert!(html.contains(r#"data-status="waiting""#), "the lead waits on you");
-    assert!(html.contains(r#"data-status="idle""#), "a sub-agent idles");
+    assert!(html.contains(r#"data-status="starting""#), "a peer's Worker is coming up");
     assert!(html.contains("waiting for you"), "in words, not only a colour");
+    assert!(html.contains("its Worker is coming up"), "in words: {html}");
 }
 
 /// The lead delegates: the sub-agent's answer becomes the tool result the

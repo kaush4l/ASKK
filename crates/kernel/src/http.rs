@@ -44,6 +44,23 @@ impl Request {
             body,
         }
     }
+
+    /// Add one request header. Increment 07 addresses a request to ONE agent
+    /// (`x-agent`); a header rather than a query string because the registry
+    /// resolves routes by exact path, and `/chat` must stay one route however
+    /// many conversations it projects.
+    pub fn with_header(mut self, name: &str, value: &str) -> Request {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+
+    /// One header's value, if present (case-sensitive: every caller is code).
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    }
 }
 
 /// Percent-encode one form value. Lives beside the Request it builds so the

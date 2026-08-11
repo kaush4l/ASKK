@@ -106,6 +106,7 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
             agents: Vec::new(),
             agent_problems: Vec::new(),
             board: agent::Board::default(),
+            me: crate::app::ENTRY_AGENT.to_string(),
         };
         for manifest in builtins::manifests() {
             let (module, version) = (manifest.id.clone(), manifest.version);

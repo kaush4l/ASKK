@@ -18,6 +18,7 @@ Built by `porter`, closed by `ux-walker` on the deployed page.
 | 04 | Model catalogue (`public/models.json`) + the four standing UX findings | 40 green (35 + 10 catalogue/endpoint − 5 replaced) | fresh install has a real default endpoint and answers live from omlx 8873 with NOTHING configured; an agent `model:` key that is not in the catalogue is sent as a model id to the default endpoint; a `kind: anthropic` entry refuses in words; a malformed agent.md is named on screen | ⬜ pending `ux-walker` | `83905e6` | Live at https://kaush4l.github.io/ASKK/. Hosted: the catalogue loads (4 entries), the pick persists across reload, and the `local` turn fails as recorded — "Permission was denied for this request to access the `loopback` address space" — with the plain sentence first and the raw error in a collapsed `<details>`. |
 | 05 | Toolbox: batch layout, refused arguments, generated usage lines, a tool trace — plus per-entry API keys and six walk findings | 52 green (40 + 6 toolbox + 3 tool turn + 3 keys/reset) | a real turn against omlx 8873: the model called `list_agents()`, then `read_agent({"name": "summarizer"})`, and answered from both results; the trace shows call, args and output; a key saved for `openrouter` is not offered for `openai`, `local` or `sonnet`; Reset returns to the catalogue default | ⬜ pending `ux-walker` | `98e3cf3` | Live at https://kaush4l.github.io/ASKK/. Hosted: the page loads with the tool trace panel, the chat sub-line reports the ENDPOINT (`This turn calls local — gemma-4-12B-it-qat-mxfp8 at http://127.0.0.1:8873/v1, with no key.`) rather than the agent file's `model:` key, selecting `sonnet` refuses at selection, Reset works, and the `local` turn still dies on Chrome's loopback gate with the disclosure now named `Technical detail — the endpoint was unreachable`. A live hosted tool turn needs a BYOK key (none available). |
 | 06 | One Worker per agent + the supervisor board: six statuses, sub-agents as tools, and the nine walk findings | 67 green (52 + 7 supervisor/sub-agent + 7 delegation + 1 override-pinning) | fresh install, real omlx on 8873: the lead delegates and the board goes `main:working` → `researcher:working` → `researcher:idle` → `main:waiting` LIVE during the turn, three model calls (lead, sub-agent-in-its-Worker, lead again), and the lead answers with what the sub-agent returned; `researcher({})` is REFUSED and the sub-agent never runs; at 390px the document no longer scrolls sideways | ⬜ pending `ux-walker` | `6ea8c79` | Live at https://kaush4l.github.io/ASKK/. Hosted: `crossOriginIsolated: true`, two Workers boot (one per sub-agent), the board and the agent list are walkable, the Agents card now prints the REAL toolbox (`tools: now, list_agents, read_agent, researcher`) instead of "no tools yet", and the turn dies at the documented loopback boundary — the board then shows `main failed — 1 turn` WITH the endpoint message rather than a lead stuck in `working`. NOT demonstrated live: two sub-agents running at the same instant. The code path exists and its ordering is pinned on the host (`one_line_of_delegations_is_one_batch_and_the_next_line_follows_it`), but the local gemma would not emit two calls on one line after three attempts, so simultaneity is unproven in a browser. |
+| 07 | Chat with any agent individually: per-agent conversations, observable Worker lifecycle, and the seven walk findings | 78 green (67 + 8 per-agent conversations + 3 lifecycle) | fresh install, real omlx on 8873: `researcher` answered a question typed straight to it while `main`'s transcript stayed untouched; delegating through `main` put the sub-agent's turn in the SUB-AGENT's history attributed to `main`; a reload rebuilt every conversation AND both turn counts (2 and 2); the board settles `starting` → `idle` as each Worker reports | ⬜ pending `ux-walker` | `PENDING` | Live at https://kaush4l.github.io/ASKK/. Hosted: `crossOriginIsolated: true`, the agent tabs switch, per-agent histories persist across reload and across a browser restart, the board reads `idle — it answered, and nobody is waiting on it — 4 turns`, and a turn dies at the documented loopback boundary — the sub-agent's failure now names ITS OWN cause (`The model endpoint could not be reached… Chrome 142+ asks permission…`) instead of "researcher produced no answer". |
 
 ## Parity with the Python project
 
@@ -33,6 +34,7 @@ feature "exists".
 | `core/state.py` | Six statuses; `turns` increments only on entry to Working | ✅ |
 | `core/state.py` | `Waiting` (entry agent) distinct from `Idle` | ✅ |
 | `core/registry.py` | One private event loop per agent; failure records the message | ✅ |
+| `core/registry.py` | `aclose` stops the loop and records `CLOSED`; a load failure records `FAILED` with `str(e)` | ✅ |
 | `core/registry.py` | Built-in agents override-able by a project agent of the same name | ✅ |
 | `core/tools.py` | Batch layout: same line concurrent, new line sequential | ✅ |
 | `core/tools.py` | Unreadable arguments refused with a repair message, never an empty call | ✅ |
@@ -44,7 +46,7 @@ feature "exists".
 | `core/utils.py` | `agent.md` frontmatter: model, temperature, engine, tools, space | ✅ |
 | `core/agents/summarizer` | Built-in summarizer compresses history | ⬜ |
 | — | Chat with the main agent in the UI | ✅ |
-| — | Chat with any agent individually | ⬜ |
+| — | Chat with any agent individually | ✅ |
 | — | Agents hot-reloaded from `public/agents/` | ✅ |
 | — | New agents added in the browser, persisted, exportable | ⬜ |
 | — | Alpine workspace: run a command, write a file, survive a refresh | ⬜ |
@@ -361,3 +363,79 @@ they are `node` inside the VM, priced after increment 10.
 - **Known overrun:** `crates/core/tests/delegation.rs` is 213 lines against the 200-line rule,
   alongside the pre-existing `core/tests/skeleton.rs` (290) and `context/tests/fixture/mod.rs`
   (210). Every source file is inside the rule.
+
+### Increment 07
+
+- **A conversation is a projection of the log SCOPED TO ONE AGENT.** `UserMessage` and
+  `ModelReplied` carry the agent they belong to; `/chat` takes an `x-agent` request header and
+  folds only that agent's facts. Histories cannot cross because the fold never reaches the other
+  one — not because a filter was remembered in the UI. An empty `agent` means "this process's own
+  agent", so every log written before this increment still reads correctly, and a sub-agent's
+  Worker (which IS `researcher`) needs no special case.
+- **`App` now knows WHICH agent it is** (`App::me`, set by `install_agents_as`). The page is
+  `main`; a Worker is its own agent. `drive` and the failure path used the `ENTRY_AGENT` constant
+  before, which meant a Worker was writing `main`'s status into its own log.
+- **A message addressed to another agent is never pumped.** `drive` routes it to that agent's
+  Worker instead, so nobody else's words can enter this agent's paper. That is the structural
+  half of "histories must not cross"; the projection is only the visible half.
+- **A delegated turn belongs to the sub-agent.** `batch::run_on` is the one place another agent
+  takes a turn, and it records the goal and the answer in THAT agent's history whether a person
+  typed it or the lead called it as a tool. `UserMessage.from` says which: empty is a person, a
+  name is the agent that delegated — a transcript that labelled a lead's delegation "You" claimed
+  the reader asked a question they never typed.
+- **Who a person is talking to is a first-class fact, not a colour.** One `ChatPane` per agent
+  (the same component, a `ReadSignal<String>` prop — never a mode flag), a tab strip carrying
+  `aria-current`, the heading read from the PROP so it names the new agent before the transcript
+  arrives, and the composer's accessible name already naming the agent.
+- **`Waiting` vs `Idle` is about who speaks next, not about the name `main`.** Ask `researcher`
+  yourself and it ends `Waiting` on YOU; let the lead ask it and it ends `Idle`, because its
+  caller already has the answer. That is the Python's `entry` flag, which was never about a
+  particular agent.
+- **The status enum is now honest.** `Starting` is real and observable: `install_agents_as` leaves
+  every peer there and only a Worker's own `{kind:"ready"}` message moves it to `Idle`. A Worker
+  that cannot be constructed lands in `Failed` WITH the reason (before: a bare `console.warn` and
+  no status write, so an agent with no Worker at all rendered "idle — nobody has called it").
+  `Closed` is assigned by `close_all`, which has a real caller: saving a new endpoint stops every
+  Worker and starts it again, because a Worker is handed its profile once and cannot learn a new
+  one — without that, sub-agents kept calling the old endpoint while the page called the new.
+- **Lifecycle facts are queued, not written from a JS callback.** `AgentWorkers` collects them and
+  `WebApp::handle` drains them through `core::report_agent`, so a status still moves through the
+  one append door (I8) and a callback can never re-enter a borrowed `App`.
+- **The board owns one clock, and only for boot.** A Worker comes up on nobody's schedule; an idle
+  page would have sat on "starting" until you typed something. `x-settling` says the board is not
+  final yet and the pane re-asks every 400 ms for at most 12 s, then stops.
+- **A sub-agent's failure carries its cause across `postMessage`.** `AgentWorker::run` reads
+  `core::last_failure` — the same sentence the page would have shown for its own turn — instead of
+  discarding the error and returning "<name> produced no answer". `js_message` also stopped
+  wrapping a rejected string in `JsValue("…")`.
+- **The turn counter is replayed, not reset.** `install_agents_as` counts entries to `Working` in
+  the replayed log and restores them, and an agent whose last recorded status was `Failed` comes
+  back failed with its message. A reload is still a new process — nobody is left `Working`.
+  Known asymmetry, deliberate: a PEER's restored failure is overwritten the moment its new Worker
+  reports ready, because a fresh Worker really is idle; the failure stays in its transcript, which
+  is where a person reads it. `main` has no Worker, so its failure survives.
+- **Selecting a model is not saving one.** The picker now says "Showing openrouter — NOT saved.
+  The next turn still calls local until you press Save endpoint.", styled as the blocking
+  condition it is, because the card relabelled itself around the pick while the chat pane above
+  correctly still named the saved endpoint.
+- **The Agents card separates peers from built-ins** ("tools: now, list_agents, read_agent, agents
+  it can call: researcher"). One list is right for the MODEL, which is never told which is which;
+  it is wrong for a person, for whom calling `researcher` means handing a goal to another Worker.
+- **The transcript names the speaker in words** (`You: …`, `main: …`), so a page with no
+  stylesheet is still a readable conversation rather than a stack of identical paragraphs.
+- **Transport failures stop blaming a local address they did not call.** `ModelError::Transport`
+  carries the URL it tried; the sentence names Chrome's Local Network Access prompt only for a
+  loopback address and CORS/DNS for anything else. Calling `https://198.51.100.7/v1` hosted now
+  reads "the host must resolve and answer from this browser, and it must send CORS headers
+  allowing this page's origin."
+- **Known overruns (unchanged in kind):** `crates/core/tests/skeleton.rs` (290),
+  `crates/core/tests/delegation.rs` (217, +4 this increment),
+  `crates/context/tests/fixture/mod.rs` (210). Every source file and every new test file is inside
+  the 200-line rule; `chat.rs` was split into `chat.rs` + `transcript.rs` and `workers.rs` into
+  `workers.rs` + `spawn.rs` to keep it that way.
+- **Not done here:** a sub-agent's own PERSISTENT log is still increment 08. A Worker's store is
+  in memory, so within one page session a sub-agent's engine DOES carry its own conversation from
+  turn to turn — but a reload gives it a fresh Worker with an empty paper. What survives the
+  reload is the PAGE's record of that conversation, which is what every pane projects and what a
+  person reads; the agent itself starts the next turn without it. That is the same scope 06
+  shipped, and 08 is where it changes.

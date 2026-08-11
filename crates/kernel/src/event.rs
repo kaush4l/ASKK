@@ -31,8 +31,20 @@ pub enum EventKind {
         status: u16,
     },
     /// A user utterance entered the system — the usual trigger of a turn.
+    /// `agent` is WHICH conversation it belongs to (increment 07): every agent
+    /// is separately addressable, and a message to one must never appear in
+    /// another's transcript. Empty means "this process's own agent", which is
+    /// what every log written before per-agent chat says.
     UserMessage {
         text: String,
+        #[serde(default)]
+        agent: String,
+        /// WHO said it. Empty is a person; a name is the agent that delegated
+        /// this goal. Both land in the callee's history, and a transcript that
+        /// labelled a lead's delegation "You" claimed the reader asked a
+        /// question they never typed (`ux-walker`, increment 07).
+        #[serde(default)]
+        from: String,
     },
     /// Registry fact (ADR-004): manifest body lives in storage, the log
     /// carries the reference — history stays small, storage stays the payload.
@@ -59,8 +71,12 @@ pub enum EventKind {
         spent_tokens: u32,
     },
     /// The completed reply (ADR-002: token deltas never enter the log).
+    /// Scoped like `UserMessage`: a sub-agent's answer is recorded against
+    /// THAT agent, whether a person asked it or the lead delegated to it.
     ModelReplied {
         text: String,
+        #[serde(default)]
+        agent: String,
     },
     /// A tool ran through a granted capability; its envelope is the fact.
     /// `args` rides with it because the trace the user reads is worthless

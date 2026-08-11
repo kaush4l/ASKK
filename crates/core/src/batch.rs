@@ -19,32 +19,71 @@ use kernel::{DelegateError, EventKind, Status, ToolId};
 
 use crate::app::App;
 
-/// Run one delegation on its agent's Worker, keeping that agent's row on the
-/// board current: Working before, Idle after (a sub-agent's caller already has
-/// its answer, so it does not go to Waiting), Failed WITH THE MESSAGE if its
-/// turn raised — the Python `ThreadedAgent.invoke`, line for line.
-async fn delegate(app: &Rc<RefCell<App>>, agent: String, goal: String) -> EventKind {
+/// One turn on another agent's Worker, recorded in THAT agent's own history
+/// (increment 07) and on its row: Working before, then Waiting if a PERSON
+/// asked it (they are the ones it now waits on) or Idle if the lead did (its
+/// caller already has the answer), Failed WITH THE MESSAGE if its turn raised
+/// — the Python `ThreadedAgent.invoke`, line for line.
+///
+/// One function for both callers, so a sub-agent's transcript is the same
+/// whether you typed to it or the lead delegated to it: the delegated turn
+/// belongs to the sub-agent, not to whoever asked.
+pub(crate) async fn run_on(
+    app: &Rc<RefCell<App>>,
+    agent: &str,
+    goal: &str,
+    asked_by_person: bool,
+) -> Result<String, String> {
     let port = {
         let mut a = app.borrow_mut();
-        a.set_status(&agent, Status::Working, "");
+        a.set_status(agent, Status::Working, "");
         Rc::clone(&a.ports.agents)
     };
-    let outcome = port.delegate(&agent, &goal).await;
+    let outcome = port.delegate(agent, goal).await;
     let mut a = app.borrow_mut();
-    let (ok, output) = match outcome {
+    match outcome {
         Ok(answer) => {
-            a.set_status(&agent, Status::Idle, "");
-            (true, answer)
+            a.append(EventKind::ModelReplied {
+                text: answer.clone(),
+                agent: agent.to_string(),
+            });
+            let next = match asked_by_person {
+                true => Status::Waiting,
+                false => Status::Idle,
+            };
+            a.set_status(agent, next, "");
+            Ok(answer)
         }
-        Err(DelegateError::Unknown { agent: name }) => {
-            let message = format!("No agent called '{name}' is loaded in this browser.");
-            a.set_status(&agent, Status::Failed, &message);
-            (false, message)
+        Err(e) => {
+            let message = match e {
+                DelegateError::Unknown { agent: name } => {
+                    format!("No agent called '{name}' is loaded in this browser.")
+                }
+                // Its OWN words. Carried across the `postMessage` boundary so
+                // a sub-agent's failure names its cause the way the lead's does.
+                DelegateError::Failed { message, .. } => message,
+            };
+            a.set_status(agent, Status::Failed, &message);
+            a.append(EventKind::Custom {
+                kind: "core.agent_error".into(),
+                payload_json: crate::failure::agent_error(agent, &message),
+            });
+            Err(message)
         }
-        Err(DelegateError::Failed { message, .. }) => {
-            a.set_status(&agent, Status::Failed, &message);
-            (false, format!("{agent} failed: {message}"))
-        }
+    }
+}
+
+/// A delegation as the LEAD sees it: the tool envelope the model reads next.
+async fn delegate(app: &Rc<RefCell<App>>, agent: String, goal: String) -> EventKind {
+    let asked_by = app.borrow().me().to_string();
+    app.borrow_mut().append(EventKind::UserMessage {
+        text: goal.clone(),
+        agent: agent.clone(),
+        from: asked_by,
+    });
+    let (ok, output) = match run_on(app, &agent, &goal, false).await {
+        Ok(answer) => (true, answer),
+        Err(message) => (false, format!("{agent} failed: {message}")),
     };
     EventKind::ToolInvoked {
         tool: ToolId(agent),
@@ -121,7 +160,8 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
             // left it there for the whole session.
             a.agent.task = None;
             let message = crate::failure::sentence(&e);
-            a.set_status(crate::app::ENTRY_AGENT, Status::Failed, &message);
+            let me = a.me().to_string();
+            a.set_status(&me, Status::Failed, &message);
         }
     }
 }

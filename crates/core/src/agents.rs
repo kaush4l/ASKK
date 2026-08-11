@@ -1,78 +1,12 @@
-//! The agents module: who is loaded, from where, and with what prompt.
-//!
-//! Agents are DATA, not code — `public/agents/<name>/agent.md`, served as
-//! static assets and fetched at boot, so editing a file and redeploying
-//! changes an agent's behaviour with no rebuild. This file owns the two
-//! halves the core needs: installing the fetched files onto the running app,
-//! and the one route that shows what got loaded.
+//! The agents module: the one route that shows what got loaded. Installing
+//! them onto the running app is `install.rs`; this file only renders.
 
 use agent::AgentSpec;
-use kernel::{EventKind, ModuleId, Request, Response, Version};
+use kernel::{ModuleId, Request, Response, Version};
 use module::view::{Fragment, FragmentBuilder};
 use module::{DataSchema, Manifest, RouteSpec, Tier};
 
-use crate::app::App;
 use crate::dispatch::{error_fragment, html, Ctx};
-
-/// Agents compiled into the binary, so a first paint (or a failed fetch) is
-/// never an app with no agents at all. The summarizer is the Python
-/// project's built-in — `core/agents/summarizer` there, the same file here.
-/// It is listed FIRST wherever it is merged, which is what makes a project
-/// agent of the same name replace it (Python `registry._agent_dirs`).
-pub fn builtin_files() -> Vec<(String, String)> {
-    vec![(
-        "summarizer".into(),
-        include_str!("../../../public/agents/summarizer/agent.md").into(),
-    )]
-}
-
-/// Install the fetched `public/agents/` files: built-ins first so a project
-/// agent of the same name wins, malformed files skipped (they cost that one
-/// agent, never the boot), and `main`'s prompt adopted by the running agent.
-/// Called by the composition root right after `boot`.
-pub fn install_agents(app: &mut App, fetched: Vec<(String, String)>) {
-    install_agents_as(app, fetched, crate::app::ENTRY_AGENT)
-}
-
-/// The same install, for an agent that is NOT `main` — a sub-agent booting in
-/// its own Worker adopts its own file and gets its own toolbox (increment 06).
-/// One function, two callers, so a sub-agent's engine is built exactly the way
-/// the lead's is (I9).
-pub fn install_agents_as(app: &mut App, fetched: Vec<(String, String)>, adopt: &str) {
-    let from_project: Vec<String> = fetched.iter().map(|(n, _)| n.clone()).collect();
-    let compiled_in: Vec<String> = builtin_files().into_iter().map(|(n, _)| n).collect();
-    let files = builtin_files().into_iter().chain(fetched);
-    let (specs, problems) = agent::load_agents(files);
-    app.agents = specs;
-    app.agent_problems = problems;
-    // Every loaded agent gets a row, the way the Python registers one per
-    // thread. Registration is NOT an event: a reload is a new process and
-    // starts everyone fresh, which is also why replaying an old log's
-    // statuses cannot leave a stale `working` on the board.
-    let now = app.ports.clock.now();
-    let peers = app.agents.clone();
-    for spec in &peers {
-        // A project agent of the same name REPLACES the built-in (increment
-        // 03); the row says "agents" because the file that won is the
-        // project's, exactly as the Python's `_agent_dirs` decides the origin.
-        let is_builtin = compiled_in.contains(&spec.name) && !from_project.contains(&spec.name);
-        app.board.register(&spec.name, is_builtin, now);
-        let entry = spec.name == adopt;
-        let status = match entry {
-            true => kernel::Status::Waiting,
-            false => kernel::Status::Idle,
-        };
-        app.board.set(&spec.name, status, "", now);
-    }
-    if let Some(mine) = peers.iter().find(|s| s.name == adopt) {
-        agent::adopt_spec(&mut app.agent, mine, &peers);
-    }
-    let names: Vec<&str> = app.agents.iter().map(|s| s.name.as_str()).collect();
-    app.append(EventKind::Custom {
-        kind: "core.agents_loaded".into(),
-        payload_json: serde_json::to_string(&names).unwrap_or_else(|_| "[]".into()),
-    });
-}
 
 /// How this agent names its model — a catalogue key, never a URL.
 fn model_line(spec: &AgentSpec) -> String {
@@ -149,10 +83,31 @@ fn meta_line(spec: &AgentSpec, peers: &[AgentSpec]) -> String {
         .map(|t| format!(", temperature {t}"))
         .unwrap_or_default();
     let box_ = agent::toolbox_for(spec, peers);
-    let names: Vec<&str> = box_.tools.iter().map(|t| t.name.as_str()).collect();
-    let tools = match names.is_empty() {
-        true => "no tools".to_string(),
-        false => format!("tools: {}", names.join(", ")),
+    // Built-ins and peers are ONE list to the model on purpose (it is never
+    // told which is which — `Tool::from_engine`), but they are not one list to
+    // a person: `researcher` read as a fourth built-in tool, when calling it
+    // hands a goal to another agent with its own Worker, its own history and
+    // its own row on the board (`ux-walker`, increment 06).
+    let (agents, tools): (Vec<&str>, Vec<&str>) = box_
+        .tools
+        .iter()
+        .map(|t| (t.name.as_str(), t.agent))
+        .fold((Vec::new(), Vec::new()), |(mut a, mut t), (name, is_agent)| {
+            match is_agent {
+                true => a.push(name),
+                false => t.push(name),
+            }
+            (a, t)
+        });
+    let tools = match (tools.is_empty(), agents.is_empty()) {
+        (true, true) => "no tools".to_string(),
+        (true, false) => format!("agents it can call: {}", agents.join(", ")),
+        (false, true) => format!("tools: {}", tools.join(", ")),
+        (false, false) => format!(
+            "tools: {}, agents it can call: {}",
+            tools.join(", "),
+            agents.join(", ")
+        ),
     };
     let space = match spec.space.is_empty() {
         true => "no space".to_string(),

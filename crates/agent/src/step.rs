@@ -31,7 +31,7 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
         // A user utterance starts (or redirects) the turn: refresh the paper,
         // assemble it under the current phase's budget, ask the model. The
         // Document rides the effect (I13) — no string prompt can exist here.
-        EventKind::UserMessage { text } => {
+        EventKind::UserMessage { text, .. } => {
             state.task = Some(text.clone());
             paper::set_task(&mut state.paper, &text, input.at);
             paper::push_history(&mut state.paper, "user", &text, input.at);
@@ -41,7 +41,7 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
         }
         // The completed reply (ADR-002: deltas never reach the log): either
         // tool calls to run, or the answer that ends the turn.
-        EventKind::ModelReplied { text } => on_reply(state, &text, input.at),
+        EventKind::ModelReplied { text, .. } => on_reply(state, &text, input.at),
         // One tool came back. The batch is done when the last result lands,
         // and then — and only then — the model sees them all.
         EventKind::ToolInvoked { tool, ok, output, .. } => {

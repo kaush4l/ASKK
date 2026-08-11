@@ -18,11 +18,13 @@ mod dispatch;
 mod error;
 mod failure;
 mod form;
+mod install;
 mod runtime;
 mod tools;
+mod transcript;
 mod trace;
 
-pub use agents::{builtin_files, install_agents, install_agents_as};
+pub use install::{builtin_files, install_agents, install_agents_as, report_agent};
 pub use app::{App, Ports, ENTRY_AGENT};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
@@ -53,12 +55,31 @@ pub fn answer(app: &App) -> Option<String> {
     app.log
         .iter()
         .filter_map(|event| match &event.kind {
-            kernel::EventKind::ModelReplied { text } if !agent::has_calls(text) => {
+            kernel::EventKind::ModelReplied { text, agent }
+                if agent.is_empty() && !agent::has_calls(text) =>
+            {
                 Some(text.trim().to_string())
             }
             _ => None,
         })
         .filter(|text| !text.is_empty())
+        .last()
+}
+
+/// Why this agent's last turn failed, in the words a person is shown — the
+/// cause a caller MUST be able to see. `answer` returning `None` is not a
+/// cause: a Worker that reported "<name> produced no answer" told the lead
+/// four words naming nothing, where the page's own failure named the endpoint
+/// and why it could not be reached (`ux-walker`, increment 06).
+pub fn last_failure(app: &App) -> Option<String> {
+    app.log
+        .iter()
+        .filter_map(|event| match &event.kind {
+            kernel::EventKind::Custom { kind, payload_json } if kind == "core.error" => {
+                Some(failure::sentence_of(payload_json))
+            }
+            _ => None,
+        })
         .last()
 }
 

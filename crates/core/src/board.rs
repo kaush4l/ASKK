@@ -63,6 +63,11 @@ fn table(ctx: &Ctx) -> Response {
     if ctx.board.iter().any(|r| r.status.is_busy()) {
         response.headers.push(("x-busy".into(), "1".into()));
     }
+    // Somebody's Worker is still coming up, so this board is not final yet —
+    // and nothing else on an idle page will ask again (increment 07).
+    if ctx.board.iter().any(|r| r.status == Status::Starting) {
+        response.headers.push(("x-settling".into(), "1".into()));
+    }
     response
 }
 
@@ -88,8 +93,8 @@ fn row(agent: &AgentRow) -> Fragment {
                 .class("agent-status")
                 // The accessible name says which agent, so two agents in the
                 // same status are not the same control to a screen reader.
-                .attr("aria-label", &format!("{} is {}", agent.name, sentence(agent.status)))
-                .text(&format!("{} — {turns}, from {origin}", sentence(agent.status)))
+                .attr("aria-label", &format!("{} is {}", agent.name, gloss(agent)))
+                .text(&format!("{} — {turns}, from {origin}", gloss(agent)))
                 .build(),
         );
     if !agent.detail.is_empty() {
@@ -105,6 +110,16 @@ fn row(agent: &AgentRow) -> Fragment {
 
 /// The status in words a person can act on — the Python's own gloss, which is
 /// the whole reason `idle` and `waiting` are two statuses and not one.
+fn gloss(agent: &AgentRow) -> &'static str {
+    // "idle — nobody has called it" beside "2 turns" contradicts itself: an
+    // agent that has answered IS idle, but somebody plainly called it.
+    match (agent.status, agent.turns) {
+        (Status::Idle, 1..) => "idle — it answered, and nobody is waiting on it",
+        (status, _) => sentence(status),
+    }
+}
+
+/// The status alone, for an agent that has taken no turn yet.
 fn sentence(status: Status) -> &'static str {
     match status {
         Status::Starting => "starting — its Worker is coming up",

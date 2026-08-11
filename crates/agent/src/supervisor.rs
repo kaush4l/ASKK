@@ -99,6 +99,17 @@ impl Board {
         row.since = at;
     }
 
+    /// Carry a count of turns from a REPLAYED history onto a freshly
+    /// registered row (increment 07). A reload is a new process, so nobody is
+    /// working any more — but "main has taken four turns" is a fact about the
+    /// past, and resetting it to zero while the transcript still showed four
+    /// exchanges made two panels on one screen disagree (`ux-walker`).
+    pub fn restore(&mut self, name: &str, turns: u32) {
+        if let Some(row) = self.rows.iter_mut().find(|r| r.name == name) {
+            row.turns = turns;
+        }
+    }
+
     pub fn get(&self, name: &str) -> Option<&AgentRow> {
         self.rows.iter().find(|r| r.name == name)
     }

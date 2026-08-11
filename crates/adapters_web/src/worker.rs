@@ -135,15 +135,29 @@ impl AgentWorker {
     /// the Python `ThreadedAgent.invoke`, minus the marshalling, because the
     /// message already crossed the boundary. An answerless turn is an error,
     /// not an empty string: the caller must be able to tell them apart.
+    ///
+    /// And the error carries the CAUSE. This used to discard whatever went
+    /// wrong and return "<name> produced no answer" — four words naming
+    /// nothing, where the page's own failure said which endpoint could not be
+    /// reached and why. The Python's `invoke` re-raises and records `str(e)`;
+    /// this is the same thing across a `postMessage` boundary.
     pub async fn run(&self, goal: String) -> Result<String, JsValue> {
         core::handle(
             &mut self.app.borrow_mut(),
             kernel::Request::post_form("/chat", &[("message", &goal)]),
         );
         core::drive(Rc::clone(&self.app)).await.map_err(js_err)?;
-        core::answer(&self.app.borrow()).ok_or_else(|| {
-            JsValue::from_str(&format!("{} produced no answer", self.name))
-        })
+        let app = self.app.borrow();
+        if let Some(answer) = core::answer(&app) {
+            return Ok(answer);
+        }
+        // The cause, in the sentence the page would have shown for its own
+        // turn — unprefixed, because the transcript and the board already say
+        // which agent this is and a doubled name reads as a stutter.
+        Err(JsValue::from_str(&match core::last_failure(&app) {
+            Some(why) => why,
+            None => format!("{} produced no answer", self.name),
+        }))
     }
 }
 

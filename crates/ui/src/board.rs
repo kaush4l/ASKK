@@ -2,31 +2,60 @@
 //! shape"; Python counterpart `core/state.py`). It owns no state: the content
 //! is the core's projection of the `AgentStatus` facts in the log (I8).
 //!
-//! ponytail: no clock of its own. `ChatPane` already re-projects every 400 ms
-//! for as long as a turn is running, and a delegation only happens inside one
-//! — so reading its tick is what makes an agent visibly go Working → Idle
-//! DURING the turn rather than after a reload. A board with a second timer
-//! would poll an idle page for nothing.
+//! ponytail: it reads `ChatPane`'s tick rather than keeping a clock for turns
+//! — a delegation only happens inside a turn, and that pane already re-projects
+//! every 400 ms while one is running. It DOES watch its own boot, because a
+//! Worker comes up on nobody's schedule and an idle page would otherwise sit on
+//! "starting — its Worker is coming up" until you happened to type something.
 
 use std::rc::Rc;
 
-use adapters_web::WebApp;
+use adapters_web::{sleep, WebApp};
 use dioxus::prelude::*;
-use kernel::Request;
+use kernel::{Request, Response};
+
+/// How long to keep asking while Workers come up: 400 ms × 30 = 12 s, well
+/// past a local Worker boot. A Worker that has not reported by then has its
+/// own row saying so — this loop is not what reports a failure.
+const TICK_MS: i32 = 400;
+const TICKS: u32 = 30;
+
+/// Apply one projection. `x-busy` and `x-settling` are headers for the same
+/// reason `x-turn` is: the pane must not parse its own fragment to learn what
+/// it is showing.
+fn show(res: Response, mut rows: Signal<String>, mut busy: Signal<bool>) -> bool {
+    let has = |name: &str| res.headers.iter().any(|(k, _)| k == name);
+    busy.set(has("x-busy"));
+    let settling = has("x-settling");
+    rows.set(res.body);
+    settling
+}
 
 #[component]
 pub fn AgentBoard(web: Signal<Option<Rc<WebApp>>>, tick: Signal<u32>) -> Element {
-    let mut rows = use_signal(String::new);
-    let mut busy = use_signal(|| false);
+    let rows = use_signal(String::new);
+    let busy = use_signal(|| false);
 
     use_effect(move || {
         let _ = tick();
         if let Some(app) = web.read().clone() {
-            let res = app.handle(Request::get("/board"));
-            // `x-busy` is a header for the same reason `x-turn` is: the pane
-            // must not parse its own fragment to learn what it is showing.
-            busy.set(res.headers.iter().any(|(k, _)| k == "x-busy"));
-            rows.set(res.body);
+            let settling = show(app.handle(Request::get("/board")), rows, busy);
+            if !settling {
+                return;
+            }
+            // Workers are still booting: keep asking until they have all
+            // reported, then stop. This is the only clock this pane owns.
+            spawn(async move {
+                for _ in 0..TICKS {
+                    if sleep(TICK_MS).await.is_err() {
+                        return;
+                    }
+                    let Some(app) = web.peek().clone() else { return };
+                    if !show(app.handle(Request::get("/board")), rows, busy) {
+                        return;
+                    }
+                }
+            });
         }
     });
 

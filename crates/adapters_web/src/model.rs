@@ -114,7 +114,10 @@ impl FetchModel {
     /// the wire. `entry` is the catalogue entry this URL belongs to, so a key
     /// saved for one entry can never ride a call to another's origin.
     fn request(&self, url: &str, body: &str, entry: &str) -> Result<web_sys::Request, ModelError> {
-        let transport = |m: String| ModelError::Transport { message: m };
+        let transport = |m: String| ModelError::Transport {
+            message: m,
+            url: url.to_string(),
+        };
         let init = web_sys::RequestInit::new();
         init.set_method("POST");
         init.set_signal(Some(&web_sys::AbortSignal::timeout_with_f64(TIMEOUT_MS)));
@@ -165,6 +168,7 @@ impl ModelPort for FetchModel {
                 .await
                 .map_err(|e| ModelError::Transport {
                     message: format!("{url} unreachable: {}", js_message(&e)),
+                    url: url.clone(),
                 })?;
             read_reply(resp.unchecked_into()).await
         })

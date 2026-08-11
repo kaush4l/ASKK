@@ -13,20 +13,16 @@ use kernel::{Request, Response};
 use crate::composer::Composer;
 
 /// Poll interval and patience for one turn: 400 ms × 90 = 36 s, a little past
-/// the 30 s the model broker aborts a request at, so the broker's own typed
-/// error is what the user normally sees.
+/// the 30 s the broker aborts at, so its own typed error is what a user sees.
 const TICK_MS: i32 = 400;
 const TICKS: u32 = 90;
 
 /// The signals one turn moves. Grouped so `watch` takes a turn, not six
 /// arguments; `Signal` is `Copy`, so this is free.
+
 #[derive(Clone, Copy)]
 struct Turn {
     log: Signal<String>,
-    /// Which agent this pane is talking to, from the seam's `x-agent` header.
-    /// The INTERFACE owns this fact — before, the only cue was the agent's
-    /// own editable description line (`ux-walker`, increment 03).
-    agent: Signal<String>,
     pending: Signal<bool>,
     note: Signal<String>,
     elapsed: Signal<u32>,
@@ -38,25 +34,25 @@ struct Turn {
 /// Apply one seam response: the transcript is the body, and whether a turn is
 /// still running is the `x-turn` header — the UI never parses HTML to find out.
 fn show(res: Response, mut turn: Turn) {
-    let header = |name: &str| {
-        res.headers
-            .iter()
-            .find(|(k, _)| k == name)
-            .map(|(_, v)| v.clone())
-    };
     turn.pending
-        .set(header("x-turn").as_deref() == Some("pending"));
-    turn.agent.set(header("x-agent").unwrap_or_default());
+        .set(res.headers.iter().any(|(k, v)| k == "x-turn" && v == "pending"));
     turn.log.set(res.body);
     let n = turn.tick.peek().to_owned();
     turn.tick.set(n + 1);
+}
+
+/// One seam request addressed to THIS pane's agent (increment 07): `/chat` is
+/// one route projecting one conversation per agent, and an unaddressed
+/// request means "whoever the page itself is".
+fn to(agent: &str, req: Request) -> Request {
+    req.with_header("x-agent", agent)
 }
 
 /// Watch one turn to its end: re-project after every tick until the core stops
 /// reporting it pending, the user stops waiting, or patience runs out. Every
 /// tick also publishes how long it has been — a wait with no clock on it is
 /// indistinguishable from a hang.
-async fn watch(web: Signal<Option<Rc<WebApp>>>, mut turn: Turn) {
+async fn watch(web: Signal<Option<Rc<WebApp>>>, mut turn: Turn, who: String) {
     turn.stopped.set(false);
     turn.elapsed.set(0);
     for tick in 1..=TICKS {
@@ -74,7 +70,7 @@ async fn watch(web: Signal<Option<Rc<WebApp>>>, mut turn: Turn) {
         }
         turn.elapsed.set(tick * TICK_MS as u32 / 1000);
         let Some(app) = web.peek().clone() else { return };
-        show(app.handle(Request::get("/chat")), turn);
+        show(app.handle(to(&who, Request::get("/chat"))), turn);
         if !turn.pending.peek().to_owned() {
             return;
         }
@@ -87,8 +83,7 @@ async fn watch(web: Signal<Option<Rc<WebApp>>>, mut turn: Turn) {
     );
 }
 
-/// While a turn is in flight: how long it has been, and the way out. A wait
-/// with no clock and no exit is indistinguishable from a hang.
+/// While a turn is in flight: how long it has been, and the way out.
 fn waiting_row(turn: Turn) -> Element {
     let mut stopped = turn.stopped;
     rsx! {
@@ -129,10 +124,13 @@ pub fn ChatPane(
     web: Signal<Option<Rc<WebApp>>>,
     endpoint_set: Signal<bool>,
     tick: Signal<u32>,
+    /// WHICH agent this pane is the conversation with. A `ReadSignal` so
+    /// switching agents re-projects: the same component, one instance per
+    /// agent, never a mode flag (plan: `ChatPane` owns one conversation).
+    agent: ReadSignal<String>,
 ) -> Element {
     let turn = Turn {
         log: use_signal(String::new),
-        agent: use_signal(String::new),
         pending: use_signal(|| false),
         note: use_signal(String::new),
         elapsed: use_signal(|| 0),
@@ -140,33 +138,39 @@ pub fn ChatPane(
         tick,
     };
     let mut note = turn.note;
-    let agent = turn.agent;
     // Reading `tick` subscribes this pane to every settings change, so the
     // endpoint line below is recomputed the moment the endpoint moves.
     let endpoint = {
         let _ = tick();
         endpoint_line(web)
     };
-    let title = match agent.read().is_empty() {
+    // From the PROP, not from the last response: the heading must name the
+    // agent you just switched to before its transcript has arrived, or the
+    // page briefly says you are talking to the previous one.
+    let title = match agent().is_empty() {
         true => "Chat — no agent loaded".to_string(),
-        false => format!("Chat with {}", agent.read()),
+        false => format!("Chat with {}", agent()),
     };
 
     // The pane's first paint is the projection, not an empty box.
     use_effect(move || {
+        let who = agent();
         if let Some(app) = web.read().clone() {
-            show(app.handle(Request::get("/chat")), turn);
+            note.set(String::new());
+            show(app.handle(to(&who, Request::get("/chat"))), turn);
             if turn.pending.peek().to_owned() {
-                spawn(watch(web, turn));
+                spawn(watch(web, turn, who));
             }
         }
     });
 
     let send = move |text: String| {
         let Some(app) = web.peek().clone() else { return };
+        let who = agent.peek().clone();
         note.set(String::new());
-        show(app.handle(Request::post_form("/chat", &[("message", &text)])), turn);
-        spawn(watch(web, turn));
+        let req = to(&who, Request::post_form("/chat", &[("message", &text)]));
+        show(app.handle(req), turn);
+        spawn(watch(web, turn, who));
     };
 
     rsx! {
@@ -176,7 +180,7 @@ pub fn ChatPane(
                 p { class: "pending",
                     "No model endpoint yet. Add one in Settings below — a local \
                      OpenAI-compatible server, or a provider's base URL and API key — \
-                     and this agent can answer."
+                     and {agent} can answer."
                 }
             }
             if !endpoint.is_empty() { p { class: "note", "{endpoint}" } }

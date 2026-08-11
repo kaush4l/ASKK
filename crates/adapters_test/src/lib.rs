@@ -127,6 +127,9 @@ impl ModelPort for ScriptedModel {
         let result = if replies.is_empty() {
             Err(ModelError::Transport {
                 message: "scripted model exhausted".into(),
+                // A loopback address, because that is what the local server a
+                // test stands in for actually is.
+                url: "http://127.0.0.1:8873/v1/chat/completions".into(),
             })
         } else {
             Ok(ModelReply {

@@ -25,8 +25,16 @@ pub enum ModelError {
     EndpointUnknown { endpoint: String },
     /// The provider answered with a non-success status.
     Provider { status: u16, message: String },
-    /// The network layer never got an answer.
-    Transport { message: String },
+    /// The network layer never got an answer. `url` is the address that was
+    /// actually called, because the FIX depends on it: a loopback address is
+    /// blocked by Chrome's Local Network Access prompt, a public one is not,
+    /// and telling a person to look at the wrong one wastes their afternoon.
+    /// Empty when the failure happened before an address was chosen.
+    Transport {
+        message: String,
+        #[serde(default)]
+        url: String,
+    },
     /// The endpoint is configured and reachable, but asks for a wire protocol
     /// this build does not speak (a catalogue entry's `kind`/`api`). Distinct
     /// from `EndpointUnknown` on purpose: "unconfigured" and "configured for

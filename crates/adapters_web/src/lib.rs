@@ -21,6 +21,7 @@ mod overrides;
 mod wire;
 mod ports;
 mod settings;
+mod spawn;
 mod worker;
 mod workers;
 
@@ -47,6 +48,13 @@ pub struct WebApp {
     /// `ModelPort` trait object, so nothing in the core can read a key (I6).
     model: Rc<FetchModel>,
     store: Rc<IdbStore>,
+    /// The Workers, held as the concrete type as well as behind `AgentPort`:
+    /// the core delegates through the port, but only the composition root may
+    /// start, stop or report on a Worker's LIFE (increment 07).
+    workers: Rc<AgentWorkers>,
+    /// What every sub-agent Worker was booted with, so restarting them after
+    /// an endpoint change hands them the new one (a Worker cannot learn it).
+    world: RefCell<(String, String)>,
 }
 
 fn js_err(e: impl std::fmt::Debug) -> JsValue {
@@ -106,6 +114,8 @@ impl WebApp {
             app: Rc::new(RefCell::new(app)),
             model,
             store,
+            workers: agents,
+            world: RefCell::new((files_json, models_json)),
         })
     }
 
@@ -128,10 +138,39 @@ impl WebApp {
 }
 
 impl WebApp {
+    /// Every agent loaded in this browser — the UI needs the list to give each
+    /// one its own conversation (increment 07).
+    pub fn agent_names(&self) -> Vec<String> {
+        core::agent_names(&self.app.borrow())
+    }
+
+    /// Stop every sub-agent Worker and start it again on the CURRENT endpoint.
+    /// A Worker is handed its profile once, at boot; without this, changing
+    /// the endpoint in Settings left every sub-agent calling the old one while
+    /// the page called the new — the same question answered two ways depending
+    /// on which pane you asked.
+    pub fn restart_agents(&self) {
+        self.workers.close_all();
+        let (files, models) = self.world.borrow().clone();
+        self.workers.spawn(
+            &self.agent_names(),
+            core::ENTRY_AGENT,
+            &files,
+            &models,
+            &self.model.profile_json(),
+        );
+    }
+
     /// The seam for a Rust caller — the `ui` crate's Dioxus event handlers
     /// (I4: same `core::handle`, no JSON hop, no second wire format). `&self`
     /// because the mutation is behind the `RefCell` the async half shares.
     pub fn handle(&self, req: kernel::Request) -> kernel::Response {
+        // Worker lifecycle facts arrive on a JS callback, where the app is
+        // already borrowed by whatever handler is running; they are queued
+        // there and land in the log HERE, through the one status door (I8).
+        for (agent, status, detail) in self.workers.take_reports() {
+            core::report_agent(&mut self.app.borrow_mut(), &agent, status, &detail);
+        }
         let response = core::handle(&mut self.app.borrow_mut(), req);
         let app = Rc::clone(&self.app);
         wasm_bindgen_futures::spawn_local(async move {

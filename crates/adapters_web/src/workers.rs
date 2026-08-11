@@ -1,63 +1,53 @@
-//! The page's side of one-Worker-per-agent: spawn one Worker per loaded
-//! sub-agent at boot, and hand it a goal by `postMessage` when the lead calls
-//! it (ADR-008 — the transport is messages, and there is no shared memory to
-//! be tempted by). This is the `AgentPort` the core sees; the core names an
+//! The page's side of one-Worker-per-agent: spawn one Worker per loaded agent
+//! at boot, hand it a goal by `postMessage` when the lead — or a person —
+//! calls it (ADR-008: the transport is messages, and there is no shared memory
+//! to be tempted by). This is the `AgentPort` the core sees; the core names an
 //! agent and waits, and cannot reach into its loop even by accident.
 //!
 //! One agent takes ONE turn at a time — the Python's per-agent loop is serial
-//! too — so a Worker has at most one call outstanding and the reply needs no
-//! correlation id. Two DIFFERENT agents called on one line run at the same
-//! time, which is the whole point.
+//! too — so a Worker has at most one call outstanding. Two DIFFERENT agents
+//! called on one line run at the same time, which is the whole point.
+//!
+//! Every lifecycle move is reported: `Starting` while it comes up, `Idle` when
+//! it says it is ready, `Failed` WITH THE REASON if it cannot start, `Closed`
+//! when it is stopped (Python `_start` and `aclose`). A Worker that failed used
+//! to be a bare `console.warn` and no status write at all, so an agent with no
+//! Worker rendered as "idle — nobody has called it".
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use js_sys::{Object, Promise, Reflect};
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{MessageEvent, Worker, WorkerOptions, WorkerType};
 
-use kernel::{AgentPort, BoxFuture, DelegateError};
+use kernel::{AgentPort, BoxFuture, DelegateError, Status};
 
-/// Where the Worker gets this build's Wasm from. Trunk fingerprints both files
-/// and writes them into `index.html` as preload links, so the page can read
-/// its own bundle's URLs instead of anyone hardcoding a hash. The snippet
-/// links Dioxus adds are skipped by name.
-fn bundle_urls() -> Option<(String, String)> {
-    let document = web_sys::window()?.document()?;
-    let links = document.query_selector_all("link[rel=modulepreload]").ok()?;
-    let mut glue = None;
-    for i in 0..links.length() {
-        let href = links
-            .item(i)?
-            .dyn_into::<web_sys::Element>()
-            .ok()?
-            .get_attribute("href")?;
-        if !href.contains("/snippets/") {
-            glue = Some(href);
-            break;
-        }
-    }
-    let wasm = document
-        .query_selector("link[type='application/wasm']")
-        .ok()??
-        .get_attribute("href")?;
-    Some((glue?, wasm))
-}
+use crate::spawn::{ask, bundle_urls, listen, start, Boot, Live};
 
-/// One Worker per agent, spawned once. A Worker that will not start is a
-/// missing agent, not a broken page (I15): the lead is told the agent is not
-/// loaded, in words, and everything else keeps working.
+/// A lifecycle fact the page has not told the core about yet.
+type Report = (String, Status, String);
+
 pub struct AgentWorkers {
-    workers: RefCell<HashMap<String, Worker>>,
+    live: RefCell<HashMap<String, Live>>,
+    /// Status moves waiting to be drained into the log. A queue, not a call
+    /// into the core: these arrive from a JS callback, where the app is
+    /// already borrowed by whatever handler is running.
+    reports: Rc<RefCell<Vec<Report>>>,
 }
 
 impl AgentWorkers {
     pub fn none() -> AgentWorkers {
         AgentWorkers {
-            workers: RefCell::new(HashMap::new()),
+            live: RefCell::new(HashMap::new()),
+            reports: Rc::new(RefCell::new(Vec::new())),
         }
+    }
+
+    /// Every lifecycle fact since the last call — drained by the composition
+    /// root into `core::report_agent`, which is the one door a status moves
+    /// through (I8).
+    pub fn take_reports(&self) -> Vec<Report> {
+        std::mem::take(&mut self.reports.borrow_mut())
     }
 
     /// Start a Worker for every agent except the one the page itself is.
@@ -71,79 +61,50 @@ impl AgentWorkers {
         models_json: &str,
         profile_json: &str,
     ) {
+        let boot = Boot {
+            agents: agents_json,
+            models: models_json,
+            profile: profile_json,
+        };
+        let peers = || names.iter().filter(|n| n.as_str() != lead);
         let Some((glue, wasm)) = bundle_urls() else {
-            web_sys::console::warn_1(&"no wasm bundle links found; no sub-agents".into());
+            // Not a warning in a console nobody has open: without the bundle
+            // links there are no sub-agents at all, and every row must say so.
+            let why = "this page's wasm bundle links were not found, so no Worker \
+                       could be started";
+            for name in peers() {
+                self.report(name, Status::Failed, why);
+            }
             return;
         };
-        for name in names.iter().filter(|n| n.as_str() != lead) {
-            match start(name, &glue, &wasm, agents_json, models_json, profile_json) {
+        for name in peers() {
+            match start(name, &glue, &wasm, &boot) {
                 Ok(worker) => {
-                    self.workers.borrow_mut().insert(name.clone(), worker);
+                    self.report(name, Status::Starting, "");
+                    let live = listen(name, worker, Rc::clone(&self.reports));
+                    self.live.borrow_mut().insert(name.clone(), live);
                 }
-                Err(e) => web_sys::console::warn_1(
-                    &format!("agent '{name}' has no Worker: {e:?}").into(),
-                ),
+                Err(e) => self.report(name, Status::Failed, &crate::wire::js_message(&e)),
             }
         }
     }
-}
 
-/// Spawn one Worker and send it its boot message. The message is a plain
-/// object because `postMessage` structured-clones it — no Wasm memory, no
-/// handles, nothing shared (ADR-008).
-fn start(
-    name: &str,
-    glue: &str,
-    wasm: &str,
-    agents_json: &str,
-    models_json: &str,
-    profile_json: &str,
-) -> Result<Worker, JsValue> {
-    let options = WorkerOptions::new();
-    options.set_type(WorkerType::Module);
-    options.set_name(&format!("agent-{name}"));
-    let worker = Worker::new_with_options("agent-worker.js", &options)?;
-    let message = Object::new();
-    let set = |k: &str, v: &str| Reflect::set(&message, &k.into(), &v.into());
-    set("kind", "boot")?;
-    set("name", name)?;
-    set("glue", glue)?;
-    set("wasm", wasm)?;
-    set("agents", agents_json)?;
-    set("models", models_json)?;
-    set("profile", profile_json)?;
-    worker.post_message(&message)?;
-    Ok(worker)
-}
-
-/// Send one goal and resolve when that Worker answers. The reply handler is
-/// installed per call, which is safe precisely because one agent has one turn
-/// in flight at a time.
-fn ask(worker: &Worker, goal: &str) -> Promise {
-    let goal = goal.to_string();
-    let worker = worker.clone();
-    Promise::new(&mut |resolve, reject| {
-        let refuse = reject.clone();
-        let on_message = Closure::once(move |e: MessageEvent| {
-            let data = e.data();
-            let read = |k: &str| Reflect::get(&data, &k.into()).unwrap_or(JsValue::UNDEFINED);
-            let text = read("text").as_string().unwrap_or_default();
-            match read("ok").as_bool().unwrap_or(false) {
-                true => resolve.call1(&JsValue::UNDEFINED, &text.into()),
-                false => reject.call1(&JsValue::UNDEFINED, &text.into()),
-            }
-            .ok();
-        });
-        worker.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
-        on_message.forget();
-        let message = Object::new();
-        let sent = Reflect::set(&message, &"kind".into(), &"run".into())
-            .and_then(|_| Reflect::set(&message, &"goal".into(), &goal.as_str().into()))
-            .and_then(|_| worker.post_message(&message));
-        if let Err(e) = sent {
-            refuse.call1(&JsValue::UNDEFINED, &e).ok();
+    /// Stop every Worker (Python `aclose`: close, stop the thread, mark the row
+    /// CLOSED). Called before the page restarts them with a changed endpoint —
+    /// a Worker was handed its profile at boot and cannot learn a new one.
+    pub fn close_all(&self) {
+        for (name, live) in self.live.borrow_mut().drain() {
+            live.worker.terminate();
+            self.report(&name, Status::Closed, "");
         }
-    })
+    }
+
+    fn report(&self, agent: &str, status: Status, detail: &str) {
+        self.reports
+            .borrow_mut()
+            .push((agent.to_string(), status, detail.to_string()));
+    }
+
 }
 
 impl AgentPort for AgentWorkers {
@@ -152,16 +113,18 @@ impl AgentPort for AgentWorkers {
         agent: &'a str,
         goal: &'a str,
     ) -> BoxFuture<'a, Result<String, DelegateError>> {
-        let worker = self.workers.borrow().get(agent).cloned();
+        let call = self.live.borrow().get(agent).map(|live| ask(live, goal));
         Box::pin(async move {
-            let Some(worker) = worker else {
+            let Some(call) = call else {
                 return Err(DelegateError::Unknown {
                     agent: agent.to_string(),
                 });
             };
-            JsFuture::from(ask(&worker, goal))
+            JsFuture::from(call)
                 .await
                 .map(|v| v.as_string().unwrap_or_default())
+                // Its OWN words, whatever they were: a sub-agent whose turn
+                // raised must name its cause the way the lead's does.
                 .map_err(|e| DelegateError::Failed {
                     agent: agent.to_string(),
                     message: crate::wire::js_message(&e),

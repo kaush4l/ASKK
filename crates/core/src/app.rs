@@ -64,9 +64,20 @@ pub struct App {
     /// appended — so the board a person watches and the log agree by
     /// construction (I8).
     pub(crate) board: Board,
+    /// WHICH agent this process is (increment 07). The page is `main`; a
+    /// sub-agent's Worker runs the same code as itself. Everything conversation
+    /// -shaped that carries no explicit agent belongs to this one, which is how
+    /// a log written before per-agent chat still reads correctly.
+    pub(crate) me: String,
 }
 
 impl App {
+    /// Whose process this is — the agent a `UserMessage` with no name on it
+    /// belongs to, and the only agent whose turns run in THIS event loop.
+    pub(crate) fn me(&self) -> &str {
+        &self.me
+    }
+
     /// Move an agent's status, if it is not already there. The guard is what
     /// keeps a no-op seam round-trip from writing a fact; a status that did
     /// not change is not news. Returns whether anything was recorded.

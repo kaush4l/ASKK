@@ -18,6 +18,13 @@ pub(crate) fn asked_model(body_json: &str) -> String {
 /// A JS exception in one readable sentence: `{:?}` on a `JsValue` prints the
 /// whole wasm stack trace, which is noise in a message a person must read.
 pub(crate) fn js_message(value: &JsValue) -> String {
+    // A rejected promise carries whatever was thrown. A Worker rejects with a
+    // plain STRING — the sub-agent's own sentence — and `{:?}` wrapped it in
+    // `JsValue("…")`, which put debug syntax in front of the one sentence the
+    // reader needs (`ux-walker`, increment 07).
+    if let Some(text) = value.as_string() {
+        return text;
+    }
     value
         .dyn_ref::<js_sys::Error>()
         .map(|e| String::from(e.message()))
@@ -29,7 +36,10 @@ pub(crate) fn js_message(value: &JsValue) -> String {
 /// so reaching for the window here would mean a sub-agent could never call a
 /// model at all. Reflected off `globalThis`, which both contexts have.
 pub(crate) fn global_fetch(request: &web_sys::Request) -> Result<js_sys::Promise, ModelError> {
-    let transport = |m: String| ModelError::Transport { message: m };
+    // The ADDRESS rides the typed error: what a person must fix about an
+    // unreachable endpoint depends on whether it is on their own machine.
+    let url = request.url();
+    let transport = |m: String| ModelError::Transport { message: m, url: url.clone() };
     let global = js_sys::global();
     let f: js_sys::Function = js_sys::Reflect::get(&global, &"fetch".into())
         .map_err(|e| transport(format!("no fetch here: {}", js_message(&e))))?
@@ -43,7 +53,8 @@ pub(crate) fn global_fetch(request: &web_sys::Request) -> Result<js_sys::Promise
 
 /// Non-2xx is the provider's own words — never smoothed into a reply.
 pub(crate) async fn read_reply(resp: web_sys::Response) -> Result<ModelReply, ModelError> {
-    let transport = |m: String| ModelError::Transport { message: m };
+    let url = resp.url();
+    let transport = |m: String| ModelError::Transport { message: m, url: url.clone() };
     let status = resp.status();
     let text = JsFuture::from(resp.text().map_err(|e| transport(format!("text(): {e:?}")))?)
         .await

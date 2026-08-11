@@ -81,6 +81,10 @@ pub struct Ctx {
     /// What every agent is doing (increment 06) — a projection like `recent`,
     /// cloned so a handler cannot move a status by writing to it.
     pub board: Vec<agent::AgentRow>,
+    /// WHICH agent this process is (increment 07). A conversation-shaped fact
+    /// with no name on it belongs to this one; `/chat` projects one agent's
+    /// history and defaults to it.
+    pub me: String,
 }
 
 /// A tier-0 built-in's logic. A plain fn pointer, not a trait object: no
@@ -142,6 +146,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         agents: app.agents.clone(),
         agent_problems: app.agent_problems.clone(),
         board: app.board.snapshot().to_vec(),
+        me: app.me().to_string(),
     };
 
     let response = match logic {

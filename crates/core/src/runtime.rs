@@ -71,7 +71,11 @@ pub fn execute_effect(
                     id: EventId(0), // assigned at append
                     seq: 0,
                     at: clock.now(),
-                    kind: EventKind::ModelReplied { text },
+                    kind: EventKind::ModelReplied {
+                        text,
+                        // This process's own agent: the reply to the call IT made.
+                        agent: String::new(),
+                    },
                 })
             }
             Effect::Emit { kind } => Ok(Event {
@@ -113,12 +117,24 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             }) else {
                 break;
             };
-            // The entry agent enters Working the moment a person speaks to
-            // it, and `turns` counts exactly these entries (Python
-            // `State.set`: `turns + (status is WORKING)`).
-            if matches!(event.kind, EventKind::UserMessage { .. }) {
-                app.borrow_mut()
-                    .set_status(crate::app::ENTRY_AGENT, kernel::Status::Working, "");
+            // A message ADDRESSED TO ANOTHER AGENT never enters this engine
+            // (increment 07): its turn runs on that agent's own Worker and is
+            // recorded in that agent's own history, so two conversations on
+            // one page cannot cross. This is also why it is not pumped — a
+            // pumped foreign message would put someone else's words into this
+            // agent's paper.
+            if let EventKind::UserMessage { text, agent, .. } = &event.kind {
+                let (goal, to) = (text.clone(), agent.clone());
+                let mine = { to.is_empty() || to == app.borrow().me() };
+                if !mine {
+                    let _ = crate::batch::run_on(&app, &to, &goal, true).await;
+                    continue;
+                }
+                // This agent enters Working the moment a person speaks to it,
+                // and `turns` counts exactly these entries (Python
+                // `State.set`: `turns + (status is WORKING)`).
+                let me = app.borrow().me().to_string();
+                app.borrow_mut().set_status(&me, kernel::Status::Working, "");
             }
             let effects = pump(&mut app.borrow_mut(), event);
             crate::batch::run_effects(&app, effects).await;
@@ -131,16 +147,17 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
         // the agent as waiting in the middle of its own turn.
         // …and only OUT OF Working: a turn that raised is already `Failed`
         // with its message, and "waiting for you" would erase it.
+        let me = app.borrow().me().to_string();
         let finished = {
             let a = app.borrow();
             a.agent.task.is_none()
                 && a.board
-                    .get(crate::app::ENTRY_AGENT)
+                    .get(&me)
                     .is_some_and(|r| r.status == kernel::Status::Working)
         };
         if finished {
             app.borrow_mut()
-                .set_status(crate::app::ENTRY_AGENT, kernel::Status::Waiting, "");
+                .set_status(&me, kernel::Status::Waiting, "");
         }
         // Persistence: the log is truth in memory the moment it is appended;
         // the store catches up here. A failed write is itself a fact.

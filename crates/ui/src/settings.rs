@@ -61,8 +61,17 @@ pub(crate) fn pick_entry(web: Signal<Option<Rc<WebApp>>>, mut f: Fields, name: S
     f.model.set(model);
     f.key_env.set(key_env);
     f.has_key.set(app.entry_has_key(&name));
+    // Selecting is not saving. The card relabels itself around the new pick
+    // the moment you choose it, while the chat pane above correctly still
+    // names the SAVED endpoint — and nothing said which of the two the next
+    // turn would use (`ux-walker`, increment 06).
+    let saved = app.current_entry();
     f.status.set(match app.entry_problem(&name) {
         Some(detail) => format!("This build cannot call {name}: {detail}"),
+        None if name != saved => format!(
+            "Showing {name} — NOT saved. The next turn still calls {saved} until you \
+             press Save endpoint."
+        ),
         None => String::new(),
     });
     f.entry.set(name);
@@ -106,6 +115,10 @@ pub(crate) fn save_endpoint(
                 f.base.set(url.clone());
                 f.model.set(model.clone());
                 f.status.set(saved_line(&app, &entry, &url, &model, has_key));
+                // A sub-agent's Worker was handed the endpoint at boot and
+                // cannot learn a new one; without this, `researcher` kept
+                // calling the old endpoint while the page called the new.
+                app.restart_agents();
                 let n = f.tick.peek().to_owned();
                 f.tick.set(n + 1);
             }
@@ -162,7 +175,11 @@ pub fn Settings(
             // beneath it (`ux-walker`, increment 05).
             if !status.read().is_empty() {
                 p {
-                    class: if status.read().contains("cannot call") { "error" } else { "pending" },
+                    class: if status.read().contains("cannot call") || status.read().contains("NOT saved") {
+                        "error"
+                    } else {
+                        "pending"
+                    },
                     role: "status",
                     "{status}"
                 }

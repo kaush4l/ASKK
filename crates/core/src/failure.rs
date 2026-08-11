@@ -43,6 +43,41 @@ pub(crate) fn sentence(error: &crate::error::CoreError) -> String {
     failure_line(&payload)
 }
 
+/// The same sentence from the LOGGED payload — what a sub-agent's Worker hands
+/// back to the agent that called it (`core::last_failure`).
+pub(crate) fn sentence_of(payload_json: &str) -> String {
+    failure_line(payload_json)
+}
+
+/// A sub-agent's turn that raised, as a fact scoped to THAT agent's
+/// conversation: `{"agent": …, "message": …}`. One shape, two readers below,
+/// so the transcript and the board cannot disagree about whose failure it was.
+pub(crate) fn agent_error(agent: &str, message: &str) -> String {
+    serde_json::json!({ "agent": agent, "message": message }).to_string()
+}
+
+/// Whose failure it was — the empty string if the payload will not read, which
+/// scopes it to nobody rather than to the wrong conversation.
+pub(crate) fn agent_of(payload_json: &str) -> String {
+    field(payload_json, "agent")
+}
+
+/// The sub-agent's OWN words about why its turn failed. Before increment 07
+/// this was always "<name> produced no answer" — four words naming no cause,
+/// where the lead's own failure said which endpoint was unreachable and why.
+pub(crate) fn message_of(payload_json: &str) -> String {
+    field(payload_json, "message")
+}
+
+/// One string field of an `agent_error` payload. Through serde, not a substring
+/// scan: a model endpoint's own words routinely contain quotes and braces.
+fn field(payload_json: &str, name: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(payload_json)
+        .ok()
+        .and_then(|v| Some(v.get(name)?.as_str()?.to_string()))
+        .unwrap_or_default()
+}
+
 /// Which failure this was, in two or three words — the disclosure's name.
 fn failure_kind(payload_json: &str) -> &'static str {
     use kernel::ModelError::{EndpointUnknown, Provider, Transport, Unsupported};
@@ -59,15 +94,30 @@ fn failure_kind(payload_json: &str) -> &'static str {
 /// payload. Each names its own fix; the fallback admits it has none.
 fn failure_line(payload_json: &str) -> String {
     use kernel::ModelError::{EndpointUnknown, Provider, Transport, Unsupported};
+    // The Local Network Access prompt is about LOOPBACK, and this sentence
+    // named it while calling `https://198.51.100.7/v1` — sending the reader
+    // after a cause that could not apply (`ux-walker`, increment 06). The
+    // variant still chooses the sentence; the ADDRESS chooses which of its two
+    // real causes to name, and the address is typed on the error.
+    if let Ok(crate::error::CoreError::Model(Transport { url, .. })) =
+        serde_json::from_str::<crate::error::CoreError>(payload_json)
+    {
+        return match is_loopback(&url) {
+            true => "The model endpoint could not be reached. Check the endpoint in \
+                     Settings: it is an address on THIS machine, so the server must be \
+                     running, it must send CORS headers, and Chrome 142+ asks permission \
+                     before a page may call a local address."
+                .to_string(),
+            false => "The model endpoint could not be reached. Check the base URL in \
+                      Settings: the host must resolve and answer from this browser, and it \
+                      must send CORS headers allowing this page's origin."
+                .to_string(),
+        };
+    }
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
         Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => {
             "No model endpoint is set yet. Add one in Settings below — a local \
              OpenAI-compatible server, or a provider's base URL and API key."
-        }
-        Ok(crate::error::CoreError::Model(Transport { .. })) => {
-            "The model endpoint could not be reached. Check the endpoint in Settings: \
-             it must send CORS headers, and Chrome 142+ asks permission before a page \
-             may call a local address."
         }
         Ok(crate::error::CoreError::Model(Unsupported { .. })) => {
             "That model catalogue entry speaks a wire protocol this build does not. \
@@ -81,4 +131,12 @@ fn failure_line(payload_json: &str) -> String {
         _ => "The turn failed before it produced an answer.",
     }
     .to_string()
+}
+
+/// Whether that URL is this machine. The one definition, so the transcript,
+/// the board and Settings cannot disagree about what "local" means.
+pub(crate) fn is_loopback(url: &str) -> bool {
+    ["127.0.0.1", "localhost", "[::1]", "0.0.0.0"]
+        .iter()
+        .any(|host| url.contains(host))
 }

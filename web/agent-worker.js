@@ -6,10 +6,15 @@
 // The page sends { kind: "boot", ... } once with the fingerprinted bundle URLs
 // (Trunk hashes them, so nothing here may hardcode a name), then
 // { kind: "run", goal } per turn. A run that arrives while the boot is still
-// in flight waits for it — that is what `ready` is, and it is why the boot
-// needs no acknowledgement.
+// in flight waits for it — that is what `ready` is.
+//
+// Every message back is TAGGED: "ready" is a lifecycle fact the page turns
+// into a row on the board, "answer" settles the turn in flight. Untagged, a
+// boot report arriving mid-turn would be read as that turn's answer.
 
 let ready = null;
+
+const reason = (e) => String(e && e.message ? e.message : e);
 
 async function boot(m) {
   const bundle = await import(m.glue);
@@ -21,15 +26,20 @@ self.onmessage = (event) => {
   const m = event.data;
   if (m.kind === "boot") {
     ready = boot(m);
-    ready.catch((e) => console.error("agent worker failed to boot:", e));
+    ready.then(
+      () => self.postMessage({ kind: "ready", ok: true, text: "" }),
+      // A Worker that cannot build its agent is FAILED with its reason, not a
+      // console line: this is the one row that must say the agent is unusable.
+      (e) => self.postMessage({ kind: "ready", ok: false, text: reason(e) }),
+    );
     return;
   }
   if (!ready) {
-    self.postMessage({ ok: false, text: "this agent was never booted" });
+    self.postMessage({ kind: "answer", ok: false, text: "this agent was never booted" });
     return;
   }
   ready
     .then((agent) => agent.run(m.goal))
-    .then((text) => self.postMessage({ ok: true, text }))
-    .catch((e) => self.postMessage({ ok: false, text: String(e && e.message ? e.message : e) }));
+    .then((text) => self.postMessage({ kind: "answer", ok: true, text }))
+    .catch((e) => self.postMessage({ kind: "answer", ok: false, text: reason(e) }));
 };

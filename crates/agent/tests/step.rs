@@ -15,7 +15,11 @@ fn ev(kind: EventKind) -> Event {
 }
 
 fn user(text: &str) -> Event {
-    ev(EventKind::UserMessage { text: text.into() })
+    ev(EventKind::UserMessage {
+        text: text.into(),
+        agent: String::new(),
+        from: String::new(),
+    })
 }
 
 /// The Work-turn effect sequence, asserted end to end.
@@ -58,6 +62,7 @@ fn work_turn_user_message_to_call_model_to_reply() {
         state,
         ev(EventKind::ModelReplied {
             text: "Hi. What should we do first?".into(),
+            agent: String::new(),
         }),
     );
     assert!(effects.is_empty(), "Answer contract ends the turn");

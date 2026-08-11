@@ -142,12 +142,15 @@ fn a_tool_reply_becomes_effects_and_the_model_waits_for_every_result() {
         fresh,
         ev(EventKind::UserMessage {
             text: "what is loaded?".into(),
+            agent: String::new(),
+            from: String::new(),
         }),
     );
     let (state, effects) = step(
         state,
         ev(EventKind::ModelReplied {
             text: "now(), list_agents()\nnope({})".into(),
+            agent: String::new(),
         }),
     );
     assert_eq!(effects.len(), 3, "two on the first line, one on the second");

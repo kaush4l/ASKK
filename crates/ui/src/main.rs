@@ -40,15 +40,42 @@ fn adopt(
     mut fragment: Signal<String>,
     mut agents: Signal<String>,
     mut failure: Signal<String>,
+    mut loaded: Signal<Vec<String>>,
 ) {
     match booted {
         Some(Ok(app)) => {
             fragment.set(app.handle(Request::get("/")).body);
             agents.set(app.handle(Request::get("/agents")).body);
+            loaded.set(app.agent_names());
             web.set(Some(Rc::clone(app)));
         }
         Some(Err(e)) => failure.set(e.clone()),
         None => {}
+    }
+}
+
+/// Who you are talking to, and how to talk to somebody else. Every agent owns
+/// a Worker and is separately addressable (increment 07), so every agent gets
+/// a conversation — one `ChatPane` per agent, switched here, never a pane with
+/// a mode flag. `aria-current` and the pressed state carry the answer to "who
+/// am I talking to?" with the stylesheet off as well as on.
+fn agent_switcher(loaded: Signal<Vec<String>>, mut selected: Signal<String>) -> Element {
+    rsx! {
+        nav { class: "agent-tabs", aria_label: "Which agent to talk to",
+            for name in loaded.read().iter().cloned() {
+                button {
+                    r#type: "button",
+                    key: "{name}",
+                    class: if name == *selected.read() { "tab current" } else { "tab" },
+                    aria_current: if name == *selected.read() { "true" } else { "false" },
+                    onclick: {
+                        let name = name.clone();
+                        move |_| selected.set(name.clone())
+                    },
+                    "{name}"
+                }
+            }
+        }
     }
 }
 
@@ -80,6 +107,11 @@ fn shell() -> Element {
     let fragment = use_signal(String::new);
     let agents = use_signal(String::new); // the public/agents/ listing (I8)
     let failure = use_signal(String::new);
+    // Every loaded agent, and which one the chat pane is currently the
+    // conversation with. `main` by default: it is the agent a person opens the
+    // page to talk to (Python `ThreadedAgent.entry`).
+    let loaded = use_signal(Vec::<String>::new);
+    let selected = use_signal(|| "main".to_string());
     // Whether an endpoint is configured: `Settings` knows (it reads the
     // broker), `ChatPane` needs it (a send with no endpoint is a request that
     // cannot work), so the shell owns the one signal between them.
@@ -88,7 +120,7 @@ fn shell() -> Element {
     // panes that must redraw from the core when it does.
     let tick = use_signal(|| 0u32);
 
-    use_effect(move || adopt(&booted.read(), web, fragment, agents, failure));
+    use_effect(move || adopt(&booted.read(), web, fragment, agents, failure, loaded));
 
     rsx! {
         header {
@@ -105,7 +137,8 @@ fn shell() -> Element {
                 // The fragment is built by the core's escaping primitives
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
-                chat::ChatPane { web, endpoint_set, tick }
+                {agent_switcher(loaded, selected)}
+                chat::ChatPane { web, endpoint_set, tick, agent: selected }
                 board::AgentBoard { web, tick }
                 tools::ToolTrace { web, tick }
                 {agent_panel(agents)}
