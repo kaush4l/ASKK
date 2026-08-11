@@ -11,13 +11,13 @@ use std::rc::Rc;
 
 use adapters_web::WebApp;
 use dioxus::prelude::*;
-use kernel::Request;
 
 mod agentfile;
 mod authoring;
 mod board;
 mod chat;
 mod composer;
+mod dash;
 mod tabs;
 mod terminal;
 mod tools;
@@ -36,46 +36,6 @@ fn main() {
         return;
     }
     dioxus::launch(shell);
-}
-
-/// The first trip through the seam once boot resolves: `GET /` is the
-/// dashboard route the registry already owns, and the booted app becomes
-/// available to every component that talks to the core.
-fn adopt(
-    booted: &Option<Result<Rc<WebApp>, String>>,
-    mut web: Signal<Option<Rc<WebApp>>>,
-    mut fragment: Signal<String>,
-    mut agents: Signal<String>,
-    mut failure: Signal<String>,
-    mut loaded: Signal<Vec<String>>,
-    mut authored: Signal<Vec<String>>,
-) {
-    match booted {
-        Some(Ok(app)) => {
-            fragment.set(app.handle(Request::get("/")).body);
-            agents.set(app.handle(Request::get("/agents")).body);
-            loaded.set(app.agent_names());
-            authored.set(app.authored_names());
-            web.set(Some(Rc::clone(app)));
-        }
-        Some(Err(e)) => failure.set(e.clone()),
-        None => {}
-    }
-}
-
-/// Re-read the listing whenever anything moves. An agent can now be written,
-/// edited or deleted while the page is open (increment 11), so a panel painted
-/// once at boot would show a roster the core no longer has.
-fn watch_agents(
-    web: Signal<Option<Rc<WebApp>>>,
-    mut agents: Signal<String>,
-    mut loaded: Signal<Vec<String>>,
-    mut authored: Signal<Vec<String>>,
-) {
-    let Some(app) = web.peek().clone() else { return };
-    agents.set(app.handle(Request::get("/agents")).body);
-    loaded.set(app.agent_names());
-    authored.set(app.authored_names());
 }
 
 /// Boot is async (IndexedDB), so the shell paints immediately and the page
@@ -105,11 +65,18 @@ fn shell() -> Element {
     // "something moved": bumped by a turn and by a settings save, read by the
     // panes that must redraw from the core when it does.
     let tick = use_signal(|| 0u32);
+    // The two dismissable regions (increment 13). One bit each, owned here
+    // because the switch that flips it lives in the header and the region it
+    // flips lives in `main` — nothing below this needs to know.
+    let nav_open = use_signal(dash::wide);
+    let rail_open = use_signal(dash::wide);
 
-    use_effect(move || adopt(&booted.read(), web, fragment, agents, failure, loaded, authored));
+    use_effect(move || {
+        dash::adopt(&booted.read(), web, fragment, agents, failure, loaded, authored)
+    });
     use_effect(move || {
         let _ = tick();
-        watch_agents(web, agents, loaded, authored);
+        dash::watch_agents(web, agents, loaded, authored);
     });
     // The roster's own fingerprint: the listing changes exactly when an agent's
     // identity does. A memo, so it propagates only on a REAL change — `tick`
@@ -118,10 +85,9 @@ fn shell() -> Element {
     // after an override had installed, and the deleted one after a delete —
     // two projections of one agent's identity disagreeing on screen (11b walk).
     let roster = use_memo(move || agents());
-    // WHICH region the primary column shows. The deck — Write an agent, Agents,
-    // Settings — used to be a row under the console, so the page was one screen
-    // sitting on a 1400px manual and reaching Settings meant scrolling off the
-    // instrument (12c walk, finding 1). It is a routed region now.
+    // WHICH surface the centre stage shows. The deck — Write an agent, Agents,
+    // Settings — is the last entry in the left panel's list; every other entry
+    // there is one agent's conversation.
     let deck = use_signal(|| false);
     // The one sentence that says what the next turn actually calls. It was
     // prose in the chat pane; it is the same sentence, unchanged, typeset into
@@ -140,7 +106,11 @@ fn shell() -> Element {
             if !endpoint.is_empty() {
                 p { class: "chat-endpoint", role: "status", "{endpoint}" }
             }
-            skin::SkinToggle {}
+            div { class: "switches",
+                dash::PanelToggle { label: "Agents", controls: "nav", open: nav_open }
+                dash::PanelToggle { label: "Instruments", controls: "rail", open: rail_open }
+                skin::SkinToggle {}
+            }
         }
         main {
             if !failure.read().is_empty() {
@@ -148,25 +118,29 @@ fn shell() -> Element {
             } else if fragment.read().is_empty() {
                 p { class: "pending", "booting the core…" }
             } else {
-                // Three regions, in reading order, and the machine skin lays
-                // them out as a grid at 1100px and up: the conversation you are
-                // having, the instruments that must never scroll away while it
-                // runs, and the surfaces you configure between turns. Nine
-                // panels in one 736px column meant watching an agent work was
-                // scrolling away from the terminal it was driving (12 walk,
-                // "break the single column"). Wrappers only — every panel is
-                // the same component in the same order, so the plain skin
-                // stacks them exactly as before.
-                div { class: "primary",
+                // Three regions, in reading order: WHERE you are, WHAT you are
+                // doing, and the instruments watching it happen. The two outer
+                // ones fold away — a dashboard's panels are furniture, and a
+                // 390px screen has room for exactly one of the three.
+                nav {
+                    class: "nav",
+                    id: "nav",
+                    aria_label: "Agents and setup",
+                    hidden: !nav_open(),
+                    tabs::AgentTabs { loaded, authored, selected, deck }
+                }
+                // `primary` stays on the class list: every console rule that
+                // makes this column fill its glass is written against it, and
+                // renaming the region is not what this increment is doing.
+                div { class: "stage primary",
                     // The fragment is built by the core's escaping primitives
                     // (module::view) — the one scar the htmx design leaves.
                     div { class: "masthead", dangerous_inner_html: "{fragment}" }
-                    tabs::AgentTabs { loaded, authored, selected, deck }
                     chat::ChatPane {
                         web, endpoint_set, tick, roster, agent: selected, hidden: deck(),
                     }
-                    // The routed deck: the tabpanel half of the fourth tab.
-                    // Both regions stay MOUNTED and one is `hidden` — dropping
+                    // The routed deck: the tabpanel half of the last nav entry.
+                    // Both surfaces stay MOUNTED and one is `hidden` — dropping
                     // the chat pane would drop the poller following a turn.
                     section {
                         class: "deck",
@@ -180,7 +154,11 @@ fn shell() -> Element {
                         settings::Settings { web, endpoint_set, tick }
                     }
                 }
-                aside { class: "rail", aria_label: "Live instruments",
+                aside {
+                    class: "rail",
+                    id: "rail",
+                    aria_label: "Live instruments",
+                    hidden: !rail_open(),
                     board::AgentBoard { web, tick }
                     tools::ToolTrace { web, tick, agent: selected }
                     terminal::Terminal { web, tick, agent: selected }

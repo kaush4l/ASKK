@@ -39,8 +39,11 @@ fn focus(id: &str) {
 /// does not own — every other key must reach the browser untouched.
 fn target(key: &Key, at: usize, count: usize) -> Option<usize> {
     match key {
-        Key::ArrowRight => Some((at + 1) % count),
-        Key::ArrowLeft => Some((at + count - 1) % count),
+        // The strip is a COLUMN from increment 13 (the left panel), so the
+        // vertical pair is the one the ARIA pattern requires; the horizontal
+        // pair stays because a person who learned it in 07b still has it.
+        Key::ArrowDown | Key::ArrowRight => Some((at + 1) % count),
+        Key::ArrowUp | Key::ArrowLeft => Some((at + count - 1) % count),
         Key::Home => Some(0),
         Key::End => Some(count - 1),
         _ => None,
@@ -87,7 +90,13 @@ pub fn AgentTabs(
     let on_deck = deck();
     let count = names.len() + 1;
     rsx! {
-        div { class: "agent-tabs", role: "tablist", aria_label: "Which agent to talk to",
+        div {
+            class: "agent-tabs",
+            role: "tablist",
+            // It is a column now, and a screen reader is told so — the arrow
+            // keys it announces have to be the ones that actually work.
+            aria_orientation: "vertical",
+            aria_label: "Which agent to talk to",
             for (index, name) in names.iter().cloned().enumerate() {
                 {
                     let mine = !on_deck && name == current;
