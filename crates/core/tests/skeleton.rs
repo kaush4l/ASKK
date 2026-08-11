@@ -91,7 +91,9 @@ fn dashboard_panel_and_404() {
     let (app, _store) = booted(vec![]);
     let res = get(&app, "/");
     assert_eq!(res.status, 200);
-    assert!(res.body.contains("/panels/status"), "{}", res.body);
+    // The route is registered and serves; the ROOT PAGE no longer composes a
+    // placeholder for it (12b, finding 3).
+    assert!(!res.body.contains("/panels/status"), "{}", res.body);
 
     let res = get(&app, "/panels/status");
     assert_eq!(res.status, 200);
@@ -114,11 +116,13 @@ fn root_page_has_no_dead_form_and_one_heading() {
     assert!(!res.body.contains("<form"), "{}", res.body);
     assert!(!res.body.contains("hx-"), "{}", res.body);
     assert_eq!(res.body.matches("<h1").count(), 1, "{}", res.body);
-    assert!(res.body.contains("panel pending"), "{}", res.body);
-    // The placeholder is a sentence a user can read; the route it will serve
-    // is an attribute, not developer text in the page's most prominent slot.
-    assert!(!res.body.contains("mounted"), "{}", res.body);
-    assert!(res.body.contains("data-panel=\"/panels/status\""), "{}", res.body);
+    // …and NOTHING else. The "This panel arrives in a later update" placeholder
+    // sat directly under the H1, framed like a real panel, from increment 01 to
+    // increment 12 — the first thing a person read, promising an update the
+    // plan had already stopped planning (12 walk, finding 3).
+    assert!(!res.body.contains("panel pending"), "{}", res.body);
+    assert!(!res.body.contains("later update"), "{}", res.body);
+    assert!(!res.body.contains("data-panel"), "{}", res.body);
 }
 
 /// (3): the full turn through the seam — submit, drive, read the transcript.

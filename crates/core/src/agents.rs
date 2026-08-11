@@ -156,7 +156,7 @@ fn card(spec: &AgentSpec, peers: &[AgentSpec], authored: &[(String, String)]) ->
         .iter()
         .find(|(n, _)| *n == spec.name)
         .map(|(_, by)| by.as_str());
-    FragmentBuilder::new("div")
+    let mut card = FragmentBuilder::new("div")
         .class("agent-card")
         .attr("data-agent", &spec.name)
         .attr("data-origin", match mine {
@@ -164,9 +164,14 @@ fn card(spec: &AgentSpec, peers: &[AgentSpec], authored: &[(String, String)]) ->
             Some(_) => "authored-by-agent",
             None => "shipped",
         })
-        .child(FragmentBuilder::new("h3").text(&spec.name).build())
-        .child(FragmentBuilder::new("p").text(&spec.description).build())
-        .child(
+        .child(FragmentBuilder::new("h3").text(&spec.name).build());
+    // An agent file with no `description:` gets no empty paragraph pretending
+    // to be one (12 walk, finding 4 — the same absence rendered `note-taker — `
+    // in the chat header).
+    if !spec.description.trim().is_empty() {
+        card = card.child(FragmentBuilder::new("p").text(&spec.description).build());
+    }
+    card.child(
             FragmentBuilder::new("p")
                 .class("agent-origin")
                 .text(&crate::authoring::origin_line(spec, mine))

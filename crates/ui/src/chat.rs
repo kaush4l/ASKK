@@ -126,7 +126,12 @@ pub fn ChatPane(
                      and {agent} can answer."
                 }
             }
-            if !endpoint.is_empty() { p { class: "note", "{endpoint}" } }
+            // The ONE live line that stays in front of the conversation: what
+            // the next turn actually calls. Provenance and the space grant moved
+            // behind the agent's name in the projection's own disclosure (12
+            // walk, "density") — this one cannot, because it changes with
+            // Settings and it decides whether the next message can be sent.
+            if !endpoint.is_empty() { p { class: "note chat-endpoint", "{endpoint}" } }
             if mine {
                 div { class: "chat-log", dangerous_inner_html: "{shown.html}" }
             } else {

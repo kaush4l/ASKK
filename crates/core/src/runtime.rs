@@ -156,8 +156,15 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
                 // The person stopped waiting (11b walk): the turn is over, so
                 // the task is cleared exactly as a failed turn clears it — and
                 // the swap `reconcile` was deferring can land below.
+                // …and only when it is THIS agent's turn that was stopped: a
+                // stop on a Worker's pane ends the wait in the log the page
+                // projects, and clearing the lead's task on it would abandon a
+                // turn nobody asked to end (12b).
                 if kind == crate::chat::TURN_STOPPED {
-                    app.borrow_mut().agent.task = None;
+                    let named = crate::chat::stopped_agent(payload_json);
+                    if named.is_empty() || named == app.borrow().me() {
+                        app.borrow_mut().agent.task = None;
+                    }
                     continue;
                 }
             }

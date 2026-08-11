@@ -68,12 +68,15 @@ pub struct Ctx {
     /// widened from Custom-only to `EventKind`: the chat module's whole job
     /// is emitting `UserMessage`, which is not a Custom fact.
     pub emit: Option<Vec<EventKind>>,
-    /// PROVISIONAL (G4): read-only projections handed to every built-in.
-    /// Slot-declaring modules' panel routes (dashboard composition) and the
+    /// PROVISIONAL (G4): read-only projections handed to every built-in — the
     /// event kinds so far (views are projections of the log, I8). Becomes a
     /// real capability/section story at G5.
-    pub panels: Vec<String>,
     pub recent: Vec<EventKind>,
+    /// Agents with an utterance ACCEPTED but not yet pumped — `roster::accepted`'s
+    /// window, widened to every agent. It lives in memory only, so a replayed
+    /// log has none of it: that is exactly what tells a turn something is
+    /// driving from a turn a reload abandoned (12 walk, `transcript::driven`).
+    pub queued: Vec<String>,
     /// The loaded agent specs (increment 03) — a projection like `recent`.
     pub agents: Vec<agent::AgentSpec>,
     /// The agent files that would not parse — shown, never swallowed.
@@ -135,18 +138,16 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
     let manifest = hit.manifest.clone();
     let logic = hit.logic.clone();
 
-    // Panel routes: slot-declaring modules in deterministic (slot, order, id)
-    // order, each contributing its first GET route.
-    let mut slotted: Vec<(&str, u16, &ModuleId, &str)> = Vec::new();
-    for reg in app.registry.active() {
-        for slot in &reg.manifest.slots {
-            if let Some(route) = reg.manifest.routes.iter().find(|r| r.method == "GET") {
-                slotted.push((&slot.slot, slot.order, &reg.manifest.id, &route.path));
-            }
-        }
-    }
-    slotted.sort();
-    let panels: Vec<String> = slotted.into_iter().map(|(_, _, _, p)| p.into()).collect();
+    let me = app.me().to_string();
+    let queued: Vec<String> = app
+        .pending
+        .iter()
+        .filter_map(|e| match &e.kind {
+            EventKind::UserMessage { agent, .. } if agent.is_empty() => Some(me.clone()),
+            EventKind::UserMessage { agent, .. } => Some(agent.clone()),
+            _ => None,
+        })
+        .collect();
 
     let mut ctx = Ctx {
         kv: None, // no G4 module declares Kv
@@ -158,8 +159,8 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
             .capabilities
             .contains(&CapabilityId::Emit)
             .then(Vec::new),
-        panels,
         recent: app.log.iter().map(|e| e.kind.clone()).collect(),
+        queued,
         agents: app.agents.clone(),
         agent_problems: app.agent_problems.clone(),
         authored: app
@@ -168,7 +169,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
             .map(|(n, _, by)| (n.clone(), by.clone()))
             .collect(),
         board: app.board.snapshot().to_vec(),
-        me: app.me().to_string(),
+        me,
         window: crate::logs::window(app),
         space: app.agent.space.clone(),
     };

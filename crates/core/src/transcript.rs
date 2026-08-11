@@ -16,6 +16,13 @@ use crate::failure::failure;
 const STOPPED: &str = "You stopped waiting, so the turn ended here. A reply that arrives \
                        after this is in the log; anything you saved takes effect now.";
 
+/// What an ABANDONED turn leaves on it. The log's shape says a question was
+/// asked and never answered; nothing in this process is driving it, so it is
+/// over — and saying "thinking…" about it locked the composer forever behind a
+/// clock that could not tick (12 walk, finding 1).
+const ORPHANED: &str = "That turn is not running any more — the page was reloaded while it \
+                        was in flight, so nothing is driving it. Nothing was lost; ask again.";
+
 /// One message, with WHO SAID IT in words. The speaker used to be carried by
 /// the class alone, so with the stylesheet off a question and its answer were
 /// two identical paragraphs (`ux-walker`, increment 06) — the same reasoning
@@ -49,7 +56,13 @@ fn belongs_to(kind: &EventKind, me: &str, who: &str) -> bool {
         EventKind::ToolInvoked { .. } => who == me,
         EventKind::Custom { kind, payload_json } => match kind.as_str() {
             "core.note" | "core.error" | "core.compaction_failed" => who == me,
-            k if k == crate::chat::TURN_STOPPED => who == me,
+            // Whose wait ended. Empty is this process's own agent, which is
+            // every record written before a pane could stop waiting on a turn
+            // running in somebody else's Worker (12b).
+            k if k == crate::chat::TURN_STOPPED => match crate::chat::stopped_agent(payload_json) {
+                name if name.is_empty() => who == me,
+                name => who == name,
+            },
             "core.agent_error" => crate::told::agent_of(payload_json) == who,
             _ => false,
         },
@@ -136,8 +149,23 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
         list = list.child(msg("msg user", "You", text));
         (awaiting, count) = (true, count + 1);
     }
-    if awaiting {
+    // A turn is IN FLIGHT only while something is driving it. `awaiting` is the
+    // shape of the log — the last thing said was a person's — and a reload
+    // replays that shape with no fetch behind it: the pane sat disabled on
+    // "thinking…" with a frozen clock while the board beside it correctly read
+    // idle, and only wiping storage recovered it (12 walk, finding 1). Three
+    // sources, all of them state this process really has: the utterance this
+    // request just accepted, the pump queue it is about to enter, and the board
+    // — itself the fold of `AgentStatus` facts, so this is the log asking the
+    // log. None of them survives a reload, which is the whole point.
+    let driven = appended.is_some()
+        || ctx.queued.iter().any(|a| a == who)
+        || ctx.board.iter().any(|r| r.name == who && r.status.is_busy());
+    let pending = awaiting && driven;
+    if pending {
         list = list.child(msg("msg pending", "", "thinking…"));
+    } else if awaiting {
+        list = list.child(msg("msg pending", "", ORPHANED));
     } else if count == 0 {
         list = list.child(msg("msg pending", "", &format!("No messages yet — ask {who} something.")));
     }
@@ -147,7 +175,7 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
     // body: the pane must be able to title itself without parsing the fragment
     // or leaning on an editable `description` line (`ux-walker`, increment 03).
     response.headers.push(("x-agent".into(), who.to_string()));
-    if awaiting {
+    if pending {
         response.headers.push(("x-turn".into(), "pending".into()));
     }
     response
@@ -176,21 +204,41 @@ fn header(ctx: &Ctx, who: &str) -> String {
         .iter()
         .find(|(n, _)| *n == spec.name)
         .map(|(_, by)| by.as_str());
-    let line = FragmentBuilder::new("p")
-        .class("agent-header")
-        .attr("data-agent", &spec.name)
-        .attr("data-origin", match mine {
-            Some("") => "authored",
-            Some(_) => "authored-by-agent",
-            None => "shipped",
-        })
-        .text(&format!("{} — {}", spec.name, spec.description))
+    let origin = match mine {
+        Some("") => "authored",
+        Some(_) => "authored-by-agent",
+        None => "shipped",
+    };
+    // An agent with no `description:` used to render `note-taker — ` with
+    // nothing after the dash (12 walk, finding 4). The separator belongs to the
+    // second half; with no second half there is no separator.
+    let identity = match spec.description.trim().is_empty() {
+        true => spec.name.clone(),
+        false => format!("{} — {}", spec.name, spec.description),
+    };
+    // Behind the agent's own name, not stacked in front of the conversation.
+    // Both sentences are long and neither changes while you talk; three
+    // paragraphs of true prose before the first message made the primary
+    // surface read like documentation (12 walk, "density"). Nothing is lost —
+    // a `details` is open to find, to search, and to a screen reader.
+    let disclosure = FragmentBuilder::new("details")
+        .class("agent-identity")
+        .attr("data-origin", origin)
+        .child(
+            FragmentBuilder::new("summary")
+                .class("agent-header")
+                .attr("data-agent", &spec.name)
+                .attr("data-origin", origin)
+                .text(&identity)
+                .build(),
+        )
+        .child(
+            FragmentBuilder::new("p")
+                .class("agent-origin")
+                .text(&crate::authoring::origin_line(spec, mine))
+                .build(),
+        )
         .build()
         .into_html();
-    let origin = FragmentBuilder::new("p")
-        .class("agent-origin")
-        .text(&crate::authoring::origin_line(spec, mine))
-        .build()
-        .into_html();
-    format!("{line}{origin}{}", crate::memory::memory(ctx, who))
+    format!("{disclosure}{}", crate::memory::memory(ctx, who))
 }

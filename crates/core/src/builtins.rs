@@ -5,7 +5,7 @@
 
 use kernel::{CapabilityId, ModuleId, Request, Response, Version};
 use module::view::FragmentBuilder;
-use module::{DataSchema, Manifest, RouteSpec, SlotSpec, Tier};
+use module::{DataSchema, Manifest, RouteSpec, Tier};
 
 use crate::dispatch::{error_fragment, html, Ctx};
 
@@ -16,7 +16,7 @@ pub(crate) fn manifests() -> Vec<Manifest> {
             id: ModuleId("dashboard".into()),
             name: "Dashboard".into(),
             version: Version(1),
-            description: "The root page: the title and the slotted panels.".into(),
+            description: "The root page: its one heading.".into(),
             capabilities: vec![],
             routes: vec![route("GET", "/")],
             slots: vec![],
@@ -41,10 +41,12 @@ pub(crate) fn manifests() -> Vec<Manifest> {
             description: "One panel: what is running, when, how many facts.".into(),
             capabilities: vec![CapabilityId::Clock],
             routes: vec![route("GET", "/panels/status")],
-            slots: vec![SlotSpec {
-                slot: "main".into(),
-                order: 0,
-            }],
+            // No slot. The slot put a placeholder reading "This panel arrives
+            // in a later update" directly under the H1, framed like a real
+            // panel, for twelve increments — the best position on the page,
+            // held by a promise the plan has now finished not keeping (12 walk,
+            // finding 3). The route stays; nothing composes it into the page.
+            slots: vec![],
             section: None,
             schema: DataSchema {
                 kv_prefix: "mod/status/".into(),
@@ -91,27 +93,14 @@ pub(crate) fn dashboard(req: &Request, ctx: &mut Ctx) -> Response {
     }
 }
 
-/// Slot-declaring modules, listed but not yet mounted: htmx is gone, so the
-/// old `hx-get` self-loader was a dead attribute pretending to be a spinner.
-/// Marked `pending` (dim, italic) until the status board lands (increment 06).
-/// The route it will serve rides as `data-panel` — a machine-readable
-/// attribute, because the most prominent slot on the page is no place for a
-/// sentence about mounting.
-fn root(ctx: &mut Ctx) -> Response {
-    let mut panels = FragmentBuilder::new("div").id("panels");
-    for path in &ctx.panels {
-        panels = panels.child(
-            FragmentBuilder::new("div")
-                .class("panel pending")
-                .attr("data-panel", path)
-                .text("This panel arrives in a later update.")
-                .build(),
-        );
-    }
+/// The page's masthead: its one `<h1>`, and nothing else. Every panel on this
+/// page is mounted by the component that owns it; the placeholder that used to
+/// stand here for a panel "arriving in a later update" is gone with the plan
+/// that promised it (12 walk, finding 3).
+fn root(_ctx: &mut Ctx) -> Response {
     let page = FragmentBuilder::new("div")
         .id("dashboard")
         .child(FragmentBuilder::new("h1").text("HARNESS").build())
-        .child(panels.build())
         .build();
     html(200, page.into_html())
 }

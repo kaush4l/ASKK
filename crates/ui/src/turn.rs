@@ -135,9 +135,12 @@ fn stop_waiting(web: Signal<Option<Rc<WebApp>>>, mut turn: Turn, who: &str) {
     if let Some(app) = web.peek().clone() {
         show(who, app.handle(to(who, Request::post_form("/chat/stop", &[]))), turn);
     }
-    let mut shown = turn.shown.peek().clone();
-    shown.pending = false;
-    turn.shown.set(shown);
+    // No local override of `pending` any more. It used to be forced false here
+    // and then set true again one tick later by the loop's last projection,
+    // which froze the clock at whatever second the press happened and left the
+    // composer disabled for the rest of the timeout (12 walk, finding 2). The
+    // stop is a FACT now, for any agent, so the projection answers correctly
+    // and the pane has nothing to override.
     turn.note.set(
         "Stopped waiting, and ended the turn. A reply that arrives after this is in the \
          log; anything you saved takes effect now."
@@ -155,7 +158,7 @@ pub(crate) fn waiting_row(
     let mut stopped = turn.stopped;
     rsx! {
         if busy {
-            p { class: "pending", role: "status",
+            p { class: "pending wait-clock", role: "status",
                 "waiting for the model — {turn.elapsed}s "
                 button {
                     r#type: "button",

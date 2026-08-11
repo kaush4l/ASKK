@@ -149,18 +149,33 @@ fn shell() -> Element {
             } else if fragment.read().is_empty() {
                 p { class: "pending", "booting the core…" }
             } else {
-                // The fragment is built by the core's escaping primitives
-                // (module::view) — the one scar the htmx design leaves.
-                div { dangerous_inner_html: "{fragment}" }
-                tabs::AgentTabs { loaded, authored, selected }
-                chat::ChatPane { web, endpoint_set, tick, roster, agent: selected }
-                board::AgentBoard { web, tick }
-                space::SpaceInspector { web, tick, agent: selected }
-                terminal::Terminal { web, tick, agent: selected }
-                tools::ToolTrace { web, tick, agent: selected }
-                authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
-                {agent_panel(agents)}
-                settings::Settings { web, endpoint_set, tick }
+                // Three regions, in reading order, and the machine skin lays
+                // them out as a grid at 1100px and up: the conversation you are
+                // having, the instruments that must never scroll away while it
+                // runs, and the surfaces you configure between turns. Nine
+                // panels in one 736px column meant watching an agent work was
+                // scrolling away from the terminal it was driving (12 walk,
+                // "break the single column"). Wrappers only — every panel is
+                // the same component in the same order, so the plain skin
+                // stacks them exactly as before.
+                div { class: "primary",
+                    // The fragment is built by the core's escaping primitives
+                    // (module::view) — the one scar the htmx design leaves.
+                    div { class: "masthead", dangerous_inner_html: "{fragment}" }
+                    tabs::AgentTabs { loaded, authored, selected }
+                    chat::ChatPane { web, endpoint_set, tick, roster, agent: selected }
+                }
+                aside { class: "rail", aria_label: "Live instruments",
+                    board::AgentBoard { web, tick }
+                    tools::ToolTrace { web, tick, agent: selected }
+                    terminal::Terminal { web, tick, agent: selected }
+                    space::SpaceInspector { web, tick, agent: selected }
+                }
+                div { class: "deck",
+                    authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
+                    {agent_panel(agents)}
+                    settings::Settings { web, endpoint_set, tick }
+                }
             }
         }
     }

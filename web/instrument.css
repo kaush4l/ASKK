@@ -1,0 +1,184 @@
+/* Increment 12b — the machine skin stops being a page and becomes an
+   instrument. Four ideas, in the order the walk ranked them by payoff:
+
+   1. LAYOUT. `main` was one 736px column, so at 1440 the system was a strip
+      with 700px of empty background either side, and watching an agent work
+      meant scrolling away from the terminal it was driving. Three regions now:
+      the conversation, a sticky rail of live instruments, and a deck of the
+      surfaces you configure between turns.
+   2. PRIORITY. The row inside a turn grows — it says how long it has been in
+      it and what it last called; every other row compresses to one dense line.
+   3. TYPE. One display treatment for headings and the wordmark (they were two
+      naming systems, neither winning), and monospace for every value the
+      machine produced rather than a person wrote.
+   4. DEPTH. Six statuses, six treatments, so the board is read at a glance
+      rather than by reading.
+
+   Same rule as aaa.css, unchanged: nothing here invents state. Every selector
+   hangs off an attribute the core already wrote, the accent stays the one
+   purple, and no ink colour moves — the contrast the walks measured is not
+   negotiable. Machine skin only: the plain skin is the complete fallback and
+   answers every one of these questions in one column. */
+
+html:not([data-skin="plain"]) {
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+  /* The display face IS the mono face, tracked and capitalised. `HARNESS` was a
+     plain bold h1 with no relationship to the `A S K K` above it; they are one
+     system now, and it costs no font file on a static host that must work
+     offline. */
+  --display: var(--mono);
+
+  /* ---- 3. type ---------------------------------------------------------- */
+
+  h1, h2, .wordmark {
+    font-family: var(--display);
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  h1 { font-size: 1.4rem; letter-spacing: 0.22em; color: var(--accent); margin: 0 0 var(--gap); }
+  h2 { font-size: 0.8rem; letter-spacing: 0.16em; color: var(--accent); }
+  h3 { font-family: var(--display); letter-spacing: 0.05em; }
+
+  /* Every machine-produced value: statuses, turn counts, model ids, paths,
+     agent names, elapsed seconds. A person's words stay in the body face. */
+  .agent-status,
+  .agent-live,
+  .agent-meta,
+  .agent-header,
+  .chat-endpoint,
+  .wait-clock,
+  .tab,
+  .msg .speaker,
+  .space-path,
+  .space-facts dt { font-family: var(--mono); }
+  .agent-status, .agent-live, .agent-meta, .chat-endpoint, .wait-clock { font-size: 0.82rem; }
+  .tab { font-size: 0.85rem; letter-spacing: 0.02em; }
+
+  /* ---- 5. density ------------------------------------------------------- */
+
+  /* The identity line is a disclosure now: the agent's name is the summary and
+     the two provenance sentences are inside it. The marker is the only thing
+     added; the sentence behind it is the same sentence, word for word. */
+  .agent-identity { margin: 0 0 0.35rem; }
+  .agent-identity > summary { cursor: pointer; color: var(--ink); }
+  .agent-identity .agent-origin { margin: 0.35rem 0 0; }
+  .agent-memory, .chat-endpoint { margin: 0.1rem 0; }
+
+  /* ---- 4. six statuses, six treatments ---------------------------------- */
+
+  .agent-row {
+    position: relative;
+    overflow: hidden;
+    --tone: var(--line);
+    border-color: var(--edge);
+    border-left-color: var(--tone);
+    background: color-mix(in srgb, var(--tone) 7%, transparent);
+  }
+  /* idle — nobody has called it: flat, the quietest thing on the board. */
+  .agent-row[data-status="idle"] { --tone: var(--line); background: none; }
+  /* starting — its Worker is coming up: dashed, because it is not settled. */
+  .agent-row[data-status="starting"] {
+    --tone: color-mix(in srgb, var(--accent) 55%, var(--ink-dim));
+    border-left-style: dashed;
+  }
+  /* waiting for YOU: the one row asking a question, in plain bright ink. */
+  .agent-row[data-status="waiting"] { --tone: var(--ink); }
+  /* working — inside a turn: the accent, at full strength, and the only row
+     that moves. */
+  .agent-row[data-status="working"] {
+    --tone: var(--accent);
+    box-shadow: -1px 0 0.9rem -0.1rem var(--glow) inset;
+  }
+  .agent-row[data-status="working"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* Inside an `overflow: hidden` box, so it cannot widen the document. */
+    background: linear-gradient(90deg, transparent, var(--glow), transparent);
+    pointer-events: none;
+    animation: askk-scan 1.6s linear infinite;
+  }
+  .agent-row[data-status="failed"] {
+    --tone: var(--danger);
+    box-shadow: -1px 0 0.9rem -0.1rem color-mix(in srgb, var(--danger) 25%, transparent) inset;
+  }
+  /* closed — its Worker is stopped: dotted, the visual past tense. */
+  .agent-row[data-status="closed"] { --tone: var(--ink-dim); border-left-style: dotted; }
+
+  /* ---- 2. the live row earns the space ---------------------------------- */
+
+  .agent-row[data-status="working"] { padding: 0.6rem 0.7rem; }
+  .agent-row[data-status="working"] h3 { font-size: 1.05rem; }
+  .agent-row[data-status="working"] .agent-status { color: var(--ink); font-size: 0.85rem; }
+  .agent-live { margin: 0.15rem 0 0; color: var(--accent); }
+  /* Everything not in a turn compresses to one dense line — the same words,
+     the same contrast, one row of height. */
+  .agent-row:not([data-status="working"]) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.6rem;
+    padding: 0.3rem 0.5rem;
+  }
+  .agent-row:not([data-status="working"]) h3 { font-size: 0.9rem; }
+  .agent-row:not([data-status="working"]) .agent-status { margin: 0; }
+  .agent-row .error { flex-basis: 100%; margin: 0.1rem 0 0; font-size: 0.82rem; }
+}
+
+/* ---- 1. layout: three regions, from 1100px up --------------------------- */
+
+@media (min-width: 1100px) {
+  html:not([data-skin="plain"]) main {
+    max-width: 96rem;
+    display: grid;
+    align-items: start;
+    gap: 0 var(--gap);
+    grid-template-columns: minmax(0, 1fr) minmax(21rem, 26rem);
+    grid-template-areas:
+      "primary rail"
+      "deck    deck";
+  }
+  /* `min-width: 0` on both: a grid item's default `auto` minimum is its
+     content, which is how one long unbroken tool argument widens a column
+     until the document scrolls sideways. */
+  html:not([data-skin="plain"]) .primary { grid-area: primary; min-width: 0; }
+  html:not([data-skin="plain"]) .deck { grid-area: deck; min-width: 0; }
+  /* Every note in the rail keeps every word — they are the sentences the walks
+     were built on — at the size of a caption rather than of body copy, so four
+     instruments fit in one viewport instead of one and a half. */
+  html:not([data-skin="plain"]) .rail .note { font-size: 0.8rem; }
+  html:not([data-skin="plain"]) .rail #terminal { max-height: 13rem; }
+  html:not([data-skin="plain"]) .rail .tool-call pre { max-height: 8rem; }
+  html:not([data-skin="plain"]) .rail {
+    grid-area: rail;
+    min-width: 0;
+    /* Never scrolls away from the conversation that is driving it — the whole
+       point of the region. It scrolls INSIDE itself when it outgrows the
+       viewport, so the board stays pinned at the top of it. */
+    position: sticky;
+    top: var(--gap);
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (min-width: 1400px) {
+  /* The deck is reference, not motion, so it pairs up rather than running one
+     panel per screen-width. */
+  html:not([data-skin="plain"]) .deck {
+    display: grid;
+    align-items: start;
+    gap: 0 var(--gap);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Less motion is not less information: the working row keeps its accent edge,
+   its inner glow and every word; only the sweep stops. */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-skin="plain"]) .agent-row[data-status="working"]::after {
+    animation: none;
+    background: linear-gradient(90deg, var(--glow), transparent 60%);
+  }
+}

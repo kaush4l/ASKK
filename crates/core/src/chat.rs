@@ -68,23 +68,33 @@ pub(crate) fn chat(req: &Request, ctx: &mut Ctx) -> Response {
 /// not a failure, and not an answer either.
 pub(crate) const TURN_STOPPED: &str = "core.turn_stopped";
 
+/// Whose wait a `core.turn_stopped` fact ended — the empty string for this
+/// process's own agent, which is every record written before 12b. One reader
+/// for the projection and the runtime, so they cannot disagree about whose
+/// turn ended.
+pub(crate) fn stopped_agent(payload_json: &str) -> String {
+    serde_json::from_str::<String>(payload_json).unwrap_or_default()
+}
+
 /// `POST /chat/stop` — the person stopped waiting, so the TURN ends, not just
 /// the polling. Pressing it used to leave the task outstanding, which defers
 /// an agent swap forever (`roster::reconcile`): saving a prompt mid-flight and
 /// then stopping left the edit uninstalled until a reload (11b walk).
 ///
-/// Only this process's own agent: another agent's turn runs in its own Worker,
-/// and a fact recorded here could not reach it.
+/// It used to REFUSE for any agent but this process's own, on the reasoning
+/// that a Worker's turn cannot be reached from here. True, and not what the
+/// button promises: it ends the WAIT, in the one log the pane is projecting.
+/// Refusing left the composer disabled and the clock frozen with no way out but
+/// wiping storage (12 walk, finding 2). The fact carries the agent's name, so
+/// it lands in that agent's conversation and nobody else's.
 fn stop(ctx: &mut Ctx, who: &str) -> Response {
-    if who != ctx.me {
-        return error_fragment(
-            400,
-            &format!("{who}'s turn runs in its own Worker, so it cannot be stopped from here."),
-        );
-    }
+    let named = match who == ctx.me {
+        true => String::new(),
+        false => who.to_string(),
+    };
     let fact = EventKind::Custom {
         kind: TURN_STOPPED.into(),
-        payload_json: "\"\"".into(),
+        payload_json: serde_json::Value::String(named).to_string(),
     };
     match ctx.emit.as_mut() {
         Some(buf) => buf.push(fact.clone()),

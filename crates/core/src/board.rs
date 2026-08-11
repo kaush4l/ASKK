@@ -18,7 +18,10 @@ pub(crate) fn manifest() -> Manifest {
         name: "Agent board".into(),
         version: Version(1),
         description: "What every loaded agent is doing right now.".into(),
-        capabilities: vec![],
+        // Clock, so a row that is inside a turn can say how long it has been in
+        // it. `since` is the timestamp of the status fact itself, so the number
+        // is a subtraction of two logged times and never a reading taken here.
+        capabilities: vec![kernel::CapabilityId::Clock],
         routes: vec![RouteSpec {
             method: "GET".into(),
             path: "/board".into(),
@@ -55,7 +58,7 @@ fn table(ctx: &Ctx) -> Response {
         );
     }
     for agent in &ctx.board {
-        list = list.child(row(agent, &ctx.authored));
+        list = list.child(row(agent, ctx));
     }
     let mut response = html(200, list.build().into_html());
     // Whether anything is working, as a header: the pane must be able to keep
@@ -87,7 +90,8 @@ fn table(ctx: &Ctx) -> Response {
 /// One agent's row. The status is a WORD, not only a colour: a row that
 /// differs from its neighbour by hue alone says nothing with the stylesheet
 /// off, and nothing at all to a screen reader.
-fn row(agent: &AgentRow, authored: &[(String, String)]) -> Fragment {
+fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
+    let authored = &ctx.authored;
     let turns = match agent.turns {
         1 => "1 turn".to_string(),
         n => format!("{n} turns"),
@@ -115,6 +119,18 @@ fn row(agent: &AgentRow, authored: &[(String, String)]) -> Fragment {
                 .text(&format!("{} — {turns}, {origin}", gloss(agent)))
                 .build(),
         );
+    // The row that is inside a turn is the one worth looking at, so it is the
+    // one that says more: how long it has been in this turn, and — for the
+    // agent whose loop this process IS — what it last called. Five rows of
+    // identical height, the busy one distinguished by a sweep alone, made the
+    // board a list instead of an instrument (12 walk, "give the live row
+    // priority"). Every other row stays exactly as legible; it just stops
+    // claiming the same weight as the one that is running.
+    if agent.status.is_busy() {
+        if let Some(live) = live_line(agent, ctx) {
+            card = card.child(FragmentBuilder::new("p").class("agent-live").text(&live).build());
+        }
+    }
     if !agent.detail.is_empty() {
         card = card.child(
             FragmentBuilder::new("p")
@@ -124,6 +140,38 @@ fn row(agent: &AgentRow, authored: &[(String, String)]) -> Fragment {
         );
     }
     card.build()
+}
+
+/// How long this turn has been running, and what it last called. Both are
+/// folds of the log: `since` is the timestamp of the status fact, and the tool
+/// is the last `ToolInvoked` — which this log only holds for its OWN agent
+/// (`trace::trace`), so another agent's row says nothing rather than guessing.
+fn live_line(agent: &AgentRow, ctx: &Ctx) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(now) = ctx.clock {
+        let seconds = now.0.saturating_sub(agent.since.0) / 1000;
+        parts.push(format!("in this turn for {seconds}s"));
+    }
+    if agent.name == ctx.me {
+        if let Some(tool) = last_tool(ctx) {
+            parts.push(format!("last tool: {tool}"));
+        }
+    }
+    match parts.is_empty() {
+        true => None,
+        false => Some(parts.join(" · ")),
+    }
+}
+
+/// The last tool this process's agent called, by name.
+fn last_tool(ctx: &Ctx) -> Option<String> {
+    ctx.recent
+        .iter()
+        .filter_map(|kind| match kind {
+            kernel::EventKind::ToolInvoked { tool, .. } => Some(tool.0.clone()),
+            _ => None,
+        })
+        .last()
 }
 
 /// The status in words a person can act on — the Python's own gloss, which is
