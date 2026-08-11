@@ -23,16 +23,25 @@
 <header>
   <div class="wordmark">ASKK</div>
   <p class="chat-endpoint" role="status">This turn calls local — gemma-4-12B-it-qat-mxfp8 at http://127.0.0.1:8873/v1, with no key.</p>
-  <button type="button" class="skin-toggle" aria-pressed="false">Simple skin</button>
+  <div class="switches">
+    <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="nav"><span aria-hidden="true">▾ </span>Agents</button>
+    <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="rail"><span aria-hidden="true">▾ </span>Instruments</button>
+    <button type="button" class="skin-toggle" aria-pressed="false">Simple skin</button>
+  </div>
 </header>
 <main>
-  <div class="primary">
-    <div class="masthead"><h1>HARNESS</h1></div>
-    <div class="agent-tabs" role="tablist" aria-label="Which agent to talk to">
+  <!-- Increment 13: three regions, and the outer two fold. The tablist used to
+       sit inside the primary column; it is its own region now, and the probe
+       models that because it is what the shipped page does. -->
+  <nav class="nav" id="nav" aria-label="Agents and setup">
+    <div class="agent-tabs" role="tablist" aria-orientation="vertical" aria-label="Which agent to talk to">
       <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="chat-panel" tabindex="0"><span aria-hidden="true">▸ </span><strong>main</strong></button>
-      <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">author</button>
+      <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
       <button type="button" id="deck-tab" role="tab" class="tab" aria-selected="false" aria-controls="deck-panel" tabindex="-1">Setup</button>
     </div>
+  </nav>
+  <div class="stage primary">
+    <div class="masthead"><h1>HARNESS</h1></div>
     <section class="panel" id="chat-panel" role="tabpanel" aria-labelledby="tab-main" aria-label="Chat with main">
       <h2>Chat with main</h2>
       <div id="chat-scroll" class="chat-log">
@@ -54,7 +63,8 @@
       <section class="panel" aria-label="Settings"><h2>Settings</h2><form><label for="u">Base URL</label><input id="u"><label for="k">API key</label><input id="k"><div class="row"><button type="button">Save endpoint</button><button type="button">Clear key</button></div></form></section>
     </section>
   </div>
-  <aside class="rail" aria-label="Live instruments">
+  <aside class="rail" id="rail" aria-label="Live instruments for main">
+    <p class="rail-who">Instruments · <strong>main</strong></p>
     <section class="panel" aria-label="Agent board"><h2>Agents running</h2>
       <div class="board" aria-live="polite">
         <div class="agent-row" data-status="working"><h3>main</h3><p class="agent-status">working — inside a turn</p><p class="agent-live">4s · llm.call</p></div>

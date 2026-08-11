@@ -30,10 +30,27 @@
            a.top < b.bottom - 1 && b.top < a.bottom - 1;
   };
 
+  // The stage is a scroll container from increment 13, so a region taller than
+  // it has a RECT that runs past the glass: at 1100 plain/deck the deck's rect
+  // is 258..1210 inside a stage that clips at 884, and a point at y=893 is
+  // inside the rect, outside the view, and lands on the body. Measure the
+  // VISIBLE intersection — what is clipped away cannot be clicked, and what is
+  // on screen is still asserted point for point.
+  var visible = function (el) {
+    var b = rect(el);
+    var clip = el.parentElement && el.parentElement.closest(".stage, .rail");
+    if (!clip) return b;
+    var c = rect(clip);
+    var top = Math.max(b.top, c.top), bottom = Math.min(b.bottom, c.bottom);
+    var left = Math.max(b.left, c.left), right = Math.min(b.right, c.right);
+    return { top: top, bottom: bottom, left: left, right: right,
+             width: right - left, height: bottom - top };
+  };
+
   // ---- OVERLAP: two regions of one screen may not paint on each other. -----
   var rail = document.querySelector(".rail");
   var railBox = rect(rail);
-  var regionBox = rect(region);
+  var regionBox = visible(region);
   say(!overlaps(railBox, regionBox), "OVERLAP rail/" + region.id,
       "rail " + Math.round(railBox.top) + ".." + Math.round(railBox.bottom) +
       " x " + Math.round(railBox.left) + ".." + Math.round(railBox.right) +
@@ -44,7 +61,7 @@
   // A 5x5 grid over the region, at rest and again at the bottom of the page —
   // the sticky rail only escaped its row once the document had scrolled.
   var hittest = function (label) {
-    var b = rect(region);
+    var b = visible(region);
     var bad = null, n = 0;
     for (var i = 1; i <= 5 && !bad; i++) {
       for (var j = 1; j <= 5 && !bad; j++) {
@@ -73,10 +90,54 @@
     window.scrollTo(0, 0);
   }
 
+  // ---- FOLD: a folded region gives its width to the STAGE ------------------
+  // The check that did not exist in 13, which is why 13 and 13b both shipped
+  // broken. Twice the stage was the region that LOST width when a panel was
+  // put away: first auto-placement moved it into a content-sized track, then
+  // the 12d template outlived the rule meant to replace it and capped it at
+  // 26rem — 416px in all twelve fold states — and the probe said OK both
+  // times, because it still modelled a page with no folds in it.
+  //
+  // The assertion is the promise in words: folding a region must never make
+  // the stage narrower, and the stage is never the thinnest column on screen.
+  var stage = document.querySelector(".stage");
+  var nav = document.getElementById("nav");
+  var railEl = document.getElementById("rail");
+  if (W >= 1100 && stage && nav && railEl) {
+    var wide = function (el) { return Math.round(rect(el).width); };
+    var open = wide(stage);
+    var fold = function (el, label) {
+      el.hidden = true;
+      // Force layout before reading: a same-tick read returns the old rect,
+      // which is how the first pass of the 13b walk measured a lie.
+      void document.body.offsetHeight;
+      var after = wide(stage);
+      el.hidden = false;
+      void document.body.offsetHeight;
+      // STRICTLY wider. `>=` was the first version of this line and it passed
+      // a build with the bug still in it: 13b's stage was 416px in all twelve
+      // fold states, and "unchanged" satisfies "not narrower". Putting a 208px
+      // panel away must hand 208px to the middle, or it went to a gutter.
+      say(after > open, "FOLD " + label,
+          "stage " + open + " -> " + after +
+          (after > open ? "" : after < open ? " (SHRANK)" : " (UNCHANGED)"));
+    };
+    fold(nav, "nav");
+    fold(railEl, "rail");
+    // A dashboard whose centre is thinner than its furniture is not a
+    // dashboard. 13b shipped a 90px conversation beside a 374px rail.
+    say(open >= wide(nav) && open >= wide(railEl), "STAGEWIDEST",
+        "stage " + open + " | nav " + wide(nav) + " | rail " + wide(railEl));
+    info("TRACKS", getComputedStyle(document.querySelector("main")).gridTemplateColumns);
+  }
+
   // ---- the page is one screen, and never a document sideways --------------
   var doc = document.documentElement;
   info("HEIGHT", doc.scrollHeight + "px in a " + window.innerHeight + "px viewport");
-  if (W >= 1100 && q.get("skin") !== "plain") {
+  // BOTH skins from increment 13: the plain skin is the same three regions on
+  // the same one screen, and it was exempt here only because it used to be a
+  // single scrolling column.
+  if (W >= 1100) {
     say(doc.scrollHeight <= window.innerHeight + 1, "ONESCREEN",
         doc.scrollHeight + " vs " + window.innerHeight);
   }

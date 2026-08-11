@@ -20,9 +20,13 @@ OUT=out/layout-probe
 mkdir -p "$OUT"
 cp scripts/layout-probe.js "$OUT/"
 
-# The stylesheets in the order index.html links them, fingerprints and all.
+# The stylesheets in the order index.html links them, fingerprints and all —
+# READ OFF index.html rather than listed here. The hardcoded list was itself an
+# instance of the bug this script exists to catch: increment 13 added dash.css,
+# the list did not know, and the probe measured a page with no dashboard in it
+# and printed LAYOUT CHECK OK while the deployed page was broken in two ways.
 links=""
-for name in theme board aaa instrument console screen; do
+for name in $(grep -o 'rel="css" href="[a-z-]*\.css"' web/index.html | sed 's/.*href="//; s/\.css"//'); do
   f=$(ls dist/"$name"-*.css 2>/dev/null | head -1) \
     || { echo "GATE FAIL: dist/$name-*.css missing — run trunk build" >&2; exit 1; }
   [ -n "$f" ] || { echo "GATE FAIL: dist/$name-*.css missing" >&2; exit 1; }

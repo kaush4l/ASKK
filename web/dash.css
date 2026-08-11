@@ -55,6 +55,14 @@
     display: grid;
     gap: 0 var(--gap);
     padding: var(--gap);
+    /* theme.css gives `main` a 46rem READING MEASURE, which is right for one
+       column of prose and catastrophic for three regions: the plain skin put
+       208px of nav and 374px of rail inside 704px and left the conversation
+       90px wide, one word per line (13b walk, finding 1). A dashboard's width
+       is the screen's, capped where a screen stops being readable. */
+    width: 100%;
+    max-width: 96rem;
+    margin-inline: auto;
     /* Each region is PINNED to its track. Without this the tracks are filled by
        auto-placement, so hiding the nav moved `.stage` into track 1 — an `auto`
        track, which content-sizes — and the rail into the `1fr`, where its own
