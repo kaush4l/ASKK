@@ -63,10 +63,23 @@ fn table(ctx: &Ctx) -> Response {
     if ctx.board.iter().any(|r| r.status.is_busy()) {
         response.headers.push(("x-busy".into(), "1".into()));
     }
-    // Somebody's Worker is still coming up, so this board is not final yet —
-    // and nothing else on an idle page will ask again (increment 07).
-    if ctx.board.iter().any(|r| r.status == Status::Starting) {
-        response.headers.push(("x-settling".into(), "1".into()));
+    // This board is NOT FINAL: somebody's Worker is still coming up, or an
+    // agent is inside a turn whose end nothing else on the page will notice.
+    //
+    // It used to say so only while Workers were starting, so the only thing
+    // watching a turn was the chat pane's poller — and 07b's rule is that a
+    // turn's poller belongs to the agent it started on. Switch away and NOTHING
+    // called the seam: the queued status never drained, the board still read
+    // "working — inside a turn" two minutes after that turn had failed, and the
+    // agent swap `roster::reconcile` defers until the turn ends never installed
+    // (12 walk). One agent's turn is every agent's business here, because this
+    // pane is the page's observer of all of them.
+    if ctx
+        .board
+        .iter()
+        .any(|r| r.status == Status::Starting || r.status.is_busy())
+    {
+        response.headers.push(("x-watch".into(), "1".into()));
     }
     response
 }

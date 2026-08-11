@@ -157,6 +157,12 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
 /// The MODEL is deliberately absent: this file knows what the agent file asked
 /// for, not what Settings overrode it with, and printing "(model: local)" while
 /// the next turn calls openrouter is a lie the pane told for a whole increment.
+///
+/// WHO WROTE IT is here too (increment 12). The record has always distinguished
+/// "written by you in this browser" from "written by the author agent", and an
+/// agent holding a `space:` has a real root shell — but that sentence lived
+/// only in the Agents panel, five thousand pixels down. The same
+/// `authoring::origin_line` renders in both places, so the two cannot disagree.
 fn header(ctx: &Ctx, who: &str) -> String {
     let Some(spec) = ctx.agents.iter().find(|s| s.name == who) else {
         return FragmentBuilder::new("p")
@@ -165,11 +171,26 @@ fn header(ctx: &Ctx, who: &str) -> String {
             .build()
             .into_html();
     };
+    let mine = ctx
+        .authored
+        .iter()
+        .find(|(n, _)| *n == spec.name)
+        .map(|(_, by)| by.as_str());
     let line = FragmentBuilder::new("p")
         .class("agent-header")
         .attr("data-agent", &spec.name)
+        .attr("data-origin", match mine {
+            Some("") => "authored",
+            Some(_) => "authored-by-agent",
+            None => "shipped",
+        })
         .text(&format!("{} — {}", spec.name, spec.description))
         .build()
         .into_html();
-    format!("{line}{}", crate::memory::memory(ctx, who))
+    let origin = FragmentBuilder::new("p")
+        .class("agent-origin")
+        .text(&crate::authoring::origin_line(spec, mine))
+        .build()
+        .into_html();
+    format!("{line}{origin}{}", crate::memory::memory(ctx, who))
 }

@@ -24,6 +24,7 @@ mod tools;
 mod turn;
 mod settings;
 mod settings_view;
+mod skin;
 mod space;
 
 fn main() {
@@ -140,6 +141,7 @@ fn shell() -> Element {
             // Not an <h1>: the page's one heading is the dashboard's title,
             // and a wordmark is a logo, not a level-one heading.
             div { class: "wordmark", "ASKK" }
+            skin::SkinToggle {}
         }
         main {
             if !failure.read().is_empty() {
@@ -150,7 +152,7 @@ fn shell() -> Element {
                 // The fragment is built by the core's escaping primitives
                 // (module::view) — the one scar the htmx design leaves.
                 div { dangerous_inner_html: "{fragment}" }
-                tabs::AgentTabs { loaded, selected }
+                tabs::AgentTabs { loaded, authored, selected }
                 chat::ChatPane { web, endpoint_set, tick, roster, agent: selected }
                 board::AgentBoard { web, tick }
                 space::SpaceInspector { web, tick, agent: selected }

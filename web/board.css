@@ -66,3 +66,22 @@ body { overflow-x: hidden; }
 /* Authored here, not shipped: said in words on the card, and marked so the
    two kinds of agent are also tellable apart at a glance. */
 .agent-card[data-origin="authored"] { border-left: 3px solid var(--accent, #a06cd5); }
+
+/* Increment 12. Provenance at the point of use: the tab that picks an agent
+   says whether this browser wrote it, and the conversation's own header
+   carries the whole sentence (who wrote it, and what its space granted). Words
+   in both places, so the plain skin loses nothing. */
+.tab-origin { color: var(--ink-dim); font-size: .8rem; font-weight: 400; }
+.tab.current .tab-origin { color: var(--ink); }
+.agent-header + .agent-origin { margin: -0.25rem 0 0.5rem; }
+
+/* The skin switch itself (increment 12). A toggle button, not a link and not a
+   checkbox: it says what it does and `aria-pressed` says whether it is on. */
+.skin-toggle {
+  margin-left: auto;
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+  font-weight: 400;
+}
+.skin-toggle[aria-pressed="true"] { border-color: var(--accent); font-weight: 600; }

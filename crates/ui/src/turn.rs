@@ -90,7 +90,17 @@ pub(crate) async fn watch(
         // The pane has moved to another agent. This loop belongs to the agent
         // it started on; the pane re-projects and re-spawns when you come back,
         // and the turn itself keeps running in that agent's own Worker.
+        //
+        // Hand the watch over before letting go. `AgentBoard` is the page's
+        // observer of every agent, and it only starts its clock when the core
+        // says the board is not final — which becomes true a moment AFTER the
+        // send, once `drive` enters the turn. Leaving silently in that window
+        // left nobody watching at all: the queued status never drained and the
+        // board lied for two minutes (12 walk). One counter, no projection —
+        // this loop must never read another agent's conversation (increment 07).
         if *agent.peek() != who {
+            let n = turn.tick.peek().to_owned();
+            turn.tick.set(n + 1);
             return;
         }
         // The press already ended the turn and wrote the note. One last
@@ -145,7 +155,7 @@ pub(crate) fn waiting_row(
     let mut stopped = turn.stopped;
     rsx! {
         if busy {
-            p { class: "pending",
+            p { class: "pending", role: "status",
                 "waiting for the model — {turn.elapsed}s "
                 button {
                     r#type: "button",

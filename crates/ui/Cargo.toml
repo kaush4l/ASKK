@@ -20,8 +20,9 @@ adapters_web = { path = "../adapters_web" }
 dioxus = { version = "0.7", features = ["web"] }
 # web-sys: `window()`, to tell a page apart from an agent's Worker (which
 # imports this same bundle for its exported AgentWorker, increment 06), and the
-# one `focus()` the ARIA tabs pattern's roving tabindex requires (increment 08).
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement"] }
+# one `focus()` the ARIA tabs pattern's roving tabindex requires (increment 08),
+# and localStorage for the one bit that remembers the plain skin (increment 12).
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Storage"] }
 # wasm-bindgen: the cast behind that one `focus()` call and nothing else.
 wasm-bindgen = { workspace = true }
 

@@ -107,6 +107,12 @@ pub fn AgentEditor(
                 textarea {
                     id: "agent-md",
                     rows: 14,
+                    // The stylesheet gives it `width: 100%`; with NO stylesheet
+                    // a textarea falls back to the UA default of 20 columns, so
+                    // the agent editor was a 20×14 comment box (12 walk). The
+                    // plain skin is permanent, so the editor is an editor there
+                    // too. `cols` is a minimum, not a cap: CSS still wins.
+                    cols: 72,
                     spellcheck: false,
                     value: "{draft}",
                     oninput: move |e| draft.set(e.value()),

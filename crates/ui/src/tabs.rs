@@ -46,14 +46,25 @@ fn target(key: &Key, at: usize, count: usize) -> Option<usize> {
 /// Who you are talking to, and how to talk to somebody else. One tab per loaded
 /// agent; the selected one is what `ChatPane` is the conversation with.
 #[component]
-pub fn AgentTabs(loaded: Signal<Vec<String>>, selected: Signal<String>) -> Element {
+pub fn AgentTabs(
+    loaded: Signal<Vec<String>>,
+    /// Which of them this browser holds rather than this deploy. A tab was a
+    /// bare name, so an agent a MODEL wrote — possibly holding a `space:`,
+    /// which is a real root shell — was indistinguishable from a shipped one
+    /// at the point you pick it (12 walk). The sentence itself is in the
+    /// conversation's own header; this is the mark that sends you to it.
+    authored: ReadSignal<Vec<String>>,
+    selected: Signal<String>,
+) -> Element {
     let names = loaded.read().clone();
     let current = selected.read().clone();
+    let written = authored.read().clone();
     rsx! {
         div { class: "agent-tabs", role: "tablist", aria_label: "Which agent to talk to",
             for (index, name) in names.iter().cloned().enumerate() {
                 {
                     let mine = name == current;
+                    let here = written.contains(&name);
                     let (names, name_for_key, name_for_click) =
                         (names.clone(), name.clone(), name.clone());
                     rsx! {
@@ -63,6 +74,7 @@ pub fn AgentTabs(loaded: Signal<Vec<String>>, selected: Signal<String>) -> Eleme
                             id: "tab-{name}",
                             role: "tab",
                             class: if mine { "tab current" } else { "tab" },
+                            "data-origin": if here { "authored" } else { "shipped" },
                             aria_selected: if mine { "true" } else { "false" },
                             aria_controls: "chat-panel",
                             // Roving: exactly one tab is in the page's tab
@@ -89,6 +101,13 @@ pub fn AgentTabs(loaded: Signal<Vec<String>>, selected: Signal<String>) -> Eleme
                                 strong { "{name_for_key}" }
                             } else {
                                 "{name_for_key}"
+                            }
+                            // In WORDS, so it survives the stylesheet being
+                            // off and reaches a screen reader as part of the
+                            // tab's own name — a coloured edge would say
+                            // nothing to either.
+                            if here {
+                                span { class: "tab-origin", " · written here" }
                             }
                         }
                     }

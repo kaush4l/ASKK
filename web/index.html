@@ -14,6 +14,9 @@
   <link data-trunk rel="rust" href="../crates/ui/Cargo.toml" data-bin="ui" data-wasm-opt="z">
   <link data-trunk rel="css" href="theme.css">
   <link data-trunk rel="css" href="board.css">
+  <!-- The machine layer (increment 12). Last, because it layers on the tokens
+       the two above define; switched off by data-skin="plain" on <html>. -->
+  <link data-trunk rel="css" href="aaa.css">
   <link data-trunk rel="copy-file" href="sw.js">
   <link data-trunk rel="copy-file" href="coi-sw.js">
   <!-- One Worker per agent (increment 06). Transport only: it imports this
