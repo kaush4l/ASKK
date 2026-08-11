@@ -167,3 +167,23 @@ form.stacked .row button { flex: 0 0 auto; }
   overflow: auto;
 }
 .note { color: var(--ink-dim); font-size: 0.9rem; }
+
+/* The tool trace (increment 05): one block per call — what was asked, what
+   came back. A refused call is an error, and reads like one. */
+.msg.tool { border-style: dotted; color: var(--ink-dim); }
+.tool-call {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.tool-call.error { border-left-color: var(--danger); }
+.tool-args { margin: 0 0 0.25rem; font-family: ui-monospace, monospace; font-size: 0.9rem; }
+.tool-call pre {
+  margin: 0;
+  white-space: pre-wrap;
+  background: var(--bg);
+  padding: 0.5rem;
+  max-height: 14rem;
+  overflow: auto;
+}
