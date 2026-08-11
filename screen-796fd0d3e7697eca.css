@@ -33,6 +33,12 @@
    regions of the primary column are routed by exactly this attribute. */
 [hidden] { display: none !important; }
 
+/* The header WRAPS, in both skins. From 12d it carries a real sentence — what
+   the next turn actually calls — between the wordmark and the toggle, and the
+   plain skin's non-wrapping flex row put 353px of content on a 345px screen.
+   A fallback that overflows is not a fallback. */
+header { flex-wrap: wrap; }
+
 html:not([data-skin="plain"]) {
   /* ---- 1. the second tone ------------------------------------------------ */
   /* What the MACHINE produced reads cooler than what a person wrote. Same

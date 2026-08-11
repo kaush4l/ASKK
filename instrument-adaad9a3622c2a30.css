@@ -133,12 +133,11 @@ html:not([data-skin="plain"]) {
    item Chrome takes as the grid container and not the grid area: the rail
    escaped its row and painted on top of the whole deck at every width >= 1100px
    — rail text over the Agents column, both illegible, and hit-testing showed
-   the rail swallowing the clicks for 416px of it. It shipped in 12b and three
-   walks read past it.
+   it swallowing 416px of the deck's clicks. Shipped in 12b, missed by 3 walks.
    The row is gone: the deck is a routed region inside `.primary` now, so `main`
    is one row of two columns, the document is exactly one screen, and the rail
-   needs no sticky at all — it is a full-height column that scrolls inside
-   itself, which is what "never scrolls away" actually wanted. */
+   needs no sticky — it is a full-height column that scrolls inside itself,
+   which is what "never scrolls away" actually wanted. */
 @media (min-width: 1100px) {
   /* One screen, and the page itself never scrolls: the two regions scroll
      inside themselves. `100dvh`, so a mobile browser's collapsing toolbar
