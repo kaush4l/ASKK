@@ -122,6 +122,22 @@ form.stacked label { font-size: 0.9rem; color: var(--ink-dim); }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* WHO is speaking, in words. The colour is the second signal, never the only
+   one: with the stylesheet off, a question and its answer were two identical
+   paragraphs (`ux-walker`, increment 06). */
+.msg .speaker { font-weight: 600; color: var(--ink-dim); }
+.msg.user .speaker { color: var(--accent); }
+
+/* One tab per agent: every agent owns a Worker, so every agent is a
+   conversation you can open (increment 07). */
+.agent-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+.agent-tabs .tab { background: transparent; border: 1px solid var(--line); }
+.agent-tabs .tab.current {
+  border-color: var(--accent);
+  border-bottom-width: 3px;
+  font-weight: 600;
+}
+
 .msg.user { border-color: var(--accent); }
 .msg.assistant { background: var(--bg); }
 .msg.pending { border-style: dashed; }
