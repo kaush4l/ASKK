@@ -9,7 +9,8 @@
   --surface: #211830;
   --ink: #f1ecf7;             /* 14.6:1 on --bg */
   --ink-dim: #c0b3d2;         /* 8.1:1 on --bg */
-  --line: #3b2d52;
+  --line: #3b2d52;            /* 1.49:1 — a DECORATIVE rule, never an outline */
+  --control: #7a6a95;         /* 3.83:1 on --bg — WCAG 1.4.11 for a boundary */
   --danger: #ffb3b3;
   --gap: 1rem;
 }
