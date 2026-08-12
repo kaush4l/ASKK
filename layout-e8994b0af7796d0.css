@@ -1,0 +1,133 @@
+/* layout.css — the dashboard shell: three regions, the fold, the breakpoints.
+   Geometry only. Not one colour, not one font size.
+
+   The numbers here are MEASURED, not chosen: increment 13 shipped this layout
+   broken twice — once because auto-placement dropped .stage into a
+   content-sized track, once because a grid-template-columns from a dead layer
+   outranked its replacement — and scripts/layout-probe.js now asserts the fold
+   transfer to the pixel in all four states. Nothing below may change without
+   that assertion staying green. */
+
+/* One screen, at every width, in both skins. The page never scrolls; the
+   region you are in scrolls inside itself. This chain is unconditional and
+   ungated: the plain skin measured 1015px in an 844px viewport for a whole
+   increment because the rule that fixed it was written machine-skin-only. */
+html, body { height: 100%; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overflow-x: hidden;
+}
+
+body > #main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+}
+
+/* Below the fold threshold the regions stack and both side panels start
+   CLOSED, so a phone lands on the conversation rather than on nine stacked
+   panels. The switches are still in the header and still route. */
+/* `flex: 0 0 auto` is the whole fix for a bug this file shipped once: as
+   shrinkable items in a height-constrained column, the three regions were
+   squeezed BELOW their content — .stage measured 318px around a 513px chat
+   panel, and with `overflow: visible` the panel spilled 255px past its own
+   parent and painted on top of the rail. `main` is the scroll container in
+   this path; the regions keep their content height and let it scroll. */
+.nav, .rail, .stage { min-width: 0; flex: 0 0 auto; }
+
+/* A vertical tablist lays out vertically — in BOTH skins. Written unscoped
+   because the scoped version left the fallback with theme.css's flex-wrap and
+   turned five agents into a 2-across chip grid under an
+   aria-orientation="vertical" that promised a list, with ArrowDown moving
+   focus sideways. */
+.nav .agent-tabs {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: var(--s-1);
+}
+
+.nav .tab {
+  width: 100%;
+  text-align: left;
+}
+
+@media (min-width: 1100px) {
+  main {
+    display: grid;
+    /* auto | 1fr | auto, and every region PINNED to its track. Without the
+       pins, folding the nav moved .stage into the content-sized column and
+       the centre LOST 195px of the 435 it was supposed to gain. */
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0;
+    align-items: stretch;
+    width: 100%;
+    max-width: 96rem;
+    margin-inline: auto;
+    padding: var(--s-4);
+    overflow: hidden;
+  }
+
+  /* Only in the grid path may a region be shorter than its content: there it
+     scrolls INSIDE itself, which is what min-height: 0 permits. */
+  .nav, .rail, .stage { min-height: 0; }
+
+  .nav {
+    grid-column: 1;
+    width: 13rem;
+    overflow-y: auto;
+  }
+
+  .stage {
+    grid-column: 2;
+    overflow-y: auto;
+    margin-inline: var(--s-4);
+  }
+
+  .rail {
+    grid-column: 3;
+    width: clamp(21rem, 26vw, 26rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 22rem) {
+  main { padding: var(--s-2); gap: var(--s-2); }
+}
+
+/* The conversation takes the room, instead of a 360px card with 350px of dead
+   ground under it. */
+#chat-panel { flex: 1 1 auto; min-height: 0; }
+
+/* ---- 400% zoom ----------------------------------------------------------
+   At 400% of 1280x1024 the viewport is 320x256, and the one-screen chain
+   turned that into a trap: `body { overflow: hidden }` with a 200px header
+   left the chat input, the message list and Send unreachable, and
+   `scrollHeight === innerHeight` meant nothing could scroll to them. WCAG
+   1.4.10 fails on exactly that.
+
+   One screen is a promise about a DASHBOARD, not about a 256px-tall window.
+   Below 30rem of height the page becomes an ordinary scrolling document — the
+   guard's ONESCREEN assertion is gated the same way, because asserting it here
+   would be asserting the bug. */
+@media (max-height: 30rem) {
+  body { overflow: auto; }
+  body > #main { height: auto; min-height: 100%; }
+  main { overflow: visible; }
+  .nav, .rail, .stage { overflow: visible; }
+}

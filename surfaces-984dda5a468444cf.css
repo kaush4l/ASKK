@@ -1,0 +1,192 @@
+/* surfaces.css — everything that holds content: card, message, row, tool call,
+   terminal, disclosure, empty state, skeleton. The material is glass.css's;
+   this file owns padding, rhythm, and what each surface SAYS. */
+
+.panel {
+  padding: var(--s-4);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+@media (min-width: 64rem) {
+  /* Reflect's showcase card measures 24px block / 32px inline; the first draft
+     of DESIGN.md said 16 and would have shipped cramped glass, which is the
+     single thing that makes this material read as a plastic overlay. */
+  .panel { padding: var(--s-5) var(--s-6); }
+}
+
+.note { color: var(--ink-2); font-size: var(--t-label); line-height: var(--lh-label); }
+.note-author { color: var(--accent); font-weight: var(--w-strong); }
+.pending { color: var(--ink-2); }
+.error { color: var(--danger); }
+
+/* ---- the conversation ---------------------------------------------------
+   Opaque (G3): this is the longest text in the product. */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.msg {
+  padding: var(--s-3); border-radius: var(--r-sm); border: 1px solid var(--divider);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* WHO is speaking, in words. Colour is the second signal and never the only
+   one: with the stylesheet off, a question and its answer were two identical
+   paragraphs. */
+.msg .speaker {
+  font-size: var(--t-caption);
+  letter-spacing: var(--tr-caption);
+  text-transform: uppercase;
+  font-weight: var(--w-strong);
+  color: var(--ink-2);
+  margin-right: var(--s-2);
+}
+
+.msg.user { border-left: 3px solid var(--accent); }
+.msg.user .speaker { color: var(--accent); }
+.msg.assistant { background-color: var(--surface-2); }
+.msg.tool { border-style: dotted; color: var(--ink-2); }
+.msg.pending { border-style: dashed; }
+.msg.error { border-color: var(--danger); color: var(--danger); }
+.msg.error p { margin: 0; }
+.msg.error pre { color: var(--danger); margin-top: var(--s-2); }
+.msg .said { color: var(--ink); }
+
+/* ---- the board ---------------------------------------------------------- */
+.board { display: flex; flex-direction: column; gap: var(--s-2); }
+
+.agent-row {
+  padding: var(--s-3);
+  border-left: 3px solid var(--tone);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+  transition: border-color var(--dur) var(--ease);
+}
+
+.agent-row[data-status="idle"], .badge[data-status="idle"] { --tone: var(--control); }
+.agent-row[data-status="starting"], .badge[data-status="starting"] { --tone: var(--machine); }
+.agent-row[data-status="waiting"], .badge[data-status="waiting"] { --tone: var(--ink); }
+.agent-row[data-status="working"], .badge[data-status="working"] { --tone: var(--accent); }
+.agent-row[data-status="failed"], .badge[data-status="failed"] { --tone: var(--danger); }
+.agent-row[data-status="closed"], .badge[data-status="closed"] { --tone: var(--control); border-left-style: dotted; }
+
+.agent-row h3 { font-size: var(--t-label); font-weight: var(--w-medium); }
+.agent-row[data-status="working"] h3 { font-size: var(--t-heading); }
+.agent-status { margin: 0; color: var(--ink-2); font-size: var(--t-label); }
+.agent-live { margin: 0; color: var(--accent); font-size: var(--t-label); }
+
+/* ---- tools, terminal, space --------------------------------------------- */
+.tool-call { padding: var(--s-3); border-left: 3px solid var(--accent); }
+.tool-call.error { border-left-color: var(--danger); }
+.tool-args { margin: 0 0 var(--s-1); font-family: var(--mono); font-size: var(--t-label); color: var(--machine); }
+.tool-outcome { color: var(--machine); font-size: var(--t-label); }
+.tool-call.error .tool-outcome { color: var(--danger); }
+.tool-call pre { max-height: 8rem; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); }
+
+#terminal { max-height: 13rem; overflow-y: auto; border-radius: var(--r-sm); padding: var(--s-2); }
+.term-run { padding: var(--s-2); border-left: 3px solid var(--control); }
+.term-run.error { border-left-color: var(--danger); }
+.term-command { margin: 0; font-family: var(--mono); font-size: var(--t-label); color: var(--machine); }
+.term-prompt { color: var(--accent); font-weight: var(--w-strong); }
+
+#space { display: flex; flex-direction: column; gap: var(--s-2); }
+.space-name { margin: 0; color: var(--accent); font-weight: var(--w-strong); }
+.space-path { margin: 0; font-family: var(--mono); font-size: var(--t-label); color: var(--machine); }
+.space-facts { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: var(--s-1) var(--s-3); }
+.space-facts dt { font-family: var(--mono); font-size: var(--t-label); color: var(--ink-2); }
+.space-facts dd { margin: 0; font-size: var(--t-label); }
+.space-notes { margin: 0; padding-left: var(--s-4); }
+
+/* ---- agents ------------------------------------------------------------- */
+.agent-card { padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-1); }
+.agent-card[data-origin="authored"] { border-left: 3px solid var(--accent); }
+.agent-card h3 { color: var(--accent); }
+.agent-meta, .agent-origin, .agent-header, .agent-memory { color: var(--ink-2); font-size: var(--t-label); margin: 0; }
+.agent-card pre { max-height: 18rem; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); }
+.agent-summary pre { max-height: 14rem; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); color: var(--machine); }
+
+/* ---- disclosure: one implementation, replacing four hand-rolled ones ----- */
+.disclose > summary,
+details > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-label);
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker { display: none; }
+
+details > summary::before {
+  content: "\25B8";
+  color: var(--control);
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+details[open] > summary::before { transform: rotate(90deg); }
+
+/* ---- the empty state ----------------------------------------------------
+   Four of the five rail panels were empty boxes on first load, which is
+   indistinguishable from a broken one. A region with nothing in it says what
+   it is for and what would put something there. Never a bare "No data". */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  color: var(--ink-2);
+}
+
+.empty .empty-glyph { font-size: var(--t-display); line-height: 1; opacity: 0.55; }
+.empty .empty-title { color: var(--ink); font-size: var(--t-heading); font-weight: var(--w-strong); }
+.empty p { margin: 0; font-size: var(--t-label); }
+
+/* ---- the skeleton -------------------------------------------------------
+   A loading region and an empty result used to look identical. */
+.skeleton {
+  background-color: var(--surface-2); border-radius: var(--r-sm);
+  min-height: var(--s-4); position: relative; overflow: hidden;
+}
+
+/* Blocks in the SHAPE of what is coming, so a region that has not answered
+   and a region with nothing in it stop being the same empty box. */
+.skeleton-stack { display: flex; flex-direction: column; gap: var(--s-2); }
+
+.skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--e2-fill), transparent);
+  animation: askk-shimmer 1.4s linear infinite;
+}
+
+@keyframes askk-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+
+.ds-swatch { padding: var(--s-4); min-width: var(--s-8); }
+
+/* A row of specimens: every variant of one component, side by side. */
+.ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.ds-note { color: var(--ink-2); font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; }
+
+/* The kill-backdrop-filter switch is `:root[data-glass="off"]` in tokens.css,
+   sharing its body with the plain skin — one code path, now four triggers.
+   Nothing is needed here; the note is so the next person looking for it in
+   the file that owns the /design-system classes finds it. */
