@@ -53,10 +53,19 @@ h3 {
 p { margin: 0 0 var(--s-2); }
 p:last-child { margin-bottom: 0; }
 
+/* A link is an interactive element and gets the same five states as a button.
+   The underline is the state channel, not colour — an accent link that only
+   brightens on hover says nothing to anyone who cannot see the brightening. */
 a {
   color: var(--accent);
   text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+  transition: color var(--dur-fast) var(--ease);
 }
+
+a:hover { text-decoration-thickness: 2px; }
+a:active { color: var(--ink); }
+a[aria-disabled="true"] { color: var(--ink-3); text-decoration: none; pointer-events: none; }
 
 /* Focus is the keyboard user's cursor: never removed, never subtle, and — the
    part that is specific to this design — never a bare outline. A single ring
