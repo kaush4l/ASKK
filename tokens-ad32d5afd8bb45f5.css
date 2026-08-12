@@ -1,14 +1,11 @@
 /* tokens.css — the only file that defines a value (DESIGN.md §3-§7). NOTHING
-   here targets an element: every selector is :root or :root-with-condition,
-   and the whole skin/fallback story is a token swap. `[data-skin="plain"]`, a
-   browser with no `backdrop-filter`, and `prefers-reduced-transparency` all
-   re-point the SAME tokens, so one code path serves all three.
-
-   That is G2. The old stylesheet had 706 lines — 54% of all CSS — whose only
-   job was to re-state the other 46% behind `html:not([data-skin="plain"])`,
-   and a both-skins rule written machine-skin-only was this repo's
-   most-repeated defect: five occurrences across increments 12 and 13. With no
-   skin-gated rules anywhere it is no longer expressible. */
+   here targets an element, and the whole skin/fallback story is a token swap:
+   `[data-skin="plain"]`, a browser with no `backdrop-filter`, and
+   `prefers-reduced-transparency` all re-point the SAME tokens (G2). The old
+   stylesheet had 706 lines — 54% of all CSS — whose only job was to re-state
+   the other 46% behind `html:not([data-skin="plain"])`, and a both-skins rule
+   written machine-skin-only was this repo's most-repeated defect: five
+   occurrences across increments 12 and 13. Now inexpressible. */
 
 :root {
   /* ---- the ground ------------------------------------------------------
@@ -18,16 +15,13 @@
      there, and the guard measures there rather than trusting a fill colour. */
   --ground: #0b0611;
   --ground-deep: #070409;
-  /* CONCENTRATED, and then PLACED. Two rounds of critique, one lesson each.
-     v1 was three faint lobes washed across the viewport: brightest pixel 55/255
-     and never past 32 under the glass, so the blur had nothing to bend. Reflect
-     is globally DARKER than us (91% of pixels under sRGB 52 vs our 87) yet puts
-     3.1% above 208 and all of it behind one card. v2 fixed the brightness and
-     parked it at 14% 2%, where every pixel over relLum 0.15 landed in one
-     186x89 patch above y=98 — no panel ever touched it, and 42% sat under the
-     opaque endpoint pill, which crushed 0.228 to 0.006. Light nothing can
-     transmit is not light. These peak at rgb(190,160,226), L=0.42, and sit at
-     the vertical middle behind the side panels, whose span is y 98-884. */
+  /* CONCENTRATED, and then PLACED — two rounds of critique, one lesson each.
+     v1: three faint lobes across the viewport, brightest pixel 55/255 and never
+     past 32 under the glass, so the blur had nothing to bend. v2: right
+     brightness, parked at 14% 2%, where every pixel over relLum 0.15 landed in
+     one 186x89 patch above y=98 that no panel touched, 42% of it under the
+     opaque pill which crushed 0.228 to 0.006. Light nothing can transmit is not
+     light. These peak at rgb(190,160,226) and sit behind the side panels. */
   --lobe-accent: rgba(214, 178, 255, 0.88);
   --lobe-cool: rgba(126, 172, 255, 0.52);
   --lobe-warm: rgba(255, 138, 214, 0.20);
@@ -69,8 +63,7 @@
   --divider: rgba(255, 255, 255, 0.07);
   --focus-halo: rgba(11, 6, 17, 0.85);
 
-  /* Opaque surfaces: content that holds body text sits here, never on a blur
-     (G3), and these are what the glass tokens collapse to on the fallback. */
+  /* Opaque: body text sits here, never on a blur (G3); also the fallback. */
   --surface-1: #150e1f;
   --surface-2: #1c1428;
   --surface-3: #241a33;
@@ -81,15 +74,12 @@
      (it appears only on Apple's LIGHT chrome, never on a dark ground); E1 and
      E2 carry no outer shadow (three of four references carry the whole effect
      on blur + hairline alone). */
-  /* Fill and dim COMPOSITED into one layer. They were two — a white-alpha
-     fill over a dark ::before at 55% — and that is wrong twice: a
-     pseudo-element with inset:0 does not cover the scrolled area of a
-     scrolling panel, and nothing that measures a page by walking
-     `backgroundColor` up the tree can see it, so the guard read the raw beam
-     and failed a page that was fine. src-over of the two gives exactly this
-     single rgba, and it is also the shape the reference actually uses: Apple's
-     localnav pill is rgba(42,42,45,0.843), Reflect's card rgba(4,1,21,0.1) —
-     a DARK tint on a bright ground, not a white one. */
+  /* Fill and dim COMPOSITED into one rgba. Two layers was wrong twice: a
+     ::before with inset:0 misses a scrolling panel's scrolled area, and nothing
+     walking `backgroundColor` up the tree can see it, so the guard read the raw
+     beam and failed a page that was fine. This is also the reference's shape —
+     Apple's pill rgba(42,42,45,0.843), Reflect's card rgba(4,1,21,0.1): a DARK
+     tint on a bright ground, not a white one. */
   --e1-fill: rgba(31, 28, 35, 0.575); --e1-blur: 20px; --e1-sat: 110%;
   --e1-line: var(--hairline);
   --e1-lit: inset 0 1px 0 0 var(--hairline-lit);
@@ -112,7 +102,7 @@
   --e3-scrim: rgba(7, 4, 12, 0.5);
   --e3-dim: rgba(7, 4, 12, 0.35);
 
-  /* ---- type: five sizes, three weights, and nothing else ---------------- */
+  /* ---- type: five sizes, three weights, nothing else ------------------- */
   --font: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
   --t-display: clamp(1.375rem, 1.1rem + 1.2vw, 1.75rem);
@@ -126,6 +116,18 @@
   --w-normal: 400; --w-medium: 500; --w-strong: 600;
 
   /* ---- space: base 4px, eight steps, nothing else ---------------------- */
+
+  /* The nav's two widths and the one measure. --measure is the typographic
+     control DESIGN.md never set: §5 fixes a 1.55 line-height for body text and
+     said nothing about line LENGTH, so with both panels folded a reply ran
+     ~1250px — about 190 characters a line. The integration pass proposed 68ch
+     and it applies to the conversation only; a table or a trace wants the width.
+     --nav-w/--nav-icon-w are ngx-admin's mechanism, not its numbers: the icon
+     rail is `display: none` on the label, never a second template. */
+  --nav-w: 13rem;
+  --nav-icon-w: 3.5rem;
+  --measure: 68ch;
+
   --s-1: 0.25rem;
   --s-2: 0.5rem;
   --s-3: 0.75rem;

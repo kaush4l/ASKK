@@ -1,5 +1,9 @@
 
 let linux = null, booting = null, queue = Promise.resolve(), out = [];
+// What the page can say about the workspace without waiting for it. The boot
+// is a promise nobody may block on, so its outcome has to be readable as a
+// value: idle → booting → ready, or error with the reason attached.
+let state = "idle", reason = "";
 
 function load(src) {
   return new Promise((resolve, reject) => {
@@ -35,9 +39,23 @@ async function bootOnce(engine, disk, cache) {
 }
 
 export function cx_boot(engine, disk, cache) {
-  if (!booting) booting = bootOnce(engine, disk, cache).catch((e) => { booting = null; throw e; });
+  if (!booting) {
+    state = "booting"; reason = "";
+    booting = bootOnce(engine, disk, cache).then(
+      () => { state = "ready"; },
+      (e) => {
+        // A failed boot is retryable: the next command tries again, which is
+        // what makes a boot that raced the service worker's isolation reload
+        // recoverable without a page reload.
+        booting = null; state = "error"; reason = (e && e.message) || String(e);
+        throw e;
+      },
+    );
+  }
   return booting;
 }
+
+export function cx_state() { return state === "error" ? "error:" + reason : state; }
 
 // One command at a time: a second cx.run while the first is live would
 // interleave two commands' output in one console.

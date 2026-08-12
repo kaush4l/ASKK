@@ -192,9 +192,9 @@ summary:hover { color: var(--ink); }
 summary:active { color: var(--accent); }
 
 /* ---- the wait clock: the one control that appears mid-turn ---------------
-   This button was 36px under the "dense secondary action" exception. It is not
-   one: composer.rs disables the composer while busy, so mid-turn "Stop waiting"
-   is the ONLY enabled control in the chat pane — the sole target, which the
-   exception explicitly excludes. It inherits the 44px floor now. */
+   This button was 36px under the "dense secondary action" exception, and 11px
+   under a --t-caption override. It is neither: composer.rs disables the composer
+   while busy, so mid-turn "Stop waiting" is the ONLY enabled control in the chat
+   pane — the sole target, which the exception excludes — and --t-caption is
+   uppercase-only type (DESIGN §5) on a sentence-case label. Both inherited now. */
 .wait-clock { display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-label); }
-.wait-clock button { font-size: var(--t-caption); }

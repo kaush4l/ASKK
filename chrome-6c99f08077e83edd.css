@@ -52,11 +52,69 @@ header .chat-endpoint {
   white-space: nowrap;
 }
 
+/* The workspace's boot state, live from first paint. Same pill as the endpoint
+   line beside it — it is the same kind of fact, "what this page can do right
+   now" — with one dot carrying the state so the colour is never the only
+   signal. */
+header .warmth {
+  margin: 0;
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-3);
+  background-color: var(--surface-1);
+  border-radius: var(--r-full);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+header .warmth::before {
+  content: "● ";
+  color: var(--ink-3, var(--ink-2));
+}
+
+header .warmth.booting::before {
+  color: var(--warning);
+}
+
+header .warmth.ready::before {
+  color: var(--success);
+}
+
+header .warmth.failed {
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+header .warmth.failed::before {
+  color: var(--danger);
+}
+
 .switches {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2);
   margin-left: auto;
+}
+
+/* Where you are, as a 4px edge bar with no background fill (NGX.md): cheaper
+   than a fill, and it survives on glass where a fill would fight the material.
+   `aria-current` is the selector — the state is in the markup, and a rule that
+   cannot be true without it is a rule that cannot drift from it. */
+.nav .view-item[aria-current="page"] {
+  box-shadow: inset 4px 0 0 0 var(--accent);
+}
+
+.nav .view-item .nav-icon {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.nav .view-item[aria-current="page"] .nav-icon {
+  color: var(--accent);
 }
 
 .nav {
@@ -123,3 +181,18 @@ footer {
 footer .machine { color: var(--machine); text-transform: none; letter-spacing: 0; }
 footer a { color: var(--ink-2); }
 footer a:hover { color: var(--accent); }
+
+/* What this page has spent. Same pill as the endpoint line and the workspace
+   state: three facts about what the page can do and has done, one shape. */
+header .meter {
+  margin: 0;
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-3);
+  background-color: var(--surface-1);
+  border-radius: var(--r-full);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--ink-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
