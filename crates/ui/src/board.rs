@@ -14,6 +14,8 @@
 use std::rc::Rc;
 
 use adapters_web::{sleep, WebApp};
+
+use crate::views::View;
 use dioxus::prelude::*;
 use kernel::{Request, Response};
 
@@ -40,7 +42,7 @@ fn show(res: Response, mut rows: Signal<String>, mut busy: Signal<bool>) -> bool
 /// What an empty board MEANS. A board with no rows is not "nothing is
 /// running"; it is "no agent was loaded at all", which is a different fact
 /// with a different fix. Its own fn so `AgentBoard` stays one job (I12).
-fn nothing_loaded(deck: Signal<bool>) -> Element {
+fn nothing_loaded(view: Signal<View>) -> Element {
     rsx! {
         EmptyState {
             glyph: "◇",
@@ -52,8 +54,8 @@ fn nothing_loaded(deck: Signal<bool>) -> Element {
             Button {
                 variant: "secondary",
                 onclick: move |_| {
-                    let mut deck = deck;
-                    deck.set(true);
+                    let mut view = view;
+                    view.set(View::Agents);
                     crate::ui::focus("agent-name");
                 },
                 "Write an agent"
@@ -68,9 +70,9 @@ pub fn AgentBoard(
     mut tick: Signal<u32>,
     /// The route the empty state's one action takes. An empty board means no
     /// agent is loaded, and the only thing that fixes that is writing one —
-    /// which is the deck, one tab away. Same signal the Setup tab sets, so
-    /// this is an entry point to an existing route, not a new one.
-    deck: Signal<bool>,
+    /// which is the Agents view. The same signal the nav sets, so this is an
+    /// entry point to an existing route, not a new one.
+    view: Signal<View>,
 ) -> Element {
     let rows = use_signal(String::new);
     let busy = use_signal(|| false);
@@ -121,7 +123,7 @@ pub fn AgentBoard(
                 } else if has_rows(&projection, "agent-row") {
                     div { dangerous_inner_html: "{projection}" }
                 } else {
-                    {nothing_loaded(deck)}
+                    {nothing_loaded(view)}
                 }
             }
             // Always in the tree, empty when nothing is running: a live region

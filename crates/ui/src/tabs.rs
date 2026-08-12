@@ -17,10 +17,6 @@ use dioxus::prelude::*;
 
 use crate::ui::{focus, Button};
 
-/// The deck's own tab id. Its own constant rather than `tab-{name}` so an agent
-/// somebody names `setup` cannot collide with it.
-const DECK_ID: &str = "deck-tab";
-
 /// Where a key press lands, given where it started. `None` is a key this strip
 /// does not own — every other key must reach the browser untouched.
 fn target(key: &Key, at: usize, count: usize) -> Option<usize> {
@@ -36,28 +32,13 @@ fn target(key: &Key, at: usize, count: usize) -> Option<usize> {
     }
 }
 
-/// Route to tab `next`: an agent, or — one past the end — the deck.
-fn go(
-    next: usize,
-    names: &[String],
-    mut selected: Signal<String>,
-    mut deck: Signal<bool>,
-    mut design: Signal<bool>,
-) {
-    // Whichever entry the strip lands on, the /design-system region closes:
-    // it is a third surface in the same column, and leaving it open would
-    // hide the conversation you just asked for behind it.
-    design.set(false);
-    match names.get(next) {
-        Some(name) => {
-            deck.set(false);
-            selected.set(name.clone());
-            focus(&format!("tab-{name}"));
-        }
-        None => {
-            deck.set(true);
-            focus(DECK_ID);
-        }
+/// Route to tab `next`. Every entry is an agent now: Setup was the last tab in
+/// this strip and is a VIEW (Agents, Settings), which is what took the strip
+/// back to the one job its `role="tablist"` always claimed.
+fn go(next: usize, names: &[String], mut selected: Signal<String>) {
+    if let Some(name) = names.get(next) {
+        selected.set(name.clone());
+        focus(&format!("tab-{name}"));
     }
 }
 
@@ -73,20 +54,11 @@ pub fn AgentTabs(
     /// conversation's own header; this is the mark that sends you to it.
     authored: ReadSignal<Vec<String>>,
     selected: Signal<String>,
-    /// The fourth region. Write an agent, Agents and Settings used to be a row
-    /// UNDER the console, so the page was one screen sitting on a 1400px
-    /// manual: you scrolled off the instrument to reach them, in the vocabulary
-    /// 12c had just spent itself replacing (12c walk, finding 1). They are a
-    /// tab now — same strip, same roving tabindex, same arrows.
-    deck: Signal<bool>,
-    /// The third stage surface. See `go`.
-    design: Signal<bool>,
 ) -> Element {
     let names = loaded.read().clone();
     let current = selected.read().clone();
     let written = authored.read().clone();
-    let on_deck = deck();
-    let count = names.len() + 1;
+    let count = names.len();
     rsx! {
         div {
             class: "agent-tabs",
@@ -97,7 +69,7 @@ pub fn AgentTabs(
             aria_label: "Which agent to talk to",
             for (index, name) in names.iter().cloned().enumerate() {
                 {
-                    let mine = !on_deck && name == current;
+                    let mine = name == current;
                     let here = written.contains(&name);
                     let (names, click_names, name_for_key) =
                         (names.clone(), names.clone(), name.clone());
@@ -118,9 +90,9 @@ pub fn AgentTabs(
                                     return;
                                 };
                                 event.prevent_default();
-                                go(next, &names, selected, deck, design);
+                                go(next, &names, selected);
                             },
-                            onclick: move |_| go(index, &click_names, selected, deck, design),
+                            onclick: move |_| go(index, &click_names, selected),
                             // Visible with the stylesheet off: the marker and
                             // the bold name are UA-styled, `aria-selected` is
                             // not, and the fallback skin is permanent.
@@ -137,40 +109,6 @@ pub fn AgentTabs(
                             if here {
                                 span { class: "tab-origin", " · written here" }
                             }
-                        }
-                    }
-                }
-            }
-            // The fourth region, last in the strip because it is what you do
-            // BETWEEN turns. Same roving tabindex, same arrows, same Home/End —
-            // `count` above already includes it.
-            {
-                let names = names.clone();
-                rsx! {
-                    Button {
-                        id: DECK_ID,
-                        role: "tab",
-                        class: if on_deck { "tab current" } else { "tab" },
-                        aria_selected: if on_deck { "true" } else { "false" },
-                        aria_controls: "deck-panel",
-                        tabindex: if on_deck { "0" } else { "-1" },
-                        onkeydown: move |event: KeyboardEvent| {
-                            let Some(next) = target(&event.key(), count - 1, count) else {
-                                return;
-                            };
-                            event.prevent_default();
-                            go(next, &names, selected, deck, design);
-                        },
-                        onclick: move |_| {
-                            let (mut deck, mut design) = (deck, design);
-                            design.set(false);
-                            deck.set(true);
-                        },
-                        if on_deck {
-                            span { aria_hidden: "true", "▸ " }
-                            strong { "Setup" }
-                        } else {
-                            "Setup"
                         }
                     }
                 }

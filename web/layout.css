@@ -49,21 +49,52 @@ main {
    this path; the regions keep their content height and let it scroll. */
 .nav, .rail, .stage { min-width: 0; flex: 0 0 auto; }
 
-/* A vertical tablist lays out vertically — in BOTH skins. Written unscoped
-   because the scoped version left the fallback with theme.css's flex-wrap and
-   turned five agents into a 2-across chip grid under an
-   aria-orientation="vertical" that promised a list, with ArrowDown moving
-   focus sideways. */
-.nav .agent-tabs {
+/* The view list is a vertical column of buttons in both skins — written
+   unscoped for the same reason the agent strip below is: the scoped version
+   left the fallback with theme.css's flex-wrap. */
+.nav .view-list {
   display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
   gap: var(--s-1);
 }
 
-.nav .tab {
+.nav .view-item {
   width: 100%;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* The agent strip moved OUT of the nav and INTO the Chat view, where the thing
+   it switches lives. It is a row there, not a column, and the
+   aria-orientation the component sends follows it. */
+.chat-view .agent-tabs {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  margin-block-end: var(--s-3);
+}
+
+/* Every view is a mounted region; exactly one is not `hidden`. The stack is
+   the panel's own layout — nothing here positions across views, because there
+   is only ever one of them on screen. */
+.view-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+/* The dashboard's components. `auto-fit` + a floor is the whole responsive
+   story: one column on a phone, two at tablet, and it never needs a
+   breakpoint of its own. */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--s-4);
+  align-items: start;
 }
 
 @media (min-width: 1100px) {

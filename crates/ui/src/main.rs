@@ -12,6 +12,8 @@ use std::rc::Rc;
 use adapters_web::WebApp;
 use dioxus::prelude::*;
 
+use crate::views::View;
+
 mod agentfile;
 mod authoring;
 mod board;
@@ -19,6 +21,7 @@ mod chat;
 mod composer;
 mod dash;
 mod gallery;
+mod stage;
 mod tabs;
 mod terminal;
 mod tools;
@@ -28,6 +31,7 @@ mod settings_view;
 mod skin;
 mod space;
 mod ui;
+mod views;
 
 fn main() {
     // The same Wasm bundle is imported by every agent's Worker (increment 06),
@@ -72,6 +76,15 @@ fn shell() -> Element {
     // flips lives in `main` — nothing below this needs to know.
     let nav_open = use_signal(dash::wide);
     let rail_open = use_signal(dash::wide);
+    // WHERE you are. One signal replaces the two booleans the stage routed on;
+    // the Dashboard is where you land, because that is what the page is for.
+    let view = use_signal(|| {
+        if gallery::wanted() {
+            View::DesignSystem
+        } else {
+            View::Dashboard
+        }
+    });
 
     use_effect(move || {
         dash::adopt(&booted.read(), web, fragment, agents, failure, loaded, authored)
@@ -87,17 +100,6 @@ fn shell() -> Element {
     // after an override had installed, and the deleted one after a delete —
     // two projections of one agent's identity disagreeing on screen (11b walk).
     let roster = use_memo(move || agents());
-    // WHICH surface the centre stage shows. The deck — Write an agent, Agents,
-    // Settings — is the last entry in the left panel's list; every other entry
-    // there is one agent's conversation.
-    let deck = use_signal(|| false);
-    // The third stage surface: /design-system (DESIGN.md §8). Routed exactly
-    // the way the deck is — a `hidden` attribute over a mounted region, not a
-    // router dependency — and opened directly by `#design-system` in the URL,
-    // which is the one line that makes it linkable for a critic. It renders no
-    // projection and calls the seam not once, so it is reachable with no model
-    // endpoint configured.
-    let design = use_signal(gallery::wanted);
     // The one sentence that says what the next turn actually calls. It was
     // prose in the chat pane; it is the same sentence, unchanged, typeset into
     // the header strip that used to be 77px holding two words (12c walk).
@@ -119,9 +121,9 @@ fn shell() -> Element {
             // is the only thing on screen that knows: nothing waits for it.
             dash::WorkspaceWarmth {}
             div { class: "switches",
-                dash::PanelToggle { label: "Agents", controls: "nav", open: nav_open }
+                dash::PanelToggle { label: "Views", controls: "nav", open: nav_open }
                 dash::PanelToggle { label: "Instruments", controls: "rail", open: rail_open }
-                dash::PanelToggle { label: "Design system", controls: "design-system", open: design }
+                views::DesignSwitch { view }
                 skin::SkinToggle {}
             }
         }
@@ -138,53 +140,19 @@ fn shell() -> Element {
                 nav {
                     class: "nav",
                     id: "nav",
-                    aria_label: "Agents and setup",
+                    aria_label: "Views",
                     hidden: !nav_open(),
-                    tabs::AgentTabs { loaded, authored, selected, deck, design }
+                    views::ViewNav { view }
                 }
-                // `primary` stays on the class list: every console rule that
-                // makes this column fill its glass is written against it, and
-                // renaming the region is not what this increment is doing.
-                div { class: "stage primary",
-                    // The fragment is built by the core's escaping primitives
-                    // (module::view) — the one scar the htmx design leaves.
-                    div { class: "masthead", dangerous_inner_html: "{fragment}" }
-                    chat::ChatPane {
-                        web, endpoint_set, tick, roster, agent: selected,
-                        hidden: deck() || design(),
-                    }
-                    // The routed deck: the tabpanel half of the last nav entry.
-                    // Both surfaces stay MOUNTED and one is `hidden` — dropping
-                    // the chat pane would drop the poller following a turn.
-                    section {
-                        class: "deck",
-                        id: "deck-panel",
-                        role: "tabpanel",
-                        aria_labelledby: "deck-tab",
-                        aria_label: "Setup",
-                        hidden: !deck() || design(),
-                        authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
-                        {authoring::agent_panel(agents)}
-                        settings::Settings { web, endpoint_set, tick }
-                    }
-                    gallery::DesignSystem { hidden: !design() }
+                stage::Stage {
+                    web, endpoint_set, tick, roster, agents, loaded, authored,
+                    selected, fragment, view,
                 }
-                aside {
-                    class: "rail",
-                    id: "rail",
-                    // WHOSE instruments. Selecting Setup leaves the rail
-                    // pointed at the agent you were last talking to — which is
-                    // correct, it is the agent the deck edits — but nothing on
-                    // screen said so, and it read as the deck's own state
-                    // (13 walk, finding 3). The name is in the label and in
-                    // the visible caption below it.
-                    aria_label: "Live instruments for {selected}",
-                    hidden: !rail_open(),
-                    p { class: "rail-who", "Instruments · " strong { "{selected}" } }
-                    board::AgentBoard { web, tick, deck }
-                    tools::ToolTrace { web, tick, agent: selected }
-                    terminal::Terminal { web, tick, agent: selected }
-                    space::SpaceInspector { web, tick, agent: selected }
+                // WHOSE instruments, and which ones: the rail is contextual,
+                // and it folds on the views that need none (VIEWS.md §5). The
+                // person's own switch still wins over the view's default.
+                if rail_open() {
+                    stage::Rail { web, tick, selected, view }
                 }
             }
         }
