@@ -94,3 +94,26 @@ html:not([data-skin="plain"]) .panel-toggle.open {
      clear 3:1 on its own; --ink-dim is 8.1:1. */
   border: 1px solid var(--ink-dim);
 }
+
+/* ---- an interactive boundary is not a decorative rule -------------------- */
+
+/* `--line` is 1.49:1 and `--edge` little better: right for a panel's edge,
+   which is decoration, and wrong for the outline of something you press,
+   which WCAG 1.4.11 puts at 3:1. Walk 5 measured the plain skin's UNSELECTED
+   tabs at 1.49:1 and the machine skin's skin-toggle at 1.55:1 — the fifth
+   location in this increment for the same token in the same wrong role.
+   Last file in the cascade, and deliberately unscoped: both skins, one rule,
+   which is the lesson this increment kept having to relearn. */
+button,
+input,
+textarea,
+select,
+.agent-tabs .tab,
+.skin-toggle,
+.panel-toggle { border-color: var(--control); }
+
+/* …except where a STRONGER signal already owns the edge. Selection and focus
+   outrank the resting boundary; neither is below 3:1. */
+.agent-tabs .tab.current { border-color: var(--accent); }
+html:not([data-skin="plain"]) .nav .tab.current { border-left-color: var(--accent); }
+html:not([data-skin="plain"]) .panel-toggle.open { border-color: var(--accent); }

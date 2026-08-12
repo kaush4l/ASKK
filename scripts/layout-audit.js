@@ -55,6 +55,15 @@
     return (hi + 0.05) / (lo + 0.05);
   };
   var opaque = function (c) { return c && !/rgba\(.*,\s*0\)$/.test(c); };
+  // "Has a fill" is a VISIBLE question, not an alpha one. `alpha != 0` counted
+  // the composer's `rgb(18,11,26)` — its ground exactly, 1.00:1 — as a fill and
+  // skipped the outline check entirely, so `--line` could hide behind any
+  // background matching its parent (walk 5, finding 2). A control is fill-less
+  // when its fill does not separate from what is behind it; then its border is
+  // the only thing drawing it, and 3:1 applies to the border.
+  var filled = function (own, under) {
+    return opaque(own) && ratio(lum(own), lum(under)) >= 3;
+  };
   var ground = function (el) {
     for (var p = el; p; p = p.parentElement) {
       var c = getComputedStyle(p).backgroundColor;
@@ -70,22 +79,31 @@
     say(text >= 4.5, "CONTRAST " + label, s.color + " " + text.toFixed(2) + ":1");
     // A control with no fill is carried by its OUTLINE, which is a non-text
     // boundary: 3:1, WCAG 1.4.11.
-    if (!opaque(s.backgroundColor) && parseFloat(s.borderTopWidth) > 0) {
+    if (!filled(s.backgroundColor, under) && parseFloat(s.borderTopWidth) > 0) {
       var edge = ratio(lum(s.borderTopColor), lum(under));
       say(edge >= 3, "BOUNDARY " + label,
           s.borderTopColor + " " + edge.toFixed(2) + ":1 on " + under);
     }
   };
+  // EVERY control, not the first of each kind. `document.querySelector(".nav
+  // .tab")` measured whichever tab the FIXTURE happens to put first — the
+  // selected one, which carries the accent edge at 7.31:1 — while the app puts
+  // an unselected one there at 1.49:1. The guard was green over a page its own
+  // code failed, because a check that reads "the first" is only as good as the
+  // fixture agreeing with the app about ordering (walk 5, the named hole).
+  var controls = ".panel-toggle, .skin-toggle, .nav .tab, input, textarea, select";
+  document.querySelectorAll(controls).forEach(function (el, i) {
+    var name = (el.id || el.className || el.tagName).toString().slice(0, 24);
+    check(el, name + "[" + i + "]");
+  });
+  // …and both states of the switches, since folded is a different painting.
   document.querySelectorAll(".panel-toggle").forEach(function (b, i) {
-    check(b, "panel-toggle[" + i + "] open");
     b.click();
     void document.body.offsetHeight;
     check(b, "panel-toggle[" + i + "] folded");
     b.click();
     void document.body.offsetHeight;
   });
-  var firstTab = document.querySelector(".nav .tab");
-  if (firstTab) check(firstTab, "nav tab");
 
   // Pointer targets, as INFO: at 390 everything clears 44px, and the only
   // thing under 24 is an inline link in running prose, which WCAG 2.5.8

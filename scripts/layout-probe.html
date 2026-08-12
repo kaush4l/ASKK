@@ -35,8 +35,15 @@
        models that because it is what the shipped page does. -->
   <nav class="nav" id="nav" aria-label="Agents and setup">
     <div class="agent-tabs" role="tablist" aria-orientation="vertical" aria-label="Which agent to talk to">
-      <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="chat-panel" tabindex="0"><span aria-hidden="true">▸ </span><strong>main</strong></button>
+      <!-- author FIRST and UNSELECTED, because that is the order the app
+           renders. The fixture used to lead with the selected tab, so a
+           check reading "the first .nav .tab" measured the one carrying the
+           accent edge (7.31:1) while the shipped page led with one carrying
+           --line (1.49:1): the guard was green over a page its own code
+           failed (walk 5). The audit iterates every control now, and the
+           fixture no longer disagrees with the app about ordering either. -->
       <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
+      <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="chat-panel" tabindex="0"><span aria-hidden="true">▸ </span><strong>main</strong></button>
       <!-- FIVE entries, which is the shipped roster. Three was too few to
            WRAP, so the STACKED assertion could not reproduce the fallback's
            2-across chip grid even with the bug restored — a fixture smaller
