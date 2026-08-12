@@ -66,9 +66,13 @@ fn shell() -> Element {
     // Which of them this browser wrote — the editor's Delete needs it.
     let authored = use_signal(Vec::<String>::new);
     let selected = use_signal(|| "main".to_string());
-    // Whether an endpoint is configured: `Settings` knows (it reads the
-    // broker), `ChatPane` needs it (a send with no endpoint is a request that
-    // cannot work), so the shell owns the one signal between them.
+    // Whether an endpoint is configured. `Settings` writes it when it is on
+    // screen, and the SHELL derives it every tick as well — because since 15H
+    // a view mounts only while it is current, and a signal published by a
+    // component nobody has opened is a signal that is false: the composer sat
+    // disabled on a fresh load until you visited Settings, over an endpoint
+    // that was configured and working. The broker is the source of truth and
+    // both readers ask it.
     let endpoint_set = use_signal(|| false);
     // "something moved": bumped by a turn and by a settings save, read by the
     // panes that must redraw from the core when it does.
@@ -113,6 +117,14 @@ fn shell() -> Element {
         let _ = tick();
         chat::endpoint_line(web)
     };
+    use_effect(move || {
+        let _ = tick();
+        let configured = chat::endpoint_configured(web);
+        let mut endpoint_set = endpoint_set;
+        if *endpoint_set.peek() != configured {
+            endpoint_set.set(configured);
+        }
+    });
 
     rsx! {
         header {

@@ -26,6 +26,16 @@ use crate::ui::{focus, Button, Card, EmptyState, Skeleton, COMPOSER_ID};
 /// for a whole increment (`ux-walker`, increment 04).
 /// Read by the SHELL, not by this pane: from 12d the sentence is typeset into
 /// the header strip — the 77px that held two words — and said once.
+/// Whether a turn could be sent at all: an endpoint is chosen and has a URL.
+/// Read straight off the broker, so it is true whether or not the Settings
+/// view has ever been opened.
+pub(crate) fn endpoint_configured(web: Signal<Option<Rc<WebApp>>>) -> bool {
+    web.read()
+        .clone()
+        .map(|app| !app.endpoint_summary().0.is_empty())
+        .unwrap_or(false)
+}
+
 pub(crate) fn endpoint_line(web: Signal<Option<Rc<WebApp>>>) -> String {
     let Some(app) = web.read().clone() else {
         return String::new();
