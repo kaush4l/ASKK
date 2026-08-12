@@ -18,10 +18,20 @@ use crate::dispatch::{error_fragment, html, Ctx};
 use crate::filelist::{opened, panel, rows};
 use crate::form::form_value;
 
+/// Why there is nothing to browse, in the words that name the fix.
+const NO_SPACE: &str = "This agent works alone, so it has no workspace to browse: the folder \
+                        belongs to a space. Add `space: <name>` to its agent.md to put it in one.";
+
 /// A person asked for a path. Its own fact kind for the reason the terminal's
 /// is: the async half does the I/O, and nothing else may mistake this for
 /// something the agent decided to do.
 pub(crate) const OPEN_REQUEST: &str = "core.files_request";
+
+/// A person SAVED a file. A separate kind from opening one, because it is a
+/// separate authority: reading the workspace and writing to it are two
+/// different things to be able to do, and a log that spells them the same way
+/// cannot answer "who changed this".
+pub(crate) const SAVE_REQUEST: &str = "core.files_save";
 
 pub(crate) fn manifest() -> Manifest {
     Manifest {
@@ -63,6 +73,10 @@ pub(crate) fn files(req: &Request, ctx: &mut Ctx) -> Response {
             let at = req.header("x-at").map(str::to_string);
             listing(html(200, panel(ctx, at.as_deref())), ctx, at.as_deref())
         }
+        // A body with `contents` is a SAVE; without one it is an open. Same
+        // route because it is the same subject — this file, in this workspace
+        // — and the pane already has the path in hand either way.
+        ("POST", "/files") if form_value(&req.body, "contents").is_some() => save(req, ctx),
         ("POST", "/files") => open(req, ctx),
         _ => error_fragment(404, "files: unknown subroute"),
     }
@@ -74,6 +88,33 @@ pub(crate) fn files(req: &Request, ctx: &mut Ctx) -> Response {
 fn listing(mut response: Response, ctx: &Ctx, at: Option<&str>) -> Response {
     response.headers.push(("x-entries".into(), rows(ctx, at)));
     response.headers.push(("x-file".into(), opened(ctx, at)));
+    response
+}
+
+/// Save what the editor holds, through the agent's own `write_file`. The
+/// answer to THIS request is the pane as it is now; the write happens in the
+/// async half, and the re-read that follows it is what the pane will show —
+/// which is the difference between a save and a hope.
+fn save(req: &Request, ctx: &mut Ctx) -> Response {
+    let (Some(path), Some(contents)) = (
+        form_value(&req.body, "path"),
+        form_value(&req.body, "contents"),
+    ) else {
+        return error_fragment(400, "files: a save needs a path and contents");
+    };
+    if ctx.space.is_none() {
+        return error_fragment(400, NO_SPACE);
+    }
+    match ctx.emit.as_mut() {
+        Some(buf) => buf.push(EventKind::Custom {
+            kind: SAVE_REQUEST.into(),
+            payload_json: serde_json::to_string(&(path.clone(), contents)).unwrap_or_default(),
+        }),
+        None => return error_fragment(500, "files: Emit capability not granted"),
+    }
+    let scope = Some(path.as_str());
+    let mut response = listing(html(200, panel(ctx, scope)), ctx, scope);
+    response.headers.push(("x-saving".into(), "1".into()));
     response
 }
 
@@ -91,11 +132,7 @@ fn open(req: &Request, ctx: &mut Ctx) -> Response {
     // making the core guess from a name.
     let folder = form_value(&req.body, "kind").as_deref() != Some("file");
     if ctx.space.is_none() {
-        return error_fragment(
-            400,
-            "This agent works alone, so it has no workspace to browse: the folder belongs to a \
-             space. Add `space: <name>` to its agent.md to put it in one.",
-        );
+        return error_fragment(400, NO_SPACE);
     }
     match ctx.emit.as_mut() {
         Some(buf) => buf.push(EventKind::Custom {

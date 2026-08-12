@@ -74,3 +74,25 @@
   color: var(--accent);
   font-weight: var(--w-strong);
 }
+
+/* The editor. A textarea, deliberately: this is "you can change what the agent
+   wrote and save it", not an IDE, and a real one would be a vendored bundle
+   with its own language services (ADR territory, not a stylesheet's). */
+.file-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.file-editor {
+  width: 100%;
+  min-height: 12rem;
+  resize: vertical;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--t-label);
+  line-height: var(--lh-body);
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}

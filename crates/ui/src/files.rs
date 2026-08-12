@@ -15,7 +15,7 @@ use adapters_web::{sleep, WebApp};
 use dioxus::prelude::*;
 use kernel::Request;
 
-use crate::ui::Card;
+use crate::ui::{Button, Card};
 
 /// How the pane watches for a listing the async half is still producing. Two
 /// minutes at 500 ms: a cold CheerpX streams its disk before the first `ls`
@@ -30,13 +30,16 @@ struct Entry {
     path: String,
 }
 
-/// What the pane is showing: the core's fragment, and the entries it named in
-/// `x-entries`. One value, so the buttons and the prose can never disagree
-/// about which folder is open.
+/// What the pane is showing: the core's fragment, the entries it named in
+/// `x-entries`, and the open file's path and bytes from `x-file`. One value,
+/// so the buttons, the prose and the editor can never disagree about which
+/// file is open.
 #[derive(Clone, Default, PartialEq)]
 struct Shown {
     html: String,
     entries: Vec<Entry>,
+    open: String,
+    body: String,
 }
 
 /// One trip through the seam for this agent's files.
@@ -60,9 +63,18 @@ fn ask(web: Signal<Option<Rc<WebApp>>>, agent: &str, req: Request) -> Shown {
             })
         })
         .collect();
+    let (open, body) = res
+        .headers
+        .iter()
+        .find(|(k, _)| k == "x-file")
+        .and_then(|(_, v)| v.split_once('\n'))
+        .map(|(path, body)| (path.to_string(), body.to_string()))
+        .unwrap_or_default();
     Shown {
         html: res.body,
         entries,
+        open,
+        body,
     }
 }
 
@@ -119,7 +131,28 @@ pub fn Files(
             watching.set(false);
         });
     };
+    // What the editor holds, and for which file. `None` means "showing what is
+    // on disk": a draft belongs to one path, and switching files must not
+    // carry your edit to the next one.
+    let mut draft = use_signal(|| None::<(String, String)>);
     let shown = panel.read().clone();
+    let editing = draft.read().clone().filter(|(path, _)| *path == shown.open);
+    let text = match &editing {
+        Some((_, text)) => text.clone(),
+        None => shown.body.clone(),
+    };
+    let dirty = editing.is_some() && text != shown.body;
+    let mut save = move |path: String, text: String| {
+        let Some(app) = web.peek().clone() else { return };
+        app.handle(
+            Request::post_form("/files", &[("path", path.as_str()), ("contents", text.as_str())])
+                .with_header("x-agent", &agent()),
+        );
+        draft.set(None);
+        // The write and the re-read happen in the async half; the same watcher
+        // that follows a listing follows this.
+        open((path, false));
+    };
     rsx! {
         Card { title: "Files", aria_label: "Workspace files",
             div { class: "file-form",
@@ -139,6 +172,41 @@ pub fn Files(
                     }
                 }
                 div { aria_live: "polite", dangerous_inner_html: "{shown.html}" }
+                // The editor. It appears only with a file open, and it is the
+                // same textarea whether the file is one line or a thousand:
+                // "an editor" here means you can change what the agent wrote
+                // and save it, not that this is an IDE.
+                if !shown.open.is_empty() {
+                    div { class: "file-edit",
+                        textarea {
+                            id: "file-editor",
+                            class: "file-editor",
+                            aria_label: "Editing {shown.open}",
+                            spellcheck: "false",
+                            value: "{text}",
+                            oninput: move |e: FormEvent| {
+                                draft.set(Some((shown.open.clone(), e.value())));
+                            },
+                        }
+                        div { class: "row",
+                            Button {
+                                disabled: !dirty,
+                                onclick: {
+                                    let (path, body) = (shown.open.clone(), text.clone());
+                                    move |_| save(path.clone(), body.clone())
+                                },
+                                if dirty { "Save to the workspace" } else { "Saved" }
+                            }
+                            if dirty {
+                                Button {
+                                    variant: "secondary",
+                                    onclick: move |_| draft.set(None),
+                                    "Discard"
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

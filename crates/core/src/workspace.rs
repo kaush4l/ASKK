@@ -143,6 +143,21 @@ pub(crate) async fn open_typed(app: &Rc<RefCell<App>>, path: &str, folder: bool)
     }
 }
 
+/// What a person typed into the editor, written through the agent's own
+/// `write_file` and then read back — the read is what makes the pane show what
+/// is ON DISK rather than what was typed, which is the difference between a
+/// save and a hope.
+pub(crate) async fn save_typed(app: &Rc<RefCell<App>>, path: &str, contents: &str) {
+    let args = serde_json::json!({ "path": path, "contents": contents }).to_string();
+    if let Some(kind) = run(app, &ToolId("write_file".into()), &args).await {
+        let wrote = matches!(&kind, EventKind::ToolInvoked { ok: true, .. });
+        app.borrow_mut().append(kind);
+        if wrote {
+            open_typed(app, path, false).await;
+        }
+    }
+}
+
 /// A command a PERSON typed into the terminal pane, run in this agent's own
 /// workspace. Recorded as the same `ToolInvoked` fact the agent's own calls
 /// produce, so one pane projects both and a person can see what the agent did
