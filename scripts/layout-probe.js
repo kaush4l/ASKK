@@ -182,64 +182,18 @@
   // ---- the page is one screen, and never a document sideways --------------
   var doc = document.documentElement;
   info("HEIGHT", doc.scrollHeight + "px in a " + window.innerHeight + "px viewport");
-  // BOTH skins from increment 13: the plain skin is the same three regions on
-  // the same one screen, and it was exempt here only because it used to be a
-  // single scrolling column.
-  if (W >= 1100) {
-    say(doc.scrollHeight <= window.innerHeight + 1, "ONESCREEN",
-        doc.scrollHeight + " vs " + window.innerHeight);
-  }
+  // EVERY width, BOTH skins. This was gated `W >= 1100`, which is precisely
+  // where the failure it exists to catch did NOT live: the plain skin measured
+  // 1015px in an 844px viewport at 390 and the probe printed it as INFO, which
+  // nothing counts (13d walk, "the biggest remaining hole"). The page never
+  // scrolls at any width now — the region you are in scrolls inside itself.
+  say(doc.scrollHeight <= window.innerHeight + 1, "ONESCREEN",
+      doc.scrollHeight + " vs " + window.innerHeight);
   say(doc.scrollWidth <= doc.clientWidth, "XOVERFLOW",
       doc.scrollWidth + " vs " + doc.clientWidth);
 
-  // ---- the type scale actually present on this page -----------------------
-  var sizes = {};
-  document.querySelectorAll("body *").forEach(function (el) {
-    if (!el.offsetParent && el !== document.body) return;
-    var text = Array.prototype.some.call(el.childNodes, function (n) {
-      return n.nodeType === 3 && n.textContent.trim();
-    });
-    if (!text || el.closest("#report")) return;
-    var s = getComputedStyle(el).fontSize;
-    sizes[s] = (sizes[s] || 0) + 1;
-  });
-  var scale = Object.keys(sizes).sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
-  info("SIZES", scale.map(function (s) { return s + "x" + sizes[s]; }).join(" "));
-
-  // ---- motion, and the reduced-motion promise -----------------------------
-  var running = [];
-  document.querySelectorAll("body *").forEach(function (el) {
-    ["", "::before", "::after"].forEach(function (p) {
-      var a = getComputedStyle(el, p || null).animationName;
-      if (a && a !== "none") running.push(a);
-    });
-  });
-  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  info("MOTION", "reduced=" + reduced + " running=[" + running.sort().join(" ") + "]");
-  if (reduced) say(running.length === 0, "REDUCEDMOTION", running.join(" ") || "nothing animates");
-
-  // ---- contrast: every ink token against the ground it sits on ------------
-  var lin = function (c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-  var lum = function (rgb) {
-    var m = rgb.match(/\d+/g).map(Number);
-    return 0.2126 * lin(m[0]) + 0.7152 * lin(m[1]) + 0.0722 * lin(m[2]);
-  };
-  var probe = document.createElement("span");
-  document.body.appendChild(probe);
-  var resolve = function (token) {
-    probe.style.color = "var(" + token + ")";
-    return getComputedStyle(probe).color;
-  };
-  var bg = lum(resolve("--bg"));
-  ["--ink", "--ink-dim", "--accent", "--danger", "--machine"].forEach(function (t) {
-    var c = resolve(t);
-    if (!c) return;
-    var l = lum(c), hi = Math.max(l, bg), lo = Math.min(l, bg);
-    info("CONTRAST " + t, c + " " + ((hi + 0.05) / (lo + 0.05)).toFixed(2) + ":1 on --bg");
-  });
-  probe.remove();
-
-  document.getElementById("report").textContent =
-    "== " + W + "x" + window.innerHeight + " skin=" + (q.get("skin") || "machine") +
-    " route=" + (routed ? "deck" : "chat") + "\n" + out.join("\n");
+  // The audit half runs next (layout-audit.js) and writes the report, so a
+  // verdict from either file reaches check-layout.sh. Split because this file
+  // hit the 200-line rule (I12) carrying both halves.
+  window.__probe = { say: say, info: info, rect: rect, out: out, W: W, q: q, routed: routed };
 })();
