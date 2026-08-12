@@ -28,7 +28,10 @@ pub(crate) fn interactive() -> Element {
                 Button { variant: "ghost", disabled: true, "Ghost" }
                 Button { variant: "danger", disabled: true, "Danger" }
             }
-            p { class: "ds-note", "small — dense rows only, never the sole target on touch" }
+            // Not a "small" variant: there is one button size (DESIGN §8), and
+            // this row is here because it is the only control that appears
+            // mid-turn — the composer is disabled, so it is the sole target.
+            p { class: "ds-note", "the wait clock — the one control that appears mid-turn" }
             p { class: "wait-clock", "waiting for the model — 4s " Button { variant: "secondary", "Stop waiting" } }
             p { class: "note",
                 "Hover, :focus-visible and :active are live on the row above. Every target is \

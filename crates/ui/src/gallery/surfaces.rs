@@ -78,9 +78,17 @@ fn messages() -> Element {
                     span { class: "said", "calling tools — see the tool trace" }
                 }
                 div { class: "msg pending", span { class: "said", "thinking…" } }
+                // The shape `core::failure::card` actually emits: a <p>, not a
+                // `.said` span, and NO speaker — a failure is the harness
+                // talking, not the agent. The specimen carried both, so this
+                // page showed the error variant in --ink with a "main:" label
+                // while the chat showed it in --danger with none: the one
+                // artifact whose job is to catch drift was the drift.
                 div { class: "msg error",
-                    span { class: "speaker", "main: " }
-                    span { class: "said", "The endpoint refused the request." }
+                    p { "The endpoint refused the request." }
+                    Disclosure { summary: "Technical detail for failure 1 — the endpoint refused",
+                        pre { "{{\"Model\":{{\"Refused\":{{\"status\":403}}}}}}" }
+                    }
                 }
             }
         }

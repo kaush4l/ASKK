@@ -83,7 +83,13 @@ header,
   background-color: var(--surface-1);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  border: 1px solid var(--divider);
+  /* --e2-line, not --divider. A divider is a rule INSIDE a surface and may be
+     faint; this border is the outside of the box. On the opaque path --e1-fill
+     and the panel's own fill both resolve to --surface-1, so in the plain skin
+     a panel sat on the rail at exactly its own colour and the 7% divider was
+     the only thing drawing it: 1.2:1, against DESIGN §10.2's 3:1. --e2-line
+     follows the same swap the chrome's border already does. */
+  border: 1px solid var(--e2-line);
   box-shadow: none;
   border-radius: var(--e2-radius);
 }
@@ -103,6 +109,16 @@ header,
   border: 1px solid var(--divider);
   box-shadow: none;
   border-radius: var(--r-sm);
+}
+
+/* …except a FLAT card, which is not a row. `.panel .panel` above is (0,2,0)
+   and `.flat` is (0,1,0), so the gallery's one specimen of the `flat` variant
+   rendered as a nested row — --surface-2 at --r-sm — while every other flat
+   surface in the product is --surface-1 at --e2-radius. Same specificity,
+   later in the file. */
+.panel .flat {
+  background-color: var(--surface-1);
+  border-radius: var(--e2-radius);
 }
 
 /* ---- G3: body text never sits on a blur ---------------------------------

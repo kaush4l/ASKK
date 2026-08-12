@@ -44,10 +44,16 @@ arrangement, in `web/index.html` link order:
 | `tokens.css` | `:root` and the three fallback token blocks. **No selector here targets an element.** | 200 |
 | `base.css` | element defaults: `html`, `body`, headings, links, focus, native form controls | 200 |
 | `glass.css` | the material: `.e1` / `.e2` / `.e3`, the nesting rule, the opaque path | 200 |
-| `surfaces.css` | card, message, row, tool-call, disclosure, empty state, skeleton | 200 |
-| `controls.css` | button, input, textarea, select, tab, badge, toggle | 200 |
 | `layout.css` | the dashboard shell: three regions, the fold, breakpoints | 200 |
 | `chrome.css` | header, nav, rail, footer — the persistent furniture | 200 |
+| `surfaces.css` | card, message, row, tool-call, disclosure, empty state, skeleton | 200 |
+| `controls.css` | button, input, textarea, select, tab, badge, toggle | 200 |
+
+The order is `index.html`'s link order and it is dependency order: geometry and
+furniture before the things that compose over them. This table used to list
+surfaces and controls above layout and chrome; the code has always shipped the
+order above, and since link order decides which of two same-specificity rules
+wins, the table is not decoration and gets corrected to the code.
 
 **Invariant G1 — one home per property.** No *(selector, property)* pair may be
 declared in two files. `scripts/check-selectors.py` fails the build on a
@@ -89,11 +95,21 @@ nothing and never fails to load.
 --lobe-warm:     rgba(255, 138, 214, 0.20);
 
 --ground-field:
-  radial-gradient(26rem 20rem at 14%  2%, var(--lobe-accent), transparent 58%),
-  radial-gradient(22rem 17rem at 92% 82%, var(--lobe-cool),   transparent 60%),
-  radial-gradient(34rem 24rem at 62% 40%, var(--lobe-warm),   transparent 62%),
+  radial-gradient(30rem 30rem at  6% 46%, var(--lobe-accent), transparent 62%),
+  radial-gradient(26rem 26rem at 97% 34%, var(--lobe-cool),   transparent 62%),
+  radial-gradient(34rem 24rem at 55% 96%, var(--lobe-warm),   transparent 62%),
   linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
 ```
+
+**Concentrated is not enough; it also has to be PLACED, and this document
+lagged the code by one whole correction on that.** The block above used to read
+`at 14% 2%` / `92% 82%` / `62% 40%`, which is what shipped in the third pass and
+was then measured and moved — every pixel over relLum 0.15 landed in one 186×89
+patch above y=98, which no panel ever covers, and 42% of it sat under the opaque
+endpoint pill, which crushed 0.228 to 0.006. Light nothing can transmit is not
+light. The shipped beams sit at the vertical middle of the side panels (whose
+span is y 98–884), and `tokens.css` has carried that since; this file is being
+corrected to it, not the other way round.
 
 **Concentrated, not spread — and the first version of this section got that
 exactly backwards.** It specified three faint lobes washed across the whole
@@ -130,7 +146,7 @@ case for light-on-glass, and it is where glassmorphism fails invisibly.
 | `--warning` | `#f2cf87` | 12.2:1 | degraded: no isolation, endpoint unreachable but retrying |
 | `--danger` | `#ffadad` | 9.7:1 | a turn failed, a tool refused |
 | `--hairline` | `rgba(255,255,255,0.10)` | — | the glass edge. **Decorative. Never the only boundary.** |
-| `--hairline-lit` | `rgba(255,255,255,0.18)` | — | the top edge light-catch |
+| `--hairline-lit` | `rgba(255,255,255,0.30)` | — | the top edge light-catch |
 | `--control` | `#c0b3d4` | 12.4:1 | the boundary of any control with no fill (WCAG 1.4.11 ≥ 3:1) |
 | `--divider` | `rgba(255,255,255,0.07)` | — | rules inside a surface |
 
@@ -189,7 +205,7 @@ drive these values, and each one moved a number I had guessed wrong:
 | Blur clusters at **15–22px** for cards, **20px** for chrome. Nothing measured above 22. | Apple curtain 20px · Reflect card 15px · Reflect popover 22px · Linear header 20px | E1 28→**20**, E3 40→**22** |
 | `saturate()` appears **only on Apple's light chrome**, never on a dark ground | HIG light nav `saturate(1.8) blur(20px)`; every dark surface has no saturate | E1 170%→**110%**, E3 185%→**115%** |
 | Hairlines are exactly **1px at `rgba(255,255,255,0.08–0.10)`** | Reflect `0.1` · Linear `0.08` | E2 0.075→**0.08**, E3 0.14→**0.10** |
-| **The top edge is a separate treatment in every high-craft example.** Linear adds a second inset white at 4%; Apple paints a specular arc; Reflect skips it *and its cards read flatter* | Linear `rgba(255,255,255,0.04) 0 1px 0 0 inset` | kept, retuned down from 0.18 |
+| **The top edge is a separate treatment in every high-craft example.** Linear adds a second inset white at 4%; Apple paints a specular arc; Reflect skips it *and its cards read flatter* | Linear `rgba(255,255,255,0.04) 0 1px 0 0 inset` | kept; E1 reads `--hairline-lit` at **0.30**, E2 0.06, E3 0.16 |
 | **Outer drop shadows are near-absent** — three of four carry the whole effect on blur + hairline alone | Apple `none` · Reflect card `none` · Linear header `none` | E1/E2 shadow → **none** |
 | On a **dark** ground, glass *adds* light (visionOS panel 0.041 over a 0.003 cabin, ~13×); on a **bright** ground it *darkens* (Spotlight capsule 0.051 under a 0.318 wallpaper, ~6×) | pixel-sampled | our ground is dark, so the fill is **white-alpha**, and E3 over the lit lobe gets a dimming layer |
 
@@ -222,11 +238,20 @@ across one panel, ~14×.
 --e1-fill:    rgba(31, 28, 35, 0.575);   /* white .055 over dark .55, resolved */
 --e1-blur:    20px;
 --e1-sat:     110%;
---e1-border:  1px solid var(--hairline);          /* 1px @ .10 */
+--e1-line:    var(--hairline);                    /* 1px @ .10 — a COLOUR */
 --e1-lit:     inset 0 1px 0 0 var(--hairline-lit);/* the separate top edge */
---e1-shadow:  none;                      /* blur + hairline carry it */
+--e1-shadow:  0 0 0 0 transparent;       /* blur + hairline carry it */
 --e1-radius:  var(--r-lg);   /* 16px */
 ```
+
+Two shapes in that block are corrections to this document, not to the code.
+`--e*-border` was specified as a whole `1px solid …` shorthand and shipped as
+`--e*-line`, a **colour**, because `glass.css` writes the width and style once
+(`border: 1px solid var(--e1-line)`) and the opaque path swaps only the colour —
+a shorthand token would have made the swap re-declare the width three times. And
+`--e1-shadow` cannot be `none`: it is composed as `box-shadow: var(--e1-lit),
+var(--e1-shadow)`, where `none` in a list is invalid CSS and silently drops the
+top-edge light with it. `0 0 0 0 transparent` is the same picture and composes.
 
 ### E2 — resting
 
@@ -238,11 +263,20 @@ when an E2 is the outermost glass in its chain.
 --e2-fill:    rgba(255, 255, 255, 0.032);
 --e2-blur:    15px;                                /* Reflect's card, exactly */
 --e2-sat:     100%;
---e2-border:  1px solid rgba(255, 255, 255, 0.08);
+--e2-line:    rgba(255, 255, 255, 0.08);
 --e2-lit:     inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
---e2-shadow:  none;
+--e2-shadow:  0 0 0 0 transparent;
 --e2-radius:  var(--r-md);   /* 12px */
 ```
+
+`--e2-line` is also the border of every `.panel`, which is the surface class the
+product actually uses everywhere content lives. That was `--divider` and it was
+wrong: `--divider` is a rule *inside* a surface and may be faint, but on the
+opaque path `--e1-fill` and the panel's own fill both resolve to `--surface-1`,
+so a panel sitting in the rail was its own colour with a 7% line around it —
+**1.2:1, in the one skin where the border is the only boundary there is**. §10.2
+is the assertion it failed, and it failed it in the plain skin only, which is
+exactly where this repo has always failed things.
 
 ### E3 — floating
 
@@ -255,13 +289,20 @@ because nothing in it floats over its own app.
 --e3-fill:    rgba(62, 59, 66, 0.409);   /* same resolution, dim at HIG's 35% */
 --e3-blur:    22px;                                /* Reflect's popover */
 --e3-sat:     115%;
---e3-border:  1px solid rgba(255, 255, 255, 0.10);
+--e3-line:    rgba(255, 255, 255, 0.10);
 --e3-lit:     inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
 --e3-shadow:  0 24px 60px -20px rgba(0, 0, 0, 0.75),
               0 2px 8px -2px rgba(0, 0, 0, 0.4);
 --e3-radius:  var(--r-lg);
 --e3-scrim:   rgba(7, 4, 12, 0.5);       /* over the page, behind the surface */
+--e3-dim:     rgba(7, 4, 12, 0.35);      /* HIG's 35%, defined and UNUSED */
 ```
+
+The third pass said `--e1-dim`/`--e3-dim` were deleted when fill and dim were
+composited into one rgba. `--e1-dim` was; `--e3-dim` is still in `tokens.css`
+and nothing reads it, and so are `--e3-scrim` and `.scrim`, because **no E3
+surface is rendered anywhere in the product** — the only instance of the E3
+material on the page is the gallery's swatch. See §8 on Toast and Modal.
 
 ### The nesting rule — N1 through N4
 
@@ -343,10 +384,11 @@ Each re-points the same tokens:
 --e1-fill: var(--surface-1);  --e1-blur: 0px;  --e1-sat: 100%;
 --e2-fill: var(--surface-2);  --e2-blur: 0px;  --e2-sat: 100%;
 --e3-fill: var(--surface-3);  --e3-blur: 0px;  --e3-sat: 100%;
---e1-border: 1px solid var(--control);   /* the hairline was decorative;
---e2-border: 1px solid var(--control);      with no material behind it, the
---e3-border: 1px solid var(--control);      border becomes the only boundary
-                                            and must clear 3:1 */
+--e1-line: var(--control);   /* the hairline was decorative; with no material
+--e2-line: var(--control);      behind it the border becomes the only boundary
+--e3-line: var(--control);      and must clear 3:1. `.panel` borders with
+                                --e2-line, so it swaps here too. */
+--e1-lit: none; --e2-lit: none; --e3-lit: none;
 --ground-field: linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
 ```
 
@@ -372,10 +414,24 @@ alias for `--mono` and added a name without adding a value.
 | Role | Token | Size | Line-height | Tracking | Weight | Used for |
 |---|---|---|---|---|---|---|
 | display | `--t-display` | `clamp(1.375rem, 1.1rem + 1.2vw, 1.75rem)` | 1.15 | `-0.01em` | 600 | the masthead, a modal title |
-| heading | `--t-heading` | `1.0625rem` (17px) | 1.3 | `0` | 600 | panel titles, agent names |
+| heading | `--t-heading` | `1.0625rem` (17px) | 1.3 | `0` | 600 | an agent's name on its card, every `h3` |
 | body | `--t-body` | `0.9375rem` (15px) | 1.55 | `0` | 400 | replies, prose, input values |
 | label | `--t-label` | `0.8125rem` (13px) | 1.4 | `0.01em` | 500 | metadata, form labels, buttons |
-| caption | `--t-caption` | `0.6875rem` (11px) | 1.35 | `0.14em` | 600 | section eyebrows, uppercase only |
+| caption | `--t-caption` | `0.6875rem` (11px) | 1.35 | `0.14em` | 600 | section eyebrows, **including every panel title**, uppercase only |
+
+**Panel titles are caption eyebrows, not headings, and this table said the
+opposite.** Every `h2` in the product — "CHAT WITH MAIN", "AGENTS RUNNING",
+"TOOLS" — ships as 11px uppercase with `0.14em` tracking, and has on every
+screen; the shipped decision is that a panel's title is a label on furniture,
+not a heading competing with the agent names and the masthead inside it. The
+document was wrong. One consequence is load-bearing: nothing may put
+sentence-case type on `--t-caption`. `.wait-clock button` did, at 11px beside
+every other button's 13px, and has been removed.
+
+**One size per element, in every state.** A status is a status channel — the
+word, `--tone`, the badge — never a jump in the type scale. `.agent-row h3` used
+to become `--t-heading` on `data-status="working"`, so an agent's name changed
+size while nothing about the agent's identity changed.
 
 ```css
 --w-normal: 400;  --w-medium: 500;  --w-strong: 600;
@@ -410,10 +466,27 @@ scripts reference it by name.
 
 | Surface | Padding | Gap between children |
 |---|---|---|
-| E1 chrome | `--s-4` (16) at ≤768, `--s-5` (24) above | `--s-4` |
-| E2 card | `--s-5` (24) block, `--s-6` (32) inline at ≥1024 | `--s-3` |
-| E2 dense row (agent row, tool call) | `--s-3` | `--s-2` |
+| E1 chrome (header, nav, rail) | `--s-3` (12), all widths | `--s-3` |
+| E2 card (`.panel`) | `--s-4` (16); `--s-5` (24) block / `--s-6` (32) inline at ≥1024 | `--s-3` |
+| E2 dense row (agent row, tool call, terminal run) | `--s-3` | `--s-2` |
 | E3 floating | `--s-5` at ≤768, `--s-6` (32) above | `--s-4` |
+
+**The E1 row said `--s-4`/`--s-5` and the code has always shipped `--s-3`, and
+the code is right.** E1 chrome in this product is not a content surface: it is a
+container of `.panel`s that already pad themselves 24/32, so the specified 24
+would have put 56px between the rail's edge and its first word on a 374px rail.
+The rule the table was reaching for is that padding accumulates — the *outermost*
+surface holding text pays the card figure, and a frame around padded cards pays
+one step.
+
+The same rule is why an `EmptyState` has `padding: var(--s-4) 0` and not
+`var(--s-4)`: it is always the sole child of a panel that has already paid the
+inline padding, and paying it twice put the empty state's glyph and title 16px
+to the right of its own panel's title, in all five panels that have one.
+`#terminal` and `.term-run` were the other place this drifted — they ran at
+`--s-2` while `.chat-log` and `.tool-call` ran at `--s-3`, so the rail changed
+rhythm between the Tools panel and the Workspace panel directly beneath it. Both
+are `--s-3` now.
 
 The card figure is the reference's, not a guess: Reflect's showcase card measures
 `padding: 24px 32px` (`reference/NOTES.md`). My first pass said 16 and would have
@@ -464,18 +537,26 @@ Glass has mass. It moves slowly and it settles; it does not snap or bounce.
 --ease-in:  cubic-bezier(0.55, 0, 1, 0.45);   /* exits only */
 ```
 
-**Hard cap 380ms.** Nothing in this product animates longer, including the five
-existing loops.
+**Hard cap 380ms on any transition or entrance.** An idle loop that communicates
+"this region has not answered yet" is not an entrance and is exempt — there is
+exactly one, `askk-shimmer` at 1.4s on `.skeleton` (§8), and §8 has always
+specified it at that duration while this section forbade it. §8 wins; §7 is
+corrected.
 
 What animates: background-color, border-color, box-shadow, opacity, transform.
 **What never animates: `backdrop-filter`, `filter`, `width`, `height`, `top`,
 `left`.** Animating a blur radius re-runs the whole composite every frame and is
 the fastest way to drop this UI to 20fps.
 
-The four existing state loops (`askk-pulse` on a working agent, `askk-travel` on
-the rail tick, `askk-breathe` on a pending message, `askk-arrive` on a new tool
-call) are kept: each is bound to a fact in the event log, not to decoration.
-`askk-scan` is deleted — it is the only one that corresponds to nothing.
+**The four state loops this section said were "kept" do not exist.**
+`askk-pulse`, `askk-travel`, `askk-breathe` and `askk-arrive` were in the old
+stylesheet and did not survive the seven-file rewrite; `askk-shimmer` is the only
+`@keyframes` in `web/`. The document has been claiming four animations the page
+has never run since the rewrite, which is worse than having none, because a
+critic reading it looks for motion that is not there and concludes the page is
+broken. If they come back, each must be bound to a fact in the event log rather
+than to decoration — that part of the old paragraph was right and is why
+`askk-scan` was deleted.
 
 ```css
 @media (prefers-reduced-motion: reduce) {
@@ -494,10 +575,36 @@ asserts every `animation-name` resolves to `none`.
 
 One implementation each. A screen that hand-rolls one of these is not done.
 
+**What is built, and what is only specified.** This section used to read as a
+manifest of things that exist. Six of them do not, and a source of truth that
+lists unbuilt work beside shipped work is a source of truth for nothing:
+
+| Component | State |
+|---|---|
+| Card, Button, Focus ring, Input/Textarea/Select, Tab, Message, Disclosure, EmptyState, Skeleton, Header, Nav, Rail | shipped, one implementation each, all rendered in `#design-system` |
+| Badge | **built, zero call sites.** `crates/ui/src/ui/badge.rs` exists and only the gallery renders it; the board says a status in prose with a `--tone` left edge instead |
+| Toast · Modal / Sheet | **not built.** No component, no CSS, no specimen. Nothing in the product currently interrupts or floats, which is why `.e3`, `.scrim`, `--e3-scrim` and `--e3-dim` have no instance |
+| Footer | **not built.** `chrome.css` carries 17 lines styling `footer`, `footer .machine` and `footer a` against no element; part **E** of `checklist.md` has never started |
+| Button size `sm` (36px) | **not built,** and should stay that way — every control in the product clears the 44px floor, and the one exception this document carved out (`.wait-clock button`) turned out to be the sole enabled target mid-turn |
+| Header scroll shadow | **not built.** `header` carries `transition: box-shadow` and no rule ever changes it |
+
+An integrator does not invent a toast, a modal, a footer's build id or a scroll
+threshold — those are values this file does not carry. They are named here so
+the next builder picks them up as work rather than assuming they shipped.
+
 ### Surface / Card
-Anatomy: `<section class="card e2">` → optional `<h2 class="card-title">` →
-`.card-body`. Variants: `e1` (chrome) · `e2` (default) · `e3` (floating) ·
-`flat` (opaque `--surface-1`, for anything holding body text — **G3**).
+Anatomy: `<section class="panel">` → optional `<h2>` (a caption eyebrow, §5) →
+children. Variants: `e1` (chrome) · `e2` (default) · `e3` (floating) ·
+`flat` (opaque `--surface-1` at `--e2-radius`, for anything holding body text —
+**G3**). The class is `panel`, not `card`, and there is no `.card-title` or
+`.card-body`: the layout guard and six stylesheet rules key off `panel`, and
+renaming a region was never what this run was doing.
+
+`flat` needed `.panel .flat` to hold it. `.panel .panel` — the N3 rule that
+turns a card inside a card into a `--surface-2` row — is (0,2,0) and beat
+`.flat` at (0,1,0), so the gallery's one specimen of the `flat` variant
+rendered as a row, at the wrong fill and the wrong radius. The one artifact
+whose job is to catch drift was the drift.
 States: default · `[data-status]` tint via `--tone` · `[hidden]`.
 Tokens: `--e{n}-*`, `--r-md`, `--s-4`, `--t-heading`.
 
@@ -505,8 +612,7 @@ Tokens: `--e{n}-*`, `--r-md`, `--s-4`, `--t-heading`.
 Anatomy: `<button class="btn">` with optional leading glyph span.
 Variants: `primary` (accent fill, `--accent-ink` text) · `secondary` (glass fill
 + `--control` border) · `ghost` (no fill, `--control` border) · `danger`.
-Sizes: `md` (44px, default) · `sm` (36px — **only** inside a dense row that is
-not a primary action, and never as the sole target on touch).
+Sizes: `md` (44px) — the only one. See the table at the top of this section.
 States — **all five defined, non-negotiable**: default · hover (fill +4% alpha,
 `--dur-fast`) · `:focus-visible` (see below) · `:active` (`transform: scale(0.98)`,
 fill +7%) · `:disabled` (`opacity: 0.55`, `cursor: not-allowed`, no hover).
@@ -553,6 +659,15 @@ Variants: user · assistant · tool · pending · error.
 User messages carry an `--accent` left edge; errors carry `--danger` plus a
 sentence, with the typed detail behind a disclosure.
 
+**`pending` and `error` carry no `.speaker` and no `.said`** — a `<p>` directly,
+so the whole card inherits `--danger` rather than having `.said` repaint it
+`--ink`. Both are the harness talking, not the agent, and naming an agent as the
+speaker of "the endpoint could not be reached" attributes the failure to it.
+`#design-system` rendered the error variant the other way, with a `main:`
+speaker and its sentence in `--ink`, so the same component was two different
+components on two screens; the gallery has been corrected to what
+`core::failure::card` emits.
+
 ### Disclosure
 Anatomy: `<details class="disclose"><summary>` — summary is a 44px target with a
 rotating chevron (`--dur-fast`). One implementation replaces the four hand-rolled
@@ -560,7 +675,8 @@ rotating chevron (`--dur-fast`). One implementation replaces the four hand-rolle
 
 ### EmptyState
 Anatomy: glyph → one-line title (`--t-heading`) → one sentence (`--t-body`,
-`--ink-2`) → one primary action. **Never a bare "No data".** Every list region
+`--ink-2`) → one primary action, at `padding: var(--s-4) 0` (§6).
+**Never a bare "No data".** Every list region
 (chat, board, tools, terminal, space) gets one. This is the highest-value new
 component: four of the five rail panels are empty on first load today.
 
@@ -593,10 +709,19 @@ Currently absent. Added as one E1 strip inside the stage: build id, deploy sha,
 isolation state, and a link to the source. Three items, one row, `--t-caption`,
 `--ink-2`. It is a status line, not a link dump.
 
-### `/design-system`
-A route rendering every component above in every variant and every state, over
-the real ground, with a skin toggle and a "kill backdrop-filter" toggle so the
-fallback is inspectable side by side. Critics open this first.
+### `#design-system`
+Every **built** component above, in every variant and every state, over the real
+ground, with a skin toggle and a "kill backdrop-filter" toggle so the fallback is
+inspectable side by side. Critics open this first.
+
+**It is a region, not a route, and calling it one misled every critic who tried
+to open it.** The app has no URL router — it routes by the `hidden` attribute
+between regions — so this is a fourth stage surface toggled by the header's
+"Design system" switch, rendered *below* whatever else the stage is showing, and
+`gallery::wanted()` reads `#design-system` from the hash **once, at boot**.
+Appending the hash to an already-loaded page does nothing; a critic has to load
+it with the hash, or press the switch. That is the shipped mechanism and it is
+fine; the word "route" was the defect.
 
 ---
 
@@ -631,7 +756,8 @@ here means the composer is always exactly where you left it.
 5. **G3 holds.** No body text on a blur.
 6. Renders at 320 / 375 / 768 / 1024 / 1440 / 1920 and at 400% zoom with no
    overflow, overlap, clipping, or lost function.
-7. Frame time bounded while scrolling a long chat log and while opening a modal.
+7. Frame time bounded while scrolling a long chat log. (There is no modal to
+   open — §8.)
 8. Every target ≥ 44×44 with all five states; focus ring visible on every surface.
 9. Full keyboard traversal, sane order, no traps, nothing mouse-only.
 10. **Token count down**: ≤5 font sizes, ≤8 spacing values, 0 roles with two
@@ -658,6 +784,28 @@ here means the composer is always exactly where you left it.
   0.08–0.10 band; top-edge light catch retuned 0.18→0.14. Added `--e3-dim` at
   Apple's published 35% for clear glass over bright content. §6 card padding
   16→24/32 to match Reflect's measured card.
+- **2026-08-12, integration pass** — one agent who built none of this walked
+  every screen on the deployed page and reconciled this file with it. Six
+  inconsistencies fixed in code: `.panel` bordered with `--divider`, which is
+  1.2:1 in the plain skin where it is the only boundary (now `--e2-line`); the
+  gallery's `flat` specimen losing to `.panel .panel` and documenting the wrong
+  fill and radius; the gallery's `.msg.error` carrying a speaker and `--ink`
+  where the app's carries neither and `--danger`; `.wait-clock button` at
+  `--t-caption`, alone among buttons and on uppercase-only type; `.agent-row h3`
+  jumping to `--t-heading` on `data-status="working"`; and `.empty`,
+  `#terminal`, `.term-run` each paying a padding step out of rhythm with the
+  region around them. Ten corrections to this document, every one of them a case
+  of the file being wrong and the code being right: the ground field's beam
+  placement (still at the third pass's coordinates here, moved in `tokens.css`
+  two critiques ago), `--hairline-lit` 0.18→0.30, `--e*-border`→`--e*-line` (a
+  colour, not a shorthand), `--e*-shadow: none`→`0 0 0 0 transparent` (`none` in
+  a `box-shadow` list is invalid and drops the top-edge light with it), §2's file
+  order, panel titles being caption eyebrows rather than headings, E1 chrome
+  padding `--s-3` rather than `--s-4`/`--s-5`, the four state loops §7 claimed
+  were "kept" and which no longer exist, `.card-title`/`.card-body`/`sm` buttons
+  which never shipped, and `/design-system` being a region rather than a route.
+  Toast, Modal/Sheet, the footer and the header's scroll shadow are recorded in
+  §8 as specified-and-unbuilt rather than quietly listed as components.
 - **2026-08-12, third pass** — reconciled with what shipped after the first
   blind critique. The ground was rewritten from three spread lobes to two
   concentrated beams (its brightest rendered pixel had been 55/255, under the

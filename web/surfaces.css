@@ -82,8 +82,11 @@
 .agent-row[data-status="failed"], .badge[data-status="failed"] { --tone: var(--danger); }
 .agent-row[data-status="closed"], .badge[data-status="closed"] { --tone: var(--control); border-left-style: dotted; }
 
+/* A dense row keeps ONE size. This used to jump to --t-heading on
+   data-status="working", so the same agent's name was 13px in the board and
+   17px a second later with nothing about the agent changed — a status is a
+   status channel (--tone, the word, the badge), not a type scale. */
 .agent-row h3 { font-size: var(--t-label); font-weight: var(--w-medium); }
-.agent-row[data-status="working"] h3 { font-size: var(--t-heading); }
 .agent-status { margin: 0; color: var(--ink-2); font-size: var(--t-label); }
 .agent-live { margin: 0; color: var(--accent); font-size: var(--t-label); }
 
@@ -95,8 +98,11 @@
 .tool-call.error .tool-outcome { color: var(--danger); }
 .tool-call pre { max-height: 8rem; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); }
 
-#terminal { max-height: 13rem; overflow-y: auto; border-radius: var(--r-sm); padding: var(--s-2); }
-.term-run { padding: var(--s-2); border-left: 3px solid var(--control); }
+/* --s-3, the same as .chat-log and .tool-call. The terminal was the one dense
+   region running a step tighter (--s-2), so the rail changed rhythm between
+   the Tools panel and the Workspace panel directly under it. */
+#terminal { max-height: 13rem; overflow-y: auto; border-radius: var(--r-sm); padding: var(--s-3); }
+.term-run { padding: var(--s-3); border-left: 3px solid var(--control); }
 .term-run.error { border-left-color: var(--danger); }
 .term-command { margin: 0; font-family: var(--mono); font-size: var(--t-label); color: var(--machine); }
 .term-prompt { color: var(--accent); font-weight: var(--w-strong); }
@@ -149,7 +155,9 @@ details[open] > summary::before { transform: rotate(90deg); }
   flex-direction: column;
   align-items: flex-start;
   gap: var(--s-2);
-  padding: var(--s-4);
+  /* Vertical air only: an empty state is the sole child of an already-padded
+     panel, and inline padding pushed it 16px right of that panel's own h2. */
+  padding: var(--s-4) 0;
   color: var(--ink-2);
 }
 
