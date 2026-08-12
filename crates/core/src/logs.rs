@@ -25,6 +25,34 @@ pub fn memory_held(app: &App) -> (usize, Option<String>) {
     (window.len(), summary)
 }
 
+/// What this agent has done since fact `from`, as JSON, with the new cursor.
+/// Tool calls and model spend only: those are the facts another process can
+/// project (the Trace view, the Files pane, the meter) without needing this
+/// agent's conversation.
+pub fn activity_since(app: &App, from: usize) -> (String, usize) {
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    let mut seen = 0usize;
+    for event in app.log.iter() {
+        seen += 1;
+        if seen <= from {
+            continue;
+        }
+        match &event.kind {
+            kernel::EventKind::ToolInvoked { tool, args, ok, output } => {
+                out.push(serde_json::json!({
+                    "tool": tool.0, "args": args, "ok": ok, "output": output,
+                }));
+            }
+            kernel::EventKind::ModelCalled { spent_tokens, .. } => {
+                out.push(serde_json::json!({ "spent": spent_tokens }));
+            }
+            _ => {}
+        }
+    }
+    let json = serde_json::to_string(&out).unwrap_or_else(|_| "[]".into());
+    (json, seen)
+}
+
 /// Queue whatever writes bring the log level with the window. Called after
 /// every pump, so an append is queued the moment the turn produces it and a
 /// compaction's rewrite lands BEHIND the appends already waiting.

@@ -44,6 +44,7 @@ mod workspace;
 
 pub use install::{builtin_files, install_agents, install_agents_as, report_agent, report_memory};
 pub use authored::{authored_here, report_authored};
+pub use told::report_activity;
 pub use app::{App, Ports, ENTRY_AGENT};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
@@ -51,7 +52,7 @@ pub use error::CoreError;
 // `drive` is PROVISIONAL (G4): the async runtime loop — see runtime.rs.
 pub use effects::execute_effect;
 pub use runtime::{drive, pump};
-pub use logs::{memory_held, restore_log, window};
+pub use logs::{activity_since, memory_held, restore_log, window};
 
 use kernel::{Request, Response};
 

@@ -22,7 +22,7 @@ use wasm_bindgen_futures::JsFuture;
 
 use kernel::{AgentPort, BoxFuture, DelegateError, Status};
 
-use crate::spawn::{ask, bundle_urls, listen, start, Authored, Boot, Live, Memory};
+use crate::spawn::{ask, bundle_urls, listen, start, Activity, Authored, Boot, Live, Memory};
 
 /// A lifecycle fact the page has not told the core about yet.
 type Report = (String, Status, String);
@@ -40,6 +40,9 @@ pub struct AgentWorkers {
     /// `memory`: a sub-agent's log is not the page's, so an agent it authored
     /// reaches the roster only because the Worker says so.
     written: Rc<RefCell<Vec<Authored>>>,
+    /// Tool calls and spend a Worker has reported and the page has not yet
+    /// adopted. Same queue as the three above.
+    did: Rc<RefCell<Vec<Activity>>>,
 }
 
 impl AgentWorkers {
@@ -49,6 +52,7 @@ impl AgentWorkers {
             reports: Rc::new(RefCell::new(Vec::new())),
             memory: Rc::new(RefCell::new(Vec::new())),
             written: Rc::new(RefCell::new(Vec::new())),
+            did: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -57,6 +61,12 @@ impl AgentWorkers {
     /// through (I8).
     pub fn take_reports(&self) -> Vec<Report> {
         std::mem::take(&mut self.reports.borrow_mut())
+    }
+
+    /// Everything the Workers have DONE since the last call: one `(agent,
+    /// activity JSON)` per message they sent.
+    pub fn take_activity(&self) -> Vec<Activity> {
+        std::mem::take(&mut self.did.borrow_mut())
     }
 
     /// Every window a Worker has reported since the last call, drained by the
@@ -108,6 +118,7 @@ impl AgentWorkers {
                         Rc::clone(&self.reports),
                         Rc::clone(&self.memory),
                         Rc::clone(&self.written),
+                        Rc::clone(&self.did),
                     );
                     self.live.borrow_mut().insert(name.clone(), live);
                 }

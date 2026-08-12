@@ -90,6 +90,10 @@ pub(crate) struct Live {
 /// how many entries, and the summary that replaced the oldest, if any.
 pub(crate) type Memory = (String, usize, Option<String>);
 
+/// What a Worker DID, waiting to be drained: `(agent, activity JSON)`. Same
+/// queue discipline as the two below, and for the same reason.
+pub(crate) type Activity = (String, String);
+
 /// An agent a Worker WROTE, waiting to be drained: `(name, agent.md, author)`.
 /// Same queue discipline as `Memory`, and for the same reason — it arrives on
 /// a JS callback, where the app is already borrowed.
@@ -107,6 +111,16 @@ fn authored_in(data: &JsValue) -> Vec<Authored> {
 /// Read the `memory` field off a Worker's message. Absent (an older bundle, or
 /// a failure) means it said nothing, which the pane prints as "not reported"
 /// rather than as a made-up number.
+/// Read the `activity` field off a Worker's message: the tool calls and spend
+/// it has not reported yet. Absent, or an empty list, means nothing new.
+fn activity_in(data: &JsValue, who: &str) -> Option<Activity> {
+    let raw = Reflect::get(data, &"activity".into()).ok()?.as_string()?;
+    match raw.trim() {
+        "" | "[]" => None,
+        _ => Some((who.to_string(), raw)),
+    }
+}
+
 fn memory_of(data: &JsValue, who: &str) -> Option<Memory> {
     let raw = Reflect::get(data, &"memory".into()).ok()?.as_string()?;
     let value = serde_json::from_str::<serde_json::Value>(&raw).ok()?;
@@ -125,6 +139,7 @@ pub(crate) fn listen(
     queue: Rc<RefCell<Vec<(String, Status, String)>>>,
     memory: Rc<RefCell<Vec<Memory>>>,
     written: Rc<RefCell<Vec<Authored>>>,
+    did: Rc<RefCell<Vec<Activity>>>,
 ) -> Live {
     let waiting: Rc<RefCell<Option<(Function, Function)>>> = Rc::new(RefCell::new(None));
     let (pending, who) = (Rc::clone(&waiting), name.to_string());
@@ -137,6 +152,9 @@ pub(crate) fn listen(
             memory.borrow_mut().push(said);
         }
         written.borrow_mut().extend(authored_in(&data));
+        if let Some(done) = activity_in(&data, &who) {
+            did.borrow_mut().push(done);
+        }
         if read("kind").as_string().as_deref() == Some("ready") {
             let status = match ok {
                 true => Status::Idle,

@@ -19,18 +19,38 @@ pub(crate) fn trace(ctx: &Ctx, who: &str) -> Response {
     // calls this log holds are this process's agent's. Another agent's run in
     // its own Worker and are recorded there — saying so is the honest answer,
     // and it is the same rule the transcript folds by (`belongs_to`).
+    // A sub-agent's calls happen in its own Worker's loop, so they are not
+    // `ToolInvoked` facts in THIS log — they arrive as `core.agent_activity`,
+    // reported by the Worker and adopted through one door (`told`). This used
+    // to say "recorded there" and show nothing, which made every agent but
+    // this page's a black box with an answer at the end.
     if who != ctx.me {
-        let said = format!(
-            "{who} runs in its own Worker, and its tool calls are recorded there. This \
-             page's trace shows {}'s calls — including the turns it handed to {who}.",
-            ctx.me
-        );
-        return html(
-            200,
-            list.child(FragmentBuilder::new("p").class("pending").text(&said).build())
-                .build()
-                .into_html(),
-        );
+        let mut calls = 0usize;
+        for kind in &ctx.recent {
+            let EventKind::Custom { kind, payload_json } = kind else { continue };
+            if kind != crate::told::AGENT_ACTIVITY {
+                continue;
+            }
+            let Some((agent, value)) = crate::told::activity(payload_json) else { continue };
+            let Some(tool) = value.get("tool").and_then(|t| t.as_str()) else { continue };
+            if agent != who {
+                continue;
+            }
+            let args = value.get("args").and_then(|a| a.as_str()).unwrap_or("{}");
+            let ok = value.get("ok").and_then(serde_json::Value::as_bool).unwrap_or(false);
+            let output = value.get("output").and_then(|o| o.as_str()).unwrap_or_default();
+            list = list.child(row(tool, args, ok, output));
+            calls += 1;
+        }
+        if calls == 0 {
+            let said = format!(
+                "{who} has not called a tool yet. When it does, its Worker reports each call \
+                 and they appear here — the same trace this page keeps for {}.",
+                ctx.me
+            );
+            list = list.child(FragmentBuilder::new("p").class("pending").text(&said).build());
+        }
+        return html(200, list.attr("data-calls", &calls.to_string()).build().into_html());
     }
     let mut count = 0usize;
     for kind in &ctx.recent {

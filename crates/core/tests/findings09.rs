@@ -174,8 +174,10 @@ fn the_space_and_tool_panes_are_about_the_agent_you_selected() {
     assert!(theirs.contains("summarizer"), "{theirs}");
     assert!(!theirs.contains("Space: research"), "{theirs}");
 
+    // A sub-agent's trace is its OWN, and empty until its Worker reports a
+    // call (15O): what it must never be is main's calls under its name.
     let trace = ask("/tools", "summarizer");
-    assert!(trace.contains("runs in its own Worker"), "{trace}");
+    assert!(trace.contains("summarizer has not called a tool yet"), "{trace}");
     assert!(!trace.contains("list_agents("), "not main's calls: {trace}");
     let mine = ask("/tools", "main");
     assert!(mine.contains("list_agents("), "main's own calls are still there: {mine}");

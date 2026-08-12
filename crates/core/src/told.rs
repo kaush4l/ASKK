@@ -3,7 +3,10 @@
 //! like, this one is what a failure that happened somewhere ELSE looks like
 //! once it has crossed a `postMessage` boundary.
 
+use kernel::EventKind;
 use module::view::Fragment;
+
+use crate::app::App;
 
 use crate::failure::{card, failure_kind, failure_line};
 
@@ -100,3 +103,37 @@ fn field(payload_json: &str, name: &str) -> String {
         .unwrap_or_default()
 }
 
+
+/// A fact one agent's WORKER reports about itself: a tool it called, or what a
+/// turn cost. Its own kind, carrying the agent's name, because `ToolInvoked`
+/// and `ModelCalled` carry none — a tool call is recorded in the loop that
+/// made it, and every projection that reads them assumes that loop is this
+/// one. Wrapping is additive; widening those two variants is a migration of
+/// every fact ever written.
+pub const AGENT_ACTIVITY: &str = "core.agent_activity";
+
+/// Adopt what a Worker has done since the page last asked (`activity_since`).
+/// One fact per item, in order, so the Trace view of a sub-agent is the same
+/// projection as the Trace view of this one.
+pub fn report_activity(app: &mut App, agent: &str, activity_json: &str) {
+    let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(activity_json) else {
+        return;
+    };
+    for item in items {
+        let mut payload = item;
+        if let Some(map) = payload.as_object_mut() {
+            map.insert("agent".into(), serde_json::Value::String(agent.to_string()));
+        }
+        app.append(EventKind::Custom {
+            kind: AGENT_ACTIVITY.into(),
+            payload_json: payload.to_string(),
+        });
+    }
+}
+
+/// Which agent an activity fact belongs to, and what it says.
+pub(crate) fn activity(payload_json: &str) -> Option<(String, serde_json::Value)> {
+    let value = serde_json::from_str::<serde_json::Value>(payload_json).ok()?;
+    let who = value.get("agent")?.as_str()?.to_string();
+    Some((who, value))
+}

@@ -145,3 +145,41 @@ fn an_agent_that_works_alone_is_told_why_there_is_nothing_to_browse() {
     assert_eq!(res.status, 400);
     assert!(res.body.contains("space: &lt;name&gt;"), "{}", res.body);
 }
+
+/// A sub-agent's work reaches the page, or it is a black box with an answer.
+///
+/// Its tool calls happen in its own Worker's loop, so they are not
+/// `ToolInvoked` facts in this log — the Worker reports them and they arrive
+/// as `core.agent_activity`, carrying the name that `ToolInvoked` does not
+/// have. The Trace view of that agent, and the meter, are then the same
+/// projections they are for this page's own agent.
+#[test]
+fn a_workers_tool_calls_and_spend_reach_the_page() {
+    let app = booted(vec![]);
+    core::report_activity(
+        &mut app.borrow_mut(),
+        "researcher",
+        r#"[{"tool":"now","args":"{}","ok":true,"output":"12:00"},{"spent":250}]"#,
+    );
+
+    let trace = handle(
+        &mut app.borrow_mut(),
+        Request::get("/tools").with_header("x-agent", "researcher"),
+    )
+    .body;
+    assert!(trace.contains("now("), "the sub-agent's own call: {trace}");
+    assert!(trace.contains("12:00"), "and what came back: {trace}");
+    assert!(trace.contains("data-calls=\"1\""), "{trace}");
+
+    // Not attributed to whoever happens to be selected.
+    let mine = handle(&mut app.borrow_mut(), Request::get("/tools")).body;
+    assert!(!mine.contains("12:00"), "not this page's trace: {mine}");
+
+    let spent = handle(&mut app.borrow_mut(), Request::get("/chat"))
+        .headers
+        .iter()
+        .find(|(k, _)| k == "x-tokens")
+        .map(|(_, v)| v.clone())
+        .expect("the meter");
+    assert_eq!(spent, "250", "a sub-agent's tokens are the page's tokens");
+}

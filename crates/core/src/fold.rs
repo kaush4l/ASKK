@@ -80,6 +80,16 @@ pub(crate) fn spent(ctx: &Ctx) -> u64 {
         .iter()
         .filter_map(|kind| match kind {
             EventKind::ModelCalled { spent_tokens, .. } => Some(u64::from(*spent_tokens)),
+            // A sub-agent's turns are paid for out of the same key, and its
+            // spend reaches this log only because its Worker reports it. The
+            // meter says "every token this page has spent"; a number that
+            // counted one agent of four was not that.
+            EventKind::Custom { kind, payload_json } if kind == crate::told::AGENT_ACTIVITY => {
+                crate::told::activity(payload_json)?
+                    .1
+                    .get("spent")?
+                    .as_u64()
+            }
             _ => None,
         })
         .sum()

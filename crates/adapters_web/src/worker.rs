@@ -38,6 +38,10 @@ fn database(name: &str) -> String {
 pub struct AgentWorker {
     app: Rc<RefCell<core::App>>,
     name: String,
+    /// How much of this agent's own log the page has already been told about.
+    /// A cursor, not a flag: every fact is reported exactly once, and a Worker
+    /// that is never asked simply accumulates.
+    reported: std::cell::Cell<usize>,
 }
 
 #[wasm_bindgen]
@@ -94,6 +98,7 @@ impl AgentWorker {
         Ok(AgentWorker {
             app: Rc::new(RefCell::new(app)),
             name,
+            reported: std::cell::Cell::new(0),
         })
     }
 
@@ -105,6 +110,23 @@ impl AgentWorker {
     pub fn memory(&self) -> String {
         let (entries, summary) = core::memory_held(&self.app.borrow());
         serde_json::json!({ "window": entries, "summary": summary }).to_string()
+    }
+
+    /// What this agent has DONE that the page has not been told yet: the tool
+    /// calls it made, and what it has spent. Cursored, so each fact is reported
+    /// once — the page appends them to its own log and the Trace, Files and
+    /// meter surfaces project them like any other fact (I8).
+    ///
+    /// Without this a sub-agent was a black box with an answer at the end: its
+    /// tool calls lived only in its own Worker's log, so the Trace view for any
+    /// agent but this page's said "recorded there", the Files pane could not
+    /// see what it wrote, and the meter counted none of its tokens.
+    pub fn activity(&self) -> String {
+        let app = self.app.borrow();
+        let from = self.reported.get();
+        let (facts, seen) = core::activity_since(&app, from);
+        self.reported.set(seen);
+        facts
     }
 
     /// Every agent THIS one wrote with `write_agent` (increment 11). Its own

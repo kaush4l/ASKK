@@ -36,6 +36,12 @@ impl WebApp {
         for (name, text, author) in self.workers.take_authored() {
             core::report_authored(&mut self.app.borrow_mut(), &name, &text, &author);
         }
+        // What each Worker has DONE — its tool calls and its spend — so the
+        // Trace view, the Files pane and the meter can project a sub-agent's
+        // work at all. Before this it was a black box with an answer.
+        for (agent, activity) in self.workers.take_activity() {
+            core::report_activity(&mut self.app.borrow_mut(), &agent, &activity);
+        }
         for (agent, window, summary) in self.workers.take_memory() {
             let mut app = self.app.borrow_mut();
             core::report_memory(&mut app, &agent, window, summary.as_deref());

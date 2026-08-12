@@ -58,6 +58,30 @@
   </nav>
   <div class="stage primary">
     <div class="masthead"><h1>HARNESS</h1></div>
+    <!-- The Dashboard's component grid, the launcher's field and the Files
+         pane's rows: 15B, 15L and 15G shipped three surfaces the guard could
+         not see, which is how the agent strip's 1.99:1 got past it once. -->
+    <section class="view-panel dashboard-view">
+      <div class="dash-grid">
+        <section class="panel card"><h2>Run a task</h2>
+          <form class="row">
+            <input id="task-field" type="text" placeholder="Build me a thing, and tell me when it works…" aria-label="Task for main">
+            <button type="submit" class="btn">Run</button>
+          </form>
+        </section>
+        <section class="panel card"><h2>Files</h2>
+          <div class="file-form">
+            <button type="button" class="file-entry root">⟳ workspace root</button>
+            <div class="file-list">
+              <button type="button" class="file-entry folder">notes/</button>
+              <button type="button" class="file-entry current">today.md</button>
+              <button type="button" class="file-entry">proof.txt</button>
+            </div>
+            <pre class="file-view" data-path="notes/today.md">hello from alpine.</pre>
+          </div>
+        </section>
+      </div>
+    </section>
     <!-- The agent strip, where it lives now: inside the Chat view. author
          FIRST and UNSELECTED, because that is the order the app renders —
          the fixture used to lead with the selected tab, so a check reading

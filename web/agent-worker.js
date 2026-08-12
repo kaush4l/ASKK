@@ -29,7 +29,7 @@ self.onmessage = (event) => {
     ready.then(
       // The window it came up holding, so the page can show a sub-agent's
       // memory before it has answered anything (increment 09).
-      (agent) => self.postMessage({ kind: "ready", ok: true, text: "", memory: agent.memory(), authored: agent.authored() }),
+      (agent) => self.postMessage({ kind: "ready", ok: true, text: "", memory: agent.memory(), authored: agent.authored(), activity: agent.activity() }),
       // A Worker that cannot build its agent is FAILED with its reason, not a
       // console line: this is the one row that must say the agent is unusable.
       (e) => self.postMessage({ kind: "ready", ok: false, text: reason(e) }),
@@ -51,6 +51,9 @@ self.onmessage = (event) => {
         // Agents this one WROTE (increment 11): its log is its own, so the
         // page has to be told, exactly as it is told about the window.
         authored: (await ready).authored(),
+        // What it DID, not only what it said: its tool calls and its spend,
+        // cursored so each one crosses once (worker.rs `activity`).
+        activity: (await ready).activity(),
       }),
     )
     .catch((e) => self.postMessage({ kind: "answer", ok: false, text: reason(e) }));

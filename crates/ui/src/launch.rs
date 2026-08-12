@@ -55,8 +55,9 @@ pub fn TaskLauncher(
     rsx! {
         Card { title: "Run a task", aria_label: "Run a task",
             p { class: "note",
-                "Give {who} something to do and leave it. It runs in its own Worker, with its \
-                 own tools and its own workspace, up to the max_rounds its file allows — the \
+                "Give {who} something to do and leave it. It runs with its own tools and its \
+                 own workspace, up to the max_rounds its file allows — in this page's engine \
+                 if {who} is the agent this page IS, and in its own Worker otherwise. The \
                  board says how far it has got. Nothing here waits for it, and you can join \
                  the conversation at any point without restarting anything."
             }
