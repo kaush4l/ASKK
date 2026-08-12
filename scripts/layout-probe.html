@@ -92,6 +92,24 @@
   </aside>
 </main>
 </div>
+<!-- The one E3 in the fixture. Without it N1 and N4 measure a page with no
+     floating elevation in it at all: both would print PASS over zero samples,
+     which is the "fixture smaller than the failure" mistake this file already
+     made once with three tabs and STACKED.
+
+     Placed as a direct child of #main and NOT inside a panel, which is N1 in
+     markup form (DESIGN §8, Modal/Sheet and Toast). The position is inline
+     because no toast CSS exists yet — that is part B's component — and the
+     probe links only the shipped stylesheets. The label is deliberately short:
+     a word on glass is legal, a paragraph is G3.
+
+     `pointer-events:none` because this toast is MOUNTED FOR MEASUREMENT: a real
+     one is transient, this one is permanent so N1/N4 always have a sample, and
+     a permanent overlay in the bottom-right corner otherwise swallows one of
+     HITTEST's 25 sampled points at every width under 768 and reports a layout
+     bug that does not exist. It changes nothing N1-N4 or G3 measure — those
+     read backdrop-filter and background, neither of which hit-testing touches. -->
+<div class="e3 toast" role="status" style="position:fixed;right:1rem;bottom:1rem;padding:.5rem .75rem;pointer-events:none">Saved <button type="button">Dismiss</button></div>
 <pre id="report"></pre>
 <!-- The fold wiring, so the probe can PRESS the switches rather than set
      `hidden` itself (13c walk: "it never presses the buttons"). This is the
@@ -110,6 +128,10 @@ document.querySelectorAll(".panel-toggle").forEach(function (b) {
 });
 </script>
 <script src="layout-probe.js"></script>
+<!-- Between the two halves on purpose: layout-probe.js builds window.__probe,
+     layout-audit.js writes #report last, so a verdict pushed here reaches the
+     report and therefore check-layout.sh. -->
+<script src="glass-audit.js"></script>
 <script src="layout-audit.js"></script>
 </body>
 </html>

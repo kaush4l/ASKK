@@ -18,7 +18,7 @@ SHELL_BIN=$(find "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwrigh
 
 OUT=out/layout-probe
 mkdir -p "$OUT"
-cp scripts/layout-probe.js scripts/layout-audit.js "$OUT/"
+cp scripts/layout-probe.js scripts/glass-audit.js scripts/layout-audit.js "$OUT/"
 
 # The stylesheets in the order index.html links them, fingerprints and all —
 # READ OFF index.html rather than listed here. The hardcoded list was itself an
@@ -43,7 +43,11 @@ EXTRA=""
 [ "${1:-}" = "--reduced-motion" ] && EXTRA="--force-prefers-reduced-motion"
 
 fails=0
-for size in 360x780 390x844 768x1024 1100x900 1280x900 1440x900; do
+# 320 and 1920 are the ends of DESIGN §10.6's range and were the two widths
+# nothing ever rendered: 320 is the narrowest phone still in the field and the
+# first width where a fixed gutter eats the column, 1920 the first where a
+# max-width can leave the stage stranded beside furniture that keeps growing.
+for size in 320x780 360x780 390x844 768x1024 1100x900 1280x900 1440x900 1920x1080; do
   for skin in machine plain; do
     for route in chat deck; do
       url="file://$PWD/$OUT/index.html?skin=$skin&deck=$([ "$route" = deck ] && echo 1 || echo 0)"

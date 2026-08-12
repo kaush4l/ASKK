@@ -26,13 +26,29 @@ header .wordmark {
 }
 
 /* The endpoint sentence is typeset into the header rather than duplicated in
-   the chat pane: the header holds information instead of two words. */
+   the chat pane: the header holds information instead of two words.
+
+   It is a PILL, and opaque, for two reasons that happen to agree. G3: it is a
+   100-character sentence and it was sitting directly on the header's 20px blur,
+   which the glass guard failed on the shipped page. And the reference: Apple's
+   own localnav pill is `rgba(42,42,45,0.843)` over a 28px radius — a
+   near-opaque fill on chrome, where the translucency reads as tint rather than
+   as see-through. The alternative fix was to cut the sentence under 40
+   characters, which would have meant editing feature copy to satisfy a
+   stylesheet. */
 header .chat-endpoint {
   margin: 0;
-  flex: 1 1 18rem;
+  flex: 0 1 auto;
+  max-width: 46rem;
+  padding: var(--s-2) var(--s-3);
+  background-color: var(--surface-1);
+  border-radius: var(--r-full);
   font-size: var(--t-label);
   line-height: var(--lh-label);
   color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .switches {

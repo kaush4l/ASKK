@@ -88,8 +88,14 @@ header,
 
    This is the rule that keeps the design readable at 2am, and it is the one
    most often broken by people who like how the blur looks behind a paragraph
-   in a screenshot of three words. */
+   in a screenshot of three words.
+
+   `.note` is here because DESIGN §4 names notes explicitly and the first pass
+   missed it: a note sits in a .panel whose fill is translucent, so there was no
+   opaque thing between it and the stage's 20px blur. The glass guard caught it
+   on the shipped page, not in a fixture. */
 .flat,
+.note,
 .chat-log,
 .msg,
 #terminal,
