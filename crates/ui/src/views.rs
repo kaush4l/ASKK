@@ -1,4 +1,4 @@
-//! WHERE you are — the six views the left panel navigates between, and the
+//! WHERE you are — the seven views the left panel navigates between, and the
 //! nav that lists them (VIEWS.md, plus the Dashboard the product goal adds).
 //!
 //! The left panel used to be a list of five AGENTS with a "Setup" tab bolted on
@@ -40,17 +40,25 @@ pub(crate) enum View {
     Dashboard,
     Chat,
     Agents,
+    /// The machine itself: the folder the agents build in, with a shell beside
+    /// it. VIEWS.md put the terminal in the rail — "a tool you use while doing
+    /// something else" — and that is still true of the terminal. This view is
+    /// not the terminal; it is the WORKSPACE, and a real x86 Linux with files
+    /// in it that no screen shows is the product's one categorical advantage,
+    /// unsold.
+    Workspace,
     Memory,
     Trace,
     Settings,
     DesignSystem,
 }
 
-/// The nav list, in order. Six. `DesignSystem` is not among them.
-pub(crate) const NAV: [View; 6] = [
+/// The nav list, in order. Seven. `DesignSystem` is not among them.
+pub(crate) const NAV: [View; 7] = [
     View::Dashboard,
     View::Chat,
     View::Agents,
+    View::Workspace,
     View::Memory,
     View::Trace,
     View::Settings,
@@ -63,6 +71,7 @@ impl View {
             View::Dashboard => "dashboard",
             View::Chat => "chat",
             View::Agents => "agents",
+            View::Workspace => "workspace",
             View::Memory => "memory",
             View::Trace => "trace",
             View::Settings => "settings",
@@ -75,6 +84,7 @@ impl View {
             View::Dashboard => "Dashboard",
             View::Chat => "Chat",
             View::Agents => "Agents",
+            View::Workspace => "Workspace",
             View::Memory => "Memory",
             View::Trace => "Trace",
             View::Settings => "Settings",
@@ -90,6 +100,7 @@ impl View {
             View::Dashboard => "▦",
             View::Chat => "▣",
             View::Agents => "◆",
+            View::Workspace => "▥",
             View::Memory => "▤",
             View::Trace => "◈",
             View::Settings => "⚙",
@@ -101,7 +112,7 @@ impl View {
     /// Settings it folds: the rail is the answer to "what else do I need while
     /// I am doing this", and on those two the answer is nothing.
     pub(crate) fn rail(self) -> bool {
-        matches!(self, View::Chat | View::Agents | View::Trace)
+        matches!(self, View::Chat | View::Agents | View::Workspace | View::Trace)
     }
 }
 
@@ -129,7 +140,7 @@ pub(crate) fn DesignSwitch(view: Signal<View>) -> Element {
     }
 }
 
-/// The left panel. Six views, one `<button>` each.
+/// The left panel. Seven views, one `<button>` each.
 #[component]
 pub(crate) fn ViewNav(view: Signal<View>) -> Element {
     let here = view();

@@ -14,7 +14,7 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 
 use crate::views::View;
-use crate::{authoring, board, chat, gallery, settings, space, tabs, terminal, tools};
+use crate::{authoring, board, chat, files, gallery, settings, space, tabs, terminal, tools};
 
 /// The centre column. One `Signal` per thing two regions disagree about; the
 /// prop list is long because the shell owns the state and this owns the layout,
@@ -76,6 +76,13 @@ pub fn Stage(
                 {authoring::agent_panel(agents)}
             }
             section {
+                class: "view-panel workspace-view",
+                id: "workspace-view",
+                aria_label: "Workspace",
+                hidden: here != View::Workspace,
+                files::Files { web, tick, agent: selected }
+            }
+            section {
                 class: "view-panel memory-view",
                 id: "memory-view",
                 aria_label: "Memory",
@@ -128,7 +135,7 @@ pub fn Rail(
             if here == View::Agents {
                 board::AgentBoard { web, tick, view }
             }
-            if here == View::Trace {
+            if here == View::Workspace || here == View::Trace {
                 terminal::Terminal { web, tick, agent: selected }
             }
         }

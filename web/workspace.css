@@ -1,0 +1,47 @@
+/* workspace.css — the surfaces that show the machine: the folder listing and
+   one file's contents. An EIGHTH stylesheet rather than more of surfaces.css,
+   which was at the 200-line ceiling: DESIGN.md's rule is one concern per file,
+   and "what is inside the Linux" is a concern the other seven do not have.
+   Depends on tokens.css for every value, like all of them. */
+/* The workspace folder. One entry per row, as buttons: opening a folder and
+   opening a file are the same gesture and the same submit, so they are the
+   same control with one class between them. */
+.file-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: stretch;
+}
+
+.file-entry {
+  appearance: none;
+  text-align: left;
+  padding: var(--s-1) var(--s-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-1);
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--font-mono, monospace);
+  cursor: pointer;
+}
+
+.file-entry:hover { background-color: var(--surface-1); }
+.file-entry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.file-entry.folder { color: var(--accent); }
+.file-entry.root { color: var(--ink-2); font-family: inherit; }
+
+.file-list { display: flex; flex-direction: column; gap: 1px; }
+
+/* One file, read. A scroller, because a file is any length and the pane is not. */
+.file-view {
+  margin: var(--s-3) 0 0;
+  padding: var(--s-3);
+  max-height: 24rem;
+  overflow: auto;
+  background-color: var(--surface-1);
+  border-radius: var(--r-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--t-label);
+}

@@ -79,10 +79,14 @@ pub trait WorkspacePort {
         })
     }
 
-    /// What is in a directory, one name per line.
+    /// What is in a directory, one name per line, with a trailing `/` on the
+    /// folders (`-p`). The slash is not decoration: it is the only thing that
+    /// distinguishes a folder from an extensionless file, and both the model
+    /// deciding whether to descend and the files pane deciding what a click
+    /// means need to know which they are looking at.
     fn list<'a>(&'a self, cwd: &'a str, path: &'a str) -> BoxFuture<'a, Result<Execution, WorkspaceError>> {
         Box::pin(async move {
-            self.exec(cwd, &format!("ls -1A -- {}", shell_quote(path)))
+            self.exec(cwd, &format!("ls -1Ap -- {}", shell_quote(path)))
                 .await
         })
     }

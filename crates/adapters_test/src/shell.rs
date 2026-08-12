@@ -26,6 +26,19 @@ impl FakeShell {
         FakeShell::default()
     }
 
+    /// A fake disk with files already on it. `path` is what the port will be
+    /// GIVEN — root and all — because that is the key `read` and `list` use.
+    pub fn holding(files: &[(&str, &str)]) -> FakeShell {
+        let shell = FakeShell::default();
+        for (path, contents) in files {
+            shell
+                .files
+                .borrow_mut()
+                .insert((*path).to_string(), (*contents).to_string());
+        }
+        shell
+    }
+
     /// A browser with no workspace at all, and the reason why.
     pub fn unavailable(reason: &str) -> FakeShell {
         FakeShell {

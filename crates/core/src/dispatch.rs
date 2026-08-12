@@ -122,6 +122,7 @@ pub fn builtin_entry(id: &ModuleId) -> Option<BuiltinHandler> {
         "board" => Some(crate::board::board),
         "space" => Some(crate::inspector::space),
         "terminal" => Some(crate::terminal::terminal),
+        "files" => Some(crate::files::files),
         "status" => Some(builtins::status),
         _ => None,
     }

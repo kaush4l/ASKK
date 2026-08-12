@@ -31,6 +31,7 @@ pub(crate) fn manifests() -> Vec<Manifest> {
         crate::chat::manifest(),
         crate::agents::manifest(),
         crate::tools::manifest(),
+        crate::files::manifest(),
         crate::board::manifest(),
         crate::inspector::manifest(),
         crate::terminal::manifest(),

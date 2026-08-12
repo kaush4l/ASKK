@@ -123,6 +123,26 @@ pub(crate) fn said(ran: &Execution) -> String {
     }
 }
 
+/// A path a PERSON opened in the files pane: `list_files` for a folder and
+/// `read_file` for a file — the same two tools the agent has, through the same
+/// gate, recorded as the same facts.
+///
+/// Which of the two comes from the CALLER, because it cannot be inferred here:
+/// `ls` on a file succeeds and prints the file, so "list, and read only if the
+/// listing failed" opens nothing, ever. The listing that offered this path
+/// already knew (a trailing slash from `ls -1Ap`), and a refusal is recorded
+/// like any other — it is how a person learns the path was wrong.
+pub(crate) async fn open_typed(app: &Rc<RefCell<App>>, path: &str, folder: bool) {
+    let args = serde_json::json!({ "path": path }).to_string();
+    let tool = match folder {
+        true => "list_files",
+        false => "read_file",
+    };
+    if let Some(kind) = run(app, &ToolId(tool.into()), &args).await {
+        app.borrow_mut().append(kind);
+    }
+}
+
 /// A command a PERSON typed into the terminal pane, run in this agent's own
 /// workspace. Recorded as the same `ToolInvoked` fact the agent's own calls
 /// produce, so one pane projects both and a person can see what the agent did

@@ -166,6 +166,12 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             // workspace, under the same grant, and its result is the same
             // `ToolInvoked` fact the agent's own calls produce.
             if let EventKind::Custom { kind, payload_json } = &event.kind {
+                if kind == crate::files::OPEN_REQUEST {
+                    let (path, folder) = serde_json::from_str::<(String, bool)>(payload_json)
+                        .unwrap_or_else(|_| (payload_json.clone(), true));
+                    crate::workspace::open_typed(&app, &path, folder).await;
+                    continue;
+                }
                 if kind == crate::terminal::EXEC_REQUEST {
                     let command = serde_json::from_str::<String>(payload_json)
                         .unwrap_or_else(|_| payload_json.clone());

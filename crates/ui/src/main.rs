@@ -20,6 +20,7 @@ mod board;
 mod chat;
 mod composer;
 mod dash;
+mod files;
 mod gallery;
 mod stage;
 mod tabs;

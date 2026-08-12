@@ -19,6 +19,8 @@ mod chat;
 mod dispatch;
 mod error;
 mod failure;
+mod filelist;
+mod files;
 mod form;
 mod identity;
 mod inspector;

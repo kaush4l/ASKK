@@ -97,11 +97,11 @@ Workers, which is the hard part, aimed at a 4-round ceiling.
 
 | Capability | Who does it best | What they do, exactly | What we have | Sev |
 |---|---|---|---|---|
-| Long autonomous run | Open SWE | Runs for hours in a Daytona sandbox, opens a PR at the end | `MAX_TOOL_ROUNDS = 4`, then "Stopped after 4 rounds" (`step.rs:20,192`) | **P0** |
-| Watch work happen live | Devika / Mission Control | Step, monologue, terminal output, screenshot, tokens-so-far, streamed | Status word + turn count; no token stream, no SSE anywhere in `adapters_web` | **P0** |
-| Mid-run steering | Open SWE | Double-texting into a live session; plan interrupt with accept/edit/delete | Composer locks for the duration of a turn | **P0** |
-| Cost / token accounting | Hermes Analytics | Daily stacked token chart, cache-hit rate, per-model cost | Nothing. `VIEWS.md:171` admits it: "the tell for a console built by someone who does not run agents" | **P0** |
-| Dashboard as landing surface | Mission Control | Launcher cards each carrying a live number ("2 running · 6 queued") | Landing view is Chat; `builtins::dashboard` serves `GET /` but no Dashboard view exists in `views.rs:43` | **P0** |
+| Long autonomous run | Open SWE | Runs for hours in a Daytona sandbox, opens a PR at the end | 15C: `max_rounds:` per agent, default 64 (`state.rs:109`). PARTLY closed — three other things still bound a run: a 30 s per-call abort (`adapters_web/src/model.rs:15`), a 4096-token Work budget (`phase.rs:127`) and compaction that only runs at the TOP of a turn (`step.rs:50`) | **P1** |
+| Watch work happen live | Devika / Mission Control | Step, monologue, terminal output, screenshot, tokens-so-far, streamed | Still no streaming, no SSE. WORSE than before in one place: the pane now abandons a run after 36 s of transcript silence (`turn.rs:164`) and the transcript ignores `ToolInvoked` (`transcript.rs:151`), so one slow tool freezes the pane | **P0** |
+| Mid-run steering | Open SWE | Double-texting into a live session; plan interrupt with accept/edit/delete | 15D: composer unlocked, steer arm at `step.rs:35`. HALF closed — a steer that arrives while the model call is out is swallowed when that reply is the final answer (`step.rs:148`), with no feedback | **P0** |
+| Cost / token accounting | Hermes Analytics | Daily stacked token chart, cache-hit rate, per-model cost | 15E: `x-tokens` on the chat projection + `dash::TokenMeter`. Counts the PAGE's log only — every sub-agent Worker keeps its own database (`worker.rs:21`), so delegated spend is invisible while its answers are not. No cost, no history, no breakdown | **P2** |
+| Dashboard as landing surface | Mission Control | Launcher cards each carrying a live number ("2 running · 6 queued") | 15B: `View::Dashboard` is the landing view (`views.rs`, `stage.rs`). It is the four old rail panels in an `auto-fit` grid — no card carries a number, nothing is a launcher | **P1** |
 | Artifacts | Claude.ai | Live page at a URL, versioned, updates in place, shareable | None | **P1** |
 | Code editor + file tree + diff | bolt.diy | Editor, tree, AI diff view, revert to earlier version, file locking | Terminal pane only | **P1** |
 | Preview / dev server | bolt.diy + WebContainers | Live preview pane on a container port | None. CheerpX has no port forwarding wired | **P1** |
@@ -116,55 +116,64 @@ Workers, which is the hard part, aimed at a 4-round ceiling.
 
 ---
 
-## §3 The ranked backlog
+## §3 The ranked backlog (re-ranked 2026-08-12 after 15A–15E; see §6)
 
-**1. Raise the ceiling: a run that does not stop at four tool rounds.**
-(a) Done when: a user types a multi-step task, walks away, comes back to twenty-plus tool
-calls executed and a finished result — no "stopped after 4 rounds."
-(b) Bar: Open SWE running unattended until it opens a PR.
-(c) `crates/agent/src/step.rs`, `crates/agent/src/state.rs`, `crates/agent/src/supervisor.rs`.
-(d) Rank 1 because everything below is instrumentation for a run, and today there is no run
-worth instrumenting. The product intent says "watch agents working on autonomous tasks";
-four rounds is not a task, it is a reply.
+**1. Finish steering: no message a person types may be swallowed.**
+(a) Done when: a sentence typed at ANY point in a run — between tool calls, while the model
+call is out, or in the drain after the final answer — is answered in that conversation
+without the person re-sending it, and the transcript never shows an answer to the previous
+question directly under it.
+(b) Bar: Open SWE's double-texting — "simply send it a message, and it'll smoothly integrate
+that into its active session."
+(c) `crates/agent/src/step.rs` (the steer arm at :35 must record that a steer is unanswered;
+`on_reply`'s terminal arm at :148 must consume it and call the model again instead of
+clearing `task`), `crates/core/src/transcript.rs`, `crates/agent/tests/rounds.rs` — whose
+steering test today only exercises the mid-tool-batch path and is green over the broken one.
+(d) Rank 1 because 15D shipped the half a user notices last (the unlocked field) and left the
+half they notice first (an answer). A dropped sentence with no feedback is worse than a
+locked composer, which at least told the truth.
 
-**2. Stream the turn.**
-(a) Done when: tokens and tool calls appear in the transcript as they are produced, and the
-tool trace grows during the turn rather than after it.
-(b) Bar: Hermes' Logs page live-tailing every 5s — and beat it, since we can do SSE properly.
-(c) `crates/adapters_web/src/model.rs`, `crates/core/src/chat.rs`, `crates/ui/src/turn.rs`,
-ADR-002 (which is *named* transport-streaming and is unimplemented).
-(d) Rank 2 because a long run (1) with no streaming is a spinner, which is worse than a
-short run.
+**2. Make a working run legible: stream it, and stop abandoning it.**
+(a) Done when: a single tool that runs for two minutes keeps the transcript changing while it
+runs, the pane never prints the stall note over a working agent, and tokens appear as they
+are produced.
+(b) Bar: Hermes' Logs page live-tailing every 5 s — and beat it, since we can do SSE properly.
+(c) `crates/core/src/transcript.rs:151` (the `ToolInvoked` arm renders nothing, which is what
+makes 15D's silence detector wrong), `crates/ui/src/turn.rs:164`,
+`crates/adapters_web/src/model.rs:15` (a 30 s abort on the whole completion), ADR-002 — named
+transport-streaming, still unimplemented.
+(d) Rank 2: 15C bought sixty-four rounds and 15D then taught the pane to give up on them.
 
-**3. Unlock the composer mid-run; add a plan gate.**
-(a) Done when: a message typed during a live run is picked up by the agent on its next step,
-and a run configured for review pauses with Approve / Edit plan / Reject before acting.
-(b) Bar: Open SWE's double-texting and its accept/edit/delete plan interrupt.
-(c) `crates/ui/src/composer.rs`, `crates/core/src/chat.rs`, `crates/agent/src/step.rs`,
-and `crates/agent/src/forge.rs` — the `ForgeStage::PlanApproval` gate already exists as a
-type and should be generalised rather than re-invented.
-(d) Rank 3: it is half the stated product intent ("both modes: fully autonomous, and
-human-in-the-loop") and today neither mode exists.
+**3. Make the 64 real: compact mid-turn, and stop degrading the document silently.**
+(a) Done when: a thirty-round run finishes with the round-30 request still carrying the
+original task and the previous round's observation — proven by a host test that drives thirty
+rounds and asserts on the last `CallModel` document.
+(b) Bar: Open SWE's hours-long Daytona runs; any agent that survives its own context.
+(c) `crates/agent/src/step.rs:50` and `crates/agent/src/window.rs` (compaction fires only at
+the top of a TURN, so a 64-round turn never compacts), `crates/agent/src/phase.rs:127` (4096
+tokens), `crates/context/src/assemble.rs` (budget degradation drops the history the loop is
+accumulating and says so only in a hint nobody renders).
+(d) Rank 3: the ceiling is a counter, and a counter is not the thing that was stopping runs.
 
-**4. Token and cost meter in the frame.**
-(a) Done when: the header shows context used as a %, tokens this session, and estimated cost,
-and clicking it breaks the number down by context Section.
+**4. Account for every token, including the ones spent in Workers.**
+(a) Done when: the meter's number equals the sum of every model call the page caused,
+delegations included, and clicking it breaks the number down by agent and by context Section.
 (b) Bar: Hermes' context-usage meter with per-category breakdown; Mission Control's
 "136K tokens · $0.79 spent."
-(c) `crates/context/src/assemble.rs` (the section split is already there — free breakdown),
-`crates/adapters_web/src/model.rs` (usage off the response), `crates/ui/src/main.rs`.
-(d) Rank 4 because it is cheap, `VIEWS.md:171` already concedes the gap, and it is the single
-strongest credibility signal a console can carry.
+(c) `crates/adapters_web/src/worker.rs` (a Worker must report its spend back across the
+`postMessage` boundary — its log is its own by design, ADR-008), `crates/core/src/batch.rs`
+(`run_on` already appends the sub-agent's answer; the cost belongs beside it),
+`crates/core/src/transcript.rs:107`, `crates/context/src/assemble.rs`.
+(d) Rank 4: 15E built the mechanism correctly and pointed it at one agent. Finishing it is
+small; leaving it means the meter is confidently wrong exactly when delegation is used.
 
-**5. The Dashboard view the product intent actually asked for.**
-(a) Done when: page load lands on a dashboard whose cards each carry a live number —
-runs in flight, workspace state, tokens today, agents idle — and clicking a card navigates.
+**5. Cards that carry numbers: the Dashboard as a launcher, not a grid of panels.**
+(a) Done when: the landing view's cards each carry a live number — runs in flight, workspace
+state, tokens today, agents idle — and clicking a card navigates to the view that owns it.
 (b) Bar: Mission Control's launcher cards ("Task Board — 2 running · 6 queued").
-(c) `crates/ui/src/views.rs` (add the view), `crates/core/src/builtins.rs` (`dashboard`
-already serves `/`), `VIEWS.md` (which currently argues *against* this and must be amended,
-not ignored).
-(d) Rank 5: the owner named the dashboard as the landing surface and the code lands on Chat.
-That is a spec/product disagreement, and the product wins.
+(c) `crates/ui/src/stage.rs:44` (today `dash-grid` is the four old rail panels), a
+`GET /dashboard` projection in `crates/core/src/builtins.rs`, `VIEWS.md`.
+(d) Rank 5: 15B won the routing argument and shipped the slot. The slot is still furniture.
 
 **6. Sell the substrate: a workspace view with a file tree, an editor, and a diff.**
 (a) Done when: a user can see the files an agent created, open one, edit it, and see what the
@@ -288,3 +297,68 @@ tool calls.
 **Refuse: evals, multi-user, marketplace, RBAC.** Team and production features for a
 single-operator browser tool with no accounts. Already refused in `VIEWS.md:102`; noted here
 so it stays refused when the competitor set makes them look standard.
+
+---
+
+## §6 Audit log
+
+### 2026-08-12 — 15A…15E, read against the code and not the commit messages
+
+`cargo test --workspace`: 159 pass, 0 fail. `scripts/check-layering.py` OK,
+`scripts/check-selectors.py` OK. **`scripts/check-layout.sh` FAILS: 36 assertions.**
+
+**Closed.** 15C really did remove the four-round wall (`state.rs:109`, `spec.rs`,
+`tests/rounds.rs` drives seven rounds and stops dead on the seventh). 15B really did wire the
+six-view nav and the Dashboard landing (`views.rs`, `stage.rs`); `#design-system` at boot
+survives. 15E's provider-usage read is honest — a missing block is `None`, never a zero
+(`openai.rs`), and `tests/meter.rs` asserts the header accumulates.
+
+**Open, in severity order.**
+
+1. **A steer is silently dropped whenever the reply that follows it is the final answer**
+   (`crates/agent/src/step.rs:35` with `:148`). The steer arm appends and emits nothing; the
+   terminal arm of `on_reply` clears `task` and emits nothing. Between them, a sentence typed
+   while a model call is out is never asked. The log order is question → steer → answer, so
+   the transcript shows the person's steer with the answer to the PREVIOUS question directly
+   beneath it, the composer un-busies, and nothing says the sentence was ignored. This is the
+   most common timing there is, not a rare race.
+2. **The stall detector abandons working runs.** `transcript.rs:151` renders nothing for
+   `ToolInvoked` — by design, and correctly — so a tool that runs longer than 36 s produces no
+   projection change, and `turn.rs:164` prints "Nothing has changed… check Settings" and
+   RETURNS, which stops the poll: the transcript, the tool trace and the token meter all
+   freeze for the rest of the run. The one workload the CheerpX substrate exists for
+   (`apk add`, a build) is precisely the one that trips it. 15D's commit message asserts
+   "every tool result… changes the projection"; the projection says otherwise.
+3. **15C's ceiling is nominal.** Nothing else counts rounds (`retries`/`replans` are dead
+   fields; `drive` is unbounded; `batch` has no cap), but three things still end a long run:
+   a 30 s abort on every completion (`adapters_web/src/model.rs:15`), a 4096-token Work budget
+   (`phase.rs:127`) enforced by silent degradation in `assemble.rs`, and compaction that fires
+   only from the `UserMessage` arm (`step.rs:50`) and therefore never inside a 64-round turn.
+4. **The meter counts one agent.** `transcript.rs:107` folds the PAGE's log; every sub-agent
+   runs in a Worker with "its own log… a database per agent" (`worker.rs:21`), so a delegated
+   turn contributes its answer to the page (`batch.rs` `run_on`) and none of its cost. The
+   tooltip says "Every token this page has spent."
+5. **15B's structural collateral.** The one `<h1>` moved inside `dashboard-view`
+   (`stage.rs:44-50`), which is `hidden` on five of six views — the page has no heading
+   anywhere else. `Terminal` is mounted in both `dashboard-view` and the Trace rail, so
+   `id="workspace-command"` (`terminal.rs:25`) is duplicated and `focus(COMMAND_ID)` can land
+   in a hidden region; `ToolTrace` mounts up to three times at once. The agent strip is now a
+   row (`layout.css:73`) but still sends `aria_orientation: "vertical"` (`tabs.rs:67`), which
+   the CSS comment beside it claims was fixed. `main.rs` unmounts the whole `Rail` on the
+   collapse toggle, against the mounted-not-unmounted rule `stage.rs` opens with.
+6. **The layout gate is red and measuring a page that no longer exists.**
+   `scripts/layout-probe.html` still models the pre-15B shell — `deck-tab`, the agent tablist
+   inside `.nav`, the masthead outside the stage — so its 36 STACKED failures are about markup
+   nobody ships, and `.view-list`, `.view-panel`, `.dash-grid`, the warmth pill and the token
+   meter are measured by nothing. This is the exact failure the script's own header warns
+   about ("increment 13 added dash.css, the list did not know").
+7. **15A prewarms unconditionally.** `cheerpx::prewarm` streams the engine and disk on every
+   page load with no `crossOriginIsolated` check, no opt-out and no Save-Data path, for a
+   visitor who may only want Settings; and `Warmth::Failed` is displayed permanently even
+   though the next command retries (`dash.rs`).
+
+**On test coverage.** Nothing here is green-and-vacuous in the strict sense, but two tests are
+green over broken halves: `rounds.rs`'s steering test only drives the mid-tool-batch path (the
+path that works), and `meter.rs` boots with `ScriptedAgents::none()`, so it cannot see the
+delegation gap. `crates/ui` has zero tests, which means the user-visible half of 15A, 15B and
+15D's watcher has no automated check at all except the layout gate — which is red.
