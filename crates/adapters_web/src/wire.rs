@@ -68,7 +68,7 @@ pub(crate) async fn read_reply(resp: web_sys::Response) -> Result<ModelReply, Mo
         });
     }
     Ok(ModelReply {
-        body_json: text,
         usage: None,
+        body_json: text,
     })
 }

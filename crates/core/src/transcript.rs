@@ -102,6 +102,20 @@ fn tail(pending: bool, awaiting: bool, count: usize, who: &str) -> Option<Fragme
     }
 }
 
+/// Every token this page has spent, from the log alone (I8): the sum of every
+/// `ModelCalled` fact, which is the only place a provider's accounting block
+/// lands. Turns whose provider reported nothing contribute nothing — the
+/// number is a floor, and the meter says so rather than inventing an estimate.
+pub(crate) fn spent(ctx: &Ctx) -> u64 {
+    ctx.recent
+        .iter()
+        .filter_map(|kind| match kind {
+            EventKind::ModelCalled { spent_tokens, .. } => Some(u64::from(*spent_tokens)),
+            _ => None,
+        })
+        .sum()
+}
+
 /// The whole conversation with ONE agent, in log order. A turn is in flight
 /// when the last message-shaped fact is a `UserMessage` — that is also the
 /// `x-turn: pending` header, which is how the UI knows to keep watching
@@ -191,6 +205,14 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
     // body: the pane must be able to title itself without parsing the fragment
     // or leaning on an editable `description` line (`ux-walker`, increment 03).
     response.headers.push(("x-agent".into(), who.to_string()));
+    // What this page has spent, as a header on a projection the pane already
+    // polls every 400 ms. A meter is the one thing present in the permanent
+    // chrome of every console with a real agent behind it, and VIEWS.md §6
+    // names its absence "the tell for a console built by someone who does not
+    // run agents" — but it does not earn a route of its own or a second clock,
+    // so it rides here. Every agent's spend, not this one's: the number in the
+    // frame is the page's, and a per-agent breakdown is the Trace view's job.
+    response.headers.push(("x-tokens".into(), spent(ctx).to_string()));
     if pending {
         response.headers.push(("x-turn".into(), "pending".into()));
     }

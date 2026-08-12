@@ -94,6 +94,33 @@ pub fn WorkspaceWarmth() -> Element {
     rsx! { p { class: "{class}", role: "status", "{word}" } }
 }
 
+/// What this page has spent, in the frame, from the log (I8).
+///
+/// It is the one thing present in the permanent chrome of every console with a
+/// real agent behind it, and VIEWS.md §6 called its absence "the tell for a
+/// console built by someone who does not run agents". It shows tokens and not
+/// money: a price per model is a table this build does not have, and a made-up
+/// dollar figure is worse than none. Nothing at all until the first turn
+/// reports usage — an endpoint that reports none must not read as free.
+#[component]
+pub fn TokenMeter(tokens: ReadSignal<u64>) -> Element {
+    let spent = tokens();
+    let text = match spent {
+        0 => return rsx! {},
+        n if n < 10_000 => format!("{n} tokens"),
+        n => format!("{:.1}k tokens", n as f64 / 1000.0),
+    };
+    rsx! {
+        p {
+            class: "meter",
+            role: "status",
+            title: "Every token this page has spent, summed from the event log. \
+                    Turns whose provider reported no usage are not counted.",
+            "{text}"
+        }
+    }
+}
+
 /// The first trip through the seam once boot resolves: `GET /` is the
 /// dashboard route the registry already owns, and the booted app becomes
 /// available to every component that talks to the core.

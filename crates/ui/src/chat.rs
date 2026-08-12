@@ -16,7 +16,8 @@ use dioxus::prelude::*;
 use kernel::Request;
 
 use crate::composer::Composer;
-use crate::turn::{show, to, waiting_row, watch, Shown, Turn};
+use crate::turn::{show, to, watch, Shown, Turn};
+use crate::wait::waiting_row;
 use crate::ui::{focus, Button, Card, EmptyState, Skeleton, COMPOSER_ID};
 
 /// What the next turn ACTUALLY calls — read from the broker, not from the
@@ -72,6 +73,9 @@ pub fn ChatPane(
     web: Signal<Option<Rc<WebApp>>>,
     endpoint_set: Signal<bool>,
     tick: Signal<u32>,
+    /// The page's token meter — written here because this pane's poll is the
+    /// projection that carries it, read by the header (`main::shell`).
+    tokens: Signal<u64>,
     /// The roster's fingerprint (`main::shell`). Read by the effect below, so
     /// an agent swapped under this pane re-projects the conversation — the
     /// header is part of the projection, and it was the last thing on screen
@@ -94,6 +98,7 @@ pub fn ChatPane(
         elapsed: use_signal(|| 0),
         stopped: use_signal(|| false),
         tick,
+        tokens,
     };
     let mut note = turn.note;
     // From the PROP, not from the last response: the heading must name the

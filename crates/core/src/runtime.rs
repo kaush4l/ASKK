@@ -33,13 +33,15 @@ pub fn pump(app: &mut App, event: Event) -> Vec<Effect> {
     effects
 }
 
-/// Execute ONE effect through the ports and return the resulting fact.
+/// Execute ONE effect through the ports and return the resulting FACTS, in
+/// order. Usually one; a model call that came back with an accounting block
+/// returns two, because what it cost is a different fact from what it said.
 /// `'static`: every port handle it needs is Rc-cloned before the future is
 /// built, so nothing borrows the app across the await.
 pub fn execute_effect(
     ports: &Ports,
     effect: Effect,
-) -> impl std::future::Future<Output = Result<Event, CoreError>> + 'static {
+) -> impl std::future::Future<Output = Result<Vec<Event>, CoreError>> + 'static {
     let model = Rc::clone(&ports.model);
     let clock = Rc::clone(&ports.clock);
     async move {
@@ -65,25 +67,47 @@ pub fn execute_effect(
                         message: "unrecognizable completion body".into(),
                     })
                 })?;
-                Ok(Event {
+                let at = clock.now();
+                let fact = |kind| Event {
                     id: EventId(0), // assigned at append
                     seq: 0,
-                    at: clock.now(),
-                    kind: EventKind::ModelReplied {
+                    at,
+                    kind,
+                };
+                // What it cost, when the provider says. `ModelCalled` has been
+                // in the closed set since G2 and nothing ever emitted it: the
+                // adapter dropped `usage` on the floor and every meter in the
+                // product had nothing to project. It is the FIRST of the two,
+                // so a reader folding the log sees the cost of a reply before
+                // the reply, never after it.
+                // The port moved bytes; reading them is this layer's job, and
+                // `context` owns every provider quirk (§8.1). A port that
+                // fills `usage` itself is honoured, so an adapter with a
+                // richer source than the body can still say so.
+                let spent = reply.usage.or_else(|| context::openai_usage(&reply.body_json));
+                let spent = spent.map(|u| {
+                    fact(EventKind::ModelCalled {
+                        document_hash: context::content_hash(&messages),
+                        spent_tokens: u.input_tokens + u.output_tokens,
+                    })
+                });
+                Ok(spent
+                    .into_iter()
+                    .chain([fact(EventKind::ModelReplied {
                         text,
                         // Whose words these are. Empty is this process's own
                         // agent — the reply to the call IT made; `summarizer` is
                         // a compaction, a turn taken on this agent's behalf.
                         agent: speaker,
-                    },
-                })
+                    })])
+                    .collect())
             }
-            Effect::Emit { kind } => Ok(Event {
+            Effect::Emit { kind } => Ok(vec![Event {
                 id: EventId(0),
                 seq: 0,
                 at: clock.now(),
                 kind,
-            }),
+            }]),
             // Tools run against the app (sync) and delegations as a batch; both
             // live in `batch.rs`. See `batch::run_effects`.
             Effect::InvokeTool { .. } | Effect::Delegate { .. } => {

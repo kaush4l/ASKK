@@ -163,9 +163,11 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
     let result = running.await;
     let mut a = app.borrow_mut();
     match result {
-        Ok(event) => {
-            let appended = a.append(event.kind);
-            a.pending.push(appended);
+        Ok(events) => {
+            for event in events {
+                let appended = a.append(event.kind);
+                a.pending.push(appended);
+            }
         }
         Err(e) => crate::failure::record(&mut a, e),
     }

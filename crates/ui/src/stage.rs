@@ -25,6 +25,8 @@ pub fn Stage(
     web: Signal<Option<Rc<WebApp>>>,
     endpoint_set: Signal<bool>,
     tick: Signal<u32>,
+    /// The page's token meter, written by the chat pane's poll.
+    tokens: Signal<u64>,
     /// The roster's fingerprint — see the memo in `main`.
     roster: ReadSignal<String>,
     /// The `/agents` listing itself, for the roster panel.
@@ -61,7 +63,9 @@ pub fn Stage(
                 // Agents is not the navigation, so the switcher lives HERE, as
                 // a tab strip inside the one view it changes the subject of.
                 tabs::AgentTabs { loaded, authored, selected }
-                chat::ChatPane { web, endpoint_set, tick, roster, agent: selected, hidden: false }
+                chat::ChatPane {
+                    web, endpoint_set, tick, tokens, roster, agent: selected, hidden: false,
+                }
             }
             section {
                 class: "view-panel agents-view",

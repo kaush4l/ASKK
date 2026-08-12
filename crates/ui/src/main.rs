@@ -26,6 +26,7 @@ mod tabs;
 mod terminal;
 mod tools;
 mod turn;
+mod wait;
 mod settings;
 mod settings_view;
 mod skin;
@@ -71,6 +72,9 @@ fn shell() -> Element {
     // "something moved": bumped by a turn and by a settings save, read by the
     // panes that must redraw from the core when it does.
     let tick = use_signal(|| 0u32);
+    // What this page has spent. Written by the chat pane's poll off the
+    // projection's `x-tokens` header, read by the meter in the header strip.
+    let tokens = use_signal(|| 0u64);
     // The two dismissable regions (increment 13). One bit each, owned here
     // because the switch that flips it lives in the header and the region it
     // flips lives in `main` — nothing below this needs to know.
@@ -120,6 +124,7 @@ fn shell() -> Element {
             // The machine starts warming the moment the page paints, and this
             // is the only thing on screen that knows: nothing waits for it.
             dash::WorkspaceWarmth {}
+            dash::TokenMeter { tokens }
             div { class: "switches",
                 dash::PanelToggle { label: "Views", controls: "nav", open: nav_open }
                 dash::PanelToggle { label: "Instruments", controls: "rail", open: rail_open }
@@ -145,7 +150,7 @@ fn shell() -> Element {
                     views::ViewNav { view }
                 }
                 stage::Stage {
-                    web, endpoint_set, tick, roster, agents, loaded, authored,
+                    web, endpoint_set, tick, tokens, roster, agents, loaded, authored,
                     selected, fragment, view,
                 }
                 // WHOSE instruments, and which ones: the rail is contextual,

@@ -126,3 +126,30 @@ fn native_calls(message: &Value) -> Option<String> {
         false => Some(lines.join("\n")),
     }
 }
+
+/// The provider's own accounting block, if it sent one.
+///
+/// OpenAI-compatible servers put it at `usage`, with `prompt_tokens` and
+/// `completion_tokens`; cached input, where a provider reports it at all, sits
+/// under `prompt_tokens_details.cached_tokens`. Everything here is optional
+/// because llama.cpp, LM Studio, vLLM and Anthropic's compatibility layer each
+/// omit a different part of it — a missing block is `None`, never a zero, so a
+/// meter can say "unreported" instead of lying about a free turn.
+pub fn openai_usage(body_json: &str) -> Option<kernel::Usage> {
+    let v: Value = serde_json::from_str(body_json).ok()?;
+    let usage = v.get("usage")?;
+    let count = |key: &str| usage.get(key).and_then(Value::as_u64);
+    let (input, output) = (count("prompt_tokens"), count("completion_tokens"));
+    if input.is_none() && output.is_none() {
+        return None;
+    }
+    Some(kernel::Usage {
+        input_tokens: input.unwrap_or(0) as u32,
+        output_tokens: output.unwrap_or(0) as u32,
+        cached_input_tokens: usage
+            .get("prompt_tokens_details")
+            .and_then(|d| d.get("cached_tokens"))
+            .and_then(Value::as_u64)
+            .map(|n| n as u32),
+    })
+}

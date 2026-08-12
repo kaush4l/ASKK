@@ -181,3 +181,18 @@ footer {
 footer .machine { color: var(--machine); text-transform: none; letter-spacing: 0; }
 footer a { color: var(--ink-2); }
 footer a:hover { color: var(--accent); }
+
+/* What this page has spent. Same pill as the endpoint line and the workspace
+   state: three facts about what the page can do and has done, one shape. */
+header .meter {
+  margin: 0;
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-3);
+  background-color: var(--surface-1);
+  border-radius: var(--r-full);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--ink-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
