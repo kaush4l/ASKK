@@ -1,4 +1,11 @@
-/* glass.css — the material, and only the material. Every declaration here is
+/* glass.css — the material, and only the material.
+
+   `.stage` is NOT in the E1 group, and it was. DESIGN §4 listed "the stage's
+   own container" under chrome while §1 says "If the mockup's centre column is
+   translucent, reject it" — the document argued with itself and the code took
+   the §4 side, so the column holding the conversation shipped blurred. §1 is
+   the paragraph written to be used as a veto; it wins. The centre stays calm
+   and the glass stays on the frame. Every declaration here is
    fill, blur, edge, or shadow; nothing here positions anything.
 
    Which elements are which elevation is decided HERE, in one grouped selector
@@ -9,8 +16,7 @@
 .e1,
 header,
 .nav,
-.rail,
-.stage {
+.rail {
   background-color: var(--e1-fill);
   backdrop-filter: blur(var(--e1-blur)) saturate(var(--e1-sat));
   -webkit-backdrop-filter: blur(var(--e1-blur)) saturate(var(--e1-sat));
@@ -71,8 +77,18 @@ header,
 /* ---- N3: an E2 inside an E2 is not glass at all -------------------------
    A card inside a card is a layout mistake. The inner one becomes a plain
    opaque block with a divider, which is what it should have been. */
+/* The first version of this list named `.panel .panel` and `.e2 .e2` and
+   missed the two nestings that actually occur on the page: an .agent-card and
+   an .agent-row both sit directly inside a .panel, both carrying the E2 fill,
+   which is three stacked translucent layers on a content area. The blind
+   critic found it by walking the rendered DOM; the guard did not, because N3
+   was the one nesting rule nobody wrote an assertion for. Both are fixed. */
 .panel .panel,
 .e2 .e2,
+.panel .agent-card,
+.panel .agent-row,
+.panel .tool-call,
+.panel .term-run,
 .agent-row .tool-call,
 .tool-call .tool-call {
   background-color: var(--surface-2);
@@ -96,6 +112,12 @@ header,
    on the shipped page, not in a fixture. */
 .flat,
 .note,
+.agent-meta,
+.agent-origin,
+.agent-header,
+.agent-memory,
+.agent-card summary,
+.space-notes li,
 .chat-log,
 .msg,
 #terminal,
@@ -105,21 +127,6 @@ header,
   background-color: var(--surface-1);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
-
-/* ---- E3's dimming layer -------------------------------------------------
-   Apple's one published hard number for clear glass over bright content is a
-   dark dimming layer at 35% (reference/hig-liquid-glass-variants.png). Our lit
-   lobe IS bright content, so a floating surface paints it under its own fill
-   rather than hoping the lobe is somewhere else. */
-.e3::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--e3-dim);
-  z-index: -1;
-  pointer-events: none;
 }
 
 .scrim {

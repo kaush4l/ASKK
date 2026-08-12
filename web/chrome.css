@@ -11,6 +11,7 @@ header {
   padding: var(--s-3) var(--s-4);
   margin: var(--s-3) var(--s-3) 0;
   position: relative;
+  isolation: isolate;
   z-index: 10;
   flex: 0 0 auto;
   transition: box-shadow var(--dur) var(--ease);
