@@ -28,6 +28,50 @@
 
 /* ---- the three-column grid ---------------------------------------------- */
 
+/* ---- one screen, at EVERY width and in both skins ----------------------- */
+
+/* This chain was `@media (min-width: 1100px)` and machine-skin-only, so a phone
+   got it by luck: at 390 with both regions folded the machine skin measured
+   844 in an 844 viewport and the plain skin measured 1015 (13c walk, finding
+   4 — the earlier walk's 8px, grown). The page never scrolls; the region you
+   are in scrolls inside itself. `100dvh` so a collapsing mobile toolbar cannot
+   leave the composer under the chrome.
+
+   Below 1100 the regions STACK, so `main` is what scrolls — without that the
+   nav and rail would be unreachable the moment you opened one. */
+body,
+body > #main {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+body > #main { height: 100%; }
+main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---- the nav is a COLUMN in both skins ---------------------------------- */
+
+/* The column rule was written `html:not([data-skin="plain"])`, so the fallback
+   kept theme.css's `flex-wrap: wrap` and laid five entries out as a 2-across
+   chip grid inside the 208px nav — `Setup` beside `summarizer`, ArrowDown
+   moving focus RIGHT, under an `aria-orientation="vertical"` that promised
+   otherwise (13c walk, finding 3). That is the same shape as the bug 13c had
+   just fixed, one selector below the fix. A sidebar is a list in both skins;
+   only its ink is a skin. */
+.nav .agent-tabs {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 0;
+  margin: 0;
+}
+.nav .tab { width: 100%; text-align: left; }
+
 @media (min-width: 1100px) {
   /* `auto` for the two outer tracks, not a fixed width: a folded region is
      `display: none`, so its track has no item and collapses to zero and the
@@ -53,8 +97,12 @@
     flex: 1 1 auto;
     min-height: 0;
     display: grid;
-    gap: 0 var(--gap);
+    /* No column gap. A folded track collapses to zero but the GAP beside it
+       does not, so every fold left 16px of dead edge (13c walk, "residual").
+       The separation is the regions' own padding, which folds away with them. */
+    gap: 0;
     padding: var(--gap);
+    overflow: hidden;
     /* theme.css gives `main` a 46rem READING MEASURE, which is right for one
        column of prose and catastrophic for three regions: the plain skin put
        208px of nav and 374px of rail inside 704px and left the conversation
@@ -73,7 +121,15 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
   .nav { grid-column: 1; }
-  .stage { grid-column: 2; min-width: 0; min-height: 0; overflow-y: auto; }
+  /* The stage carries the gutters now that the grid has none, so folding a
+     region hands over its full width and nothing is left behind. */
+  .stage {
+    grid-column: 2;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding-inline: var(--gap);
+  }
   .rail { grid-column: 3; }
 
   /* The plain skin's own share: a column that scrolls inside itself rather than
@@ -159,7 +215,10 @@ html:not([data-skin="plain"]) .rail-who strong { color: var(--ink); }
 html:not([data-skin="plain"]) .panel-toggle {
   background: none;
   color: var(--machine, var(--ink-dim));
-  border: 1px solid var(--edge, var(--line));
+  /* --edge on --bg is 1.54:1, under the 3:1 bar for a non-text boundary, so a
+     folded switch was carried by its ▸ glyph alone (13c walk). The border is a
+     tone that clears it; the glyph and `aria-expanded` still say it too. */
+  border: 1px solid var(--machine, var(--ink-dim));
   border-radius: 0;
   padding: 0.2rem 0.5rem;
   font-size: var(--t-label, 0.8125rem);
