@@ -36,15 +36,25 @@
   // inside the rect, outside the view, and lands on the body. Measure the
   // VISIBLE intersection — what is clipped away cannot be clicked, and what is
   // on screen is still asserted point for point.
+  // Every ancestor that CLIPS, found by asking the computed style rather than
+  // by naming elements: which box scrolls moves with the breakpoint — the
+  // stage above 1100, `main` below it — and a hardcoded list gets that wrong
+  // in exactly the direction that hides a bug.
   var visible = function (el) {
-    var b = rect(el);
-    var clip = el.parentElement && el.parentElement.closest(".stage, .rail");
-    if (!clip) return b;
-    var c = rect(clip);
-    var top = Math.max(b.top, c.top), bottom = Math.min(b.bottom, c.bottom);
-    var left = Math.max(b.left, c.left), right = Math.min(b.right, c.right);
-    return { top: top, bottom: bottom, left: left, right: right,
-             width: right - left, height: bottom - top };
+    var b = { top: rect(el).top, bottom: rect(el).bottom,
+              left: rect(el).left, right: rect(el).right };
+    for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      var o = getComputedStyle(p);
+      if (o.overflowY === "visible" && o.overflowX === "visible") continue;
+      var c = rect(p);
+      b.top = Math.max(b.top, c.top);
+      b.bottom = Math.min(b.bottom, c.bottom);
+      b.left = Math.max(b.left, c.left);
+      b.right = Math.min(b.right, c.right);
+    }
+    b.width = b.right - b.left;
+    b.height = b.bottom - b.top;
+    return b;
   };
 
   // ---- OVERLAP: two regions of one screen may not paint on each other. -----
@@ -103,32 +113,70 @@
   var stage = document.querySelector(".stage");
   var nav = document.getElementById("nav");
   var railEl = document.getElementById("rail");
-  if (W >= 1100 && stage && nav && railEl) {
-    var wide = function (el) { return Math.round(rect(el).width); };
-    var open = wide(stage);
-    var fold = function (el, label) {
-      el.hidden = true;
-      // Force layout before reading: a same-tick read returns the old rect,
-      // which is how the first pass of the 13b walk measured a lie.
-      void document.body.offsetHeight;
-      var after = wide(stage);
-      el.hidden = false;
-      void document.body.offsetHeight;
-      // STRICTLY wider. `>=` was the first version of this line and it passed
-      // a build with the bug still in it: 13b's stage was 416px in all twelve
-      // fold states, and "unchanged" satisfies "not narrower". Putting a 208px
-      // panel away must hand 208px to the middle, or it went to a gutter.
-      say(after > open, "FOLD " + label,
-          "stage " + open + " -> " + after +
-          (after > open ? "" : after < open ? " (SHRANK)" : " (UNCHANGED)"));
-    };
-    fold(nav, "nav");
-    fold(railEl, "rail");
-    // A dashboard whose centre is thinner than its furniture is not a
-    // dashboard. 13b shipped a 90px conversation beside a 374px rail.
-    say(open >= wide(nav) && open >= wide(railEl), "STAGEWIDEST",
-        "stage " + open + " | nav " + wide(nav) + " | rail " + wide(railEl));
-    info("TRACKS", getComputedStyle(document.querySelector("main")).gridTemplateColumns);
+  var wide = function (el) { return Math.round(rect(el).width); };
+  // PRESS the switch, the way a person does — the probe used to set `hidden`
+  // itself, so the `aria-expanded` -> `hidden` contract was never exercised
+  // (13c walk). The fixture wires the same contract dash.rs does.
+  var press = function (id) {
+    var b = document.querySelector('.panel-toggle[aria-controls="' + id + '"]');
+    if (b) b.click();
+    void document.body.offsetHeight;
+    return !!b;
+  };
+
+  if (stage && nav && railEl) {
+    var navW = wide(nav), railW = wide(railEl), open = wide(stage);
+    if (W >= 1100) {
+      // EXACTLY the folded region's width, not merely "wider" — `>` passes on
+      // +1px and every gutter regression short of total was invisible to it
+      // (13c walk, guard gap 1). All FOUR states, including both-away, which
+      // nothing had ever measured.
+      var near = function (a, b) { return Math.abs(a - b) <= 2; };
+      var state = function (label, want) {
+        var got = wide(stage);
+        say(near(got, want), "FOLD " + label, "stage " + got + " want " + want);
+      };
+      press("nav");
+      state("nav", open + navW);
+      press("rail");
+      state("nav+rail", open + navW + railW);
+      press("nav");
+      state("rail", open + railW);
+      press("rail");
+      state("open", open);
+      // A dashboard whose centre is thinner than its furniture is not a
+      // dashboard. 13b shipped a 90px conversation beside a 374px rail.
+      say(open >= navW && open >= railW, "STAGEWIDEST",
+          "stage " + open + " | nav " + navW + " | rail " + railW);
+      info("TRACKS", getComputedStyle(document.querySelector("main")).gridTemplateColumns);
+    } else {
+      // Below 1100 the regions stack, so folding cannot widen anything — what
+      // must hold is that the switches are THERE and still route. The guard was
+      // gated `W >= 1100` entirely, which is why the plain skin's phone was
+      // 171px over one screen with nobody watching (13c walk, gap 4).
+      say(press("nav") && nav.hidden, "FOLDNARROW nav", "nav hidden=" + nav.hidden);
+      press("nav");
+      say(press("rail") && railEl.hidden, "FOLDNARROW rail", "rail hidden=" + railEl.hidden);
+      press("rail");
+    }
+  }
+
+  // ---- STACKED: a vertical tablist lays out vertically, in BOTH skins ------
+  // The column rule was machine-skin-only, so the fallback kept theme.css's
+  // `flex-wrap: wrap` and made five entries a 2-across chip grid under an
+  // `aria-orientation="vertical"` that promised a list — ArrowDown moving
+  // focus RIGHT (13c walk, finding 3). No two tabs may share a row.
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".nav .tab"));
+  if (tabs.length > 1 && !nav.hidden) {
+    var shared = null;
+    for (var t = 1; t < tabs.length && !shared; t++) {
+      var prev = rect(tabs[t - 1]), here = rect(tabs[t]);
+      if (here.top < prev.bottom - 1) {
+        shared = '"' + tabs[t - 1].textContent.trim().slice(0, 12) + '" and "' +
+                 tabs[t].textContent.trim().slice(0, 12) + '" share a row';
+      }
+    }
+    say(!shared, "STACKED", shared || tabs.length + " tabs, one per row");
   }
 
   // ---- the page is one screen, and never a document sideways --------------

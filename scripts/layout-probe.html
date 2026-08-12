@@ -37,6 +37,12 @@
     <div class="agent-tabs" role="tablist" aria-orientation="vertical" aria-label="Which agent to talk to">
       <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="chat-panel" tabindex="0"><span aria-hidden="true">▸ </span><strong>main</strong></button>
       <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
+      <!-- FIVE entries, which is the shipped roster. Three was too few to
+           WRAP, so the STACKED assertion could not reproduce the fallback's
+           2-across chip grid even with the bug restored — a fixture smaller
+           than the failure is a fixture that certifies it. -->
+      <button type="button" id="tab-researcher" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">researcher</button>
+      <button type="button" id="tab-summarizer" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">summarizer</button>
       <button type="button" id="deck-tab" role="tab" class="tab" aria-selected="false" aria-controls="deck-panel" tabindex="-1">Setup</button>
     </div>
   </nav>
@@ -80,6 +86,22 @@
 </main>
 </div>
 <pre id="report"></pre>
+<!-- The fold wiring, so the probe can PRESS the switches rather than set
+     `hidden` itself (13c walk: "it never presses the buttons"). This is the
+     same contract dash.rs implements — `aria-expanded` on the switch, `hidden`
+     on the region it names — and nothing more; the Dioxus signal behind it is
+     the walker's to test on the running app, not this file's. -->
+<script>
+document.querySelectorAll(".panel-toggle").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var region = document.getElementById(b.getAttribute("aria-controls"));
+    var open = b.getAttribute("aria-expanded") === "true";
+    b.setAttribute("aria-expanded", open ? "false" : "true");
+    b.classList.toggle("open", !open);
+    region.hidden = open;
+  });
+});
+</script>
 <script src="layout-probe.js"></script>
 </body>
 </html>
