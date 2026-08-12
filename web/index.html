@@ -46,7 +46,27 @@
   <link data-trunk rel="copy-file" href="../public/models.json">
 </head>
 <body>
+  <!-- What a person sees BEFORE the Wasm mounts, and what they are left with
+       if it never does: the bundle 404s, a stale service worker serves a shell
+       pointing at asset names that no longer exist, the browser refuses the
+       module. It is the difference between a diagnosis and a white page, and
+       it names the one cause a person can fix.
+
+       A SIBLING of the mount, not a child: Dioxus mounts into #main and needs
+       it empty — putting this inside stopped the app booting at all, which is
+       a fine way to learn what a blank page feels like. base.css hides it the
+       moment #main has children, in CSS, so no script decides when the app
+       has started. -->
   <div id="main"></div>
+  <div id="boot">
+    <h1>HARNESS</h1>
+    <p class="pending" role="status">Starting…</p>
+    <p class="note">If this message is still here after a few seconds, the page
+      loaded but its application bundle did not. That is almost always an old
+      service worker holding a stale copy: <strong>reload once</strong>, and if
+      it persists, open this page in a private window to confirm, then clear
+      this site's data.</p>
+  </div>
   <noscript>
     <!-- The app is Rust compiled to WebAssembly and mounted by JavaScript;
          with scripting off there is nothing to show but the truth. -->

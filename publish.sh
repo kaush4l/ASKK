@@ -68,6 +68,22 @@ else
   git worktree add --orphan -b gh-pages "$WT"
 fi
 
+# Stamp the service worker with THIS deploy, so its bytes change and the
+# browser installs it: the `activate` handler then drops every older cache.
+# Without this the worker is byte-identical release to release and an old one
+# can keep serving a shell whose assets no longer exist.
+SW_VERSION=$(git rev-parse --short HEAD)
+python3 - "$DIR/sw.js" "$SW_VERSION" <<'PY'
+import pathlib, re, sys
+path, version = pathlib.Path(sys.argv[1]), sys.argv[2]
+text = path.read_text()
+stamped = re.sub(r'const VERSION = "[^"]*";', f'const VERSION = "{version}";', text, count=1)
+if stamped == text:
+    raise SystemExit("GATE FAIL: could not stamp VERSION into sw.js")
+path.write_text(stamped)
+PY
+grep -q "const VERSION = \"$SW_VERSION\";" "$DIR/sw.js" || fail "sw.js version stamp did not take"
+
 # replace contents wholesale; .nojekyll keeps Jekyll off the asset tree
 find "$WT" -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
 cp -R "$DIR"/. "$WT"/

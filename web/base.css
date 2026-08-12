@@ -111,3 +111,18 @@ pre {
     scroll-behavior: auto !important;
   }
 }
+
+/* The boot notice (index.html) is a SIBLING of the mount point, and it goes
+   away the moment the app mounts — as a rule, not as a script, so nothing has
+   to decide when "started" happened. An app that never mounts leaves #main
+   empty and the notice standing, which is the whole point of it. */
+#main:not(:empty) ~ #boot { display: none; }
+
+#boot {
+  max-width: 40rem;
+  margin: var(--s-5) auto;
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
