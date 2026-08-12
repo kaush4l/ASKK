@@ -5,6 +5,8 @@ use std::collections::HashMap;
 
 use dioxus::prelude::*;
 
+use crate::ui::{Button, Field, Form, COMPOSER_ID};
+
 /// The composer: a real form, so Enter submits and the button is a submit
 /// button — with the default navigation prevented, because the seam is the only
 /// transport. That is what stops the message becoming a query string. With no
@@ -37,25 +39,26 @@ pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<St
         on_send.call(text);
     };
     rsx! {
-        form {
-            class: "oneline",
-            onsubmit: move |e| {
-                e.prevent_default();
-                submit();
-            },
-            input {
+        Form {
+            oneline: true,
+            onsubmit: move |_| submit(),
+            Field {
+                // The one field a turn starts from, so it has a stable id:
+                // every EmptyState in the rail answers "what would put
+                // something here" by sending focus to exactly this control.
+                id: COMPOSER_ID,
                 r#type: "text",
                 value: "{draft}",
                 aria_label: "{label}",
                 placeholder: if ready { "Ask the agent something…" } else { "Set a model endpoint first" },
                 autocomplete: "off",
                 disabled: busy || !ready,
-                oninput: move |e| {
+                oninput: move |e: FormEvent| {
                     drafts.write().insert(mine.clone(), e.value());
                 },
             }
-            button {
-                r#type: "submit",
+            Button {
+                submit: true,
                 disabled: busy || !ready,
                 if busy { "Sending…" } else { "Send" }
             }

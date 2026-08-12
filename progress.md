@@ -947,3 +947,130 @@ they are `node` inside the VM, priced after increment 10.
   one 1px mark travelling the rail's tick strip while `.board-busy` has something to say — the core's own
   live region, selected with `:has()`, so no new state exists to drive it. Both stop under
   `prefers-reduced-motion` and take neither a word nor a colour with them.
+
+---
+
+# The glass run — liquid glass facelift
+
+Goal: translucent surfaces over a blurred, softly lit ground, with real depth
+from light and shadow, judged against real reference pixels rather than against
+a description of them. Application behaviour does not change; a functional
+regression fails the whole run.
+
+State lives in three files: `DESIGN.md` (the source of truth, upstream of all
+code), `checklist.md` (parts, criteria, status), and this ledger, append-only.
+
+## Cycle 1 — the token layer, the material, the file split (part A)
+
+**Dispatched:** a reference-gatherer (real screenshots + measured
+`getComputedStyle` from Apple, Reflect, Linear, visionOS), then part A to the
+orchestrator directly — the token layer, the material and the file split are the
+same edit seen three ways, and splitting them across agents would have produced
+three of them racing on `:root`.
+
+**What the inventory found** (`audit.md`): eight stylesheets, 1,319 lines, 161
+selectors in 208 blocks. **Four of the eight — 706 lines, 54% of all CSS —
+existed only to override the other four behind `html:not([data-skin="plain"])`.**
+Thirteen font sizes; three tokens existed and twenty of thirty-seven declarations
+ignored them. Forty-three spacing values against one `--gap` token, including
+`0.4rem` and `.4rem` in two files. `--bg` and `--surface` each held two different
+values. Six colours bypassed the token layer entirely, one of them a hardcoded
+accent fallback that no longer matched the accent. Zero `backdrop-filter`, zero
+`z-index`, zero `transition` in the entire product. Six surfaces were styled from
+three or more files; `.rail` from four files across nine rule blocks.
+
+**What the reference measurement changed.** The captures came back with verbatim
+computed values, and **six numbers I had written into DESIGN.md were wrong in the
+same direction — too much material**:
+
+| | guessed | measured reference | shipped |
+|---|---|---|---|
+| E1 blur | 28px | Apple curtain 20px, Linear header 20px | **20px** |
+| E3 blur | 40px | Reflect popover 22px — nothing in the set exceeds 22 | **22px** |
+| saturation | 170% / 185% | `saturate(1.8)` appears **only on Apple's light chrome**; every dark surface has none | **110% / 115%** |
+| E1/E2 outer shadow | real shadows | three of four references are `box-shadow: none` and carry the effect on blur + hairline alone | **none** |
+| hairline alpha | .075 / .14 | measured band is .08–.10 (Reflect .1, Linear .08) | **.08 / .10** |
+| card padding | 16px | Reflect's card is `24px 32px` | **24 / 32** |
+
+The pattern is worth naming because it will recur: **guessing this aesthetic
+produces too much of it.** Every correction was downward. The one thing the
+reference does *more* of than I had is the top edge — Linear paints a second
+inset white at 4%, Apple a specular arc, and Reflect skips it and reads flatter
+for it. That treatment stayed, retuned.
+
+Also corrected: Apple's published number for clear glass over bright content is a
+dark dimming layer at **35%**, which is now `--e3-dim`, because our lit lobe *is*
+bright content.
+
+**What shipped.** Seven files, one concern each, none of them gated on the skin:
+`tokens` (199) · `base` (104) · `glass` (124) · `layout` (105) · `chrome` (108) ·
+`surfaces` (184) · `controls` (136).
+
+The load-bearing idea is that **the skin is a token swap, not a stylesheet.**
+`[data-skin="plain"]`, `@supports not (backdrop-filter)`, and
+`prefers-reduced-transparency` all re-point the same tokens in `tokens.css`. So
+the opaque fallback is not a separate path that nobody exercises — it is the path
+the plain skin uses, every time anyone switches skins. And the repo's
+most-repeated defect, a both-skins rule written machine-skin-only (five
+occurrences across increments 12 and 13), stops being expressible at all.
+
+**Two real defects, each proven by reinstating it.**
+
+1. **The three regions were shrinkable flex items in a height-constrained
+   column.** `.stage` measured 318px around a 513px chat panel; with
+   `overflow: visible` the panel spilled 255px past its own parent and painted
+   on top of the rail. Twenty-four OVERLAP and HITTEST failures at 768 and 1024.
+   `flex: 0 0 auto` in the stacked path; `min-height: 0` kept only in the grid
+   path, where a region genuinely scrolls inside itself. Reinstating it
+   reproduces all 24.
+
+2. **The contrast audit read any non-zero alpha as opaque.** So the glass fill
+   `rgba(255,255,255,0.055)` was measured *as if it were the ground*, and every
+   ink on chrome scored 1.12:1 against near-white — 108 failures against a page
+   that was fine. The page was right and the model was wrong, which is the more
+   dangerous shape of that bug. `ground()` now composites src-over to the root
+   and measures against the **lit lobe**, the lightest region of the ground and
+   the only place light-on-glass fails. Restoring the decorative hairline as a
+   control border reproduces `FAIL BOUNDARY ... 1.29:1 on lit-lobe backdrop`.
+
+**Honest limitation on that second fix:** the lit-lobe backdrop is *modelled*
+(the accent lobe composited over `--ground` in JS), not sampled from a rendered
+screenshot. DESIGN.md §10.1 asks for rendered pixels. The model matches the
+arithmetic in §3 exactly, and it caught a real 4.49:1 failure that a fill-colour
+check would have passed, but it is not the same thing as reading the framebuffer
+and should not be described as if it were. Carried forward.
+
+**New guard.** `scripts/check-selectors.py` enforces G1 (no *(selector,
+property)* pair in two files), G2 (no skin-gated rules), five font sizes, zero
+raw spacing literals, and the 200-line ceiling. G1's unit is the pair and not the
+selector, and getting that wrong was the first mistake in DESIGN.md: "no selector
+in two files" sounds stricter and is useless, because it forbids `glass.css`
+giving `header` its fill while `chrome.css` gives it its position — the exact
+separation the split exists to create. What actually shipped broken twice in
+increments 12 and 13 was **one property declared twice**, where the loser was the
+newer rule. All three assertions verified to fail on demand.
+
+**Result:** `check-layout.sh` 24 runs, 0 FAIL. Commit `ab6d7dd`.
+
+| Metric | Before | After |
+|---|---|---|
+| Stylesheets | 8 | 7 |
+| Lines of CSS | 1,319 | 960 |
+| Skin-gated rule blocks | ~90 | **0** |
+| Distinct font sizes | 13 | **5** |
+| Raw spacing literals | 43 | **0** |
+| Roles holding two values | 2 | 0 |
+| `backdrop-filter` declarations | 0 | 12 |
+| `transition` declarations | 0 | 4 (part G in flight) |
+
+## Cycle 2 — dispatched, in flight
+
+- **B + C + F** (component library, `/design-system` route, empty states) to one
+  owner: all three touch `crates/ui/src`, and the brief's own rule is to fan out
+  only where the work is genuinely independent.
+- **D + I** (the glass guard: N1–N4, G3, and 320/1920 coverage) — owns `scripts/`.
+- **G** (interaction states: all five on every control, the two-tone focus ring)
+  — owns `controls.css` and `base.css`.
+
+File ownership is disjoint by construction, and `check-selectors.py`'s G1 will
+catch it if it is not.

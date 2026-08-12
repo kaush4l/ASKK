@@ -15,25 +15,11 @@
 
 use dioxus::prelude::*;
 
+use crate::ui::{focus, Button};
+
 /// The deck's own tab id. Its own constant rather than `tab-{name}` so an agent
 /// somebody names `setup` cannot collide with it.
 const DECK_ID: &str = "deck-tab";
-
-/// Move focus to a tab by id. The roving tabindex means the newly selected tab
-/// is the only one in the tab order, so focus has to follow it or the next Tab
-/// press leaves the strip from a control that is no longer reachable.
-fn focus(id: &str) {
-    let Some(element) = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id(id))
-    else {
-        return;
-    };
-    use wasm_bindgen::JsCast;
-    if let Some(html) = element.dyn_ref::<web_sys::HtmlElement>() {
-        let _ = html.focus();
-    }
-}
 
 /// Where a key press lands, given where it started. `None` is a key this strip
 /// does not own — every other key must reach the browser untouched.
@@ -51,7 +37,17 @@ fn target(key: &Key, at: usize, count: usize) -> Option<usize> {
 }
 
 /// Route to tab `next`: an agent, or — one past the end — the deck.
-fn go(next: usize, names: &[String], mut selected: Signal<String>, mut deck: Signal<bool>) {
+fn go(
+    next: usize,
+    names: &[String],
+    mut selected: Signal<String>,
+    mut deck: Signal<bool>,
+    mut design: Signal<bool>,
+) {
+    // Whichever entry the strip lands on, the /design-system region closes:
+    // it is a third surface in the same column, and leaving it open would
+    // hide the conversation you just asked for behind it.
+    design.set(false);
     match names.get(next) {
         Some(name) => {
             deck.set(false);
@@ -83,6 +79,8 @@ pub fn AgentTabs(
     /// 12c had just spent itself replacing (12c walk, finding 1). They are a
     /// tab now — same strip, same roving tabindex, same arrows.
     deck: Signal<bool>,
+    /// The third stage surface. See `go`.
+    design: Signal<bool>,
 ) -> Element {
     let names = loaded.read().clone();
     let current = selected.read().clone();
@@ -104,8 +102,7 @@ pub fn AgentTabs(
                     let (names, click_names, name_for_key) =
                         (names.clone(), names.clone(), name.clone());
                     rsx! {
-                        button {
-                            r#type: "button",
+                        Button {
                             key: "{name}",
                             id: "tab-{name}",
                             role: "tab",
@@ -121,9 +118,9 @@ pub fn AgentTabs(
                                     return;
                                 };
                                 event.prevent_default();
-                                go(next, &names, selected, deck);
+                                go(next, &names, selected, deck, design);
                             },
-                            onclick: move |_| go(index, &click_names, selected, deck),
+                            onclick: move |_| go(index, &click_names, selected, deck, design),
                             // Visible with the stylesheet off: the marker and
                             // the bold name are UA-styled, `aria-selected` is
                             // not, and the fallback skin is permanent.
@@ -150,8 +147,7 @@ pub fn AgentTabs(
             {
                 let names = names.clone();
                 rsx! {
-                    button {
-                        r#type: "button",
+                    Button {
                         id: DECK_ID,
                         role: "tab",
                         class: if on_deck { "tab current" } else { "tab" },
@@ -163,10 +159,11 @@ pub fn AgentTabs(
                                 return;
                             };
                             event.prevent_default();
-                            go(next, &names, selected, deck);
+                            go(next, &names, selected, deck, design);
                         },
                         onclick: move |_| {
-                            let mut deck = deck;
+                            let (mut deck, mut design) = (deck, design);
+                            design.set(false);
                             deck.set(true);
                         },
                         if on_deck {

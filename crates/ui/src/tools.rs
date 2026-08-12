@@ -9,6 +9,29 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
+use crate::ui::{focus, has_rows, Button, Card, Disclosure, EmptyState, Skeleton, COMPOSER_ID};
+
+/// A trace with no rows is not a broken pane, and it is not "no data" either:
+/// it is a conversation in which nothing has yet needed a tool. Its own fn so
+/// `ToolTrace` stays one job (I12).
+fn nothing_called(who: &str) -> Element {
+    rsx! {
+        EmptyState {
+            glyph: "⚙",
+            title: "No tool has run yet",
+            sentence: "Tools are how {who} does things rather than only says them — read a \
+                       file, run a command, remember a fact. Every call it makes lands here \
+                       with the arguments it wrote and what came back, including the calls \
+                       that were refused. A tool runs when a turn needs one.",
+            Button {
+                variant: "secondary",
+                onclick: move |_| focus(COMPOSER_ID),
+                "Ask {who} something"
+            }
+        }
+    }
+}
+
 #[component]
 pub fn ToolTrace(
     web: Signal<Option<Rc<WebApp>>>,
@@ -28,15 +51,21 @@ pub fn ToolTrace(
             );
         }
     });
+    let projection = trace.read().clone();
+    let who = agent();
     rsx! {
-        section { class: "panel", aria_label: "Tool trace",
-            h2 { "Tools" }
-            div { dangerous_inner_html: "{trace}" }
+        Card { title: "Tools", aria_label: "Tool trace",
+            if projection.is_empty() {
+                Skeleton { lines: 2, label: "Reading the tool trace" }
+            } else if has_rows(&projection, "tool-call") {
+                div { dangerous_inner_html: "{projection}" }
+            } else {
+                {nothing_called(&who)}
+            }
             // Four lines of explanation in front of "No tool has been called
             // yet." is the footnote outnumbering the signal 4:1 (12b walk,
             // finding D2). Behind the disclosure, word for word.
-            details { class: "panel-note",
-                summary { "What the tool trace holds" }
+            Disclosure { summary: "What the tool trace holds",
                 p { class: "note",
                     // Not "this session": the trace is a projection of the
                     // persisted log, so it survives a reload. Saying less than

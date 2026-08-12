@@ -14,10 +14,15 @@ use adapters_web::{sleep, WebApp};
 use dioxus::prelude::*;
 use kernel::Request;
 
+use crate::ui::{focus, Button, Card, Disclosure, EmptyState, Field, Form, Skeleton};
+
 /// A command runs in the async half, so the pane re-reads until the scrollback
 /// grows. 700 ms: a person is watching, not racing. `MAX_TICKS` is generous
 /// because the FIRST command streams a disk image over the network.
 const TICK_MS: i32 = 700;
+/// The command field's id: the workspace EmptyState's one action sends focus
+/// here, the same way every rail EmptyState sends it to the composer.
+const COMMAND_ID: &str = "workspace-command";
 const MAX_TICKS: usize = 430; // ~5 minutes
 
 /// How many commands the scrollback holds, off the pane's own attribute — the
@@ -60,6 +65,26 @@ pub(crate) fn show_newest(id: &str) {
         .and_then(|d| d.get_element_by_id(id))
     {
         pane.set_scroll_top(pane.scroll_height());
+    }
+}
+
+/// The workspace before its first command. Its own fn so `Terminal` stays one
+/// job (I12).
+fn nothing_run() -> Element {
+    rsx! {
+        EmptyState {
+            glyph: "▮",
+            title: "Nothing has been run yet",
+            sentence: "This is a real Linux in the tab — a whole Alpine, with a filesystem \
+                       that survives a reload. The agent runs commands in it, and so can \
+                       you. The first command boots it: it streams the disk over the \
+                       network, so it takes longer than every one after it.",
+            Button {
+                variant: "secondary",
+                onclick: move |_| focus(COMMAND_ID),
+                "Run a first command"
+            }
+        }
     }
 }
 
@@ -121,27 +146,36 @@ pub fn Terminal(
             running.set(false);
         });
     };
+    let projection = panel.read().clone();
+    // Nothing has been run — and a command typed HERE would run. When it would
+    // not (the selected agent works in somebody else's workspace, or in none),
+    // the core's own projection says which and why, and no generic empty state
+    // can say it better; that branch keeps the projection.
+    let fresh = !projection.is_empty() && commands_in(&projection) == 0 && typeable();
     rsx! {
-        section { class: "panel", aria_label: "Workspace terminal",
-            h2 { "Workspace" }
-            div { aria_live: "polite", dangerous_inner_html: "{panel}" }
-            form {
-                class: "oneline",
-                onsubmit: move |e| {
-                    e.prevent_default();
-                    submit();
-                },
-                input {
+        Card { title: "Workspace", aria_label: "Workspace terminal",
+            div { aria_live: "polite",
+                if projection.is_empty() {
+                    Skeleton { lines: 3, label: "Reading the workspace scrollback" }
+                } else if fresh {
+                    {nothing_run()}
+                } else {
+                    div { dangerous_inner_html: "{projection}" }
+                }
+            }
+            Form { oneline: true, onsubmit: move |_| submit(),
+                Field {
+                    id: COMMAND_ID,
                     r#type: "text",
                     value: "{draft}",
                     aria_label: "Command to run in the workspace",
                     placeholder: "uname -a",
                     autocomplete: "off",
                     disabled: running() || !typeable(),
-                    oninput: move |e| draft.set(e.value()),
+                    oninput: move |e: FormEvent| draft.set(e.value()),
                 }
-                button {
-                    r#type: "submit",
+                Button {
+                    submit: true,
                     disabled: running() || !typeable(),
                     if running() { "Running…" } else { "Run" }
                 }
@@ -149,8 +183,7 @@ pub fn Terminal(
             // Six lines of explanation above two lines of shell output was the
             // worst of the three (12b walk, finding D2). The credit is part of
             // the pane and stays a credit — one click, every word.
-            details { class: "panel-note",
-                summary { "What runs these commands" }
+            Disclosure { summary: "What runs these commands",
                 p { class: "note credit",
                     "The Linux runs on "
                     a { href: "https://cheerpx.io/", rel: "noopener", "CheerpX" }

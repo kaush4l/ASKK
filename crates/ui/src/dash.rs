@@ -19,6 +19,8 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
+use crate::ui::Button;
+
 /// Whether this screen has room for three columns at all. Read ONCE, as the
 /// initial state of each panel: below the console breakpoint the regions stack,
 /// so opening both by default is the scroll-of-everything by another name.
@@ -36,8 +38,7 @@ pub fn wide() -> bool {
 #[component]
 pub fn PanelToggle(label: String, controls: String, open: Signal<bool>) -> Element {
     rsx! {
-        button {
-            r#type: "button",
+        Button {
             class: if open() { "panel-toggle open" } else { "panel-toggle" },
             aria_expanded: if open() { "true" } else { "false" },
             aria_controls: "{controls}",

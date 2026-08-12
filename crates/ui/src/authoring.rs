@@ -13,6 +13,7 @@ use dioxus::prelude::*;
 use kernel::Request;
 
 use crate::agentfile::{export, load, post};
+use crate::ui::{has_rows, Button, Card, EmptyState, Field, Form, Skeleton};
 
 /// The row that loads an existing agent into the editor, or starts a blank
 /// one. Its own fn so the pane's body stays inside the 40-line rule (I12).
@@ -23,32 +24,32 @@ fn picker(
     mut name: Signal<String>,
 ) -> Element {
     rsx! {
-    div { class: "editor-picks",
-        for who in loaded.read().clone() {
-            button {
-                r#type: "button",
-                key: "{who}",
-                onclick: {
-            let who = who.clone();
-            move |_| {
-                if let Some(text) = load(&web, &who) {
-                    draft.set(text);
-                    name.set(who.clone());
+        div { class: "editor-picks",
+            for who in loaded.read().clone() {
+                Button {
+                    key: "{who}",
+                    variant: "secondary",
+                    onclick: {
+                        let who = who.clone();
+                        move |_| {
+                            if let Some(text) = load(&web, &who) {
+                                draft.set(text);
+                                name.set(who.clone());
+                            }
+                        }
+                    },
+                    "Load {who}"
                 }
             }
+            Button {
+                variant: "secondary",
+                onclick: move |_| {
+                    name.set(String::new());
+                    draft.set(BLANK.to_string());
                 },
-                "Load {who}"
+                "New agent"
             }
         }
-        button {
-            r#type: "button",
-            onclick: move |_| {
-                name.set(String::new());
-                draft.set(BLANK.to_string());
-            },
-            "New agent"
-        }
-            }
     }
 }
 
@@ -71,8 +72,7 @@ pub fn AgentEditor(
     let target = name.read().trim().to_string();
     let deletable = authored.read().contains(&target);
     rsx! {
-        section { class: "panel", aria_label: "Write an agent",
-            h2 { "Write an agent" }
+        Card { title: "Write an agent", aria_label: "Write an agent",
             p { class: "note",
                 "An agent is an agent.md: YAML frontmatter, then the system prompt. What you \
                  write here is kept in this browser and takes effect at the end of the current \
@@ -86,41 +86,37 @@ pub fn AgentEditor(
                  list is never fetched."
             }
             {picker(web, loaded, draft, name)}
-            form {
-                onsubmit: move |e| {
-                    e.prevent_default();
+            Form {
+                onsubmit: move |_| {
                     post(web, status, refused, tick, Request::post_form(
                         "/agents",
                         &[("name", &name.peek().clone()), ("text", &draft.peek().clone())],
                     ));
                 },
-                label { r#for: "agent-name", "Folder name" }
-                input {
+                Field {
                     id: "agent-name",
+                    label: "Folder name",
                     r#type: "text",
                     value: "{name}",
                     placeholder: "note-taker",
                     autocomplete: "off",
-                    oninput: move |e| name.set(e.value()),
+                    oninput: move |e: FormEvent| name.set(e.value()),
                 }
-                label { r#for: "agent-md", "agent.md" }
-                textarea {
+                // `rows` makes this the multiline variant; `cols: 72` rides
+                // inside the component (12 walk: with no stylesheet a textarea
+                // falls back to 20 columns and this was a comment box).
+                Field {
                     id: "agent-md",
+                    label: "agent.md",
                     rows: 14,
-                    // The stylesheet gives it `width: 100%`; with NO stylesheet
-                    // a textarea falls back to the UA default of 20 columns, so
-                    // the agent editor was a 20×14 comment box (12 walk). The
-                    // plain skin is permanent, so the editor is an editor there
-                    // too. `cols` is a minimum, not a cap: CSS still wins.
-                    cols: 72,
-                    spellcheck: false,
+                    "spellcheck": "false",
                     value: "{draft}",
-                    oninput: move |e| draft.set(e.value()),
+                    oninput: move |e: FormEvent| draft.set(e.value()),
                 }
                 div { class: "row",
-                    button { r#type: "submit", "Save agent" }
-                    button {
-                        r#type: "button",
+                    Button { submit: true, "Save agent" }
+                    Button {
+                        variant: "secondary",
                         disabled: draft.read().is_empty(),
                         onclick: move |_| {
                             let who = match name.peek().trim().is_empty() {
@@ -131,8 +127,8 @@ pub fn AgentEditor(
                         },
                         "Export as a file"
                     }
-                    button {
-                        r#type: "button",
+                    Button {
+                        variant: "danger",
                         disabled: !deletable,
                         onclick: move |_| {
                             post(web, status, refused, tick, Request::post_form(
@@ -170,16 +166,35 @@ const BLANK: &str = "---\nname: \ndescription: \nmodel: \nengine: react\nspace: 
 /// Who is loaded, and where from. Its own fn because the shell composes the
 /// page and owns no content (plan, "UI shape").
 pub(crate) fn agent_panel(agents: Signal<String>) -> Element {
+    let projection = agents.read().clone();
     rsx! {
-        section { class: "panel", aria_label: "Agents",
-            h2 { "Agents" }
+        Card { title: "Agents", aria_label: "Agents",
             p { class: "note",
                 "Loaded from public/agents/ at boot — edit an agent.md, redeploy, reload, \
                  and the agent changes with no rebuild. An agent written in this browser is \
                  the same file, kept here instead, and each card says which it is and what \
                  its space granted it."
             }
-            div { dangerous_inner_html: "{agents}" }
+            if projection.is_empty() {
+                Skeleton { lines: 3, label: "Reading the agent roster" }
+            } else if has_rows(&projection, "agent-card") {
+                div { dangerous_inner_html: "{projection}" }
+            } else {
+                EmptyState {
+                    glyph: "◇",
+                    title: "No agents are loaded",
+                    sentence: "Nothing was fetched from public/agents/. index.json is the \
+                               manifest and a folder it does not list is never fetched — so \
+                               either the manifest is empty or the fetch failed. You can \
+                               write one here instead: it is kept in this browser and takes \
+                               effect at the end of the current turn.",
+                    Button {
+                        variant: "secondary",
+                        onclick: move |_| crate::ui::focus("agent-name"),
+                        "Write an agent"
+                    }
+                }
+            }
         }
     }
 }

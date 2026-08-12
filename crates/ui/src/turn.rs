@@ -8,6 +8,8 @@ use adapters_web::{sleep, WebApp};
 use dioxus::prelude::*;
 use kernel::{Request, Response};
 
+use crate::ui::Button;
+
 /// Poll interval and patience for one turn: 400 ms × 90 = 36 s, a little past
 /// the 30 s the broker aborts at, so its own typed error is what a user sees.
 const TICK_MS: i32 = 400;
@@ -168,8 +170,8 @@ pub(crate) fn waiting_row(
         if busy {
             p { class: "pending wait-clock", role: "status",
                 "waiting for the model — {turn.elapsed}s "
-                button {
-                    r#type: "button",
+                Button {
+                    variant: "secondary",
                     onclick: move |_| {
                         stopped.set(true);
                         stop_waiting(web, turn, &who);

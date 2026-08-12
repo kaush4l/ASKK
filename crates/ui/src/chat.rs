@@ -17,6 +17,7 @@ use kernel::Request;
 
 use crate::composer::Composer;
 use crate::turn::{show, to, waiting_row, watch, Shown, Turn};
+use crate::ui::{focus, Button, Card, EmptyState, Skeleton, COMPOSER_ID};
 
 /// What the next turn ACTUALLY calls — read from the broker, not from the
 /// agent file. The agent's `model:` key is a default that Settings overrides,
@@ -40,6 +41,29 @@ pub(crate) fn endpoint_line(web: Signal<Option<Rc<WebApp>>>) -> String {
     match app.entry_problem(&entry) {
         Some(detail) => format!("This build cannot call {entry}: {detail}"),
         None => format!("This turn calls {entry} — {model} at {url}, {key}."),
+    }
+}
+
+/// A conversation nobody has spoken in. The action is disabled with no
+/// endpoint configured, because focusing a field that cannot send is an
+/// invitation to type something that will not go anywhere — the same reason
+/// the composer disables itself. Its own fn so `ChatPane` stays one job (I12).
+fn nothing_said(who: &str, ready: bool) -> Element {
+    rsx! {
+        EmptyState {
+            glyph: "✉",
+            title: "No messages yet",
+            sentence: "This is your whole conversation with {who} — what you ask, what it \
+                       answers, and every tool it calls on the way. It is kept in this \
+                       browser and replayed from the log after a reload, so nothing here is \
+                       lost by closing the tab.",
+            Button {
+                variant: "secondary",
+                disabled: !ready,
+                onclick: move |_| focus(COMPOSER_ID),
+                "Write the first message"
+            }
+        }
     }
 }
 
@@ -86,6 +110,13 @@ pub fn ChatPane(
     // must not lock this composer: a global lock made the page contradict the
     // board three inches below it (`ux-walker`, increment 07).
     let busy = mine && shown.pending;
+    // Nothing has been SAID here yet. A conversation with no user message is
+    // the only genuinely empty one: a turn in flight, a stopped turn and an
+    // orphaned turn all have one above them. The core writes its own one-line
+    // sentence for this case; the EmptyState below says the same thing with
+    // the region's purpose and its one action attached, so the two never both
+    // appear.
+    let empty = !crate::ui::has_rows(&shown.html, "msg user");
 
     // The pane's first paint is the projection, not an empty box.
     use_effect(move || {
@@ -109,8 +140,8 @@ pub fn ChatPane(
     };
 
     rsx! {
-        section {
-            class: "panel",
+        Card {
+            title: title.clone(),
             // The tabpanel half of the ARIA tabs pattern (increment 08): the
             // strip's `aria-controls` points here, and the panel is named by
             // the tab that selected it rather than by a duplicate label.
@@ -119,7 +150,6 @@ pub fn ChatPane(
             aria_labelledby: "tab-{agent}",
             aria_label: "{title}",
             hidden,
-            h2 { "{title}" }
             if !endpoint_set() {
                 p { class: "pending",
                     "No model endpoint yet. Add one in Settings below — a local \
@@ -131,14 +161,23 @@ pub fn ChatPane(
             // It is the same sentence, unchanged, typeset into the header strip
             // (12c walk: "move it") — no duplication, nothing cut, and the most
             // valuable strip on a console stops holding two words.
-            if mine {
-                // The id is the scroll target: from 12c the conversation is
-                // the child that grows inside a full-height column, so the
-                // newest message is below its own fold unless something moves
-                // it — the terminal's problem, and the terminal's fix.
-                div { id: "chat-scroll", class: "chat-log", dangerous_inner_html: "{shown.html}" }
-            } else {
-                p { class: "pending", "opening {agent}'s conversation…" }
+            // The id is the scroll target: from 12c the conversation is the
+            // child that grows inside a full-height column, so the newest
+            // message is below its own fold unless something moves it — the
+            // terminal's problem, and the terminal's fix. It is present in all
+            // three states, so `show_newest` never scrolls a missing element.
+            div { id: "chat-scroll", class: "chat-log",
+                if !mine {
+                    // Was a bare "opening {agent}'s conversation…", which is a
+                    // sentence in an otherwise empty box — the same shape a
+                    // broken pane has. A skeleton is the shape of what is
+                    // coming.
+                    Skeleton { lines: 3, label: "Opening {agent}'s conversation" }
+                } else if !empty {
+                    div { dangerous_inner_html: "{shown.html}" }
+                } else {
+                    {nothing_said(&agent(), endpoint_set())}
+                }
             }
             {waiting_row(web, turn, busy, agent())}
             if !note.read().is_empty() { p { class: "error", "{note}" } }

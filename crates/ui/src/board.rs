@@ -17,6 +17,8 @@ use adapters_web::{sleep, WebApp};
 use dioxus::prelude::*;
 use kernel::{Request, Response};
 
+use crate::ui::{has_rows, Button, Card, Disclosure, EmptyState, Skeleton};
+
 /// How long to keep asking: 400 ms × 450 = 3 minutes, past both a Worker boot
 /// and the longest turn the broker will hold open. ponytail: a fixed ceiling,
 /// not a heartbeat forever — an agent wedged in `Working` would otherwise poll
@@ -35,8 +37,41 @@ fn show(res: Response, mut rows: Signal<String>, mut busy: Signal<bool>) -> bool
     watch
 }
 
+/// What an empty board MEANS. A board with no rows is not "nothing is
+/// running"; it is "no agent was loaded at all", which is a different fact
+/// with a different fix. Its own fn so `AgentBoard` stays one job (I12).
+fn nothing_loaded(deck: Signal<bool>) -> Element {
+    rsx! {
+        EmptyState {
+            glyph: "◇",
+            title: "No agents are loaded",
+            sentence: "This board is every agent this browser is running, each in its own \
+                       Worker, with what it is doing right now. Agents are fetched from \
+                       public/agents/ at boot — a folder index.json does not list is never \
+                       fetched — or written here in Setup.",
+            Button {
+                variant: "secondary",
+                onclick: move |_| {
+                    let mut deck = deck;
+                    deck.set(true);
+                    crate::ui::focus("agent-name");
+                },
+                "Write an agent"
+            }
+        }
+    }
+}
+
 #[component]
-pub fn AgentBoard(web: Signal<Option<Rc<WebApp>>>, mut tick: Signal<u32>) -> Element {
+pub fn AgentBoard(
+    web: Signal<Option<Rc<WebApp>>>,
+    mut tick: Signal<u32>,
+    /// The route the empty state's one action takes. An empty board means no
+    /// agent is loaded, and the only thing that fixes that is writing one —
+    /// which is the deck, one tab away. Same signal the Setup tab sets, so
+    /// this is an entry point to an existing route, not a new one.
+    deck: Signal<bool>,
+) -> Element {
     let rows = use_signal(String::new);
     let busy = use_signal(|| false);
     // Exactly one clock. Without it every `tick` during a turn would start
@@ -74,10 +109,21 @@ pub fn AgentBoard(web: Signal<Option<Rc<WebApp>>>, mut tick: Signal<u32>) -> Ele
         });
     });
 
+    let projection = rows.read().clone();
     rsx! {
-        section { class: "panel", aria_label: "Agent board",
-            h2 { "Agents running" }
-            div { class: "board", aria_live: "polite", dangerous_inner_html: "{rows}" }
+        Card { title: "Agents running", aria_label: "Agent board",
+            div { class: "board", aria_live: "polite",
+                if projection.is_empty() {
+                    // Not "nothing is running" — "nobody has answered yet".
+                    // The two used to be the same empty box, which is the
+                    // shape a broken panel has.
+                    Skeleton { lines: 2, label: "Reading the agent board" }
+                } else if has_rows(&projection, "agent-row") {
+                    div { dangerous_inner_html: "{projection}" }
+                } else {
+                    {nothing_loaded(deck)}
+                }
+            }
             // Always in the tree, empty when nothing is running: a live region
             // announces CHANGES to itself, so one that is inserted at the same
             // moment as its text is a status a screen reader may never hear.
@@ -88,8 +134,7 @@ pub fn AgentBoard(web: Signal<Option<Rc<WebApp>>>, mut tick: Signal<u32>) -> Ele
             // pane spent three lines of prose above two lines of signal, in the
             // region that is meant to be the live instrument face (12b walk,
             // finding D2). Not one word of it is cut.
-            details { class: "panel-note",
-                summary { "How the board is produced" }
+            Disclosure { summary: "How the board is produced",
                 p { class: "note",
                     "Every agent loaded in this browser runs in its own Worker — its own \
                      event loop — so one agent's slow turn cannot hold up another's. This \

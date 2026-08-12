@@ -16,6 +16,7 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 
 use crate::settings_view::{endpoint_form, TrustNote};
+use crate::ui::Card;
 
 /// The pane's fields; `Signal` is `Copy`, so passing this around is free.
 #[derive(Clone, Copy)]
@@ -165,10 +166,9 @@ pub fn Settings(
     let status = f.status;
     use_effect(move || show_current(web, f, endpoint_set));
     rsx! {
-        section { class: "panel", aria_label: "Settings",
-            // The pane three other messages call "Settings" is now called
-            // Settings (`ux-walker`, increment 04).
-            h2 { "Settings" }
+        // The pane three other messages call "Settings" is now called Settings
+        // (`ux-walker`, increment 04).
+        Card { title: "Settings", aria_label: "Settings",
             {endpoint_form(web, f, endpoint_set)}
             // A refusal is a BLOCKING condition, not help text: styled as the
             // error it is, and announced, rather than reading like the note

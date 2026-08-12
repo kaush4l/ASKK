@@ -13,6 +13,8 @@
 
 use dioxus::prelude::*;
 
+use crate::ui::Button;
+
 /// Its own key namespace: the app's data lives in IndexedDB, and a preference
 /// about this device's screen is not app data (I2 — it never leaves either).
 const KEY: &str = "askk.skin";
@@ -58,8 +60,7 @@ pub fn SkinToggle() -> Element {
     let mut plain = use_signal(saved);
     use_effect(move || apply(plain()));
     rsx! {
-        button {
-            r#type: "button",
+        Button {
             class: "skin-toggle",
             aria_pressed: if plain() { "true" } else { "false" },
             onclick: move |_| {

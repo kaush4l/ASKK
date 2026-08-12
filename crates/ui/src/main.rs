@@ -18,6 +18,7 @@ mod board;
 mod chat;
 mod composer;
 mod dash;
+mod gallery;
 mod tabs;
 mod terminal;
 mod tools;
@@ -26,6 +27,7 @@ mod settings;
 mod settings_view;
 mod skin;
 mod space;
+mod ui;
 
 fn main() {
     // The same Wasm bundle is imported by every agent's Worker (increment 06),
@@ -89,6 +91,13 @@ fn shell() -> Element {
     // Settings — is the last entry in the left panel's list; every other entry
     // there is one agent's conversation.
     let deck = use_signal(|| false);
+    // The third stage surface: /design-system (DESIGN.md §8). Routed exactly
+    // the way the deck is — a `hidden` attribute over a mounted region, not a
+    // router dependency — and opened directly by `#design-system` in the URL,
+    // which is the one line that makes it linkable for a critic. It renders no
+    // projection and calls the seam not once, so it is reachable with no model
+    // endpoint configured.
+    let design = use_signal(gallery::wanted);
     // The one sentence that says what the next turn actually calls. It was
     // prose in the chat pane; it is the same sentence, unchanged, typeset into
     // the header strip that used to be 77px holding two words (12c walk).
@@ -109,6 +118,7 @@ fn shell() -> Element {
             div { class: "switches",
                 dash::PanelToggle { label: "Agents", controls: "nav", open: nav_open }
                 dash::PanelToggle { label: "Instruments", controls: "rail", open: rail_open }
+                dash::PanelToggle { label: "Design system", controls: "design-system", open: design }
                 skin::SkinToggle {}
             }
         }
@@ -127,7 +137,7 @@ fn shell() -> Element {
                     id: "nav",
                     aria_label: "Agents and setup",
                     hidden: !nav_open(),
-                    tabs::AgentTabs { loaded, authored, selected, deck }
+                    tabs::AgentTabs { loaded, authored, selected, deck, design }
                 }
                 // `primary` stays on the class list: every console rule that
                 // makes this column fill its glass is written against it, and
@@ -137,7 +147,8 @@ fn shell() -> Element {
                     // (module::view) — the one scar the htmx design leaves.
                     div { class: "masthead", dangerous_inner_html: "{fragment}" }
                     chat::ChatPane {
-                        web, endpoint_set, tick, roster, agent: selected, hidden: deck(),
+                        web, endpoint_set, tick, roster, agent: selected,
+                        hidden: deck() || design(),
                     }
                     // The routed deck: the tabpanel half of the last nav entry.
                     // Both surfaces stay MOUNTED and one is `hidden` — dropping
@@ -148,11 +159,12 @@ fn shell() -> Element {
                         role: "tabpanel",
                         aria_labelledby: "deck-tab",
                         aria_label: "Setup",
-                        hidden: !deck(),
+                        hidden: !deck() || design(),
                         authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
                         {authoring::agent_panel(agents)}
                         settings::Settings { web, endpoint_set, tick }
                     }
+                    gallery::DesignSystem { hidden: !design() }
                 }
                 aside {
                     class: "rail",
@@ -166,7 +178,7 @@ fn shell() -> Element {
                     aria_label: "Live instruments for {selected}",
                     hidden: !rail_open(),
                     p { class: "rail-who", "Instruments · " strong { "{selected}" } }
-                    board::AgentBoard { web, tick }
+                    board::AgentBoard { web, tick, deck }
                     tools::ToolTrace { web, tick, agent: selected }
                     terminal::Terminal { web, tick, agent: selected }
                     space::SpaceInspector { web, tick, agent: selected }

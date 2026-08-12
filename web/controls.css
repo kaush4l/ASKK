@@ -1,14 +1,13 @@
 /* controls.css — everything you can click, type into, or tab to. One button,
-   one input, one tab, one badge — with all five states on each, because a
-   control that only defines default and disabled is a control whose hover and
-   active states are somebody's later guess. */
+   one input, one tab, one badge, with all five states on each: a control that
+   defines only default and disabled leaves hover and active to a later guess. */
 
 form { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-2); }
 form.oneline { flex-direction: row; align-items: center; flex-wrap: wrap; }
 form label { font-size: var(--t-label); font-weight: var(--w-medium); color: var(--ink-2); }
-form .row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+form .row, .editor-picks { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 form .row button { flex: 0 1 auto; max-width: 100%; }
-.editor-picks { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: var(--s-3) 0; }
+.editor-picks { margin: var(--s-3) 0; }
 
 input, textarea, select, button {
   font-family: inherit;
@@ -92,16 +91,26 @@ button:disabled {
   transform: none;
 }
 
+/* SECONDARY carries a glass fill; GHOST carries none. They were the same
+   declaration — both transparent, which is DESIGN §8's definition of ghost —
+   so the two were identical at rest, and the gallery rendered them side by
+   side proving it. A variant that renders identically to another is not one. */
 .btn-secondary, .panel-toggle, .skin-toggle, .agent-tabs .tab {
-  background-color: transparent;
+  background-color: var(--e2-fill);
   color: var(--ink);
   border: 1px solid var(--control);
   font-weight: var(--w-medium);
 }
 
+/* Ghost. It lived in surfaces.css because the increment that added it did not
+   own this file; it belongs beside the variant it is defined against. */
+.btn-ghost { background-color: transparent; color: var(--ink); border: 1px solid var(--control); font-weight: var(--w-medium); }
+.btn-ghost:not(:disabled):hover { background-color: var(--e2-fill); border-color: var(--ink-3); }
+.btn-ghost:not(:disabled):active { background-color: color-mix(in srgb, var(--ink) 7%, transparent); }
+
 .btn-secondary:not(:disabled):hover, .panel-toggle:not(:disabled):hover,
 .skin-toggle:not(:disabled):hover, .agent-tabs .tab:not(:disabled):hover {
-  background-color: var(--e2-fill);
+  background-color: color-mix(in srgb, var(--ink) 4%, var(--e2-fill));
   border-color: var(--ink-3);
 }
 

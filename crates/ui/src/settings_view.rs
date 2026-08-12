@@ -8,17 +8,18 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 
 use crate::settings::{pick_entry, reset, save_endpoint, Fields};
+use crate::ui::{Button, Field, Form, SelectField};
 
 /// The catalogue picker.
 fn entry_picker(web: Signal<Option<Rc<WebApp>>>, f: Fields) -> Element {
     let names = f.names;
     rsx! {
-        label { r#for: "endpoint-entry", "Model (an entry in public/models.json)" }
-        select {
+        SelectField {
             id: "endpoint-entry",
+            label: "Model (an entry in public/models.json)",
             value: "{f.entry}",
             disabled: names.read().is_empty(),
-            onchange: move |e| pick_entry(web, f, e.value()),
+            onchange: move |e: FormEvent| pick_entry(web, f, e.value()),
             if names.read().is_empty() {
                 option { value: "", "no catalogue loaded — type a base URL below" }
             }
@@ -53,26 +54,26 @@ fn key_row(web: Signal<Option<Rc<WebApp>>>, f: Fields, endpoint_set: Signal<bool
         ),
     };
     rsx! {
-        label { r#for: "endpoint-key", "{label}" }
-        input {
+        Field {
             id: "endpoint-key",
+            label: "{label}",
             r#type: "password",
             value: "{key}",
             autocomplete: "off",
             placeholder: if has_key() { "•••••• saved for this entry" } else { "" },
-            oninput: move |e| key.set(e.value()),
+            oninput: move |e: FormEvent| key.set(e.value()),
         }
         div { class: "row",
-            button { r#type: "submit", "Save endpoint" }
+            Button { submit: true, "Save endpoint" }
             if has_key() {
-                button {
-                    r#type: "button",
+                Button {
+                    variant: "secondary",
                     onclick: move |_| save_endpoint(web, Some(String::new()), f, endpoint_set),
                     "Clear key for {entry}"
                 }
             }
-            button {
-                r#type: "button",
+            Button {
+                variant: "secondary",
                 onclick: move |_| reset(web, f, endpoint_set),
                 "Reset to the catalogue default"
             }
@@ -99,29 +100,28 @@ pub(crate) fn endpoint_form(
         false => "",
     };
     rsx! {
-        form {
-            onsubmit: move |e| {
-                e.prevent_default();
+        Form {
+            onsubmit: move |_| {
                 let typed = key.peek().trim().to_string();
                 save_endpoint(web, (!typed.is_empty()).then_some(typed), f, endpoint_set);
             },
             {entry_picker(web, f)}
-            label { r#for: "endpoint-base", "Base URL — blank uses this entry's own (ending in /v1)" }
-            input {
+            Field {
                 id: "endpoint-base",
+                label: "Base URL — blank uses this entry's own (ending in /v1)",
                 r#type: "url",
                 value: "{base}",
                 placeholder: "{base_hint}",
-                oninput: move |e| base.set(e.value()),
+                oninput: move |e: FormEvent| base.set(e.value()),
             }
-            label { r#for: "endpoint-model", "Model id as the endpoint names it — blank uses this entry's own" }
-            input {
+            Field {
                 id: "endpoint-model",
+                label: "Model id as the endpoint names it — blank uses this entry's own",
                 r#type: "text",
                 value: "{model}",
                 autocomplete: "off",
                 placeholder: "{model_hint}",
-                oninput: move |e| model.set(e.value()),
+                oninput: move |e: FormEvent| model.set(e.value()),
             }
             {key_row(web, f, endpoint_set)}
         }
