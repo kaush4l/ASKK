@@ -84,16 +84,30 @@ nothing and never fails to load.
 ```css
 --ground:        #0b0611;   /* the base under everything */
 --ground-deep:   #070409;   /* the vignette floor */
---lobe-accent:   rgba(185, 140, 255, 0.20);
---lobe-cool:     rgba(122, 162, 255, 0.13);
---lobe-warm:     rgba(255, 138, 214, 0.085);
+--lobe-accent:   rgba(214, 178, 255, 0.88);
+--lobe-cool:     rgba(126, 172, 255, 0.52);
+--lobe-warm:     rgba(255, 138, 214, 0.20);
 
 --ground-field:
-  radial-gradient(72rem 46rem at 16% -10%, var(--lobe-accent), transparent 62%),
-  radial-gradient(58rem 40rem at 98% 10%,  var(--lobe-cool),   transparent 60%),
-  radial-gradient(50rem 36rem at 46% 112%, var(--lobe-warm),   transparent 58%),
+  radial-gradient(26rem 20rem at 14%  2%, var(--lobe-accent), transparent 58%),
+  radial-gradient(22rem 17rem at 92% 82%, var(--lobe-cool),   transparent 60%),
+  radial-gradient(34rem 24rem at 62% 40%, var(--lobe-warm),   transparent 62%),
   linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
 ```
+
+**Concentrated, not spread — and the first version of this section got that
+exactly backwards.** It specified three faint lobes washed across the whole
+viewport, and a blind critic measured the result: the brightest pixel anywhere
+in the rendered ground was **55/255**, and under the glass the backdrop never
+passed **32**. The material was implemented correctly and had nothing to work
+on; every surface read as a slightly lighter opaque panel.
+
+The instructive comparison is that Reflect is globally *darker* than this
+design — 91% of its pixels under sRGB 52, against our 87% — and still reads as
+lit, because it puts 3.1% of its pixels above 208 and puts **all of them
+directly behind one card**. Light that is spread is not light. These beams peak
+at `rgb(190, 160, 226)`, L=0.42, and sit behind the chrome rather than between
+it.
 
 Applied to `body` with `background-attachment: fixed`, so panels move over a
 still field and the parallax reads as depth rather than as scrolling wallpaper.
@@ -117,7 +131,7 @@ case for light-on-glass, and it is where glassmorphism fails invisibly.
 | `--danger` | `#ffadad` | 9.7:1 | a turn failed, a tool refused |
 | `--hairline` | `rgba(255,255,255,0.10)` | — | the glass edge. **Decorative. Never the only boundary.** |
 | `--hairline-lit` | `rgba(255,255,255,0.18)` | — | the top edge light-catch |
-| `--control` | `#8b7aa8` | 4.4:1 | the boundary of any control with no fill (WCAG 1.4.11 ≥ 3:1) |
+| `--control` | `#c0b3d4` | 12.4:1 | the boundary of any control with no fill (WCAG 1.4.11 ≥ 3:1) |
 | `--divider` | `rgba(255,255,255,0.07)` | — | rules inside a surface |
 
 `--accent` moved from `#b98cff` to `#c9a4ff`. The reason is specific and worth
@@ -131,6 +145,13 @@ rather than computed from a fill colour: the token that fails is the one that
 looked fine everywhere except the one place it mattered.
 
 No other ink moved down.
+
+`--control` was `#8b7aa8` and moved when the ground did. 3:1 is measured
+against the **brightest backdrop a boundary sits on**, and the moment there was
+a real beam behind the glass the old value measured **1.81:1** on lit chrome
+while still reading 4.4:1 against the ground. It is 3.50:1 on lit glass and
+8.9:1 on the plain skin's opaque surface. A token whose whole job is being
+visible has to follow the light.
 
 **`--hairline` vs `--control` is the load-bearing distinction in this palette.**
 A hairline is a light catch on a material; it is allowed to be 1.4:1 because
@@ -179,16 +200,31 @@ content, so `--e3-dim` exists for exactly that.
 
 ### E1 — chrome
 
-The app frame: header, nav panel, rail panel, the stage's own container. Always
-directly over the ground.
+The app frame: **header, nav panel, rail panel. Not the stage.**
+
+This section used to list "the stage's own container" and it contradicted §1,
+which says *"If the mockup's centre column is translucent, reject it."* The code
+took this side and shipped a blurred column holding the conversation. §1 is the
+paragraph written to be used as a veto and it wins; §4 is corrected. Chrome is
+the frame, and the frame does not include the middle.
+
+The fill below is `fill` and `dim` **composited into one layer**. They were two
+— a white-alpha fill over a dark `::before` at 55% — which is wrong twice: a
+pseudo-element with `inset: 0` does not cover the scrolled area of a scrolling
+panel, and nothing that measures a page by walking `backgroundColor` up the tree
+can see it, so the guard read the raw beam and failed a page that was fine. The
+single rgba is also the shape the reference uses — Apple's localnav pill
+`rgba(42,42,45,0.843)`, Reflect's card `rgba(4,1,21,0.1)`: a **dark** tint on a
+bright ground, not a white one. Under-glass luminance sweeps 0.007 → 0.102
+across one panel, ~14×.
 
 ```css
---e1-fill:    rgba(255, 255, 255, 0.055);
+--e1-fill:    rgba(31, 28, 35, 0.575);   /* white .055 over dark .55, resolved */
 --e1-blur:    20px;
 --e1-sat:     110%;
 --e1-border:  1px solid var(--hairline);          /* 1px @ .10 */
 --e1-lit:     inset 0 1px 0 0 var(--hairline-lit);/* the separate top edge */
---e1-shadow:  none;                                /* blur + hairline carry it */
+--e1-shadow:  none;                      /* blur + hairline carry it */
 --e1-radius:  var(--r-lg);   /* 16px */
 ```
 
@@ -216,7 +252,7 @@ one that genuinely floats — the reference set carries no shadow precisely
 because nothing in it floats over its own app.
 
 ```css
---e3-fill:    rgba(255, 255, 255, 0.09);
+--e3-fill:    rgba(62, 59, 66, 0.409);   /* same resolution, dim at HIG's 35% */
 --e3-blur:    22px;                                /* Reflect's popover */
 --e3-sat:     115%;
 --e3-border:  1px solid rgba(255, 255, 255, 0.10);
@@ -224,9 +260,7 @@ because nothing in it floats over its own app.
 --e3-shadow:  0 24px 60px -20px rgba(0, 0, 0, 0.75),
               0 2px 8px -2px rgba(0, 0, 0, 0.4);
 --e3-radius:  var(--r-lg);
---e3-scrim:   rgba(7, 4, 12, 0.5);      /* over the page, behind the surface */
---e3-dim:     rgba(7, 4, 12, 0.35);     /* HIG's number, under the glass fill,
-                                           so the lit lobe cannot wash it out */
+--e3-scrim:   rgba(7, 4, 12, 0.5);       /* over the page, behind the surface */
 ```
 
 ### The nesting rule — N1 through N4
@@ -245,10 +279,22 @@ mud. It is mechanical, and the guard checks it.
   full-surface composite and returns almost no visual difference. This rule is
   both the anti-mud rule and the performance rule.
 - **N3.** E2 never nests inside E2. A card inside a card is a layout mistake;
-  the inner one becomes a plain `--surface-2` block with a `--divider`.
+  the inner one becomes a plain `--surface-2` block with a `--divider`. The
+  list must name the nestings that **actually occur**, not the ones that sound
+  likely: the first version said `.panel .panel` and `.e2 .e2` and missed
+  `.panel .agent-card` and `.panel .agent-row`, which are on the page, and
+  which stacked three translucent layers on a content area for a whole cycle.
+  A blind critic found it by walking the rendered DOM. The guard did not,
+  because N3 was the one nesting rule nobody wrote an assertion for.
 - **N4.** **At most two blurring layers in any ancestor chain**, and the only
-  legal pair is E3-over-E1. Everything else is one. Measured by walking
-  `getComputedStyle(el).backdropFilter !== 'none'` up from every leaf.
+  legal pair is E3-over-E1. Everything else is one. Measured by walking up from
+  every leaf and counting ancestors whose **blur radius is greater than zero** —
+  *not* whose `backdropFilter !== 'none'`, which is what this line said until
+  the guard-builder pushed back. On the opaque path `--e1-blur` is re-pointed to
+  `0px`, so the computed value there is `blur(0px) saturate(1)`: non-`none`. The
+  literal reading would have failed three stacked *nothings* in the plain skin
+  and in every reduced-transparency browser. **The material is the radius, not
+  the keyword.**
 
 ### Body text never sits on a blur
 
@@ -261,10 +307,18 @@ may sit on glass, and they carry `font-weight: 500` minimum when they do.
 ### The opaque path — one code path, three triggers
 
 ```css
-:root[data-skin="plain"],
-@supports not (backdrop-filter: blur(1px)),
+:root[data-skin="plain"], :root[data-glass="off"]
+@supports not (backdrop-filter: blur(1px))
 @media (prefers-reduced-transparency: reduce)
 ```
+`[data-glass="off"]` is part C's kill-backdrop-filter toggle, on the same
+selector rather than a fourth path.
+
+**These three blocks must be byte-identical, and they were not.** `--e*-lit` was
+being zeroed in the plain skin only, so a `prefers-reduced-transparency` user
+kept a specular top-edge highlight on a surface with no material under it. "One
+code path, three triggers" is a claim this file has to actually honour, and a
+critic reading the built CSS caught it while the rendered page looked fine.
 Each re-points the same tokens:
 
 ```css
@@ -586,3 +640,12 @@ here means the composer is always exactly where you left it.
   0.08–0.10 band; top-edge light catch retuned 0.18→0.14. Added `--e3-dim` at
   Apple's published 35% for clear glass over bright content. §6 card padding
   16→24/32 to match Reflect's measured card.
+- **2026-08-12, third pass** — reconciled with what shipped after the first
+  blind critique. The ground was rewritten from three spread lobes to two
+  concentrated beams (its brightest rendered pixel had been 55/255, under the
+  glass 32); `--e1-fill`/`--e3-fill` collapsed fill+dim into one resolved rgba
+  and `--e1-dim`/`--e3-dim` were deleted; `--control` `#8b7aa8`→`#c0b3d4` after
+  it measured 1.81:1 on lit chrome; `.stage` removed from E1, resolving a
+  contradiction between §1 and §4 in §1's favour; N3's selector list completed;
+  N4 restated in terms of blur radius rather than the `none` keyword; the three
+  fallback blocks made byte-identical.
