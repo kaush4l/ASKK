@@ -8,10 +8,18 @@
 //
 // UPDATE PATH (= refresh, I11): navigations are network-first, so a deploy is
 // live on the next load; hashed asset filenames make the rest cache-first
-// safely. Bump VERSION on release to drop the old cache.
+// safely.
+//
+// VERSION is STAMPED BY THE DEPLOY (`publish.sh` rewrites the line below with
+// the commit it is publishing). It used to be a constant nobody remembered to
+// bump, which meant this file's bytes never changed across releases — so the
+// browser had no reason to install the new worker, the old one kept serving
+// `askk-06-0.6.0` for every deploy that ever shipped, and the only cache-
+// busting left was the hashed asset names. A worker that never updates is a
+// worker that can serve a shell from a build whose assets are gone.
 importScripts("coi-sw.js");
 
-const VERSION = "06-0.6.0";
+const VERSION = "4e0e9d5";
 const CACHE = "askk-" + VERSION;
 
 // Only the unhashed shell is pre-cached; trunk fingerprints the JS and Wasm,

@@ -32,7 +32,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
        glass is the material, layout is geometry, then the three that compose
        over all of it. -->
   <link rel="stylesheet" href="./tokens-ad32d5afd8bb45f5.css" integrity="sha384-OreOIZJEbmiLp+cSX5EmPvaopWQySlxE/1MnLMuo4rl3U+J6AcJMjB40w9iFrCnL"/>
-  <link rel="stylesheet" href="./base-88515a5b79378974.css" integrity="sha384-yPtg/OSGDd97pNP3GBBG1QwRR0kqE5OGrZBL3JlfPZcU6QFxrLaCjAt7frfBAYVP"/>
+  <link rel="stylesheet" href="./base-3748710990c75ffa.css" integrity="sha384-gRUcrAuPJViHZKp8O/r19vExF1M/3/+NXPOLw9LPRmZbrfoYSSCAwZtBBdgiK1Zw"/>
   <link rel="stylesheet" href="./glass-dd08f562ca2f2e64.css" integrity="sha384-cmlJAaBPPhzrHgsIj9JSfau3YMDhMkKvms9DozcN8EKN3f7HKaO86zecxy1vuCn3"/>
   <link rel="stylesheet" href="./layout-efdfc1c5669895a8.css" integrity="sha384-JZpO1OtRptrFOZ0rfzk1U8x17b0oFDUvyUTSKcoyMo3sb0DH+X6/Vil+S0l5eLtu"/>
   <link rel="stylesheet" href="./chrome-6c99f08077e83edd.css" integrity="sha384-LG7oW2Odz7czprGXPQ9LbTjFzP1cy14juwyPuvSSGDQbliaD+IfQI+zGwjVgylU3"/>
@@ -55,9 +55,29 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
   <!-- The model catalogue, same deal: a named entry per endpoint, edited and
        redeployed without a rebuild (increment 04). -->
   
-<link rel="modulepreload" href="./ui-419c4f629231f5e6.js" crossorigin="anonymous" integrity="sha384-5DRBg9l2dilpqE/iSaGgGTmQ6f/TIKV1ZN3YyWCSCCcxNi5uAktfBKfgtXkBWQMx"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/inline0.js" crossorigin="anonymous" integrity="sha384-FiIp6el0CzwsGs5wtrL0XL7wA7kbv6PyVzpWv+9bc+OWXULKRhPl8/F7Nw5Sz2+g"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="preload" href="./ui-419c4f629231f5e6_bg.wasm" crossorigin="anonymous" integrity="sha384-QGHtaOKvQoieSjBZkCVlrv9Zt4CxcwzFj7KvbpTy3PIvfTmN/0g7dLws1Wa7sYSF" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./ui-419c4f629231f5e6.js" crossorigin="anonymous" integrity="sha384-5DRBg9l2dilpqE/iSaGgGTmQ6f/TIKV1ZN3YyWCSCCcxNi5uAktfBKfgtXkBWQMx"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/inline0.js" crossorigin="anonymous" integrity="sha384-FiIp6el0CzwsGs5wtrL0XL7wA7kbv6PyVzpWv+9bc+OWXULKRhPl8/F7Nw5Sz2+g"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="preload" href="./ui-419c4f629231f5e6_bg.wasm" crossorigin="anonymous" integrity="sha384-QGHtaOKvQoieSjBZkCVlrv9Zt4CxcwzFj7KvbpTy3PIvfTmN/0g7dLws1Wa7sYSF" as="fetch" type="application/wasm"></head>
 <body>
+  <!-- What a person sees BEFORE the Wasm mounts, and what they are left with
+       if it never does: the bundle 404s, a stale service worker serves a shell
+       pointing at asset names that no longer exist, the browser refuses the
+       module. It is the difference between a diagnosis and a white page, and
+       it names the one cause a person can fix.
+
+       A SIBLING of the mount, not a child: Dioxus mounts into #main and needs
+       it empty — putting this inside stopped the app booting at all, which is
+       a fine way to learn what a blank page feels like. base.css hides it the
+       moment #main has children, in CSS, so no script decides when the app
+       has started. -->
   <div id="main"></div>
+  <div id="boot">
+    <h1>HARNESS</h1>
+    <p class="pending" role="status">Starting…</p>
+    <p class="note">If this message is still here after a few seconds, the page
+      loaded but its application bundle did not. That is almost always an old
+      service worker holding a stale copy: <strong>reload once</strong>, and if
+      it persists, open this page in a private window to confirm, then clear
+      this site's data.</p>
+  </div>
   <noscript>
     <!-- The app is Rust compiled to WebAssembly and mounted by JavaScript;
          with scripting off there is nothing to show but the truth. -->
