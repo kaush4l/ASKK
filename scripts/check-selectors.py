@@ -26,7 +26,7 @@ CSS = sorted((ROOT / "web").glob("*.css"))
 
 # DESIGN.md §2. A file not on this list is a file nobody agreed to.
 EXPECTED = {"tokens.css", "base.css", "glass.css", "layout.css",
-            "chrome.css", "surfaces.css", "controls.css"}
+            "chrome.css", "surfaces.css", "controls.css", "workspace.css"}
 
 MAX_LINES = 200          # I12
 MAX_FONT_SIZES = 5       # DESIGN.md §5
@@ -60,7 +60,7 @@ def blocks(text):
 # ---- file set and size -----------------------------------------------------
 names = {p.name for p in CSS}
 for extra in sorted(names - EXPECTED):
-    fails.append(f"UNEXPECTED FILE web/{extra} — DESIGN.md §2 names seven files")
+    fails.append(f"UNEXPECTED FILE web/{extra} — DESIGN.md §2 names the files")
 for missing in sorted(EXPECTED - names):
     fails.append(f"MISSING FILE web/{missing}")
 for p in CSS:

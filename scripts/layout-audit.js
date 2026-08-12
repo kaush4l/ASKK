@@ -130,7 +130,14 @@
   // an unselected one there at 1.49:1. The guard was green over a page its own
   // code failed, because a check that reads "the first" is only as good as the
   // fixture agreeing with the app about ordering (walk 5, the named hole).
-  var controls = ".panel-toggle, .skin-toggle, .nav .tab, input, textarea, select";
+  // `.nav .tab` became `.nav .view-item` when the left panel started
+  // navigating between views (15B), and the agent strip moved into the Chat
+  // view — both are listed, because a rule that reaches one skin and not the
+  // other is this file's most-repeated finding and both are still controls.
+  // The two header pills (15A, 15E) are TEXT on the header's glass, which is
+  // the CONTRAST assertion's whole subject, and nothing measured them.
+  var controls = ".panel-toggle, .skin-toggle, .nav .view-item, .agent-tabs .tab, " +
+                 ".warmth, .meter, .file-entry, input, textarea, select";
   document.querySelectorAll(controls).forEach(function (el, i) {
     var name = (el.id || el.className || el.tagName).toString().slice(0, 24);
     check(el, name + "[" + i + "]");

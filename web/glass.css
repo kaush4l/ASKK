@@ -145,3 +145,18 @@ header,
 }
 
 .nav, .rail, .e1 { position: relative; isolation: isolate; }
+
+/* The agent strip is a SURFACE, not four buttons floating on the page.
+
+   It used to live in the left panel, which is a panel: the tabs sat on
+   `--surface-1` and read at 16:1. 15B moved it into the Chat view, where the
+   stage has no fill of its own, so the same tabs landed directly on the lit
+   lobe and the guard measured 1.99:1 text and a 1.17:1 outline — a real
+   regression, caught the moment `layout-audit.js` was pointed at the strip's
+   new home. It gets the ground back, as the material it always had. */
+.chat-view .agent-tabs {
+  background-color: var(--surface-1);
+  border: 1px solid var(--e2-line);
+  border-radius: var(--e2-radius);
+  padding: var(--s-2);
+}

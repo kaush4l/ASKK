@@ -48,6 +48,13 @@ arrangement, in `web/index.html` link order:
 | `chrome.css` | header, nav, rail, footer — the persistent furniture | 200 |
 | `surfaces.css` | card, message, row, tool-call, disclosure, empty state, skeleton | 200 |
 | `controls.css` | button, input, textarea, select, tab, badge, toggle | 200 |
+| `workspace.css` | what is inside the Linux: the folder listing, one file's contents | 200 |
+
+`workspace.css` is the eighth, added with the Workspace view (15G). The
+alternative was more of `surfaces.css`, which was at its 200-line ceiling, and
+"what the machine has on disk" is not a card, a message or a row — it is the
+one surface in the product whose content comes from outside the browser. A new
+file needs a reason like that one; `check-selectors.py` holds the list.
 
 The order is `index.html`'s link order and it is dependency order: geometry and
 furniture before the things that compose over them. This table used to list

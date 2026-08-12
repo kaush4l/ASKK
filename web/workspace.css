@@ -31,7 +31,9 @@
 .file-entry.folder { color: var(--accent); }
 .file-entry.root { color: var(--ink-2); font-family: inherit; }
 
-.file-list { display: flex; flex-direction: column; gap: 1px; }
+/* No gap: the rows are a list, and a hairline between two hover targets reads
+   as a seam the pointer falls through. */
+.file-list { display: flex; flex-direction: column; }
 
 /* One file, read. A scroller, because a file is any length and the pane is not. */
 .file-view {

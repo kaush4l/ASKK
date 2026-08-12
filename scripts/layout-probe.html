@@ -23,8 +23,13 @@
 <header>
   <div class="wordmark">ASKK</div>
   <p class="chat-endpoint" role="status">This turn calls local — gemma-4-12B-it-qat-mxfp8 at http://127.0.0.1:8873/v1, with no key.</p>
+  <!-- The two facts 15A and 15E put in the frame. They are text on the header's
+       own glass, which is exactly where this guard's CONTRAST assertion is
+       worth having, and neither was measured by anything before. -->
+  <p class="warmth ready" role="status">workspace ready</p>
+  <p class="meter" role="status">3025 tokens</p>
   <div class="switches">
-    <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="nav"><span aria-hidden="true">▾ </span>Agents</button>
+    <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="nav"><span aria-hidden="true">▾ </span>Views</button>
     <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="rail"><span aria-hidden="true">▾ </span>Instruments</button>
     <button type="button" class="skin-toggle" aria-pressed="false">Simple skin</button>
   </div>
@@ -33,28 +38,40 @@
   <!-- Increment 13: three regions, and the outer two fold. The tablist used to
        sit inside the primary column; it is its own region now, and the probe
        models that because it is what the shipped page does. -->
-  <nav class="nav" id="nav" aria-label="Agents and setup">
-    <div class="agent-tabs" role="tablist" aria-orientation="vertical" aria-label="Which agent to talk to">
-      <!-- author FIRST and UNSELECTED, because that is the order the app
-           renders. The fixture used to lead with the selected tab, so a
-           check reading "the first .nav .tab" measured the one carrying the
-           accent edge (7.31:1) while the shipped page led with one carrying
-           --line (1.49:1): the guard was green over a page its own code
-           failed (walk 5). The audit iterates every control now, and the
-           fixture no longer disagrees with the app about ordering either. -->
-      <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
-      <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="chat-panel" tabindex="0"><span aria-hidden="true">▸ </span><strong>main</strong></button>
-      <!-- FIVE entries, which is the shipped roster. Three was too few to
-           WRAP, so the STACKED assertion could not reproduce the fallback's
-           2-across chip grid even with the bug restored — a fixture smaller
-           than the failure is a fixture that certifies it. -->
-      <button type="button" id="tab-researcher" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">researcher</button>
-      <button type="button" id="tab-summarizer" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">summarizer</button>
-      <button type="button" id="deck-tab" role="tab" class="tab" aria-selected="false" aria-controls="deck-panel" tabindex="-1">Setup</button>
+  <!-- The left panel navigates between VIEWS (15B). It used to list five
+       agents with a "Setup" tab on the end; the agent strip moved into the
+       Chat view, where the thing it switches lives, and the STACKED assertion
+       moved with it: it is the view list that must be one entry per row, in
+       both skins, and the strip below is deliberately a row. SEVEN entries,
+       which is the shipped nav — a fixture smaller than the failure is a
+       fixture that certifies it (walk 5). -->
+  <nav class="nav" id="nav" aria-label="Views">
+    <div class="view-list">
+      <button type="button" id="view-dashboard" class="btn secondary view-item current" aria-current="page" title="Dashboard" aria-label="Dashboard"><span class="nav-icon" aria-hidden="true">▦</span><span class="nav-label">Dashboard</span></button>
+      <button type="button" id="view-chat" class="btn secondary view-item" title="Chat" aria-label="Chat"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Chat</span></button>
+      <button type="button" id="view-agents" class="btn secondary view-item" title="Agents" aria-label="Agents"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Agents</span></button>
+      <button type="button" id="view-workspace" class="btn secondary view-item" title="Workspace" aria-label="Workspace"><span class="nav-icon" aria-hidden="true">▥</span><span class="nav-label">Workspace</span></button>
+      <button type="button" id="view-memory" class="btn secondary view-item" title="Memory" aria-label="Memory"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Memory</span></button>
+      <button type="button" id="view-trace" class="btn secondary view-item" title="Trace" aria-label="Trace"><span class="nav-icon" aria-hidden="true">◈</span><span class="nav-label">Trace</span></button>
+      <button type="button" id="view-settings" class="btn secondary view-item" title="Settings" aria-label="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Settings</span></button>
     </div>
   </nav>
   <div class="stage primary">
     <div class="masthead"><h1>HARNESS</h1></div>
+    <!-- The agent strip, where it lives now: inside the Chat view. author
+         FIRST and UNSELECTED, because that is the order the app renders —
+         the fixture used to lead with the selected tab, so a check reading
+         "the first tab" measured the accent edge (7.31:1) while the shipped
+         page led with --line (1.49:1) and the guard was green over a page its
+         own code failed (walk 5). -->
+    <div class="chat-view">
+    <div class="agent-tabs" role="tablist" aria-orientation="horizontal" aria-label="Which agent to talk to">
+      <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
+      <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="chat-panel" tabindex="0"><span aria-hidden="true">▸ </span><strong>main</strong></button>
+      <button type="button" id="tab-researcher" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">researcher</button>
+      <button type="button" id="tab-summarizer" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">summarizer</button>
+    </div>
+    </div>
     <section class="panel" id="chat-panel" role="tabpanel" aria-labelledby="tab-main" aria-label="Chat with main">
       <h2>Chat with main</h2>
       <div id="chat-scroll" class="chat-log">

@@ -97,12 +97,15 @@
     window.scrollTo(0, 0);
   }
 
-  // ---- STACKED: a vertical tablist lays out vertically, in BOTH skins ------
+  // ---- STACKED: the view list lays out vertically, in BOTH skins ----------
   // The column rule was machine-skin-only, so the fallback kept theme.css's
-  // `flex-wrap: wrap` and made five entries a 2-across chip grid under an
-  // `aria-orientation="vertical"` that promised a list — ArrowDown moving
-  // focus RIGHT (13c walk, finding 3). No two tabs may share a row.
-  var tabs = Array.prototype.slice.call(document.querySelectorAll(".nav .tab"));
+  // `flex-wrap: wrap` and made the entries a 2-across chip grid under a list
+  // that promised one per row — ArrowDown moving focus RIGHT (13c walk,
+  // finding 3). The failure belongs to whatever is IN the left panel, and
+  // since 15B that is the view list, not the agent strip: the strip moved into
+  // the Chat view and is deliberately a row there. Same assertion, pointed at
+  // the thing that still makes the promise.
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".nav .view-item"));
   if (tabs.length > 1 && !nav.hidden) {
     var shared = null;
     for (var t = 1; t < tabs.length && !shared; t++) {
@@ -112,7 +115,7 @@
                  tabs[t].textContent.trim().slice(0, 12) + '" share a row';
       }
     }
-    say(!shared, "STACKED", shared || tabs.length + " tabs, one per row");
+    say(!shared, "STACKED", shared || tabs.length + " view entries, one per row");
   }
 
   // ---- the page is one screen, and never a document sideways --------------
