@@ -180,6 +180,8 @@ details[open] > summary::before { transform: rotate(90deg); }
 }
 
 
+.ds-swatch { padding: var(--s-4); min-width: var(--s-8); }
+
 /* A row of specimens: every variant of one component, side by side. */
 .ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .ds-note { color: var(--ink-2); font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; }

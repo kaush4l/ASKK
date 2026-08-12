@@ -106,9 +106,28 @@ main {
   }
 }
 
-/* 400% zoom on a 1440 screen is a 360px viewport, which is the narrow path
-   above; this is the belt to that braces. Nothing may overflow horizontally
-   at any width, and the guard asserts scrollWidth <= clientWidth. */
 @media (max-width: 22rem) {
   main { padding: var(--s-2); gap: var(--s-2); }
+}
+
+/* The conversation takes the room, instead of a 360px card with 350px of dead
+   ground under it. */
+#chat-panel { flex: 1 1 auto; min-height: 0; }
+
+/* ---- 400% zoom ----------------------------------------------------------
+   At 400% of 1280x1024 the viewport is 320x256, and the one-screen chain
+   turned that into a trap: `body { overflow: hidden }` with a 200px header
+   left the chat input, the message list and Send unreachable, and
+   `scrollHeight === innerHeight` meant nothing could scroll to them. WCAG
+   1.4.10 fails on exactly that.
+
+   One screen is a promise about a DASHBOARD, not about a 256px-tall window.
+   Below 30rem of height the page becomes an ordinary scrolling document — the
+   guard's ONESCREEN assertion is gated the same way, because asserting it here
+   would be asserting the bug. */
+@media (max-height: 30rem) {
+  body { overflow: auto; }
+  body > #main { height: auto; min-height: 100%; }
+  main { overflow: visible; }
+  .nav, .rail, .stage { overflow: visible; }
 }

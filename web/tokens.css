@@ -18,20 +18,23 @@
      there, and the guard measures there rather than trusting a fill colour. */
   --ground: #0b0611;
   --ground-deep: #070409;
-  /* CONCENTRATED, not spread. v1 was three faint lobes washed across the
-     viewport — arithmetically a gradient, perceptually a flat field: brightest
-     pixel anywhere 55/255, never past 32 under the glass, so the blur had
-     nothing to bend and every surface read as a slightly lighter opaque panel.
-     Reflect is globally DARKER than us (91% of pixels under sRGB 52 vs our 87)
-     yet puts 3.1% above 208 and puts all of it behind one card: a 0.001->0.137
-     sweep across that card. These beams peak at rgb(190,160,226), L=0.42. */
+  /* CONCENTRATED, and then PLACED. Two rounds of critique, one lesson each.
+     v1 was three faint lobes washed across the viewport: brightest pixel 55/255
+     and never past 32 under the glass, so the blur had nothing to bend. Reflect
+     is globally DARKER than us (91% of pixels under sRGB 52 vs our 87) yet puts
+     3.1% above 208 and all of it behind one card. v2 fixed the brightness and
+     parked it at 14% 2%, where every pixel over relLum 0.15 landed in one
+     186x89 patch above y=98 — no panel ever touched it, and 42% sat under the
+     opaque endpoint pill, which crushed 0.228 to 0.006. Light nothing can
+     transmit is not light. These peak at rgb(190,160,226), L=0.42, and sit at
+     the vertical middle behind the side panels, whose span is y 98-884. */
   --lobe-accent: rgba(214, 178, 255, 0.88);
   --lobe-cool: rgba(126, 172, 255, 0.52);
   --lobe-warm: rgba(255, 138, 214, 0.20);
   --ground-field:
-    radial-gradient(26rem 20rem at 14% 2%, var(--lobe-accent), transparent 58%),
-    radial-gradient(22rem 17rem at 92% 82%, var(--lobe-cool), transparent 60%),
-    radial-gradient(34rem 24rem at 62% 40%, var(--lobe-warm), transparent 62%),
+    radial-gradient(30rem 30rem at 6% 46%, var(--lobe-accent), transparent 62%),
+    radial-gradient(26rem 26rem at 97% 34%, var(--lobe-cool), transparent 62%),
+    radial-gradient(34rem 24rem at 55% 96%, var(--lobe-warm), transparent 62%),
     linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
 
   /* ---- ink --------------------------------------------------------------
@@ -61,7 +64,7 @@
      3.50:1 there and 8.9:1 on the plain skin's opaque surface. A token whose
      whole job is being visible has to follow the light. */
   --hairline: rgba(255, 255, 255, 0.10);
-  --hairline-lit: rgba(255, 255, 255, 0.14);
+  --hairline-lit: rgba(255, 255, 255, 0.30);
   --control: #c0b3d4;
   --divider: rgba(255, 255, 255, 0.07);
   --focus-halo: rgba(11, 6, 17, 0.85);
@@ -87,17 +90,13 @@
      single rgba, and it is also the shape the reference actually uses: Apple's
      localnav pill is rgba(42,42,45,0.843), Reflect's card rgba(4,1,21,0.1) —
      a DARK tint on a bright ground, not a white one. */
-  --e1-fill: rgba(31, 28, 35, 0.575);
-  --e1-blur: 20px;
-  --e1-sat: 110%;
+  --e1-fill: rgba(31, 28, 35, 0.575); --e1-blur: 20px; --e1-sat: 110%;
   --e1-line: var(--hairline);
   --e1-lit: inset 0 1px 0 0 var(--hairline-lit);
   --e1-shadow: 0 0 0 0 transparent;
   --e1-radius: var(--r-lg);
 
-  --e2-fill: rgba(255, 255, 255, 0.032);
-  --e2-blur: 15px;
-  --e2-sat: 100%;
+  --e2-fill: rgba(255, 255, 255, 0.032); --e2-blur: 15px; --e2-sat: 100%;
   --e2-line: rgba(255, 255, 255, 0.08);
   --e2-lit: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
   --e2-shadow: 0 0 0 0 transparent;

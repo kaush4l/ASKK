@@ -30,16 +30,13 @@
            a.top < b.bottom - 1 && b.top < a.bottom - 1;
   };
 
-  // The stage is a scroll container from increment 13, so a region taller than
-  // it has a RECT that runs past the glass: at 1100 plain/deck the deck's rect
-  // is 258..1210 inside a stage that clips at 884, and a point at y=893 is
-  // inside the rect, outside the view, and lands on the body. Measure the
-  // VISIBLE intersection — what is clipped away cannot be clicked, and what is
-  // on screen is still asserted point for point.
-  // Every ancestor that CLIPS, found by asking the computed style rather than
-  // by naming elements: which box scrolls moves with the breakpoint — the
-  // stage above 1100, `main` below it — and a hardcoded list gets that wrong
-  // in exactly the direction that hides a bug.
+  // A region taller than its scroll container has a RECT that runs past the
+  // glass: at 1100 plain/deck the deck's rect is 258..1210 inside a stage that
+  // clips at 884, so a point at y=893 is inside the rect, outside the view, and
+  // lands on the body. Measure the VISIBLE intersection. Clipping ancestors are
+  // found by asking the computed style, never by naming elements: WHICH box
+  // scrolls moves with the breakpoint, and a hardcoded list gets that wrong in
+  // exactly the direction that hides a bug.
   var visible = function (el) {
     var b = { top: rect(el).top, bottom: rect(el).bottom,
               left: rect(el).left, right: rect(el).right };
@@ -102,14 +99,11 @@
 
   // ---- FOLD: a folded region gives its width to the STAGE ------------------
   // The check that did not exist in 13, which is why 13 and 13b both shipped
-  // broken. Twice the stage was the region that LOST width when a panel was
-  // put away: first auto-placement moved it into a content-sized track, then
-  // the 12d template outlived the rule meant to replace it and capped it at
-  // 26rem — 416px in all twelve fold states — and the probe said OK both
-  // times, because it still modelled a page with no folds in it.
-  //
-  // The assertion is the promise in words: folding a region must never make
-  // the stage narrower, and the stage is never the thinnest column on screen.
+  // broken: twice the stage LOST width when a panel was put away — first
+  // auto-placement moved it into a content-sized track, then a dead layer's
+  // template outranked its replacement and capped it at 416px in all twelve
+  // fold states — and the probe said OK both times, modelling a page with no
+  // folds in it. The assertion is the promise in words.
   var stage = document.querySelector(".stage");
   var nav = document.getElementById("nav");
   var railEl = document.getElementById("rail");
@@ -182,13 +176,34 @@
   // ---- the page is one screen, and never a document sideways --------------
   var doc = document.documentElement;
   info("HEIGHT", doc.scrollHeight + "px in a " + window.innerHeight + "px viewport");
-  // EVERY width, BOTH skins. This was gated `W >= 1100`, which is precisely
-  // where the failure it exists to catch did NOT live: the plain skin measured
-  // 1015px in an 844px viewport at 390 and the probe printed it as INFO, which
-  // nothing counts (13d walk, "the biggest remaining hole"). The page never
-  // scrolls at any width now — the region you are in scrolls inside itself.
-  say(doc.scrollHeight <= window.innerHeight + 1, "ONESCREEN",
-      doc.scrollHeight + " vs " + window.innerHeight);
+  // EVERY width, BOTH skins. This was gated `W >= 1100`, precisely where the
+  // failure it exists to catch did NOT live: the plain skin measured 1015px in
+  // an 844px viewport at 390 and the probe printed it as INFO, which nothing
+  // counts.
+  // ONE SCREEN is a promise about a DASHBOARD, not a 256px-tall window. At
+  // 400% zoom of 1280x1024 the viewport is 320x256 and holding it there WAS the
+  // bug: overflow:hidden under a 200px header left the composer, the log and
+  // Send unreachable with nothing able to scroll to them (WCAG 1.4.10).
+  // Asserting one-screen there would assert the trap. Gated on the same 30rem
+  // the stylesheet is.
+  if (window.innerHeight >= 480) {
+    say(doc.scrollHeight <= window.innerHeight + 1, "ONESCREEN",
+        doc.scrollHeight + " vs " + window.innerHeight);
+  } else {
+    // What must hold instead: everything is REACHABLE. Nothing may be clipped
+    // out of a container that cannot scroll to it.
+    var trapped = [];
+    document.querySelectorAll("button, a, input, textarea, select, summary").forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      if (!r.width && !r.height) return;
+      var reach = r.bottom <= window.innerHeight || doc.scrollHeight > window.innerHeight;
+      if (!reach) trapped.push((el.textContent || el.tagName).trim().slice(0, 16));
+    });
+    say(trapped.length === 0, "REACHABLE",
+        trapped.length ? trapped.join(", ") + " below a page that cannot scroll"
+                       : document.querySelectorAll("button,a,input,textarea,select,summary").length +
+                         " controls, page scrolls " + doc.scrollHeight);
+  }
   say(doc.scrollWidth <= doc.clientWidth, "XOVERFLOW",
       doc.scrollWidth + " vs " + doc.clientWidth);
 

@@ -47,7 +47,9 @@ fails=0
 # nothing ever rendered: 320 is the narrowest phone still in the field and the
 # first width where a fixed gutter eats the column, 1920 the first where a
 # max-width can leave the stage stranded beside furniture that keeps growing.
-for size in 320x780 360x780 390x844 768x1024 1100x900 1280x900 1440x900 1920x1080; do
+# 320x256 is 400% browser zoom on a 1280x1024 screen — the WCAG 1.4.10
+# case, and the one where the one-screen promise had to be given up.
+for size in 320x256 320x780 360x780 390x844 768x1024 1100x900 1280x900 1440x900 1920x1080; do
   for skin in machine plain; do
     for route in chat deck; do
       url="file://$PWD/$OUT/index.html?skin=$skin&deck=$([ "$route" = deck ] && echo 1 || echo 0)"

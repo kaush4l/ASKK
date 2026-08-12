@@ -20,9 +20,15 @@ pub(crate) fn material() -> Element {
                  because it is the only one that genuinely floats."
             }
             div { class: "ds-row",
-                Card { variant: "e1", p { class: "ds-note", "E1 chrome" } }
-                Card { variant: "e2", p { class: "ds-note", "E2 resting" } }
-                Card { variant: "e3", p { class: "ds-note", "E3 floating" } }
+                // Bare divs, NOT Card. A Card is a `.panel`, and `.panel` is
+                // opaque content by definition — so specimens built from it
+                // rendered E1, E2, E3 and FLAT as four pixel-identical
+                // rectangles, and the one artifact whose job is to prove the
+                // system is coherent proved the opposite. A specimen of a
+                // material has to be the material and nothing else.
+                div { class: "e1 ds-swatch", p { class: "ds-note", "E1 chrome" } }
+                div { class: "e2 ds-swatch", p { class: "ds-note", "E2 resting" } }
+                div { class: "e3 ds-swatch", p { class: "ds-note", "E3 floating" } }
                 Card { variant: "flat", p { class: "ds-note", "flat · opaque, holds prose" } }
             }
             p { class: "note",
