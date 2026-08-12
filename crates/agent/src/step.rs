@@ -224,6 +224,15 @@ fn on_tool_result(
         );
     }
     state.steered = false;
-    let effect = call_model(&mut state, at);
+    // Compaction runs before EVERY round, not only at the top of a turn.
+    //
+    // It was called from the `UserMessage` arm alone, which was right when a
+    // turn was one call and four tool rounds: the window could not outgrow the
+    // budget inside one. A turn may now take sixty-four (15C), each round
+    // appending a reply and a result, so the window grows all through it — and
+    // `assemble` degrades silently at the budget, which means the late rounds
+    // of a long run were quietly losing the task they were working on. The
+    // ceiling being 64 is worth nothing if round 30 cannot see round 1.
+    let effect = window::compaction(&mut state, at).unwrap_or_else(|| call_model(&mut state, at));
     (state, vec![effect])
 }
