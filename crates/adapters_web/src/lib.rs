@@ -24,7 +24,7 @@ mod spawn;
 mod worker;
 mod workers;
 
-pub use cheerpx::CheerpxWorkspace;
+pub use cheerpx::{prewarm, warmth, CheerpxWorkspace, Warmth};
 pub use endpoint::Endpoint;
 pub use error::WebError;
 pub use idb::IdbStore;

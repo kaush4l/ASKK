@@ -115,6 +115,9 @@ fn shell() -> Element {
             if !endpoint.is_empty() {
                 p { class: "chat-endpoint", role: "status", "{endpoint}" }
             }
+            // The machine starts warming the moment the page paints, and this
+            // is the only thing on screen that knows: nothing waits for it.
+            dash::WorkspaceWarmth {}
             div { class: "switches",
                 dash::PanelToggle { label: "Agents", controls: "nav", open: nav_open }
                 dash::PanelToggle { label: "Instruments", controls: "rail", open: rail_open }

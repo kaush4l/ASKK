@@ -40,6 +40,10 @@ const CACHE: &str = "askk-workspace";
 
 #[wasm_bindgen(inline_js = r#"
 let linux = null, booting = null, queue = Promise.resolve(), out = [];
+// What the page can say about the workspace without waiting for it. The boot
+// is a promise nobody may block on, so its outcome has to be readable as a
+// value: idle → booting → ready, or error with the reason attached.
+let state = "idle", reason = "";
 
 function load(src) {
   return new Promise((resolve, reject) => {
@@ -75,9 +79,23 @@ async function bootOnce(engine, disk, cache) {
 }
 
 export function cx_boot(engine, disk, cache) {
-  if (!booting) booting = bootOnce(engine, disk, cache).catch((e) => { booting = null; throw e; });
+  if (!booting) {
+    state = "booting"; reason = "";
+    booting = bootOnce(engine, disk, cache).then(
+      () => { state = "ready"; },
+      (e) => {
+        // A failed boot is retryable: the next command tries again, which is
+        // what makes a boot that raced the service worker's isolation reload
+        // recoverable without a page reload.
+        booting = null; state = "error"; reason = (e && e.message) || String(e);
+        throw e;
+      },
+    );
+  }
   return booting;
 }
+
+export function cx_state() { return state === "error" ? "error:" + reason : state; }
 
 // One command at a time: a second cx.run while the first is live would
 // interleave two commands' output in one console.
@@ -106,6 +124,45 @@ extern "C" {
     async fn cx_boot(engine: &str, disk: &str, cache: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     async fn cx_exec(command: String) -> Result<JsValue, JsValue>;
+    fn cx_state() -> String;
+}
+
+/// How far the workspace has got, as a value the UI can render every frame
+/// without awaiting anything: `idle`, `booting`, `ready`, or `error:<reason>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Warmth {
+    Idle,
+    Booting,
+    Ready,
+    Failed(String),
+}
+
+/// Read the workspace's boot state. Cheap: a string off a JS module global.
+pub fn warmth() -> Warmth {
+    let raw = cx_state();
+    match raw.as_str() {
+        "idle" => Warmth::Idle,
+        "booting" => Warmth::Booting,
+        "ready" => Warmth::Ready,
+        other => Warmth::Failed(other.strip_prefix("error:").unwrap_or(other).to_string()),
+    }
+}
+
+/// Start the VM in the background, now, and never block on it.
+///
+/// This REVERSES the lazy boot this module was built with. The reason is the
+/// product's: the environment is meant to be already packaged, so the first
+/// command a person runs should meet a booted machine, not a two-second wait
+/// for a disk to start streaming. The cost is the engine and the first blocks
+/// on every page load; the guard is that nothing awaits this — the page is
+/// interactive throughout and `warmth()` is the only thing that can even tell.
+pub fn prewarm() {
+    if web_sys::window().is_none() {
+        return; // an agent's Worker has no page to boot a VM in
+    }
+    wasm_bindgen_futures::spawn_local(async {
+        let _ = cx_boot(ENGINE, DISK, CACHE).await;
+    });
 }
 
 /// The engine, from Leaning Tech's CDN (see the module note on the licence).

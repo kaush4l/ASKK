@@ -15,7 +15,7 @@
 
 use std::rc::Rc;
 
-use adapters_web::WebApp;
+use adapters_web::{sleep, Warmth, WebApp};
 use dioxus::prelude::*;
 use kernel::Request;
 
@@ -52,6 +52,46 @@ pub fn PanelToggle(label: String, controls: String, open: Signal<bool>) -> Eleme
             "{label}"
         }
     }
+}
+
+/// How often the pill re-reads the workspace's boot state. Nothing pushes: the
+/// state is a value on a JS module global, so this polls it — half a second is
+/// invisible to a person and free next to a disk streaming over a socket.
+const WARM_MS: i32 = 500;
+
+/// The workspace's readiness, in the header, from the moment the page paints.
+///
+/// This is the visible half of the background boot: the VM starts fetching
+/// before anybody asks for it, and this says how far it got. It never blocks
+/// and it never gates anything — a page whose workspace failed is a page you
+/// can still chat in, which is why the failure is a status line and not an
+/// error region.
+#[component]
+pub fn WorkspaceWarmth() -> Element {
+    let mut state = use_signal(adapters_web::warmth);
+    use_future(move || async move {
+        adapters_web::prewarm();
+        loop {
+            let now = adapters_web::warmth();
+            if *state.peek() != now {
+                let done = now == Warmth::Ready;
+                state.set(now);
+                if done {
+                    return;
+                }
+            }
+            if sleep(WARM_MS).await.is_err() {
+                return;
+            }
+        }
+    });
+    let (word, class) = match &*state.read() {
+        Warmth::Idle => ("workspace idle".to_string(), "warmth idle"),
+        Warmth::Booting => ("workspace starting…".to_string(), "warmth booting"),
+        Warmth::Ready => ("workspace ready".to_string(), "warmth ready"),
+        Warmth::Failed(why) => (format!("workspace unavailable: {why}"), "warmth failed"),
+    };
+    rsx! { p { class: "{class}", role: "status", "{word}" } }
 }
 
 /// The first trip through the seam once boot resolves: `GET /` is the

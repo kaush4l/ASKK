@@ -52,6 +52,45 @@ header .chat-endpoint {
   white-space: nowrap;
 }
 
+/* The workspace's boot state, live from first paint. Same pill as the endpoint
+   line beside it — it is the same kind of fact, "what this page can do right
+   now" — with one dot carrying the state so the colour is never the only
+   signal. */
+header .warmth {
+  margin: 0;
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-3);
+  background-color: var(--surface-1);
+  border-radius: var(--r-full);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+header .warmth::before {
+  content: "● ";
+  color: var(--ink-3, var(--ink-2));
+}
+
+header .warmth.booting::before {
+  color: var(--warning);
+}
+
+header .warmth.ready::before {
+  color: var(--success);
+}
+
+header .warmth.failed {
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+header .warmth.failed::before {
+  color: var(--danger);
+}
+
 .switches {
   display: flex;
   flex-wrap: wrap;
