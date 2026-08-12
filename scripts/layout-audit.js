@@ -55,34 +55,73 @@
     return (hi + 0.05) / (lo + 0.05);
   };
   var opaque = function (c) { return c && !/rgba\(.*,\s*0\)$/.test(c); };
-  // "Has a fill" is a VISIBLE question, not an alpha one. `alpha != 0` counted
-  // the composer's `rgb(18,11,26)` — its ground exactly, 1.00:1 — as a fill and
-  // skipped the outline check entirely, so `--line` could hide behind any
-  // background matching its parent (walk 5, finding 2). A control is fill-less
-  // when its fill does not separate from what is behind it; then its border is
-  // the only thing drawing it, and 3:1 applies to the border.
-  var filled = function (own, under) {
-    return opaque(own) && ratio(lum(own), lum(under)) >= 3;
+  var rgb = function (c) {
+    var m = (c || "").match(/[\d.]+/g) || [0, 0, 0];
+    return { r: +m[0], g: +m[1], b: +m[2], a: m.length > 3 ? +m[3] : 1 };
   };
+  var over = function (top, under) {
+    // src-over, the compositing the browser actually does. The audit used to
+    // skip this entirely: `opaque()` accepted ANY non-zero alpha, so the glass
+    // fill rgba(255,255,255,0.055) was read as if it WERE the ground and every
+    // ink on chrome measured 1.12:1 against near-white. The page was fine; the
+    // model was wrong. DESIGN.md §10.1 is explicit that contrast is measured
+    // against the rendered backdrop, never against a fill colour.
+    var a = top.a;
+    return { r: top.r * a + under.r * (1 - a),
+             g: top.g * a + under.g * (1 - a),
+             b: top.b * a + under.b * (1 - a), a: 1 };
+  };
+  var lumRGB = function (c) {
+    return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+  };
+  // THE WORST CASE, not the average one. The ground is a three-lobe field and
+  // its lightest region is the top-left accent lobe; light-on-glass fails
+  // there and nowhere else, which is exactly why it fails invisibly — it looks
+  // fine over the one part of the background anybody screenshots.
+  var css = function (name, fallback) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  };
+  var litGround = (function () {
+    var base = rgb(css("--ground", "#0b0611").replace(/^#(..)(..)(..)$/, function (_, r, g, b) {
+      return "rgb(" + parseInt(r, 16) + "," + parseInt(g, 16) + "," + parseInt(b, 16) + ")";
+    }));
+    var lobe = rgb(css("--lobe-accent", "rgba(185,140,255,0.20)"));
+    return over(lobe, base);
+  })();
+  // Walk to the root compositing every translucent fill onto the one below it.
   var ground = function (el) {
+    var stack = [];
     for (var p = el; p; p = p.parentElement) {
       var c = getComputedStyle(p).backgroundColor;
-      if (opaque(c)) return c;
+      var v = rgb(c);
+      if (!opaque(c) || v.a === 0) continue;
+      stack.push(v);
+      if (v.a === 1) break;
     }
-    return getComputedStyle(document.body).backgroundColor;
+    var out = litGround;
+    for (var i = stack.length - 1; i >= 0; i--) out = over(stack[i], out);
+    return out;
   };
+  var lum = function (c) { return typeof c === "string" ? lumRGB(rgb(c)) : lumRGB(c); };
   var check = function (el, label) {
     var s = getComputedStyle(el);
     var under = ground(el.parentElement || el);
-    var g = lum(opaque(s.backgroundColor) ? s.backgroundColor : under);
+    var own = rgb(s.backgroundColor);
+    var g = lum(opaque(s.backgroundColor) ? over(own, under) : under);
     var text = ratio(lum(s.color), g);
+    // "Has a fill" is a VISIBLE question, not an alpha one: a fill that lands
+    // within 3:1 of what is behind it is not separating anything, so the
+    // border is still the only thing drawing the control.
+    var filled = opaque(s.backgroundColor) &&
+                 ratio(lum(over(own, under)), lum(under)) >= 3;
     say(text >= 4.5, "CONTRAST " + label, s.color + " " + text.toFixed(2) + ":1");
     // A control with no fill is carried by its OUTLINE, which is a non-text
     // boundary: 3:1, WCAG 1.4.11.
-    if (!filled(s.backgroundColor, under) && parseFloat(s.borderTopWidth) > 0) {
-      var edge = ratio(lum(s.borderTopColor), lum(under));
+    if (!filled && parseFloat(s.borderTopWidth) > 0) {
+      var edge = ratio(lum(over(rgb(s.borderTopColor), under)), lum(under));
       say(edge >= 3, "BOUNDARY " + label,
-          s.borderTopColor + " " + edge.toFixed(2) + ":1 on " + under);
+          s.borderTopColor + " " + edge.toFixed(2) + ":1 on lit-lobe backdrop");
     }
   };
   // EVERY control, not the first of each kind. `document.querySelector(".nav

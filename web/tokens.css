@@ -1,0 +1,199 @@
+/* tokens.css — the only file that defines a value (DESIGN.md §3-§7).
+   NOTHING here targets an element. Every selector below is :root or a
+   :root-with-condition, and the whole skin/fallback story is a token swap:
+   `[data-skin="plain"]`, a browser with no `backdrop-filter`, and
+   `prefers-reduced-transparency` all re-point the SAME tokens at their opaque
+   values, so one code path serves all three and every rule in the product keeps
+   working untouched.
+
+   That is invariant G2. The old stylesheet had 706 lines — 54% of all CSS —
+   whose only job was to re-state the other 46% behind
+   `html:not([data-skin="plain"])`, and a rule meant for both skins written
+   machine-skin-only was this repo's most-repeated defect: five occurrences
+   across increments 12 and 13. With no skin-gated rules anywhere, it is no
+   longer expressible. */
+
+:root {
+  /* ---- the ground -------------------------------------------------------
+     A fixed three-lobe field, never an image: it costs nothing and cannot
+     fail to load. The TOP-LEFT lobe is the lightest region on the page and
+     is therefore the worst case for light-on-glass; every contrast number in
+     DESIGN.md is measured there, and the guard samples rendered pixels there
+     rather than trusting a fill colour. */
+  --ground: #0b0611;
+  --ground-deep: #070409;
+  --lobe-accent: rgba(185, 140, 255, 0.20);
+  --lobe-cool: rgba(122, 162, 255, 0.13);
+  --lobe-warm: rgba(255, 138, 214, 0.085);
+  --ground-field:
+    radial-gradient(72rem 46rem at 16% -10%, var(--lobe-accent), transparent 62%),
+    radial-gradient(58rem 40rem at 98% 10%, var(--lobe-cool), transparent 60%),
+    radial-gradient(50rem 36rem at 46% 112%, var(--lobe-warm), transparent 58%),
+    linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
+
+  /* ---- ink --------------------------------------------------------------
+     --ink-3 is the only one that does NOT clear 4.5:1 on E3 glass over the
+     lit lobe (3.5:1), which is why DESIGN.md forbids it there. It is legal on
+     opaque surfaces only. */
+  --ink: #f4f0fa;
+  --ink-2: #c6bad8;
+  --ink-3: #8d80a6;
+  --machine: #a9c6e0;
+
+  /* One accent. #b98cff measured 4.49:1 on E3 over the lit lobe and failed;
+     this measures 5.6:1 in the same worst case. */
+  --accent: #c9a4ff;
+  --accent-ink: #1a0f2b;
+  --success: #8fe0b4;
+  --warning: #f2cf87;
+  --danger: #ffadad;
+
+  /* A HAIRLINE is a light catch on a material and may be faint, because the
+     fill and the blur are already separating the surface. A CONTROL border is
+     the ONLY thing drawing a fill-less control, so it is a non-text boundary
+     at 3:1 (WCAG 1.4.11). Confusing the two is how the folded switch sat at
+     1.49:1 through a whole walk. */
+  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline-lit: rgba(255, 255, 255, 0.14);
+  --control: #8b7aa8;
+  --divider: rgba(255, 255, 255, 0.07);
+  --focus-halo: rgba(11, 6, 17, 0.85);
+
+  /* Opaque surfaces. Content that holds body text sits here, never on a blur
+     (G3) — and these same three are what the glass tokens collapse to on the
+     fallback path. */
+  --surface-1: #150e1f;
+  --surface-2: #1c1428;
+  --surface-3: #241a33;
+
+  /* ---- the material -----------------------------------------------------
+     Calibrated against reference/NOTES.md, not guessed. Blur never exceeds
+     22px (nothing in Apple/Reflect/Linear does); saturate stays near 100%
+     (it appears only on Apple's LIGHT chrome, never on a dark ground); E1 and
+     E2 carry no outer shadow (three of four references carry the whole effect
+     on blur + hairline alone). */
+  --e1-fill: rgba(255, 255, 255, 0.055);
+  --e1-blur: 20px;
+  --e1-sat: 110%;
+  --e1-line: var(--hairline);
+  --e1-lit: inset 0 1px 0 0 var(--hairline-lit);
+  --e1-shadow: 0 0 0 0 transparent;
+  --e1-radius: var(--r-lg);
+
+  --e2-fill: rgba(255, 255, 255, 0.032);
+  --e2-blur: 15px;
+  --e2-sat: 100%;
+  --e2-line: rgba(255, 255, 255, 0.08);
+  --e2-lit: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  --e2-shadow: 0 0 0 0 transparent;
+  --e2-radius: var(--r-md);
+
+  --e3-fill: rgba(255, 255, 255, 0.09);
+  --e3-blur: 22px;
+  --e3-sat: 115%;
+  --e3-line: rgba(255, 255, 255, 0.10);
+  --e3-lit: inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
+  --e3-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.75), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+  --e3-radius: var(--r-lg);
+  --e3-scrim: rgba(7, 4, 12, 0.5);
+  --e3-dim: rgba(7, 4, 12, 0.35);
+
+  /* ---- type: five sizes, three weights, and nothing else ---------------- */
+  --font: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+  --t-display: clamp(1.375rem, 1.1rem + 1.2vw, 1.75rem);
+  --t-heading: 1.0625rem;
+  --t-body: 0.9375rem;
+  --t-label: 0.8125rem;
+  --t-caption: 0.6875rem;
+  --lh-display: 1.15;
+  --lh-heading: 1.3;
+  --lh-body: 1.55;
+  --lh-label: 1.4;
+  --lh-caption: 1.35;
+  --tr-display: -0.01em;
+  --tr-label: 0.01em;
+  --tr-caption: 0.14em;
+  --w-normal: 400;
+  --w-medium: 500;
+  --w-strong: 600;
+
+  /* ---- space: base 4px, eight steps, nothing else ---------------------- */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4rem;
+  /* kept as an alias because check-layout.sh and three scripts name it */
+  --gap: var(--s-4);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-full: 999px;
+
+  /* ---- motion: glass has mass; it settles, it does not snap ------------- */
+  --dur-fast: 120ms;
+  --dur: 220ms;
+  --dur-slow: 380ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.30, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+
+  /* the per-row status channel the board writes into (increment 06) */
+  --tone: var(--control);
+}
+
+/* ---- the opaque path, one body, three triggers --------------------------
+   The border swap is the part people forget: with no material behind it the
+   hairline is no longer a light catch, it is the ONLY thing drawing the box,
+   so it is promoted from 1.4:1 to --control at 4.4:1. The BOUNDARY assertion
+   in scripts/layout-audit.js fails on exactly this mistake. */
+:root[data-skin="plain"] {
+  --e1-fill: var(--surface-1);
+  --e2-fill: var(--surface-2);
+  --e3-fill: var(--surface-3);
+  --e1-blur: 0px;
+  --e2-blur: 0px;
+  --e3-blur: 0px;
+  --e1-sat: 100%;
+  --e2-sat: 100%;
+  --e3-sat: 100%;
+  --e1-line: var(--control);
+  --e2-line: var(--control);
+  --e3-line: var(--control);
+  --e1-lit: none;
+  --e2-lit: none;
+  --e3-lit: none;
+  --ground-field: linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  :root {
+    --e1-fill: var(--surface-1);
+    --e2-fill: var(--surface-2);
+    --e3-fill: var(--surface-3);
+    --e1-line: var(--control);
+    --e2-line: var(--control);
+    --e3-line: var(--control);
+    --ground-field: linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --e1-fill: var(--surface-1);
+    --e2-fill: var(--surface-2);
+    --e3-fill: var(--surface-3);
+    --e1-blur: 0px;
+    --e2-blur: 0px;
+    --e3-blur: 0px;
+    --e1-line: var(--control);
+    --e2-line: var(--control);
+    --e3-line: var(--control);
+    --ground-field: linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
+  }
+}

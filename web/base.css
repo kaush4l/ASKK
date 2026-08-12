@@ -1,0 +1,104 @@
+/* base.css — element defaults. No component knows anything about this file and
+   this file knows nothing about any component: it sets the ground, the type
+   defaults, focus, and the two structural rules the whole shell depends on. */
+
+* { box-sizing: border-box; }
+
+html { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background: var(--ground-field);
+  /* fixed, so panels travel over a still field and the parallax reads as
+     depth instead of as scrolling wallpaper */
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  font-weight: var(--w-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The collapse mechanism for the whole dashboard. It lives here, in the layer
+   NOTHING gates, because the fold must work identically in both skins — the
+   plain skin is a product, not a degradation. */
+[hidden] { display: none !important; }
+
+h1 {
+  margin: 0;
+  font-size: var(--t-display);
+  line-height: var(--lh-display);
+  letter-spacing: var(--tr-display);
+  font-weight: var(--w-strong);
+}
+
+h2 {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-caption);
+  line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption);
+  font-weight: var(--w-strong);
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+h3 {
+  margin: 0;
+  font-size: var(--t-heading);
+  line-height: var(--lh-heading);
+  font-weight: var(--w-strong);
+}
+
+p { margin: 0 0 var(--s-2); }
+p:last-child { margin-bottom: 0; }
+
+a {
+  color: var(--accent);
+  text-underline-offset: 0.2em;
+}
+
+/* Focus is the keyboard user's cursor: never removed, never subtle, and — the
+   part that is specific to this design — never a bare outline. A single ring
+   disappears into a translucent surface over the lit lobe, so it carries a
+   dark halo underneath it. That halo is a token and does not get dropped for
+   aesthetics. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--focus-halo);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+pre, code, kbd, samp {
+  font-family: var(--mono);
+  font-size: var(--t-label);
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A scrollbar inside glass has to be visible without being furniture. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--control) transparent;
+}
+
+/* Nothing in this product animates longer than a breath, and under
+   prefers-reduced-motion nothing animates at all. The headless run asserts
+   every animation-name resolves to `none` with the flag set. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,108 @@
+/* chrome.css — the persistent furniture: header, nav, rail, footer. These four
+   are the surfaces a person judges the product by, and each is defined HERE,
+   once. `.rail` used to be styled from four files across nine rule blocks;
+   that is what "painted over" looks like when it is measured. */
+
+header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  margin: var(--s-3) var(--s-3) 0;
+  position: relative;
+  z-index: 10;
+  flex: 0 0 auto;
+  transition: box-shadow var(--dur) var(--ease);
+}
+
+/* The wordmark is a LOGO, not the page heading — the one <h1> is the page
+   title the core renders. */
+header .wordmark {
+  font-size: var(--t-label);
+  font-weight: var(--w-strong);
+  letter-spacing: var(--tr-caption);
+  color: var(--accent);
+}
+
+/* The endpoint sentence is typeset into the header rather than duplicated in
+   the chat pane: the header holds information instead of two words. */
+header .chat-endpoint {
+  margin: 0;
+  flex: 1 1 18rem;
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--ink-2);
+}
+
+.switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+
+.nav {
+  padding: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.rail {
+  padding: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* WHOSE instruments these are. The rail follows the selected agent, and
+   without this line it is four panels with no subject. */
+.rail-who {
+  margin: 0;
+  font-size: var(--t-caption);
+  letter-spacing: var(--tr-caption);
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.rail-who strong {
+  color: var(--ink);
+  font-weight: var(--w-strong);
+}
+
+.stage {
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex: 0 0 auto;
+}
+
+/* The footer is a STATUS LINE, not a link dump: what this build is, whether it
+   is isolated, and where the source is. Three items, one row. It is the place
+   hierarchy usually collapses, so it is given the smallest type in the system
+   and no headings at all. */
+footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  margin: 0 var(--s-3) var(--s-3);
+  font-size: var(--t-caption);
+  letter-spacing: var(--tr-caption);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  flex: 0 0 auto;
+}
+
+footer .machine { color: var(--machine); text-transform: none; letter-spacing: 0; }
+footer a { color: var(--ink-2); }
+footer a:hover { color: var(--accent); }

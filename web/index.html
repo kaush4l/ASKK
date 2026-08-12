@@ -7,38 +7,26 @@
   <base data-trunk-public-url>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <meta name="theme-color" content="#1b1024">
+  <meta name="theme-color" content="#0b0611">
   <!-- The site lives under a repo subpath (kaush4l.github.io/ASKK/), so every
        reference here is relative; an origin-absolute path white-pages in
        production and publish.sh gates on it. -->
   <link data-trunk rel="rust" href="../crates/ui/Cargo.toml" data-bin="ui" data-wasm-opt="z">
-  <link data-trunk rel="css" href="theme.css">
-  <link data-trunk rel="css" href="board.css">
-  <!-- The machine layer (increment 12). Last, because it layers on the tokens
-       the two above define; switched off by data-skin="plain" on <html>. -->
-  <link data-trunk rel="css" href="aaa.css">
-  <!-- The instrument layer (increment 12b): layout, type, and the six statuses
-       the board reads at a glance. Last, because it composes over the two
-       above; same switch — data-skin="plain" takes all of it off. -->
-  <link data-trunk rel="css" href="instrument.css">
-  <!-- The console layer (increment 12c): the primary column fills its glass,
-       the rail says it scrolls, three type sizes, and hairlines instead of
-       cards. Last again, same switch — data-skin="plain" takes all of it off. -->
-  <link data-trunk rel="css" href="console.css">
-  <!-- The screen layer (increment 12d): the deck is a routed region so the page
-       is one screen, a second cooler tone for machine values, and the hairline
-       vocabulary at every width rather than only above 1100px. Last again, same
-       switch — data-skin="plain" takes all of it off. -->
-  <link data-trunk rel="css" href="screen.css">
-  <!-- The dashboard shell (increment 13): three regions — nav, stage, rail —
-       with the two outer ones collapsible. Last again, same switch; the
-       collapse itself works in the plain skin too, because it is the `hidden`
-       attribute and not a rule in here. -->
-  <link data-trunk rel="css" href="dash.css">
-  <!-- The furniture's ink: the nav as a list, the rail's attribution, the two
-       panel switches. Split out of dash.css, which hit the 200-line rule
-       owning both where the regions are and how they read. -->
-  <link data-trunk rel="css" href="panel.css">
+  <!-- The design system (DESIGN.md). Seven files, one concern each, and NOT
+       ONE of them gated on the skin: `[data-skin="plain"]`, a browser without
+       `backdrop-filter`, and `prefers-reduced-transparency` all re-point the
+       same tokens in tokens.css, so the fallback is the same code path the
+       plain skin uses and gets exercised every time anybody switches skins.
+       Link order is dependency order — tokens define, base sets defaults,
+       glass is the material, layout is geometry, then the three that compose
+       over all of it. -->
+  <link data-trunk rel="css" href="tokens.css">
+  <link data-trunk rel="css" href="base.css">
+  <link data-trunk rel="css" href="glass.css">
+  <link data-trunk rel="css" href="layout.css">
+  <link data-trunk rel="css" href="chrome.css">
+  <link data-trunk rel="css" href="surfaces.css">
+  <link data-trunk rel="css" href="controls.css">
   <link data-trunk rel="copy-file" href="sw.js">
   <link data-trunk rel="copy-file" href="coi-sw.js">
   <!-- One Worker per agent (increment 06). Transport only: it imports this
