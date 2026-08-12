@@ -159,7 +159,7 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
     // here rather than at the end of the expression — a guard alive across the
     // await panics the next `borrow_mut`, and the seam's chat poll spawns a
     // second `drive` every 400 ms, so there always is a next one.
-    let running = crate::runtime::execute_effect(&app.borrow().ports, effect);
+    let running = crate::effects::execute_effect(&app.borrow().ports, effect);
     let result = running.await;
     let mut a = app.borrow_mut();
     match result {

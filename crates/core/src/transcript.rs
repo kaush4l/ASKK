@@ -11,6 +11,7 @@ use module::view::{Fragment, FragmentBuilder};
 
 use crate::dispatch::{html, Ctx};
 use crate::failure::failure;
+use crate::fold::{belongs_to, driven, spent, tail};
 
 /// What a stopped turn leaves on the transcript.
 const STOPPED: &str = "You stopped waiting, so the turn ended here. A reply that arrives \
@@ -20,7 +21,7 @@ const STOPPED: &str = "You stopped waiting, so the turn ended here. A reply that
 /// asked and never answered; nothing in this process is driving it, so it is
 /// over — and saying "thinking…" about it locked the composer forever behind a
 /// clock that could not tick (12 walk, finding 1).
-const ORPHANED: &str = "That turn is not running any more — the page was reloaded while it \
+pub(crate) const ORPHANED: &str = "That turn is not running any more — the page was reloaded while it \
                         was in flight, so nothing is driving it. Nothing was lost; ask again.";
 
 /// One message, with WHO SAID IT in words. The speaker used to be carried by
@@ -39,81 +40,6 @@ pub(crate) fn msg(class: &str, speaker: &str, text: &str) -> Fragment {
     }
     row.child(FragmentBuilder::new("span").class("said").text(text).build())
         .build()
-}
-
-/// Which conversation one fact belongs to. Tool calls, notes and errors happen
-/// inside THIS process's loop, so they belong to its own agent; a message or a
-/// reply carries its own name, and an empty one means the same thing.
-fn belongs_to(kind: &EventKind, me: &str, who: &str) -> bool {
-    let named = |agent: &str| match agent.is_empty() {
-        true => who == me,
-        false => who == agent,
-    };
-    match kind {
-        EventKind::UserMessage { agent, .. } | EventKind::ModelReplied { agent, .. } => {
-            named(agent)
-        }
-        EventKind::ToolInvoked { .. } => who == me,
-        EventKind::Custom { kind, payload_json } => match kind.as_str() {
-            "core.note" | "core.error" | "core.compaction_failed" => who == me,
-            // Whose wait ended. Empty is this process's own agent, which is
-            // every record written before a pane could stop waiting on a turn
-            // running in somebody else's Worker (12b).
-            k if k == crate::chat::TURN_STOPPED => match crate::chat::stopped_agent(payload_json) {
-                name if name.is_empty() => who == me,
-                name => who == name,
-            },
-            "core.agent_error" => crate::told::agent_of(payload_json) == who,
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
-/// Whether something is really DRIVING this agent's turn. `awaiting` is only
-/// the shape of the log — the last thing said was a person's — and a reload
-/// replays that shape with no fetch behind it: the pane sat disabled on
-/// "thinking…" with a frozen clock while the board beside it correctly read
-/// idle, and only wiping storage recovered it (12 walk, finding 1).
-///
-/// Three sources, all of them state this process really holds: the utterance
-/// this request just accepted, the pump queue it is about to enter, and the
-/// board — itself the fold of `AgentStatus` facts, so this is the log asking the
-/// log. None of them survives a reload, which is the whole point.
-fn driven(ctx: &Ctx, who: &str, accepted: bool) -> bool {
-    accepted
-        || ctx.queued.iter().any(|a| a == who)
-        || ctx.board.iter().any(|r| r.name == who && r.status.is_busy())
-}
-
-/// The last line of a conversation, when the conversation itself does not
-/// finish the story: a turn still running, a turn nothing is running any more,
-/// or an agent nobody has said anything to yet.
-fn tail(pending: bool, awaiting: bool, count: usize, who: &str) -> Option<Fragment> {
-    match (pending, awaiting, count) {
-        (true, _, _) => Some(msg("msg pending", "", "thinking…")),
-        (false, true, _) => Some(msg("msg pending", "", ORPHANED)),
-        (false, false, 0) => Some(msg(
-            "msg pending",
-            "",
-            &format!("No messages yet — ask {who} something."),
-        )),
-        _ => None,
-    }
-}
-
-/// Every token this page has spent, from the log alone (I8): the sum of every
-/// `ModelCalled` fact, which is the only place a provider's accounting block
-/// lands. Turns whose provider reported nothing contribute nothing — the
-/// number is a floor, and the meter says so rather than inventing an estimate.
-pub(crate) fn spent(ctx: &Ctx) -> u64 {
-    ctx.recent
-        .iter()
-        .filter_map(|kind| match kind {
-            EventKind::ModelCalled { spent_tokens, .. } => Some(u64::from(*spent_tokens)),
-            _ => None,
-        })
-        .sum()
 }
 
 /// The whole conversation with ONE agent, in log order. A turn is in flight

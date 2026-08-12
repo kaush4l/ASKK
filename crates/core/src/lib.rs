@@ -13,14 +13,17 @@ mod authored;
 mod authoring;
 mod batch;
 mod board;
+mod boardrow;
 mod boot;
 mod builtins;
 mod chat;
 mod dispatch;
+mod effects;
 mod error;
 mod failure;
 mod filelist;
 mod files;
+mod fold;
 mod form;
 mod identity;
 mod inspector;
@@ -46,7 +49,8 @@ pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
 pub use error::CoreError;
 // `drive` is PROVISIONAL (G4): the async runtime loop — see runtime.rs.
-pub use runtime::{drive, execute_effect, pump};
+pub use effects::execute_effect;
+pub use runtime::{drive, pump};
 pub use logs::{memory_held, restore_log, window};
 
 use kernel::{Request, Response};

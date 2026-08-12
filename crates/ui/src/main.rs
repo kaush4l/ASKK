@@ -21,7 +21,9 @@ mod board;
 mod chat;
 mod composer;
 mod dash;
+mod endpoint;
 mod files;
+mod frame;
 mod gallery;
 mod launch;
 mod stage;
@@ -117,11 +119,11 @@ fn shell() -> Element {
     // Reading `tick` is what makes it follow a settings save.
     let endpoint = {
         let _ = tick();
-        chat::endpoint_line(web)
+        endpoint::endpoint_line(web)
     };
     use_effect(move || {
         let _ = tick();
-        let configured = chat::endpoint_configured(web);
+        let configured = endpoint::endpoint_configured(web);
         let mut endpoint_set = endpoint_set;
         if *endpoint_set.peek() != configured {
             endpoint_set.set(configured);
@@ -138,8 +140,9 @@ fn shell() -> Element {
             }
             // The machine starts warming the moment the page paints, and this
             // is the only thing on screen that knows: nothing waits for it.
-            dash::WorkspaceWarmth {}
-            dash::TokenMeter { tokens }
+            frame::WorkspaceWarmth {}
+            frame::Heartbeat { web, tick, tokens }
+            frame::TokenMeter { tokens }
             div { class: "switches",
                 dash::PanelToggle { label: "Views", controls: "nav", open: nav_open }
                 dash::PanelToggle { label: "Instruments", controls: "rail", open: rail_open }

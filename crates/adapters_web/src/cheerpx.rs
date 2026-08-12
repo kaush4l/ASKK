@@ -32,11 +32,20 @@ use wasm_bindgen::prelude::*;
 /// `/sbin/init` and wants a display; nothing here does — every command is a
 /// direct `cx.run("/bin/sh", ["-c", …])`, so there is no init, no display and
 /// no login to wait for. That is the fastest path to a shell.
-const DISK: &str = "wss://disks.webvm.io/alpine_20251007.ext2";
+pub(crate) const DISK: &str = "wss://disks.webvm.io/alpine_20251007.ext2";
+
+/// The engine, from Leaning Tech's CDN (see the module note on the licence).
+///
+/// 1.3.1, NOT the 1.2.8 the research quoted: with 1.2.8 and this Alpine image
+/// `CheerpX.Linux.create` never resolves — measured, twice, at a 120 s timeout
+/// with no error and no console output. 1.3.1 mounts the same image in 2.2 s.
+/// The engine and the disk are published separately and this one is from
+/// October 2025, so the pair has to be pinned together, not each to "latest".
+pub(crate) const ENGINE: &str = "https://cxrtnc.leaningtech.com/1.3.1/cx.js";
 
 /// The IndexedDB database holding the overlay's written blocks. Fixed name:
 /// it is the same workspace across reloads, which is the whole point.
-const CACHE: &str = "askk-workspace";
+pub(crate) const CACHE: &str = "askk-workspace";
 
 #[wasm_bindgen(inline_js = r#"
 let linux = null, booting = null, queue = Promise.resolve(), out = [];
@@ -121,58 +130,11 @@ export function cx_exec(command) {
 "#)]
 extern "C" {
     #[wasm_bindgen(catch)]
-    async fn cx_boot(engine: &str, disk: &str, cache: &str) -> Result<JsValue, JsValue>;
+    pub(crate) async fn cx_boot(engine: &str, disk: &str, cache: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     async fn cx_exec(command: String) -> Result<JsValue, JsValue>;
-    fn cx_state() -> String;
+    pub(crate) fn cx_state() -> String;
 }
-
-/// How far the workspace has got, as a value the UI can render every frame
-/// without awaiting anything: `idle`, `booting`, `ready`, or `error:<reason>`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Warmth {
-    Idle,
-    Booting,
-    Ready,
-    Failed(String),
-}
-
-/// Read the workspace's boot state. Cheap: a string off a JS module global.
-pub fn warmth() -> Warmth {
-    let raw = cx_state();
-    match raw.as_str() {
-        "idle" => Warmth::Idle,
-        "booting" => Warmth::Booting,
-        "ready" => Warmth::Ready,
-        other => Warmth::Failed(other.strip_prefix("error:").unwrap_or(other).to_string()),
-    }
-}
-
-/// Start the VM in the background, now, and never block on it.
-///
-/// This REVERSES the lazy boot this module was built with. The reason is the
-/// product's: the environment is meant to be already packaged, so the first
-/// command a person runs should meet a booted machine, not a two-second wait
-/// for a disk to start streaming. The cost is the engine and the first blocks
-/// on every page load; the guard is that nothing awaits this — the page is
-/// interactive throughout and `warmth()` is the only thing that can even tell.
-pub fn prewarm() {
-    if web_sys::window().is_none() {
-        return; // an agent's Worker has no page to boot a VM in
-    }
-    wasm_bindgen_futures::spawn_local(async {
-        let _ = cx_boot(ENGINE, DISK, CACHE).await;
-    });
-}
-
-/// The engine, from Leaning Tech's CDN (see the module note on the licence).
-///
-/// 1.3.1, NOT the 1.2.8 the research quoted: with 1.2.8 and this Alpine image
-/// `CheerpX.Linux.create` never resolves — measured, twice, at a 120 s timeout
-/// with no error and no console output. 1.3.1 mounts the same image in 2.2 s.
-/// The engine and the disk are published separately and this one is from
-/// October 2025, so the pair has to be pinned together, not each to "latest".
-const ENGINE: &str = "https://cxrtnc.leaningtech.com/1.3.1/cx.js";
 
 /// The browser's workspace. Holds no state of its own: the VM lives in the JS
 /// module above because CheerpX's objects cannot cross into Wasm.

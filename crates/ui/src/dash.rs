@@ -15,7 +15,7 @@
 
 use std::rc::Rc;
 
-use adapters_web::{sleep, Warmth, WebApp};
+use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
@@ -50,73 +50,6 @@ pub fn PanelToggle(label: String, controls: String, open: Signal<bool>) -> Eleme
             // Visible with no stylesheet at all: the marker is UA text.
             span { aria_hidden: "true", if open() { "▾ " } else { "▸ " } }
             "{label}"
-        }
-    }
-}
-
-/// How often the pill re-reads the workspace's boot state. Nothing pushes: the
-/// state is a value on a JS module global, so this polls it — half a second is
-/// invisible to a person and free next to a disk streaming over a socket.
-const WARM_MS: i32 = 500;
-
-/// The workspace's readiness, in the header, from the moment the page paints.
-///
-/// This is the visible half of the background boot: the VM starts fetching
-/// before anybody asks for it, and this says how far it got. It never blocks
-/// and it never gates anything — a page whose workspace failed is a page you
-/// can still chat in, which is why the failure is a status line and not an
-/// error region.
-#[component]
-pub fn WorkspaceWarmth() -> Element {
-    let mut state = use_signal(adapters_web::warmth);
-    use_future(move || async move {
-        adapters_web::prewarm();
-        loop {
-            let now = adapters_web::warmth();
-            if *state.peek() != now {
-                let done = now == Warmth::Ready;
-                state.set(now);
-                if done {
-                    return;
-                }
-            }
-            if sleep(WARM_MS).await.is_err() {
-                return;
-            }
-        }
-    });
-    let (word, class) = match &*state.read() {
-        Warmth::Idle => ("workspace idle".to_string(), "warmth idle"),
-        Warmth::Booting => ("workspace starting…".to_string(), "warmth booting"),
-        Warmth::Ready => ("workspace ready".to_string(), "warmth ready"),
-        Warmth::Failed(why) => (format!("workspace unavailable: {why}"), "warmth failed"),
-    };
-    rsx! { p { class: "{class}", role: "status", "{word}" } }
-}
-
-/// What this page has spent, in the frame, from the log (I8).
-///
-/// It is the one thing present in the permanent chrome of every console with a
-/// real agent behind it, and VIEWS.md §6 called its absence "the tell for a
-/// console built by someone who does not run agents". It shows tokens and not
-/// money: a price per model is a table this build does not have, and a made-up
-/// dollar figure is worse than none. Nothing at all until the first turn
-/// reports usage — an endpoint that reports none must not read as free.
-#[component]
-pub fn TokenMeter(tokens: ReadSignal<u64>) -> Element {
-    let spent = tokens();
-    let text = match spent {
-        0 => return rsx! {},
-        n if n < 10_000 => format!("{n} tokens"),
-        n => format!("{:.1}k tokens", n as f64 / 1000.0),
-    };
-    rsx! {
-        p {
-            class: "meter",
-            role: "status",
-            title: "Every token this page has spent, summed from the event log. \
-                    Turns whose provider reported no usage are not counted.",
-            "{text}"
         }
     }
 }
