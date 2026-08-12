@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::AgentError;
 
 /// One agent as its file declares it. The seven frontmatter keys of the
-/// Python loader plus the body, which is the system prompt.
+/// Python loader, `max_rounds` (15C, which the Python had no equivalent of
+/// because its loop was unbounded), and the body, which is the system prompt.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentSpec {
     pub name: String,
