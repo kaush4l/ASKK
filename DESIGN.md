@@ -275,9 +275,27 @@ mud. It is mechanical, and the guard checks it.
   ```css
   .e1 .e2 { backdrop-filter: none; -webkit-backdrop-filter: none; }
   ```
-  A blur behind a blur re-samples an already-blurred layer: it costs a second
-  full-surface composite and returns almost no visual difference. This rule is
-  both the anti-mud rule and the performance rule.
+  A blur behind a blur re-samples an already-blurred layer and returns almost
+  no visual difference.
+
+  **This paragraph used to call N2 "the performance rule" and that over-claimed.**
+  Measured (Chrome 145 headless-new, real Metal GPU, 1440×900 @ DPR 2, 200
+  messages, scroll driven by `Input.synthesizeScrollGesture`, frame *work* from
+  a `Tracing` capture — `requestAnimationFrame` deltas are useless in headless,
+  which drives a synthetic 60 Hz vsync and returned exactly 16.67 ms for every
+  configuration including a deliberately broken one): deleting the N2 block
+  costs **+1.3 ms of median frame work and exactly one extra vsync of pipeline
+  latency**, reproducibly across three reps with no overlap. Real, and about a
+  40% increase — on a number sitting at 12% of budget. It is not what stands
+  between this UI and 20fps, and the invariant is fully justified by the
+  anti-mud argument alone.
+
+  A second correction from the same measurement: **most of that benefit comes
+  from the `.stage .panel` selectors in the block, not from the `.e1 .e2`
+  selector this paragraph quotes.** And since `.stage` left the E1 group, those
+  selectors are no longer preventing a blur-inside-a-blur at all — they are
+  keeping the centre column's cards calm, which is §1's rule, not N2's. The
+  block is doing two jobs under one name.
 - **N3.** E2 never nests inside E2. A card inside a card is a layout mistake;
   the inner one becomes a plain `--surface-2` block with a `--divider`. The
   list must name the nestings that **actually occur**, not the ones that sound

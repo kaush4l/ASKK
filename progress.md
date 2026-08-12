@@ -1074,3 +1074,111 @@ newer rule. All three assertions verified to fail on demand.
 
 File ownership is disjoint by construction, and `check-selectors.py`'s G1 will
 catch it if it is not.
+
+## Cycle 3 — the critique, and what it cost to answer
+
+**The blind critic said ours loses, and not narrowly.** Its single largest gap
+was a number: the brightest pixel in the rendered ground was **55/255**, and
+under the glass the backdrop never passed **32**. The material was implemented
+correctly and had nothing to work on — at thumbnail scale the page read as a
+wireframe.
+
+The instructive comparison, and the reason this was not "our page is too dark":
+Reflect is globally *darker* than us — 91% of its pixels under sRGB 52 against
+our 87% — and still reads as lit, because it puts 3.1% of its pixels above 208
+and puts **all of them directly behind one card**. Ours was three faint lobes
+spread over 1440px. Light that is spread is not light.
+
+Answering it broke two things, and both were right to break:
+
+- **Fill and dim were two layers** — a white-alpha fill over a dark `::before` at
+  55%. Wrong twice: a pseudo-element with `inset: 0` does not cover the scrolled
+  area of a scrolling panel, and nothing that measures a page by walking
+  `backgroundColor` up the tree can see it, so the guard read the raw beam and
+  failed a page that was fine. Composited into one rgba — which is also the
+  shape the reference uses. Apple's localnav pill is `rgba(42,42,45,0.843)`,
+  Reflect's card `rgba(4,1,21,0.1)`: a **dark** tint on a bright ground. The
+  original had the polarity backwards.
+- **`--control` measured 1.81:1** the moment there was light behind it. 3:1 is
+  measured against the brightest backdrop a boundary sits on, and that backdrop
+  moved. `#8b7aa8` → `#c0b3d4`.
+
+Three further findings from the same critique, all of them defects in this
+document rather than in the code:
+
+- **The centre column was blurred.** §4 listed "the stage's own container" under
+  chrome while §1 says "if the mockup's centre column is translucent, reject it".
+  The document argued with itself and the code took the losing side.
+- **N3's selector list was incomplete** — it named the nestings that sounded
+  likely and missed the two that occur. Three translucent layers stacked on a
+  content area for a cycle. The guard did not catch it because N3 was the one
+  nesting rule nobody wrote an assertion for.
+- **G3 had 37 violations, not the two already fixed.** The chat log obeyed it
+  from the start; every other body-text region had been skipped.
+
+And the "one code path, three triggers" claim was **false**: `--e*-lit` was
+zeroed in the plain skin only, so a `prefers-reduced-transparency` user kept a
+specular top-edge highlight on a surface with no material under it. A critic
+reading the built CSS caught it while the rendered page looked fine.
+
+## Cycle 4 — components, and the gallery earning its keep
+
+Thirty-nine hand-rolled elements across the screens went to zero: 8
+`section.panel`, 15 raw `button`, 4 `details`, 4 `form`, 6 `input`, 1 `textarea`,
+1 `select`. They had already drifted — some panels carried `aria-label`, some
+`aria-labelledby`, one both.
+
+The mechanism is `#[props(extends = global_attributes, extends = <element>)]` on
+every component, so `role`, `aria-*`, `tabindex` and `hidden` pass through
+untouched. That makes losing an accessibility affordance take an edit rather
+than an omission. `Form` earns its existence on one line — `e.prevent_default()`
+— which four call sites each remembered and a fifth would not have.
+
+`/design-system` immediately paid for itself: **`.btn-secondary` and `.btn-ghost`
+were the same declaration**, both `transparent`, which is §8's definition of
+ghost. Two variants rendering identically, put side by side and caught.
+
+**Not built, and not hidden: Toast and Modal.** No call site exists for either,
+and a focus-trapped modal built only to appear in a gallery is speculative. The
+gallery shows the E3 material and says so. This is a gap against part C's
+criterion and is recorded as one, not marked passed.
+
+## Cycle 4 — performance, which refuted part of this spec
+
+Measured on Chrome 145 `--headless=new` over CDP with a `Tracing` capture, real
+Metal GPU, 1440×900 at DPR 2, 200 messages injected as the markup the core
+actually emits, scroll driven by `Input.synthesizeScrollGesture`. Three reps per
+configuration, freshly launched.
+
+**The method note matters more than the numbers.** `requestAnimationFrame`
+deltas are useless here: headless drives a synthetic 60 Hz vsync and returned
+exactly 16.66–16.67 ms for *every* configuration including a deliberately broken
+one. A rAF-based measurement would have reported "perfect" for all four. Frame
+*work* — top-level `RunTask` slices across four threads binned into vsync
+windows — is the signal. Dropped-frame counts are likewise not a valid budget
+signal in headless, because the display never falls behind.
+
+| Run | median | p95 | frames >16.7ms | GPU compositor |
+|---|---|---|---|---|
+| Scroll 200 msgs, glass | **2.06 ms** | 3.49 | 0/0/0 | 0.83 |
+| Scroll 200 msgs, plain skin (control) | 2.43 ms | 3.49 | 0/0/0 | 0.82 |
+| Open/close E3 over scrim, glass | 3.06 ms | **7.24** | 1/0/0 | 1.64 |
+| Same, plain skin | 2.98 ms | 5.54 | 0/0/0 | 1.30 |
+| Scroll, N2 rule deleted | 3.38 ms | 4.70 | 1/0/0 | 1.09 |
+
+**The material costs nothing measurable on the scroll path** — the glass reps
+straddle the plain reps and the delta points the wrong way. The worst case
+anywhere is the E3 open at p95 7.24 ms of a 16.7 ms budget. The reason is
+structural: no blurred surface sits over a scrolling region. The grid puts E1
+chrome *beside* the stage, and G3 already made the chat log opaque, so scrolling
+200 messages never dirties a backdrop.
+
+**N2 reproduces, but not for the reason DESIGN.md gave.** Deleting it costs
++1.3 ms median frame work and exactly one extra vsync of latency — real,
+reproducible, and a ~40% increase on a number at 12% of budget. It is not what
+stands between this UI and 20fps. §4 called it "the performance rule" and that
+over-claimed; the anti-mud argument alone justifies it. Worse for the spec:
+**most of the benefit comes from the `.stage .panel` selectors, not the `.e1 .e2`
+selector §4 quotes** — and since `.stage` left the E1 group those selectors are
+no longer preventing a blur-inside-a-blur at all. They keep the centre column's
+cards calm, which is §1's rule under N2's name. §4 now says so.
