@@ -19,7 +19,7 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 
 use crate::views::View;
-use crate::{authoring, board, chat, files, gallery, settings, space, tabs, terminal, tools};
+use crate::{authoring, board, chat, files, gallery, launch, settings, space, tabs, terminal, tools};
 
 /// The centre column. One `Signal` per thing two regions disagree about; the
 /// prop list is long because the shell owns the state and this owns the layout,
@@ -58,6 +58,7 @@ pub fn Stage(
                     // product where the seam names the surface.
                     div { class: "masthead", dangerous_inner_html: "{fragment}" }
                     div { class: "dash-grid",
+                        launch::TaskLauncher { web, tick, agent: selected, view }
                         board::AgentBoard { web, tick, view }
                         space::SpaceInspector { web, tick, agent: selected }
                     }
@@ -81,6 +82,7 @@ pub fn Stage(
                     class: "view-panel agents-view",
                     id: "agents-view",
                     aria_label: "Agents",
+                    launch::TaskLauncher { web, tick, agent: selected, view }
                     authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
                     {authoring::agent_panel(agents)}
                 }

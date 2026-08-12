@@ -22,6 +22,7 @@ mod composer;
 mod dash;
 mod files;
 mod gallery;
+mod launch;
 mod stage;
 mod tabs;
 mod terminal;
