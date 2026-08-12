@@ -12,6 +12,13 @@ use crate::ui::{Button, Field, Form, COMPOSER_ID};
 /// transport. That is what stops the message becoming a query string. With no
 /// endpoint configured it does not send: the first-run path is a sentence, not
 /// a request that cannot work.
+///
+/// It is NOT disabled while a turn runs. It was, for as long as a turn was one
+/// model call; an agent that may now work for sixty-four rounds (15C) cannot
+/// also be a thing you are locked out of for the duration. A message typed
+/// mid-run is steering: the pure machine appends it to the history and the
+/// agent reads it on its next step (`agent::step`), so the only thing that
+/// changes here is the word on the button.
 #[component]
 pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<String>) -> Element {
     // The field says who it is addressing: two panes with the same accessible
@@ -32,7 +39,7 @@ pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<St
     let mut submit = move || {
         let text = drafts.read().get(&key).cloned().unwrap_or_default();
         let text = text.trim().to_string();
-        if text.is_empty() || busy || !ready {
+        if text.is_empty() || !ready {
             return;
         }
         drafts.write().remove(&key);
@@ -50,17 +57,23 @@ pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<St
                 r#type: "text",
                 value: "{draft}",
                 aria_label: "{label}",
-                placeholder: if ready { "Ask the agent something…" } else { "Set a model endpoint first" },
+                placeholder: match (ready, busy) {
+                    (false, _) => "Set a model endpoint first",
+                    (true, true) => "Steer the run — the agent reads this on its next step…",
+                    (true, false) => "Ask the agent something…",
+                },
                 autocomplete: "off",
-                disabled: busy || !ready,
+                disabled: !ready,
                 oninput: move |e: FormEvent| {
                     drafts.write().insert(mine.clone(), e.value());
                 },
             }
             Button {
                 submit: true,
-                disabled: busy || !ready,
-                if busy { "Sending…" } else { "Send" }
+                disabled: !ready,
+                // The word says what pressing it does. "Sending…" during a run
+                // described the LAST message; this one describes this one.
+                if busy { "Send to the run" } else { "Send" }
             }
         }
     }

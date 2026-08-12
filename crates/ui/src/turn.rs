@@ -10,10 +10,21 @@ use kernel::{Request, Response};
 
 use crate::ui::Button;
 
-/// Poll interval and patience for one turn: 400 ms × 90 = 36 s, a little past
-/// the 30 s the broker aborts at, so its own typed error is what a user sees.
+/// How often the pane re-projects a turn in flight.
 const TICK_MS: i32 = 400;
-const TICKS: u32 = 90;
+
+/// How long a turn may go with NOTHING changing before the pane says so:
+/// 400 ms × 90 = 36 s, a little past the 30 s the broker aborts at, so its own
+/// typed error is what a user sees.
+///
+/// It counts SILENCE, not the turn. It used to be the whole patience — 36
+/// seconds and the pane declared the turn dead — which was right when a turn
+/// was one model call and four tool rounds, and is wrong now that an agent may
+/// take sixty-four (15C). An autonomous run that works for ten minutes is the
+/// product; a run that says nothing for thirty-six seconds is a hang, and only
+/// the second one is worth interrupting. Every tool result, every model reply
+/// and every note changes the projection and resets this.
+const STALL_TICKS: u32 = 90;
 
 /// What the pane is showing, as ONE value: whose conversation it is, the
 /// conversation itself, and whether THAT agent's turn is still running.
@@ -93,7 +104,11 @@ pub(crate) async fn watch(
 ) {
     turn.stopped.set(false);
     turn.elapsed.set(0);
-    for tick in 1..=TICKS {
+    // What the last projection looked like, and how many ticks ago it changed.
+    // A turn that is still producing tool results is a turn that is working.
+    let mut last = turn.shown.peek().html.clone();
+    let mut silent = 0u32;
+    for tick in 1.. {
         if sleep(TICK_MS).await.is_err() {
             return;
         }
@@ -129,12 +144,23 @@ pub(crate) async fn watch(
         if !turn.shown.peek().pending {
             return;
         }
+        let now = turn.shown.peek().html.clone();
+        if now == last {
+            silent += 1;
+        } else {
+            (last, silent) = (now, 0);
+        }
+        if silent >= STALL_TICKS {
+            let seconds = STALL_TICKS * TICK_MS as u32 / 1000;
+            turn.note.set(format!(
+                "Nothing has changed for {seconds} seconds, after {}s of work. The turn was \
+                 interrupted, or the model endpoint accepted the request and never answered \
+                 — check Settings.",
+                turn.elapsed.peek()
+            ));
+            return;
+        }
     }
-    turn.note.set(
-        "No reply in 36 seconds. The turn was interrupted, or the model endpoint \
-         accepted the request and never answered — check Settings."
-            .into(),
-    );
 }
 
 /// The user stopped waiting. The wait is not the only thing that ends: the

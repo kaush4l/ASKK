@@ -77,3 +77,60 @@ fn the_tool_loop_runs_to_the_agents_own_ceiling_and_then_stops() {
         }
     }
 }
+
+/// A message typed while the agent is working is STEERING: it lands in the
+/// history the next call assembles, and it emits nothing of its own.
+///
+/// The naive reading — fall through to the start-a-turn arm — would ask the
+/// model a second time while the first batch is still out, and then decrement
+/// `pending_tools` past the batch that had not landed yet. This asserts the
+/// three facts that stop: no effect, the tool batch still outstanding, and the
+/// sentence present in the paper the next round sends.
+#[test]
+fn a_message_typed_mid_run_steers_the_turn_instead_of_starting_one() {
+    let ev = |kind| Event {
+        id: EventId(0),
+        seq: 0,
+        at: Timestamp(1_753_800_000_000),
+        kind,
+    };
+    let say = |text: &str| {
+        ev(EventKind::UserMessage {
+            text: text.into(),
+            agent: String::new(),
+            from: String::new(),
+        })
+    };
+    let mut fresh = AgentState::new();
+    let spec = agent::parse_agent_file("main", "---\nname: main\ndescription: d\ntools: []\n---\nb")
+        .expect("spec parses");
+    agent::adopt_spec(&mut fresh, &spec, &[]);
+
+    let (state, _) = step(fresh, say("do the work"));
+    let (state, effects) = step(
+        state,
+        ev(EventKind::ModelReplied { text: "now()".into(), agent: String::new() }),
+    );
+    assert!(matches!(effects.as_slice(), [Effect::InvokeTool { .. }]));
+
+    let (state, effects) = step(state, say("actually, in UTC"));
+    assert!(effects.is_empty(), "steering asks nothing on its own: {effects:?}");
+    assert_eq!(state.pending_tools, 1, "the batch in flight is untouched");
+
+    let (_, effects) = step(
+        state,
+        ev(EventKind::ToolInvoked {
+            tool: ToolId("now".into()),
+            args: "{}".into(),
+            ok: true,
+            output: "…".into(),
+        }),
+    );
+    match effects.as_slice() {
+        [Effect::CallModel { document, .. }] => {
+            let sent = format!("{document:?}");
+            assert!(sent.contains("actually, in UTC"), "the steer reached the paper: {sent}");
+        }
+        other => panic!("the round completes and asks once: {other:?}"),
+    }
+}

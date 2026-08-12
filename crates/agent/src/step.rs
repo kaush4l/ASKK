@@ -21,6 +21,21 @@ use crate::tools::ToolResult;
 /// state by value, which is what makes debugging a fold over the log.
 pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
     match input.kind {
+        // A user utterance DURING a turn is steering, not a new turn.
+        //
+        // The composer used to be disabled for the duration, so this case could
+        // not arise; unlocking it is half the product's stated intent, and the
+        // naive reading — fall through, reset the counters, call the model —
+        // would ask the model twice at once and then decrement `pending_tools`
+        // below the batch still in flight. So the sentence is appended to the
+        // history and NOTHING is emitted: the round already running finishes,
+        // and the next `call_model` assembles a paper with the interjection in
+        // it. The agent picks it up on its next step, deterministically, with
+        // no second call and no dropped tool results.
+        EventKind::UserMessage { ref text, .. } if state.task.is_some() => {
+            paper::push_history(&mut state.paper, "user", text, input.at);
+            (state, Vec::new())
+        }
         // A user utterance starts (or redirects) the turn: assemble the paper
         // under the phase's budget and ask. The Document rides the effect
         // (I13) — no string prompt can exist here.

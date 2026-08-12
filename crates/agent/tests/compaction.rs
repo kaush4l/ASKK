@@ -121,6 +121,9 @@ fn the_context_block_is_assembled_fresh_for_every_request() {
     let sent = format!("{:?}", effects.first().expect("a call"));
     assert!(sent.contains("2025-07-29 14:40:00"), "this turn's clock: {sent}");
 
+    // The first turn ENDS before the second question: a user message while a
+    // turn is still running is steering, and steering emits no call at all.
+    let (state, _) = step(state, reply("done", first));
     let (_, effects) = step(state, user("second", later));
     let sent = format!("{:?}", effects.first().expect("a call"));
     assert!(sent.contains("2025-07-30 14:41:01"), "the NEW clock: {sent}");
