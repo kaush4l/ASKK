@@ -269,10 +269,10 @@ fn newer_schema_refuses_boot() {
         Rc::clone(&store),
     )));
     match result {
-        Err(core::CoreError::SchemaNewerThanCode {
-            stored: 999,
-            expected: 1,
-        }) => {}
+        // `expected` is whatever this build is at — the assertion is that a
+        // NEWER store refuses, not which rung the ladder has reached.
+        Err(core::CoreError::SchemaNewerThanCode { stored: 999, expected })
+            if expected == core::schema_version() => {}
         Err(other) => panic!("wrong error: {other:?}"),
         Ok(_) => panic!("boot must refuse a newer store"),
     }

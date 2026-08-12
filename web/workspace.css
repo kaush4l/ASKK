@@ -26,7 +26,14 @@
   cursor: pointer;
 }
 
-.file-entry:hover { background-color: var(--surface-1); }
+/* `.file-list` on the front, because base.css paints every `button` with the
+   accent fill and `button:not(:disabled):hover` is (0,1,1) — it outranked a
+   bare `.file-entry:hover` and every row under the pointer became accent text
+   on an accent fill, which is unreadable and was on screen. */
+.file-list .file-entry:hover {
+  background-color: var(--surface-1);
+  color: var(--ink);
+}
 .file-entry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .file-entry.folder { color: var(--accent); }
 .file-entry.root { color: var(--ink-2); font-family: inherit; }
@@ -46,4 +53,24 @@
   white-space: pre-wrap;
   word-break: break-word;
   font-size: var(--t-label);
+}
+
+/* An artifact that is a page renders as one, in an opaque origin (see
+   ui/artifacts.rs). Full width, its own height, and a border so it reads as a
+   thing the agent made rather than as part of this page. */
+.artifact-frame {
+  display: block;
+  width: 100%;
+  height: 24rem;
+  margin-top: var(--s-3);
+  border: 1px solid var(--e2-line);
+  border-radius: var(--r-1);
+  background-color: #fff;
+}
+
+.file-list .file-entry.current,
+.file-list .file-entry.current:hover {
+  background-color: var(--surface-2);
+  color: var(--accent);
+  font-weight: var(--w-strong);
 }

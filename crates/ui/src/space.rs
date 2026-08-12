@@ -53,12 +53,26 @@ pub fn SpaceInspector(
             .body,
         None => String::new(),
     };
+    // EXACTLY ONE CLOCK, and it never ends on its own — the same guard
+    // `AgentBoard` carries, and for the same reason it spells out: Dioxus does
+    // not cancel a scope's tasks when an effect re-runs, and this effect reads
+    // `tick`, which `turn::show` bumps every 400ms for the whole of a turn.
+    // Without the guard a ten-minute run left about fifteen hundred immortal
+    // pollers behind it, every one of them calling the seam every two seconds,
+    // on the view the page LANDS on. The loop is `loop` rather than a counted
+    // one because a space changes on nobody's schedule; the flag is what makes
+    // that safe, and `peek` is what stops the effect subscribing to it.
+    let mut watching = use_signal(|| false);
     use_effect(move || {
         let _ = (tick(), agent());
         if web.read().is_none() {
             return;
         }
         panel.set(read());
+        if watching.peek().to_owned() {
+            return;
+        }
+        watching.set(true);
         spawn(async move {
             loop {
                 if sleep(TICK_MS).await.is_err() {

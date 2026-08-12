@@ -75,6 +75,9 @@ pub fn Files(
     agent: ReadSignal<String>,
 ) -> Element {
     let mut panel = use_signal(Shown::default);
+    // One watcher at a time. Each tick of one is a full trip through the seam,
+    // and a fresh watcher per click stacks them.
+    let mut watching = use_signal(|| false);
     use_effect(move || {
         let _ = (tick(), agent());
         if web.read().is_none() {
@@ -98,6 +101,10 @@ pub fn Files(
                 &[("path", path.as_str()), ("kind", if folder { "folder" } else { "file" })],
             ),
         ));
+        if watching.peek().to_owned() {
+            return; // one watcher, whatever the click rate
+        }
+        watching.set(true);
         spawn(async move {
             for _ in 0..WATCH_TICKS {
                 if sleep(TICK_MS).await.is_err() {
@@ -106,9 +113,10 @@ pub fn Files(
                 let next = ask(web, &agent(), Request::get("/files"));
                 if next != before && !next.html.is_empty() {
                     panel.set(next);
-                    return;
+                    break;
                 }
             }
+            watching.set(false);
         });
     };
     let shown = panel.read().clone();

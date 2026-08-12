@@ -140,9 +140,23 @@ pub fn handle(app: &mut App, req: Request) -> Response {
     // …and again, so a request that AUTHORED an agent has installed it by the
     // time it returns: "no reload" should not mean "one request later".
     roster::reconcile(app);
-    app.append(kernel::EventKind::RequestHandled {
-        path: req.path,
-        status: response.status,
-    });
+    // A request that CHANGED something, or failed, is a fact. A successful GET
+    // is not: it is somebody looking at a projection of the log, and recording
+    // that in the log is recording that someone looked.
+    //
+    // This reverses "the log's view of every UI touch" (I4's note on this
+    // variant) and it has to. Four panes poll the seam between 400ms and 2s
+    // for as long as a page is open, so a ten-minute run appended thousands of
+    // `RequestHandled` facts — each one persisted, and each one cloned into
+    // `Ctx` by the NEXT request (`dispatch`), so every poll made the next poll
+    // dearer. The log grew without anything happening, which is the opposite
+    // of what an append-only record of what happened is for.
+    let changed = req.method != "GET" || response.status >= 400;
+    if changed {
+        app.append(kernel::EventKind::RequestHandled {
+            path: req.path,
+            status: response.status,
+        });
+    }
     response
 }

@@ -19,7 +19,8 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 
 use crate::views::View;
-use crate::{authoring, board, chat, files, gallery, launch, settings, space, tabs, terminal, tools};
+use crate::{artifacts, authoring, board, chat, files, gallery, launch};
+use crate::{settings, space, tabs, terminal, tools};
 
 /// The centre column. One `Signal` per thing two regions disagree about; the
 /// prop list is long because the shell owns the state and this owns the layout,
@@ -92,6 +93,7 @@ pub fn Stage(
                     class: "view-panel workspace-view",
                     id: "workspace-view",
                     aria_label: "Workspace",
+                    artifacts::Artifacts { web, tick, agent: selected }
                     files::Files { web, tick, agent: selected }
                 }
             }

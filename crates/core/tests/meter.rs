@@ -122,3 +122,34 @@ fn a_tool_result_changes_the_projection_even_though_it_renders_nothing() {
     assert_ne!(before, after, "the projection moved");
     assert!(after.contains("data-tools=\"1\""), "{after}");
 }
+
+/// A successful GET is not a fact. Four panes poll the seam while a page is
+/// open, so logging every read grew the store by thousands of records that
+/// say only "somebody looked" — and each one was replayed at boot and cloned
+/// into `Ctx` by the next request, so the cost of looking grew with how long
+/// you had looked. One real browser reached 39,237 events this way.
+#[test]
+fn reading_the_page_does_not_grow_the_log_but_changing_it_does() {
+    let app = booted(vec![]);
+    let events = |app: &Rc<RefCell<App>>| {
+        handle(&mut app.borrow_mut(), Request::get("/panels/status"))
+            .body
+            .split("facts in the log: ")
+            .nth(1)
+            .and_then(|s| s.split('<').next())
+            .and_then(|n| n.trim().parse::<usize>().ok())
+            .expect("the status panel counts the log")
+    };
+    let before = events(&app);
+    for _ in 0..20 {
+        handle(&mut app.borrow_mut(), Request::get("/chat"));
+        handle(&mut app.borrow_mut(), Request::get("/board"));
+    }
+    assert_eq!(events(&app), before, "forty reads, nothing happened");
+
+    handle(
+        &mut app.borrow_mut(),
+        Request::post_form("/chat", &[("message", "hello")]),
+    );
+    assert!(events(&app) > before, "a message IS something that happened");
+}

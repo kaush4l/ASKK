@@ -32,18 +32,28 @@ struct Seen {
 /// yet" forever — the pane's own silent failure, and the exact shape of bug
 /// this codebase refuses everywhere else. What the workspace said is what the
 /// pane shows.
-fn newest(ctx: &Ctx) -> (Option<Seen>, Option<Seen>) {
+fn newest(ctx: &Ctx, at: Option<&str>) -> (Option<Seen>, Option<Seen>) {
     let (mut listed, mut read) = (None, None);
     for kind in &ctx.recent {
         if let EventKind::ToolInvoked { tool, args, ok, output } = kind {
-            let seen = Some(Seen {
-                path: path_of(args),
-                ok: *ok,
-                output: output.clone(),
-            });
+            let path = path_of(args);
+            let seen = || {
+                Some(Seen {
+                    path: path.clone(),
+                    ok: *ok,
+                    output: output.clone(),
+                })
+            };
             match tool.0.as_str() {
-                "list_files" => listed = seen,
-                "read_file" => read = seen,
+                // Scoped, when the pane asked for one folder: two panes over
+                // the same workspace watch two different folders, and "the
+                // newest listing there was" would have them overwrite each
+                // other every time either one refreshed.
+                "list_files" if at.is_none_or(|want| want == path) => listed = seen(),
+                // Scoped the same way, by PREFIX: the artifacts shelf must
+                // not render a file the Files pane opened somewhere else, and
+                // both are reading the same fact stream.
+                "read_file" if at.is_none_or(|want| path.starts_with(want)) => read = seen(),
                 _ => {}
             }
         }
@@ -81,8 +91,8 @@ fn row(at: &str, line: &str) -> String {
 /// empty value and the pane did nothing at all. The core still decides what
 /// the entries ARE; the UI owns the control, which is the same split every
 /// other pane has.
-pub(crate) fn rows(ctx: &Ctx) -> String {
-    let (listed, _) = newest(ctx);
+pub(crate) fn rows(ctx: &Ctx, at: Option<&str>) -> String {
+    let (listed, _) = newest(ctx, at);
     let Some(Seen { path: at, ok: true, output }) = listed else {
         return String::new();
     };
@@ -97,8 +107,8 @@ pub(crate) fn rows(ctx: &Ctx) -> String {
 }
 
 /// The pane: where you are, what is in it, and what the last file said.
-pub(crate) fn panel(ctx: &Ctx) -> String {
-    let (listed, read) = newest(ctx);
+pub(crate) fn panel(ctx: &Ctx, at: Option<&str>) -> String {
+    let (listed, read) = newest(ctx, at);
     let mut list = FragmentBuilder::new("div").id("files").class("file-list");
     match &listed {
         None => {
@@ -152,6 +162,20 @@ pub(crate) fn panel(ctx: &Ctx) -> String {
         );
     }
     out
+}
+
+/// The open file as `path\n<contents>`, for a pane that wants the BYTES rather
+/// than the rendering — the artifact shelf, which decides between an iframe and
+/// a `<pre>` from the extension. Empty when nothing is open.
+///
+/// It rides a header for the same reason the entries do: the alternative was
+/// scraping the core's own escaped `<pre>` back out of the fragment, which is a
+/// second parser for a string this side already has.
+pub(crate) fn opened(ctx: &Ctx, at: Option<&str>) -> String {
+    match newest(ctx, at) {
+        (_, Some(Seen { path, ok: true, output })) => format!("{path}\n{output}"),
+        _ => String::new(),
+    }
 }
 
 /// The folder one level up, in the pane's own relative vocabulary.

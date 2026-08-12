@@ -16,7 +16,7 @@ const SCHEMA_KEY: &str = "meta/schema_version";
 /// schema_version`). A function, not a const, so the value has one audited
 /// definition site the migration ladder and tests share.
 pub fn schema_version() -> u32 {
-    1
+    2
 }
 
 /// Run the forward-only migration ladder from `from` up to
@@ -33,7 +33,21 @@ pub fn migrate(store: &dyn StorePort, from: u32) -> BoxFuture<'_, Result<(), Cor
             });
         }
         if from < expected {
-            // Rung 0→1: initialize. Later rungs: snapshot-first migrate_vN.
+            // Rung 1→2: drop the polling noise. Until this build every seam
+            // GET appended a `RequestHandled` fact, and four panes poll the
+            // seam while a page is open — one real browser had **39,237**
+            // events, essentially all of them "somebody looked". Every one was
+            // replayed at boot and cloned into `Ctx` on every request, so the
+            // cost of looking grew with how long you had looked.
+            //
+            // `handle` no longer writes them; this clears what is already
+            // there. It is a DELETION of history, which this codebase does not
+            // do lightly (ADR-005: no silent drops) — the justification is that
+            // these facts record no event in the world, and the alternative is
+            // a store that is slower every day and never recovers.
+            if from >= 1 {
+                drop_request_noise(store).await?;
+            }
             store
                 .kv()
                 .put(SCHEMA_KEY, &expected.to_string())
@@ -42,6 +56,40 @@ pub fn migrate(store: &dyn StorePort, from: u32) -> BoxFuture<'_, Result<(), Cor
         }
         Ok(())
     })
+}
+
+/// Rewrite `events/*` without the `RequestHandled` records, renumbering as it
+/// goes so the keys stay dense and seq-ordered. One `replace_prefix`, which
+/// IndexedDB does in a single transaction: a reader sees the old log or the
+/// new one, never half of either.
+async fn drop_request_noise(store: &dyn StorePort) -> Result<(), CoreError> {
+    let keys = store
+        .kv()
+        .list_prefix("events/")
+        .await
+        .map_err(CoreError::Store)?;
+    let mut kept: Vec<(String, String)> = Vec::with_capacity(keys.len());
+    for key in keys {
+        let Some(raw) = store.kv().get(&key).await.map_err(CoreError::Store)? else {
+            continue;
+        };
+        // A record this build cannot read is KEPT, unchanged: a migration that
+        // deletes what it does not understand is a migration that eats data.
+        let noise = serde_json::from_str::<Event>(&raw)
+            .map(|e| matches!(e.kind, EventKind::RequestHandled { .. }))
+            .unwrap_or(false);
+        if !noise {
+            // The SAME key format `logs::record` writes (`{:08}`): two widths
+            // sort differently as strings, and these keys are read back in key
+            // order to rebuild the log.
+            kept.push((format!("events/{:08}", kept.len()), raw));
+        }
+    }
+    store
+        .kv()
+        .replace_prefix("events/", &kept)
+        .await
+        .map_err(CoreError::Store)
 }
 
 /// Replay every persisted `events/<seq>` record, in key order, into a fresh

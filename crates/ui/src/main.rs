@@ -15,6 +15,7 @@ use dioxus::prelude::*;
 use crate::views::View;
 
 mod agentfile;
+mod artifacts;
 mod authoring;
 mod board;
 mod chat;

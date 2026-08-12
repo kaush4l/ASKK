@@ -15,7 +15,7 @@ use kernel::{CapabilityId, EventKind, ModuleId, Request, Response, Version};
 use module::{DataSchema, Manifest, RouteSpec, Tier};
 
 use crate::dispatch::{error_fragment, html, Ctx};
-use crate::filelist::{panel, rows};
+use crate::filelist::{opened, panel, rows};
 use crate::form::form_value;
 
 /// A person asked for a path. Its own fact kind for the reason the terminal's
@@ -54,7 +54,15 @@ pub(crate) fn manifest() -> Manifest {
 /// Named ONLY from `dispatch::builtin_entry` (ADR-004).
 pub(crate) fn files(req: &Request, ctx: &mut Ctx) -> Response {
     match (req.method.as_str(), req.path.as_str()) {
-        ("GET", "/files") => listing(html(200, panel(ctx)), ctx),
+        // `x-at` scopes the projection to ONE folder, so a second pane over
+        // the same workspace (the artifacts shelf) does not overwrite this
+        // one every time either refreshes. Absent means "whatever was listed
+        // last", which is what the Files pane itself wants — it follows the
+        // agent's own listings.
+        ("GET", "/files") => {
+            let at = req.header("x-at").map(str::to_string);
+            listing(html(200, panel(ctx, at.as_deref())), ctx, at.as_deref())
+        }
         ("POST", "/files") => open(req, ctx),
         _ => error_fragment(404, "files: unknown subroute"),
     }
@@ -63,8 +71,9 @@ pub(crate) fn files(req: &Request, ctx: &mut Ctx) -> Response {
 /// The entries, as a header the pane turns into one button each. Same contract
 /// `x-turn` and `x-typeable` already follow: a fact the UI needs, said in a
 /// header rather than parsed back out of a fragment.
-fn listing(mut response: Response, ctx: &Ctx) -> Response {
-    response.headers.push(("x-entries".into(), rows(ctx)));
+fn listing(mut response: Response, ctx: &Ctx, at: Option<&str>) -> Response {
+    response.headers.push(("x-entries".into(), rows(ctx, at)));
+    response.headers.push(("x-file".into(), opened(ctx, at)));
     response
 }
 
@@ -91,11 +100,12 @@ fn open(req: &Request, ctx: &mut Ctx) -> Response {
     match ctx.emit.as_mut() {
         Some(buf) => buf.push(EventKind::Custom {
             kind: OPEN_REQUEST.into(),
-            payload_json: serde_json::to_string(&(path, folder)).unwrap_or_default(),
+            payload_json: serde_json::to_string(&(path.clone(), folder)).unwrap_or_default(),
         }),
         None => return error_fragment(500, "files: Emit capability not granted"),
     }
-    let mut response = listing(html(200, panel(ctx)), ctx);
+    let scope = Some(path.as_str());
+    let mut response = listing(html(200, panel(ctx, scope)), ctx, scope);
     response.headers.push(("x-opening".into(), "1".into()));
     response
 }
