@@ -13,8 +13,8 @@
        production and publish.sh gates on it. -->
   
 <script type="module">
-import init, * as bindings from './ui-8728a13781a8db6e.js';
-const wasm = await init({ module_or_path: './ui-8728a13781a8db6e_bg.wasm' });
+import init, * as bindings from './ui-fc7c0f190f9944c4.js';
+const wasm = await init({ module_or_path: './ui-fc7c0f190f9944c4_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -45,7 +45,11 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
        with the two outer ones collapsible. Last again, same switch; the
        collapse itself works in the plain skin too, because it is the `hidden`
        attribute and not a rule in here. -->
-  <link rel="stylesheet" href="./dash-4f89e93114de36ae.css" integrity="sha384-UlC72RINpYz0TgiqMaEN8+El9H7QCyvM2H/vgQCs2QuMcvPJJZhgH/qhLcNuVWWR"/>
+  <link rel="stylesheet" href="./dash-b56e9a892f71d7f1.css" integrity="sha384-1UrqCKP3BOfDo4OEPcTh5QanSy3RjvszS0VjMi5h5Azw1AR3a/WB9XAv6kYqhVZj"/>
+  <!-- The furniture's ink: the nav as a list, the rail's attribution, the two
+       panel switches. Split out of dash.css, which hit the 200-line rule
+       owning both where the regions are and how they read. -->
+  <link rel="stylesheet" href="./panel-f7860563e20f6951.css" integrity="sha384-cpBjcuQwAczGAgniOnl3YM7E5wyQVdnYKZUjXhbd7zTnnCAKLAz8HZcnq7W5zCOg"/>
   
   
   <!-- One Worker per agent (increment 06). Transport only: it imports this
@@ -62,7 +66,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
   <!-- The model catalogue, same deal: a named entry per endpoint, edited and
        redeployed without a rebuild (increment 04). -->
   
-<link rel="modulepreload" href="./ui-8728a13781a8db6e.js" crossorigin="anonymous" integrity="sha384-VmCEmu9UHvyRMblDAy0clov3KI/YJhcUt55rxj+IpTGHwe3+aWjb8DRSFrQS/lZ3"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/inline0.js" crossorigin="anonymous" integrity="sha384-zYN7fDp3Oc3s/6VoBHYcmgSXhmkcRNY5Hm9rxENuJajscrc2t7NZ69NzBse6Iwn9"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="preload" href="./ui-8728a13781a8db6e_bg.wasm" crossorigin="anonymous" integrity="sha384-0h4zEk89cnCSL/ULPCsNFhslE6AmYHHO5TY0fHPpT1IYbOXdMQioiz3R9ObAHP4m" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./ui-fc7c0f190f9944c4.js" crossorigin="anonymous" integrity="sha384-1Q70pp88gqEI5s9xtTXrgeaLyxRRbKIDgJH4FajpX6GgrbnFl67Mvjg4Z3sOOYRk"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/inline0.js" crossorigin="anonymous" integrity="sha384-zYN7fDp3Oc3s/6VoBHYcmgSXhmkcRNY5Hm9rxENuJajscrc2t7NZ69NzBse6Iwn9"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="preload" href="./ui-fc7c0f190f9944c4_bg.wasm" crossorigin="anonymous" integrity="sha384-6if9cUYtlmgiVNMl3FwSmk9UTS70PuZQxwFcBWadpRJYUhhiSOPNqotLLbsbRGXC" as="fetch" type="application/wasm"></head>
 <body>
   <div id="main"></div>
   <noscript>
