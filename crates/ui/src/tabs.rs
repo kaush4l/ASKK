@@ -63,9 +63,12 @@ pub fn AgentTabs(
         div {
             class: "agent-tabs",
             role: "tablist",
-            // It is a column now, and a screen reader is told so — the arrow
-            // keys it announces have to be the ones that actually work.
-            aria_orientation: "vertical",
+            // It is a ROW now — it moved out of the left panel and into the
+            // Chat view (15B) — and a screen reader is told what it is, because
+            // the arrow keys it announces have to be the ones on screen. Both
+            // pairs still work (`target`), so the announcement is the only
+            // thing that had to follow the layout.
+            aria_orientation: "horizontal",
             aria_label: "Which agent to talk to",
             for (index, name) in names.iter().cloned().enumerate() {
                 {

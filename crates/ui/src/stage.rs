@@ -1,12 +1,17 @@
 //! WHAT you are doing — the centre column, routed by `View`.
 //!
-//! Every region stays MOUNTED and all but one carry `hidden` (the mechanism the
-//! two booleans this replaces already used): unmounting the chat pane would
-//! drop the poller following a turn in flight, and unmounting the board would
-//! restart its clock every time somebody looked at Settings.
+//! The CHAT pane stays mounted whatever view you are on, hidden when it is not
+//! the one: its poller belongs to a turn in flight, and unmounting it would
+//! leave that turn unwatched. Every other view is mounted only while it is the
+//! current one.
 //!
-//! The panels themselves are the same components the rail has always held. A
-//! view is an ARRANGEMENT of them, not a second implementation of each.
+//! That split is not a preference. The panels are the same components the rail
+//! holds — a view is an ARRANGEMENT of them, not a second implementation — and
+//! several of them carry a fixed `id` (`workspace-command`, `composer-field`)
+//! and a clock of their own. Mounting all seven views at once put three
+//! `ToolTrace`s and two `Terminal`s in one document: duplicate ids, `focus()`
+//! landing inside a `hidden` region, and three panels polling the seam for the
+//! same projection. One mounted view, plus the chat pane, is the whole fix.
 
 use std::rc::Rc;
 
@@ -41,20 +46,24 @@ pub fn Stage(
     let here = view();
     rsx! {
         div { class: "stage primary",
-            section {
-                class: "view-panel dashboard-view",
-                id: "dashboard-view",
-                aria_label: "Dashboard",
-                hidden: here != View::Dashboard,
-                // The one <h1> on the page, and the seam's own words for it.
-                div { class: "masthead", dangerous_inner_html: "{fragment}" }
-                div { class: "dash-grid",
-                    board::AgentBoard { web, tick, view }
-                    tools::ToolTrace { web, tick, agent: selected }
-                    terminal::Terminal { web, tick, agent: selected }
-                    space::SpaceInspector { web, tick, agent: selected }
+            if here == View::Dashboard {
+                section {
+                    class: "view-panel dashboard-view",
+                    id: "dashboard-view",
+                    aria_label: "Dashboard",
+                    // The one <h1> on the page, and the seam's own words for
+                    // it. It moves with this view, which is a real cost: on
+                    // every other view the page has no <h1> at all. The
+                    // alternative — a heading in the frame — would name the
+                    // product where the seam names the surface.
+                    div { class: "masthead", dangerous_inner_html: "{fragment}" }
+                    div { class: "dash-grid",
+                        board::AgentBoard { web, tick, view }
+                        space::SpaceInspector { web, tick, agent: selected }
+                    }
                 }
             }
+            // MOUNTED ALWAYS. See the module note: the poller.
             section {
                 class: "view-panel chat-view",
                 id: "chat-view",
@@ -67,41 +76,46 @@ pub fn Stage(
                     web, endpoint_set, tick, tokens, roster, agent: selected, hidden: false,
                 }
             }
-            section {
-                class: "view-panel agents-view",
-                id: "agents-view",
-                aria_label: "Agents",
-                hidden: here != View::Agents,
-                authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
-                {authoring::agent_panel(agents)}
+            if here == View::Agents {
+                section {
+                    class: "view-panel agents-view",
+                    id: "agents-view",
+                    aria_label: "Agents",
+                    authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
+                    {authoring::agent_panel(agents)}
+                }
             }
-            section {
-                class: "view-panel workspace-view",
-                id: "workspace-view",
-                aria_label: "Workspace",
-                hidden: here != View::Workspace,
-                files::Files { web, tick, agent: selected }
+            if here == View::Workspace {
+                section {
+                    class: "view-panel workspace-view",
+                    id: "workspace-view",
+                    aria_label: "Workspace",
+                    files::Files { web, tick, agent: selected }
+                }
             }
-            section {
-                class: "view-panel memory-view",
-                id: "memory-view",
-                aria_label: "Memory",
-                hidden: here != View::Memory,
-                space::SpaceInspector { web, tick, agent: selected }
+            if here == View::Memory {
+                section {
+                    class: "view-panel memory-view",
+                    id: "memory-view",
+                    aria_label: "Memory",
+                    space::SpaceInspector { web, tick, agent: selected }
+                }
             }
-            section {
-                class: "view-panel trace-view",
-                id: "trace-view",
-                aria_label: "Trace",
-                hidden: here != View::Trace,
-                tools::ToolTrace { web, tick, agent: selected }
+            if here == View::Trace {
+                section {
+                    class: "view-panel trace-view",
+                    id: "trace-view",
+                    aria_label: "Trace",
+                    tools::ToolTrace { web, tick, agent: selected }
+                }
             }
-            section {
-                class: "view-panel settings-view",
-                id: "settings-view",
-                aria_label: "Settings",
-                hidden: here != View::Settings,
-                settings::Settings { web, endpoint_set, tick }
+            if here == View::Settings {
+                section {
+                    class: "view-panel settings-view",
+                    id: "settings-view",
+                    aria_label: "Settings",
+                    settings::Settings { web, endpoint_set, tick }
+                }
             }
             gallery::DesignSystem { hidden: here != View::DesignSystem }
         }

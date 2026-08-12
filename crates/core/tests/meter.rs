@@ -53,7 +53,8 @@ fn booted(replies: Vec<String>) -> Rc<RefCell<App>> {
         &mut app,
         vec![(
             "main".to_string(),
-            "---\nname: main\ndescription: the lead\ntools: []\n---\nbody".to_string(),
+            "---\nname: main\ndescription: the lead\nspace: research\ntools: []\n---\nbody"
+                .to_string(),
         )],
     );
     Rc::new(RefCell::new(app))
@@ -94,4 +95,30 @@ fn the_projection_carries_what_the_provider_said_the_turn_cost() {
 fn an_endpoint_that_reports_no_usage_is_counted_as_nothing_not_as_free() {
     let app = booted(vec![ScriptedModel::text_reply("no usage block here")]);
     assert_eq!(ask(&app, "one"), "0");
+}
+
+/// A tool landing CHANGES the chat projection, even though the transcript
+/// renders nothing for it.
+///
+/// The pane's patience is silence-based: a projection that is byte-identical
+/// tick after tick is how it recognises a hang. A tool call renders nothing in
+/// the transcript by design — a command a person typed into the terminal is a
+/// `ToolInvoked` too — so without a counter on the log element, the exact
+/// workload this product exists for (an `apk add`, a build) is indistinguishable
+/// from a dead endpoint, and a working agent gets declared dead partway through.
+#[test]
+fn a_tool_result_changes_the_projection_even_though_it_renders_nothing() {
+    let app = booted(vec![ScriptedModel::text_reply("thinking")]);
+    let before = handle(&mut app.borrow_mut(), Request::get("/chat")).body;
+    assert!(before.contains("data-tools=\"0\""), "{before}");
+
+    handle(
+        &mut app.borrow_mut(),
+        Request::post_form("/terminal", &[("command", "sleep 1")]),
+    );
+    block_on(drive(Rc::clone(&app))).expect("the command runs");
+
+    let after = handle(&mut app.borrow_mut(), Request::get("/chat")).body;
+    assert_ne!(before, after, "the projection moved");
+    assert!(after.contains("data-tools=\"1\""), "{after}");
 }

@@ -12,7 +12,14 @@ use kernel::{BoxFuture, EndpointName, ModelError, ModelPort, ModelReply};
 
 /// A page that cannot reach its endpoint must SAY so, not hang: a call the
 /// browser refuses (COEP, Chrome 142+ Local Network Access) can hang forever.
-const TIMEOUT_MS: f64 = 30_000.0;
+///
+/// Five minutes, not thirty seconds. Thirty was chosen when a turn was one
+/// short completion; a local 12B asked for a plan, or any reasoning model,
+/// routinely runs longer than that, and aborting mid-generation looks exactly
+/// like an unreachable endpoint while being the opposite. The ceiling is still
+/// there — it is the difference between slow and hung — it is just no longer
+/// tighter than the work.
+const TIMEOUT_MS: f64 = 300_000.0;
 
 use crate::endpoint::Endpoint;
 use crate::overrides::stamp_model;

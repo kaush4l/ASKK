@@ -34,6 +34,7 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
         // no second call and no dropped tool results.
         EventKind::UserMessage { ref text, .. } if state.task.is_some() => {
             paper::push_history(&mut state.paper, "user", text, input.at);
+            state.steered = true;
             (state, Vec::new())
         }
         // A user utterance starts (or redirects) the turn: assemble the paper
@@ -151,6 +152,17 @@ fn on_reply(mut state: AgentState, text: &str, at: kernel::Timestamp) -> (AgentS
         Ok(ParsedReply::Tools(batches)) if !batches.is_empty() => batches,
         _ => {
             paper::push_history(&mut state.paper, "assistant", text.trim(), at);
+            // A steer that arrived while THIS call was in flight has not been
+            // answered by it — the model never saw it. Ending the turn here
+            // would leave the sentence sitting in the history unanswered, with
+            // the reply to the PREVIOUS question rendered directly beneath it
+            // and nothing on screen saying it had been ignored. So the turn
+            // continues instead: one more call, carrying it.
+            if state.steered {
+                state.steered = false;
+                let effect = call_model(&mut state, at);
+                return (state, vec![effect]);
+            }
             (state.task, state.retries, state.tool_rounds) = (None, 0, 0);
             return (state, Vec::new());
         }
@@ -191,6 +203,10 @@ fn on_tool_result(
     if state.pending_tools > 0 {
         return (state, Vec::new());
     }
+    // A steer is consumed by the call this round is about to make, whether or
+    // not the ceiling stops the loop below — the model is asked once more with
+    // the sentence in front of it, or the turn ends and the sentence is the
+    // next turn's opening line. Either way it is not silently unanswered.
     if state.tool_rounds >= state.max_rounds {
         let ceiling = state.max_rounds;
         state.task = None;
@@ -207,6 +223,7 @@ fn on_tool_result(
             }],
         );
     }
+    state.steered = false;
     let effect = call_model(&mut state, at);
     (state, vec![effect])
 }

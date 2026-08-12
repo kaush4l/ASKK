@@ -49,6 +49,12 @@ pub struct AgentState {
     /// looping model terminates on this counter, never on prose.
     #[serde(default)]
     pub tool_rounds: u16,
+    /// A sentence the person typed while this turn was already running, not
+    /// yet answered. It is a FLAG and not a queue: the sentence itself is
+    /// already in the history, and this only records that nothing has replied
+    /// to it since. Cleared the moment a call is made carrying it.
+    #[serde(default)]
+    pub steered: bool,
     /// The ceiling that counter terminates on, from this agent's `max_rounds:`
     /// frontmatter. It is per-agent because the right number is a property of
     /// the WORK: a summarizer that calls two tools and a coding agent that
@@ -137,6 +143,7 @@ impl AgentState {
             // which is the honest default (nothing is attached that an agent
             // did not ask for).
             toolbox: Toolbox::default(),
+            steered: false,
             max_rounds: default_max_rounds(),
             compact_at: default_compact_at(),
             keep_recent: default_keep_recent(),

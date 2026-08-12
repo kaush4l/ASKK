@@ -12,9 +12,10 @@ use kernel::{Request, Response};
 /// How often the pane re-projects a turn in flight.
 const TICK_MS: i32 = 400;
 
-/// How long a turn may go with NOTHING changing before the pane says so:
-/// 400 ms × 90 = 36 s, a little past the 30 s the broker aborts at, so its own
-/// typed error is what a user sees.
+/// How long a turn may go with NOTHING changing before the pane SAYS so:
+/// 400 ms × 90 = 36 s. It no longer has to outlast the broker's own abort —
+/// that is five minutes now (`adapters_web::model`) — because this is a note
+/// and not a verdict: the watch continues, and the next change clears it.
 ///
 /// It counts SILENCE, not the turn. It used to be the whole patience — 36
 /// seconds and the pane declared the turn dead — which was right when a turn
@@ -160,16 +161,22 @@ pub(crate) async fn watch(
             silent += 1;
         } else {
             (last, silent) = (now, 0);
+            if !turn.note.peek().is_empty() {
+                turn.note.set(String::new());
+            }
         }
-        if silent >= STALL_TICKS {
+        // The note is a WARNING, not an exit. Returning here killed the poll:
+        // the transcript, the tool trace and the meter froze for the rest of
+        // a run that was still going, and the only way back was a reload. It
+        // is said once and the watch continues; the next change clears it.
+        if silent == STALL_TICKS {
             let seconds = STALL_TICKS * TICK_MS as u32 / 1000;
             turn.note.set(format!(
-                "Nothing has changed for {seconds} seconds, after {}s of work. The turn was \
-                 interrupted, or the model endpoint accepted the request and never answered \
-                 — check Settings.",
+                "Nothing has changed for {seconds} seconds, after {}s of work. The agent may be \
+                 in a long command, or the model endpoint accepted the request and never \
+                 answered — Stop waiting ends the turn.",
                 turn.elapsed.peek()
             ));
-            return;
         }
     }
 }

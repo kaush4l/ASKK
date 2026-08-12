@@ -126,6 +126,7 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
         .attr("role", "log")
         .attr("aria-live", "polite");
     let (mut awaiting, mut count, mut failures) = (false, 0usize, 0usize);
+    let mut tools = 0usize;
     for kind in ctx.recent.iter().filter(|k| belongs_to(k, &ctx.me, who)) {
         match kind {
             EventKind::UserMessage { text, from, .. } => {
@@ -153,7 +154,13 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
             // into the terminal is a `ToolInvoked` too, and asserting it here
             // left the chat pane saying "Sending…" with the composer disabled
             // for the rest of the session, over a turn nobody had started.
-            EventKind::ToolInvoked { .. } => {}
+            //
+            // It is COUNTED, though (see `tools` below). The pane's patience
+            // is silence-based, and a transcript that renders nothing at all
+            // for a tool call is silent through the exact workload this
+            // product exists for — an `apk add`, a build — so the watcher
+            // would call a working agent dead partway through it.
+            EventKind::ToolInvoked { .. } => tools += 1,
             // The machine's own word to the user (the tool loop gave up).
             EventKind::Custom { kind, payload_json } if kind == "core.note" => {
                 let note = serde_json::from_str::<String>(payload_json)
@@ -199,7 +206,15 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
     if let Some(tail) = tail(pending, awaiting, count, who) {
         list = list.child(tail);
     }
-    let body = format!("{}{}", crate::identity::header(ctx, who), list.build().into_html());
+    // How many tool calls this conversation has behind it. The number is not
+    // rendered — the tool trace is where a person reads them — but it CHANGES
+    // when one lands, and a projection that changes is what tells the pane the
+    // agent is still working.
+    let body = format!(
+        "{}{}",
+        crate::identity::header(ctx, who),
+        list.attr("data-tools", &tools.to_string()).build().into_html()
+    );
     let mut response = html(200, body);
     // WHO this conversation is with, as a header rather than a sentence in the
     // body: the pane must be able to title itself without parsing the fragment

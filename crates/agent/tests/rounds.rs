@@ -134,3 +134,62 @@ fn a_message_typed_mid_run_steers_the_turn_instead_of_starting_one() {
         other => panic!("the round completes and asks once: {other:?}"),
     }
 }
+
+/// The steer that arrives while the MODEL is answering is the common case, and
+/// it was the one that dropped the sentence on the floor.
+///
+/// The reply that lands next was produced without it — the model never saw it —
+/// so if that reply is the final answer, ending the turn there leaves the
+/// person's sentence in the history with the answer to the PREVIOUS question
+/// beneath it, the composer un-busied, and nothing anywhere saying it had been
+/// ignored. It reads as an answer to the steer.
+#[test]
+fn a_steer_that_races_the_final_answer_is_answered_not_dropped() {
+    let ev = |kind| Event {
+        id: EventId(0),
+        seq: 0,
+        at: Timestamp(1_753_800_000_000),
+        kind,
+    };
+    let say = |text: &str| {
+        ev(EventKind::UserMessage {
+            text: text.into(),
+            agent: String::new(),
+            from: String::new(),
+        })
+    };
+    let reply = |text: &str| {
+        ev(EventKind::ModelReplied {
+            text: text.into(),
+            agent: String::new(),
+        })
+    };
+    let mut fresh = AgentState::new();
+    let spec = agent::parse_agent_file("main", "---\nname: main\ndescription: d\ntools: []\n---\nb")
+        .expect("spec parses");
+    agent::adopt_spec(&mut fresh, &spec, &[]);
+
+    // The question, then the steer while the model is still thinking.
+    let (state, _) = step(fresh, say("what is the time"));
+    let (state, effects) = step(state, say("in UTC, please"));
+    assert!(effects.is_empty(), "steering asks nothing on its own");
+    assert!(state.steered, "and it is recorded as unanswered");
+
+    // The answer to the FIRST question arrives. It cannot be the answer to the
+    // steer, so the turn continues with one more call carrying it.
+    let (state, effects) = step(state, reply("It is 3pm."));
+    match effects.as_slice() {
+        [Effect::CallModel { document, .. }] => {
+            let sent = format!("{document:?}");
+            assert!(sent.contains("in UTC, please"), "the steer is in the paper: {sent}");
+        }
+        other => panic!("the steer must be answered, not dropped: {other:?}"),
+    }
+    assert!(!state.steered, "consumed by the call that carries it");
+    assert!(state.task.is_some(), "and the turn is still the same turn");
+
+    // That call's answer ends the turn, because nothing is outstanding now.
+    let (state, effects) = step(state, reply("It is 15:00 UTC."));
+    assert!(effects.is_empty(), "the turn ends: {effects:?}");
+    assert!(state.task.is_none());
+}
