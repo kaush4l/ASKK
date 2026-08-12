@@ -48,7 +48,14 @@ pub struct AgentState {
     /// How many times this turn has already gone round the tool loop. A
     /// looping model terminates on this counter, never on prose.
     #[serde(default)]
-    pub tool_rounds: u8,
+    pub tool_rounds: u16,
+    /// The ceiling that counter terminates on, from this agent's `max_rounds:`
+    /// frontmatter. It is per-agent because the right number is a property of
+    /// the WORK: a summarizer that calls two tools and a coding agent that
+    /// edits nine files, builds, reads the errors and edits again cannot share
+    /// one constant, and the constant this replaced was four.
+    #[serde(default = "default_max_rounds")]
+    pub max_rounds: u16,
     /// What THIS agent may call: its `agent.md` `tools:` list resolved
     /// against the built-ins and its peers (`subagent::toolbox_for`). In
     /// state, not in the phase table, because it is the agent's property and
@@ -94,6 +101,15 @@ pub struct AgentState {
     pub paper: State,
 }
 
+/// How far a turn may go before the machine stops it. Sixty-four, not four:
+/// four rounds cannot finish any real task — read a file, run a build, read
+/// the errors, edit, build again is already five — and the number exists to
+/// stop a MODEL LOOPING, not to stop an agent working. It is still a hard
+/// deterministic wall, and every agent may set its own.
+pub(crate) fn default_max_rounds() -> u16 {
+    64
+}
+
 /// Python `Engine.compact_at` / `keep_recent` defaults, in one audited place.
 pub(crate) fn default_compact_at() -> usize {
     75
@@ -121,6 +137,7 @@ impl AgentState {
             // which is the honest default (nothing is attached that an agent
             // did not ask for).
             toolbox: Toolbox::default(),
+            max_rounds: default_max_rounds(),
             compact_at: default_compact_at(),
             keep_recent: default_keep_recent(),
             compacting: false,

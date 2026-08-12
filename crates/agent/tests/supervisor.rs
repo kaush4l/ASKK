@@ -21,6 +21,7 @@ fn spec(name: &str, tools: &[&str]) -> AgentSpec {
         space: String::new(),
         compact_at: 75,
         keep_recent: 24,
+        max_rounds: 64,
         prompt: "body".into(),
     }
 }

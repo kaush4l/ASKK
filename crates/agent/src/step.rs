@@ -14,11 +14,6 @@ use crate::toolbox::Toolbox;
 use crate::window;
 use crate::tools::ToolResult;
 
-/// How many times one turn may go round the call-a-tool loop before the agent
-/// stops and says so. A looping model must terminate deterministically, and it
-/// terminates on a counter in state, never on prose (ADR-010).
-const MAX_TOOL_ROUNDS: u8 = 4;
-
 /// The frozen §11 signature. Owns ALL transitions: parse the event against the
 /// current phase's contract, match the result against its exits, emit the next
 /// phase's effects; malformed replies, illegal transitions and exhausted
@@ -168,8 +163,8 @@ fn on_reply(mut state: AgentState, text: &str, at: kernel::Timestamp) -> (AgentS
 }
 
 /// One tool result. The batch is not done until the last one lands; then the
-/// model gets them all at once and the loop goes round — up to
-/// `MAX_TOOL_ROUNDS`, after which the agent says it stopped.
+/// model gets them all at once and the loop goes round — up to this agent's
+/// own `max_rounds`, after which it says it stopped.
 fn on_tool_result(
     mut state: AgentState,
     result: &ToolResult,
@@ -181,7 +176,8 @@ fn on_tool_result(
     if state.pending_tools > 0 {
         return (state, Vec::new());
     }
-    if state.tool_rounds >= MAX_TOOL_ROUNDS {
+    if state.tool_rounds >= state.max_rounds {
+        let ceiling = state.max_rounds;
         state.task = None;
         return (
             state,
@@ -189,7 +185,8 @@ fn on_tool_result(
                 kind: EventKind::Custom {
                     kind: "core.note".into(),
                     payload_json: format!(
-                        "\"Stopped after {MAX_TOOL_ROUNDS} rounds of tool calls without an answer.\""
+                        "\"Stopped after {ceiling} rounds of tool calls without an answer. \
+                         Raise `max_rounds:` in this agent's file if the work needs more.\""
                     ),
                 },
             }],

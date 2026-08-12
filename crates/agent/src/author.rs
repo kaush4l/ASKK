@@ -44,6 +44,7 @@ pub fn render_agent_file(spec: &AgentSpec) -> String {
     out.push_str(&format!("tools: [{}]\n", spec.tools.join(", ")));
     out.push_str(&format!("compact_at: {}\n", spec.compact_at));
     out.push_str(&format!("keep_recent: {}\n", spec.keep_recent));
+    out.push_str(&format!("max_rounds: {}\n", spec.max_rounds));
     out.push_str("---\n\n");
     out.push_str(spec.prompt.trim());
     out.push('\n');
@@ -75,6 +76,7 @@ pub fn new_spec(
         space: one_line(space),
         compact_at: crate::state::default_compact_at(),
         keep_recent: crate::state::default_keep_recent(),
+        max_rounds: crate::state::default_max_rounds(),
         prompt: prompt.trim().to_string(),
     }
 }

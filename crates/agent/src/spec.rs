@@ -30,6 +30,9 @@ pub struct AgentSpec {
     pub compact_at: usize,
     /// How many of the newest entries survive a compaction verbatim.
     pub keep_recent: usize,
+    /// How many rounds of the tool loop one turn of this agent may take
+    /// before the machine stops it (`crate::state::default_max_rounds`).
+    pub max_rounds: u16,
     /// The markdown body: this agent's system prompt.
     pub prompt: String,
 }
@@ -60,6 +63,7 @@ pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> 
         space: String::new(),
         compact_at: crate::state::default_compact_at(),
         keep_recent: crate::state::default_keep_recent(),
+        max_rounds: crate::state::default_max_rounds(),
         prompt: body.trim().to_string(),
     };
     read_frontmatter(frontmatter, &mut spec)?;
@@ -106,6 +110,7 @@ fn set_field(spec: &mut AgentSpec, key: &str, value: &str) -> Result<bool, Agent
         "space" => spec.space = value.into(),
         "compact_at" => spec.compact_at = number(spec, key, value)?,
         "keep_recent" => spec.keep_recent = number(spec, key, value)?,
+        "max_rounds" => spec.max_rounds = number(spec, key, value)? as u16,
         "temperature" => {
             spec.temperature = Some(value.parse::<f32>().map_err(|_| {
                 malformed(spec, format!("temperature '{value}' is not a number"))

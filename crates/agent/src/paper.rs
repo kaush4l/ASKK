@@ -101,6 +101,7 @@ pub fn adopt_spec(
     state.space = crate::space::Space::named(&spec.space);
     state.toolbox = crate::subagent::toolbox_for(spec, peers);
     (state.compact_at, state.keep_recent) = (spec.compact_at, spec.keep_recent);
+    state.max_rounds = spec.max_rounds;
     // The summarizer is an ordinary agent, found among the peers by name — the
     // Python registry gives it to every OTHER engine as the thing that compacts
     // a history, and to nobody as a tool (`registry.SUMMARIZER_AGENT`).
