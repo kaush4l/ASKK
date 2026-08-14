@@ -35,6 +35,24 @@ pub enum ModelError {
         #[serde(default)]
         url: String,
     },
+    /// THE CALL WAS GIVEN UP ON, not refused (R12-2). An abort — ours, on the
+    /// budget, or the page's — is NOT a transport failure: the critic's first
+    /// task hung and was reported as "the endpoint was unreachable" with a
+    /// remedy about CORS and Chrome's local-address prompt, over a request the
+    /// network log showed answering 200. Nothing about the endpoint is known to
+    /// be wrong here; only that no answer arrived inside `seconds`.
+    Timeout { url: String, seconds: u32 },
+    /// THE MODEL NAMED IN AN AGENT'S FILE IS NOT ONE THIS ENDPOINT SERVES
+    /// (R18-P1-7). An HTTP 404 that names the model we asked for is not an auth
+    /// problem and not a wrong address: the address answered, and it answered
+    /// about the `model:` line in one particular file. Folded into `Provider`
+    /// it produced "check the base URL and API key in Settings" over an
+    /// endpoint whose URL and key were both right. `available` is the endpoint's
+    /// own list of what it does serve, empty when it named none.
+    ModelMissing {
+        model: String,
+        available: Vec<String>,
+    },
     /// The endpoint is configured and reachable, but asks for a wire protocol
     /// this build does not speak (a catalogue entry's `kind`/`api`). Distinct
     /// from `EndpointUnknown` on purpose: "unconfigured" and "configured for

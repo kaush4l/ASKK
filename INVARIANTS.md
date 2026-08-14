@@ -14,7 +14,11 @@ Hard invariants. Reference by ID in every module spec. Source: `docs/PROMPT.md` 
 - **I9 Uniform modules.** Built-in and forged modules are indistinguishable to the system.
 - **I10 Reversible.** Every installation, migration, and improvement can be undone.
 - **I11 Updatable.** Any release is reachable by refresh, with migrations, without data loss.
-- **I12 Small.** Files ≤ 200 lines. Functions ≤ 40 lines.
+- **I12 Small.** Files ≤ 200 lines. Functions ≤ 40 lines. Enforced by
+  `scripts/check-size.py` over `crates/*/src` (files; `--functions` reports the
+  function rule, not yet gated) and by `scripts/check-selectors.py` over `web/`.
+  Integration tests under `crates/*/tests` are out of scope, as they have been
+  since G4.
 - **I13 Sectioned context.** Nothing reaches a model except as an assembled Document. No ad-hoc string
   building anywhere in the codebase.
 - **I14 Pure assembly.** `assemble` is deterministic and golden-tested; declared-static sections render

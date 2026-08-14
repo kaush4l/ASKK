@@ -101,8 +101,8 @@ impl AgentWorkers {
         let Some((glue, wasm)) = bundle_urls() else {
             // Not a warning in a console nobody has open: without the bundle
             // links there are no sub-agents at all, and every row must say so.
-            let why = "this page's wasm bundle links were not found, so no Worker \
-                       could be started";
+            let why = "this page's wasm bundle links were not found, so this agent \
+                       could not be started";
             for name in peers() {
                 self.report(name, Status::Failed, why);
             }

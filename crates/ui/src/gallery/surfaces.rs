@@ -67,7 +67,7 @@ fn messages() -> Element {
             div { class: "chat-log",
                 div { class: "msg user",
                     span { class: "speaker", "You: " }
-                    span { class: "said", "What is in the workspace?" }
+                    span { class: "said", "What is in the folder?" }
                 }
                 div { class: "msg assistant",
                     span { class: "speaker", "main: " }
@@ -75,9 +75,19 @@ fn messages() -> Element {
                 }
                 div { class: "msg tool",
                     span { class: "speaker", "main: " }
-                    span { class: "said", "calling tools — see the tool trace" }
+                    // The words the core emits, verbatim (R5-20): a specimen
+                    // that says something the app does not is the drift the
+                    // gallery exists to catch.
+                    span { class: "said", "called write_file, read_file ×2 — every call is in Tool trace" }
                 }
-                div { class: "msg pending", span { class: "said", "thinking…" } }
+                // A NOTICE, and it says whose it is: every line in this column
+                // carries a prefix now, and the page's own asides are labelled
+                // "Note" so they are not read as an unattributed message (R3-17).
+                div { class: "msg pending",
+                    span { class: "speaker", "Note: " }
+                    span { class: "said", "You stopped waiting. Nothing was cancelled — the \
+                                           agent carries on working (R3-6)." }
+                }
                 // The shape `core::failure::card` actually emits: a <p>, not a
                 // `.said` span, and NO speaker — a failure is the harness
                 // talking, not the agent. The specimen carried both, so this
@@ -85,8 +95,11 @@ fn messages() -> Element {
                 // while the chat showed it in --danger with none: the one
                 // artifact whose job is to catch drift was the drift.
                 div { class: "msg error",
+                    // …and since F18, the word ERROR in front of it: the block
+                    // must not be tellable from a reply by hue alone.
+                    p { class: "error-head", "⚠ Error" }
                     p { "The endpoint refused the request." }
-                    Disclosure { summary: "Technical detail for failure 1 — the endpoint refused",
+                    Disclosure { summary: "Technical detail — the provider refused",
                         pre { "{{\"Model\":{{\"Refused\":{{\"status\":403}}}}}}" }
                     }
                 }
@@ -108,11 +121,9 @@ fn states() -> Element {
                 p { class: "note", "The chevron rotates in 120ms and stops under reduced motion." }
             }
             EmptyState {
-                glyph: "◇",
                 title: "A region with nothing in it",
-                sentence: "Never a bare \"No data\". It says what the region is FOR and what \
-                           would put something in it, because somebody seeing this screen for \
-                           the first time is being asked to trust an empty box.",
+                sentence: "Never a bare \"No data\", and never more than one sentence: it says \
+                           what the region is for, and the panel's own disclosure says how.",
                 Button { variant: "secondary", "The one action" }
             }
             p { class: "ds-note", "Skeleton — a region that has not answered yet" }

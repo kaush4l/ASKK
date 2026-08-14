@@ -4,13 +4,13 @@
 //! browser "the same object for every agent" cannot be an object at all.
 //!
 //! That is the one place the port is not a transliteration. The Python hands
-//! every agent naming `research` the SAME `Space` instance and takes a lock
-//! around each mutation; here every agent is a Worker with its own Wasm
-//! instance and no shared memory (ADR-008), so the shared thing has to be
-//! somewhere both can see: one IndexedDB database, one key per fact and one
-//! key per note, read fresh before every model call the way the clock is.
-//! Every mutation is therefore ONE store operation — there is no half of a
-//! single put, which is the property the Python's tmp-then-`replace` buys.
+//! every agent naming `research` the SAME `Space` instance and locks each
+//! mutation; here every agent is a Worker with its own Wasm instance and no
+//! shared memory (ADR-008), so the shared thing has to be somewhere both can
+//! see: one IndexedDB database, one key per fact and one per note, read fresh
+//! before every model call the way the clock is. Every mutation is therefore
+//! ONE store operation — there is no half of a single put, which is the
+//! property the Python's tmp-then-`replace` buys.
 
 use serde::{Deserialize, Serialize};
 
@@ -59,10 +59,10 @@ impl Space {
         })
     }
 
-    /// The folder this space's agents share, as a path in the workspace's own
-    /// Linux (increment 10). It is under `/root` because that is where the
-    /// image puts a home; the model never writes this path itself — it names
-    /// files relative to it and the grant supplies the root (I6).
+    /// The folder this space's agents share, in the workspace's own Linux. It
+    /// is under `/root` because that is where the image puts a home; the model
+    /// never writes it — it names files relative to it, and the grant supplies
+    /// the root (I6).
     pub fn path(&self) -> String {
         format!("/root/spaces/{}", self.name)
     }
@@ -71,9 +71,10 @@ impl Space {
     /// now. Empty areas render nothing at all (Python `Space.context`).
     pub fn context(&self) -> String {
         let mut out = format!(
-            "space: {}\nworkspace: {} (a real folder in a Linux running in this browser \
-             — reach it with exec, read_file, write_file and list_files; what you write \
-             there is still there after a reload)",
+            "space: {}\nworkspace: {} (a real folder in a Linux running in this browser; \
+             observe says what the machine is and find_files searches it. What you WRITE \
+             there survives a reload; the Linux does not, so nothing start_process started \
+             is still running after one)",
             self.name,
             self.path()
         );
@@ -111,8 +112,8 @@ impl Space {
     }
 
     /// Remove a fact that is no longer true, and say plainly when there was
-    /// nothing to remove — a silent success would leave the agent believing it
-    /// had corrected something.
+    /// nothing to remove: a silent success leaves the agent believing it
+    /// corrected something.
     pub fn forget(&mut self, key: &str) -> (String, Option<Change>) {
         let key = key.trim().to_string();
         let Some(at) = self.facts.iter().position(|(k, _)| *k == key) else {

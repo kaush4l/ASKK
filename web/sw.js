@@ -22,6 +22,14 @@ importScripts("coi-sw.js");
 const VERSION = "dev";
 const CACHE = "askk-" + VERSION;
 
+// The container2wasm runtime is ~47MB of bytes that DO NOT CHANGE between
+// deploys, so it gets its own cache, deliberately, outside the versioned one:
+// in `CACHE` every deploy's `activate` would delete it and the next boot would
+// re-fetch 47MB over a mobile connection to run the same image. Its contents
+// are addressed by the build that produced them, not by this site's version.
+const RUNTIME = "askk-c2w";
+const RUNTIME_PATH = "/c2w/";
+
 // Only the unhashed shell is pre-cached; trunk fingerprints the JS and Wasm,
 // so those are picked up by the runtime cache under names that change on every
 // build (which is what makes cache-first correct for them).
@@ -41,16 +49,21 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE && k !== RUNTIME)
+            .map((k) => caches.delete(k))
+        )
       )
       .then(() => self.clients.claim())
   );
 });
 
-function store(request, response) {
-  if (response.ok) {
+function store(request, response, name) {
+  // status 200 only: a 206 body is a fragment, and `Cache.put` rejects on it.
+  if (response.status === 200) {
     const copy = response.clone();
-    caches.open(CACHE).then((cache) => cache.put(request, copy));
+    caches.open(name || CACHE).then((cache) => cache.put(request, copy));
   }
   return response;
 }
@@ -63,11 +76,29 @@ async function respond(request) {
   // models.json is the same kind of thing (increment 04): a hand-edited
   // catalogue with a fixed filename, so cache-first would pin the app to a
   // stale endpoint after a deploy.
+  // `Cache.match` ignores the Range header, so a cached full body would answer
+  // a ranged request with the WHOLE body at 200 — silent corruption for any
+  // media element or range-reading library. Ranged traffic skips the cache in
+  // both directions and goes to the network, which answers it correctly.
+  if (request.headers.has("range")) return fetch(request);
   const path = new URL(request.url).pathname;
+  // The c2w runtime, cache-first into its own long-lived cache (see RUNTIME).
+  if (path.includes(RUNTIME_PATH)) {
+    const held = await caches.match(request, { cacheName: RUNTIME });
+    return held || store(request, await fetch(request), RUNTIME);
+  }
   // agent-worker.js is the third file with a FIXED name whose content
   // changes with a deploy (increment 06); cache-first would boot every
   // sub-agent from the previous build's shim.
+  // …and so is every wasm-bindgen SNIPPET: trunk fingerprints the bundle but
+  // NOT the snippet modules it imports, so their URLs are fixed while their
+  // contents change with every build. Cache-first served a new bundle the
+  // PREVIOUS build's snippet, the module graph failed to link, and the page
+  // stayed on the boot message with no console error — the exact failure
+  // #boot's text describes. A deploy dodges it by stamping a new cache name;
+  // a dev server with a fixed VERSION does not, which is where it was found.
   const isData =
+    path.includes("/snippets/") ||
     path.includes("/agents/") ||
     path.endsWith("/models.json") ||
     path.endsWith("/agent-worker.js");

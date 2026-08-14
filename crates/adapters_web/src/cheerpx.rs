@@ -18,10 +18,10 @@
 //!   commercial licence. The CDN sends `cross-origin-resource-policy:
 //!   cross-origin`, which is what lets it load under COEP at all.
 //!
-//! The JS below is BINDING, not logic (I5): it is the `await` sequence from
-//! WebVM's own `WebVM.svelte`, which has no Rust equivalent because CheerpX
-//! is a JS API. Every decision — what to run, where, what to do with the
-//! result — is in `core::workspace`.
+//! The JS in `cheerpx.js` is BINDING, not logic (I5): it is the `await`
+//! sequence from WebVM's own `WebVM.svelte`, which has no Rust equivalent
+//! because CheerpX is a JS API. Every decision — what to run, where, what to do
+//! with the result — is in `core::workspace`.
 
 use kernel::{BoxFuture, Execution, WorkspaceError, WorkspacePort};
 use wasm_bindgen::prelude::*;
@@ -47,93 +47,14 @@ pub(crate) const ENGINE: &str = "https://cxrtnc.leaningtech.com/1.3.1/cx.js";
 /// it is the same workspace across reloads, which is the whole point.
 pub(crate) const CACHE: &str = "askk-workspace";
 
-#[wasm_bindgen(inline_js = r#"
-let linux = null, booting = null, queue = Promise.resolve(), out = [];
-// What the page can say about the workspace without waiting for it. The boot
-// is a promise nobody may block on, so its outcome has to be readable as a
-// value: idle → booting → ready, or error with the reason attached.
-let state = "idle", reason = "";
-
-function load(src) {
-  return new Promise((resolve, reject) => {
-    const el = document.createElement("script");
-    el.src = src;
-    el.onload = resolve;
-    el.onerror = () => reject(new Error("could not load the CheerpX engine from " + src));
-    document.head.appendChild(el);
-  });
-}
-
-async function bootOnce(engine, disk, cache) {
-  if (typeof document === "undefined")
-    throw new Error("the workspace runs in the page, not in an agent's Worker");
-  if (!self.crossOriginIsolated)
-    throw new Error("this page is not cross-origin isolated, so SharedArrayBuffer is unavailable");
-  if (!self.CheerpX) await load(engine);
-  const base = await CheerpX.CloudDevice.create(disk);
-  const cached = await CheerpX.IDBDevice.create(cache);
-  const overlay = await CheerpX.OverlayDevice.create(base, cached);
-  const cx = await CheerpX.Linux.create({ mounts: [
-    { type: "ext2", dev: overlay, path: "/" },
-    { type: "devs", path: "/dev" },
-    { type: "devpts", path: "/dev/pts" },
-    { type: "proc", path: "/proc" },
-    { type: "sys", path: "/sys" },
-  ]});
-  const decoder = new TextDecoder();
-  cx.setCustomConsole((data) => {
-    out.push(typeof data === "number" ? String.fromCharCode(data) : decoder.decode(data, { stream: true }));
-  }, 120, 40);
-  linux = cx;
-}
-
-export function cx_boot(engine, disk, cache) {
-  if (!booting) {
-    state = "booting"; reason = "";
-    booting = bootOnce(engine, disk, cache).then(
-      () => { state = "ready"; },
-      (e) => {
-        // A failed boot is retryable: the next command tries again, which is
-        // what makes a boot that raced the service worker's isolation reload
-        // recoverable without a page reload.
-        booting = null; state = "error"; reason = (e && e.message) || String(e);
-        throw e;
-      },
-    );
-  }
-  return booting;
-}
-
-export function cx_state() { return state === "error" ? "error:" + reason : state; }
-
-// One command at a time: a second cx.run while the first is live would
-// interleave two commands' output in one console.
-export function cx_exec(command) {
-  const run = queue.then(async () => {
-    out = [];
-    const status = await linux.run("/bin/sh", ["-c", command], {
-      env: ["HOME=/root", "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "TERM=dumb"],
-      cwd: "/root", uid: 0, gid: 0,
-    });
-    // The console is a terminal: it carries escape sequences and CRLF that
-    // belong to a screen, not to a captured result.
-    const text = out.join("")
-      .replace(/\x1b\][^\x07]*\x07/g, "")
-      .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")
-      .replace(/\r\n/g, "\n");
-    const code = typeof status === "number" ? status : (status && status.status) | 0;
-    return JSON.stringify({ status: code, output: text });
-  });
-  queue = run.catch(() => {});
-  return run;
-}
-"#)]
+#[wasm_bindgen(module = "/src/cheerpx.js")]
 extern "C" {
     #[wasm_bindgen(catch)]
     pub(crate) async fn cx_boot(engine: &str, disk: &str, cache: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     async fn cx_exec(command: String) -> Result<JsValue, JsValue>;
     pub(crate) fn cx_state() -> String;
+    fn cx_stop() -> bool;
 }
 
 /// The browser's workspace. Holds no state of its own: the VM lives in the JS
@@ -168,6 +89,32 @@ impl WorkspacePort for CheerpxWorkspace {
             serde_json::from_str::<Execution>(&json).map_err(|e| WorkspaceError::Failed {
                 message: format!("unreadable result from the workspace: {e}"),
             })
+        })
+    }
+
+    /// ABANDON, not kill — and the button says so (R11-1b).
+    ///
+    /// Measured, not assumed. `cx.run` returns a plain promise: no handle, no
+    /// `AbortSignal`, no `kill`, and the whole documented API is `create`,
+    /// `run`, the console setters and `registerCallback`. The ONE input channel
+    /// is the writer `setCustomConsole` returns, which is not addressed to a
+    /// process — it is the console's keyboard. A `while true; do …; done` under
+    /// `sh -c` on this console does not take the Ctrl-C: the interrupt is typed,
+    /// and the loop goes on appending to `pulse.log`. So the page stops waiting
+    /// and says the command is still in there, which is true, instead of
+    /// offering the same word c2w's real interrupt earns.
+    fn interrupt(&self) -> kernel::Interrupt {
+        kernel::Interrupt::Abandon
+    }
+
+    fn stop(&self) -> BoxFuture<'_, Result<(), WorkspaceError>> {
+        Box::pin(async {
+            match cx_stop() {
+                true => Ok(()),
+                false => Err(WorkspaceError::Failed {
+                    message: "nothing is running in the workspace to stop".into(),
+                }),
+            }
         })
     }
 }

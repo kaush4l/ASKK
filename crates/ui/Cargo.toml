@@ -22,7 +22,9 @@ dioxus = { version = "0.7", features = ["web"] }
 # imports this same bundle for its exported AgentWorker, increment 06), and the
 # one `focus()` the ARIA tabs pattern's roving tabindex requires (increment 08),
 # and localStorage for the one bit that remembers the plain skin (increment 12).
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Storage"] }
+#   …and `Location` + `EventTarget` for the one binding that makes each view a
+#   URL: read the hash at boot, write it on a change, follow `hashchange` (F13).
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Storage", "Location", "EventTarget"] }
 # wasm-bindgen: the cast behind that one `focus()` call and nothing else.
 wasm-bindgen = { workspace = true }
 

@@ -25,7 +25,14 @@ pub(crate) fn config(state: &AgentState) -> PhaseConfig {
 /// it can call: this agent's own toolbox (`subagent::toolbox_for`) narrowed
 /// by the phase's `ToolScope`.
 pub(crate) fn scoped_tools(state: &AgentState, cfg: &PhaseConfig) -> Toolbox {
-    state.toolbox.scoped(&cfg.tools)
+    // …AND NARROWED AGAIN BY THE STAGE (20). `plan` and `critique` are told in
+    // words to call nothing; this is what makes the words true. Enforcing it
+    // here rather than trusting the brief is `engine: base`'s lesson — a
+    // capability described but not enforced is a setting that looks applied.
+    match crate::stages::tools_on(crate::stages::current(state)) {
+        true => state.toolbox.scoped(&cfg.tools),
+        false => Toolbox::default(),
+    }
 }
 
 /// Assemble the paper and ask the model. The affordances and response-contract
@@ -49,6 +56,7 @@ pub(crate) fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effec
         },
         endpoint: EndpointName("model".into()),
         model: state.model.clone(),
+        temperature: state.temperature,
         speaker: String::new(), // this agent's own turn
     }
 }

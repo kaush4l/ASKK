@@ -82,19 +82,51 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
                     let (path, contents) =
                         serde_json::from_str::<(String, String)>(payload_json)
                             .unwrap_or_default();
-                    crate::workspace::save_typed(&app, &path, &contents).await;
+                    crate::typed::save_typed(&app, &path, &contents).await;
                     continue;
                 }
                 if kind == crate::files::OPEN_REQUEST {
                     let (path, folder) = serde_json::from_str::<(String, bool)>(payload_json)
                         .unwrap_or_else(|_| (payload_json.clone(), true));
-                    crate::workspace::open_typed(&app, &path, folder).await;
+                    crate::typed::open_typed(&app, &path, folder).await;
+                    continue;
+                }
+                // The Processes pane asked what is running — and, when it names
+                // one, asked to STOP it first (R10-6). Both are the agent's own
+                // tools through the same gate, so the pane can show only what
+                // the agent would have been told, and a stop from a button and
+                // a stop the model asked for are the same recorded fact.
+                if kind == crate::processes::PANE_REQUEST {
+                    let name = serde_json::from_str::<String>(payload_json).unwrap_or_default();
+                    if !name.is_empty() {
+                        crate::typed::stop_process(&app, &name).await;
+                    }
+                    crate::typed::list_processes(&app).await;
+                    continue;
+                }
+                // STOP (R11-1b). It is handled by a `drive` OTHER than the one
+                // wedged inside the command — the seam spawns one per request
+                // and this loop borrows the app only between awaits, which is
+                // exactly what makes an interrupt reachable while a command is
+                // running. That is also why it must come before anything that
+                // could await: a stop that queued behind the wedge would be the
+                // bug it exists to fix.
+                if kind == crate::terminal::STOP_REQUEST {
+                    crate::typed::stop_command(&app).await;
                     continue;
                 }
                 if kind == crate::terminal::EXEC_REQUEST {
                     let command = serde_json::from_str::<String>(payload_json)
                         .unwrap_or_else(|_| payload_json.clone());
-                    crate::workspace::run_typed(&app, &command).await;
+                    // IN FLIGHT, where a projection can see it (R2-8). The
+                    // pane's own "running…" lived in component state and died
+                    // with the component the moment you switched view.
+                    app.borrow_mut().running.push(command.clone());
+                    crate::typed::run_typed(&app, &command).await;
+                    let mut a = app.borrow_mut();
+                    if let Some(i) = a.running.iter().position(|c| *c == command) {
+                        a.running.remove(i);
+                    }
                     continue;
                 }
                 // The person stopped waiting (11b walk): the turn is over, so
@@ -121,16 +153,27 @@ pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), Cor
             };
             crate::batch::run_effects(&app, effects).await;
         }
-        // Quiescent AND no task outstanding: the turn is over, so the next move
+        // Quiescent AND nothing outstanding: the turn is over, so the next move
         // is the person's — `Waiting`, which only the entry agent may be in. The
-        // task check matters because the seam spawns a `drive` per request:
-        // while one awaits the model, the chat poll starts another that finds
+        // outstanding check matters because the seam spawns a `drive` per
+        // request: while one awaits, the chat poll starts another that finds
         // nothing pending, and it would report the agent as waiting mid-turn.
         // Only OUT OF Working: a raised turn is already `Failed`, with its why.
+        //
+        // `task` ALONE WAS NOT THAT CHECK (R13-1). Stop waiting clears the task
+        // so the swap `reconcile` defers can land (11b) — and then this wrote
+        // `Waiting` over a turn whose `sleep 90` had 71 seconds left, so the
+        // board read `main ready · 5 turns` and the Dashboard card read `main
+        // finished "…"` with a Read the reply button, for a reply that did not
+        // exist. `calling` is the call this process has handed the workspace
+        // and not had back — the same fact the Tool trace renders as a running
+        // row (`inflight`, R11-4). A turn with one of those outstanding has not
+        // finished, whatever the person stopped waiting for.
         let me = app.borrow().me().to_string();
         let finished = {
             let a = app.borrow();
             a.agent.task.is_none()
+                && a.calling.is_empty()
                 && a.board
                     .get(&me)
                     .is_some_and(|r| r.status == kernel::Status::Working)

@@ -135,34 +135,79 @@ fn the_same_note_twice_is_one_note() {
     assert_eq!(space.notes.len(), 2);
 }
 
-/// Naming the space IS the request for its tools (Python `load_agent`): they
-/// arrive on top of whatever the file declared, and an unusable name attaches
-/// nothing at all.
+/// Naming the space is what makes its tools available (Python `load_agent`) —
+/// but an EMPTY `tools:` list is what takes all of them. Empty means
+/// "everything this agent could have locally", and the space's folder is local
+/// capability; `spec.rs` refuses a malformed `tools:` line rather than
+/// emptying it, so an empty list is always something somebody wrote.
 #[test]
-fn naming_a_space_attaches_its_three_tools_and_a_bad_name_attaches_none() {
-    let named = toolbox_for(&spec("research", "[now]"), &[]);
+fn an_empty_list_with_a_space_takes_every_builtin_and_the_whole_space_set() {
+    let named = toolbox_for(&spec("research", "[]"), &[]);
     let names: Vec<&str> = named.tools.iter().map(|t| t.name.as_str()).collect();
-    // The workspace's four arrive with the space's three: the folder belongs
-    // to the space, so the capability to build in it arrives with it
-    // (increment 10).
     assert_eq!(
         names,
         [
-            "now", "remember", "forget", "post_note", "exec", "read_file", "write_file",
-            "list_files"
+            "now",
+            "list_agents",
+            "read_agent",
+            "write_agent",
+            "remember",
+            "forget",
+            "post_note",
+            "exec",
+            "read_file",
+            "write_file",
+            "list_files",
+            "start_process",
+            "list_processes",
+            "read_process",
+            "stop_process",
+            "observe",
+            "find_files"
         ]
     );
+}
 
-    let empty_list = toolbox_for(&spec("research", "[]"), &[]);
-    assert!(empty_list.get("post_note").is_some(), "an empty tools: list still gets the space");
-    assert!(empty_list.get("now").is_some(), "…on top of every built-in");
+/// THE CAPABILITY BOUNDARY (ALIGNMENT §5 item 1). A non-empty `tools:` list is
+/// the WHOLE allowlist. The space makes its tools available to name; it does
+/// not append them after the filter has run. Appended — which is what
+/// `subagent.rs` did — a read-only agent that can still see the filesystem is
+/// unrepresentable, because asking for `read_file` also hands over `exec`.
+#[test]
+fn a_non_empty_list_is_not_widened_by_the_space() {
+    let read_only = toolbox_for(&spec("research", "[read_file, list_files]"), &[]);
+    let names: Vec<&str> = read_only.tools.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["read_file", "list_files"], "exactly what the file named");
+    for mutating in ["exec", "write_file", "start_process", "stop_process", "write_agent"] {
+        assert!(
+            read_only.get(mutating).is_none(),
+            "the space must not out-grant the allowlist: {mutating}"
+        );
+    }
+    // The space's own three are named like anything else, and one named tool
+    // does not drag the other two in with it.
+    let one_space_tool = toolbox_for(&spec("research", "[post_note]"), &[]);
+    assert_eq!(one_space_tool.tools.len(), 1);
+    assert!(one_space_tool.get("post_note").is_some());
+    assert!(one_space_tool.get("remember").is_none());
+    // A named tool that the space did NOT bring is still not a tool.
+    assert!(toolbox_for(&spec("research", "[now]"), &[]).get("exec").is_none());
+}
 
-    let no_space = toolbox_for(&spec("", "[now]"), &[]);
-    assert!(no_space.get("remember").is_none());
-    assert!(no_space.get("exec").is_none(), "no space, no workspace — default deny");
-    let bad_space = toolbox_for(&spec("../etc", "[now]"), &[]);
-    assert!(bad_space.get("remember").is_none());
-    assert!(bad_space.get("exec").is_none());
+/// No space, no workspace — default deny (ADR-006), whatever the list says.
+#[test]
+fn without_a_usable_space_no_list_can_reach_the_workspace() {
+    for space in ["", "../etc"] {
+        for tools in ["[]", "[now]", "[exec, write_file, remember]"] {
+            let box_ = toolbox_for(&spec(space, tools), &[]);
+            for granted in ["exec", "write_file", "start_process", "observe", "remember"] {
+                assert!(
+                    box_.get(granted).is_none(),
+                    "space {space:?} tools {tools} must not grant {granted}"
+                );
+            }
+        }
+    }
 }
 
 /// An empty space renders its name and its workspace and nothing else — the

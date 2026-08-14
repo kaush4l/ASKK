@@ -35,6 +35,57 @@ pub fn has_calls(text: &str) -> bool {
     next_call(text, 0).is_some()
 }
 
+/// The tools this reply calls, in order, with a run of the same name folded
+/// into `write_file ×3`.
+///
+/// The transcript's notice for a reply that acts said only "calling tools" —
+/// sometimes twice consecutively — while the tool trace one column right named
+/// the tool, its arguments and its outcome (R5-20). The main column was less
+/// informative than the sidebar about its own subject, and the names were
+/// already parsed here: `has_calls` above is the guard on exactly that arm.
+pub fn named(text: &str) -> Vec<String> {
+    let mut out: Vec<(String, usize)> = Vec::new();
+    for call in parse_batches(text).into_iter().flatten() {
+        match out.last_mut() {
+            Some((name, n)) if *name == call.tool => *n += 1,
+            _ => out.push((call.tool, 1)),
+        }
+    }
+    out.into_iter()
+        .map(|(name, n)| match n {
+            1 => name,
+            n => format!("{name} ×{n}"),
+        })
+        .collect()
+}
+
+/// THE CALL'S OWN CLOSING TEXT, INSIDE AN ARGUMENT (R13-2).
+///
+/// `write_file({"path": "budget.csv", "contents": "\"item,cost\\ncoffee,4.50\
+/// \\nrent,1800\\ninternet,60\"})"})` is strictly valid JSON and this parser is
+/// right to accept it: `args_error` is `None`, `path` decodes cleanly, and
+/// `contents` decodes to the fifty bytes `"item,cost\ncoffee,4.50\nrent,1800\
+/// ninternet,60"})` — a leading quote, literal backslash-n where the newlines
+/// should be, and the call's own `"})` on the end. The model escaped its
+/// argument one level too many and swallowed its own terminator; the file on
+/// disk was one line, `wc -l` said 0, and the `awk` that was to sum it printed
+/// nothing. Measured in a browser against gemma-4-12B, and the same signature
+/// is on record for `exec` (`failed.rs`: `$ "wc -l primes.txt"})`).
+///
+/// Nothing here can know an argument is WRONG, and this does not guess. It
+/// reports the one thing the arguments themselves show: a string value ending
+/// in the three bytes that end a call. The trace already renders those bytes on
+/// screen — this is only the page reading what it is already displaying, so a
+/// row cannot print `"})` and stamp `ok` beside it.
+pub fn swallowed_close(args_json: &str) -> bool {
+    let Ok(serde_json::Value::Object(map)) = serde_json::from_str(args_json) else {
+        return false;
+    };
+    map.values()
+        .filter_map(serde_json::Value::as_str)
+        .any(|value| value.trim_end().ends_with("\"})"))
+}
+
 /// The next `name({...})` or `name()` at or after `from`, as (start, end, call).
 fn next_call(text: &str, from: usize) -> Option<(usize, usize, Call)> {
     let b = text.as_bytes();
@@ -116,17 +167,17 @@ fn scan_object(text: &str, open: usize) -> Option<usize> {
     None
 }
 
-fn skip_ws(b: &[u8], mut i: usize) -> usize {
+pub(crate) fn skip_ws(b: &[u8], mut i: usize) -> usize {
     while i < b.len() && b[i].is_ascii_whitespace() {
         i += 1;
     }
     i
 }
 
-fn is_ident_start(c: u8) -> bool {
+pub(crate) fn is_ident_start(c: u8) -> bool {
     c.is_ascii_alphabetic() || c == b'_'
 }
 
-fn is_ident(c: u8) -> bool {
+pub(crate) fn is_ident(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
 }

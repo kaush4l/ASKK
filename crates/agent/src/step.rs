@@ -4,21 +4,35 @@
 
 use kernel::{Event, EventKind};
 
+use crate::ask::{call_model, config, scoped_tools};
 use crate::effect::Effect;
 use crate::paper;
-use crate::ask::{call_model, config, scoped_tools};
 use crate::reply::{parse_reply, ParsedReply};
 use crate::state::AgentState;
-use crate::window;
 use crate::tools::ToolResult;
+use crate::{answer, ending, stages, steer, stop, verify, window};
 
 /// The frozen §11 signature. Owns ALL transitions: parse the event against the
 /// current phase's contract, match the result against its exits, emit the next
 /// phase's effects; malformed replies, illegal transitions and exhausted
 /// budgets are handled by the machine, never by prose. Consumes and returns
 /// state by value, which is what makes debugging a fold over the log.
-pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
+pub fn step(state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
+    // NOTHING NEW AFTER A STOP (R16-P0-2): `advance` starts work only by
+    // RETURNING an effect, so one check on the way out is the whole boundary.
+    let (state, effects) = advance(state, input);
+    stop::boundary(state, effects)
+}
+
+fn advance(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
     match input.kind {
+        // The person pressed Stop: recorded, NOTHING emitted — the `steered`
+        // shape one arm below, and `stop.rs` holds why. An idle agent is
+        // already stopped, so the flag only takes on a turn that is running.
+        EventKind::Custom { ref kind, .. } if kind == stop::STOP_REQUESTED => {
+            state.stopping = state.task.is_some();
+            (state, Vec::new())
+        }
         // A user utterance DURING a turn is steering, not a new turn.
         //
         // The composer used to be disabled for the duration, so this case could
@@ -26,14 +40,14 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
         // naive reading — fall through, reset the counters, call the model —
         // would ask the model twice at once and then decrement `pending_tools`
         // below the batch still in flight. So the sentence is appended to the
-        // history and NOTHING is emitted: the round already running finishes,
+        // history and NO WORK is emitted: the round already running finishes,
         // and the next `call_model` assembles a paper with the interjection in
-        // it. The agent picks it up on its next step, deterministically, with
-        // no second call and no dropped tool results.
+        // it. The agent picks it up on its next step, deterministically.
+        // …AND IT SAYS SO IN THE LOG (R18-P0-1). `steer.rs` holds why.
         EventKind::UserMessage { ref text, .. } if state.task.is_some() => {
             paper::push_history(&mut state.paper, "user", text, input.at);
             state.steered = true;
-            (state, Vec::new())
+            (state, vec![steer::carried()])
         }
         // A user utterance starts (or redirects) the turn: assemble the paper
         // under the phase's budget and ask. The Document rides the effect
@@ -42,13 +56,19 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
             state.task = Some(text.clone());
             paper::set_task(&mut state.paper, &text, input.at);
             paper::push_history(&mut state.paper, "user", &text, input.at);
-            (state.pending_tools, state.tool_rounds) = (0, 0);
+            // …and `stopping` with them: a stop ends ONE turn, not the next.
+            (state.pending_tools, state.tool_rounds, state.stopping) = (0, 0, false);
+            verify::clear(&mut state); // …and the evidence: it is one turn's
+            // …AND THE CURSOR (20): a turn starts at the first stage its file
+            // declares, and pushes that stage's instruction into the window
+            // ahead of the call. An agent with no `stages:` gets nothing here.
+            let opened = stages::open(&mut state, input.at);
             // Compaction runs at the TOP of a turn, with the question just
             // asked already in the window (Python `_step`): summarise the
             // question away and the model answers one it cannot see.
             let effect = window::compaction(&mut state, input.at)
                 .unwrap_or_else(|| call_model(&mut state, input.at));
-            (state, vec![effect])
+            (state, opened.into_iter().chain([effect]).collect())
         }
         // The summary is back. It REPLACES the older window, and the turn the
         // person asked for is taken against the compacted paper. The reply is
@@ -91,31 +111,15 @@ pub fn step(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
     }
 }
 
-/// One reply against the phase's contract. Tool calls act; anything else is
-/// the answer that ends the turn — the cheap exit every graph must have.
+/// One reply against the phase's contract. Tool calls act; anything else goes
+/// to `answer.rs`, which owns the turn's cheap exit and the gate in front of it.
 fn on_reply(mut state: AgentState, text: &str, at: kernel::Timestamp) -> (AgentState, Vec<Effect>) {
     let cfg = config(&state);
     let batches = match parse_reply(cfg.contract, text) {
         Ok(ParsedReply::Tools(batches)) if !batches.is_empty() => batches,
-        _ => {
-            paper::push_history(&mut state.paper, "assistant", text.trim(), at);
-            // A steer that arrived while THIS call was in flight has not been
-            // answered by it — the model never saw it. Ending the turn here
-            // would leave the sentence sitting in the history unanswered, with
-            // the reply to the PREVIOUS question rendered directly beneath it
-            // and nothing on screen saying it had been ignored. So the turn
-            // continues instead: one more call, carrying it.
-            if state.steered {
-                state.steered = false;
-                let effect = call_model(&mut state, at);
-                return (state, vec![effect]);
-            }
-            (state.task, state.retries, state.tool_rounds) = (None, 0, 0);
-            return (state, Vec::new());
-        }
+        _ => return answer::answered(state, text, at),
     };
     paper::push_history(&mut state.paper, "assistant", text.trim(), at);
-    state.tool_rounds += 1;
     // Batch ORDER is the schedule: a later line's calls are emitted after an
     // earlier line's, and the model sees no result until every call it wrote
     // has come back. The batch INDEX rides out on each delegation, so the
@@ -137,8 +141,7 @@ fn on_reply(mut state: AgentState, text: &str, at: kernel::Timestamp) -> (AgentS
 }
 
 /// One tool result. The batch is not done until the last one lands; then the
-/// model gets them all at once and the loop goes round — up to this agent's
-/// own `max_rounds`, after which it says it stopped.
+/// model gets them all at once and the loop goes round — up to `max_rounds`.
 fn on_tool_result(
     mut state: AgentState,
     result: &ToolResult,
@@ -146,29 +149,26 @@ fn on_tool_result(
 ) -> (AgentState, Vec<Effect>) {
     paper::push_history(&mut state.paper, "Result", &result.line(), at);
     paper::set_text(&mut state.paper, "observations", &result.line());
+    // THE FOLD, in log order — a write clears the flag, a command that printed
+    // something after it sets it. `verify.rs` holds why order is enough.
+    verify::observe(&mut state, &result.tool, result.ok, &result.output);
     state.pending_tools = state.pending_tools.saturating_sub(1);
     if state.pending_tools > 0 {
         return (state, Vec::new());
     }
+    state.tool_rounds += 1; // a round is COMPLETE when its last result lands
     // A steer is consumed by the call this round is about to make, whether or
     // not the ceiling stops the loop below — the model is asked once more with
     // the sentence in front of it, or the turn ends and the sentence is the
     // next turn's opening line. Either way it is not silently unanswered.
+    // THE CEILING IS AN ENDING LIKE ANY OTHER (R17-P0-2). It used to emit a
+    // `core.note` — the same kind the machine uses for anything it wants to say
+    // — so the only surface that could tell this ending from an answer was the
+    // conversation, by reading the sentence. The sentence moved to
+    // `core::ending`, beside the other endings' wordings, off this one fact.
     if state.tool_rounds >= state.max_rounds {
-        let ceiling = state.max_rounds;
-        state.task = None;
-        return (
-            state,
-            vec![Effect::Emit {
-                kind: EventKind::Custom {
-                    kind: "core.note".into(),
-                    payload_json: format!(
-                        "\"Stopped after {ceiling} rounds of tool calls without an answer. \
-                         Raise `max_rounds:` in this agent's file if the work needs more.\""
-                    ),
-                },
-            }],
-        );
+        let effect = ending::end(&mut state, ending::ROUND_CEILING);
+        return (state, vec![effect]);
     }
     state.steered = false;
     // Compaction runs before EVERY round, not only at the top of a turn.

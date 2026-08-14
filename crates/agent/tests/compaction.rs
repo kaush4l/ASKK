@@ -18,6 +18,8 @@ fn spec(name: &str, prompt: &str, compact_at: usize, keep: usize) -> AgentSpec {
         model: format!("model-{name}"),
         temperature: None,
         engine: "react".into(),
+        role: String::new(),
+        stages: Vec::new(),
         tools: vec![],
         space: String::new(),
         compact_at,

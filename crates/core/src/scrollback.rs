@@ -3,7 +3,6 @@
 //! still running. Split from `terminal.rs` so both hold the 200-line rule
 //! (I12); `terminal.rs` owns the route, this file owns the pixels.
 
-use kernel::EventKind;
 use module::view::{Fragment, FragmentBuilder};
 
 use crate::dispatch::Ctx;
@@ -11,100 +10,66 @@ use crate::dispatch::Ctx;
 /// The command just typed, shown before it has run. Without it the pane would
 /// look identical for however long the first boot takes.
 ///
-/// The boot sentence is told ONCE, on the command that actually boots the
-/// Linux (10 walk, finding 2): it used to be printed unconditionally, so the
-/// eleventh command in an already-booted VM claimed to be the first, and a
-/// line that is untrue ten times out of eleven stops being read on the one
-/// occasion it explains a genuine 2.1-second wait.
-pub(crate) fn echoed(command: &str, already_ran: usize) -> Fragment {
-    let waiting = match already_ran {
-        0 => "running… this first command also boots the Linux, which takes a moment.",
-        _ => "running…",
+/// …AND HOW LONG IT HAS BEEN (R11-1a). `running…` reads the same after four
+/// seconds and after seven minutes, and was the only thing on screen through
+/// both. `by` because the AGENT's in-flight command belongs here too, and it
+/// was the one nothing showed at all (`scrollrows::in_flight`).
+///
+/// THE BOOT SENTENCE IS DELETED (R11-13). This row used to add *"this first
+/// command also boots the Linux, which takes a moment"* to the first command a
+/// workspace ever ran. That was true when the Linux booted lazily; since the
+/// page PREWARMS it (`frame::WorkspaceWarmth` calls `prewarm` at paint), the
+/// first command a person types usually meets a machine the header has read
+/// `ready` for minutes, and the pane said otherwise. Boot is a status, the
+/// header pill is where statuses live, and that pill never drops at any width.
+pub(crate) fn echoed(command: &str, by: &str, seconds: Option<i64>) -> Fragment {
+    let waiting = match seconds {
+        None => "running…".to_string(),
+        Some(n) => format!("running for {n}s…"),
     };
     FragmentBuilder::new("div")
         .class("term-run pending")
         .attr("role", "status")
-        .child(prompt_line(command))
-        .child(FragmentBuilder::new("pre").text(waiting).build())
+        .attr("data-by", by)
+        .child(prompt_line(command, by, None))
+        .child(FragmentBuilder::new("pre").text(&waiting).build())
         .build()
 }
 
-/// How many commands this scrollback already holds.
-pub(crate) fn ran_count(ctx: &Ctx) -> usize {
-    ctx.recent
-        .iter()
-        .filter(|k| matches!(k, EventKind::ToolInvoked { tool, .. } if tool.0 == "exec"))
-        .count()
-}
-
-/// What the SELECTED agent's workspace is, and what the tools that reach it
-/// can actually do. The path rule is stated honestly (10 walk, finding 4):
-/// `exec` is a full shell and `cat /etc/passwd` works from it, so the path
-/// check on the other three is legibility and the VM is the containment.
-///
-/// Six lines of it stood in front of two lines of shell output (12b walk,
-/// finding D2), so it is a disclosure now: the summary is the one machine
-/// value a person scans for — the path itself — and every word of the
-/// explanation is behind it, unchanged.
-pub(crate) fn note(ctx: &Ctx, who: &str) -> Fragment {
-    let theirs = ctx
-        .agents
-        .iter()
-        .find(|s| s.name == who)
-        .and_then(|s| agent::Space::named(&s.space));
-    let (summary, text) = workspace_said(&theirs, who, &ctx.me);
-    let mut lines = FragmentBuilder::new("details")
-        .class("panel-note")
+/// A COMMAND THE RELOAD ABANDONED (R12-5). A command in flight when the page
+/// was reloaded left a request in the log and no call, and this pane dropped it
+/// whole — while the resolved rows around it survived, correctly annotated `—
+/// failed, on an earlier page's Linux`. Losing work silently, in the pane whose
+/// neighbours label the same loss, is the one thing this product refuses. The
+/// mark is `ran`'s: the same word, the same dotted row, the same channel.
+pub(crate) fn abandoned(command: &str, by: &str) -> Fragment {
+    let word = "abandoned when the page reloaded";
+    FragmentBuilder::new("div")
+        .class("term-run earlier")
+        .attr("data-outcome", word)
+        .attr("data-by", by)
+        .child(prompt_line(command, by, Some(word)))
         .child(
-            FragmentBuilder::new("summary")
-                .class("space-path")
-                .text(&summary)
+            FragmentBuilder::new("pre")
+                .class("said")
+                .text(
+                    "This command was still running when the page was reloaded. Nothing came \
+                     back, so there is no output and no exit status: the Linux it was running \
+                     in was rebuilt with the page.",
+                )
                 .build(),
         )
-        .child(FragmentBuilder::new("p").class("note").text(&text).build());
-    // The scrollback is this PAGE's log and cannot be another Worker's, so
-    // when they differ the pane says so instead of implying otherwise.
-    if who != ctx.me {
-        lines = lines.child(
-            FragmentBuilder::new("p")
-                .class("note")
-                .text(&format!(
-                    "The commands in this pane are {me}'s — this page's own. A sub-agent's \
-                     commands run in its Worker and are in its own trace, and this pane's \
-                     command box is {me}'s shell: it takes a command only with {me} selected.",
-                    me = ctx.me
-                ))
-                .build(),
-        );
-    }
-    lines.build()
+        .build()
 }
 
-/// The scanned line and the paragraph behind it. Its own fn for the 40-line
-/// rule (I12), and because the two halves are one decision.
-fn workspace_said(theirs: &Option<agent::Space>, who: &str, me: &str) -> (String, String) {
-    match theirs {
-        None => (
-            format!("No workspace for {who}"),
-            format!(
-                "{who}'s file names no space, so it has no workspace and cannot run commands. \
-                 The commands in this pane ran in {me}'s."
-            ),
-        ),
-        Some(space) => (
-            format!("Workspace: {}", space.path()),
-            format!(
-                "{who} works in the {} space, so its workspace is {} — the same folder as every \
-                 other agent whose file names that space. exec runs a shell command there. It is a \
-                 REAL shell, not a restricted one: it can read anything in this Linux, so the path \
-                 check on read_file, write_file and list_files is legibility rather than \
-                 containment — the Linux running in this tab is what the agent is confined to. \
-                 What is written there is kept in this browser and is still there after a reload.",
-                space.name,
-                space.path()
-            ),
-        ),
-    }
+/// The shared space one agent's own file names, if any. `pub(crate)` because
+/// the pane above the note asks the same question (R5-1) and two answers to
+/// "does this agent have a workspace folder" is how the panes disagreed.
+pub(crate) fn space_of(ctx: &Ctx, who: &str) -> Option<agent::Space> {
+    ctx.agents
+        .iter()
+        .find(|s| s.name == who)
+        .and_then(|s| agent::Space::named(&s.space))
 }
 
 /// The command out of the JSON the tool was called with; the raw arguments if
@@ -116,35 +81,94 @@ pub(crate) fn command_of(args_json: &str) -> String {
         .unwrap_or_else(|| args_json.to_string())
 }
 
-fn prompt_line(command: &str) -> Fragment {
-    FragmentBuilder::new("p")
+/// The prompt, and WHO typed at it. The trace attributed every call and this
+/// pane attributed none — `$ sleep 20` sat in the scrollback with nothing
+/// saying whether a person or the agent had run it, in the one pane where both
+/// land in the same list (R3-18). Same two facts, same words, both places.
+fn prompt_line(command: &str, by: &str, outcome: Option<&str>) -> Fragment {
+    let mut line = FragmentBuilder::new("p")
         .class("term-command")
+        .child(
+            FragmentBuilder::new("span")
+                .class("term-by")
+                .text(&format!("{by} ran "))
+                .build(),
+        )
         .child(FragmentBuilder::new("span").class("term-prompt").text("$ ").build())
-        .child(FragmentBuilder::new("span").text(command).build())
-        .build()
+        .child(FragmentBuilder::new("span").text(command).build());
+    if let Some(word) = outcome {
+        line = line.child(
+            FragmentBuilder::new("span")
+                .class("term-outcome")
+                .text(&format!(" — {word}"))
+                .build(),
+        );
+    }
+    line.build()
 }
 
 /// One finished command. The outcome is a WORD beside the colour, the same
-/// rule the tool trace follows.
-pub(crate) fn ran(command: &str, ok: bool, output: &str) -> Fragment {
-    let word = match ok {
-        true => "ok",
-        false => "failed",
+/// rule the tool trace follows — and now the same two words, `ok` and
+/// `failed`, said after the command rather than only in an attribute.
+///
+/// `earlier` is the R10-5 mark: this command ran on a previous page load, so its
+/// output describes a Linux that was rebuilt since and may not even be the same
+/// engine. A stale answer shown as a current one is the defect; the word says so
+/// on the row itself, beside the outcome it qualifies.
+pub(crate) fn ran(command: &str, ok: bool, output: &str, by: &str, earlier: bool) -> Fragment {
+    // A COMMAND THAT PRINTED NOTHING IS NOT A COMMAND THAT ANSWERED (R13-2),
+    // AND THIS IS NOW THE ONLY PANE THAT SAYS SO (R15-P1-4): the tool trace
+    // used to carry that qualification on its own copy of the same row, and it
+    // no longer holds shell rows at all. The word moves with the fact.
+    // …AND A STOP YOU ASKED FOR IS NOT A FAILURE (R17-P1-6). Pressing the
+    // pane's own Stop rendered `you ran $ sleep 40; echo done — failed` in red
+    // over an explanation that was honest and complete. `failed` is what
+    // happens TO you. `workspace::was_stopped` is the one predicate, so the
+    // word and the colour cannot disagree about which ending this was.
+    let stopped = crate::workspace::was_stopped(output);
+    // Neutral, not red: it belongs with the endings nobody has to fix.
+    let ok = ok || stopped;
+    let word = match (ok, earlier) {
+        (true, false) if stopped => "stopped",
+        (true, false) if crate::calls::says_nothing(output) => "ok, and it printed nothing",
+        (true, false) => "ok",
+        (false, false) => "failed",
+        (true, true) if stopped => "stopped, on an earlier page's Linux",
+        (true, true) => "ok, on an earlier page's Linux",
+        (false, true) => "failed, on an earlier page's Linux",
     };
     FragmentBuilder::new("div")
-        .class(match ok {
-            true => "term-run",
-            false => "term-run error",
+        .class(match (ok, earlier) {
+            (true, false) => "term-run",
+            (false, false) => "term-run error",
+            (true, true) => "term-run earlier",
+            (false, true) => "term-run error earlier",
         })
         .attr("data-outcome", word)
-        .child(prompt_line(command))
-        .child(
-            FragmentBuilder::new("pre")
-                .attr("tabindex", "0")
-                .attr("role", "region")
-                .attr("aria-label", &format!("output of {command}"))
-                .text(output)
-                .build(),
-        )
+        .attr("data-by", by)
+        .child(prompt_line(command, by, Some(word)))
+        .child(output_block(command, output))
         .build()
+}
+
+/// A SENTENCE WE WROTE WRAPS; A MACHINE'S COLUMNS DO NOT (R12-4).
+/// `workspace::is_prose` is the one place that knows which of the two this is,
+/// and `workspace.css` keys the wrapping off the class it puts here.
+/// …AND THE REFUSAL WE WROTE FOR THE MODEL IS NEITHER (R15-P1-5). Measured at
+/// 4973px on one line in this pane, and wrapping in the Tool trace — the same
+/// string, two treatments. `vouch::folded` is the one box both panes now use.
+fn output_block(command: &str, output: &str) -> Fragment {
+    if let Some(folded) = crate::vouch::folded(output) {
+        return folded;
+    }
+    let block = FragmentBuilder::new("pre");
+    match crate::workspace::is_prose(output) {
+        true => block.class("said"),
+        false => block,
+    }
+    .attr("tabindex", "0")
+    .attr("role", "region")
+    .attr("aria-label", &format!("output of {command}"))
+    .text(output)
+    .build()
 }

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use context::State;
 use kernel::PhaseId;
 
+use crate::defaults::{default_compact_at, default_keep_recent, default_max_rounds};
 use crate::toolbox::Toolbox;
 
 /// One planned step with its own success criteria — Verify judges against
@@ -20,7 +21,8 @@ pub struct PlanStep {
 /// The whole agent between events. Everything `step` may consult is a field
 /// here; everything not here does not exist to the agent (I7). Serializable
 /// because `Persist`ing this IS pause-and-resume (I11).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// (No `Eq`: `temperature` is an `f64`, which has no total equality.)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentState {
     pub phase: PhaseId,
     /// This agent's `model:` frontmatter key — a MODEL CATALOGUE key, never a
@@ -28,6 +30,13 @@ pub struct AgentState {
     /// can resolve it; empty means "the catalogue's default entry".
     #[serde(default)]
     pub model: String,
+    /// This agent's `temperature:` frontmatter key, or `None` where the file
+    /// named none. Rides out on `Effect::CallModel` (increment 19): the key
+    /// parsed, rendered back out and printed on the card for eighteen rounds
+    /// while reaching no request body — the `compact_at: lots` failure
+    /// (`spec::number`) in a key that looked applied.
+    #[serde(default)]
+    pub temperature: Option<f64>,
     /// What is being attempted; `None` = idle, awaiting a task.
     pub task: Option<String>,
     /// The current plan; empty in Work-first flows (RESEARCH phase-cut:
@@ -55,6 +64,12 @@ pub struct AgentState {
     /// to it since. Cleared the moment a call is made carrying it.
     #[serde(default)]
     pub steered: bool,
+    /// The person pressed Stop while this turn was running. A FLAG, like
+    /// `steered`, and for the same reason: the press is a fact about the turn
+    /// and not a queue of work. `stop::boundary` consumes it at the next step
+    /// boundary; a new turn clears it.
+    #[serde(default)]
+    pub stopping: bool,
     /// The ceiling that counter terminates on, from this agent's `max_rounds:`
     /// frontmatter. It is per-agent because the right number is a property of
     /// the WORK: a summarizer that calls two tools and a coding agent that
@@ -94,6 +109,26 @@ pub struct AgentState {
     pub summarizer_prompt: String,
     #[serde(default)]
     pub summarizer_model: String,
+    #[serde(default)]
+    pub summarizer_temperature: Option<f64>,
+    /// THIS TURN'S EVIDENCE (`crate::verify`). Two flags folded left-to-right
+    /// over the turn's tool results, and `nudges` counting how many times the
+    /// gate has already asked. All three are turn-scoped: cleared where
+    /// `pending_tools` and `tool_rounds` are, and again when a turn ends.
+    #[serde(default)]
+    pub mutated: bool,
+    #[serde(default)]
+    pub green: bool,
+    #[serde(default)]
+    pub nudges: u8,
+    /// The loop this agent's file declares (`crate::stages`), in order, and
+    /// how far this turn has walked it. Empty is the react loop alone — which
+    /// is every agent written before the key existed, and the reason nothing
+    /// about the old single-stage turn changed.
+    #[serde(default)]
+    pub stages: Vec<String>,
+    #[serde(default)]
+    pub stage: usize,
     /// The shared space this agent works in, as of the last time it was read
     /// — its facts and notes go into CONTEXT on every call. `None` means the
     /// agent's file named no space, so it works alone (Python: `space` is an
@@ -107,23 +142,6 @@ pub struct AgentState {
     pub paper: State,
 }
 
-/// How far a turn may go before the machine stops it. Sixty-four, not four:
-/// four rounds cannot finish any real task — read a file, run a build, read
-/// the errors, edit, build again is already five — and the number exists to
-/// stop a MODEL LOOPING, not to stop an agent working. It is still a hard
-/// deterministic wall, and every agent may set its own.
-pub(crate) fn default_max_rounds() -> u16 {
-    64
-}
-
-/// Python `Engine.compact_at` / `keep_recent` defaults, in one audited place.
-pub(crate) fn default_compact_at() -> usize {
-    75
-}
-pub(crate) fn default_keep_recent() -> usize {
-    24
-}
-
 impl AgentState {
     /// A fresh idle agent — the boot and the tests start here. Work is the
     /// resting phase (Plan-on-demand, RESEARCH phase-cut); the paper is the
@@ -132,6 +150,7 @@ impl AgentState {
         AgentState {
             phase: PhaseId::Work,
             model: String::new(),
+            temperature: None,
             task: None,
             plan: Vec::new(),
             cursor: 0,
@@ -144,6 +163,7 @@ impl AgentState {
             // did not ask for).
             toolbox: Toolbox::default(),
             steered: false,
+            stopping: false,
             max_rounds: default_max_rounds(),
             compact_at: default_compact_at(),
             keep_recent: default_keep_recent(),
@@ -151,6 +171,12 @@ impl AgentState {
             compactions: 0,
             summarizer_prompt: String::new(),
             summarizer_model: String::new(),
+            summarizer_temperature: None,
+            mutated: false,
+            green: false,
+            nudges: 0,
+            stages: Vec::new(),
+            stage: 0,
             space: None,
             paper: crate::paper::seed(),
         }

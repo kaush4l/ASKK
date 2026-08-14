@@ -10,15 +10,18 @@
 use std::cell::RefCell;
 
 use kernel::{
-    BoxFuture, BrokeredRequest, BrokeredResponse, ClockPort, EndpointName, ModelError, ModelPort,
-    ModelReply, NetError, NetPort, RngPort, Timestamp,
+    BoxFuture, BrokeredRequest, BrokeredResponse, ClockPort, EndpointName, NetError, NetPort,
+    RngPort, Timestamp,
 };
 
 mod agents;
+mod model;
 mod shell;
+mod shellport;
 mod stores;
 
 pub use agents::ScriptedAgents;
+pub use model::ScriptedModel;
 pub use shell::FakeShell;
 pub use stores::{MemBlob, MemKv, MemStore};
 
@@ -43,6 +46,35 @@ impl FixedClock {
 impl ClockPort for FixedClock {
     fn now(&self) -> Timestamp {
         self.now
+    }
+}
+
+/// A clock that MOVES, deterministically: every read is `step` milliseconds
+/// later than the one before. `FixedClock` cannot tell a call's START from its
+/// end, because under it they are the same instant — and that difference is the
+/// whole of R13-4, where a trace timestamped every row with the moment its call
+/// came BACK and read as though it were the moment it began.
+#[derive(Debug)]
+pub struct TickingClock {
+    at: RefCell<i64>,
+    step: i64,
+}
+
+impl TickingClock {
+    pub fn from(start: Timestamp, step_ms: i64) -> TickingClock {
+        TickingClock {
+            at: RefCell::new(start.0),
+            step: step_ms,
+        }
+    }
+}
+
+impl ClockPort for TickingClock {
+    fn now(&self) -> Timestamp {
+        let mut at = self.at.borrow_mut();
+        let was = *at;
+        *at += self.step;
+        Timestamp(was)
     }
 }
 
@@ -71,75 +103,6 @@ impl RngPort for SeededRng {
             *s ^= *s << 17;
             *b = (*s & 0xff) as u8;
         }
-    }
-}
-
-/// A model that replays scripted replies in order (ADR-010: "tests on the
-/// host with a scripted model port"). Replies are ALREADY provider-shaped
-/// chat-completion JSON bodies; `text_reply` wraps plain text for the common
-/// case. An exhausted script returns a Transport error — the honest failure.
-#[derive(Debug)]
-pub struct ScriptedModel {
-    replies: RefCell<Vec<String>>,
-}
-
-impl ScriptedModel {
-    /// Queue the replies the test's turns will consume, first to last.
-    pub fn with_replies(replies: Vec<String>) -> ScriptedModel {
-        ScriptedModel {
-            replies: RefCell::new(replies),
-        }
-    }
-
-    /// A chat-completion body whose assistant message is `text`.
-    pub fn text_reply(text: &str) -> String {
-        format!(
-            "{{\"choices\":[{{\"message\":{{\"role\":\"assistant\",\"content\":{}}}}}]}}",
-            serde_json_escape(text)
-        )
-    }
-}
-
-/// Minimal JSON string literal (kernel-only crate: no serde_json here).
-fn serde_json_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-impl ModelPort for ScriptedModel {
-    fn call<'a>(
-        &'a self,
-        _endpoint: &'a EndpointName,
-        _body_json: &'a str,
-    ) -> BoxFuture<'a, Result<ModelReply, ModelError>> {
-        let mut replies = self.replies.borrow_mut();
-        let result = if replies.is_empty() {
-            Err(ModelError::Transport {
-                message: "scripted model exhausted".into(),
-                // A loopback address, because that is what the local server a
-                // test stands in for actually is.
-                url: "http://127.0.0.1:8873/v1/chat/completions".into(),
-            })
-        } else {
-            Ok(ModelReply {
-                body_json: replies.remove(0),
-                usage: None,
-            })
-        };
-        ready(result)
     }
 }
 

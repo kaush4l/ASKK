@@ -1,17 +1,10 @@
-//! Hand an agent a task and walk away (15L).
-//!
-//! Everything in this product until now started work by TALKING to an agent:
-//! pick it in the strip, type in the composer, watch the reply. That is the
-//! human-in-the-loop half of what this is for. The other half — "a way to
-//! simply run the agents without human intervention" — had no control at all,
-//! and the workaround was to become the loop: switch to Chat, switch agent,
-//! type, wait.
+//! Hand an agent a task and walk away (15L). Everything until now started work
+//! by TALKING to an agent, and the other half — "a way to simply run the agents
+//! without human intervention" — had no control at all.
 //!
 //! This is the same seam call the composer makes (`POST /chat` addressed with
-//! `x-agent`), from the view where you are already looking at the agents, for
-//! an agent you are NOT talking to. It starts a turn in that agent's own
-//! Worker and returns immediately; the board beside it is what says how far it
-//! has got, and the Chat view is there if you decide to join in after all.
+//! `x-agent`), for an agent you are NOT talking to. It starts a turn in that
+//! agent's own Worker and returns at once; the card says how far it has got.
 
 use std::rc::Rc;
 
@@ -19,7 +12,7 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
-use crate::ui::{Button, Card, Field, Form};
+use crate::ui::{enter_submits, key_hint, Button, Card, Disclosure, Field, Form};
 use crate::views::View;
 
 /// Give one agent a task. `agent` is whoever the page has selected — the same
@@ -29,63 +22,177 @@ pub fn TaskLauncher(
     web: Signal<Option<Rc<WebApp>>>,
     tick: Signal<u32>,
     agent: ReadSignal<String>,
+    /// The `/agents` projection, for the ONE fact that decides which starter
+    /// tasks this agent can finish (R6-1).
+    agents: Signal<String>,
     /// So "watch it" is one press and not a hunt through the nav.
     view: Signal<View>,
 ) -> Element {
     let mut task = use_signal(String::new);
-    let mut sent = use_signal(String::new);
+    // WHAT was launched, at WHOM, and where that agent's row stood BEFORE the
+    // press (R2-2), SEEDED FROM THE LOG (R8-6) — and RE-SEEDED WHENEVER THE
+    // SUBJECT CHANGES (R9-2). Seeded once at mount, switching agent mid-run
+    // left `main`'s run in the card headed `RUN A TASK · RESEARCHER`, with no
+    // composer at all, over a row reading `researcher ready · no turns yet`.
+    // A scoped panel shows its own scope; this effect is that rule.
+    let mut sent = use_signal(|| None::<(String, String, u64)>);
+    use_effect(move || {
+        let who = agent();
+        let _ = web.read(); // …and again once the core has answered at all
+        sent.set(crate::receipt::last_run(web, &who));
+    });
     let who = agent();
-    let mut launch = move || {
-        let text = task.peek().trim().to_string();
-        if text.is_empty() {
-            return;
-        }
+    let mut fire = move |text: String| {
         let Some(app) = web.peek().clone() else { return };
+        let target = agent();
+        let before = crate::runstatus::since(&web, &target);
         app.handle(
             Request::post_form("/chat", &[("message", text.as_str())])
-                .with_header("x-agent", &agent()),
+                .with_header("x-agent", &target),
         );
         task.set(String::new());
-        sent.set(text);
+        sent.set(Some((target, text, before)));
         // Every panel that follows an agent redraws off this.
         let mut tick = tick;
         let n = tick.peek().to_owned();
         tick.set(n + 1);
     };
+    let mut launch = move || {
+        let text = task.peek().trim().to_string();
+        if !text.is_empty() {
+            fire(text);
+        }
+    };
+    // THE BOARD, READ ONCE FOR THIS CARD (R6-6). Read inside `LaunchedRun`,
+    // the card around it could not know whether its own run was still going.
+    let mut board = use_signal(String::new);
+    // …and WHO ELSE IS WORKING, off the same response's `x-busy` (R9-2). One
+    // read, two facts: the header the chrome's run pill already lives on.
+    let mut busy = use_signal(String::new);
+    use_effect(move || {
+        let _ = tick();
+        if let Some(app) = web.read().clone() {
+            let res = app.handle(Request::get("/board"));
+            busy.set(
+                res.headers
+                    .iter()
+                    .find(|(k, _)| k == "x-busy")
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default(),
+            );
+            board.set(res.body);
+        }
+    });
+    let projection = board.read().clone();
+    let running = sent()
+        .map(|(target, _, before)| crate::runstatus::live(&projection, &target, before))
+        .unwrap_or(false);
+    let workspace = crate::roster::has_workspace(&agents.read(), &who);
+    // Somebody ELSE's run, named in one line rather than shown in this card
+    // (R9-2). The board below lists every agent; what this adds is the DOOR, to
+    // a run that was in this card a second ago.
+    let elsewhere = busy
+        .read()
+        .split(", ")
+        .find(|name| !name.is_empty() && *name != who)
+        .map(str::to_string);
     rsx! {
-        Card { title: "Run a task", aria_label: "Run a task",
-            p { class: "note",
-                "Give {who} something to do and leave it. It runs with its own tools and its \
-                 own workspace, up to the max_rounds its file allows — in this page's engine \
-                 if {who} is the agent this page IS, and in its own Worker otherwise. The \
-                 board says how far it has got. Nothing here waits for it, and you can join \
-                 the conversation at any point without restarting anything."
-            }
-            Form {
-                oneline: true,
-                onsubmit: move |_| launch(),
-                Field {
-                    id: "task-field",
-                    r#type: "text",
-                    value: "{task}",
-                    aria_label: "Task for {who}",
-                    placeholder: "Build me a thing, and tell me when it works…",
-                    autocomplete: "off",
-                    oninput: move |e: FormEvent| task.set(e.value()),
+        // The TARGET is in the title, not buried in line 1 of a paragraph: it
+        // used to retarget with nothing in the chrome or on the button (F2).
+        Card { title: "Run a task · {who}", aria_label: "Run a task for {who}",
+            // FIRST IN THE CARD, ABOVE THE FOLD, WHERE THE BUTTON WAS (R6-6):
+            // the state of the run REPLACES the invitation to start one rather
+            // than being patched in underneath it, and everything below is
+            // rendered only while there is nothing to replace.
+            if let Some((target, text, before)) = sent() {
+                crate::runstatus::LaunchedRun {
+                    board: projection.clone(), view,
+                    who: target,
+                    task: text,
+                    baseline: before,
+                    on_retry: move |t: String| { let mut again = fire; again(t) },
                 }
-                Button { submit: true, "Run" }
             }
-            if !sent.read().is_empty() {
-                p { class: "pending", role: "status",
-                    "{who} is on it: “{sent}”. "
-                    Button {
-                        variant: "secondary",
-                        onclick: move |_| {
-                            let mut view = view;
-                            view.set(View::Chat);
+            if !running {
+                p { class: "note",
+                    "Give {who} a task and walk away — it works on its own, and “Agents and \
+                     what they are doing” below says how far it has got."
+                }
+                Form {
+                    oneline: true,
+                    onsubmit: move |_| launch(),
+                    Field {
+                        id: "task-field",
+                        // The product's PRIMARY INPUT, and it was a 44px line
+                        // (R4-4).
+                        rows: 3,
+                        class: "grows",
+                        value: "{task}",
+                        aria_label: "Task for {who}",
+                        placeholder: "Describe the whole task — what to make, where to put it, \
+                                      and what to tell you when it is done…",
+                        autocomplete: "off",
+                        oninput: move |e: FormEvent| task.set(e.value()),
+                        onkeydown: move |e: KeyboardEvent| {
+                            if enter_submits(&e) {
+                                e.prevent_default();
+                                launch();
+                            }
                         },
-                        "Watch it"
                     }
+                    // "Start agent", never "Run" (R2-10): this press dispatches
+                    // an agent that works on its own for as many steps as it
+                    // likes, where the Workspace's button runs one shell line.
+                    // DISABLED until there is a task (R2-9).
+                    Button {
+                        variant: "primary",
+                        submit: true,
+                        disabled: task.read().trim().is_empty(),
+                        "Start agent"
+                    }
+                    // WHAT THE KEYS DO (R5-5). INSIDE the form, like the
+                    // composer's: `flex-basis: 100%` means WIDTH in the form's
+                    // row and HEIGHT in the card's column — outside, it was a
+                    // 699px-tall paragraph that pushed the examples off screen.
+                    {key_hint()}
+                }
+                // WHY the primary is dead (R3-15). A disabled button was
+                // painted a shade off the secondary beside it and explained
+                // itself nowhere; `controls.css` paints it, this says it.
+                if task.read().trim().is_empty() {
+                    p { class: "note", "Start agent is off until you have typed a task." }
+                }
+                // …AND THE EXAMPLES DO NOT VANISH ON THE FIRST KEYSTROKE
+                // (R8-EX). Typing one character deleted three buttons and a
+                // lead: the card collapsed ~330px under the cursor. They go
+                // only when there is a RUN to report (R6-6).
+                {crate::examples::picks(task, &who, workspace)}
+            }
+            // ONE LINE, AND A DOOR (R9-2). Not this card's run, so not this
+            // card's card: the hash IS the view and its subject (R6-3), so
+            // naming the other conversation is the whole navigation.
+            if let Some(other) = elsewhere {
+                p { class: "note", role: "status",
+                    "{other} is still working on a task of its own — this panel is {who}'s."
+                    Button {
+                        variant: "ghost",
+                        onclick: {
+                            let other = other.clone();
+                            move |_| crate::route::show(View::Chat, &other)
+                        },
+                        "Open {other}'s chat"
+                    }
+                }
+            }
+            // The six lines this panel used to spend introducing one text
+            // field (F9). Behind the marker: the machinery they named is real,
+            // it is just not what a first press needs.
+            Disclosure { summary: "What happens when you press Start agent",
+                p { class: "note",
+                    "{who} works in the background, on its own: it can run commands in its \
+                     own folder in Linux and use its tools, for as many steps as its own \
+                     settings allow. Nothing on this page waits for it — switch views, or \
+                     open Chat and join the conversation, without restarting anything."
                 }
             }
         }

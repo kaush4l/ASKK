@@ -40,6 +40,12 @@ pub fn render_agent_file(spec: &AgentSpec) -> String {
         out.push_str(&format!("temperature: {temperature}\n"));
     }
     out.push_str(&format!("engine: {}\n", one_line(&spec.engine)));
+    // The two keys of increment 20, written even when empty for this
+    // function's stated reason — and because a round trip that DROPPED them
+    // would silently take an agent's job or its loop away the first time
+    // somebody opened the editor and saved.
+    out.push_str(&format!("role: {}\n", one_line(&spec.role)));
+    out.push_str(&format!("stages: [{}]\n", spec.stages.join(", ")));
     out.push_str(&format!("space: {}\n", one_line(&spec.space)));
     out.push_str(&format!("tools: [{}]\n", spec.tools.join(", ")));
     out.push_str(&format!("compact_at: {}\n", spec.compact_at));
@@ -72,11 +78,15 @@ pub fn new_spec(
         model: String::new(),
         temperature: None,
         engine: "react".into(),
+        // Neither a job nor a stage list: an authored agent holds no role and
+        // runs the react loop, which is what its card says (I9).
+        role: String::new(),
+        stages: Vec::new(),
         tools: tools.iter().map(|t| one_line(t)).filter(|t| !t.is_empty()).collect(),
         space: one_line(space),
-        compact_at: crate::state::default_compact_at(),
-        keep_recent: crate::state::default_keep_recent(),
-        max_rounds: crate::state::default_max_rounds(),
+        compact_at: crate::defaults::default_compact_at(),
+        keep_recent: crate::defaults::default_keep_recent(),
+        max_rounds: crate::defaults::default_max_rounds(),
         prompt: prompt.trim().to_string(),
     }
 }

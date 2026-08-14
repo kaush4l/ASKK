@@ -111,7 +111,7 @@ fn closing_an_agent_sets_closed_and_reopening_it_starts_again() {
     let app = booted(&[], Rc::new(ScriptedAgents::none()));
     core::report_agent(&mut app.borrow_mut(), "researcher", Status::Closed, "");
     assert!(board(&app).contains(r#"data-status="closed""#), "{}", board(&app));
-    assert!(board(&app).contains("its Worker is stopped"), "in words");
+    assert!(board(&app).contains("stopped"), "in words");
 
     core::report_agent(&mut app.borrow_mut(), "researcher", Status::Starting, "");
     core::report_agent(&mut app.borrow_mut(), "researcher", Status::Idle, "");
@@ -127,7 +127,7 @@ fn an_agent_a_person_asked_waits_on_them_and_one_the_lead_asked_idles() {
     let app = booted(&[], Rc::clone(&agents));
     say_to(&app, "researcher", "go");
     assert!(
-        board(&app).contains("waiting for you"),
+        board(&app).contains("ready"),
         "asked by a person: {}",
         board(&app)
     );

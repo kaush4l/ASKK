@@ -4,7 +4,7 @@
 //! this one is the heading over it.
 
 use agent::AgentSpec;
-use module::view::FragmentBuilder;
+use module::view::{Fragment, FragmentBuilder};
 
 use crate::dispatch::Ctx;
 
@@ -26,7 +26,7 @@ pub(crate) fn header(ctx: &Ctx, who: &str) -> String {
         .iter()
         .find(|(n, _)| *n == spec.name)
         .map(|(_, by)| by.as_str());
-    format!("{}{}", identity(spec, mine), crate::memory::memory(ctx, who))
+    identity(spec, mine, crate::memory::memory(ctx, who))
 }
 
 /// The agent's name, and behind it the two sentences about where it came from.
@@ -35,14 +35,25 @@ pub(crate) fn header(ctx: &Ctx, who: &str) -> String {
 /// you in this browser" from "written by the author agent", and an agent holding
 /// a `space:` has a real root shell — but that sentence lived only in the Agents
 /// panel, five thousand pixels down (increment 12). The same
-/// `authoring::origin_line` renders in both places, so the two cannot disagree.
+/// `origin::origin_line` renders in both places, so the two cannot disagree.
 ///
 /// It is a DISCLOSURE, not a stack of paragraphs: both sentences are long and
 /// neither changes while you talk, and three paragraphs of true prose before the
 /// first message made the primary surface read like documentation (12 walk,
 /// "density"). Nothing is lost — a `details` is open to find, to search, and to
 /// a screen reader.
-fn identity(spec: &AgentSpec, mine: Option<&str>) -> String {
+/// …and the WORKING MEMORY line rides inside it too (R3-14). It was the first
+/// thing in every transcript: before the first message a stranger ever sent,
+/// the product opened with "Working memory: 5 of 8 entries, every turn in full
+/// — compaction runs at 8 entries and keeps the newest 3" — an internal of the
+/// prompt assembler, in the most valuable line on the page. Not one word of it
+/// is cut and nothing about it is hidden: it is one press away, under the name
+/// of the agent it is about, beside the other two sentences about how this
+/// agent was made.
+fn identity(spec: &AgentSpec, mine: Option<&str>, memory: Vec<Fragment>) -> String {
+    let held = memory
+        .into_iter()
+        .fold(FragmentBuilder::new("div").class("agent-held"), |b, f| b.child(f));
     let origin = match mine {
         Some("") => "authored",
         Some(_) => "authored-by-agent",
@@ -69,9 +80,10 @@ fn identity(spec: &AgentSpec, mine: Option<&str>) -> String {
         .child(
             FragmentBuilder::new("p")
                 .class("agent-origin")
-                .text(&crate::authoring::origin_line(spec, mine))
+                .text(&crate::origin::origin_line(spec, mine))
                 .build(),
         )
+        .child(held.build())
         .build()
         .into_html()
 }

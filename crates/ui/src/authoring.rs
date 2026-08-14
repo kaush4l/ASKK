@@ -1,10 +1,8 @@
 //! `AgentEditor` — writing an agent in the browser (plan, increment 11). It
-//! owns the textarea and nothing else: the list beside it, who authored what
-//! and what each one's space granted are all the core's `/agents` projection,
-//! and every write crosses the same seam as everything else (I4).
-//!
-//! Loading, saving, exporting and deleting are pure browser work — no model is
-//! involved in any of them, which is why they all work on the hosted page.
+//! owns the textarea and nothing else: the list beside it and who authored what
+//! are the core's `/agents` projection, and every write crosses the same seam
+//! as everything else (I4). Loading, saving, exporting and deleting are pure
+//! browser work, which is why they all work on the hosted page.
 
 use std::rc::Rc;
 
@@ -12,46 +10,8 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
-use crate::agentfile::{export, load, post};
-use crate::ui::{has_rows, Button, Card, EmptyState, Field, Form, Skeleton};
-
-/// The row that loads an existing agent into the editor, or starts a blank
-/// one. Its own fn so the pane's body stays inside the 40-line rule (I12).
-fn picker(
-    web: Signal<Option<Rc<WebApp>>>,
-    loaded: Signal<Vec<String>>,
-    mut draft: Signal<String>,
-    mut name: Signal<String>,
-) -> Element {
-    rsx! {
-        div { class: "editor-picks",
-            for who in loaded.read().clone() {
-                Button {
-                    key: "{who}",
-                    variant: "secondary",
-                    onclick: {
-                        let who = who.clone();
-                        move |_| {
-                            if let Some(text) = load(&web, &who) {
-                                draft.set(text);
-                                name.set(who.clone());
-                            }
-                        }
-                    },
-                    "Load {who}"
-                }
-            }
-            Button {
-                variant: "secondary",
-                onclick: move |_| {
-                    name.set(String::new());
-                    draft.set(BLANK.to_string());
-                },
-                "New agent"
-            }
-        }
-    }
-}
+use crate::agentfile::{export, open_selected, picker, post, BLANK};
+use crate::ui::{Button, Card, Field, Form};
 
 #[component]
 pub fn AgentEditor(
@@ -59,32 +19,60 @@ pub fn AgentEditor(
     tick: Signal<u32>,
     loaded: Signal<Vec<String>>,
     /// Every agent THIS BROWSER holds — the only ones there is anything here
-    /// to delete. Delete used to be live for the shipped `main`, where it can
-    /// only ever be refused, and dead for an agent you had just saved until
-    /// you re-loaded it from the picks row (11b walk).
+    /// to delete (11b walk).
     authored: ReadSignal<Vec<String>>,
     agent: ReadSignal<String>,
+    /// PRESSES OF `Write a new agent`, counted (R17-P1-7). The roster's link
+    /// used to only focus this form — which arrives holding an agent — so
+    /// "new" landed on somebody else's file with a Save that would overwrite
+    /// it. A press empties the form here rather than scrolling to a full one.
+    blank: Signal<u32>,
 ) -> Element {
     let mut draft = use_signal(String::new);
     let mut name = use_signal(String::new);
-    let status = use_signal(String::new);
-    let refused = use_signal(|| false);
+    let mut status = use_signal(String::new);
+    use_effect(move || open_selected(web, &agent(), draft, name)); // R7-8
+    use_effect(move || {
+        if blank() > 0 {
+            name.set(String::new());
+            draft.set(BLANK.to_string());
+        }
+    });
+    let mut refused = use_signal(|| false);
+    // Whether Delete is ARMED (R18-P1-8) — Settings' reset signal, same shape.
+    let mut armed = use_signal(|| false);
     let target = name.read().trim().to_string();
     let deletable = authored.read().contains(&target);
+    // …AND WHAT SAVING THIS NAME WOULD REPLACE, BEFORE IT DOES (R17-P1-7). The
+    // same two facts `core::authoring::replaces_shipped` decides the receipt
+    // on, read off the two lists this pane already holds: a name the deploy
+    // shipped, with nothing of this browser's already in front of it.
+    let shipped = loaded.read().contains(&target) && !deletable;
+    // WHAT THE PRIMARY WOULD DO, and whether it can do anything at all (F15).
+    // "Save agent" was accent-filled and live over two empty fields, so the one
+    // enabled control looked like it would overwrite the agent the page was
+    // pointed at. A form that cannot produce a save does not offer one.
+    let savable = !target.is_empty() && !draft.read().trim().is_empty();
+    // The caption says what THIS FORM holds; which agent the page is pointed
+    // at is a different fact and reads as one. ONE STATE PER MOMENT (R4-6): a
+    // refused save printed its refusal AND a sentence derived from the value
+    // the core had just rejected, two lines below it.
+    let holding = match (refused(), target.is_empty(), draft.read().trim().is_empty()) {
+        (true, ..) => String::new(),
+        (_, true, true) => "This form is empty. Load an agent above, or start a new one.".into(),
+        (_, true, false) => "This form needs an agent name before it can be saved.".into(),
+        (_, false, true) => format!("This form is named {target} and has no file in it yet."),
+        (_, false, false) => format!("Saving writes {target} into this browser."),
+    };
     rsx! {
         Card { title: "Write an agent", aria_label: "Write an agent",
+            // Eight lines of preamble in front of one textarea (F9); the
+            // format and the export route are behind the marker below.
             p { class: "note",
-                "An agent is an agent.md: YAML frontmatter, then the system prompt. What you \
-                 write here is kept in this browser and takes effect at the end of the current \
-                 turn — no reload. It beats a shipped agent of the same name, so writing one \
-                 called main replaces main until you delete it again."
+                "An agent is a short text file: a few settings, then the instructions it \
+                 follows. Save one here and it is yours, kept in this browser."
             }
-            p { class: "note",
-                "Export downloads the same file public/agents/ serves. Committing it takes two \
-                 steps, not one: put it at public/agents/<name>/agent.md, AND add <name> to \
-                 public/agents/index.json — that file is the manifest, and a folder it does not \
-                 list is never fetched."
-            }
+            {crate::agentkeys::ask_author(loaded.read().iter().any(|a| a == "author"))}
             {picker(web, loaded, draft, name)}
             Form {
                 onsubmit: move |_| {
@@ -95,26 +83,64 @@ pub fn AgentEditor(
                 },
                 Field {
                     id: "agent-name",
-                    label: "Folder name",
+                    // WHAT THE FIELD IS FOR, NOT WHERE IT LANDS (R6-12). It was
+                    // labelled `Folder name` — the agent's IDENTITY, named
+                    // after the storage detail underneath it — with a
+                    // placeholder that looks exactly like an existing agent's
+                    // name, so a first-timer reads the form as "leave this
+                    // blank and you overwrite that one".
+                    label: "Agent name — what you will call it everywhere else",
                     r#type: "text",
                     value: "{name}",
-                    placeholder: "note-taker",
+                    placeholder: "a name no agent has yet",
                     autocomplete: "off",
-                    oninput: move |e: FormEvent| name.set(e.value()),
+                    // Wired to the field it is about (R4-7).
+                    "aria-invalid": if refused() { "true" } else { "false" },
+                    "aria-describedby": if refused() { "agent-status" } else { "" },
+                    // Editing clears it: it was about the old value.
+                    oninput: move |e: FormEvent| {
+                        name.set(e.value());
+                        armed.set(false);
+                        if refused() { refused.set(false); status.set(String::new()); }
+                    },
                 }
-                // `rows` makes this the multiline variant; `cols: 72` rides
-                // inside the component (12 walk: with no stylesheet a textarea
-                // falls back to 20 columns and this was a comment box).
+                // `rows` makes this the multiline variant (12 walk).
                 Field {
                     id: "agent-md",
-                    label: "agent.md",
+                    label: "The agent file — settings, then instructions",
                     rows: 14,
                     "spellcheck": "false",
                     value: "{draft}",
                     oninput: move |e: FormEvent| draft.set(e.value()),
                 }
+                if shipped {
+                    p { class: "warn", role: "status",
+                        "{target} is shipped with this site. Saving replaces it with what is in \
+                         this form, in this browser only, until you delete your copy again — \
+                         give it a different name above to keep both."
+                    }
+                }
+                // WHY THE PRIMARY IS DEAD, BESIDE IT (R18-P2). The Dashboard
+                // has said `Start agent is off until you have typed a task.`
+                // under its own dead primary since R3-15; this one was dead in
+                // exactly the same way with nothing next to it, and the reason
+                // it does have — `holding` — is four paragraphs below, past the
+                // key notes. The same sentence, in the same place, naming
+                // whichever half is missing.
+                if !savable {
+                    p { class: "note",
+                        {match (target.is_empty(), draft.read().trim().is_empty()) {
+                            (true, true) => "Save agent is off until you have named the agent \
+                                             and written its file above.",
+                            (true, false) => "Save agent is off until you have named the agent \
+                                              above.",
+                            _ => "Save agent is off until you have written the agent's file \
+                                  above.",
+                        }}
+                    }
+                }
                 div { class: "row",
-                    Button { submit: true, "Save agent" }
+                    Button { variant: "primary", submit: true, disabled: !savable, "Save agent" }
                     Button {
                         variant: "secondary",
                         disabled: draft.read().is_empty(),
@@ -127,73 +153,46 @@ pub fn AgentEditor(
                         },
                         "Export as a file"
                     }
+                    // ONE PRESS ASKS, THE NEXT DOES IT (R18-P1-8): this fired on one
+                    // click, while `Reset every endpoint` has been armed since R6-5.
                     Button {
-                        variant: "danger",
+                        variant: if armed() { "danger" } else { "secondary" },
                         disabled: !deletable,
                         onclick: move |_| {
-                            post(web, status, refused, tick, Request::post_form(
-                                "/agents/delete",
-                                &[("name", &name.peek().trim().to_string())],
-                            ));
+                            let ready = armed.peek().to_owned();
+                            armed.set(!ready);
+                            match ready {
+                                true => post(web, status, refused, tick, Request::post_form(
+                                    "/agents/delete", &[("name", &name.peek().trim().to_string())])),
+                                false => status.set(String::new()),
+                            }
                         },
-                        "Delete {target}"
+                        // Named: the destructive control says what it destroys.
+                        if !deletable { "Delete" } else if armed() { "Yes — delete {target}" }
+                        else { "Delete {target}" }
                     }
+                    if armed() && deletable { Button { variant: "ghost", onclick: move |_| armed.set(false), "Cancel" } }
+                }
+                if armed() && deletable {
+                    p { class: "error", role: "status", "⚠ This removes {target} from this \
+                        browser. Its conversation stays in the log; writing an agent of that \
+                        name again picks it back up." }
                 }
             }
             if !status.read().is_empty() {
                 p {
+                    id: "agent-status",
                     class: if refused() { "error" } else { "pending" },
                     role: "status",
                     "{status}"
                 }
             }
+            {crate::agentkeys::notes()}
             p { class: "note",
-                "Selected: {agent}. Every agent's origin, who wrote it and what its space \
-                 granted it are on its card in the Agents panel."
-            }
-        }
-    }
-}
-
-/// The starting point for a new agent: every key the loader reads, so nobody
-/// has to remember which ones exist. `tools: []` is the MAXIMAL grant and the
-/// comment above it says so — it read as "no tools" (11b walk).
-const BLANK: &str = "---\nname: \ndescription: \nmodel: \nengine: react\nspace: \n\
-                     # tools: [] means every built-in tool, write_agent included;\n\
-                     # tools: [now] is only that one.\n\
-                     tools: []\ncompact_at: 8\nkeep_recent: 3\n---\n\nYou are …\n";
-
-/// Who is loaded, and where from. Its own fn because the shell composes the
-/// page and owns no content (plan, "UI shape").
-pub(crate) fn agent_panel(agents: Signal<String>) -> Element {
-    let projection = agents.read().clone();
-    rsx! {
-        Card { title: "Agents", aria_label: "Agents",
-            p { class: "note",
-                "Loaded from public/agents/ at boot — edit an agent.md, redeploy, reload, \
-                 and the agent changes with no rebuild. An agent written in this browser is \
-                 the same file, kept here instead, and each card says which it is and what \
-                 its space granted it."
-            }
-            if projection.is_empty() {
-                Skeleton { lines: 3, label: "Reading the agent roster" }
-            } else if has_rows(&projection, "agent-card") {
-                div { dangerous_inner_html: "{projection}" }
-            } else {
-                EmptyState {
-                    glyph: "◇",
-                    title: "No agents are loaded",
-                    sentence: "Nothing was fetched from public/agents/. index.json is the \
-                               manifest and a folder it does not list is never fetched — so \
-                               either the manifest is empty or the fetch failed. You can \
-                               write one here instead: it is kept in this browser and takes \
-                               effect at the end of the current turn.",
-                    Button {
-                        variant: "secondary",
-                        onclick: move |_| crate::ui::focus("agent-name"),
-                        "Write an agent"
-                    }
-                }
+                "{holding} The page is pointed at {agent} — that is the agent Chat, Run a \
+                 task and the side panel are all about, and it is not changed by saving here. \
+                 Every agent's origin, who wrote it and what it can reach are in the Agents \
+                 panel above."
             }
         }
     }

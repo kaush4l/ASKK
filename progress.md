@@ -1185,3 +1185,1659 @@ cards calm, which is §1's rule under N2's name. §4 now says so.
 | 15A–15F | The uplift toward a better Hermes: the workspace boots on page load, the nav navigates between six views and lands on a Dashboard, a turn runs to a per-agent `max_rounds` instead of four, you can steer a run while it runs, and the frame says what the page has spent | 44+ green (`meter.rs` +2, `rounds.rs` +2), `check-layering.py` green | Local COI server: `workspace ready` and `crossOriginIsolated: true` within 3s of navigation with NO command run; nav routes all six views with one `.view-panel` visible at a time; 0 console errors | ✅ LOCAL, against the real model (omlx `gemma-4-12B-it-qat-mxfp8` @8873): a `now()` turn answered with a tool call and the meter read **3025 tokens**; then two `exec` calls into the prewarmed CheerpX Alpine returned `Linux 4.15.0-54-cheerpx i386` and `apk-tools 2.12.14`, meter **6353**. Not yet walked on the hosted page | `d60d681` `46026a3` `7be097c` `3e4fbf9` `95c535c` `a1b0cfb` | The bar-raiser's audit (BARRAISER.md) named `MAX_TOOL_ROUNDS = 4` as the single thing standing between this repo and Hermes: "everything architecturally hard is already done … and it is all wired to a loop that quits after four tool calls." Raising it exposed the next two: a 36-second WALL-CLOCK patience in `turn::watch` would have declared a working 64-round agent dead, and a composer disabled for the duration of a turn cannot be half of "human in the loop". `ModelCalled` and `ModelReply.usage` had both been in the closed set since G2 with nothing emitting or filling them. |
 | 15G–15L | The machine made visible and the loop made real: a Files pane over the CheerpX Alpine, the bar-raiser's three defects fixed, the layout gate repointed (and catching a regression), mid-turn compaction, and a task launcher that needs no conversation | 159+ green (`files.rs` +3, `rounds.rs` +3, `compact_mid_turn.rs` +1, `meter.rs` +1); `check-layering.py`, `check-selectors.py` (8 files) green | `check-layout.sh` OK in both skins after being repointed at the post-15B shell — and it FAILED first, on a real 15B regression: the agent strip at 1.99:1 text / 1.17:1 outline once it moved off the left panel onto the bare stage. Zero duplicate ids on all seven views, one `<h1>` | ✅ LOCAL, against omlx `gemma-4-12B-it-qat-mxfp8`: browsed to `notes/today.md` in the real Alpine and read "hello from alpine." out of it; steered a live run ("count to 5" → two seconds later "stop at 3 and say DONE" → **"1. 2. 3. DONE."**, one turn, nothing re-sent); launched an autonomous task from the Dashboard with no chat at any point and found `proof.txt` in the workspace afterwards | `ff6ff72` `55f6c6d` `5990e87` `f8e01e4` `20cb609` `2c2f237` | The audit earned its keep four times. 15D's steer was DROPPED whenever the reply that followed it was the final answer — the sentence sat unanswered under the answer to the previous question, and it read as an answer to the steer. The stall detector killed working runs, because the transcript renders nothing for a tool call and 36s of a long `apk add` is silence. `TIMEOUT_MS` was 30s — tighter than the work. 15H's fix (mount one view at a time) then broke the composer until you opened Settings, which is the same class of bug: a signal published by a component nobody has mounted. And 15J: a 64-round ceiling is worth nothing if round thirty cannot see round one, because compaction only ever ran at the top of a turn. |
 | 15M–15P | Artifacts, the pulse that keeps a launched run observed, a sub-agent that is no longer a black box, and an editable workspace | 172 green (`files.rs` +4, `meter.rs` +4, `rounds.rs` +3, `compact_mid_turn.rs`); all four gates green together for the first time in the series | `check-layout.sh` OK in both skins, now measuring the dash grid, the launcher field and the Files rows too; `check-selectors.py` 8 files; zero duplicate ids | ✅ LOCAL: an agent-written `artifacts/hello.html` renders as a lime page in a sandboxed pane; `researcher`'s own `now()` call reaches the page under `data-agent="researcher"`; a person edits `proof.txt` in the browser and the agent reads back "ok, and edited by a person" from the real Alpine. **Measured: the store went 39,237 → 336 events and stopped growing while idle** | `8e9461b` `2d7f9b6` `4460d14` `47072d1` | The third audit found the page was the database's own worst client. Every seam GET appended a `RequestHandled` fact, which the NEXT request cloned into `Ctx` — so polling made polling dearer, forever — and `SpaceInspector` spawned an immortal poller on every `tick`, on the view the page lands on. Both fixed, plus schema v2 to clear what was already there. The other half: whether anything observed a run at all depended on which view happened to mount a polling panel, so the shell keeps its own heartbeat now; and a Worker's tool calls and spend cross the boundary as `core.agent_activity` facts carrying the name that `ToolInvoked` does not have. Eight files had crossed the 200-line rule — six of them mine — and each was split on a real seam. |
+
+---
+
+# UX loop — critique rounds
+
+A fresh-context critic walks the running app with no source access, no docs, no
+memory of this repo. Its findings land here verbatim-enough to be actionable,
+then UI-only fix agents (also fresh) close them. The bar is Hermes; the goal is
+past it. Functionality does not change in this loop — only what the screen says,
+where it sits, and what it looks like.
+
+## Round 1 — critic report (local, http://127.0.0.1:8901)
+
+**Time to first understanding: ~40s, partial.** Tab says `ASKK`, `<h1>` says
+`HARNESS`, and no line anywhere says what the product IS or who it is for.
+
+25 findings. The three P0s:
+
+1. **The product never says what it is.** No tagline. First body text is "Give
+   main something to do and leave it." A first-timer concludes it is an internal
+   dev tool they were not meant to see.
+2. **"Run a task" silently retargets** to whichever agent was last selected in
+   Chat. The panel title, the `Run` button and the agents list all stay
+   unchanged; only line 1 of a seven-line paragraph names the new target. You
+   fire work at the wrong agent and never know.
+3. **The only CTA in the Shared-space empty state is inert.** `Ask main to
+   remember something` does not navigate, prefill, or even move focus — while
+   its sibling `Write the first message` on Chat does focus the composer.
+
+The P1s, compressed: `▾ Views` deletes the navigation and is named like a menu;
+`▾ Instruments` is silently inert on four of seven views while still rendering
+an expanded chevron; nav labels do not match their own page headings (Memory →
+`SHARED SPACE`, Trace → `TOOLS`); repo-internal identifiers are the default
+user-facing vocabulary (`max_rounds`, `Worker`, `public/agents/`, `DESIGN.md
+§8`, `shelf`); six abstract glyphs with no shared logic and no tooltips;
+explanation outweighs signal everywhere (7 lines of prose to introduce one text
+field, at 13px, 46 nodes at that size); Workspace inverts its own hierarchy —
+the live Linux sits in the 280px rail wrapping every `ls` row while two nearly
+empty cards hold the 700px column; the model-failure paragraph prints twice on
+one screen with no Retry and no link to the Settings it tells you to open; the
+header's only health dot is green while the model is unreachable; no URLs, no
+deep links, reload always dumps you on Dashboard; Trace cannot tell an agent's
+call from one the human typed.
+
+**Credit, unprompted:** the settings save confirmation, the mid-run composer
+swap (`Send` → `Send to the run`) with its `waiting for the model — 4s` clock,
+surviving reload, and `aria-current="page"` on the nav.
+
+## Round 2 — critic report (a different stranger, same cold start)
+
+**Time to first understanding: 9 seconds, down from ~40.** The tagline did the
+work — the critic named it unprompted as "the single reason I understood this at
+all" — and the nine seconds were spent triaging the header, not the product: a
+red failure pill, an amber `workspace starting…` dot and a greyed
+`No instruments here` button all sit ABOVE the sentence that explains what this
+is. We fixed the explanation and then buried it under our own alarms.
+
+20 findings. The three P0s are all about a promise the UI makes and does not keep:
+
+1. **`Watch it` lands you at the TOP of the transcript.** `stage.scrollTop = 0`,
+   newest turn ~1000px below the fold. The critic concluded the task had been
+   LOST and only disproved it by reading the DOM.
+2. **The launch confirmation never resolves.** `main is on it: "…"` sits 40px
+   from a card reading `main · failed · the endpoint was unreachable`, and the
+   confirmation is a static string with no terminal state. Two authoritative
+   statuses for one object, one of them permanently wrong.
+3. **840px of chrome before any content at 390×844.** The header stacks to
+   ~300px and the seven-item sidebar to ~660px; the task input is at y=986 and
+   the composer at y=1204, both below the fold, with the `Hide sidebar` control
+   itself buried inside the stacked header.
+
+The P1s: the header failure pill is global but sits inside the per-agent
+`Agent: author` cluster (author has had zero turns) and does not clear after the
+endpoint is corrected; five byte-identical error walls stack with no dedupe;
+Settings has no way to test the endpoint on an app whose only failure mode IS
+the endpoint; the API-key label mutates mid-typing into `(the Python reads it
+from OMLX_API_KEY)`; navigating away mid-command silently discards the running
+command and its output, contradicting our own copy — "Nothing on this page waits
+for it — switch views… without restarting anything"; `Run` with an empty field
+is enabled and does nothing, while `Save agent` next door gets this right; and
+two buttons labelled `Run`, identically styled, mean "dispatch an autonomous
+agent" and "execute one shell command".
+
+**Kept, on the record, so nobody sands it off:** the tagline; the endpoint error
+body ("three causes, ranked, actionable, no stack trace — best error copy I have
+read in an internal tool"); the save confirmation that restates the resulting
+behaviour; the shell's echoed `$ command` + `(exit status 127)`; the
+`running…` in-progress state; state-aware helper text; and the keyboard basics.
+
+## Round 3 — critic report (third stranger; verdict: NOT at the bar)
+
+**Time to understanding: 11 seconds — worse than round 2's 9.** Not because the
+words got worse: the tagline is still "the best sentence in the product". It is
+because the boot screen shows nine seconds of `booting the core…` under a header
+full of `HARNESS`, `Agent: main`, `workspace idle` — every one of them jargon to
+a stranger — and the sentence that explains the product is not on screen until
+the Dashboard paints. We wrote the explanation and then put a loading spinner in
+front of it.
+
+23 findings. The verdict, verbatim: *"a very well-written prototype, not a
+product at the top-tier bar"* — and the defence is that **the screen contradicts
+itself at the two moments that matter most**:
+
+1. **P0 — `Read the reply` opens "No messages yet."** Launch, press the button
+   the product itself offers, and land on the empty state — while the side panel
+   shows the `write_file` call and the board says `1 reply`. A reload makes all
+   three messages appear. A first-timer's single SUCCESSFUL run reads as a
+   failure at the exact moment it worked.
+2. **P0 — the board contradicts the launcher at the instant of launch.** One
+   second after Start agent: left card `main is on it: "Write a haiku…"`, right
+   card `main — ready — your turn whenever you like · no replies yet`. Two
+   adjacent panels, opposite claims, same instant — and our own copy promises
+   "'Agents running' below says how far it has got".
+
+The P1s: `Dismiss` silences the CLASS, not the instance — two further failures
+raised nothing, leaving a green `● workspace ready` (the sandbox, not the model)
+reassuring you while every turn fails. `Retry` re-ENTERS instead of re-running:
+one press appended a second `YOU: hello` and a second full error block, while the
+ordinary path correctly collapses to `Same error (×2)`. The common transient
+failure (server not up) is the one with NO Retry; the permanent one has it. There
+is no way to stop an agent — `Stop waiting` stops looking, and the `sleep 45`
+kept running. Below 1000px the nav is a 380px wall you scroll past, then it sits
+at `y = -452` while its toggle still says `Hide sidebar`. Status pills truncate to
+`● workspac…` at 800px, and at 390px the status pills are dropped while
+`Tokens, all time` survives — the vanity metric outliving the state indicator.
+One lifecycle state is worded three ways in one list (`ready to start`,
+`ready — your turn whenever you like`, `starting up`). `3 replies` counts three
+failures. And every transcript opens with `Working memory: 5 of 8 entries,
+compaction runs at 8` — which on an older session read **`11 of 8`**.
+
+**Named as genuinely good, do not sand off:** the tagline; the in-progress state
+(`in this turn for 2s · last tool: write_file`, the composer morphing to
+`Send to the run`); the unsaved-settings warning; the reload-mid-run message
+("Nothing was lost; ask again"); the three-cause endpoint explanation; roving
+tabindex on the agent tabs; the working skip link; `Same error (×N)`.
+
+## Round 4 — critic report (fourth stranger; verdict: NO, but the gap changed)
+
+**Time to understanding: 7 seconds** — 40 → 9 → 11 → 7. The critic completed a
+REAL end-to-end task unaided (asked main to write `fruit.md`, then verified the
+file existed) in about four minutes, with three moments of doubt and one dead
+end. The verdict is still No, but for a different reason than round 3's: *"the
+gap is now about trust rather than comprehension… an agent product's contract is
+'I will tell you truthfully what I did on your behalf', and this one attributes
+one agent's shell history to whichever agent you happen to have selected."*
+
+18 findings. The one P0 is ours, not a matter of taste:
+
+- **F1 — the Workspace terminal renders the actor from the SELECTED AGENT, not
+  from the record.** The same row reads `main ran $ sleep 20 — ok` or
+  `researcher ran $ sleep 20 — ok` depending on who is selected. Proof it is
+  fabricated: with researcher selected, Tool trace says "No tool has run yet"
+  for researcher while Workspace shows researcher running five shell commands.
+  Two agent-scoped views, same agent, flatly contradictory. We shipped this in
+  round 2 while fixing attribution.
+
+The P1s: the artifacts empty state's ONLY action is guaranteed to fail on a
+fresh workspace (`ls: artifacts: No such file or directory (exit status 1)`) and
+it renders that failure into the WORKSPACE FILES panel, wiping the file list —
+one CTA, three faults; no way to stop a running agent (the copy is honest, and
+honesty is not a control); the task field is a single-line input that scrolls to
+21,598px in a 958px window, so you cannot read back your own instruction;
+disabled `Delete` renders in full danger red while its disabled neighbours are
+muted, making it the only button on an empty form that looks live; a rejected
+save prints its rejection and `Saving writes my agent!! into this browser.` at
+the same time; and invalid fields are marked by colour alone, with no
+`aria-invalid`, no `aria-describedby`, and the message two fields away — the
+product's own design system says "a dot AND a label, never a dot alone".
+
+The P2s worth naming: the header grows 70px → 126px the instant you press Start
+agent, shifting everything below by 56px at the moment of highest attention;
+markdown is not rendered, so every reply prints its own backticks; the trace rail
+sits at `scrollTop 0` of 2363 while a message three inches away points at it;
+prose runs 149 characters at 14px while `h2` is 11px — headings smaller than
+body; empty states are written as prophecies ("it fills up once main has run a
+task") that were false minutes later; and one intent has five names — `Start
+agent`, `Give main a task in Chat`, `Ask researcher something`, `Send`, `Send to
+the run`.
+
+**Named as genuinely good:** the tagline; the reload-mid-run note ("the best
+sentence in the product"); the in-progress state and mid-run steering; the CTA
+that changes with state (`Watch it` → `Read the reply`); the roving-tabindex
+tablist ("correctly built"); measured contrast (body 10.2:1) and ≥44px targets;
+and spacing discipline — "every panel 24px 32px, 12px radius, 12px gap. Zero
+drift."
+
+## Round 5 — critic report (fifth stranger; NO, but the blocker is now a single sentence)
+
+**Time to understanding: 4 seconds** (40 → 9 → 11 → 7 → 4), and the critic
+completed a task of their OWN invention — "create colors.md listing three
+colors, then tell me the contents" — **first try, unaided, in about 90 seconds,
+correct**. The happy path is at the bar. Everything one step off it is not.
+
+22 findings. The verdict names one blocker: *"status truthfulness across agent
+switches… once a user stops believing an agent product's status display, nothing
+else you built matters."* Concretely:
+
+- **F1 — the side panel shows one agent's files under another agent's name.**
+  With `author` selected: `SIDE PANEL · AUTHOR` → `WORKSPACE FILES` →
+  `colors.md`, `notes.md`, plus a live editor — while the main pane on the SAME
+  SCREEN reads `No workspace for author` and the Agents view says "No space, so
+  no workspace: it cannot run commands." Per-agent panes carry over instead of
+  clearing.
+- **F2 — `● workspace ready` stays green for an agent that has no workspace.**
+
+The other trust failures: **three buttons labelled `Start agent` do not start an
+agent** — the ones in the Shared-space tile, the Shared-space view and the Tool
+trace empty state all navigate to Chat, and the critic pressed one by mistake
+within the first minute and "distrusted every button on the page thereafter";
+the same call is logged twice under two different actors (`you ran read_file` at
+09:59:02 followed by `main ran read_file` at 09:59:02, identical output), which
+destroys the you/main distinction the critic separately called "one of the
+smartest ideas in this product"; the Artifacts pane's own polling manufactures a
+red `list_files path=artifacts — failed` row and shows it to the user; the file
+editor never names the file it is editing (no selected state, contents rendered
+twice, identity only in an invisible `aria-label`) — the critic overwrote
+`notes.md` and only learned which file it was afterwards; and the composer is
+left pre-filled with the just-completed task, `Send` armed, a duplicate-submit
+trap. Enter submits with nothing saying so — the critic launched a real run by
+accident, and there is still no Stop.
+
+**The aesthetic judgement is the most useful thing in this report**, and it is
+diagnosable rather than vague: *"restrained, coherent, and slightly
+under-designed… the type system stops after three sizes."* Counted over every
+rendered leaf: **42 elements at 14px, 5 at 18px, 2 at 32px, 1 at 11px.** Prose,
+button labels, nav items, status strings, file names and code results are all
+14px, so every panel reads as one undifferentiated slab. Body leading is 1.40 —
+a UI-label leading applied to seven-line teaching prose. The typeface is
+`ui-sans-serif`: "zero typographic identity… a product with a palette this
+specific and copy this carefully written has clearly had someone's attention,
+and then shipped in the OS default font." And the two gradient blobs are the
+only ornament in the product — "tellingly, `Plain background: on` looks better:
+cleaner, more expensive, more focused. The default should probably be the plain
+one."
+
+Praised, measured, keep: panel geometry with zero drift across seven views
+(`24px 32px`, `12px`, one fill, one hairline); the focus ring; triple-clicking
+Start agent produced exactly one run and 40 rapid nav clicks produced no desync;
+`working · 8 turns / in this turn for 2s / last tool: read_file`; the
+reload-interruption copy ("best-in-class error writing"); the compaction
+disclosure — "something almost nobody does".
+
+## Round 6 — critic report (sixth stranger; NO, and the blocker is one sentence again)
+
+**~6 seconds to understanding, task completed unaided on the first attempt.** The
+critic invented their own: write `tea.md` with three numbered steps, then run
+`wc -l` and report the line count. The model answered "3 lines" and the trace
+showed `exec: 2 tea.md` — *"the UI faithfully showed me the receipt that proved
+it wrong… the trace made the model's error legible in about two seconds. That is
+the product working."*
+
+**Both round-5 aesthetic bets were validated.** The serif: *"the right call,
+applied with real discipline — exactly three elements carry it… the 18px serif
+lede at a 544px measure is the single most confident thing on the page. Ship
+it."* The plain default: *"Off is better, and putting it behind a toggle with
+the honest caption is the correct amount of respect for the user."*
+
+15 findings. The verdict names one blocker: **"the interface does not reshape
+itself around the selected agent or the current run state. It renders one
+canonical layout — main's capabilities, the idle invitation — and then patches
+contradictions in below the fold or in a corner of the header."** Three
+instances, in the critic's order of damage:
+
+1. **Press Start agent and the card resets to pristine.** Composer empties,
+   `Start agent` greys out, the three example prompts come back, and the line
+   `Start agent turns on once you have typed a task.` returns — while 300px
+   lower, below three CTAs and below the fold, the same card says `main is on
+   it`. The critic's literal note: *"did that do nothing?"*
+2. **The starter prompts never change with the selected agent, and they lead to
+   a fabricated success.** With `summarizer` selected — which the card beside it
+   correctly says works alone — all three offered prompts require a workspace.
+   The critic ran one; it "finished" and asserted *"The file notes.md was
+   successfully created"*. It was not.
+3. **The header still asserts `● Linux sandbox ready` under `Agent: summarizer`.**
+   Round 5 reworded this rather than scoping it. The wording is defensible and
+   the reading is not.
+
+Also: the selected agent is not in the URL and silently resets to `main` on
+reload while the VIEW is preserved — two adjacent selections persisting by
+different rules; the header still shears mid-word (`Agent: summari`, `Tokens,
+tin`, the model line reduced to `This`); `Reset every endpoint to the shipped
+list` is styled as a peer of Save with no confirm, in a product that already
+ships `btn-danger`; the in-flight strip wraps `waiting for the model — 0s` across
+four lines and its button across five, and its timer says `0s` while the board
+says `in this turn for 17s`; and agent-card prose runs 1044px while every other
+paragraph in the same view is 544px.
+
+**The aesthetic verdict is now about LAYOUT, not type:** *"Inside a single card
+there are three content widths: prose 544, textarea 960, panel 1136. Roughly 40%
+of every panel is dead space, on the right, on every view… and the right-hand
+void is exactly where the running state should have gone. The layout has the room
+and refuses to use it."* And: *"The typography says 'product'. The layout rhythm
+and the self-shredding header say 'internal'."*
+
+## Round 7 — critic report (seventh stranger; NO, "closer than the finding count suggests")
+
+**4 seconds to understanding; an invented three-step task done unaided, first
+try, in about 60 seconds** — `df` the workspace, write the number into
+`disk.md`, read it back. The model fumbled `write_file` into a shell (exit 127),
+recovered, and succeeded, and the critic watched the whole recovery in the live
+trace beside the conversation: *"the model fumbled twice and recovered, and I
+could see exactly how. Nothing was hidden."*
+
+**The layout system was judged half-landed.** Where it applies: *"Chat with a
+live tool trace pinned beside the conversation is a genuinely superior reading
+experience to the vertical scroll every competitor ships."* Where it does not:
+Agents ships 592px of dead space per card down a long page, Appearance opts out,
+and — the real defect — **hiding the sidebar gives every reclaimed pixel to the
+COMPANION** (reading column stays 608px, companion grows 496 → 704), so the
+secondary panel out-weighs the primary action. *"The container query is real and
+it fires; it just isn't applied everywhere, and its proportions aren't clamped."*
+
+17 findings. The verdict names the blocker: **"the product does not consistently
+tell the truth about its own internal activity."** Four instances:
+
+1. **Tool trace is 78% the app talking to itself, most of it rendered as
+   errors** — 70 `the file pane ran list_files path=artifacts — not there yet`
+   rows against 20 real `main ran` rows, growing by ~10 per visit to Workspace.
+   Round 6 fixed the ATTRIBUTION and left the noise.
+2. **The Dashboard reports a reload-killed run as a completed one** —
+   `main ready · 26 turns` — while Chat is honest about the same turn. And the
+   board is the surface our own copy nominates: "'Agents and what they are
+   doing' below says how far it has got."
+3. **The failure text rides on a row that is actively working**: the first frame
+   after the critic's first action read `main working · 23 turns · the endpoint
+   was unreachable`.
+4. **A normal configuration prints in error red** — "author is in no shared
+   space…" in red in one card and in ordinary grey in the card directly below.
+
+Plus a dead primary CTA (`Write the first message` moves nothing — the one
+button a new user presses on an empty agent), and an instruction the product
+cannot carry out (`Open its agent file` lands on the agent list, scrolled to the
+top, with no editor).
+
+**Aesthetics, third judgement running:** *"This is the work of someone with an
+actual point of view… The measure is disciplined: 541px at 16px is about 66
+characters, and it holds at 544px even in the stacked layout. Someone counted.
+I went looking for drift and found exactly one violation."* And: *"Would someone
+pay for this? For the Chat-plus-trace view, the Workspace file editor, and the
+copy — yes, without hesitation… What stops it looking paid-for is not taste, it
+is finish."*
+
+Singled out as the hardest thing in the audit and now right: **agent switching
+is completely truthful** — pill, examples, shared-space card and board all
+change together, nothing goes stale.
+
+## Round 8 — critic report (eighth stranger; the AESTHETIC verdict flipped to yes)
+
+**7 seconds to understanding; an invented task — "create primes.txt with the
+first 15 primes, then tell me their sum" — completed first try, unaided, correct
+(328), in about 90 seconds.** The critic watched `awk` fail with a shell syntax
+error and the agent silently retry, and rated the trace *"the most trustworthy
+view in the product… It does not hide the agent's mistakes."*
+
+**The aesthetic question is settled: "Yes, this now looks like something someone
+would pay for. That is a real change and I want to be clear about it before the
+criticism."** The evidence is measured, not tasted: every button in the product
+shares 44px height, 8px radius, 8/12 padding and 14px, in three tiers with no
+exceptions; gaps run 4/8/12/16/32 with no strays; and in a 900px screenshot
+there is exactly **one** off-palette colour in the whole product — the CheerpX
+credit link, used once. *"Palette discipline at that level is unusual and it is
+the single biggest reason the page reads as designed rather than assembled."*
+And on the serif: *"letting the marketing sentence be the serif while the
+machinery is all Inter is a real point of view: this thing believes the
+explanation matters as much as the controls."*
+
+19 findings. The verdict names the blocker: **"the header and side panel are
+laid out for the success case only. Every P1 above is one composition breaking
+under a state its author didn't lay out for — an error, a narrow screen, a long
+tool argument, a return visit."**
+
+1. **At 390px the agent name and the side-panel button overlap** — the name
+   occupies x=210–243 and the button starts at x=232, so it renders `Agent: m`
+   with a control sitting on top of it.
+2. **The error banner evicts the two facts you need to fix the error.** Told
+   "the endpoint was unreachable", the header drops the token meter AND the line
+   naming which endpoint. *"Error states must add information, never subtract
+   it."*
+3. **On mobile that banner reduces the conversation to 24 pixels** — header
+   297px of an 844px screen, chat log `client=24, scroll=1306`.
+4. **The banner is stale and Dismiss does not survive a reload** — it returns
+   after the endpoint has been corrected and saved.
+5. **The rail scrolls sideways and cards escape their borders** —
+   `client=372 → scroll=642`, because tool arguments never wrap — and it arrives
+   pre-scrolled to 107, decapitating its first heading.
+6. **The run receipt is ephemeral and there is no run history.** Navigate away
+   and back and "main finished / Read the reply" is gone — in a product whose
+   own copy says *"Give main a job and walk away."*
+
+Also named: four names for one place (nav `Workspace`, card `COMMANDS`, rail
+card `FILES`, rail header `SIDE PANEL`); three names for one event; two
+different claims about the same browser behaviour (Chrome "blocks" vs "asks
+permission"); `Tokens, all time` sitting beside `Agent: author` who has spent
+none; and `.".` — a double full stop in every run-status string.
+
+Also honest about the aesthetics that are still short: *"the empty states are
+essays"* (60 words to say nothing is here, repeated verbatim in the disclosure
+beneath), the 32px Unicode glyphs *"are the weakest visual element and they sit
+exactly where the eye lands"*, and glow mode *"is worse than plain — I'd
+question shipping it at all."*
+
+## Round 9 — critic report (ninth stranger; NO, on a NEW axis: concurrency and evidence)
+
+**6 seconds; task invented, run, and — for the first time in this loop — the
+critic caught the PRODUCT lying about a real failure.** Their task: "create
+primes.txt containing every prime below 50, one per line, then tell me how many
+lines the file has." Chat said *"The file primes.txt has 15 lines."*, the
+Dashboard said `main finished`, the board said `main ready · 1 turn`. The Tool
+trace, in red, said:
+
+    15:20:11 main ran $ "wc -l primes.txt"}) — failed
+      /bin/sh: syntax error: unexpected ")" (exit status 2)
+    15:20:15 main ran $ wc -l primes.txt — ok
+      exec: 0 primes.txt
+
+**The app's own evidence said 0. The app's answer said 15.** The file was one
+line of the model's malformed JSON. The critic could only prove it by typing
+`cat -A` into the command box themselves — because **the pane called FILES
+cannot open a file**: the filename is an inert `<code>`, `cursor: auto`, with no
+button or link around it. *"A first-timer would have walked away believing they
+had a file of 15 primes."*
+
+The previous blocker is confirmed fixed: *"I attacked error states, 390px,
+800px, unbounded input, unbounded output, and return visits, and the
+compositions held every time."* What broke instead is **concurrency**:
+
+1. **Reload mid-run: the card says `main finished` and the board 40px away says
+   `stopped mid-turn — the page was reloaded while that turn was in flight`.**
+   Reproduced deterministically twice. The board's sentence is right; the card
+   beside it is false, and its button says `Read the reply`.
+2. **Switching agent mid-run leaves the other agent's run in the new agent's
+   card** — header `RUN A TASK · RESEARCHER`, body `main is on it…`, no
+   composer, while the board below says `researcher ready · no turns yet`. Its
+   `Watch it` lands on researcher's empty chat.
+
+The verdict: *"the product's summaries do not inherit the truth its own evidence
+already holds. It knew the exec failed, it knew wc -l returned 0 against an
+answer of 15, it knew the page had been reloaded mid-flight — and in all three
+cases the headline still said finished / ready. Fix the propagation from
+evidence to summary, and make FILES clickable so a user can check, and my
+honest answer flips to yes."*
+
+**Aesthetics, fifth judgement: "a beautiful, disciplined interface, and I'd
+believe it was a paid product… the lowest contrast ratio in the product is
+5.18:1, on a disabled button; everything else sits between 7 and 16.8:1."** The
+glow, re-tuned last round, is now called *"depth without noise, and honestly
+better than off"*. Three things still named: prose set at 14px/1.4 (*"punishing
+for copy this good"*), compositions that deflate (the primary column shrinks to
+a 250px card mid-run beside 270px of dead space), and one lowercase fragment,
+`an agent is working…`, that *"reads like a leftover"*.
+
+## Round 10 — critic report (tenth stranger; first walk of the NEW surface)
+
+**8 seconds to understanding; an invented five-step task — start a `heartbeat`
+process, list, read, stop, and identify the machine — completed unaided, first
+try, in under two minutes.** The critic watched `last tool:` walk
+`start_process → read_process → observe → stop_process` and wrote: *"the single
+best in-progress state I have seen in this class of product. I never once
+wondered whether it had hung."* And the tool error copy earned its keep live —
+the model emitted malformed JSON, `start_process` answered *"'\"heartbeat\"})'
+is not a usable process name: use letters, digits, '-' and '_', up to 32
+characters — like web, or build."*, and the model self-corrected off it.
+
+**The new surface is the weakest thing in the product.** 13 findings, and the
+verdict names the pattern: **"the app tells the truth beautifully right up until
+something is lost, and then it goes quiet. Every loss path in the new surface
+ends in an empty state that claims nothing happened rather than a state that
+says what went."**
+
+The Processes panel:
+- **It is a `<pre>` in a 254px rail** — measured `scrollWidth 1770` against
+  `clientWidth 254`, so 86% is off-screen and the `command` column, the only
+  thing identifying WHICH process a row is, is never visible. The caption
+  truncates mid-word. *"It reads as a debug view someone forgot to promote"* —
+  the one place in the app that abandons the design system.
+- **It is read-only.** You can watch a process run and cannot stop it, and the
+  panel names a log path (`.harness/proc/<name>/log`) it gives you no way to
+  open. The only way to stop something is to ask an LLM in English.
+- **`for` is not the run time.** A process that ran 46s and stopped seventeen
+  minutes ago showed `for 16m56s`, climbing, on successive visits — and it
+  refreshes every ~40s while the agent card beside it ticks every second.
+- **After a reload on the forgetting engine it says `Nothing has been started`**
+  — while Chat one click away still shows `ticker is running (pid 24)`, and the
+  panel's OWN caption documents the state that should appear: *"gone was started
+  before this page's Linux was rebuilt, so its record survived and it did not."*
+
+The engine setting: the copy was called *"the best thing here"* and the safety
+*"the worst"*. The dropdown offers two bare product names a first-timer has never
+heard. `Reload the page` is a plain `btn-secondary` with no confirm and no
+`beforeunload` — the critic lost a run in flight AND every file on one unmarked
+click, while the app's header still read `main is working…`. Meanwhile
+`btn-danger` red is spent on `Reset every endpoint`, which is recoverable. And
+the Commands history survives an engine switch unlabelled: one screen showed
+`Linux localhost 6.1.0 … x86_64` above the CheerpX credit paragraph, on a
+machine that is `4.15.0-54-cheerpx i386`.
+
+Also: `observe()` reports `uptime 0s` on a minutes-old machine and `memory 0 kB
+free of 700 MB`; `Nothing has been run yet` appears after the agent ran six
+tools in that workspace; and the agent's answer contradicted its own trace (it
+claimed a timestamp `read_process` had returned `(nothing yet)` for) with the
+fabrication rendered at the same weight as a backed answer.
+
+**Aesthetics: "a designed product, not a themed one… Would someone pay for how
+this looks? Yes — everywhere except the right rail of the Workspace view."**
+
+## Round 11 — critic report (eleventh stranger; a P0, and it is the Stop we kept deferring)
+
+**8 seconds to comprehension — "the fastest I have measured on this product
+class" — and boot rated "a straight A. It is the best part of the product."**
+
+Then the critic's own first task wedged the product permanently. They wrote
+*"Start a background process that appends the date to pulse.log every second and
+keeps running"* — ordinary phrasing — and the agent rendered "keeps running" as a
+FOREGROUND `while true` loop. The shell never returned, and for the next seven
+minutes six surfaces each said something false and cheerful:
+
+    header      ● main's Linux workspace · ready      (green)
+    Files       Nothing listed yet — the workspace is being asked…
+    Processes   Nothing has been asked yet — …
+    Commands    Running…                              (no elapsed, no cancel)
+    Chat        waiting for the model — 285s
+    Tool trace  No tool has run yet
+
+**There is no control anywhere on the page that ends a running command.** The
+only exit is the browser's reload button, which the product never suggests.
+*"A product whose stated ambition is that nothing is lost silently cannot ship a
+state in which everything is stuck loudly and the header still says ready."*
+
+Three more, all from that one wedge:
+- **The stall banner's clock is dead.** `Nothing has changed for 36 seconds`
+  held at 36 for four minutes while two clocks beside it read 240s. *"Once one
+  number on screen is provably false, none of them are trusted."*
+- **`waiting for the model` was shown when we were not waiting for the model.**
+  The wire showed ONE `POST /v1/chat/completions → 200 (20ms)`; the model had
+  answered four minutes earlier. The stall copy then sent them to Settings to
+  debug a healthy endpoint.
+- **In-flight tool calls are invisible.** Chat said "calling exec, observe,
+  find_files" while Tool trace said "No tool has run yet" — and after the reload
+  Files listed `pulse.log`, written by that exec, while the trace still said
+  nothing had run.
+
+And attribution regressed: commands the critic typed themselves were filed as
+`main ran $ id; echo marker-from-user` in the permanent record, under agent
+activity rather than the app's-own-activity toggle that exists for exactly this.
+The same pane had said `you ran` earlier.
+
+**Everything after the wedge worked and was praised.** The Processes panel with
+its Stop and log-open, the third `GONE` state, the retro-annotation
+`— ok, on an earlier page's Linux`, and above all the lost-process copy, called
+*"the single best piece of copy in the product"*: *"pulse_logger and ticker were
+started here, and nothing is left of them. This page's Linux keeps its
+filesystem in memory, so the reload that rebuilt it took .harness/proc with it."*
+The engine card: *"a first-timer can make this choice correctly with no
+background."*
+
+**Aesthetics: "a designed product, not a styled one, and the difference shows
+immediately."** Three voices used with discipline — serif for prose, sans for
+chrome, mono for anything the machine said — *"you can tell what kind of thing
+you are reading before you read it."* Still short: uppercase letterspaced
+headings stacked three deep in the rail *"shout in unison and flatten
+hierarchy"*, ~700px of the cold rail spent saying "nothing yet" three ways, and
+`GONE` looks quieter than `STOPPED` when it is the more alarming state.
+
+### Round 12 — fixed (16M, `c01011d`)
+
+All seven dispatched as one wave. Root causes, not symptoms:
+
+- **R12-2** `adapters_web/src/model.rs` mapped *every* `fetch` rejection to
+  `Transport`. `AbortSignal::timeout` rejects exactly as a refused connection
+  does — so our own 300s budget wore the unreachability remedy about a server
+  that had answered 204 and taken the POST. `ModelError::Timeout` +
+  `core/src/remedy.rs`; the wait row states the budget it is waiting out.
+- **R12-1** `cx_stop()` cleared `giveup` and nothing else, so abandoning erased
+  the only evidence a command was still in there. `Warmth::Occupied`.
+- **R12-3** `filelist::newest` folded the newest read out of the whole log with
+  no boot boundary — `filegone` and `scrollrows` already apply
+  `!durable && i < booted` to the same log; this one did not.
+- **R12-7** root cause found in the browser, not in the code: `prewarm` records
+  `booting` a microtask after it spawns, and the pill polls at 500ms, so a warm
+  boot falls *between two reads*. Amber was never observable.
+
+R12-4/5/6 as specified. Gates green including `--release`; the layout gate
+caught the new budget text overflowing 320px before it shipped.
+
+Open, deliberately: the trouble banner still offers **Open Settings** on a
+timeout — the one place a timeout borrows the endpoint failure's furniture.
+
+### Round 13 — critique (fresh context, no source)
+
+Time to correctly state what this is and what to do first: **~12 seconds**, 11
+of them reading. *"That is a genuinely excellent cold open… this beats most
+hosted agent products at the 10-second mark."* Zero configuration: the header's
+claim about the default endpoint was checked against `/v1/models` and was true.
+
+Then it invented its own task — a CSV, a shell sum, a number — and the product
+failed it in the one way that matters.
+
+**P0-1 — "Stop waiting — main keeps working" makes two other panes say the run
+finished.** Clicked at 02:40:40 on a `sleep 90`. At 02:40:40 the Dashboard card
+said `main finished "…MARKER_B…"` and offered **Read the reply**; the board said
+`main ready · 5 turns`. The command actually landed at 02:41:51 — the card said
+*finished* 71 seconds early, for a reply that did not exist, and never corrected
+itself over the following two minutes. Reproduced twice. The button's own copy
+is the best-written control in the app; the dashboard contradicts it.
+
+**P0-2 — a corrupt write and a fabricated number, both stamped `ok`.**
+`od -c` on the file the agent "wrote": 50 bytes on ONE line — a leading `"`,
+literal backslash-n instead of newlines, and a trailing `"})`. `wc -l` = 0, so
+the `NR>1` awk never fired and `exec:` was `(no output)`. The trace renders the
+argument as `contents="…internet,60"}) path=budget.csv` — **the `"})` is
+visible in the UI** — and still says `— ok` and `write_file: wrote budget.csv`.
+The next line of chat is `The total cost is 1864.50.` with no hedge. *"A
+plausible wrong answer with a green checkmark."*
+
+**P0-3 — raw JavaScript rendered as agent status.** With a stale service worker
+(a returning user after any redeploy): `⚠ author's last turn failed: Failed to
+fetch dynamically imported module: http://127.0.0.1:8901/ui-<hash>.js`, and
+three of four agent cards wore that string as their status. The app HAS
+hand-written prose for exactly this ("almost always an old service worker…"),
+but it only fires when the shell fails; here the shell loaded and only the
+agents broke.
+
+P1-4 trace timestamps are COMPLETION times reading as start times (`sleep 90`
+started 02:40:21, logged 02:41:51) — a silent off-by-duration on every row.
+P1-5 the legend promises a running token total in the header; at 390px both
+token elements are in the DOM with `offsetParent: null`, and the legend that
+would explain the absence is itself inside the collapsed drawer. P1-6 the Base
+URL field empties after a successful save.
+
+**What held under attack, measured:** the glow toggle's claim `nothing else
+changes: every control, word and number is the same either way` verified by
+diffing `body.innerText` — identical. Contrast sweep over every rendered leaf
+text node: zero failures. Zero interactive elements under 24px. Roving tabindex
+correct on the agent tablist. Inactive panels genuinely `hidden` from a screen
+reader. At 390px `scrollWidth === clientWidth === 390`, zero overflow. The two
+error messages *corroborate each other* — the unreachable one fails instantly,
+which is what the timeout copy claims it would do. And the app volunteered a
+failure nobody asked about: *"The older messages could not be shortened to make
+room, so this turn was sent with the whole conversation instead."*
+
+Verdict: *"Not yet — the surfaces are more honest than any agent product I have
+used, but the dashboard's summary of a run is not derived from the run."*
+
+### Round 13 — fixed (16N, `dd7852c`)
+
+Three agents, split so they could not collide on files. Root causes, not
+symptoms — and the fourth round running where the root cause was **a projection
+reading the log without a boundary its neighbour already applies.**
+
+- **P0-1** `runtime.rs` decided a turn was over with `task.is_none() && board[me]
+  == Working`. `task` was standing in for "nothing is outstanding", and Stop
+  waiting deliberately clears it — so the press wrote a status fact saying the
+  turn had ended while the `exec` was still in `App::calling`, the list the
+  trace reads to draw a running row. The test now also requires
+  `calling.is_empty()`. The card corrects itself now, four seconds after the
+  trace logs the marker.
+- **P0-2 the parser was INNOCENT**, and proving it was the work. The model
+  escaped one argument one level too deep and swallowed its own terminator into
+  the value; `scan_object` correctly ignored the `})` inside the string and
+  `from_str` correctly succeeded. Same signature already on record for `exec` in
+  `failed.rs` — a tic of this model, not a one-off. So the fix is honesty:
+  `vouch.rs`, one predicate feeding the trace word AND the chat clause so they
+  cannot disagree. `ok, but the arguments end with this call's own "})`, and
+  `ok, and it printed nothing` — never a failure, because `mkdir` legitimately
+  prints nothing.
+- **P0-3** the Worker's exception string travelled from `agent-worker.js` to the
+  board card, `x-failed` and the trouble pill untouched. There was no typed
+  variant, so `remedy.rs` could not have had a remedy. `CoreError::StaleAssets`
+  now, recognised in one place from Chrome's and Safari's wordings, wearing the
+  boot fallback's own prose — and claiming only what `sw.js` actually does.
+  Manufactured for real: two builds, a live SW, an activated update.
+
+P1-4 timestamps read from the request's log index, `ended ` where the log holds
+only the return; `adapters_test` gains a `TickingClock` because `FixedClock`
+cannot tell a call's start from its end. P1-5 the token pill costs a row of
+height, not a fact — visible at 390, 320, and 320×256.
+
+**P1-6 could not be reproduced across ten flows and the agent said so** instead
+of inventing a fix. It found the divergence the report's shape describes:
+`endpoint_summary()` swallows a resolve-miss as an empty Entry via
+`unwrap_or_default()`, while the picker reads `entry_fields(name)`. Two reads of
+one fact, one of which can come back silently empty.
+
+Every fix verified to fail before and pass after — `findings13c` by reverting one
+`install.rs` line, `findings13b` by neutering `vouch::doubt` and `tracerow::when`.
+243 passed, 0 failed, all gates green on the combined tree.
+
+Operational: the browse daemon is SHARED between fix agents. One switched tabs
+under another mid-run and a sibling held port 8903, producing a bogus "before"
+reading until it was caught. Future waves get per-agent ports.
+
+### Round 14 — critique (fresh context, no source)
+
+Understood on the first painted frame — *"Zero seconds of confusion."* Interactive
+under 1s. No guessing, no backtracking, Settings never opened.
+
+Then it invented a task (every prime below 200, one per line, then count the
+lines), got `The file primes.txt contains 46 lines.`, and checked:
+
+```
+you ran $ pwd; ls -la; wc -l primes.txt — failed
+/root/spaces/research
+total 0
+wc: primes.txt: No such file or directory
+```
+
+**46 is the correct prime count and the file is fiction.** It then closed the
+cwd hole itself — the agent's `exec` runs in the same `/root/spaces/research`
+the pane reads, proven by writing from both sides and matching md5s against the
+host.
+
+**P0-1** the trace corroborated the fiction: entry 10 `— ok` / `exec: 46` on a
+displayed command that is *not valid Python on one line*, so the trace is not
+showing the bytes that ran.
+
+**P0-2 is round 13's defect, one layer deeper.** The product's OWN suggested
+prompt wrote 179 bytes of un-parsed tool-argument fragment to disk —
+`"- I can perform research…"})`, one line, literal `\n`, leading `"`, trailing
+`"})` — and counted it a clean call. **We now detect this and write it anyway:**
+chat printed `calling write_file — Tool trace cannot vouch for 1 of them` and
+the file was written regardless, with the model's success claim passed through.
+A well-formed call was byte-perfect, so it is specifically the un-parseable-args
+path.
+
+**P0-3** two panes, same command, same timestamp: Commands says `— failed, on an
+earlier page's Linux` with the true stdout and `(exit status 1)`; the trace says
+`— not there yet / There is no . folder yet — nothing has written to it.` The
+file-listing empty state leaking onto a shell command — it parsed `ls -la`'s `.`
+as a folder.
+
+**P0-4, observed once, NOT reproduced in ~15 attempts:** a completed turn
+vanished from every pane with no reload (`performance.now()` 362s, no
+navigation) — `ready · no turns yet`, `No messages yet`, `No tool has run yet`,
+token pill gone. A reload restored all of it, so the durable store was intact
+and only the live signals had emptied.
+
+P1-1 **there is no way to stop a run** — 132s burned on nine identical failing
+quoting attempts, and nothing says reload is the kill switch. P1-2 the board
+read `ready · 5 turns` beside the stop-waiting note — must be checked against
+16N, which fixed exactly that. P1-3 the Files pane asserted *"nothing has
+written to it"* 400px below a `probe.txt` visible in Commands. P1-4 the credit
+link has no `target`, so it navigates away in place and kills a running agent.
+P1-5 the two traces sort in opposite directions.
+
+**What held, tried and failed to break:** reload mid-run agrees in three
+registers and the orphans return as `— ok, on an earlier page's Linux`, called
+*"the most honest string I have seen in an agent UI."* Stop-waiting kept its
+promise — the critic assumed the late reply would be dropped, checked, and
+**retracted its own finding**. File persistence verified by md5 against the host.
+Dead endpoint: every pane agreed. Zero contrast failures at both widths in both
+skins (its first pass flagged three; it caught its own compositing error and
+withdrew them). Zero targets under 24px bar an inline link exempt under 2.5.8.
+20 tab stops, DOM order matching visual order, real roving tabindex with
+manual activation. 390px *"a real layout, not a squeeze"* — the endpoint pill
+rewrites rather than truncates.
+
+Verdict: *"the writing, the honesty vocabulary, the reload semantics and the
+measured craft are already better than most of them, but the tool layer will
+report `ok` for a call that produced nothing and write unparsed argument text to
+disk as a success, so the one surface a user must be able to trust — did it
+actually do the thing — is the one surface that lies."*
+
+### Round 14 — fixed (`8f811bd`, amended)
+
+Three agents. **Three of the round's findings turned out to be wrong, and
+saying so was worth more than three fixes.**
+
+- **P0-2 REVERSES ROUND 13.** Thirteen concluded "refusing the call on a
+  heuristic would be worse than writing what the model asked for", so we built
+  detection and let the write through; fourteen wrote 179 bytes of raw
+  tool-argument fragment to disk using the product's OWN suggested prompt. The
+  bytes are garbage either way, so a refusal the model can see beats a corrupt
+  file plus a false success. `Toolbox::check` — the single gate every
+  model-issued call passes — now refuses on `swallowed_close`, nothing reaches
+  `WorkspacePort`, and the refusal names what was wrong with the arguments.
+  **The model read it and rewrote the call correctly on the next round, first
+  try:** 179 bytes/one line/`"})` → 205 bytes/three real lines. `exec` refuses
+  on the same predicate; the neutered run proved the corruption really did reach
+  the shell (`FakeShell::ran()` recorded `"wc -l primes.txt"})`).
+  Two existing tests were premise-reversed and updated with the reason.
+  `vouch::Doubt::Malformed` STAYS — the durable log replays events written
+  before this fix, so the qualified `ok` still has to render for them.
+- **P0-1 was a display bug.** `.tool-args` had `white-space: normal`, so a
+  three-line `python3 -c` collapsed into one line of invalid Python while the
+  shell got the real program. One property on the two elements that render a
+  command. The missing `primes.txt` was the model's own doing.
+- **P0-3** `filelist::missing` was a substring test over ANY tool's output with
+  no idea which call produced it, and `path_of` defaults to `"."` — hence "There
+  is no . folder yet" on a shell command. The neighbour with the boundary was in
+  the same file: `newest` only ever collects `list_files` and `read_file`. Two
+  sibling callers were latently wrong the same way, including `is_failure`,
+  which was EXCUSING a failed command from the turn's failure clause.
+- **P1-3** the Files pane gated asking for a listing on the agent's board status
+  stamp, which a person typing a command never moves; it now follows the log via
+  `x-workspace-at` on the listing it already reads — one fewer `/board` request
+  per tick. And the copy stopped asserting the present tense of a disk:
+  `Nothing was in the workspace folder when this listing ran.`
+- **P1-5 was measured and refuted** — both traces are oldest-first and identical
+  in the DOM. What differed was which end was scrolled into view.
+
+**P0-4 was OUR TOOLING, not the product**, and the agent reproduced it by
+accident: a read came back `No messages yet` with `"url":"…:8907/"` in the same
+payload — a sibling agent's page. That one event produces every symptom at once,
+including the token pill being absent rather than zero and a reload "restoring"
+it. Backed by the code argument: all four surfaces fold one `App.log`,
+`app.rs:148-169` is the sole mutation and only ever appends, and an in-place
+emptying would need a second App booted against an empty store — which the
+restoring reload disproves. Both leads were already closed; `space.rs` got its
+`watching` guard in 15M.
+
+**P1-2 does not reproduce at HEAD** — `dd7852c` holds; the critic measured a
+`dist` a sibling had rebuilt. **Both P2 items were wrong**: the endpoint pill
+does carry a `title` and shows an ellipsis, and the `uname -a` button's
+accessible name is intact — it vanishes only from the snapshot tool's YAML
+parser, which drops values quoted because the name contains a backtick.
+
+P1-4 fixed and generalised: the app has exactly two outbound anchors, both now
+`target="_blank" rel="noopener noreferrer"`, with a test that walks
+`crates/ui/src` and fails on any bare `http` href.
+
+**Open, and the owner's call: there is still no way to stop a run.** The critic
+burned 132s on nine identical failing quoting attempts with no exit but
+reloading, and nothing says reload is the kill switch.
+
+**Harness lesson, twice now:** the shared browse daemon switches tabs under an
+agent. Per-agent ports were not enough — a wave needs `location.href` asserted
+in the same read as the finding, and a throwaway worktree per agent, since the
+shared tree went transiently uncompilable mid-run.
+
+### I12 was law and nothing enforced it (`scripts/check-size.py`)
+
+`CLAUDE.md`: "files ≤ 200 lines, functions ≤ 40 … Violations are bugs."
+`check-selectors.py` has `MAX_LINES = 200  # I12` and applies it to **CSS
+only**. Nothing had ever checked Rust, so five source files had drifted over
+during this session's work — `procwatch.rs` 294, `process.rs` 231,
+`dispatch.rs` 227 (192 at origin), `adapters_test/src/lib.rs` 212 (162),
+`authoring.rs` 208 (187). Every "all gates green" in this ledger was true of
+the gates that existed.
+
+`scripts/check-size.py` now walks `crates/*/src` — tests are out of scope by
+established practice (`core/tests/skeleton.rs` has been 296 since G4). It
+counts as `wc -l` does, not `splitlines()`: `transcript.rs` has no trailing
+newline and commit `2d7f9b6` landed it at exactly 200, so `wc -l` is what I12
+has always meant here.
+
+All five split by responsibility, not by line count: `model.rs` (the only fake
+that speaks a provider's wire format), `ctx.rs` (the SHAPE of a capability
+context vs the routing that constructs one — ADR-006's line), `origin.rs`
+(belongs to neither of its two callers, and its point is that they cannot
+disagree), `proctable.rs` (all processes vs one named one), `procstart.rs`
+(the only tool that WRITES the `.harness/proc` convention; the other three
+read it). 253 tests before, 253 after.
+
+**And the function half is the bigger finding.** The brace-depth scan works
+with zero false positives — and the tree holds **69 genuine violations** of the
+40-line rule across 8 crates: `runtime.rs:drive` at 151, `transcript.rs:
+transcript` at 157, `ui/src/chat.rs:ChatPane` at 171, mostly single `rsx!` or
+`FragmentBuilder` chains. It ships behind `--functions`, OFF, because a gate
+that fails on the tree it ships with is not a gate. The number is now on
+record instead of unknown.
+
+### Round 15 — critique (fresh context, no source) — USABILITY, not correctness
+
+Brief corrected: previous rounds had drifted into bug-hunting. This one maps
+the app, audits its vocabulary, and judges its information architecture.
+Functional bugs were capped at one line under "incidental".
+
+**~6 seconds to a correct mental model** — *"the best part of the product"*, and
+rated above Hermes' landing, which *"drops you into a terminal and lets you
+infer."*
+
+**THE VERDICT IS STRUCTURAL:** *"six nav entries hide only about four real
+panels, re-shuffled and re-named per view (Workspace shows 'Commands', Chat
+carries the agent board and the tool trace, Agents hides an editor), so a
+newcomer never stops asking 'wait, where does this actually live?'"* Chat
+appears on 3 views, the agent board on 2, the tool trace on 2. *"Hermes' side
+nav has a strict one-view-one-panel rule and that is why you never wonder where
+something lives."*
+
+**The view map, believed-vs-actual:** Dashboard contains a full Chat card, so
+Chat-in-nav is a subset of Dashboard. Agents is a catalogue **plus** a raw YAML
+editor, a task launcher and a Chat card, the editor 2168px down under six long
+cards. Workspace is titled **"Commands · main"** — the view name and the panel
+name disagree. Only Tool trace had no gap.
+
+**The vocabulary audit is the finding no round had looked for:**
+- **task / job / message** — three words, one thing. "Give main a job",
+  `aria-label="Task for main"`, `aria-label="Message to main"`, all landing in
+  the same thread as `YOU:`.
+- **workspace** — three meanings: the nav view, the Linux VM, and the folder.
+  Plus "workspace root", "workspace folder", "Workspace artifacts".
+- **space** overlaps it: an agent is in the "research" shared space *and* has a
+  workspace folder which *is* that space.
+- **turn** is used in the header before anything defines it.
+- **artifact** is given an invented meaning (a directory name) against the
+  universal one (the output document).
+- **view / pane / panel / board / card** — five words for containers.
+- And the Workspace pane's stated rule — shell here, file and process work in
+  the Tool trace — **is false**: both exec calls appear verbatim in both.
+
+**P0-1** the Workspace view runs `list_files` on mount and then reports its own
+housekeeping as contention: *"Waiting on the command the workspace is already
+running — list_files path=artifacts, for 0s."* A first-time user's first act
+produces a busy machine and instructions to go stop something in a pane they
+have not found. **P0-2** `author`'s empty state points at "your agent file on the
+Agents view" — which is 2168px down, called "Write an agent", and requires
+hand-typing a YAML key.
+
+P1: "No tool has run yet" sits directly above "Show the app's own activity (3
+calls by the file panes)", and the count never updated past 3 while the trace
+held 14. The malformed-argument refusal renders as a **4973px single line** of
+model-repair instructions plus the tool's whole docstring — and wraps in Tool
+trace but not in Commands. A system telemetry line wears the agent's name
+(`MAIN: calling exec — 1 call failed`) identically to the agent speaking. Three
+labels for one drawer control. Three redundant primary CTAs sitting above the
+control they duplicate. The Agents view offers no way to ACT on an agent.
+No light theme, and no `prefers-color-scheme` response.
+
+**Good, held to the same standard:** the outcome card with two exit routes
+(*"better than any hosted product I know"*), three-actor attribution in the
+trace (*"the app's best original idea"*), agent-aware suggestions that reason
+about whether the agent has a shell, teaching empty states, measured
+progressive disclosure (328 visible words, 2,338 characters folded), a real
+six-step type scale, worst contrast 5.18:1 on a disabled control with body text
+at 9.7–10.6:1, zero overflow at 390px, and a visible working-memory budget —
+*"something Hermes and the hosted assistants all hide."*
+
+### Round 15 — fixed (`a038138`, amended)
+
+Two UI-only agents. **No functionality changed** — panels moved, rows filtered,
+copy rewritten.
+
+**The rule, now stated in `views.rs` as R15-IA:** *one panel, one home — every
+panel appears on exactly one view; the centre column is what the nav entry
+names, the rail beside it is the live state of that same thing, and every other
+mention of a panel is a link to its home, never a second copy.*
+
+Six nav entries kept, each now owning something. Agent board and tool trace out
+of the Chat rail (Chat has no rail now); task launcher out of Agents. Nav
+`Workspace` → **Commands**, slug too — so the nav entry and the panel under it
+finally agree, and "workspace" now means only the Linux folder. `#/workspace`
+stays a legacy alias. Bare load writes `#/dashboard/main` via `replaceState`, so
+the URL you land on is copyable.
+
+**Commands vs Tool trace: `exec` filtered OUT of the trace, not Commands
+deleted** — *"Commands is not only a log, it is the box you TYPE into and the
+stop control for a command in flight, so deleting it deletes a control where
+deleting the rows deletes only the duplication."* The trace says how many it
+left out and where they went (`x-shell-calls`, mirroring `x-app-calls`), with a
+door. `start_process` is NOT filtered — it is not in Commands, so filtering it
+would hide it, and that finally makes `terminal.rs`'s long-standing claim true.
+
+The reviewer was corrected on one point: the Chat card on Dashboard and Agents
+is always-mounted but `hidden` — a DOM artifact, not a rendered panel.
+
+Three redundant CTAs deleted. Per-agent doors added to every roster card
+(`Talk to X` / `Give X a task`), and a `Write a new agent` link that focuses the
+editor rather than leaving you to scroll 2168px.
+
+**P0-1 fixed with the boundary that already existed:** `inflight::waiting_on`
+asks `asked::Asked` who the blocking call belongs to and returns `None` for
+`PANE`. One guard, both panes, so the trace and the pane cannot disagree. A cold
+first click now reads `Nothing listed yet — the workspace is being asked for
+this folder`; a command genuinely in the way still says so. **The amber pill was
+left alone with a reason** — `Warmth::Busy` is the engine's own state string, a
+true fact about a Linux that really is executing, carrying no actor to filter
+on.
+
+**P0-2** the empty state now names the panel by its printed title (`Write an
+agent`) and the YAML key is gone from user-facing prose; the button beside it
+was relabelled to name the same destination.
+
+P1-5: the refusal went from `scrollWidth` **4973 → 644**, folded behind a 45px
+summary, wrapped identically in both panes — and **the recovery is marked**:
+`ok, and this is the retry after the refused call`, once, on the call that
+recovered. P1-6: `MAIN: calling exec…` → `main is calling exec…`, un-bubbled and
+dimmed, while the agent's own speech keeps the bubble.
+
+**P1-3 was half wrong.** The contradiction was real and is fixed (`main has not
+used a tool yet`), but the count was never stale — measured 3 → 12 across three
+round trips. A projection that had not re-run, not a frozen number.
+
+263 passed, 0 failed; all eight gates green.
+
+**Harness: `isolation: worktree` from now on.** One agent ran `git stash`
+mid-session and BOTH agents' uncommitted diffs went into `stash@{0}` for about
+two minutes. It came back intact on their `pop`, but that is the third distinct
+way the shared tree has bitten a wave — after the tab-switching daemon and the
+transiently uncompilable tree.
+
+### Round 15's deferred finding — the vocabulary, fixed
+
+Glossary decided BEFORE any edit, then applied. One word per concept.
+
+**`task` vs `message` are genuinely two concepts and stay two.** Both start a
+turn, but *a task is dispatched and a message is said*. `job` was a third word
+for the first one and is gone: the launcher now reads `Run a task · main` /
+"Give main a task and walk away" / `aria-label="Task for main"` / "Describe the
+whole task…" — one word from title to placeholder to aria. Chat is
+message-only. **One view says task, the other says message, and nothing says
+both.**
+
+**`shared space` and `workspace folder` were one directory wearing two nouns.**
+`browsable.rs` even held a written rule (R5-13) that "a SHARED SPACE is what an
+agent is a member of, a WORKSPACE FOLDER is what that membership grants it" — a
+distinction *a reader cannot make, because the two name the same path*.
+Membership is now a clause, not a second noun: "main works in the research
+workspace, with every other agent whose file names it."
+
+**The workspace stopped being an actor.** "The workspace is busy running $ while
+true" gave a folder agency; it is "Linux is busy running…" now, and the header
+pill is `main's workspace · ready`.
+
+**`turn` is defined where it is first read** — a visible note under the agent
+rows, not inside the closed fold it used to hide in, and the fold's copy was
+removed rather than duplicated. **`working memory`** likewise carries its
+definition at the point of use.
+
+**`artifact` → `finished file`.** The app's meaning fought the industry one.
+`Finished files · main`, explained in the one sentence that still names the
+`artifacts/` folder — which stays, because agents write there.
+
+**`the file pane` → `this page`.** The three-actor attribution is untouched —
+two reviewers called it the app's best original idea — but the old name was
+printed on no panel in the product and was wrong for the Processes panel's own
+polling. Rows read `this page ran list_files path=.`; the toggle reads "Show
+what this page did on its own (12 calls)".
+
+`pane`/`card`/`board` collapse into **panel**; `view` unchanged.
+
+**Sweep, all `<details>` forced open, every view, text + aria + placeholder +
+title:** clean on five views. The four hits on Agents are `public/agents/*/
+agent.md` rendered verbatim in the editor — **model-facing prompt text,
+deliberately not touched**: rewording an agent's instructions changes what the
+model reads, which is a behavioural change, not a copy change. That is the one
+remaining place a reader can meet "shared space", and it wants its own pass with
+the model in the loop.
+
+18 assertions across 12 files updated — each now a place the wording is pinned.
+263 passed, 0 failed, all eight gates green.
+
+### Round 16 — critique (fresh context, no source)
+
+Measured the PRE-vocabulary build, so its naming section is an independent read
+of the old wording — it confirms most of what the audit caught and finds four it
+missed.
+
+**~6 seconds** — *"the best number I have measured on an agent product."* Map
+predicted correctly for five of six views before clicking; **Commands ✗** —
+*"reads as a command palette or slash-commands; it is a shell terminal plus a
+workspace file browser."*
+
+**P0-2, and it is now named as THE blocker for the second round running:**
+*"you cannot stop a running agent — the only two buttons that say 'Stop' both
+mean 'stop looking'."* Enumerated every button on Chat and Commands during a
+run; `/stop|cancel|abort|halt|kill/i` matched only the two stop-waiting
+controls. With `max_rounds: 64` the options are waiting out a 5-minute timeout
+64 times, or reloading the tab.
+
+**P1-1 — a RECOVERED failure is reported as a failure, and the recovery is never
+mentioned.** Three surfaces raise an alarm the detail view retracts: Dashboard
+*"…and a tool call in that turn failed"*, the board the same, Chat *"main is
+calling write_file — 1 call failed"* — while the reply says it wrote the file
+and the file is there. The trace knows: it labels the second call *"ok, and this
+is the retry after the refused call"*. **The summary already has the fact and
+does not use it.** Also the tense: "main **is** calling" on a finished turn.
+
+**P1-2** *"Tool trace cannot vouch for 2 of them"* is undecodable — two of what,
+why, do what? — and it was **the one warning that was right**: the agent claimed
+a word count across three files having created one. Its value is destroyed by
+its phrasing.
+
+**P1-3** switching the agent tab on Commands leaves the rail headed
+`WORKSPACE FILES · ASK` over three panes each printing the **byte-identical**
+60-word paragraph about **main**, ending *"Select main to browse it"* —
+contradicting the action just taken. The shell input also vanishes for a
+shell-less agent with no sentence saying why.
+
+P1-4 descending into a folder shows no breadcrumb — nothing on screen says which
+folder you are in. P1-5 the file editor has `white-space: pre` at 280px wide
+against 712px of text. P1-6 the agent editor drops into raw YAML with `engine`,
+`compact_at`, `keep_recent`, `max_rounds` defined nowhere in the app — and the
+one disclosure that looks like help pivots to *"put it at
+`public/agents/<name>/agent.md`"*, instructions for the repo owner shown to the
+browser user.
+
+**Four naming findings the round-15 audit missed:**
+- **Worker** — used three times, capitalised like a proper noun, defined
+  nowhere. *"A newcomer cannot distinguish a Worker from a workspace from a
+  space."*
+- **round** — `max_rounds: 64` is in the agent file and the word appears nowhere
+  in the UI, while the counter the user DOES see ("2 turns") is a lifetime
+  total, not a per-task one. The critic misread it as "this task has taken 2".
+- **engine** is overloaded: the Linux VM in Settings, and the agent loop in
+  `engine: react`.
+- **space** — and this **contradicts the vocabulary pass, which collapsed
+  `shared space` into `workspace`**: the critic argues they are two mechanisms,
+  a memory store (`remember`/`forget`/`post_note`) and a filesystem scope, and
+  that describing them as one thing is *"the worst blur"*. Must be resolved.
+
+P2: three paragraphs in three registers for one root cause; chat auto-scroll
+lands 84px short; the endpoint pill hides 39% of its text at 1440px; `⏎`/`⇧⏎`
+render as boxes at ~11px; **definitions live only in EMPTY states and vanish
+once the pane has content**; Settings' lower cards use 40% width.
+
+**What held:** a WCAG AA sweep over every leaf text node with a computed
+background walk, all six views, both glow states — **zero failures out of
+hundreds, run twice because the reviewer expected a bug in its own script.**
+Zero sub-44px targets at 390px. Correct roving-tabindex tablist. The glow
+claim diffed and true. And filenames in agent replies are deep links that open
+the file in the editor — *"Hermes does not do this. Neither does most of the
+hosted field."*
+
+### Round 16 — fixed
+
+**P1-1, and the split WAS the bug.** Dashboard and the board shared one source
+(`boardrow.rs` → `data-line`, rendered verbatim by `runstatus.rs`); Chat kept a
+**second tally and a second wording**. Neither read `vouch::Retries` — which the
+Tool trace was already using to label the recovery. Now `failed::note(failed,
+recovered)` is the single clause for all three, folding `Retries` in the same
+order `trace.rs` does.
+
+`…and a tool call in that turn failed — the Tool trace has it`
+→ `…and a tool call was refused and the retry after it worked — the Tool trace
+has both`.
+
+**Suppress vs say: SAY.** Suppressing would leave a red `failed` row in the trace
+that no summary accounts for — the same one-click-apart disagreement, inverted,
+and it drops a true fact. Where some failures recovered and some did not, the
+clause reports the **unrecovered** ones, because that is what is still owed.
+Tense fixed at the source: `Calls::take` emits `called`, which is right on an
+open run and a finished one; `is calling` was only ever right on the former.
+
+**P1-2 — the agent DID NOT use the reviewer's draft, and was right not to.**
+"2 of them are not in the Tool trace, so they may not have happened" is stronger
+than `vouch::doubt` supports: the calls *are* in the trace. What the predicate
+checks is that a call reported success while its own record shows nothing behind
+it. New wording gives subject, reason and action — *"1 call came back ok, but
+its own record does not back it: an argument arrived mangled, or a command
+printed nothing. Check the Tool trace before you trust the answer below"* — and
+the test asserts the page never says "not in the Tool trace" or "may not have
+happened".
+
+**P1-3** one refusal string was rendered independently by all three rail panes;
+`rail.rs` now reads it once and renders one fragment. The sentence stopped
+telling the user to undo the selection they just made, and a shell-less agent
+gets a reason where the box would be (`x-typeable-why`, asking the same
+`toolbox_for` that `origin_line` asks — not a second definition).
+
+P1-4 a breadcrumb (`the workspace / report`), segments clickable through the
+same handler the rows use, root named with `filegone::named`'s own word. P1-5
+**always wrap**: `is_prose` was rejected as a classifier because it tests three
+prefixes *we* write onto a tool RESULT — a rule about output origin, not about
+files — and unwrapped code in a 242px box is not readable either, just
+differently unreadable. `scrollWidth 1816 → 242`.
+
+**`space`: BOTH sides were right, about different questions.** The vocabulary
+pass compared `shared space` against `workspace folder` — two names for one
+directory, correctly collapsed. The reviewer compared the folder against the
+shared-memory store — genuinely two mechanisms behind one `space:` line. The
+code settles it: facts and notes live in one IndexedDB keyspace every sub-agent
+Worker opens, **but only the page's own agent has a Linux at all**
+(`worker.rs:86` hands sub-agents a workspace whose exec answers "no workspace is
+available here"). So `workspace.rs`'s claim — "the same folder for every agent
+whose file names that space" — is an aspiration the runtime does not keep, and
+the terminal note **printed it to the user as fact**. One noun kept; two
+sentences now say the folder is this page's own and the sharing is the facts and
+notes.
+
+**`Worker` deleted, not defined** — all seven user-facing uses replaced with the
+consequence ("runs on its own"). Nothing the user does depended on it; it was
+implementation jargon leaking into copy. `round` deliberately NOT surfaced: it
+is a per-turn ceiling no shipped agent sets, and a third visible counter buys
+nothing. The counter's ambiguity fixed instead — `1 turn` → **`1 turn in all`**,
+beside the existing "in this turn for Ns".
+
+`engine` now means the Linux and only the Linux. The agent editor gained a
+`<dl>` glossing all ten frontmatter keys, and the repo-owner paragraph moved
+behind a disclosure that opens *"This part is for whoever builds the site, not
+for using it here."* Definitions for finished files and processes moved out of
+the empty states, which is where they used to vanish once a panel had content.
+
+273 passed, 0 failed; all eight gates green.
+
+**Owner decision taken: BUILD THE STOP.** Named as the single blocker by two
+consecutive critics.
+
+### The stop — built, owner-approved (round 16)
+
+Named as THE blocker by two consecutive critics. `core.stop_requested` (press)
+→ `core.stopped` (boundary), both handled inside `agent::step`.
+
+**The press arm is a copy of the `steered` arm one line below it** — record the
+fact, emit nothing, let the round in flight finish:
+`state.stopping = state.task.is_some()` (an idle agent is already stopped).
+
+**The boundary is ONE FUNNEL, not four guards.** Every arm of the machine starts
+work by *returning an effect*, so `step` became a two-line wrapper:
+`advance(...)` then `stop::boundary(state, effects)`. That covers the model call
+at the top of a turn, the retry after a failed compaction, the tool batch a reply
+asked for, and the next round after the last result. *"Guarding them one at a
+time is four chances to miss the fifth."* An empty effect list is deliberately
+NOT a boundary — results still landing, and the last one produces the effect that
+gets caught.
+
+One correctness change fell out: `tool_rounds += 1` moved from `on_reply` to
+`on_tool_result`, so it counts rounds **completed** rather than requested and the
+stop's number means the same thing as the ceiling's. Behaviour-identical for the
+ceiling, proved by the untouched `rounds.rs`.
+
+`core/src/halted.rs` owns BOTH wordings off the same payload — chat sentence and
+trace row — so round 16's split cannot regrow here.
+
+**A delegation in flight is exactly a tool call in flight.** A sub-agent runs in
+its own Worker with its own state; nothing in this log reaches it. So the child
+finishes and hands back — that IS the boundary — and the copy says so rather
+than promising a kill: *"Anything already running finishes — a command in the
+Linux, or an agent it handed work to — and nothing new is started."* The control
+is offered only where it works: `x-stoppable` only for this page's own agent,
+with a 409 backstop that writes no fact.
+
+**"Stop waiting" lost its qualifier** — the pair is now what makes each legible.
+The pressed state changes the sentence, because the press can sit up to five
+minutes behind a model call and silence there gets pressed twice.
+
+**Proof, sampled in-page at 250ms on a 30-step counting task:** a tool call had
+been landing every 4–9s through `tools=17`. Pressed at 09:19:56.662. At
+**09:21:30 — 94 seconds later — exactly one projection change had occurred**
+(the stop line), `data-tools` frozen at 17, wait row gone, composer re-enabled.
+It never reached 18; the model's 18th call was refused at the boundary rather
+than run. Control run immediately after completed untouched, and the flag does
+not survive into the next turn.
+
+Neutering `stop::boundary` to a pass-through: 3 of 4 agent tests and 2 of 4 core
+tests fail. The core tests count `ModelReplied`/`ToolInvoked` off the log itself,
+so "nothing ran after the boundary" is asserted on the record, not the UI.
+
+282 passed, 0 failed; all eight gates green.
+
+### Round 17 — critique (fresh context, no source)
+
+~10s to correct orientation. Map predicted 5 of 6; **Commands ✗ again** — it
+holds shell + Files + Processes + Finished files. *"Panels do not repeat. Each
+entry owns something distinct — that is genuinely rare."* R15-IA held.
+
+**P0-2 — THE BLOCKER MOVED. A run that abandoned its task reports "finished".**
+Six-part task, walked away, came back to `main finished "…"` + **Read the
+reply** + `main ready · 2 turns in all`. `index.md` was never written (confirmed
+in Files), and **Read the reply lands on a final assistant message that is a raw
+malformed tool call**: `exec({"command": "cat a.md"}, {"command": "cat b.md"},
+…)`. *"The walk-away report was wrong in both directions: it claimed completion,
+and it offered prose that was machine output."*
+
+**P0-1 — two views state opposite facts about the same capability.** On a
+workspace-less agent: *"author runs on its own and this page cannot stop it from
+here; a command already running in Linux is stopped on the Commands view."*
+Commands says: *"This Linux gives the page no way to signal a command once it
+has started, so this stops the WAIT."* **The one a stuck user reads first is the
+false one.** And the genuine gap behind it: the stop we just built covers this
+page's own agent; there is no way to stop another agent running in its own
+Worker. Hermes stops any agent, always.
+
+P1-3 the Chat status line says *"the Tool trace has both"* for a refusal that is
+in **Commands** — correct mechanism, wrong pointer, and it is wrong precisely
+because R15 moved shell rows out of the trace. P1-4 the composer's button
+silently changes from `Send to the run` to `Send` when a run ends under the
+user's fingers — text preserved, semantics not. P1-5 three labels for the
+stop-waiting control (`Stop waiting`, `Stop waiting — author keeps working`,
+`Stop waiting for it`), and **`Stop waiting` vs `Stop main` are not
+distinguishable by label alone** — what rescues them is a paragraph below both.
+P1-6 a stop the user asked for reports **`— failed`** in red. P1-7 *"Write a new
+agent"* opens prefilled with the shipped `main`, so a newcomer who edits and
+saves **overwrites it** — while the plain-English path that works beautifully
+(*"I want an agent that reads a recipe and tells me the shopping list. Call it
+shopper."* → installed, chip reads `shopper · written here`) is not mentioned on
+that panel at all. P1-8 every word of UI says **workspace**; the file you must
+edit says `space:`. P1-9 argues the view should be named **Workspace**, which
+reverses R15 — must be resolved, not just applied.
+
+**What held:** contrast computed per leaf node against resolved backgrounds —
+nothing fails, the dimmest thing on screen is ~10:1. Zero controls under 24px of
+26. Skip link verified to actually move focus. `scrollWidth === clientWidth ===
+390` on the three-column view. Inactive panels genuinely `display: none`.
+
+**Named better than the hosted field:** the live run line — *"working · 2 turns
+in all · in this turn for 8s · last tool: exec · a tool call in that turn failed"*
+plus *"waiting for the model — 27s of a 5-minute limit"* — against *"Claude,
+ChatGPT and Hermes all show you a spinner"*. The compaction disclosure, *"the
+best I have seen anywhere"*, which names the summarizer and shows the literal
+replacement text. The model-facing repair instruction shown verbatim under *"This
+is what was sent back to the model, in full"* — *"Nobody does this."* And
+shipped-vs-written provenance on every chip.
+
+### Round 17 — fixed
+
+**P0-2 — an ending is now a FACT WITH A KIND, not the absence of a task.**
+`core.ended` carries `{"why":…,"rounds":N}`, emitted by the one function that
+clears a turn's state. Five endings, and the rule for the list is the good part:
+*an ending only earns a name if a surface can offer a different act for it.*
+
+| ending | row word | the act |
+|---|---|---|
+| Answered | (status: ready) | read the reply |
+| NoAnswer | `stopped without answering` | ask again |
+| RoundCeiling | `stopped at its round ceiling` | raise `max_rounds:` |
+| StoppedByYou | `stopped by you` | ask again to carry on |
+| Failed | (status: failed) | the conversation says why |
+
+Not Hermes' fourteen. `Failed` and `Answered` carry no word — the status fact
+already says it — but they are IN the enum so a failure cannot be misread as the
+ending before it. The ceiling previously emitted an anonymous `core.note`, so
+that ending was only ever legible as prose.
+
+`main finished "…"` + **Read the reply** →
+`main stopped without answering · 1 turn in all · its last reply was a tool call
+this page could not read, so nothing ran — the conversation has it, word for
+word; ask again` + **Ask again**. And the raw `exec({…},{…})` blob is no longer
+dressed as the agent speaking: it renders as a NOTE that says nothing ran and
+there is no tool row for it anywhere, with the text in a code block.
+**Read the reply appears only when a reply exists.**
+
+`malformed_call` is narrowed to text that OPENS with `ident ( {`, so prose that
+merely mentions a call is still prose. And `stop::boundary` had to exempt ending
+facts — endings are effects now, and the boundary catches effects on the way
+out, so a turn that answered under a pressed stop would have been reported as
+stopped.
+
+**The agent overruled `docs/ALIGNMENT.md` §5 and was right:** it proposed
+`ExitReason` as an `AgentState` field; a serialized state field is not reachable
+by the board, card and chat projections. I8 says every view is a projection of
+the log, so the ending is a log fact.
+
+**P0-1 — the copy was false twice over, and the engine finding is the reason.**
+`c2w_stop()` types `\x03` into the one PTY so SIGINT reaches the foreground
+process group and the command dies (`Interrupt::Kill`). `cx_stop()` writes to
+the CONSOLE — `cx.run` returns no handle and takes no AbortSignal — and the
+queue is chained on the real process, so the next command still waits
+(`Interrupt::Abandon`). So the sentence sent a workspace-less agent to a view it
+has no rows in AND promised a kill the engine this build runs cannot perform.
+Now: *"Nothing on this page can stop author once it has started — it runs until
+it answers or reaches its limit of 64 steps"*, with the ceiling read from that
+agent's own file via `x-max-rounds`.
+
+**P1-5 overturns R16's reasoning, correctly:** *"R16's argument was that the pair
+makes each legible; that only holds if you read both buttons AND the paragraph,
+which means the label alone never said its own job."* One form everywhere —
+`Stop waiting — main keeps working` / `Stop main — end the run` — verified at
+320px. P1-6 a stop you asked for reads `— stopped` in neutral, off one
+`workspace::was_stopped` predicate, not `— failed` in red. P1-3 the pointer now
+names where the failing call actually landed, computed from `trace::is_shell` —
+the same predicate R15 used to move the rows.
+
+**P1-9 resolved by NOT renaming.** R17-IA amends R15-IA: *a view is named after
+the panel you act in, and its rail is the live state of what that panel did.*
+Naming a view Workspace would put the word back on two things one round after
+R16 cut it to one, and the panel would disagree with its nav entry again — the
+exact bug R15 fixed. What the critic measured is that `Commands` does not
+PREDICT the other three panels, so a lede on that view names them. The header
+rail toggle was kept with R12-6's measurement as the justification: the
+alternative was a permanent toggle with `aria-expanded="true"` over a rail at
+0×0, a dead control lying about its own state.
+
+**P1-8 gloss, not rename**, with the migration cost stated: `space:` is stored
+canonically through `render_agent_file`, so a rename means the writer emits a
+key the old parser cannot read, every browser holding an old record needs a
+silent alias forever, exports split into two dialects, and `write_agent`'s tool
+argument becomes a third name. Not worth it for one word.
+
+**P1-7 — the trap is closed.** "Write a new agent" blanks the form; the
+prefilled state stays behind the explicit `Load main`. Saving over a shipped
+agent warns first, and the warning is correctly ABSENT on the second save
+because by then it is your own copy being replaced. The plain-English path now
+leads the panel with a door to `#/chat/author` — the path that actually works
+for a non-programmer, which the critic had to discover alone.
+
+294 passed, 0 failed; all eight gates green. `transcript.rs` carries both
+agents' changes (`ending::reply` and `x-max-rounds`) — checked by hand after one
+agent reported briefly clobbering the other's edit and restoring it.
+
+### Round 18 — critique (fresh context, no source)
+
+~10s cold. Warm reload to interactive: **~750ms**, measured. Map predicted 5 of
+6; **Commands ✗ a third time** — *"it is the file manager and the terminal, the
+two things a first-timer most wants to find."* R17's lede did not fix the
+prediction.
+
+**P0-1 — THE APP NARRATED A HISTORY ITS OWN RECORDS DISPROVE.** Typed into the
+box labelled `Steer the run — the agent reads this on its next step…`, pressed
+**Send to the run**, and the running turn was KILLED, with: *"That turn is not
+running any more — the page was reloaded while it was in flight, so nothing is
+driving it."* **No reload occurred.** Deliberately reloading later produced the
+identical string, so the reload-orphan message is being emitted for a cause that
+is not a reload. Two bugs in one: the steer does not steer, and the ending lies
+about why.
+
+**P1-3, same class:** the pill read `in this turn for 4s · last tool:
+list_processes` while the trace shows main never called it —
+`Show what this page did on its own (13 calls)` reveals `this page ran
+list_processes()`, the Files pane's own polling. **The pill borrowed the page's
+housekeeping and put the agent's name on it.** The app handed the reviewer the
+evidence against itself.
+
+**P1-2 — `workspace` now means THREE things, and this is partly R16's doing.**
+The header pill = the Linux VM; the Commands rail = the folder; and the
+Dashboard panel titled `Workspace · main` = the shared MEMORY store
+(`remember`/`forget`/`post_note`). R16 collapsed `shared space` into `workspace`
+to kill one blur and created another. The concrete break: main said *"I wrote a
+file called notes.md"* while the panel headed **Workspace · main** said
+**"Nothing has been recorded here yet"** — *"both true; the reader is entitled to
+conclude the agent lied."* Also `main's workspace` in the header vs *"works in
+the 'research' workspace"* shared with three other agents on the card. Proposal:
+three nouns — **Machine**, **Files**, **Memory** — and delete "workspace" from
+the UI.
+
+P1-5 `main finished "…"` for a task the agent REFUSED (no web access), with
+`Finished files` still empty — answered is not did-what-you-asked. P1-6 the
+Files pane showed `Nothing was in the workspace when this listing ran` after a
+write, and **the trace proves the app re-listed and saw `notes.md`** — the pane
+did not adopt it. P1-7 an agent file with `model: locl`, `engine: reakt`,
+`tools: [nope_tool]` **saved with no validation**; the card reported the garbage
+back as fact and silently dropped the unknown tool; the failure then pointed at
+**Settings**, with the truth (`Model 'locl' not found`) triple-JSON-nested behind
+`Technical detail`. P1-8 `Delete haiku` is one unconfirmed click. P1-9 at 390px
+chrome eats ~600px and the transcript gets **~180px**.
+
+**What held, tried and failed to break:** *"Endings agree across surfaces. I
+tried to break this and could not"* — stop, card, trace and list all matched,
+turn counts matched. R17's work held. The stop controls are called
+**best-in-class**, with the promise verified: the in-flight `sleep` finished,
+nothing new started, and the helper text switched tense mid-press. And the
+self-doubt warning was **right** — it fired on `write_file contents= path=
+content.html`, an empty write the agent believed had content.
+
+Named as portable to Hermes tomorrow: the `its own record does not back it`
+warning, and the compaction disclosure.
+
+### Round 18 — fixed
+
+**P0-1 WAS NOT A BUG IN THE MACHINE.** Reproduced on the host with a model that
+never answers: the steer arm, `stop::boundary` and the runtime were all correct,
+and `x-turn: pending` was still in the same fragment. Nothing killed the turn.
+
+`transcript.rs` drew the orphan sentence for **any** `UserMessage` landing while
+awaiting — in two copies — and a steer has exactly that shape: an utterance with
+no answer beneath it. The log could not tell them apart because the steer lived
+in `state.steered`, **a serialized state field — the same thing R17 rejected for
+`ExitReason`**. So the steer became a log fact, the R17 shape one act earlier.
+
+*"That turn is not running any more — the page was reloaded…"* → *"main was
+already working when you sent this, so it went to the run in flight — main reads
+it on its next step. No new turn was started, and nothing was interrupted."*
+A deliberate reload still says reloaded, and a replay holding both shows one of
+each on the right message. **No new ending: a steer does not end a turn, so
+under R17's rule it earns no name.**
+
+**Why eighteen rounds of tests missed it:** *"They assert on `step`'s returned
+effects — that's the whole discipline of a pure step function, and it is exactly
+why they could not see this: the defect was never in what the machine DID, only
+in what a projection SAID about it."* There was no core test that submitted a
+message into a running turn and read the transcript back. That is the standing
+limit of the pure-step discipline, and every P0 for five rounds has been
+narration.
+
+**P1-6 was a real race in `cheerpx.js`.** The file's own comment states the rule
+— *"One command at a time: a second `cx.run` while the first is live would
+interleave two commands' output"* — and the code broke it: `queue = real.catch()`
+was assigned INSIDE the `.then`, so two calls in one tick both chained on an
+already-settled queue and the second `out = []` wiped the first's console. The
+Files pane, artifacts shelf and Processes pane all list on the same tick. So the
+pane was never stale — it faithfully rendered a projection that was itself
+wrong, holding another call's stderr or nothing at all. `c2w.js` had it right,
+which confirmed the pattern.
+
+**P1-9 measured:** chrome above the conversation **597px → 370px** at 390×844,
+`#chat-view` **219px → 446px**, composer from y=863 (below the fold) to y=674.
+CSS only. New gate assertion `CHROME` in `fold-probe.js`: the routed region must
+keep at least a third of the viewport — verified by neutering (fails at three
+sizes, passes 32/32 restored).
+
+P1-7 unknown tool names are **reported, not refused** — a name may be a peer
+agent you have not written yet, and refusing would enforce typing order as if it
+were capability; also the direction is opposite to `spec.rs`'s guard, since a
+dropped NAME grants less than the file asked for. New `ModelError::ModelMissing`
+discriminates a 404 naming our model id from an auth failure — *"Nothing here
+says the address or the key is wrong — the endpoint answered"* — and the door
+becomes **Open haiku's file**, not Settings. Save-time model validation was
+**declined with the decisive reason**: the local catalogue is the wrong list, so
+validating against it would refuse correct files. P1-8 delete is a two-click arm.
+P1-5 the card says what the turn DID — `main answered "…"`, plus, only when the
+count is zero, *"It called no tool while it did"* — and never whether it worked.
+
+P1-2's four nouns applied; the two held files took the drop-in text and
+`wait.rs` stopped saying one fact in two spellings.
+
+305 passed, 0 failed; all eight gates green.
+
+**Third shared-tree incident: an agent `git checkout --`'d shared files to
+isolate a test and reverted two siblings' work.** It restored them and said
+*"that was a bad move in a shared tree and I would not repeat it."* Worktree
+isolation is no longer optional.
+
+## The new goal — first increment (agents as data, verify, threads)
+
+Four studies landed first: `reference/agents/deepseek-harness.md`,
+`docs/AGENT-BOUNDARY.md`, `docs/GOAL-AND-LOOP.md`, `docs/THREADS.md`.
+
+**deepseek-harness does not have what it was named for.** Confirmed at the real
+URL, HEAD `47f9438` (2026-08-13), 7,404 files. Plan is a logged boolean plus a
+prompt section; work exists twice, unrelated; **verify is prompt prose only and
+critique does not exist** — four of its own READMEs say *"no independent
+evaluator … deferred."* Its agents ARE data files, but the file declares DI
+plugin rows, not agent properties: no `model:`, no `engine:`, and **a declared
+agent cannot choose its loop**, only which policy plugins mount. Nobody in the
+field has shipped the thing. One steal, sized S: Ralph's
+`{status, summary, evidence[], nextSteps[], blocker}` handoff with cross-field
+validation.
+
+**Two frontmatter keys were inert — the failure this project refuses.**
+`engine:` parsed, defaulted, rendered back out and printed on the card, with
+**zero behavioural readers**; `temperature:` was parsed, displayed, and absent
+from `Effect::CallModel`. Both now real:
+- `temperature` rides the call. **Widened `f32`→`f64`** because `json!(0.7f32)`
+  serialises as `0.699999988079071` — a number on the wire the file does not
+  say. Absent key sends no field at all, not an invented default.
+- `base` genuinely means "answer in one reply, call no tools". Before this, the
+  shipped `summarizer` (`engine: base, tools: []`) read as EVERY built-in — **the
+  one `base` agent in the tree was the most capable one in it.**
+- Any other value is refused at parse. R18's critic saved `engine: reakt` clean
+  and the card printed `How it works: reakt` — the file's typo dressed as a fact
+  about the machine. That arm is deleted.
+- The default moved `base` → `react`, deliberately: with `base` made real,
+  defaulting to it would silently disarm every file that omits the line.
+- R18's "reported, not refused" survives intact — that ruling is about **names
+  that may resolve later** (a peer agent not yet written, a model another
+  endpoint has). An engine value never will.
+
+**The verify gate ships for every agent, no flag, and needs no ledger.** Hermes
+keeps an evidence store with a freshness clock; here **log order IS the freshness
+rule**. A successful write sets `mutated` and clears `green`; a later successful
+command with real output sets `green`; a prose answer with `mutated && !green`
+does not end the turn — one nudge, twice, then `answered, unchecked`.
+`says_nothing` MOVED rather than being imported, because `agent` sits below
+`core` in the layering table — one copy, four readers.
+
+**§12's ban is asserted mechanically:** `verify19.rs` scans rendered `/chat` and
+`/board` for `verified`, `unverified`, `proven` and fails on any. The row reads
+*"it changed a file and no command ran afterwards, so this page cannot say
+whether it worked"* — observation, no verdict.
+
+**And the loop worked in the browser:** told to write and answer without
+checking, the model got the nudge, ran `exec`, and corrected itself. Its own
+reply then said "verified" — inside speech, which the page does not vouch for.
+
+**Threads: one row per agent, the routed one expanded in place.** Cost rules
+MEASURED by instrumenting `handle` (then reverted): `/board` reads in 10s = 12
+on Chat with six rows, **5 on another view — the list adds zero**. One-per-row
+would be 30. Openness is `name == selected()`, not a signal or a fact, so every
+added request is a GET that appends nothing.
+
+`chat-panel`/`chat-scroll`/`chat-log` were fixed ids, so two panes made
+`newest_turn` scroll the wrong conversation — now per-agent, and since
+`#chat-panel` was also a CSS selector, the panel carries `data-chat` instead:
+**an id that moves cannot be a selector.** No nested cards (`ChatPane` takes a
+`head` and drops its own `<h2>`), and a collapsed thread is a row not a card —
+78→54px at 390, because six panels left the conversation 194px of 844, *the
+furniture beating its subject*.
+
+**R19-IA**, amending R15-IA: *a view has one control for its own subject* —
+where the panel a view is named after already lists the agents, that list IS the
+picker and no strip renders beside it.
+
+324 passed, 0 failed; all eight gates green.
+
+**Fourth `git checkout --` incident**, this one self-inflicted by the agent on
+its own file: *"it was a bad move and `cp` from a backup — which I had already
+made for four other files — was the tool I should have reached for."*
+
+---
+
+## Increment 20 — the agents folder gets the loop, and the core stops naming names
+
+The goal: *"no matter how complex the loop sounds, I want the agents details to
+be fully present in the agents folder with data and metadata. The core or other
+parts of the project should only be taking the agents, setting them up and
+keeping them running."* Plus a plan/work/verify/critique loop, and one LLM call
+ahead of the work that fills in the technical detail a typed goal never carries.
+
+### Two jobs the core used to hardcode
+
+`ENTRY_AGENT = "main"` (`core/src/app.rs:15`) and `SUMMARIZER = "summarizer"`
+(`agent/src/paper.rs:12`) were string literals. Renaming `public/agents/main/`
+changed nothing; **deleting `public/agents/summarizer/` stopped compaction
+everywhere with no word on any surface.** Both are now `role:` declarations in
+the file — `role: entry`, `role: summarizer` — looked up by
+`loader::role_holder`. A misspelt role is refused at parse, on `engine: reakt`'s
+rule. The literals survive as fallbacks, and that is not decoration: an agent
+file installed in *this browser* can replace `summarizer` without carrying the
+role line, and dropping compaction silently is the exact failure the key exists
+to end.
+
+### `stages:` — the loop, in the file
+
+```yaml
+stages: [plan, work, verify]
+```
+
+Four names and no more. Absent means the react loop alone, which is every agent
+written before the key — the whole compatibility rule, asserted in one test.
+
+**A stage is not a new machine.** It is one instruction pushed into the paper
+and one more call, taken by the same `step` against the same window: prose from
+a stage that is not the last one *moves the cursor on* instead of ending the
+turn. So a stage cannot invent a transition the loop did not already have, and
+there is no second state machine to keep in agreement with the first. The whole
+of it is `stages.rs` — under 200 lines including the briefs.
+
+`plan` and `critique` are told to call nothing, and `ask::scoped_tools`
+**enforces** it rather than trusting the sentence. That is increment 19's
+lesson applied on the day it was learned: a capability described and not
+enforced is a setting that looks applied.
+
+Refused at parse, not defaulted: an unknown stage name (both YAML forms), a
+list with no `work` in it (it could never act, whatever `tools:` said), and
+`engine: base` beside a stage list (one reply cannot walk a sequence).
+
+### The goal→plan pre-pass, as one stage
+
+`docs/GOAL-AND-LOOP.md` designed this as the shipped read-only `plan` agent run
+as the first stage — a delegation, a second Worker and a handoff, for one
+toolless model call. Dropped. The brief is five named lines — OUTCOME, PATHS,
+CHECK, DONE WHEN, ASSUMED — with an escape hatch in the last sentence so a
+greeting does not cost a plan. Against gemma-4-12B it produced, unprompted:
+
+> OUTCOME — A file named ok.txt exists in the workspace containing the text "fine".
+> PATHS — /root/spaces/research/ok.txt
+> CHECK — cat /root/spaces/research/ok.txt
+
+…and the verify stage then ran that exact command and quoted `fine` back.
+
+### What the browser walk caught that the tests could not
+
+The first walk was correct and **wasteful**: the mechanical verify gate (19) and
+the declared `verify` stage both fired, so the model was asked twice and the
+conversation printed two notices saying the same thing. `stages::verify_ahead` —
+the declaration wins, because it is the loop the agent's own file asked for.
+Four model calls per task-with-a-write now, not five.
+
+### Shipped configuration
+
+`main` declares `role: entry` and `stages: [plan, work, verify]`. `critique` is
+deliberately NOT on it — it is a whole extra call and `main` is where a greeting
+arrives; `plan` carries `[plan, work, critique]` instead, so the fourth stage
+ships exercised rather than theoretical.
+
+**331 passed, 0 failed**, all eight gates green, and the loop walked end to end
+in a browser against the local model.

@@ -142,6 +142,7 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
         migrate(store.as_ref(), stored).await?;
 
         let log = replay_events(store.as_ref()).await?;
+        let booted = log.len() as usize;
 
         let mut app = App {
             registry: Registry::new(),
@@ -159,6 +160,9 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
             agent_problems: Vec::new(),
             board: agent::Board::default(),
             me: crate::app::ENTRY_AGENT.to_string(),
+            running: Vec::new(),
+            calling: Vec::new(),
+            booted,
         };
         for manifest in builtins::manifests() {
             let (module, version) = (manifest.id.clone(), manifest.version);

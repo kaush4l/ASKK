@@ -29,7 +29,14 @@ EXPECTED = {"tokens.css", "base.css", "glass.css", "layout.css",
             "chrome.css", "surfaces.css", "controls.css", "workspace.css"}
 
 MAX_LINES = 200          # I12
-MAX_FONT_SIZES = 5       # DESIGN.md §5
+# DESIGN.md §5. RAISED 5 -> 6 IN R5-A, deliberately and once. The ceiling
+# exists to stop drift, not to stop design: with five sizes the product shipped
+# 42 rendered nodes at 14px against 5 at 18, 2 at 32 and 1 at 11 — prose,
+# button labels, nav items, statuses, file names and shell output all on one
+# size, and no subhead register between the masthead and the body. The sixth is
+# `--t-subhead` (20px) and it is the last one; a seventh needs the same
+# argument in writing, in DESIGN.md §5, before this number moves again.
+MAX_FONT_SIZES = 6
 MAX_SPACING = 8          # DESIGN.md §6
 
 fails = []

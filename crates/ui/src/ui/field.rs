@@ -27,6 +27,10 @@ pub(crate) fn Field(
     /// in the plain skin for a whole increment.
     rows: Option<u32>,
     oninput: EventHandler<FormEvent>,
+    /// Keys the call site owns. The two multiline fields a turn starts from
+    /// need it: a `<textarea>` in a form does NOT submit on Enter the way an
+    /// `<input>` does, and the composer's Enter has to keep working (R4-4).
+    onkeydown: Option<EventHandler<KeyboardEvent>>,
     /// `type`, `value`, `placeholder`, `autocomplete`, `disabled`,
     /// `spellcheck`, `aria-label`.
     #[props(extends = global_attributes, extends = input)] attributes: Vec<Attribute>,
@@ -43,6 +47,7 @@ pub(crate) fn Field(
                 rows: "{n}",
                 cols: 72,
                 oninput: move |e| oninput.call(e),
+                onkeydown: move |e| { if let Some(h) = &onkeydown { h.call(e) } },
                 ..attributes,
             }
         },
@@ -50,6 +55,7 @@ pub(crate) fn Field(
             input {
                 id: id.clone().unwrap_or_default(),
                 oninput: move |e| oninput.call(e),
+                onkeydown: move |e| { if let Some(h) = &onkeydown { h.call(e) } },
                 ..attributes,
             }
         },

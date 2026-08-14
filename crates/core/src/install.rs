@@ -23,10 +23,19 @@ pub fn builtin_files() -> Vec<(String, String)> {
 
 /// Install the fetched `public/agents/` files: built-ins first so a project
 /// agent of the same name wins, malformed files skipped (they cost that one
-/// agent, never the boot), and `main`'s prompt adopted by the running agent.
-/// Called by the composition root right after `boot`.
+/// agent, never the boot), and the ENTRY agent's prompt adopted by this loop.
 pub fn install_agents(app: &mut App, fetched: Vec<(String, String)>) {
-    install_agents_as(app, fetched, crate::app::ENTRY_AGENT)
+    // EMPTY MEANS "WHOEVER THE MANIFEST SAYS" (20): unnameable here, unread.
+    install_agents_as(app, fetched, "")
+}
+
+/// The agent a PERSON talks to, as the agents folder declares it: the file
+/// carrying `role: entry`. `main` is the fallback, for a manifest with no role
+/// line — including one already sitting in somebody's browser.
+pub fn entry_name(specs: &[agent::AgentSpec]) -> String {
+    agent::role_holder(specs, agent::ROLE_ENTRY)
+        .map(|s| s.name.clone())
+        .unwrap_or_else(|| crate::app::ENTRY_AGENT.to_string())
 }
 
 /// What a replayed log already says about one agent: how many turns it has
@@ -79,6 +88,12 @@ pub fn install_agents_as(app: &mut App, fetched: Vec<(String, String)>, adopt: &
     let (specs, problems) = agent::load_agents(files);
     app.agents = specs;
     app.agent_problems = problems;
+    // …and WHO this process is, which the manifest may now answer.
+    let adopt: String = match adopt.is_empty() {
+        true => entry_name(&app.agents),
+        false => adopt.to_string(),
+    };
+    let adopt = adopt.as_str();
     app.me = adopt.to_string();
     // Every loaded agent gets a row, the way the Python registers one per
     // thread. Registration is NOT an event: a reload is a new process, so a
@@ -143,7 +158,10 @@ pub fn report_agent(app: &mut App, agent: &str, status: Status, detail: &str) {
     if failed && matches!(status, Status::Starting | Status::Idle) {
         return;
     }
-    app.set_status(agent, status, detail);
+    // …AND IT IS SAID IN THIS APP'S OWN VOICE (R13-P0-3). Every reporter of a
+    // lifecycle fact routes through here, so this is where a host's exception
+    // string stops being the sentence a person reads (`failure::lifecycle`).
+    app.set_status(agent, status, &crate::failure::lifecycle(detail));
 }
 
 /// What a sub-agent's Worker says about its OWN working memory: how many

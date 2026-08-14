@@ -1,17 +1,9 @@
 //! WHAT you are doing — the centre column, routed by `View`.
 //!
 //! The CHAT pane stays mounted whatever view you are on, hidden when it is not
-//! the one: its poller belongs to a turn in flight, and unmounting it would
-//! leave that turn unwatched. Every other view is mounted only while it is the
-//! current one.
-//!
-//! That split is not a preference. The panels are the same components the rail
-//! holds — a view is an ARRANGEMENT of them, not a second implementation — and
-//! several of them carry a fixed `id` (`workspace-command`, `composer-field`)
-//! and a clock of their own. Mounting all seven views at once put three
-//! `ToolTrace`s and two `Terminal`s in one document: duplicate ids, `focus()`
-//! landing inside a `hidden` region, and three panels polling the seam for the
-//! same projection. One mounted view, plus the chat pane, is the whole fix.
+//! the one: its poller belongs to a turn in flight. Every other view is mounted
+//! only while it is current — several panels carry a fixed `id` and a clock, so
+//! mounting them all put three `ToolTrace`s and two `Terminal`s in one document.
 
 use std::rc::Rc;
 
@@ -19,12 +11,11 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 
 use crate::views::View;
-use crate::{artifacts, authoring, board, chat, files, gallery, launch};
-use crate::{settings, space, tabs, terminal, tools};
+use crate::{authoring, board, crumbs, gallery, launch, roster, thread};
+use crate::{engine, settings, skin, space, tabs, terminal, tools};
 
 /// The centre column. One `Signal` per thing two regions disagree about; the
-/// prop list is long because the shell owns the state and this owns the layout,
-/// which is the split that keeps either one readable.
+/// prop list is long because the shell owns the state and this the layout.
 #[component]
 #[allow(clippy::too_many_arguments)]
 pub fn Stage(
@@ -45,37 +36,95 @@ pub fn Stage(
     view: Signal<View>,
 ) -> Element {
     let here = view();
+    let (controls, label) = here.picker();
+    // Presses of `Write a new agent`: the roster's link and the editor it names
+    // are two panels, and "new" has to mean the same thing in both (R17-P1-7).
+    let blank = use_signal(|| 0u32);
     rsx! {
-        div { class: "stage primary",
+        // `content` is where the skip link lands (R2-19), past the header and
+        // the nav; `tabindex=-1` so it holds focus outside the tab order.
+        div { class: "stage primary", id: "content", tabindex: "-1",
+            // THE STAGE'S HEAD — one band above whatever is routed. The
+            // EYEBROW names the view (R5-misc); it is also the only
+            // `--t-caption` outside a message speaker, which stops 11px being
+            // an orphan node (R5-A). The STRIP is the agent switcher (R5-6),
+            // ONE instance, so `tab-{name}` is still unique and the roving
+            // tabindex still works; `View::picker` re-points its accessible
+            // name per view, because one name for five jobs is R4-10.
+            div { class: "stage-head",
+                p { class: "view-eyebrow", "{here.label()}" }
+                // …AND WHAT ELSE IS ON IT, WHERE THE NAME IS READ (R17-P1-9).
+                // `Commands` names the panel you type into; the three panels
+                // beside it are that panel's leavings, and nothing on screen
+                // said so. One line, on the one view whose name does not
+                // cover it — the others need no gloss and get none.
+                // NOT "BESIDE IT" (R18-P2). On a phone that panel is not beside
+                // anything: it is behind the `folder` switch in the header, and
+                // below 1100px it starts folded on every screen. The sentence
+                // names the panel and the switch that opens it, which is true at
+                // every width and in both fold states.
+                if here == View::Workspace {
+                    p { class: "note",
+                        "The shell below. The folder these commands run in, what is still \
+                         running, and the files they finished are in the folder panel — the \
+                         switch for it is in the header."
+                    }
+                }
+                // …AND NOT ON CHAT (R15-IA, THREADS.md §7): the thread list IS
+                // the picker there, and two controls for "which conversation"
+                // on one screen is the bug R15 exists to prevent. It stays on
+                // Dashboard, Commands and Trace, which are one-subject views.
+                if here.scoped() && here != View::Chat {
+                    tabs::AgentTabs { loaded, authored, selected, controls, label }
+                }
+            }
             if here == View::Dashboard {
                 section {
                     class: "view-panel dashboard-view",
                     id: "dashboard-view",
                     aria_label: "Dashboard",
-                    // The one <h1> on the page, and the seam's own words for
-                    // it. It moves with this view, which is a real cost: on
-                    // every other view the page has no <h1> at all. The
-                    // alternative — a heading in the frame — would name the
-                    // product where the seam names the surface.
+                    // The one <h1> on the page, in the seam's own words.
                     div { class: "masthead", dangerous_inner_html: "{fragment}" }
+                    // What this thing IS, under the one heading. Nothing on
+                    // the page said it (F1) — three names and no sentence.
+                    p { class: "tagline",
+                        // …AND IT IS WHERE THE FOUR NOUNS ARE INTRODUCED
+                        // (R18-P1-2). One word — workspace — was on the Linux,
+                        // on the folder and on the shared facts and notes at
+                        // once. This sentence names each of them once, in the
+                        // one place a first-timer reads before anything else.
+                        "This runs AI agents in your browser. An agent whose file names a \
+                         space also gets a folder in the Linux this page runs, where it can \
+                         write files and run commands, and it shares facts and notes with \
+                         every other agent naming that space. Give an agent a task and walk \
+                         away, or talk to it while it works."
+                    }
+                    // THE LAUNCHER IS THE READING COLUMN AND THE FLEET GOES
+                    // BESIDE IT (R6-LAYOUT). R3-20 took this card out of the
+                    // grid because it shared a 22rem cell with its own button;
+                    // its own row then bought a 544px column of prose in a
+                    // 1134px box with the run's live account below the fold.
+                    // The card is `--column` and the board takes the rest, and
+                    // the rest is now CLAMPED to it (R7-5).
                     div { class: "dash-grid",
-                        launch::TaskLauncher { web, tick, agent: selected, view }
-                        board::AgentBoard { web, tick, view }
-                        space::SpaceInspector { web, tick, agent: selected }
+                        launch::TaskLauncher { web, tick, agent: selected, agents, view }
+                        div { class: "dash-side",
+                            board::AgentBoard { web, tick, view }
+                            space::SpaceInspector { web, tick, agent: selected, agents, view }
+                        }
                     }
                 }
             }
-            // MOUNTED ALWAYS. See the module note: the poller.
+            // MOUNTED ALWAYS. See the module note: the poller. The list around
+            // the pane is mounted with it — it is the same region — and reads
+            // nothing while this is not the routed view (`thread.rs`, rule 1).
             section {
                 class: "view-panel chat-view",
                 id: "chat-view",
                 aria_label: "Chat",
                 hidden: here != View::Chat,
-                // Agents is not the navigation, so the switcher lives HERE, as
-                // a tab strip inside the one view it changes the subject of.
-                tabs::AgentTabs { loaded, authored, selected }
-                chat::ChatPane {
-                    web, endpoint_set, tick, tokens, roster, agent: selected, hidden: false,
+                thread::ThreadList {
+                    web, endpoint_set, tick, tokens, roster, loaded, selected, view,
                 }
             }
             if here == View::Agents {
@@ -83,34 +132,39 @@ pub fn Stage(
                     class: "view-panel agents-view",
                     id: "agents-view",
                     aria_label: "Agents",
-                    launch::TaskLauncher { web, tick, agent: selected, view }
-                    authoring::AgentEditor { web, tick, loaded, authored, agent: selected }
-                    {authoring::agent_panel(agents)}
+                    // THE AGENTS FIRST (R2-17): the view named "Agents" opened
+                    // on a task launcher. The roster is its subject, and it is
+                    // a DECK of reading columns rather than one wide card
+                    // (R7-6b, `roster.rs`).
+                    {roster::agent_panel(agents, selected, blank)}
+                    // …AND THE EDITOR, WITH NOTHING BESIDE IT (R15-IA). This
+                    // view used to end with a second `Run a task` card — the
+                    // Dashboard's own panel, 600px of it, under six long roster
+                    // cards — which put the editor 2168px down a page whose
+                    // whole job is writing an agent. The launcher has one home
+                    // and the roster links to it per agent; what is left here
+                    // is the catalogue and the thing that adds to it.
+                    authoring::AgentEditor { web, tick, loaded, authored, agent: selected, blank }
                 }
             }
             if here == View::Workspace {
                 section {
                     class: "view-panel workspace-view",
                     id: "workspace-view",
-                    aria_label: "Workspace",
-                    artifacts::Artifacts { web, tick, agent: selected }
-                    files::Files { web, tick, agent: selected }
+                    aria_label: "Commands",
+                    // The TERMINAL is the primary column here (F10).
+                    terminal::Terminal { web, tick, agent: selected }
                 }
             }
-            if here == View::Memory {
-                section {
-                    class: "view-panel memory-view",
-                    id: "memory-view",
-                    aria_label: "Memory",
-                    space::SpaceInspector { web, tick, agent: selected }
-                }
-            }
+            // View::Space is GONE (R5-22): a nav destination byte-identical to
+            // the Dashboard's own tile, with 60% of the viewport empty below
+            // it. The tile stays where it has context, beside the board.
             if here == View::Trace {
                 section {
                     class: "view-panel trace-view",
                     id: "trace-view",
-                    aria_label: "Trace",
-                    tools::ToolTrace { web, tick, agent: selected }
+                    aria_label: "Tool trace",
+                    tools::ToolTrace { web, tick, agent: selected, view }
                 }
             }
             if here == View::Settings {
@@ -119,43 +173,27 @@ pub fn Stage(
                     id: "settings-view",
                     aria_label: "Settings",
                     settings::Settings { web, endpoint_set, tick }
+                    skin::Appearance {} // out of the header (R2-14)
+                    // WHICH Linux the agent runs in (increment 18). Beside
+                    // Appearance because both are device-local preferences
+                    // stored outside the app's data, and both take one press.
+                    engine::LinuxEngine { web, tick, agent: selected }
+                    // …and NOTHING about the component gallery (R3-11): a
+                    // maintainer's page citing DESIGN.md sections and E1/E2/E3
+                    // shipped as the last line of the product's Settings. It
+                    // stays reachable at #/design-system.
                 }
             }
-            gallery::DesignSystem { hidden: here != View::DesignSystem }
+            // MOUNTED ONLY ON ITS OWN ROUTE (R4-9). It was a `display: none`
+            // section inside `.stage` on every screen, so a maintainer's
+            // specimen sheet was in the document of every page anybody loaded.
+            // The route is unchanged: `#/design-system` opens it.
+            if here == View::DesignSystem {
+                crumbs::DesignCrumb { view }
+                gallery::DesignSystem {}
+            }
         }
     }
 }
 
-/// The instruments, per view (VIEWS.md §5). The rail is the answer to "what
-/// else do I need while I am doing this", so it is different per view rather
-/// than the same four panels forever — and on Memory, Settings and the
-/// Dashboard (which already holds them all) the answer is nothing, so
-/// `View::rail` folds it.
-#[component]
-pub fn Rail(
-    web: Signal<Option<Rc<WebApp>>>,
-    tick: Signal<u32>,
-    selected: Signal<String>,
-    view: Signal<View>,
-) -> Element {
-    let here = view();
-    rsx! {
-        aside {
-            class: "rail",
-            id: "rail",
-            aria_label: "Live instruments for {selected}",
-            hidden: !here.rail(),
-            p { class: "rail-who", "Instruments · " strong { "{selected}" } }
-            if here == View::Chat {
-                board::AgentBoard { web, tick, view }
-                tools::ToolTrace { web, tick, agent: selected }
-            }
-            if here == View::Agents {
-                board::AgentBoard { web, tick, view }
-            }
-            if here == View::Workspace || here == View::Trace {
-                terminal::Terminal { web, tick, agent: selected }
-            }
-        }
-    }
-}
+// The RAIL is `rail.rs` (I12): this file routes the centre column.

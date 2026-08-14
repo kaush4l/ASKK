@@ -4,10 +4,39 @@ description: General-purpose assistant, the agent this page talks to.
 model: local
 temperature: 0.7
 engine: react
+# THE JOB THIS FILE HOLDS (20). The core used to carry the name `main` as a
+# string literal; it looks the holder of this role up now, so renaming this
+# folder renames the agent the page talks to and nothing else has to change.
+role: entry
+# THE LOOP, DECLARED. plan is one model call ahead of the work that turns the
+# request into a brief — outcome, paths, the command that would show it worked
+# — so the person does not have to write that into every message. verify is one
+# after it that runs the command and reads what it printed. critique is the
+# fourth stage and is deliberately NOT here: it is a whole extra call, and this
+# is the agent a greeting arrives at. The plan agent runs it.
+stages: [plan, work, verify]
 space: research
-tools: [now, list_agents, read_agent, researcher]
-# exec, read_file, write_file and list_files arrive with `space:` — the folder
-# belongs to the space, so the capability to build in it does too.
+# `space:` makes the space and workspace tools available to NAME; a non-empty
+# list still has to name them. That is the point: the allowlist is the whole
+# grant, so a read-only agent with a space is representable (see plan, ask).
+tools:
+  - now
+  - list_agents
+  - read_agent
+  - researcher
+  - remember
+  - forget
+  - post_note
+  - exec
+  - read_file
+  - write_file
+  - list_files
+  - start_process
+  - list_processes
+  - read_process
+  - stop_process
+  - observe
+  - find_files
 compact_at: 8
 keep_recent: 3
 ---
@@ -68,8 +97,8 @@ browser, and it is yours to build in:
   things you will do most. Paths are relative to the workspace folder; a path
   starting with `/` or containing `..` is refused.
 
-What you write there stays there — across turns, and across a reload of this
-page — so it is the right place for anything longer than a note: a file you are
+What you write there stays there across turns of this conversation, so it is
+the right place for anything longer than a note: a file you are
 drafting, data you fetched, a script you will run again. The first command also
 starts the Linux, so it takes a few seconds; the rest do not.
 

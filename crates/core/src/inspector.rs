@@ -1,11 +1,9 @@
-//! `SpaceInspector` — the shared space as a person can see it: the workspace
-//! path, the settled facts, the noticeboard (plan, "UI shape"; Python
-//! counterpart `core/space.py`). Its own module, like every other panel, so
-//! the component that owns facts and notes owns nothing else.
+//! `SpaceInspector` — the workspace as a person can see it: the folder's path,
+//! the settled facts, the noticeboard (plan, "UI shape"; Python counterpart
+//! `core/space.py`). Its own module, like every other panel.
 //!
-//! It shows THIS process's space, read back from the shared store on every
-//! pass — so a fact a sub-agent recorded in its own Worker appears here
-//! without the page being told to look.
+//! It shows THIS process's space, read back from the shared store on every pass
+//! — a fact a sub-agent recorded in its own Worker appears without being asked.
 
 use agent::{Space, NOTE_LIMIT};
 use kernel::{ModuleId, Request, Response, Version};
@@ -17,7 +15,7 @@ use crate::dispatch::{error_fragment, html, Ctx};
 pub(crate) fn manifest() -> Manifest {
     Manifest {
         id: ModuleId("space".into()),
-        name: "Shared space".into(),
+        name: "Shared facts and notes".into(),
         version: Version(1),
         description: "The facts and notes every agent in this space shares.".into(),
         capabilities: vec![],
@@ -49,6 +47,17 @@ pub(crate) fn space(req: &Request, ctx: &mut Ctx) -> Response {
     }
 }
 
+/// WHETHER THE FILES ARE STILL THERE TOMORROW, in the two words that differ.
+/// One wording, one place: `scrollback.rs` says the same thing about the same
+/// folder, and the two disagreeing is the defect this fn exists to prevent.
+pub(crate) fn kept(durable: bool) -> &'static str {
+    match durable {
+        true => "What is written there survives a reload.",
+        false => "This engine's filesystem is in memory: what is written there is GONE when \
+                  the page reloads. Settings names the engine and the other one keeps files.",
+    }
+}
+
 fn line(class: &str, text: &str) -> Fragment {
     FragmentBuilder::new("p").class(class).text(text).build()
 }
@@ -68,9 +77,11 @@ fn panel(ctx: &Ctx, who: &str) -> Response {
             200,
             line(
                 "pending",
+                // The fix is `browsable::GIVE_IT_A_SPACE` — written once, so
+                // the Workspace pane says the same words (R10-10).
                 &format!(
-                    "{who}'s file names no space, so it works alone. Add `space: <name>` \
-                     to public/agents/{who}/agent.md to put it in one."
+                    "{who}'s file names no space, so it works alone. {}",
+                    crate::browsable::GIVE_IT_A_SPACE
                 ),
             )
             .into_html(),
@@ -82,8 +93,8 @@ fn panel(ctx: &Ctx, who: &str) -> Response {
             line(
                 "pending",
                 &format!(
-                    "{who} works in the {named} space. This page reads the {} space, so \
-                     what is in {named} is not shown here.",
+                    "{who} works in the {named} space. This page reads the {} \
+                     space, so what is in {named} is not shown here.",
                     ctx.space.as_ref().map(|s| s.name.clone()).unwrap_or_else(|| "no".into())
                 ),
             )
@@ -103,16 +114,21 @@ fn panel(ctx: &Ctx, who: &str) -> Response {
         .child(line(
             "space-name",
             &format!(
-                "Space: {} — {who} works here, with every other agent whose file names it.",
+                "Space: {} — {who} works here, with every other agent whose file names \
+                 it. What they share is the facts and notes below; the folder is this \
+                 page's own.",
                 space.name
             ),
         ))
         .child(line(
             "space-path",
+            // ONE FACT, ONE WORDING (R5-14): the terminal's own disclosure
+            // says this in exactly these words.
             &format!(
-                "Workspace: {} — a real folder in the Linux the Workspace panel runs. What \
-                 is written there survives a reload.",
-                space.path()
+                "{who}'s folder: {} — a real folder in the Linux that Commands runs in. \
+                 Files an agent writes go there, not into the facts and notes above. {}",
+                space.path(),
+                kept(ctx.durable)
             ),
         ))
         .child(facts(space))

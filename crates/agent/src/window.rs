@@ -115,6 +115,7 @@ pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect
         format: ProviderFormat::OpenAiChat { vision: false, audio: false },
         endpoint: EndpointName("model".into()),
         model: state.summarizer_model.clone(),
+        temperature: state.summarizer_temperature,
         speaker: paper::SUMMARIZER.to_string(),
     })
 }

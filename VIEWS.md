@@ -35,7 +35,7 @@ from what a dashboard usually has:
 | Board | `GET /board` | `board.rs` | right rail |
 | Tools | `GET /tools` | `tools.rs` | right rail |
 | Workspace | `GET/POST /terminal` | `terminal.rs` | right rail |
-| Space | `GET /space` | `space.rs`, `inspector.rs` | right rail |
+| Space | `GET /space` | `space.rs`, `inspector.rs` | Dashboard tile only — the standalone view and its nav entry were removed in R5-22 as a duplicate of that tile |
 | Status | `GET /panels/status` | — | header |
 | Models & keys | **not the seam** — ADR-006 broker | `settings.rs` | Setup deck |
 

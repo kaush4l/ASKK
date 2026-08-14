@@ -38,3 +38,16 @@ where
     found.sort_by(|a, b| a.name.cmp(&b.name));
     (found, problems)
 }
+
+/// WHO HOLDS A JOB (20). `main` and `summarizer` were string literals in the
+/// core, so the manifest could not move either one: renaming the entry agent's
+/// folder changed nothing and deleting the summarizer's stopped compaction with
+/// no word anywhere. The file declares the role and this is the lookup.
+///
+/// FIRST DECLARATION WINS, and the list is sorted by name, so two files
+/// claiming one job resolve the same way on every boot rather than by fetch
+/// order. `None` is a real answer: the caller falls back to the name it has
+/// always used, which is what keeps a manifest with no `role:` line working.
+pub fn role_holder<'a>(specs: &'a [AgentSpec], role: &str) -> Option<&'a AgentSpec> {
+    specs.iter().find(|s| s.role == role)
+}

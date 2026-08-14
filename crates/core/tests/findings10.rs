@@ -61,18 +61,16 @@ fn type_command(app: &Rc<RefCell<App>>, command: &str) -> String {
     body
 }
 
-/// FINDING 2. "the first command also boots the Linux" was printed on every
-/// command, including the eleventh in an already-booted VM. A line that is
-/// untrue ten times out of eleven stops being read on the one occasion it
-/// explains a genuine cold boot.
+/// FINDING 2, as R11-13 left it. The row used to add "this first command also
+/// boots the Linux" to the first command a workspace ever ran. The page prewarms
+/// the Linux at paint now, so that sentence sat under a header reading `ready`:
+/// no command claims to be booting anything, on any run.
 #[test]
-fn only_the_first_command_claims_to_be_booting_the_linux() {
+fn no_command_claims_to_be_booting_the_linux() {
     let app = booted();
     let first = type_command(&app, "uname -a");
-    assert!(
-        first.contains("this first command also boots the Linux"),
-        "the cold boot keeps its explanation: {first}"
-    );
+    assert!(first.contains("running"), "the row still says it is running: {first}");
+    assert!(!first.contains("boots the Linux"), "{first}");
 
     let second = type_command(&app, "echo hello");
     assert!(second.contains("running…"), "{second}");
@@ -95,17 +93,21 @@ fn the_workspace_pane_is_scoped_to_the_selected_agent() {
     )
     .body;
     assert!(theirs.contains("data-agent=\"alone\""), "{theirs}");
-    assert!(
-        theirs.contains("file names no space, so it has no workspace"),
-        "{theirs}"
-    );
+    // R10-11: the pane says it ONCE. The disclosure that used to repeat the
+    // same fact under its own heading is not rendered for an agent with no
+    // folder to disclose.
+    assert!(!theirs.contains("panel-note"), "nothing to disclose: {theirs}");
     assert!(
         !theirs.contains("/root/spaces/research — the same folder"),
         "an agent with no space is not told about somebody else's: {theirs}"
     );
-    // …and it says whose commands the scrollback in this pane actually is.
-    // "below" was a direction, and the note moved under the scrollback in 12c.
-    assert!(theirs.contains("The commands in this pane are main"), "{theirs}");
+    // …and R4-1's attribution — "these are what {who}'s Worker reported" —
+    // goes with it: an agent with no workspace has no commands to attribute,
+    // which is what the one remaining sentence says.
+    assert!(
+        theirs.contains("alone has no folder, so it runs no commands"),
+        "an agent with no record of its own has an empty pane, not main's: {theirs}"
+    );
 
     let mine = handle(
         &mut app.borrow_mut(),
@@ -125,23 +127,30 @@ fn the_workspace_pane_is_scoped_to_the_selected_agent() {
     assert!(!mine.contains("The commands in this pane are"), "no aside needed: {mine}");
 }
 
-/// FINDING 4. The path rule stated honestly, wherever the UI summarises it:
-/// `exec` is a full shell, `cat /etc/passwd` works from it, so the check on
-/// the other three tools is legibility and the VM is the containment.
+/// FINDING 4. The reach stated honestly, wherever the UI summarises it: `exec`
+/// is a full shell, `cat /etc/passwd` works from it, and the tab's Linux is the
+/// containment. R10-10 keeps the claim and drops the implementation note that
+/// carried it — "the path check on the file tools is legibility rather than
+/// containment" is a sentence about our code, in copy a person reads.
 #[test]
-fn the_path_rule_is_stated_as_legibility_not_containment() {
+fn the_reach_is_stated_honestly_and_not_in_our_own_terms() {
     let app = booted();
     let pane = handle(
         &mut app.borrow_mut(),
         Request::get("/terminal").with_header("x-agent", "main"),
     )
     .body;
-    assert!(pane.contains("REAL shell"), "{pane}");
-    assert!(pane.contains("legibility rather than containment"), "{pane}");
-    assert!(pane.contains("the Linux running in this tab"), "{pane}");
+    // …in the product's ordinary voice, not in capitals (R6-14): "a REAL
+    // shell" was the only shouting on the page.
+    assert!(pane.contains("it is a full shell"), "{pane}");
+    assert!(!pane.contains("REAL shell"), "the product does not shout: {pane}");
+    assert!(pane.contains("can read anything in this Linux"), "{pane}");
+    assert!(pane.contains("The Linux in this tab is as far as it goes"), "{pane}");
+    assert!(!pane.contains("legibility"), "not in our terms (R10-10): {pane}");
 
-    // The same sentence on the Agents card, where a space is what grants it.
+    // The same claim on the Agents card, where a space is what grants it.
     let card = handle(&mut app.borrow_mut(), Request::get("/agents")).body;
-    assert!(card.contains("exec is a full shell"), "{card}");
-    assert!(card.contains("legibility rather than containment"), "{card}");
+    assert!(card.contains("Its shell is a full one"), "{card}");
+    assert!(card.contains("as far as it goes"), "{card}");
+    assert!(!card.contains("legibility"), "{card}");
 }

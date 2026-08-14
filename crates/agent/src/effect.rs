@@ -25,6 +25,11 @@ pub enum Effect {
         /// adapter resolves it against `public/models.json`, so no URL and no
         /// concrete model id exists anywhere upstream of the broker (I6).
         model: String,
+        /// The agent's `temperature:` frontmatter key, or `None` where the
+        /// file named none. It rides the effect rather than being read from a
+        /// setting because it is a property of the AGENT, and the summarizer's
+        /// turn is a different agent's call inside the same run.
+        temperature: Option<f64>,
         /// WHICH AGENT this reply belongs to; empty is the process's own
         /// agent. Compaction is a turn taken by the `summarizer` — an ordinary
         /// agent, with its own file and its own conversation — so the reply

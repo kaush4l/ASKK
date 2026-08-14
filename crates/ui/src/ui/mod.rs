@@ -17,6 +17,8 @@
 //! a walk and the props are shaped so losing one takes an edit, not an
 //! omission.
 
+use dioxus::prelude::{Key, KeyboardEvent, ModifiersInteraction};
+
 mod badge;
 mod button;
 mod card;
@@ -58,11 +60,116 @@ pub(crate) fn focus(id: &str) {
     }
 }
 
+/// ENTER SENDS, SHIFT+ENTER BREAKS THE LINE (R4-4).
+///
+/// The two fields a turn starts from are `<textarea>` now — the product's
+/// primary input was a 44px single-line box in which a 3,000-character
+/// instruction scrolled sideways to 21,598px and showed about ninety
+/// characters. A textarea in a form does not submit on Enter, so the Enter
+/// behaviour a form gave for free has to be given back by hand; this is the
+/// one place it is spelled, so the two fields cannot drift apart.
+///
+/// Returns true when the caller should submit and swallow the key.
+pub(crate) fn enter_submits(event: &KeyboardEvent) -> bool {
+    event.key() == Key::Enter && !event.modifiers().shift()
+}
+
+/// THE KEYBINDING, ON SCREEN (R5-5). Enter starts a real run from a field
+/// whose own placeholder asks for a multi-line instruction, and nothing said
+/// so — a critic launched one by accident. One `<p>` under both fields that
+/// bind `enter_submits`, next to the fn that decides it, so a change to the
+/// binding and a change to the sentence are one edit.
+pub(crate) fn key_hint() -> dioxus::prelude::Element {
+    use dioxus::prelude::*;
+    rsx! {
+        p { class: "hint",
+            kbd { "⏎" }
+            " starts it · "
+            kbd { "⇧⏎" }
+            " for a new line"
+        }
+    }
+}
+
+/// Bring the LAST match of a selector into view, aligned to the bottom of
+/// whichever ancestor is scrolling it. `route::newest_turn` does exactly this
+/// for the conversation; R4-12 needed it for the tool trace, and the second
+/// copy is how the first one starts drifting.
+///
+/// THE LIST FIRST, THE PAGE ONLY IF IT MUST (R8-5). `scrollIntoView` moves
+/// EVERY scrolling ancestor, so the trace bringing its newest call into view
+/// also dragged the rail 257px down and cut the heading off the panel above it.
+/// When the list is a scrollport of its own — which `#tool-trace` and
+/// `#terminal` both are in the rail — scrolling it to its end shows the same
+/// row and moves nothing outside the panel. When it is not (the Trace VIEW,
+/// where the stage scrolls), this is the call it always was.
+/// Put the newest output where it can be read (10 walk, finding 1): the pane
+/// is a fixed-height scroller and nothing ever moved it, so a command's answer
+/// was LESS visible after it finished than while it ran — 1300px below the
+/// fold, with `scrollTop` still 0. Not application logic (I5): it is a scroll
+/// position, set from Rust. Takes the element by id because the conversation
+/// became a scroller of its own in 12c with exactly the same problem.
+pub(crate) fn show_newest(id: &str) {
+    if let Some(pane) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id(id))
+    {
+        pane.set_scroll_top(pane.scroll_height());
+    }
+}
+
+/// …ONCE THE DOM HAS CAUGHT UP, and on every change rather than on the ones a
+/// person caused (R14-P1-5). Both traces render the log oldest-first — the rule
+/// `core::scrollrows` states — and they still read in opposite directions,
+/// because the Tool trace scrolled to its newest row whenever its projection
+/// changed while the Commands pane scrolled only for a command the PERSON
+/// typed: `scrollTop: 0` over 1416px of scrollback after a reload, measured, so
+/// the only rows reliably in view there were the user's own. That was the
+/// exception, and this is both panes following one rule instead.
+pub(crate) fn show_newest_soon(id: &'static str) {
+    dioxus::prelude::spawn(async move {
+        let _ = adapters_web::sleep(30).await;
+        show_newest(id);
+    });
+}
+
+pub(crate) fn show_last(selector: &str) {
+    let Some(last) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.query_selector(selector).ok().flatten())
+    else {
+        return;
+    };
+    if let Some(list) = last.parent_element() {
+        if list.scroll_height() > list.client_height() {
+            list.set_scroll_top(list.scroll_height());
+            return;
+        }
+    }
+    last.scroll_into_view_with_bool(false);
+}
+
 /// The id of the composer's field. The one place a turn starts, so it is the
 /// action on every empty state in the rail: a tool call, a board row, a shell
 /// run and a shared fact are all things a TURN produces, and saying "send a
 /// message" is the honest answer to "what would put something here".
 pub(crate) const COMPOSER_ID: &str = "composer-field";
+
+/// A SENTENCE QUOTED INSIDE A SENTENCE (R8-11).
+///
+/// `"{who} is on it: “{task}”."` produced `“Say hello.”.` and `…their sum”.` —
+/// a double full stop in every run-status string the product writes, because
+/// the quoted text is a whole sentence carrying its own terminal mark and the
+/// format string added a second one regardless. The CONSTRUCTION was the
+/// defect, not the instances, so the stop is decided once, here: it belongs to
+/// whichever of the two needs it.
+pub(crate) fn quoted(said: &str) -> String {
+    let said = said.trim();
+    match said.ends_with(['.', '!', '?', '…', '"', '”']) {
+        true => format!("“{said}”"),
+        false => format!("“{said}”."),
+    }
+}
 
 /// Whether a projection from the core contains any row at all. The core
 /// renders its own sentence for an empty region; this is how a pane knows to
@@ -75,4 +182,16 @@ pub(crate) const COMPOSER_ID: &str = "composer-field";
 /// alternative is a second copy of every empty sentence.
 pub(crate) fn has_rows(html: &str, row_class: &str) -> bool {
     html.contains(row_class)
+}
+
+#[cfg(test)]
+mod tests {
+    /// R8-11: one terminal stop, whoever owns it.
+    #[test]
+    fn a_quoted_sentence_takes_one_full_stop() {
+        assert_eq!(super::quoted("Say hello."), "“Say hello.”");
+        assert_eq!(super::quoted("Say hello"), "“Say hello”.");
+        assert_eq!(super::quoted("  Are you there?  "), "“Are you there?”");
+        assert_eq!(super::quoted("… their sum"), "“… their sum”.");
+    }
 }

@@ -17,30 +17,21 @@
 //!
 //! It is reachable with NO model endpoint configured, because it renders no
 //! projection and calls the seam not once — it is markup and tokens only.
-//! `#design-system` in the URL opens it directly at boot.
+//! `#/design-system` in the URL opens it directly at boot (`route.rs`, which
+//! still accepts the older `#design-system` a critic may have bookmarked), and
+//! the way in from the page is the one line at the bottom of Settings.
 
 mod controls;
 mod surfaces;
 
 use dioxus::prelude::*;
 
-use crate::skin::SkinToggle;
 use crate::ui::{Button, Card};
 
 /// The route's own attribute on the root element, and the whole mechanism.
 /// `tokens.css` gives it the same body as `[data-skin="plain"]`, so this is
 /// not a second code path being maintained beside the first.
 const GLASS_OFF: &str = "off";
-
-/// Whether the page was opened straight at this route. The app has no URL
-/// router — it routes by the `hidden` attribute between regions (increment
-/// 13) — so this is the one line that makes the page linkable, which a critic
-/// asked to "open /design-system" needs.
-pub(crate) fn wanted() -> bool {
-    web_sys::window()
-        .and_then(|w| w.location().hash().ok())
-        .is_some_and(|h| h.contains("design-system"))
-}
 
 fn set_glass(off: bool) {
     let Some(root) = web_sys::window()
@@ -56,7 +47,7 @@ fn set_glass(off: bool) {
 }
 
 #[component]
-pub fn DesignSystem(hidden: bool) -> Element {
+pub fn DesignSystem() -> Element {
     let mut glass_off = use_signal(|| false);
     use_effect(move || set_glass(glass_off()));
     rsx! {
@@ -64,7 +55,6 @@ pub fn DesignSystem(hidden: bool) -> Element {
             class: "deck",
             id: "design-system",
             aria_label: "Design system",
-            hidden,
             Card { title: "Design system", variant: "flat",
                 p { class: "note",
                     "Every component in DESIGN.md §8, in every variant and every state, over \
@@ -72,7 +62,8 @@ pub fn DesignSystem(hidden: bool) -> Element {
                      no model endpoint configured and no agent loaded."
                 }
                 div { class: "ds-row",
-                    SkinToggle {}
+                    // The skin switch itself is in Settings now (R2-14); what
+                    // belongs HERE is the material's own fallback.
                     Button {
                         class: "skin-toggle",
                         aria_pressed: if glass_off() { "true" } else { "false" },
@@ -80,7 +71,8 @@ pub fn DesignSystem(hidden: bool) -> Element {
                             let next = !glass_off.peek().to_owned();
                             glass_off.set(next);
                         },
-                        "No backdrop-filter"
+                        span { "No backdrop-filter" }
+                        span { class: "toggle-state", if glass_off() { "on" } else { "off" } }
                     }
                 }
                 p { class: "note",

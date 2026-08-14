@@ -1,105 +1,122 @@
-//! One agent's conversation, folded out of the event log. Split from
-//! `chat.rs` (which owns the module and the route) so both hold the 200-line
-//! rule (I12): this file is the projection, and nothing else.
-//!
-//! Nothing outside the named agent's conversation is ever projected — a
-//! message to `researcher` cannot appear in `main`'s transcript because the
-//! fold never reaches it (increment 07).
+//! One agent's conversation, folded out of the event log. Split from `chat.rs`
+//! (the module and the route) so both hold the 200-line rule (I12). Nothing
+//! outside the named agent's conversation is projected (07), its log id too (§7).
 
 use kernel::{EventKind, Response};
-use module::view::{Fragment, FragmentBuilder};
+use module::view::FragmentBuilder;
 
 use crate::dispatch::{html, Ctx};
 use crate::failure::failure;
-use crate::fold::{belongs_to, driven, spent, tail};
-
-/// What a stopped turn leaves on the transcript.
-const STOPPED: &str = "You stopped waiting, so the turn ended here. A reply that arrives \
-                       after this is in the log; anything you saved takes effect now.";
-
-/// What an ABANDONED turn leaves on it. The log's shape says a question was
-/// asked and never answered; nothing in this process is driving it, so it is
-/// over — and saying "thinking…" about it locked the composer forever behind a
-/// clock that could not tick (12 walk, finding 1).
-pub(crate) const ORPHANED: &str = "That turn is not running any more — the page was reloaded while it \
-                        was in flight, so nothing is driving it. Nothing was lost; ask again.";
-
-/// One message, with WHO SAID IT in words. The speaker used to be carried by
-/// the class alone, so with the stylesheet off a question and its answer were
-/// two identical paragraphs (`ux-walker`, increment 06) — the same reasoning
-/// that put the word "refused" beside the colour in the tool trace.
-pub(crate) fn msg(class: &str, speaker: &str, text: &str) -> Fragment {
-    let mut row = FragmentBuilder::new("div").class(class);
-    if !speaker.is_empty() {
-        row = row.child(
-            FragmentBuilder::new("span")
-                .class("speaker")
-                .text(&format!("{speaker}: "))
-                .build(),
-        );
-    }
-    row.child(FragmentBuilder::new("span").class("said").text(text).build())
-        .build()
-}
+use crate::fold::{belongs_to, driven, msg, spent, tail};
+use crate::{calls::Calls, repeat::Seen};
 
 /// The whole conversation with ONE agent, in log order. A turn is in flight
-/// when the last message-shaped fact is a `UserMessage` — that is also the
-/// `x-turn: pending` header, which is how the UI knows to keep watching
-/// without parsing HTML.
+/// when the last message-shaped fact is a `UserMessage` — also the `x-turn:
+/// pending` header, so the UI watches without parsing HTML.
+/// The one announcement a run of tool-calling replies leaves behind (R7-15).
+fn announced(list: FragmentBuilder, calls: &mut Calls, who: &str, count: &mut usize) -> FragmentBuilder {
+    let Some(one) = calls.take() else { return list };
+    *count += 1;
+    // `Calls::take` owns the tense (R16-P1-1): the run has ENDED by the time
+    // this is written, so it reads `main called write_file`.
+    list.child(msg("msg system", "", &format!("{who} {one}"), &[]))
+}
+
 pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Response {
     let mut list = FragmentBuilder::new("div")
-        .id("chat-log")
+        .id(&format!("chat-log-{who}"))
         .attr("role", "log")
         .attr("aria-live", "polite");
-    let (mut awaiting, mut count, mut failures) = (false, 0usize, 0usize);
+    let (mut awaiting, mut count) = (false, 0usize);
     let mut tools = 0usize;
-    for kind in ctx.recent.iter().filter(|k| belongs_to(k, &ctx.me, who)) {
+    // Every failure written out IN FULL, and what folded onto it (`repeat::Seen`).
+    let mut said = Seen::default();
+    let mut calls = Calls::default(); // one announcement per run (R7-15)
+    // The last thing the PERSON said here. The pane could only remember what it
+    // had sent itself, so a reload left a recovery with nothing to press (R3-5).
+    let mut last_said = String::new();
+    // What the workspace holds, so a file the agent NAMES can be opened from
+    // the sentence that names it (R9-4).
+    let files = crate::filerows::names(ctx);
+    // WHICH of these messages were STEERS and not new turns (R18-P0-1), by log
+    // position, off the `core.steered` fact `step` writes when it takes one.
+    let steers = crate::steered::steers(ctx, who);
+    for (nth, kind) in ctx.recent.iter().enumerate() {
+        if !belongs_to(kind, &ctx.me, who) {
+            continue;
+        }
+        // A run of announcements ends at the next fact that RENDERS: the
+        // `ToolInvoked` facts between two rounds render nothing here, so they
+        // do not break the run (R7-15).
+        let quiet = matches!(kind, EventKind::ToolInvoked { .. })
+            || matches!(kind, EventKind::ModelReplied { text, .. } if agent::has_calls(text));
+        if !quiet {
+            list = announced(list, &mut calls, who, &mut count);
+        }
         match kind {
+            // …AND WHAT THE PAGE SAYS ABOUT THE TURN IT LANDED IN is
+            // `steered::said`'s, for both readers at once (R18-P0-1): a message
+            // over an open turn was drawn as a turn a RELOAD had abandoned, and
+            // a steer has exactly that shape.
             EventKind::UserMessage { text, from, .. } => {
-                let said_by = match from.is_empty() {
-                    true => "You",
-                    false => from.as_str(),
-                };
-                list = list.child(msg("msg user", said_by, text));
-                (awaiting, count) = (true, count + 1);
+                let open = awaiting.then(|| steers.contains(&nth));
+                list = crate::steered::said(list, who, from, text, &files, open);
+                if from.is_empty() {
+                    last_said = text.clone();
+                }
+                count += 1;
             }
             // A reply that CALLS tools has not answered anything: the turn is
-            // still running, and the pane must keep watching (the trace panel
-            // owns what was called).
-            EventKind::ModelReplied { text, .. } if agent::has_calls(text) => {
-                list = list.child(msg("msg tool", who, "calling tools — see the tool trace below"));
-                (awaiting, count) = (true, count + 1);
-            }
+            // still running, and the pane must keep watching. The Tool trace
+            // panel owns what was called — BESIDE this, never "below" (R3-17).
+            // …AND WHICH ONES (R5-20): the names are parsed by this arm's own
+            // guard, and gathered until the run of them ends (R7-15).
+            EventKind::ModelReplied { text, .. } if agent::has_calls(text) => calls.push(text),
+            // …AND A REPLY THAT IS MACHINE OUTPUT IS NOT AN ANSWER (R17-P0-2).
+            // `exec({"command": "cat a.md"}, {"command": "cat b.md"}, …)` was
+            // an `msg assistant` bubble in the agent's own name, with the
+            // Dashboard's `Read the reply` button pointing at it. Which of the
+            // two this is, is `ending::reply`'s to decide — the same predicate
+            // `step` ended the turn by, so the bubble and the card agree.
             EventKind::ModelReplied { text, .. } => {
-                list = list.child(msg("msg assistant", who, text));
-                (awaiting, count) = (false, count + 1);
+                list = list.child(crate::ending::reply(who, text, &files));
+                count += 1;
             }
-            // A tool result inside a TURN means another model call is coming,
-            // and inside a turn `awaiting` is already true — so this arm has
-            // nothing to set. It must not set it: a command a person typed
-            // into the terminal is a `ToolInvoked` too, and asserting it here
-            // left the chat pane saying "Sending…" with the composer disabled
-            // for the rest of the session, over a turn nobody had started.
-            //
-            // It is COUNTED, though (see `tools` below). The pane's patience
-            // is silence-based, and a transcript that renders nothing at all
-            // for a tool call is silent through the exact workload this
-            // product exists for — an `apk add`, a build — so the watcher
-            // would call a working agent dead partway through it.
-            EventKind::ToolInvoked { .. } => tools += 1,
-            // The machine's own word to the user (the tool loop gave up).
-            EventKind::Custom { kind, payload_json } if kind == "core.note" => {
-                let note = serde_json::from_str::<String>(payload_json)
-                    .unwrap_or_else(|_| payload_json.clone());
-                list = list.child(msg("msg pending", "", &note));
-                (awaiting, count) = (false, count + 1);
+            // This arm sets NO wait: a command a person typed into the terminal
+            // is a `ToolInvoked` too, and asserting `awaiting` here left the
+            // composer disabled over a turn nobody had started. It is COUNTED —
+            // the pane's patience is silence-based — and its OUTCOME goes to the
+            // run's announcement (R9-3), which sat above a reply read as an
+            // unqualified answer over a trace whose first row was red.
+            // `Calls::note` only counts inside an open run, so a typed command
+            // is never the agent's turn failing.
+            EventKind::ToolInvoked { tool, args, ok, output } => {
+                tools += 1;
+                calls.note(&tool.0, args, *ok, output);
+            }
+            // HOW THE TURN ENDED, IN ONE ARM (R17-P0-2). The stop, the round
+            // ceiling and the stopped wait were three arms with three wordings,
+            // and a fourth ending — a turn that stopped without answering — had
+            // no wording anywhere. Every sentence about an ending is
+            // `ending::machine_note`'s, beside the fold the row and card read.
+            EventKind::Custom { kind, payload_json } if crate::ending::is_note(kind) => {
+                if let Some((speaker, note)) = crate::ending::machine_note(kind, payload_json, who) {
+                    list = list.child(msg("msg pending", &speaker, &note, &[]));
+                    count += 1;
+                }
             }
             // The same card as a failure on this page's own agent: one failure,
             // one presentation, and the cause reachable from either.
             EventKind::Custom { kind, payload_json } if kind == "core.agent_error" => {
-                failures += 1;
-                list = list.child(crate::told::agent_failure(payload_json, who, failures));
-                (awaiting, count) = (false, count + 1);
+                // Folded on the failure INSIDE the envelope, by the same rule
+                // this page's own failures fold by: a sub-agent refused five
+                // times was five identical cards (R3-4).
+                let detail = crate::told::detail_of(payload_json);
+                list = list.child(match said.fold(&detail) {
+                    Some(again) => again,
+                    None => crate::told::agent_failure(payload_json, who),
+                });
+                count += 1;
             }
             // A background summarisation that failed. It is NOT this turn's
             // failure — the turn carried on with the full history — so it is
@@ -107,35 +124,41 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
             // all was the bug: one request went out, it was not the user's,
             // and the transcript showed their question failing (09 walk).
             EventKind::Custom { kind, payload_json } if kind == "core.compaction_failed" => {
-                failures += 1;
-                list = list.child(crate::failure::compaction_failed(payload_json, failures));
-            }
-            // The person pressed Stop waiting. The turn ended; nothing is
-            // owed, so the pane must not keep saying "thinking…".
-            EventKind::Custom { kind, .. } if kind == crate::chat::TURN_STOPPED => {
-                list = list.child(msg("msg pending", "", STOPPED));
-                (awaiting, count) = (false, count + 1);
+                list = list.child(crate::failure::compaction_failed(payload_json));
             }
             EventKind::Custom { kind, payload_json } if kind == "core.error" => {
-                failures += 1;
-                list = list.child(failure(payload_json, failures));
-                (awaiting, count) = (false, count + 1);
+                list = list.child(match said.fold(payload_json) {
+                    Some(again) => again,
+                    None => failure(payload_json),
+                });
+                count += 1;
             }
             _ => {}
         }
+        // WHETHER THE TURN IS STILL OPEN is `fold::awaits` and nothing else:
+        // the board asks it of the same facts, and two copies of this rule is
+        // how the two surfaces started disagreeing (R7-3).
+        if let Some(open) = crate::fold::awaits(kind) {
+            awaiting = open;
+        }
     }
+    list = announced(list, &mut calls, who, &mut count);
     if let Some(text) = appended {
-        list = list.child(msg("msg user", "You", text));
+        // THE FIRST FRAME OF A STEER. This message has not been pumped yet, so
+        // no `core.steered` fact exists to read: what decides it here is whether
+        // the turn it landed in is really being DRIVEN — the same predicate
+        // `abandoned_run` uses, asked of the moment the sentence arrived.
+        let open = awaiting.then(|| driven(ctx, who, false));
+        list = crate::steered::said(list, who, "", text, &files, open);
+        last_said = text.to_string();
         (awaiting, count) = (true, count + 1);
     }
     let pending = awaiting && driven(ctx, who, appended.is_some());
     if let Some(tail) = tail(pending, awaiting, count, who) {
         list = list.child(tail);
     }
-    // How many tool calls this conversation has behind it. The number is not
-    // rendered — the tool trace is where a person reads them — but it CHANGES
-    // when one lands, and a projection that changes is what tells the pane the
-    // agent is still working.
+    // How many tool calls this conversation has behind it: not rendered, but it
+    // CHANGES when one lands, which is what tells the pane it is working.
     let body = format!(
         "{}{}",
         crate::identity::header(ctx, who),
@@ -146,16 +169,33 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
     // body: the pane must be able to title itself without parsing the fragment
     // or leaning on an editable `description` line (`ux-walker`, increment 03).
     response.headers.push(("x-agent".into(), who.to_string()));
-    // What this page has spent, as a header on a projection the pane already
-    // polls every 400 ms. A meter is the one thing present in the permanent
-    // chrome of every console with a real agent behind it, and VIEWS.md §6
-    // names its absence "the tell for a console built by someone who does not
-    // run agents" — but it does not earn a route of its own or a second clock,
-    // so it rides here. Every agent's spend, not this one's: the number in the
-    // frame is the page's, and a per-agent breakdown is the Trace view's job.
+    // What this page has spent, on a projection the pane already polls every
+    // 400 ms: the meter earns no route of its own and no second clock, so it
+    // rides here. Every agent's spend, not this one's.
     response.headers.push(("x-tokens".into(), spent(ctx).to_string()));
+    // …and the last thing the person said, so the way out of a failed turn is
+    // the same whichever way it failed (R3-5). A header, so the pane never
+    // reads it back out of the HTML it was just handed.
+    response.headers.push(("x-last-said".into(), last_said));
     if pending {
         response.headers.push(("x-turn".into(), "pending".into()));
     }
+    // WHETHER THIS RUN CAN BE STOPPED AT ALL. Only the page's own agent runs in
+    // this loop; a sub-agent's turn is in its own Worker, which no fact written
+    // here reaches. A header rather than a sentence, so the pane offers the
+    // control exactly where it works instead of guessing at whose turn it is.
+    if pending && who == ctx.me {
+        response.headers.push(("x-stoppable".into(), "yes".into()));
+    }
+    // …AND, WHEN IT CANNOT BE STOPPED, WHAT DOES END IT (R17-P0-1). The pane
+    // pointed at the Commands view, which is false twice over. The ceiling in
+    // the agent's own file is true of every run, so the copy states it.
+    if let Some(spec) = ctx.agents.iter().find(|s| s.name == who) {
+        response.headers.push(("x-max-rounds".into(), spec.max_rounds.to_string()));
+    }
+    // `x-orphaned` was here (R5-18), for a second notice the Dashboard drew
+    // under its form. R9-1 moved that truth INTO the launch card, off the board
+    // row's own `data-orphaned`, so the card says one thing and not two — and
+    // this header had no reader left.
     response
 }

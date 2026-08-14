@@ -21,8 +21,31 @@ fn parses_every_frontmatter_key_and_the_body() {
     assert_eq!(spec.engine, "react");
     assert_eq!(spec.space, "research");
     // The shipped file now NAMES its toolkit, and that list is what decides
-    // the agent's toolbox (increment 06) rather than a hardcoded phase list.
-    assert_eq!(spec.tools, ["now", "list_agents", "read_agent", "researcher"]);
+    // the agent's toolbox (increment 06) rather than a hardcoded phase list —
+    // including the space's tools, which `space:` makes nameable but no longer
+    // appends after the filter (ALIGNMENT §5 item 1).
+    assert_eq!(
+        spec.tools,
+        [
+            "now",
+            "list_agents",
+            "read_agent",
+            "researcher",
+            "remember",
+            "forget",
+            "post_note",
+            "exec",
+            "read_file",
+            "write_file",
+            "list_files",
+            "start_process",
+            "list_processes",
+            "read_process",
+            "stop_process",
+            "observe",
+            "find_files"
+        ]
+    );
     // The body after the frontmatter IS the system prompt — no fence, no
     // frontmatter, and not truncated.
     assert!(spec.prompt.starts_with("You are a helpful assistant."));
@@ -48,10 +71,12 @@ fn missing_or_unterminated_frontmatter_is_an_error() {
 }
 
 #[test]
-fn name_defaults_to_the_folder_and_engine_to_base() {
+fn name_defaults_to_the_folder_and_engine_to_the_loop_that_runs() {
     let spec = parse_agent_file("scout", "---\ndescription: x\n---\nbody").expect("parses");
     assert_eq!(spec.name, "scout");
-    assert_eq!(spec.engine, "base");
+    // NOT `base` any more (increment 19): `base` now means "no tools at all",
+    // so a file that omits the line must default to the loop this build runs.
+    assert_eq!(spec.engine, agent::ENGINE_REACT);
     assert_eq!(spec.temperature, None);
 }
 

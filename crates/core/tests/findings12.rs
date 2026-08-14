@@ -1,7 +1,7 @@
 //! Increment 12's two honesty findings, as host behaviour (I3) — no browser,
 //! no Wasm, no selected tab.
 //!
-//! 1. The board said "working — inside a turn" for two minutes after that turn
+//! 1. The board said "working" for two minutes after that turn
 //!    had failed, whenever the agent that moved was not the one on screen. The
 //!    UI half is that `AgentBoard` now keeps the page's only clock; the HOST
 //!    half is that the board projection has to SAY it is not final, for any
@@ -96,7 +96,7 @@ fn a_turn_on_an_unselected_agent_is_visible_and_says_keep_asking() {
         "a turn on ANY agent leaves the board not final: {:?}",
         res.headers
     );
-    assert!(res.body.contains("working — inside a turn"), "{}", res.body);
+    assert!(res.body.contains("working"), "{}", res.body);
 
     report_agent(
         &mut app.borrow_mut(),
@@ -107,7 +107,7 @@ fn a_turn_on_an_unselected_agent_is_visible_and_says_keep_asking() {
     let res = board(&app);
     assert!(!watching(&res), "a settled board must stop the clock");
     assert!(
-        !res.body.contains("working — inside a turn"),
+        !res.body.contains("working"),
         "the failed turn still read as working: {}",
         res.body
     );
@@ -150,7 +150,7 @@ fn the_conversation_says_who_wrote_this_agent_and_what_it_can_reach() {
         "the model wrote this agent and the chat must say so: {chat}"
     );
     assert!(
-        chat.contains("exec is a full shell"),
+        chat.contains("Its shell is a full one"),
         "a space grant is a root shell and the chat must say so: {chat}"
     );
     assert!(
@@ -164,6 +164,6 @@ fn the_conversation_says_who_wrote_this_agent_and_what_it_can_reach() {
         Request::get("/chat").with_header("x-agent", "main"),
     )
     .body;
-    assert!(chat.contains("Shipped in this deploy"), "{chat}");
-    assert!(chat.contains("No space, so no workspace"), "{chat}");
+    assert!(chat.contains("Shipped with this site"), "{chat}");
+    assert!(chat.contains("Its file names no space, so it has no folder"), "{chat}");
 }

@@ -2,7 +2,7 @@
 //! `step.rs` stays inside the 200-line rule (I12) and so contract parsing is
 //! unit-testable against recorded model output without driving the machine.
 
-use crate::calls::{parse_batches, Call};
+use crate::calls::{has_calls, is_ident, is_ident_start, parse_batches, skip_ws, Call};
 use crate::error::AgentError;
 use crate::phase::{ResponseContract, Verdict};
 use crate::state::PlanStep;
@@ -34,4 +34,37 @@ pub fn parse_reply(contract: ResponseContract, raw: &str) -> Result<ParsedReply,
             todo!("Plan/Verify contracts")
         }
     }
+}
+
+/// TEXT THAT TRIED TO CALL A TOOL AND IS NOT ONE (R17-P0-2).
+///
+/// A six-part task ended on this reply, verbatim: `exec({"command": "cat
+/// a.md"}, {"command": "cat b.md"}, …)`. `parse_batches` is right to find no
+/// call in it — a call takes ONE argument object, and the `,` where the `)`
+/// should be is where this stops being one — and the tool contract is total, so
+/// "no call in the text" meant "the model answered". The machine's own output
+/// was then rendered as the agent's reply under a card reading `main finished`,
+/// with a `Read the reply` button pointing at it.
+///
+/// So the reading is narrowed by ONE fact this can be sure of: the text OPENS
+/// with the three tokens a call opens with — an identifier, `(`, `{` — and no
+/// call could be read out of it. Prose that mentions a call in the middle of a
+/// sentence is still prose; a reply that begins as machine output is not an
+/// answer, and nothing here has to guess which.
+pub fn malformed_call(text: &str) -> bool {
+    let said = text.trim_start();
+    !has_calls(said) && opens_a_call(said.as_bytes())
+}
+
+/// Whether `b` starts `name({` — with whitespace allowed where a call allows it.
+fn opens_a_call(b: &[u8]) -> bool {
+    if b.first().is_none_or(|c| !is_ident_start(*c)) {
+        return false;
+    }
+    let mut j = 0;
+    while j < b.len() && is_ident(b[j]) {
+        j += 1;
+    }
+    let open = skip_ws(b, j);
+    b.get(open) == Some(&b'(') && b.get(skip_ws(b, open + 1)) == Some(&b'{')
 }

@@ -34,6 +34,15 @@ const DAYS: [&str; 7] = [
     "Wednesday",
 ];
 
+/// Just the wall-clock time, for a log a person reads (R2-18). UTC, and it
+/// says UTC: `Timestamp` carries no zone and this crate has no tz database, so
+/// a bare `14:07:02` would be a different lie in every timezone but one.
+pub fn clock(at: Timestamp) -> String {
+    let rest = at.0.rem_euclid(86_400_000) / 1000;
+    let (hh, mm, ss) = (rest / 3600, (rest % 3600) / 60, rest % 60);
+    format!("{hh:02}:{mm:02}:{ss:02} UTC")
+}
+
 /// The environment block for THIS call: what time it is, what day, and the
 /// shared space as of right now. The Python's context keys, in the order it
 /// writes them — the space merged into the same block by `Engine.context`,

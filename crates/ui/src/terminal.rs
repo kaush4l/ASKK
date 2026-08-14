@@ -1,12 +1,10 @@
 //! `Terminal` — the Alpine workspace (plan, "UI shape": the one component with
-//! no Python counterpart). It owns the command you are typing and nothing
-//! else; the scrollback is the core's projection of the `exec` facts (I8), so
-//! it is the same list whether the agent ran the command or you did, and it is
-//! still there after a reload.
+//! no Python counterpart). It owns the command you are typing and nothing else;
+//! the scrollback is the core's projection of the `exec` facts (I8), the same
+//! list whether the agent ran the command or you did, still there after a reload.
 //!
-//! The credit to Leaning Tech is part of this pane, not a footnote: the
-//! CheerpX Community Licence's action point is "give appropriate credits", and
-//! the engine is what this pane is a window onto.
+//! The credit to Leaning Tech is part of this pane, not a footnote — the CheerpX
+//! Community Licence asks for "appropriate credits".
 
 use std::rc::Rc;
 
@@ -14,19 +12,17 @@ use adapters_web::{sleep, WebApp};
 use dioxus::prelude::*;
 use kernel::Request;
 
-use crate::ui::{focus, Button, Card, Disclosure, EmptyState, Field, Form, Skeleton};
-
+use crate::stopcommand::StopCommand;
+use crate::ui::{Button, Card, EmptyState, Field, Form, Skeleton};
 /// A command runs in the async half, so the pane re-reads until the scrollback
-/// grows. 700 ms: a person is watching, not racing. `MAX_TICKS` is generous
-/// because the FIRST command streams a disk image over the network.
+/// grows. 700 ms: a person watches, not races; `MAX_TICKS` is generous because
+/// the FIRST command streams a disk image over the wire.
 const TICK_MS: i32 = 700;
-/// The command field's id: the workspace EmptyState's one action sends focus
-/// here, the same way every rail EmptyState sends it to the composer.
+/// The command field's id: the workspace EmptyState's action focuses it.
 const COMMAND_ID: &str = "workspace-command";
 const MAX_TICKS: usize = 430; // ~5 minutes
 
-/// How many commands the scrollback holds, off the pane's own attribute — the
-/// core counts them, this only reads the number back.
+/// How many commands the scrollback holds: the core counts, this reads back.
 fn commands_in(html: &str) -> usize {
     html.split_once("data-commands=\"")
         .and_then(|(_, rest)| rest.split_once('"'))
@@ -35,55 +31,44 @@ fn commands_in(html: &str) -> usize {
 }
 
 /// Re-read the scrollback from the core, for the SELECTED agent (10 walk,
-/// finding 3): this was the one per-agent read that sent no `x-agent`.
-///
-/// The second return is whether a command TYPED here would run in the
-/// workspace this pane names — the core's own answer, on a header, because the
-/// box was live for every agent while always executing in this page's own
-/// space (11b walk).
-fn scrollback(web: &Signal<Option<Rc<WebApp>>>, agent: &str) -> (String, bool) {
+/// finding 3): this was the one per-agent read that sent no `x-agent`. The
+/// second return is whether a command TYPED here would run in the workspace
+/// this pane names — the core's own answer, on a header, because the box was
+/// live for every agent while always executing in this page's own space (11b
+/// walk), and since R6-13 it is whether the box is rendered at all.
+fn scrollback(web: &Signal<Option<Rc<WebApp>>>, agent: &str) -> (String, bool, String, String) {
     let Some(app) = web.peek().clone() else {
-        return (String::new(), false);
+        return (String::new(), false, String::new(), String::new());
     };
     let res = app.handle(Request::get("/terminal").with_header("x-agent", agent));
     let typeable = res.headers.iter().any(|(k, v)| k == "x-typeable" && v == "1");
-    (res.body, typeable)
+    let header = |name: &str| {
+        res.headers.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone()).unwrap_or_default()
+    };
+    // …and WHAT A STOP WOULD DO in this build (R11-1b): the two engines can do
+    // two different things about a command already running, and the button that
+    // offers it must not describe them with one word. …and WHY THERE IS NO BOX,
+    // when there is none (R16-P1-3): the field and the Run button vanished for a
+    // read-only agent with nothing on the view saying so, and the core is the
+    // side that knows which tools the agent's file names.
+    (res.body.clone(), typeable, header("x-interrupt"), header("x-typeable-why"))
 }
 
-/// Put the newest output where it can be read (10 walk, finding 1): the pane
-/// is a fixed-height scroller and nothing ever moved it, so a command's answer
-/// was LESS visible after it finished than while it ran — 1300px below the
-/// fold, with `scrollTop` still 0. Not application logic (I5): it is a scroll
-/// position, and it is set from Rust.
-///
-/// Takes the element now: the conversation became a scroller of its own in
-/// 12c (the primary column is the height of the viewport), and it has exactly
-/// this problem for exactly this reason.
-pub(crate) fn show_newest(id: &str) {
-    if let Some(pane) = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id(id))
-    {
-        pane.set_scroll_top(pane.scroll_height());
-    }
-}
-
-/// The workspace before its first command. Its own fn so `Terminal` stays one
-/// job (I12).
+/// The workspace before its first command (I12), SAYING WHAT IT COUNTS
+/// (R10-8): it read `Nothing has been run yet` under `COMMANDS · MAIN` after
+/// main had run six tools in that workspace — starting processes and reading
+/// files, none of which is a shell command, which is all this pane holds.
 fn nothing_run() -> Element {
     rsx! {
         EmptyState {
-            glyph: "▮",
-            title: "Nothing has been run yet",
-            sentence: "This is a real Linux in the tab — a whole Alpine, with a filesystem \
-                       that survives a reload. The agent runs commands in it, and so can \
-                       you. The first command boots it: it streams the disk over the \
-                       network, so it takes longer than every one after it.",
-            Button {
-                variant: "secondary",
-                onclick: move |_| focus(COMMAND_ID),
-                "Run a first command"
-            }
+            title: "No shell command has been run here yet",
+            // ONE SENTENCE (R8-EMPTY): what this pane holds, and where the
+            // rest of the agent's work is — and the rule is now true
+            // (R15-P1-4), since the trace no longer renders `exec` too.
+            sentence: "This panel holds shell commands — the agent's and the ones you type — \
+                       and its file and process work is in the Tool trace instead.",
+            // NO ACTION (R15-P1-8). `Run a first command` focused a field that
+            // is on screen, ~200px below, in the same card.
         }
     }
 }
@@ -98,11 +83,16 @@ pub fn Terminal(
     let mut draft = use_signal(String::new);
     let mut running = use_signal(|| false);
     let mut typeable = use_signal(|| false);
+    let mut interrupt = use_signal(String::new);
+    let mut no_box = use_signal(String::new);
     use_effect(move || {
         let _ = (tick(), agent());
-        let (body, can_type) = scrollback(&web, &agent());
-        panel.set(body);
+        let (body, can_type, how, why) = scrollback(&web, &agent());
         typeable.set(can_type);
+        interrupt.set(how);
+        no_box.set(why);
+        if *panel.peek() != body { crate::ui::show_newest_soon("terminal"); } // R14-P1-5
+        panel.set(body);
     });
     let mut submit = move || {
         let command = draft().trim().to_string();
@@ -122,24 +112,21 @@ pub fn Terminal(
         );
         spawn(async move {
             // The echoed "running…" is at the bottom of the scrollback too.
-            let _ = sleep(30).await;
-            show_newest("terminal");
-            // Watch until the command COUNT rises — not until the pane stops
-            // changing. A first boot streams a disk over the network and can
-            // take a minute; "the pane looks the same as last tick" is true
-            // for every one of those ticks, and stopping on it would replace
-            // the "running…" line with an empty scrollback and give up.
+            let _ = sleep(30).await; crate::ui::show_newest("terminal");
+            // Watch until the command COUNT rises, not until the pane stops
+            // changing: a first boot streams a disk and looks identical for
+            // every one of those ticks. An optimisation only — the page's
+            // heartbeat re-reads this pane too (R2-8).
             for _ in 0..MAX_TICKS {
                 if sleep(TICK_MS).await.is_err() {
                     break;
                 }
-                let (next, _) = scrollback(&web, &agent());
+                let (next, ..) = scrollback(&web, &agent());
                 if commands_in(&next) > before {
                     panel.set(next);
-                    // The DOM catches up on the next frame; then scroll, or
-                    // the output that just arrived stays below the fold.
+                    // The DOM catches up next frame, then scroll.
                     let _ = sleep(30).await;
-                    show_newest("terminal");
+                    crate::ui::show_newest("terminal");
                     break;
                 }
             }
@@ -147,50 +134,67 @@ pub fn Terminal(
         });
     };
     let projection = panel.read().clone();
-    // Nothing has been run — and a command typed HERE would run. When it would
-    // not (the selected agent works in somebody else's workspace, or in none),
-    // the core's own projection says which and why, and no generic empty state
-    // can say it better; that branch keeps the projection.
-    let fresh = !projection.is_empty() && commands_in(&projection) == 0 && typeable();
+    let who = agent();
+    // Nothing has been run, nothing is RUNNING (R2-8: an empty state over a
+    // command in flight is that round's bug), and a command typed HERE runs.
+    let idle = projection.contains("data-running=\"0\"");
+    // SOMETHING IS RUNNING, from the projection and not from this component's
+    // own flag (R11-1): the flag knew only about commands typed HERE and died
+    // with it, while `data-running` counts the agent's too.
+    let (in_flight, how) = (!projection.is_empty() && !idle, interrupt());
+    let fresh = !projection.is_empty() && commands_in(&projection) == 0 && idle && typeable();
+    // WHETHER THIS AGENT HAS A LINUX AT ALL — the core's own answer (R10-11).
+    let alone = projection.contains("data-workspace=\"none\"");
     rsx! {
-        Card { title: "Workspace", aria_label: "Workspace terminal",
+        // "Commands", not "Workspace terminal" (R7-7): one concept had three
+        // names and it is not a terminal. The view is the Workspace; its
+        // halves are Commands and Files.
+        Card { title: "Commands · {who}", aria_label: "Commands for {who}",
             div { aria_live: "polite",
                 if projection.is_empty() {
-                    Skeleton { lines: 3, label: "Reading the workspace scrollback" }
+                    Skeleton { lines: 3, label: "Reading the folder's scrollback" }
                 } else if fresh {
                     {nothing_run()}
                 } else {
                     div { dangerous_inner_html: "{projection}" }
                 }
             }
+            // NOT RENDERED FOR AN AGENT THAT CANNOT USE IT (R6-13). A dead
+            // `Run command` box carrying `disabled` and nothing saying so sat
+            // under the sentence explaining why it was dead, which reads as a
+            // caption on something you can still try.
+            if in_flight && typeable() { StopCommand { web, agent, how: how.clone(), panel } }
+            if typeable() {
             Form { oneline: true, onsubmit: move |_| submit(),
                 Field {
                     id: COMMAND_ID,
                     r#type: "text",
                     value: "{draft}",
-                    aria_label: "Command to run in the workspace",
+                    aria_label: "Command to run in the folder",
                     placeholder: "uname -a",
                     autocomplete: "off",
-                    disabled: running() || !typeable(),
+                    // In-flight only: cannot-at-all does not render (R6-13).
+                    disabled: running(),
                     oninput: move |e: FormEvent| draft.set(e.value()),
                 }
+                // "Run command", never "Run" (R2-10): the Dashboard's "Run"
+                // starts an AGENT; this runs one shell line. Empty = disabled.
                 Button {
+                    variant: "primary",
                     submit: true,
-                    disabled: running() || !typeable(),
-                    if running() { "Running…" } else { "Run" }
+                    disabled: running() || draft.read().trim().is_empty(),
+                    if running() { "Running…" } else { "Run command" }
                 }
             }
-            // Six lines of explanation above two lines of shell output was the
-            // worst of the three (12b walk, finding D2). The credit is part of
-            // the pane and stays a credit — one click, every word.
-            Disclosure { summary: "What runs these commands",
-                p { class: "note credit",
-                    "The Linux runs on "
-                    a { href: "https://cheerpx.io/", rel: "noopener", "CheerpX" }
-                    " by Leaning Tech, loaded from their CDN under the CheerpX Community \
-                     Licence, with the Alpine disk image published by the WebVM project."
-                }
             }
+            // …AND WHY THERE IS NONE (R16-P1-3): the box simply disappeared on
+            // switching to a read-only agent, explained only on another view.
+            if !typeable() && !no_box.read().is_empty() {
+                p { class: "note", role: "status", "{no_box}" }
+            }
+            // WHOSE LINUX THIS IS (`credit.rs`) — and nothing at all for an
+            // agent that runs no commands in one (R10-11).
+            if !alone { {crate::credit::credit()} }
         }
     }
 }

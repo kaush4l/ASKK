@@ -188,7 +188,7 @@ fn the_memory_line_shows_the_summary_the_denominator_and_the_reassurance() {
     let html = chat(&app, "main");
     assert!(html.contains(r#"data-compacted="true""#), "{html}");
     assert!(
-        html.contains("compaction runs at 4 entries and keeps the newest 2"),
+        html.contains("agent file compacts at 4 entries and keeps the newest 2"),
         "the number a reader can anticipate the drop from: {html}"
     );
     assert!(
@@ -240,11 +240,11 @@ fn a_sub_agents_memory_is_what_its_worker_reported_or_plainly_unknown() {
     let after = chat(&app, "researcher");
     assert!(after.contains(r#"data-window="5""#), "{after}");
     assert!(
-        after.contains("the oldest turns are now a summary the summarizer wrote"),
+        after.contains("oldest turns are now a summary the summarizer wrote"),
         "{after}"
     );
     assert!(
-        after.contains("compaction runs at 75 entries and keeps the newest 24"),
+        after.contains("agent file compacts at 75 entries and keeps the newest 24"),
         "its own file's setting, not the lead's: {after}"
     );
     assert!(

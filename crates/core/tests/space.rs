@@ -208,7 +208,8 @@ fn an_overwrite_leaves_no_stale_value_in_the_store() {
     // Workspace ABOVE Shared space from 1100px up, so "the Linux below" was
     // pointing the wrong way on every wide screen (12b walk, finding 1).
     assert!(
-        panel.contains("the Linux the Workspace panel runs") && !panel.contains("Linux below"),
+        panel.contains("a real folder in the Linux that Commands runs in")
+            && !panel.contains("Linux below"),
         "{panel}"
     );
 }

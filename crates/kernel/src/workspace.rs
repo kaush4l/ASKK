@@ -35,6 +35,27 @@ pub enum WorkspaceError {
     Failed { message: String },
 }
 
+/// WHAT A STOP CAN ACTUALLY DO to the command running right now (R11-1).
+///
+/// Not a feature flag and not speculative generality — the same shape, and the
+/// same reason, as `durable`: there are two engines behind this port TODAY and
+/// they differ on exactly this. container2wasm drives one shared PTY, so an
+/// interrupt byte reaches the foreground process group and the command dies.
+/// CheerpX runs each command as its own `cx.run`, which has no stdin and no
+/// documented cancel, so the most that can honestly happen there is that the
+/// PAGE stops waiting while the command runs on. Those are two different
+/// promises and the button must not make them look like one, so the fact
+/// travels with the port rather than with the copy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Interrupt {
+    /// No way in from here at all — the control is not offered.
+    None,
+    /// The command is signalled and really stops.
+    Kill,
+    /// The wait ends; the command keeps running where we cannot reach it.
+    Abandon,
+}
+
 /// Quote one argument for `/bin/sh`. Single quotes take everything literally,
 /// so the only case to handle is a single quote itself.
 pub fn shell_quote(arg: &str) -> String {
@@ -76,6 +97,39 @@ pub trait WorkspacePort {
                 &format!("mkdir -p -- \"$(dirname -- {path})\" && printf %s {} | base64 -d > {path} && echo wrote {path}", shell_quote(&b64)),
             )
             .await
+        })
+    }
+
+    /// Whether what is written here is still here after a page reload.
+    ///
+    /// Not a feature flag and not speculative generality: there are two
+    /// engines behind this port and they differ on exactly this. CheerpX keeps
+    /// its overlay in IndexedDB; container2wasm's root is tmpfs in guest RAM.
+    /// The product tells a person their files are kept, and that sentence has
+    /// to follow the engine rather than the other way round — so the fact
+    /// travels with the port, not with the copy. Default true, because a
+    /// workspace that forgets is the unusual one.
+    fn durable(&self) -> bool {
+        true
+    }
+
+    /// What a Stop would do here — see `Interrupt`. Default `None`, because a
+    /// workspace that cannot be reached into is the unremarkable one and a
+    /// control that claims otherwise is worse than no control.
+    fn interrupt(&self) -> Interrupt {
+        Interrupt::None
+    }
+
+    /// End the command that is running now, as far as `interrupt` says this
+    /// engine can. The command's own `exec` future is what carries the result:
+    /// it comes back as a typed `Failed` naming what happened, exactly as the
+    /// c2w watchdog's 180 s timeout already does — which is why this returns
+    /// only whether the stop itself could be delivered.
+    fn stop(&self) -> BoxFuture<'_, Result<(), WorkspaceError>> {
+        Box::pin(async {
+            Err(WorkspaceError::Failed {
+                message: "this workspace cannot stop a command once it is running".into(),
+            })
         })
     }
 

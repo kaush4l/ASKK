@@ -95,6 +95,7 @@ pub fn adopt_spec(
     peers: &[crate::spec::AgentSpec],
 ) {
     state.model = spec.model.clone();
+    state.temperature = spec.temperature;
     // Naming the space IS the request: the tools come with it rather than
     // having to be listed too (Python `utils.load_agent`), and a name that
     // could walk out of `spaces/` attaches nothing at all.
@@ -102,12 +103,21 @@ pub fn adopt_spec(
     state.toolbox = crate::subagent::toolbox_for(spec, peers);
     (state.compact_at, state.keep_recent) = (spec.compact_at, spec.keep_recent);
     state.max_rounds = spec.max_rounds;
+    // THE LOOP THIS AGENT RUNS, from its own file and nowhere else (20).
+    state.stages = spec.stages.clone();
     // The summarizer is an ordinary agent, found among the peers by name — the
     // Python registry gives it to every OTHER engine as the thing that compacts
     // a history, and to nobody as a tool (`registry.SUMMARIZER_AGENT`).
-    if let Some(s) = peers.iter().find(|p| p.name == SUMMARIZER && p.name != spec.name) {
+    // …AND IT IS FOUND BY THE JOB IT DECLARES (20), falling back to the name.
+    // The fallback is not decoration: an agent file installed in this browser
+    // may replace `summarizer` without carrying the `role:` line, and dropping
+    // compaction silently is the exact failure the role key exists to end.
+    let by_role = crate::loader::role_holder(peers, crate::spec::ROLE_SUMMARIZER);
+    let holder = by_role.or_else(|| peers.iter().find(|p| p.name == SUMMARIZER));
+    if let Some(s) = holder.filter(|p| p.name != spec.name) {
         state.summarizer_prompt = s.prompt.clone();
         state.summarizer_model = s.model.clone();
+        state.summarizer_temperature = s.temperature;
     }
     let soul = find(&mut state.paper, "soul");
     soul.section.parts = vec![Part::Text {

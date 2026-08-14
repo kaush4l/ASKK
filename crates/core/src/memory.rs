@@ -68,10 +68,14 @@ fn held(ctx: &Ctx, who: &str) -> Option<(usize, Option<String>)> {
 /// — a `role="status"` around the whole sentence re-announced all of it every
 /// turn to say one number had gone up (12b walk, finding 3).
 fn said(who: &str, spec: &agent::AgentSpec, entries: usize, compacted: bool) -> (String, String) {
+    // WHOSE rule, and where it is written. The numbers differ per agent —
+    // `researcher` compacts at 6, `main` at 8 — and nothing said why one pane
+    // disagreed with the next (R3-14). They are a setting in that agent's own
+    // file, which is a fact a reader can act on.
     let rule = match spec.compact_at {
-        0 => format!("{who} never compacts, so it keeps every turn"),
+        0 => format!("{who}'s agent file asks for no compaction, so it keeps every turn"),
         at => format!(
-            "compaction runs at {at} entries and keeps the newest {}",
+            "{who}'s agent file compacts at {at} entries and keeps the newest {}",
             spec.keep_recent
         ),
     };
@@ -81,40 +85,59 @@ fn said(who: &str, spec: &agent::AgentSpec, entries: usize, compacted: bool) -> 
     // full, and never showing how close the next compaction was (09 walk,
     // finding 2). An agent that never compacts has no denominator at all,
     // because there is nothing to be a fraction of.
+    //
+    // And it is a TRIGGER, not a capacity, so the fraction has to stop when the
+    // count passes it: an older session read "Working memory: 11 of 8 entries",
+    // eleven of eight, a sentence that refutes itself (R3-14). Over the mark is
+    // a real state and not a bug in the count — compaction is checked at the
+    // top of a turn and before each model call, so a round can push the window
+    // past the trigger, and it is SKIPPED entirely when no summarizer agent is
+    // loaded or when the summarisation itself fails (`window::compaction`,
+    // `step`'s `core.compaction_failed` arm: a compaction costs a compaction
+    // and never a conversation). Past the mark the line says so in words.
     let held = match spec.compact_at {
         0 => format!("{entries} entries"),
+        at if entries > at => format!("{entries} entries, past the {at} that triggers one"),
         at => format!("{entries} of {at} entries"),
     };
     let rest = match compacted {
         true => format!(
-            " — the oldest turns are now a summary the summarizer wrote; {rule}. \
-             Nothing was lost: the transcript still holds every turn."
+            " — working memory is what {who} still has in front of it when it thinks. The \
+             oldest turns are now a summary the summarizer wrote; {rule}. Nothing was lost: \
+             the transcript still holds every turn."
         ),
-        false => format!(", every turn in full — {rule}."),
+        false => format!(
+            ", every turn in full — working memory is what {who} still has in front of it \
+             when it thinks, and {rule}."
+        ),
     };
     (format!("Working memory: {held}"), rest)
 }
 
 /// The memory line for one agent, and — when it has compacted — the summary
-/// itself. Empty for an agent with no file loaded.
-pub(crate) fn memory(ctx: &Ctx, who: &str) -> String {
+/// itself. Empty for an agent with no file loaded. FRAGMENTS, not a string of
+/// HTML: `identity` hangs these inside its own disclosure now (R3-14), and a
+/// fragment is the only thing this codebase lets one build another out of.
+pub(crate) fn memory(ctx: &Ctx, who: &str) -> Vec<Fragment> {
     let Some(spec) = ctx.agents.iter().find(|s| s.name == who) else {
-        return String::new();
+        return Vec::new();
     };
     let Some((entries, summary)) = held(ctx, who) else {
         let unknown = format!("Working memory: {who} has not reported it yet");
-        let why = " — it runs in its own Worker, and says how much it holds when it answers.";
-        return line(&unknown, why, 0, false).into_html();
+        let why = " — working memory is what an agent still has in front of it when it \
+                    thinks. This one runs on its own, and says how much it holds when it \
+                    answers.";
+        return vec![line(&unknown, why, 0, false)];
     };
     let compacted = summary.is_some();
     let (count, rest) = said(who, spec, entries, compacted);
-    let mut html = line(&count, &rest, entries, compacted).into_html();
+    let mut out = vec![line(&count, &rest, entries, compacted)];
     // The summary itself, whether this agent is the page's or a Worker's: one
     // compaction, one presentation, and the artifact readable in both.
     if let Some(summary) = &summary {
-        html.push_str(&disclosure(who, summary).into_html());
+        out.push(disclosure(who, summary));
     }
-    html
+    out
 }
 
 /// The line itself. `role="status"` is the fix for a memory that changed with

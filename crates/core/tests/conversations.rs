@@ -184,3 +184,42 @@ fn the_turn_count_survives_a_reload_because_the_transcript_does() {
     assert!(board(&reloaded).contains("2 turns"), "{}", board(&reloaded));
 }
 
+
+/// R7-15 and R7-3, which are one question asked twice: does the page tell the
+/// truth about a turn that used tools and then answered? Four consecutive
+/// `calling exec — every call is in Tool trace` bubbles said the same thing
+/// four times and left the answer as the fifth at the same weight; and the
+/// board, reading only the status fact, has to agree with the conversation
+/// about whether that turn is still going.
+#[test]
+fn a_tool_run_is_one_announcement_then_the_answer_and_nothing_is_left_open() {
+    let app = booted(
+        &[
+            "now({})",
+            "now({})",
+            "list_agents({})",
+            "The file disk.md says: 2.0G.",
+        ],
+        Rc::new(ScriptedAgents::none()),
+    );
+    say_to(&app, "main", "how big is it?");
+    let said = chat_with(&app, "main");
+    assert_eq!(
+        said.matches("class=\"msg system\"").count(),
+        1,
+        "one announcement per run, not one per round: {said}"
+    );
+    assert!(
+        said.contains("called now, list_agents"),
+        "…naming every tool the run called, each one once: {said}"
+    );
+    assert!(said.contains("The file disk.md says: 2.0G."), "{said}");
+    assert!(
+        !said.contains("not running any more"),
+        "a turn that answered is not an abandoned one: {said}"
+    );
+    // …and the board says the same. `ready`, not `stopped mid-turn`.
+    let rows = board(&app);
+    assert!(rows.contains("ready"), "{rows}");
+    assert!(!rows.contains("stopped mid-turn"), "{rows}");
+}

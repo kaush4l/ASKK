@@ -126,8 +126,13 @@ fn a_failed_compaction_still_asks_the_question_and_says_what_failed() {
     let chat = body(&app, "/chat");
     assert!(chat.contains("two"), "and answered: {chat}");
     assert!(
-        chat.contains("background summarisation of the older turns failed"),
+        chat.contains("older messages could not be shortened"),
         "the failure is named for what it was: {chat}"
+    );
+    // …and LABELLED, like every other aside in this column (R8-14).
+    assert!(
+        chat.contains("class=\"speaker\">Note: "),
+        "the note says who is talking: {chat}"
     );
     assert!(
         !chat.contains("The turn failed before it produced an answer"),
@@ -150,7 +155,7 @@ fn the_memory_line_counts_against_the_trigger_not_against_itself() {
     say(&app, "hello");
     let chat = body(&app, "/chat");
     assert!(chat.contains("Working memory: 3 of 4 entries"), "{chat}");
-    assert!(chat.contains("compaction runs at 4 entries"), "{chat}");
+    assert!(chat.contains("agent file compacts at 4 entries"), "{chat}");
 }
 
 /// Findings 3 and 5. Both panes were GLOBAL: the space pane said "Space:
@@ -172,7 +177,7 @@ fn the_space_and_tool_panes_are_about_the_agent_you_selected() {
     let theirs = ask("/space", "summarizer");
     assert!(theirs.contains("s file names no space"), "{theirs}");
     assert!(theirs.contains("summarizer"), "{theirs}");
-    assert!(!theirs.contains("Space: research"), "{theirs}");
+    assert!(!theirs.contains("Workspace: research"), "{theirs}");
 
     // A sub-agent's trace is its OWN, and empty until its Worker reports a
     // call (15O): what it must never be is main's calls under its name.

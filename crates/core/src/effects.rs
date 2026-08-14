@@ -29,12 +29,13 @@ pub fn execute_effect(
                 format,
                 endpoint,
                 model: model_key,
+                temperature,
                 speaker,
             } => {
                 let messages = context::render(&document, format);
                 // The catalogue KEY, not a model id: `adapters_web` resolves
                 // it against models.json and stamps the real id on the way out.
-                let body = context::openai_request_body(&messages, &model_key);
+                let body = context::openai_request_body(&messages, &model_key, temperature);
                 let reply = model
                     .call(&endpoint, &body)
                     .await

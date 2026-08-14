@@ -45,7 +45,7 @@ arrangement, in `web/index.html` link order:
 | `base.css` | element defaults: `html`, `body`, headings, links, focus, native form controls | 200 |
 | `glass.css` | the material: `.e1` / `.e2` / `.e3`, the nesting rule, the opaque path | 200 |
 | `layout.css` | the dashboard shell: three regions, the fold, breakpoints | 200 |
-| `chrome.css` | header, nav, rail, footer — the persistent furniture | 200 |
+| `chrome.css` | header, nav, rail, the stage head — the persistent furniture | 200 |
 | `surfaces.css` | card, message, row, tool-call, disclosure, empty state, skeleton | 200 |
 | `controls.css` | button, input, textarea, select, tab, badge, toggle | 200 |
 | `workspace.css` | what is inside the Linux: the folder listing, one file's contents | 200 |
@@ -98,8 +98,8 @@ nothing and never fails to load.
 --ground:        #0b0611;   /* the base under everything */
 --ground-deep:   #070409;   /* the vignette floor */
 --lobe-accent:   rgba(214, 178, 255, 0.88);
---lobe-cool:     rgba(126, 172, 255, 0.52);
---lobe-warm:     rgba(255, 138, 214, 0.20);
+--lobe-cool:     rgba(168, 140, 255, 0.30);
+--lobe-warm:     rgba(226, 138, 226, 0.16);
 
 --ground-field:
   radial-gradient(30rem 30rem at  6% 46%, var(--lobe-accent), transparent 62%),
@@ -134,6 +134,45 @@ it.
 
 Applied to `body` with `background-attachment: fixed`, so panels move over a
 still field and the parallax reads as depth rather than as scrolling wallpaper.
+
+**AND IT IS OPT-IN NOW (R5-C).** The two beams were the only ornament in this
+product and the one thing dating it — *"the thing most likely to read as 'AI
+app, 2024'. Tellingly, `Plain background: on` looks better — cleaner, more
+expensive, more focused."* That verdict came from a critic arguing for more
+ornament, not less, and it agrees with §1: this is a control surface, and its
+job is to let you read what a machine is doing at 2am. So `data-skin="plain"`
+is what the page carries unless a stored preference says otherwise, the stored
+value is now `glow`, and the ABSENCE of a choice is the plain ground.
+
+Three consequences worth stating. The product's default and its no-JS,
+no-storage, no-`backdrop-filter`, `prefers-reduced-transparency` fallback are
+now **the same picture**, which is the strongest form of §2's G2. Both skins
+stay reachable (Settings → Appearance) and both are still audited —
+`scripts/check-layout.sh` runs every width in `machine` and `plain`, and
+`scripts/layout-probe.js` still selects with `?skin=plain`, untouched. And the
+lit-lobe contrast measurements above are still the ones that bind: they are the
+worst case, the glow can be switched on at any time, and a token that fails
+there fails.
+
+**AND IT IS ONE IDENTITY (R8-GLOW).** The skin was kept and re-tuned rather
+than deleted, and the argument for keeping it is that the finding against it was
+not "ornament" — it was *wrong colour*. `--lobe-cool` was
+`rgba(126, 172, 255, 0.52)`: a blue-cyan wash across the top right of a violet
+product, the one hue on the page that belonged to nothing else on it, bright
+enough to be the first thing seen on a screen whose subject is the panel under
+it. A second skin has to be the same identity in a different register or it is a
+second product. So all three lobes are steps of the accent now, the cool one is
+the coolest violet rather than a blue, and the warm one is dimmer.
+
+The other half of that finding was that the glow *softened the panel edges*,
+which are this design's best asset — and it was right, because in the glow path
+the panel border is `--hairline` while the plain path promotes it to `--control`.
+`--hairline` is `0.15` rather than `0.10`, and `--e2-line`/`--e3-line` moved with
+it, so a panel keeps its boundary with the light on. Deleting the skin was the
+alternative and it was rejected on cost, not taste: it would take
+`scripts/check-layout.sh`'s two-skin matrix, `layout-probe.js`'s `?skin=plain`
+selection, `skin.rs`, the `data-skin` contract and this section with it — a large
+deliberate change to the gate, to remove something three token values fixed.
 
 **The lightest region of this field is the top-left lobe.** Every contrast
 measurement in this document and in the guard is taken there — it is the worst
@@ -408,52 +447,120 @@ it is promoted to `--control` at 4.4:1. The existing BOUNDARY assertion in
 
 ## 5. Typography
 
-One family for prose, one for machine values. `--display` is deleted; it was an
-alias for `--mono` and added a name without adding a value.
+**Three families. Six sizes. Three weights. Nothing else may appear in a
+`font-size`.**
+
+### The families (R5-B)
 
 ```css
---font: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
---mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+--font: Inter, "SF Pro Text", -apple-system, "Segoe UI Variable Text",
+        "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+--display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+           Georgia, ui-serif, serif;
+--mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono",
+        "Cascadia Mono", Menlo, Consolas, monospace;
 ```
 
-**Five sizes. Three weights. Nothing else may appear in a `font-size`.**
+`--display` was deleted in the first pass of this document for being an alias
+of `--mono` — a name with no value. It is back as a **real third family**, and
+the argument is the one a blind critic made: *"a product with a violet-and-void
+palette this specific and copy this carefully written has clearly had someone's
+attention — and then shipped in the OS default font."* Everything was
+`ui-sans-serif`, which on the machines this is developed and demoed on resolves
+to SF Pro: the operating system, not a choice.
+
+**No font FILE ships, and that is a constraint, not a shortcut.** This build is
+offline-first and self-contained: Trunk copies `web/` into `dist/`, `sw.js`
+precaches it, and `publish.sh` gates on there being no origin-absolute
+reference in the output. A webfont is a network dependency, another gate, and
+40–80KB of payload for one aesthetic decision. So the identity comes from a
+family every target platform already has and almost nobody uses for chrome — a
+transitional serif — applied to **three elements only**: the masthead `h1`, the
+`.tagline` lede, and the `HARNESS` wordmark. Three instances, not three
+hundred, is what keeps a serif on a dark console reading as a decision rather
+than as a theme. `--font` leads with Inter because it is on most machines this
+runs on and is a better UI grotesque than the system default; where it is
+absent the stack falls through SF Pro Text and Segoe UI Variable Text, which is
+honest — on a stock Mac the UI face is what it always was, and the identity is
+carried by `--display`.
+
+`--mono` is a deliberate stack too, not an accident: `ui-monospace` first, then
+the three faces a developer machine actually has. Two rules in `workspace.css`
+were reaching for `--font-mono`, **which is not declared anywhere**, so every
+file name and every editor line in the product rendered in the browser's
+default `monospace` — and the same two rules asked for `--r-1`, also
+undeclared, so their radius resolved to nothing. Both are fixed.
+
+### The ramp (R5-A)
 
 | Role | Token | Size | Line-height | Tracking | Weight | Used for |
 |---|---|---|---|---|---|---|
-| display | `--t-display` | `clamp(1.375rem, 1.1rem + 1.2vw, 1.75rem)` | 1.15 | `-0.01em` | 600 | the masthead, a modal title |
-| heading | `--t-heading` | `1.0625rem` (17px) | 1.3 | `0` | 600 | an agent's name on its card, every `h3` |
-| body | `--t-body` | `0.9375rem` (15px) | 1.55 | `0` | 400 | replies, prose, input values |
-| label | `--t-label` | `0.8125rem` (13px) | 1.4 | `0.01em` | 500 | metadata, form labels, buttons |
-| caption | `--t-caption` | `0.6875rem` (11px) | 1.35 | `0.14em` | 600 | section eyebrows, **including every panel title**, uppercase only |
+| display | `--t-display` | `clamp(1.5rem, 1.15rem + 1.4vw, 2rem)` | 1.15 | `-0.01em` | 600 | the masthead. `--display` family |
+| subhead | `--t-subhead` | `1.25rem` (20px) | 1.25 | `0` | 600 | **a `h2` in the stage** — a panel's title, sentence case |
+| heading | `--t-heading` | `1.125rem` (18px) | 1.35 | `0` | 600 | `h3`, an empty state's title, the lede |
+| body | `--t-body` | `1rem` (16px) | **1.6** | `0` | 400 | replies, `.note`, every explainer, input values |
+| label | `--t-label` | `0.875rem` (14px) | 1.4 | `0.01em` | 500 | buttons, form labels, metadata, machine values |
+| caption | `--t-caption` | `0.6875rem` (11px) | 1.35 | `0.14em` | 600 | view eyebrows, speakers, badges, origin marks |
 
-**Panel titles are caption eyebrows, not headings, and this table said the
-opposite.** Every `h2` in the product — "CHAT WITH MAIN", "AGENTS RUNNING",
-"TOOLS" — ships as 11px uppercase with `0.14em` tracking, and has on every
-screen; the shipped decision is that a panel's title is a label on furniture,
-not a heading competing with the agent names and the masthead inside it. The
-document was wrong. One consequence is load-bearing: nothing may put
-sentence-case type on `--t-caption`. `.wait-clock button` did, at 11px beside
-every other button's 13px, and has been removed.
+**The sixth size is why `check-selectors.py`'s ceiling moved from 5 to 6, and
+the move is recorded in the checker itself.** Counted over every rendered leaf
+node on the Dashboard, the five-size product measured **42 elements at 14px, 5
+at 18px, 2 at 32px, 1 at 11px**. Explanatory prose, button labels, nav items,
+status strings, file names and code results were all one size, so every panel
+read as a single undifferentiated slab, and the 32 → 18 → 14 jump left no
+subhead register at all: `h2` sat at 18px, the same step as the `h3` agent
+names *inside* it, so a region's title and its contents spoke in one voice.
+
+Two changes carry the fix. `h2` becomes `--t-subhead` — with the tracking
+pulled from `0.14em` to `0.06em`, because 0.14em is an 11px eyebrow's letter
+spacing and at 20px it reads as a banner. And `.note`, which is what every
+explainer in this product is, moves from `--t-label`/`--lh-label` to
+`--t-body`/`--lh-body`.
+
+**AND `h2` IS NOT UPPERCASE, AND A RAIL `h2` IS A STEP DOWN (R11).** R5-A kept
+the caps and only pulled the tracking. What that produced, once every region had
+a title, was `RUN A TASK · MAIN` over `AGENTS AND WHAT THEY ARE DOING` over
+`PROCESSES · 1 RUNNING` over `WORKSPACE ARTIFACTS` over `TOOL TRACE · MAIN` —
+five tracked banners in one column, *"shouting in unison"*, with nothing in the
+stack louder than anything else. **Uppercase belongs to `--t-caption` alone** —
+the view eyebrow, the rail's `.rail-who`, `.proc-meta`, the speaker marks — and a
+register spent at two sizes marks nothing at either. `h2` is sentence case at
+`0` tracking, `--tr-subhead` is deleted from `tokens.css`, and the eye gets its
+hierarchy back from SIZE: the stage's `h2` keeps `--t-subhead` (20px), a `.rail
+.panel > h2` takes `--t-heading` (18px), because the rail is what you look at
+*while* reading the middle (§6) and a companion column speaks one step down. No
+new size: `--t-heading` is the `h3` step this product already had.
+
+**A label's leading is not a paragraph's leading.** Body copy ran 14px/19.6px —
+1.40 — over five- and seven-line teaching paragraphs. That is a control's
+rhythm applied to the app's main teaching surface, and it is what made Settings
+and the shared-space explainer read as documentation dumped into a card.
+`--lh-body` is 1.6 and `p` carries it by default; labels, buttons and dense
+rows keep 1.4.
 
 **One size per element, in every state.** A status is a status channel — the
-word, `--tone`, the badge — never a jump in the type scale. `.agent-row h3` used
-to become `--t-heading` on `data-status="working"`, so an agent's name changed
-size while nothing about the agent's identity changed.
+word, `--tone`, the badge — never a jump in the type scale.
+
+**A dense row keeps ONE size**, and that survives this pass: `.agent-row h3` and
+`.agent-status` are both `--t-label`. A board row is scanned as a row, not read
+as a heading over a caption.
 
 ```css
 --w-normal: 400;  --w-medium: 500;  --w-strong: 600;
 ```
 
+**Three weights means `strong` is pinned (R6-14).** The UA style for `<strong>`
+is `font-weight: bolder`, which is *relative*: CSS's bolder table maps an
+inherited 600 to **900**, so `<strong>main</strong>` inside the selected agent
+tab was the only 900 in a product whose ramp stops at 600, and the same tag
+inside a 400 paragraph landed on 700. Two weights outside the ramp, from a tag
+nobody wrote a rule for. `base.css` gives `strong, b` `--w-strong` and the
+census is back to three: measured over rendered leaves on the Dashboard,
+**400×125 · 500×18 · 600×76, and nothing else.**
+
 **On glass, add weight and contrast.** Text on any `.e1`/`.e2`/`.e3` surface is
 `--w-medium` minimum (never 400) and must measure **4.5:1 against the rendered
-backdrop at the lightest lobe**, not against the fill colour. Caption is never
-placed on glass below `--ink-2`.
-
-Going from 13 sizes to 5 kills `0.9rem`, `0.85rem`, `0.82rem`, `0.8rem`,
-`.8rem`, `0.75rem`, `0.95rem`, `1rem`, `1.4rem` — nine literals doing the work
-of two tokens.
-
----
+backdrop at the lightest lobe**, not against the fill colour.
 
 ## 6. Spacing, layout, radius
 
@@ -511,6 +618,76 @@ element.
 The old `border-radius: 0` overrides in `screen.css` are deleted. The product
 has rounded corners; it does not argue with itself about it.
 
+**The horizontal system (R6-LAYOUT).** Measured inside a single card at 1440
+there were **three content widths — prose 544, textarea 960, panel 1136** — and
+about 40% of every panel was empty on the right, on every view. The Dashboard
+read as a narrow column of text floating in a very wide box, and the right-hand
+void was exactly where the running state and the ending of a run should have
+gone. Two rules fix it, and neither of them is "make everything narrower":
+
+1. **A panel's width is for a READING COLUMN plus a COMPANION.** The reading
+   column is `--measure` and holds everything a person reads *or types* —
+   which is why `.grows` (the task field and the composer) is capped there too;
+   a card whose prose is 544 and whose input is 960 has two rhythms. The
+   companion takes what is left and holds what you look at *while* reading.
+2. **The gutter is `--s-6`, the same step the card pays inside its own edge.**
+   One value sets the space between two columns and the space around one, so
+   `--column: calc(var(--measure) + 2 * var(--s-6))` is the width of the
+   surface that holds a reading column. `--column` sizes a card in a deck;
+   `--measure` sizes a split *inside* a card whose padding is already paid.
+
+Expressed as two classes in `layout.css`, `.dash-grid` and `.split`, switched
+by a **container query** on `.view-panel` and not a media query: folding the
+side panel hands 374px to the centre without the window moving, and a media
+query would have left a one-column card standing in a 1136px stage. Below the
+threshold there is one track and the companion falls under the column in DOM
+order.
+
+3. **The companion is CLAMPED, and the surplus is gutter (R7-5).** The first
+   version left the second track at `1fr`, so every pixel the folded sidebar
+   handed back went to the SECONDARY column: at 1440 with the nav hidden the
+   reading column stayed 608 while the agent board grew to **704 — 16% wider
+   than "Run a task", the primary action on the page**. A pair of columns has
+   a `max-width` of `2 × reading + gutter`, so the companion may equal the
+   reading column and can never beat it. Measured after: nav shown 608 / 496,
+   nav hidden 608 / 608 with 128px returned to the right gutter.
+4. **It stacks before it squeezes (R7-17).** The threshold was 60rem of stage,
+   which put the companion's floor at 322px — and at 1100 it measured 364,
+   with `TOOL TRACE · RESEARCHER` and the board rows each wrapping to two
+   lines, for a whole 100px band before the stack ever came. The threshold is
+   **66rem**, which is `--column` + the gutter + **26rem** — and 26rem is
+   `.rail`'s own maximum, this product's existing answer to how wide a
+   permanent companion has to be. Measured at the floor (416px): every board
+   row back on one line. One residual, stated rather than hidden: the board's
+   own `h2`, *Agents and what they are doing*, needs 470px and still takes two
+   lines in the 416–470 band. The fix for that is the heading, not the grid.
+
+**Two more shapes, so that the system covers every view (R7-6b).** A container
+query that fires on four views out of six is a suggestion, not a system:
+`#/agents` stood every card at 1136px round a 544px text column — 592px of
+dead space each, repeated down a long page — and Settings' Appearance card did
+the same round 494px of text with an empty right half.
+
+5. **`.card-deck` — a LIST of cards is not a reading column with a companion.**
+   It is a deck: each card capped at `--column`, `repeat(auto-fit, minmax(min(
+   100%, 24rem), 1fr))` across. The track's max is `1fr` and not `--column`
+   because `auto-fit` counts repetitions off a *definite* max and resolved to
+   one 606px track in a 1072px panel. Measured after: the roster is 2×2 at
+   1440, cards 529 wide holding 503 of prose.
+6. **`.panel.reading` — a card that holds ONLY a reading column stops at one.**
+   Appearance has nothing to put beside itself, so it is `--column` wide and
+   looks like a card sized to its content rather than a wide card with a hole
+   in it. Measured after: 608.
+
+What it is used for today. The Dashboard's launcher is the reading column and
+the agent board is the companion beside it — **which supersedes R3-20's "it
+takes the row"**. The Settings form is a reading column with the endpoint's
+health and the trust note beside it (544 / 494). The Agents view takes the same
+shape: the roster is a deck above, and the editor — which is what that view is
+*for* — is the reading column with the task launcher as its companion (608 /
+496). Measured after: the launcher card 606 with prose 542, and no third width
+in any card.
+
 **Grid.** Unchanged from increment 13, because it is measured and correct:
 
 ```
@@ -522,6 +699,122 @@ has rounded corners; it does not argue with itself about it.
 
 Breakpoints: **320, 375, 768, 1024, 1100, 1440, 1920.** 1100 is the dashboard
 fold threshold and is load-bearing; the others are test widths.
+
+**The header collapses by PRIORITY, and it never cuts (R5-7, R6-4).** R5-7
+deleted a 2rem `mask-image` and put a sideways **scrollport** in its place with
+`scrollbar-width: none`, and that is the same picture: at 390 a 213px port over
+725px of content ended mid-word (`Agent: summari`), at 800 one letter of the
+model line sat behind the side panel's switch, and at 1440 with the failure
+banner up the meter read `Tokens, tin` and the model line read `This`. A shorn
+glyph with no scrollbar does not degrade, it breaks.
+
+So **nothing scrolls and nothing clips: the strip drops items WHOLE, lowest
+priority first.** The DOM order is the priority order and `chrome.css` takes it
+from the bottom:
+
+```
+model line → tokens → sandbox → running → agent
+```
+
+**This replaces R4-15's "re-arrange, never delete".** That rule was written
+against a header that deleted facts to fit, with nothing saying which; ordering
+is not deletion, and each dropped item is still reachable — the model line is
+the Settings card's whole subject, the sandbox state the Workspace view's, the
+spend a fold of a log that is not going anywhere. **The agent never drops:**
+every "run this" on the page is addressed to it. **The wordmark does**, below
+30rem: it is the only thing in that bar which is not news, and the page's own
+`<h1>` carries identity.
+
+**A dropped fact has somewhere to go, and two facts never drop at all
+(R7-12).** The order above was a priority order with no destination: below
+~1000px the sandbox pill, the token meter and the endpoint pill were all
+`display: none`, so on a phone you could not find out whether the Linux was
+ready, which model you were calling, or what you had spent. Two changes.
+**The sandbox state is kept at every width** — it is the single most
+load-bearing status in the product, because it decides whether the agent can
+do anything at all — by SHRINKING rather than dropping: the subject and the
+noun are a `.pill-label` that goes at 48rem and the state word stays, so a
+phone reads `● ready` (measured: 242px at 1440, 77px at 390). It moves up the
+order accordingly, and the order is now
+`model line → tokens → running → sandbox → agent` (the failure left the strip
+entirely in R8-2, below). And the two that
+still drop are **written out in prose at the foot of the nav** — `StatusFold`,
+a `<details>` the header's first control reaches at every width.
+
+**And the pills' explanations are not mouse-only (R7-13).** They carried real
+teaching text in a `title` on elements that were not in the tab order — 22 tab
+stops, not one of them a pill — so keyboard and screen-reader users got the
+number and never the meaning. The same fold carries those sentences as visible
+prose behind a `<summary>`, which is a 44px target and *is* in the tab order
+(measured: tab stop 9 of 23). The `title` stays for the pointer. One trade
+stated: in the ≥1100 grid the nav is 13rem, so the open fold's prose runs
+~182px; at the widths where it carries a dropped fact the nav is a full-width
+drawer and it runs 340px, which is where it has to read well.
+
+**Exactly one item shrinks rather than dropping — the endpoint pill — and it
+carries a real `text-overflow: ellipsis`.**
+
+**AND IT NEVER DROPS AT ALL NOW (R11-10).** `header .chat-endpoint { display:
+none }` below 75rem meant that at 800 and at 390 no line on the page named the
+model or the address the next turn was about to spend tokens against — *"on a
+phone you can spend tokens against an endpoint you were never shown"*. The pill
+takes the shape the workspace pill already has: `.pill-label` (`The next turn
+calls local — `) and `.pill-tail` (` at http://…, with no key.`) drop at 75rem,
+`.pill-short` (`calls `) takes their place, and `.pill-subject` — **the model
+id** — never leaves and only ellipsises. The priority order loses its first
+item: it is now **wordmark → spend → nothing**, and the spend still has
+`StatusFold` to go to. Three widths moved with it: the strip WRAPS rather than
+clipping below 64rem (a sixth item in the bar costs a row of height, never a
+shorn glyph), and both the workspace pill's shrink and the wordmark's exit move
+from 48rem to 64rem so the band where things give way is one band and not three.
+Measured after: header 70px at 1024 and above, 109 at 800, 153 at 390 — against
+70 / 70 / 105 before, which is the price of never hiding the model id again.
+
+**THE FAILURE IS NOT IN THAT ORDER ANY MORE (R8-2).** It was a pill in the
+strip, ~400px with two controls in it, and it could only fit by evicting its
+neighbours — the model line first, then the spend. That is the priority order
+applied to the one state where it is wrong: a person told *the endpoint was
+unreachable* then had no line on the page naming WHICH endpoint, and none
+naming what had been spent reaching for it. **An error state may add a row; it
+may never subtract a fact.** The banner is a sibling of `<header>` now
+(`.banner.problem`, `main.rs`), the full width of the page, wrapping rather
+than ellipsising, capped at `30vh` so a long reason cannot eat a phone screen.
+Every `:has(.problem)` eviction rule is deleted. Measured at 1440 with the
+banner up: header 70px, banner 60px, `The next turn calls local — …:8873/v1`
+and `Tokens, every agent 8,436` both on screen (both strings were renamed in
+R8-8 and R8-9; the measurement is unchanged).
+
+**Two rows at 30rem, banner or no banner (R8-1).** The two switches take 252 of
+a 366px bar, which left the strip 71px: `Agent: main` was painted from x=152 and
+clipped at 224, with the side-panel switch starting at 232 — the name and a
+control in the same eight pixels. Nothing in that bar can be given up (the
+sandbox and the agent never drop), so the strip takes the row under the
+switches, by `order` and not by DOM order, so the tab order is unchanged.
+Measured after, at 390: header 105.6px with and without a banner, `Agent: main`
+whole at x=25..128 on its own row, the side-panel switch at x=232..365 on the
+row above.
+
+**A drawer does not survive a resize (R11-11).** `follow_width` lets the width
+lead until the person presses a switch and resets that on crossing 1100, which
+is right for a COLUMN. Below 1100 the nav is not a column, it is an overlay on
+top of the page: opening it at 390 and dragging out to 800 left it covering
+`Run a task · main` whole, with `✕ Close` the only way to reach anything.
+Choosing to cover *this* viewport is not choosing to cover the next one, so the
+sheet closes on any real width change, ahead of the `chosen` guard — and only on
+a real WIDTH change, because a mobile browser fires `resize` every time its URL
+bar slides.
+
+**The nav drawer is a drawer (R5-8).** Below 1100 the nav is a sheet over the
+page. It had E1's hairline and nothing else: no scrim, no close control, no
+dismiss on outside tap (Escape worked), so at 390px it began around y=480
+through the middle of a task card and read as a rendering fault. It now carries
+`--e3-shadow` — it is the one thing in the product that genuinely floats over
+its own app, which is what §4's E3 shadow is for — over a `.nav-scrim` at
+`--e3-scrim` that dismisses on click, with a `Close` control in the sheet. Both
+the scrim and the close are `display: none` at ≥1100, so no Rust knows the
+width: the rule that makes the sheet is the rule that turns them on. This is
+also the first RENDERED use of `--e3-scrim`; §4 and §8 recorded it as defined
+and unused.
 
 Panel widths at ≥1100: nav `13rem`, rail `clamp(21rem, 26vw, 26rem)`. Folding a
 panel transfers its width to the stage **to the pixel** — asserted in all four
@@ -578,6 +871,17 @@ asserts every `animation-name` resolves to `none`.
 
 ---
 
+**And the guard measures the states the pointer puts things in (R11-6).** A
+transition is why it could not before: `getComputedStyle` reports the value a
+transition is CURRENTLY at, so a fill read in the same frame the state is
+applied answers with the OLD colour. `layout-audit.js` disables transitions
+while it measures, copies every `:hover` / `:active` rule with the pseudo-class
+rewritten to a real class of the same specificity, and lets the browser's own
+cascade answer. `check-layout.sh` inlines the built stylesheets rather than
+`<link>`ing them, because a `file://` stylesheet is opaque to CSSOM.
+
+---
+
 ## 8. Components
 
 One implementation each. A screen that hand-rolls one of these is not done.
@@ -590,8 +894,9 @@ lists unbuilt work beside shipped work is a source of truth for nothing:
 |---|---|
 | Card, Button, Focus ring, Input/Textarea/Select, Tab, Message, Disclosure, EmptyState, Skeleton, Header, Nav, Rail | shipped, one implementation each, all rendered in `#design-system` |
 | Badge | **built, zero call sites.** `crates/ui/src/ui/badge.rs` exists and only the gallery renders it; the board says a status in prose with a `--tone` left edge instead |
+| Stage head, Toggle | shipped (R5-6, R5-16); specified below |
 | Toast · Modal / Sheet | **not built.** No component, no CSS, no specimen. Nothing in the product currently interrupts or floats, which is why `.e3`, `.scrim`, `--e3-scrim` and `--e3-dim` have no instance |
-| Footer | **not built.** `chrome.css` carries 17 lines styling `footer`, `footer .machine` and `footer a` against no element; part **E** of `checklist.md` has never started |
+| Footer | **not built, and no longer half-styled.** `chrome.css` used to carry 17 lines against no element; they are DELETED. A stylesheet that dresses an element nobody renders is a second product nobody is looking at. Part **E** of `checklist.md` writes them against a real element when it starts |
 | Button size `sm` (36px) | **not built,** and should stay that way — every control in the product clears the 44px floor, and the one exception this document carved out (`.wait-clock button`) turned out to be the sole enabled target mid-turn |
 | Header scroll shadow | **not built.** `header` carries `transition: box-shadow` and no rule ever changes it |
 
@@ -625,12 +930,56 @@ States — **all five defined, non-negotiable**: default · hover (fill +4% alph
 fill +7%) · `:disabled` (`opacity: 0.55`, `cursor: not-allowed`, no hover).
 Minimum target 44×44 including padding.
 
+**Every button in the product carries its variant class (R7-10).** `None`
+painting as a primary is a convenience for the gallery, not a licence: `Send
+the message again` — the one control on the page a person reaches for when a
+turn has just failed — carried no class at all, so `controls.css`'s bare
+`button` fill painted it `rgb(201,164,255)` on `rgb(26,15,43)` while every
+other primary is `btn-primary` at `rgba(201,164,255,0.886)` on
+`rgb(39,28,57)`. Near-identical, measurably different, and the only drift a
+critic hunting for drift could find in the whole product. It is
+`variant: "primary"` now.
+
+**An arm states its cost ABOVE the buttons, and counts it (R11-7).** The engine
+card's confirm read `Yes — reload and lose that` / `Cancel`, with the only
+explanation BELOW both — *"container2wasm keeps its filesystem in memory, so
+this reload deletes every file in the workspace and stops anything running in
+it"* — so the reader met a pronoun before its antecedent, and the sentence would
+not say what the app already knew: one running process (`ticker`) and three
+files. The consequence comes first, it is COUNTED off the projections the
+Workspace view already reads, and the button names the loss
+(`Yes — reload and delete 3 files and stop 1 process`).
+
+**And the arm protects the state that has something to lose, not the state you
+are moving to (R11-8).** The gate was `chosen().keeps_files()` — the engine the
+page is about to run — so switching TO container2wasm confirmed and switching
+AWAY from it reloaded on one press, which is precisely the reload that destroys
+an in-memory filesystem. What a reload costs is a fact about the engine
+**running now**.
+
+**A destructive action is `danger` AND it arms (R6-5).** Settings' "Reset every
+endpoint to the shipped list" deletes every saved key and every address override
+in this browser; it was a `btn-secondary` peer of "Save this endpoint", at the
+same height, one press away, and it reported the loss *afterwards* — while the
+Agents editor two views over already painted its Delete `btn-danger`. Both
+halves are the rule now: the `danger` variant, and a **two-press arm** whose
+label says which press you are about to make (`Yes — reset every endpoint`) with
+the consequence stated **before** it happens, on its own row under the button.
+Anything that destroys stored state owes both.
+
+**An arm owes a visible retreat, and a status region holds one message
+(R8-16).** Armed, it stayed armed: the only stated way back was *"leave this
+card"*, which is not a control, and the red warning appeared directly under
+whatever the last save had said — `Saved. The next turn calls…` reading as the
+first line of a destructive warning. So the arm renders its own `Cancel`, and
+arming clears the pane's status line.
+
 ### Focus ring — the one that survives glass
 A single `outline` disappears into a translucent surface. Every focusable
 element gets a two-tone ring:
 ```css
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
   box-shadow: 0 0 0 4px var(--focus-halo);   /* dark halo under the ring */
 }
@@ -638,6 +987,15 @@ element gets a two-tone ring:
 ```
 The dark halo is what keeps the ring visible over the lit lobe. It is a token
 and it does not get dropped for aesthetics.
+
+**AND IT IS NOT `--accent` (R8-12).** The ring was purple, and purple is what
+SELECTION is made of in this design — the nav's left bar, the strip's edge, the
+selected fill. A rounded purple outline on a nav item was, at a glance, the same
+claim as the purple bar on the item beside it, so a keyboard user walking the
+list could not tell where they *are* from what is *chosen*. Two states cannot
+share one hue. `--ink` is the brightest value in the palette, it carries no
+other state anywhere, and over the halo it clears 1.4.11 on every surface in
+both skins.
 
 ### Input / Textarea / Select
 Anatomy: `<label class="field-label">` + control. Variants: `text` · `multiline`
@@ -647,11 +1005,40 @@ readonly. Fill `--surface-1` (opaque — it holds typed text, G3). Border
 `--control`. Min height 44px. Placeholder `--ink-3` and never the only label.
 
 ### Tab
-Anatomy: `<button role="tab">` in a vertical `role="tablist"`.
-States: default · hover · `:focus-visible` · `aria-selected="true"` (accent left
-edge 3px + `--w-strong` + `--surface-2` fill) · disabled.
+Anatomy: `<button role="tab">` in a `role="tablist"`.
+States: default · hover · `:focus-visible` · `aria-selected="true"` · disabled.
 Roving tabindex, Arrow Up/Down and Left/Right both move — already implemented in
 `tabs.rs`, kept.
+
+**ONE SELECTION LANGUAGE, AND THE NAV IS THE OTHER HALF OF IT (R8-12).**
+Selection is three things and the same three in both lists: an `--accent` edge
+3px (left for the nav's column, bottom for the strip's row), `--surface-2` fill,
+`--w-strong`. Nothing else. The tab used to add `border-color: --accent` on top,
+so two lists forty pixels apart said "this one" two different ways and one of
+them spent the accent on a boundary — the channel `--control` owns everywhere
+else. A control's border is not a state.
+
+### Process row
+Anatomy: `<div class="proc-row" data-state>` → a full-width `<button
+class="file-entry proc-open">` (name · machine line · command) → `Stop`, when it
+is running. Pressing the row opens that process's log in the Files pane above;
+there is no second editor in the view.
+
+**It looks pressable, and the states do not look alike (R11-12, R11).** The row
+was drawn as plain text with a 3px edge, and the only thing saying it could be
+pressed was a sentence inside a collapsed fold; it carries a `--surface-1` fill
+and a `--control` boundary now, like everything else on this page that can be
+pressed. And `STOPPED` and `GONE` were the same grey caption in the same weight:
+`stopped` is a thing you chose, `gone` is work a reload destroyed, and the more
+alarming state may not be the quieter-looking one. `gone` takes `--warning` on
+its edge and its meta line, plus a `⚠` mark, because colour is never the only
+channel (§8, Badge).
+
+**And the log it opens is READ-ONLY.** It is a machine record — captured output
+of something that may still be printing into it — and it opened in a live
+`<textarea>` under `Save to the workspace`, so a keystroke and a press
+overwrote a running process's own record. `fileedit::is_record` decides;
+`Editing` becomes `Reading` and the Save row becomes a sentence.
 
 ### Badge / StatusDot
 Anatomy: `<span class="badge" data-status>`; dot + label, **never dot alone**.
@@ -661,31 +1048,93 @@ existing invariant from increment 06's walk and it holds.
 
 ### Message
 Anatomy: `.msg` → `.speaker` (who, in words) → `.said`.
-Variants: user · assistant · tool · pending · error.
-**Opaque, `--surface-1`, `flat`** — it holds the longest text in the product.
-User messages carry an `--accent` left edge; errors carry `--danger` plus a
-sentence, with the typed detail behind a disclosure.
+Five class variants — user · assistant · tool · pending · error — and **THREE
+TREATMENTS (R8-14)**, because there are three kinds of row and not five:
 
-**`pending` and `error` carry no `.speaker` and no `.said`** — a `<p>` directly,
-so the whole card inherits `--danger` rather than having `.said` repaint it
-`--ink`. Both are the harness talking, not the agent, and naming an agent as the
-speaker of "the endpoint could not be reached" attributes the failure to it.
-`#design-system` rendered the error variant the other way, with a `main:`
-speaker and its sentence in `--ink`, so the same component was two different
-components on two screens; the gallery has been corrected to what
-`core::failure::card` emits.
+| kind | classes | treatment |
+|---|---|---|
+| speech | `user`, `assistant` | `--surface-2` fill; yours adds the `--accent` left edge |
+| machinery | `tool`, `pending` | no fill, dotted edge, `--ink-2`, **the same size as speech** |
+| failure | `error` | 2px `--danger` edge, `⚠ Error` in words |
+
+Five consecutive rows used to carry five boxes: a filled `you` with an accent
+bar, a tool line unfilled at `--t-caption` with a stray rule, a filled answer
+with no bar, a system note italic inside a dashed border **with no speaker at
+all**, and an error in red. A reader had to learn five things to read one
+column. 11px and italic were extra signals doing the job `--ink-2` already does,
+so they are gone; opaque still holds (`.msg` is in glass.css's flat list) and it
+is still the longest text in the product.
+
+**Every row is labelled.** `core::failure::compaction_failed` was the one that
+was not — the page's own aside, unattributed, in a column where everything else
+says who is talking. It wears `Note:` (`fold::NOTICE`) like the rest.
+
+**`error` carries no `.speaker` and no `.said`** — a `<p>` directly, so the card
+inherits `--danger` rather than having `.said` repaint it `--ink`. It is the
+harness talking, and naming an agent as the speaker of "the endpoint could not
+be reached" attributes the failure to it.
 
 ### Disclosure
 Anatomy: `<details class="disclose"><summary>` — summary is a 44px target with a
 rotating chevron (`--dur-fast`). One implementation replaces the four hand-rolled
-`details` blocks.
+`details` blocks. **A summary is Inter, always (R6-14):** the workspace note's
+carried `.space-path`, which is `--mono`, and was the one monospace `<summary>`
+among thirteen — a path *value* is machine text, a control's label is not.
+
+### One product, one voice about loss (R11-9)
+On container2wasm the Files pane said *"There is nothing in `.` yet — nothing
+has written to it"* two inches above Processes' *"pulse_logger and ticker were
+started here, and nothing is left of them"* — and Files had held `pulse.log` and
+`tick.log` moments earlier. A pane that HELD the thing says so, in the words the
+pane beside it already uses: `filegone::empty_said` reports what was written and
+that the reload took it, gated on `!ctx.durable` **and** on the write having
+happened before `ctx.booted` — the same test `scrollrows` uses for an answer
+that describes a Linux since rebuilt, and the only condition under which "the
+reload took it" is a claim this projection can make.
+
+And **`.` never reaches user copy**: it is the shell's name for the folder a
+command starts in, it was the one piece of raw shell left in the product's
+sentences, and the pane knows what it is browsing — `the workspace folder`.
+
+### Machine output — one component, one rendering rule (R6-9)
+`.tool-call pre` set `white-space: pre` while `base.css` gives every other `pre`
+`pre-wrap`, so the **same** Tool trace wrapped cleanly in the stage and was
+shorn at the edge in the 254px rail (clientWidth 254 against scrollWidth 454)
+behind an overlay scrollbar nobody sees until they are already scrolling. The
+override is deleted: a tool result wraps, in both places. The exception is a
+**shell row** — `.term-run pre` in `workspace.css` — where the columns of
+`ls -la` are the content and the block scrolls sideways instead. Two components,
+two rules, stated; not one component with two.
 
 ### EmptyState
-Anatomy: glyph → one-line title (`--t-heading`) → one sentence (`--t-body`,
+Anatomy: one-line title (`--t-heading`) → **one** sentence (`--t-body`,
 `--ink-2`) → one primary action, at `padding: var(--s-4) 0` (§6).
-**Never a bare "No data".** Every list region
-(chat, board, tools, terminal, space) gets one. This is the highest-value new
-component: four of the five rail panels are empty on first load today.
+
+**AND AN EMPTY PANEL CARRIES NO DISCLOSURE (R11).** A cold Workspace rail stood
+three cards deep — Files, Processes, Artifacts — each with a heading, an empty
+state and a `<details>`, about 700 vertical pixels saying *"nothing has happened
+yet"* three different ways. *"The empty-state writing is excellent; there is
+simply too much of it at once."* The empty state's one sentence says what the
+region is for; the fold explains a mechanism, and a mechanism is worth reading
+once there is something on screen to read it against. So `Processes`,
+`Artifacts` and `ToolTrace` render their disclosure only when they have rows.
+**Never a bare "No data".** Every list region (chat, board, tools, terminal,
+space) gets one.
+
+**NO GLYPH (R8-18).** It used to open on one — `◈ ✉ ▮ ⚙ ▤ ◇`, one per panel, at
+`--t-display` in Inter. Six characters from six unrelated Unicode blocks, at
+32px, with six different optical weights and baselines, standing in for an icon
+set nobody drew, in the exact spot the eye lands first on a panel that has
+nothing to say. Drawing a real set is six inline SVGs to maintain for decoration
+the headline already carries; the cheaper and better answer was to delete the
+row. The `.empty-glyph` rule is gone with the prop.
+
+**ONE SENTENCE, NOT A PARAGRAPH (R8-EMPTY).** These reached sixty words, and the
+shared space's repeated its own disclosure — *"How the shared space is read and
+written"*, four lines below it — almost verbatim. This is the place with the
+least to say and it held the longest prose in the product. The sentence says
+what the region is for; the panel's disclosure, which every one of these panels
+already has, says how it works.
 
 ### Skeleton
 Anatomy: `.skeleton` blocks matching the shape of what is loading, `--surface-2`
@@ -702,9 +1151,42 @@ E3 over `--e3-scrim`. Focus trapped, `Esc` closes, focus returns to the invoker,
 as a child of `#main`, never inside a panel.
 
 ### Header
-E1, sticky, full width. Anatomy: wordmark · endpoint sentence (`role="status"`)
-· `.switches` (two panel toggles + skin toggle). On scroll it gains
-`--e1-shadow` and nothing else — no height change, no content swap.
+E1, full width, one row at every state. Anatomy: the views toggle · one
+`.status-strip` of pills in PRIORITY order (§6) · `.switches`. On scroll it
+gains `--e1-shadow` and nothing else — no height change, no content swap.
+
+### Stage head
+One band at the top of `.stage`, above whatever view is routed. Anatomy: a
+`--t-caption` eyebrow naming the view, then the agent strip when the view is
+agent-scoped (`View::scoped`).
+
+It exists because of two findings that turned out to be one. The agent strip
+was on the Dashboard and Chat only, while Workspace and Tool trace titled
+themselves `· MAIN` with no way on those screens to change which agent that
+was (R5-6); and six views named themselves while Tool trace did not, so a
+heading that appears on six screens and not the seventh reads as a missing
+element rather than as a style (R5-misc). Both are "the stage needs a head".
+
+**One instance, the existing component.** `tabs::AgentTabs` is unchanged;
+`stage.rs` renders it once and `View::picker` supplies the `aria-controls` and
+the accessible name per view, because one accessible name for five different
+jobs is R4-10's mistake five-way. A second picker, or a second copy of this
+one, would put two elements with every `tab-{name}` id in the document.
+
+### Toggle
+A `<button aria-pressed>` with a switch track drawn by `::after`: the knob is
+on the side the state is on, the track takes `--accent` when pressed, and a
+`--ink-2` state word sits beside it. The label is a stable noun.
+
+`Plain background: off` was a full-width, centre-aligned button whose entire
+visible state was its own label — a noun phrase that changes meaning as you
+press it, in a shape no other control in the product has, over an
+`aria-pressed` that was correct underneath and carried none of it to anyone
+looking (R5-16). **A control's state belongs beside it, never inside its
+label**, and the same rule fixed the workspace editor's Save (R5-15), which at
+rest read `Saved` and was disabled — a primary action whose label was a
+condition, on the one control in the product that overwrites a real file.
+Buttons are verbs.
 
 ### Nav (left) / Rail (right)
 E1 columns. Fold via the `hidden` attribute, which works in both skins because
@@ -712,9 +1194,10 @@ E1 columns. Fold via the `hidden` attribute, which works in both skins because
 labelled toggle in the header with `aria-expanded` / `aria-controls`.
 
 ### Footer
-Currently absent. Added as one E1 strip inside the stage: build id, deploy sha,
-isolation state, and a link to the source. Three items, one row, `--t-caption`,
-`--ink-2`. It is a status line, not a link dump.
+Currently absent, and now absent from the stylesheet too. When built: one E1
+strip inside the stage — build id, deploy sha, isolation state, a link to the
+source. Three items, one row, `--t-caption`, `--ink-2`. A status line, not a
+link dump.
 
 ### `#design-system`
 Every **built** component above, in every variant and every state, over the real
@@ -767,10 +1250,105 @@ here means the composer is always exactly where you left it.
    open — §8.)
 8. Every target ≥ 44×44 with all five states; focus ring visible on every surface.
 9. Full keyboard traversal, sane order, no traps, nothing mouse-only.
-10. **Token count down**: ≤5 font sizes, ≤8 spacing values, 0 roles with two
-    values, 0 selectors in two files (G1), 0 skin-gated rules (G2).
-11. `cargo test`, `scripts/check-layering.py`, `scripts/check-layout.sh` green.
+10. **Token count down**: ≤6 font sizes (§5 — raised from 5 in R5-A, once, in
+    writing), ≤8 spacing values, 0 roles with two values, 0 (selector,
+    property) pairs in two files (G1), 0 skin-gated rules (G2).
+13. **The ramp is USED.** Counted over rendered leaf nodes, no single size may
+    hold the overwhelming majority of the text on a screen, prose sits on
+    `--t-body` at `--lh-body`, and `--t-caption` is never a single orphan
+    instance. `layout-audit.js` prints `INFO SIZES` for exactly this.
+11. `cargo test`, `scripts/check-layering.py`, `scripts/check-size.py`,
+    `scripts/check-layout.sh` green.
 12. A fresh agent shown a screen cold says what it is for within five seconds.
+
+---
+
+## 11. Naming, actors and history — three rules the LOOK depends on
+
+Three findings in R6 were not about pixels and are here because a critic reading
+the screen cannot tell the difference.
+
+**One relationship, one wording (R6-12).** The selected agent was `Agent: author`
+in the header, `RUN A TASK · AUTHOR` on a card, `CHAT WITH AUTHOR` on another,
+and *"Chat is pointed at author"* in the editor: four phrasings for one fact, so
+a reader has to work out each time whether they name the same thing. **The header
+names the concept once (`Agent: {name}`) and every agent-scoped card wears the
+dot** — `Run a task · main`, `Chat · main`, `Tool trace · main`,
+`Shared space · main`, `workspace files · main`. Prose refers to it as *the page
+is pointed at {name}*.
+
+**A region is named for what is IN it (R8-7).** The rail wore `Side panel · main`
+and the header's switch said `Hide side panel` — a region named after itself,
+which tells a reader nothing they cannot already see, and the fourth name one
+place had: the nav says `Workspace`, the centre card says `Commands`, the rail
+card says `Files`, and the rail said `Side panel`. The place is the **Workspace**
+and its halves are **Commands** and **Files**; the rail says what it is holding
+(`View::rail_noun` — `workspace files`, `agent activity`) on both the heading and
+the switch, from one string.
+
+**One event, one name (R8-8).** A failed turn was `main's last turn failed` in
+the header, `failed` on the board row and `main could not finish` on the launch
+card. The board row's word is the one the projection writes, so it is the one
+that survives: the card reads `main's turn failed`. The same rule settled two
+more pairs — the header said `This turn calls …` for a turn nobody had started
+while the save confirmation said `The next turn calls …` about the identical
+fact (both say *the next turn* now), and Settings claimed Chrome 142+ **blocks**
+a page from calling a local address while the chat failure said it **asks
+permission**. Local Network Access ships as a permission; a block is what a
+denial produces. Both places say the permission. And the editor's `Folder name` is now `Agent name — what you
+will call it everywhere else`: the field held an identity and was labelled after
+the storage under it, with a placeholder that looked exactly like a roster name.
+
+**`you` means the person (R6-10).** The trace's `you` / `{agent}` split is the
+one channel answering "who did this", and rows read `you ran list_files path=.`
+for listings the Workspace file pane made on mount and after every status
+change. A pane's housekeeping is not a gesture, so it has **its own actor name,
+`the file pane`**. A typed shell command and a pressed Save are still `you`; the
+read-back a save triggers is the pane's.
+
+**History stays true after new events land (R6-11).** The note explaining an
+abandoned turn was rendered as the transcript's *tail*, so it was kept only for
+the most recent turn: send one more message and it vanished, leaving an orphaned
+`YOU:` in the log for ever with no reply and no reason. A turn is abandoned the
+moment a later one starts over it, and that never stops being true, so the note
+is written **at that point in the log** (`fold::abandoned`). A projection that
+only explains its own last row un-explains itself.
+
+**One concept, one name; one destination, one label (R7-7).** Three phrasings
+for one idea — `Shipped in this deploy` on an agent card, *"shipped with this
+site"* in a system-prompt disclosure, *"the shipped list"* on Settings' reset —
+are now all **shipped with this site**, and "deploy" leaves the product: it is
+a word for the person who published the page, not for the person reading it.
+The failure banner's `Check Settings` and the failed turn's `Open Settings` go
+to the same place and are now both **Open Settings**. And the Workspace was
+three things with one name — `Workspace` in the nav, `Workspace terminal` as a
+heading, `Workspace files` in the companion — *and it is not a terminal*: the
+VIEW is **Workspace**, and its two halves are **Commands · {agent}** and
+**Files**. `written here` is glossed where it is explained rather than where it
+is stamped: the Agents card's own sentence says *written here means you saved
+it in this browser, and the rest are shipped with this site*.
+
+**And the first interactive label is not inverted (R7-BOOT).** The boot screen
+rendered `☰ Hide views` while no views were on the page: `nav_open` starts at
+the width's default and the nav itself waits for the core, so the switch
+described the state it would be in rather than the one it was. It is gated on
+the same `ready` binding the nav is, which is the R6-BOOT rule below applied to
+a control rather than a status — a switch for a region that is not on the page
+is R2-12's defect wearing a menu. The two background glows are *not* part of
+this finding any more: since R5-C the glow is opt-in and `data-skin="plain"` is
+what a fresh browser carries, so the boot screen is the plain ground and the
+lock-screen reading does not reproduce (verified with storage cleared).
+
+**And the first sentence is not jargon (R6-BOOT).** `booting the core…` — "the
+core" is a word out of this repository's architecture doc. It is *"Starting up —
+reading the agents and the history this browser has stored."* now. In the same
+finding: the header rendered `Agent: main` and a sandbox state **while the core
+was still booting**, asserting two things it could not know — it had not read
+the roster, so it did not know `main` was on it, and it had not read that
+agent's file, so it did not know whether it has a workspace at all. At 138ms
+nobody catches it; a cold CheerpX boot holds it for seconds. **A status the app
+does not have yet is not rendered.** The wordmark is the one thing true before
+anything loads, and the wordmark is what shows.
 
 ---
 
@@ -822,3 +1400,161 @@ here means the composer is always exactly where you left it.
   contradiction between §1 and §4 in §1's favour; N3's selector list completed;
   N4 restated in terms of blur radius rather than the `none` keyword; the three
   fallback blocks made byte-identical.
+- **2026-08-13, R5** — the fifth UX round, and the first that was about how the
+  product LOOKS rather than what it says. §5 rewritten: three families where
+  there was one (`--display` restored as a real transitional serif on the
+  masthead, the lede and the wordmark; `--mono` made deliberate and actually
+  reachable — two `workspace.css` rules were asking for an undeclared
+  `--font-mono` and an undeclared `--r-1`), and six sizes where there were
+  five. The sixth, `--t-subhead` at 20px, is `h2`'s: the page measured 42
+  rendered nodes at 14px against 5 at 18, 2 at 32 and 1 at 11, with a panel's
+  title at the same step as the names inside it. `.note` — every explainer in
+  the product — moved from 14px/1.40 to 16px/1.60, because a label's leading
+  applied to seven-line teaching prose is what made the app's main teaching
+  surface skim-proof. `check-selectors.py`'s ceiling moved 5 → 6, deliberately
+  and once, with the argument written into the checker. §3: the tinted ground
+  became OPT-IN and the plain ground the default, which makes the product's
+  default and its whole fallback path the same picture; both skins stay
+  reachable and both are still audited at every width. §6 gained the header's
+  priority-ordered collapse (the `mask-image` that cut a token count through
+  the number is deleted; one child shrinks, with a real ellipsis) and the nav
+  drawer's scrim, shadow and close control — the first rendered use of
+  `--e3-scrim`. §8 gained the Stage head (one agent strip and one view eyebrow
+  above every routed view, replacing two per-view copies) and the Toggle, and
+  recorded the footer's seventeen dead rules as deleted rather than pending.
+  §10 gained an assertion that the ramp is used, not merely declared.
+- **2026-08-13, R6** — the sixth round, and the verdict was *"the typography says
+  'product'; the layout rhythm and the self-shredding header say 'internal'."*
+  §6 gained **the horizontal system**: `--column`, the `.split` / `.dash-grid`
+  pair, and a CONTAINER query on `.view-panel` rather than a media query,
+  because folding the side panel changes the stage's width without the window
+  moving. One card at 1440 held three content widths — prose 544, textarea 960,
+  panel 1136 — with ~40% of every panel empty on the right; it now holds one
+  (542), with the agent board and the endpoint's health living in the space that
+  was empty. `.grows` joins `.note` under `--measure`, and R3-20's "the launcher
+  takes the row" is superseded by it. §6 also replaced R5-7's scrollport with a
+  **stated priority order** the header drops WHOLE items in — model line →
+  tokens → sandbox → running → agent — which supersedes R4-15's "re-arrange,
+  never delete"; the wordmark is droppable, the agent is not. (The failure
+  banner was in that order behind a `:has(.problem)` rule until R8-2 moved it
+  out of the strip and off the order altogether.) §5 pinned
+  `strong`/`b` to `--w-strong` after `bolder` resolved to 900 inside a 600
+  parent — one node, the only weight outside the ramp in the product. §8 gained
+  the **destructive-action rule** (danger variant + two-press arm + the
+  consequence stated before it happens, from Settings' one-press endpoint reset)
+  and the **one rendering rule for machine output** (`.tool-call pre` wrapped in
+  the stage and was shorn in the rail). A new §11 records the three findings that
+  are legibility rather than pixels: one wording for the selected agent, `you`
+  meaning the person rather than a pane's housekeeping, and an abandoned turn's
+  explanation surviving the next message.
+- **2026-08-13, R7** — the seventh round finished the horizontal system, whose
+  verdict was that it *"is not yet a system, because three things escape it"*.
+  §6 gained the COMPANION CLAMP (`max-width: 2 × reading + gutter`; hiding the
+  sidebar had been handing every reclaimed pixel to the secondary column, which
+  reached 704 against the primary's 608), a stack threshold moved 60rem → 66rem
+  so the companion stacks at a 26rem floor instead of squeezing to 322, and two
+  new shapes so the system reaches all six views rather than four: `.card-deck`
+  for the Agents roster (2×2 at 1440, cards 529 round 503 of prose, against one
+  1136px card round 544) and `.panel.reading` for Settings' Appearance (608).
+  §6 also gained the rule that a dropped header fact has somewhere to go: the
+  sandbox state and the agent NEVER drop — the sandbox shrinks to `● ready` —
+  and the spend and the model line are written out in `StatusFold` at the foot
+  of the nav, which is also the answer to the pills' explanations having lived
+  in a mouse-only `title` on elements outside the tab order. §8 gained "every
+  button carries its variant class" (`Send the message again` was the one
+  control in the product with none) and block padding on the failure banner,
+  whose `0px` vertical made a 44px Dismiss the full height of the pill. §11
+  gained one-name-per-concept: *shipped with this site* everywhere, *Open
+  Settings* everywhere, and Workspace → Commands + Files. The boot screen no
+  longer offers `Hide views` with no views on the page.
+- **2026-08-13, R8** — the eighth round's verdict was that *"the header and side
+  panel are laid out for the success case only: every P1 is one composition
+  breaking under a state its author didn't lay out for"*. Six, all of them a
+  state rather than a width. §6 records the two header ones: the strip takes its
+  own row at 30rem because `Agent: main` was being clipped to `Agent: m` under
+  the side-panel switch (R8-1), and the failure banner leaves the strip for a
+  row of its own because it could only fit there by evicting the endpoint and
+  the spend — *an error state may add a row; it may never subtract a fact*
+  (R8-2). With that banner up at 390 the conversation had measured 24px of
+  client height over 1306 of transcript, so `.chat-log` has a floor and the
+  panel scrolls when the column runs out (R8-3, 192px minimum, 202 measured).
+  The banner also has to describe the present: a save in Settings answers the
+  failure standing against the OLD address, a dismissal is stored in this
+  browser, and both are keyed on `x-failed-turn` rather than the status
+  timestamp, which is re-created on every reload (R8-4). In the rail, an
+  unbroken tool argument was laid out at full width and dragged the panel to
+  `scrollWidth 1063` against `clientWidth 372` — `.tool-args` wraps `anywhere`
+  now — and the trace's *show me the newest call* scrolled the RAIL rather than
+  the list, which is why entering Chat began 257px down with the first heading
+  cut off; `#tool-trace` is a scrollport of its own in the rail and `show_last`
+  scrolls the list when the list can scroll (R8-5). And the run receipt is
+  derived instead of remembered: `receipt::last_run` rebuilds *main finished
+  “…”* from `/board` and the transcript's `x-last-said`, so it survives
+  navigation and a reload — no run history was added (R8-6).
+
+- **2026-08-13, R8 (second pass)** — the same critic, having decided the visual
+  design was finally worth paying for, filed twelve findings about what the
+  words and the states do. Four were one defect wearing four hats: **one place
+  had four names** (nav `Workspace`, card `Commands`, rail card `Files`, rail
+  `Side panel`), **one event had three** (`last turn failed` / `failed` / `could
+  not finish`), **one browser fact had two contradictory claims** (Chrome 142+
+  *blocks* in Settings against *asks permission* in the chat error — the
+  permission is the true one), and `This turn calls` fought `The next turn
+  calls` over the same sentence. §11 records all four and the rule that settles
+  them: a region is named for what is in it, and the projection's own word wins.
+  `Tokens, all time` was relabelled `Tokens, every agent` rather than scoped to
+  the selection — it sat beside `Agent: author` on zero turns and read as
+  author's spend, but it is the page's figure and must not reset when you switch
+  tab (R8-9). `.".` — a double full stop in every run-status string — was fixed
+  in the CONSTRUCTION (`ui::quoted`, one terminal mark, one test) and not in the
+  two instances (R8-11). The failure card that said *"the conversation says
+  why"* now offers the conversation (R8-13), and `Technical detail for failure
+  1` / `failure 2` — identical labels differing by an ordinal the product has no
+  concept of — are named for what went wrong instead (R8-15).
+  §8 records the rest: three message treatments instead of five with the
+  page's own aside finally labelled (R8-14), one selection language across the
+  nav and the strip with the focus ring moved off `--accent` so focus cannot
+  read as selection (R8-12), the empty state cut to one sentence with its glyph
+  deleted (R8-EMPTY, R8-18), and the destructive arm given a `Cancel` and one
+  status region (R8-16). Two were layout under a state: a capped `.grows`
+  clipped a line through its middle at 3,603 characters and now scrolls
+  (R8-17), and the task card deleted its three examples on the FIRST keystroke,
+  collapsing ~330px under the cursor — the examples stay until there is a run to
+  report (R8-EX). §3 records the glow decision: kept and brought into the
+  palette rather than removed, because the finding against it was *wrong
+  colour*, not *ornament* (R8-GLOW).
+
+- **2026-08-13, R11 (second pass)** — the eleventh critic's remaining findings,
+  and the round where the AESTHETIC verdict outweighed the list. §5: **`h2` is
+  no longer uppercase**, `--tr-subhead` is deleted, and a `.rail .panel > h2`
+  drops to `--t-heading` — five tracked-caps banners in one column *"shout in
+  unison and flatten hierarchy"*, and uppercase now belongs to `--t-caption`
+  alone. §8: an EMPTY panel renders no disclosure, which takes ~700px of "nothing
+  has happened yet" out of a cold rail; the process row gets a fill and a
+  boundary so it reads as pressable, `gone` gets `--warning` and a `⚠` so the
+  destroyed state is not the quieter-looking one, and the log it opens is
+  READ-ONLY (`fileedit.rs`) rather than a live `<textarea>` over a running
+  process's own record. §8 also records the arm rule the engine card broke twice:
+  the cost goes ABOVE the buttons and is COUNTED (`enginecost.rs`, *"the 3 files
+  in the workspace"*), and the arm is gated on the engine **running** rather than
+  the one chosen — switching AWAY from container2wasm was the one-press reload
+  that actually destroys an in-memory filesystem. §8 gains "one product, one
+  voice about loss": the Files pane admits what a reload took instead of claiming
+  nothing was ever written (`filegone.rs`), and `.` stops being the one piece of
+  raw shell in user copy. §6: **the endpoint pill never drops** — `.pill-label` /
+  `.pill-tail` give way to `.pill-short` and the MODEL ID stays at every width,
+  because on a phone you could spend tokens against an endpoint you had never
+  been shown — and the nav SHEET no longer survives a resize, since choosing to
+  cover one viewport is not choosing to cover the next. §7: the guard learned to
+  measure `:hover` and `:active`, which is how R11-6 shipped — a pressed row at
+  `rgb(198,186,216)` on `rgb(203,168,255)`, 1.1:1, from `button:not(:disabled):
+  active` at (0,1,1) outranking a class rule written without one. Three things
+  had to change for the probe to see it: `check-layout.sh` inlines the built CSS
+  (a `file://` stylesheet is opaque to CSSOM), the audit copies state rules onto
+  real classes rather than re-implementing specificity, and it turns transitions
+  off first, because `getComputedStyle` truthfully reports the colour a
+  transition has not yet reached. Two copy fixes: the base-URL message says *"It
+  must start with"* rather than asserting it of the value it just refused, and
+  the scrollback stopped claiming the first command boots the Linux — the page
+  prewarms it, so that sentence sat under a header that had read `ready` for
+  minutes, and boot is the header pill's job.

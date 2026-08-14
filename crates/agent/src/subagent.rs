@@ -21,6 +21,35 @@ use crate::tools::{builtin_tools, Tool};
 /// summarizer is nobody's tool by default (it is what compacts a history), and
 /// nothing is attached that an agent did not ask for.
 pub fn toolbox_for(spec: &AgentSpec, peers: &[AgentSpec]) -> Toolbox {
+    Toolbox::of(resolve(spec, peers).0)
+}
+
+/// THE NAMES IN `tools:` THAT RESOLVE TO NOTHING (R18-P1-7). `tools:
+/// [nope_tool]` saved clean and the agent's card then reported `No tools` as a
+/// fact, with no word about the line that had been dropped.
+///
+/// It is NOT a save-time refusal, and the reason is ordering: a name in
+/// `tools:` may be a peer AGENT that is not written yet, so refusing here would
+/// make "write the caller, then write the sub-agent" impossible while making
+/// "write them in the other order" fine — a rule about typing order, enforced
+/// as if it were about capability. And the direction matters: `spec.rs` refuses
+/// a malformed `tools:` line because dropping it grants EVERY built-in, while
+/// dropping one name grants less than the file asked for. So it is reported,
+/// loudly, everywhere the toolbox is described — and the file still saves.
+pub fn unresolved_tools(spec: &AgentSpec, peers: &[AgentSpec]) -> Vec<String> {
+    resolve(spec, peers).1
+}
+
+/// The allowlist applied: what it resolved to, and what it did not.
+fn resolve(spec: &AgentSpec, peers: &[AgentSpec]) -> (Vec<Tool>, Vec<String>) {
+    // `engine: base` IS THE EMPTY TOOLBOX (increment 19). The card has said
+    // "answers in one reply, without calling tools" since R2-16 and nothing
+    // enforced it: the summarizer's `tools: []` read as EVERY built-in, so the
+    // one shipped `base` agent was the most capable one in the tree. `spec.rs`
+    // refuses `base` with a non-empty list, so nothing is silently dropped here.
+    if spec.engine == crate::spec::ENGINE_BASE {
+        return (Vec::new(), Vec::new());
+    }
     let builtins = builtin_tools().tools;
     // A space's three tools are attached to whoever NAMES the space, on top of
     // the declared list rather than inside it: writing them out under `space:`
@@ -32,19 +61,30 @@ pub fn toolbox_for(spec: &AgentSpec, peers: &[AgentSpec]) -> Toolbox {
         Some(_) => [crate::space::space_tools(), crate::workspace::workspace_tools()].concat(),
         None => Vec::new(),
     };
+    // An EMPTY list keeps its meaning — "everything this agent could have
+    // locally" — and the space's tools ARE local capability, so they come with
+    // it. That stays safe because `spec.rs` refuses a malformed `tools:` line
+    // rather than emptying it: an empty list is a choice somebody wrote, never
+    // a line that failed to parse.
     if spec.tools.is_empty() {
-        return Toolbox::of([builtins, space].concat());
+        return ([builtins, space].concat(), Vec::new());
     }
-    let mut tools: Vec<Tool> = Vec::new();
+    // A NON-EMPTY list is the whole allowlist, so the space is what makes its
+    // tools AVAILABLE TO NAME and not a set appended after the filter. Appended,
+    // a read-only agent that can still see the filesystem would be
+    // unrepresentable: `tools: [read_file, list_files]` would silently also
+    // grant `exec` and `write_file`. The allowlist IS the mode (ALIGNMENT §1).
+    let (mut tools, mut unresolved): (Vec<Tool>, Vec<String>) = (Vec::new(), Vec::new());
     for name in &spec.tools {
-        if let Some(t) = builtins.iter().find(|t| &t.name == name) {
+        if let Some(t) = builtins.iter().chain(space.iter()).find(|t| &t.name == name) {
             tools.push(t.clone());
         } else if let Some(p) = peers.iter().find(|p| &p.name == name && p.name != spec.name) {
             tools.push(Tool::from_engine(&p.name, &p.description));
+        } else {
+            unresolved.push(name.clone());
         }
     }
-    tools.extend(space);
-    Toolbox::of(tools)
+    (tools, unresolved)
 }
 
 /// The goal a sub-agent was given, out of the JSON the model wrote.

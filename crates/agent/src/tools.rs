@@ -120,15 +120,23 @@ pub fn builtin_tools() -> Toolbox {
         // Increment 11. A model authoring an agent that then runs with real
         // capabilities is a decision the user made explicitly; it is an
         // ORDINARY tool because a built-in agent and an authored one must be
-        // indistinguishable to the system (I9), and the capability an authored
-        // agent ends up with still comes from its space and from nowhere else.
+        // indistinguishable to the system (I9).
+        //
+        // The 'space' sentence used to say naming one "also grants it a real
+        // shell". That was true when `toolbox_for` appended the workspace set
+        // AFTER the allowlist; it is now false for any non-empty list, and a
+        // tool description that overstates a capability boundary is the worst
+        // place in the product to be out of date — an authoring model reads it
+        // and writes the wrong file.
         Tool::new(
             "write_agent",
             "Create or replace an agent in this browser: it is installed immediately, gets its \
              own Worker and is listed beside the shipped agents. 'tools' is a comma-separated \
-             list of tool and agent names ('' means every built-in tool). 'space' is the shared \
-             space it works in; naming one also grants it a real shell in this browser's Linux, \
-             so leave it empty unless the agent needs to run commands.",
+             list of tool and agent names ('' means every built-in tool, plus the whole \
+             workspace set if a space is named). 'space' is the shared space it works in; \
+             naming one makes the workspace tools AVAILABLE TO NAME — 'exec', 'write_file', \
+             'read_file', 'list_files' and the process tools — and a non-empty 'tools' list \
+             then grants exactly the ones it names and nothing else.",
             &["name", "description", "prompt", "tools", "space"],
         ),
     ])

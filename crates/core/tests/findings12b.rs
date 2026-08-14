@@ -167,6 +167,40 @@ fn a_turn_replayed_with_nothing_driving_it_is_over() {
     assert!(pending(&say(&reloaded, "main", "asking again")));
 }
 
+/// R6-11. The explanation above was kept only for the MOST RECENT turn. Send
+/// one more message and it vanished, leaving the orphaned `YOU:` in the
+/// transcript for ever with no reply and no reason — the reader is left with a
+/// question the page answered a minute ago and then took back. A turn is
+/// abandoned the moment a later one starts over the top of it, and that never
+/// stops being true, so the note belongs at that point in the log rather than
+/// at the bottom of it.
+#[test]
+fn the_note_on_an_abandoned_turn_survives_the_next_message() {
+    let reloaded = booted(store_holding_an_unanswered_turn());
+    assert!(chat(&reloaded, "main").body.contains("not running any more"));
+
+    // A second question, over the top of the first.
+    let after = say(&reloaded, "main", "asking again").body;
+    assert!(after.contains("who is going to answer this"), "{after}");
+    assert!(after.contains("asking again"), "{after}");
+    assert!(
+        after.contains("not running any more"),
+        "history stays true after new events land: {after}"
+    );
+    // …and it is attached to the FIRST question, not floating at the end.
+    let note = after.find("not running any more").expect("the note");
+    let again = after.find("asking again").expect("the new message");
+    assert!(note < again, "the note sits with the turn it is about: {after}");
+
+    // …and a reload of that log says the same thing, because it is a fold.
+    let replayed = chat(&reloaded, "main").body;
+    assert_eq!(
+        replayed.matches("not running any more").count(),
+        1,
+        "one abandoned turn, one note: {replayed}"
+    );
+}
+
 /// The other half of finding 1: the fix must not disable in-flight turns. A
 /// turn accepted but not yet pumped, and a turn the board says is running, are
 /// both still pending — the projection distinguishes, it does not just stop

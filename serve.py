@@ -6,10 +6,16 @@
   hits CORS on model calls. Responses stream through as they arrive (SSE).
 - --coi turns on COOP/COEP/CORP headers for cross-origin-isolation
   experiments; off by default (HARNESS uses no SharedArrayBuffer).
+- Serves HTTP Range (206). NOT optional: the container2wasm engine's image
+  mounter reads the OCI blob in 32KB ranges, and a server that answers a
+  ranged GET with the whole body at 200 leaves the boot stuck on "mounting the
+  image" for ever. GitHub Pages does this natively; stdlib's
+  SimpleHTTPRequestHandler does not.
 """
 import argparse
 import http.server
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -29,6 +35,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "content-type, authorization")
+        self.send_header("Access-Control-Expose-Headers", "Content-Range, Content-Length")
+        self.send_header("Accept-Ranges", "bytes")
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
@@ -36,6 +44,41 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def send_head(self):
+        """206 Partial Content when a Range header is present."""
+        rng = self.headers.get("Range")
+        path = self.translate_path(self.path)
+        m = RANGE.fullmatch(rng.strip()) if rng else None
+        if not m or os.path.isdir(path):
+            return super().send_head()
+        try:
+            f = open(path, "rb")
+        except OSError:
+            self.send_error(404)
+            return None
+        size = os.fstat(f.fileno()).st_size
+        first, last = m.group(1), m.group(2)
+        if first == "":  # suffix range: bytes=-N
+            start, end = max(0, size - int(last or 0)), size - 1
+        else:
+            start = int(first)
+            end = min(int(last), size - 1) if last else size - 1
+        if start > end or start >= size:
+            f.close()
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{size}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
+        self.send_response(206)
+        self.send_header("Content-Type", self.guess_type(path))
+        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Length", str(end - start + 1))
+        self.send_header("Accept-Ranges", "bytes")
+        self.end_headers()
+        f.seek(start)
+        return _Slice(f, end - start + 1)
 
     def do_GET(self):
         if self.path.startswith("/v1/"):
@@ -80,6 +123,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[serve] %s\n" % (fmt % args))
+
+
+RANGE = re.compile(r"bytes=(\d*)-(\d*)")
+
+
+class _Slice:
+    """A file that stops after n bytes, which is all copyfile() needs."""
+
+    def __init__(self, f, n):
+        self.f, self.n = f, n
+
+    def read(self, size=-1):
+        if self.n <= 0:
+            return b""
+        size = self.n if size < 0 else min(size, self.n)
+        data = self.f.read(size)
+        self.n -= len(data)
+        return data
+
+    def close(self):
+        self.f.close()
 
 
 def main():

@@ -35,6 +35,7 @@ pub(crate) fn manifests() -> Vec<Manifest> {
         crate::board::manifest(),
         crate::inspector::manifest(),
         crate::terminal::manifest(),
+        crate::processes::manifest(),
         Manifest {
             id: ModuleId("status".into()),
             name: "Status".into(),

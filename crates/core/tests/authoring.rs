@@ -92,12 +92,12 @@ fn an_agent_written_in_the_browser_joins_the_roster() {
         "an authored agent is named as one: {listing}"
     );
     assert!(
-        listing.contains("Shipped in this deploy"),
+        listing.contains("Shipped with this site"),
         "…and a shipped one still says where it came from: {listing}"
     );
     // The grant is stated, because a space is what actually grants a shell.
     assert!(
-        listing.contains("No space, so no workspace: it cannot run commands."),
+        listing.contains("Its file names no space, so it has no folder and cannot run commands."),
         "{listing}"
     );
 }
@@ -145,7 +145,29 @@ fn a_browser_agent_of_the_same_name_wins_and_deleting_it_reverts() {
     assert_eq!(removed.status, 200, "{}", removed.body);
     let listing = body(&app, Request::get("/agents"));
     assert!(listing.contains("SHIPPED PROMPT"), "reverted: {listing}");
-    assert!(listing.contains("Shipped in this deploy"), "{listing}");
+    assert!(listing.contains("Shipped with this site"), "{listing}");
+}
+
+/// R17-P1-7. The editor arrives holding an agent, so the commonest first save
+/// REPLACES a shipped one — and the receipt used to read exactly like the one a
+/// brand new agent gets. It names the replacement and the undo, once: a second
+/// save, now over this browser's own copy, replaces nothing shipped and says so.
+#[test]
+fn saving_over_a_shipped_agent_says_what_it_replaced_and_how_to_undo_it() {
+    let app = booted(&[]);
+    let over = author(&app, "main", &file_of("main", "BROWSER PROMPT"));
+    assert_eq!(over.status, 200, "{}", over.body);
+    assert!(over.body.contains("replaces the main shipped with this site"), "{}", over.body);
+    assert!(over.body.contains("deleting it here brings the shipped one back"), "{}", over.body);
+
+    // Your own copy is what the second save replaces, and the warning is spent.
+    let again = author(&app, "main", &file_of("main", "SECOND EDIT"));
+    assert!(!again.body.contains("shipped with this site"), "{}", again.body);
+
+    // …and a name the deploy never shipped never carried it at all.
+    let fresh = author(&app, "scribe", &file_of("scribe", "You write things down."));
+    assert!(!fresh.body.contains("shipped with this site"), "{}", fresh.body);
+    assert!(fresh.body.contains("Saved scribe"), "{}", fresh.body);
 }
 
 /// A shipped agent cannot be deleted from the browser: the file belongs to the
@@ -158,7 +180,9 @@ fn a_shipped_agent_cannot_be_deleted_from_the_browser() {
         Request::post_form("/agents/delete", &[("name", "main")]),
     );
     assert_eq!(refused.status, 400);
-    assert!(refused.body.contains("public/agents/"), "{}", refused.body);
+    // R4-16: the refusal names WHERE IT CAME FROM, not a repository path.
+    assert!(refused.body.contains("shipped with this site"), "{}", refused.body);
+    assert!(!refused.body.contains("public/agents/"), "{}", refused.body);
     assert!(core::agent_names(&app.borrow()).contains(&"main".to_string()));
 }
 
@@ -320,10 +344,18 @@ fn an_authored_agent_survives_a_reload() {
 /// a capability line on the card that means nothing — and a prompt whose
 /// newlines arrived still escaped is unescaped, so the agent it writes is not
 /// one 400-character paragraph.
+///
+/// The measured call is FIRST, and it is now refused before it authors
+/// anything (R14-P0-2): its `space` argument is the call's own `"})`, the same
+/// swallowed terminator that wrote 179 corrupt bytes to disk, and one predicate
+/// covers every tool rather than exempting the ones whose junk we happen to
+/// know how to sweep up. The model reads the refusal and sends the call again;
+/// the cleanup below is what greets the second one.
 #[test]
 fn write_agent_cleans_up_what_a_small_model_actually_sends() {
     let app = booted(&[
         r#"write_agent({"name": "haiku", "description": "Writes haiku.", "prompt": "You write haiku.\\n\\nThree lines, 5-7-5.", "tools": "now", "space": "\"})"})"#,
+        r#"write_agent({"name": "haiku", "description": "Writes haiku.", "prompt": "You write haiku.\\n\\nThree lines, 5-7-5.", "tools": "now", "space": "a space"})"#,
         "done",
     ]);
     handle(
@@ -338,8 +370,11 @@ fn write_agent_cleans_up_what_a_small_model_actually_sends() {
     );
     let spec = agent::parse_agent_file("haiku", &res.body).expect("the file loads");
     assert_eq!(spec.space, "", "an unusable space name is not kept: {:?}", spec.space);
+    // The first call authored nothing at all, and said why.
+    let trace = body(&app, Request::get("/tools"));
+    assert!(trace.contains("Nothing ran: an argument ends with"), "{trace}");
     assert!(spec.prompt.contains("\n\nThree lines"), "{:?}", spec.prompt);
     // …and with no space there is no shell, which the card states plainly.
     let listing = body(&app, Request::get("/agents"));
-    assert!(listing.contains("No space, so no workspace"), "{listing}");
+    assert!(listing.contains("Its file names no space, so it has no folder"), "{listing}");
 }

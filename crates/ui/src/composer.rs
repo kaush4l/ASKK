@@ -1,11 +1,11 @@
 //! The composer — the one control that starts a turn. Its own file so
 //! `ChatPane` stays inside the 200-line rule (I12).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
-use crate::ui::{Button, Field, Form, COMPOSER_ID};
+use crate::ui::{enter_submits, key_hint, Button, Field, Form, COMPOSER_ID};
 
 /// The composer: a real form, so Enter submits and the button is a submit
 /// button — with the default navigation prevented, because the seam is the only
@@ -33,28 +33,66 @@ pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<St
     // main (13d walk). A half-written message belongs to the conversation it
     // was being written to, the same way the transcript does.
     let mut drafts = use_signal(HashMap::<String, String>::new);
-    let mine = agent.clone();
-    let draft = drafts.read().get(&mine).cloned().unwrap_or_default();
-    let key = mine.clone();
-    let mut submit = move || {
-        let text = drafts.read().get(&key).cloned().unwrap_or_default();
+    let draft = drafts.read().get(&agent).cloned().unwrap_or_default();
+    // WHOSE DRAFT WAS BEGUN INSIDE A RUN (R17-P1-4). Type mid-run and this
+    // control means steering: the placeholder says so and the button reads
+    // `Send to the run`. When the run ends under your fingers both change
+    // silently, and the sentence you were halfway through writing is now the
+    // start of a new turn instead. The text is kept — that was never the bug —
+    // but nothing said the meaning had moved.
+    //
+    // Recorded where the typing happens rather than inferred from a busy→idle
+    // edge: the handler already knows both facts and there is no transition to
+    // miss. Keyed by agent and cleared with the draft, like the draft.
+    let mut mid_run = use_signal(HashSet::<String>::new);
+    let moved = !busy && mid_run.read().contains(&agent) && !draft.trim().is_empty();
+    // Three names, three handlers, one draft map. `send` is a plain fn rather
+    // than a closure because two handlers call it now — the form's submit and
+    // the textarea's Enter (R4-4) — and a closure that owns the key String is
+    // not `Copy`, so the second capture would move it.
+    fn send(
+        mut drafts: Signal<HashMap<String, String>>,
+        mut mid_run: Signal<HashSet<String>>,
+        key: &str,
+        ready: bool,
+        on_send: &EventHandler<String>,
+    ) {
+        let text = drafts.read().get(key).cloned().unwrap_or_default();
         let text = text.trim().to_string();
         if text.is_empty() || !ready {
             return;
         }
-        drafts.write().remove(&key);
+        drafts.write().remove(key);
+        mid_run.write().remove(key);
         on_send.call(text);
-    };
+    }
+    let (typed, on_enter, on_submit) = (agent.clone(), agent.clone(), agent.clone());
     rsx! {
+        // ONE LINE, ABOVE THE FIELD, ONLY WHEN THE MEANING MOVED (R17-P1-4).
+        // Above rather than below because the button underneath is the thing
+        // whose word changed, and the notice has to be read before it is
+        // pressed. It goes away as soon as the draft is sent or cleared.
+        if moved {
+            p { class: "note", role: "status",
+                "The run ended while you were typing. Sending this starts a new turn."
+            }
+        }
         Form {
             oneline: true,
-            onsubmit: move |_| submit(),
+            onsubmit: move |_| send(drafts, mid_run, &on_submit, ready, &on_send),
             Field {
                 // The one field a turn starts from, so it has a stable id:
                 // every EmptyState in the rail answers "what would put
                 // something here" by sending focus to exactly this control.
                 id: COMPOSER_ID,
-                r#type: "text",
+                // A TEXTAREA, three rows, growing with what is in it (R4-4).
+                // The core act of this product is writing an instruction, and
+                // the field it was written in showed about ninety characters
+                // of it at a time — you could not read back what you had just
+                // typed. `class: "grows"` is the auto-height rule in
+                // `controls.css`; the three rows are the floor.
+                rows: 3,
+                class: "grows",
                 value: "{draft}",
                 aria_label: "{label}",
                 placeholder: match (ready, busy) {
@@ -65,16 +103,31 @@ pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<St
                 autocomplete: "off",
                 disabled: !ready,
                 oninput: move |e: FormEvent| {
-                    drafts.write().insert(mine.clone(), e.value());
+                    drafts.write().insert(typed.clone(), e.value());
+                    if busy {
+                        mid_run.write().insert(typed.clone());
+                    }
+                },
+                // The submit behaviour the form gave an `<input>` for free.
+                onkeydown: move |e: KeyboardEvent| {
+                    if enter_submits(&e) {
+                        e.prevent_default();
+                        send(drafts, mid_run, &on_enter, ready, &on_send);
+                    }
                 },
             }
             Button {
+                variant: "primary",
                 submit: true,
-                disabled: !ready,
+                // …and on an empty draft (R2-9): pressing Send with nothing
+                // typed returned silently, which reads as a broken button.
+                disabled: !ready || draft.trim().is_empty(),
                 // The word says what pressing it does. "Sending…" during a run
                 // described the LAST message; this one describes this one.
                 if busy { "Send to the run" } else { "Send" }
             }
+            // The same binding, the same sentence, one source (R5-5).
+            {key_hint()}
         }
     }
 }

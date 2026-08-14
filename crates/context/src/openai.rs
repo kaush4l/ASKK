@@ -45,7 +45,16 @@ fn part_json(p: &ContentPart) -> Value {
 /// plain string content (widest local-server compatibility); mixed content
 /// uses the array form. `stream: false` — streaming is core-driven chaining
 /// over completed replies (ADR-002), not SSE.
-pub fn openai_request_body(messages: &[Message], model: &str) -> String {
+///
+/// `temperature` is the agent file's own key, and it is OMITTED when the file
+/// named none — an absent key means "the endpoint's default", and sending a
+/// number we invented would be this build overriding a server setting nobody
+/// asked it to touch.
+pub fn openai_request_body(
+    messages: &[Message],
+    model: &str,
+    temperature: Option<f64>,
+) -> String {
     let msgs: Vec<Value> = messages
         .iter()
         .map(|m| {
@@ -69,7 +78,11 @@ pub fn openai_request_body(messages: &[Message], model: &str) -> String {
             json!({"role": role_str(m.role), "content": content})
         })
         .collect();
-    json!({"model": model, "stream": false, "messages": msgs}).to_string()
+    let mut body = json!({"model": model, "stream": false, "messages": msgs});
+    if let Some(t) = temperature {
+        body["temperature"] = json!(t);
+    }
+    body.to_string()
 }
 
 /// Extract the assistant text from a chat-completion reply body. `None` when

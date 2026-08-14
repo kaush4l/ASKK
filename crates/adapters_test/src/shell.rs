@@ -10,15 +10,38 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use kernel::{BoxFuture, Execution, WorkspaceError, WorkspacePort};
+use kernel::WorkspaceError;
 
 /// A fake Linux. `unavailable` is the I15 case: a browser where no workspace
 /// can start, which must degrade and never break.
 #[derive(Debug, Default)]
 pub struct FakeShell {
-    ran: RefCell<Vec<(String, String)>>,
-    files: RefCell<BTreeMap<String, String>>,
-    unavailable: Option<String>,
+    pub(crate) ran: RefCell<Vec<(String, String)>>,
+    pub(crate) files: RefCell<BTreeMap<String, String>>,
+    pub(crate) unavailable: Option<String>,
+    /// Canned answers, as `(marker, status, output)`. A shell that can only
+    /// echo the command back cannot test a tool that PARSES what a command
+    /// printed — and the process, observation and search tools all do, on
+    /// purpose (a model must never be handed `ps aux` to read). The first
+    /// marker found in the command wins; anything unmatched still echoes.
+    pub(crate) answers: RefCell<Vec<(String, i32, String)>>,
+    /// A command containing this NEVER ANSWERS. The one thing a canned answer
+    /// cannot express and the state this whole round is about: a foreground
+    /// `while true` holds the workspace, and everything queued behind it — the
+    /// panes, the trace, the status pill — has to say so rather than describe a
+    /// fetch that will never land.
+    pub(crate) wedge: Option<String>,
+    /// A command containing this comes back as `WorkspaceError::Failed` with
+    /// this message — the ONLY shape either engine has for an ending that was
+    /// not an exit status, which is how a stop a person asked for arrives
+    /// (R17-P1-6) as well as how a real breakage does.
+    pub(crate) fails: Option<(String, String)>,
+    /// Whether this workspace claims it can end a running command, and how
+    /// often it was asked to. `None` is the trait's own default (no way in).
+    pub(crate) interrupt: Option<kernel::Interrupt>,
+    pub(crate) stops: RefCell<usize>,
+    /// Whether a reload keeps what was written — `false` is container2wasm.
+    pub(crate) forgets: bool,
 }
 
 impl FakeShell {
@@ -47,6 +70,45 @@ impl FakeShell {
         }
     }
 
+    /// Answer any command CONTAINING `marker` with this status and output.
+    /// Later answers are tried first, so a test can override a general one.
+    pub fn answering(self, marker: &str, status: i32, output: &str) -> FakeShell {
+        self.answers
+            .borrow_mut()
+            .push((marker.to_string(), status, output.to_string()));
+        self
+    }
+
+    /// Any command CONTAINING `marker` never comes back — the wedge (R11-1).
+    pub fn wedging(mut self, marker: &str) -> FakeShell {
+        self.wedge = Some(marker.to_string());
+        self
+    }
+
+    /// Any command CONTAINING `marker` comes back as a port failure carrying
+    /// `message` — a stop, or a broken machine.
+    pub fn failing(mut self, marker: &str, message: &str) -> FakeShell {
+        self.fails = Some((marker.to_string(), message.to_string()));
+        self
+    }
+
+    /// …and one a reload rebuilds from nothing (c2w).
+    pub fn forgetting(mut self) -> FakeShell {
+        self.forgets = true;
+        self
+    }
+
+    /// …and a workspace that says a Stop would really end one, like c2w's PTY.
+    pub fn interruptible(mut self, how: kernel::Interrupt) -> FakeShell {
+        self.interrupt = Some(how);
+        self
+    }
+
+    /// How many times the page asked this workspace to stop a command.
+    pub fn stops(&self) -> usize {
+        *self.stops.borrow()
+    }
+
     /// Every command run, as `(cwd, command)`, in order.
     pub fn ran(&self) -> Vec<(String, String)> {
         self.ran.borrow().clone()
@@ -58,93 +120,15 @@ impl FakeShell {
         self.files.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
-    fn at(&self, cwd: &str, path: &str) -> String {
+    pub(crate) fn at(&self, cwd: &str, path: &str) -> String {
         format!("{}/{}", cwd.trim_end_matches('/'), path)
     }
 
-    fn refuse<T>(&self) -> Option<Result<T, WorkspaceError>> {
+    pub(crate) fn refuse<T>(&self) -> Option<Result<T, WorkspaceError>> {
         self.unavailable.as_ref().map(|reason| {
             Err(WorkspaceError::Unavailable {
                 reason: reason.clone(),
             })
         })
-    }
-}
-
-impl WorkspacePort for FakeShell {
-    fn exec<'a>(
-        &'a self,
-        cwd: &'a str,
-        command: &'a str,
-    ) -> BoxFuture<'a, Result<Execution, WorkspaceError>> {
-        if let Some(refusal) = self.refuse() {
-            return crate::ready(refusal);
-        }
-        self.ran
-            .borrow_mut()
-            .push((cwd.to_string(), command.to_string()));
-        crate::ready(Ok(Execution {
-            status: 0,
-            output: format!("ran: {command}"),
-        }))
-    }
-
-    fn read<'a>(
-        &'a self,
-        cwd: &'a str,
-        path: &'a str,
-    ) -> BoxFuture<'a, Result<Execution, WorkspaceError>> {
-        if let Some(refusal) = self.refuse() {
-            return crate::ready(refusal);
-        }
-        let full = self.at(cwd, path);
-        crate::ready(Ok(match self.files.borrow().get(&full) {
-            Some(contents) => Execution {
-                status: 0,
-                output: contents.clone(),
-            },
-            None => Execution {
-                status: 1,
-                output: format!("cat: can't open '{path}': No such file or directory"),
-            },
-        }))
-    }
-
-    fn write<'a>(
-        &'a self,
-        cwd: &'a str,
-        path: &'a str,
-        contents: &'a str,
-    ) -> BoxFuture<'a, Result<Execution, WorkspaceError>> {
-        if let Some(refusal) = self.refuse() {
-            return crate::ready(refusal);
-        }
-        let full = self.at(cwd, path);
-        self.files.borrow_mut().insert(full.clone(), contents.to_string());
-        crate::ready(Ok(Execution {
-            status: 0,
-            output: format!("wrote {full}"),
-        }))
-    }
-
-    fn list<'a>(
-        &'a self,
-        cwd: &'a str,
-        path: &'a str,
-    ) -> BoxFuture<'a, Result<Execution, WorkspaceError>> {
-        if let Some(refusal) = self.refuse() {
-            return crate::ready(refusal);
-        }
-        let under = self.at(cwd, path).trim_end_matches("/.").to_string();
-        let names: Vec<String> = self
-            .files
-            .borrow()
-            .keys()
-            .filter_map(|k| k.strip_prefix(&format!("{under}/")).map(str::to_string))
-            .collect();
-        crate::ready(Ok(Execution {
-            status: 0,
-            output: names.join("\n"),
-        }))
     }
 }

@@ -1,77 +1,83 @@
-/* surfaces.css — everything that holds content: card, message, row, tool call,
-   terminal, disclosure, empty state, skeleton. The material is glass.css's;
-   this file owns padding, rhythm, and what each surface SAYS. */
+/* surfaces.css — everything that holds content. The material is glass.css's;
+   this file owns padding, rhythm, and what each surface SAYS.
+   THE MEASURE (R4-13): prose ran ~149 characters a line, so every class
+   holding a sentence is capped at `--measure`. */
 
-.panel {
-  padding: var(--s-4);
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-}
+.panel { padding: var(--s-4); margin: 0; display: flex; flex-direction: column; gap: var(--s-3); }
 
-@media (min-width: 64rem) {
-  /* Reflect's showcase card measures 24px block / 32px inline; the first draft
-     of DESIGN.md said 16 and would have shipped cramped glass, which is the
-     single thing that makes this material read as a plastic overlay. */
-  .panel { padding: var(--s-5) var(--s-6); }
-}
-
-.note { color: var(--ink-2); font-size: var(--t-label); line-height: var(--lh-label); }
+@media (min-width: 64rem) { .panel { padding: var(--s-5) var(--s-6); } } /* Reflect's card: 24/32 */
+/* PROSE, AT PROSE SIZE (R5-A). `.note` was 14px on a label leading — a form
+   label's treatment on a paragraph. Explanation is content, not chrome. */
+.note { color: var(--ink-2); font-size: var(--t-body); line-height: var(--lh-body); max-width: var(--measure); }
 .note-author { color: var(--accent); font-weight: var(--w-strong); }
-.pending { color: var(--ink-2); }
+.pending { color: var(--ink-2); max-width: var(--measure); }
 .error { color: var(--danger); }
 
-/* ---- the conversation ---------------------------------------------------
-   Opaque (G3): this is the longest text in the product. */
-.chat-log {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  border-radius: var(--r-md);
-  padding: var(--s-3);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
+/* ---- the conversation: opaque (G3), the longest text in the product --- */
+/* THE TRANSCRIPT IS NOT THE FLEX LOSER (R8-3). `min-height: 0` let it yield
+   everything: 24px of client height over 1306px of conversation at 390x844.
+   Below its floor the PANEL scrolls instead. */
+.chat-log { display: flex; flex-direction: column; gap: var(--s-2); border-radius: var(--r-md);
+  padding: var(--s-3); flex: 1 1 auto; min-height: 12rem; overflow-y: auto; }
 
 .msg {
   padding: var(--s-3); border-radius: var(--r-sm); border: 1px solid var(--divider);
-  white-space: pre-wrap; overflow-wrap: anywhere;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-width: var(--measure);
 }
 
-/* WHO is speaking, in words. Colour is the second signal and never the only
-   one: with the stylesheet off, a question and its answer were two identical
-   paragraphs. */
+/* ---- the markdown subset (R4-11): an inline span, a fenced block, a
+   paragraph, and no more. Paragraphs inherit `pre-wrap` from `.msg`, which is
+   what keeps a single newline a line break. */
+.msg code { padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); background-color: var(--surface-1); color: var(--machine); }
+.msg .say-code { margin: var(--s-2) 0; padding: var(--s-3); border-radius: var(--r-sm); background-color: var(--surface-1); max-width: 100%; overflow-x: auto; }
+
+/* A block is already a box; a chip inside it would be a box in a box. */
+.msg .say-code code { padding: 0; background-color: transparent; color: var(--machine); }
+
+/* SOMETHING WRONG INSIDE SOMETHING THAT WENT RIGHT (R9-3): neither `.error`
+   (the turn did not fail) nor `.note` (the voice for things that are fine).
+   The file name a sentence can open is workspace.css's — `.file-ref`. */
+.warn { margin: 0; color: var(--warning); font-size: var(--t-label); line-height: var(--lh-label); }
+
+/* WHO is speaking, in words: colour is never the only signal. */
 .msg .speaker {
-  font-size: var(--t-caption);
-  letter-spacing: var(--tr-caption);
-  text-transform: uppercase;
-  font-weight: var(--w-strong);
-  color: var(--ink-2);
-  margin-right: var(--s-2);
+  font-size: var(--t-caption); letter-spacing: var(--tr-caption); margin-right: var(--s-2);
+  text-transform: uppercase; font-weight: var(--w-strong); color: var(--ink-2);
 }
 
+/* THREE TREATMENTS, NOT FIVE (R8-14). There are only three KINDS of row —
+   speech, machinery, failure — so: speech is filled and yours takes the accent
+   edge; machinery is unfilled, dotted and quiet at the SAME size; a failure
+   keeps the 2px danger edge. Every row is labelled, so the box never carries
+   who is speaking. */
+.msg.user, .msg.assistant { background-color: var(--surface-2); }
 .msg.user { border-left: 3px solid var(--accent); }
 .msg.user .speaker { color: var(--accent); }
-.msg.assistant { background-color: var(--surface-2); }
-.msg.tool { border-style: dotted; color: var(--ink-2); }
-.msg.pending { border-style: dashed; }
-.msg.error { border-color: var(--danger); color: var(--danger); }
-.msg.error p { margin: 0; }
+/* AN ANNOUNCEMENT IS NOT AN ANSWER (R7-15): quieter than the speech around it,
+   and a note the page makes about itself is the same kind of thing (R3-17). */
+.msg.tool, .msg.pending { border-style: dotted; color: var(--ink-2); }
+.msg.tool .said, .msg.pending .said { color: var(--ink-2); }
+/* …AND THE PAGE'S NOTE ABOUT A TURN IS NOT A ROW IN IT (R15-P1-6). */
+.msg.system, .msg.system .said { border: 0; padding: 0; font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2); }
+/* A FAILURE, unmistakable with the stylesheet off: the word ERROR in front of
+   the sentence, and a 2px edge (F18). */
+.msg.error { border-color: var(--danger); border-width: 2px; color: var(--danger); }
+.msg.error p { margin: 0 0 var(--s-1); }
 .msg.error pre { color: var(--danger); margin-top: var(--s-2); }
+.error-head { font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; font-weight: var(--w-strong); }
 .msg .said { color: var(--ink); }
 
-/* ---- the board ---------------------------------------------------------- */
+/* ---- the board -------------------------------------------------------- */
+/* Rows are uniform because their LABELS are (R3-12). */
 .board { display: flex; flex-direction: column; gap: var(--s-2); }
 
+/* The rail's copy (F24): a glance, not the subject. */
+.board.compact { gap: var(--s-1); }
+.board.compact .agent-row { padding: var(--s-2); }
+
 .agent-row {
-  padding: var(--s-3);
-  border-left: 3px solid var(--tone);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--s-2);
+  padding: var(--s-3); border-left: 3px solid var(--tone);
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2);
   transition: border-color var(--dur) var(--ease);
 }
 
@@ -82,98 +88,94 @@
 .agent-row[data-status="failed"], .badge[data-status="failed"] { --tone: var(--danger); }
 .agent-row[data-status="closed"], .badge[data-status="closed"] { --tone: var(--control); border-left-style: dotted; }
 
-/* A dense row keeps ONE size. This used to jump to --t-heading on
-   data-status="working", so the same agent's name was 13px in the board and
-   17px a second later with nothing about the agent changed — a status is a
-   status channel (--tone, the word, the badge), not a type scale. */
+/* A dense row keeps ONE size. A status is a channel, not a type scale. */
 .agent-row h3 { font-size: var(--t-label); font-weight: var(--w-medium); }
 .agent-status { margin: 0; color: var(--ink-2); font-size: var(--t-label); }
 .agent-live { margin: 0; color: var(--accent); font-size: var(--t-label); }
+.thread-line { color: var(--ink-2); font-weight: var(--w-normal); max-width: var(--measure); }
+/* A COLLAPSED THREAD IS A ROW, NOT A CARD: six at a panel's own padding left
+   the conversation 194px of 844 — the furniture beating its own subject. */
+.threads > .panel:not([data-chat]) { padding: var(--s-1) var(--s-2); }
 
-/* ---- tools, terminal, space --------------------------------------------- */
+/* ---- tools and space -------------------------------------------------- */
 .tool-call { padding: var(--s-3); border-left: 3px solid var(--accent); }
 .tool-call.error { border-left-color: var(--danger); }
-.tool-args { margin: 0 0 var(--s-1); font-family: var(--mono); font-size: var(--t-label); color: var(--machine); }
+/* AN ARGUMENT WRAPS INSIDE ITS CARD (R8-5): one unbreakable token made `.rail`
+   scroll 372 -> 1063, so `anywhere` — the box must SHRINK, not merely break.
+   …AND ITS OWN LINE BREAKS SURVIVE IT (R14-P0-1): `normal` collapsed every
+   newline, painting a three-line `python3 -c` as one line of invalid Python
+   over a node holding the bytes that actually ran. */
+.tool-args { margin: 0 0 var(--s-1); font-family: var(--mono); font-size: var(--t-label); color: var(--machine); overflow-wrap: anywhere; white-space: pre-wrap; }
+/* WHEN then WHO (F14, R2-18). Words, not tints. */
+.tool-time { color: var(--ink-2); }
+.tool-by { color: var(--ink); font-weight: var(--w-strong); }
 .tool-outcome { color: var(--machine); font-size: var(--t-label); }
 .tool-call.error .tool-outcome { color: var(--danger); }
-.tool-call pre { max-height: 8rem; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); }
-
-/* --s-3, the same as .chat-log and .tool-call. The terminal was the one dense
-   region running a step tighter (--s-2), so the rail changed rhythm between
-   the Tools panel and the Workspace panel directly under it. */
-#terminal { max-height: 13rem; overflow-y: auto; border-radius: var(--r-sm); padding: var(--s-3); }
-.term-run { padding: var(--s-3); border-left: 3px solid var(--control); }
-.term-run.error { border-left-color: var(--danger); }
-.term-command { margin: 0; font-family: var(--mono); font-size: var(--t-label); color: var(--machine); }
-.term-prompt { color: var(--accent); font-weight: var(--w-strong); }
-
+/* ONE COMPONENT, ONE RENDERING RULE (R6-9). A tool result wraps everywhere; in
+   the Trace VIEW it is the primary column, so 8rem is the wrong cap there. */
+.tool-call pre { max-height: 8rem; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); resize: vertical; }
+.trace-view .tool-call pre { max-height: min(50vh, 26rem); }
 #space { display: flex; flex-direction: column; gap: var(--s-2); }
 .space-name { margin: 0; color: var(--accent); font-weight: var(--w-strong); }
 .space-path { margin: 0; font-family: var(--mono); font-size: var(--t-label); color: var(--machine); }
-.space-facts { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: var(--s-1) var(--s-3); }
-.space-facts dt { font-family: var(--mono); font-size: var(--t-label); color: var(--ink-2); }
-.space-facts dd { margin: 0; font-size: var(--t-label); }
+.space-facts, .key-gloss { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: var(--s-1) var(--s-3); }
+.space-facts dt, .key-gloss dt { font-family: var(--mono); font-size: var(--t-label); color: var(--ink-2); }
+.space-facts dd, .key-gloss dd { margin: 0; font-size: var(--t-label); }
 .space-notes { margin: 0; padding-left: var(--s-4); }
 
-/* ---- agents ------------------------------------------------------------- */
+/* ---- agents ----------------------------------------------------------- */
+/* THE MEASURE REACHES HERE TOO (R6-8). Card prose ran 1044px where every other
+   paragraph in the view ran 544, and the over-wide ones were the settings and
+   permissions lines — the most consequential prose in the product. */
 .agent-card { padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-1); }
+.agent-card p, .agent-card summary { max-width: var(--measure); }
 .agent-card[data-origin="authored"] { border-left: 3px solid var(--accent); }
 .agent-card h3 { color: var(--accent); }
 .agent-meta, .agent-origin, .agent-header, .agent-memory { color: var(--ink-2); font-size: var(--t-label); margin: 0; }
+/* The slot where a `description:` would be, when the file has none (R5-19).
+   Body size for one rhythm on all five; `--ink-2` because it is the machine
+   describing the agent, not the author. */
+.agent-unsaid { color: var(--ink-2); margin: 0 0 var(--s-2); }
 .agent-card pre { max-height: 18rem; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); }
 .agent-summary pre { max-height: 14rem; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); color: var(--machine); }
 
-/* ---- disclosure: one implementation, replacing four hand-rolled ones ----- */
+/* ---- disclosure: one implementation, four hand-rolled ones ------------- */
 .disclose > summary,
 details > summary {
-  cursor: pointer;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  color: var(--ink-2);
-  font-size: var(--t-label);
-  list-style: none;
+  cursor: pointer; min-height: 44px; display: flex; align-items: center;
+  gap: var(--s-2); color: var(--ink-2); font-size: var(--t-label); list-style: none;
 }
 
 details > summary::-webkit-details-marker { display: none; }
 
 details > summary::before {
-  content: "\25B8";
-  color: var(--control);
-  transition: transform var(--dur-fast) var(--ease);
+  content: "\25B8"; color: var(--control); transition: transform var(--dur-fast) var(--ease);
 }
 
 details[open] > summary::before { transform: rotate(90deg); }
 
-/* ---- the empty state ----------------------------------------------------
-   Four of the five rail panels were empty boxes on first load, which is
-   indistinguishable from a broken one. A region with nothing in it says what
-   it is for and what would put something there. Never a bare "No data". */
+/* ---- the empty state: never a bare "No data". ------------------------- */
 .empty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--s-2);
-  /* Vertical air only: an empty state is the sole child of an already-padded
-     panel, and inline padding pushed it 16px right of that panel's own h2. */
-  padding: var(--s-4) 0;
-  color: var(--ink-2);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2);
+  /* Vertical air only: inline padding pushed it right of the h2. */
+  padding: var(--s-4) 0; color: var(--ink-2);
 }
 
-.empty .empty-glyph { font-size: var(--t-display); line-height: 1; opacity: 0.55; }
+/* NO GLYPH (R8-18): `◈ ✉ ▮ ⚙ ▤ ◇` at 32px stood in for an icon set nobody
+   drew. Deleted — the headline carries the state. */
 .empty .empty-title { color: var(--ink); font-size: var(--t-heading); font-weight: var(--w-strong); }
-.empty p { margin: 0; font-size: var(--t-label); }
+.empty p { margin: 0; font-size: var(--t-body); line-height: var(--lh-body); max-width: var(--measure); }
 
-/* ---- the skeleton -------------------------------------------------------
-   A loading region and an empty result used to look identical. */
-.skeleton {
-  background-color: var(--surface-2); border-radius: var(--r-sm);
-  min-height: var(--s-4); position: relative; overflow: hidden;
-}
+/* A SENTENCE AND THEN A BUTTON, not a button dropped mid-paragraph (R5-misc):
+   inline, the text flowed around a 44px control and every line broke
+   somewhere different. Each gets its own line. */
+.follow-up { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
+.follow-up p { margin: 0; max-width: var(--measure); }
 
-/* Blocks in the SHAPE of what is coming, so a region that has not answered
-   and a region with nothing in it stop being the same empty box. */
+/* ---- the skeleton: loading and empty looked identical ----------------- */
+.skeleton { background-color: var(--surface-2); border-radius: var(--r-sm); min-height: var(--s-4); position: relative; overflow: hidden; }
+
+/* Blocks in the SHAPE of what is coming. */
 .skeleton-stack { display: flex; flex-direction: column; gap: var(--s-2); }
 
 .skeleton::after {
@@ -187,14 +189,12 @@ details[open] > summary::before { transform: rotate(90deg); }
   to { transform: translateX(100%); }
 }
 
-
+/* THE EXAMPLE TASKS (R4-EX). Left-aligned and wrapping: each is a sentence. */
+.examples { display: flex; flex-direction: column; gap: var(--s-2); }
+.example { text-align: left; white-space: normal; max-width: var(--measure); }
 .ds-swatch { padding: var(--s-4); min-width: var(--s-8); }
-
-/* A row of specimens: every variant of one component, side by side. */
 .ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .ds-note { color: var(--ink-2); font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; }
 
 /* The kill-backdrop-filter switch is `:root[data-glass="off"]` in tokens.css,
-   sharing its body with the plain skin — one code path, now four triggers.
-   Nothing is needed here; the note is so the next person looking for it in
-   the file that owns the /design-system classes finds it. */
+   sharing its body with the plain skin. Nothing is needed here. */

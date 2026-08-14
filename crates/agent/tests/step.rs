@@ -58,7 +58,8 @@ fn work_turn_user_message_to_call_model_to_reply() {
     let task = document.sections.iter().find(|s| s.id.0 == "task").unwrap();
     assert!(matches!(&task.parts[0], Part::Text { text } if text == "Hello there"));
 
-    // The reply ends the turn: history records it, no further effects.
+    // The reply ends the turn: history records it, and the ONE effect is the
+    // ending fact saying the turn was answered (R17-P0-2).
     let (state, effects) = step(
         state,
         ev(EventKind::ModelReplied {
@@ -66,7 +67,10 @@ fn work_turn_user_message_to_call_model_to_reply() {
             agent: String::new(),
         }),
     );
-    assert!(effects.is_empty(), "Answer contract ends the turn");
+    assert!(
+        matches!(effects.as_slice(), [Effect::Emit { .. }]),
+        "Answer contract ends the turn, saying so: {effects:?}"
+    );
     assert_eq!(state.task, None);
     let history = state
         .paper

@@ -126,6 +126,7 @@ header,
    panel. The conversation is listed because it is the longest text in the
    product and must not depend on its container to stay readable. */
 .flat,
+.status-fold,
 .chat-log,
 .msg,
 #terminal,
@@ -151,10 +152,10 @@ header,
    It used to live in the left panel, which is a panel: the tabs sat on
    `--surface-1` and read at 16:1. 15B moved it into the Chat view, where the
    stage has no fill of its own, so the same tabs landed directly on the lit
-   lobe and the guard measured 1.99:1 text and a 1.17:1 outline — a real
-   regression, caught the moment `layout-audit.js` was pointed at the strip's
-   new home. It gets the ground back, as the material it always had. */
-.chat-view .agent-tabs {
+   lobe and the guard measured 1.99:1 text and a 1.17:1 outline. It gets the
+   ground back, as the material it always had — and since R5-6 it has ONE home
+   (`.stage-head`) rather than a selector per view that carries it. */
+.stage-head .agent-tabs {
   background-color: var(--surface-1);
   border: 1px solid var(--e2-line);
   border-radius: var(--e2-radius);

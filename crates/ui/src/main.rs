@@ -1,57 +1,70 @@
-//! L3 (ARCHITECTURE §4): the Dioxus app, replacing htmx and `transport.js`.
-//! An event handler calls `core::handle` directly through `WebApp::handle`, so
-//! the seam is unchanged (I4) and no application logic is left in JS (I5).
-//!
-//! This crate owns layout and component boundaries and nothing else — every
-//! byte of conversation content comes back from the core as a projection of
-//! the event log (I8). Components segregate by concept (plan, "UI shape"):
-//! `ChatPane` owns one conversation, `Settings` owns endpoints and keys.
+//! L3 (ARCHITECTURE §4): the Dioxus app. A handler calls `core::handle` through
+//! `WebApp::handle` — the seam unchanged (I4), no logic in JS (I5), layout (I8).
 
 use std::rc::Rc;
 
 use adapters_web::WebApp;
 use dioxus::prelude::*;
-
-use crate::views::View;
-
+mod adopt;
 mod agentfile;
+mod agentkeys;
 mod artifacts;
 mod authoring;
 mod board;
+mod boardcell;
 mod chat;
 mod composer;
+mod credit;
+mod crumbs;
 mod dash;
 mod endpoint;
+mod endpointform;
+mod engine;
+mod enginecost;
+mod examples;
+mod fileedit;
 mod files;
 mod frame;
 mod gallery;
 mod launch;
+mod listing;
+mod meter;
+mod processes;
+mod procrows;
+mod rail;
+mod receipt;
+mod recover;
+mod roster;
+mod route;
+mod runstatus;
 mod stage;
+mod statusbar;
+mod trouble;
 mod tabs;
+mod stopcommand;
 mod terminal;
+mod thread;
 mod tools;
 mod turn;
 mod wait;
+mod watch;
 mod settings;
 mod settings_view;
 mod skin;
 mod space;
+mod spacegap;
 mod ui;
 mod views;
 
 fn main() {
-    // The same Wasm bundle is imported by every agent's Worker (increment 06),
-    // where there is no window and no document — it is loaded there for its
-    // exported `AgentWorker`, not to mount a UI. Launching Dioxus in that
-    // context would only throw. One `if` is the whole cost of one build.
     if web_sys::window().is_none() {
         return;
     }
     dioxus::launch(shell);
 }
 
-/// Boot is async (IndexedDB), so the shell paints immediately and the page
-/// fills when the core is up. A boot failure is shown, never swallowed.
+/// Boot is async (IndexedDB): the shell paints at once, the page fills when the
+/// core is up, and a boot failure is shown rather than swallowed.
 fn shell() -> Element {
     let booted = use_resource(|| async {
         WebApp::boot()
@@ -63,63 +76,42 @@ fn shell() -> Element {
     let fragment = use_signal(String::new);
     let agents = use_signal(String::new); // the public/agents/ listing (I8)
     let failure = use_signal(String::new);
-    // Every loaded agent, and which one the chat pane is currently the
-    // conversation with. `main` by default: it is the agent a person opens the
-    // page to talk to (Python `ThreadedAgent.entry`).
+    // Every loaded agent, and which one the chat pane is talking to.
     let loaded = use_signal(Vec::<String>::new);
-    // Which of them this browser wrote — the editor's Delete needs it.
-    let authored = use_signal(Vec::<String>::new);
-    let selected = use_signal(|| "main".to_string());
-    // Whether an endpoint is configured. `Settings` writes it when it is on
-    // screen, and the SHELL derives it every tick as well — because since 15H
-    // a view mounts only while it is current, and a signal published by a
-    // component nobody has opened is a signal that is false: the composer sat
-    // disabled on a fresh load until you visited Settings, over an endpoint
-    // that was configured and working. The broker is the source of truth and
-    // both readers ask it.
+    let authored = use_signal(Vec::<String>::new); // …and which it WROTE
+    // …from the ADDRESS BAR, where it goes back to (R6-3).
+    let selected = use_signal(|| route::agent().unwrap_or_else(|| route::DEFAULT_AGENT.into()));
+    // A signal published by a component nobody has opened is false (15H).
     let endpoint_set = use_signal(|| false);
-    // "something moved": bumped by a turn and by a settings save, read by the
-    // panes that must redraw from the core when it does.
-    let tick = use_signal(|| 0u32);
-    // What this page has spent. Written by the chat pane's poll off the
-    // projection's `x-tokens` header, read by the meter in the header strip.
-    let tokens = use_signal(|| 0u64);
-    // The two dismissable regions (increment 13). One bit each, owned here
-    // because the switch that flips it lives in the header and the region it
-    // flips lives in `main` — nothing below this needs to know.
-    let nav_open = use_signal(dash::wide);
-    let rail_open = use_signal(dash::wide);
-    // WHERE you are. One signal replaces the two booleans the stage routed on;
-    // the Dashboard is where you land, because that is what the page is for.
-    let view = use_signal(|| {
-        if gallery::wanted() {
-            View::DesignSystem
-        } else {
-            View::Dashboard
-        }
-    });
+    let tick = use_signal(|| 0u32); // "something moved": a turn, or a save
+    let tokens = use_signal(|| 0u64); // off `x-tokens`, for the meter
+    let fleet = trouble::Fleet::new(); // the chrome's two health pills
+    let (nav_open, rail_open) = (use_signal(dash::wide), use_signal(dash::wide));
+    let chosen = use_signal(|| false); // width leads until a press (R2-3)
+    use_hook(|| dash::follow_width(nav_open, rail_open, chosen));
+    use_hook(|| dash::close_on_escape(nav_open)); // Escape shuts it (R4-15)
+    // WHERE you are, in the ADDRESS BAR (F13).
+    let view = use_signal(route::current);
+    let has_rail = rail::available(web, tick, selected, view); // R12-6
+    use_hook(|| route::listen(view, selected));
+    // BOTH HALVES of the hash follow the page (R6-3).
+    use_effect(move || route::show(view(), &selected()));
+    // …and the arriving VIEW starts where it should be read from (R2-1).
+    use_effect(move || route::land(view()));
 
     use_effect(move || {
-        dash::adopt(&booted.read(), web, fragment, agents, failure, loaded, authored)
+        adopt::adopt(&booted.read(), web, fragment, agents, failure, loaded, authored)
     });
     use_effect(move || {
         let _ = tick();
-        dash::watch_agents(web, agents, loaded, authored);
+        adopt::watch_agents(web, agents, loaded, authored, selected);
     });
-    // The roster's own fingerprint: the listing changes exactly when an agent's
-    // identity does. A memo, so it propagates only on a REAL change — `tick`
-    // fires on every projection, and `ChatPane` re-reads its transcript from
-    // this. Without it the chat header kept naming the shipped description
-    // after an override had installed, and the deleted one after a delete —
-    // two projections of one agent's identity disagreeing on screen (11b walk).
+    // The roster's fingerprint: a memo, so it moves on a REAL change (11b).
     let roster = use_memo(move || agents());
-    // The one sentence that says what the next turn actually calls. It was
-    // prose in the chat pane; it is the same sentence, unchanged, typeset into
-    // the header strip that used to be 77px holding two words (12c walk).
-    // Reading `tick` is what makes it follow a settings save.
+    // What the next turn calls (12c walk). `tick` follows a save.
     let endpoint = {
         let _ = tick();
-        endpoint::endpoint_line(web)
+        endpoint::endpoint_parts(web)
     };
     use_effect(move || {
         let _ = tick();
@@ -129,53 +121,78 @@ fn shell() -> Element {
             endpoint_set.set(configured);
         }
     });
+    // Whether the core has answered: nothing asserting a state the page does
+    // not have yet renders before this is true (R6-BOOT, R7-BOOT).
+    let ready = !fragment.read().is_empty();
 
     rsx! {
+        // First in the tab order (R2-19): a keyboard user walked the whole nav
+        // on every view. Visible only while focused (base.css).
+        a { class: "skip-link", href: "#content", "Skip to content" }
         header {
-            // Not an <h1>: the page's one heading is the dashboard's title,
-            // and a wordmark is a logo, not a level-one heading.
-            div { class: "wordmark", "ASKK" }
-            if !endpoint.is_empty() {
-                p { class: "chat-endpoint", role: "status", "{endpoint}" }
+            // FIRST, and on every screen (R2-3). "views", not "sidebar"
+            // (R4-18) — and NOT BEFORE THERE ARE ANY (R7-BOOT): `☰ Hide views`
+            // on a boot screen with no views is R2-12 wearing a menu.
+            if ready {
+                dash::PanelToggle { noun: "views", controls: "nav", open: nav_open, chosen }
             }
-            // The machine starts warming the moment the page paints, and this
-            // is the only thing on screen that knows: nothing waits for it.
-            frame::WorkspaceWarmth {}
-            frame::Heartbeat { web, tick, tokens }
-            frame::TokenMeter { tokens }
-            div { class: "switches",
-                dash::PanelToggle { label: "Views", controls: "nav", open: nav_open }
-                dash::PanelToggle { label: "Instruments", controls: "rail", open: rail_open }
-                views::DesignSwitch { view }
-                skin::SkinToggle {}
+            // ONE STRIP FOR EVERY FACT, IN PRIORITY ORDER, AND NOTHING IT DOES
+            // NOT YET KNOW (R5-7, R6-4, R6-BOOT). `statusbar.rs` states both.
+            statusbar::StatusStrip {
+                ready, selected, agents, fleet, tokens, endpoint: endpoint.clone(),
+            }
+            frame::Heartbeat { web, tick, tokens, fleet }
+            // ABSENT, not disabled (R2-12); `views::rail_noun` has R17-P1-9.
+            if has_rail() {
+                div { class: "switches",
+                    dash::PanelToggle { // named for its CONTENTS (R8-7)
+                        noun: view().rail_noun(), controls: "rail", open: rail_open, chosen,
+                    }
+                }
             }
         }
+        // A FAILED TURN GETS A ROW, NOT A SLOT (R8-2): in the strip it evicted
+        // the endpoint and the spend, the two facts the failure needs.
+        if ready { trouble::TroublePill { fleet, view, tick } }
         main {
             if !failure.read().is_empty() {
                 p { class: "error", "core failed to boot: {failure}" }
-            } else if fragment.read().is_empty() {
-                p { class: "pending", "booting the core…" }
+            } else if !ready {
+                // THE PRODUCT'S FIRST SENTENCE (R6-BOOT): it was "booting the
+                // core…", the name of a crate in this repository.
+                p { class: "pending", role: "status",
+                    "Starting up — reading the agents and the history this browser has stored."
+                }
             } else {
-                // Three regions, in reading order: WHERE you are, WHAT you are
-                // doing, and the instruments watching it happen. The two outer
-                // ones fold away — a dashboard's panels are furniture, and a
-                // 390px screen has room for exactly one of the three.
+                // THE DARK UNDER THE DRAWER (R5-8): rendered whenever the nav
+                // is open, `display: none` above the breakpoint. `aria-hidden`.
+                if nav_open() {
+                    div {
+                        class: "nav-scrim",
+                        aria_hidden: "true",
+                        onclick: move |_| {
+                            let mut nav_open = nav_open;
+                            nav_open.set(false);
+                        },
+                    }
+                }
                 nav {
                     class: "nav",
                     id: "nav",
                     aria_label: "Views",
                     hidden: !nav_open(),
-                    views::ViewNav { view }
+                    views::ViewNav { view, nav: nav_open }
+                    // …and the facts the header gives up narrow, in prose and
+                    // in the tab order (R7-12, R7-13), at its foot.
+                    statusbar::StatusFold { tokens, endpoint: endpoint::joined(&endpoint) }
                 }
                 stage::Stage {
                     web, endpoint_set, tick, tokens, roster, agents, loaded, authored,
                     selected, fragment, view,
                 }
-                // WHOSE instruments, and which ones: the rail is contextual,
-                // and it folds on the views that need none (VIEWS.md §5). The
-                // person's own switch still wins over the view's default.
-                if rail_open() {
-                    stage::Rail { web, tick, selected, view }
+                // WHOSE instruments, and which ones (VIEWS.md §5).
+                if rail_open() && has_rail() {
+                    rail::Rail { web, tick, selected, view }
                 }
             }
         }

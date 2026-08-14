@@ -20,116 +20,368 @@
      and `main` are ITS children and not the body's. The probe missed the 12d
      one-screen bug once by leaving it out. -->
 <div id="main">
+<!-- SKIP TO CONTENT (R2-19), first in the DOM and off-screen until focused. -->
+<a class="skip-link" href="#content">Skip to content</a>
 <header>
-  <div class="wordmark">ASKK</div>
-  <p class="chat-endpoint" role="status">This turn calls local — gemma-4-12B-it-qat-mxfp8 at http://127.0.0.1:8873/v1, with no key.</p>
+  <!-- THE MENU, first (R2-3). It left the `.switches` cluster at the far right
+       of the header: below 1100 the sidebar starts folded and this is the only
+       way back to it, so it is the header's first control at every width. The
+       FOLD checks press it by `aria-controls`, so they follow it here. -->
+  <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="nav">Hide views</button>
+  <!-- WHICH agent the page is pointed at, in the chrome, on every view (F2).
+       It is a pill like the three beside it, and the longest thing in the
+       header at 320px is now four pills and not three. -->
+  <!-- R4-8/R4-15: every fact is in ONE strip that scrolls sideways when it
+       does not fit, so the header is one row at every width and in every state
+       and nothing is `display: none`. The probe models it because the header's
+       height no longer being state-dependent is the thing to measure. -->
+  <div class="status-strip">
+  <div class="wordmark">HARNESS</div>
+  <p class="pill subject" role="status">Agent: <strong>main</strong></p>
+  <!-- R11-10: the pill SHRINKS rather than dropping — `.pill-label` and
+       `.pill-tail` go below 75rem, `.pill-short` takes their place, and the
+       model id (`.pill-subject`) never leaves. -->
+  <p class="pill chat-endpoint" role="status"><span class="pill-label">The next turn calls local — </span><span class="pill-short">calls </span><span class="pill-subject">gemma-4-12B-it-qat-mxfp8</span><span class="pill-tail"> at http://127.0.0.1:8873/v1, with no key.</span></p>
+  <!-- AN AGENT IS WORKING, from every view (R3-22). It is the fact a person who
+       walked away comes back for, and it kept its text on the phone where two
+       other pills lose theirs — so CONTRAST measures it at 390 as well. -->
+  <p class="pill running" role="status">main is working…</p>
   <!-- The two facts 15A and 15E put in the frame. They are text on the header's
        own glass, which is exactly where this guard's CONTRAST assertion is
        worth having, and neither was measured by anything before. -->
-  <p class="warmth ready" role="status">workspace ready</p>
-  <p class="meter" role="status">3025 tokens</p>
+  <!-- R6-2: the warmth pill answers for the SELECTED agent now — one sentence
+       carrying whose folder it is and what the Linux holding it is doing. It is
+       the longest fixed pill in the strip, which is why the fixture carries the
+       longer wording rather than the shorter "has no workspace" form. -->
+  <!-- R7-12: the sandbox pill NEVER drops now — it shrinks. The subject and
+       the noun are a `.pill-label` that goes at 48rem; the state word stays,
+       so a phone still reads `● ready`. CONTRAST measures it at 390. -->
+  <!-- R9-5: below 48rem the `.pill-label` is replaced by `.pill-short`, not
+       dropped — a bare `ready` in the chrome reads as "the agent is ready". -->
+  <p class="pill warmth busy" role="status"><span class="pill-label">main's folder · </span><span class="pill-short">main: </span>Linux busy with a command</p>
+  <!-- R13-P1-5: the spend NEVER drops now either. It used to leave at 64rem,
+       so at 390 it was in the DOM with `offsetParent: null`. The number is the
+       grouped form `meter::grouped` always renders (it never abbreviates), at
+       a width a long session really reaches — this is what has to fit at 320. -->
+  <p class="pill meter" role="status"><span class="pill-label">Tokens, every agent </span>1,234,567</p>
+  </div>
+  <!-- The rail switch, and ONLY on the views that have a rail (R2-12): it used
+       to render disabled, labelled "No instruments here", on four views of
+       seven. The skin switch left the header entirely (R2-14) and is in the
+       Settings panel below, where the CONTRAST sweep still measures it. -->
   <div class="switches">
-    <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="nav"><span aria-hidden="true">▾ </span>Views</button>
-    <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="rail"><span aria-hidden="true">▾ </span>Instruments</button>
-    <button type="button" class="skin-toggle" aria-pressed="false">Simple skin</button>
+    <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="rail">Hide folder</button>
   </div>
 </header>
+<!-- WHOSE last turn failed — A ROW OF ITS OWN, UNDER the header (R8-2). It was
+     a pill inside `.status-strip`, and it only fitted there by evicting the
+     model line and the spend: the two facts a person told "the endpoint was
+     unreachable" cannot act without. It holds two real buttons, which is why it
+     is in the fixture — HITTEST and CONTRAST had never seen a control in the
+     chrome that was not a switch — and it is permanently present here so that
+     every width is measured in the state that used to be the worst one. -->
+<div class="banner problem" role="status">
+  <!-- R13-P0-3: a Worker that cannot load this build's bundle is a LIFECYCLE
+       failure with no transcript beside it, so its whole remedy is said in
+       this row (`core::failure::lifecycle`). That is the longest sentence the
+       banner can ever carry, which makes it the one the 30vh cap and the
+       320px wrap have to be measured against. -->
+  <span class="problem-line">⚠ author's last turn failed: An older copy of this page's own code is still being served from this browser's cache, so its agents asked for a file this build does not have. Reload once: the page always fetches its shell from the network, and the worker that arrives with the newer build deletes every cache but its own as it takes over. If it is still here after that reload, open this page in a private window to confirm, then clear this site's data.</span>
+  <button type="button" class="btn-ghost">Open Settings</button>
+  <button type="button" class="btn-ghost">Dismiss</button>
+</div>
 <main>
   <!-- Increment 13: three regions, and the outer two fold. The tablist used to
        sit inside the primary column; it is its own region now, and the probe
        models that because it is what the shipped page does. -->
   <!-- The left panel navigates between VIEWS (15B). It used to list five
        agents with a "Setup" tab on the end; the agent strip moved into the
-       Chat view, where the thing it switches lives, and the STACKED assertion
-       moved with it: it is the view list that must be one entry per row, in
-       both skins, and the strip below is deliberately a row. SEVEN entries,
-       which is the shipped nav — a fixture smaller than the failure is a
-       fixture that certifies it (walk 5). -->
+       stage's HEAD (R5-6), and the STACKED assertion stayed with the view
+       list: it is the list that must be one entry per row in both skins, and
+       the strip is deliberately a row. SIX entries, which is the shipped nav
+       since Workspace folded into the Dashboard tile (R5-22) — a fixture
+       smaller than the failure is a fixture that certifies it (walk 5). -->
+  <!-- THE SCRIM UNDER THE DRAWER (R5-8). The shell renders it whenever the
+       nav is open and `layout.css` hides it above 1100px, so it follows the
+       nav's own `hidden` here — a permanent fixed overlay would swallow every
+       one of HITTEST's sampled points and report a bug that does not exist. -->
+  <div class="nav-scrim" id="nav-scrim" aria-hidden="true"></div>
   <nav class="nav" id="nav" aria-label="Views">
+    <!-- The drawer's own way out (R5-8), `display: none` above 1100px. -->
+    <button type="button" class="nav-close btn-ghost">✕ Close</button>
     <div class="view-list">
-      <button type="button" id="view-dashboard" class="btn secondary view-item current" aria-current="page" title="Dashboard" aria-label="Dashboard"><span class="nav-icon" aria-hidden="true">▦</span><span class="nav-label">Dashboard</span></button>
-      <button type="button" id="view-chat" class="btn secondary view-item" title="Chat" aria-label="Chat"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Chat</span></button>
-      <button type="button" id="view-agents" class="btn secondary view-item" title="Agents" aria-label="Agents"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Agents</span></button>
-      <button type="button" id="view-workspace" class="btn secondary view-item" title="Workspace" aria-label="Workspace"><span class="nav-icon" aria-hidden="true">▥</span><span class="nav-label">Workspace</span></button>
-      <button type="button" id="view-memory" class="btn secondary view-item" title="Memory" aria-label="Memory"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Memory</span></button>
-      <button type="button" id="view-trace" class="btn secondary view-item" title="Trace" aria-label="Trace"><span class="nav-icon" aria-hidden="true">◈</span><span class="nav-label">Trace</span></button>
-      <button type="button" id="view-settings" class="btn secondary view-item" title="Settings" aria-label="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Settings</span></button>
+      <button type="button" id="view-dashboard" class="view-item current" aria-current="page" title="Dashboard" aria-label="Dashboard"><span class="nav-label">Dashboard</span></button>
+      <button type="button" id="view-chat" class="view-item" title="Chat" aria-label="Chat"><span class="nav-label">Chat</span></button>
+      <button type="button" id="view-agents" class="view-item" title="Agents" aria-label="Agents"><span class="nav-label">Agents</span></button>
+      <button type="button" id="view-commands" class="view-item" title="Commands" aria-label="Commands"><span class="nav-label">Commands</span></button>
+      <button type="button" id="view-trace" class="view-item" title="Tool trace" aria-label="Tool trace"><span class="nav-label">Tool trace</span></button>
+      <button type="button" id="view-settings" class="view-item" title="Settings" aria-label="Settings"><span class="nav-label">Settings</span></button>
+    </div>
+    <!-- WHERE THE DROPPED FACTS LIVE (R7-12, R7-13). The strip gives up the
+         model line at 75rem and the spend at 64rem and neither had anywhere to
+         go, and every pill's explanation was a mouse-only `title` on an element
+         that was not in the tab order. This is a real `<summary>` target, so
+         HITTEST and CONTRAST both see it. -->
+    <div class="status-fold">
+      <details class="disclose panel-note"><summary>What the status pills mean</summary>
+        <p class="note">This turn calls local — gemma-4-12B-it-qat-mxfp8 at http://127.0.0.1:8873/v1, with no key.</p>
+        <p class="note">Tokens, all time: 3,024. Every token spent by every agent since this browser first opened the app, summed from the event log.</p>
+        <p class="note">The dot beside the workspace is the Linux this page runs. Amber while it starts, and amber again whenever a command is running in it — including one you have stopped waiting for, which it is still finishing. Green when it is booted and free to take the next command. Red when it could not start, and the pill says why. Grey means this agent has no workspace of its own, which is a fact about the agent and not something the Linux can change.</p>
+      </details>
     </div>
   </nav>
-  <div class="stage primary">
-    <div class="masthead"><h1>HARNESS</h1></div>
+  <div class="stage primary" id="content" tabindex="-1">
+    <!-- THE STAGE'S HEAD (R5-6, R5-misc). One eyebrow naming the view and ONE
+         agent strip, above whatever is routed — it used to be a copy inside
+         the Dashboard and another inside Chat, on two of seven views, four of
+         which are agent-scoped. The ids are the shipped ones: a single
+         instance is what keeps `tab-{name}` unique. -->
+    <div class="stage-head">
+      <p class="view-eyebrow">Dashboard</p>
+      <!-- The Commands head's extra line (R17-P1-9), measured here because the
+           probe carries ONE stage-head and this is the widest thing that goes
+           in it: a full sentence between the eyebrow and the agent strip. -->
+      <p class="note">The shell below. The folder these commands run in, what is still running, and the files they finished are in the folder panel — the switch for it is in the header.</p>
+      <div class="agent-tabs" id="agent-strip" role="tablist" aria-orientation="horizontal" aria-label="Which agent runs the task">
+        <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="task-field" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
+        <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="task-field" tabindex="0"><strong>main</strong></button>
+        <button type="button" id="tab-researcher" role="tab" class="tab" aria-selected="false" aria-controls="task-field" tabindex="-1">researcher</button>
+        <button type="button" id="tab-summarizer" role="tab" class="tab" aria-selected="false" aria-controls="task-field" tabindex="-1">summarizer</button>
+      </div>
+    </div>
     <!-- The Dashboard's component grid, the launcher's field and the Files
          pane's rows: 15B, 15L and 15G shipped three surfaces the guard could
          not see, which is how the agent strip's 1.99:1 got past it once. -->
-    <section class="view-panel dashboard-view">
+    <section class="view-panel dashboard-view" id="dashboard-view" aria-label="Dashboard">
+      <!-- INSIDE the Dashboard region, which is where `stage.rs` puts them.
+           They were siblings of it here, so the fixture stood the masthead and
+           the lede above EVERY route — 180px of Dashboard over the top of the
+           conversation on the chat route, and a dashboard-view whose own top
+           was below the stage's clip. A fixture that models a state the app
+           cannot reach reports failures the app does not have. -->
+      <div class="masthead"><h1>HARNESS</h1></div>
+      <!-- The one line that says what the product IS (F1). It is the widest
+           paragraph on the Dashboard, so it is the one OVERFLOW wants here. -->
+      <p class="tagline">This runs AI agents in your browser. An agent whose file names a space also gets a folder in the Linux this page runs, where it can write files and run commands, and it shares facts and notes with every other agent naming that space. Give an agent a task and walk away, or talk to it while it works.</p>
+      <!-- THE HORIZONTAL SYSTEM (R6-LAYOUT). R3-20 took the launcher out of
+           the grid because it shared a 22rem cell with its own button; its own
+           row then left a 544px column inside a 1134px card with 40% of the
+           panel empty on the right. It is the READING COLUMN of a two-track
+           grid now — `--column` wide, which is the measure plus the card's own
+           padding — and the fleet sits in the companion track beside it. The
+           probe models it because OVERFLOW and the fold assertions both measure
+           this region. -->
       <div class="dash-grid">
-        <section class="panel card"><h2>Run a task</h2>
+      <section class="panel card"><h2>Run a task · main</h2>
+          <p class="note">Give main a task and walk away — it works on its own, and “Agents and what they are doing” below says how far it has got.</p>
           <form class="row">
-            <input id="task-field" type="text" placeholder="Build me a thing, and tell me when it works…" aria-label="Task for main">
-            <button type="submit" class="btn">Run</button>
+            <textarea id="task-field" class="grows" rows="3" placeholder="Describe the whole task — what to make, where to put it, and what to tell you when it is done…" aria-label="Task for main"></textarea>
+            <button type="submit" class="btn-primary" disabled>Start agent</button>
           </form>
+          <!-- WHAT THE KEYS DO (R5-5): Enter starts a real run from a field
+               whose placeholder invites a paragraph, and nothing said so. -->
+          <p class="hint"><kbd>⏎</kbd> starts it · <kbd>⇧⏎</kbd> for a new line</p>
+          <!-- The confirmation, LIVE and reaching an ending (R2-2). The button
+               is on its OWN LINE now (R5-misc): dropped inline into wrapping
+               prose it broke every line around it somewhere different. -->
+          <div class="follow-up"><p class="pending" role="status">main is on it: “List the files in the folder and summarise what you find”.</p><button type="button" class="btn-secondary">Watch it</button></div>
+          <!-- WHY the primary is dead (R3-15), beside a button painted dead. -->
+          <p class="note">Start agent turns on once you have typed a task.</p>
+          <!-- THE EXAMPLE TASKS (R4-EX). Each is a whole sentence in a button,
+               which is the widest wrapping control in this card at 320. -->
+          <div class="examples"><p class="note">Not sure what to ask? Start from one of these:</p>
+            <div class="editor-picks">
+              <button type="button" class="btn-ghost example">Write a file called notes.md in the folder with three bullet points about what you can do, then tell me what you wrote.</button>
+              <button type="button" class="btn-ghost example">Run `uname -a` in the folder and tell me, in one sentence, what machine this is.</button>
+              <button type="button" class="btn-ghost example">List the files in the folder, read the most interesting one, and summarise it.</button>
+            </div>
+          </div>
+          <details class="disclose panel-note"><summary>What happens when you press Start agent</summary><p class="note">main works in the background, on its own.</p></details>
         </section>
+        <div class="dash-side">
         <section class="panel card"><h2>Files</h2>
           <div class="file-form">
-            <button type="button" class="file-entry root">⟳ workspace root</button>
+            <!-- WHICH FOLDER YOU ARE IN (R16-P1-4): descending into `report/`
+                 listed `..` and `c.md` with nothing on screen naming the
+                 folder. `.crumb` is the row the design-system link already
+                 uses; the segments are `.file-entry`, the row a folder opens
+                 with, so the pressed and hovered paintings R11-6 measures
+                 cover these too. -->
+            <p class="crumb" aria-label="Which folder this pane is on"><span><button type="button" class="file-entry">the folder</button></span><span>/ <button type="button" class="file-entry" aria-current="true">notes</button></span></p>
+            <button type="button" class="file-entry root">⟳ List the whole folder</button>
             <div class="file-list">
               <button type="button" class="file-entry folder">notes/</button>
-              <button type="button" class="file-entry current">today.md</button>
+              <button type="button" class="file-entry current" aria-current="true">today.md</button>
               <button type="button" class="file-entry">proof.txt</button>
             </div>
-            <pre class="file-view" data-path="notes/today.md">hello from alpine.</pre>
+            <!-- WHICH FILE IS OPEN, VISIBLY, AND ONCE (R5-9, R5-15). The core
+                 used to append a read-only `<pre class="file-view">` holding
+                 the same bytes as the textarea under it, and nothing named the
+                 file but an invisible aria-label. The name is a heading, the
+                 button is a verb, and the state is the line beside it. -->
+            <div class="file-edit">
+              <h3 class="file-open"><span class="file-open-what">Editing</span>notes/today.md</h3>
+              <textarea id="file-editor" class="file-editor" rows="6" spellcheck="false" aria-label="Editing notes/today.md">This line is deliberately one long unbroken sentence of prose, because the editor used to be white-space: pre and measured clientWidth 280 against scrollWidth 712 on a markdown file in the rail, which is what XOVERFLOW is here to catch (R16-P1-5).</textarea>
+              <div class="file-actions">
+                <button type="button" class="btn-primary" disabled>Save to the folder</button>
+                <p class="file-state" role="status">Saved — this is what is on disk</p>
+              </div>
+            </div>
           </div>
         </section>
+        </div>
       </div>
     </section>
-    <!-- The agent strip, where it lives now: inside the Chat view. author
-         FIRST and UNSELECTED, because that is the order the app renders —
+    <!-- The agent strip lives in the stage head above (R5-6). author FIRST
+         and UNSELECTED, because that is the order the app renders —
          the fixture used to lead with the selected tab, so a check reading
          "the first tab" measured the accent edge (7.31:1) while the shipped
          page led with --line (1.49:1) and the guard was green over a page its
          own code failed (walk 5). -->
-    <div class="chat-view">
-    <div class="agent-tabs" role="tablist" aria-orientation="horizontal" aria-label="Which agent to talk to">
-      <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
-      <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="chat-panel" tabindex="0"><span aria-hidden="true">▸ </span><strong>main</strong></button>
-      <button type="button" id="tab-researcher" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">researcher</button>
-      <button type="button" id="tab-summarizer" role="tab" class="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">summarizer</button>
-    </div>
-    </div>
-    <section class="panel" id="chat-panel" role="tabpanel" aria-labelledby="tab-main" aria-label="Chat with main">
-      <h2>Chat with main</h2>
-      <div id="chat-scroll" class="chat-log">
-        <div id="chat-log">
+    <!-- ONE region, as the shell emits it: the strip and the conversation are
+         the chat VIEW, which fills the stage so that only the transcript
+         between them scrolls (R3-10). It used to be a bare div beside the
+         panel, which is a shape the stylesheet cannot pin. -->
+    <section class="view-panel chat-view" id="chat-view" aria-label="Chat">
+    <!-- THE THREAD LIST (docs/THREADS.md): one row per loaded agent, the routed
+         one open in place, and NO agent strip above it — the list is the picker
+         there (R19-IA), so `layout-probe.js` hides the strip on this route. The
+         ids are per agent, because two conversations can be in one document and
+         `#chat-log` matched whichever came first (§7). -->
+    <div class="threads">
+    <section class="panel" id="chat-panel-main" data-chat="main" role="region" aria-labelledby="thread-main" aria-label="Chat · main">
+      <button type="button" class="btn-ghost thread-summary" id="thread-main" aria-expanded="true" aria-controls="chat-panel-main"><span class="thread-mark" aria-hidden="true">▾ </span><strong class="thread-who">main</strong><span class="badge" data-status="working">working</span><span class="thread-line">3 turns in all · in this turn for 8s · last tool: exec</span></button>
+      <div id="chat-scroll-main" class="chat-log">
+        <div id="chat-log-main">
           <div class="msg user"><span class="speaker">you</span> uname -a</div>
-          <div class="msg assistant"><span class="speaker">main</span> <span class="said">Linux localhost 5.15.0 x86_64 GNU/Linux</span></div>
-          <div class="msg error"><p>The turn failed.</p><details><summary>Technical detail for failure 1</summary><pre>{"kind":"EndpointUnreachable"}</pre></details></div>
+          <!-- WHICH tools, not "calling tools" (R5-20). -->
+          <div class="msg tool"><span class="speaker">main</span> called write_file, read_file ×2 — every call is in Tool trace</div>
+          <div class="msg assistant"><span class="speaker">main</span> <span class="said"><p class="say">I created <code>fruit.md</code> in the folder. Run it with:</p><pre class="say-code"><code>cat /root/fruit.md</code></pre></span></div>
+          <div class="msg pending" role="status"><span class="speaker">Note: </span><p>The older messages could not be shortened to make room, so this turn was sent with the whole conversation instead.</p><details><summary>Technical detail — the older messages could not be shortened (the endpoint was unreachable)</summary><pre>{"kind":"EndpointUnreachable"}</pre></details></div>
+          <div class="msg error"><p class="error-head">⚠ Error</p><p>The turn failed.</p><details><summary>Technical detail — the endpoint was unreachable</summary><pre>{"kind":"EndpointUnreachable"}</pre></details></div>
+          <!-- The SAME failure, folded (R2-5). Five byte-identical three-line
+               paragraphs used to stack here; the explanation is written once
+               above and the recurrences count themselves. -->
+          <div class="msg error repeat"><details><summary>⚠ Same error (×4) — the endpoint was unreachable</summary><p>The model endpoint could not be reached.</p><pre>{"kind":"EndpointUnreachable"}</pre></details></div>
         </div>
       </div>
-      <p class="pending wait-clock" role="status">waiting for the model — 4s <button type="button">Stop waiting</button></p>
-      <form><label for="c">Message</label><textarea id="c" rows="2"></textarea><button type="button">Send</button></form>
+      <!-- THE WAIT'S TWO CONTROLS (R16-P0-2): one stops looking, one stops
+           working, and the sentence says which is which. ONE ROW
+           (R6-7): the clock and the buttons are unshrinkable spans of a flex row
+           and the sentence takes a full row underneath, because as three
+           shrinkable children the whole strip collapsed into a ~60px column —
+           the clock over four lines, the button over five. The sentence is
+           still here: it is what makes the block wrap at 320, and the button is
+           what HITTEST measures. -->
+      <p class="pending wait-clock" role="status"><span class="wait-time">waiting for the model — 4s</span><span class="wait-time">of a 5-minute limit</span><button type="button" class="btn-secondary">Stop waiting — main keeps working</button><button type="button" class="btn-danger">Stop main — end the run</button><span class="note">Stop waiting hands this conversation back to you and leaves main working. Stop main ends the run at its next step: a command already running in Linux finishes, and so does an agent it handed work to, but nothing new is started.</span></p>
+      <!-- The way out of a failed turn (F11). Two real controls under the
+           transcript, so CONTRAST and HITTEST see them. -->
+      <div class="recovery" role="group" aria-label="Recover from the failed turn"><button type="button" class="btn-primary">Send the message again</button><button type="button" class="btn-secondary">Open Settings</button></div>
+      <p class="note" role="status">The run ended while you were typing. Sending this starts a new turn.</p><form class="oneline"><textarea id="composer-field" class="grows" rows="3" aria-label="Message to main"></textarea><button type="button" class="btn-primary">Send</button><p class="hint"><kbd>⏎</kbd> starts it · <kbd>⇧⏎</kbd> for a new line</p></form>
     </section>
+      <!-- The COLLAPSED rows. A summary is a wrapping button, never nowrap and
+           never a scroller of its own: the sideways treatment at 48rem belongs
+           to `.stage-head .agent-tabs` and is not extended here (§7). The
+           longest ending the core writes is here on purpose. -->
+      <section class="panel"><button type="button" class="btn-ghost thread-summary" id="thread-researcher" aria-expanded="false"><span class="thread-mark" aria-hidden="true">▸ </span><strong class="thread-who">researcher</strong><span class="badge" data-status="idle">ready</span><span class="thread-line">2 turns in all · written here</span></button></section>
+      <section class="panel"><button type="button" class="btn-ghost thread-summary" id="thread-summarizer" aria-expanded="false"><span class="thread-mark" aria-hidden="true">▸ </span><strong class="thread-who">summarizer</strong><span class="badge" data-status="idle">stopped at its round ceiling</span><span class="thread-line">1 turn in all — it took every step its file allows; raise max_rounds:</span></button></section>
+      <section class="panel"><button type="button" class="btn-ghost thread-summary" id="thread-author" aria-expanded="false"><span class="thread-mark" aria-hidden="true">▸ </span><strong class="thread-who">author</strong><span class="badge" data-status="failed">failed</span><span class="thread-line">no turns yet · written here</span></button></section>
+    </div>
+    </section>
+    <!-- The crumb the design system carries, so the one place the page has no
+         current nav item still says where you are (F20). It is modelled on the
+         deck route because that is the route this fixture uses for the
+         full-width takeover the gallery is. -->
     <section class="deck" id="deck-panel" role="tabpanel" aria-labelledby="deck-tab" aria-label="Setup" hidden>
-      <section class="panel" aria-label="Write an agent"><h2>Write an agent</h2><p class="note">An agent is a file. Write one here and it is kept in this browser.</p><textarea id="agent-md" rows="8"></textarea><div class="editor-picks"><button type="button">Save</button><button type="button">Delete</button></div></section>
-      <section class="panel" aria-label="Agents"><h2>Agents</h2><p class="note">Loaded from public/agents/ at boot.</p>
-        <div class="agent-card"><h3>main</h3><p class="agent-meta">the lead</p><details><summary>System prompt for main</summary><pre>you are main</pre></details></div>
-        <div class="agent-card"><h3>author</h3><p class="agent-meta">writes agents</p><details><summary>System prompt for author</summary><pre>you are author</pre></details></div>
+      <p class="crumb"><button type="button" class="btn-ghost">← Settings</button><span> / Developer / Design system</span></p>
+      <!-- THE AGENTS VIEW TAKES THE DASHBOARD'S SHAPE (R7-6b): writing an
+           agent is what the view is FOR, so the editor is the reading column
+           and the task launcher is the companion beside it. Both cards used to
+           stand at 1136px round 544px of content. -->
+      <!-- THE EDITOR STANDS ALONE HERE NOW (R15-IA): the companion was a second
+           copy of the Dashboard's `Run a task`, and it put this editor 2168px
+           down under the whole roster. One home per panel. -->
+      <section class="panel" aria-label="Write an agent"><h2>Write an agent</h2><p class="note">An agent is a file. Write one here and it is kept in this browser.</p><textarea id="agent-md" rows="8"></textarea><div class="editor-picks"><button type="button">Save</button><button type="button">Delete</button></div><details><summary>What each setting in the file means</summary><dl class="key-gloss"><dt>engine</dt><dd>how it works: react calls a tool, reads the result, then decides again; base answers in one reply and calls nothing</dd><dt>max_rounds</dt><dd>how many steps it may take in one turn before it must stop: 64</dd></dl></details></section>
+      <section class="panel" aria-label="Agents"><h2>Agents</h2><p class="note">Every agent this page has — written here means you saved it in this browser, and the rest are shipped with this site.</p><button type="button" class="btn-secondary">Write a new agent</button>
+        <!-- A LIST OF CARDS IS A DECK (R7-6b): each card one reading column
+             wide, as many across as the stage fits, instead of one 1136px card
+             round 544px of text repeated down a long page. -->
+        <div class="card-deck">
+        <div class="agent-card"><h3>main</h3><p>Answers one factual question on its own and reports back in a few sentences.</p><p class="editor-picks"><button type="button" class="btn-secondary" data-open="chat">Talk to main</button><button type="button" class="btn-secondary" data-open="task">Give main a task</button></p><details><summary>How main is set up</summary><p class="agent-meta">Model: local · Works in steps: calls a tool, reads the result, then decides again · Space: research · Tools it can use, named: now, list_agents</p></details><details><summary>System prompt for main</summary><pre>you are main</pre></details></div>
+        <!-- A card with NO description: the honest line in that slot (R5-19),
+             not a hole between the name and the provenance. -->
+        <div class="agent-card"><h3>author</h3><p class="agent-unsaid">Its file gives no description. Works in steps: calls a tool, reads the result, then decides again.</p><p class="agent-origin">written here</p><p class="editor-picks"><button type="button" class="btn-secondary" data-open="chat">Talk to author</button><button type="button" class="btn-secondary" data-open="task">Give author a task</button></p><details><summary>System prompt for author</summary><pre>you are author</pre></details></div>
+        </div>
       </section>
-      <section class="panel" aria-label="Settings"><h2>Settings</h2><form><label for="u">Base URL</label><input id="u"><label for="k">API key</label><input id="k"><div class="row"><button type="button">Save endpoint</button><button type="button">Clear key</button></div></form></section>
-    </section>
-  </div>
-  <aside class="rail" id="rail" aria-label="Live instruments for main">
-    <p class="rail-who">Instruments · <strong>main</strong></p>
-    <section class="panel" aria-label="Agent board"><h2>Agents running</h2>
-      <div class="board" aria-live="polite">
-        <div class="agent-row" data-status="working"><h3>main</h3><p class="agent-status">working — inside a turn</p><p class="agent-live">4s · llm.call</p></div>
-        <div class="agent-row" data-status="idle"><h3>summarizer</h3><p class="agent-status">idle — nobody has called it</p></div>
+      <!-- THE SPLIT (R6-LAYOUT): the form is the reading column, the health
+           line and the trust note are the companion. And the DESTRUCTIVE reset
+           is `btn-danger` with its consequence on its own row (R6-5) — it was a
+           `btn-secondary` peer of Save, firing on one press. CONTRAST measures
+           the danger token here, which nothing in this fixture did before. -->
+      <!-- THE BOARD AND THE TRACE, EACH ON ITS OWN VIEW (R15-IA). Both were
+           in the Chat rail as well as here; the rail no longer carries them,
+           and this fixture keeps them so the sweeps still see their rows. -->
+      <section class="panel" aria-label="Agents and what they are doing"><h2>Agents and what they are doing</h2>
+      <!-- COMPACT: the rail carries the glance, the Dashboard the full card (F24). -->
+      <div class="board compact" aria-live="polite">
+        <div class="agent-row" data-status="working" data-since="1770000000000"><h3>main</h3><p class="agent-status">working · 1 turn in all</p><p class="agent-live">4s · llm.call</p></div>
+        <div class="agent-row" data-status="idle" data-since="1770000000000"><h3>summarizer</h3><p class="agent-status">ready · no turns yet · written here</p></div>
       </div>
       <p class="pending board-busy" role="status">an agent is working…</p>
-      <details class="panel-note"><summary>How the board is produced</summary><p class="note">Every agent runs in its own Worker.</p></details>
+      <p class="note">A turn is one stretch of work an agent takes on — from the message or task that started it to the moment it stopped, whether that ended in an answer or in a failure.</p>
     </section>
-    <section class="panel" aria-label="Tool trace"><h2>Tools</h2><div class="tool-call"><p class="tool-args">shell.run {"cmd":"uname -a"}</p><pre>Linux localhost</pre></div></section>
-    <section class="panel" aria-label="Workspace"><h2>Workspace</h2><div id="terminal"><div class="term-run"><p class="term-command"><span class="term-prompt">$</span> uname -a</p><pre>Linux localhost</pre></div></div></section>
-    <section class="panel" aria-label="Shared space"><h2>Shared space</h2><p class="space-name">research</p><p class="space-path">/root/spaces/research</p><dl class="space-facts"><dt>host</dt><dd>localhost</dd></dl></section>
+      <section class="panel" aria-label="Tool trace for main"><h2>Tool trace · main</h2>
+      <div id="tool-trace">
+      <!-- WHO asked for the call, leading each row (F14). Both provenances, so
+           the guard measures the one a person typed as well as the agent's. -->
+      <div class="tool-call" data-by="this page" data-outcome="ok"><p class="tool-args"><time class="tool-time">09:41:07 UTC</time><span class="tool-by"> this page ran</span><span> list_files path=.</span><span class="tool-outcome"> — ok</span></p><pre>notes/  proof.txt  a-very-long-unbroken-name-that-used-to-be-shorn-at-the-rail-edge.txt</pre></div>
+      <div class="tool-call error" data-by="main" data-outcome="failed"><p class="tool-args"><time class="tool-time">09:41:12 UTC</time><span class="tool-by"> main ran</span><span> start_process name=web</span><span class="tool-outcome"> — failed</span></p><pre>/bin/sh: notacommand: not found</pre></div></div>
+      <!-- WHERE THE SHELL WENT (R15-P1-4). The trace held every `exec` as well
+           as Commands did; it holds none of them now, and says how many and
+           where, with a door. -->
+      <!-- R18-P2: the door is a `.follow-up` sibling now, not a button dropped
+           inline at the end of the sentence — it butted against "they printed."
+           wherever the paragraph wrapped. -->
+      <div class="follow-up"><p class="note">5 shell commands ran too. Shell commands are in Commands, with what they printed.</p><button type="button" class="btn-ghost">Open Commands</button></div></section>
+
+      <section class="panel" aria-label="Settings"><h2>Settings</h2>
+        <div class="split">
+          <div><form><label for="u">Base URL</label><input id="u"><label for="k">API key</label><input id="k"><div class="row"><button type="button" class="btn-secondary">Save this endpoint</button><button type="button" class="btn-secondary">Clear key</button><button type="button" class="btn-danger">Reset every endpoint to the ones shipped with this site</button><p class="error" role="status">⚠ This deletes every API key and every address you have saved in this browser, for every endpoint, and cannot be undone.</p></div></form></div>
+          <div class="beside"><p class="error" role="status">⚠ main's last turn failed: the endpoint was unreachable</p><p class="pending">A key is stored against the one entry it was typed for, never shown again, and attached only to calls to that entry's endpoint.</p></div>
+        </div>
+</section>
+      <!-- A CARD HOLDING ONLY A READING COLUMN STOPS AT ONE (R7-6b): this was
+           1136px round 494px of text with an empty right half. -->
+      <section class="panel flat reading" aria-label="Appearance"><h2>Appearance</h2><p class="note">This page has a plain background. Turning the glow on puts a tinted light behind the panels — nothing else changes.</p><button type="button" class="skin-toggle btn-secondary" aria-pressed="false"><span>Background glow</span><span class="toggle-state">off</span></button></section>
+      <!-- The engine picker (increment 18). A `select` in a reading card, which
+           no other fixture here has: the endpoint form's selects sit in a form
+           row, and this one is a card's only control. -->
+      <section class="panel flat reading" aria-label="Linux engine"><h2>Linux engine</h2><p class="note">The agent's shell runs in a Linux inside this tab. There are two, and they are not the same trade: one is faster and comes from somebody else's servers, the other is ours and forgets.</p><label for="workspace-engine">Which Linux this page runs</label><select id="workspace-engine"><option value="cheerpx" selected>CheerpX</option><option value="c2w">container2wasm</option></select><p class="note">Runs an image this site hosts itself — no third-party server and no licence. It is an emulator with no compiler, so commands take noticeably longer, and its filesystem lives in memory: FILES ARE GONE WHEN YOU RELOAD THE PAGE.</p><p class="note" role="status">This page is running CheerpX.</p></section>
+    </section>
+  </div>
+  <!-- ONE RAIL, ONE VIEW (R15-IA). It used to carry a compact copy of the agents panel and
+       a tool trace on Chat as well; both have one home now, and the rail is the
+       live state of the machine the Commands pane types into. The board and the
+       trace moved into the stage above, where the sweeps still measure them. -->
+  <aside class="rail" id="rail" aria-label="folder for main">
+    <p class="rail-who">folder · <strong>main</strong></p>
+    <section class="panel" aria-label="Commands for main"><h2>Commands · main</h2><div id="terminal"><div class="term-run earlier" data-outcome="ok, on an earlier page's Linux" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>uname -a</span><span class="term-outcome"> — ok, on an earlier page&#39;s Linux</span></p><pre>Linux localhost 6.1.0 x86_64</pre></div><div class="term-run" data-outcome="ok" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>uname -a</span><span class="term-outcome"> — ok</span></p><pre>Linux localhost 4.15.0-54-cheerpx i386</pre></div><div class="term-run pending" role="status" data-by="main"><p class="term-command"><span class="term-by">main ran </span><span class="term-prompt">$ </span><span>while true; do date &gt;&gt; pulse.log; sleep 1; done</span></p><pre>running for 412s…</pre></div><div class="term-run earlier" data-outcome="abandoned when the page reloaded" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>sleep 90</span><span class="term-outcome"> — abandoned when the page reloaded</span></p><pre class="said">This command was still running when the page was reloaded. Nothing came back, so there is no output and no exit status: the Linux it was running in was rebuilt with the page.</pre></div><div class="term-run" data-outcome="stopped" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>sleep 40; echo done</span><span class="term-outcome"> — stopped</span></p><pre class="said">You stopped waiting. CheerpX runs each command as its own process with no way in from the page except the console, so the interrupt was typed at the console and the command may still be running; the Linux takes the next command when it ends.</pre></div></div><div class="follow-up"><button type="button" class="btn-secondary">Stop waiting — the command keeps running</button><p class="note">This Linux gives the page no way to signal a command once it has started, so this stops the WAIT: the command may keep running in there, and the next one starts when it ends.</p></div></section>
+    <!-- WHAT IS RUNNING. It was a `<pre>` of the model's table in the RAIL —
+         the narrowest column on the page — measuring scrollWidth 1770 against
+         clientWidth 254, with the command column never on screen (R10-1). It is
+         a row per process now, and the COMMAND is deliberately far wider than
+         the rail so the truncation is what XOVERFLOW measures. -->
+    <section class="panel" aria-label="Processes main has running"><h2>Processes · 1 running</h2><div id="processes" data-rows="1" data-listed="2"></div>
+      <div class="proc-list" aria-label="Processes started here">
+        <div class="proc-row" data-state="running"><button class="file-entry proc-open" title="python3 -m http.server 8000 --directory /root/spaces/research"><span class="proc-name">web</span><span class="proc-meta">running · pid 142 · 3m12s</span><span class="proc-cmd">python3 -m http.server 8000 --directory /root/spaces/research</span></button><button class="btn-danger proc-stop">Stop</button></div>
+        <div class="proc-row" data-state="gone"><button class="file-entry proc-open" title="tail -f pulse.log"><span class="proc-name">pulse_logger</span><span class="proc-meta">gone · pid 15 · ran 4m19s</span><span class="proc-cmd">tail -f pulse.log</span></button></div>
+        <div class="proc-row" data-state="exited(0)"><button class="file-entry proc-open" title="make all"><span class="proc-name">build</span><span class="proc-meta">exited(0) · pid 143 · ran 46s</span><span class="proc-cmd">make all</span></button></div>
+      </div>
+      <details class="panel-note"><summary>How a process gets here</summary><p class="note">The agent starts one with start_process.</p></details></section>
+    <section class="panel" aria-label="Shared facts and notes for research"><h2>Shared facts and notes · research</h2><p class="space-name">research</p><p class="space-path">/root/spaces/research</p><dl class="space-facts"><dt>host</dt><dd>localhost</dd></dl>
+      <!-- R6-14: this summary carried `.space-path` and was the ONE monospace
+           `<summary>` among thirteen. It is Inter now, like the other twelve. -->
+      <details class="panel-note"><summary>main's folder: /root/spaces/research</summary><p class="note">The command box below types into it.</p></details></section>
   </aside>
 </main>
 </div>
@@ -165,6 +417,8 @@ document.querySelectorAll(".panel-toggle").forEach(function (b) {
     b.setAttribute("aria-expanded", open ? "false" : "true");
     b.classList.toggle("open", !open);
     region.hidden = open;
+    // The scrim is the nav's, and it comes and goes with it (R5-8).
+    if (region.id === "nav") document.getElementById("nav-scrim").hidden = open;
   });
 });
 </script>

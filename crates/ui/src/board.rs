@@ -45,12 +45,11 @@ fn show(res: Response, mut rows: Signal<String>, mut busy: Signal<bool>) -> bool
 fn nothing_loaded(view: Signal<View>) -> Element {
     rsx! {
         EmptyState {
-            glyph: "◇",
             title: "No agents are loaded",
-            sentence: "This board is every agent this browser is running, each in its own \
-                       Worker, with what it is doing right now. Agents are fetched from \
-                       public/agents/ at boot — a folder index.json does not list is never \
-                       fetched — or written here in Setup.",
+            // ONE SENTENCE (R8-EMPTY); "How the board is produced" is directly
+            // below and says the rest.
+            sentence: "This panel is every agent this page is running, and none has arrived \
+                       with the site or been written here yet.",
             Button {
                 variant: "secondary",
                 onclick: move |_| {
@@ -73,7 +72,15 @@ pub fn AgentBoard(
     /// which is the Agents view. The same signal the nav sets, so this is an
     /// entry point to an existing route, not a new one.
     view: Signal<View>,
+    /// The RAIL's copy of this panel (F24). Identical card, identical rows,
+    /// identical prose, ~460px of it, on four views of seven — the most
+    /// repeated element in the product and not the most important one. The
+    /// Dashboard keeps the full card because there the board IS the subject;
+    /// beside a conversation it is a glance, so the rows stay and the
+    /// explanation — which is the same three sentences every time — does not.
+    compact: Option<bool>,
 ) -> Element {
+    let compact = compact.unwrap_or(false);
     let rows = use_signal(String::new);
     let busy = use_signal(|| false);
     // Exactly one clock. Without it every `tick` during a turn would start
@@ -113,13 +120,18 @@ pub fn AgentBoard(
 
     let projection = rows.read().clone();
     rsx! {
-        Card { title: "Agents running", aria_label: "Agent board",
-            div { class: "board", aria_live: "polite",
+        // NOT "Agents running" (R5-10): the rows below it read `ready · no
+        // turns yet`, every one of them, for as long as nothing is running —
+        // which is most of the time. The card is the fleet and its state, and
+        // "an agent is working…" below already says when one is.
+        Card { title: "Agents and what they are doing",
+              aria_label: "Agents and what they are doing",
+            div { class: if compact { "board compact" } else { "board" }, aria_live: "polite",
                 if projection.is_empty() {
                     // Not "nothing is running" — "nobody has answered yet".
                     // The two used to be the same empty box, which is the
                     // shape a broken panel has.
-                    Skeleton { lines: 2, label: "Reading the agent board" }
+                    Skeleton { lines: 2, label: "Reading the agents" }
                 } else if has_rows(&projection, "agent-row") {
                     div { dangerous_inner_html: "{projection}" }
                 } else {
@@ -132,15 +144,26 @@ pub fn AgentBoard(
             p { class: "pending board-busy", role: "status",
                 if busy() { "an agent is working…" }
             }
+            // WHAT A TURN IS, WHERE THE WORD IS FIRST READ (R16-1). Every row
+            // above says `ready · no turns yet` and the header says an agent
+            // is working; the definition lived only inside the fold below,
+            // which is a definition nobody meets. One line, visible, here.
+            p { class: "note",
+                "A turn is one stretch of work an agent takes on — from the message or task \
+                 that started it to the moment it stopped, whether that ended in an answer \
+                 or in a failure."
+            }
             // The explanation goes BEHIND the rows, not in front of them: this
             // pane spent three lines of prose above two lines of signal, in the
             // region that is meant to be the live instrument face (12b walk,
             // finding D2). Not one word of it is cut.
-            Disclosure { summary: "How the board is produced",
-                p { class: "note",
-                    "Every agent loaded in this browser runs in its own Worker — its own \
-                     event loop — so one agent's slow turn cannot hold up another's. This \
-                     is what each is doing right now."
+            if !compact {
+                Disclosure { summary: "How this panel is produced",
+                    p { class: "note",
+                        "Every agent loaded in this browser runs on its own, so one agent \
+                         thinking slowly cannot hold up another. This is what each is doing \
+                         right now. Where each one came from is in the Agents view."
+                    }
                 }
             }
         }

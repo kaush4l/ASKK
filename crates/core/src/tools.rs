@@ -10,7 +10,7 @@
 //! `EventKind::ToolInvoked`, and the `/tools` route projects those events
 //! (I8) — that projection is the `ToolTrace` component's whole content.
 
-use kernel::{EventKind, ModuleId, Request, Response, ToolId, Version};
+use kernel::{CapabilityId, EventKind, ModuleId, Request, Response, ToolId, Version};
 use module::{DataSchema, Manifest, RouteSpec, Tier};
 
 use crate::app::App;
@@ -22,7 +22,9 @@ pub(crate) fn manifest() -> Manifest {
         name: "Tools".into(),
         version: Version(1),
         description: "What the agent called, with what arguments, and what came back.".into(),
-        capabilities: vec![],
+        // Clock, so a call that has not come back can say HOW LONG it has been
+        // (R11-4). Injected, never read (I7).
+        capabilities: vec![CapabilityId::Clock],
         routes: vec![RouteSpec {
             method: "GET".into(),
             path: "/tools".into(),
@@ -47,10 +49,17 @@ pub(crate) fn tools(req: &Request, ctx: &mut Ctx) -> Response {
         // WHOSE calls (09 walk, finding 5): the pane was global, so the
         // summarizer's tab showed five calls it never made. Same `x-agent`
         // header the chat route already takes.
-        ("GET", "/tools") => crate::trace::trace(ctx, match req.header("x-agent").unwrap_or_default() {
-            "" => &ctx.me,
-            named => named,
-        }),
+        // …and WHOSE WORK. `x-app-activity: 1` asks for the file panes' own
+        // polling as well as the agent's calls (R7-1); absent, this log holds
+        // only what the agent did, which is what a log named for it should say.
+        ("GET", "/tools") => crate::trace::trace(
+            ctx,
+            match req.header("x-agent").unwrap_or_default() {
+                "" => &ctx.me,
+                named => named,
+            },
+            req.header("x-app-activity") == Some("1"),
+        ),
         _ => error_fragment(404, "tools: unknown subroute"),
     }
 }

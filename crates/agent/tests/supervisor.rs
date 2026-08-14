@@ -17,6 +17,8 @@ fn spec(name: &str, tools: &[&str]) -> AgentSpec {
         model: String::new(),
         temperature: None,
         engine: "react".into(),
+        role: String::new(),
+        stages: Vec::new(),
         tools: tools.iter().map(|t| (*t).to_string()).collect(),
         space: String::new(),
         compact_at: 75,

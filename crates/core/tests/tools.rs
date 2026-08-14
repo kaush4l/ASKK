@@ -82,7 +82,8 @@ fn the_model_calls_a_tool_and_the_result_comes_back_into_the_answer() {
     ask(&app, "which agents are loaded");
 
     let trace = body(&app, "/tools");
-    assert!(trace.contains("list_agents({})"), "the call, with its args: {trace}");
+    // Rendered, not the raw JSON envelope the model wrote (R2-18).
+    assert!(trace.contains("list_agents()"), "the call, with its args: {trace}");
     assert!(trace.contains("summarizer"), "and what came back: {trace}");
 
     let chat = body(&app, "/chat");

@@ -31,8 +31,16 @@ pub(crate) fn interactive() -> Element {
             // Not a "small" variant: there is one button size (DESIGN §8), and
             // this row is here because it is the only control that appears
             // mid-turn — the composer is disabled, so it is the sole target.
-            p { class: "ds-note", "the wait clock — the one control that appears mid-turn" }
-            p { class: "wait-clock", "waiting for the model — 4s " Button { variant: "secondary", "Stop waiting" } }
+            p { class: "ds-note", "the wait clock — the two controls that appear mid-turn" }
+            // The budget rides the clock (R12-2b), from the one constant that
+            // decides it, so the gallery cannot drift from the real row.
+            p { class: "wait-clock",
+                span { class: "wait-time", "waiting for the model — 4s" }
+                span { class: "wait-time", "of a {adapters_web::TIMEOUT_SECS / 60}-minute limit" }
+                Button { variant: "secondary", "Stop waiting — main keeps working" }
+                // One stops LOOKING, one stops WORKING (R16-P0-2). They sit
+                // together here because the pair is what makes each legible.
+                Button { variant: "danger", "Stop main — end the run" } }
             p { class: "note",
                 "Hover, :focus-visible and :active are live on the row above. Every target is \
                  44×44 including padding; the focus ring is 2px accent over a dark halo, \

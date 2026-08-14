@@ -2,11 +2,11 @@
 //! runtime loop, and boot. No domain logic lives here — this crate connects
 //! the pure crates to each other and to injected ports, and nothing else.
 //!
-//! G3 interface freeze: types and signatures only; bodies are `todo!()`.
-
-// G3 freeze: private fields are unread while bodies are todo!(); lift at G4.
+//! G3 freeze: private fields are unread while bodies are todo!(); lift at G4.
 #![allow(dead_code)]
 
+mod agentcard;
+mod asked;
 mod agents;
 mod app;
 mod authored;
@@ -14,31 +14,63 @@ mod authoring;
 mod batch;
 mod board;
 mod boardrow;
+mod browsable;
+mod calls;
 mod boot;
 mod builtins;
 mod chat;
+mod ctx;
 mod dispatch;
 mod effects;
+mod ending;
+mod endword; // `Ending` and its wordings — `ending.rs` was at 200
 mod error;
+mod failed;
 mod failure;
+mod filegone;
 mod filelist;
+mod findfiles;
+mod filerows;
 mod files;
 mod fold;
 mod form;
+mod halted;
 mod identity;
+mod inflight;
 mod inspector;
 mod install;
 mod logbook;
 mod logs;
+mod markdown;
 mod memory;
+mod observe;
+mod origin;
+mod pointer;
+mod process;
+mod procstart;
+mod procpanel;
+mod processes;
+mod procwatch;
+mod proctable;
+mod remedy;
+mod repeat;
+mod reported;
 mod roster;
+mod rowwords;
 mod runtime;
 mod scrollback;
+mod scrollpanel;
+mod scrollrows;
 mod space;
+mod spacenote;
+mod steered;
 mod told;
 mod tools;
+mod typed;
+mod vouch;
 mod transcript;
 mod trace;
+mod tracerow;
 mod terminal;
 mod workspace;
 
@@ -48,7 +80,7 @@ pub use told::report_activity;
 pub use app::{App, Ports, ENTRY_AGENT};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
-pub use error::CoreError;
+pub use error::{provider_error, CoreError};
 // `drive` is PROVISIONAL (G4): the async runtime loop — see runtime.rs.
 pub use effects::execute_effect;
 pub use runtime::{drive, pump};

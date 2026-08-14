@@ -35,6 +35,10 @@ pub(crate) fn manifest() -> Manifest {
                 method: "POST".into(),
                 path: "/chat/stop".into(),
             },
+            RouteSpec {
+                method: "POST".into(),
+                path: "/chat/halt".into(),
+            },
         ],
         slots: vec![],
         section: None,
@@ -60,6 +64,7 @@ pub(crate) fn chat(req: &Request, ctx: &mut Ctx) -> Response {
         ("GET", "/chat") => transcript(ctx, &who, None),
         ("POST", "/chat") => submit(req, ctx, &who),
         ("POST", "/chat/stop") => stop(ctx, &who),
+        ("POST", "/chat/halt") => halt(ctx, &who),
         _ => error_fragment(404, "chat: unknown subroute"),
     }
 }
@@ -104,6 +109,38 @@ fn stop(ctx: &mut Ctx, who: &str) -> Response {
     // shows the turn ended — the fact is real either way; the log gets it when
     // the dispatcher drains the buffer.
     ctx.recent.push(fact);
+    transcript(ctx, who, None)
+}
+
+/// `POST /chat/halt` — STOP THE AGENT, not the watching (R16-P0-2). Two
+/// consecutive fresh-context critics named this absence as the one thing
+/// keeping the product below the hosted field: every control that said "Stop"
+/// meant "stop looking", and a 64-round run had no exit but reloading the tab.
+///
+/// It records the press and nothing more. `agent::step` reads it, arms the
+/// turn, and ends it at the next step boundary — so what stops the run is the
+/// pure function, on the log, and not a side channel into a loop in flight.
+///
+/// ONLY THIS PAGE'S OWN AGENT. A sub-agent's turn runs in its own Worker with
+/// its own state, which no fact written here reaches; offering the control
+/// there would be the same lie in a new place. The pane is told by
+/// `x-stoppable` and does not offer it, so this refusal is a backstop.
+fn halt(ctx: &mut Ctx, who: &str) -> Response {
+    if who != ctx.me {
+        let said = format!("chat: {who} runs in its own Worker, which this page cannot stop");
+        return error_fragment(409, &said);
+    }
+    let fact = EventKind::Custom {
+        kind: agent::STOP_REQUESTED.into(),
+        payload_json: "null".into(),
+    };
+    match ctx.emit.as_mut() {
+        Some(buf) => buf.push(fact),
+        None => return error_fragment(500, "chat: Emit capability not granted"),
+    }
+    // NOT into `ctx.recent`: unlike a stopped WAIT, this press changes nothing
+    // the projection can show yet. The run is still finishing the call it is
+    // in, and the conversation says so until the boundary writes the stop.
     transcript(ctx, who, None)
 }
 

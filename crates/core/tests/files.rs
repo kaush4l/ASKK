@@ -116,9 +116,20 @@ fn a_folder_is_listed_and_a_file_is_read() {
     );
 
     open(&app, "hello.txt", "file");
-    let (body, _) = files(&app);
-    assert!(body.contains("file-view"), "a file read renders as a file: {body}");
-    assert!(body.contains("hi there"), "with what the file says in it: {body}");
+    // THE BYTES RIDE THE HEADER, NOT THE BODY (R5-9). The panel used to append
+    // a read-only `<pre class="file-view">` holding exactly what the pane's own
+    // `<textarea>` below it holds, so the open file was on screen twice and the
+    // editable copy was the second one. `x-file` is `path\ncontents` and is
+    // what the pane has always taken the editor's value from; the assertion
+    // moves to it rather than to a rendering that duplicated it.
+    let res = handle(&mut app.borrow_mut(), Request::get("/files"));
+    let file = res
+        .headers
+        .iter()
+        .find(|(k, _)| k == "x-file")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    assert_eq!(file, "hello.txt\nhi there", "path and contents, once: {file}");
 }
 
 /// A listing that could not run used to be skipped by the projection, which
@@ -133,8 +144,13 @@ fn a_refused_path_is_shown_not_swallowed() {
     assert!(body.contains("data-failed"), "{body}");
 }
 
-/// An agent with no space has no folder, and the pane says which line of which
-/// file would give it one.
+/// An agent with no space has no folder, and the pane names the PANEL that
+/// fixes it by the title printed on that panel (R15-P0-2). It used to name
+/// `agent.md`, a file this page never shows (R10-10); then it named "its agent
+/// file on the Agents view", which is nothing a reader can see there — the
+/// visible cards are read-only disclosures and the editor is titled `Write an
+/// agent`. It also handed over a YAML key to type, in the one sentence whose
+/// whole job is to be followable.
 #[test]
 fn an_agent_that_works_alone_is_told_why_there_is_nothing_to_browse() {
     let app = booted_without_space();
@@ -143,7 +159,10 @@ fn an_agent_that_works_alone_is_told_why_there_is_nothing_to_browse() {
         Request::post_form("/files", &[("path", "."), ("kind", "folder")]),
     );
     assert_eq!(res.status, 400);
-    assert!(res.body.contains("space: &lt;name&gt;"), "{}", res.body);
+    assert!(res.body.contains("Agents view"), "the fix is reachable: {}", res.body);
+    assert!(res.body.contains("Write an agent"), "named as the reader sees it: {}", res.body);
+    assert!(!res.body.contains("agent.md"), "{}", res.body);
+    assert!(!res.body.contains("space:"), "no YAML key in user-facing prose: {}", res.body);
 }
 
 /// A sub-agent's work reaches the page, or it is a black box with an answer.

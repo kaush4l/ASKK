@@ -95,6 +95,25 @@ pub struct App {
     /// -shaped that carries no explicit agent belongs to this one, which is how
     /// a log written before per-agent chat still reads correctly.
     pub(crate) me: String,
+    /// Commands the runtime is AWAITING right now (R2-8). A typed command is a
+    /// fact the moment it is requested and a second fact when it returns; in
+    /// between there is nothing in the log to project, so navigating away and
+    /// back dropped the "running…" line the pane had only in component state.
+    /// In memory on purpose: a reload really does abandon the command, and a
+    /// replayed log must not claim one is still running.
+    pub(crate) running: Vec<String>,
+    /// Workspace calls handed to the port and not yet answered (R11-4) — the
+    /// agent's as well as the panes' and yours. Same reason and same lifetime
+    /// as `running` one field above: an in-flight call has no fact to project
+    /// until it returns, and for a command that never returns that was the
+    /// whole seven minutes.
+    pub(crate) calling: Vec<crate::inflight::Inflight>,
+    /// How much of the log was REPLAYED at boot — every entry before this index
+    /// happened on an earlier page load, and therefore in a Linux this page does
+    /// not have. Set once, by `boot`, and never moved: it is the only thing that
+    /// can tell a command run in this tab from one whose answer describes a
+    /// machine that no longer exists (R10-5).
+    pub(crate) booted: usize,
 }
 
 impl App {

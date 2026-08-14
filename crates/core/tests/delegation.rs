@@ -83,8 +83,8 @@ fn every_loaded_agent_has_a_row_and_the_entry_agent_is_waiting() {
     assert!(html.contains(r#"data-agent="summarizer""#), "{html}");
     assert!(html.contains(r#"data-status="waiting""#), "the lead waits on you");
     assert!(html.contains(r#"data-status="starting""#), "a peer's Worker is coming up");
-    assert!(html.contains("waiting for you"), "in words, not only a colour");
-    assert!(html.contains("its Worker is coming up"), "in words: {html}");
+    assert!(html.contains("ready"), "in words, not only a colour");
+    assert!(html.contains("starting up"), "in words: {html}");
 }
 
 /// The lead delegates: the sub-agent's answer becomes the tool result the
@@ -156,7 +156,7 @@ fn a_failed_sub_agent_is_failed_on_the_board_with_its_message() {
     assert!(html.contains("unreachable endpoint"), "{html}");
     let trace = handle(&mut app.borrow_mut(), Request::get("/tools")).body;
     assert!(trace.contains("researcher failed"), "{trace}");
-    assert!(trace.contains("refused"), "a failed call reads as one: {trace}");
+    assert!(trace.contains("— failed"), "a failed call reads as one: {trace}");
 }
 
 /// A call with no readable goal is REFUSED, never delivered: a sub-agent
@@ -213,7 +213,14 @@ fn a_failed_turn_leaves_the_entry_agent_failed_not_working() {
     assert!(!html.contains(r#"data-status="working""#), "not left working: {html}");
     assert!(html.contains(r#"data-status="failed""#), "{html}");
     assert!(
-        html.contains("could not be reached"),
-        "the message is on the row, not just the status: {html}"
+        html.contains("the endpoint was unreachable"),
+        "the reason is on the row, not just the status: {html}"
+    );
+    // …in ONE LINE, and not the transcript's five-line explanation a second
+    // time. The board is in the rail beside the transcript, and the identical
+    // paragraph appeared twice on one screen with no recovery from either (F11).
+    assert!(
+        !html.contains("could not be reached"),
+        "the row explains nothing the transcript already explained: {html}"
     );
 }

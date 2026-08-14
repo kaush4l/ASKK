@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ASKK</title>
+  <!-- The product is called HARNESS on the page's own heading; the tab used to
+       say ASKK, which is the repository's name and nobody else's (F1). -->
+  <title>HARNESS — AI agents in your browser</title>
   <base data-trunk-public-url>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -34,6 +36,13 @@
        build's own fingerprinted wasm bundle, whose URL the page reads off its
        own preload links and sends in the boot message. -->
   <link data-trunk rel="copy-file" href="agent-worker.js">
+  <!-- The container2wasm runtime (increment 18): the second Linux engine, and
+       the one this site hosts itself — engine, image mounter, an Alpine OCI
+       image and the xterm-pty/RunContainer glue, ~47 MB. Copied, not linked
+       from a CDN: that is the whole point of it next to CheerpX. It is FETCHED
+       ONLY IF the engine setting selects it (`adapters_web/src/engine.rs`), so
+       a page running CheerpX pays nothing for it being here. -->
+  <link data-trunk rel="copy-dir" href="c2w">
   <link data-trunk rel="copy-file" href="manifest.webmanifest">
   <link data-trunk rel="copy-file" href="icon.svg">
   <!-- The agents are data, not code: served as static files and fetched at
@@ -44,6 +53,35 @@
   <!-- The model catalogue, same deal: a named entry per endpoint, edited and
        redeployed without a rebuild (increment 04). -->
   <link data-trunk rel="copy-file" href="../public/models.json">
+  <!-- THE SAVED SKIN, BEFORE THE FIRST PAINT (R3-7). The bit lives on the root
+       element and `crates/ui/src/skin.rs` owns it — but that component mounts
+       only while Settings is the current view, so a reload onto any other view
+       painted the wrong ground until you went to Settings and back. A stored
+       preference about how the page LOOKS has to be applied before the page is
+       drawn, and nothing compiled to Wasm can be: the bundle is fetched after
+       the first frame. This is the whole exception — one attribute, read from
+       one key, no application logic (I5).
+
+       THE DEFAULT FLIPPED IN R5-C. Two huge blurred gradient blobs were the
+       only ornament in this product and the one thing dating it; the plain
+       ground measured cleaner, more focused and more expensive every time
+       anybody compared them, including the critic who was arguing FOR
+       ornament. So plain is what the page is, and the glow is what you turn
+       on. The stored value is now `glow`, and the ABSENCE of a choice means
+       plain — which is also what a browser with no storage, no scripting and
+       no `backdrop-filter` gets, so the default and the fallback are finally
+       the same picture. `?skin=plain` and `data-skin="plain"`, which
+       `scripts/check-layout.sh` and `scripts/layout-probe.js` select with, are
+       untouched: both skins are still reachable and both are still audited. -->
+  <script>
+    try {
+      if (localStorage.getItem("askk.skin") !== "glow") {
+        document.documentElement.setAttribute("data-skin", "plain");
+      }
+    } catch (e) {
+      document.documentElement.setAttribute("data-skin", "plain");
+    }
+  </script>
 </head>
 <body>
   <!-- What a person sees BEFORE the Wasm mounts, and what they are left with
@@ -60,6 +98,8 @@
   <div id="main"></div>
   <div id="boot">
     <h1>HARNESS</h1>
+    <p class="tagline">AI agents with a folder in Linux, running in this
+      browser tab.</p>
     <p class="pending" role="status">Starting…</p>
     <p class="note">If this message is still here after a few seconds, the page
       loaded but its application bundle did not. That is almost always an old
@@ -70,7 +110,7 @@
   <noscript>
     <!-- The app is Rust compiled to WebAssembly and mounted by JavaScript;
          with scripting off there is nothing to show but the truth. -->
-    <h1>ASKK</h1>
+    <h1>HARNESS</h1>
     <p>This page is a WebAssembly application: it needs JavaScript enabled to
       load, and browser storage to keep your conversation on this device. No
       server holds your data.</p>

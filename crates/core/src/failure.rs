@@ -1,39 +1,53 @@
 //! What a failed turn looks like to the person reading it. Its own file so
-//! `chat.rs` stays inside the 200-line rule (I12); the rule is the same one it
-//! always was — the actionable sentence first, the typed error verbatim behind
-//! a disclosure named for THIS failure, nothing smoothed away.
+//! `chat.rs` holds the 200-line rule (I12); the rule is what it always was —
+//! the actionable sentence first, the typed error verbatim behind a disclosure
+//! named for what went wrong, nothing smoothed away.
 
 use module::view::{Fragment, FragmentBuilder};
 
 /// A failed turn: the sentence a person can act on FIRST, the typed error
-/// folded away behind it. The raw error is still there verbatim (a failure is
-/// never smoothed into a reply) — it just no longer reads like a crash.
-/// `nth` is which failure this is IN THIS transcript. Two failures of the same
-/// KIND were still "Technical detail — the provider refused" twice, which is
-/// one control to a screen reader (`ux-walker`, increment 05); the instance
-/// number is what tells them apart, and it is also what a person says out loud.
-pub(crate) fn failure(payload_json: &str, nth: usize) -> Fragment {
+/// folded away behind it — verbatim, never smoothed into a reply.
+pub(crate) fn failure(payload_json: &str) -> Fragment {
     card(
         &failure_line(payload_json),
         failure_kind(payload_json),
         payload_json,
-        nth,
     )
 }
 
 /// The one failure card: the actionable sentence first, the typed error folded
-/// away behind a disclosure named for THIS failure — every disclosure called
-/// "Technical detail" is the same control to a screen reader (`ux-walker`,
-/// increment 04).
-pub(crate) fn card(sentence: &str, kind: &str, detail: &str, nth: usize) -> Fragment {
+/// away behind a disclosure named for WHAT WENT WRONG.
+///
+/// IT IS NAMED, NOT NUMBERED (R8-15). It read `Technical detail for failure 1 —
+/// the endpoint was unreachable` beside `…for failure 2 — the endpoint was
+/// unreachable`: two labels differing only in an ordinal, on a page with no
+/// notion of a numbered failure, identical in the one respect a reader would
+/// tell them apart by. The number was added to give a screen reader two
+/// distinct controls and gave it two indistinguishable ones with a digit in
+/// front. What separates them is the KIND — and a recurrence of an identical
+/// failure folds into "Same error (×n)" (`repeat::Seen`) rather than making a
+/// second card at all.
+pub(crate) fn card(sentence: &str, kind: &str, detail: &str) -> Fragment {
+    // …AND WHERE THE FIX IS (R18-P1-7). Every failure card offered `Open
+    // Settings`, including the one whose remedy is a line in an agent's file.
+    // The KIND already decides that, so the class carries it and the pane makes
+    // the same one-bit read of a rendered class `last_failed` already makes —
+    // no second wording, and no header the transcript would have to keep.
+    let class = match kind == crate::remedy::NO_SUCH_MODEL {
+        true => "msg error fix-file",
+        false => "msg error",
+    };
     FragmentBuilder::new("div")
-        .class("msg error")
+        .class(class)
+        // The word ERROR, in front of the sentence: with the stylesheet off the
+        // block was pink prose in a pink border, i.e. a paragraph (F18).
+        .child(FragmentBuilder::new("p").class("error-head").text("⚠ Error").build())
         .child(FragmentBuilder::new("p").text(sentence).build())
         .child(
             FragmentBuilder::new("details")
                 .child(
                     FragmentBuilder::new("summary")
-                        .text(&format!("Technical detail for failure {nth} — {kind}"))
+                        .text(&format!("Technical detail — {kind}"))
                         .build(),
                 )
                 .child(FragmentBuilder::new("pre").text(detail).build())
@@ -42,21 +56,33 @@ pub(crate) fn card(sentence: &str, kind: &str, detail: &str, nth: usize) -> Frag
         .build()
 }
 
-/// A background summarisation that failed, said as what it is: the older
+/// The conversation could not be shortened, said as what it is: the older
 /// turns were not compacted, the conversation continued in full, and the next
 /// turn will try again. Same disclosure shape as every other failure, so the
 /// cause is one click away — but no `msg error` card, because the turn the
 /// person asked for did not fail.
-pub(crate) fn compaction_failed(payload_json: &str, nth: usize) -> Fragment {
+///
+/// IT IS LABELLED, AND IT NAMES NO MACHINERY (R8-14). It was the one row in the
+/// column with no speaker, and it opened on "A background summarisation of the
+/// older turns failed" — which asks a first-timer to know this product
+/// summarises anything. It does, and it never said so. So: the `Note:` prefix
+/// every other aside carries (`fold::NOTICE`), and the effect, not the machine.
+pub(crate) fn compaction_failed(payload_json: &str) -> Fragment {
     FragmentBuilder::new("div")
         .class("msg pending")
         .attr("role", "status")
         .child(
+            FragmentBuilder::new("span")
+                .class("speaker")
+                .text(&format!("{}: ", crate::fold::NOTICE))
+                .build(),
+        )
+        .child(
             FragmentBuilder::new("p")
                 .text(
-                    "A background summarisation of the older turns failed, so nothing was \
-                     summarised and this turn ran with the whole history. It will be tried \
-                     again on the next turn.",
+                    "The older messages could not be shortened to make room, so this turn was \
+                     sent with the whole conversation instead. Nothing was lost, and it will \
+                     be tried again on the next turn.",
                 )
                 .build(),
         )
@@ -65,7 +91,7 @@ pub(crate) fn compaction_failed(payload_json: &str, nth: usize) -> Fragment {
                 .child(
                     FragmentBuilder::new("summary")
                         .text(&format!(
-                            "Technical detail for failure {nth} — {}",
+                            "Technical detail — the older messages could not be shortened ({})",
                             failure_kind(payload_json)
                         ))
                         .build(),
@@ -78,16 +104,10 @@ pub(crate) fn compaction_failed(payload_json: &str, nth: usize) -> Fragment {
 
 /// A failed effect, recorded. Two kinds of failure meet here:
 ///
-/// - a failed COMPACTION is not a failed turn. The Python warns and carries on
-///   ("summarizer returned nothing, keeping the history"); reporting it as the
-///   user's own failure dropped the question they asked — one request went
-///   out, none of it was theirs, and nothing said a background summarisation
-///   had failed (09 walk, finding 1). Its own kind, fed back, so `step` takes
-///   the turn that was actually asked for;
-/// - anything else raised the TURN. The Python marks the agent Failed and
-///   records the message (`ThreadedAgent.invoke`); without that the entry
-///   agent stays Working forever on the board — the one status a person reads
-///   as "still going".
+/// - a failed COMPACTION is not a failed turn. Reporting it as the user's own
+///   failure dropped the question they asked (09 walk, finding 1);
+/// - anything else raised the TURN, and marks the agent Failed — without that
+///   the entry agent stays Working forever on the board.
 pub(crate) fn record(app: &mut crate::app::App, e: crate::error::CoreError) {
     let payload_json =
         serde_json::to_string(&e).unwrap_or_else(|_| "\"unserializable error\"".into());
@@ -101,87 +121,58 @@ pub(crate) fn record(app: &mut crate::app::App, e: crate::error::CoreError) {
     }
     app.append(kernel::EventKind::Custom {
         kind: "core.error".into(),
-        payload_json,
+        payload_json: payload_json.clone(),
     });
     app.agent.task = None;
-    let message = sentence(&e);
+    // The ONE-LINE reason, not the paragraph: the board sits beside the
+    // transcript that already prints the whole explanation (F11).
+    let message = reason(&payload_json);
     let me = app.me().to_string();
     app.set_status(&me, kernel::Status::Failed, &message);
 }
 
-/// The same actionable sentence, for a caller that has the typed error rather
-/// than its JSON — the board's failure detail. One definition, so the board
-/// and the transcript cannot say different things about one failure.
-pub(crate) fn sentence(error: &crate::error::CoreError) -> String {
-    let payload = serde_json::to_string(error).unwrap_or_default();
-    failure_line(&payload)
+/// The failure in ONE line — what the board row and the header's banner carry.
+/// The transcript owns the explanation and prints it once; a second copy of the
+/// same paragraph three inches away is noise (F11). `failure_kind` is that line
+/// for every typed variant; only the untyped fallback needs words of its own.
+pub(crate) fn reason(payload_json: &str) -> String {
+    match failure_kind(payload_json) {
+        "raw error" => "the turn failed before it produced an answer".to_string(),
+        kind => kind.to_string(),
+    }
 }
 
-/// The same sentence from the LOGGED payload — what a sub-agent's Worker hands
-/// back to the agent that called it (`core::last_failure`).
+/// WHAT A LIFECYCLE FAILURE SAYS ON THE BOARD (R13-P0-3). `report_agent` is
+/// the one door a Worker's failure comes through, and what arrived there was
+/// whatever the host said — an exception string, rendered verbatim as three
+/// agents' status and as the header's banner.
+///
+/// It is the WHOLE remedy here and only the one-line `reason` on a failed
+/// TURN, and the difference is not a style choice: a turn's paragraph is
+/// already printed in the transcript beside it (F11), and a Worker that never
+/// started has no transcript at all. This row is the only place the failure
+/// is ever said, so it is said in full.
+///
+/// A detail that is not a typed failure is passed through untouched — the
+/// missing-bundle-links case writes its own sentence and is not an error
+/// payload.
+pub(crate) fn lifecycle(detail: &str) -> String {
+    let payload = match crate::remedy::recognise(detail) {
+        Some(typed) => serde_json::to_string(&typed).unwrap_or_default(),
+        None => detail.to_string(),
+    };
+    match crate::remedy::typed(&payload) {
+        true => failure_line(&payload),
+        false => detail.to_string(),
+    }
+}
+
+/// The same sentence from the LOGGED payload (`core::last_failure`).
 pub(crate) fn sentence_of(payload_json: &str) -> String {
     failure_line(payload_json)
 }
 
-/// Which failure this was, in two or three words — the disclosure's name.
-pub(crate) fn failure_kind(payload_json: &str) -> &'static str {
-    use kernel::ModelError::{EndpointUnknown, Provider, Transport, Unsupported};
-    match serde_json::from_str::<crate::error::CoreError>(payload_json) {
-        Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => "no endpoint configured",
-        Ok(crate::error::CoreError::Model(Transport { .. })) => "the endpoint was unreachable",
-        Ok(crate::error::CoreError::Model(Unsupported { .. })) => "unsupported wire protocol",
-        Ok(crate::error::CoreError::Model(Provider { .. })) => "the provider refused",
-        _ => "raw error",
-    }
-}
-
-/// The actionable sentence, chosen on the typed variant — not by grepping the
-/// payload. Each names its own fix; the fallback admits it has none.
-pub(crate) fn failure_line(payload_json: &str) -> String {
-    use kernel::ModelError::{EndpointUnknown, Provider, Transport, Unsupported};
-    // The Local Network Access prompt is about LOOPBACK, and this sentence
-    // named it while calling `https://198.51.100.7/v1` — sending the reader
-    // after a cause that could not apply (`ux-walker`, increment 06). The
-    // variant still chooses the sentence; the ADDRESS chooses which of its two
-    // real causes to name, and the address is typed on the error.
-    if let Ok(crate::error::CoreError::Model(Transport { url, .. })) =
-        serde_json::from_str::<crate::error::CoreError>(payload_json)
-    {
-        return match is_loopback(&url) {
-            true => "The model endpoint could not be reached. Check the endpoint in \
-                     Settings: it is an address on THIS machine, so the server must be \
-                     running, it must send CORS headers, and Chrome 142+ asks permission \
-                     before a page may call a local address."
-                .to_string(),
-            false => "The model endpoint could not be reached. Check the base URL in \
-                      Settings: the host must resolve and answer from this browser, and it \
-                      must send CORS headers allowing this page's origin."
-                .to_string(),
-        };
-    }
-    match serde_json::from_str::<crate::error::CoreError>(payload_json) {
-        Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => {
-            "No model endpoint is set yet. Add one in Settings below — a local \
-             OpenAI-compatible server, or a provider's base URL and API key."
-        }
-        Ok(crate::error::CoreError::Model(Unsupported { .. })) => {
-            "That model catalogue entry speaks a wire protocol this build does not. \
-             Pick an OpenAI-compatible entry in Settings below — the detail names \
-             which protocol the entry asked for."
-        }
-        Ok(crate::error::CoreError::Model(Provider { .. })) => {
-            "The model endpoint answered, but refused the request. Check the base URL \
-             and API key in Settings — the provider's own words are below."
-        }
-        _ => "The turn failed before it produced an answer.",
-    }
-    .to_string()
-}
-
-/// Whether that URL is this machine. The one definition, so the transcript,
-/// the board and Settings cannot disagree about what "local" means.
-pub(crate) fn is_loopback(url: &str) -> bool {
-    ["127.0.0.1", "localhost", "[::1]", "0.0.0.0"]
-        .iter()
-        .any(|host| url.contains(host))
-}
+/// The two sentences a failure is read as — WHICH one it was, and WHAT to do
+/// about it — live next door (`remedy.rs`), so this file holds the 200-line
+/// rule (I12) now that a timeout has a remedy of its own (R12-2).
+pub(crate) use crate::remedy::{failure_kind, failure_line};

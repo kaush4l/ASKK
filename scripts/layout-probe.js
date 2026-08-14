@@ -16,13 +16,37 @@
   var info = function (name, detail) { out.push("INFO " + name + ": " + detail); };
 
   if (q.get("skin") === "plain") document.documentElement.setAttribute("data-skin", "plain");
+  // Route exactly the way the shell does: one `hidden` attribute per region,
+  // and ONE VIEW MOUNTED AT A TIME. The fixture used to leave the Dashboard
+  // standing under whichever route it was measuring, which no shipped page
+  // does (`stage.rs` mounts one view plus the chat pane) — 897px of dashboard
+  // above the conversation, so the chat view computed to zero height and its
+  // panel spilled onto the rail. A fixture that models a state the app cannot
+  // reach reports failures the app does not have, and hides the ones it does.
   var deck = document.getElementById("deck-panel");
-  var chat = document.getElementById("chat-panel");
-  var routed = q.get("deck") === "1";
-  // Route exactly the way the shell does: one `hidden` attribute per region.
-  deck.hidden = !routed;
-  chat.hidden = routed;
-  var region = routed ? deck : chat;
+  var chat = document.getElementById("chat-view");
+  var dash = document.getElementById("dashboard-view");
+  var route = q.get("route") || (q.get("deck") === "1" ? "deck" : "chat");
+  var routed = route === "deck";
+  deck.hidden = route !== "deck";
+  chat.hidden = route !== "chat";
+  dash.hidden = route !== "dash";
+  var region = route === "deck" ? deck : route === "dash" ? dash : chat;
+  // …AND THE AGENT STRIP IS NOT ON CHAT (R19-IA, docs/THREADS.md §7): the
+  // thread list is the picker there, so the strip is chrome this route no
+  // longer has — leaving it standing would model 60px the app does not spend.
+  var strip = document.getElementById("agent-strip");
+  if (strip) strip.hidden = route === "chat";
+
+  // Below the three-column breakpoint the shipped page starts with the nav
+  // FOLDED (`dash::wide`), and since R3-9 a shown nav is a sheet OVER the
+  // content rather than a wall above it. The fixture starts it open, so it is
+  // put away here: a probe that models a state the app never lands in would
+  // read the drawer as an overlap bug and hide every real one behind it.
+  var nav = document.getElementById("nav");
+  if (W < 1100 && !nav.hidden) {
+    document.querySelector('.panel-toggle[aria-controls="nav"]').click();
+  }
 
   var rect = function (el) { return el.getBoundingClientRect(); };
   var overlaps = function (a, b) {
@@ -155,5 +179,6 @@
   // The audit half runs next (layout-audit.js) and writes the report, so a
   // verdict from either file reaches check-layout.sh. Split because this file
   // hit the 200-line rule (I12) carrying both halves.
-  window.__probe = { say: say, info: info, rect: rect, out: out, W: W, q: q, routed: routed };
+  window.__probe = { say: say, info: info, rect: rect, out: out, W: W, q: q,
+                     routed: routed, route: route };
 })();

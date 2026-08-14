@@ -7,7 +7,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 mod assets;
+mod c2w;
 mod cheerpx;
+mod engine;
 pub mod catalogue;
 mod endpoint;
 mod error;
@@ -26,12 +28,14 @@ mod warmth;
 mod worker;
 mod workers;
 
+pub use c2w::C2wWorkspace;
 pub use cheerpx::CheerpxWorkspace;
+pub use engine::{engine, set_engine, stored, Engine};
 pub use warmth::{prewarm, warmth, Warmth};
 pub use endpoint::Endpoint;
 pub use error::WebError;
 pub use idb::IdbStore;
-pub use model::FetchModel;
+pub use model::{FetchModel, TIMEOUT_SECS};
 pub use ports::{sleep, BrowserClock, BrowserRng, FetchNet};
 pub use worker::AgentWorker;
 
@@ -103,9 +107,15 @@ impl WebApp {
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
             spaces: spaces as Rc<dyn kernel::KvStore>,
-            // The Linux, not booted: nothing is fetched until a command is
-            // run (increment 10), so a page that never uses it pays nothing.
-            workspace: Rc::new(CheerpxWorkspace),
+            // The Linux, not booted — and WHICH Linux is a setting, read
+            // once, here (increment 18). Both implement the same port, so
+            // this is the only line in the codebase that knows there are two;
+            // changing the setting takes effect on the next load, because
+            // this line runs once.
+            workspace: match engine::engine() {
+                Engine::Cheerpx => Rc::new(CheerpxWorkspace) as Rc<dyn kernel::WorkspacePort>,
+                Engine::C2w => Rc::new(C2wWorkspace) as Rc<dyn kernel::WorkspacePort>,
+            },
             agents: Rc::clone(&agents) as Rc<dyn kernel::AgentPort>,
         };
         let mut app = core::boot(ports).await.map_err(js_err)?;

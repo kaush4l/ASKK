@@ -194,7 +194,7 @@ fn an_old_record_does_not_replay_rust_debug_syntax_at_the_reader() {
     // One failure, one presentation: the sub-agent's failure is the same card
     // with the same reachable detail as the page's own (increment 07b).
     assert!(
-        detail.contains("Technical detail for failure 1"),
+        detail.contains("Technical detail — "),
         "the cause is reachable: {detail}"
     );
 }

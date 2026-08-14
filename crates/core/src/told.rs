@@ -16,7 +16,7 @@ use crate::failure::{card, failure_kind, failure_line};
 /// reachable at all, while the identical failure on `main` was a card with a
 /// disclosure (`ux-walker`, increment 07b). One failure now has one
 /// presentation, whichever agent it happened to.
-pub(crate) fn agent_failure(payload_json: &str, who: &str, nth: usize) -> Fragment {
+pub(crate) fn agent_failure(payload_json: &str, who: &str) -> Fragment {
     // The sub-agent's Worker sends back the raw `core.error` payload when it
     // has one, so the cause survives the `postMessage` boundary typed. Older
     // records carry the SENTENCE instead; that is still the sentence, and the
@@ -25,11 +25,23 @@ pub(crate) fn agent_failure(payload_json: &str, who: &str, nth: usize) -> Fragme
     // envelope it travelled in: a JSON string inside a JSON string, in the one
     // place a person looks when already confused (`ux-walker`, increment 08).
     let raw = message_of(payload_json);
-    let detail = match typed(&raw) {
-        true => raw.clone(),
+    card(&told(&raw, who), told_kind(&raw), &detail_of(payload_json))
+}
+
+/// The failure ITSELF, out of the envelope it crossed the Worker boundary in —
+/// the sub-agent's own typed payload when it sent one, and the envelope when it
+/// is an older record that carries only a sentence.
+///
+/// It is what the disclosure shows, and it is also what a recurrence folds on
+/// (`repeat::Seen`): a sub-agent failing the same way five times wrote five
+/// identical full-width cards while the same failure on this page's own agent
+/// collapsed, because only `core.error` was ever folded (R3-4).
+pub(crate) fn detail_of(payload_json: &str) -> String {
+    let raw = message_of(payload_json);
+    match typed(&raw) {
+        true => raw,
         false => payload_json.to_string(),
-    };
-    card(&told(&raw, who), told_kind(&raw), &detail, nth)
+    }
 }
 
 /// A sub-agent's failure in the words a person reads, whether its Worker sent

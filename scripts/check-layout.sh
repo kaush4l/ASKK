@@ -25,18 +25,27 @@ cp scripts/layout-probe.js scripts/fold-probe.js scripts/glass-audit.js scripts/
 # instance of the bug this script exists to catch: increment 13 added dash.css,
 # the list did not know, and the probe measured a page with no dashboard in it
 # and printed LAYOUT CHECK OK while the deployed page was broken in two ways.
-links=""
+sheets=""
 for name in $(grep -o 'rel="css" href="[a-z-]*\.css"' web/index.html | sed 's/.*href="//; s/\.css"//'); do
   f=$(ls dist/"$name"-*.css 2>/dev/null | head -1) \
     || { echo "GATE FAIL: dist/$name-*.css missing — run trunk build" >&2; exit 1; }
   [ -n "$f" ] || { echo "GATE FAIL: dist/$name-*.css missing" >&2; exit 1; }
   cp "$f" "$OUT/"
-  links="$links<link rel=\"stylesheet\" href=\"$(basename "$f")\">"
+  sheets="$sheets $(basename "$f")"
 done
-python3 - "$OUT/index.html" "$links" <<'PY'
+python3 - "$OUT/index.html" "$sheets" <<'PY'
 import sys, pathlib
-dst, links = pathlib.Path(sys.argv[1]), sys.argv[2]
-dst.write_text(pathlib.Path("scripts/layout-probe.html").read_text().replace("<!--CSS-->", links))
+# INLINED in link order, not <link>ed (R11-6). Same bytes, same cascade order,
+# same fingerprinted dist/ files — but a file:// <link> stylesheet is OPAQUE to
+# CSSOM (`cssRules` throws SecurityError), and `layout-audit.js` has to read the
+# cascade to measure the :hover and :active paintings the browser will never put
+# a headless element into. A pressed row at 1.1:1 was invisible to this guard
+# for exactly that reason.
+dst = pathlib.Path(sys.argv[1])
+here = dst.parent
+blocks = "".join('<style data-sheet="%s">%s</style>' % (n, (here / n).read_text())
+                 for n in sys.argv[2].split())
+dst.write_text(pathlib.Path("scripts/layout-probe.html").read_text().replace("<!--CSS-->", blocks))
 PY
 
 EXTRA=""
@@ -51,8 +60,12 @@ fails=0
 # case, and the one where the one-screen promise had to be given up.
 for size in 320x256 320x780 360x780 390x844 768x1024 1100x900 1280x900 1440x900 1920x1080; do
   for skin in machine plain; do
-    for route in chat deck; do
-      url="file://$PWD/$OUT/index.html?skin=$skin&deck=$([ "$route" = deck ] && echo 1 || echo 0)"
+    # THREE routes, because the shell mounts one view at a time and the
+    # Dashboard is one of them (R3-20/R3-21 put the primary input and the agent
+    # picker on it). It used to be measured only as furniture standing under
+    # the chat route, which is a page nobody is ever served.
+    for route in dash chat deck; do
+      url="file://$PWD/$OUT/index.html?skin=$skin&route=$route"
       dom=$("$SHELL_BIN" --headless --disable-gpu --no-sandbox $EXTRA \
         --window-size="${size/x/,}" --virtual-time-budget=1500 --dump-dom "$url" 2>/dev/null)
       report=$(printf '%s' "$dom" | python3 -c '

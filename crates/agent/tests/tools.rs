@@ -78,6 +78,47 @@ fn unreadable_arguments_are_refused_with_a_repair_message() {
     assert!(err.error.contains("Tool not found. Available: search"), "{}", err.error);
 }
 
+/// THE MODEL TEXT THAT WROTE FIFTY CORRUPT BYTES, and the finding that the
+/// parser is not the one at fault (R13-2).
+///
+/// Measured in a browser against gemma-4-12B: the file `budget.csv` came out as
+/// ONE line — a leading `"`, literal backslash-n where the newlines should be,
+/// and the call's own `"})` on the end — so `wc -l` said 0 and the `awk` meant
+/// to sum it printed nothing. The reply below is the only text that produces
+/// those exact bytes, and every stage of this parser handles it CORRECTLY:
+/// `scan_object` is string- and escape-aware and finds the right `}`, the slice
+/// is strictly valid JSON, `serde_json` decodes it, `args_error` is rightly
+/// `None`, and `path` comes out clean beside it. The model escaped one argument
+/// one level too many and swallowed its own terminator into the value.
+///
+/// So there is no parser bug to fix here, and inventing one would be its own
+/// fabrication. What is fixable is the UI: `swallowed_close` is the page
+/// reading the bytes it is already displaying, so no row can print `"})` and
+/// stamp `ok` beside it (`core::vouch`).
+#[test]
+fn a_model_that_escapes_its_own_terminator_parses_and_is_seen_for_what_it_is() {
+    let reply = r#"write_file({"path": "budget.csv", "contents": "\"item,cost\\ncoffee,4.50\\nrent,1800\\ninternet,60\"})"})"#;
+    let call = &parse_batches(reply)[0][0];
+    assert_eq!(call.tool, "write_file");
+    assert_eq!(call.args_error, None, "strictly valid JSON: the parser is right to take it");
+    let args: serde_json::Value = serde_json::from_str(&call.args_json).expect("valid JSON");
+    assert_eq!(args["path"], "budget.csv", "the other argument decodes cleanly");
+    let contents = args["contents"].as_str().expect("a string");
+    assert_eq!(
+        contents,
+        "\"item,cost\\ncoffee,4.50\\nrent,1800\\ninternet,60\"})",
+        "the value the tool is handed"
+    );
+    assert_eq!(contents.len(), 50, "the fifty bytes `od -c` counted in the browser");
+    assert_eq!(contents.lines().count(), 1, "one line: `wc -l` said 0, so `awk NR>1` never fired");
+
+    // …and the page can see it, off the arguments alone.
+    assert!(agent::swallowed_close(&call.args_json), "the call's own terminator is in the value");
+    let honest = r#"{"path": "budget.csv", "contents": "item,cost\ncoffee,4.50\n"}"#;
+    assert!(!agent::swallowed_close(honest), "a real CSV is not flagged");
+    assert!(!agent::swallowed_close("not json at all"), "and neither is a non-object");
+}
+
 /// A usage line is GENERATED from name, description and argument names — so a
 /// sub-agent, a script tool and a built-in are indistinguishable to the model
 /// (I9). Nobody hand-writes one, which is what stops them drifting apart.

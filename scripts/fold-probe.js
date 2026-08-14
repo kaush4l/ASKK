@@ -57,14 +57,41 @@
           "stage " + open + " | nav " + navW + " | rail " + railW);
       info("TRACKS", getComputedStyle(document.querySelector("main")).gridTemplateColumns);
     } else {
-      // Below 1100 the regions stack, so folding cannot widen anything — what
-      // must hold is that the switches are THERE and still route. The guard was
-      // gated `W >= 1100` entirely, which is why the plain skin's phone was
-      // 171px over one screen with nobody watching (13c walk, gap 4).
-      say(press("nav") && nav.hidden, "FOLDNARROW nav", "nav hidden=" + nav.hidden);
-      press("nav");
-      say(press("rail") && railEl.hidden, "FOLDNARROW rail", "rail hidden=" + railEl.hidden);
-      press("rail");
+      // Below 1100 folding cannot widen anything — what must hold is that the
+      // switches are THERE and still route, in BOTH directions. It is a
+      // round trip now because the nav starts FOLDED at these widths (R3-9,
+      // and `dash::wide` in the app), so "press it and it is hidden" was an
+      // assertion about a state the page does not start in. The guard was
+      // gated `W >= 1100` entirely once, which is why the plain skin's phone
+      // was 171px over one screen with nobody watching (13c walk, gap 4).
+      var round = function (id, el) {
+        var was = el.hidden;
+        var flipped = press(id) && el.hidden === !was;
+        press(id);
+        say(flipped && el.hidden === was, "FOLDNARROW " + id,
+            "hidden " + was + " -> " + !was + " -> " + el.hidden);
+      };
+      round("nav", nav);
+      round("rail", railEl);
     }
+  }
+
+  // ---- CHROME: the furniture may not eat the view (R18-P1-9) --------------
+  // At 390x844 the header wrapped to four rows (296px), the failure banner took
+  // 253px, and the agent strip wrapped to three rows of chips: 597px of chrome
+  // over a conversation left 78px, opened mid-sentence, with the composer below
+  // the fold. Nothing here could see it — every assertion above measures where
+  // a box IS, and this one is about how much is LEFT. The floor is a third of
+  // the viewport: the routed region is the reason the page exists, and it is not
+  // the smallest thing on the screen.
+  //
+  // Height-gated the way ONESCREEN is: at 320x256 (400% zoom) there is no share
+  // to promise, and asserting one would assert the trap.
+  var view = document.querySelector(".view-panel:not([hidden])");
+  if (view && window.innerHeight >= 480) {
+    var top = Math.round(rect(view).top);
+    var left = window.innerHeight - top;
+    say(left >= window.innerHeight / 3, "CHROME",
+        top + "px of chrome leaves " + left + " of " + window.innerHeight);
   }
 })();

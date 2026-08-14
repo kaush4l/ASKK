@@ -19,11 +19,15 @@ use kernel::{BoxFuture, EndpointName, ModelError, ModelPort, ModelReply};
 /// like an unreachable endpoint while being the opposite. The ceiling is still
 /// there — it is the difference between slow and hung — it is just no longer
 /// tighter than the work.
-const TIMEOUT_MS: f64 = 300_000.0;
+/// …AND THE BUDGET IS PUBLIC, because the page has to say it while it waits
+/// (R12-2b). `waiting for the model — 98s` says nothing about what the wait is
+/// waiting out; the number it is counting towards is this one.
+pub const TIMEOUT_SECS: u32 = 300;
+const TIMEOUT_MS: f64 = TIMEOUT_SECS as f64 * 1000.0;
 
 use crate::endpoint::Endpoint;
 use crate::overrides::stamp_model;
-use crate::wire::{asked_model, js_message, read_reply};
+use crate::wire::{asked_model, read_reply};
 
 pub struct FetchModel {
     /// `config/keys/model` (ADR-005 record layout).
@@ -159,13 +163,14 @@ impl ModelPort for FetchModel {
             }
             // The core speaks the SYMBOLIC name (the agent's `model:` key);
             // the catalogue turns it into an endpoint and a model id here.
-            let (body, url, name) = {
+            let (body, url, name, model) = {
                 let e = self.endpoint.borrow();
                 let entry = e.resolve(&asked_model(body_json))?;
                 (
                     stamp_model(body_json, &entry.model),
                     entry.chat_url()?,
                     entry.name,
+                    entry.model,
                 )
             };
             let request = self.request(&url, &body, &name)?;
@@ -173,11 +178,8 @@ impl ModelPort for FetchModel {
             // inside its own Worker, where there is no window (increment 06).
             let resp = JsFuture::from(crate::wire::global_fetch(&request)?)
                 .await
-                .map_err(|e| ModelError::Transport {
-                    message: format!("{url} unreachable: {}", js_message(&e)),
-                    url: url.clone(),
-                })?;
-            read_reply(resp.unchecked_into()).await
+                .map_err(|e| crate::wire::call_failed(&url, &e, TIMEOUT_SECS))?;
+            read_reply(resp.unchecked_into(), &model).await
         })
     }
 }

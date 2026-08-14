@@ -78,6 +78,9 @@ impl Toolbox {
                 format!("Tool not found. Available: {available}"),
             ));
         };
+        if let Some(refusal) = swallowed(call, tool) {
+            return Err(refusal);
+        }
         match &call.args_error {
             None => Ok(tool),
             Some(problem) => Err(ToolResult::failed(
@@ -90,5 +93,48 @@ impl Toolbox {
             )),
         }
     }
+}
+
+/// THE CALL'S OWN TERMINATOR INSIDE AN ARGUMENT, REFUSED (R14-P0-2).
+///
+/// R13 detected this and let the call run, reasoning that refusing on a
+/// heuristic would be worse than writing what the model asked for. R14 measured
+/// what that costs: the product's OWN suggested prompt put 179 bytes of
+/// un-parsed argument fragment on disk — one line, literal `\n`, a leading `"`
+/// and a trailing `"})` — and the model's success claim went through beside a
+/// row the page had already said it could not vouch for. The bytes are garbage
+/// either way, so the only question is whether the model gets a chance to fix
+/// them, and a refusal it can read and rewrite is strictly better than a
+/// corrupt file plus a false success. So the conclusion is reversed and the
+/// detection is not: `calls::swallowed_close` is the same predicate it always
+/// was, never a wider one, because a false refusal on a legitimate write would
+/// be worse than the bug.
+///
+/// `exec` is refused too, and deliberately: the same signature is on record for
+/// it (`core::failed`: `$ "wc -l primes.txt"})`), and a shell handed a
+/// swallowed terminator runs a command nobody wrote — quieter than a bad file
+/// and no easier to correct after the fact. One predicate, every tool, one
+/// place; a per-tool list here would only be a second thing to keep in step.
+/// The opening of the refusal above. It is written for the MODEL and goes to it
+/// unchanged; a person reading the same string in the trace gets one sentence
+/// and this behind a disclosure (`core::vouch::folded`), which needs a way to
+/// recognise it. One const, so the two cannot drift (R15-P1-5).
+pub const NOTHING_RAN: &str = "Nothing ran: an argument ends with";
+
+fn swallowed(call: &Call, tool: &Tool) -> Option<ToolResult> {
+    if !crate::calls::swallowed_close(&call.args_json) {
+        return None;
+    }
+    Some(ToolResult::failed(
+        &call.tool,
+        format!(
+            "{NOTHING_RAN} \"}}), this call's own closing text. The value \
+             was escaped one level too many, so it swallowed the end of the call and holds those \
+             delimiters instead of what you meant. Write the call again with the value as one \
+             JSON string — \\n for a line break, \\\" for a quote inside it, and no \"}}) inside \
+             the value — {}",
+            tool.usage()
+        ),
+    ))
 }
 

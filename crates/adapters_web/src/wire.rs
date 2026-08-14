@@ -31,6 +31,28 @@ pub(crate) fn js_message(value: &JsValue) -> String {
         .unwrap_or_else(|| format!("{value:?}"))
 }
 
+/// WHICH FAILURE THIS WAS (R12-2a). A `fetch` rejects the same way whether the
+/// host refused the connection or our own `AbortSignal::timeout` fired, and
+/// calling both `Transport` is what put "the endpoint was unreachable — check
+/// CORS, and Chrome asks permission for a local address" over a request the
+/// network log showed answering 200 in the same tab. An abort is a DOMException
+/// and its NAME is the discriminant: `TimeoutError` is the signal's own,
+/// `AbortError` is what Chrome reports for the same abort. Neither says
+/// anything about the endpoint being wrong.
+pub(crate) fn call_failed(url: &str, e: &JsValue, seconds: u32) -> ModelError {
+    let named = e.dyn_ref::<web_sys::DomException>().map(|d| d.name()).unwrap_or_default();
+    match named.as_str() {
+        "AbortError" | "TimeoutError" => ModelError::Timeout {
+            url: url.to_string(),
+            seconds,
+        },
+        _ => ModelError::Transport {
+            message: format!("{url} unreachable: {}", js_message(e)),
+            url: url.to_string(),
+        },
+    }
+}
+
 /// `fetch()` from whatever global this code is running in. `web_sys::window()`
 /// is `None` inside a Worker, and since increment 06 every agent runs in one —
 /// so reaching for the window here would mean a sub-agent could never call a
@@ -52,7 +74,15 @@ pub(crate) fn global_fetch(request: &web_sys::Request) -> Result<js_sys::Promise
 }
 
 /// Non-2xx is the provider's own words — never smoothed into a reply.
-pub(crate) async fn read_reply(resp: web_sys::Response) -> Result<ModelReply, ModelError> {
+///
+/// WHICH non-2xx it was is decided on the host (`core::provider_error`, R18-P1-7):
+/// a 404 naming the model this page asked for is a fact about one agent's file,
+/// not about the base URL or the key, and nothing but the status and the body is
+/// needed to tell them apart. `model` is the id that actually went on the wire.
+pub(crate) async fn read_reply(
+    resp: web_sys::Response,
+    model: &str,
+) -> Result<ModelReply, ModelError> {
     let url = resp.url();
     let transport = |m: String| ModelError::Transport { message: m, url: url.clone() };
     let status = resp.status();
@@ -62,10 +92,7 @@ pub(crate) async fn read_reply(resp: web_sys::Response) -> Result<ModelReply, Mo
         .as_string()
         .unwrap_or_default();
     if !(200..300).contains(&status) {
-        return Err(ModelError::Provider {
-            status,
-            message: text,
-        });
+        return Err(core::provider_error(status, &text, model));
     }
     Ok(ModelReply {
         usage: None,

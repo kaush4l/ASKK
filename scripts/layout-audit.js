@@ -1,17 +1,15 @@
 // The audit half of the layout probe (increment 13d). Split out of
-// layout-probe.js, which hit the 200-line rule (I12) carrying both the
-// structural assertions — overlap, hit-test, fold, stacking, one screen — and
-// these, which are about how the page READS rather than where it is.
+// layout-probe.js at the 200-line rule (I12): that file holds the structural
+// assertions, this one holds how the page READS.
 //
-// It shares `window.__probe`: the helpers layout-probe.js sets up, and the
-// `out` array both files push their verdicts into. layout-probe.js writes the
-// report after this file has run, so a check added here reaches it.
+// It shares `window.__probe`: layout-probe.js's helpers and the `out` array
+// both push verdicts into, and it writes the report after this file has run.
 (function () {
   var P = window.__probe;
   var say = P.say, info = P.info, rect = P.rect;
-  var out = P.out, W = P.W, q = P.q, routed = P.routed;
+  var out = P.out, W = P.W, q = P.q, route = P.route;
 
-  // ---- the type scale actually present on this page -----------------------
+  // ---- the type scale actually present on this page ---
   var sizes = {};
   document.querySelectorAll("body *").forEach(function (el) {
     if (!el.offsetParent && el !== document.body) return;
@@ -25,7 +23,7 @@
   var scale = Object.keys(sizes).sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
   info("SIZES", scale.map(function (s) { return s + "x" + sizes[s]; }).join(" "));
 
-  // ---- motion, and the reduced-motion promise -----------------------------
+  // ---- motion, and the reduced-motion promise ---
   var running = [];
   document.querySelectorAll("body *").forEach(function (el) {
     ["", "::before", "::after"].forEach(function (p) {
@@ -37,19 +35,16 @@
   info("MOTION", "reduced=" + reduced + " running=[" + running.sort().join(" ") + "]");
   if (reduced) say(running.length === 0, "REDUCEDMOTION", running.join(" ") || "nothing animates");
 
-  // ---- contrast: every ink token against the ground it sits on ------------
+  // ---- contrast: every ink token against the ground it sits on ---
   var lin = function (c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
   var lum = function (rgb) {
     var m = rgb.match(/\d+/g).map(Number);
     return 0.2126 * lin(m[0]) + 0.7152 * lin(m[1]) + 0.0722 * lin(m[2]);
   };
-  // Against the ground each element is ACTUALLY PAINTED ON, and it FAILS.
-  // This used to resolve tokens off a scratch <span> and print INFO, which
-  // `check-layout.sh` never counts — so the plain skin's folded switch sat at
-  // 1.49:1 through a whole walk and the guard had no way to say so: the token
-  // reads identically in both skins, and the defect was which token the rule
-  // reached for (13d walk, "make it a FAIL over the elements the increment
-  // ships, not over tokens").
+  // Against the ground each element is ACTUALLY PAINTED ON, and it FAILS. It
+  // used to resolve tokens off a scratch <span> and print INFO, which nothing
+  // counts — so the plain skin's folded switch sat at 1.49:1 for a whole walk
+  // (13d: "a FAIL over the elements the increment ships, not over tokens").
   var ratio = function (a, b) {
     var hi = Math.max(a, b), lo = Math.min(a, b);
     return (hi + 0.05) / (lo + 0.05);
@@ -57,15 +52,17 @@
   var opaque = function (c) { return c && !/rgba\(.*,\s*0\)$/.test(c); };
   var rgb = function (c) {
     var m = (c || "").match(/[\d.]+/g) || [0, 0, 0];
-    return { r: +m[0], g: +m[1], b: +m[2], a: m.length > 3 ? +m[3] : 1 };
+    // `color-mix()` COMPUTES to `color(srgb r g b / a)` in Chrome, where the
+    // channels run 0..1. Read as 0..255 every mix resolves to black, and the
+    // accent fill a pressed row was painted with measured 18.61:1 against white
+    // ink instead of 1.3:1 — the guard reporting the opposite of the defect.
+    var k = /^color\(/.test(c || "") ? 255 : 1;
+    return { r: +m[0] * k, g: +m[1] * k, b: +m[2] * k, a: m.length > 3 ? +m[3] : 1 };
   };
   var over = function (top, under) {
-    // src-over, the compositing the browser actually does. The audit used to
-    // skip this entirely: `opaque()` accepted ANY non-zero alpha, so the glass
-    // fill rgba(255,255,255,0.055) was read as if it WERE the ground and every
-    // ink on chrome measured 1.12:1 against near-white. The page was fine; the
-    // model was wrong. DESIGN.md §10.1 is explicit that contrast is measured
-    // against the rendered backdrop, never against a fill colour.
+    // src-over, the compositing the browser actually does. `opaque()` used to
+    // accept ANY non-zero alpha, so a 0.055 glass fill was read as the ground
+    // and every ink on chrome measured 1.12:1 against near-white (§10.1).
     var a = top.a;
     return { r: top.r * a + under.r * (1 - a),
              g: top.g * a + under.g * (1 - a),
@@ -74,10 +71,7 @@
   var lumRGB = function (c) {
     return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
   };
-  // THE WORST CASE, not the average one. The ground is a three-lobe field and
-  // its lightest region is the top-left accent lobe; light-on-glass fails
-  // there and nowhere else, which is exactly why it fails invisibly — it looks
-  // fine over the one part of the background anybody screenshots.
+  // THE WORST CASE: the lightest region is the top-left lobe.
   var css = function (name, fallback) {
     var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return v || fallback;
@@ -124,25 +118,67 @@
           s.borderTopColor + " " + edge.toFixed(2) + ":1 on lit-lobe backdrop");
     }
   };
-  // EVERY control, not the first of each kind. `document.querySelector(".nav
-  // .tab")` measured whichever tab the FIXTURE happens to put first — the
-  // selected one, which carries the accent edge at 7.31:1 — while the app puts
-  // an unselected one there at 1.49:1. The guard was green over a page its own
-  // code failed, because a check that reads "the first" is only as good as the
-  // fixture agreeing with the app about ordering (walk 5, the named hole).
-  // `.nav .tab` became `.nav .view-item` when the left panel started
-  // navigating between views (15B), and the agent strip moved into the Chat
-  // view — both are listed, because a rule that reaches one skin and not the
-  // other is this file's most-repeated finding and both are still controls.
-  // The two header pills (15A, 15E) are TEXT on the header's glass, which is
-  // the CONTRAST assertion's whole subject, and nothing measured them.
+  // EVERY control, not the first of each kind: `querySelector(".nav .tab")`
+  // measured whichever the FIXTURE put first (the selected one, 7.31:1) while
+  // the app puts an unselected one there at 1.49:1 (walk 5). The header pills
+  // are TEXT on glass, this assertion's whole subject, measured by nothing.
+  // …AND A DEAD CONTROL IS STILL TEXT (R18-P2). `Save agent` was reported at
+  // 1.15:1 and nothing here could see it: the sweep listed live controls only,
+  // so the one painting in the product that is DEFINED by being low-contrast was
+  // the one painting nothing measured.
   var controls = ".panel-toggle, .skin-toggle, .nav .view-item, .agent-tabs .tab, " +
-                 ".warmth, .meter, .file-entry, input, textarea, select";
+                 ".warmth, .meter, .file-entry, button:disabled, input, textarea, select";
   document.querySelectorAll(controls).forEach(function (el, i) {
     var name = (el.id || el.className || el.tagName).toString().slice(0, 24);
     check(el, name + "[" + i + "]");
   });
-  // …and both states of the switches, since folded is a different painting.
+  // ---- …AND THE STATES THE POINTER PUTS THEM IN (R11-6) -------------------
+  // A pressed process row measured rgb(198,186,216) on rgb(203,168,255), 1.1:1:
+  // `controls.css` paints every bare `button` with the accent fill and its
+  // `:hover`/`:active` rules are (0,1,1), outranking a class rule written
+  // without one. Nothing here could see it — getComputedStyle reports the state
+  // an element is IN, and headless never hovers.
+  // Not by resolving values by hand: `var()`, `color-mix()` and SPECIFICITY
+  // would all need re-implementing, and specificity is what made the defect.
+  // Every `:hover`/`:active` rule is COPIED with the pseudo rewritten to a real
+  // class of the same specificity, and the browser's own cascade answers.
+  // …with TRANSITIONS OFF. `getComputedStyle` reports the value a transition is
+  // CURRENTLY at, and these fills are transitioned at `--dur-fast`: read in the
+  // same frame, the browser answers "still the old colour", and the audit would
+  // pass a 1.1:1 painting by measuring the paint before it happened.
+  var forced = function (state, marker) {
+    var css = "*, *::before, *::after { transition: none !important; }\n";
+    for (var i = 0; i < document.styleSheets.length; i++) {
+      var rules;
+      try { rules = document.styleSheets[i].cssRules; } catch (e) { continue; }
+      for (var j = 0; j < rules.length; j++) {
+        var r = rules[j];
+        if (!r.selectorText || r.selectorText.indexOf(state) < 0) continue;
+        css += r.cssText.split(state).join(marker) + "\n";
+      }
+    }
+    var tag = document.createElement("style");
+    tag.textContent = css;
+    document.head.appendChild(tag);
+    return tag;
+  };
+  [":hover", ":active"].forEach(function (state) {
+    var marker = ".probe" + state.replace(":", "-");
+    var tag = forced(state, marker);
+    document.querySelectorAll(".file-entry, .file-ref, .nav .view-item").forEach(function (el, i) {
+      el.classList.add(marker.slice(1));
+      void document.body.offsetHeight;
+      var s = getComputedStyle(el);
+      var g = lum(over(rgb(s.backgroundColor), ground(el.parentElement || el)));
+      var name = (el.className || el.tagName).toString().replace(marker.slice(1), "").slice(0, 22);
+      say(ratio(lum(s.color), g) >= 4.5, "CONTRAST " + name + state + "[" + i + "]",
+          s.color + " on " + s.backgroundColor + " " + ratio(lum(s.color), g).toFixed(2) + ":1");
+      el.classList.remove(marker.slice(1));
+    });
+    tag.remove();
+  });
+
+  // …and both switch states, since folded is a different painting.
   document.querySelectorAll(".panel-toggle").forEach(function (b, i) {
     b.click();
     void document.body.offsetHeight;
@@ -150,10 +186,8 @@
     b.click();
     void document.body.offsetHeight;
   });
-
-  // Pointer targets, as INFO: at 390 everything clears 44px, and the only
-  // thing under 24 is an inline link in running prose, which WCAG 2.5.8
-  // exempts. Worth printing, not worth failing (13d walk).
+  // Pointer targets, as INFO: the only thing under 24 is an inline link in
+  // prose, which WCAG 2.5.8 exempts (13d walk).
   var small = [];
   document.querySelectorAll("button, a, input, summary").forEach(function (el) {
     var r = rect(el);
@@ -166,5 +200,5 @@
 
   document.getElementById("report").textContent =
     "== " + W + "x" + window.innerHeight + " skin=" + (q.get("skin") || "machine") +
-    " route=" + (routed ? "deck" : "chat") + "\n" + out.join("\n");
+    " route=" + route + "\n" + out.join("\n");
 })();

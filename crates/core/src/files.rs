@@ -1,36 +1,31 @@
 //! The workspace's FILES, as a person browses them (15G).
 //!
 //! We run a real x86 Alpine in the page — the one thing this product has that
-//! WebContainers categorically cannot do — and until now a person could not
-//! see a single byte of it without typing `ls` into a terminal. This module is
-//! that folder, listed, and one file in it, read.
+//! WebContainers categorically cannot do — and a person could not see a byte
+//! of it without typing `ls`. This module is that folder, listed, and one file
+//! in it, read.
 //!
 //! It owns no new capability and no new way to reach the disk. A listing is
-//! the `list_files` tool and a file is the `read_file` tool — the same two the
-//! agent calls, through the same gate in `core::workspace`, recorded as the
-//! same `ToolInvoked` facts. The pane is a PROJECTION of those facts (I8): if
-//! the agent listed a folder, this pane shows what the agent saw.
+//! `list_files` and a file is `read_file` — the agent's own two tools, through
+//! the same gate in `core::workspace`, recorded as the same `ToolInvoked`
+//! facts (I8): if the agent listed a folder, this pane shows what it saw.
 
 use kernel::{CapabilityId, EventKind, ModuleId, Request, Response, Version};
 use module::{DataSchema, Manifest, RouteSpec, Tier};
 
+use crate::browsable::{browsable, nothing_to_browse};
 use crate::dispatch::{error_fragment, html, Ctx};
-use crate::filelist::{opened, panel, rows};
+use crate::filelist::{opened, panel, parent};
+use crate::filerows::rows;
 use crate::form::form_value;
 
-/// Why there is nothing to browse, in the words that name the fix.
-const NO_SPACE: &str = "This agent works alone, so it has no workspace to browse: the folder \
-                        belongs to a space. Add `space: <name>` to its agent.md to put it in one.";
-
-/// A person asked for a path. Its own fact kind for the reason the terminal's
-/// is: the async half does the I/O, and nothing else may mistake this for
-/// something the agent decided to do.
+/// A person asked for a path. Its own fact kind for the terminal's reason: the
+/// async half does the I/O, and nothing may mistake this for the agent's own.
 pub(crate) const OPEN_REQUEST: &str = "core.files_request";
 
 /// A person SAVED a file. A separate kind from opening one, because it is a
-/// separate authority: reading the workspace and writing to it are two
-/// different things to be able to do, and a log that spells them the same way
-/// cannot answer "who changed this".
+/// separate authority: reading the workspace and writing to it are two things
+/// to be able to do, and one spelling cannot answer "who changed this".
 pub(crate) const SAVE_REQUEST: &str = "core.files_save";
 
 pub(crate) fn manifest() -> Manifest {
@@ -38,8 +33,10 @@ pub(crate) fn manifest() -> Manifest {
         id: ModuleId("files".into()),
         name: "Files".into(),
         version: Version(1),
-        description: "The workspace folder: what is in it, and what one file says.".into(),
-        capabilities: vec![CapabilityId::Emit, CapabilityId::Workspace],
+        description: "The folder: what is in it, and what one file says.".into(),
+        // Clock, so a pane queued behind a running command can say how long
+        // it has been waiting on it (R11-1a). Injected, never read (I7).
+        capabilities: vec![CapabilityId::Clock, CapabilityId::Emit, CapabilityId::Workspace],
         routes: vec![
             RouteSpec {
                 method: "GET".into(),
@@ -63,12 +60,21 @@ pub(crate) fn manifest() -> Manifest {
 
 /// Named ONLY from `dispatch::builtin_entry` (ADR-004).
 pub(crate) fn files(req: &Request, ctx: &mut Ctx) -> Response {
+    let who = match req.header("x-agent").unwrap_or_default() {
+        "" => ctx.me.clone(),
+        named => named.to_string(),
+    };
+    // A read shows nothing; a WRITE is refused, because a save that cannot
+    // land is an error and not a state.
+    let refused = browsable(ctx, &who).err();
     match (req.method.as_str(), req.path.as_str()) {
-        // `x-at` scopes the projection to ONE folder, so a second pane over
+        ("GET", "/files") if refused.is_some() => nothing_to_browse(&refused.unwrap_or_default()),
+        // `x-at` scopes the projection to ONE FOLDER, so a second pane over
         // the same workspace (the artifacts shelf) does not overwrite this
-        // one every time either refreshes. Absent means "whatever was listed
-        // last", which is what the Files pane itself wants — it follows the
-        // agent's own listings.
+        // one every time either refreshes — which is exactly what happened:
+        // the shelf's `ls artifacts` on a fresh workspace replaced the Files
+        // pane's whole listing with a shell error (R4-2). Absent still means
+        // "whatever was listed last", for a caller that has no folder yet.
         ("GET", "/files") => {
             let at = req.header("x-at").map(str::to_string);
             listing(html(200, panel(ctx, at.as_deref())), ctx, at.as_deref())
@@ -76,6 +82,7 @@ pub(crate) fn files(req: &Request, ctx: &mut Ctx) -> Response {
         // A body with `contents` is a SAVE; without one it is an open. Same
         // route because it is the same subject — this file, in this workspace
         // — and the pane already has the path in hand either way.
+        ("POST", _) if refused.is_some() => error_fragment(400, &refused.unwrap_or_default()),
         ("POST", "/files") if form_value(&req.body, "contents").is_some() => save(req, ctx),
         ("POST", "/files") => open(req, ctx),
         _ => error_fragment(404, "files: unknown subroute"),
@@ -88,6 +95,16 @@ pub(crate) fn files(req: &Request, ctx: &mut Ctx) -> Response {
 fn listing(mut response: Response, ctx: &Ctx, at: Option<&str>) -> Response {
     response.headers.push(("x-entries".into(), rows(ctx, at)));
     response.headers.push(("x-file".into(), opened(ctx, at)));
+    // …and WHETHER THE WORKSPACE HAS MOVED UNDER IT (R14-P1-3): the count of
+    // facts that could have changed what an `ls` would print. The pane asked
+    // for a fresh listing on the agent's status stamp, which a command a PERSON
+    // types never moves — so a file written from the Commands box was invisible
+    // in the pane beside it until something else happened. Same contract as
+    // `x-entries`: a fact the UI needs, on a header, not parsed out of markup.
+    response.headers.push((
+        "x-workspace-at".into(),
+        crate::filelist::changes(ctx).to_string(),
+    ));
     response
 }
 
@@ -102,9 +119,6 @@ fn save(req: &Request, ctx: &mut Ctx) -> Response {
     ) else {
         return error_fragment(400, "files: a save needs a path and contents");
     };
-    if ctx.space.is_none() {
-        return error_fragment(400, NO_SPACE);
-    }
     match ctx.emit.as_mut() {
         Some(buf) => buf.push(EventKind::Custom {
             kind: SAVE_REQUEST.into(),
@@ -112,7 +126,9 @@ fn save(req: &Request, ctx: &mut Ctx) -> Response {
         }),
         None => return error_fragment(500, "files: Emit capability not granted"),
     }
-    let scope = Some(path.as_str());
+    // `x-at` is a FOLDER (R4-2), so a file scopes to the folder holding it —
+    // the one the pane that asked is showing.
+    let scope = Some(parent(&path));
     let mut response = listing(html(200, panel(ctx, scope)), ctx, scope);
     response.headers.push(("x-saving".into(), "1".into()));
     response
@@ -131,9 +147,6 @@ fn open(req: &Request, ctx: &mut Ctx) -> Response {
     // (a trailing slash from `ls -1Ap`), so the pane says so too rather than
     // making the core guess from a name.
     let folder = form_value(&req.body, "kind").as_deref() != Some("file");
-    if ctx.space.is_none() {
-        return error_fragment(400, NO_SPACE);
-    }
     match ctx.emit.as_mut() {
         Some(buf) => buf.push(EventKind::Custom {
             kind: OPEN_REQUEST.into(),
@@ -141,7 +154,12 @@ fn open(req: &Request, ctx: &mut Ctx) -> Response {
         }),
         None => return error_fragment(500, "files: Emit capability not granted"),
     }
-    let scope = Some(path.as_str());
+    // The folder this request is about: the one being opened, or the one the
+    // file being opened lives in (R4-2).
+    let scope = Some(match folder {
+        true => path.as_str(),
+        false => parent(&path),
+    });
     let mut response = listing(html(200, panel(ctx, scope)), ctx, scope);
     response.headers.push(("x-opening".into(), "1".into()));
     response

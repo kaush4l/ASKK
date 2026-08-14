@@ -6,6 +6,17 @@
 use agent::{step, AgentState, Effect};
 use kernel::{Event, EventId, EventKind, Timestamp, ToolId};
 
+/// A steer emits ONE fact and no work: the `core.steered` record the
+/// conversation reads to tell it from a turn a reload abandoned (R18-P0-1).
+/// Before that record existed this was `effects.is_empty()`, and the two say
+/// exactly the same thing about what the machine DOES.
+fn only_the_steer_record(effects: &[Effect]) -> bool {
+    matches!(
+        effects,
+        [Effect::Emit { kind: EventKind::Custom { kind, .. } }] if kind == agent::STEERED
+    )
+}
+
 /// The ceiling is the AGENT's, not the machine's, and it is not four.
 ///
 /// Four rounds cannot finish any real task — read a file, run a build, read
@@ -68,8 +79,11 @@ fn the_tool_loop_runs_to_the_agents_own_ceiling_and_then_stops() {
         } else {
             match effects.as_slice() {
                 [Effect::Emit { kind: EventKind::Custom { kind, payload_json } }] => {
-                    assert_eq!(kind, "core.note");
-                    assert!(payload_json.contains("after 7 rounds"), "{payload_json}");
+                    // R17-P0-2: the ceiling is an ENDING with a kind, not a
+                    // note the surfaces have to read the prose of.
+                    assert_eq!(kind, agent::ENDED);
+                    assert_eq!(agent::ended_why(payload_json), agent::ROUND_CEILING);
+                    assert_eq!(agent::ended_rounds(payload_json), 7, "{payload_json}");
                 }
                 other => panic!("the ceiling must stop the turn deterministically: {other:?}"),
             }
@@ -114,7 +128,9 @@ fn a_message_typed_mid_run_steers_the_turn_instead_of_starting_one() {
     assert!(matches!(effects.as_slice(), [Effect::InvokeTool { .. }]));
 
     let (state, effects) = step(state, say("actually, in UTC"));
-    assert!(effects.is_empty(), "steering asks nothing on its own: {effects:?}");
+    // It asks nothing on its own — it only RECORDS that it landed (R18-P0-1),
+    // so the conversation can tell a steer from the reload note it wore.
+    assert!(only_the_steer_record(&effects), "steering starts no work: {effects:?}");
     assert_eq!(state.pending_tools, 1, "the batch in flight is untouched");
 
     let (_, effects) = step(
@@ -172,7 +188,7 @@ fn a_steer_that_races_the_final_answer_is_answered_not_dropped() {
     // The question, then the steer while the model is still thinking.
     let (state, _) = step(fresh, say("what is the time"));
     let (state, effects) = step(state, say("in UTC, please"));
-    assert!(effects.is_empty(), "steering asks nothing on its own");
+    assert!(only_the_steer_record(&effects), "steering starts no work: {effects:?}");
     assert!(state.steered, "and it is recorded as unanswered");
 
     // The answer to the FIRST question arrives. It cannot be the answer to the
@@ -190,6 +206,67 @@ fn a_steer_that_races_the_final_answer_is_answered_not_dropped() {
 
     // That call's answer ends the turn, because nothing is outstanding now.
     let (state, effects) = step(state, reply("It is 15:00 UTC."));
-    assert!(effects.is_empty(), "the turn ends: {effects:?}");
+    // …and it ends by SAYING SO (R17-P0-2): the one effect is the ending fact,
+    // and it says the turn was answered.
+    match effects.as_slice() {
+        [Effect::Emit { kind: EventKind::Custom { kind, payload_json } }] => {
+            assert_eq!(kind, agent::ENDED);
+            assert_eq!(agent::ended_why(payload_json), agent::ANSWERED);
+        }
+        other => panic!("the turn ends with an ending: {other:?}"),
+    }
+    assert!(state.task.is_none());
+}
+
+/// R17-P0-2. A REPLY THAT IS MACHINE OUTPUT IS NOT AN ANSWER. The tool contract
+/// is total — "no call in this text" meant "the model answered" — and the model
+/// that stranded a six-part task ended it on this, verbatim: a call with three
+/// argument objects, which is not a call, and not prose either.
+#[test]
+fn a_reply_that_is_a_malformed_tool_call_ends_the_turn_without_an_answer() {
+    let stranded = r#"exec({"command": "cat a.md"}, {"command": "cat b.md"})"#;
+    assert!(!agent::has_calls(stranded), "it is not a call");
+    assert!(agent::malformed_call(stranded), "…and it is not prose either");
+    // Prose that merely MENTIONS one is still prose: the reading is narrowed to
+    // text that OPENS with the tokens a call opens with.
+    assert!(!agent::malformed_call("I tried exec({\"command\": \"ls\"}, x) and it failed."));
+    assert!(!agent::malformed_call("Done — the five files are written."));
+
+    let mut state = AgentState::new();
+    let spec = agent::parse_agent_file("main", "---\nname: main\ndescription: d\ntools: []\n---\nb")
+        .expect("spec parses");
+    agent::adopt_spec(&mut state, &spec, &[]);
+    let (state, _) = step(
+        state,
+        Event {
+            id: EventId(0),
+            seq: 0,
+            at: Timestamp(1_753_800_000_000),
+            kind: EventKind::UserMessage {
+                text: "create five files and an index".into(),
+                agent: String::new(),
+                from: String::new(),
+            },
+        },
+    );
+    let (state, effects) = step(
+        state,
+        Event {
+            id: EventId(0),
+            seq: 0,
+            at: Timestamp(1_753_800_000_000),
+            kind: EventKind::ModelReplied {
+                text: stranded.into(),
+                agent: String::new(),
+            },
+        },
+    );
+    match effects.as_slice() {
+        [Effect::Emit { kind: EventKind::Custom { kind, payload_json } }] => {
+            assert_eq!(kind, agent::ENDED);
+            assert_eq!(agent::ended_why(payload_json), agent::NO_ANSWER);
+        }
+        other => panic!("the turn ends, and says it did not answer: {other:?}"),
+    }
     assert!(state.task.is_none());
 }

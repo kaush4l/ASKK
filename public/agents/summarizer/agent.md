@@ -4,6 +4,9 @@ description: Compresses a conversation transcript into notes that can stand in f
 model: local
 temperature: 0.2
 engine: base
+# The job this file holds (20) — every other agent's history is compacted by
+# whoever declares it, not by whoever happens to be named `summarizer`.
+role: summarizer
 space: ""
 tools: []
 ---

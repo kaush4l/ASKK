@@ -21,9 +21,9 @@ use crate::app::App;
 pub(crate) fn grant(app: &App) -> Result<CapabilityGrant, String> {
     match &app.agent.space {
         Some(space) => Ok(CapabilityGrant::Workspace { root: space.path() }),
-        None => Err("This agent works alone, so it has no workspace: the folder belongs to a \
-                     space. Add `space: <name>` to its agent.md to put it in one."
-            .into()),
+        None => Err(format!(
+            "{ALONE}name a space in its agent file and it gets one."
+        )),
     }
 }
 
@@ -57,11 +57,26 @@ pub(crate) async fn run(
             .and_then(|v| Some(v.get(name)?.as_str()?.to_string()))
             .unwrap_or_default()
     };
+    // IN FLIGHT, WHERE A PROJECTION CAN SEE IT (R11-4). Every workspace call —
+    // the agent's, the file panes', the Processes pane's, and yours — passes
+    // through here, so this is the one place that has to know. A refused call
+    // never reaches the port and is never in flight.
     let outcome = match grant {
         Err(denied) => Err(denied),
         Ok(grant) => {
             let root = root_of(&grant).to_string();
-            perform(port.as_ref(), &root, &tool.0, &arg).await
+            let call = crate::inflight::Inflight {
+                tool: tool.0.clone(),
+                args: args_json.to_string(),
+                at: app.borrow().ports.clock.now().0,
+            };
+            app.borrow_mut().calling.push(call.clone());
+            let ran = perform(port.as_ref(), &root, &tool.0, &arg).await;
+            let mut a = app.borrow_mut();
+            if let Some(i) = a.calling.iter().position(|c| *c == call) {
+                a.calling.remove(i);
+            }
+            ran
         }
     };
     let (ok, output) = match outcome {
@@ -85,6 +100,15 @@ async fn perform(
     tool: &str,
     arg: &dyn Fn(&str) -> String,
 ) -> Result<Execution, String> {
+    // The environment tools first, and through the SAME port: a process, an
+    // observation and a search are all one `exec` with a shape we defined on
+    // top of it, never a second door into the Linux (ADR-013).
+    if let Some(ran) = crate::process::run(port, root, tool, arg).await {
+        return ran;
+    }
+    if let Some(ran) = crate::observe::run(port, root, tool, arg).await {
+        return ran;
+    }
     let path = || agent::relative_path(&arg("path"));
     let ran = match tool {
         "exec" => match arg("command").trim().is_empty() {
@@ -100,13 +124,48 @@ async fn perform(
 
 /// A port failure in the words a model — or a person — can act on. An absent
 /// workspace is a fact about this browser (I15), not a broken tool.
-fn unavailable(e: WorkspaceError) -> String {
+pub(crate) fn unavailable(e: WorkspaceError) -> String {
     match e {
-        WorkspaceError::Unavailable { reason } => {
-            format!("No workspace is available here: {reason}")
-        }
-        WorkspaceError::Failed { message } => format!("The workspace failed: {message}"),
+        WorkspaceError::Unavailable { reason } => format!("{UNAVAILABLE}{reason}"),
+        // A STOP A PERSON ASKED FOR IS NOT A FAILURE (R17-P1-6). Both engines
+        // end a stopped command through the same `Err` as a crash, and the row
+        // read `you ran $ sleep 40 — failed`, in red, over an explanation that
+        // began *"The workspace failed: you stopped it"*. `failed` is what
+        // happens TO you; this was a deliberate act. The engines write the lead
+        // (they are the two that know what their own stop did), and it is the
+        // only thing this file has to recognise.
+        WorkspaceError::Failed { message } if message.starts_with(STOPPED) => message,
+        WorkspaceError::Failed { message } => format!("{FAILED}{message}"),
     }
+}
+
+/// The openings of a sentence THIS PRODUCT wrote into a tool result, where
+/// everything else in that field is bytes the guest printed.
+pub(crate) const UNAVAILABLE: &str = "No folder is available here: ";
+pub(crate) const FAILED: &str = "The Linux failed: ";
+pub(crate) const ALONE: &str = "This agent works alone, so it has no folder: ";
+/// What both engines write when the ending was a person pressing Stop. The
+/// sentence differs — one engine really interrupts and the other can only stop
+/// waiting — so only the opening is shared, and it is the whole test.
+pub(crate) const STOPPED: &str = "You stopped ";
+
+/// Whether this ending was asked for. One predicate, so the row's word, its
+/// colour and its wrapping cannot disagree about what happened.
+pub(crate) fn was_stopped(output: &str) -> bool {
+    output.starts_with(STOPPED)
+}
+
+/// Whether this tool output is our own prose rather than the guest's stdout
+/// (R12-4). It decides how the row WRAPS, and nothing else. The scrollback
+/// renders output with `white-space: pre` so that `ls -la` keeps its columns —
+/// deliberately, and right for a machine's output. It is wrong for a sentence
+/// we wrote: *"The workspace failed: you stopped it. CheerpX runs each command
+/// as its own pr…"* was 2208px of explanation clipped inside a 644px box, and
+/// the hidden remainder was the only place the product explains why the
+/// workspace is still occupied. The distinction is by ORIGIN, not by width, so
+/// the two prefixes above are the test rather than a guess about the bytes.
+pub(crate) fn is_prose(output: &str) -> bool {
+    [UNAVAILABLE, FAILED, ALONE, STOPPED].iter().any(|said| output.starts_with(said))
 }
 
 /// What the caller is told. The exit status is reported in words whenever it
@@ -121,51 +180,4 @@ pub(crate) fn said(ran: &Execution) -> String {
         0 => output,
         status => format!("{output}\n(exit status {status})"),
     }
-}
-
-/// A path a PERSON opened in the files pane: `list_files` for a folder and
-/// `read_file` for a file — the same two tools the agent has, through the same
-/// gate, recorded as the same facts.
-///
-/// Which of the two comes from the CALLER, because it cannot be inferred here:
-/// `ls` on a file succeeds and prints the file, so "list, and read only if the
-/// listing failed" opens nothing, ever. The listing that offered this path
-/// already knew (a trailing slash from `ls -1Ap`), and a refusal is recorded
-/// like any other — it is how a person learns the path was wrong.
-pub(crate) async fn open_typed(app: &Rc<RefCell<App>>, path: &str, folder: bool) {
-    let args = serde_json::json!({ "path": path }).to_string();
-    let tool = match folder {
-        true => "list_files",
-        false => "read_file",
-    };
-    if let Some(kind) = run(app, &ToolId(tool.into()), &args).await {
-        app.borrow_mut().append(kind);
-    }
-}
-
-/// What a person typed into the editor, written through the agent's own
-/// `write_file` and then read back — the read is what makes the pane show what
-/// is ON DISK rather than what was typed, which is the difference between a
-/// save and a hope.
-pub(crate) async fn save_typed(app: &Rc<RefCell<App>>, path: &str, contents: &str) {
-    let args = serde_json::json!({ "path": path, "contents": contents }).to_string();
-    if let Some(kind) = run(app, &ToolId("write_file".into()), &args).await {
-        let wrote = matches!(&kind, EventKind::ToolInvoked { ok: true, .. });
-        app.borrow_mut().append(kind);
-        if wrote {
-            open_typed(app, path, false).await;
-        }
-    }
-}
-
-/// A command a PERSON typed into the terminal pane, run in this agent's own
-/// workspace. Recorded as the same `ToolInvoked` fact the agent's own calls
-/// produce, so one pane projects both and a person can see what the agent did
-/// beside what they did (I8).
-pub(crate) async fn run_typed(app: &Rc<RefCell<App>>, command: &str) {
-    let args = serde_json::json!({ "command": command }).to_string();
-    let Some(kind) = run(app, &ToolId("exec".into()), &args).await else {
-        return;
-    };
-    app.borrow_mut().append(kind);
 }

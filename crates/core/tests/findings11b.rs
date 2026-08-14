@@ -165,10 +165,11 @@ fn the_board_names_an_agent_written_here_as_written_here() {
     let board = body(&app, Request::get("/board"));
     let (_, scribe) = board.split_once("data-agent=\"scribe\"").expect("a row: {board}");
     let row = scribe.split("data-agent").next().unwrap_or_default();
-    assert!(row.contains("written in this browser"), "{row}");
+    // R4-18: ONE wording for this badge — the tab strip says the same.
+    assert!(row.contains("written here"), "{row}");
     assert!(!row.contains("public/agents/"), "{row}");
     // …and the two it did not write still say where they came from.
-    assert!(board.contains("built in to this build") || board.contains("from public/agents/"), "{board}");
+    assert!(board.contains("built in to this build"), "{board}");
 }
 
 /// FINDING 9. The Run box is this page's own shell. With another agent

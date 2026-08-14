@@ -78,9 +78,10 @@ fn the_agent_runs_a_command_in_its_own_spaces_folder() {
         vec![("/root/spaces/research".to_string(), "uname -a".to_string())],
         "the cwd comes from the GRANT, which comes from the space"
     );
-    let trace = body(&app, "/tools");
-    assert!(trace.contains("ran: uname -a"), "{trace}");
-    assert!(trace.contains("data-outcome=\"ran\""), "{trace}");
+    // COMMANDS, the shell's one home since R15-P1-4.
+    let trace = body(&app, "/terminal");
+    assert!(trace.contains("uname -a"), "{trace}");
+    assert!(trace.contains("data-outcome=\"ok"), "{trace}");
 }
 
 /// The gate (ADR-006, I6): no space, no workspace. Default deny is
@@ -99,9 +100,9 @@ fn an_agent_with_no_space_is_refused_a_workspace() {
     ask(&app, "wipe the disk");
 
     assert!(shell.ran().is_empty(), "the command never ran: {:?}", shell.ran());
-    let trace = body(&app, "/tools");
+    let trace = body(&app, "/terminal");
     assert!(trace.contains("Tool not found"), "{trace}");
-    assert!(!trace.contains("data-outcome=\"ran\""), "{trace}");
+    assert!(!trace.contains("data-outcome=\"ok\""), "{trace}");
 
     // …and the same agent's terminal, where a person types the command
     // directly, is refused by the gate itself and told how to grant it.
@@ -112,8 +113,11 @@ fn an_agent_with_no_space_is_refused_a_workspace() {
     block_on(drive(Rc::clone(&app))).expect("the command is refused");
     assert!(shell.ran().is_empty(), "still nothing ran: {:?}", shell.ran());
     let terminal = body(&app, "/terminal");
-    assert!(terminal.contains("no workspace"), "{terminal}");
-    assert!(terminal.contains("space: &lt;name&gt;"), "the fix is named: {terminal}");
+    assert!(terminal.contains("no folder"), "{terminal}");
+    assert!(
+        terminal.contains("name a space in its agent file"),
+        "the fix is named: {terminal}"
+    );
 }
 
 /// A path that would leave the workspace is REFUSED, not clamped — and the
@@ -172,8 +176,8 @@ fn a_browser_with_no_workspace_says_so_and_the_turn_survives() {
     );
     ask(&app, "list the workspace");
 
-    let trace = body(&app, "/tools");
-    assert!(trace.contains("No workspace is available here"), "{trace}");
+    let trace = body(&app, "/terminal");
+    assert!(trace.contains("No folder is available here"), "{trace}");
     assert!(trace.contains("not cross-origin isolated"), "the reason: {trace}");
     let chat = body(&app, "/chat");
     assert!(chat.contains("There is no workspace here."), "{chat}");
