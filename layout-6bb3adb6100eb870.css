@@ -1,0 +1,200 @@
+/* layout.css — the dashboard shell: three regions, the fold, the breakpoints.
+   Geometry only. Not one colour, not one font size.
+
+   The numbers here are MEASURED, not chosen: increment 13 shipped this layout
+   broken twice, and scripts/layout-probe.js now asserts the fold transfer to
+   the pixel in all four states. Nothing below may change without it green. */
+
+/* One screen, at every width, in both skins: the page never scrolls, the
+   region you are in scrolls inside itself. Ungated — the plain skin measured
+   1015px in an 844px viewport when the fix was machine-skin-only. */
+html, body { height: 100%; }
+
+body { display: flex; flex-direction: column; overflow: hidden; overflow-x: hidden; }
+body > #main { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+
+main {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3);
+}
+
+/* `flex: 0 0 auto` is the whole fix for a bug this file shipped once: as
+   shrinkable items the regions were squeezed BELOW their content and .stage
+   spilled 255px onto the rail. */
+.nav, .rail, .stage { min-width: 0; flex: 0 0 auto; }
+
+/* The view list is a vertical column of buttons in both skins — unscoped
+   because the scoped version left the fallback with theme.css's flex-wrap. */
+.nav .view-list { display: flex; flex-direction: column; flex-wrap: nowrap; gap: var(--s-1); }
+
+.nav .view-item { width: 100%; text-align: left; display: flex; align-items: center; gap: var(--s-2); }
+
+/* The agent strip moved out of the nav (13) into the views that used it (15B,
+   R3-21) and out of THOSE into the stage's head (R5-6): one instance, so
+   `tab-{name}` stays unique. `flex: 0 0 auto`: it is PINNED. */
+.stage-head .agent-tabs { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--s-1); flex: 0 0 auto; }
+
+/* …AND IT IS A ROW, NOT A BLOCK, ON A PHONE (R18-P1-9). Six agents wrapped to
+   three rows of chips — 175px of picker over a conversation with 180px. Below
+   48rem it scrolls sideways: one row, every agent still in it and still in the
+   tab order, and the browser scrolls a focused tab into view. Each chip keeps
+   its own width — left shrinkable they divided the 358px between them and
+   wrapped their labels instead, which is three rows wearing a scrollbar. */
+@media (max-width: 48rem) {
+  .stage-head .agent-tabs {
+    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; overscroll-behavior-x: contain;
+  }
+  .stage-head .agent-tabs::-webkit-scrollbar { display: none; }
+  .stage-head .agent-tabs .tab { flex: 0 0 auto; white-space: nowrap; }
+  /* …and the OPEN thread keeps the top of the stage (THREADS.md §2): stacking
+     three summaries above it would spend the 370px the fold gate leaves. */
+  .threads > .panel[data-chat] { order: -1; }
+}
+
+/* ---- the conversation is a fixed frame, not a document (R3-10): the chat
+   view fills the stage exactly and .chat-log holds the only scrollbar. */
+.stage > .chat-view { flex: 1 1 auto; min-height: 0; }
+
+/* Every view is a mounted region; exactly one is not `hidden`. …and it is the
+   QUERY CONTAINER for the horizontal system below (R6-LAYOUT). A container
+   query, not a media query: folding the side panel hands 374px to the centre
+   without the window moving. */
+.view-panel { display: flex; flex-direction: column; gap: var(--s-4);
+  container-type: inline-size; container-name: stage; }
+
+/* ---- THE HORIZONTAL SYSTEM (R6-LAYOUT, finished in R7) -------------------
+   A panel's width is for a READING COLUMN plus a COMPANION. The column is
+   `--measure` and holds everything a person reads or types (`.note` and
+   `.grows` share the one cap); the companion takes what is left and holds
+   what you look at WHILE reading — the board beside the launcher, the
+   endpoint's health beside its form. The gutter is `--s-6`, the step the card
+   already pays inside its own edge: one rhythm, not two. Below the threshold
+   there is one track and the companion falls under the column in DOM order —
+   which is why the run state stays FIRST (R6-6). */
+.split, .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4); align-items: start; }
+
+.split > .beside, .dash-side { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+
+/* `--column` for a card in the stage, `--measure` for a split INSIDE a card
+   whose padding is already paid.
+   THE COMPANION IS CLAMPED (R7-5). Every pixel the folded sidebar handed back
+   went to the SECONDARY track — at 1440 the companion grew 16% wider than the
+   primary action. `max-width` caps the pair at two reading columns and a
+   gutter, so the companion may EQUAL the column and never beat it.
+
+   AND IT STACKS BEFORE IT SQUEEZES (R7-17). At 60rem the floor was 322px and
+   it spent a 100px band squeezed with headings and board rows wrapping. 66rem
+   puts the floor at 26rem (416 measured), `.rail`'s own maximum. */
+@container stage (min-width: 66rem) {
+  .dash-grid {
+    grid-template-columns: minmax(0, var(--column)) minmax(0, 1fr);
+    gap: var(--s-6); max-width: calc(2 * var(--column) + var(--s-6));
+  }
+  .split {
+    grid-template-columns: minmax(0, var(--measure)) minmax(0, 1fr);
+    gap: var(--s-6); max-width: calc(2 * var(--measure) + var(--s-6));
+  }
+}
+
+/* THE THIRD SHAPE — A DECK (R7-6b). A LIST of cards is not a reading column with
+   a companion: each card is one reading column wide, as many across as fit. The
+   track's max is `1fr`, not `--column`: `auto-fit` counts repetitions off a
+   DEFINITE max and resolved to ONE track in a 1072px panel. The cap belongs on
+   the card. `#agent-list` is `contents` so the core's wrapper (I8) hands its
+   cards through as the deck's own tracks. */
+.card-deck { display: grid; gap: var(--s-3); align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
+
+.card-deck > *, .card-deck .agent-card { max-width: var(--column); }
+.card-deck > #agent-list { display: contents; }
+
+/* …and a card holding ONLY a reading column stops at one (R7-6b). Settings'
+   Appearance was 1136px round 494px of text with an empty right half. */
+.panel.reading { max-width: var(--column); }
+
+/* ---- below the three-column breakpoint the nav is a SHEET (R3-9): in the flow
+   it pushed the <h1> to y=498 at 800px. Anchored to the BOTTOM, because a drawer
+   whose top edge is under the header covers its own switch. `main > .nav`:
+   glass.css owns `.nav { position }` (G1). */
+@media (max-width: 1099px) {
+  main > .nav {
+    position: fixed;
+    z-index: 30;
+    left: var(--s-3);
+    right: var(--s-3);
+    bottom: var(--s-3);
+    max-height: 60vh;
+    overflow-y: auto;
+    /* A BOUNDARY THAT READS AS INTENTIONAL (R5-8): E1's hairline alone read as
+       a rendering fault. E3's shadow is "this floats over the page". */
+    box-shadow: var(--e1-lit), var(--e3-shadow);
+  }
+
+  /* …and the dark under it, the dismiss target: it was Escape only. */
+  .nav-scrim { position: fixed; inset: 0; z-index: 29; }
+
+  /* …and the STAGE becomes the scroller, so the composer and the agent strip
+     are pinned at every width and not only in the grid (R3-10). */
+  .stage { flex: 1 1 auto; min-height: 22rem; overflow-y: auto; }
+}
+
+/* Above the threshold the nav is a column in the grid: nothing to dismiss. */
+@media (min-width: 1100px) {
+  .nav-scrim, .nav-close { display: none; }
+  main {
+    display: grid;
+    /* auto | 1fr | auto, every region PINNED: unpinned, folding the nav moved
+       .stage into the content-sized column and it LOST 195px of 435. */
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0;
+    align-items: stretch;
+    width: 100%;
+    max-width: 96rem;
+    margin-inline: auto;
+    padding: var(--s-4);
+    overflow: hidden;
+  }
+
+  /* Only in the grid path may a region be shorter than its content. */
+  .nav, .rail, .stage { min-height: 0; }
+  .nav { grid-column: 1; width: 13rem; overflow-y: auto; }
+  .stage { grid-column: 2; overflow-y: auto; margin-inline: var(--s-4); }
+
+  .rail {
+    grid-column: 3;
+    width: clamp(21rem, 26vw, 26rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 22rem) {
+  main { padding: var(--s-2); gap: var(--s-2); }
+}
+
+/* ---- THREADS (docs/THREADS.md): one column at every width, one row per
+   loaded agent, the open one taking the room — not a 360px card over dead
+   ground. `[data-chat]` and not `#chat-panel`: the panel's id is the agent's
+   now, so it cannot be a selector (§7). */
+.threads { display: flex; flex-direction: column; gap: var(--s-3); flex: 1 1 auto; min-height: 0; }
+.threads > .panel { flex: 0 0 auto; }
+/* `min-content`, not 0: as a shrinkable child under five collapsed rows the
+   open thread was cut off at its own composer, which then painted over the row
+   below it. It fills what is left and never less than the transcript's floor. */
+.threads > .panel[data-chat] { flex: 1 1 auto; min-height: min-content; }
+/* The summary WRAPS its sentence — the sideways treatment above is the strip's. */
+.thread-summary { width: 100%; text-align: left; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2); white-space: normal; }
+
+/* ---- 400% zoom: at 400% of 1280x1024 the viewport is 320x256 and the
+   one-screen chain became a trap (WCAG 1.4.10). Below 30rem of height this is
+   an ordinary scrolling document; the guard's ONESCREEN is gated the same. */
+@media (max-height: 30rem) {
+  body { overflow: auto; }
+  body > #main { height: auto; min-height: 100%; }
+  main { overflow: visible; }
+  .nav, .rail, .stage { overflow: visible; }
+  /* …which un-does the pinning: a stage with a height and `visible` overflow
+     spills over the rail instead of scrolling. */
+  .stage { flex: 0 0 auto; min-height: 0; }
+}

@@ -1,0 +1,200 @@
+/* chrome.css — the persistent furniture: header, nav, rail, footer. Each is
+   defined HERE, once. */
+
+/* ONE ROW, ALWAYS (R4-8): it wrapped to 126px once a run started. */
+header {
+  display: flex; align-items: center; flex-wrap: nowrap; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4); margin: var(--s-3) var(--s-3) 0;
+  position: relative; isolation: isolate; z-index: 10; flex: 0 0 auto;
+  transition: box-shadow var(--dur) var(--ease);
+}
+
+/* The wordmark is a LOGO, third of the display family's three (R5-B). */
+header .wordmark {
+  font-family: var(--display); font-size: var(--t-label);
+  font-weight: var(--w-strong); letter-spacing: var(--tr-caption); color: var(--accent);
+}
+
+/* PILLS: opaque for G3, no `overflow: hidden` (R6-4) — one that can clip will. */
+header .pill {
+  margin: 0; flex: 0 0 auto; padding: var(--s-2) var(--s-3);
+  background-color: var(--surface-1); border-radius: var(--r-full);
+  font-size: var(--t-label); line-height: var(--lh-label);
+  color: var(--ink-2); white-space: nowrap;
+}
+
+/* WHOLE ITEMS, IN A STATED ORDER (R6-4). Nothing leaves at any width — the
+   endpoint and the workspace shrink (R7-12, R9-5, R11-10, R13-P1-5). */
+.status-strip {
+  display: flex; align-items: center; gap: var(--s-3);
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  /* so the last pill never ends flush against the switch beside it */
+  padding-inline-end: var(--s-2);
+}
+
+/* THE ONE THING THAT GIVES WAY BY SHRINKING, with an ellipsis to shrink INTO. */
+header .chat-endpoint {
+  flex: 1 1 auto; min-width: var(--s-8); max-width: 46rem;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* THE PRIORITY, AS RULES. The strip's DOM order is the priority order and these
+   take it from the bottom. THE MODEL ID NEVER LEAVES (R11-10) — it SHRINKS:
+   framing and closing clause out, `calls ` in, id kept and ellipsised. NEITHER
+   DOES THE SPEND (R13-P1-5): dropped here, at 390 the meter sat in the DOM with
+   `offsetParent: null` under a legend inside the collapsed drawer. */
+@media (max-width: 75rem) {
+  header .chat-endpoint .pill-label, header .chat-endpoint .pill-tail { display: none; }
+  header .chat-endpoint .pill-short { display: inline; }
+}
+
+/* …and the strip takes a second line rather than clipping one (R5-7): a sixth
+   item at tablet width costs a row of height, never a shorn glyph. */
+@media (max-width: 64rem) { .status-strip { flex-wrap: wrap; overflow: visible; } }
+/* The model id is the part that ellipsises. */
+.chat-endpoint .pill-subject { overflow: hidden; text-overflow: ellipsis; }
+
+/* THE RUNNING PILL STAYS AT 390 (R9-5). AND THE WORKSPACE NEVER DROPS EITHER
+   (R7-12): it SHRINKS — `.pill-label` out, `.pill-short` (the NAME) in, so what
+   is left is `main: ready` and never a bare `ready`. */
+.pill-short { display: none; }
+/* 64rem, not 48 (R11-10). The wordmark goes here — the only thing in the bar
+   that is not news (R6-4), and the only thing in it that leaves at all. */
+@media (max-width: 64rem) {
+  header .warmth .pill-label { display: none; }
+  header .warmth .pill-short { display: inline; }
+  header .wordmark { display: none; }
+}
+
+/* TWO ROWS AT PHONE WIDTH, ALWAYS (R8-1). At 390 the two switches left the
+   strip 71px and `Agent: main` clipped to `Agent: m`. `order`, not DOM order:
+   the switches keep the top row and the tab order is unchanged. */
+/* …AND IT DOES NOT WRAP ON A PHONE (R18-P1-9). Wrapping is cheap at tablet width
+   and ruinous at 390: five pills over four rows made the header 296px, which with
+   the failure banner under it left the conversation 78px of an 844px screen. One
+   row that swipes sideways — every pill still in the DOM and none of them shorn,
+   because a scrollport you can move is not the clipped box R5-7 objected to. */
+@media (max-width: 30rem) {
+  header { flex-wrap: wrap; }
+  .status-strip { /* its OWN row (R9-5) */
+    flex: 1 1 100%; order: 1; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; overscroll-behavior-x: contain;
+  }
+  .status-strip::-webkit-scrollbar { display: none; }
+}
+/* THE LAST TURN FAILED (F12), on a ROW OF ITS OWN under the header (R8-2): in
+   the strip it fitted only by evicting the model line and the spend — an error
+   state may add a row, never subtract a fact. */
+.banner {
+  margin: var(--s-3) var(--s-3) 0; padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md); flex: 0 0 auto;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
+  max-height: 30vh; overflow-y: auto;
+}
+
+.banner.problem {
+  background-color: color-mix(in srgb, var(--danger) 18%, var(--surface-1));
+  box-shadow: inset 0 0 0 1px var(--danger); color: var(--ink); font-weight: var(--w-medium);
+}
+
+/* The sentence takes a whole row before it takes a narrow column: a 20rem
+   basis does not fit beside two controls at phone width, so it wraps above
+   them, and at every wider width the three sit on one line. */
+.problem-line { flex: 1 1 20rem; min-width: var(--s-8); }
+
+/* NOTHING IN THE HEADER SHRINKS BUT THE ENDPOINT (R4-8, R5-7). */
+header .panel-toggle, header .wordmark, .switches,
+header .meter, header .warmth, header .subject { flex: 0 0 auto; white-space: nowrap; }
+
+/* THE MENU (R2-3): the views switch is the header's first control. */
+header .panel-toggle[aria-controls="nav"]::before { content: "\2630  "; }
+
+/* …AND ON A PHONE THE SENTENCE SCROLLS RATHER THAN TAKING A ROW PER CLAUSE
+   (R18-P1-9). The longest failure it carries is a whole remedy paragraph: 253px
+   at 390, over a conversation with 78px, with the two controls that answer it
+   pushed below the fold. The cap moves off the banner and onto the SENTENCE, so
+   nothing is truncated and `Open Settings` and `Dismiss` never scroll away. */
+@media (max-width: 48rem) {
+  header { padding: var(--s-2) var(--s-3); gap: var(--s-2); }
+  .switches { gap: var(--s-1); }
+  .banner { max-height: none; }
+  .problem-line { max-height: 3rem; overflow-y: auto; }
+}
+
+header .subject strong { color: var(--ink); font-weight: var(--w-strong); }
+header .warmth::before { content: "● "; color: var(--ink-3, var(--ink-2)); }
+header .warmth.booting::before { color: var(--warning); }
+header .warmth.ready::before { color: var(--success); }
+header .warmth.busy::before { color: var(--warning); }
+header .warmth.failed { max-width: 28rem; overflow: hidden; text-overflow: ellipsis; }
+header .warmth.failed::before { color: var(--danger); }
+
+header .pill.running { color: var(--ink); font-weight: var(--w-medium); }
+header .pill.running::before { content: "\25C6  "; color: var(--accent); }
+
+.switches { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-left: auto; }
+
+/* NAVIGATION IS NOT A FORM ACTION (R4-17): a LIST ROW with no box at rest, and
+   NO BORDER — a bordered control owes a 3:1 boundary (1.4.11). */
+.nav .view-item { background-color: transparent; border: 0; color: var(--ink); font-weight: var(--w-normal); }
+
+/* HOVER IS WEAKER THAN SELECTION (R18-P2). `--e2-fill` IS `--surface-2` in the
+   plain skin, and `--surface-2` is what `[aria-current="page"]` paints: two items
+   read as selected at once. A tint ("+4% ink"), not a surface. */
+.nav .view-item:hover { background-color: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink); }
+.nav .view-item:active { background-color: color-mix(in srgb, var(--ink) 7%, transparent); }
+.nav .view-item[aria-current="page"] {
+  box-shadow: inset 4px 0 0 0 var(--accent); background-color: var(--surface-2);
+  color: var(--ink); font-weight: var(--w-strong);
+}
+
+/* …AND THE FOCUS HALO SURVIVES IT (R4-9). */
+.nav .view-item[aria-current="page"]:focus-visible {
+  box-shadow: inset 4px 0 0 0 var(--accent), 0 0 0 4px var(--focus-halo);
+}
+
+/* A COMPANION COLUMN SPEAKS ONE STEP DOWN (R11): the rail is what you look at
+   WHILE reading the middle (§6). `--t-heading` is the existing `h3` step. */
+.rail .panel > h2 { font-size: var(--t-heading); line-height: var(--lh-heading); }
+
+/* WHERE THE DROPPED FACTS LIVE, AND WHAT THEY MEAN (R7-12, R7-13): the nav is
+   reachable at every width and the fold sits at its foot. …AND IT SCROLLS INSIDE
+   ITSELF rather than past the nav's edge (R11); `min-height: 0` allows it. */
+.nav .status-fold {
+  margin-top: auto; min-height: 0; overflow-y: auto;
+  padding: var(--s-2); border-radius: var(--r-md);
+}
+
+.crumb { margin: 0; display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-caption); color: var(--ink-2); }
+
+.nav { padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-3); }
+.rail { padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-3); }
+/* A PANEL IN THE RAIL SCROLLS INSIDE ITSELF (R8-5): without one, `show_last`
+   moved the RAIL and left Chat 257px down with its first heading cut off. */
+.rail #tool-trace { max-height: 22rem; overflow-y: auto; }
+.rail-who { margin: 0; font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-2); }
+.rail-who strong { color: var(--ink); font-weight: var(--w-strong); }
+.stage { padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
+
+.masthead { display: flex; align-items: baseline; gap: var(--s-3); flex: 0 0 auto; }
+
+header .meter { font-variant-numeric: tabular-nums; color: var(--ink); }
+header .pill-label { color: var(--ink-2); }
+
+/* What this is (F1), as a LEDE (R4-13) — second of the display family (R5-B). */
+.tagline {
+  margin: 0; max-width: var(--measure); color: var(--ink-2);
+  font-family: var(--display); font-size: var(--t-heading); line-height: var(--lh-body);
+}
+
+/* THE STAGE'S OWN HEAD (R5-6, R5-A): the agent strip and the view's eyebrow. */
+.stage-head { display: flex; flex-direction: column; gap: var(--s-2); flex: 0 0 auto; }
+
+.view-eyebrow {
+  margin: 0; font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase;
+  font-weight: var(--w-strong); color: var(--ink-2);
+}
+/* THE DRAWER'S WAY OUT (R5-8); layout.css positions both. */
+.nav-scrim { background-color: var(--e3-scrim); border: 0; }
+.nav-close { margin-left: auto; }

@@ -1,0 +1,200 @@
+/* controls.css — everything you can click, type into, or tab to. One button,
+   one input, one tab, one badge, one toggle, all five states on each. */
+form { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-2); }
+form.oneline { flex-direction: row; align-items: center; flex-wrap: wrap; }
+form label { font-size: var(--t-label); font-weight: var(--w-medium); color: var(--ink-2); }
+form .row, .editor-picks { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+form .row button { flex: 0 1 auto; max-width: 100%; }
+/* An armed destructive action states its consequence on its own line (R6-5). */
+form .row > .error { flex: 1 0 100%; margin: 0; max-width: var(--measure); }
+.editor-picks { margin: var(--s-3) 0; }
+
+input, textarea, select, button {
+  font-family: inherit; font-size: var(--t-label); line-height: var(--lh-label);
+  border-radius: var(--r-sm);
+  min-height: 44px;   /* the target a thumb can hit (WCAG 2.2), a floor */
+  padding: var(--s-2) var(--s-3);
+  /* Only the compositable properties (DESIGN §7). */
+  transition: background-color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              opacity var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+}
+
+/* A field holds TYPED TEXT: opaque (G3), --control border at 4.4:1 (F16). */
+input, textarea, select { flex: 0 1 auto; background-color: var(--surface-1); color: var(--ink); border: 1px solid var(--control); }
+
+/* A 14rem basis, not `auto` (R3-20): content-sized, the task field shared its
+   row down to 178px of a 340px card. */
+form.oneline > input, form.oneline > textarea, form.oneline > select { flex: 1 1 14rem; }
+select { cursor: pointer; }
+
+/* Five states, gated on :not(:disabled). */
+input:not(:disabled):hover, textarea:not(:disabled):hover,
+select:not(:disabled):hover { border-color: var(--ink-3); }
+input:not(:disabled):active, textarea:not(:disabled):active, select:not(:disabled):active,
+input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+
+/* Invalid is a border AND a message; :user-invalid so an untouched field is not
+   shouted at, `aria-invalid` for the app's own refusal (R4-7). DASHED. */
+input:user-invalid, textarea:user-invalid, select:user-invalid,
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--danger); border-style: dashed; }
+::placeholder { color: var(--ink-3); }
+textarea { min-height: calc(var(--s-8) + var(--s-4)); resize: vertical; }
+
+/* THE TWO FIELDS A TURN STARTS FROM (R4-4). They were 44px `<input>`s and a
+   3,000-character instruction showed about ninety characters of itself. Three
+   rows is the floor; `field-sizing` grows it. THE MEASURE APPLIES TO WHAT YOU
+   TYPE (R6-LAYOUT): at 960px the composer did not line up with its own replies. */
+.grows {
+  field-sizing: content; min-height: calc(var(--s-8) + var(--s-6));
+  max-height: 33vh; max-width: var(--measure);
+  /* …AND WHAT IS PAST THE CAP SCROLLS (R8-17). `field-sizing: content` sizes
+     the box to the text and then `max-height` stops it, and with the UA's
+     `overflow: auto` overridden to nothing the surplus was simply cut: at 3,603
+     characters the field clipped a line horizontally through its middle, with
+     no scrollbar and no way to reach the end of what you had typed. */
+  overflow-y: auto;
+}
+#agent-md { width: 100%; font-family: var(--mono); min-height: 12rem; }
+
+button { background-color: var(--accent); color: var(--accent-ink); border: 1px solid transparent; cursor: pointer; font-weight: var(--w-strong); }
+
+/* hover lifts the fill, active pushes further and adds the 2% squash. */
+button:not(:disabled):hover { background-color: color-mix(in srgb, var(--accent) 96%, white); }
+
+button:not(:disabled):active { background-color: color-mix(in srgb, var(--accent) 93%, white); transform: scale(0.98); }
+
+/* THE PRIMARY ACTION, said in a class (R3-16). It NAMES the four actions. */
+.btn-primary { background-color: var(--accent); color: var(--accent-ink); }
+
+/* A disabled control must LOOK disabled (R3-15): dead ink, dashed edge. */
+button:disabled, input:disabled, select:disabled,
+textarea:disabled { cursor: not-allowed; opacity: 0.55; }
+
+button:disabled { background-color: transparent; color: var(--ink-3); border-color: var(--ink-3); border-style: dashed; transform: none; }
+
+/* SECONDARY carries a glass fill; GHOST carries none. */
+.btn-secondary, .panel-toggle, .skin-toggle, .agent-tabs .tab {
+  background-color: var(--e2-fill); color: var(--ink);
+  border: 1px solid var(--control); font-weight: var(--w-medium);
+}
+
+.btn-ghost { background-color: transparent; color: var(--ink); border: 1px solid var(--control); font-weight: var(--w-medium); }
+.btn-ghost:not(:disabled):hover { background-color: var(--e2-fill); border-color: var(--ink-3); }
+.btn-ghost:not(:disabled):active { background-color: color-mix(in srgb, var(--ink) 7%, transparent); }
+
+.btn-secondary:not(:disabled):hover, .panel-toggle:not(:disabled):hover,
+.skin-toggle:not(:disabled):hover, .agent-tabs .tab:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--ink) 4%, var(--e2-fill));
+  border-color: var(--ink-3);
+}
+
+/* DESIGN §8's "+7% fill", against --ink: that is what a glass fill IS. */
+.btn-secondary:not(:disabled):active, .panel-toggle:not(:disabled):active,
+.skin-toggle:not(:disabled):active, .agent-tabs .tab:not(:disabled):active {
+  background-color: color-mix(in srgb, var(--ink) 7%, transparent);
+  border-color: var(--ink-2);
+}
+
+/* danger is fill-less and needs its own hover/active, or the accent hover
+   above repaints a destructive control PURPLE (R4-17). */
+.btn-danger { background-color: transparent; color: var(--danger); border-color: var(--danger); font-weight: var(--w-medium); }
+.btn-danger:not(:disabled):hover { background-color: color-mix(in srgb, var(--danger) 12%, transparent); }
+.btn-danger:not(:disabled):active { background-color: color-mix(in srgb, var(--danger) 20%, transparent); }
+/* NO :disabled exception: F15's overreached and a disabled Delete looked live. */
+
+/* the two panel switches: an accent edge beside a verb (F4). */
+.panel-toggle[aria-expanded="true"], .panel-toggle.open { border-color: var(--accent); }
+
+/* ---- A TOGGLE LOOKS LIKE A TOGGLE (R5-16) --------------------------------
+   It was a full-width centre-aligned button whose whole visible state was its
+   own label, over an `aria-pressed` nobody looking could see. Now: a real
+   switch track, the knob on the side the state is on, and a state word beside
+   it so position is never the only channel. */
+.skin-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--s-2); }
+
+.skin-toggle::after {
+  content: ""; flex: 0 0 auto; inline-size: 2.25rem; block-size: 1.25rem;
+  border: 1px solid var(--control); border-radius: var(--r-full);
+  background-color: var(--surface-1);
+  background-image: radial-gradient(circle at 25% 50%, var(--control) .3rem, transparent .31rem);
+}
+
+.skin-toggle[aria-pressed="true"] { border-color: var(--accent); font-weight: var(--w-strong); }
+
+.skin-toggle[aria-pressed="true"]::after {
+  border-color: var(--accent);
+  background-image: radial-gradient(circle at 75% 50%, var(--accent) 0.3rem, transparent 0.31rem);
+}
+
+.toggle-state { color: var(--ink-2); font-weight: var(--w-normal); }
+
+/* ---- THE KEYBINDING, SAID (R5-5). A LINE UNDER the field, not a third item
+   in the row: `form.oneline` wraps, so without the basis it sat beside Send. */
+.hint { margin: 0; flex: 1 0 100%; color: var(--ink-2); font-size: var(--t-label); line-height: var(--lh-label); }
+
+.hint kbd { color: var(--ink); font-family: var(--mono); }
+
+/* ---- tabs --------------------------------------------------------------- */
+.agent-tabs { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.agent-tabs .tab { border-radius: var(--r-sm); justify-content: flex-start; }
+
+/* ONE SELECTION LANGUAGE, FORTY PIXELS APART (R8-12). A selected nav item was
+   a fill plus a purple EDGE and no border; a selected tab was a fill plus a
+   brightened BORDER plus the edge — two lists in one column saying "this one"
+   two ways, one of them spending the accent on a boundary. Selection is now the
+   same three things in both: the fill, the accent edge (turned 90° for a row,
+   where it replaced the `▸` — F17), and the weight. */
+.agent-tabs .tab.current,
+.agent-tabs .tab[aria-selected="true"] {
+  background-color: var(--surface-2);
+  box-shadow: inset 0 -3px 0 0 var(--accent); font-weight: var(--w-strong);
+}
+
+/* …AND THE FOCUS HALO SURVIVES THE EDGE (R4-9): the inset accent is a
+   box-shadow and outranks `:focus-visible`. */
+.agent-tabs .tab.current:focus-visible,
+.agent-tabs .tab[aria-selected="true"]:focus-visible {
+  box-shadow: inset 0 -3px 0 0 var(--accent), 0 0 0 4px var(--focus-halo);
+}
+
+/* The selected tab keeps its painting under the pointer. */
+.agent-tabs .tab.current:hover,
+.agent-tabs .tab[aria-selected="true"]:hover { background-color: var(--surface-2); border-color: var(--control); }
+.tab-origin { color: var(--ink-2); font-size: var(--t-caption); font-weight: var(--w-normal); }
+.tab.current .tab-origin { color: var(--ink); }
+
+/* ---- badge: the label is the channel, colour the second signal -------- */
+.badge {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: var(--s-1) var(--s-2); border-radius: var(--r-full);
+  border: 1px solid var(--tone); font-size: var(--t-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase;
+  font-weight: var(--w-strong); color: var(--ink); min-height: 0;
+}
+.badge::before { content: ""; width: var(--s-2); height: var(--s-2); border-radius: var(--r-full); background: var(--tone); }
+
+/* ---- disclosure states (box in surfaces.css; INTERACTION here) -------- */
+summary { transition: color var(--dur-fast) var(--ease); }
+summary:hover { color: var(--ink); }
+summary:active { color: var(--accent); }
+
+/* The way out of a failed turn (F11). */
+.recovery { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+
+/* ---- THE WAIT: ONE ROW, AND IT HOLDS ITS SHAPE (R6-7) --------------------
+   `waiting for the model — 0s` wrapped over four lines and its button over
+   five, in a ~60px column: a flex row of three shrinkable items collapses to
+   its narrowest child. The clock and the button are unshrinkable and on one
+   line; the sentence takes a full row underneath, like `.hint`. */
+.wait-clock {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--s-2) var(--s-3); font-size: var(--t-label);
+}
+
+.wait-time { flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wait-clock > button { flex: 0 0 auto; white-space: nowrap; }
+.wait-clock > .note { flex: 1 0 100%; margin: 0; }

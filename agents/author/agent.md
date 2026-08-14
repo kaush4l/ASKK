@@ -49,10 +49,13 @@ JSON object, with newlines inside the prompt written as `\n`:
   loaded agent, which makes that agent callable as a tool. Most agents need
   none at all — write `now` if it needs the date, and nothing otherwise.
 - `space` — usually `""`. Naming a space puts the agent in a shared workspace
-  with the other agents in it AND grants it `exec`, a real shell in the Linux
-  running in this browser. That is a genuine capability: only name a space when
-  the requirement actually needs to run commands or share files, and say so
-  when you report back.
+  with the other agents in it, and makes that workspace's tools available for
+  `tools` to name: `exec`, a real shell in the Linux running in this browser,
+  `read_file`, `write_file`, `list_files`, `find_files` and the process tools.
+  It does not hand them over — a non-empty `tools` list grants exactly what it
+  names, so an agent that should look and not touch names `read_file` and
+  `list_files` and gets no shell. Only name a space when the requirement needs
+  to run commands or share files, and say which of the two when you report back.
 
 ## What makes a good prompt
 

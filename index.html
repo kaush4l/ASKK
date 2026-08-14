@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ASKK</title>
+  <!-- The product is called HARNESS on the page's own heading; the tab used to
+       say ASKK, which is the repository's name and nobody else's (F1). -->
+  <title>HARNESS — AI agents in your browser</title>
   <base href="./">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -13,8 +15,8 @@
        production and publish.sh gates on it. -->
   
 <script type="module">
-import init, * as bindings from './ui-419c4f629231f5e6.js';
-const wasm = await init({ module_or_path: './ui-419c4f629231f5e6_bg.wasm' });
+import init, * as bindings from './ui-c2bec71bb03e33f.js';
+const wasm = await init({ module_or_path: './ui-c2bec71bb03e33f_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -31,19 +33,26 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
        Link order is dependency order — tokens define, base sets defaults,
        glass is the material, layout is geometry, then the three that compose
        over all of it. -->
-  <link rel="stylesheet" href="./tokens-ad32d5afd8bb45f5.css" integrity="sha384-OreOIZJEbmiLp+cSX5EmPvaopWQySlxE/1MnLMuo4rl3U+J6AcJMjB40w9iFrCnL"/>
-  <link rel="stylesheet" href="./base-3748710990c75ffa.css" integrity="sha384-gRUcrAuPJViHZKp8O/r19vExF1M/3/+NXPOLw9LPRmZbrfoYSSCAwZtBBdgiK1Zw"/>
-  <link rel="stylesheet" href="./glass-dd08f562ca2f2e64.css" integrity="sha384-cmlJAaBPPhzrHgsIj9JSfau3YMDhMkKvms9DozcN8EKN3f7HKaO86zecxy1vuCn3"/>
-  <link rel="stylesheet" href="./layout-efdfc1c5669895a8.css" integrity="sha384-JZpO1OtRptrFOZ0rfzk1U8x17b0oFDUvyUTSKcoyMo3sb0DH+X6/Vil+S0l5eLtu"/>
-  <link rel="stylesheet" href="./chrome-6c99f08077e83edd.css" integrity="sha384-LG7oW2Odz7czprGXPQ9LbTjFzP1cy14juwyPuvSSGDQbliaD+IfQI+zGwjVgylU3"/>
-  <link rel="stylesheet" href="./surfaces-84e0e33551375475.css" integrity="sha384-PqlZ6MILHtExCfCTQkF+VZsLoKtbKXrmo4iOp45pGS8axhNzQ+kzkIg+WudSjSrt"/>
-  <link rel="stylesheet" href="./controls-a8c0a3f44838e7ab.css" integrity="sha384-G8LscbcDCPjfhCyYF/ssxLMbp2g/9NlQ1EFJe22UKxoLyUjamaOa8U+ne14X5pDq"/>
-  <link rel="stylesheet" href="./workspace-26d482df7b5d2966.css" integrity="sha384-zLEFZxcr6MkmSkB8jrKoVy0+zZH7usNxMhyKr/1zQ1dF+73ahWRlb6Vp6LprrLF+"/>
+  <link rel="stylesheet" href="./tokens-7cfe8b40f2e0aeab.css" integrity="sha384-GzeLznGuKkMB4w/9WruhUGUCPL2mspCD+4jF4wb3KzZKb/TRZtXeWZsnvON6y3ma"/>
+  <link rel="stylesheet" href="./base-37df76ca802f64d8.css" integrity="sha384-JqpKaR8RTz2CwAcrknnrYt5/NV8f5/tRHXOxqRu1DVYot9uV3jYBbuZ4RmAc2zCO"/>
+  <link rel="stylesheet" href="./glass-3d748a3a705cfd88.css" integrity="sha384-m35RA9OsUbQim+ykrQv1z87imlDP+WWu8PcEzSSbKUCcZEJ+k2nGD8mJuG1smu8k"/>
+  <link rel="stylesheet" href="./layout-6bb3adb6100eb870.css" integrity="sha384-vaWhvECIUaqH615pZNqBr9ATZv9BKHyafC2vVV1W16Cw6g1tVWEGLcBHEG8sSJjf"/>
+  <link rel="stylesheet" href="./chrome-250947cf311bfef3.css" integrity="sha384-unPZcxoBfgOlWv02QzTcaVUPHlYnGNi8OCAOx+Pm6tIt62x259dqwvdwT+/+ufGI"/>
+  <link rel="stylesheet" href="./surfaces-21a93a6836d85a86.css" integrity="sha384-65QHhPCIXI/pKqCSZSd9hcd3Lmu/Bz85q0qLxIZCImtZhuJ4DulIqRXRjgTmOCQM"/>
+  <link rel="stylesheet" href="./controls-c4474ad67e748d2e.css" integrity="sha384-phidDWGojKhVzdZTKSItNEIJINb0+kijChhwHXJuHyeqi+bpWmCJctMd1KL0NxVH"/>
+  <link rel="stylesheet" href="./workspace-ab047ec549428bb.css" integrity="sha384-T3RTeNXuwSVoANOclJnVuax22WSF9gVyqAu3cyrcP1huu9TOQ6r2ivAZmhinOOua"/>
   
   
   <!-- One Worker per agent (increment 06). Transport only: it imports this
        build's own fingerprinted wasm bundle, whose URL the page reads off its
        own preload links and sends in the boot message. -->
+  
+  <!-- The container2wasm runtime (increment 18): the second Linux engine, and
+       the one this site hosts itself — engine, image mounter, an Alpine OCI
+       image and the xterm-pty/RunContainer glue, ~47 MB. Copied, not linked
+       from a CDN: that is the whole point of it next to CheerpX. It is FETCHED
+       ONLY IF the engine setting selects it (`adapters_web/src/engine.rs`), so
+       a page running CheerpX pays nothing for it being here. -->
   
   
   
@@ -55,7 +64,36 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
   <!-- The model catalogue, same deal: a named entry per endpoint, edited and
        redeployed without a rebuild (increment 04). -->
   
-<link rel="modulepreload" href="./ui-419c4f629231f5e6.js" crossorigin="anonymous" integrity="sha384-5DRBg9l2dilpqE/iSaGgGTmQ6f/TIKV1ZN3YyWCSCCcxNi5uAktfBKfgtXkBWQMx"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/inline0.js" crossorigin="anonymous" integrity="sha384-FiIp6el0CzwsGs5wtrL0XL7wA7kbv6PyVzpWv+9bc+OWXULKRhPl8/F7Nw5Sz2+g"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="preload" href="./ui-419c4f629231f5e6_bg.wasm" crossorigin="anonymous" integrity="sha384-QGHtaOKvQoieSjBZkCVlrv9Zt4CxcwzFj7KvbpTy3PIvfTmN/0g7dLws1Wa7sYSF" as="fetch" type="application/wasm"></head>
+  <!-- THE SAVED SKIN, BEFORE THE FIRST PAINT (R3-7). The bit lives on the root
+       element and `crates/ui/src/skin.rs` owns it — but that component mounts
+       only while Settings is the current view, so a reload onto any other view
+       painted the wrong ground until you went to Settings and back. A stored
+       preference about how the page LOOKS has to be applied before the page is
+       drawn, and nothing compiled to Wasm can be: the bundle is fetched after
+       the first frame. This is the whole exception — one attribute, read from
+       one key, no application logic (I5).
+
+       THE DEFAULT FLIPPED IN R5-C. Two huge blurred gradient blobs were the
+       only ornament in this product and the one thing dating it; the plain
+       ground measured cleaner, more focused and more expensive every time
+       anybody compared them, including the critic who was arguing FOR
+       ornament. So plain is what the page is, and the glow is what you turn
+       on. The stored value is now `glow`, and the ABSENCE of a choice means
+       plain — which is also what a browser with no storage, no scripting and
+       no `backdrop-filter` gets, so the default and the fallback are finally
+       the same picture. `?skin=plain` and `data-skin="plain"`, which
+       `scripts/check-layout.sh` and `scripts/layout-probe.js` select with, are
+       untouched: both skins are still reachable and both are still audited. -->
+  <script>
+    try {
+      if (localStorage.getItem("askk.skin") !== "glow") {
+        document.documentElement.setAttribute("data-skin", "plain");
+      }
+    } catch (e) {
+      document.documentElement.setAttribute("data-skin", "plain");
+    }
+  </script>
+<link rel="modulepreload" href="./ui-c2bec71bb03e33f.js" crossorigin="anonymous" integrity="sha384-ZISAyubogKSXwz+fojOuoZekQsDqyrztmpbp8DsqQu1hAZ/+6HN+kczLlJowWzu8"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/inline0.js" crossorigin="anonymous" integrity="sha384-FiIp6el0CzwsGs5wtrL0XL7wA7kbv6PyVzpWv+9bc+OWXULKRhPl8/F7Nw5Sz2+g"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/src/c2w.js" crossorigin="anonymous" integrity="sha384-8UllOE67ODxkWj/NhM55aqPDTBgx8UoSe26FJh7rBXat3otQD/dH9CDXtLbc6Qso"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/src/cheerpx.js" crossorigin="anonymous" integrity="sha384-lGYNB6WmfRaKknfP5URqA/k64IYUA83lz9kcbYrIgRf3iqPRH4I/QCkpn7VntDYG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="preload" href="./ui-c2bec71bb03e33f_bg.wasm" crossorigin="anonymous" integrity="sha384-+za9jXy4zPKpxOuVrlQJArzqa8bggZ5XTn9AfoAkpPkkFTP5wIAsyPh6voeVZyMI" as="fetch" type="application/wasm"></head>
 <body>
   <!-- What a person sees BEFORE the Wasm mounts, and what they are left with
        if it never does: the bundle 404s, a stale service worker serves a shell
@@ -71,6 +109,8 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
   <div id="main"></div>
   <div id="boot">
     <h1>HARNESS</h1>
+    <p class="tagline">AI agents with a folder in Linux, running in this
+      browser tab.</p>
     <p class="pending" role="status">Starting…</p>
     <p class="note">If this message is still here after a few seconds, the page
       loaded but its application bundle did not. That is almost always an old
@@ -81,7 +121,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
   <noscript>
     <!-- The app is Rust compiled to WebAssembly and mounted by JavaScript;
          with scripting off there is nothing to show but the truth. -->
-    <h1>ASKK</h1>
+    <h1>HARNESS</h1>
     <p>This page is a WebAssembly application: it needs JavaScript enabled to
       load, and browser storage to keep your conversation on this device. No
       server holds your data.</p>
