@@ -1,0 +1,80 @@
+/* THE STATUS STRIP, AT EVERY WIDTH. Split out of `chrome.css` (I12): the strip
+   carries five pills, three breakpoints and one scrollport, and chrome.css was
+   at the 200-line ceiling before the 24-walk's pill fix could land in it. The
+   chrome's own furniture — the bar, the banner, the switches — stays there.
+   Loaded AFTER chrome.css so the cascade order is unchanged. */
+/* WHOLE ITEMS, IN A STATED ORDER (R6-4). Nothing leaves at any width — the
+   endpoint and the workspace shrink (R7-12, R9-5, R11-10, R13-P1-5). */
+.status-strip {
+  display: flex; align-items: center; gap: var(--s-3);
+  /* the trailing pad is so the last pill never ends flush against the switch */
+  flex: 1 1 auto; min-width: 0; overflow: hidden; padding-inline-end: var(--s-2);
+}
+
+/* THE ONE THING THAT GIVES WAY BY SHRINKING, with an ellipsis to shrink INTO. */
+header .chat-endpoint {
+  flex: 1 1 auto; min-width: var(--s-8); max-width: 46rem;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* THE PRIORITY, AS RULES. The strip's DOM order is the priority order and these
+   take it from the bottom. THE MODEL ID NEVER LEAVES (R11-10) — it SHRINKS:
+   framing and closing clause out, `calls ` in, id kept and ellipsised. NEITHER
+   DOES THE SPEND (R13-P1-5): dropped here, at 390 the meter sat in the DOM with
+   `offsetParent: null` under a legend inside the collapsed drawer. */
+@media (max-width: 75rem) {
+  header .chat-endpoint .pill-label, header .chat-endpoint .pill-tail { display: none; }
+  header .chat-endpoint .pill-short { display: inline; }
+}
+
+/* …and the strip takes a second line rather than clipping one (R5-7): a sixth
+   item at tablet width costs a row of height, never a shorn glyph. */
+@media (max-width: 64rem) { .status-strip { flex-wrap: wrap; overflow: visible; } }
+/* The model id is the part that ellipsises. */
+.chat-endpoint .pill-subject { overflow: hidden; text-overflow: ellipsis; }
+
+/* THE RUNNING PILL STAYS AT 390 (R9-5). AND THE WORKSPACE NEVER DROPS EITHER
+   (R7-12): it SHRINKS — `.pill-label` out, `.pill-short` (the NAME) in, so what
+   is left is `main: ready` and never a bare `ready`. */
+.pill-short { display: none; }
+/* 64rem, not 48 (R11-10). The wordmark goes here — the only thing in the bar
+   that is not news (R6-4), and the only thing in it that leaves at all. */
+@media (max-width: 64rem) {
+  header .warmth .pill-label { display: none; }
+  header .warmth .pill-short { display: inline; }
+  header .wordmark { display: none; }
+}
+
+/* TWO ROWS AT PHONE WIDTH, ALWAYS (R8-1). At 390 the two switches left the
+   strip 71px and `Agent: main` clipped to `Agent: m`. `order`, not DOM order:
+   the switches keep the top row and the tab order is unchanged. */
+/* …AND IT DOES NOT WRAP ON A PHONE (R18-P1-9). Wrapping is cheap at tablet width
+   and ruinous at 390: five pills over four rows made the header 296px, which with
+   the failure banner under it left the conversation 78px of an 844px screen. One
+   row that swipes sideways — every pill still in the DOM and none of them shorn,
+   because a scrollport you can move is not the clipped box R5-7 objected to. */
+@media (max-width: 30rem) {
+  /* the header's own `flex-wrap` at this width is chrome.css's line — one
+     property, one file (G1) — and it is what lets this strip take a row. */
+  .status-strip { /* its OWN row (R9-5) */
+    flex: 1 1 100%; order: 1; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; overscroll-behavior-x: contain;
+  }
+  .status-strip::-webkit-scrollbar { display: none; }
+  /* …AND THE ONE PILL STILL SHORN INSIDE IT (R20-C): `flex: 1 1 auto` above
+     shrank it to `--s-8` in a row that already scrolls, so 390 rendered the
+     sentence as `call…` — the model id R11-10 keeps at every width, gone where
+     nothing else names it and recoverable only two clicks into the drawer. A
+     scrollport does not shrink its contents. It stays LAST rather than taking a
+     row: a row costs ~75px of the 844 ONESCREEN (layout-probe.js) measures. */
+  header .chat-endpoint { flex: 0 0 auto; overflow: visible; }
+  /* …AND THE SWIPE PAYS OUT (24-walk F1). The 75rem rule hides `.pill-tail`,
+     where the ADDRESS and the with-or-without-a-key fact live, so the full
+     188px swipe bought `calls <model id>` and stopped. Restored HERE only: at
+     30–75rem the strip does not scroll, so there a tail would clip, not move.
+     The mask is the sole cue that it moves — the scrollbar is hidden above, and
+     text shorn at a rounded edge reads as a bug, not as an invitation. */
+  header .chat-endpoint .pill-tail { display: inline; }
+  .status-strip { mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent); }
+  .status-strip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+}
