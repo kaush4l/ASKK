@@ -68,7 +68,13 @@
   <!-- The rail switch, and ONLY on the views that have a rail (R2-12): it used
        to render disabled, labelled "No instruments here", on four views of
        seven. The skin switch left the header entirely (R2-14) and is in the
-       Settings panel below, where the CONTRAST sweep still measures it. -->
+       Settings panel below, where the CONTRAST sweep still measures it.
+       R2-12 IS ROUTED NOW (28): `views.rs::rail()` is Workspace ALONE, so on
+       the Dashboard route `layout-probe.js` removes this switch and the rail
+       with it. Leaving both standing made every dash measurement ~370px
+       narrower than the shipped page — narrower than the 66rem container query
+       the Dashboard's own grid keys off, so the gate could not reach the state
+       that shipped a one-column board beside 1313px of nothing at 1440. -->
   <div class="switches">
     <button type="button" class="panel-toggle open" aria-expanded="true" aria-controls="rail">Hide folder</button>
   </div>
@@ -84,8 +90,8 @@
   <!-- R13-P0-3: a Worker that cannot load this build's bundle is a LIFECYCLE
        failure with no transcript beside it, so its whole remedy is said in
        this row (`core::failure::lifecycle`). That is the longest sentence the
-       banner can ever carry, which makes it the one the 30vh cap and the
-       320px wrap have to be measured against. -->
+       banner can ever carry, which makes it the one CLIPPED is measured
+       against: 401px of it at 320, 324 at 390, whole at 768 and above. -->
   <span class="problem-line">⚠ author's last turn failed: An older copy of this page's own code is still being served from this browser's cache, so its agents asked for a file this build does not have. Reload once: the page always fetches its shell from the network, and the worker that arrives with the newer build deletes every cache but its own as it takes over. If it is still here after that reload, open this page in a private window to confirm, then clear this site's data.</span>
   <button type="button" class="btn-ghost">Open Settings</button>
   <button type="button" class="btn-ghost">Dismiss</button>
@@ -138,9 +144,13 @@
          instance is what keeps `tab-{name}` unique. -->
     <div class="stage-head">
       <p class="view-eyebrow">Dashboard</p>
-      <!-- The Commands head's extra line (R17-P1-9), measured here because the
+      <!-- The Workspace head's extra line (R17-P1-9), measured here because the
            probe carries ONE stage-head and this is the widest thing that goes
-           in it: a full sentence between the eyebrow and the agent strip. -->
+           in it: a full sentence between the eyebrow and the agent strip. It is
+           ROUTED (28) — `stage.rs` renders it under `if here == View::Workspace`
+           and this fixture stood it on all three routes, charging ~180px of a
+           paragraph the Dashboard never draws against the CHROME floor, on the
+           one route where the failure banner is also at its longest. -->
       <p class="note">The shell below. The folder these commands run in, what is still running, and the files they finished are in the folder panel — the switch for it is in the header.</p>
       <div class="agent-tabs" id="agent-strip" role="tablist" aria-orientation="horizontal" aria-label="Which agent runs the task">
         <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="task-field" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
@@ -178,14 +188,15 @@
         <div class="tile" data-status="idle"><p class="tile-name">Tokens spent</p><p class="tile-said">18,653</p></div>
         <div class="tile" data-status="failed"><p class="tile-name">Last failure</p><p class="tile-said">summarizer's turn failed</p></div>
       </div>
-      <!-- THE HORIZONTAL SYSTEM (R6-LAYOUT). R3-20 took the launcher out of
-           the grid because it shared a 22rem cell with its own button; its own
-           row then left a 544px column inside a 1134px card with 40% of the
-           panel empty on the right. It is the READING COLUMN of a two-track
-           grid now — `--column` wide, which is the measure plus the card's own
-           padding — and the fleet sits in the companion track beside it. The
-           probe models it because OVERFLOW and the fold assertions both measure
-           this region. -->
+      <!-- THE HORIZONTAL SYSTEM (R6-LAYOUT), AND THE DECK IS NO LONGER IN IT
+           (28). The launcher is still the READING COLUMN — `--column` wide,
+           the measure plus the card's own padding — but the agent deck used to
+           be the COMPANION beside it, and a companion cannot hold a deck: at
+           1440 the board got 430px of a 1136px region and stacked all its cards
+           in one track, having had two at 768 and 1100. The deck takes the row
+           under the launcher now and the surplus is margin (VIEWS.md §4). The
+           probe models it because DECKMONO drives this region's width directly
+           and OVERFLOW and the fold assertions both measure it. -->
       <div class="dash-grid">
       <section class="panel card"><h2>Run a task · main</h2>
           <p class="note">Give main a task and walk away — it works on its own, and “Agents and what they are doing” below says how far it has got.</p>
@@ -463,6 +474,7 @@ document.querySelectorAll(".panel-toggle").forEach(function (b) {
 <!-- Between the two halves on purpose: layout-probe.js builds window.__probe,
      layout-audit.js writes #report last, so a verdict pushed here reaches the
      report and therefore check-layout.sh. -->
+<script src="deck-probe.js"></script>
 <script src="fold-probe.js"></script>
 <script src="glass-audit.js"></script>
 <script src="layout-audit.js"></script>

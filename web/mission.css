@@ -71,8 +71,12 @@
    list. Splitting it across two files is the pair-in-two-places defect the
    guard exists to catch. `.agent-row` itself stays in `surfaces.css`: it is a
    row wherever it appears, and what changes here is the deck around it. */
+/* `align-items: start` is one declaration and it is the whole of finding D
+   (28): a grid item stretches to its row, so at 768 `builder` was 338px tall
+   to match `critic` with ~190px of nothing under its own two doors. A card is
+   as tall as what it says. */
 .board {
-  display: grid; gap: var(--s-3);
+  display: grid; gap: var(--s-3); align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
 }
 

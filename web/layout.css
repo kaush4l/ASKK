@@ -36,14 +36,19 @@ main {
 
 /* …AND IT IS A ROW, NOT A BLOCK, ON A PHONE (R18-P1-9). Six agents wrapped to
    three rows of chips — 175px of picker over a conversation with 180px. Below
-   48rem it scrolls sideways: one row, every agent still in it and still in the
-   tab order, and the browser scrolls a focused tab into view. Each chip keeps
-   its own width — left shrinkable they divided the 358px between them and
-   wrapped their labels instead, which is three rows wearing a scrollbar. */
+   48rem it scrolls sideways, every agent still in it and still in the tab
+   order. Each chip keeps its own width — left shrinkable they divided the
+   358px between them and wrapped their labels, three rows wearing a bar. */
 @media (max-width: 48rem) {
+  /* …AND THE ROW SAYS THAT IT MOVES (28). Five of eight chips fitted at 390 in
+     a port whose scrollbar is hidden, ending flush on the panel's rounded edge
+     while a tile two inches up said `none of 8 agents` — a first-time reader
+     counts five and reads eight. The cue is the mask `.status-strip` already
+     carries (strip.css): alpha, not colour, so this file is still geometry. */
   .stage-head .agent-tabs {
     flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
     scrollbar-width: none; overscroll-behavior-x: contain;
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
   }
   .stage-head .agent-tabs::-webkit-scrollbar { display: none; }
   .stage-head .agent-tabs .tab { flex: 0 0 auto; white-space: nowrap; }
@@ -67,42 +72,45 @@ main {
    A panel's width is for a READING COLUMN plus a COMPANION. The column is
    `--measure` and holds everything a person reads or types (`.note` and
    `.grows` share the one cap); the companion takes what is left and holds
-   what you look at WHILE reading — the board beside the launcher, the
-   endpoint's health beside its form. The gutter is `--s-6`, the step the card
-   already pays inside its own edge: one rhythm, not two. Below the threshold
-   there is one track and the companion falls under the column in DOM order —
-   which is why the run state stays FIRST (R6-6). */
+   what you look at WHILE reading — the endpoint's health beside its form.
+   The gutter is `--s-6`, the step the card already pays inside its own edge.
+   Below the threshold there is one track and the companion falls under the
+   column in DOM order — which is why the run state stays FIRST (R6-6). */
 .split, .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4); align-items: start; }
 
 .split > .beside, .dash-side { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
 
-/* `--column` for a card in the stage, `--measure` for a split INSIDE a card
-   whose padding is already paid.
-   THE COMPANION IS CLAMPED (R7-5). Every pixel the folded sidebar handed back
-   went to the SECONDARY track — at 1440 the companion grew 16% wider than the
-   primary action. `max-width` caps the pair at two reading columns and a
-   gutter, so the companion may EQUAL the column and never beat it.
-
-   AND IT STACKS BEFORE IT SQUEEZES (R7-17). At 60rem the floor was 322px and
-   it spent a 100px band squeezed with headings and board rows wrapping. 66rem
-   puts the floor at 26rem (416 measured), `.rail`'s own maximum. */
+/* `--measure` for a split INSIDE a card whose padding is already paid. THE
+   COMPANION IS CLAMPED (R7-5): the pair caps at two reading columns and a
+   gutter, so the companion may EQUAL the column and never beat it. AND IT
+   STACKS BEFORE IT SQUEEZES (R7-17): 66rem puts the floor at 26rem, the rail's
+   own maximum.
+   …AND THE DASHBOARD IS NOT ONE OF THESE ANY MORE (28). The agent deck was
+   the launcher's companion, and a companion cannot hold a deck: the stage tops
+   out near 1264px, so a 608px reading column leaves at most ~560px of board —
+   under the 588 two 18rem tracks need — while the width one pixel BELOW the
+   66rem threshold gave the board the whole 992. Crossing the threshold took
+   the deck from three columns to one, and the widest viewport shipped the
+   narrowest board. No threshold fixes that: a companion is always narrower
+   than the row it was cut from. So the deck takes the ROW, and the surplus
+   goes to the margins rather than into the line (VIEWS.md §4). */
 @container stage (min-width: 66rem) {
-  .dash-grid {
-    grid-template-columns: minmax(0, var(--column)) minmax(0, 1fr);
-    gap: var(--s-6); max-width: calc(2 * var(--column) + var(--s-6));
-  }
   .split {
     grid-template-columns: minmax(0, var(--measure)) minmax(0, 1fr);
     gap: var(--s-6); max-width: calc(2 * var(--measure) + var(--s-6));
   }
 }
 
-/* THE THIRD SHAPE — A DECK (R7-6b). A LIST of cards is not a reading column with
-   a companion: each card is one reading column wide, as many across as fit. The
-   track's max is `1fr`, not `--column`: `auto-fit` counts repetitions off a
-   DEFINITE max and resolved to ONE track in a 1072px panel. The cap belongs on
-   the card. `#agent-list` is `contents` so the core's wrapper (I8) hands its
-   cards through as the deck's own tracks. */
+/* …which leaves each Dashboard card to cap itself: every panel in that column
+   is a reading column except the one holding the deck, which is a deck. */
+.dash-grid .panel:not(:has(.board)) { max-width: var(--column); }
+
+/* THE THIRD SHAPE — A DECK (R7-6b). A LIST of cards is not a reading column
+   with a companion: each card is one reading column wide, as many across as
+   fit. The track's max is `1fr`, not `--column` — `auto-fit` counts
+   repetitions off a DEFINITE max and resolved to ONE track in a 1072px panel,
+   so the cap belongs on the card. `#agent-list` is `contents` so the core's
+   wrapper (I8) hands its cards through as the deck's own tracks. */
 .card-deck { display: grid; gap: var(--s-3); align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
 
@@ -119,13 +127,9 @@ main {
    glass.css owns `.nav { position }` (G1). */
 @media (max-width: 1099px) {
   main > .nav {
-    position: fixed;
-    z-index: 30;
-    left: var(--s-3);
-    right: var(--s-3);
-    bottom: var(--s-3);
-    max-height: 60vh;
-    overflow-y: auto;
+    position: fixed; z-index: 30;
+    left: var(--s-3); right: var(--s-3); bottom: var(--s-3);
+    max-height: 60vh; overflow-y: auto;
     /* A BOUNDARY THAT READS AS INTENTIONAL (R5-8): E1's hairline alone read as
        a rendering fault. E3's shadow is "this floats over the page". */
     box-shadow: var(--e1-lit), var(--e3-shadow);
@@ -147,13 +151,8 @@ main {
     /* auto | 1fr | auto, every region PINNED: unpinned, folding the nav moved
        .stage into the content-sized column and it LOST 195px of 435. */
     grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 0;
-    align-items: stretch;
-    width: 100%;
-    max-width: 96rem;
-    margin-inline: auto;
-    padding: var(--s-4);
-    overflow: hidden;
+    gap: 0; align-items: stretch; overflow: hidden;
+    width: 100%; max-width: 96rem; margin-inline: auto; padding: var(--s-4);
   }
 
   /* Only in the grid path may a region be shorter than its content. */
@@ -162,10 +161,8 @@ main {
   .stage { grid-column: 2; overflow-y: auto; margin-inline: var(--s-4); }
 
   .rail {
-    grid-column: 3;
-    width: clamp(21rem, 26vw, 26rem);
-    overflow-y: auto;
-    scrollbar-gutter: stable;
+    grid-column: 3; width: clamp(21rem, 26vw, 26rem);
+    overflow-y: auto; scrollbar-gutter: stable;
   }
 }
 

@@ -68,6 +68,16 @@ pub(crate) fn Recovery(
     on_retry: EventHandler<String>,
 ) -> Element {
     let in_file = file.clone();
+    // NAME IT WHAT IT WAS (29). This pair is rendered under a failed TASK as
+    // well as under a failed message, and there it read `Send the message
+    // again` over something started with `Start agent`, from a field labelled
+    // "Describe the whole task", in a card titled "Run a task" — nothing had
+    // called it a message until it failed. `chat` is already the one bit that
+    // says which side of that line this is on.
+    let again = match chat.unwrap_or(false) {
+        true => "Start the task again",
+        false => "Send the message again",
+    };
     rsx! {
         div { class: "recovery", role: "group", aria_label: "Recover from the failed turn",
             if chat.unwrap_or(false) {
@@ -99,7 +109,7 @@ pub(crate) fn Recovery(
                     // critic hunting for drift could find.
                     variant: "primary",
                     onclick: move |_| on_retry.call(last.clone()),
-                    "Send the message again"
+                    "{again}"
                 }
             }
             match in_file {

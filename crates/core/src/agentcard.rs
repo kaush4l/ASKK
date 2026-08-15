@@ -2,31 +2,28 @@
 //! listing — so both hold the 200-line rule (I12) once the settings moved
 //! behind a disclosure.
 //!
-//! R2-16: the card read `model: local, temperature 0.2, engine: react, no
-//! space, tools: now, list_agents, read_agent, write_agent` in full, directly
-//! under a one-line human description that was the best sentence on the page.
-//! A first-time reader has no way to learn what `engine: react` is (the words
-//! appear nowhere else in the product), `no space` reads like a layout note,
-//! and `now` reads like an adverb. So: the sentence stays visible, the settings
-//! go behind the same disclosure the prompt already uses, and every term that
-//! survives says what it means in ordinary words.
-//!
-//! The TOOL NAMES are printed verbatim, because a tool's name is what the
-//! model is told and what the trace shows; what changed is that the line says
-//! they are names.
+//! R2-16: the card read `model: local, temperature 0.2, engine: react, no space,
+//! tools: now, list_agents, read_agent, write_agent` in full, directly under a
+//! one-line human description that was the best sentence on the page. A
+//! first-time reader has no way to learn what `engine: react` is (the words
+//! appear nowhere else in the product), `no space` reads like a layout note, and
+//! `now` reads like an adverb. So: the sentence stays visible, the settings go
+//! behind the same disclosure the prompt already uses, and every term that
+//! survives says what it means in ordinary words. The TOOL NAMES are printed
+//! verbatim, because a tool's name is what the model is told and what the trace
+//! shows; what changed is that the line says they are names.
 
 use agent::AgentSpec;
 use module::view::{Fragment, FragmentBuilder};
 
-/// What `engine:` means, in the words the rest of this interface uses.
-///
-/// THE THIRD ARM IS GONE (increment 19). It printed `How it works: reakt` — the
-/// file's own word, dressed as a fact about the machine — for a value that
-/// selected nothing, next to two sentences that also described a choice the
-/// machine did not make. `spec::set_field` now refuses anything but these two
-/// and `subagent::resolve` makes `base` mean what this line says, so both
-/// sentences are enforced and there is no unrecognised value left to print.
-/// AND NEITHER SAYS "ENGINE" (R16-4): Settings calls the Linux an engine.
+/// What `engine:` means, in the words the rest of this interface uses. THE THIRD
+/// ARM IS GONE (increment 19). It printed `How it works: reakt` — the file's own
+/// word, dressed as a fact about the machine — for a value that selected
+/// nothing, next to two sentences that also described a choice the machine did
+/// not make. `spec::set_field` now refuses anything but these two and
+/// `subagent::resolve` makes `base` mean what this line says, so both sentences
+/// are enforced and there is no unrecognised value left to print. AND NEITHER
+/// SAYS "ENGINE" (R16-4): Settings calls the Linux an engine.
 fn engine_line(engine: &str) -> String {
     match engine {
         agent::ENGINE_BASE => "Answers in one reply, without calling tools".into(),
@@ -79,13 +76,19 @@ fn disclosure(spec: &AgentSpec, mine: Option<&str>) -> String {
 /// turn (R5-3). `editor-picks` is the existing "a row of buttons in a card"
 /// class (controls.css) rather than a seventh one nobody agreed to.
 ///
-/// A REVIEWER HAS NO TASK DOOR (27). The critic's card offered `Give critic a
-/// task` four lines below its own description saying it cannot change, run or
-/// start anything — true, its file names only the three reading tools, so a
-/// task handed to it can only end in a report about nothing. In its place goes
-/// the sentence naming who does call it, read off the peers' `tools:` lists so
-/// it cannot go stale when that caller is renamed; `Talk to` stays, because
-/// handing it finished work in chat is real. The branch is on `role:` (20, 25).
+/// AN AGENT THAT CANNOT ACT HAS NO TASK DOOR (27, corrected in 29). The critic's
+/// card offered `Give critic a task` four lines below its own description saying
+/// it cannot change, run or start anything — true, its file names only the three
+/// reading tools, so a task handed to it can only end in a report about nothing.
+/// In its place goes the sentence naming who does call it, read off the peers'
+/// `tools:` lists so it cannot go stale when that caller is renamed; `Talk to`
+/// stays, because handing it finished work in chat is real.
+///
+/// 27 branched on `role:`, which was the wrong axis for the same reason the name
+/// was: `scout` is read-only by the identical allowlist, says on its own card
+/// that it never carries the plan out, and kept the door. `origin::can` is the
+/// axis — what the resolved toolbox lets it do — so every read-only agent loses
+/// it and no named one loses it for being named.
 fn doors(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
     let door = |to: &str, label: &str| {
         FragmentBuilder::new("button")
@@ -99,15 +102,17 @@ fn doors(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
     let row = FragmentBuilder::new("p")
         .class("editor-picks")
         .child(door("chat", &format!("Talk to {name}")));
-    if spec.role != agent::ROLE_CRITIC {
+    if crate::origin::can(spec, peers) != "read" {
         return row.child(door("task", &format!("Give {name} a task"))).build();
     }
     let callers: Vec<&str> =
         peers.iter().filter(|p| p.tools.contains(name)).map(|p| p.name.as_str()).collect();
     let said = match callers.is_empty() {
-        true => "No agent on this roster hands it work yet".to_string(),
+        // …AND NOBODY HANDS SCOUT WORK (29): it is asked, in chat, by a person.
+        true => format!("Ask {name} in chat — nothing on this roster hands it work"),
         false => format!("The {} agent hands it work", callers.join(" and the ")),
-    } + "; there is no task to give it, because it only reads and judges.";
+    } + "; there is no task to give it, because every tool it has reads. It cannot \
+         change or run anything.";
     row.child(FragmentBuilder::new("span").text(&said).build()).build()
 }
 
@@ -123,26 +128,23 @@ fn fold(summary: &str, body: Fragment) -> Fragment {
 /// sentence and where the file came from; the settings and the prompt — the
 /// two longest parts, and the two nobody reads first — are one press away.
 pub(crate) fn card(
-    spec: &AgentSpec,
-    peers: &[AgentSpec],
-    authored: &[(String, String)],
+    spec: &AgentSpec, peers: &[AgentSpec], authored: &[(String, String)],
     found: Option<(&str, &str)>,
 ) -> Fragment {
-    let mine = authored
-        .iter()
-        .find(|(n, _)| *n == spec.name)
-        .map(|(_, by)| by.as_str());
+    let mine = authored.iter().find(|(n, _)| *n == spec.name).map(|(_, by)| by.as_str());
     let mut card = FragmentBuilder::new("div")
         .class("agent-card")
         .attr("data-agent", &spec.name)
-        // WHICH SHARED SPACE, as a fact and not only as prose (R6-1/R6-2). An
-        // agent's space is what decides whether it has a workspace folder at
-        // all — whether it can run a command, write a file, or be offered a
-        // starter task that needs one — and the answer was legible only inside
-        // the settings fold's sentence. Emitted EMPTY when there is none rather
-        // than omitted, so a reader scanning one card's attributes cannot fall
-        // through to the next card's value.
+        // WHICH SHARED SPACE, as a fact and not only as prose (R6-1/R6-2), and
+        // emitted EMPTY rather than omitted so a reader scanning one card's
+        // attributes cannot fall through to the next card's value. What it no
+        // longer decides is what may be OFFERED: having a folder is not
+        // permission to write in it (29).
         .attr("data-space", &spec.space)
+        // WHAT ITS TOOLS LET IT DO (29). `crates/ui` may depend on neither
+        // `agent` nor `core` (ARCHITECTURE §4), so this attribute is the only
+        // way the task launcher can ask what this card's own doors ask.
+        .attr("data-can", crate::origin::can(spec, peers))
         .attr("data-origin", match mine {
             Some("") => "authored",
             Some(_) => "authored-by-agent",
@@ -151,12 +153,11 @@ pub(crate) fn card(
         .child(FragmentBuilder::new("h3").text(&spec.name).build());
     // SOMETHING HONEST IN THAT SLOT (R5-19). Three of five cards had no
     // `description:` and jumped from the name straight to provenance, so the
-    // roster's rhythm broke on more cards than it held — one line of prose,
-    // then two lines of metadata, then nothing, then two. The fix is not to
-    // invent a description: it is to say what IS known, which is how the agent
-    // works, in the same sentence `engine_line` already writes for the
-    // settings fold. The absence is named rather than papered over, and the
-    // 12-walk rule stands — no empty paragraph pretending to be one.
+    // roster's rhythm broke on more cards than it held — one line of prose, then
+    // two of metadata, then nothing, then two. The fix is not to invent a
+    // description: it is to say what IS known, which is how the agent works, in
+    // the same sentence `engine_line` already writes for the settings fold. The
+    // absence is named rather than papered over, and the 12-walk rule stands.
     card = card.child(match spec.description.trim().is_empty() {
         false => FragmentBuilder::new("p").text(&spec.description).build(),
         true => FragmentBuilder::new("p")

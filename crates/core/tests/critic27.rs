@@ -1,4 +1,5 @@
-//! INCREMENT 27 — THE REVIEWER'S CARD OFFERS ONLY WHAT IT CAN DO.
+//! INCREMENT 27 — THE REVIEWER'S CARD OFFERS ONLY WHAT IT CAN DO,
+//! **corrected in 29**: the axis is the toolbox, not the role.
 //!
 //! The critic's card said, in its own description, that it cannot change, run
 //! or start anything, and four lines down offered `Give critic a task`. A task
@@ -7,9 +8,13 @@
 //! door is gone and the sentence naming who really calls it stands in its
 //! place. `Talk to` survives, because handing it finished work in chat is real.
 //!
-//! The branch is on `role:`, so these fixtures declare the role and never rely
-//! on the name — an agent called `critic` holding no role keeps both doors, and
-//! an agent holding the role loses one whatever it is called.
+//! 27 branched on `role:`. That was the same class of mistake it was fixing —
+//! `scout` declares no role, is read-only by the identical allowlist, and kept
+//! the door — so the branch is now `origin::can`, read off the RESOLVED tools.
+//! The fixtures below are what that costs the old tests: `role:` no longer
+//! decides anything, so the pair that used to prove "role, not name" now proves
+//! "tools, not name and not role" — same fixtures, one with tools that act and
+//! one without.
 
 use std::future::Future;
 use std::pin::pin;
@@ -58,35 +63,57 @@ const JUDGE: &str =
     "---\nname: judge\ndescription: says whether work stands\nrole: critic\n\
      tools: [read_file]\n---\nbody";
 
+/// ONE CARD out of the listing. Every card is in one string, and since 29 more
+/// than one card can carry the read-only sentence — `contains` over the whole
+/// page would pass on somebody else's card.
+fn card(page: &str, who: &str) -> String {
+    let at = page.find(&format!("data-agent=\"{who}\"")).expect("a card for {who}");
+    let rest = &page[at..];
+    rest.find("<div class=\"agent-card\"").map_or(rest, |end| &rest[..end]).to_string()
+}
+
 /// The defect itself: no task door, and in its place the sentence saying which
 /// agent does the handing — read off the roster, so it names `builder` because
 /// `builder`'s file names `judge`, not because anything hardcoded a pair.
 #[test]
 fn a_critic_card_offers_chat_and_names_its_caller_instead_of_a_task() {
     let page = listing(&[("builder", LEAD), ("judge", JUDGE)]);
-    assert!(page.contains("Talk to judge"), "chat is still a real way in: {page}");
+    let judge = card(&page, "judge");
+    assert!(judge.contains("Talk to judge"), "chat is still a real way in: {judge}");
     assert!(
-        !page.contains("Give judge a task"),
-        "a reviewer with no write tools cannot be given a task: {page}"
+        !judge.contains("Give judge a task"),
+        "a reviewer with no write tools cannot be given a task: {judge}"
     );
     assert!(
-        page.contains(
-            "The builder agent hands it work; there is no task to give it, because it only \
-             reads and judges."
+        judge.contains(
+            "The builder agent hands it work; there is no task to give it, because every tool \
+             it has reads. It cannot change or run anything."
         ),
-        "the door's slot says who calls it: {page}"
+        "the door's slot says who calls it, and why there is no task: {judge}"
     );
 }
 
-/// …and the branch is the ROLE. Same name, no `role:`, both doors — which also
-/// proves the assertion above is not passing on a name match.
+/// …and the branch is neither the name nor the role: it is the TOOLS. Two
+/// agents both called `critic` — the one whose empty `tools:` resolves to every
+/// built-in (`write_agent` among them) keeps both doors, and the one naming
+/// three readers loses one even though it declares no role at all. Between them
+/// they rule out every axis but the toolbox.
 #[test]
-fn an_agent_named_critic_without_the_role_keeps_both_doors() {
-    let plain = "---\nname: critic\ndescription: an ordinary agent\ntools: []\n---\nbody";
-    let page = listing(&[("critic", plain)]);
+fn what_the_tools_do_decides_the_door_not_the_name_and_not_the_role() {
+    let acts = "---\nname: critic\ndescription: an ordinary agent\ntools: []\n---\nbody";
+    let page = card(&listing(&[("critic", acts)]), "critic");
     assert!(page.contains("Talk to critic"), "{page}");
-    assert!(page.contains("Give critic a task"), "the role is what gates it: {page}");
+    assert!(page.contains("Give critic a task"), "it can write an agent: {page}");
     assert!(!page.contains("there is no task to give it"), "{page}");
+
+    let reads = "---\nname: critic\ndescription: an ordinary agent\nspace: research\n\
+                 tools: [read_file, list_files]\n---\nbody";
+    let page = card(&listing(&[("critic", reads)]), "critic");
+    assert!(!page.contains("Give critic a task"), "no role, and still no task: {page}");
+    assert!(
+        page.contains("Ask critic in chat — nothing on this roster hands it work"),
+        "nobody calls it, so the sentence sends the reader where it does take work: {page}"
+    );
 }
 
 /// Every other card is untouched: an ordinary agent still gets both doors and

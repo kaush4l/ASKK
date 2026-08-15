@@ -30,10 +30,30 @@ header .pill {
 /* THE LAST TURN FAILED (F12), on a ROW OF ITS OWN under the header (R8-2): in
    the strip it fitted only by evicting the model line and the spend — an error
    state may add a row, never subtract a fact. */
+/* AND IT IS NOT HEIGHT-CAPPED (28). It had TWO caps — its own 30vh, and a 3rem
+   cap on the SENTENCE below 48rem — and the second one made the first a lie:
+   at 390 a 48px box over 179px of text, at 768 a 48px box over 128, with the
+   scrollbar overlay and no other cue. The half that went missing is the half
+   that says what to DO (the address is on THIS machine, so the server must be
+   running, must send CORS headers, and Chrome 142+ asks permission first).
+   Both are gone here, so at 768 and up the whole remedy is on screen. */
 .banner {
   margin: var(--s-3) var(--s-3) 0; padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md); flex: 0 0 auto; max-height: 30vh; overflow-y: auto;
+  border-radius: var(--r-md); flex: 0 0 auto;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
+}
+
+/* …EXCEPT IN THE ONE BAND WHERE THE SCREEN REFUSES (28), and this is measured,
+   not chosen. The longest failure the core writes is 401px of remedy at 320,
+   350 at 360, 324 at 390. `fold-probe.js` holds the routed view to a third of
+   the viewport, which leaves the banner 270 / 266 / 309 there — so below 30rem
+   it gives way, and only there. Above it, nothing is hidden at any width.
+   `min-height` because under 30rem of height the page is an ordinary scrolling
+   document (layout.css, WCAG 1.4.10) and a cap would be a trap with no floor
+   to justify it. `scrollbar-color` is what opts a box out of overlay
+   scrollbars, so where it does give way there is a bar to see. */
+@media (max-width: 30rem) and (min-height: 30rem) {
+  .banner { max-height: 30vh; overflow-y: auto; scrollbar-color: var(--control) transparent; }
 }
 
 .banner.problem {
@@ -53,16 +73,13 @@ header .meter, header .warmth, header .subject { flex: 0 0 auto; white-space: no
 /* THE MENU (R2-3): the views switch is the header's first control. */
 header .panel-toggle[aria-controls="nav"]::before { content: "\2630  "; }
 
-/* …AND ON A PHONE THE SENTENCE SCROLLS RATHER THAN TAKING A ROW PER CLAUSE
-   (R18-P1-9). The longest failure it carries is a whole remedy paragraph: 253px
-   at 390, over a conversation with 78px, with the two controls that answer it
-   pushed below the fold. The cap moves off the banner and onto the SENTENCE, so
-   nothing is truncated and `Open Settings` and `Dismiss` never scroll away. */
+/* R18-P1-9 moved the cap off the banner and onto the SENTENCE and claimed
+   "nothing is truncated"; 3rem is two lines of an eleven-line remedy, so it
+   was the truncation, moved — and moved onto the element that has no cue,
+   because the buttons it was protecting sat outside it. Deleted (28). */
 @media (max-width: 48rem) {
   header { padding: var(--s-2) var(--s-3); gap: var(--s-2); }
   .switches { gap: var(--s-1); }
-  .banner { max-height: none; }
-  .problem-line { max-height: 3rem; overflow-y: auto; }
 }
 
 header .subject strong { color: var(--ink); font-weight: var(--w-strong); }

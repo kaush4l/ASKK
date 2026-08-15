@@ -36,10 +36,21 @@ fn nothing_yet(ctx: &Ctx, who: &str) -> module::view::Fragment {
         (true, _) => "No shell command has been run here yet. The Linux boots on the first one — \
                       it streams its disk, so that one takes longer than the rest."
             .to_string(),
-        (false, _) => format!(
-            "{who} has not run a shell command yet. It reports each one it runs, and those are \
-             what this pane and its tool trace both show."
-        ),
+        // "HAS NOT RUN ONE YET" PROMISES A FIRST ONE (29). Over `critic` this
+        // pane read "critic has not run a shell command yet. It reports each one
+        // it runs…" four lines above "critic has no shell" — the first sentence
+        // describing a future the third denies. `yet` is only true of an agent
+        // that could, so the empty state asks which agent this is.
+        (false, _) => match can(ctx, who) == "run" {
+            true => format!(
+                "{who} has not run a shell command yet. It reports each one it runs, and those \
+                 are what this pane and its tool trace both show."
+            ),
+            false => format!(
+                "{who} runs no shell commands — its file names no tool that can — so this pane \
+                 stays empty for it."
+            ),
+        },
     };
     FragmentBuilder::new("p").class("pending").text(&said).build()
 }
@@ -53,29 +64,41 @@ fn nothing_yet(ctx: &Ctx, who: &str) -> module::view::Fragment {
 ///
 /// WHICH sentence comes from the toolbox, not from the space: an agent's
 /// declared `tools:` can take the folder and leave the shell behind, which is
-/// what a read-only agent IS, and `origin_line` asks the same function the same
-/// question. Two wordings of "it has no shell" is how they would drift.
+/// what a read-only agent IS. It asks `origin::can` — the one predicate the
+/// card's own doors and the task launcher ask (29) — so this pane, the card and
+/// the launcher cannot come to three answers about one agent.
 pub(crate) fn no_box_why(ctx: &Ctx, who: &str) -> Option<String> {
     if who == ctx.me {
         return None;
     }
-    let shell = ctx
-        .agents
-        .iter()
-        .find(|spec| spec.name == who)
-        .is_some_and(|spec| agent::toolbox_for(spec, &[]).get("exec").is_some());
-    Some(match shell {
-        false => format!(
-            "{who} has no shell — it can read this Linux but not change it. Switch to {me} to \
-             run commands.",
-            me = ctx.me
-        ),
-        true => format!(
+    let me = ctx.me.as_str();
+    Some(match can(ctx, who) {
+        "run" => format!(
             "{who} runs its own commands, separately from this page. Switch to {me} to type \
-             one here.",
-            me = ctx.me
+             one here."
+        ),
+        // NOT "but not change it" for an agent that CAN change (29): a
+        // `write_file` without an `exec` is a real toolbox, and this sentence
+        // was the only one on the view claiming otherwise.
+        "read" => format!(
+            "{who} has no shell — it can read this Linux but not change it. Switch to {me} to \
+             run commands."
+        ),
+        _ => format!(
+            "{who} has no shell — it can use the tools its file names, but it cannot run a \
+             command here. Switch to {me} to run one."
         ),
     })
+}
+
+/// What THIS pane's subject can do, off the roster this request already holds.
+/// An agent the roster has no file for is read-only here: this pane must not
+/// promise a command from a file it cannot see (I15).
+fn can(ctx: &Ctx, who: &str) -> &'static str {
+    ctx.agents
+        .iter()
+        .find(|spec| spec.name == who)
+        .map_or("read", |spec| crate::origin::can(spec, &ctx.agents))
 }
 
 /// The whole scrollback: every `exec` this page's agent has run, in log order.

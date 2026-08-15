@@ -37,6 +37,25 @@
   // longer has — leaving it standing would model 60px the app does not spend.
   var strip = document.getElementById("agent-strip");
   if (strip) strip.hidden = route === "chat";
+  // …AND THE HEAD'S SENTENCE IS THE WORKSPACE'S ALONE (28, `stage.rs`). On all
+  // three routes it charged the Dashboard ~180px of a paragraph its head never
+  // renders, against the CHROME floor, on the route whose banner is longest.
+  var headNote = document.querySelector(".stage-head > .note");
+  if (headNote) headNote.hidden = route !== "deck";
+  // …AND THE DASHBOARD HAS NO RAIL, WHICH THIS FIXTURE GAVE IT (28).
+  // `views.rs::rail()` is Workspace alone, so every dash measurement here was
+  // ~370px NARROWER than the shipped page — narrower than the 66rem container
+  // query the launcher/board split keyed off, which is why the gate could not
+  // reach the state that shipped a one-column board at 1440. A fixture
+  // narrower than the page cannot see a rule that fires when it is wide.
+  // REMOVED, not hidden: a switch for a region the app does not render is a
+  // fold nobody can perform, and `fold-probe.js` guards on it existing.
+  if (route === "dash") {
+    var sw = document.querySelector('.panel-toggle[aria-controls="rail"]');
+    if (sw) sw.remove();
+    var railRegion = document.getElementById("rail");
+    if (railRegion) railRegion.remove();
+  }
 
   // Below the three-column breakpoint the shipped page starts with the nav
   // FOLDED (`dash::wide`), and since R3-9 a shown nav is a sheet OVER the
@@ -80,13 +99,17 @@
 
   // ---- OVERLAP: two regions of one screen may not paint on each other. -----
   var rail = document.querySelector(".rail");
-  var railBox = rect(rail);
   var regionBox = visible(region);
-  say(!overlaps(railBox, regionBox), "OVERLAP rail/" + region.id,
-      "rail " + Math.round(railBox.top) + ".." + Math.round(railBox.bottom) +
-      " x " + Math.round(railBox.left) + ".." + Math.round(railBox.right) +
-      " | region " + Math.round(regionBox.top) + ".." + Math.round(regionBox.bottom) +
-      " x " + Math.round(regionBox.left) + ".." + Math.round(regionBox.right));
+  if (!rail) {
+    info("OVERLAP rail/" + region.id, "this view has no rail (views.rs: Workspace)");
+  } else {
+    var railBox = rect(rail);
+    say(!overlaps(railBox, regionBox), "OVERLAP rail/" + region.id,
+        "rail " + Math.round(railBox.top) + ".." + Math.round(railBox.bottom) +
+        " x " + Math.round(railBox.left) + ".." + Math.round(railBox.right) +
+        " | region " + Math.round(regionBox.top) + ".." + Math.round(regionBox.bottom) +
+        " x " + Math.round(regionBox.left) + ".." + Math.round(regionBox.right));
+  }
 
   // ---- HITTEST: what does a click at this point actually hit? --------------
   // A 5x5 grid over the region, at rest and again at the bottom of the page —
@@ -122,13 +145,11 @@
   }
 
   // ---- STACKED: the view list lays out vertically, in BOTH skins ----------
-  // The column rule was machine-skin-only, so the fallback kept theme.css's
-  // `flex-wrap: wrap` and made the entries a 2-across chip grid under a list
-  // that promised one per row — ArrowDown moving focus RIGHT (13c walk,
-  // finding 3). The failure belongs to whatever is IN the left panel, and
-  // since 15B that is the view list, not the agent strip: the strip moved into
-  // the Chat view and is deliberately a row there. Same assertion, pointed at
-  // the thing that still makes the promise.
+  // The column rule was machine-skin-only, so the fallback kept `flex-wrap:
+  // wrap` and made the entries a 2-across chip grid under a list that promised
+  // one per row — ArrowDown moving focus RIGHT (13c walk, finding 3). It is
+  // pointed at the VIEW LIST since 15B: the agent strip moved into the Chat
+  // view and is deliberately a row there.
   var tabs = Array.prototype.slice.call(document.querySelectorAll(".nav .view-item"));
   if (tabs.length > 1 && !nav.hidden) {
     var shared = null;
@@ -145,16 +166,14 @@
   // ---- the page is one screen, and never a document sideways --------------
   var doc = document.documentElement;
   info("HEIGHT", doc.scrollHeight + "px in a " + window.innerHeight + "px viewport");
-  // EVERY width, BOTH skins. This was gated `W >= 1100`, precisely where the
-  // failure it exists to catch did NOT live: the plain skin measured 1015px in
-  // an 844px viewport at 390 and the probe printed it as INFO, which nothing
-  // counts.
-  // ONE SCREEN is a promise about a DASHBOARD, not a 256px-tall window. At
-  // 400% zoom of 1280x1024 the viewport is 320x256 and holding it there WAS the
-  // bug: overflow:hidden under a 200px header left the composer, the log and
-  // Send unreachable with nothing able to scroll to them (WCAG 1.4.10).
-  // Asserting one-screen there would assert the trap. Gated on the same 30rem
-  // the stylesheet is.
+  // EVERY width, BOTH skins. Gated `W >= 1100` it missed its own failure: the
+  // plain skin measured 1015px in an 844px viewport at 390 as INFO, which
+  // nothing counts. But ONE SCREEN is a promise about a DASHBOARD, not a
+  // 256px-tall window — at 400% zoom of 1280x1024 the viewport is 320x256, and
+  // there `overflow: hidden` under a 200px header left the composer and Send
+  // unreachable with nothing able to scroll to them (WCAG 1.4.10). Asserting
+  // one-screen there asserts the trap, so it is gated on the stylesheet's
+  // own 30rem.
   if (window.innerHeight >= 480) {
     say(doc.scrollHeight <= window.innerHeight + 1, "ONESCREEN",
         doc.scrollHeight + " vs " + window.innerHeight);
@@ -176,33 +195,11 @@
   say(doc.scrollWidth <= doc.clientWidth, "XOVERFLOW",
       doc.scrollWidth + " vs " + doc.clientWidth);
 
-  // THE DECK'S CARDS ARE THE DECK'S CELLS (27). `display: grid` on the
-  // Dashboard's board says nothing about whether the CARDS are its items: two
-  // wrappers stand between them in the shipped tree, and with either one left
-  // in place the grid formed one column and every card stacked inside it. The
-  // page still passed OVERFLOW, ONESCREEN and every contrast check, because a
-  // single-column deck is a perfectly valid layout — it is just not the one
-  // that was written. So the assertion is on the OUTCOME and not on the tree:
-  // where the deck is wide enough for two 18rem tracks, two cards must share a
-  // row. Checking `parentElement` would not do it — `display: contents` is
-  // exactly the mechanism that makes a descendant a grid item without moving
-  // it in the DOM, so the tree says orphan while the layout is correct.
-  // Compact is exempt by its own rule: one column is what the rail asks for.
-  document.querySelectorAll(".board:not(.compact)").forEach(function (deck) {
-    var cards = deck.querySelectorAll(".agent-row");
-    var wide = deck.getBoundingClientRect().width >= 36 * 16;
-    if (cards.length < 2 || !wide || getComputedStyle(deck).display !== "grid") return;
-    var a = cards[0].getBoundingClientRect(), b = cards[1].getBoundingClientRect();
-    say(Math.abs(a.top - b.top) < 1, "DECKCELLS",
-        Math.abs(a.top - b.top) < 1
-          ? cards.length + " cards share a row in " + Math.round(deck.getBoundingClientRect().width) + "px"
-          : "cards stacked in a " + Math.round(deck.getBoundingClientRect().width) +
-            "px deck that has room for two");
-  });
-
-  // The audit half runs next (layout-audit.js) and writes the report, so a
-  // verdict from either file reaches check-layout.sh. Split because this file
-  // hit the 200-line rule (I12) carrying both halves.
+  // The deck's three assertions are `deck-probe.js` and the audit half is
+  // `layout-audit.js`, which writes the report last — so a verdict pushed by
+  // any of the three reaches check-layout.sh. Split at the 200-line rule (I12),
+  // twice: this file carried all of it once, and `region` is exported because
+  // the deck checks must read inside the ROUTED region and never `document`.
   window.__probe = { say: say, info: info, rect: rect, out: out, W: W, q: q,
-                     routed: routed, route: route };
+                     routed: routed, route: route, region: region };
 })();

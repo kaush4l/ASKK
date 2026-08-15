@@ -3496,3 +3496,104 @@ is squeezed into `.dash-side`. The failure banner clips its own recovery
 sentence at 390 (48px shown of 179px) with no cue that there is more. The agent
 strip ends flush after five of eight chips at 390 while a tile on the same
 screen says "8 agents". The header's endpoint pill renders as "calls ge".
+
+---
+
+## 29 — what an agent can DO, asked once
+
+The critique agent's worst finding was that 27 fixed the critic's
+contradiction in exactly ONE place. The Agents view stopped offering `Give
+critic a task`; the Dashboard, which is the default view, still did — one
+click away through the agent strip — and the walker pressed it and watched
+the turn fail. The launcher's examples read "critic has a folder in Linux, so
+all three of these work" over three tasks that write a file and run `uname
+-a`, for an agent whose tools are `read_file, list_files, find_files`.
+
+Two wrong axes, same shape. `examples.rs` branched on WHETHER THE AGENT HAS A
+SPACE — a folder is not permission to write in it. `agentcard::doors` branched
+on `ROLE_CRITIC` — which is what an agent is CALLED. Neither asks the only
+question that matters: what do its tools let it do.
+
+`origin::can(spec, peers)` returns `run` / `change` / `read`, derived from
+`agent::toolbox_for` — the same resolved list the card prints and dispatch
+checks calls against. Four callers now share it, and the card carries the
+answer as `data-can` because `crates/ui` may depend on neither `agent` nor
+`core`.
+
+The subtle arm: **any peer-agent tool counts as `change`.** A delegation call
+is another agent's whole turn, so an agent that can only read but can call
+`builder` is not read-only. A name-based branch cannot see that.
+
+`ask`, `critic`, `scout` and `summarizer` now get no task field and no Start
+at all — the sentence naming who hands them work, and a door to chat. The
+`What happens when you press Start agent` disclosure is not rendered when
+there is no Start, and no longer claims the agent "can run commands in its own
+folder", which was false for `author`. `recover.rs` says `Start the task
+again` under a failed task and keeps `Send the message again` in chat. The
+Commands pane no longer promises a first shell command to an agent that has
+no shell.
+
+### Where the expert agent corrected the brief
+
+I told it `researcher` carried the same contradiction. It does not:
+`researcher` is `tools: []`, which resolves to every built-in PLUS the
+workspace set including `exec` — the most capable agent in the tree after
+`main`. Its "Not for you" is a claim about AUDIENCE, not capability, and I had
+conflated the two; an audience axis would have been the third name-shaped
+hardcode this increment deletes. The defect was upstream, in
+`public/agents/researcher/agent.md`, and is fixed there: the description now
+says another agent usually hands it a question AND that you can give it a task
+directly, keeping the true half — it works only from what it is handed.
+
+`what_the_tools_do_decides_the_door_not_the_name_and_not_the_role` stands up
+two agents both named `critic`: one with `tools: []` keeps both doors, one
+with two read tools and no role at all loses one. Between them they rule out
+the name, the role and the folder, leaving only the toolbox.
+
+## 30 — the widest screen gets the widest board
+
+At 1440 the board collapsed to ONE 430px column beside 1313px of nothing: 390
+gave 1, 768 gave 2, 1100 gave 2, 1440 gave 1. The cause was the two-track
+`.dash-grid` at `@container stage (min-width: 66rem)` — a companion track is by
+construction narrower than the row it was cut from, so the count MUST fall when
+that rule fires. The stage tops out near 1264px, so a 608px reading column plus
+a gutter leaves ~560px of board and two 18rem tracks need 588: **there is no
+width at which the split pays for itself.** The deck takes the row; the
+launcher caps itself at `--column`; the surplus goes to the margins (VIEWS.md
+§4). Measured after: 390:1, 768:2, 1100:2, 1440:3, 1920:3.
+
+**Why the gate could not see it.** The fixture gave the Dashboard a rail.
+`views.rs::rail()` is Workspace alone, so the shipped Dashboard renders neither
+the rail nor its switch — the probe rendered both, and every dash measurement
+was taken in a 762px stage against a shipped 1136. The container query never
+fired in the fixture at all. A fixture narrower than the page cannot see a rule
+that only fires when it is wide.
+
+The banner's clip was `.problem-line { max-height: 3rem }` — a cap on a CHILD,
+inside a box that already had one, so the parent measured fine. Deleted; the
+banner's own cap now applies only below 30rem of width and above 30rem of
+height, which is arithmetic and not taste: at 320 the longest remedy is 401px
+and the CHROME floor leaves it 270. At 768 and up the whole remedy is on
+screen. `.agent-tabs` gets the mask `.status-strip` has carried since 24.
+
+### Three assertions, and the proof they bite
+
+The three CSS fixes were reverted and the gate re-run: 30 FAIL CLIPPED, 18 FAIL
+DECKMONO, 16 FAIL SWIPECUE — and **0 FAIL DECKCELLS**, the assertion added in
+27, green over all of it. That is the gap: DECKCELLS asks at ONE width, and
+this defect is a comparison BETWEEN widths. DECKMONO drives the container
+through seven steps directly, reading inside the routed region only — a
+`display: none` grid answers `gridTemplateColumns` with the unresolved
+`repeat(auto-fit, …)` it was given, four tokens, a monotone PASS over a board
+nobody was shown.
+
+`scripts/deck-probe.js` is a fifth probe script, and `check-layout.sh` copies
+it: `layout-probe.js` had reached 306 lines carrying all four deck assertions.
+It is 205 now — five over I12, recorded rather than shaved further, and
+`scripts/` has never been in `check-size.py`'s scope.
+
+One thing this gate cannot assert: `chrome-headless-shell` uses overlay
+scrollbars whatever `scrollbar-color` says, so "the cut is VISIBLE" is not
+measurable here. CLIPPED asserts the narrower thing it can see — no child of
+the banner may cap itself, and the banner may hide prose only in the one band
+the CHROME floor forces.

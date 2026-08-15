@@ -652,6 +652,35 @@ read as a narrow column of text floating in a very wide box, and the right-hand
 void was exactly where the running state and the ending of a run should have
 gone. Two rules fix it, and neither of them is "make everything narrower":
 
+**AND A DECK IS NOT A COMPANION (28).** Everything in this section survives
+except the one application of it that put the agent board in the launcher's
+companion track. Measured on the deployed build, the board's
+`grid-template-columns` read `300px` at 390, `333px 333px` at 768, `359px 359px`
+at 1100 and **`429.78px` at 1440** — all eight cards at x=929 in a single stack,
+beside a `.panel` 608 wide and a 496×1983 side column, so roughly 608×1313 of
+the widest viewport was blank and you scrolled eight cards past a void. *The
+widest screen got the narrowest board.*
+
+No threshold fixes that, and this is the part worth writing down: a companion
+track is by construction narrower than the row it was cut from, so the column
+count must DROP the moment the two-track rule fires. The stage tops out near
+1264px; a 608px reading column and a `--s-6` gutter leave at most ~560px of
+board, and two 18rem tracks need 588. There is no width at which the split can
+pay for itself. So the Dashboard's deck takes the whole row under the launcher,
+each remaining Dashboard card caps itself at `--column`, and the surplus goes to
+the margins rather than into the line (VIEWS.md §4 — *"the reclaimed width
+belongs in the margins, not the line"*). Measured after, board columns by
+viewport: **390→1, 768→2, 1100→2, 1440→3, 1920→3.**
+
+The rule this must keep is now an assertion and not a paragraph: **at every
+width the deck gets at least as many columns as it got at the width below**,
+swept over seven container widths by `DECKMONO` in `scripts/layout-probe.js`.
+`.split` is untouched — a form beside its own health line is a genuine pair of
+reading columns, and neither of them is a deck. One more line went with it:
+`.board` is `align-items: start`, because a grid item stretches to its row and
+at 768 `builder` stood 338px tall to match `critic`, with ~190px of nothing
+under its own two doors. **A card is as tall as what it says.**
+
 1. **A panel's width is for a READING COLUMN plus a COMPANION.** The reading
    column is `--measure` and holds everything a person reads *or types* —
    which is why `.grows` (the task field and the composer) is capped there too;
@@ -706,9 +735,10 @@ the same round 494px of text with an empty right half.
    looks like a card sized to its content rather than a wide card with a hole
    in it. Measured after: 608.
 
-What it is used for today. The Dashboard's launcher is the reading column and
-the agent board is the companion beside it — **which supersedes R3-20's "it
-takes the row"**. The Settings form is a reading column with the endpoint's
+What it is used for today. The Dashboard's launcher is a reading column with
+the deck under it and nothing beside it (28, above; R3-20's "it takes the row"
+is back, for the board rather than the launcher). The Settings form is a
+reading column with the endpoint's
 health and the trust note beside it (544 / 494). The Agents view takes the same
 shape: the roster is a deck above, and the editor — which is what that view is
 *for* — is the reading column with the task launcher as its companion (608 /
@@ -726,6 +756,20 @@ in any card.
 
 Breakpoints: **320, 375, 768, 1024, 1100, 1440, 1920.** 1100 is the dashboard
 fold threshold and is load-bearing; the others are test widths.
+
+**A SIDEWAYS SCROLLPORT THAT HIDES ITS SCROLLBAR OWES A CUE (28).** There are
+two in this product and only one of them had one. `.status-strip` got a mask in
+the 24-walk (`strip.css`, below 30rem) and the agent strip did not: measured at
+390, `.agent-tabs` was **scrollWidth 615 in clientWidth 332** — five of eight
+chips, `overflow-x: auto`, `scrollbar-width: none`, ending flush on the panel's
+rounded border, while a tile two inches above it read `none of 8 agents`. A
+first-time reader counts five and reads eight. macOS scrollbars are overlay, so
+"it scrolls" is not something the page renders until you already know. Both
+strips now carry the same one-line mask, and `SWIPECUE` in
+`scripts/layout-probe.js` makes it the rule rather than a thing one file
+remembered: any element that hides its scrollbar and has somewhere to scroll
+must carry a `mask-image`. This is the only mask in the product and it is a
+cue, not decoration — alpha, no colour, and it appears on nothing that fits.
 
 **The header collapses by PRIORITY, and it never cuts (R5-7, R6-4).** R5-7
 deleted a 2rem `mask-image` and put a sideways **scrollport** in its place with
@@ -805,11 +849,32 @@ unreachable* then had no line on the page naming WHICH endpoint, and none
 naming what had been spent reaching for it. **An error state may add a row; it
 may never subtract a fact.** The banner is a sibling of `<header>` now
 (`.banner.problem`, `main.rs`), the full width of the page, wrapping rather
-than ellipsising, capped at `30vh` so a long reason cannot eat a phone screen.
-Every `:has(.problem)` eviction rule is deleted. Measured at 1440 with the
-banner up: header 70px, banner 60px, `The next turn calls local — …:8873/v1`
-and `Tokens, every agent 8,436` both on screen (both strings were renamed in
-R8-8 and R8-9; the measurement is unchanged).
+than ellipsising. Every `:has(.problem)` eviction rule is deleted. Measured at
+1440 with the banner up: header 70px, banner 60px, `The next turn calls local —
+…:8873/v1` and `Tokens, every agent 8,436` both on screen (both strings were
+renamed in R8-8 and R8-9; the measurement is unchanged).
+
+**AND THE REMEDY IS NOT TRUNCATED (28).** This sentence used to end *"capped at
+`30vh` so a long reason cannot eat a phone screen"*, and R18-P1-9 then moved
+that cap off the banner and onto the SENTENCE at 3rem below 48rem, claiming
+*"nothing is truncated"*. Measured: `.problem-line` was **clientHeight 48 against
+scrollHeight 179 at 390, and 48 against 128 at 768**, with `overflow: auto`, an
+overlay scrollbar, and no fade, arrow or partial line to say so. The half that
+went missing is the half that says what to DO — *it is an address on THIS
+machine, so the server must be running, it must send CORS headers, and Chrome
+142+ asks permission before a page may call a local address*. **On a phone the
+only thing explaining a failure was the thing that got cut.**
+
+The sentence's cap is deleted, and the banner's own cap now applies **only below
+30rem of width**, which is the one band where the screen genuinely refuses: the
+longest remedy the core writes is 401px at 320, 350 at 360 and 324 at 390, and
+`fold-probe.js`'s CHROME floor — the routed view keeps a third of the viewport —
+leaves the banner 270 / 266 / 309 there. Uncapped, 320 measured **129px of view
+in a 780px screen**. So it gives way exactly where arithmetic says it must, with
+`scrollbar-color` set so the box that gives way has a bar to see, and at 768 and
+above the whole remedy is on screen. `CLIPPED` in `scripts/layout-probe.js` is
+the assertion: nothing INSIDE the banner may cap itself, and the banner may hide
+prose only under 30rem.
 
 **Two rows at 30rem, banner or no banner (R8-1).** The two switches take 252 of
 a 366px bar, which left the strip 71px: `Agent: main` was painted from x=152 and

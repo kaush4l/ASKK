@@ -1,10 +1,9 @@
 //! Hand an agent a task and walk away (15L). Everything until now started work
 //! by TALKING to an agent, and the other half — "a way to simply run the agents
-//! without human intervention" — had no control at all.
-//!
-//! This is the same seam call the composer makes (`POST /chat` addressed with
-//! `x-agent`), for an agent you are NOT talking to. It starts a turn in that
-//! agent's own Worker and returns at once; the card says how far it has got.
+//! without human intervention" — had no control at all. This is the same seam
+//! call the composer makes (`POST /chat` addressed with `x-agent`), for an agent
+//! you are NOT talking to: it starts a turn in that agent's own Worker and
+//! returns at once, and the card says how far it has got.
 
 use std::rc::Rc;
 
@@ -22,8 +21,8 @@ pub fn TaskLauncher(
     web: Signal<Option<Rc<WebApp>>>,
     tick: Signal<u32>,
     agent: ReadSignal<String>,
-    /// The `/agents` projection, for the ONE fact that decides which starter
-    /// tasks this agent can finish (R6-1).
+    /// The `/agents` projection, for the ONE fact that decides whether there is
+    /// a task to start at all and which starter tasks finish (R6-1, 29).
     agents: Signal<String>,
     /// So "watch it" is one press and not a hunt through the nav.
     view: Signal<View>,
@@ -31,9 +30,8 @@ pub fn TaskLauncher(
     let mut task = use_signal(String::new);
     // WHAT was launched, at WHOM, and where that agent's row stood BEFORE the
     // press (R2-2), SEEDED FROM THE LOG (R8-6) — and RE-SEEDED WHENEVER THE
-    // SUBJECT CHANGES (R9-2). Seeded once at mount, switching agent mid-run
-    // left `main`'s run in the card headed `RUN A TASK · RESEARCHER`, with no
-    // composer at all, over a row reading `researcher ready · no turns yet`.
+    // SUBJECT CHANGES (R9-2). Seeded once at mount, switching agent mid-run left
+    // `main`'s run in a card headed `RUN A TASK · RESEARCHER` with no composer.
     // A scoped panel shows its own scope; this effect is that rule.
     let mut sent = use_signal(|| None::<(String, String, u64)>);
     use_effect(move || {
@@ -73,13 +71,8 @@ pub fn TaskLauncher(
         let _ = tick();
         if let Some(app) = web.read().clone() {
             let res = app.handle(Request::get("/board"));
-            busy.set(
-                res.headers
-                    .iter()
-                    .find(|(k, _)| k == "x-busy")
-                    .map(|(_, v)| v.clone())
-                    .unwrap_or_default(),
-            );
+            let head = res.headers.iter().find(|(k, _)| k == "x-busy");
+            busy.set(head.map(|(_, v)| v.clone()).unwrap_or_default());
             board.set(res.body);
         }
     });
@@ -87,19 +80,23 @@ pub fn TaskLauncher(
     let running = sent()
         .map(|(target, _, before)| crate::runstatus::live(&projection, &target, before))
         .unwrap_or(false);
-    let workspace = crate::roster::has_workspace(&agents.read(), &who);
+    // WHAT THIS AGENT CAN DO, off the card's own `data-can` (29): the answer the
+    // Agents view's doors are drawn from, so the Dashboard cannot offer a turn
+    // the roster says is impossible. Empty while the roster loads — it acts, as
+    // it always has, and is offered no examples, the set being chosen by an
+    // answer nobody has yet.
+    let can = crate::runstatus::cell(&agents.read(), &who, "data-can").unwrap_or_default();
+    let acts = can != "read";
     // Somebody ELSE's run, named in one line rather than shown in this card
     // (R9-2). The board below lists every agent; what this adds is the DOOR, to
     // a run that was in this card a second ago.
-    let elsewhere = busy
-        .read()
-        .split(", ")
-        .find(|name| !name.is_empty() && *name != who)
-        .map(str::to_string);
+    let elsewhere =
+        busy.read().split(", ").find(|n| !n.is_empty() && *n != who).map(str::to_string);
     rsx! {
-        // The TARGET is in the title, not buried in line 1 of a paragraph: it
-        // used to retarget with nothing in the chrome or on the button (F2).
-        Card { title: "Run a task · {who}", aria_label: "Run a task for {who}",
+        // The TARGET is in the title (F2), and since 30 so is `can`: `Run a
+        // task · critic` stood over a body saying there is no task to start.
+        Card { title: if acts { format!("Run a task · {who}") } else { format!("Ask {who} · this one takes no tasks") },
+            aria_label: "This panel is about {who}",
             // FIRST IN THE CARD, ABOVE THE FOLD, WHERE THE BUTTON WAS (R6-6):
             // the state of the run REPLACES the invitation to start one rather
             // than being patched in underneath it, and everything below is
@@ -107,13 +104,15 @@ pub fn TaskLauncher(
             if let Some((target, text, before)) = sent() {
                 crate::runstatus::LaunchedRun {
                     board: projection.clone(), view,
-                    who: target,
-                    task: text,
-                    baseline: before,
+                    who: target, task: text, baseline: before,
                     on_retry: move |t: String| { let mut again = fire; again(t) },
                 }
             }
-            if !running {
+            // NO START CONTROL FOR AN AGENT THAT CANNOT ACT (29), and the reason
+            // in words where it would have been. R2-12's precedent: a control
+            // that does not apply here is NOT RENDERED, not rendered dead.
+            if !running && !acts { {crate::examples::no_task(&who)} }
+            if !running && acts {
                 p { class: "note",
                     "Give {who} a task and walk away — it works on its own, and “Agents and \
                      what they are doing” below says how far it has got."
@@ -123,9 +122,7 @@ pub fn TaskLauncher(
                     onsubmit: move |_| launch(),
                     Field {
                         id: "task-field",
-                        // The product's PRIMARY INPUT, and it was a 44px line
-                        // (R4-4).
-                        rows: 3,
+                        rows: 3, // the product's PRIMARY INPUT, once a 44px line (R4-4)
                         class: "grows",
                         value: "{task}",
                         aria_label: "Task for {who}",
@@ -140,10 +137,10 @@ pub fn TaskLauncher(
                             }
                         },
                     }
-                    // "Start agent", never "Run" (R2-10): this press dispatches
-                    // an agent that works on its own for as many steps as it
-                    // likes, where the Workspace's button runs one shell line.
-                    // DISABLED until there is a task (R2-9).
+                    // "Start agent", never "Run" (R2-10): this press dispatches an
+                    // agent that works on its own for as many steps as it likes,
+                    // where the Workspace's button runs one shell line. DISABLED
+                    // until there is a task (R2-9).
                     Button {
                         variant: "primary",
                         submit: true,
@@ -151,22 +148,22 @@ pub fn TaskLauncher(
                         "Start agent"
                     }
                     // WHAT THE KEYS DO (R5-5). INSIDE the form, like the
-                    // composer's: `flex-basis: 100%` means WIDTH in the form's
-                    // row and HEIGHT in the card's column — outside, it was a
-                    // 699px-tall paragraph that pushed the examples off screen.
+                    // composer's: `flex-basis: 100%` means WIDTH in the form's row
+                    // and HEIGHT in the card's column — outside, it was a 699px
+                    // paragraph that pushed the examples off screen.
                     {key_hint()}
                 }
-                // WHY the primary is dead (R3-15). A disabled button was
-                // painted a shade off the secondary beside it and explained
-                // itself nowhere; `controls.css` paints it, this says it.
+                // WHY the primary is dead (R3-15). A disabled button was painted
+                // a shade off the secondary beside it and explained itself
+                // nowhere; `controls.css` paints it, this says it.
                 if task.read().trim().is_empty() {
                     p { class: "note", "Start agent is off until you have typed a task." }
                 }
-                // …AND THE EXAMPLES DO NOT VANISH ON THE FIRST KEYSTROKE
-                // (R8-EX). Typing one character deleted three buttons and a
-                // lead: the card collapsed ~330px under the cursor. They go
-                // only when there is a RUN to report (R6-6).
-                {crate::examples::picks(task, &who, workspace)}
+                // …AND THE EXAMPLES DO NOT VANISH ON THE FIRST KEYSTROKE (R8-EX).
+                // Typing one character deleted three buttons and a lead: the card
+                // collapsed ~330px under the cursor. They go only when there is a
+                // RUN to report (R6-6).
+                {crate::examples::picks(task, &who, &can)}
             }
             // ONE LINE, AND A DOOR (R9-2). Not this card's run, so not this
             // card's card: the hash IS the view and its subject (R6-3), so
@@ -184,15 +181,18 @@ pub fn TaskLauncher(
                     }
                 }
             }
-            // The six lines this panel used to spend introducing one text
-            // field (F9). Behind the marker: the machinery they named is real,
-            // it is just not what a first press needs.
-            Disclosure { summary: "What happens when you press Start agent",
-                p { class: "note",
-                    "{who} works in the background, on its own: it can run commands in its \
-                     own folder in Linux and use its tools, for as many steps as its own \
-                     settings allow. Nothing on this page waits for it — switch views, or \
-                     open Chat and join the conversation, without restarting anything."
+            // The six lines this panel used to spend introducing one text field
+            // (F9). NOT SHOWN WHERE THERE IS NO BUTTON TO PRESS (29) — and it no
+            // longer promises commands, a claim about the toolbox rather than
+            // about this panel.
+            if acts {
+                Disclosure { summary: "What happens when you press Start agent",
+                    p { class: "note",
+                        "{who} works in the background, on its own: it uses the tools its file \
+                         names, for as many steps as its own settings allow. Nothing on this \
+                         page waits for it — switch views, or open Chat and join the \
+                         conversation, without restarting anything."
+                    }
                 }
             }
         }

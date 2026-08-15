@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Not for you — another agent hands it one question and it reports back in a few sentences. It cannot see your conversation and cannot ask anything back.
+description: Another agent usually hands it one question and it reports back in a few sentences, but its tools are the full set, so you can give it a task directly too. Either way it works only from what it is handed — it cannot see the conversation the question came out of, and cannot ask anything back.
 model: local
 temperature: 0.3
 engine: react

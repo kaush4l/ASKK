@@ -1,0 +1,111 @@
+// The deck's own assertions (27 and 30), split out of `layout-probe.js` at
+// the 200-line rule (I12). Every one exists because a defect shipped past a
+// gate that was green: DECKMONO because DECKCELLS asks at one width, CLIPPED
+// because a cap on a child is invisible to a check that measures the parent,
+// and SWIPECUE because the answer increment 24 found for one scrollport was
+// never made a rule that the next one had to follow.
+//
+// Reads `window.__probe`, which `layout-probe.js` builds — including `region`,
+// the ROUTED view. Measuring `document` instead would read hidden views, whose
+// grids answer with the unresolved `repeat(auto-fit, …)` they were given.
+(function () {
+  var P = window.__probe;
+  if (!P) return;
+  var say = P.say, W = P.W, region = P.region;
+
+  // THE DECK'S CARDS ARE THE DECK'S CELLS (27). `display: grid` on the
+  // Dashboard's board says nothing about whether the CARDS are its items: two
+  // wrappers stand between them in the shipped tree, and with either one left
+  // in place the grid formed one column and every card stacked inside it. The
+  // page still passed OVERFLOW, ONESCREEN and every contrast check, because a
+  // single-column deck is a perfectly valid layout — it is just not the one
+  // that was written. So the assertion is on the OUTCOME and not on the tree:
+  // where the deck is wide enough for two 18rem tracks, two cards must share a
+  // row. Checking `parentElement` would not do it — `display: contents` is
+  // exactly the mechanism that makes a descendant a grid item without moving
+  // it in the DOM, so the tree says orphan while the layout is correct.
+  // Compact is exempt by its own rule: one column is what the rail asks for.
+  document.querySelectorAll(".board:not(.compact)").forEach(function (deck) {
+    var cards = deck.querySelectorAll(".agent-row");
+    var wide = deck.getBoundingClientRect().width >= 36 * 16;
+    if (cards.length < 2 || !wide || getComputedStyle(deck).display !== "grid") return;
+    var a = cards[0].getBoundingClientRect(), b = cards[1].getBoundingClientRect();
+    say(Math.abs(a.top - b.top) < 1, "DECKCELLS",
+        Math.abs(a.top - b.top) < 1
+          ? cards.length + " cards share a row in " + Math.round(deck.getBoundingClientRect().width) + "px"
+          : "cards stacked in a " + Math.round(deck.getBoundingClientRect().width) +
+            "px deck that has room for two");
+  });
+
+  // ---- DECKMONO: the widest screen may not give the deck the fewest columns.
+  // DECKCELLS asks at ONE width whether the cards are the deck's cells, and the
+  // deployed 1440 page passed it while stacking all eight in a 430px column
+  // beside 1313px of nothing: the deck was the launcher's COMPANION, so
+  // crossing the 66rem container query cut it from three tracks to one —
+  // 390:1, 768:2, 1100:2, 1440:1. That defect is a COMPARISON between two
+  // widths and a probe renders one, so the container is driven directly here.
+  // Inside the ROUTED region, never `document`: a `display: none` grid answers
+  // `gridTemplateColumns` with the unresolved `repeat(auto-fit, …)` it was
+  // given — four tokens, a monotone PASS over a board nobody was shown.
+  var vp = region.classList.contains("view-panel") ? region
+                                                  : region.querySelector(".view-panel");
+  var mono = region.querySelector(".board:not(.compact)");
+  if (vp && mono) {
+    var saved = vp.getAttribute("style");
+    var seen = [], drop = null, was = 0;
+    [320, 480, 640, 800, 960, 1120, 1280].forEach(function (w) {
+      vp.setAttribute("style", (saved || "") +
+        ";width:" + w + "px;max-width:none;flex:0 0 auto;align-self:flex-start");
+      var n = getComputedStyle(mono).gridTemplateColumns.split(" ").length;
+      if (was && n < was) drop = seen[seen.length - 1] + " then " + w + ":" + n;
+      was = n;
+      seen.push(w + ":" + n);
+    });
+    if (saved === null) vp.removeAttribute("style"); else vp.setAttribute("style", saved);
+    say(!drop, "DECKMONO", drop ? "the deck LOSES a column as the page widens — " +
+        drop : "columns by container width " + seen.join(" "));
+  }
+
+  // ---- CLIPPED: an explanation is not truncated where it need not be -------
+  // The banner's recovery sentence measured clientHeight 48 against 179 at 390
+  // and 48 against 128 at 768 — a 3rem cap, `overflow: auto`, overlay
+  // scrollbars, no other cue — and the half that vanished is the half saying
+  // what to DO. The rule is not "never cap": at 320 the whole remedy is 401px
+  // and CHROME's third-of-the-screen floor leaves it 270. It is that the BANNER
+  // is the only thing that may give and only under 30rem; a cap on a child is a
+  // box with no cue inside a box that has one, and it is what shipped. Scoped
+  // to what this product calls an explanation (DESIGN §5), not to every
+  // scroller — the transcript and the shell log are frames you browse.
+  var cut = [];
+  var band = W < 480 && window.innerHeight >= 480;
+  document.querySelectorAll(".banner, .banner *, .note").forEach(function (el) {
+    var what = (el.className || el.tagName) + " ";
+    var banner = el.classList.contains("banner");
+    if (!banner && getComputedStyle(el).maxHeight !== "none") {
+      cut.push(what + "caps its own height inside the banner");
+    } else if (el.scrollHeight > el.clientHeight + 4 &&
+               (el.textContent || "").trim().length > 40 && !(banner && band)) {
+      cut.push(what + "hides " + (el.scrollHeight - el.clientHeight) + "px of prose");
+    }
+  });
+  say(!cut.length, "CLIPPED", cut.join(", ") ||
+      (band ? "only the banner gives way, and only under 30rem"
+            : "no explanation is cut at this width"));
+
+  // ---- SWIPECUE: a scrollport that hides its scrollbar owes a cue ----------
+  // `.agent-tabs` at 390 held five of eight chips in 332px of a 615px row with
+  // `scrollbar-width: none`, ending flush on the panel's rounded edge, while a
+  // tile above it read `none of 8 agents`. `.status-strip` answered exactly
+  // this in 24 with a mask; nothing made that answer a rule, so the next
+  // sideways scrollport shipped without one.
+  var nocue = [];
+  document.querySelectorAll("*").forEach(function (el) {
+    if (el.scrollWidth <= el.clientWidth + 4) return;
+    var s = getComputedStyle(el);
+    if (s.getPropertyValue("scrollbar-width") !== "none") return;
+    if (s.getPropertyValue("mask-image") !== "none") return;
+    nocue.push((el.className || el.tagName) + " " + el.clientWidth + "/" + el.scrollWidth);
+  });
+  say(!nocue.length, "SWIPECUE", nocue.join(", ") ||
+      "every hidden-scrollbar port with somewhere to go says so");
+})();
