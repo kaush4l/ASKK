@@ -28,7 +28,12 @@ pub const ENGINE_BASE: &str = "base";
 /// file says which job it holds, and the core looks the holder up.
 pub const ROLE_ENTRY: &str = "entry";
 pub const ROLE_SUMMARIZER: &str = "summarizer";
-pub const ROLES: [&str; 2] = [ROLE_ENTRY, ROLE_SUMMARIZER];
+/// …and the third (25): the agent whose answer is a VERDICT on another agent's
+/// work. A role rather than the name `critic`, for the reason above and for one
+/// more — `crate::critic` has to recognise a tool result as a verdict, and
+/// recognising it by a hardcoded name is what 20 was spent undoing.
+pub const ROLE_CRITIC: &str = "critic";
+pub const ROLES: [&str; 3] = [ROLE_ENTRY, ROLE_SUMMARIZER, ROLE_CRITIC];
 
 /// One agent as its file declares it. The seven frontmatter keys of the Python
 /// loader, `max_rounds` (15C, which the Python had no equivalent of), and the

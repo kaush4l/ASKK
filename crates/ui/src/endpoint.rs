@@ -14,14 +14,17 @@ use std::rc::Rc;
 use adapters_web::WebApp;
 use dioxus::prelude::*;
 
-/// Whether a turn could be sent at all: an endpoint is chosen and has a URL.
-/// Read straight off the broker, so it is true whether or not the Settings
-/// view has ever been opened.
+/// Whether a turn could be sent at all: an endpoint is chosen and has a URL —
+/// …OR IS THE ONE ENTRY THAT HAS NO URL TO HAVE (26). Read straight off the
+/// broker, so it is true whether or not Settings has ever been opened. A URL was the whole test
+/// until the browser's own model arrived, which is sendable and has no address;
+/// carrying a stand-in string in the `base_url` field to satisfy this line put
+/// the sentence "this device" in the one field that means an address, and the
+/// header printed it after the word "at".
 pub(crate) fn endpoint_configured(web: Signal<Option<Rc<WebApp>>>) -> bool {
-    web.read()
-        .clone()
-        .map(|app| !app.endpoint_summary().0.is_empty())
-        .unwrap_or(false)
+    let Some(app) = web.read().clone() else { return false };
+    !app.endpoint_summary().0.is_empty()
+        || crate::endpointform::ondevice::is_on_device(&app, &app.current_entry())
 }
 
 /// The header pill's sentence, IN FOUR PARTS so that it can shrink instead of
@@ -40,6 +43,18 @@ pub(crate) fn endpoint_parts(web: Signal<Option<Rc<WebApp>>>) -> Parts {
     let none = || (String::new(), String::new(), String::new(), String::new());
     let Some(app) = web.read().clone() else { return none() };
     let (url, has_key, model, _) = app.endpoint_summary();
+    let entry = app.current_entry();
+    // THE ONE ENTRY WITH NOWHERE TO NAME (26). Everything below this line is
+    // built around an address; this one has none, and the pill's job — say what
+    // the next turn spends itself on — is answered by saying so.
+    if crate::endpointform::ondevice::is_on_device(&app, &entry) {
+        return (
+            "The next turn runs on ".into(),
+            "runs on ".into(),
+            "your browser's own model".into(),
+            ", on this machine — no address, no key.".into(),
+        );
+    }
     if url.is_empty() {
         return (
             String::new(),
@@ -48,7 +63,6 @@ pub(crate) fn endpoint_parts(web: Signal<Option<Rc<WebApp>>>) -> Parts {
             " — no turn can be sent.".into(),
         );
     }
-    let entry = app.current_entry();
     let key = match has_key {
         true => "with the key saved for it",
         false => "with no key",

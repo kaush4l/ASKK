@@ -21,6 +21,11 @@ impl FetchModel {
         self.endpoint.borrow_mut().set_catalogue(raw);
     }
 
+    /// Add an entry this browser turns out to have (the on-device model).
+    pub fn add_catalogue(&self, raw: &str) {
+        self.endpoint.borrow_mut().add_catalogue(raw);
+    }
+
     /// Pick a catalogue entry and override it. A `None` key keeps the stored
     /// one (`Endpoint::set`), which is what stops Save wiping a secret the
     /// write-only field never held.
@@ -50,6 +55,19 @@ impl FetchModel {
             .unwrap_or_default()
     }
 
+    /// What the catalogue SAYS about an entry, for the pane that picks one:
+    /// its `note`, and whether it is the browser's own model rather than a
+    /// server. The second is what stops Settings asking for an address and a
+    /// key that entry has no use for.
+    pub fn entry_note(&self, name: &str) -> (String, bool) {
+        self.endpoint
+            .borrow()
+            .catalogue()
+            .resolve(name)
+            .map(|e| (e.note.clone(), e.is_on_device()))
+            .unwrap_or_default()
+    }
+
     /// Whether THAT entry has a key of its own — keys are per entry, so the
     /// question only makes sense with a name attached.
     pub fn entry_has_key(&self, name: &str) -> bool {
@@ -61,7 +79,14 @@ impl FetchModel {
     /// a call that fails one send later (`ux-walker`, increment 04).
     pub fn entry_problem(&self, name: &str) -> Option<String> {
         let c = self.endpoint.borrow().catalogue();
-        match c.resolve(name)?.chat_url() {
+        let entry = c.resolve(name)?;
+        // The browser's own model has no URL and needs none — it is listed
+        // only where this browser actually has it (I15), so being listed is
+        // itself the answer to "can this build call it".
+        if entry.is_on_device() {
+            return None;
+        }
+        match entry.chat_url() {
             Ok(_) => None,
             Err(kernel::ModelError::Unsupported { detail }) => Some(detail),
             Err(e) => Some(format!("{e:?}")),

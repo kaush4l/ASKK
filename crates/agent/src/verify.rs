@@ -63,15 +63,27 @@ pub fn says_nothing(output: &str) -> bool {
 pub(crate) fn observe(state: &mut AgentState, tool: &str, ok: bool, output: &str) {
     if ok && is_mutating(tool) {
         (state.mutated, state.green, state.acted) = (true, false, true);
+        // …AND A REVIEW OF WHAT THE FILE USED TO SAY IS NOT A REVIEW OF THIS
+        // ONE (25). Same freshness rule as `green`, one line along: a verdict
+        // handed down before the last edit has nothing to do with the edit.
+        state.reviewed = None;
     }
     if ok && tool == "exec" && !says_nothing(output) {
         (state.green, state.acted) = (true, true);
+    }
+    // THE SEPARATE AGENT'S VERDICT, FOLDED LIKE ANY OTHER RESULT (25). This
+    // file judges nothing — it records what the agent holding `role: critic`
+    // said, and `crate::critic` holds why anything but a pass is not one.
+    if !state.critic.is_empty() && tool == state.critic {
+        state.reviewed = Some(ok && crate::critic::passed(output));
     }
 }
 
 /// Turn-scoped, like `pending_tools` and `tool_rounds`: cleared where they are.
 pub(crate) fn clear(state: &mut AgentState) {
     (state.mutated, state.green, state.nudges) = (false, false, 0);
+    // …and the verdict: a review belongs to the turn whose work it read.
+    state.reviewed = None;
     // …and `acted`, which is the same fold on a shorter clock: `passes` resets
     // it at every lap, this resets it at every turn.
     state.acted = false;

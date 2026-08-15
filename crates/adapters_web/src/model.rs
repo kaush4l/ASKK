@@ -74,6 +74,14 @@ impl FetchModel {
         }
         Ok(req)
     }
+
+    /// Whether this call is for the model built into the browser rather than a
+    /// server. Asked BEFORE a URL or a credential is assembled, and answered
+    /// with the borrow released, so nothing on that path can touch either.
+    /// Nothing above `ModelPort` knows the difference (I4).
+    fn on_device(&self, asked: &str) -> Result<bool, ModelError> {
+        Ok(self.endpoint.borrow().resolve(asked)?.is_on_device())
+    }
 }
 
 impl ModelPort for FetchModel {
@@ -90,9 +98,13 @@ impl ModelPort for FetchModel {
             }
             // The core speaks the SYMBOLIC name (the agent's `model:` key);
             // the catalogue turns it into an endpoint and a model id here.
+            let asked = asked_model(body_json);
+            if self.on_device(&asked)? {
+                return crate::ondevice::call(body_json).await;
+            }
             let (body, url, name, model) = {
                 let e = self.endpoint.borrow();
-                let entry = e.resolve(&asked_model(body_json))?;
+                let entry = e.resolve(&asked)?;
                 (
                     stamp_model(body_json, &entry.model),
                     entry.chat_url()?,

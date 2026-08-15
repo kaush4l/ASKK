@@ -121,6 +121,7 @@ pub fn adopt_spec(
         state.summarizer_model = s.model.clone();
         state.summarizer_temperature = s.temperature;
     }
+    state.critic = critic_among(spec, peers);
     let soul = find(&mut state.paper, "soul");
     soul.section.parts = vec![Part::Text {
         text: spec.prompt.clone(),
@@ -129,4 +130,22 @@ pub fn adopt_spec(
     identity.section.parts = vec![Part::Text {
         text: format!("Name: {}. {}", spec.name, spec.description),
     }];
+}
+
+/// WHO REVIEWS THIS AGENT'S WORK (25), by the job the file declares and not by
+/// the name `critic` — 20's rule, for the same reason: a hardcoded name means
+/// renaming the folder silently unhooks the machinery.
+///
+/// It is recorded even where this agent cannot CALL the critic, because the
+/// field only decides whether a tool result is read as a verdict, and a result
+/// can only arrive from a tool the allowlist already granted. An agent that is
+/// itself the critic gets an empty name: nothing here reviews itself.
+fn critic_among(
+    spec: &crate::spec::AgentSpec,
+    peers: &[crate::spec::AgentSpec],
+) -> String {
+    crate::loader::role_holder(peers, crate::spec::ROLE_CRITIC)
+        .filter(|c| c.name != spec.name)
+        .map(|c| c.name.clone())
+        .unwrap_or_default()
 }

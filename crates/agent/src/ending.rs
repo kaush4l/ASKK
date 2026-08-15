@@ -44,6 +44,15 @@ pub const ROUND_CEILING: &str = "round ceiling";
 /// stopped on the budget.
 pub const PASS_CEILING: &str = "pass ceiling";
 
+/// THE REVIEWER SAID NO (25). A separate agent — `role: critic`, its own
+/// prompt, its own Worker, no sight of this conversation — was handed the work
+/// and did not clear it. The answer is real and is shown; what this says is
+/// that the last thing to look at it disagreed with it. It is not the machine's
+/// judgement of the work, and it is not this agent's own: `critique` is the
+/// stage where a model marks its own homework, and this ending exists so that
+/// homework marked by somebody else cannot be filed as a pass.
+pub const CRITIC_FAULTED: &str = "critic faulted";
+
 /// THE MODEL ANSWERED, AND THE ANSWER IS SHOWN — but the turn changed a file
 /// and no command has run since, so nothing on this page knows whether it
 /// worked (`crate::verify`). Not a failure and not a judgement about the

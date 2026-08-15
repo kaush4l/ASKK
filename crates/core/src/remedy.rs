@@ -12,10 +12,11 @@
 /// Which failure this was, in two or three words — the disclosure's name.
 pub(crate) fn failure_kind(payload_json: &str) -> &'static str {
     use kernel::ModelError::{
-        EndpointUnknown, ModelMissing, NoKey, Provider, Timeout, Transport, Unsupported,
+        EndpointUnknown, ModelMissing, NoKey, OnDevice, Provider, Timeout, Transport, Unsupported,
     };
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
         Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => "no endpoint configured",
+        Ok(crate::error::CoreError::Model(OnDevice { .. })) => "the browser's own model refused",
         Ok(crate::error::CoreError::Model(Transport { .. })) => "the endpoint was unreachable",
         // A TIMEOUT IS NOT UNREACHABILITY (R12-2a). Same rejection at the
         // fetch, two different facts about the world, and only one of them is
@@ -72,9 +73,11 @@ pub(crate) fn typed(payload_json: &str) -> bool {
 /// payload. Each names its own fix; the fallback admits it has none.
 pub(crate) fn failure_line(payload_json: &str) -> String {
     use kernel::ModelError::{
-        EndpointUnknown, ModelMissing, NoKey, Provider, Timeout, Transport, Unsupported,
+        EndpointUnknown, ModelMissing, NoKey, OnDevice, Provider, Timeout, Transport, Unsupported,
     };
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
+        // …AND THE BROWSER'S OWN MODEL HAS NEITHER A URL NOR A KEY TO CORRECT.
+        Ok(crate::error::CoreError::Model(OnDevice { detail })) => return on_device(&detail),
         // The Local Network Access prompt is about LOOPBACK, and this sentence
         // named it while calling `https://198.51.100.7/v1` (increment 06). The
         // ADDRESS chooses which of the two real causes to name.
@@ -130,6 +133,14 @@ pub(crate) fn failure_line(payload_json: &str) -> String {
     .to_string()
 }
 
+fn on_device(detail: &str) -> String {
+    format!(
+        "This turn asked for the model built into your browser, and the browser refused it: \
+         {detail}. Nothing was sent over the network — that endpoint has no address and takes \
+         no API key, so there is nothing in Settings to correct about it. Pick a different \
+         endpoint in Settings if you need this turn now."
+    )
+}
 /// The endpoint could not be reached, and what to check depends on where it is.
 fn unreachable_line(url: &str) -> String {
     match is_loopback(url) {

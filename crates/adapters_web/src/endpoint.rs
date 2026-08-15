@@ -45,6 +45,14 @@ impl Endpoint {
         self.file = Catalogue::parse(raw);
     }
 
+    /// Add entries this BROWSER turns out to have (I15). Separate from
+    /// `set_catalogue` because it is not the file: the on-device entry exists
+    /// only where `LanguageModel.availability()` says so, and it is layered
+    /// under the user's own overrides like any shipped entry.
+    pub fn add_catalogue(&mut self, raw: &str) {
+        self.file.overlay(raw);
+    }
+
     /// The catalogue the app actually uses: the file with the user's layer on
     /// top. Recomputed rather than mutated, so clearing an override reverts to
     /// the shipped value instead of leaving a hole.
@@ -121,6 +129,18 @@ impl Endpoint {
             "" => asked.trim(),
             picked => picked,
         };
+        // THE ON-DEVICE ENTRY IS NOT A MODEL ID (I15's other half). Where the
+        // browser has no built-in model the entry is absent — and `resolve`'s
+        // Python rule would then read the name as a model id served by the
+        // DEFAULT entry's endpoint, POSTing `model: on-device` at somebody's
+        // server. That is the one place "advertise less" could turn into
+        // "send the wrong bytes", so it is refused by name instead. It is what
+        // a sub-agent hits: every one runs in a Worker, and Chrome offers the
+        // Prompt API only to a top-level page.
+        let listed = |n: &str| self.catalogue().names().iter().any(|k| k == n);
+        if name == crate::ondevice::NAME && !listed(name) {
+            return Err(crate::ondevice::absent());
+        }
         self.catalogue()
             .resolve(name)
             .ok_or_else(|| ModelError::EndpointUnknown {

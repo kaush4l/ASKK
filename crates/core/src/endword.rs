@@ -35,6 +35,12 @@ pub(crate) enum Ending {
     /// raising `max_rounds:` — one buys more laps of plan-work-verify, the
     /// other buys more tool calls inside them.
     PassCeiling,
+    /// A SEPARATE AGENT REVIEWED THE WORK AND DID NOT CLEAR IT (25). Not the
+    /// `critique` stage, which is the same model reading its own turn back in
+    /// its own window; the agent holding `role: critic`, in its own Worker,
+    /// which did not do the work and cannot see the conversation. The answer is
+    /// real and is shown; the act is to read what the critic said.
+    CriticFaulted,
     /// The turn raised. The status fact already says `failed` and the card
     /// already has a branch for it, so this ending adds no word of its own — it
     /// is here so that a failure cannot be mistaken for the ending before it.
@@ -42,13 +48,27 @@ pub(crate) enum Ending {
 }
 
 impl Ending {
+    /// The fact's own word, typed. A reason this build does not know reads as
+    /// `Answered`, which is what every surface did before any ending was named
+    /// — so an unknown one is no worse than the day before it existed.
+    pub(crate) fn named(why: &str) -> Ending {
+        match why {
+            w if w == agent::NO_ANSWER => Ending::NoAnswer,
+            w if w == agent::ROUND_CEILING => Ending::RoundCeiling,
+            w if w == agent::PASS_CEILING => Ending::PassCeiling,
+            w if w == agent::CRITIC_FAULTED => Ending::CriticFaulted,
+            w if w == agent::UNCHECKED => Ending::Unchecked,
+            _ => Ending::Answered,
+        }
+    }
+
     /// Whether there is an answer to read. The `Read the reply` button is
     /// offered on this and nothing else: a button that lands on a raw tool call
     /// is worse than no button. `Unchecked` counts — the reply exists and is
     /// the model's own prose; the row beside the button is what says what is
     /// not known about it.
     pub(crate) fn answered(self) -> bool {
-        matches!(self, Ending::Answered | Ending::Unchecked)
+        matches!(self, Ending::Answered | Ending::Unchecked | Ending::CriticFaulted)
     }
 
     /// THE BOARD ROW'S WORD, when the status word is not the true one. `ready`
@@ -68,6 +88,10 @@ impl Ending {
             // in flight is the R17-P0-2 failure exactly, and the word has to
             // say that the stopping was the budget's doing and not the work's.
             Ending::PassCeiling => Some("stopped when its passes ran out"),
+            // NOT "failed" and not "wrong": one agent reviewed another's work
+            // and said no. The page is not claiming to know who is right — it
+            // is refusing to file the turn as an answer over an objection.
+            Ending::CriticFaulted => Some("answered, and the critic disagreed"),
             Ending::StoppedByYou => Some("stopped by you"),
         }
     }
@@ -96,6 +120,10 @@ impl Ending {
                 "it walked its stages as many times as `passes:` allows and was still \
                  changing things on the last one, so the work is unfinished — its last \
                  reply says where it got to; raise `passes:` or ask it to carry on"
+            }
+            Ending::CriticFaulted => {
+                "it asked the critic to review the work and the critic did not clear it — \
+                 the Tool trace has what the critic said"
             }
             Ending::StoppedByYou => {
                 "nothing new was started after you pressed Stop; ask again to carry on"

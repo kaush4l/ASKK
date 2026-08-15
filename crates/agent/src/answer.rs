@@ -59,11 +59,29 @@ pub(crate) fn answered(
     // …AND RUNNING OUT OF PASSES IS ITS OWN ENDING (22), ahead of the other
     // two: a turn the budget cut off is not a turn that answered, and R17-P0-2
     // is the whole reason this file names endings at all.
-    let why = match (crate::passes::exhausted(&state), state.mutated && !state.green) {
-        (true, _) => ending::PASS_CEILING,
-        (false, true) => ending::UNCHECKED,
-        (false, false) => ending::ANSWERED,
-    };
+    let why = why(&state);
     let effect = ending::end(&mut state, why);
     (state, vec![effect])
+}
+
+/// WHICH ENDING THIS TURN EARNED. Four folds already computed, read in the
+/// order of how much each one narrows what a person should do next.
+///
+/// …AND A TURN THE CRITIC DID NOT CLEAR IS NOT A TURN THAT ANSWERED (25). It
+/// sits between the pass budget and the verify gate: running out of passes is
+/// the more specific thing to say about a turn that did both, and a fault is a
+/// stronger statement about the work than "nothing read it back". `reviewed` is
+/// the fold in `verify::observe` over a separate agent's answer, never a reading
+/// of this model's prose — the caller cannot summarise its way past it.
+fn why(state: &AgentState) -> &'static str {
+    match (
+        crate::passes::exhausted(state),
+        state.reviewed == Some(false),
+        state.mutated && !state.green,
+    ) {
+        (true, _, _) => ending::PASS_CEILING,
+        (_, true, _) => ending::CRITIC_FAULTED,
+        (_, _, true) => ending::UNCHECKED,
+        _ => ending::ANSWERED,
+    }
 }

@@ -47,7 +47,7 @@ fn one(kind: &EventKind) -> Option<Option<Ending>> {
             false => Ending::Answered,
         })),
         EventKind::Custom { kind, payload_json } => match kind.as_str() {
-            k if k == agent::ENDED => Some(Some(named(&agent::ended_why(payload_json)))),
+            k if k == agent::ENDED => Some(Some(Ending::named(&agent::ended_why(payload_json)))),
             // A NUDGE MEANS THE TURN DID NOT END. The prose reply above it
             // reads as `Answered` on the arm before this one — that is how a
             // reply with no calls in it has always read — and the gate held it.
@@ -63,19 +63,6 @@ fn one(kind: &EventKind) -> Option<Option<Ending>> {
             _ => None,
         },
         _ => None,
-    }
-}
-
-/// The fact's own word, typed. A reason this build does not know reads as
-/// `Answered`, which is what every surface did before any ending was named —
-/// so an unknown one is no worse than the day before it existed.
-fn named(why: &str) -> Ending {
-    match why {
-        w if w == agent::NO_ANSWER => Ending::NoAnswer,
-        w if w == agent::ROUND_CEILING => Ending::RoundCeiling,
-        w if w == agent::PASS_CEILING => Ending::PassCeiling,
-        w if w == agent::UNCHECKED => Ending::Unchecked,
-        _ => Ending::Answered,
     }
 }
 
@@ -136,13 +123,24 @@ pub(crate) fn machine_note(kind: &str, payload_json: &str, who: &str) -> Option<
             .unwrap_or_else(|_| payload_json.to_string());
         return Some((crate::fold::NOTICE.to_string(), said));
     }
-    match named(&agent::ended_why(payload_json)) {
+    match Ending::named(&agent::ended_why(payload_json)) {
         // The answer is directly above and is shown in full. What the notice
         // adds is the thing the answer cannot: nothing read the change back.
         Ending::Unchecked => Some((
             crate::fold::NOTICE.to_string(),
             "It changed a file and no command ran afterwards, so nothing here can say \
              whether it worked. The Tool trace has what it did."
+                .to_string(),
+        )),
+        // A DIFFERENT AGENT LOOKED AND SAID NO (25). The answer is directly
+        // above; what the notice adds is that it was reviewed by something
+        // other than itself, and that the review did not clear it. The page
+        // takes no side — it says who disagreed and where to read them.
+        Ending::CriticFaulted => Some((
+            crate::fold::NOTICE.to_string(),
+            "It handed the finished work to the critic — a separate agent that did not do \
+             the work and cannot see this conversation — and the critic did not clear it. \
+             The critic's reply is in the Tool trace, and in the critic's own conversation."
                 .to_string(),
         )),
         Ending::RoundCeiling => Some((

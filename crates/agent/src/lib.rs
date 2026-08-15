@@ -10,6 +10,7 @@ mod answer;
 mod defaults;
 mod author;
 mod calls;
+mod critic;
 mod now;
 mod effect;
 mod ending;
@@ -56,7 +57,11 @@ pub use search::{results as search_results, search_path, WEB_SEARCH};
 pub use workspace::{is_workspace_tool, process_name, relative_path, workspace_tools};
 pub use author::{new_spec, render_agent_file, usable_agent_name};
 pub use loader::{load_agents, role_holder};
-pub use spec::{parse_agent_file, AgentSpec, ENGINE_BASE, ENGINE_REACT, ROLE_ENTRY, ROLE_SUMMARIZER};
+pub use critic::{passed as critic_passed, FAULT as CRITIC_FAULT, PASS as CRITIC_PASS};
+pub use spec::{
+    parse_agent_file, AgentSpec, ENGINE_BASE, ENGINE_REACT, ROLE_CRITIC, ROLE_ENTRY,
+    ROLE_SUMMARIZER,
+};
 pub use stages::{
     brief, is_stage, stage_of, tools_on, CRITIQUE as STAGE_CRITIQUE, PLAN as STAGE_PLAN,
     STAGES, STAGE_ENTERED, VERIFY as STAGE_VERIFY, WORK as STAGE_WORK,
@@ -64,7 +69,8 @@ pub use stages::{
 pub use state::{AgentState, PlanStep};
 pub use reply::{malformed_call, parse_reply, ParsedReply};
 pub use ending::{
-    ended_rounds, ended_why, ANSWERED, ENDED, NO_ANSWER, PASS_CEILING, ROUND_CEILING, UNCHECKED,
+    ended_rounds, ended_why, ANSWERED, CRITIC_FAULTED, ENDED, NO_ANSWER, PASS_CEILING,
+    ROUND_CEILING, UNCHECKED,
 };
 pub use passes::{pass_of, PASS_SPENT};
 pub use steer::STEERED;

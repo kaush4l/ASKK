@@ -8,6 +8,11 @@
 /// `main.rs` is at the 200-line ceiling (I12).
 pub(crate) mod search;
 
+/// The one entry that is not a server: the model built into the browser.
+pub(crate) mod ondevice;
+/// The destructive control — arm, then reset every endpoint.
+pub(crate) mod reset;
+
 use std::rc::Rc;
 
 use adapters_web::WebApp;
@@ -80,6 +85,11 @@ pub(crate) fn saved_line(app: &WebApp, entry: &str, url: &str, model: &str, has_
     if let Some(detail) = app.entry_problem(entry) {
         return format!("Saved — but this build cannot call {entry}: {detail}");
     }
+    // No address, so "calls {url}" would describe a request that never happens.
+    if ondevice::is_on_device(app, entry) {
+        return "Saved. The next turn runs on your browser's own model, on this machine — \
+                no address is called and no API key is sent.".into();
+    }
     let key = match has_key {
         true => format!("with the key saved for {entry}"),
         false => "with no key".to_string(),
@@ -88,14 +98,6 @@ pub(crate) fn saved_line(app: &WebApp, entry: &str, url: &str, model: &str, has_
         true => format!("Saved — but {entry} has no base URL, so there is nothing to call."),
         false => format!("Saved. The next turn calls {url} as {model}, {key}."),
     }
-}
-
-/// The host an entry's base URL points at, for the picker option's own label.
-pub(crate) fn host(web: Signal<Option<Rc<WebApp>>>, name: &str) -> String {
-    let Some(app) = web.peek().clone() else { return String::new() };
-    let (base, _, _) = app.entry_fields(name);
-    let rest = base.split("//").nth(1).unwrap_or_default();
-    rest.split('/').next().unwrap_or_default().into()
 }
 
 /// Whether the Settings form holds anything a save would change (R7-14): a

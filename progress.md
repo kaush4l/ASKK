@@ -3158,3 +3158,127 @@ settings contract says it refuses and says so; the sentence itself is covered by
 
 **365 passed, 0 failed**, size, layering, stylesheet (9 files), the browser
 layout probe, and both trunk builds green.
+
+## Increment 25 — a critic that did not do the work
+
+The `critique` stage has been here since 20, and it is the same model, in the
+same window, marking its own homework. In Hermes, AutoGPT, Claude Code and the
+DeepSeek harness, review that means anything is a SEPARATE call with a separate
+prompt that is not invested in the answer. So: `public/agents/critic/agent.md`,
+an agent rather than a stage.
+
+It is read-only, and that is the grant rather than an instruction: `tools:` is
+`read_file`, `list_files`, `find_files` and nothing else. No `exec`, no
+`write_file`, no `start_process`, no `remember` — a reviewer that can write the
+shared space can change what it is reviewing — and no peer agent name, so it
+cannot delegate around any of it. A test asserts the shipped file can read and
+change nothing, rather than a sentence claiming so.
+
+The verdict is prose, not a protocol: first line `PASS` or `FAULT`, then at most
+five lines of why. A person reads the reply; the machine reads one line of it.
+That is the convention `PLAN_BRIEF` already set with `OUTCOME —` and `CHECK —`.
+
+### The caller cannot launder the verdict
+
+`delegate` returns the critic's answer as an ordinary `ToolInvoked`, so
+`verify::observe` folds it in log order like every other result:
+`reviewed = Some(ok && critic::passed(output))`. A successful mutation afterwards
+resets it to `None`, because a review of what the file used to say is not a
+review of what it says now. `answer.rs` then cannot choose `ANSWERED`, and the
+run ends `answered, and the critic disagreed`. The caller's own prose is never
+read — a core test scripts the caller saying "the critic reviewed it and was
+happy" over a `FAULT` and asserts the board says otherwise.
+
+### Where it can be fooled, at length, because this is the part that matters
+
+**Nobody is forced to call it.** The mechanism fires only when a critic result
+arrives. `builder` calls it because its prompt says to, which is prose; a
+builder that skips the call ends `answered` exactly as before. No must-be-
+reviewed gate was built, because that would put the machine in charge of when
+work is finished, which nothing in this codebase does.
+
+**The caller writes the exhibit.** Delegation is one string, and a delegated
+agent's `read_file` refuses in its own Worker, so the critic reviews the
+caller's account plus the shared space. A flattering account gets a flattering
+review, and nothing checks that quoted command output was ever produced by a
+command.
+
+**Two calls, one good verdict.** The fold keeps the last one, so `FAULT` on the
+real work followed by a `PASS` on something trivial ends `answered`. Closing
+that needs a per-call ledger `verify.rs` deliberately refuses to have.
+
+**One word decides.** Only a first line equal to `PASS` clears — `Verdict: PASS`
+reads as a fault, which is noisy in the safe direction; `PASS` over five
+paragraphs of objections is a pass, which is not. And the critic is a model: it
+can be sycophantic or wrong, so nothing on the page ever says the work was
+verified, proven or approved. A test greps three views for all four words.
+
+**`critic` and `critique` are one word apart**, on the same screens. Increment 22
+renamed `plan`→`scout` for exactly this collision class. Whether the `critique`
+stage still earns its keep now that a separate reviewer exists is an open
+question — `scout` is its only user.
+
+## Increment 26 — the model that is already here
+
+Every turn until now needed an endpoint somebody configured. Chrome and Edge
+ship a model inside the browser, reachable with no address, no key and no
+network the page makes — which is the project's own claim, finally true of the
+cognition and not only of the capability.
+
+It arrives as a catalogue entry called `on-device`, behind the same `ModelPort`.
+`core` and `agent` were not touched and do not know it exists: they ask for a
+symbolic name, and the adapter takes a branch before a URL or an `Authorization`
+header is assembled. The reply comes back shaped like the OpenAI-compatible one,
+so nothing downstream can tell the difference. There is no JS shim and so no I5
+exception — `js_sys::Reflect` off `globalThis` reaches it from Rust.
+
+The API was confirmed against developer.chrome.com's Prompt API page rather than
+assumed: `LanguageModel.availability()`, `create({initialPrompts})`,
+`session.prompt()`. Two facts from it shaped the code. A system turn is accepted
+only at session creation and is never evicted under context pressure, which is
+exactly the guarantee the Document's system section wants — so the request body
+is split, system into `initialPrompts` and the rest into `prompt()`. And **the
+Prompt API is not available in Workers**, which is where every sub-agent's turn
+runs; that is a stated limit with a sentence of its own rather than a mystery
+failure.
+
+I15, as in 24: `unavailable` means the entry does not exist at all — not present
+and broken. Firefox and Safari have no `LanguageModel`, so they see nothing to
+pick and nothing to fail. `downloadable` and `downloading` DO advertise, because
+the model is real and the browser will fetch it; what differs is the price, and
+the price is copy:
+
+> Your browser has not downloaded this model yet. The first turn you send starts
+> a download your browser performs and stores itself, measured in gigabytes —
+> this page does not manage it, cannot show its progress, and the turn does not
+> answer until it finishes.
+
+`ModelError::OnDevice` is its own variant because every existing one names
+something that does not exist here: `Transport` and `Timeout` carry a URL,
+`NoKey` and `Provider` send you to a key field, `Unsupported` claims a wire
+protocol. Its remedy says the one true thing — nothing was sent, and there is
+nothing in Settings to correct about this entry.
+
+### The trap the builder found, and the one I found after
+
+`Catalogue::resolve` treats an unlisted name as *a model id served by the
+default entry*. So a saved pick of `on-device`, reopened in a Worker or on a
+browser without it, would have POSTed `model: on-device` to somebody else's
+server. `Endpoint::resolve` now refuses that by name, with a test.
+
+And the entry shipped carrying `base_url: "this device"` — a stand-in so that
+the composer's gate and the header pill, both of which require a non-empty URL,
+kept working. That put a sentence in the one field that means an address, and
+the header pill read `… at this device`. The gate and the pill branch on the
+entry instead now, `base_url` is empty because there is no address, and the pill
+says `The next turn runs on your browser's own model, on this machine — no
+address, no key.`
+
+**Unverified without a capable browser:** that `create()`/`prompt()` accept the
+shapes built here, and whether a first turn on `downloadable` blocks for the
+download or throws. The headless Chromium on this machine reports `LanguageModel`
+undefined, which exercises only the absent path — the one that matters most for
+everybody else, and the one that is proven.
+
+**383 passed, 0 failed**, size, layering, stylesheet, the browser layout probe
+and both trunk builds green.

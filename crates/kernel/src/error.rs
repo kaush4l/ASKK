@@ -61,6 +61,14 @@ pub enum ModelError {
         model: String,
         available: Vec<String>,
     },
+    /// THE MODEL IN THE BROWSER REFUSED, AND NOTHING WAS SENT ANYWHERE. A
+    /// catalogue entry can be the browser's own on-device model, which has no
+    /// address, no credential and no network: every other variant here names
+    /// something to check that does not exist on that path — `Transport` and
+    /// `Timeout` carry a URL, `NoKey` and `Provider` send a person to a key
+    /// field, `Unsupported` claims a wire protocol. `detail` is why the
+    /// browser said no, in its own words where it gave any.
+    OnDevice { detail: String },
     /// The endpoint is configured and reachable, but asks for a wire protocol
     /// this build does not speak (a catalogue entry's `kind`/`api`). Distinct
     /// from `EndpointUnknown` on purpose: "unconfigured" and "configured for

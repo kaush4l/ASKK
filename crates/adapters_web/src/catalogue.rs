@@ -25,6 +25,11 @@ pub struct Entry {
     pub api: String,
     pub kind: String,
     pub api_key_env: String,
+    /// What the file says about this entry, shown where the entry is picked.
+    /// It has been in `models.json` since the catalogue landed and nothing
+    /// read it; the on-device entry needs it, because what that one COSTS —
+    /// a download the browser performs — has to be readable before a turn.
+    pub note: String,
 }
 
 impl Entry {
@@ -43,7 +48,15 @@ impl Entry {
             api: s("api"),
             kind: s("kind"),
             api_key_env: s("api_key_env"),
+            note: s("note"),
         }
+    }
+
+    /// Whether this entry is the browser's own model rather than a server.
+    /// Every caller that would otherwise reach for a URL asks this first —
+    /// there is no address, no key and no `fetch` on that path.
+    pub fn is_on_device(&self) -> bool {
+        self.kind == crate::ondevice::NAME
     }
 
     /// The URL one chat turn POSTs to — or the typed reason this entry cannot
@@ -51,6 +64,16 @@ impl Entry {
     /// chat-completions one, and says so rather than sending its bytes at a
     /// server that speaks something else.
     pub fn chat_url(&self) -> Result<String, ModelError> {
+        // There is no URL for the browser's own model, and saying so as
+        // "unsupported wire protocol" below would be a false claim about a
+        // protocol. Callers branch on `is_on_device` before asking.
+        if self.is_on_device() {
+            return Err(ModelError::OnDevice {
+                detail: "this entry has no address: it is your browser's own model, and a turn \
+                         to it never leaves this machine"
+                    .into(),
+            });
+        }
         if self.base_url.is_empty() {
             return Err(ModelError::EndpointUnknown {
                 endpoint: format!("{} (the catalogue entry has no base_url)", self.name),

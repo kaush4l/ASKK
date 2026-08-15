@@ -89,6 +89,12 @@ impl WebApp {
         self.model.entry_problem(name)
     }
 
+    /// What the catalogue says about an entry, and whether it is the browser's
+    /// own model: `(note, on_device)`.
+    pub fn entry_note(&self, name: &str) -> (String, bool) {
+        self.model.entry_note(name)
+    }
+
     /// Back to the shipped catalogue, and persist that. Same door as
     /// `set_endpoint` — the core is not told, because keys are not its business.
     pub async fn reset_endpoint(&self) -> Result<(), WebError> {

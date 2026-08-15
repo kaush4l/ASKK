@@ -17,6 +17,7 @@ mod idb;
 mod idb_kv;
 mod idb_bridge;
 mod model;
+pub mod ondevice;
 mod overrides;
 mod wire;
 mod ports;
@@ -96,6 +97,16 @@ impl WebApp {
         let models_json = assets::fetch_models().await.unwrap_or_default();
         if !models_json.is_empty() {
             model.set_catalogue(&models_json);
+        }
+        // …AND ONE ENTRY THAT IS NOT IN THE FILE, because it is not the same
+        // in every browser (I15). Where this browser has its own on-device
+        // model, it joins the catalogue here, before the user's layer goes on;
+        // where it does not, there is no such entry to pick and nothing on
+        // screen mentions it. Sub-agents are NOT given it: `AgentWorker::boot`
+        // gets the file alone, and Chrome does not offer the Prompt API inside
+        // a Worker, so an entry there would be an entry that always fails.
+        if let Some(entry) = ondevice::probe().await {
+            model.add_catalogue(&entry);
         }
         // The user's configured endpoint, restored before the first turn.
         if let Ok(Some(raw)) = kernel::StorePort::kv(store.as_ref())

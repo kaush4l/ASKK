@@ -138,6 +138,12 @@ pub struct AgentState {
     pub pass: u16,
     #[serde(default)]
     pub acted: bool,
+    /// THE SEPARATE REVIEWER (`crate::critic`, 25). `critic` names the agent
+    /// holding `role: critic`, so its answer is recognised as a verdict rather
+    /// than by a hardcoded name; `reviewed` is what that verdict said — `None`
+    /// where it was never asked, or a write since made it stale.
+    #[serde(default)] pub critic: String,
+    #[serde(default)] pub reviewed: Option<bool>,
     /// The shared space this agent works in, as of the last time it was read
     /// — its facts and notes go into CONTEXT on every call. `None` means the
     /// agent's file named no space, so it works alone (Python: `space` is an
@@ -171,22 +177,16 @@ impl AgentState {
             // which is the honest default (nothing is attached that an agent
             // did not ask for).
             toolbox: Toolbox::default(),
-            steered: false,
-            stopping: false,
+            steered: false, stopping: false,
             max_rounds: default_max_rounds(),
-            compact_at: default_compact_at(),
-            keep_recent: default_keep_recent(),
-            compacting: false,
-            compactions: 0,
+            compact_at: default_compact_at(), keep_recent: default_keep_recent(),
+            compacting: false, compactions: 0,
             summarizer_prompt: String::new(),
-            summarizer_model: String::new(),
-            summarizer_temperature: None,
-            mutated: false,
-            green: false,
-            nudges: 0,
-            stages: Vec::new(),
-            stage: 0,
+            summarizer_model: String::new(), summarizer_temperature: None,
+            mutated: false, green: false, nudges: 0,
+            stages: Vec::new(), stage: 0,
             passes: default_passes(), pass: 0, acted: false,
+            critic: String::new(), reviewed: None,
             space: None,
             paper: crate::paper::seed(),
         }

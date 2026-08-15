@@ -7,8 +7,9 @@ use std::rc::Rc;
 use adapters_web::WebApp;
 use dioxus::prelude::*;
 
-use crate::endpointform::{bad_base, host, unsaved};
-use crate::settings::{pick_entry, reset, save_endpoint, Fields};
+use crate::endpointform::ondevice;
+use crate::endpointform::{bad_base, unsaved};
+use crate::settings::{pick_entry, save_endpoint, Fields};
 use crate::ui::{Button, Field, Form, SelectField};
 
 /// The endpoint picker — ONE CONCEPT, ONE NAME (R5-17). It was labelled `Model`,
@@ -29,15 +30,12 @@ fn entry_picker(web: Signal<Option<Rc<WebApp>>>, f: Fields) -> Element {
             }
             for name in names.read().iter().cloned() {
                 {
-                    let at = host(web, &name);
-                    let shown = match at.is_empty() {
-                        true => format!("{name} — no address in the file"),
-                        false => format!("{name} — {at}"),
-                    };
+                    let shown = ondevice::option_label(web, &name);
                     rsx! { option { value: "{name}", selected: name == *f.entry.read(), "{shown}" } }
                 }
             }
         }
+        {ondevice::note(web, f)}
     }
 }
 
@@ -65,18 +63,21 @@ fn key_label(f: Fields) -> String {
 /// The key field and the buttons; every sentence names the entry.
 fn key_row(web: Signal<Option<Rc<WebApp>>>, f: Fields, endpoint_set: Signal<bool>) -> Element {
     let (mut key, has_key, entry, label) = (f.key, f.has_key, f.entry, key_label(f));
+    let od = ondevice::showing(web, f);
     rsx! {
-        Field {
-            id: "endpoint-key",
-            label: "{label}",
-            r#type: "password",
-            value: "{key}",
-            autocomplete: "off",
-            placeholder: if has_key() { "•••••• saved for this entry" } else { "" },
-            oninput: move |e: FormEvent| key.set(e.value()),
+        if !od {
+            Field {
+                id: "endpoint-key",
+                label: "{label}",
+                r#type: "password",
+                value: "{key}",
+                autocomplete: "off",
+                placeholder: if has_key() { "•••••• saved for this entry" } else { "" },
+                oninput: move |e: FormEvent| key.set(e.value()),
+            }
         }
         // UNSAVED EDITS ARE SAID SO (R7-14): leaving this route drops them.
-        if unsaved(web, f) {
+        if !od && unsaved(web, f) {
             p { class: "file-state dirty", role: "status",
                 "Unsaved changes — press Save this endpoint, or they are dropped when you \
                  leave this view."
@@ -92,47 +93,7 @@ fn key_row(web: Signal<Option<Rc<WebApp>>>, f: Fields, endpoint_set: Signal<bool
                     "Clear key for {entry}"
                 }
             }
-            {reset_control(web, f, endpoint_set)}
-        }
-    }
-}
-
-/// THE DESTRUCTIVE ONE, AND IT LOOKS LIKE IT (R6-5): it deletes every saved key
-/// and address override in this browser, and it fired on one press. The ARM is
-/// the other half — one press asks, the next does it. …AND IT DISARMS (R8-16):
-/// the arm carries a Cancel, and arming CLEARS the status: one region, one line.
-fn reset_control(web: Signal<Option<Rc<WebApp>>>, f: Fields, endpoint_set: Signal<bool>) -> Element {
-    let armed = f.arm.read().to_owned();
-    rsx! {
-        Button {
-            // RED IS FOR THE PRESS THAT DESTROYS (R10-4). This was `danger` in
-            // both states while the reload two cards down — which ends a running
-            // turn and every file on the forgetting engine — was a secondary.
-            variant: if armed { "danger" } else { "secondary" },
-            onclick: move |_| {
-                let (mut arm, mut status) = (f.arm, f.status);
-                let ready = arm.peek().to_owned();
-                arm.set(!ready);
-                match ready {
-                    true => reset(web, f, endpoint_set),
-                    false => status.set(String::new()),
-                }
-            },
-            if armed { "Yes — reset every endpoint" } else { "Reset every endpoint to the ones shipped with this site" }
-        }
-        if armed {
-            Button {
-                variant: "ghost",
-                onclick: move |_| {
-                    let mut arm = f.arm;
-                    arm.set(false);
-                },
-                "Cancel"
-            }
-            p { class: "error", role: "status",
-                "⚠ This deletes every API key and every address you have saved in this \
-                 browser, for every endpoint, and cannot be undone."
-            }
+            {crate::endpointform::reset::reset_control(web, f, endpoint_set)}
         }
     }
 }
@@ -155,18 +116,26 @@ pub(crate) fn endpoint_form(
         true => "the model id this endpoint names",
         false => "",
     };
+    // The browser's own model: no address to refuse, no key to send, no model
+    // id to override. The three fields are replaced by the sentence saying so.
+    let od = ondevice::showing(web, f);
     rsx! {
         Form {
             // OUR refusal, not Chrome's (R2-20): its bubble goes on blur.
             novalidate: true,
             onsubmit: move |_| {
-                let why = bad_base(&base.peek().clone()).unwrap_or_default();
+                let why = match od {
+                    true => String::new(),
+                    false => bad_base(&base.peek().clone()).unwrap_or_default(),
+                };
                 f.bad_url.set(why.clone());
                 if !why.is_empty() { return; }
                 let typed = key.peek().trim().to_string();
                 save_endpoint(web, (!typed.is_empty()).then_some(typed), f, endpoint_set);
             },
             {entry_picker(web, f)}
+            if od { {ondevice::fields()} }
+            if !od {
             Field {
                 id: "endpoint-base",
                 label: "Base URL — blank uses this endpoint's own (ending in /v1)",
@@ -193,6 +162,7 @@ pub(crate) fn endpoint_form(
                 autocomplete: "off",
                 placeholder: "{model_hint}",
                 oninput: move |e: FormEvent| model.set(e.value()),
+            }
             }
             {key_row(web, f, endpoint_set)}
         }
