@@ -39,6 +39,29 @@ fn show(res: Response, mut rows: Signal<String>, mut busy: Signal<bool>) -> bool
     watch
 }
 
+/// WHICH AGENT A PRESS INSIDE THE BOARD WAS ABOUT (27), and where it goes.
+///
+/// A CARD IS A DOOR. The board told you an agent was working and gave you
+/// nowhere to go with it: its talk and its calls were each the nav, then the
+/// view, then the agent strip. The cards are the core's own markup, so there
+/// is no component to hang an `onclick` on — the card carries `data-agent`,
+/// the button carries `data-open`, and this one delegated handler turns a
+/// press into a route that exists, moving subject and view together because
+/// the hash carries both halves (R6-3).
+/// `roster.rs`'s mechanism, copied not shared: that one closes on a card.
+fn opened(event: Event<MouseData>) -> Option<()> {
+    use wasm_bindgen::JsCast;
+    let target = event.downcast::<web_sys::MouseEvent>()?.target()?;
+    let button = target.dyn_ref::<web_sys::Element>()?.closest("[data-open]").ok()??;
+    let name = button.closest(".agent-row").ok()??.get_attribute("data-agent")?;
+    let to = match button.get_attribute("data-open")?.as_str() {
+        "trace" => View::Trace,
+        _ => View::Chat,
+    };
+    crate::route::show(to, &name);
+    Some(())
+}
+
 /// What an empty board MEANS. A board with no rows is not "nothing is
 /// running"; it is "no agent was loaded at all", which is a different fact
 /// with a different fix. Its own fn so `AgentBoard` stays one job (I12).
@@ -76,8 +99,8 @@ pub fn AgentBoard(
     /// identical prose, ~460px of it, on four views of seven — the most
     /// repeated element in the product and not the most important one. The
     /// Dashboard keeps the full card because there the board IS the subject;
-    /// beside a conversation it is a glance, so the rows stay and the
-    /// explanation — which is the same three sentences every time — does not.
+    /// beside a conversation it is a glance, so the rows stay and the prose —
+    /// the same three sentences every time — does not.
     compact: Option<bool>,
 ) -> Element {
     let compact = compact.unwrap_or(false);
@@ -133,7 +156,13 @@ pub fn AgentBoard(
                     // shape a broken panel has.
                     Skeleton { lines: 2, label: "Reading the agents" }
                 } else if has_rows(&projection, "agent-row") {
-                    div { dangerous_inner_html: "{projection}" }
+                    // A card is a door (27); `board-rows` is named for the
+                    // grid that has to reach past it (`mission.css`).
+                    div {
+                        class: "board-rows",
+                        onclick: move |e: Event<MouseData>| { opened(e); },
+                        dangerous_inner_html: "{projection}",
+                    }
                 } else {
                     {nothing_loaded(view)}
                 }

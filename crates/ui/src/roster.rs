@@ -72,7 +72,9 @@ pub(crate) fn agent_panel(
                 "A turn can run in stages. plan turns the request into a brief — the outcome, \
                  the files, the command that would show it worked. work does it. verify runs \
                  that command and reads back what it printed. critique reads the whole turn \
-                 over before answering. An agent that declares no stages does the work and \
+                 over before answering — that stage is one agent rereading its own turn, and it \
+                 is not the separate critic agent on a card below, which you hand finished work \
+                 to. An agent that declares no stages does the work and \
                  answers in one go. Every card says which stages its agent runs, and the \
                  conversation names each stage as it opens."
             }

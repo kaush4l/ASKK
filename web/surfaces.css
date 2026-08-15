@@ -68,13 +68,11 @@
 .msg .said { color: var(--ink); }
 
 /* ---- the board -------------------------------------------------------- */
-/* Rows are uniform because their LABELS are (R3-12). */
-.board { display: flex; flex-direction: column; gap: var(--s-2); }
-
-/* The rail's copy (F24): a glance, not the subject. */
-.board.compact { gap: var(--s-1); }
-.board.compact .agent-row { padding: var(--s-2); }
-
+/* Rows are uniform because their LABELS are (R3-12). The DECK around them —
+   `.board`, its compact variant, and the card treatment the Dashboard gives
+   them — moved to `mission.css` in 27, whole, so the board's layout has one
+   home (G1). What is left here is the row itself, which is a row wherever it
+   is rendered. */
 .agent-row {
   padding: var(--s-3); border-left: 3px solid var(--tone);
   display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2);

@@ -44,6 +44,7 @@ mod tabs;
 mod stopcommand;
 mod terminal;
 mod thread;
+mod tiles;
 mod tools;
 mod turn;
 mod wait;
@@ -98,7 +99,6 @@ fn shell() -> Element {
     use_effect(move || route::show(view(), &selected()));
     // …and the arriving VIEW starts where it should be read from (R2-1).
     use_effect(move || route::land(view()));
-
     use_effect(move || {
         adopt::adopt(&booted.read(), web, fragment, agents, failure, loaded, authored)
     });

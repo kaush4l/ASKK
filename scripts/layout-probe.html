@@ -163,6 +163,21 @@
       <!-- The one line that says what the product IS (F1). It is the widest
            paragraph on the Dashboard, so it is the one OVERFLOW wants here. -->
       <p class="tagline">This runs AI agents in your browser. An agent whose file names a space also gets a folder in the Linux this page runs, where it can write files and run commands, and it shares facts and notes with every other agent naming that space. Give an agent a task and walk away, or talk to it while it works.</p>
+      <!-- THE FLEET AT A GLANCE (27), above the grid, where `stage.rs` mounts
+           it. The probe models it because the strip is the one region on the
+           Dashboard whose children are FIXED-width cells in a wrapping track:
+           its longest value ("no turn has failed yet") is prose in a slot
+           sized for a number, and whether that wraps or overflows at 320 is
+           exactly what OVERFLOW is here to measure. A tile carrying its own
+           `data-status` is included in the FAILED state as well as the idle
+           one, because that is the only tinted surface the increment adds and
+           CONTRAST has to see it against the tile's own background. -->
+      <div id="fleet-tiles" class="tiles" role="group" aria-label="The fleet at a glance">
+        <div class="tile" data-status="idle"><p class="tile-name">Agents working</p><p class="tile-said">1 of 5 agents</p></div>
+        <div class="tile" data-status="idle"><p class="tile-name">Turns taken</p><p class="tile-said">12 turns</p></div>
+        <div class="tile" data-status="idle"><p class="tile-name">Tokens spent</p><p class="tile-said">18,653</p></div>
+        <div class="tile" data-status="failed"><p class="tile-name">Last failure</p><p class="tile-said">summarizer's turn failed</p></div>
+      </div>
       <!-- THE HORIZONTAL SYSTEM (R6-LAYOUT). R3-20 took the launcher out of
            the grid because it shared a 22rem cell with its own button; its own
            row then left a 544px column inside a 1134px card with 40% of the
@@ -199,6 +214,28 @@
           <details class="disclose panel-note"><summary>What happens when you press Start agent</summary><p class="note">main works in the background, on its own.</p></details>
         </section>
         <div class="dash-side">
+        <!-- THE BOARD AS THE DASHBOARD DRAWS IT (27) — NOT compact, so this is
+             the reflowing card grid and not the rail's list. Both are in this
+             fixture now, because `mission.css` splits one rule into two and a
+             probe holding only the compact copy would measure the half that
+             did not change. The doors are the widest thing in a card
+             ("What summarizer has run" beside "Talk to summarizer"), which is
+             what decides whether an 18rem cell holds them side by side or
+             wraps them at 320. -->
+        <section class="panel card"><h2>Agents and what they are doing</h2>
+          <!-- TWO ELEMENTS, because the shipped page has two: `.board` is the
+               shell's, `#agent-board` is what the seam returns inside it. The
+               first version of this fixture put both on one div, which is
+               exactly why the gate stayed green over a Dashboard whose cards
+               never became a grid — a fixture that flattens a seam boundary
+               cannot see a rule that lands on the wrong side of it. -->
+          <div class="board" aria-live="polite">
+            <div class="board-rows"><div id="agent-board">
+            <div class="agent-row" data-agent="main" data-status="working" data-since="1770000000000"><h3>main</h3><p class="agent-status">working · 3 turns in all</p><p class="agent-live">12s · read_file</p><p class="editor-picks"><button type="button" class="btn-secondary" data-open="chat">Talk to main</button><button type="button" class="btn-secondary" data-open="trace">What main has run</button></p></div>
+            <div class="agent-row" data-agent="summarizer" data-status="failed" data-since="1770000000000"><h3>summarizer</h3><p class="agent-status">the last turn failed · 1 turn in all</p><p class="editor-picks"><button type="button" class="btn-secondary" data-open="chat">Talk to summarizer</button><button type="button" class="btn-secondary" data-open="trace">What summarizer has run</button></p></div>
+            </div></div>
+          </div>
+        </section>
         <section class="panel card"><h2>Files</h2>
           <div class="file-form">
             <!-- WHICH FOLDER YOU ARE IN (R16-P1-4): descending into `report/`

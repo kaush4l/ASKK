@@ -3282,3 +3282,154 @@ everybody else, and the one that is proven.
 
 **383 passed, 0 failed**, size, layering, stylesheet, the browser layout probe
 and both trunk builds green.
+
+### What the walk of 25–26 found on the deployed page
+
+Walked `f4391d3` (wasm `ui-55330f2e15e90208`) at 1440 and 390. Two findings, both
+in what increment 25 shipped; nothing wrong in 26.
+
+**F1 — the critic's card contradicts itself.** It opens "Not for you — another
+agent hands it finished work", states it cannot change, run or start anything,
+and then offers `Talk to critic` and `Give critic a task`. Every card gets those
+two doors, and on this one the second is an offer the agent cannot honour: no
+shell, no write tools, so an autonomous task handed to it can only end in a
+report about nothing.
+
+**F2 — `critic` the agent and `critique` the stage, one word apart on one
+screen.** The Agents view explains the four stages three sentences above a card
+for an agent named `critic`. This was noted as a possible collision when 25
+landed; the walk confirms it reads as one.
+
+**What 26 proved, and what it could not.** `typeof globalThis.LanguageModel` is
+`undefined` on this Chromium, and the Settings entry picker lists six entries
+with no on-device one among them — the phrase "browser's own model" appears
+nowhere in Settings. That is I15 doing its job: no entry that would fail on
+every turn. The present path still needs a browser that has the model.
+
+**The 24 fixes, re-confirmed live at 390.** `.pill-tail` renders `inline` and
+carries the address and the key clause; `.pill-label` is `none` and `.pill-short`
+carries `calls`; the model id never hides. The status strip has `tabindex="0"`,
+`role="group"`, the mask gradient, and scrolls inside itself — 780px of content
+in 340px — while `body.scrollWidth` stays at 390. Header is 70px at 1440, so
+ONESCREEN survived. No console errors.
+
+---
+
+## 27 — Mission Control, and a card that stopped offering what it cannot do
+
+Two things landed together: the Dashboard grew the fleet strip the reference
+screenshot asked for, and the two defects the 25/26 walk found were closed.
+
+### The tile strip
+
+Four tiles above the existing grid — agents working, turns taken, tokens spent,
+last failure — served as `GET /tiles`, a second subroute on the **board**
+module. Not a module of its own: the fleet's status is one fold, and a second
+module would have had to be handed the same projection to answer the same
+question, which is how two regions on one screen come to disagree.
+
+The predicate for "who is working" moved out of `board.rs` into
+`tiles::busy_names`, and `board.rs` now calls it for its own `x-busy` header.
+A test asserts the tile's count against that header, in both the idle case and
+the accepted-but-not-yet-pumped case, so the number and the names cannot drift.
+
+**Three things from the reference were deliberately not copied**, and the
+reasons are tests rather than comments:
+
+- No `LIVE` badge over a value the tile does not have. The reference shows five
+  tiles badged `LIVE`, three of them reading `…` and `checking…`. A tile with
+  nothing to report says so in words — `no turns yet`, `nothing spent yet`,
+  `no agents are loaded` — and a test greps this crate for `…`, `—`, `LIVE`
+  and `N/A` in the value slot. A placeholder is a promise something is coming;
+  for a log with no facts in it, nothing is.
+- No green summary. There is no `ALL SYSTEMS` tile and no rule that could make
+  one, because this product reports a failure and never infers a success from
+  the absence of one. A second test greps for that vocabulary.
+- No per-card colour wash. `--danger`, `--warning` and `--success` already
+  carry meaning here, and a decorative orange/violet/teal gradient beside them
+  is how a red state stops reading as red. The only tinted tile is
+  `[data-status="failed"]`, and it tints by re-pointing `--tone` (G2), not by
+  restyling the element.
+
+The workspace/Linux tile the brief suggested was dropped by the agent building
+it, correctly: the header carries that state at every width already (R7-12),
+it is a `WorkspacePort` read rather than a fold, and a second home for one fact
+is what §11 forbids. Four tiles, all counted from the log.
+
+### The board's rows became doors
+
+Each row ends in two `btn-secondary` buttons carrying `data-open="chat"` and
+`data-open="trace"` — `Talk to main`, `What main has run`. Named for the
+destination, never `Start`: a door on a row already inside a turn must not read
+as an offer to begin another. One delegated handler on the deck, mirroring the
+roster's, not shared with it — `roster.rs::pressed` closes on `.agent-card` and
+that file belonged to the other change in flight.
+
+`web/mission.css` is the tenth stylesheet. Under G1 the `.board` rules moved
+out of `surfaces.css` whole, because the Dashboard's copy is now a reflowing
+grid and the rail's is still a list; `.board.compact .editor-picks` is
+`display: none`, which takes the buttons out of the tab order along with the
+pixels.
+
+### F1 — the critic no longer offers a task it cannot take
+
+The card said `Give critic a task` four lines under its own description saying
+it cannot change, run or start anything. Its file names only the three reading
+tools, so a task handed to it could only end in a report about nothing.
+
+`doors` now branches on `spec.role != ROLE_CRITIC` — the role, not the name,
+and a test named `an_agent_named_critic_without_the_role_keeps_both_doors`
+pins that. The task door is replaced by a sentence naming who does call it,
+read off the peers' own `tools:` lists so renaming `builder` cannot make the
+card lie. `Talk to` stays: handing it finished work in chat is real.
+
+The critic's `description:` was rewritten to agree with the buttons beside it,
+and a test `include_str!`s both shipped agent files to assert the old copy is
+gone — the card and its file cannot drift apart silently.
+
+### F2 — the stage and the agent share a word
+
+One clause, mid-paragraph: `critique` "is one agent rereading its own turn, and
+it is not the separate critic agent on a card below".
+
+### What the gate did not measure until it was told to
+
+`check-layout.sh` printed OK over a fixture with no tile strip in it, and with
+only the rail's compact board — the Dashboard's copy, the half that changed,
+was absent. That is the same defect the script's own header records from
+increment 13. `layout-probe.html` now carries both new regions, including the
+failed tile.
+
+That was not enough, and the deployed page said so. The card grid was laid on
+`.board`, and TWO boxes stand between it and the cards: `.board-rows`, the
+shell's delegation host, and `#agent-board`, what the seam returns. So the grid
+had exactly one child. Every card stacked in a single 910px column and
+`grid-template-columns` computed to `910px 0px 0px` on the live page — while
+OVERFLOW, ONESCREEN and every contrast check passed, because one column is a
+perfectly valid layout. It is just not the one that was written.
+
+`display: contents` on both wrappers lifts the rows to be the grid's own items,
+which is the fix `layout.css` already makes for `.card-deck > #agent-list` —
+same seam boundary, same shape. The delegation host got a name to be reachable.
+
+And the probe learned to check it: **DECKCELLS** asserts that where the deck is
+wide enough for two 18rem tracks, two cards share a row. Not on the DOM tree —
+`display: contents` is precisely the mechanism that makes a descendant a grid
+item without moving it, so a `parentElement` check reads orphan while the
+layout is right. The first version of this assertion made that mistake and
+failed 54 times on a correct page. It measures the outcome now: `2 cards share
+a row in 678px`, at every width with room for two.
+
+The gate is green on the markup that actually shipped: no overflow at
+320/360/390/768/1100/1280, no target under 24px, DECKCELLS passing.
+
+`cargo test --workspace` 0 failed. Size OK, 232 files, longest 200. Layering
+OK. Stylesheets OK — 10 files, 6 font sizes, 0 raw spacing literals.
+`agentcard.rs` is now at exactly 200 lines, so the next edit to it pays first.
+
+### Open, and not fixed here
+
+`cargo fmt --check` reports diffs across ~40 files in crates this increment
+never touched. The tree was already fmt-divergent; it is not in the gate set,
+which is why nobody noticed. Reformatting the tree inside a reviewable
+increment would bury it, so it is recorded and left.

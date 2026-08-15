@@ -22,10 +22,23 @@ pub(crate) fn manifest() -> Manifest {
         // it. `since` is the timestamp of the status fact itself, so the number
         // is a subtraction of two logged times and never a reading taken here.
         capabilities: vec![kernel::CapabilityId::Clock],
-        routes: vec![RouteSpec {
-            method: "GET".into(),
-            path: "/board".into(),
-        }],
+        routes: vec![
+            RouteSpec {
+                method: "GET".into(),
+                path: "/board".into(),
+            },
+            // THE SAME FOLD, COUNTED (27). The Dashboard's tile strip is the
+            // fleet at a glance and the rows below it are the fleet in detail,
+            // so both belong to the module that owns the fleet's status. A
+            // module of its own would have had to be handed the same `board`
+            // projection and the same `queued` list to answer the same
+            // question, and two modules holding one fold is how the two
+            // regions come to disagree.
+            RouteSpec {
+                method: "GET".into(),
+                path: "/tiles".into(),
+            },
+        ],
         // No slot: `AgentBoard` mounts this route itself, like `ChatPane` and
         // `ToolTrace`. A slot would only add a second, emptier placeholder.
         slots: vec![],
@@ -43,6 +56,7 @@ pub(crate) fn manifest() -> Manifest {
 pub(crate) fn board(req: &Request, ctx: &mut Ctx) -> Response {
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/board") => table(ctx),
+        ("GET", "/tiles") => crate::tiles::strip(ctx),
         _ => error_fragment(404, "board: unknown subroute"),
     }
 }
@@ -55,9 +69,13 @@ fn table(ctx: &Ctx) -> Response {
     // them the page went quiet in the one second after Start agent and the row
     // sat on its old status until something else happened to bump a tick
     // (R3-2). Same fold, same signal, in the rows (`boardrow`) and here.
-    let working = |r: &agent::AgentRow| {
-        r.status.is_busy() || ctx.queued.contains(&r.name)
-    };
+    //
+    // THE PREDICATE ITSELF MOVED TO `tiles.rs` (27), because a third reader
+    // arrived: the Dashboard's tile says how many agents are working, and a
+    // count derived from its own filter would drift from the names in the
+    // header below the moment one of the two forgot `queued`.
+    let busy_names = crate::tiles::busy_names(ctx);
+    let working = |r: &agent::AgentRow| busy_names.contains(&r.name);
     let mut list = FragmentBuilder::new("div").id("agent-board");
     if ctx.board.is_empty() {
         list = list.child(
@@ -79,12 +97,6 @@ fn table(ctx: &Ctx) -> Response {
     // agent was going, so walking away from the Workspace view left no way to
     // tell (R3-22). The frame wears this; the presence test every other reader
     // makes is unchanged.
-    let busy_names: Vec<String> = ctx
-        .board
-        .iter()
-        .filter(|r| working(r))
-        .map(|r| r.name.clone())
-        .collect();
     if !busy_names.is_empty() {
         response.headers.push(("x-busy".into(), busy_names.join(", ")));
     }

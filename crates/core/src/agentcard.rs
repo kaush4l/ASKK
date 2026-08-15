@@ -70,7 +70,7 @@ fn disclosure(spec: &AgentSpec, mine: Option<&str>) -> String {
     format!("System prompt for {} ({origin})", spec.name)
 }
 
-/// THE TWO THINGS YOU CAN DO WITH AN AGENT (R15-P1-9). The roster was six
+/// THE THINGS YOU CAN DO WITH AN AGENT (R15-P1-9). The roster was six
 /// cards you could only read: every route to doing something with the agent you
 /// had just read about went through the nav and the agent strip. These are
 /// plain buttons carrying the destination on `data-open`; the shell's one
@@ -78,7 +78,15 @@ fn disclosure(spec: &AgentSpec, mine: Option<&str>) -> String {
 /// exists. Named for the DESTINATION, never "Start" — nothing here starts a
 /// turn (R5-3). `editor-picks` is the existing "a row of buttons in a card"
 /// class (controls.css) rather than a seventh one nobody agreed to.
-fn doors(name: &str) -> Fragment {
+///
+/// A REVIEWER HAS NO TASK DOOR (27). The critic's card offered `Give critic a
+/// task` four lines below its own description saying it cannot change, run or
+/// start anything — true, its file names only the three reading tools, so a
+/// task handed to it can only end in a report about nothing. In its place goes
+/// the sentence naming who does call it, read off the peers' `tools:` lists so
+/// it cannot go stale when that caller is renamed; `Talk to` stays, because
+/// handing it finished work in chat is real. The branch is on `role:` (20, 25).
+fn doors(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
     let door = |to: &str, label: &str| {
         FragmentBuilder::new("button")
             .attr("type", "button")
@@ -87,11 +95,20 @@ fn doors(name: &str) -> Fragment {
             .text(label)
             .build()
     };
-    FragmentBuilder::new("p")
+    let name = &spec.name;
+    let row = FragmentBuilder::new("p")
         .class("editor-picks")
-        .child(door("chat", &format!("Talk to {name}")))
-        .child(door("task", &format!("Give {name} a task")))
-        .build()
+        .child(door("chat", &format!("Talk to {name}")));
+    if spec.role != agent::ROLE_CRITIC {
+        return row.child(door("task", &format!("Give {name} a task"))).build();
+    }
+    let callers: Vec<&str> =
+        peers.iter().filter(|p| p.tools.contains(name)).map(|p| p.name.as_str()).collect();
+    let said = match callers.is_empty() {
+        true => "No agent on this roster hands it work yet".to_string(),
+        false => format!("The {} agent hands it work", callers.join(" and the ")),
+    } + "; there is no task to give it, because it only reads and judges.";
+    row.child(FragmentBuilder::new("span").text(&said).build()).build()
 }
 
 /// A `<details>` with a named summary. Both of the card's folds are this.
@@ -171,7 +188,7 @@ pub(crate) fn card(
                 .text(&crate::origin::origin_line(spec, mine))
                 .build(),
         )
-        .child(doors(&spec.name))
+        .child(doors(spec, peers))
         .child(fold(&format!("How {} is set up", spec.name), meta))
         .child(fold(
             &disclosure(spec, mine),

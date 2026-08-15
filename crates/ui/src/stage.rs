@@ -14,7 +14,7 @@ mod intro;
 
 use crate::views::View;
 use crate::{authoring, board, crumbs, gallery, launch, roster, thread};
-use crate::{endpointform, engine, settings, skin, space, tabs, terminal, tools};
+use crate::{endpointform, engine, settings, skin, space, tabs, terminal, tiles, tools};
 
 /// The centre column. One `Signal` per thing two regions disagree about; the
 /// prop list is long because the shell owns the state and this the layout.
@@ -77,6 +77,15 @@ pub fn Stage(
                     div { class: "masthead", dangerous_inner_html: "{fragment}" }
                     // What this thing IS, under the one heading — `intro.rs`.
                     p { class: "tagline", {intro::TAGLINE} }
+                    // THE FLEET AT A GLANCE, ABOVE THE GRID (27). The
+                    // Dashboard answered "what is this thing doing right now"
+                    // only by being read — the launcher, then the board's
+                    // rows, then the space card. Four facts about the whole
+                    // fleet, in one band, before any of that. It is the same
+                    // fold the board renders and not a second count of it
+                    // (`core::tiles`), and no tile reports health: a failure
+                    // is stated, a success is never announced.
+                    tiles::FleetTiles { web, tick }
                     // THE LAUNCHER IS THE READING COLUMN AND THE FLEET GOES
                     // BESIDE IT (R6-LAYOUT). R3-20 took this card out of the
                     // grid because it shared a 22rem cell with its own button;

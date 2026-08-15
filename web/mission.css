@@ -1,0 +1,103 @@
+/* mission.css — THE DASHBOARD'S FLEET SURFACE (increment 27), and nothing
+   else: the strip of tiles across the top, and the board below it once its
+   rows became cards. DESIGN.md §2 says why it is its own file rather than
+   more of `surfaces.css`, which was at its 200-line ceiling.
+
+   Linked LAST, after `workspace.css`. The only rule here that overrides
+   another file's is `.board:not(.compact) .agent-row`, and it wins on
+   specificity rather than on order, so the position in the cascade is a
+   convention and not a dependency. */
+
+/* ---- the tiles ---------------------------------------------------------
+   FOUR FACTS ABOUT THE WHOLE FLEET, above the grid. They reflow rather than
+   scroll: the strip is not the header, nothing in it is a priority order, and
+   a tile that has given up its number for an ellipsis is exactly what
+   `core::tiles` refuses to render. The 12rem floor is set by the WORDS and
+   not by the numbers: a tile with nothing to report says `nothing spent yet`
+   where the figure would be, and a track sized for `8,653` would wrap it. */
+.tiles {
+  display: grid; gap: var(--s-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+
+/* ONE SURFACE, AND STATUS CARRIES THE ONLY COLOUR (G2). The reference this
+   was built from gives every tile its own orange/violet/teal wash; here
+   `--danger`, `--warning` and `--success` already mean something on a card,
+   and a decorative gradient beside them is how a red state stops reading as
+   red. So a tile is the same opaque block a board row is, and the only thing
+   that can tint one is a fact. */
+.tile {
+  --tone: var(--control);
+  background-color: var(--surface-2);
+  border: 1px solid var(--divider);
+  border-left: 3px solid var(--tone);
+  border-radius: var(--r-sm);
+  padding: var(--s-3);
+  display: flex; flex-direction: column; gap: var(--s-1);
+  min-width: 0;
+}
+
+/* The only tinted state. `idle` is deliberately not a colour: this product
+   reports a failure and never infers a success from the absence of one, so
+   there is no green tile and no rule here that could make one. */
+.tile[data-status="failed"] { --tone: var(--danger); }
+
+/* An eyebrow, the same register the view's own eyebrow uses — 11px is for
+   naming a region, and a tile's name is what the number underneath is OF. */
+.tile-name {
+  margin: 0; color: var(--ink-2);
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase;
+  font-weight: var(--w-strong);
+}
+
+/* THE VALUE, AND IT KEEPS ONE SIZE IN EVERY STATE (§5): `8,653` and `nothing
+   spent yet` are the same element and read at the same step. `--t-heading`
+   and not `--t-subhead`, because a panel's `h2` is 20px/600 and a tile is not
+   a heading — two things a step apart must not arrive in one voice.
+   `tabular-nums` keeps the column still while a number grows (R3-23). */
+.tile-said {
+  margin: 0; color: var(--ink);
+  font-size: var(--t-heading); line-height: var(--lh-heading);
+  font-weight: var(--w-medium);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* ---- the fleet, as cards -----------------------------------------------
+   MOVED HERE FROM `surfaces.css` UNDER G1. The board's own layout — the one
+   `display` and the one gap — has to have a single home, and it is this one
+   now that the Dashboard's copy is a reflowing grid and the rail's is still a
+   list. Splitting it across two files is the pair-in-two-places defect the
+   guard exists to catch. `.agent-row` itself stays in `surfaces.css`: it is a
+   row wherever it appears, and what changes here is the deck around it. */
+.board {
+  display: grid; gap: var(--s-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+/* …AND NEITHER WRAPPER IS A CELL (27, found on the deployed page and not by
+   the gate). There are TWO boxes between the deck and its cards: `.board-rows`
+   is the shell's, carrying the delegated handler, and `#agent-board` is what
+   the seam returns inside it. The grid above was therefore laid over a parent
+   with exactly ONE child — every card in a single 910px column, the `auto-fit`
+   track list reading `910px 0px 0px`. `display: contents` lifts the rows to be
+   the grid's own children, which is precisely what `layout.css` already does
+   for `.card-deck > #agent-list` — the same seam boundary, the same fix. */
+.board-rows, .board-rows > #agent-board { display: contents; }
+
+/* The rail's copy (F24): a glance, not the subject — one column, tighter. */
+.board.compact { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
+.board.compact .agent-row { padding: var(--s-2); }
+
+/* …AND A CARD IS A COLUMN. A dense row reads left to right because it is one
+   line; a card stacks, because the doors at its foot are a row of their own
+   and a wrapped button beside a status word is neither. Only the Dashboard's
+   copy: the rail's stays the row it has always been. */
+.board:not(.compact) .agent-row { flex-direction: column; align-items: stretch; }
+
+/* …AND THE RAIL'S COPY HAS NO DOORS. The rail is what you look at WHILE
+   reading the middle, and it is already beside the view those doors go to;
+   `display: none` rather than a second projection, so the buttons leave the
+   tab order with the pixels. */
+.board.compact .editor-picks { display: none; }

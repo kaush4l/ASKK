@@ -176,6 +176,30 @@
   say(doc.scrollWidth <= doc.clientWidth, "XOVERFLOW",
       doc.scrollWidth + " vs " + doc.clientWidth);
 
+  // THE DECK'S CARDS ARE THE DECK'S CELLS (27). `display: grid` on the
+  // Dashboard's board says nothing about whether the CARDS are its items: two
+  // wrappers stand between them in the shipped tree, and with either one left
+  // in place the grid formed one column and every card stacked inside it. The
+  // page still passed OVERFLOW, ONESCREEN and every contrast check, because a
+  // single-column deck is a perfectly valid layout — it is just not the one
+  // that was written. So the assertion is on the OUTCOME and not on the tree:
+  // where the deck is wide enough for two 18rem tracks, two cards must share a
+  // row. Checking `parentElement` would not do it — `display: contents` is
+  // exactly the mechanism that makes a descendant a grid item without moving
+  // it in the DOM, so the tree says orphan while the layout is correct.
+  // Compact is exempt by its own rule: one column is what the rail asks for.
+  document.querySelectorAll(".board:not(.compact)").forEach(function (deck) {
+    var cards = deck.querySelectorAll(".agent-row");
+    var wide = deck.getBoundingClientRect().width >= 36 * 16;
+    if (cards.length < 2 || !wide || getComputedStyle(deck).display !== "grid") return;
+    var a = cards[0].getBoundingClientRect(), b = cards[1].getBoundingClientRect();
+    say(Math.abs(a.top - b.top) < 1, "DECKCELLS",
+        Math.abs(a.top - b.top) < 1
+          ? cards.length + " cards share a row in " + Math.round(deck.getBoundingClientRect().width) + "px"
+          : "cards stacked in a " + Math.round(deck.getBoundingClientRect().width) +
+            "px deck that has room for two");
+  });
+
   // The audit half runs next (layout-audit.js) and writes the report, so a
   // verdict from either file reaches check-layout.sh. Split because this file
   // hit the 200-line rule (I12) carrying both halves.

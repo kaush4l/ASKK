@@ -1,6 +1,7 @@
-//! One row of the agent board: who, what it is doing, how long, and where it
-//! came from. Split from `board.rs`, which owns the module and the route, so
-//! both hold the 200-line rule (I12).
+//! One CARD of the agent board (27): who, what it is doing, how long, where it
+//! came from, and its two doors. Split from `board.rs`, which owns the module
+//! and the route, and 27's own additions went on to `crates/core/src/tiles.rs`
+//! — all three for the same reason, the 200-line rule (I12).
 
 use agent::AgentRow;
 use kernel::Status;
@@ -144,7 +145,7 @@ pub(crate) fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
                 .build(),
         );
     }
-    card.build()
+    card.child(crate::tiles::doors(&agent.name)).build()
 }
 
 /// How long this agent has been in its current status, in seconds — `None` when

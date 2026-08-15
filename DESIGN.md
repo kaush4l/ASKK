@@ -50,6 +50,30 @@ arrangement, in `web/index.html` link order:
 | `surfaces.css` | card, message, row, tool-call, disclosure, empty state, skeleton | 200 |
 | `controls.css` | button, input, textarea, select, tab, badge, toggle | 200 |
 | `workspace.css` | what is inside the Linux: the folder listing, one file's contents | 200 |
+| `mission.css` | the Dashboard's fleet surface: the tile strip, and the board's deck | 200 |
+
+`mission.css` is the tenth (increment 27). It owns two things and they are one
+region: the strip of tiles across the top of the Dashboard, and the deck the
+agent board became underneath it — `.board`'s own `display` and gap, moved here
+whole from `surfaces.css` under G1, plus the column treatment that turns a row
+into a card and the rule that keeps the rail's compact copy a list. The
+alternative was more of `surfaces.css`, which was at its 200-line ceiling and
+which owns *what a surface is* — a card, a message, a row, a tool call. A tile
+is not one of those: it is a **fold rendered as a fact**, four words over a
+number, and the only thing it has in common with a card is that it is opaque.
+The board's deck follows it here for the reason the file split exists at all —
+one home per property. What did **not** come with it is `.agent-row` itself,
+which stays in `surfaces.css`: it is a row wherever it is rendered, and what
+27 changed is the deck around it.
+
+Two rules in this file are worth naming because they are refusals. `.tile` has
+one surface and no gradient — the reference screenshot this was built from
+gives every tile its own orange/violet/teal wash, and in a product where
+`--danger`, `--warning` and `--success` already carry meaning on a card, a
+decorative wash beside them is how a red state stops reading as red (G2: the
+skin re-points tokens and never restyles elements). And the only tinted state
+is `[data-status="failed"]`: there is no green tile, because this product
+reports a failure and never infers a success from the absence of one.
 
 `strip.css` is the ninth (24-walk). The strip is five pills, three breakpoints and one horizontal scrollport, and `chrome.css` — which also carries the nav, the rail and the banner — was at its 200-line ceiling when the walk found the endpoint pill unreadable at 390. Splitting on the ELEMENT rather than trimming the reasons is the rule this table already keeps. It is linked after `chrome.css`, so cascade order is unchanged, and `header`'s own properties stay in `chrome.css` — the strip's sheet says only what the strip does.
 
