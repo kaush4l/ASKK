@@ -3871,3 +3871,20 @@ weights from a CDN, which is a network-allowlist call, and CLAUDE.md §17 says
 those always stop for the owner. The browser's own speech APIs cover the STT
 and TTS the goal asks for at zero network cost, so what transformers.js would
 actually add is a local LANGUAGE model — a much larger piece.
+
+### What the walk of 34 found, and one defect older than this increment
+
+`author`'s prompt enumerates the built-ins for the model to choose from, and
+this increment added two without telling it. A tool the writer has never heard
+of is a tool no written agent will ever name — a feature shipped and then
+hidden.
+
+So the list is asserted against the REGISTRY rather than against a copy of it
+(`the_agent_that_writes_agents_is_told_every_builtin_there_is`), and that test
+immediately failed on something much older: **`web_search` has been a built-in
+all along and `author`'s prompt has never named it.** No agent this product has
+ever written could ask for web search. It is named now, with the precondition
+attached — it does nothing until a search address is set in Settings, and an
+agent whose one tool is refused is worse than an agent that answers from what
+it knows. That is also the honest half of the deferred `web_search` finding,
+delivered where it changes behaviour rather than only where it is read.

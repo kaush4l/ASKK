@@ -254,3 +254,24 @@ fn the_shipped_agents_that_opted_in_name_both_tools() {
         assert!(spec.tools.iter().any(|t| t == READ_SKILL), "{dir} cannot read one");
     }
 }
+
+/// THE PROMPT THAT TEACHES THE TOOL LIST CANNOT BE SHORT OF ONE (34 walk).
+///
+/// `author` writes other agents' files, so its prompt enumerates the built-ins
+/// for the model to choose from — and that list went stale the moment this
+/// increment added two. A tool the writer has never heard of is a tool no
+/// written agent will ever name, which is a feature shipped and then hidden.
+/// Asserted against the registry rather than against a copy of it, so the next
+/// built-in fails here instead of quietly narrowing what can be built.
+#[test]
+fn the_agent_that_writes_agents_is_told_every_builtin_there_is() {
+    let prompt = include_str!("../../../public/agents/author/agent.md");
+    for tool in agent::builtin_tools().tools {
+        assert!(
+            prompt.contains(&format!("`{}`", tool.name)),
+            "author's prompt never names the built-in `{}`, so no agent it \
+             writes can ask for it",
+            tool.name
+        );
+    }
+}
