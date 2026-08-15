@@ -68,9 +68,17 @@ pub(crate) fn tools(req: &Request, ctx: &mut Ctx) -> Response {
 /// as an error return, because that text is what lets the model correct itself
 /// on the next pass (Python `core/tools.py`: "nothing here raises").
 ///
-/// ponytail: sync because every tool this build ships is local (the clock, the
-/// loaded agents). The first tool that needs the network or the VM goes
-/// through `execute_effect`'s async path instead — same event either way.
+/// ponytail: sync because every tool THIS TABLE holds is local (the clock, the
+/// loaded agents). A tool that needs I/O is tried before this one, in
+/// `batch::single`, and comes back with the same `ToolInvoked` fact — the VM
+/// through `workspace::run`, the shared store through `space::run`, and the
+/// network through `websearch::run` (increment 21).
+///
+/// That last clause used to say the first network tool would go through
+/// `execute_effect`. It would not: `execute_effect` walks the `Effect` enum for
+/// a model turn, and `Effect::InvokeTool` is `unreachable!()` there by the time
+/// the workspace shipped. The async tool path is `batch::single`, and this is
+/// the sentence a reader would have followed into the wrong file.
 pub(crate) fn run(app: &mut App, tool: &ToolId, args_json: &str) -> EventKind {
     let result = match tool.0.as_str() {
         "now" => Ok(format!("{} ms since the Unix epoch", app.ports.clock.now().0)),

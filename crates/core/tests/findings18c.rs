@@ -137,7 +137,7 @@ fn a_tool_name_nothing_answers_to_is_reported_not_swallowed() {
 /// `Provider` and keeps the Settings remedy, which is right for it.
 #[test]
 fn a_missing_model_is_its_own_failure_and_points_at_the_agents_file() {
-    let missing = provider_error(404, NOT_FOUND, "locl");
+    let missing = provider_error(404, NOT_FOUND, "locl", true);
     assert_eq!(
         missing,
         ModelError::ModelMissing {
@@ -147,14 +147,63 @@ fn a_missing_model_is_its_own_failure_and_points_at_the_agents_file() {
         "the endpoint's own list comes out of its own sentence"
     );
     assert!(
-        matches!(provider_error(401, NOT_FOUND, "locl"), ModelError::Provider { .. }),
+        matches!(provider_error(401, NOT_FOUND, "locl", true), ModelError::Provider { .. }),
         "a refused credential is still a refused credential"
     );
     assert!(
-        matches!(provider_error(404, "{\"error\":\"no route\"}", "locl"), ModelError::Provider { .. }),
+        matches!(
+            provider_error(404, "{\"error\":\"no route\"}", "locl", true),
+            ModelError::Provider { .. }
+        ),
         "a 404 that says nothing about the model we asked for is not about the model"
     );
+}
 
+/// 22 — A REFUSAL OF NOTHING IS NOT A WRONG CREDENTIAL.
+///
+/// The cold walk saved an endpoint with the key field empty, sent a message,
+/// and read "check the base URL and API key in Settings" beside a header that
+/// already said "with no key". The discriminant is whether an `authorization`
+/// header actually went out — a fact this application holds — never the
+/// provider's prose, which says whatever that provider likes.
+#[test]
+fn a_refusal_with_no_key_sent_says_so_and_a_keyed_one_does_not() {
+    use kernel::ModelError::{NoKey, Provider};
+    for status in [401, 403] {
+        assert!(
+            matches!(provider_error(status, NOT_FOUND, "", false), NoKey { .. }),
+            "{status} with nothing sent is a missing key"
+        );
+        assert!(
+            matches!(provider_error(status, NOT_FOUND, "", true), Provider { .. }),
+            "{status} with a key sent is a refused credential, a different problem"
+        );
+    }
+    // …and no other status becomes it: a 500 with no key configured is the
+    // provider's own fault, and telling a person to add a key would be a
+    // remedy for a problem they do not have.
+    assert!(matches!(
+        provider_error(500, NOT_FOUND, "", false),
+        Provider { .. }
+    ));
+}
+
+/// …AND WHAT THE PERSON READS. The remedy names the one thing to do, and does
+/// not send them to re-check a base URL that answered.
+#[test]
+fn the_missing_key_card_says_the_key_is_absent() {
+    let app = refused(ModelError::NoKey {
+        status: 401,
+        message: "{\"error\":\"no credential\"}".into(),
+    });
+    handle(&mut app.borrow_mut(), Request::post_form("/chat", &[("message", "hi")]));
+    let _ = block_on(drive(Rc::clone(&app)));
+    let chat = body(&app, "/chat");
+    assert!(chat.contains("none is set"), "says the key is absent: {chat}");
+    assert!(
+        !chat.contains("base URL"),
+        "and not to check an address that answered: {chat}"
+    );
 }
 
 /// …AND WHAT THE PERSON READS, on the turn that produces it. The old card sent

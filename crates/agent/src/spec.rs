@@ -59,6 +59,11 @@ pub struct AgentSpec {
     /// How many rounds of the tool loop one turn of this agent may take
     /// before the machine stops it (`crate::defaults::default_max_rounds`).
     pub max_rounds: u16,
+    /// How many times one turn may walk the `stages:` list (`crate::passes`).
+    /// 1 is today's turn exactly; more is an agent that keeps working toward a
+    /// goal without being asked again each time.
+    #[serde(default = "crate::defaults::default_passes")]
+    pub passes: u16,
     /// The markdown body: this agent's system prompt.
     pub prompt: String,
 }
@@ -96,6 +101,7 @@ pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> 
         compact_at: crate::defaults::default_compact_at(),
         keep_recent: crate::defaults::default_keep_recent(),
         max_rounds: crate::defaults::default_max_rounds(),
+        passes: crate::defaults::default_passes(),
         prompt: body.trim().to_string(),
     };
     read_frontmatter(frontmatter, &mut spec)?;
@@ -125,6 +131,15 @@ pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> 
     // nothing (`engine: reakt`'s rule, 19).
     if !spec.stages.is_empty() && !spec.stages.iter().any(|s| s == crate::stages::WORK) {
         return Err(bad("a stages: list must contain work — it is the stage that acts"));
+    }
+    // …and the same rule again for the key that says how many times that list
+    // is walked: a pass is a lap of the stages, so `passes:` with no stages to
+    // lap parses clean and does nothing at all (`engine: reakt`, 19).
+    if spec.passes > 1 && spec.stages.is_empty() {
+        return Err(bad(
+            "passes: counts laps of the stages: list, so it needs one — add stages: \
+             [plan, work, verify], or drop the passes: line",
+        ));
     }
     Ok(spec)
 }

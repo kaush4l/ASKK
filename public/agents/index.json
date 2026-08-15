@@ -3,9 +3,10 @@
   "agents": [
     "ask",
     "author",
-    "plan",
+    "builder",
     "main",
     "researcher",
+    "scout",
     "summarizer"
   ]
 }

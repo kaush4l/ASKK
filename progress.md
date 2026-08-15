@@ -2841,3 +2841,269 @@ ships exercised rather than theoretical.
 
 **331 passed, 0 failed**, all eight gates green, and the loop walked end to end
 in a browser against the local model.
+
+---
+
+## Increment 21 — the first tool that leaves the browser
+
+The goal names websearch among the capabilities a person should expect. The
+build had `NetPort` — brokered, allowlisted HTTP, distinct from the model path —
+and **zero consumers**: `FetchNet::new(Vec::new())` at both composition roots,
+an allowlist that was empty everywhere, so nothing in this application could
+reach the network for any reason other than the model. `web_search` is the
+first, and it is the increment that makes that port real.
+
+### Where it goes is a setting, not a constant
+
+CLAUDE.md §17 makes a network allowlist a user gate. So the capability ships and
+the destination does not: the search endpoint is configured in Settings, the
+allowlist is **built from that setting**, and `FetchNet::new()` now takes
+nothing and denies everything until `allow(name, url)` is called. A blank URL
+*removes* the entry rather than leaving an empty base.
+
+With none configured, the tool comes back refused — in words that say where to
+choose one and that retrying will not help:
+
+> No search endpoint is configured in this browser, so nothing was searched. A
+> person sets one under Settings → Web search; nothing on this page can turn it
+> on for you, and retrying will refuse again.
+
+That is deliberate. An empty result reads to a model like a web with nothing on
+it, and it will answer from memory and call that research.
+
+### Five rows, because the sixth costs the window
+
+A SearXNG `format=json` reply is routinely 200 KB of engine metadata, positions
+and categories. Handing that to a model is not a search result, it is the window
+spent. `agent::search` — pure, host-tested against malformed, empty, missing-field
+and oversized fixtures — cuts it to at most five rows of title, URL and one line,
+with hard caps per field because both arrive from a stranger's server.
+
+The core names the endpoint symbolically (`search`) and holds **no URL
+anywhere**, so `core::websearch` cannot reach anywhere the user did not put on
+the list and does not have to be trusted not to (ADR-006, I6).
+
+### A comment that had gone false
+
+`core/src/tools.rs` said the first network tool would go through
+`execute_effect`'s async path. `Effect::InvokeTool` has been `unreachable!()`
+there since the workspace shipped; the async tool path is `batch::single`, where
+the search now sits beside the Linux and the space tools. Corrected in place —
+a comment that tells the next reader to build in a dead branch is a bug with a
+long fuse.
+
+### Not built
+
+Registering the search in `app.calling`, so a slow search shows as nothing until
+it returns — worth adding when the wait is felt. No page fetching, no second
+argument, no request bodies (the broker refuses one in words rather than
+dropping it silently). No default endpoint value: the SearXNG address in
+Settings is placeholder text, and the copy says most instances serve HTML only
+and self-hosting is the reliable route.
+
+**343 passed, 0 failed** (+12), longest file 200, layering, stylesheet and both
+trunk builds green. The response shape is read from this project's prior
+`web_search` work and not from a live call — a field-name mismatch produces the
+"not a search answer" refusal rather than a silent blank, and
+`agent::search::line` is the one line to change.
+
+---
+
+## Increment 22 — what the cold walk found, and one thing it was wrong about
+
+A critic that had never seen this application walked the deployed page. Verdict:
+nothing broken — `crossOriginIsolated` true, 160 requests all 200, no console
+errors, the Linux real (`Linux 4.15.0-54-cheerpx`, a file written and the panel
+updating), state surviving a reload. The failure path it called the strongest
+part of the build. Then it found these.
+
+### The page stated the wrong model
+
+With openrouter selected and a real 401 returned from openrouter.ai, the header
+read `openrouter — openai/gpt-4o-mini` and **every agent card read `Model:
+local`**, in one screenshot. A person who changed the endpoint and got refused
+would read that card and go hunting in the wrong place.
+
+The card was printing the agent file's literal `model:` field, which is a
+CATALOGUE KEY, not a model id — so the old label was wrong twice over. It now
+prints what the next turn will really call, resolved through a new
+`ModelPort::resolves` (defaulted, adapter overrides — `WorkspacePort::durable`'s
+precedent) and says which way the tie went:
+
+> Next turn: openai/gpt-4o-mini, at the openrouter endpoint — its file asks for
+> local, and the choice in Settings overrides it.
+
+…and when the port cannot say, it says that rather than inventing a model name.
+
+### The loop shipped in 20 and the interface never mentioned it
+
+The critic searched all six views: `verify` 0 occurrences, `stage` 0, `loop` 0,
+`delegat` 0. The plan stage rendered as an unlabelled `NOTE:`. **A capability
+nobody can name is not a feature — it is overhead the user pays for and cannot
+see.** Stage blocks now carry the stage as the speaker (`Plan stage:`, `Work
+stage:`, `Verify stage:`, `Critique stage:`), read off the `core.stage_entered`
+fact already in the log — a projection, not a second copy of the state (I8).
+Each agent card says its loop on its face (`Runs in stages: plan → work →
+verify.`), an agent with none says what that means instead of staying silent,
+and the four words are defined where a newcomer lands rather than three folds
+deep.
+
+### The agent named `plan` collided with the stage named `plan`
+
+That was increment 20's mistake. The AGENT is renamed `scout` — it goes and
+looks first — because the stage name is in shipped files and in `agent::stages`.
+A test now asserts **no shipped agent is named after a stage**, so the collision
+cannot come back. `ask`, `scout` and `researcher` also had near-identical
+descriptions in one space, so nobody could choose between them; each now says
+what it is for, and `researcher` says plainly that it is not for you — another
+agent hands it a question and it cannot see your conversation.
+
+### The glow was failing WCAG AA and Settings said it changed nothing
+
+Measured, not eyeballed: the lobes are POSITIONED in percent and SIZED in rem,
+so `--lobe-accent` at `6% 46%` with a 480px radius sits beside the reading
+column at desktop width and directly on top of it at 390px. Tagline contrast
+was **1.31:1 at every width below 1100px and fine above it** — 1100px being the
+layout's own nav-drawer breakpoint, so the bug had a seam and the clamp lands on
+it. Now 5.87:1. The Settings sentence claiming "every control, word and number
+is the same either way" was left alone, because it is now true — hedging the
+sentence would have been fixing the wrong thing.
+
+### A refusal of nothing is not a wrong credential
+
+Saving an endpoint with an empty key field and sending a message printed "check
+the base URL and API key in Settings" beside a header that already said "with no
+key". My brief for that fix asserted the app already held the fact. **It did
+not** — key state lives only in `adapters_web`, `ModelError::Provider` carries
+`{status, message}`, and no event in the log carries it either, so the sentence
+could not be made specific without threading the fact through four files. The
+agent refused at its file boundary and reported that instead of guessing, which
+is the right call and the more useful finding.
+
+Done here, on R18-P1-7's precedent (which folded `ModelMissing` out of
+`Provider`): a `NoKey` variant, discriminated on whether an `authorization`
+header ACTUALLY WENT OUT — a fact this application holds — and never on the
+provider's prose, which says whatever that provider likes. 401 and 403 both,
+because providers disagree about which one an absent credential earns.
+
+> This endpoint needs an API key and none is set, so the request went out
+> without one and was refused. Add the key in Settings.
+
+### Left standing
+
+The endpoint pill at 390px is no longer truncated to `call...`, but ~85px of it
+still starts past the scrollport edge, so reading it takes a sideways swipe.
+Wrapping it costs ~75px of header and breaks the ONESCREEN assertion
+`layout-probe.js` makes at 390×844 — a real trade, taken deliberately, and
+reversible in one line if the swipe proves worse than the height.
+
+**351 passed, 0 failed**, size, layering, stylesheet and both trunk builds green.
+
+## Increment 23 — a turn that goes round again
+
+The goal asked for a core "that can keep running for a goal" without the user
+babysitting it. Everything needed for that was already here except the lap: the
+`stages: [plan, work, verify, critique]` list from increment 20 walked exactly
+once and then the turn ended, so a goal larger than one walk needed a person to
+type "carry on".
+
+`passes:` is that lap, and it is deliberately **not** a second state machine —
+when the stage cursor runs out it resets to the `work` index rather than to 0,
+so a pass is a cursor reset inside the same `step`. One new file,
+`crates/agent/src/passes.rs` (89 lines), holds the whole of it.
+
+### The continue condition is mechanical
+
+The rule that shaped the increment: **nothing asks the model whether it is
+finished.** A model that says "I have completed the task" while having changed
+nothing gets no further pass, and a model that says nothing while writing files
+gets one. `state.acted` is set by `verify::observe` under exactly the two
+conditions that already set `mutated`/`green` — a mutating tool ran, or a
+command produced output — and is cleared at every lap. A pass that touched
+nothing ends the turn with the ordinary `answered` ending.
+
+The budget spans the goal rather than resetting per lap: `tool_rounds` is not
+cleared by a pass, so 3 passes × `max_rounds: 2` stops at round 2, not round 6.
+Passes and rounds are two ceilings on the same run, and `Ending::PassCeiling` is
+its own ending with its own board word — "stopped when its passes ran out" —
+because "it ran out of rounds" and "it ran out of laps" send a person to
+different lines of the same file.
+
+The goal survives compaction: the plan brief now tells the work stage to
+`remember` the `outcome` and `done_when` as its first action, when the agent has
+a space. Compaction eats the transcript; it does not eat the space.
+
+One agent loops. `builder` — `stages: [plan, work, verify]`, `passes: 4`,
+`max_rounds: 64`. `main` stays at one pass, because a greeting must not cost
+five model calls; `scout` and `ask` are read-only and could never satisfy the
+continue condition, so giving them a budget would ship a dead feature.
+
+### Where it can still be fooled, written down rather than hidden
+
+`echo .` in a loop buys every remaining pass — `exec` with any non-empty output
+counts as evidence, and narrowing that to *new* output needs a ledger
+`verify.rs` deliberately does not have. `write_file` with identical contents
+counts, because `is_mutating` is a list of tool names, not a diff. And work done
+only through `start_process`, `remember`, or a delegated sub-agent is invisible
+to the fold, so that run ends after one pass — a failure in the safe direction,
+but a failure. The pass ceiling is the backstop for all three.
+
+**364 passed, 0 failed** (+13), size, layering, stylesheet and both trunk builds
+green.
+
+## Increment 24 — the page can listen, and it can speak
+
+The goal asked for STT and TTS in the browser. Both are already in the browser —
+`SpeechRecognition` and `speechSynthesis` ship with it — so the increment is
+about two buttons and one paragraph of honesty, not about a model.
+
+`Dictate` writes into the composer draft as you speak, showing the interim
+transcript in a `role="status"` line so you can see it hearing you. `Read the
+answer aloud` speaks the last assistant reply. Both are pure UI: nothing under
+`crates/agent`, `core`, `kernel` or `adapters_web` moved, and no new crate was
+added — the whole feature is `crates/ui/src/composer/voice.rs` (195) plus
+`voice/mic.rs` (83) and 39 lines in `composer.rs`.
+
+### Dictation is not local, and the page says so
+
+This matters more than the feature. Chrome's `SpeechRecognition` sends
+microphone audio to Google's servers and sends words back. For an application
+whose whole claim is that it runs in your browser, that is the second thing in
+the product that leaves it — the first being the model endpoint the user
+configured themselves. So the sentence sits under the button in prose weight,
+inside no disclosure and behind no fold:
+
+> **Dictation is not local.** Press Dictate and this page hands your microphone
+> audio to your browser's own speech service — in Chrome, that is Google's
+> servers — which sends words back. … Some browsers can now do this on the
+> device instead; this page cannot tell which yours does, so assume it leaves.
+> Nothing is sent until you press the button, and nothing is sent to us.
+
+The same claim, weaker, is made about the voices: some speak on-device and some
+are fetched, and this page cannot tell them apart, so it assumes the worse one.
+Nothing is sent before the button is pressed — constructing a recogniser asks no
+permission and opens no microphone, which is also the feature test.
+
+### Two invariant exceptions, both written down
+
+I5 gains an exception for one line of JS in `index.html`: Chrome and Safari
+still spell the constructor `webkitSpeechRecognition`, so the alias is declared
+there and the Rust names the standard type once. I2 gains a note, because
+`crates/ui` now reaches a browser capability directly rather than through a
+port. `ALIGNMENT.md` §7.2 records the upgrade path that retires both: speech as
+`ModelPort` roles, at which point transformers.js/Whisper becomes a provider
+behind that port rather than a new dependency — and behind a sized download
+gate, because tens of megabytes of weights on a page whose value is that it
+loads fast is a product decision, not a feature flag.
+
+Absent, not broken (I15): on Firefox, `SpeechRecognition::new()` returns `Err`,
+`build()` returns `None`, and the button is never drawn.
+
+Dictation stops when the turn does — `hush()` runs in `send()`, in an effect on
+`busy`, and in `use_drop`. Both handlers are cleared before `abort()` and the
+utterance's `end` uses `try_write`, so no JS callback can write into a dropped
+scope.
+
+**364 passed, 0 failed**, size, layering, stylesheet and both trunk builds
+green. The behaviour is unverified without a browser — a walk in Chrome and one
+in Firefox is the missing proof.

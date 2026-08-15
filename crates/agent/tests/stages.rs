@@ -7,8 +7,11 @@ use agent::{parse_agent_file, step, AgentState, Effect};
 use kernel::{Event, EventId, EventKind, Timestamp};
 
 const MAIN: &str = include_str!("../../../public/agents/main/agent.md");
-const PLANNER: &str = include_str!("../../../public/agents/plan/agent.md");
+const SCOUT: &str = include_str!("../../../public/agents/scout/agent.md");
 const SUMMARIZER: &str = include_str!("../../../public/agents/summarizer/agent.md");
+/// The manifest itself, so the collision below is checked against what the app
+/// would actually FETCH rather than against whatever folders happen to exist.
+const INDEX: &str = include_str!("../../../public/agents/index.json");
 
 fn ev(kind: EventKind) -> Event {
     Event {
@@ -57,8 +60,8 @@ fn the_shipped_files_carry_the_roles_and_the_loop() {
     let main = parse_agent_file("main", MAIN).expect("main parses");
     assert_eq!(main.role, agent::ROLE_ENTRY, "the core looks this up, not the name `main`");
     assert_eq!(main.stages, ["plan", "work", "verify"]);
-    let planner = parse_agent_file("plan", PLANNER).expect("plan parses");
-    assert_eq!(planner.stages, ["plan", "work", "critique"]);
+    let scout = parse_agent_file("scout", SCOUT).expect("scout parses");
+    assert_eq!(scout.stages, ["plan", "work", "critique"]);
     let summarizer = parse_agent_file("summarizer", SUMMARIZER).expect("summarizer parses");
     assert_eq!(summarizer.role, agent::ROLE_SUMMARIZER);
     assert!(summarizer.stages.is_empty(), "one reply; there is no loop to declare");
@@ -69,6 +72,26 @@ fn the_shipped_files_carry_the_roles_and_the_loop() {
         agent::role_holder(&all, agent::ROLE_SUMMARIZER).map(|s| &s.name),
         Some(&summarizer.name)
     );
+}
+
+/// NO AGENT IS NAMED AFTER A STAGE (21). One agent was called `plan` while the
+/// first stage of the loop is also called `plan`, so the roster and the
+/// conversation used one word for two different things — and a rename that no
+/// test would catch is a rename that comes back the next time somebody wants a
+/// planning agent. The manifest is the directory listing (a static host cannot
+/// list a folder), so the manifest is what this reads.
+#[test]
+fn no_shipped_agent_is_named_after_a_stage() {
+    let index: serde_json::Value = serde_json::from_str(INDEX).expect("the manifest parses");
+    let names = index["agents"].as_array().expect("agents is a list");
+    assert!(!names.is_empty());
+    for name in names {
+        let name = name.as_str().expect("a name is a string");
+        assert!(
+            !agent::is_stage(name),
+            "the agent `{name}` shares its name with a stage of the loop"
+        );
+    }
 }
 
 /// A DECLARED STAGE OPENS WITH ITS INSTRUCTION AND SAYS SO. The turn starts

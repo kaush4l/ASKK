@@ -146,3 +146,28 @@ fn saving_the_prefilled_values_pins_nothing() {
     e.set("", None, "");
     assert_eq!(e.summary().0, "http://127.0.0.1:9999/v1", "blank reverts");
 }
+
+/// The search endpoint rides in the SAME record, which is what a Worker boots
+/// from — so a sub-agent searches where the page does (increment 21). It is
+/// not a credential and has no key of its own; the record is the only thing
+/// being tested here.
+#[test]
+fn the_search_endpoint_survives_a_round_trip_and_a_reset_clears_it() {
+    let mut e = shipped();
+    assert_eq!(e.search(), "", "the shipped state is unset, which is the refusing one");
+
+    e.set_search("https://search.example.org/");
+    assert_eq!(e.search(), "https://search.example.org", "no trailing slash to double");
+
+    let mut booted = Endpoint::default();
+    booted.load_profile(&e.profile_json());
+    assert_eq!(booted.search(), "https://search.example.org", "a Worker gets it");
+
+    // A record written before this setting existed must not inherit one.
+    let mut older = Endpoint::default();
+    older.load_profile(r#"{"selected": "local", "keys": {}}"#);
+    assert_eq!(older.search(), "");
+
+    e.reset();
+    assert_eq!(e.search(), "", "forgetting the endpoints forgets this one too");
+}

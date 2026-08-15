@@ -56,13 +56,24 @@ pub enum CoreError {
 /// The discriminant is NOT the prose. It is the status the endpoint returned
 /// plus the model id THIS PAGE ASKED FOR appearing in the answer — a fact we
 /// hold, never a phrase we hope for. Anything else stays `Provider`, verbatim.
-pub fn provider_error(status: u16, body: &str, asked: &str) -> kernel::ModelError {
+/// `keyed` is whether an `authorization` header actually went out — a fact the
+/// adapter holds, not a reading of the provider's prose (22).
+pub fn provider_error(status: u16, body: &str, asked: &str, keyed: bool) -> kernel::ModelError {
     let said = provider_message(body);
     let about_the_model = !asked.is_empty() && said.contains(asked);
-    match status == 404 && about_the_model {
-        true => kernel::ModelError::ModelMissing {
+    if status == 404 && about_the_model {
+        return kernel::ModelError::ModelMissing {
             model: asked.to_string(),
             available: offered(&said),
+        };
+    }
+    // A REFUSAL WITH NOTHING TO REFUSE. 403 as well as 401: providers disagree
+    // about which one an absent credential earns, and both mean the same thing
+    // when this page sent none.
+    match matches!(status, 401 | 403) && !keyed {
+        true => kernel::ModelError::NoKey {
+            status,
+            message: body.to_string(),
         },
         false => kernel::ModelError::Provider {
             status,

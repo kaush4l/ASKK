@@ -16,11 +16,13 @@ mod ending;
 mod error;
 mod forge;
 mod paper;
+mod passes;
 mod seed;
 mod phase;
 mod space;
 mod reply;
 mod ask;
+mod search;
 mod loader;
 mod spec;
 mod state;
@@ -50,6 +52,7 @@ pub use paper::adopt_spec;
 pub use now::{clock, environment};
 pub use window::{compacted, due, set_window, transcript, window, SUMMARY_HEADING};
 pub use space::{is_space_tool, space_tools, Change, Space, NOTE_LIMIT};
+pub use search::{results as search_results, search_path, WEB_SEARCH};
 pub use workspace::{is_workspace_tool, process_name, relative_path, workspace_tools};
 pub use author::{new_spec, render_agent_file, usable_agent_name};
 pub use loader::{load_agents, role_holder};
@@ -61,8 +64,9 @@ pub use stages::{
 pub use state::{AgentState, PlanStep};
 pub use reply::{malformed_call, parse_reply, ParsedReply};
 pub use ending::{
-    ended_rounds, ended_why, ANSWERED, ENDED, NO_ANSWER, ROUND_CEILING, UNCHECKED,
+    ended_rounds, ended_why, ANSWERED, ENDED, NO_ANSWER, PASS_CEILING, ROUND_CEILING, UNCHECKED,
 };
+pub use passes::{pass_of, PASS_SPENT};
 pub use steer::STEERED;
 pub use verify::{is_mutating, says_nothing, VERIFY_NUDGED};
 pub use step::step;

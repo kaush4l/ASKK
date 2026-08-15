@@ -3,6 +3,11 @@
 //! refused. Split from `endpoint.rs`, which owns the header's sentence and the
 //! composer's gate, so both hold the 200-line rule (I12).
 
+/// The search endpoint's own card, a child of this file rather than a module
+/// of its own: it is one more thing Settings says about an address, and
+/// `main.rs` is at the 200-line ceiling (I12).
+pub(crate) mod search;
+
 use std::rc::Rc;
 
 use adapters_web::WebApp;

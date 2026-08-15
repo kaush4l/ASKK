@@ -34,6 +34,31 @@ impl WebApp {
             .map_err(WebError::Store)
     }
 
+    /// Where `web_search` may go, and the ONLY way this build gets an entry on
+    /// the network allowlist (increment 21). Same door as `set_endpoint` and
+    /// the same record, so a Worker boots with it; the broker is repointed in
+    /// the same breath because a setting that needs a reload to take effect is
+    /// a setting the page lies about.
+    ///
+    /// A blank URL clears it, which takes `search` OFF the allowlist — turning
+    /// the capability off has to be as available as turning it on (I10).
+    pub async fn set_search_endpoint(&self, base_url: &str) -> Result<(), WebError> {
+        self.model.set_search(base_url);
+        self.net.allow(kernel::SEARCH_ENDPOINT, &self.model.search_url());
+        // A sub-agent was handed this record at boot and cannot learn a new
+        // one — the same reason saving an endpoint restarts them.
+        self.restart_agents();
+        kernel::StorePort::kv(self.store.as_ref())
+            .put(self.model.profile_key(), &self.model.profile_json())
+            .await
+            .map_err(WebError::Store)
+    }
+
+    /// What Settings shows in that field: the saved base URL, or empty.
+    pub fn search_endpoint(&self) -> String {
+        self.model.search_url()
+    }
+
     /// The current entry's base URL, whether a key is set, the model name, and
     /// the env var the Python reads for it — never the key.
     pub fn endpoint_summary(&self) -> (String, bool, String, String) {
@@ -68,6 +93,10 @@ impl WebApp {
     /// `set_endpoint` — the core is not told, because keys are not its business.
     pub async fn reset_endpoint(&self) -> Result<(), WebError> {
         self.model.reset();
+        // The search endpoint is in that record too, so forgetting it has to
+        // take it off the allowlist as well — a broker still pointing at a
+        // destination the record no longer holds is the reset half-done.
+        self.net.allow(kernel::SEARCH_ENDPOINT, "");
         kernel::StorePort::kv(self.store.as_ref())
             .put(self.model.profile_key(), &self.model.profile_json())
             .await

@@ -107,6 +107,7 @@ fn set_field(spec: &mut AgentSpec, key: &str, value: &str) -> Result<Option<&'st
         "compact_at" => spec.compact_at = number(spec, key, value)?,
         "keep_recent" => spec.keep_recent = number(spec, key, value)?,
         "max_rounds" => spec.max_rounds = number(spec, key, value)? as u16,
+        "passes" => spec.passes = number(spec, key, value)? as u16,
         "temperature" => {
             spec.temperature = Some(value.parse::<f64>().map_err(|_| {
                 malformed(spec, format!("temperature '{value}' is not a number"))

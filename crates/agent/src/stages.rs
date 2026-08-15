@@ -98,13 +98,29 @@ pub fn brief(stage: &str) -> &'static str {
     }
 }
 
+/// THE GOAL HAS TO OUTLIVE THE WINDOW (22). `main` compacts at 8 entries, and
+/// a turn that walks its stages five times will summarise away the brief it
+/// opened with — the plan is then a thing the run used to know. The space is
+/// the durable place: `remember` writes survive compaction, are re-read by
+/// `core::space::refresh` before every pass, are already in the CONTEXT block
+/// and already cross Workers. So this is prose and one tool that already
+/// exists, not a second store. Added only where the agent HAS a space, because
+/// telling an agent to call a tool it was never granted is noise in the window.
+const DURABLE: &str = " [And the first thing to do in the work that follows: call `remember` \
+    twice — key `outcome` with the OUTCOME line, key `done_when` with the DONE WHEN line. This \
+    window gets compacted; the shared space does not, and it is read back to you before every \
+    pass.]";
+
 /// Enter the stage the cursor is on: its instruction into the window, and the
 /// fact into the log.
-fn enter(state: &mut AgentState, at: Timestamp) -> Effect {
+pub(crate) fn enter(state: &mut AgentState, at: Timestamp) -> Effect {
     let stage = current(state).to_string();
-    let said = brief(&stage);
+    let mut said = brief(&stage).to_string();
+    if stage == PLAN && state.space.is_some() {
+        said.push_str(DURABLE);
+    }
     if !said.is_empty() {
-        crate::paper::push_history(&mut state.paper, "user", said, at);
+        crate::paper::push_history(&mut state.paper, "user", &said, at);
     }
     entered(&stage)
 }
@@ -113,17 +129,21 @@ fn enter(state: &mut AgentState, at: Timestamp) -> Effect {
 /// nothing about the old single-stage turn changed.
 pub(crate) fn open(state: &mut AgentState, at: Timestamp) -> Vec<Effect> {
     state.stage = 0;
+    crate::passes::open(state);
     match state.stages.is_empty() {
         true => Vec::new(),
         false => vec![enter(state, at)],
     }
 }
 
-/// A stage produced prose. `None` when that was the last one — then the turn
-/// ends the way it always has, through `ending`.
+/// A stage produced prose. `None` when that was the last one AND the turn has
+/// not earned another pass — then the turn ends the way it always has, through
+/// `ending`.
 pub(crate) fn next(state: &mut AgentState, at: Timestamp) -> Option<Vec<Effect>> {
     if state.stage + 1 >= state.stages.len() {
-        return None;
+        // …OR ROUND AGAIN, back to `work` and never to the start (22). The
+        // budget and the mechanical continue condition are both in `passes`.
+        return crate::passes::again(state, at);
     }
     state.stage += 1;
     // The evidence flags are NOT cleared here: they are the turn's, and a

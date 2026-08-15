@@ -139,5 +139,19 @@ pub fn builtin_tools() -> Toolbox {
              then grants exactly the ones it names and nothing else.",
             &["name", "description", "prompt", "tools", "space"],
         ),
+        // The first tool that leaves this browser for something other than the
+        // model (increment 21). WHERE it goes is a setting and not a constant:
+        // CLAUDE.md §17 makes a network allowlist a user gate, so the
+        // capability ships and the destination is chosen in Settings. With
+        // none chosen the call comes back refused, in the words that say where
+        // to choose one — never an empty result, which reads to a model like a
+        // web with nothing on it.
+        Tool::new(
+            crate::search::WEB_SEARCH,
+            "Search the web through the search endpoint configured in this browser's Settings. \
+             Returns at most five results, each a title, a URL and one line. It cannot open a \
+             page — it says what is there and where.",
+            &["query"],
+        ),
     ])
 }

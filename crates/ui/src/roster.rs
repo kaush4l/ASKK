@@ -62,6 +62,20 @@ pub(crate) fn agent_panel(
                  and what it can reach — written here means you saved it in this browser, and \
                  the rest are shipped with this site."
             }
+            // THE FOUR STAGE WORDS, DEFINED WHERE THE CARDS USE THEM (21). Each
+            // card below says which stages its agent runs and who it can hand
+            // work to; before this the only definition of those words was
+            // inside a collapsed disclosure on this same view, which nobody
+            // reached. This is a `note`, beside the one above it — no new
+            // class, and no accordion over four short clauses.
+            p { class: "note",
+                "A turn can run in stages. plan turns the request into a brief — the outcome, \
+                 the files, the command that would show it worked. work does it. verify runs \
+                 that command and reads back what it printed. critique reads the whole turn \
+                 over before answering. An agent that declares no stages does the work and \
+                 answers in one go. Every card says which stages its agent runs, and the \
+                 conversation names each stage as it opens."
+            }
             // THE EDITOR IS BELOW, AND IT WAS 2168px DOWN (R15-IA). One link at
             // the top of the catalogue, to the thing that adds to it — the
             // roster is what this view opens on (R2-17) and the way to grow it

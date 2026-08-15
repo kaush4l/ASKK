@@ -1,6 +1,11 @@
 ---
-name: plan
-description: Investigates first and writes a plan for the user to approve. Reads; changes nothing.
+# NOT CALLED `plan` (21). It was, and `plan` is also the name of the first
+# stage of the loop below — so "the plan stage" and "the plan agent" were two
+# different things sharing one word, on the same screen, in the same list. The
+# stage name is in every shipped agent file and in `agent::stages`; the agent
+# name was in two places. The agent moved.
+name: scout
+description: Reads the ground first, then hands you a numbered plan to approve. It never carries the plan out.
 model: local
 temperature: 0.3
 engine: react

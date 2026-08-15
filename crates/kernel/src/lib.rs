@@ -21,6 +21,7 @@ pub use event::{Event, EventKind, EventLog};
 pub use http::{Request, Response};
 pub use ids::{
     AgentId, EndpointName, EventId, ModuleId, PhaseId, SectionId, Timestamp, ToolId, Version,
+    MODEL_ENDPOINT, SEARCH_ENDPOINT,
 };
 pub use ports::{
     AgentPort, BlobStore, BoxFuture, BrokeredRequest, BrokeredResponse, ClockPort, KvStore,

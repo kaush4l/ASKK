@@ -77,6 +77,22 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         })
         .collect();
 
+    // One question per DISTINCT `model:` key, not one per agent: the whole
+    // roster usually names the same one, and resolving it re-reads the
+    // catalogue each time.
+    let mut asked: Vec<String> = app.agents.iter().map(|s| s.model.clone()).collect();
+    asked.sort();
+    asked.dedup();
+    let resolved_models = asked
+        .into_iter()
+        .filter_map(|key| {
+            app.ports
+                .model
+                .resolves(&key)
+                .map(|(entry, model)| (key, entry, model))
+        })
+        .collect();
+
     let mut ctx = Ctx {
         kv: None, // no G4 module declares Kv
         clock: manifest
@@ -95,6 +111,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         queued,
         agents: app.agents.clone(),
         agent_problems: app.agent_problems.clone(),
+        resolved_models,
         authored: app
             .authored
             .iter()

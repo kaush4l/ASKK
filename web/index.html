@@ -82,6 +82,17 @@
       document.documentElement.setAttribute("data-skin", "plain");
     }
   </script>
+  <!-- ONE VENDOR PREFIX, NOT A BEHAVIOUR (increment 19, I5's exception).
+       Chrome and Safari expose speech recognition as `webkitSpeechRecognition`
+       and web-sys binds the standard name; this aliases the two so the whole
+       feature can live in Rust (`crates/ui/src/composer/voice.rs`). It is a
+       name, not application logic: where neither exists — Firefox — nothing is
+       defined and the control is simply absent (I15). -->
+  <script>
+    if (!("SpeechRecognition" in window) && window.webkitSpeechRecognition) {
+      window.SpeechRecognition = window.webkitSpeechRecognition;
+    }
+  </script>
 </head>
 <body>
   <!-- What a person sees BEFORE the Wasm mounts, and what they are left with

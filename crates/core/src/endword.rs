@@ -1,6 +1,8 @@
-//! THE ENDINGS, AND WHAT EACH ONE IS CALLED. Split from `ending.rs`, which owns
+//! THE ENDINGS, AND WHAT EACH ONE IS CALLED — and, at the bottom, the two
+//! notices the LOOP itself puts on screen. Split from `ending.rs`, which owns
 //! the FOLD that decides which one a log is showing — that file was at exactly
-//! 200 lines (I12) before a fifth ending needed a word and a sentence.
+//! 200 lines (I12) before a fifth ending needed a word and a sentence, and at
+//! exactly 200 again before the pass loop needed a sixth (22).
 //!
 //! The rule for the list is the good part, and it is R17's: *an ending only
 //! earns a name if a surface can offer a different act for it.* Not the field
@@ -27,6 +29,12 @@ pub(crate) enum Ending {
     /// You pressed Stop. `halted.rs` owns what that leaves behind; this only
     /// has to keep the row and the card from calling it finished.
     StoppedByYou,
+    /// It ran out of PASSES (`agent::passes`) with the work still going: the
+    /// stage list was walked `passes:` times and the last lap still changed
+    /// something. The act is to raise `passes:`, which is a different act from
+    /// raising `max_rounds:` — one buys more laps of plan-work-verify, the
+    /// other buys more tool calls inside them.
+    PassCeiling,
     /// The turn raised. The status fact already says `failed` and the card
     /// already has a branch for it, so this ending adds no word of its own — it
     /// is here so that a failure cannot be mistaken for the ending before it.
@@ -56,6 +64,10 @@ impl Ending {
             Ending::Unchecked => Some("answered, unchecked"),
             Ending::NoAnswer => Some("stopped without answering"),
             Ending::RoundCeiling => Some("stopped at its round ceiling"),
+            // NOT "finished". A turn cut off by its own budget with work still
+            // in flight is the R17-P0-2 failure exactly, and the word has to
+            // say that the stopping was the budget's doing and not the work's.
+            Ending::PassCeiling => Some("stopped when its passes ran out"),
             Ending::StoppedByYou => Some("stopped by you"),
         }
     }
@@ -80,10 +92,63 @@ impl Ending {
                 "it used every round of tool calls its agent file allows — raise \
                  `max_rounds:` in that file if the work needs more"
             }
+            Ending::PassCeiling => {
+                "it walked its stages as many times as `passes:` allows and was still \
+                 changing things on the last one, so the work is unfinished — its last \
+                 reply says where it got to; raise `passes:` or ask it to carry on"
+            }
             Ending::StoppedByYou => {
                 "nothing new was started after you pressed Stop; ask again to carry on"
             }
         };
         Some(said.to_string())
     }
+}
+
+/// WHICH STAGE, AND WHAT IT IS FOR (20). Without it the conversation shows one
+/// agent answering three times in a row with nothing saying why — the
+/// `VERIFY_NUDGED` defect, once per declared stage. The sentence names the
+/// stage's job and claims nothing about the work.
+///
+/// …AND IT IS LABELLED WITH THE STAGE'S OWN NAME (21). All four wore `Note:`,
+/// the page's generic word for "not speech", so the loop had no name on any
+/// screen: a critic searched the rendered text of all six views and found
+/// `verify` 0 times, `stage` 0, `loop` 0. The label comes off the
+/// `core.stage_entered` fact already in the log — no second state (I8).
+pub(crate) fn stage_note(payload_json: &str) -> (String, String) {
+    let (label, said) = match agent::stage_of(payload_json).as_str() {
+        s if s == agent::STAGE_PLAN => (
+            "Plan stage",
+            "Turning the request into a brief — what will be true when this is done, which \
+             files, and the command that would show it. It calls nothing at this point.",
+        ),
+        s if s == agent::STAGE_VERIFY => (
+            "Verify stage",
+            "Running the check the brief named, and reading what it prints.",
+        ),
+        s if s == agent::STAGE_CRITIQUE => (
+            "Critique stage",
+            "Reading the turn back to name what is still missing, before answering.",
+        ),
+        _ => ("Work stage", "Doing the work."),
+    };
+    (label.to_string(), said.to_string())
+}
+
+/// A LAP OF THE STAGES, ON SCREEN (22). An agent that keeps working across
+/// passes is a token meter running behind a spinner unless the laps are
+/// visible, so the fact `agent::passes` emits gets a line of its own — with the
+/// count, because "still going" and "going for the fourth time out of five" are
+/// different things to read. The sentence also says what earned it: the
+/// continue condition is mechanical, and nobody should have to read the source
+/// to find out that the model was not asked whether it was done.
+pub(crate) fn pass_note(payload_json: &str) -> (String, String) {
+    let (pass, of) = agent::pass_of(payload_json);
+    (
+        format!("Pass {pass} of {of}"),
+        "The last pass changed or ran something and the goal is not done, so it is going \
+         round again from the work stage. Nothing asked the model whether it was finished — \
+         a pass that touches nothing ends the turn."
+            .to_string(),
+    )
 }

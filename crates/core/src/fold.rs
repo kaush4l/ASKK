@@ -62,12 +62,11 @@ pub(crate) fn belongs_to(kind: &EventKind, me: &str, who: &str) -> bool {
         EventKind::ToolInvoked { .. } => who == me,
         EventKind::Custom { kind, payload_json } => match kind.as_str() {
             "core.note" | "core.error" | "core.compaction_failed" => who == me,
-            // A stop happens at a boundary of THIS loop, like the note above
-            // it — and so do the ending (R17-P0-2), the steer (R18-P0-1), the
-            // verify nudge (19) and the stage (20): all of them this process's.
+            // A stop happens at a boundary of THIS loop, like the note above it
+            // — and so do the ending, steer, verify nudge, stage and pass (22).
             k if k == agent::STOPPED || k == agent::ENDED => who == me,
             k if k == agent::STEERED || k == agent::VERIFY_NUDGED => who == me,
-            k if k == agent::STAGE_ENTERED => who == me,
+            k if k == agent::STAGE_ENTERED || k == agent::PASS_SPENT => who == me,
             // Whose wait ended. Empty is this process's own agent, which is
             // every record written before a pane could stop waiting on a turn
             // running in somebody else's Worker (12b).
@@ -118,7 +117,8 @@ pub(crate) fn awaits(kind: &EventKind) -> Option<bool> {
             k if k == agent::STOPPED => Some(false), // the turn ended, by you
             k if k == agent::ENDED => Some(false),   // …and this one says how
             k if k == agent::VERIFY_NUDGED => Some(true), // …and this reopens it
-            k if k == agent::STAGE_ENTERED => Some(true), // …and so does this
+            // …and so does a stage (20), or a new lap of them (22).
+            k if k == agent::STAGE_ENTERED || k == agent::PASS_SPENT => Some(true),
             k if k == crate::chat::TURN_STOPPED => Some(false),
             _ => None,
         },

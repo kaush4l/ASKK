@@ -24,6 +24,7 @@ fn spec(name: &str, tools: &[&str]) -> AgentSpec {
         compact_at: 75,
         keep_recent: 24,
         max_rounds: 64,
+        passes: 1,
         prompt: "body".into(),
     }
 }
@@ -131,7 +132,10 @@ fn the_frontmatter_tools_list_decides_the_toolbox() {
     // resolves differently from every other (I9). The consequence is that an
     // agent with an empty `tools:` can author agents — which is why the Agents
     // card prints the RESOLVED toolbox rather than the frontmatter's.
-    assert_eq!(names, ["now", "list_agents", "read_agent", "write_agent"]);
+    assert_eq!(
+        names,
+        ["now", "list_agents", "read_agent", "write_agent", "web_search"]
+    );
     assert!(all.tools.iter().all(|t| !t.agent), "no peer was attached");
 
     let picked = toolbox_for(&spec("main", &["now", "researcher"]), &peers);

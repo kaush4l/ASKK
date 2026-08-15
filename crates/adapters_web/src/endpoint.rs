@@ -4,12 +4,14 @@
 //! the tests refuse.
 //! `catalogue.rs` owns the rules, `model.rs` owns the wire, this owns choice.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 
 use kernel::ModelError;
 
 use crate::catalogue::{Catalogue, Entry};
 use crate::overrides::pin;
+
+mod profile;
 
 /// The catalogue as shipped, plus the user's persisted layer on it.
 ///
@@ -27,6 +29,13 @@ pub struct Endpoint {
     /// the catalogue: `openrouter`'s key must not travel to `api.openai.com`,
     /// to `api.anthropic.com`, or to `127.0.0.1` (`ux-walker`, increment 04).
     keys: Map<String, Value>,
+    /// The base URL of the web-search endpoint, or empty. It lives in THIS
+    /// record — beside the model endpoint and under the same key — because
+    /// this record is what every sub-agent's Worker is handed at boot; a
+    /// setting kept anywhere else would be a capability the page had and half
+    /// the roster did not. It is not a credential and there is no key field
+    /// for it: a public JSON endpoint is the only kind that can be called.
+    search: String,
 }
 
 impl Endpoint {
@@ -145,6 +154,18 @@ impl Endpoint {
             .unwrap_or("")
     }
 
+    /// Where a web search goes, and nowhere else: the ALLOWLIST is built from
+    /// this string, so an empty one is an empty list and `web_search` refuses
+    /// in words (CLAUDE.md §17 makes the destination a user's choice, not a
+    /// constant this build ships).
+    pub fn set_search(&mut self, base_url: &str) {
+        self.search = base_url.trim().trim_end_matches('/').to_string();
+    }
+
+    pub fn search(&self) -> &str {
+        &self.search
+    }
+
     /// Back to the shipped catalogue: forget the pick, the overrides and every
     /// saved key. Without this the first Save is permanent — the walker had to
     /// delete the IndexedDB database to get back to the default (increment 04).
@@ -152,44 +173,6 @@ impl Endpoint {
         self.selected = String::new();
         self.overrides = Value::Null;
         self.keys = Map::new();
-    }
-
-    /// The stored record — the one place the keys are serialized.
-    pub fn profile_json(&self) -> String {
-        json!({
-            "selected": self.selected,
-            "keys": Value::Object(self.keys.clone()),
-            "overrides": self.overrides,
-        })
-        .to_string()
-    }
-
-    /// Load that record back (boot). An unreadable record leaves the endpoint
-    /// on the shipped catalogue rather than failing boot (I15). A record from
-    /// before the catalogue existed carried a bare `base_url`: it becomes an
-    /// override of the current entry, so nobody's saved endpoint is lost.
-    pub fn load_profile(&mut self, raw: &str) {
-        let Ok(v) = serde_json::from_str::<Value>(raw) else {
-            return;
-        };
-        let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default();
-        self.selected = s("selected").trim().to_string();
-        if let Some(k) = v.get("keys").and_then(Value::as_object) {
-            self.keys = k.clone();
-        }
-        if let Some(o) = v.get("overrides").filter(|o| o.is_object()) {
-            self.overrides = o.clone();
-        }
-        // A record from before keys were per entry carried ONE key. It goes to
-        // the entry it was last used with — the pick, or the default it
-        // silently was — rather than being dropped or, worse, kept for all.
-        let legacy_key = s("api_key").trim().to_string();
-        if !legacy_key.is_empty() {
-            self.keys.insert(self.current(), Value::String(legacy_key));
-        }
-        let legacy = s("base_url");
-        if !legacy.is_empty() {
-            self.set(legacy, None, s("model"));
-        }
+        self.search = String::new();
     }
 }

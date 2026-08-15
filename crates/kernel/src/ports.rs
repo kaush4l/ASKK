@@ -113,6 +113,24 @@ pub trait ModelPort {
         endpoint: &'a EndpointName,
         body_json: &'a str,
     ) -> BoxFuture<'a, Result<ModelReply, ModelError>>;
+
+    /// What a call asking for `asked` — an agent file's `model:` key — would
+    /// ACTUALLY reach today: `(catalogue entry, model id)`.
+    ///
+    /// A fact that travels with the port, for `WorkspacePort::durable`'s
+    /// reason. The agent card printed the file's own `model: local` while the
+    /// header, reading the broker, correctly said the next turn called
+    /// openrouter — both on one screen, so somebody who switched endpoint and
+    /// got a 401 read the card and concluded the switch had not taken (cold
+    /// walk, 21). Only the adapter holds the catalogue and the user's pick, so
+    /// only the adapter can answer this; nothing upstream may guess.
+    ///
+    /// Default `None`: a port with no catalogue cannot say, and the copy that
+    /// reads this states the file's own words instead of inventing a model id.
+    fn resolves(&self, asked: &str) -> Option<(String, String)> {
+        let _ = asked;
+        None
+    }
 }
 
 /// A brokered outbound request: a path under a named endpoint's base URL.

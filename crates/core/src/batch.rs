@@ -143,6 +143,14 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
             a.pending.push(appended);
             return;
         }
+        // …and a search leaves the browser entirely, which is I/O of the same
+        // kind: it cannot happen inside a borrow of the app either.
+        if let Some(kind) = crate::websearch::run(app, tool, args_json).await {
+            let mut a = app.borrow_mut();
+            let appended = a.append(kind);
+            a.pending.push(appended);
+            return;
+        }
         if let Some(kind) = crate::space::run(app, tool, args_json).await {
             let mut a = app.borrow_mut();
             let appended = a.append(kind);

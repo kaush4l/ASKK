@@ -17,19 +17,17 @@ header .wordmark {
 
 /* PILLS: opaque for G3, no `overflow: hidden` (R6-4) — one that can clip will. */
 header .pill {
-  margin: 0; flex: 0 0 auto; padding: var(--s-2) var(--s-3);
-  background-color: var(--surface-1); border-radius: var(--r-full);
+  margin: 0; flex: 0 0 auto; padding: var(--s-2) var(--s-3); color: var(--ink-2);
+  background-color: var(--surface-1); border-radius: var(--r-full); white-space: nowrap;
   font-size: var(--t-label); line-height: var(--lh-label);
-  color: var(--ink-2); white-space: nowrap;
 }
 
 /* WHOLE ITEMS, IN A STATED ORDER (R6-4). Nothing leaves at any width — the
    endpoint and the workspace shrink (R7-12, R9-5, R11-10, R13-P1-5). */
 .status-strip {
   display: flex; align-items: center; gap: var(--s-3);
-  flex: 1 1 auto; min-width: 0; overflow: hidden;
-  /* so the last pill never ends flush against the switch beside it */
-  padding-inline-end: var(--s-2);
+  /* the trailing pad is so the last pill never ends flush against the switch */
+  flex: 1 1 auto; min-width: 0; overflow: hidden; padding-inline-end: var(--s-2);
 }
 
 /* THE ONE THING THAT GIVES WAY BY SHRINKING, with an ellipsis to shrink INTO. */
@@ -81,15 +79,21 @@ header .chat-endpoint {
     scrollbar-width: none; overscroll-behavior-x: contain;
   }
   .status-strip::-webkit-scrollbar { display: none; }
+  /* …AND THE ONE PILL STILL SHORN INSIDE IT (R20-C): `flex: 1 1 auto` above
+     shrank it to `--s-8` in a row that already scrolls, so 390 rendered the
+     sentence as `call…` — the model id R11-10 keeps at every width, gone where
+     nothing else names it and recoverable only two clicks into the drawer. A
+     scrollport does not shrink its contents. It stays LAST rather than taking a
+     row: a row costs ~75px of the 844 ONESCREEN (layout-probe.js) measures. */
+  header .chat-endpoint { flex: 0 0 auto; overflow: visible; }
 }
 /* THE LAST TURN FAILED (F12), on a ROW OF ITS OWN under the header (R8-2): in
    the strip it fitted only by evicting the model line and the spend — an error
    state may add a row, never subtract a fact. */
 .banner {
   margin: var(--s-3) var(--s-3) 0; padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md); flex: 0 0 auto;
+  border-radius: var(--r-md); flex: 0 0 auto; max-height: 30vh; overflow-y: auto;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
-  max-height: 30vh; overflow-y: auto;
 }
 
 .banner.problem {
@@ -149,9 +153,7 @@ header .pill.running::before { content: "\25C6  "; color: var(--accent); }
 }
 
 /* …AND THE FOCUS HALO SURVIVES IT (R4-9). */
-.nav .view-item[aria-current="page"]:focus-visible {
-  box-shadow: inset 4px 0 0 0 var(--accent), 0 0 0 4px var(--focus-halo);
-}
+.nav .view-item[aria-current="page"]:focus-visible { box-shadow: inset 4px 0 0 0 var(--accent), 0 0 0 4px var(--focus-halo); }
 
 /* A COMPANION COLUMN SPEAKS ONE STEP DOWN (R11): the rail is what you look at
    WHILE reading the middle (§6). `--t-heading` is the existing `h3` step. */
@@ -161,8 +163,7 @@ header .pill.running::before { content: "\25C6  "; color: var(--accent); }
    reachable at every width and the fold sits at its foot. …AND IT SCROLLS INSIDE
    ITSELF rather than past the nav's edge (R11); `min-height: 0` allows it. */
 .nav .status-fold {
-  margin-top: auto; min-height: 0; overflow-y: auto;
-  padding: var(--s-2); border-radius: var(--r-md);
+  margin-top: auto; min-height: 0; overflow-y: auto; padding: var(--s-2); border-radius: var(--r-md);
 }
 
 .crumb { margin: 0; display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-caption); color: var(--ink-2); }
@@ -183,17 +184,16 @@ header .pill-label { color: var(--ink-2); }
 
 /* What this is (F1), as a LEDE (R4-13) — second of the display family (R5-B). */
 .tagline {
-  margin: 0; max-width: var(--measure); color: var(--ink-2);
-  font-family: var(--display); font-size: var(--t-heading); line-height: var(--lh-body);
+  margin: 0; max-width: var(--measure); color: var(--ink-2); font-family: var(--display);
+  font-size: var(--t-heading); line-height: var(--lh-body);
 }
 
 /* THE STAGE'S OWN HEAD (R5-6, R5-A): the agent strip and the view's eyebrow. */
 .stage-head { display: flex; flex-direction: column; gap: var(--s-2); flex: 0 0 auto; }
 
 .view-eyebrow {
-  margin: 0; font-size: var(--t-caption); line-height: var(--lh-caption);
-  letter-spacing: var(--tr-caption); text-transform: uppercase;
-  font-weight: var(--w-strong); color: var(--ink-2);
+  margin: 0; font-size: var(--t-caption); line-height: var(--lh-caption); color: var(--ink-2);
+  letter-spacing: var(--tr-caption); text-transform: uppercase; font-weight: var(--w-strong);
 }
 /* THE DRAWER'S WAY OUT (R5-8); layout.css positions both. */
 .nav-scrim { background-color: var(--e3-scrim); border: 0; }

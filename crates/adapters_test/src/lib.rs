@@ -123,3 +123,42 @@ impl NetPort for DenyAllNet {
         }))
     }
 }
+
+/// A broker that answers ONE canned body, and remembers the path it was asked
+/// for. The path is the point: a query is encoded into it by a pure function,
+/// and a test that never reads it could not tell a search for `rust lang` from
+/// a search for nothing at all.
+pub struct CannedNet {
+    status: u16,
+    body: String,
+    asked: RefCell<Vec<String>>,
+}
+
+impl CannedNet {
+    pub fn answering(status: u16, body: &str) -> CannedNet {
+        CannedNet {
+            status,
+            body: body.to_string(),
+            asked: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Every path this broker was asked for, in order.
+    pub fn asked(&self) -> Vec<String> {
+        self.asked.borrow().clone()
+    }
+}
+
+impl NetPort for CannedNet {
+    fn fetch<'a>(
+        &'a self,
+        _endpoint: &'a EndpointName,
+        req: BrokeredRequest,
+    ) -> BoxFuture<'a, Result<BrokeredResponse, NetError>> {
+        self.asked.borrow_mut().push(req.path);
+        ready(Ok(BrokeredResponse {
+            status: self.status,
+            body: self.body.clone().into_bytes(),
+        }))
+    }
+}

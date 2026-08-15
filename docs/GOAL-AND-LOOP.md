@@ -77,7 +77,7 @@ Every field, and the stage that consumes it:
   Their consumer would be the work agent's system prompt — which is `agent.md`'s body already
   (`crates/agent/src/paper.rs:112-115`). A second place to write a rule is a second place for it to
   rot.
-- `risk`, `effort`, `phases`. `public/agents/plan/agent.md` already forbids these in its own words —
+- `risk`, `effort`, `phases`. `public/agents/scout/agent.md` already forbids these in its own words —
   *"No effort estimates, no phases, no risk matrix"* — and it is right.
 
 ## 2. Where it lives
@@ -88,7 +88,7 @@ candidates:
 **(a) A new `public/agents/brief/` folder.** Own prompt, own read-only allowlist, writes the brief to
 `.harness/brief.md` so later stages `read_file` it.
 
-**(b) The existing `public/agents/plan/` agent, invoked as the loop's first stage, with its answer
+**(b) The existing `public/agents/scout/` agent, invoked as the loop's first stage, with its answer
 carried in-memory.** No file, no write tool, no new folder.
 
 **Recommend (b), and argue against it first.** (b)'s weakness is durability: the brief lives only in
@@ -116,7 +116,7 @@ not a goal — and merging the two would give one agent two jobs.
 
 ## 3. The prompt
 
-Appended to `public/agents/plan/agent.md`, after its existing `## The plan` section, replacing its
+Appended to `public/agents/scout/agent.md`, after its existing `## The plan` section, replacing its
 current final paragraph. House voice: second person, plain, says what not to do.
 
 ```markdown
@@ -236,7 +236,7 @@ node, and not a mode. The sequencing agent makes no model calls of its own — i
 
 | stage | purpose | prompt | tools | what ends it | next |
 |---|---|---|---|---|---|
-| **plan** | goal → brief (§1) | `public/agents/plan/agent.md` | its own allowlist: seven readers, no writer | its prose answer (`ending::ANSWERED`) | `work` — via the person, if `plan_approval: ask` |
+| **plan** | goal → brief (§1) | `public/agents/scout/agent.md` | its own allowlist: seven readers, no writer | its prose answer (`ending::ANSWERED`) | `work` — via the person, if `plan_approval: ask` |
 | **work** | do it | `public/agents/main/agent.md` (or whichever agent the file names) | its own allowlist: the full workspace set | its prose answer, **after the §7 gate lets it** | `verify` |
 | **verify** | judge what happened against `done_when` | `public/agents/verify/agent.md` | `read_file`, `list_files`, `find_files`, `exec` | its answer, whose first word is `pass` or `fail` | `pass` → `critique`; `fail` → `work`, up to `max_repairs` |
 | **critique** | read the result cold and list what is wrong | `public/agents/critique/agent.md` | `read_file`, `list_files`, `find_files` — no `exec`, no writer | its answer: at most five findings, or `none` | findings → `work`; `none` → done |
@@ -514,7 +514,7 @@ Never report a stage as finished when it was not.
 ```
 
 The three sibling files this needs — `public/agents/verify/agent.md`, `public/agents/critique/agent.md`
-(§8), and the three added paragraphs in `public/agents/plan/agent.md` (§3) — plus four lines in
+(§8), and the three added paragraphs in `public/agents/scout/agent.md` (§3) — plus four lines in
 `public/agents/index.json`, which is the directory listing a static host cannot generate
 (`public/agents/index.json`, its own `comment` field says so). **Zero Rust for the prompts, the tool
 sets and the per-stage budgets.** That is ALIGNMENT §1's convergent finding applied literally.

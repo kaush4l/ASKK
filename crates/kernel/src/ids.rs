@@ -39,6 +39,13 @@ pub struct ToolId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EndpointName(pub String);
 
+/// The two names this build resolves. Here rather than in either consumer
+/// because BOTH have to spell them the same way: the core names an endpoint
+/// and the adapter's allowlist is keyed by it, and two spellings would deny a
+/// configured destination with nothing to say why (increment 21).
+pub const MODEL_ENDPOINT: &str = "model";
+pub const SEARCH_ENDPOINT: &str = "search";
+
 /// Milliseconds since Unix epoch, injected via `ClockPort` (I7: time is data).
 /// Public: provenance stamps and events carry it; nothing calls a real clock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -151,6 +151,9 @@ fn an_empty_list_with_a_space_takes_every_builtin_and_the_whole_space_set() {
             "list_agents",
             "read_agent",
             "write_agent",
+            // Increment 21: a built-in like any other, so an empty list takes
+            // it — whether it can reach anything is the allowlist's business.
+            "web_search",
             "remember",
             "forget",
             "post_note",

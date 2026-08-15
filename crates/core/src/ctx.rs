@@ -73,6 +73,16 @@ pub struct Ctx {
     pub agents: Vec<agent::AgentSpec>,
     /// The agent files that would not parse — shown, never swallowed.
     pub agent_problems: Vec<String>,
+    /// WHAT EACH `model:` KEY REALLY CALLS TODAY: `(the key an agent file asks
+    /// for, the catalogue entry that answers it, the model id it sends)`, asked
+    /// of `ModelPort::resolves`. Keyed by the KEY and not by the agent, because
+    /// that is what the resolution depends on — six agents saying `local` are
+    /// one question, and this is rebuilt on every request.
+    ///
+    /// Empty when the port cannot say (every host test, by default). The card
+    /// then prints the file's own words and no model id, which is the one thing
+    /// it must not invent.
+    pub resolved_models: Vec<(String, String, String)>,
     /// Which of `agents` were AUTHORED IN THIS BROWSER rather than shipped in
     /// `public/agents/`, and BY WHOM — empty for the person at the keyboard,
     /// otherwise the agent that called `write_agent` (increment 11, 11b). A

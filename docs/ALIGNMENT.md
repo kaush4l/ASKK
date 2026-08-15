@@ -294,11 +294,11 @@ shell — its list must gain the workspace tools in the same commit. Verify: a h
 `toolbox_for` on a spec with `tools: [read_file]` and `space: research` yields exactly one tool.
 
 **2. Two mode agents.** *(S)*
-`public/agents/plan/agent.md` and `public/agents/ask/agent.md` + two lines in `index.json`. Zero
+`public/agents/scout/agent.md` and `public/agents/ask/agent.md` + two lines in `index.json`. Zero
 Rust. Why: VS Code §9.1 (highest ratio in that document), Open SWE §9.4, Hermes §3. Note the
 existing default already helps: `builtin_tools()` is only four tools (`tools.rs:107-135`), so an
 `ask` agent with no space is read-only by construction. Breaks: nothing, once item 1 lands — before
-it, a plan agent cannot both read files and be unable to write them. Verify: ask the plan agent to
+it, a scout agent cannot both read files and be unable to write them. Verify: ask the scout agent to
 edit a file; it declines, and the Tool trace shows no `exec` because `exec` is not in its toolbox.
 
 **3. Verification evidence and the stop-gate.** *(M)*
@@ -495,6 +495,41 @@ BYO-endpoint like everything else — larger, and a port change.
 (c) Defer entirely until the coding loop is honest.
 **Recommendation: (a) now, with (b) recorded as the upgrade path.** The value is demonstrating the
 Jarvis sequence end-to-end; the risk of (a) is confined to one crate and one paragraph.
+
+**BUILT (increment 19), as (a).** `crates/ui/src/composer/voice.rs` and its one child: a *Dictate*
+button that appends finished phrases to the composer's draft, and a *Read the answer aloud* button
+that speaks the last `.msg.assistant` in the pane. Nothing sends by itself; nothing new crosses the
+seam. The I5 exception is written into `INVARIANTS.md`, and I2 carries a note too — which was not
+in the recommendation and should have been, because dictation is outbound traffic to an endpoint
+nobody configured.
+
+*What the screen says.* The mic control carries an unfolded paragraph next to it saying that
+dictation hands microphone audio to the browser's speech service — in Chrome, Google's — that this
+is the only part of HARNESS leaving the browser apart from the model endpoint the user configured,
+and that the page cannot tell whether a given browser does it on the device, so assume it does not.
+The synthesis control carries the same caution about network voices. This product's pitch is that
+it runs in your browser; a mic that quietly ships audio to a third party under that sentence is the
+worst thing in the product to get wrong, so it is said where the button is and not in a fold.
+
+*What was not built, and why.*
+- **(b), the port version.** Transcription and speech as `ModelPort` roles, so voice is
+  BYO-endpoint like every other model call, portable across browsers, and no longer an exception to
+  I2 or I5. That is the upgrade path and it retires the exception rather than adding to it. It is a
+  port change and a larger piece of work; it should be taken the first time someone wants voice
+  against their own endpoint, or the first time Firefox users matter.
+- **transformers.js / Whisper in the tab.** The owner named it and it is genuinely the honest
+  answer to "runs in your browser" — recognition with no audio leaving the device at all. It is not
+  this increment because the smallest useful Whisper build is tens of megabytes of model weights
+  fetched before the first word can be transcribed, on a page whose entire value proposition is
+  that it *loads*: the current bundle plus agents is a fraction of that, and a voice button that
+  costs a 40–75 MB download on first press is not a cheaper version of the feature, it is a
+  different product decision about page weight. It belongs behind the same `ModelPort` seam as (b) —
+  a local in-tab transcription endpoint is then just one more configured endpoint — and behind an
+  explicit "download the model" gate the person presses, with the size on the button. Recorded, not
+  built.
+- **On-device detection.** Recent Chrome exposes whether recognition can run locally; `web-sys`
+  0.3.98 has no binding for it, and this page does not reach around `web-sys` to guess. So the
+  wording states what is known and claims nothing about the local case.
 
 **3. What does "sync, works from anywhere, no specific dependency" mean?**
 No one of the eight solves this browser-only: OpenAlice syncs by being a git repo on a desktop,

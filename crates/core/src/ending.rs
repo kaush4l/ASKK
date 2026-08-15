@@ -55,8 +55,9 @@ fn one(kind: &EventKind) -> Option<Option<Ending>> {
             // reason: what came before is over, and nothing has ended yet.
             k if k == agent::VERIFY_NUDGED => Some(None),
             // …and a stage opening, for the same reason: what came before is
-            // over, and nothing has ended (`agent::stages`).
-            k if k == agent::STAGE_ENTERED => Some(None),
+            // over, and nothing has ended (`agent::stages`). A pass spent is
+            // the same shape one level up (22): a new lap, nothing ended.
+            k if k == agent::STAGE_ENTERED || k == agent::PASS_SPENT => Some(None),
             k if k == agent::STOPPED => Some(Some(Ending::StoppedByYou)),
             "core.error" | "core.agent_error" => Some(Some(Ending::Failed)),
             _ => None,
@@ -72,6 +73,7 @@ fn named(why: &str) -> Ending {
     match why {
         w if w == agent::NO_ANSWER => Ending::NoAnswer,
         w if w == agent::ROUND_CEILING => Ending::RoundCeiling,
+        w if w == agent::PASS_CEILING => Ending::PassCeiling,
         w if w == agent::UNCHECKED => Ending::Unchecked,
         _ => Ending::Answered,
     }
@@ -86,6 +88,7 @@ pub(crate) fn is_note(kind: &str) -> bool {
         || kind == agent::STOPPED
         || kind == agent::VERIFY_NUDGED
         || kind == agent::STAGE_ENTERED
+        || kind == agent::PASS_SPENT
         || kind == crate::chat::TURN_STOPPED
 }
 
@@ -113,22 +116,15 @@ pub(crate) fn machine_note(kind: &str, payload_json: &str, who: &str) -> Option<
                 .to_string(),
         ));
     }
-    // WHICH STAGE, AND WHAT IT IS FOR (20). Without it the conversation shows
-    // one agent answering three times in a row with nothing saying why — the
-    // `VERIFY_NUDGED` defect, once per declared stage. The sentence names the
-    // stage's job and claims nothing about the work.
+    // The loop's own two notices — which stage (20, 21) and which lap (22).
+    // Both wordings live in `endword` beside the endings', because this file
+    // was at exactly 200 lines again (I12) and because they are the same job:
+    // what the page SAYS about a turn the machine moved on by itself.
     if kind == agent::STAGE_ENTERED {
-        let said = match agent::stage_of(payload_json).as_str() {
-            s if s == agent::STAGE_PLAN => "Turning the request into a brief — what will be \
-                 true when this is done, which files, and the command that would show it. It \
-                 calls nothing at this point.",
-            s if s == agent::STAGE_VERIFY => "Running the check the brief named, and reading \
-                 what it prints.",
-            s if s == agent::STAGE_CRITIQUE => "Reading the turn back to name what is still \
-                 missing, before answering.",
-            _ => "Doing the work.",
-        };
-        return Some((crate::fold::NOTICE.to_string(), said.to_string()));
+        return Some(crate::endword::stage_note(payload_json));
+    }
+    if kind == agent::PASS_SPENT {
+        return Some(crate::endword::pass_note(payload_json));
     }
     if kind == crate::chat::TURN_STOPPED {
         return Some((crate::fold::NOTICE.to_string(), crate::fold::STOPPED.to_string()));
@@ -158,6 +154,23 @@ pub(crate) fn machine_note(kind: &str, payload_json: &str, who: &str) -> Option<
                     1 => "1 round".to_string(),
                     n => format!("{n} rounds"),
                 }),
+        )),
+        // THE BUDGET STOPPED IT, NOT THE WORK (22). Named beside the round
+        // ceiling for R17-P0-2's reason — a six-part task was abandoned and
+        // reported as finished — and the sentence says which of the two
+        // budgets ran out, because they are raised in two different lines.
+        Ending::PassCeiling => Some((
+            crate::fold::NOTICE.to_string(),
+            format!(
+                "It ran out of passes after {} of tool calls and was still changing things \
+                 on the last one, so the work is unfinished. Its reply above says what it \
+                 did and what it did not; raise `passes:` in this agent's file, or ask it \
+                 to carry on.",
+                match agent::ended_rounds(payload_json) {
+                    1 => "1 round".to_string(),
+                    n => format!("{n} rounds"),
+                }
+            ),
         )),
         _ => None,
     }

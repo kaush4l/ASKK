@@ -82,6 +82,8 @@ pub fn new_spec(
         // runs the react loop, which is what its card says (I9).
         role: String::new(),
         stages: Vec::new(),
+        // …and one pass, which is what "no stage list" already means (22).
+        passes: crate::defaults::default_passes(),
         tools: tools.iter().map(|t| one_line(t)).filter(|t| !t.is_empty()).collect(),
         space: one_line(space),
         compact_at: crate::defaults::default_compact_at(),

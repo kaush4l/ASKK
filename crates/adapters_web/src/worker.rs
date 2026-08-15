@@ -74,7 +74,15 @@ impl AgentWorker {
                     .await
                     .map_err(js_err)?,
             ) as Rc<dyn kernel::KvStore>,
-            net: Rc::new(FetchNet::new(Vec::new())),
+            // The SAME allowlist the page has, because it rides in the same
+            // profile record this Worker was booted from — a search a
+            // sub-agent cannot make is a capability the roster has and half of
+            // it does not (increment 21). Blank stays off the list.
+            net: {
+                let net = FetchNet::new();
+                net.allow(kernel::SEARCH_ENDPOINT, &model.search_url());
+                Rc::new(net)
+            },
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
             // The SAME adapter the page uses, which refuses here in words: a

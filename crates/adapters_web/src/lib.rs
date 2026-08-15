@@ -56,6 +56,10 @@ pub struct WebApp {
     /// `ModelPort` trait object, so nothing in the core can read a key (I6).
     model: Rc<FetchModel>,
     store: Rc<IdbStore>,
+    /// The network broker, held for the same reason as `model`: saving the
+    /// search endpoint has to reach the port the core is already holding. The
+    /// core sees only `NetPort`, so nothing upstream can add to the allowlist.
+    net: Rc<FetchNet>,
     /// The Workers, held as the concrete type as well as behind `AgentPort`:
     /// the core delegates through the port, but only the composition root may
     /// start, stop or report on a Worker's LIFE (increment 07).
@@ -100,10 +104,17 @@ impl WebApp {
         {
             model.load_profile(&raw);
         }
+        // THE ALLOWLIST IS BUILT FROM THE SETTING, never from a constant: an
+        // unset search endpoint is an empty list, and an empty list denies —
+        // which is what `web_search` turns into the sentence naming Settings
+        // (CLAUDE.md §17: a network allowlist is the user's gate, so this
+        // build ships the capability and not the destination).
+        let net = Rc::new(FetchNet::new());
+        net.allow(kernel::SEARCH_ENDPOINT, &model.search_url());
         let ports = core::Ports {
             model: Rc::clone(&model) as Rc<dyn kernel::ModelPort>,
             store: Rc::clone(&store) as Rc<dyn kernel::StorePort>,
-            net: Rc::new(FetchNet::new(Vec::new())),
+            net: Rc::clone(&net) as Rc<dyn kernel::NetPort>,
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
             spaces: spaces as Rc<dyn kernel::KvStore>,
@@ -146,6 +157,7 @@ impl WebApp {
             app: Rc::new(RefCell::new(app)),
             model,
             store,
+            net,
             workers: agents,
             models: RefCell::new(models_json),
             spawned: RefCell::new(files_json),

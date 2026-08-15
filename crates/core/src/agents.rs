@@ -66,7 +66,16 @@ fn listing(ctx: &Ctx) -> Response {
         );
     }
     for spec in &ctx.agents {
-        list = list.child(crate::agentcard::card(spec, &ctx.agents, &ctx.authored));
+        // WHAT THIS AGENT'S KEY REALLY RESOLVES TO, asked of the port that will
+        // make the call (`origin::model_line`). Absent when this build's port
+        // has no catalogue — then the card says the file's own words and no
+        // more, which is the one thing it must never invent.
+        let found = ctx
+            .resolved_models
+            .iter()
+            .find(|(key, _, _)| *key == spec.model)
+            .map(|(_, entry, model)| (entry.as_str(), model.as_str()));
+        list = list.child(crate::agentcard::card(spec, &ctx.agents, &ctx.authored, found));
     }
     for problem in &ctx.agent_problems {
         list = list.child(

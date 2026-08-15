@@ -12,7 +12,7 @@
 /// Which failure this was, in two or three words — the disclosure's name.
 pub(crate) fn failure_kind(payload_json: &str) -> &'static str {
     use kernel::ModelError::{
-        EndpointUnknown, ModelMissing, Provider, Timeout, Transport, Unsupported,
+        EndpointUnknown, ModelMissing, NoKey, Provider, Timeout, Transport, Unsupported,
     };
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
         Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => "no endpoint configured",
@@ -23,6 +23,7 @@ pub(crate) fn failure_kind(payload_json: &str) -> &'static str {
         Ok(crate::error::CoreError::Model(Timeout { .. })) => "the model ran out of time",
         Ok(crate::error::CoreError::Model(Unsupported { .. })) => "unsupported wire protocol",
         Ok(crate::error::CoreError::Model(Provider { .. })) => "the provider refused",
+        Ok(crate::error::CoreError::Model(NoKey { .. })) => "no API key was sent",
         Ok(crate::error::CoreError::Model(ModelMissing { .. })) => NO_SUCH_MODEL,
         Ok(crate::error::CoreError::StaleAssets { .. }) => "stale cached assets",
         _ => "raw error",
@@ -71,7 +72,7 @@ pub(crate) fn typed(payload_json: &str) -> bool {
 /// payload. Each names its own fix; the fallback admits it has none.
 pub(crate) fn failure_line(payload_json: &str) -> String {
     use kernel::ModelError::{
-        EndpointUnknown, ModelMissing, Provider, Timeout, Transport, Unsupported,
+        EndpointUnknown, ModelMissing, NoKey, Provider, Timeout, Transport, Unsupported,
     };
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
         // The Local Network Access prompt is about LOOPBACK, and this sentence
@@ -102,6 +103,14 @@ pub(crate) fn failure_line(payload_json: &str) -> String {
         Ok(crate::error::CoreError::Model(Provider { .. })) => {
             "The model endpoint answered, but refused the request. Check the base URL \
              and API key in Settings — the provider's own words are below."
+        }
+        // …AND A REFUSAL OF NOTHING IS NOT A WRONG CREDENTIAL (22). This page
+        // sent no `authorization` header at all, which it knows for certain,
+        // so it says the one thing to do instead of listing two.
+        Ok(crate::error::CoreError::Model(NoKey { .. })) => {
+            "This endpoint needs an API key and none is set, so the request went out \
+             without one and was refused. Add the key in Settings — the provider's own \
+             words are below."
         }
         // THE BOOT SCREEN'S OWN REMEDY, IN THE BOOT SCREEN'S OWN WORDS (R13-P0-3).
         // The second sentence is a claim about `web/sw.js` and only says what

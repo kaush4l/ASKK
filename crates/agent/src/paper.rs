@@ -105,6 +105,8 @@ pub fn adopt_spec(
     state.max_rounds = spec.max_rounds;
     // THE LOOP THIS AGENT RUNS, from its own file and nowhere else (20).
     state.stages = spec.stages.clone();
+    // …and how many times it may walk it (22).
+    state.passes = spec.passes;
     // The summarizer is an ordinary agent, found among the peers by name — the
     // Python registry gives it to every OTHER engine as the thing that compacts
     // a history, and to nobody as a tool (`registry.SUMMARIZER_AGENT`).

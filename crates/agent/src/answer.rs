@@ -56,9 +56,13 @@ pub(crate) fn answered(
     if let Some(effects) = stages::next(&mut state, at) {
         return (state, effects);
     }
-    let why = match state.mutated && !state.green {
-        true => ending::UNCHECKED,
-        false => ending::ANSWERED,
+    // …AND RUNNING OUT OF PASSES IS ITS OWN ENDING (22), ahead of the other
+    // two: a turn the budget cut off is not a turn that answered, and R17-P0-2
+    // is the whole reason this file names endings at all.
+    let why = match (crate::passes::exhausted(&state), state.mutated && !state.green) {
+        (true, _) => ending::PASS_CEILING,
+        (false, true) => ending::UNCHECKED,
+        (false, false) => ending::ANSWERED,
     };
     let effect = ending::end(&mut state, why);
     (state, vec![effect])

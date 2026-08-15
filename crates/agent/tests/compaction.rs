@@ -25,6 +25,7 @@ fn spec(name: &str, prompt: &str, compact_at: usize, keep: usize) -> AgentSpec {
         compact_at,
         keep_recent: keep,
         max_rounds: 64,
+        passes: 1,
         prompt: prompt.into(),
     }
 }

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use context::State;
 use kernel::PhaseId;
 
-use crate::defaults::{default_compact_at, default_keep_recent, default_max_rounds};
+use crate::defaults::{default_compact_at, default_keep_recent, default_max_rounds, default_passes};
 use crate::toolbox::Toolbox;
 
 /// One planned step with its own success criteria — Verify judges against
@@ -129,6 +129,15 @@ pub struct AgentState {
     pub stages: Vec<String>,
     #[serde(default)]
     pub stage: usize,
+    /// The `passes:` budget, the laps spent, and whether THIS lap changed or
+    /// ran anything — the continue condition, mechanical and never the model's
+    /// verdict (`crate::passes`). 1/0/false is today's turn exactly.
+    #[serde(default = "default_passes")]
+    pub passes: u16,
+    #[serde(default)]
+    pub pass: u16,
+    #[serde(default)]
+    pub acted: bool,
     /// The shared space this agent works in, as of the last time it was read
     /// — its facts and notes go into CONTEXT on every call. `None` means the
     /// agent's file named no space, so it works alone (Python: `space` is an
@@ -177,6 +186,7 @@ impl AgentState {
             nudges: 0,
             stages: Vec::new(),
             stage: 0,
+            passes: default_passes(), pass: 0, acted: false,
             space: None,
             paper: crate::paper::seed(),
         }

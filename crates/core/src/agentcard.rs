@@ -18,14 +18,6 @@
 use agent::AgentSpec;
 use module::view::{Fragment, FragmentBuilder};
 
-/// How this agent names its model — a catalogue key, never a URL.
-fn model_line(spec: &AgentSpec) -> String {
-    match spec.model.is_empty() {
-        true => "Uses the endpoint's default model".to_string(),
-        false => format!("Model: {}", spec.model),
-    }
-}
-
 /// What `engine:` means, in the words the rest of this interface uses.
 ///
 /// THE THIRD ARM IS GONE (increment 19). It printed `How it works: reakt` — the
@@ -48,8 +40,12 @@ fn engine_line(engine: &str) -> String {
 /// about an agent with three (`ux-walker`, increment 05). It prints the same
 /// list `step` renders into AFFORDANCES, so the card cannot be wrong without
 /// the model being wrong too.
-pub(crate) fn meta_line(spec: &AgentSpec, peers: &[AgentSpec]) -> String {
-    let mut parts = vec![model_line(spec)];
+pub(crate) fn meta_line(
+    spec: &AgentSpec,
+    peers: &[AgentSpec],
+    found: Option<(&str, &str)>,
+) -> String {
+    let mut parts = vec![crate::origin::model_line(spec, found)];
     if let Some(t) = spec.temperature {
         parts.push(format!("Temperature {t}"));
     }
@@ -109,7 +105,12 @@ fn fold(summary: &str, body: Fragment) -> Fragment {
 /// One agent, as its file declares it. What is VISIBLE is the name, the human
 /// sentence and where the file came from; the settings and the prompt — the
 /// two longest parts, and the two nobody reads first — are one press away.
-pub(crate) fn card(spec: &AgentSpec, peers: &[AgentSpec], authored: &[(String, String)]) -> Fragment {
+pub(crate) fn card(
+    spec: &AgentSpec,
+    peers: &[AgentSpec],
+    authored: &[(String, String)],
+    found: Option<(&str, &str)>,
+) -> Fragment {
     let mine = authored
         .iter()
         .find(|(n, _)| *n == spec.name)
@@ -151,8 +152,19 @@ pub(crate) fn card(spec: &AgentSpec, peers: &[AgentSpec], authored: &[(String, S
     });
     let meta = FragmentBuilder::new("p")
         .class("agent-meta")
-        .text(&meta_line(spec, peers))
+        .text(&meta_line(spec, peers, found))
         .build();
+    // THE LOOP, AND WHO IT CAN HAND WORK TO — ON THE FACE OF THE CARD (21).
+    // Everything about how an agent RUNS was behind `How {name} is set up`, so
+    // the declared loop and the delegation edge were each one press and one
+    // scroll from anybody who had not been told they existed. This is the same
+    // `agent-meta` line the fold uses, promoted; nothing is duplicated inside.
+    let mut runs = crate::origin::loop_line(spec);
+    if let Some(peer) = crate::origin::peer_line(spec, peers) {
+        runs.push_str(" · ");
+        runs.push_str(&peer);
+    }
+    card = card.child(FragmentBuilder::new("p").class("agent-meta").text(&runs).build());
     card.child(
             FragmentBuilder::new("p")
                 .class("agent-origin")

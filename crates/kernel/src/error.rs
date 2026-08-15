@@ -25,6 +25,14 @@ pub enum ModelError {
     EndpointUnknown { endpoint: String },
     /// The provider answered with a non-success status.
     Provider { status: u16, message: String },
+    /// REFUSED, AND NO CREDENTIAL WAS EVER SENT (22). A 401 with a key
+    /// configured and a 401 with the key field empty are different problems
+    /// with different fixes, and both printed "check the base URL and API
+    /// key" — beside a header that already said "with no key". The fact is
+    /// held here rather than guessed from the provider's prose, because
+    /// whether this browser sent an `authorization` header is something this
+    /// application knows for certain and a stranger's error string is not.
+    NoKey { status: u16, message: String },
     /// The network layer never got an answer. `url` is the address that was
     /// actually called, because the FIX depends on it: a loopback address is
     /// blocked by Chrome's Local Network Access prompt, a public one is not,

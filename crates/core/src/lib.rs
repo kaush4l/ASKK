@@ -68,6 +68,7 @@ mod told;
 mod tools;
 mod typed;
 mod vouch;
+mod websearch;
 mod transcript;
 mod trace;
 mod tracerow;

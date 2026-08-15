@@ -5,9 +5,11 @@
 //! It is not a route and it belongs to neither of its two callers: the agent
 //! card and the identity panel both draw this line, and the whole point of it
 //! being one function is that those two places cannot come to say different
-//! things about the same agent. The card's OTHER derived sentence — which
-//! tools that agent really has, and which names in its file resolved to
-//! nothing (R18-P1-7) — is here for the same reason and to hold I12.
+//! things about the same agent. The card's OTHER derived sentences live here
+//! for the same reason and to hold I12: which tools that agent really has and
+//! which names in its file resolved to nothing (R18-P1-7), who it can hand work
+//! to, the loop it runs, and — the one that was a lie — what its next turn
+//! would really call.
 
 use agent::AgentSpec;
 
@@ -64,24 +66,107 @@ pub(crate) fn origin_line(spec: &AgentSpec, mine: Option<&str>) -> String {
     )
 }
 
+/// WHAT THIS AGENT'S NEXT TURN WOULD REALLY CALL.
+///
+/// It read `Model: local` — the agent file's `model:` field, printed verbatim —
+/// on every card on the Agents view, at the same moment the header said "The
+/// next turn calls openrouter — openai/gpt-4o-mini" and openrouter.ai was
+/// returning a real 401. Both were on one screen. Somebody who changes the
+/// endpoint and is refused reads the card and concludes the change did not take
+/// (cold walk, 21).
+///
+/// Two more things the old line got wrong. `model:` is a CATALOGUE KEY, not a
+/// model id (`catalogue::Catalogue::resolve`), so `Model: local` labelled an
+/// endpoint name as a model. And an agent naming no key printed "Uses the
+/// endpoint's default model", which names nothing at all.
+///
+/// `found` is `ModelPort::resolves` — `None` when this build's port has no
+/// catalogue to answer with, and then the file's own words are all that is
+/// said. A file that names nothing must not have a model id invented for it.
+pub(crate) fn model_line(spec: &AgentSpec, found: Option<(&str, &str)>) -> String {
+    let asked = spec.model.trim();
+    let Some((entry, model)) = found else {
+        return match asked.is_empty() {
+            true => "Its file names no endpoint, so the one chosen in Settings decides what the \
+                     next turn calls."
+                .to_string(),
+            false => format!(
+                "Its file asks for the {asked} endpoint. Which model that is today is decided \
+                 by the catalogue and by Settings."
+            ),
+        };
+    };
+    if asked.is_empty() {
+        return format!(
+            "Next turn: {model}, at the {entry} endpoint. Its file names none, so Settings \
+             decides."
+        );
+    }
+    // A key that IS an entry, and a key that is a MODEL ID the default entry
+    // serves, are both the file getting what it asked for — the catalogue
+    // resolves them by two different rules and neither is an override.
+    if asked == entry || asked == model {
+        return format!("Next turn: {model}, at the {entry} endpoint its file asks for.");
+    }
+    format!(
+        "Next turn: {model}, at the {entry} endpoint — its file asks for {asked}, and the \
+         choice in Settings overrides it."
+    )
+}
+
+/// THE LOOP THIS AGENT RUNS, in one line. Increment 20 shipped a declared
+/// plan→work→verify→critique loop and no surface named it: `verify`, `stage`,
+/// `loop` and `delegat` each occurred zero times in the rendered text of all six
+/// views (cold walk, 21). The `stages:` field is the whole source — this
+/// invents no state (I8).
+pub(crate) fn loop_line(spec: &AgentSpec) -> String {
+    match spec.stages.is_empty() {
+        // NOT "one reply": with no `stages:` a react agent still takes as many
+        // tool rounds as it needs. What it does not do is plan first or check
+        // afterwards, and that is the difference worth stating.
+        true => "Runs no stages: it works and answers in one go, with no plan before it and no \
+                 check after."
+            .to_string(),
+        false => format!("Runs in stages: {}.", spec.stages.join(" → ")),
+    }
+}
+
+/// The split itself: `(peer agents, plain tools)`, both as the model sees them.
+fn split(spec: &AgentSpec, peers: &[AgentSpec]) -> (Vec<String>, Vec<String>) {
+    let box_ = agent::toolbox_for(spec, peers);
+    let mut named = (Vec::new(), Vec::new());
+    for tool in &box_.tools {
+        match tool.agent {
+            true => named.0.push(tool.name.clone()),
+            false => named.1.push(tool.name.clone()),
+        }
+    }
+    named
+}
+
+/// WHO THIS AGENT CAN HAND WORK TO — on the FACE of the card, not inside it
+/// (cold walk, 21). Delegation is the one thing on this page that makes an
+/// agent more than a chat window, and the only sentence naming it sat three
+/// layers down, inside a collapsed disclosure, on one view. `None` is silence
+/// rather than "none": most agents delegate to nobody, and a line saying so on
+/// five cards out of six would bury the one card where it matters.
+pub(crate) fn peer_line(spec: &AgentSpec, peers: &[AgentSpec]) -> Option<String> {
+    let (agents, _) = split(spec, peers);
+    match agents.is_empty() {
+        true => None,
+        // The wording is unchanged from the settings fold it came out of: it
+        // was the right sentence, in the wrong place.
+        false => Some(format!("Other agents it can hand work to: {}", agents.join(", "))),
+    }
+}
+
 /// Built-ins and peers are ONE list to the model on purpose (it is never told
 /// which is which — `Tool::from_engine`), but they are not one list to a
 /// person: `researcher` read as a fourth built-in tool, when calling it hands a
 /// goal to another agent with its own Worker, its own history and its own row
-/// on the board (`ux-walker`, increment 06).
+/// on the board (`ux-walker`, increment 06). The peer half is `peer_line`.
 pub(crate) fn tool_lines(spec: &AgentSpec, peers: &[AgentSpec]) -> Vec<String> {
-    let box_ = agent::toolbox_for(spec, peers);
-    let (agents, tools): (Vec<&str>, Vec<&str>) = box_
-        .tools
-        .iter()
-        .map(|t| (t.name.as_str(), t.agent))
-        .fold((Vec::new(), Vec::new()), |(mut a, mut t), (name, is_agent)| {
-            match is_agent {
-                true => a.push(name),
-                false => t.push(name),
-            }
-            (a, t)
-        });
+    let (_, tools) = split(spec, peers);
     let mut out = Vec::new();
     out.push(match tools.is_empty() {
         true => "No tools".to_string(),
@@ -89,12 +174,6 @@ pub(crate) fn tool_lines(spec: &AgentSpec, peers: &[AgentSpec]) -> Vec<String> {
         // names reads as a sentence that has lost its verbs.
         false => format!("Tools it can use, named: {}", tools.join(", ")),
     });
-    if !agents.is_empty() {
-        out.push(format!(
-            "Other agents it can hand work to: {}",
-            agents.join(", ")
-        ));
-    }
     // A NAME THAT RESOLVED TO NOTHING IS SAID, NOT DROPPED (R18-P1-7). `tools:
     // [nope_tool]` produced `No tools` here — the card reporting a silent drop
     // back as a fact about the agent. The list is the file's own words, because

@@ -13,12 +13,12 @@ role: entry
 # — so the person does not have to write that into every message. verify is one
 # after it that runs the command and reads what it printed. critique is the
 # fourth stage and is deliberately NOT here: it is a whole extra call, and this
-# is the agent a greeting arrives at. The plan agent runs it.
+# is the agent a greeting arrives at. The scout agent runs it.
 stages: [plan, work, verify]
 space: research
 # `space:` makes the space and workspace tools available to NAME; a non-empty
 # list still has to name them. That is the point: the allowlist is the whole
-# grant, so a read-only agent with a space is representable (see plan, ask).
+# grant, so a read-only agent with a space is representable (see scout, ask).
 tools:
   - now
   - list_agents

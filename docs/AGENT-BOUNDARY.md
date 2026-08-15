@@ -70,7 +70,7 @@ folder); it is fetched at `crates/adapters_web/src/assets.rs:51`, each named fol
 | `"write_agent"`, `"now"`, `"list_agents"`, `"read_agent"` | executor table `crates/core/src/tools.rs:75-92`; descriptors `crates/agent/src/tools.rs:107-143` | Not agents, but the same class: tool identity is a Rust `match` arm. A descriptor with no arm refuses like an unknown tool (`core/tools.rs:83-91`) — the correct fallback. |
 | `"react"` / `"base"` | `spec.rs:62` (default), `author.rs:74` (authored default), `ui/agentfile.rs:159` (blank template), `agentcard.rs:36-38` (display) | Nothing. See 2.3. |
 
-There is **no** hardcoded `"researcher"`, `"plan"`, `"ask"` or `"research"` (the space name) anywhere
+There is **no** hardcoded `"researcher"`, `"scout"`, `"ask"` or `"research"` (the space name) anywhere
 in `crates/*/src` — verified by grep. Those four are fully data.
 
 ### 2.2 The prompt's structure and section order

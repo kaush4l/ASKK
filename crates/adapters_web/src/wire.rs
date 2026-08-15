@@ -79,9 +79,13 @@ pub(crate) fn global_fetch(request: &web_sys::Request) -> Result<js_sys::Promise
 /// a 404 naming the model this page asked for is a fact about one agent's file,
 /// not about the base URL or the key, and nothing but the status and the body is
 /// needed to tell them apart. `model` is the id that actually went on the wire.
+/// `keyed` is whether an `authorization` header went out with this request —
+/// the one fact separating a wrong credential from an absent one (22), and one
+/// only the caller holds.
 pub(crate) async fn read_reply(
     resp: web_sys::Response,
     model: &str,
+    keyed: bool,
 ) -> Result<ModelReply, ModelError> {
     let url = resp.url();
     let transport = |m: String| ModelError::Transport { message: m, url: url.clone() };
@@ -92,7 +96,7 @@ pub(crate) async fn read_reply(
         .as_string()
         .unwrap_or_default();
     if !(200..300).contains(&status) {
-        return Err(core::provider_error(status, &text, model));
+        return Err(core::provider_error(status, &text, model, keyed));
     }
     Ok(ModelReply {
         usage: None,

@@ -10,9 +10,11 @@ use std::rc::Rc;
 use adapters_web::WebApp;
 use dioxus::prelude::*;
 
+mod intro;
+
 use crate::views::View;
 use crate::{authoring, board, crumbs, gallery, launch, roster, thread};
-use crate::{engine, settings, skin, space, tabs, terminal, tools};
+use crate::{endpointform, engine, settings, skin, space, tabs, terminal, tools};
 
 /// The centre column. One `Signal` per thing two regions disagree about; the
 /// prop list is long because the shell owns the state and this the layout.
@@ -53,22 +55,10 @@ pub fn Stage(
             // name per view, because one name for five jobs is R4-10.
             div { class: "stage-head",
                 p { class: "view-eyebrow", "{here.label()}" }
-                // …AND WHAT ELSE IS ON IT, WHERE THE NAME IS READ (R17-P1-9).
-                // `Commands` names the panel you type into; the three panels
-                // beside it are that panel's leavings, and nothing on screen
-                // said so. One line, on the one view whose name does not
-                // cover it — the others need no gloss and get none.
-                // NOT "BESIDE IT" (R18-P2). On a phone that panel is not beside
-                // anything: it is behind the `folder` switch in the header, and
-                // below 1100px it starts folded on every screen. The sentence
-                // names the panel and the switch that opens it, which is true at
-                // every width and in both fold states.
+                // …AND WHAT ELSE IS ON IT, WHERE THE NAME IS READ (R17-P1-9) —
+                // the copy and its reasons are `intro.rs`.
                 if here == View::Workspace {
-                    p { class: "note",
-                        "The shell below. The folder these commands run in, what is still \
-                         running, and the files they finished are in the folder panel — the \
-                         switch for it is in the header."
-                    }
+                    p { class: "note", {intro::WORKSPACE_NOTE} }
                 }
                 // …AND NOT ON CHAT (R15-IA, THREADS.md §7): the thread list IS
                 // the picker there, and two controls for "which conversation"
@@ -85,20 +75,8 @@ pub fn Stage(
                     aria_label: "Dashboard",
                     // The one <h1> on the page, in the seam's own words.
                     div { class: "masthead", dangerous_inner_html: "{fragment}" }
-                    // What this thing IS, under the one heading. Nothing on
-                    // the page said it (F1) — three names and no sentence.
-                    p { class: "tagline",
-                        // …AND IT IS WHERE THE FOUR NOUNS ARE INTRODUCED
-                        // (R18-P1-2). One word — workspace — was on the Linux,
-                        // on the folder and on the shared facts and notes at
-                        // once. This sentence names each of them once, in the
-                        // one place a first-timer reads before anything else.
-                        "This runs AI agents in your browser. An agent whose file names a \
-                         space also gets a folder in the Linux this page runs, where it can \
-                         write files and run commands, and it shares facts and notes with \
-                         every other agent naming that space. Give an agent a task and walk \
-                         away, or talk to it while it works."
-                    }
+                    // What this thing IS, under the one heading — `intro.rs`.
+                    p { class: "tagline", {intro::TAGLINE} }
                     // THE LAUNCHER IS THE READING COLUMN AND THE FLEET GOES
                     // BESIDE IT (R6-LAYOUT). R3-20 took this card out of the
                     // grid because it shared a 22rem cell with its own button;
@@ -173,6 +151,7 @@ pub fn Stage(
                     id: "settings-view",
                     aria_label: "Settings",
                     settings::Settings { web, endpoint_set, tick }
+                    endpointform::search::SearchEndpoint { web, tick }
                     skin::Appearance {} // out of the header (R2-14)
                     // WHICH Linux the agent runs in (increment 18). Beside
                     // Appearance because both are device-local preferences

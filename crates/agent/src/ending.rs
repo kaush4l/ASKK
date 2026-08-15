@@ -36,6 +36,14 @@ pub const NO_ANSWER: &str = "no answer";
 /// The turn used every round of tool calls its agent file allows.
 pub const ROUND_CEILING: &str = "round ceiling";
 
+/// THE PASS BUDGET RAN OUT WHILE THE WORK WAS STILL GOING (22). Its own ending
+/// beside `ROUND_CEILING`, and for R17-P0-2's reason: a six-part task was
+/// abandoned and reported as `main finished`. A turn that stopped because it
+/// ran out of laps — not because it finished — must never read as an answer,
+/// so the surfaces get a word for it and the conversation says the work
+/// stopped on the budget.
+pub const PASS_CEILING: &str = "pass ceiling";
+
 /// THE MODEL ANSWERED, AND THE ANSWER IS SHOWN — but the turn changed a file
 /// and no command has run since, so nothing on this page knows whether it
 /// worked (`crate::verify`). Not a failure and not a judgement about the

@@ -7,6 +7,9 @@ use dioxus::prelude::*;
 
 use crate::ui::{enter_submits, key_hint, Button, Field, Form, COMPOSER_ID};
 
+/// Voice in and voice out, the only screen either appears on (increment 19).
+mod voice;
+
 /// The composer: a real form, so Enter submits and the button is a submit
 /// button — with the default navigation prevented, because the seam is the only
 /// transport. That is what stops the message becoming a query string. With no
@@ -64,9 +67,23 @@ pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<St
         }
         drafts.write().remove(key);
         mid_run.write().remove(key);
+        // NOTHING READS THE OLD ANSWER OVER THE NEW ONE (increment 19). The
+        // answer being spoken belongs to the turn that just ended; the moment
+        // this starts another, it is stale.
+        voice::hush();
         on_send.call(text);
     }
     let (typed, on_enter, on_submit) = (agent.clone(), agent.clone(), agent.clone());
+    // WHO THIS PANE IS ADDRESSING, AND WHETHER ITS RUN IS GOING — as a signal,
+    // because the voice control's handler is built once at mount while this
+    // component keeps its place in the tree as both facts change under it. A
+    // captured pair would send every dictated phrase to the agent who happened
+    // to be selected the first time the composer was drawn (THREADS.md §7), and
+    // would mark the wrong side of the busy edge (R17-P1-4).
+    let mut dictated = use_signal(|| (agent.clone(), busy));
+    if *dictated.peek() != (agent.clone(), busy) {
+        dictated.set((agent.clone(), busy));
+    }
     rsx! {
         // ONE LINE, ABOVE THE FIELD, ONLY WHEN THE MEANING MOVED (R17-P1-4).
         // Above rather than below because the button underneath is the thing
@@ -128,6 +145,28 @@ pub fn Composer(busy: bool, ready: bool, agent: String, on_send: EventHandler<St
             }
             // The same binding, the same sentence, one source (R5-5).
             {key_hint()}
+            // SPEECH FILLS THIS FIELD; IT DOES NOT SEND IT (increment 19).
+            // Dictation is another way of writing the draft, so it belongs to
+            // the draft's own control and lands in the same map — including
+            // the mid-run mark, because a phrase dictated during a run has
+            // exactly the same moved meaning a typed one has (R17-P1-4).
+            voice::Voice {
+                agent: agent.clone(),
+                busy,
+                on_text: move |said: String| {
+                    let (who, running) = dictated.peek().clone();
+                    let mut held = drafts.write();
+                    let draft = held.entry(who.clone()).or_default();
+                    if !draft.is_empty() && !draft.ends_with(' ') {
+                        draft.push(' ');
+                    }
+                    draft.push_str(said.trim());
+                    drop(held);
+                    if running {
+                        mid_run.write().insert(who);
+                    }
+                },
+            }
         }
     }
 }

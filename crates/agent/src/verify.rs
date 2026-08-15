@@ -62,16 +62,19 @@ pub fn says_nothing(output: &str) -> bool {
 /// end postdates the edit it is offered for.
 pub(crate) fn observe(state: &mut AgentState, tool: &str, ok: bool, output: &str) {
     if ok && is_mutating(tool) {
-        (state.mutated, state.green) = (true, false);
+        (state.mutated, state.green, state.acted) = (true, false, true);
     }
     if ok && tool == "exec" && !says_nothing(output) {
-        state.green = true;
+        (state.green, state.acted) = (true, true);
     }
 }
 
 /// Turn-scoped, like `pending_tools` and `tool_rounds`: cleared where they are.
 pub(crate) fn clear(state: &mut AgentState) {
     (state.mutated, state.green, state.nudges) = (false, false, 0);
+    // …and `acted`, which is the same fold on a shorter clock: `passes` resets
+    // it at every lap, this resets it at every turn.
+    state.acted = false;
 }
 
 /// Whether this answer may end the turn yet. Consumes a nudge when it may not,
