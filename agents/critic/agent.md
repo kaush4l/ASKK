@@ -6,7 +6,7 @@
 # own Worker, that did not do the work and cannot see the conversation it came
 # out of. That is the whole reason it exists.
 name: critic
-description: Not for you — another agent hands it finished work and it says whether the work stands. It reads and judges; it cannot change, run or start anything, and it cannot see the conversation the work came out of.
+description: Hand it finished work — in chat yourself, or through the agent that calls it — and it says whether the work stands. It is not one you give a task to: it reads and judges, it cannot change, run or start anything, and it cannot see the conversation the work came out of.
 model: local
 # Low, because a verdict is not a place for invention.
 temperature: 0.2
