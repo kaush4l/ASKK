@@ -76,6 +76,15 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
 }
 
+/* …AND THE CORE'S WRAPPER IS NOT A CELL (27, found on the deployed page).
+   `.board` is what the shell renders and `#agent-board` is what the seam
+   returns inside it, so the grid above was laid over a parent with exactly
+   ONE child: every card stacked in a single 910px column and the `auto-fit`
+   track list read `910px 0px 0px`. `display: contents` lifts the rows to be
+   the grid's own children, which is precisely what `layout.css` already does
+   for `.card-deck > #agent-list` — the same seam boundary, the same fix. */
+.board > #agent-board { display: contents; }
+
 /* The rail's copy (F24): a glance, not the subject — one column, tighter. */
 .board.compact { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
 .board.compact .agent-row { padding: var(--s-2); }
