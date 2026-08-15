@@ -27,6 +27,10 @@ tools:
   - now
   - list_agents
   - read_agent
+  # A long run is where a malformed call costs the most: `tool-calls` is the
+  # escaping and layout rules, read once when a call comes back refused.
+  - list_skills
+  - read_skill
   - researcher
   # THE REVIEWER, AND IT IS NOT THIS AGENT (25). `stages:` above deliberately
   # has no `critique` — that stage is this same model reading its own turn back
