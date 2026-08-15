@@ -26,13 +26,93 @@ use kernel::EventKind;
 
 use crate::dispatch::Ctx;
 
+/// WHAT YOU CAN DO WITH THIS AGENT, for its card on the board (32). Eight cards
+/// differed in name and status word and in nothing else, so the four agents you
+/// can hand a task to and the four you cannot were indistinguishable until you
+/// selected one and read the launcher two views away. The word is
+/// `origin::can`'s — the same predicate the agent card's doors and the Commands
+/// pane ask — so the board cannot come to a fifth answer about one agent.
+///
+/// It is in THIS file because `origin.rs` and `boardrow.rs` are both at exactly
+/// 200 lines and `lib.rs` cannot gain a module (I12). `last_tool` moved here
+/// with it, being a fold of the log like everything else here.
+pub(crate) struct Offer {
+    /// `run`, `change` or `read` — `origin::can`, verbatim.
+    pub(crate) can: &'static str,
+    /// The clause the card's status line ends with, empty for an agent this
+    /// roster holds no file for: a card says nothing rather than guessing (I15).
+    pub(crate) said: String,
+    /// Every tool the file really RESOLVED to, by name — the list the agent
+    /// card prints in words. The Dashboard's starter tasks are chosen from it,
+    /// so a task offered is a task some named tool can finish (32).
+    pub(crate) toolset: String,
+    /// …and the pass ceiling with it, because it is the one declared fact that
+    /// separates an agent that works a goal over laps from one that answers once.
+    pub(crate) laps: u16,
+}
+
+/// The fold itself, off the roster this request already holds.
+pub(crate) fn offer(ctx: &Ctx, who: &str) -> Offer {
+    let mut offer =
+        Offer { can: "read", said: String::new(), toolset: String::new(), laps: 1 };
+    let Some(spec) = ctx.agents.iter().find(|spec| spec.name == who) else {
+        return offer;
+    };
+    let names: Vec<String> =
+        agent::toolbox_for(spec, &ctx.agents).tools.into_iter().map(|t| t.name).collect();
+    offer.can = crate::origin::can(spec, &ctx.agents);
+    offer.laps = spec.passes;
+    // AN EMPTY TOOLBOX IS NOT A READING ONE (32). `can` answers `read` for both,
+    // which is right for the door it guards — neither takes a task — and wrong
+    // for a card that then says which tools it has.
+    offer.said = match (offer.can, names.is_empty()) {
+        (_, true) => "no task to give it — it has no tools at all".into(),
+        ("read", _) => "no task to give it — every tool it has reads".into(),
+        ("run", _) => "you can give it a task, and it runs commands".into(),
+        _ => "you can give it a task; it runs no commands".into(),
+    };
+    // …AND HOW MANY LAPS ONE TASK MAY TAKE, where that is more than one: it is
+    // the difference between handing over a goal and asking a question, and it
+    // was legible on no card at all. `up to`, because `passes:` is a ceiling.
+    if spec.passes > 1 {
+        offer.said.push_str(&format!(" · it works one task over up to {} passes", spec.passes));
+    }
+    offer.toolset = names.join(", ");
+    offer
+}
+
+/// The last tool this process's agent called, by name — ITS OWN CALLS ONLY
+/// (R18-P1-3). The pill read `last tool: list_processes` under the agent's name
+/// while the trace, from the same facts, showed `this page ran list_processes()`
+/// — the Files pane's polling, wearing the agent's name on the one line a
+/// person reads to see what the run is doing. `asked::Asked` has attributed
+/// every call to `you`, `PANE` or the agent since R6-10; that row was the last
+/// reader still counting the log's `ToolInvoked` facts raw.
+///
+/// The agent's own calls are the UNMATCHED ones, which is why the empty string
+/// is passed as the agent's name here: no pane or gesture can be attributed to
+/// it, so `by.is_empty()` means "nothing asked for this but the model".
+pub(crate) fn last_tool(ctx: &Ctx) -> Option<String> {
+    let mut asked = crate::asked::Asked::default();
+    let mut last = None;
+    for (nth, kind) in ctx.recent.iter().enumerate() {
+        asked.enqueue(nth, kind);
+        if let kernel::EventKind::ToolInvoked { tool, args, .. } = kind {
+            if asked.actor(&tool.0, args, "").0.is_empty() {
+                last = Some(tool.0.clone());
+            }
+        }
+    }
+    last
+}
+
 /// The stage this agent's turn is in right now, `None` if it is between turns,
 /// has no stage machine, or has not entered a stage yet.
 ///
 /// Only this process's own agent can answer: `STAGE_ENTERED` is emitted by the
 /// engine that is running the turn, so a sub-agent's stages are in ITS Worker's
 /// log and not in this one. `belongs_to` enforces that, and the row says
-/// nothing rather than guessing — the same rule `boardrow::last_tool` follows.
+/// nothing rather than guessing — the same rule `last_tool` above follows.
 pub(crate) fn current(ctx: &Ctx, who: &str) -> Option<String> {
     let mut stage = None;
     for kind in ctx.recent.iter().filter(|k| crate::fold::belongs_to(k, &ctx.me, who)) {

@@ -86,8 +86,8 @@ fn a_critic_card_offers_chat_and_names_its_caller_instead_of_a_task() {
     );
     assert!(
         judge.contains(
-            "The builder agent hands it work; there is no task to give it, because every tool \
-             it has reads. It cannot change or run anything."
+            "The builder agent hands it work; there is no task to give it, and nothing to \
+             read with either — no tool it can use here."
         ),
         "the door's slot says who calls it, and why there is no task: {judge}"
     );

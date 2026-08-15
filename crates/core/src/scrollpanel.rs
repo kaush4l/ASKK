@@ -72,6 +72,18 @@ pub(crate) fn no_box_why(ctx: &Ctx, who: &str) -> Option<String> {
         return None;
     }
     let me = ctx.me.as_str();
+    // AN AGENT WITH NO TOOLS CANNOT READ IT EITHER (32). `can` answers `read`
+    // for an empty toolbox as much as for a reading one, so over `summarizer` —
+    // `engine: base`, no space, no tools at all — this pane said "it can read
+    // this Linux but not change it" one sentence after saying it has no folder.
+    // The bottom of the same axis, not a second one: what the toolbox lets it
+    // do, when the toolbox is empty.
+    if toolless(ctx, who) {
+        return Some(format!(
+            "{who} has no tools at all — no shell, and nothing that reads this Linux either. \
+             Switch to {me} to run a command."
+        ));
+    }
     Some(match can(ctx, who) {
         "run" => format!(
             "{who} runs its own commands, separately from this page. Switch to {me} to type \
@@ -99,6 +111,16 @@ fn can(ctx: &Ctx, who: &str) -> &'static str {
         .iter()
         .find(|spec| spec.name == who)
         .map_or("read", |spec| crate::origin::can(spec, &ctx.agents))
+}
+
+/// …and whether it has ANY tool. False for an agent this roster has no file for:
+/// an unknown agent is described by what this pane can see, and it can see no
+/// claim that a file names nothing.
+fn toolless(ctx: &Ctx, who: &str) -> bool {
+    ctx.agents
+        .iter()
+        .find(|spec| spec.name == who)
+        .is_some_and(|spec| agent::toolbox_for(spec, &ctx.agents).tools.is_empty())
 }
 
 /// The whole scrollback: every `exec` this page's agent has run, in log order.

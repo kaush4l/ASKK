@@ -686,6 +686,22 @@ under its own two doors. **A card is as tall as what it says.**
    which is why `.grows` (the task field and the composer) is capped there too;
    a card whose prose is 544 and whose input is 960 has two rhythms. The
    companion takes what is left and holds what you look at *while* reading.
+
+   **THE CAP IS ON THE PROSE, NEVER ON THE CARD (31-walk F5).** Increment 30 put
+   `max-width: --column` on every Dashboard panel but the deck's, and 1440
+   measured a **608px launcher over a 1136px board over a 608px space card** —
+   ~530px of nothing beside the field you are asked to type a whole task into,
+   and one card twice the width of its neighbours in the same single-track grid.
+   Both halves of rule 1 are still true; what was wrong was applying the reading
+   column's cap to the *surface* rather than to what it holds. Every sentence
+   already carries `--measure` (`surfaces.css`), so removing the panel cap
+   narrows nothing that is read. The one thing in that card which is not prose
+   is the field, and it takes the split's own ceiling —
+   `calc(2 * --measure + --s-6)`, the same "two columns and a gutter" clamp
+   `.split` uses — so it stops short of the card rather than of the sentence:
+   measured **984px in a 1136px card at 1440**. `DASHEDGE` in
+   `scripts/deck-probe.js` is the rule: **the cards of one column share one
+   edge**, at every width. It fails on the 30 stylesheet, verified.
 2. **The gutter is `--s-6`, the same step the card pays inside its own edge.**
    One value sets the space between two columns and the space around one, so
    `--column: calc(var(--measure) + 2 * var(--s-6))` is the width of the
@@ -771,6 +787,49 @@ remembered: any element that hides its scrollbar and has somewhere to scroll
 must carry a `mask-image`. This is the only mask in the product and it is a
 cue, not decoration — alpha, no colour, and it appears on nothing that fits.
 
+**…AND IT WITHDRAWS THE CUE WHERE THERE IS NOWHERE TO GO (31-walk F3).** The
+mask above had no scroll-position condition, so scrolled to the last chip
+`summarizer` was still dimmed and `.agent-tabs`' right border had vanished: the
+affordance said *keep going* at the one place going is impossible, and the same
+was true of `.status-strip`. The fade is a registered custom property —
+`@property --swipe-fade`, because an unregistered one cannot interpolate — and a
+**scroll-driven animation** (`animation-timeline: scroll(self inline)`, keyframes
+`0%,80% → 2rem`, `100% → 0`) empties it over the last fifth of the travel. No
+JavaScript: I5 holds, and the whole mechanism is nine lines of `strip.css`.
+
+**The `var()` fallback is the mask, not a nicety.** Chrome for Testing 145 does
+not honour the `@property` registration: with no animation supplying a value,
+`--swipe-fade` computes to nothing, the `calc()` is invalid at computed-value
+time, and `mask-image` falls back to **`none`** — every cue in the product gone.
+That is how the reduced-motion pass failed `SWIPECUE` (measured: 54 configs,
+`status-strip 270/1290`). `var(--swipe-fade, 2rem)` makes the static mask
+independent of both the registration and the animation; where the registration
+takes, the fade interpolates, where it does not, it steps near the end.
+
+**Reduced motion takes the static mask.** The promise `REDUCEDMOTION`
+(`layout-audit.js`) enforces is that *nothing* animates when it is asked, and
+"this one is driven by your own scrolling" is still an exception, so the cue
+does not withdraw there — the same fallback an old browser gets. `SWIPEEND`
+says so rather than asserting against its neighbour.
+
+The `@supports (animation-timeline: scroll())` guard is **load-bearing**.
+Unguarded, `animation: swipe-cue linear both` in a browser without scroll
+timelines is a 0s animation filling straight to its END state, which would leave
+a hidden-scrollbar scrollport with *no* cue at all — worse than what it replaces.
+Guarded, such a browser keeps exactly the always-on mask of increment 28.
+
+`SWIPEEND` in `scripts/deck-probe.js` holds it, and it is honest about its
+reach: `chrome-headless-shell --dump-dom` produces **no frames**, so
+`requestAnimationFrame` never fires and a scroll timeline is never sampled —
+setting `scrollLeft` and reading `mask-image` back returns the resting value at
+every offset (measured twice). What it asserts instead is the wiring, off the
+CSSOM: every masked port drives an animation from **its own inline scroll
+position**, and that animation's **last keyframe takes the fade to zero**.
+Breaking either puts the always-on mask back, and the check fails when they are
+(verified by pointing `animation-timeline` at `auto`: 24 of 54 configurations
+FAIL, covering both ports). What no gate here can see is the interpolation
+itself; that is the walker's on a real browser.
+
 **The header collapses by PRIORITY, and it never cuts (R5-7, R6-4).** R5-7
 deleted a 2rem `mask-image` and put a sideways **scrollport** in its place with
 `scrollbar-width: none`, and that is the same picture: at 390 a 213px port over
@@ -853,6 +912,20 @@ than ellipsising. Every `:has(.problem)` eviction rule is deleted. Measured at
 1440 with the banner up: header 70px, banner 60px, `The next turn calls local —
 …:8873/v1` and `Tokens, every agent 8,436` both on screen (both strings were
 renamed in R8-8 and R8-9; the measurement is unchanged).
+
+**ONE ROW OF NEWS, NOT TWO (31-walk F4).** A hash naming no view — `#/tools`,
+a fair guess at the Tool trace — is corrected to the Dashboard, and used to be
+corrected in silence. It now says so, in the shape this section already
+defines: a `.banner`, `pending` rather than `problem`, because a wrong address
+is not a lost turn. It is a row **inside** `<header>` (`header:has(> .banner)`
+wraps; the row takes `flex: 1 0 100%`) rather than a sibling, because
+`statusbar.rs` is the component that renders the header's content and this
+notice must be reachable from there. It **yields to the failure banner**, and
+that is arithmetic, not taste: at 320×780 the chrome already stands at **484px
+against `fold-probe.js`'s floor of a third of the viewport (260px)**, so a
+second row costs a FAIL — measured, 696px leaving 84. Of the two, the one
+carrying a remedy stays. The address is corrected either way, the slug stays
+recorded, and the notice speaks when the failure clears.
 
 **AND THE REMEDY IS NOT TRUNCATED (28).** This sentence used to end *"capped at
 `30vh` so a long reason cannot eat a phone screen"*, and R18-P1-9 then moved

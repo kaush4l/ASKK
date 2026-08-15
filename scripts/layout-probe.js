@@ -42,6 +42,16 @@
   // renders, against the CHROME floor, on the route whose banner is longest.
   var headNote = document.querySelector(".stage-head > .note");
   if (headNote) headNote.hidden = route !== "deck";
+  // ONE BANNER, NOT TWO (31-walk F4). `statusbar.rs` hushes the misrouted-
+  // address row while a turn has failed — at 320x780 the chrome already stands
+  // at 484px against a floor of 260 — so the fixture shows the address notice
+  // on one route and the failure on the others, never stacked.
+  var misroute = document.getElementById("misroute-banner");
+  var failure = document.querySelector(".banner.problem");
+  if (misroute && failure) {
+    misroute.hidden = route !== "dash";
+    failure.hidden = route === "dash";
+  }
   // …AND THE DASHBOARD HAS NO RAIL, WHICH THIS FIXTURE GAVE IT (28).
   // `views.rs::rail()` is Workspace alone, so every dash measurement here was
   // ~370px NARROWER than the shipped page — narrower than the 66rem container

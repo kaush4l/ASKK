@@ -12,14 +12,12 @@
 //! name, and the folder, processes and finished files beside it are what those
 //! commands run in and leave behind, not a second place called Workspace.
 //!
-//! Round 17 asked for the rename to `Workspace`, not knowing R15 had moved this
-//! view the other way one round earlier and R16 had since settled `workspace`
-//! to mean the Linux folder and nothing else: naming a VIEW after it puts the
-//! word back on two things, and the panel here — `Commands · main` — would then
-//! disagree with its own nav entry again, which is the bug R15 fixed. What the
-//! critique measured is that `Commands` does not PREDICT the other three
-//! panels; that is answered under the eyebrow (`stage.rs`), where the name is
-//! read, rather than by moving the view a third time.
+//! Round 17's rename to `Workspace` was REFUSED: R16 settled that word on the
+//! Linux folder alone, so a view named after it would put it back on two things
+//! and the panel — `Commands · main` — would disagree with its own nav entry,
+//! the bug R15 fixed. What that critique measured, that `Commands` does not
+//! predict the three panels beside it, is answered under the eyebrow
+//! (`stage.rs`) rather than by moving the view a third time.
 //!
 //! A VIEW HAS ONE CONTROL FOR ITS OWN SUBJECT (R19-IA, holding R15-IA): where
 //! the panel a view is named after already lists the agents — Chat's thread
@@ -41,6 +39,9 @@ use dioxus::prelude::*;
 
 use crate::ui::Button;
 
+/// When the address bar names no view. Its own child module: I12, and this
+/// file is at the ceiling.
+pub(crate) mod misroute;
 /// WHICH surface the centre stage shows. The chat pane stays mounted and
 /// `hidden` off its route: unmounting it drops the poller of a turn in flight.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -90,14 +91,20 @@ impl View {
     /// this view shipped under still resolves: a link already sent must not
     /// land on the Dashboard because the label changed, and `slug()` writes the
     /// canonical spelling back, so the address bar corrects itself.
+    ///
+    /// …AND IT SAYS THAT IT DID (31-walk F4). This is the ONE place that knows
+    /// a slug named no view, and it used to swallow that: `misroute::note` is
+    /// what the header then reads.
     pub(crate) fn from_slug(slug: &str) -> Option<View> {
         if slug == "workspace" {
             return Some(View::Workspace);
         }
-        NAV.iter()
-            .chain([View::DesignSystem].iter())
-            .copied()
-            .find(|v| v.slug() == slug)
+        let found =
+            NAV.iter().chain([View::DesignSystem].iter()).copied().find(|v| v.slug() == slug);
+        if found.is_none() {
+            misroute::note(slug); // the header says so; `misroute.rs` says why
+        }
+        found
     }
 
     /// Also the destination's heading: "Trace" landed on "Tools" (F6).
@@ -131,11 +138,10 @@ impl View {
     /// named after itself. This names the CONTENTS, never the geometry; one
     /// rail, one noun, since `rail()` narrowed to Commands (R15-IA).
     ///
-    /// The header switch this feeds appears on this view only, which round 17
-    /// read as a control coming and going at random. It is KEPT (R17-P1-9): one
-    /// view has a rail, and the alternative was measured — a permanent `Hide
-    /// workspace files` with `aria-expanded="true"` over a `#rail` that was 0x0
-    /// (R12-6, `rail::instruments`), a dead control lying about its own state.
+    /// The switch this feeds appears on this view only, which round 17 read as
+    /// a control coming and going at random. KEPT (R17-P1-9): the alternative
+    /// was measured — a permanent `Hide workspace files` with
+    /// `aria-expanded="true"` over a 0x0 `#rail` (R12-6), a dead control.
     pub(crate) fn rail_noun(self) -> &'static str {
         "folder"
     }
@@ -166,10 +172,7 @@ pub(crate) fn ViewNav(
         Button {
             class: "nav-close",
             variant: "ghost",
-            onclick: move |_| {
-                let mut nav = nav;
-                nav.set(false);
-            },
+            onclick: move |_| { nav.to_owned().set(false) },
             "✕ Close"
         }
         div { class: "view-list",
@@ -186,11 +189,8 @@ pub(crate) fn ViewNav(
                     title: "{entry.label()}",
                     aria_label: "{entry.label()}",
                     onclick: move |_| {
-                        let (mut view, mut nav) = (view, nav);
-                        view.set(entry);
-                        if !crate::dash::wide() {
-                            nav.set(false);
-                        }
+                        view.to_owned().set(entry);
+                        if !crate::dash::wide() { nav.to_owned().set(false) }
                     },
                     span { class: "nav-label", "{entry.label()}" } // no glyph (F8)
                 }

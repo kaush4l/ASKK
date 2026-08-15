@@ -2,16 +2,13 @@
 //! listing — so both hold the 200-line rule (I12) once the settings moved
 //! behind a disclosure.
 //!
-//! R2-16: the card read `model: local, temperature 0.2, engine: react, no space,
-//! tools: now, list_agents, read_agent, write_agent` in full, directly under a
-//! one-line human description that was the best sentence on the page. A
-//! first-time reader has no way to learn what `engine: react` is (the words
-//! appear nowhere else in the product), `no space` reads like a layout note, and
-//! `now` reads like an adverb. So: the sentence stays visible, the settings go
-//! behind the same disclosure the prompt already uses, and every term that
-//! survives says what it means in ordinary words. The TOOL NAMES are printed
-//! verbatim, because a tool's name is what the model is told and what the trace
-//! shows; what changed is that the line says they are names.
+//! R2-16: the card printed `engine: react, no space, tools: now, …` in full,
+//! under the one-line description that was the best sentence on the page —
+//! `engine: react` appears nowhere else in the product, `no space` reads like a
+//! layout note, `now` reads like an adverb. The sentence stays visible, the
+//! settings go behind the disclosure the prompt already uses, and every term
+//! that survives says what it means. TOOL NAMES stay verbatim, because a name
+//! is what the model is told and what the trace shows.
 
 use agent::AgentSpec;
 use module::view::{Fragment, FragmentBuilder};
@@ -77,18 +74,14 @@ fn disclosure(spec: &AgentSpec, mine: Option<&str>) -> String {
 /// class (controls.css) rather than a seventh one nobody agreed to.
 ///
 /// AN AGENT THAT CANNOT ACT HAS NO TASK DOOR (27, corrected in 29). The critic's
-/// card offered `Give critic a task` four lines below its own description saying
-/// it cannot change, run or start anything — true, its file names only the three
-/// reading tools, so a task handed to it can only end in a report about nothing.
-/// In its place goes the sentence naming who does call it, read off the peers'
-/// `tools:` lists so it cannot go stale when that caller is renamed; `Talk to`
-/// stays, because handing it finished work in chat is real.
+/// card offered `Give critic a task` under its own description saying it cannot
+/// change, run or start anything, so a task handed to it could only end in a
+/// report about nothing. In its place goes the sentence naming who does call
+/// it, read off the peers' `tools:` lists so it cannot go stale when that
+/// caller is renamed; `Talk to` stays, because handing it work in chat is real.
 ///
-/// 27 branched on `role:`, which was the wrong axis for the same reason the name
-/// was: `scout` is read-only by the identical allowlist, says on its own card
-/// that it never carries the plan out, and kept the door. `origin::can` is the
-/// axis — what the resolved toolbox lets it do — so every read-only agent loses
-/// it and no named one loses it for being named.
+/// 27 branched on `role:`, the wrong axis for the same reason the name was —
+/// `scout` is read-only by the same allowlist and kept the door.
 fn doors(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
     let door = |to: &str, label: &str| {
         FragmentBuilder::new("button")
@@ -111,8 +104,16 @@ fn doors(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
         // …AND NOBODY HANDS SCOUT WORK (29): it is asked, in chat, by a person.
         true => format!("Ask {name} in chat — nothing on this roster hands it work"),
         false => format!("The {} agent hands it work", callers.join(" and the ")),
-    } + "; there is no task to give it, because every tool it has reads. It cannot \
-         change or run anything.";
+    // THE BOTTOM OF THE SAME AXIS (32): "every tool it has reads" was said of
+    // `summarizer`, whose toolbox is EMPTY — a sentence about the contents of
+    // an empty set. It is about what it can USE and not what its file names,
+    // because a tool this build does not install leaves the box empty too.
+    } + match agent::toolbox_for(spec, peers).tools.is_empty() {
+        true => "; there is no task to give it, and nothing to read with either — \
+                 no tool it can use here.",
+        false => "; there is no task to give it, because every tool it has reads. \
+                  It cannot change or run anything.",
+    };
     row.child(FragmentBuilder::new("span").text(&said).build()).build()
 }
 

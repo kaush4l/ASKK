@@ -3672,3 +3672,100 @@ first-time reader is steered into a failure with no forewarning, and the
 excellent explanation of what to do arrives 100% of the way down the funnel;
 the chip-strip fade never turns off, so it says "keep going" where going is
 impossible; an unknown hash silently rewrites to the Dashboard.
+
+---
+
+## 32 — the predicate reaches the chrome
+
+Each of 27, 29 and 31 fixed a contradiction where I was looking and left it
+standing where I was not. The second critique walk found four more sites of
+the SAME defect, so this increment is not a new idea: it is `origin::can`
+asked at every remaining surface.
+
+- The board card now says whether there is a task to give — `you can give it a
+  task, and it runs commands` / `you can give it a task; it runs no commands` /
+  `no task to give it — every tool it has reads`. The board is where a reader
+  compares eight agents, and it was eight identical shapes.
+- `builder` alone carries `it works one task over up to 4 passes`. `stages:`
+  distinguishes nothing (main and scout declare the same list); `passes:` is
+  the fact that separates them.
+- The Commands pane says `summarizer has no tools at all — no shell, and
+  nothing that reads this Linux either`. It had been told it "can read this
+  Linux but not change it", which was a sentence about an empty set — and
+  `author`, with MORE capability, got the correct one. The empty toolbox is the
+  bottom of the same axis, asked at each site.
+- `author`'s examples lead with writing an agent, which is its only job.
+  29's honest-examples pass had demoted it to a talker.
+- The three agents that shipped byte-identical examples no longer do: the sets
+  follow from the resolved toolbox and the lap count, never from a name.
+
+**The fifth site, and a test that caught my wording.** `agentcard.rs` was still
+telling `summarizer` "every tool it has reads". I wrote the replacement as "its
+file names none at all" and `critic27` failed: its fixture agent NAMES
+`read_file` while this build installs none, so the toolbox is empty and the
+file is not. The sentence is about what an agent can USE — "nothing to read
+with either — no tool it can use here" — which is true in both cases. That
+test was written to pin a different claim two increments ago and caught a false
+one today.
+
+The expert agent could not put its fold in `origin.rs`: every function there
+has a caller in a file it did not own, so nothing could move out to make room.
+It moved `last_tool` into `stage.rs` instead, where the module doc already
+claims to be the home of the board's folds.
+
+## 33 — before the first failure
+
+A first-time reader was steered into a failure with no forewarning: the header
+states the endpoint as fact, the intro never mentioned needing a model server,
+and the walker typed the page's OWN suggested example and got a failure ten
+seconds later. The explanation that follows is good; it arrived at the bottom
+of the funnel.
+
+The intro now opens with the requirement: "…it has no model of its own: every
+turn is sent to a model endpoint you choose, and **nothing here has called that
+endpoint yet**." A sentence, not a probe — nothing on this page can know
+whether a server is listening without calling it, and what IS knowable is that
+it has not called. `EndpointHealth` and `last_failure` were the brief's
+suggested source and they report only a failure that ALREADY happened, so
+before the first turn there is nothing in them to read.
+
+An unknown hash still lands on the Dashboard and still corrects the address
+bar — and now says so once, in a `pending` banner: a wrong address is not a
+lost turn. It yields to the failure banner, and that is arithmetic: at 320×780
+the chrome already stands at 484px against a 260px floor, and two banners
+measured 696px, leaving 84 — the gate went red. One row of news, not two.
+
+At 1440 the Dashboard's three cards were 608 / 1136 / 608 with two ragged
+edges, and the task field was 476px of a card you are meant to type a whole
+task into. The cap moved off the PANEL onto what it holds: every sentence
+already carries `--measure`, so no prose got wider, and the field takes the
+gutter ceiling. 1136 ×3, field 984. `DASHEDGE` asserts one column has one edge.
+
+**Three things about the fade the brief did not anticipate**, all measured by
+the agent rather than assumed:
+
+1. `@supports` alone was not enough. Chrome for Testing 145 — the gate's own
+   browser — does not honour the `@property` registration, so with no animation
+   supplying a value the `calc()` is invalid at computed-value time and
+   `mask-image` falls back to `none`. The static mask would have been LOST, not
+   kept. `var(--swipe-fade, 2rem)` is what actually holds the degradation.
+2. Reduced motion keeps the static mask. The repo's REDUCEDMOTION assertion is
+   that nothing animates when asked, and the first attempt failed it 30 times.
+3. The gate cannot see the pixels: `--dump-dom` produces no frames, so a scroll
+   timeline is never sampled. `SWIPEEND` asserts the WIRING off the CSSOM —
+   each masked port drives an animation from its own scroll position whose last
+   keyframe takes the fade to zero. **The interpolation itself is unverified by
+   any gate and needs a walker on the hosted page.**
+
+Both new assertions were proven to bite by restoring the old CSS in `dist/`:
+`FAIL DASHEDGE` on 10 configs, `FAIL SWIPEEND` on 24.
+
+### Open, and why
+
+`web_search` is still advertised on researcher's card with no note that it
+needs an address. The tool list is written by `origin::tool_lines` in `core`,
+and the search endpoint lives in `adapters_web::settings` — `crates/ui` may
+depend on neither `agent` nor `core`, so an honest qualification means
+threading the setting into the projection. The agent stopped at the boundary
+and reported rather than reaching across it, which is right. It is a real
+defect and it is deferred with its reason.

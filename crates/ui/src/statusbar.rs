@@ -130,6 +130,16 @@ pub fn StatusStrip(
     endpoint: crate::endpoint::Parts,
 ) -> Element {
     rsx! {
+        // …AND ONE THING THAT IS NOT A PILL (31-walk F4). An address naming no
+        // view is corrected to the Dashboard, and used to be corrected in
+        // silence. It is a `.banner`, the row shape a failed turn already uses,
+        // and it is here because this component's output IS the header's
+        // content — `views/misroute.rs` holds the sentence and the reasons.
+        // It renders before `ready`: the wrong address is known at boot; it
+        // yields to the failure banner, which is the other row of this chrome;
+        // and it takes the header's LAST row by `order`, not by DOM position,
+        // because the rail switch is a sibling this component cannot get after.
+        crate::views::misroute::Misroute { hushed: !fleet.why.read().is_empty() }
         // A SCROLLPORT A KEYBOARD CAN REACH (24-walk F1). At 390 this strip is
         // the one horizontally scrolling box on the page, and nothing inside it
         // is focusable, so the part past the edge was reachable by finger only.

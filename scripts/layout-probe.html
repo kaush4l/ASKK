@@ -35,6 +35,15 @@
        does not fit, so the header is one row at every width and in every state
        and nothing is `display: none`. The probe models it because the header's
        height no longer being state-dependent is the thing to measure. -->
+  <!-- AN ADDRESS THAT NAMED NO VIEW (31-walk F4). `#/tools/main` is corrected
+       to the Dashboard, and used to be corrected in silence. It is a row of the
+       HEADER because `statusbar.rs` is the header's content and that is the
+       component that can render it. It is FIRST among the header's children, as the app emits it,
+       and takes the last ROW by `order` (chrome.css). It YIELDS to the failure banner below, which is why
+       `layout-probe.js` shows exactly one of the two: at
+       320x780 the chrome already stands at 484px against a 260px floor, so a
+       second row of it is not affordable and the app does not spend one. -->
+  <p class="banner pending" id="misroute-banner" role="status" hidden><span class="problem-line">There is no view called “tools”, so this is the Dashboard and the address bar has been corrected. The list behind Views, in the header, is every view there is.</span><button type="button" class="btn-secondary">Got it</button></p>
   <div class="status-strip">
   <div class="wordmark">HARNESS</div>
   <p class="pill subject" role="status">Agent: <strong>main</strong></p>
@@ -172,7 +181,13 @@
       <div class="masthead"><h1>HARNESS</h1></div>
       <!-- The one line that says what the product IS (F1). It is the widest
            paragraph on the Dashboard, so it is the one OVERFLOW wants here. -->
-      <p class="tagline">This runs AI agents in your browser. An agent whose file names a space also gets a folder in the Linux this page runs, where it can write files and run commands, and it shares facts and notes with every other agent naming that space. Give an agent a task and walk away, or talk to it while it works.</p>
+      <!-- VERBATIM `stage::intro::TAGLINE`. It had drifted two sentences short
+           of the shipped copy, which is the one paragraph a first-time reader
+           actually reads — and increment 31 made it longer again (F1): the
+           forewarning that a turn needs a model endpoint, before the launcher
+           rather than after the failure. A fixture measuring shorter prose
+           than the page renders cannot see the height the page spends. -->
+      <p class="tagline">This runs AI agents in your browser, and it has no model of its own: every turn is sent to a model endpoint you choose, and nothing here has called that endpoint yet. This build ships pointed at a server on this machine, so unless one is running there, the first turn will fail and say what to do — Settings is where the address is changed. An agent whose file names a space also gets a folder in the Linux this page runs, where it can write files and run commands, and it shares facts and notes with every other agent naming that space. Most agents take a turn in stages — plan what is wanted, do the work, then verify it by running something and reading what came back — and the conversation names each stage as it opens. Give an agent a task and walk away, or talk to it while it works.</p>
       <!-- THE FLEET AT A GLANCE (27), above the grid, where `stage.rs` mounts
            it. The probe models it because the strip is the one region on the
            Dashboard whose children are FIXED-width cells in a wrapping track:

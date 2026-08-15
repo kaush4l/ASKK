@@ -108,4 +108,84 @@
   });
   say(!nocue.length, "SWIPECUE", nocue.join(", ") ||
       "every hidden-scrollbar port with somewhere to go says so");
+
+  // ---- SWIPEEND: …and it stops saying so where there is nowhere to go -----
+  // The mask SWIPECUE demands was static, so scrolled to the last chip the
+  // strip still dimmed it and ate the container's right border — an affordance
+  // pointing at nothing (31-walk F3). The fix is a scroll-driven animation that
+  // empties `--swipe-fade` over the last fifth of the travel (strip.css).
+  //
+  // WHAT THIS CAN AND CANNOT MEASURE. `--dump-dom` produces no frames:
+  // `requestAnimationFrame` never fires here and a scroll timeline is only
+  // sampled in a frame, so setting `scrollLeft` and reading `mask-image` back
+  // returns the resting value at every offset — measured, twice. What IS
+  // readable without a frame is the WIRING: that the port drives an animation
+  // off ITS OWN inline scroll position, and that the animation's last keyframe
+  // takes the fade to zero. Both come from the CSSOM, and either one breaking
+  // is what would put the always-on mask back.
+  var endOf = function (name) {
+    for (var i = 0; i < document.styleSheets.length; i++) {
+      var rules = document.styleSheets[i].cssRules;
+      for (var j = 0; j < rules.length; j++) {
+        if (rules[j].type !== 7 || rules[j].name !== name) continue;
+        var last = rules[j].cssRules[rules[j].cssRules.length - 1];
+        return { at: last.keyText, fade: last.style.getPropertyValue("--swipe-fade").trim() };
+      }
+    }
+    return null;
+  };
+  // …EXCEPT WHERE THE PROMISE IS THAT NOTHING ANIMATES. Under reduced motion the
+  // cue is deliberately the static mask of increment 28 — the same fallback a
+  // browser with no scroll timelines gets — so asserting the withdrawal here
+  // would assert against `REDUCEDMOTION` (layout-audit.js) two checks away.
+  var stuck = [], seen = [];
+  var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll(still ? "#nothing" : "*").forEach(function (el) {
+    if (el.scrollWidth <= el.clientWidth + 4) return;
+    var s = getComputedStyle(el);
+    if (s.getPropertyValue("scrollbar-width") !== "none") return;
+    if (s.getPropertyValue("mask-image") === "none") return;
+    var what = el.className || el.tagName;
+    seen.push(what);
+    var driven = el.getAnimations().filter(function (a) {
+      var t = a.timeline;
+      return t && t.constructor.name === "ScrollTimeline" && t.source === el && t.axis === "inline";
+    });
+    if (!driven.length) {
+      stuck.push(what + " masks at every scroll position");
+      return;
+    }
+    var end = endOf(driven[0].animationName);
+    if (!end) stuck.push(what + ": no @keyframes " + driven[0].animationName);
+    else if (end.at !== "100%" || !/^0[a-z%]*$/.test(end.fade)) {
+      stuck.push(what + " ends at " + end.at + " with --swipe-fade: " + (end.fade || "unset"));
+    }
+  });
+  say(!stuck.length, "SWIPEEND", stuck.join(", ") ||
+      (still ? "reduced motion: the cue is the static mask, and that is the promise"
+             : seen.length ? seen.join(" + ") + " empty the fade at the end of their own scroll"
+                           : "no port is scrollable at this width"));
+
+  // ---- DASHEDGE: the Dashboard's cards share an edge ----------------------
+  // Increment 30 capped every Dashboard panel except the deck's at `--column`,
+  // and 1440 shipped a 608px launcher over a 1136px board over a 608px space
+  // card: ~530px of nothing beside the field you type a whole task into, and
+  // one card twice the width of its neighbours (31-walk F5). The cap belongs on
+  // the PROSE, which carries its own (`surfaces.css`), not on the card. One
+  // column, one edge — asserted at every width, since the failure was that two
+  // cards in the same column disagreed about where the column ends.
+  var dash = region.querySelectorAll(".dash-grid .panel");
+  if (dash.length > 1) {
+    var widths = [];
+    dash.forEach(function (c) { widths.push(Math.round(c.getBoundingClientRect().width)); });
+    var ragged = widths.some(function (w) { return Math.abs(w - widths[0]) > 1; });
+    say(!ragged, "DASHEDGE", ragged
+      ? "the Dashboard's cards are " + widths.join("/") + "px wide in one column"
+      : dash.length + " cards, all " + widths[0] + "px");
+    var field = region.querySelector(".dash-grid .grows");
+    if (field) {
+      P.info("DASHFIELD", "the task field is " + Math.round(field.getBoundingClientRect().width) +
+             "px in a " + widths[0] + "px card");
+    }
+  }
 })();

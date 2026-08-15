@@ -62,6 +62,17 @@ pub(crate) fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
         (false, None) => crate::rowwords::gloss(status),
     };
     let said = format!("{word} · {turns}{origin}");
+    // …AND WHETHER THERE IS ANYTHING TO GIVE IT (32). Eight cards differed by
+    // name and status word alone, so the board — the one place a person compares
+    // agents — said nothing about the difference that decides whether the
+    // Dashboard will even show a Start control. It is NOT in `line` below: that
+    // string is a launched RUN's report, and this is a standing fact about the
+    // agent, true before the run and after it.
+    let offer = crate::stage::offer(ctx, &agent.name);
+    let shown = match offer.said.is_empty() {
+        true => said.clone(),
+        false => format!("{said} · {}", offer.said),
+    };
     // The row inside a turn is the one worth looking at, so it says more (12
     // walk, "give the live row priority"). A TURN THAT ENDED WELL CAN STILL
     // HOLD A FAILED CALL (R9-3): `ready · 1 turn` was the whole row over a
@@ -119,6 +130,12 @@ pub(crate) fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
         .attr("data-failed-note", hurt.as_deref().unwrap_or_default())
         // …AND WHETHER IT RAN ANYTHING (R18-P1-5): counted, never judged.
         .attr("data-tools-ran", &ran.to_string())
+        // WHAT ITS TOOLS LET IT DO, the names they resolved to, and the pass
+        // ceiling (32) — the three facts the Dashboard's starter tasks are
+        // chosen from, so a task offered is one some named tool can finish.
+        .attr("data-can", offer.can)
+        .attr("data-toolset", &offer.toolset)
+        .attr("data-laps", &offer.laps.to_string())
         .child(FragmentBuilder::new("h3").text(&agent.name).build())
         .child(
             FragmentBuilder::new("p")
@@ -126,7 +143,7 @@ pub(crate) fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
                 // The accessible name says which agent, so two agents in the
                 // same status are not the same control to a screen reader.
                 .attr("aria-label", &format!("{} is {word}", agent.name))
-                .text(&said)
+                .text(&shown)
                 .build(),
         );
     if let Some(rest) = &live {
@@ -164,7 +181,7 @@ fn live_line(agent: &AgentRow, ctx: &Ctx) -> Option<String> {
         parts.push(format!("in this turn for {seconds}s"));
     }
     if agent.name == ctx.me {
-        if let Some(tool) = last_tool(ctx) {
+        if let Some(tool) = crate::stage::last_tool(ctx) {
             parts.push(format!("last tool: {tool}"));
         }
     }
@@ -172,29 +189,4 @@ fn live_line(agent: &AgentRow, ctx: &Ctx) -> Option<String> {
         true => None,
         false => Some(parts.join(" · ")),
     }
-}
-
-/// The last tool this process's agent called, by name — ITS OWN CALLS ONLY
-/// (R18-P1-3). The pill read `last tool: list_processes` under the agent's name
-/// while the trace, from the same facts, showed `this page ran list_processes()`
-/// — the Files pane's polling, wearing the agent's name on the one line a
-/// person reads to see what the run is doing. `asked::Asked` has attributed
-/// every call to `you`, `PANE` or the agent since R6-10; this row was the last
-/// reader still counting the log's `ToolInvoked` facts raw.
-///
-/// The agent's own calls are the UNMATCHED ones, which is why the empty string
-/// is passed as the agent's name here: no pane or gesture can be attributed to
-/// it, so `by.is_empty()` means "nothing asked for this but the model".
-fn last_tool(ctx: &Ctx) -> Option<String> {
-    let mut asked = crate::asked::Asked::default();
-    let mut last = None;
-    for (nth, kind) in ctx.recent.iter().enumerate() {
-        asked.enqueue(nth, kind);
-        if let kernel::EventKind::ToolInvoked { tool, args, .. } = kind {
-            if asked.actor(&tool.0, args, "").0.is_empty() {
-                last = Some(tool.0.clone());
-            }
-        }
-    }
-    last
 }

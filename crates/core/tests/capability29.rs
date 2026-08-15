@@ -120,8 +120,15 @@ fn only_an_agent_that_can_act_is_offered_a_task() {
         assert!(!card.contains(&format!("Give {who} a task")), "{who} cannot: {card}");
         assert!(card.contains(&format!("Talk to {who}")), "chat is still real: {card}");
         assert!(
-            card.contains("there is no task to give it, because every tool it has reads"),
+            card.contains("there is no task to give it"),
             "the missing door is explained in words: {card}"
+        );
+        // …AND THE REASON IS THIS AGENT'S OWN (32): `summarizer` names no tool
+        // at all, so "every tool it has reads" described an empty set.
+        let empty = who == "summarizer";
+        assert_eq!(
+            card.contains("nothing to read with either"), empty,
+            "a toolless agent says so and a read-only one does not: {card}"
         );
     }
     for who in ["main", "builder", "researcher", "author"] {

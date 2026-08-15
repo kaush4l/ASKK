@@ -111,7 +111,7 @@ pub fn TaskLauncher(
             // NO START CONTROL FOR AN AGENT THAT CANNOT ACT (29), and the reason
             // in words where it would have been. R2-12's precedent: a control
             // that does not apply here is NOT RENDERED, not rendered dead.
-            if !running && !acts { {crate::examples::no_task(&who)} }
+            if !running && !acts { {crate::examples::no_task(&who, &projection)} }
             if !running && acts {
                 p { class: "note",
                     "Give {who} a task and walk away — it works on its own, and “Agents and \
@@ -163,7 +163,7 @@ pub fn TaskLauncher(
                 // Typing one character deleted three buttons and a lead: the card
                 // collapsed ~330px under the cursor. They go only when there is a
                 // RUN to report (R6-6).
-                {crate::examples::picks(task, &who, &can)}
+                {crate::examples::picks(task, &who, &can, &projection)}
             }
             // ONE LINE, AND A DOOR (R9-2). Not this card's run, so not this
             // card's card: the hash IS the view and its subject (R6-3), so
