@@ -138,7 +138,11 @@ fn every_board_row_publishes_the_toolbox_the_launcher_chooses_tasks_from() {
     assert!(tools("main").contains("exec") && tools("main").contains("write_file"), "main");
     assert!(!tools("main").contains("write_agent"), "main's list does not name it");
     assert!(tools("researcher").contains("write_agent"), "an empty list is every built-in");
-    assert_eq!(tools("author"), "list_agents, read_agent, write_agent", "the allowlist IS it");
+    assert_eq!(
+        tools("author"),
+        "list_agents, read_agent, write_agent, list_skills, read_skill",
+        "the allowlist IS it"
+    );
     assert_eq!(tools("summarizer"), "", "engine: base is the empty toolbox");
     // A peer is not a tool the examples can be built on, but it is in the list
     // the model sees; what matters here is that the list is the resolved one.

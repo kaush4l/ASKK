@@ -146,6 +146,12 @@ pub(crate) fn invoke_or_refuse(tools: &Toolbox, call: Call, batch: u16) -> Effec
         Ok(tool) => tool,
         Err(refusal) => return refuse(refusal.tool, call.args_json, refusal.error),
     };
+    // A SKILL IS ANSWERED HERE, NOT RUN ANYWHERE (skills.rs): the result is a
+    // pure function of compiled-in text, and it is emitted as the same
+    // `ToolInvoked` fact every other call produces, so the trace shows the load.
+    if let Some(effect) = crate::skills::effect(&tool.name, &call.args_json) {
+        return effect;
+    }
     if !tool.agent {
         return Effect::InvokeTool {
             tool: ToolId(tool.name.clone()),

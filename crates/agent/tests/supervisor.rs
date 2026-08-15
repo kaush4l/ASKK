@@ -134,7 +134,17 @@ fn the_frontmatter_tools_list_decides_the_toolbox() {
     // card prints the RESOLVED toolbox rather than the frontmatter's.
     assert_eq!(
         names,
-        ["now", "list_agents", "read_agent", "write_agent", "web_search"]
+        [
+            "now",
+            "list_agents",
+            "read_agent",
+            "write_agent",
+            "web_search",
+            // Skills are built-ins on the same rule: they run nothing, and a
+            // skill's body stays out of the window until `read_skill` asks.
+            "list_skills",
+            "read_skill"
+        ]
     );
     assert!(all.tools.iter().all(|t| !t.agent), "no peer was attached");
 

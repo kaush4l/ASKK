@@ -5,7 +5,14 @@ model: local
 temperature: 0.2
 engine: react
 space:
-tools: [list_agents, read_agent, write_agent]
+# THE AGENT THAT WANTS THE `agent-file` SKILL MOST, AND CANNOT NAME IT YET.
+# Adding `list_skills, read_skill` here is one line, and it is the right line:
+# the house rules below would then be read on demand instead of carried in this
+# prompt every turn. It is left out because `crates/core/tests/capability32.rs`
+# asserts this agent's RESOLVED toolset as an exact string, and that file was
+# outside the increment that added skills. Whoever changes that assertion adds
+# the two names here in the same commit.
+tools: [list_agents, read_agent, write_agent, list_skills, read_skill]
 compact_at: 8
 keep_recent: 3
 ---

@@ -19,6 +19,7 @@ mod forge;
 mod paper;
 mod passes;
 mod seed;
+mod skills;
 mod phase;
 mod space;
 mod reply;
@@ -57,6 +58,10 @@ pub use search::{results as search_results, search_path, WEB_SEARCH};
 pub use workspace::{is_workspace_tool, process_name, relative_path, workspace_tools};
 pub use author::{new_spec, render_agent_file, usable_agent_name};
 pub use loader::{load_agents, role_holder};
+pub use skills::{
+    catalogue, instruction, parse_skill_file, skills, Skill, LIST_SKILLS, NONE_INSTALLED,
+    READ_SKILL,
+};
 pub use critic::{passed as critic_passed, FAULT as CRITIC_FAULT, PASS as CRITIC_PASS};
 pub use spec::{
     parse_agent_file, AgentSpec, ENGINE_BASE, ENGINE_REACT, ROLE_CRITIC, ROLE_ENTRY,

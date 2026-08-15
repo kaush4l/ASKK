@@ -23,6 +23,10 @@ tools:
   - now
   - list_agents
   - read_agent
+  # Instruction pulled in on demand, not carried in this prompt forever: the
+  # list is a line each and a body enters the window only when it is read.
+  - list_skills
+  - read_skill
   - researcher
   - remember
   - forget

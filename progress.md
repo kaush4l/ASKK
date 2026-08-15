@@ -3769,3 +3769,105 @@ depend on neither `agent` nor `core`, so an honest qualification means
 threading the setting into the projection. The agent stopped at the boundary
 and reported rather than reaching across it, which is right. It is a real
 defect and it is deferred with its reason.
+
+---
+
+## 34 — skills, and a voice that finishes the sentence
+
+Two features the goal names. One did not exist; the other shipped in 24 and
+was quietly broken in two ways.
+
+### Skills
+
+A skill is written instruction an agent pulls in when a job calls for it,
+rather than carrying forever in a system prompt. That is context economy, and
+it is why this belongs in THIS product: the window is small, `crates/context`
+exists because of it, and a skill costs nothing until it is read.
+
+Two tools, named to match the pair that already exists (`list_agents` /
+`read_agent`):
+
+- `list_skills` — every installed skill's name and description, and nothing
+  else. Bodies never appear in the listing, and a test asserts it: listing is
+  the cheap call the model is told to make first.
+- `read_skill` — one skill's instruction into the conversation. It runs
+  nothing and changes nothing; the result is text.
+
+Shipped skills, both written off the code rather than invented: `agent-file`
+(every frontmatter key and the SIX refusals `spec.rs`/`yaml.rs` actually make,
+including that `tools: []` grants every built-in including `write_agent`) and
+`tool-calls` (the layout rule, the escaping rules, and the four refusals
+verbatim from `toolbox.rs` — including `NOTHING_RAN`, which this repo's own
+notes call the #1 model failure). A test asserts each body still describes THIS
+product, so a skill cannot drift into describing a different one.
+
+Honesty, as tests: with nothing installed `list_skills` says exactly "No skills
+are installed in this browser" and never an empty list (I15); a skill that is
+not installed is refused BY NAME with the installed ones listed, and the turn
+carries on rather than failing; a `skill.md` that cannot say what it is for is
+refused at parse and costs that skill only. A load is `ToolInvoked`, so `/tools`
+projects it unchanged and a reader can see which skill entered the context and
+when (I8).
+
+**Where the brief was wrong.** Skills cannot be FETCHED data yet: the agents
+tree reaches the browser through `assets.rs::fetch_agents` and a `copy-dir` in
+`web/index.html`, all outside the agent's file boundary. So `public/skills/**`
+is real data in the repo, compiled in with `include_str!` — the precedent is
+`install.rs`, which does exactly this. The manifest is honoured BY TEST:
+`the_manifest_names_exactly_the_installed_skills` asserts `index.json` and the
+include list name the same skills, so wiring the fetch later cannot silently
+disagree. Upgrade path is three edits, named in the report.
+
+Also refused, with an argument I accept: a `skills:` frontmatter key. `tools:`
+is already an allowlist with a refusal path, an unresolved-name report and a
+card that prints the resolved set; a second key would be a second allowlist to
+keep in step, and would have to choose between preloading bodies (which
+destroys the point) or duplicating `read_skill`.
+
+`author` — the agent that most wants `agent-file` — could not be opted in by
+the agent that built this, because `capability32.rs` pins its resolved toolset
+as an exact string and that file was outside its boundary. It reported the
+one-line unblock and left a comment at the exact line of the agent file. Both
+halves are in this commit.
+
+### The voice that stopped mid-sentence
+
+The brief for this said "TTS does not exist — `grep -r speechSynthesis`
+returns nothing". **Wrong, and the agent checked before building.** This
+codebase calls it from Rust as `w.speech_synthesis()`; TTS shipped in 24,
+`INVARIANTS.md` names it as one of I5's two written exceptions, and the string
+is in the deployed wasm. It checked the SHIPPED code against the brief's
+requirements instead of writing a duplicate, and found two real defects:
+
+1. **`has_voice` tested for the object, not the capability.**
+   `speechSynthesis` exists on a bare Linux with no speech-dispatcher and on
+   Android WebViews with the engine stripped — `speak()` there returns
+   silently, so the control promised speech and delivered none. It now counts
+   `getVoices()` and follows `voiceschanged`, which matters because Chrome
+   fills that list AFTER load: a one-shot check at mount would have hidden a
+   control that works.
+2. **A long answer stopped part-way.** Chrome cuts a single utterance off after
+   ~15s, mid-sentence, with no error. The browser now gets a queue of ≤180-char
+   pieces broken at sentence ends, with six tests on the chunking — no word
+   dropped or repeated, breaks at sentence ends, a word longer than the budget
+   survives whole.
+
+`voice.rs` went 200 → 172 by moving the machinery to `speaker.rs`. No new
+dependency and no new web-sys feature, so `Cargo.toml` — unowned — stayed shut.
+
+**What no gate here can prove:** that sound comes out. A headless browser
+cannot verify audio. A person with speakers still has to confirm that a
+1500-character answer reads to the end, that pauses land at sentence ends, and
+that `Stop reading` silences immediately. The zero-voice path needs a machine
+with no TTS engine to observe, which could not be produced here.
+
+### The inventory that prompted this
+
+Checked against the goal rather than assumed: the multiagent loop, the critique
+agent, websearch, spaces, artifacts, agent-spawning, the loop/phase UI and STT
+all already ship. Skills did not exist at all. transformers.js remains
+UNBUILT and is not a decision to make unattended: it means loading model
+weights from a CDN, which is a network-allowlist call, and CLAUDE.md §17 says
+those always stop for the owner. The browser's own speech APIs cover the STT
+and TTS the goal asks for at zero network cost, so what transformers.js would
+actually add is a local LANGUAGE model — a much larger piece.

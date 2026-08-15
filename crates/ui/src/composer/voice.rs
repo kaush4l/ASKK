@@ -22,23 +22,13 @@
 use std::rc::Rc;
 
 use dioxus::prelude::*;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
-use web_sys::SpeechSynthesisUtterance;
 
 use crate::ui::Button;
 
 mod mic;
+mod speaker;
 
-/// Stop speaking, now. Called when a new turn starts as well as by the button:
-/// a page reading the previous answer over the top of a new one is the defect
-/// this control ships with unless something cancels it, and the person who just
-/// pressed Send is not going to enjoy racing it.
-pub(crate) fn hush() {
-    if let Some(voice) = web_sys::window().and_then(|w| w.speech_synthesis().ok()) {
-        voice.cancel();
-    }
-}
+pub(crate) use speaker::hush;
 
 /// The newest thing the AGENT said in this pane, as text. Read off the DOM the
 /// core already rendered rather than re-derived: `.msg.assistant .said` is the
@@ -71,9 +61,12 @@ pub(crate) fn Voice(agent: String, busy: bool, on_text: EventHandler<String>) ->
     let mut trouble = use_signal(String::new);
     let ear = use_hook(move || mic::build(heard, listening, on_text).map(Rc::new));
     let has_ear = ear.is_some();
-    let has_voice = web_sys::window()
-        .and_then(|w| w.speech_synthesis().ok())
-        .is_some();
+    // NOT "does the object exist" — "is there a voice to speak with", which the
+    // browser may only know a moment later (speaker.rs, I15). The watcher is
+    // held for the life of the pane so its handler outlives no scope.
+    let voiced = use_signal(|| false);
+    let _voices = use_hook(move || speaker::watch(voiced).map(Rc::new));
+    let has_voice = voiced();
     // …and nothing goes on reading an answer whose pane has left the screen.
     use_drop(hush);
 
@@ -117,28 +110,7 @@ pub(crate) fn Voice(agent: String, busy: bool, on_text: EventHandler<String>) ->
         }
         trouble.set(String::new());
         hush(); // one answer at a time, even when the button is pressed twice
-        let Some(voice) = web_sys::window().and_then(|w| w.speech_synthesis().ok()) else {
-            return;
-        };
-        let Ok(said) = SpeechSynthesisUtterance::new_with_text(&text) else {
-            return;
-        };
-        // `try_write`, not `set`: this fires whenever the browser finishes or is
-        // cancelled, and the pane can be gone by then (switch agents while it
-        // reads). Writing a signal whose scope has been dropped panics.
-        let done = Closure::<dyn FnMut()>::new(move || {
-            if let Ok(mut said) = speaking.try_write() {
-                *said = false;
-            }
-        });
-        let _ = said.add_event_listener_with_callback("end", done.as_ref().unchecked_ref());
-        // Handed to the browser for the life of one utterance. `forget` and not
-        // a stored handle: cancelling fires `end` asynchronously, so anything
-        // that dropped the previous closure on the next press would be dropping
-        // one JS may still be about to call.
-        done.forget();
-        voice.speak(&said);
-        speaking.set(true);
+        speaking.set(speaker::speak(&text, speaking));
     };
 
     rsx! {

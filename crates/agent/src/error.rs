@@ -23,4 +23,8 @@ pub enum AgentError {
     UnexpectedEvent { phase: PhaseId, message: String },
     /// An `agent.md` could not be read. Costs that agent, never the boot.
     MalformedAgentFile { agent: String, message: String },
+    /// A `skill.md` could not be read. Costs that skill and nothing else — the
+    /// other skills still list, and an agent that asks for this one gets the
+    /// refusal every unknown skill gets.
+    MalformedSkillFile { skill: String, message: String },
 }

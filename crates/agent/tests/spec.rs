@@ -30,6 +30,10 @@ fn parses_every_frontmatter_key_and_the_body() {
             "now",
             "list_agents",
             "read_agent",
+            // The entry agent opted into skills: instruction it can pull in
+            // when a job calls for it, and that costs nothing until it does.
+            "list_skills",
+            "read_skill",
             "researcher",
             "remember",
             "forget",

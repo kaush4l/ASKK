@@ -153,5 +153,10 @@ pub fn builtin_tools() -> Toolbox {
              page — it says what is there and where.",
             &["query"],
         ),
-    ])
+        // …and the two skill tools, declared beside their own rules the way
+        // the space's and the workspace's sets are (`crate::skills`).
+    ]
+    .into_iter()
+    .chain(crate::skills::tools())
+    .collect())
 }

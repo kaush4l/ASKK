@@ -154,6 +154,10 @@ fn an_empty_list_with_a_space_takes_every_builtin_and_the_whole_space_set() {
             // Increment 21: a built-in like any other, so an empty list takes
             // it — whether it can reach anything is the allowlist's business.
             "web_search",
+            // The skill tools are built-ins on the same rule: they run
+            // nothing, and a body stays out of the window until it is read.
+            "list_skills",
+            "read_skill",
             "remember",
             "forget",
             "post_note",
