@@ -26,7 +26,8 @@ CSS = sorted((ROOT / "web").glob("*.css"))
 
 # DESIGN.md §2. A file not on this list is a file nobody agreed to.
 EXPECTED = {"tokens.css", "base.css", "glass.css", "layout.css",
-            "chrome.css", "surfaces.css", "controls.css", "workspace.css"}
+            "chrome.css", "strip.css", "surfaces.css", "controls.css",
+            "workspace.css"}
 
 MAX_LINES = 200          # I12
 # DESIGN.md §5. RAISED 5 -> 6 IN R5-A, deliberately and once. The ceiling

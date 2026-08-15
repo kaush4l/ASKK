@@ -3107,3 +3107,54 @@ scope.
 **364 passed, 0 failed**, size, layering, stylesheet and both trunk builds
 green. The behaviour is unverified without a browser — a walk in Chrome and one
 in Firefox is the missing proof.
+
+### What the walk of 21–24 found on the deployed page
+
+Zero console errors, zero non-200s across 228 requests, `crossOriginIsolated`
+true, correct build hash. Voice, the roster and the search panel all work as
+built. Three defects, two of them mine to have caught before deploying.
+
+**The endpoint pill at 390 was worse than the last increment recorded.** The
+note left standing after 22 said it took a sideways swipe to read. It did not:
+the swipe never paid out. `.pill-tail` — which holds the ADDRESS and the
+with-or-without-a-key fact — is hidden below 75rem, so the full 188px scroll
+range bought `calls <model id>` and stopped. The two things that pill exists to
+say were unreachable at every scroll position on a phone. Worse, the strip had
+no scroll affordance at all (scrollbar hidden, no mask, no shadow) and nothing
+inside it was focusable, so a keyboard user had no route to the hidden part.
+
+Fixed as three lines rather than the ~75px of header height wrapping would have
+cost: the tail comes back inside the 30rem block only (at 30–75rem the strip
+does not scroll, so there it would clip rather than move), a mask fades the last
+2rem as the sole cue that the row moves, and the strip itself takes `tabindex`
+so arrow keys have somewhere to land, with a focus ring to say where they are.
+
+That fix needed nine lines in a file already at its 200-line ceiling, so the
+status strip took its own stylesheet — `strip.css`, the ninth, registered in
+DESIGN.md §2 and in the guard. `header`'s own properties stayed in `chrome.css`;
+splitting on the element rather than trimming the reasons is the rule that table
+already keeps.
+
+**The search field refused addresses in the model field's words.** Typing
+`not-a-url` into the search endpoint produced the model endpoint's message
+verbatim — offering `http://127.0.0.1:8873/v1` as the example, complete with the
+`/v1` path the panel's own copy says to leave off, and promising that blank
+means "use this entry's own", which is entry inheritance that does not exist for
+search, where blank means the agent cannot search. Somebody following the error
+would have pasted a path into a SearXNG field. The check is one rule and stays
+one function; the example and what blank means are now the calling field's, with
+a test asserting neither field can borrow the other's.
+
+**A stale `role="status"`.** "There is no answer in this conversation yet" sat
+under the button after it stopped being true. Cleared when a turn starts. It can
+still outlive a view change — the composer stays mounted and nothing here can
+see the view — so that half is unfixed and written down rather than claimed.
+
+**Not verified by the walk:** the `web_search` refusal an agent actually emits.
+With no model endpoint reachable from the deployed page there is no way to make
+an agent call the tool, and there is no manual tool-invocation surface. The
+settings contract says it refuses and says so; the sentence itself is covered by
+`crates/core/tests/websearch.rs` on the host and by nothing in a browser.
+
+**365 passed, 0 failed**, size, layering, stylesheet (9 files), the browser
+layout probe, and both trunk builds green.

@@ -46,9 +46,12 @@ arrangement, in `web/index.html` link order:
 | `glass.css` | the material: `.e1` / `.e2` / `.e3`, the nesting rule, the opaque path | 200 |
 | `layout.css` | the dashboard shell: three regions, the fold, breakpoints | 200 |
 | `chrome.css` | header, nav, rail, the stage head — the persistent furniture | 200 |
+| `strip.css` | the status strip: its pills, its three breakpoints, its scrollport | 200 |
 | `surfaces.css` | card, message, row, tool-call, disclosure, empty state, skeleton | 200 |
 | `controls.css` | button, input, textarea, select, tab, badge, toggle | 200 |
 | `workspace.css` | what is inside the Linux: the folder listing, one file's contents | 200 |
+
+`strip.css` is the ninth (24-walk). The strip is five pills, three breakpoints and one horizontal scrollport, and `chrome.css` — which also carries the nav, the rail and the banner — was at its 200-line ceiling when the walk found the endpoint pill unreadable at 390. Splitting on the ELEMENT rather than trimming the reasons is the rule this table already keeps. It is linked after `chrome.css`, so cascade order is unchanged, and `header`'s own properties stay in `chrome.css` — the strip's sheet says only what the strip does.
 
 `workspace.css` is the eighth, added with the Workspace view (15G). The
 alternative was more of `surfaces.css`, which was at its 200-line ceiling, and

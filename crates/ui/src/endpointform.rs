@@ -143,6 +143,15 @@ pub(crate) fn TrustNote() -> Element {
 /// is legal and means "use this entry's own address", which is why the field
 /// is not `required` either.
 pub(crate) fn bad_base(url: &str) -> Option<String> {
+    bad_address(url, "http://127.0.0.1:8873/v1", "to use this entry's own")
+}
+
+/// The same rule, told in the CALLING FIELD'S OWN TERMS (24-walk F2). The search
+/// endpoint reused this message verbatim and so refused a SearXNG address with
+/// an LLM example carrying a `/v1` path its own copy tells you to leave off, and
+/// with a blank-means clause about entry inheritance that does not exist there.
+/// The check is one rule; the example and what blank means are the field's.
+pub(crate) fn bad_address(url: &str, example: &str, blank_means: &str) -> Option<String> {
     let url = url.trim();
     let host = url
         .strip_prefix("http://")
@@ -155,13 +164,27 @@ pub(crate) fn bad_base(url: &str) -> Option<String> {
     // the value was refused (R11-13).
     Some(format!(
         "That base URL is not an address this can call: “{url}”. It must start with http:// or \
-         https:// — for example http://127.0.0.1:8873/v1 — or be left empty to use this \
-         entry's own."
+         https:// — for example {example} — or be left empty {blank_means}."
     ))
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_refused_address_is_told_off_in_its_own_field_s_terms() {
+        // The search field's refusal must not offer an LLM path as the example,
+        // nor promise the entry-inheritance meaning of blank (24-walk F2).
+        let why = super::bad_address("not-a-url", "https://search.rhscz.eu", "to leave it off")
+            .expect("not-a-url is refused");
+        assert!(why.contains("https://search.rhscz.eu"), "{why}");
+        assert!(!why.contains("/v1"), "the model endpoint's example leaked: {why}");
+        assert!(!why.contains("entry's own"), "{why}");
+        // …and the model field keeps the wording it had.
+        let base = super::bad_base("not-a-url").expect("not-a-url is refused");
+        assert!(base.contains("http://127.0.0.1:8873/v1"), "{base}");
+        assert!(base.contains("entry's own"), "{base}");
+    }
+
     #[test]
     fn only_a_real_http_address_saves() {
         let ok = |u| super::bad_base(u).is_none();

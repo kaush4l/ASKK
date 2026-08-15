@@ -89,6 +89,11 @@ pub(crate) fn Voice(agent: String, busy: bool, on_text: EventHandler<String>) ->
             hush();
             speaking.set(false);
         }
+        // …AND IT CLEARS THE COMPLAINT WITH IT (24-walk F4). "There is no answer
+        // in this conversation yet" sat under the button across four view
+        // changes after it stopped being true, and it lives in a `role="status"`
+        // — a line a screen reader may announce again on the way past.
+        trouble.set(String::new());
     });
 
     let listen = move |_| {

@@ -130,7 +130,12 @@ pub fn StatusStrip(
     endpoint: crate::endpoint::Parts,
 ) -> Element {
     rsx! {
-        div { class: "status-strip",
+        // A SCROLLPORT A KEYBOARD CAN REACH (24-walk F1). At 390 this strip is
+        // the one horizontally scrolling box on the page, and nothing inside it
+        // is focusable, so the part past the edge was reachable by finger only.
+        // `tabindex` on the scroller is what gives arrow keys somewhere to land.
+        div { class: "status-strip", tabindex: "0", role: "group",
+              "aria-label": "Status — scrolls sideways on a narrow screen",
             // A wordmark is a logo, not the page's <h1>, and it is the only
             // thing in this strip that is true before the core has answered.
             div { class: "wordmark", "HARNESS" }

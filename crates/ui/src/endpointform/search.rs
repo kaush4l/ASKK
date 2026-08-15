@@ -16,7 +16,7 @@ use std::rc::Rc;
 use adapters_web::WebApp;
 use dioxus::prelude::*;
 
-use crate::endpointform::bad_base;
+use crate::endpointform::bad_address;
 use crate::ui::{Button, Card, Field, Form};
 
 /// The one instance measured to serve CORS + JSON from a browser (the
@@ -53,7 +53,10 @@ pub fn SearchEndpoint(web: Signal<Option<Rc<WebApp>>>, mut tick: Signal<u32>) ->
         // — the same rule the model endpoint's Base URL follows.
         let why = match typed.trim().is_empty() {
             true => String::new(),
-            false => bad_base(&typed).unwrap_or_default(),
+            // THIS field's example and THIS field's meaning for blank (24-walk
+            // F2): an origin with no path, and off rather than inherited.
+            false => bad_address(&typed, SUGGESTED, "to leave the agent unable to search")
+                .unwrap_or_default(),
         };
         refused.set(why.clone());
         if !why.is_empty() {
