@@ -154,12 +154,12 @@ fn elapsed(agent: &AgentRow, ctx: &Ctx) -> Option<i64> {
     Some(ctx.clock?.0.saturating_sub(agent.since.0) / 1000)
 }
 
-/// How long this turn has been running, and what it last called. Both are
-/// folds of the log: `since` is the timestamp of the status fact, and the tool
-/// is the last `ToolInvoked` — which this log only holds for its OWN agent
-/// (`trace::trace`), so another agent's row says nothing rather than guessing.
+/// WHICH PART OF THE TURN is running, how long it has been, and what it last
+/// called — in that reading order (28). All three are folds of the log: the
+/// stage is `stage::said`, `since` is the status fact's timestamp, and the tool
+/// is the last `ToolInvoked`, which this log holds only for its OWN agent.
 fn live_line(agent: &AgentRow, ctx: &Ctx) -> Option<String> {
-    let mut parts: Vec<String> = Vec::new();
+    let mut parts: Vec<String> = Vec::from_iter(crate::stage::said(ctx, &agent.name));
     if let Some(seconds) = elapsed(agent, ctx) {
         parts.push(format!("in this turn for {seconds}s"));
     }

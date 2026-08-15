@@ -3433,3 +3433,66 @@ OK. Stylesheets OK — 10 files, 6 font sizes, 0 raw spacing literals.
 never touched. The tree was already fmt-divergent; it is not in the gate set,
 which is why nobody noticed. Reformatting the tree inside a reviewable
 increment would bury it, so it is recorded and left.
+
+---
+
+## 28 — which part of the turn is running
+
+The board said `in this turn for 12s · last tool: read_file`. "It is working"
+without "on what part" is the weakest form of the promise this product makes,
+and the fact was already in the log: `STAGE_ENTERED` has been written since 20
+and `fold.rs` has read it since then to decide a turn is still up. No surface
+ever showed it.
+
+`crates/core/src/stage.rs` (new — `fold.rs`, `boardrow.rs` and `lib.rs` were
+all at exactly 200 lines) folds the agent's own facts to the current stage, and
+the live row opens with `stage 2 of 4: work`.
+
+- The stage is read from `STAGE_ENTERED` in the CURRENT turn only, never from
+  the `stages:` list the file declares — that list says what a turn WOULD do.
+  The list is used for one thing: counting a stage the log already named.
+- A turn with no stage fact yet gets no word. An agent whose file declares no
+  stages says nothing about stages at all — there is no `stage 1 of 1` (I15).
+- A stage never survives its turn: this asks `fold::awaits` where a turn ends
+  rather than keeping a second opinion about it.
+- The count leads and the name follows because the row already opens with a
+  status word, and `working · … · work` read as one word stuttering. The name
+  is still the roster's; a collision is not fixed by renaming either side, and
+  a test `include_str!`s `roster.rs` to keep the two vocabularies identical.
+
+Known limits: a delegate's card shows no stage (its facts are in its own
+Worker's log — the boundary `last_tool` already has), and a second pass says
+nothing about which lap.
+
+### What the critique agent found on the deployed build of 27
+
+Verdict FAIL. Nine defects; the walk also confirmed the doors land on the right
+view AND the right agent, the tile empty states are all words, and no green
+summary exists anywhere on the page.
+
+**The one that matters: 27 fixed the critic's contradiction in exactly one
+place.** The Agents view card no longer offers `Give critic a task`. The
+Dashboard — the DEFAULT view — still does, one click away, and the walker
+pressed it and watched the turn fail. Worse, the launcher's example tasks read
+"critic has a folder in Linux, so all three of these work" over three tasks
+that write a file and run `uname -a`, for an agent whose only tools are
+`read_file`, `list_files`, `find_files`. The same is live for `ask` and
+`scout`. The branch keys on WHETHER THE AGENT HAS A SPACE, not on whether it
+has anything that can act — and the Commands view already gets it right for
+the same agent ("critic has no shell — it can read this Linux but not change
+it"), so the correct fact is on the page twice, contradicting itself.
+
+That is the lesson of 27 restated: `ROLE_CRITIC` was the wrong axis. The
+question is not what an agent is CALLED, it is what its tools let it DO.
+`researcher` and `scout` carry the identical contradiction on the Agents view
+for the same reason — both say "Not for you" or "It never carries the plan
+out" beside a task button.
+
+Also found: at 1440 the "reflowing" board collapses to ONE 430px column beside
+1313px of empty space, so the widest viewport gets the narrowest board (768
+gets two columns, 1100 gets two, 1440 gets one) — the DECKCELLS assertion added
+in 27 does not catch it, because the probe's deck is wide and the shipped one
+is squeezed into `.dash-side`. The failure banner clips its own recovery
+sentence at 390 (48px shown of 179px) with no cue that there is more. The agent
+strip ends flush after five of eight chips at 390 while a tile on the same
+screen says "8 agents". The header's endpoint pill renders as "calls ge".

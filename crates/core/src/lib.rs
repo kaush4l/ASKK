@@ -62,6 +62,7 @@ mod scrollpanel;
 mod scrollrows;
 mod space;
 mod spacenote;
+mod stage; // which part of a turn is running — `fold.rs` and `boardrow.rs` were both at 200
 mod steered;
 mod told;
 mod tools;
@@ -86,7 +87,6 @@ pub use error::{provider_error, CoreError};
 pub use effects::execute_effect;
 pub use runtime::{drive, pump};
 pub use logs::{activity_since, memory_held, restore_log, window};
-
 use kernel::{Request, Response};
 
 /// Every loaded agent's name, in order — what the composition root needs to
