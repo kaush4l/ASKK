@@ -44,11 +44,14 @@ main {
      a port whose scrollbar is hidden, ending flush on the panel's rounded edge
      while a tile two inches up said `none of 8 agents` — a first-time reader
      counts five and reads eight. The cue is the mask `.status-strip` already
-     carries (strip.css): alpha, not colour, so this file is still geometry. */
+     carries (strip.css): alpha, not colour, so this file is still geometry.
+     …AND IT TURNS OFF AT THE END (31-walk F3): at `summarizer` the mask still
+     dimmed it and ate the panel's right border. The fade's value, and what
+     drives it to nothing at the end of the scroll, are strip.css's. */
   .stage-head .agent-tabs {
     flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
     scrollbar-width: none; overscroll-behavior-x: contain;
-    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--swipe-fade, 2rem)), transparent);
   }
   .stage-head .agent-tabs::-webkit-scrollbar { display: none; }
   .stage-head .agent-tabs .tab { flex: 0 0 auto; white-space: nowrap; }
@@ -62,8 +65,8 @@ main {
 .stage > .chat-view { flex: 1 1 auto; min-height: 0; }
 
 /* Every view is a mounted region; exactly one is not `hidden`. …and it is the
-   QUERY CONTAINER for the horizontal system below (R6-LAYOUT). A container
-   query, not a media query: folding the side panel hands 374px to the centre
+   QUERY CONTAINER for the horizontal system below (R6-LAYOUT) — a container
+   query, not a media one: folding the side panel hands the centre 374px
    without the window moving. */
 .view-panel { display: flex; flex-direction: column; gap: var(--s-4);
   container-type: inline-size; container-name: stage; }
@@ -77,7 +80,6 @@ main {
    Below the threshold there is one track and the companion falls under the
    column in DOM order — which is why the run state stays FIRST (R6-6). */
 .split, .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4); align-items: start; }
-
 .split > .beside, .dash-side { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
 
 /* `--measure` for a split INSIDE a card whose padding is already paid. THE
@@ -85,15 +87,12 @@ main {
    gutter, so the companion may EQUAL the column and never beat it. AND IT
    STACKS BEFORE IT SQUEEZES (R7-17): 66rem puts the floor at 26rem, the rail's
    own maximum.
-   …AND THE DASHBOARD IS NOT ONE OF THESE ANY MORE (28). The agent deck was
-   the launcher's companion, and a companion cannot hold a deck: the stage tops
-   out near 1264px, so a 608px reading column leaves at most ~560px of board —
-   under the 588 two 18rem tracks need — while the width one pixel BELOW the
-   66rem threshold gave the board the whole 992. Crossing the threshold took
-   the deck from three columns to one, and the widest viewport shipped the
-   narrowest board. No threshold fixes that: a companion is always narrower
-   than the row it was cut from. So the deck takes the ROW, and the surplus
-   goes to the margins rather than into the line (VIEWS.md §4). */
+   …AND THE DASHBOARD IS NOT ONE OF THESE ANY MORE (28). A companion cannot
+   hold a deck: a 608px reading column left the board ~560px of the 1264px
+   stage — under the 588 two 18rem tracks need — so crossing 66rem took the deck
+   from three columns to one and the widest viewport shipped the narrowest
+   board. No threshold fixes that; the deck takes the ROW and the surplus goes
+   to the margins rather than into the line (VIEWS.md §4). */
 @container stage (min-width: 66rem) {
   .split {
     grid-template-columns: minmax(0, var(--measure)) minmax(0, 1fr);
@@ -101,9 +100,13 @@ main {
   }
 }
 
-/* …which leaves each Dashboard card to cap itself: every panel in that column
-   is a reading column except the one holding the deck, which is a deck. */
-.dash-grid .panel:not(:has(.board)) { max-width: var(--column); }
+/* …which leaves the CONTENTS of a Dashboard card to cap themselves, never the
+   card (31-walk F5). 30 capped every panel here but the deck's at `--column`:
+   1440 shipped a 608px launcher over a 1136px board over a 608px space card,
+   ~530px of nothing beside the field you type a whole task into. The cap
+   belongs on the prose, which has its own (`surfaces.css`); the field is the
+   one thing in the card that is not prose, so the cap it gets is its own. */
+.dash-grid .grows { max-width: calc(2 * var(--measure) + var(--s-6)); }
 
 /* THE THIRD SHAPE — A DECK (R7-6b). A LIST of cards is not a reading column
    with a companion: each card is one reading column wide, as many across as

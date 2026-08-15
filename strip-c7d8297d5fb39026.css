@@ -75,6 +75,58 @@ header .chat-endpoint {
      The mask is the sole cue that it moves — the scrollbar is hidden above, and
      text shorn at a rounded edge reads as a bug, not as an invitation. */
   header .chat-endpoint .pill-tail { display: inline; }
-  .status-strip { mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent); }
+  .status-strip { mask-image: linear-gradient(to right, #000 calc(100% - var(--swipe-fade, 2rem)), transparent); }
   .status-strip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+}
+
+/* THE CUE TURNS OFF WHERE THERE IS NOWHERE TO GO (31-walk F3). Both sideways
+   scrollports carried this mask unconditionally, so at the end of the travel
+   the last pill — and, on the agent strip, the last chip — was still dimmed and
+   the container's right border had vanished: an affordance saying "keep going"
+   where going is impossible. The fade is a REGISTERED custom property, because
+   an unregistered one cannot interpolate, and a scroll-driven animation empties
+   it over the last fifth of the scroll.
+
+   THE `var()` FALLBACK IS NOT BELT AND BRACES — it is the mask (measured).
+   Chrome for Testing 145 does not honour the registration above: with no
+   animation applying a value, `--swipe-fade` computes to nothing, the whole
+   `calc()` is invalid at computed-value time and `mask-image` falls back to
+   NONE — every cue in this file gone, which is exactly how the reduced-motion
+   pass failed SWIPECUE. `var(--swipe-fade, 2rem)` is what makes the static mask
+   independent of both the registration and the animation. Where the
+   registration does take, the fade interpolates; where it does not, it steps.
+
+   `@supports` is load-bearing and not decoration. `animation: swipe-cue linear
+   both` with no timeline resolves to a 0s animation that fills straight to its
+   END state, which would leave a hidden-scrollbar scrollport with NO cue at all
+   — strictly worse than the always-on mask this replaces. Guarded, a browser
+   without scroll timelines keeps exactly today's behaviour.
+
+   Two ports, one machine: `.agent-tabs` (layout.css) uses these same two names.
+   Declared at top level because `@property` and `@keyframes` are document-wide;
+   both ports only ever apply them inside their own breakpoint. */
+@property --swipe-fade { syntax: "<length>"; inherits: false; initial-value: 2rem; }
+@keyframes swipe-cue { 0%, 80% { --swipe-fade: 2rem; } 100% { --swipe-fade: 0rem; } }
+
+/* …and what drives it, for BOTH ports, in one place. The agent strip's
+   geometry — the scrollport and the mask it wears — stays layout.css's, which
+   is geometry only and was at the 200-line ceiling (I12); the machine is here.
+   Each port keeps its own breakpoint, because outside it there is no mask and
+   an animation on an element with nothing to fade is noise.
+   REDUCED MOTION TAKES THE STATIC MASK, like a browser with no scroll
+   timelines: the promise this product makes is that NOTHING animates when it
+   is asked (`layout-audit.js`, REDUCEDMOTION), and an exception argued from
+   "this one is driven by your own scrolling" is still an exception. What is
+   lost is the withdrawal of a cue, not the cue. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    @media (max-width: 30rem) {
+      .status-strip { animation: swipe-cue linear both; animation-timeline: scroll(self inline); }
+    }
+    @media (max-width: 48rem) {
+      .stage-head .agent-tabs {
+        animation: swipe-cue linear both; animation-timeline: scroll(self inline);
+      }
+    }
+  }
 }

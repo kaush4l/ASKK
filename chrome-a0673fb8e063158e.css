@@ -43,6 +43,22 @@ header .pill {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
 }
 
+/* …AND ONE OF THEM IS INSIDE THE HEADER (31-walk F4). The misrouted-address
+   notice is written by `statusbar.rs`, whose whole output is the header's
+   content, so it takes a ROW of the header rather than a second mechanism: a
+   full basis, and the header is allowed to wrap for it at every width — which
+   `flex-wrap: nowrap` above otherwise forbids. `:has`, so nothing changes on
+   the ordinary header that has no banner in it. */
+header:has(> .banner) { flex-wrap: wrap; }
+/* `order`, because the component that renders this row is the header's FIRST
+   child and the rail switch is a sibling it cannot get after: without it the
+   notice takes row one and pushes every pill down. DOM order is unchanged, so
+   a screen reader still meets it beside the statuses it belongs with. */
+header > .banner {
+  flex: 1 0 100%; order: 9; margin: var(--s-2) 0 0; max-width: none;
+  background-color: var(--surface-1);
+}
+
 /* …EXCEPT IN THE ONE BAND WHERE THE SCREEN REFUSES (28), and this is measured,
    not chosen. The longest failure the core writes is 401px of remedy at 320,
    350 at 360, 324 at 390. `fold-probe.js` holds the routed view to a third of
