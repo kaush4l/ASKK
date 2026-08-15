@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Answers one factual question on its own and reports back in a few sentences.
+description: Not for you — another agent hands it one question and it reports back in a few sentences. It cannot see your conversation and cannot ask anything back.
 model: local
 temperature: 0.3
 engine: react
