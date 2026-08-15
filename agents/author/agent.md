@@ -52,9 +52,16 @@ JSON object, with newlines inside the prompt written as `\n`:
 - `tools` — a comma-separated list. NAME THEM: `""` means every built-in tool,
   including `write_agent`, and an agent that writes agents when its job is
   writing haiku is a capability nobody asked for. The built-ins are `now`,
-  `list_agents`, `read_agent` and `write_agent`; you can also name another
-  loaded agent, which makes that agent callable as a tool. Most agents need
-  none at all — write `now` if it needs the date, and nothing otherwise.
+  `list_agents`, `read_agent`, `write_agent`, `list_skills`, `read_skill` and
+  `web_search`; you can also name another loaded agent, which makes that agent
+  callable as a tool. Most agents need none at all — write `now` if it needs
+  the date, and nothing otherwise.
+  Name `list_skills, read_skill` when the agent's job has house rules written
+  down: it reads them when the job comes up instead of carrying them in its
+  prompt forever. Name `web_search` only when the job really needs the open
+  web, and say when you report back that it does nothing until a search
+  address is set in Settings — an agent whose one tool is refused is worse
+  than an agent that answers from what it knows.
 - `space` — usually `""`. Naming a space puts the agent in a shared workspace
   with the other agents in it, and makes that workspace's tools available for
   `tools` to name: `exec`, a real shell in the Linux running in this browser,
