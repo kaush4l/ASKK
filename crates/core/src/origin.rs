@@ -4,10 +4,9 @@
 //! neither of its two callers: the agent card and the identity panel both draw
 //! this line, and the point of it being one function is that those two cannot
 //! come to say different things about the same agent. The card's OTHER derived
-//! sentences live here for that reason and to hold I12: which tools it really
-//! has and which names resolved to nothing (R18-P1-7), who it can hand work to,
-//! the loop it runs, what its next turn would really call — and, since 29, what
-//! its tools let it DO at all.
+//! sentences live here for that reason and to hold I12: its real toolbox and the names
+//! that resolved to nothing (R18-P1-7), who it can hand work to, the loop it runs and
+//! how many laps of it a turn may take (31), the model it calls, and what it can DO.
 
 use agent::AgentSpec;
 
@@ -136,15 +135,18 @@ pub(crate) fn model_line(spec: &AgentSpec, found: Option<(&str, &str)>) -> Strin
 /// plan→work→verify→critique loop and no surface named it: `verify`, `stage`,
 /// `loop` and `delegat` each occurred zero times in the rendered text of all six
 /// views (cold walk, 21). `stages:` is the whole source — this invents no state (I8).
+/// …AND HOW MANY LAPS OF IT (31): `main` and `builder` declare the same stages, so this
+/// line read identically for the agent that works a goal across laps and the one that
+/// answers once. `passes:` is a CEILING — a lap that changes nothing ends the turn.
 pub(crate) fn loop_line(spec: &AgentSpec) -> String {
-    match spec.stages.is_empty() {
-        // NOT "one reply": with no `stages:` a react agent still takes as many
-        // tool rounds as it needs. What it does not do is plan first or check
-        // afterwards, and that is the difference worth stating.
-        true => "Runs no stages: it works and answers in one go, with no plan before it and no \
-                 check after."
+    match (spec.stages.is_empty(), spec.passes) {
+        // NOT "one reply": with no `stages:` a react agent still takes as many tool
+        // rounds as it needs. What it skips is the plan before and the check after.
+        (true, _) => "Runs no stages: it works and answers in one go, with no plan before it and \
+                      no check after."
             .to_string(),
-        false => format!("Runs in stages: {}.", spec.stages.join(" → ")),
+        (false, 1) => format!("Runs in stages: {}.", spec.stages.join(" → ")),
+        (false, n) => format!("Runs in stages, up to {n} laps a turn: {}.", spec.stages.join(" → ")),
     }
 }
 

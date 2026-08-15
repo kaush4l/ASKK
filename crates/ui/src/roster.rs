@@ -75,7 +75,9 @@ pub(crate) fn agent_panel(
                  over before answering — that stage is one agent rereading its own turn, and it \
                  is not the separate critic agent on a card below, which you hand finished work \
                  to. An agent that declares no stages does the work and \
-                 answers in one go. Every card says which stages its agent runs, and the \
+                 answers in one go. A stage is one step of a lap, and a pass is another lap of \
+                 the same steps — an agent takes one only if its file allows another and the \
+                 last lap changed something. Every card says which stages its agent runs, and the \
                  conversation names each stage as it opens."
             }
             // THE EDITOR IS BELOW, AND IT WAS 2168px DOWN (R15-IA). One link at

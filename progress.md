@@ -3597,3 +3597,78 @@ scrollbars whatever `scrollbar-color` says, so "the cut is VISIBLE" is not
 measurable here. CLIPPED asserts the narrower thing it can see — no child of
 the banner may cap itself, and the banner may hide prose only in the one band
 the CHROME floor forces.
+
+---
+
+## 31 — the loop you can see, and can find
+
+`passes.rs` has walked the `stages:` list more than once per turn since 22,
+with a MECHANICAL continue condition — a pass that mutated nothing and ran
+nothing does not earn another — precisely because asking a local 12B "are you
+done?" answers "not yet" forever. Its own comment says `PASS_SPENT` exists so
+the passes are visible, "a loop nobody can see is a token meter running behind
+a spinner". The live row never showed it, and of eight shipped agents exactly
+one declares `passes:` at all.
+
+The row now reads `stage 2 of 3: work · pass 2 of up to 4`, and the roster
+defines the second number beside the first: "A stage is one step of a lap, and
+a pass is another lap of the same steps — an agent takes one only if its file
+allows another and the last lap changed something." `loop_line` was
+byte-identical for `builder` and `main` (both declare the same three stages),
+so the one agent that laps was indistinguishable from the one that does not; it
+now says `Runs in stages, up to 4 laps a turn`.
+
+**`up to`, and pass 1 says nothing.** Two corrections the expert agent made to
+this brief, both right. `passes:` is a ceiling the mechanical condition can
+undercut, so a flat `pass 2 of 4` would read as a promise the engine never
+made — `the_row_names_the_budget_as_a_ceiling_and_not_a_plan`. And I asked for
+`pass 1 of 4`; there is no such fact, because `PASS_SPENT` is emitted when the
+SECOND lap opens, so printing it would mean reading the declared budget, which
+28's rule forbids.
+
+Also corrected: "nothing shows it" was too strong. The conversation has printed
+a pass notice since 22 and a passes-exhausted ending already reaches the board.
+What was missing was the live row mid-turn, and the catalogue.
+
+**`cargo fmt` is a trap in this tree.** The agent ran it, 152 files
+reformatted, and restored every one from HEAD by hand before reporting it
+against its own interest. Verified: the working tree was exactly its three
+files plus one test. The tree is not rustfmt-clean and the gate set does not
+check it — until someone reformats deliberately, do not run it here.
+
+### What the second critique walk found on ec86ff3
+
+All seven claimed fixes VERIFIED on the deployed page, with measurements: the
+four read-only agents show no task field and no Start; the board is 3 columns
+at 1440, 2 at 1100, 2 at 768, 1 at 390; the banner's `scrollHeight ==
+clientHeight` at every width; `.agent-tabs` carries the mask at 390; the
+Commands pane no longer offers a command to an agent with no shell; the retry
+says `Start the task again` under a task and `Send the message again` in chat.
+A real `uname -a` returned `Linux 4.15.0-54-cheerpx i386`, so the VM works.
+
+Ten new defects, and the top four are ONE defect: **the capability predicate
+from 29 has not reached the chrome.**
+
+- The header pill reads `critic's folder · Linux ready` with a green dot, for
+  an agent the launcher two inches below says "cannot run anything". The
+  legend on the same page defines green as "booted and free to take the next
+  command". Three surfaces, two answers.
+- The Commands pane tells `summarizer` — which has no space AND no tools —
+  that it "can read this Linux but not change it". It cannot read it by any
+  route. `author`, with more capability, gets the correct sentence, so the
+  wrong branch is picked for the agent with less.
+- `author`'s launcher says it "answers rather than builds" over three examples,
+  none of which asks it to write an agent — which is its only job, and
+  `write_agent` is in its tool list. The honest-examples pass of 29 demoted a
+  builder to a talker.
+- The board's eight cards are identical in shape, so nothing distinguishes the
+  four agents you can task from the four you cannot until you select one.
+
+The rest: `main`, `builder` and `researcher` ship byte-identical example
+prompts, teaching a reader that three different agents are the same agent;
+`web_search` is advertised on researcher's card while Settings holds a blank
+search endpoint whose own help text says blank means it cannot search; a
+first-time reader is steered into a failure with no forewarning, and the
+excellent explanation of what to do arrives 100% of the way down the funnel;
+the chip-strip fade never turns off, so it says "keep going" where going is
+impossible; an unknown hash silently rewrites to the Dashboard.

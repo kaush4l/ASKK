@@ -15,6 +15,12 @@
 //! turn with no stage fact yet gets no word at all, and a stage never survives
 //! the turn it belonged to: `fold::awaits` already knows where one turn ends
 //! and the next begins, and this asks it rather than keeping a second opinion.
+//!
+//! AND WHICH LAP OF THEM (31). 28's own known limit was that a second pass said
+//! nothing about which lap, so the one capability this product is built on — an
+//! agent that keeps working a goal after the first answer would have ended the
+//! turn — was invisible on the row a person watches. `PASS_SPENT` is the fact,
+//! under every rule above, and `lap` is the clause.
 
 use kernel::EventKind;
 
@@ -67,8 +73,44 @@ pub(crate) fn said(ctx: &Ctx, who: &str) -> Option<String> {
         .iter()
         .find(|spec| spec.name == who)
         .map_or(&[][..], |spec| spec.stages.as_slice());
-    match declared.iter().position(|s| *s == stage) {
-        Some(nth) => Some(format!("stage {} of {}: {stage}", nth + 1, declared.len())),
-        None => Some(stage),
+    let clause = match declared.iter().position(|s| *s == stage) {
+        Some(nth) => format!("stage {} of {}: {stage}", nth + 1, declared.len()),
+        None => stage,
+    };
+    // …AND WHICH LAP OF THEM (31). The stage says where in one walk of the list
+    // the turn is; only the lap says the list is being walked again.
+    Some(match lap(ctx, who) {
+        Some(lap) => format!("{clause} · {lap}"),
+        None => clause,
+    })
+}
+
+/// WHICH LAP OF THE STAGES THIS IS, `None` when it is the first one, when the
+/// agent cannot lap at all, or between turns.
+///
+/// Every rule `current` follows, for the same reasons: the lap is read from
+/// `PASS_SPENT` facts in the CURRENT turn only and never from the `passes:`
+/// budget the file declares, and `fold::awaits` says where the turn ended.
+///
+/// TWO SILENCES, BOTH DELIBERATE. An agent whose budget is 1 — every agent but
+/// `builder` — can never lap, so a lap count for it would be noise about a loop
+/// that does not exist (I15), and `of > 1` is what keeps it quiet. And the FIRST
+/// lap of any turn spends no fact, so it says nothing either: a lap count is
+/// what HAS happened, and one lap in, nothing has gone round yet.
+fn lap(ctx: &Ctx, who: &str) -> Option<String> {
+    let mut lap = None;
+    for kind in ctx.recent.iter().filter(|k| crate::fold::belongs_to(k, &ctx.me, who)) {
+        match kind {
+            EventKind::Custom { kind: k, payload_json } if k == agent::PASS_SPENT => {
+                lap = Some(agent::pass_of(payload_json)).filter(|(n, of)| *n > 0 && *of > 1);
+            }
+            EventKind::UserMessage { .. } => lap = None,
+            k if crate::fold::awaits(k) == Some(false) => lap = None,
+            _ => {}
+        }
     }
+    // "UP TO", BECAUSE `passes:` IS A CEILING AND NOT A PLAN. `agent::passes`
+    // ends the turn the moment a lap changes nothing, so `pass 2 of 4` beside a
+    // running turn would promise two more laps the machine may never take.
+    lap.map(|(n, of)| format!("pass {n} of up to {of}"))
 }
