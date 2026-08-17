@@ -1,7 +1,18 @@
 # Upgrade plan — the prompt becomes components
 
-Status: PROVISIONAL (§17). Written 2026-08-17 by the lead agent after two research passes:
-one over `PythonProject1/core/` (the ideology), one over this repo (the blast radius).
+Status: DONE, shipped 2026-08-17 (main `90fad03`, gh-pages `dc1b9b1`, live and hash-verified).
+Written by the lead agent after two research passes: one over `PythonProject1/core/`
+(the ideology), one over this repo (the blast radius). Kept as the record of WHY the
+shape is what it is; the increments in §5 are all landed.
+
+One deviation from §6 worth naming: the plan said keep `summarizer` and `critic` and
+remove five. That is what shipped. The five live on as test fixtures under
+`crates/agent/tests/agents/`, so the machinery they exercised — passes, the critique
+stage, authoring — is still covered.
+
+One increment was added that §5 did not foresee: the stage brief. It was prompt content
+posing as a `user:` turn, which is the same category error as the ordering bug, and it
+became the `directive` component at slot 95.
 
 ## 1. Why
 
