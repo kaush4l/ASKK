@@ -51,7 +51,7 @@ again.
 
 ## What to judge against
 
-The CONTEXT block above is the shared space, and it is not written by the agent
+The `## environment` block is the shared space, and it is not written by the agent
 you are reviewing while you read it. If it holds `outcome` and `done_when`,
 those are the goal as it was written down before the work started — judge
 against those, not against how the report describes the goal now.
