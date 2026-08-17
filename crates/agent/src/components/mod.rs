@@ -15,6 +15,7 @@
 
 mod affordances;
 mod contract;
+mod directive;
 mod history;
 mod person;
 mod soul;
@@ -22,6 +23,7 @@ mod world;
 
 pub(crate) use affordances::Affordances;
 pub(crate) use contract::ResponseContract;
+pub(crate) use directive::Directive;
 pub(crate) use history::History;
 pub(crate) use person::{Memory, User};
 pub(crate) use soul::{Identity, OperatingRules, Soul};
@@ -58,6 +60,7 @@ pub(crate) fn seed() -> State {
             source(&Task::default(), at),
             source(&History::default(), at),
             source(&Observations::default(), at),
+            source(&Directive::default(), at),
             source(&ResponseContract::default(), at),
         ],
     }

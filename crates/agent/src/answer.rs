@@ -43,7 +43,8 @@ pub(crate) fn answered(
     // what is not known about it. The nudge is a FACT, not a silent injection:
     // a round the machine added must be visible as the machine's.
     if !stages::verify_ahead(&state) && verify::hold(&mut state) {
-        paper::push_history(&mut state.paper, "user", verify::NUDGE, at);
+        let nudge = crate::components::Directive { text: verify::NUDGE.into() };
+        paper::set_component(&mut state.paper, &nudge, at);
         let effect = call_model(&mut state, at);
         return (state, vec![verify::nudged(), effect]);
     }

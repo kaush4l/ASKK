@@ -119,9 +119,11 @@ pub(crate) fn enter(state: &mut AgentState, at: Timestamp) -> Effect {
     if stage == PLAN && state.space.is_some() {
         said.push_str(DURABLE);
     }
-    if !said.is_empty() {
-        crate::paper::push_history(&mut state.paper, "user", &said, at);
-    }
+    // Into its own block, not into the conversation. A stage with no brief
+    // writes an empty one, which is how the block disappears on `work` rather
+    // than lingering with the previous stage's instruction still in it.
+    let directive = crate::components::Directive { text: said };
+    crate::paper::set_component(&mut state.paper, &directive, at);
     entered(&stage)
 }
 

@@ -84,11 +84,22 @@ fn mechanical_summary(s: &Section) -> String {
 /// their EFFECTIVE parts at the chosen fidelity: the document is what the
 /// model sees, never a full-fidelity intermediate (ADR-009 Option C's lie).
 pub fn assemble(state: &State, phase: PhaseId, budget: Budget) -> Document {
-    // Every section starts at Full with its real (recomputed) cost.
+    // Every section starts at Full with its real (recomputed) cost — except
+    // one with nothing to say, which starts Elided. A component that does not
+    // apply this turn (no stage brief, no observations yet) vanishes from the
+    // prompt rather than rendering an empty heading: Elided is how the paper
+    // already spells "absent", and it is the level at which empty IS the
+    // content, so the law holds without an exception written for it.
     let mut work: Vec<(SectionSource, Fidelity, u32)> = state
         .sources
         .iter()
-        .map(|src| (src.clone(), Fidelity::Full, cost(&src.section.parts)))
+        .map(|src| {
+            let start = match src.section.parts.is_empty() {
+                true => Fidelity::Elided,
+                false => Fidelity::Full,
+            };
+            (src.clone(), start, cost(&src.section.parts))
+        })
         .collect();
     // Ordering is structural: the slot decides, and nothing else. The sort is
     // stable, so two components sharing a slot keep the order they were

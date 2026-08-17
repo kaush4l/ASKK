@@ -68,6 +68,13 @@ fn rendered_at(question: &str, stages: &[&str]) -> String {
         .join("")
 }
 
+/// The paper's own headings. A heading is a line that STARTS with `## `;
+/// `main`'s file mentions block names inline, in backticks, and matching those
+/// would have this file assert against its own documentation.
+fn heads(prompt: &str) -> Vec<&str> {
+    prompt.lines().filter(|l| l.starts_with("## ")).collect()
+}
+
 /// The working turn — the one that can act, and so the one whose prompt has
 /// everything in it.
 fn rendered(question: &str) -> String {
@@ -96,10 +103,7 @@ fn the_prompt_opens_with_who_and_closes_with_how_to_reply() {
         "the first thing the model reads is who it is: {:?}",
         &prompt[..prompt.len().min(80)]
     );
-    let headings: Vec<&str> = prompt
-        .lines()
-        .filter(|l| l.starts_with("## "))
-        .collect();
+    let headings = heads(&prompt);
     assert_eq!(
         headings.last(),
         Some(&"## response_contract"),
@@ -113,10 +117,7 @@ fn the_prompt_opens_with_who_and_closes_with_how_to_reply() {
 #[test]
 fn every_component_appears_exactly_once_in_slot_order() {
     let prompt = rendered("hello");
-    let headings: Vec<&str> = prompt
-        .lines()
-        .filter(|l| l.starts_with("## "))
-        .collect();
+    let headings = heads(&prompt);
     assert_eq!(
         headings,
         vec![
@@ -200,7 +201,7 @@ fn a_planning_turn_is_shown_no_tools_at_all() {
 #[test]
 fn the_agent_files_own_headings_do_not_compete_with_the_frame() {
     let prompt = rendered("hello");
-    let top: Vec<&str> = prompt.lines().filter(|l| l.starts_with("## ")).collect();
+    let top = heads(&prompt);
     assert!(
         top.iter().all(|h| h.chars().nth(3).is_some_and(char::is_lowercase)),
         "only the paper's own blocks are top level; got {top:?}"
@@ -232,4 +233,40 @@ fn tools_are_shown_as_the_literal_shape_of_a_call() {
         block.contains("one line, separated by commas, and run at the same time"),
         "…and the rule for ordering calls travels with them"
     );
+}
+
+/// The stage brief is its OWN block, not a turn somebody took. It used to be
+/// pushed into the transcript as a bracketed `user:` line, which put words the
+/// person never said into the record of what they said.
+#[test]
+fn a_stage_brief_is_a_block_and_not_a_forged_user_turn() {
+    let planning = rendered_at("add a health check", &["plan", "work"]);
+    assert!(
+        heads(&planning).contains(&"## directive"),
+        "the instruction for this turn has a block of its own"
+    );
+    assert!(planning.contains("OUTCOME"), "…carrying the brief");
+    let history = planning
+        .split("## history")
+        .nth(1)
+        .expect("a history block")
+        .split("\n## ")
+        .next()
+        .unwrap();
+    assert!(
+        !history.contains("OUTCOME"),
+        "…and the transcript records only what was actually said: {history}"
+    );
+    // The brief sits after the conversation and immediately before the shape
+    // of the reply — the last instruction read before writing one.
+    let d = planning.find("## directive").unwrap();
+    let r = planning.find("## response_contract").unwrap();
+    assert!(planning.find("## history").unwrap() < d && d < r);
+}
+
+/// A turn with no brief renders no empty block. A component with nothing to
+/// say vanishes rather than heading a blank space.
+#[test]
+fn a_turn_with_no_brief_has_no_directive_block() {
+    assert!(!heads(&rendered("hello")).contains(&"## directive"));
 }

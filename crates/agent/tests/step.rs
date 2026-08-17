@@ -52,9 +52,13 @@ fn work_turn_user_message_to_call_model_to_reply() {
             audio: false
         }
     );
-    // The document is a real, law-abiding 11-section paper carrying the task.
+    // The document is a real, law-abiding paper carrying the task: the eleven
+    // standing blocks plus `directive`, which is Elided on a turn with no
+    // stage instruction and so reaches the model as nothing at all.
     validate(document).unwrap();
-    assert_eq!(document.sections.len(), 11);
+    assert_eq!(document.sections.len(), 12);
+    let directive = document.sections.iter().find(|s| s.id.0 == "directive").unwrap();
+    assert_eq!(directive.fidelity, context::Fidelity::Elided, "no brief, no block");
     let task = document.sections.iter().find(|s| s.id.0 == "task").unwrap();
     assert!(matches!(&task.parts[0], Part::Text { text } if text == "Hello there"));
 

@@ -45,6 +45,9 @@ pub enum Slot {
     History = 80,
     /// Results of the last actions.
     Observations = 90,
+    /// What this turn is being asked to do, before replying. Last of the
+    /// content, because it is the instruction the reply must satisfy.
+    Directive = 95,
     /// The exact shape of the expected reply. Always last.
     Response = 99,
 }
