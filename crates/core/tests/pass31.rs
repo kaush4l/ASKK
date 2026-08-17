@@ -288,7 +288,7 @@ fn the_card_says_which_shipped_agent_works_across_laps() {
             ("main".to_string(), include_str!("../../../public/agents/main/agent.md").to_string()),
             (
                 "builder".to_string(),
-                include_str!("../../../public/agents/builder/agent.md").to_string(),
+                include_str!("../../agent/tests/agents/builder.md").to_string(),
             ),
         ],
     );

@@ -246,7 +246,7 @@ fn an_agent_gets_the_skill_tools_only_when_its_file_names_them() {
 #[test]
 fn the_shipped_agents_that_opted_in_name_both_tools() {
     for (dir, text) in [
-        ("builder", include_str!("../../../public/agents/builder/agent.md")),
+        ("builder", include_str!("agents/builder.md")),
         ("main", include_str!("../../../public/agents/main/agent.md")),
     ] {
         let spec = agent::parse_agent_file(dir, text).expect("the shipped file parses");
@@ -265,7 +265,7 @@ fn the_shipped_agents_that_opted_in_name_both_tools() {
 /// built-in fails here instead of quietly narrowing what can be built.
 #[test]
 fn the_agent_that_writes_agents_is_told_every_builtin_there_is() {
-    let prompt = include_str!("../../../public/agents/author/agent.md");
+    let prompt = include_str!("agents/author.md");
     for tool in agent::builtin_tools().tools {
         assert!(
             prompt.contains(&format!("`{}`", tool.name)),

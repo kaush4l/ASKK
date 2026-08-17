@@ -40,13 +40,13 @@ fn block_on<F: Future>(fut: F) -> F::Output {
 }
 
 const SHIPPED: [(&str, &str); 8] = [
-    ("ask", include_str!("../../../public/agents/ask/agent.md")),
-    ("author", include_str!("../../../public/agents/author/agent.md")),
-    ("builder", include_str!("../../../public/agents/builder/agent.md")),
+    ("ask", include_str!("../../agent/tests/agents/ask.md")),
+    ("author", include_str!("../../agent/tests/agents/author.md")),
+    ("builder", include_str!("../../agent/tests/agents/builder.md")),
     ("critic", include_str!("../../../public/agents/critic/agent.md")),
     ("main", include_str!("../../../public/agents/main/agent.md")),
-    ("researcher", include_str!("../../../public/agents/researcher/agent.md")),
-    ("scout", include_str!("../../../public/agents/scout/agent.md")),
+    ("researcher", include_str!("../../agent/tests/agents/researcher.md")),
+    ("scout", include_str!("../../agent/tests/agents/scout.md")),
     ("summarizer", include_str!("../../../public/agents/summarizer/agent.md")),
 ];
 
