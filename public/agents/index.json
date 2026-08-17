@@ -1,13 +1,8 @@
 {
-  "comment": "The agent manifest. A static host cannot list a directory, so this file IS the directory listing: add a folder under public/agents/ and add its name here, or the app will never fetch it. Order is irrelevant; the loader sorts by name.",
+  "comment": "The agent manifest. A static host cannot list a directory, so this file IS the directory listing: add a folder under public/agents/ and add its name here, or the app will never fetch it. Order is irrelevant; the loader sorts by name. Three entries, and only one of them is an agent you talk to: `main` is the assistant, and `summarizer` and `critic` are machinery — found by the `role:` they declare, called by the loop rather than by a model, and never offered as tools.",
   "agents": [
-    "ask",
-    "author",
-    "builder",
     "critic",
     "main",
-    "researcher",
-    "scout",
     "summarizer"
   ]
 }

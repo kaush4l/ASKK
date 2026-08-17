@@ -6,7 +6,7 @@
 use agent::{step, AgentState, Effect};
 use kernel::{Event, EventId, EventKind, Timestamp, ToolId};
 
-const BUILDER: &str = include_str!("../../../public/agents/builder/agent.md");
+const BUILDER: &str = include_str!("agents/builder.md");
 const MAIN: &str = include_str!("../../../public/agents/main/agent.md");
 
 fn ev(kind: EventKind) -> Event {

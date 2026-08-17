@@ -10,7 +10,7 @@ fn shipped() -> Vec<(&'static str, &'static str)> {
         ("main", include_str!("../../../public/agents/main/agent.md")),
         (
             "researcher",
-            include_str!("../../../public/agents/researcher/agent.md"),
+            include_str!("agents/researcher.md"),
         ),
         (
             "summarizer",
@@ -18,7 +18,7 @@ fn shipped() -> Vec<(&'static str, &'static str)> {
         ),
         (
             "author",
-            include_str!("../../../public/agents/author/agent.md"),
+            include_str!("agents/author.md"),
         ),
     ]
 }

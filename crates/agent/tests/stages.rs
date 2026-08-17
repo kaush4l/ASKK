@@ -7,7 +7,7 @@ use agent::{parse_agent_file, step, AgentState, Effect};
 use kernel::{Event, EventId, EventKind, Timestamp};
 
 const MAIN: &str = include_str!("../../../public/agents/main/agent.md");
-const SCOUT: &str = include_str!("../../../public/agents/scout/agent.md");
+const SCOUT: &str = include_str!("agents/scout.md");
 const SUMMARIZER: &str = include_str!("../../../public/agents/summarizer/agent.md");
 /// The manifest itself, so the collision below is checked against what the app
 /// would actually FETCH rather than against whatever folders happen to exist.

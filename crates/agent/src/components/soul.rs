@@ -42,11 +42,39 @@ impl Component for Soul {
         0
     }
     fn render(&self) -> Vec<Part> {
-        text(self.text.trim())
+        text(nested(self.text.trim()))
     }
     fn applies(&self) -> bool {
         !self.text.trim().is_empty()
     }
+}
+
+/// Push every markdown heading in an agent file down one level.
+///
+/// An `agent.md` is written as a document, so it uses `##` for its own
+/// sections — "## Tools", "## The shared space". The paper uses `##` for the
+/// blocks it assembles. Rendered as-is the two are indistinguishable, and the
+/// model reads one flat list in which the agent's prose about tools sits at
+/// the same level as the actual list of tools it may call. Demoting the file's
+/// headings makes the frame outrank the content, which is what it is.
+///
+/// Fenced code is left alone: a `#` at the start of a line inside a fence is a
+/// shell comment, and rewriting it would corrupt an example the agent meant to
+/// give.
+fn nested(body: &str) -> String {
+    let mut fenced = false;
+    body.lines()
+        .map(|line| {
+            if line.trim_start().starts_with("```") {
+                fenced = !fenced;
+            }
+            match !fenced && line.starts_with('#') {
+                true => format!("#{line}"),
+                false => line.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Name and one-line role. Separate from [`Soul`] so a long character brief

@@ -14,7 +14,7 @@ use kernel::{Event, EventId, EventKind, Timestamp, ToolId};
 use agent::{adopt_spec, ended_why, parse_agent_file, step, AgentState, Effect};
 
 const CRITIC: &str = include_str!("../../../public/agents/critic/agent.md");
-const BUILDER: &str = include_str!("../../../public/agents/builder/agent.md");
+const BUILDER: &str = include_str!("agents/builder.md");
 const INDEX: &str = include_str!("../../../public/agents/index.json");
 
 /// A caller that may call the critic, cut to the bone.
