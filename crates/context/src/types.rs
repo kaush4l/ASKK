@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use kernel::{ModuleId, PhaseId, SectionId, Timestamp, Version};
 
+use crate::slot::Slot;
+
 /// Multimodal content parts (§8.6) — bytes, not URLs (RESEARCH: the canonical
 /// Part carries data so `render` can feed any provider). A `String` pipeline
 /// here would be the rewrite §8.1 warns about; this enum is the insurance.
@@ -34,8 +36,10 @@ pub enum Part {
     },
 }
 
-/// Stability classes (§8.3, DOMAIN §3). Declaration order IS the sort order
-/// (derived `Ord`) — the line that makes provider prompt caching hit.
+/// Stability classes (§8.3, DOMAIN §3). No longer the sort key — that is
+/// [`Slot`]'s job now — but still the property that makes provider prompt
+/// caching hit: slots are assigned so the cacheable head stays monotonic in
+/// this order, and `validate` enforces it up to the pinned tail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Stability {
     Static,
@@ -89,6 +93,9 @@ pub struct Section {
     pub id: SectionId,
     /// One sentence: the question this section answers for the model.
     pub intent: String,
+    /// Where this sits in the prompt — the sort key. Separate from
+    /// `stability`, which says only how often the content changes.
+    pub slot: Slot,
     pub stability: Stability,
     /// Lower survives longer when the budget bites (DOMAIN: P0 never degrades).
     pub priority: u8,

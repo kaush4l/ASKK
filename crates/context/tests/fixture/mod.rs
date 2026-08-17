@@ -2,11 +2,31 @@
 //! Spike C's `State::example()`: every section populated, multimodal parts,
 //! enough history mass for a budget to bite. Timestamps are fixed data (I7).
 
-use context::{Fidelity, Part, Provenance, Section, SectionSource, Stability, State};
+use context::{Fidelity, Part, Provenance, Section, SectionSource, Slot, Stability, State};
 use kernel::{ModuleId, SectionId, Timestamp, Version};
 
 fn text(t: &str) -> Vec<Part> {
     vec![Part::Text { text: t.into() }]
+}
+
+/// The canonical eleven, each at the slot it owns. A lookup rather than an
+/// argument: the fixture is the STARTER SET, and letting a test place `soul`
+/// anywhere but first would let it prove something the real paper cannot do.
+fn slot_for(id: &str) -> Slot {
+    match id {
+        "soul" => Slot::Soul,
+        "identity" => Slot::Identity,
+        "operating_rules" => Slot::OperatingRules,
+        "affordances" => Slot::Affordances,
+        "user" => Slot::User,
+        "memory" => Slot::Memory,
+        "environment" => Slot::Environment,
+        "task" => Slot::Task,
+        "history" => Slot::History,
+        "observations" => Slot::Observations,
+        "response_contract" => Slot::Response,
+        other => panic!("fixture section '{other}' has no slot"),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -23,6 +43,7 @@ fn src(
         section: Section {
             id: SectionId(id.into()),
             intent: intent.into(),
+            slot: slot_for(id),
             stability,
             priority,
             fidelity: Fidelity::Full,

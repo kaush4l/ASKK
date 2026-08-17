@@ -119,11 +119,32 @@ fn validate_rejects_law_violations() {
     ));
 
     let mut interleaved = good.clone();
-    interleaved.sections.swap(0, 10); // Volatile before Static
+    interleaved.sections.swap(0, 9); // Volatile observations before Static soul
     assert!(matches!(
         validate(&interleaved),
         Err(ContextError::InterleavedStability { .. })
     ));
+
+    // The pinned tail must be last, must exist, and must be alone.
+    let mut tail_adrift = good.clone();
+    tail_adrift.sections.swap(0, 10);
+    assert!(matches!(
+        validate(&tail_adrift),
+        Err(ContextError::TailNotLast { .. })
+    ));
+
+    let mut no_tail = good.clone();
+    no_tail.sections.pop();
+    assert!(matches!(
+        validate(&no_tail),
+        Err(ContextError::TailCount { found: 0 })
+    ));
+
+    // A prompt with no soul and no identity is an agent that was never told
+    // who it is — rejected rather than rendered.
+    let mut headless = good.clone();
+    headless.sections.retain(|s| !s.slot.is_head());
+    assert!(matches!(validate(&headless), Err(ContextError::NoHead)));
 
     let mut below_floor = good.clone();
     below_floor.sections[0].fidelity = Fidelity::Elided; // soul floors at Summarized
@@ -141,9 +162,15 @@ fn validate_rejects_law_violations() {
     ));
 }
 
-/// Ordering: stable-first, canonical §8.2 order within each class.
+/// Ordering: by slot, with both ends pinned.
+///
+/// The old version of this test asserted `response_contract` FOURTH, because
+/// order came from `Stability` alone and the contract is declared Static. That
+/// put the shape of the reply above the conversation it was a reply to. The
+/// slot type exists to end that: the soul opens the prompt and the contract
+/// closes it, by construction rather than by luck.
 #[test]
-fn sections_ordered_most_stable_first() {
+fn sections_ordered_by_slot_with_both_ends_pinned() {
     let doc = assemble(&fixture::example(), PhaseId::Work, Budget::unlimited());
     let ids: Vec<&str> = doc.sections.iter().map(|s| s.id.0.as_str()).collect();
     assert_eq!(
@@ -152,7 +179,6 @@ fn sections_ordered_most_stable_first() {
             "soul",
             "identity",
             "operating_rules",
-            "response_contract",
             "affordances",
             "user",
             "memory",
@@ -160,12 +186,32 @@ fn sections_ordered_most_stable_first() {
             "task",
             "history",
             "observations",
+            "response_contract",
         ]
     );
-    assert!(doc
-        .sections
-        .windows(2)
-        .all(|w| w[0].stability <= w[1].stability));
+    assert_eq!(*ids.first().unwrap(), "soul", "the soul opens the prompt");
+    assert_eq!(
+        *ids.last().unwrap(),
+        "response_contract",
+        "the reply's shape is the last thing read before writing one"
+    );
+}
+
+/// The cacheable head stays stability-monotonic even though the pinned tail
+/// breaks it. That is the whole trade: everything up to the last section is
+/// still a valid cache prefix, and the one section that violates the order is
+/// the one sitting after the volatile blocks, where no cache was reachable
+/// anyway.
+#[test]
+fn the_cacheable_head_is_still_monotonic() {
+    let doc = assemble(&fixture::example(), PhaseId::Work, Budget::unlimited());
+    let head = &doc.sections[..doc.sections.len() - 1];
+    assert!(head.windows(2).all(|w| w[0].stability <= w[1].stability));
+    let tail = doc.sections.last().unwrap();
+    assert!(tail.slot.is_tail());
+    // …and it is exactly the section whose content is static but whose
+    // position is late, which is the case the exemption was written for.
+    assert_eq!(tail.stability, Stability::Static);
 }
 
 /// (5) Golden: the rendered paper, byte for byte. A prompt regression is a

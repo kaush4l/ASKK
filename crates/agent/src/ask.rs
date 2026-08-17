@@ -7,6 +7,7 @@
 use context::ProviderFormat;
 use kernel::EndpointName;
 
+use crate::components::{Affordances, Environment, ResponseContract as Contract};
 use crate::effect::Effect;
 use crate::paper;
 use crate::phase::{v1_phases, PhaseConfig, ResponseContract};
@@ -41,12 +42,17 @@ pub(crate) fn scoped_tools(state: &AgentState, cfg: &PhaseConfig) -> Toolbox {
 pub(crate) fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effect {
     let cfg = config(state);
     let tools = scoped_tools(state, &cfg);
-    paper::set_text(&mut state.paper, "affordances", &tools.instructions());
-    paper::set_text(&mut state.paper, "response_contract", &contract_text(&cfg, &tools));
+    // The three sections that are rebuilt for every single call, each from the
+    // component that owns its shape. What the model may call and what it is
+    // told it may call cannot drift, because both come from one toolbox (I13).
+    paper::set_component(&mut state.paper, &Affordances::new(tools.usages()), at);
+    paper::set_component(&mut state.paper, &contract(&cfg, &tools), at);
     // Fresh every request, never cached: a cached clock is a wrong clock
     // (Python `Engine.context`).
-    let environment = crate::now::environment(at, state.space.as_ref());
-    paper::set_dynamic(&mut state.paper, "environment", &environment, at);
+    let environment = Environment {
+        text: crate::now::environment(at, state.space.as_ref()),
+    };
+    paper::set_component(&mut state.paper, &environment, at);
     Effect::CallModel {
         document: context::assemble(&state.paper, state.phase, cfg.budget),
         // G4 target: the local OpenAI-compatible proxy, text-only.
@@ -61,14 +67,15 @@ pub(crate) fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effec
     }
 }
 
-/// What the phase demands back, in words the model can obey.
-pub(crate) fn contract_text(cfg: &PhaseConfig, tools: &Toolbox) -> String {
+/// What the phase demands back, as the component that will render it.
+///
+/// The envelope form is offered only when there is something to call: telling
+/// a model it may call tools and then showing it none is an invitation to
+/// invent one.
+pub(crate) fn contract(cfg: &PhaseConfig, tools: &Toolbox) -> Contract {
     match (cfg.contract, tools.is_empty()) {
-        (ResponseContract::ToolEnvelope, false) => "Either answer the user in plain prose, or \
-             call tools by writing the calls exactly as AFFORDANCES shows them and nothing \
-             else. Results come back on lines beginning `Result:` — read them, then answer."
-            .into(),
-        _ => "Reply in plain prose to the user's message. Be concise.".into(),
+        (ResponseContract::ToolEnvelope, false) => Contract::tool_envelope(),
+        _ => Contract::prose(),
     }
 }
 

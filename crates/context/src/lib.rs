@@ -7,14 +7,20 @@
 //! G3 interface freeze: types and signatures only; bodies are `todo!()`.
 
 mod assemble;
+mod component;
 mod error;
+mod law;
 mod openai;
 mod render;
+mod slot;
 mod state;
 mod types;
 
-pub use assemble::{assemble, validate};
+pub use assemble::assemble;
+pub use law::validate;
+pub use component::{text, Component};
 pub use error::ContextError;
+pub use slot::Slot;
 // PROVISIONAL (G4): the provider wire writer/reader — see openai.rs.
 pub use openai::{openai_reply_text, openai_request_body, openai_usage};
 pub use render::{content_hash, render, ContentPart, Message, ProviderFormat, Role};

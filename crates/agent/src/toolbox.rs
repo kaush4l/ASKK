@@ -49,19 +49,22 @@ impl Toolbox {
 
     /// The toolbox rendered for the model — one line per tool, then the layout
     /// rule. This text reaches a model only as a Document section (I13).
+    /// One `name(args): description` line per tool, in toolbox order — what
+    /// the affordances component carries. The component holds these rather
+    /// than the tools themselves: a tool is behaviour, a component is a value,
+    /// and this line was the only thing the prompt ever wanted from one.
+    pub fn usages(&self) -> Vec<String> {
+        self.tools.iter().map(Tool::usage).collect()
+    }
+
+    /// The affordances block, as the model will read it.
+    ///
+    /// This used to build the block itself, and was the second place in the
+    /// codebase that knew what a tool looks like written down. It now asks the
+    /// component that owns that shape, so there is exactly one answer to the
+    /// question and no way for the two to drift.
     pub fn instructions(&self) -> String {
-        if self.tools.is_empty() {
-            return "No tools are installed; answer from what you know.".into();
-        }
-        let lines: Vec<String> = self.tools.iter().map(Tool::usage).collect();
-        format!(
-            "AVAILABLE TOOLS\n\n{}\n\nCall them exactly as written above. Calls that do not \
-             depend on each other go on one line, separated by commas, and run at the same \
-             time. A call that needs an earlier call's result goes on its own line — lines \
-             run in order, top to bottom. Results come back labelled with the tool name, in \
-             the order you wrote the calls.",
-            lines.join("\n")
-        )
+        crate::components::Affordances::new(self.usages()).text()
     }
 
     /// Check one call before it can run. `Err` is the refusal to hand back to

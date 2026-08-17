@@ -13,6 +13,9 @@
 use context::{ProviderFormat, State};
 use kernel::{EndpointName, PhaseId, Timestamp};
 
+use crate::components::{
+    Affordances, Environment, History, Identity, ResponseContract as Contract, Soul, Task,
+};
 use crate::effect::Effect;
 use crate::paper;
 use crate::state::AgentState;
@@ -101,15 +104,25 @@ pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect
     // cannot steer it (Python `compact`). A Document, like every other model
     // call in this codebase (I13).
     let mut sheet = paper::seed();
-    paper::set_text(&mut sheet, "soul", &state.summarizer_prompt);
-    paper::set_text(&mut sheet, "identity", "Name: summarizer.");
-    paper::set_text(&mut sheet, "affordances", "");
-    paper::set_text(&mut sheet, "response_contract", "Reply with the notes and nothing else.");
+    let soul = Soul { text: state.summarizer_prompt.clone() };
+    let identity = Identity { name: "summarizer".into(), description: String::new() };
+    paper::set_component(&mut sheet, &soul, at);
+    paper::set_component(&mut sheet, &identity, at);
+    paper::set_component(&mut sheet, &Affordances::default(), at);
+    paper::set_component(
+        &mut sheet,
+        &Contract::saying("Reply with the notes and nothing else."),
+        at,
+    );
     // No space: the summarizer reads the transcript and nothing else, and the
     // group's facts are not part of the conversation it is compressing.
-    paper::set_dynamic(&mut sheet, "environment", &crate::now::environment(at, None), at);
-    paper::set_task(&mut sheet, &transcript, at);
-    paper::set_history(&mut sheet, &[], at);
+    let environment = Environment { text: crate::now::environment(at, None) };
+    paper::set_component(&mut sheet, &environment, at);
+    paper::set_component(&mut sheet, &Task { text: transcript.clone() }, at);
+    // Deliberately empty, not the seeded marker: the summarizer's transcript
+    // is the TASK it was handed, and a second copy of a conversation in the
+    // history block would be the thing it is being asked to compress, twice.
+    paper::set_component(&mut sheet, &History { entries: Vec::new() }, at);
     Some(Effect::CallModel {
         document: context::assemble(&sheet, PhaseId::Work, crate::phase::v1_phases()[0].budget),
         format: ProviderFormat::OpenAiChat { vision: false, audio: false },

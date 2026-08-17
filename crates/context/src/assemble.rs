@@ -3,7 +3,6 @@
 
 use kernel::PhaseId;
 
-use crate::error::ContextError;
 use crate::state::{SectionSource, State};
 use crate::types::{Budget, CompactionReport, CompactionStep, Document, Fidelity, Part, Section};
 
@@ -76,8 +75,8 @@ fn mechanical_summary(s: &Section) -> String {
     )
 }
 
-/// Build the paper for one call — the frozen §8.1 signature. Sorts sources
-/// stable-first (stable sort: §8.2 order holds within a class), degrades to
+/// Build the paper for one call — the frozen §8.1 signature. Sorts sources by
+/// slot (stable sort: supplied order holds within a slot), degrades to
 /// budget by the ADR-009 loop (highest priority number first — LOWER number
 /// survives longer — ties to the later section, one level at a time, never
 /// past a floor), and records every step. Total, not fallible: malformed
@@ -91,8 +90,12 @@ pub fn assemble(state: &State, phase: PhaseId, budget: Budget) -> Document {
         .iter()
         .map(|src| (src.clone(), Fidelity::Full, cost(&src.section.parts)))
         .collect();
-    // §8.3: most stable first; stable sort keeps §8.2 order within a class.
-    work.sort_by_key(|(src, _, _)| src.section.stability);
+    // Ordering is structural: the slot decides, and nothing else. The sort is
+    // stable, so two components sharing a slot keep the order they were
+    // supplied in — deliberately NOT tie-broken on `Section::priority`, which
+    // is the budget rank. Letting a budget number reorder the prompt would be
+    // the same category error the slot type was introduced to end.
+    work.sort_by_key(|(src, _, _)| src.section.slot);
 
     let mut steps: Vec<CompactionStep> = Vec::new();
     loop {
@@ -141,42 +144,4 @@ pub fn assemble(state: &State, phase: PhaseId, budget: Budget) -> Document {
             steps,
         },
     }
-}
-
-/// Enforcement of the §8.3/DOMAIN rules as a checkable contract: mandatory
-/// non-empty intent, no empty sections (except at Elided, where empty IS the
-/// content), no degradation past a floor, no class interleaving, no duplicate
-/// ids. Public so install-time module tests and the golden suite share one
-/// judge instead of re-deriving the law.
-pub fn validate(doc: &Document) -> Result<(), ContextError> {
-    let mut seen: Vec<&kernel::SectionId> = Vec::new();
-    for (i, s) in doc.sections.iter().enumerate() {
-        if s.intent.trim().is_empty() {
-            return Err(ContextError::EmptyIntent {
-                section: s.id.clone(),
-            });
-        }
-        if s.parts.is_empty() && s.fidelity != Fidelity::Elided {
-            return Err(ContextError::EmptySection {
-                section: s.id.clone(),
-            });
-        }
-        if s.fidelity > s.floor {
-            return Err(ContextError::BelowFloor {
-                section: s.id.clone(),
-            });
-        }
-        if i > 0 && doc.sections[i - 1].stability > s.stability {
-            return Err(ContextError::InterleavedStability {
-                section: s.id.clone(),
-            });
-        }
-        if seen.contains(&&s.id) {
-            return Err(ContextError::DuplicateSection {
-                section: s.id.clone(),
-            });
-        }
-        seen.push(&s.id);
-    }
-    Ok(())
 }

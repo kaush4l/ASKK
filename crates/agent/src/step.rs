@@ -5,6 +5,7 @@
 use kernel::{Event, EventKind};
 
 use crate::ask::{call_model, config, scoped_tools};
+use crate::components::{Observations, Task};
 use crate::effect::Effect;
 use crate::paper;
 use crate::reply::{parse_reply, ParsedReply};
@@ -54,7 +55,7 @@ fn advance(mut state: AgentState, input: Event) -> (AgentState, Vec<Effect>) {
         // (I13) — no string prompt can exist here.
         EventKind::UserMessage { text, .. } => {
             state.task = Some(text.clone());
-            paper::set_task(&mut state.paper, &text, input.at);
+            paper::set_component(&mut state.paper, &Task { text: text.clone() }, input.at);
             paper::push_history(&mut state.paper, "user", &text, input.at);
             // …and `stopping` with them: a stop ends ONE turn, not the next.
             (state.pending_tools, state.tool_rounds, state.stopping) = (0, 0, false);
@@ -148,7 +149,8 @@ fn on_tool_result(
     at: kernel::Timestamp,
 ) -> (AgentState, Vec<Effect>) {
     paper::push_history(&mut state.paper, "Result", &result.line(), at);
-    paper::set_text(&mut state.paper, "observations", &result.line());
+    let seen = Observations { lines: vec![result.line()] };
+    paper::set_component(&mut state.paper, &seen, at);
     // THE FOLD, in log order — a write clears the flag, a command that printed
     // something after it sets it. `verify.rs` holds why order is enough.
     verify::observe(&mut state, &result.tool, result.ok, &result.output);

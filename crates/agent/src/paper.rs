@@ -1,11 +1,17 @@
-//! The agent's live paper: the two mutations one Work turn needs (task set,
-//! history append) plus adopting an agent file. The seeded starter sections
-//! live in `seed.rs`; the rolling window lives in `window.rs`.
+//! The agent's live paper: rebuilding a section from its component, appending
+//! to the window, and adopting an agent file. The components themselves live
+//! in `components/`; the rolling window lives in `window.rs`.
+//!
+//! There is no longer a way to write a string into a section from outside the
+//! component that owns it. That is the point: `set_text(paper, id, text)` let
+//! any caller invent both the content and, implicitly, its shape — and the two
+//! drifted, because nothing held them together. Now a caller can only hand
+//! over a component, and the component decides how it reads.
 
 use context::{Part, SectionSource, State};
 use kernel::Timestamp;
 
-pub(crate) use crate::seed::seed;
+pub(crate) use crate::components::seed;
 
 /// The agent that compacts every other agent's history (Python
 /// `registry.SUMMARIZER_AGENT`).
@@ -19,29 +25,15 @@ fn find<'a>(paper: &'a mut State, id: &str) -> &'a mut SectionSource {
         .expect("seeded section exists")
 }
 
-/// Replace the task section's content (Dynamic: provenance moves with it).
-pub(crate) fn set_task(paper: &mut State, text: &str, at: Timestamp) {
-    let s = find(paper, "task");
-    s.section.parts = vec![Part::Text { text: text.into() }];
-    s.section.provenance.produced_at = at;
-}
-
-/// Replace a whole section's text. The toolbox reaches the model through
-/// `affordances` and `response_contract` and through nothing else: there is no
-/// prompt string in this codebase that could name a tool (I13).
-pub(crate) fn set_text(paper: &mut State, id: &str, text: &str) {
-    let s = find(paper, id);
-    s.section.parts = vec![Part::Text { text: text.into() }];
-}
-
-/// Replace a Dynamic section's content AND move its provenance with it — the
-/// environment block is rebuilt from the injected clock every single call, so a
-/// section claiming it was produced at time zero would be a stale fact about a
-/// fresh one.
-pub(crate) fn set_dynamic(paper: &mut State, id: &str, text: &str, at: Timestamp) {
-    let s = find(paper, id);
-    s.section.parts = vec![Part::Text { text: text.into() }];
-    s.section.provenance.produced_at = at;
+/// Rebuild one section from the component that owns it.
+///
+/// This is the seam that makes the component contract real at runtime rather
+/// than only at seeding: the component renders itself, and its own declared
+/// slot, stability and floor come with the parts, so a section can never be
+/// shaped by one place and filled by another.
+pub(crate) fn set_component(paper: &mut State, c: &dyn context::Component, at: Timestamp) {
+    let s = find(paper, &c.id().0);
+    *s = crate::components::source(c, at);
 }
 
 /// Append one turn to the history section.
@@ -122,14 +114,16 @@ pub fn adopt_spec(
         state.summarizer_temperature = s.temperature;
     }
     state.critic = critic_among(spec, peers);
-    let soul = find(&mut state.paper, "soul");
-    soul.section.parts = vec![Part::Text {
-        text: spec.prompt.clone(),
-    }];
-    let identity = find(&mut state.paper, "identity");
-    identity.section.parts = vec![Part::Text {
-        text: format!("Name: {}. {}", spec.name, spec.description),
-    }];
+    // The agent file IS the soul and the identity — rebuilt through the
+    // components that own those shapes, so adopting a spec cannot produce a
+    // section shaped differently from a seeded one.
+    let soul = crate::components::Soul { text: spec.prompt.clone() };
+    let identity = crate::components::Identity {
+        name: spec.name.clone(),
+        description: spec.description.clone(),
+    };
+    set_component(&mut state.paper, &soul, Timestamp(0));
+    set_component(&mut state.paper, &identity, Timestamp(0));
 }
 
 /// WHO REVIEWS THIS AGENT'S WORK (25), by the job the file declares and not by

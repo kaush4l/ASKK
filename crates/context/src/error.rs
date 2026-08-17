@@ -23,4 +23,12 @@ pub enum ContextError {
     /// Two sections claim the same id; the paper's addressing would be
     /// ambiguous everywhere (compaction report, provenance, goldens).
     DuplicateSection { section: SectionId },
+    /// A tail-slot section is not last. Structurally impossible after a sort
+    /// by slot, so this names a component that declared the wrong slot.
+    TailNotLast { section: SectionId },
+    /// The paper needs exactly one response contract: none leaves the model
+    /// with no reply shape, two leave it with a contradiction.
+    TailCount { found: usize },
+    /// No soul and no identity — an agent that was never told who it is.
+    NoHead,
 }
