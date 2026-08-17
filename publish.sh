@@ -27,9 +27,13 @@ trunk build --release   # Trunk.toml: web/index.html -> dist/, public_url "./"
 # boots with the compiled-in built-ins only and no main agent (increment 03).
 [ -f "$DIR/agents/index.json" ] || fail "agent manifest missing: $DIR/agents/index.json"
 [ -f "$DIR/agents/main/agent.md" ] || fail "main agent missing: $DIR/agents/main/agent.md"
-# The create-agent superagent (increment 11): it is an ordinary agent file, so
-# without it the page has agent authoring but nothing that can be asked for it.
-[ -f "$DIR/agents/author/agent.md" ] || fail "author agent missing: $DIR/agents/author/agent.md"
+# The two machinery agents. Neither is talked to: they are found by the `role:`
+# they declare and called by the loop. Without the summarizer a long
+# conversation stops being compacted and quietly degrades to a pointer instead;
+# without the critic no turn can be reviewed. Both failures are silent at boot,
+# which is exactly why they are gated here.
+[ -f "$DIR/agents/summarizer/agent.md" ] || fail "summarizer missing: $DIR/agents/summarizer/agent.md"
+[ -f "$DIR/agents/critic/agent.md" ] || fail "critic missing: $DIR/agents/critic/agent.md"
 # The model catalogue (increment 04): without it the page has no endpoint at
 # all and every turn fails on EndpointUnknown.
 [ -f "$DIR/models.json" ] || fail "model catalogue missing: $DIR/models.json"
