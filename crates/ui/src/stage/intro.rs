@@ -35,10 +35,11 @@ pub(crate) const TAGLINE: &str = "This runs AI agents in your browser, and it ha
     there, the first turn will fail and say what to do — Settings is where the address is \
     changed. An agent whose file names a space also gets a folder in the Linux this page runs, \
     where it can write files and run commands, and it shares facts and notes with every other \
-    agent naming that space. Most agents take a turn in stages — plan what is wanted, do the \
-    work, then verify it by running something and reading what came back — and the conversation \
-    names each stage as it opens. Give an agent a task and walk away, or talk to it while it \
-    works.";
+    agent naming that space. Each turn opens by deciding how much work the message needs: a \
+    question it can answer gets one reply, something needing a tool gets as many steps as it \
+    takes, and something to build gets planned, worked, checked and criticised — and the \
+    conversation names each stage as it opens. Give an agent a task and walk away, or talk to \
+    it while it works.";
 
 /// The Commands view's one gloss. `Commands` names the panel you type into; the
 /// three panels beside it are that panel's leavings, and nothing on screen said
