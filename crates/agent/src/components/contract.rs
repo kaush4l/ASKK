@@ -7,17 +7,26 @@
 //! changed, nothing after that was going to be cached wherever it sat, so the
 //! position costs no cache that was reachable.
 
-use context::{text, Component, Fidelity, Part, Slot, Stability};
+use context::{text, Component, Fidelity, Form, Part, Slot, Stability};
 use kernel::SectionId;
+
+use super::respond::{ResponseObject, BOTH};
 
 /// The reply contract, carried as already-rendered text.
 ///
 /// Pre-rendered rather than computed at render time so the component stays a
 /// value whose hash covers the exact bytes the model will see — the thing that
 /// makes "identical key means identical prompt" true rather than nearly true.
+///
+/// `object` is the exception, and it is the reason this component has a second
+/// notation at all: a phase whose reply the machine will PARSE states its shape
+/// as fields, and those fields can be written as lines or as JSON. Prose has no
+/// second notation — asked for JSON, a paragraph is still a paragraph — so a
+/// contract with no object declares one form and means it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResponseContract {
     pub instructions: String,
+    pub object: Option<ResponseObject>,
 }
 
 impl Default for ResponseContract {
@@ -31,6 +40,15 @@ impl ResponseContract {
     pub fn prose() -> Self {
         ResponseContract {
             instructions: "Reply in plain prose to the user's message. Be concise.".into(),
+            object: None,
+        }
+    }
+
+    /// A reply the machine will parse, stated as the fields it must carry.
+    pub fn shaped(object: ResponseObject) -> Self {
+        ResponseContract {
+            instructions: String::new(),
+            object: Some(object),
         }
     }
 
@@ -43,6 +61,7 @@ impl ResponseContract {
                  the calls exactly as AFFORDANCES shows them and nothing else. Results come \
                  back on lines beginning `Result:` — read them, then answer."
                 .into(),
+            object: None,
         }
     }
 
@@ -51,6 +70,7 @@ impl ResponseContract {
     pub fn saying(instructions: impl Into<String>) -> Self {
         ResponseContract {
             instructions: instructions.into(),
+            object: None,
         }
     }
 }
@@ -78,7 +98,21 @@ impl Component for ResponseContract {
         0
     }
     fn render(&self) -> Vec<Part> {
-        text(self.instructions.trim())
+        self.render_in(Form::DEFAULT)
+    }
+    /// A shaped contract writes its object; a prose one has only its sentence,
+    /// in every notation.
+    fn render_in(&self, form: Form) -> Vec<Part> {
+        match &self.object {
+            Some(object) => object.render_in(form),
+            None => text(self.instructions.trim()),
+        }
+    }
+    fn forms(&self) -> &'static [Form] {
+        match self.object {
+            Some(_) => &BOTH,
+            None => &[Form::Markdown],
+        }
     }
     /// Always renders: a prompt with no reply shape is the one thing the
     /// assembler refuses to build.

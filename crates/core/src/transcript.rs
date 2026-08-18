@@ -41,7 +41,8 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
     // WHICH of these messages were STEERS and not new turns (R18-P0-1), by log
     // position, off the `core.steered` fact `step` writes when it takes one.
     let steers = crate::steered::steers(ctx, who);
-    for (nth, kind) in ctx.recent.iter().enumerate() {
+    // A CLEARED CONVERSATION STARTS LATER, not shorter (`clear::from`).
+    for (nth, kind) in ctx.recent.iter().enumerate().skip(crate::clear::from(ctx, who)) {
         if !belongs_to(kind, &ctx.me, who) {
             continue;
         }
@@ -195,7 +196,6 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
     }
     // `x-orphaned` was here (R5-18), for a second notice the Dashboard drew
     // under its form. R9-1 moved that truth INTO the launch card, off the board
-    // row's own `data-orphaned`, so the card says one thing and not two — and
-    // this header had no reader left.
+    // row's own `data-orphaned` — so this header had no reader left.
     response
 }

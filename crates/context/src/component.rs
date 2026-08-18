@@ -20,6 +20,7 @@
 
 use kernel::{ModuleId, SectionId, Timestamp, Version};
 
+use crate::form::Form;
 use crate::slot::Slot;
 use crate::types::{Fidelity, Part, Provenance, Section, Stability};
 
@@ -46,6 +47,29 @@ pub trait Component {
     /// collapsing it to text is the documented failure mode (§8.1). An empty
     /// vector means "nothing to say" and the assembler drops it.
     fn render(&self) -> Vec<Part>;
+
+    /// The notations this component can write itself in. The first is what
+    /// [`render`] produces; anything else in the list is reachable through
+    /// [`render_in`]. Declaring one is the common and honest case.
+    ///
+    /// [`render`]: Component::render
+    /// [`render_in`]: Component::render_in
+    fn forms(&self) -> &'static [Form] {
+        &[Form::Markdown]
+    }
+
+    /// This component in a particular notation.
+    ///
+    /// The default answers every request with the default rendering, which is
+    /// the truthful reply for a block of prose: asked for JSON, a paragraph is
+    /// still a paragraph. A component that means something different in another
+    /// notation overrides this and lists that notation in [`forms`].
+    ///
+    /// [`forms`]: Component::forms
+    fn render_in(&self, form: Form) -> Vec<Part> {
+        let _ = form;
+        self.render()
+    }
 
     /// One sentence: the question this component answers for the model.
     /// Mandatory and not decoration — it is the mechanism that stops prompts

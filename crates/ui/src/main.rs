@@ -1,5 +1,5 @@
 //! L3 (ARCHITECTURE §4): the Dioxus app. A handler calls `core::handle` through
-//! `WebApp::handle` — the seam unchanged (I4), no logic in JS (I5), layout (I8).
+//! `WebApp::handle` — seam unchanged (I4), no logic in JS (I5), layout (I8).
 
 use std::rc::Rc;
 

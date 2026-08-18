@@ -13,8 +13,9 @@ use kernel::Timestamp;
 
 pub(crate) use crate::components::seed;
 
-/// The agent that compacts every other agent's history (Python
-/// `registry.SUMMARIZER_AGENT`).
+/// The speaker a compaction call is attributed to. A LABEL on a model call,
+/// not an agent: `window::compaction` builds the sheet itself, so nothing
+/// looks this up in `public/agents/`.
 pub(crate) const SUMMARIZER: &str = "summarizer";
 
 fn find<'a>(paper: &'a mut State, id: &str) -> &'a mut SectionSource {
@@ -96,23 +97,14 @@ pub fn adopt_spec(
     (state.compact_at, state.keep_recent) = (spec.compact_at, spec.keep_recent);
     state.max_rounds = spec.max_rounds;
     // THE LOOP THIS AGENT RUNS, from its own file and nowhere else (20).
+    state.declared = spec.stages.clone();
     state.stages = spec.stages.clone();
     // …and how many times it may walk it (22).
     state.passes = spec.passes;
-    // The summarizer is an ordinary agent, found among the peers by name — the
-    // Python registry gives it to every OTHER engine as the thing that compacts
-    // a history, and to nobody as a tool (`registry.SUMMARIZER_AGENT`).
-    // …AND IT IS FOUND BY THE JOB IT DECLARES (20), falling back to the name.
-    // The fallback is not decoration: an agent file installed in this browser
-    // may replace `summarizer` without carrying the `role:` line, and dropping
-    // compaction silently is the exact failure the role key exists to end.
-    let by_role = crate::loader::role_holder(peers, crate::spec::ROLE_SUMMARIZER);
-    let holder = by_role.or_else(|| peers.iter().find(|p| p.name == SUMMARIZER));
-    if let Some(s) = holder.filter(|p| p.name != spec.name) {
-        state.summarizer_prompt = s.prompt.clone();
-        state.summarizer_model = s.model.clone();
-        state.summarizer_temperature = s.temperature;
-    }
+    // THE SUMMARIZER IS NOT AN AGENT ANY MORE. Compaction builds its own
+    // sheet with its own prompt (`window::SUMMARIZE`) and runs on this agent's
+    // model, so there is no peer to find and no role to hold. Three fields and
+    // a lookup went with it.
     state.critic = critic_among(spec, peers);
     // The agent file IS the soul and the identity — rebuilt through the
     // components that own those shapes, so adopting a spec cannot produce a

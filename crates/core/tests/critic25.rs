@@ -17,7 +17,7 @@ use adapters_test::{
 use core::{boot, drive, handle, install_agents, App, Ports};
 use kernel::{Request, Timestamp};
 
-const CRITIC: &str = include_str!("../../../public/agents/critic/agent.md");
+const CRITIC: &str = include_str!("../../agent/tests/agents/critic.md");
 
 /// A lead that can run a command, write a file and ask the critic.
 const LEAD: &str = "---\nname: main\ndescription: the lead\nspace: research\n\

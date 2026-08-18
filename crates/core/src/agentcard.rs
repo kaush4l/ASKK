@@ -178,7 +178,7 @@ pub(crate) fn card(
     // the declared loop and the delegation edge were each one press and one
     // scroll from anybody who had not been told they existed. This is the same
     // `agent-meta` line the fold uses, promoted; nothing is duplicated inside.
-    let mut runs = crate::origin::loop_line(spec);
+    let mut runs = crate::loopline::loop_line(spec);
     if let Some(peer) = crate::origin::peer_line(spec, peers) {
         runs.push_str(" · ");
         runs.push_str(&peer);

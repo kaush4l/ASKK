@@ -36,6 +36,11 @@ impl KvHandle {
 /// `None` = absent, not present-but-refused (ADR-006). Constructed per
 /// invocation from the module's effective grants; never stored.
 pub struct Ctx {
+    /// The handler asked for this agent's conversation to be WIPED. A flag and
+    /// not an action, for `emit`'s reason: the window lives on `App` and a
+    /// handler holds a projection of it, so the route records the intent and
+    /// the dispatcher carries it out (`clear::wipe`).
+    pub wipe: bool,
     pub kv: Option<KvHandle>,
     /// Injected time, if granted (I7: even built-ins never read a real clock).
     pub clock: Option<Timestamp>,

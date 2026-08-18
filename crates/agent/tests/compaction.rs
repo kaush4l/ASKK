@@ -1,11 +1,11 @@
-//! Compaction as a TURN: the summarizer is an ordinary agent whose own file
-//! steers the call, and the CONTEXT block is rebuilt from the injected clock
-//! every time. Split from `window.rs` (the pure arithmetic) for the 200-line
-//! rule (I12).
+//! Compaction as a TURN: a call the machine makes on its own sheet, whose reply
+//! is recorded as the summarizer's words and never as this agent's answer. The
+//! environment block is rebuilt from the injected clock every time. Split from
+//! `window.rs` (the pure arithmetic) for the 200-line rule (I12).
 
 use agent::{
     adopt_spec, environment, set_window, step, window, AgentSpec, AgentState, Effect,
-    SUMMARY_HEADING,
+    SUMMARIZE, SUMMARY_HEADING,
 };
 use kernel::{Event, EventId, EventKind, Timestamp};
 
@@ -55,15 +55,19 @@ fn reply(text: &str, at: Timestamp) -> Event {
     }
 }
 
-/// The summarizer is an ORDINARY agent: its own `agent.md` body is what steers
-/// the compaction call, its own catalogue key is what the call is made with,
-/// and the reply is recorded as ITS words — never as this agent's answer.
+/// THE SUMMARIZER IS A SHEET, NOT AN AGENT. It used to be a whole `agent.md`
+/// in `public/agents/`, found by the `role:` it declared and carried in three
+/// fields of every other agent's state — and a build that shipped without it
+/// stopped compacting and said nothing. What that file contributed was a system
+/// prompt, so the prompt is `agent::SUMMARIZE`, the call runs on this agent's
+/// own model, and there is nothing left to be missing.
+///
+/// What has NOT changed is the part that matters: the compaction call is not
+/// steered by the caller's prompt, and its reply is recorded as the
+/// summarizer's words rather than as this agent's answer.
 #[test]
-fn compaction_is_a_turn_taken_by_the_summarizer_agent() {
-    let peers = vec![
-        spec("main", "you are main", 4, 2),
-        spec("summarizer", "COMPRESS TRANSCRIPTS", 0, 2),
-    ];
+fn compaction_is_a_turn_taken_on_the_summarizers_own_sheet() {
+    let peers = vec![spec("main", "you are main", 4, 2)];
     let mut state = AgentState::new();
     adopt_spec(&mut state, &peers[0], &peers);
     set_window(
@@ -77,9 +81,9 @@ fn compaction_is_a_turn_taken_by_the_summarizer_agent() {
         panic!("expected one model call, got {effects:?}");
     };
     assert_eq!(speaker, "summarizer", "the reply belongs to the summarizer");
-    assert_eq!(model, "model-summarizer", "called with ITS catalogue key");
+    assert_eq!(model, "model-main", "one agent, one endpoint");
     let sent = format!("{document:?}");
-    assert!(sent.contains("COMPRESS TRANSCRIPTS"), "its own file steers it");
+    assert!(sent.contains(agent::SUMMARIZE), "the sheet's own prompt steers it");
     assert!(!sent.contains("you are main"), "and the caller's does not: {sent}");
     assert!(state.compacting, "the next reply is the summary, not an answer");
 

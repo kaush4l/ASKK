@@ -38,14 +38,17 @@ fn user(text: &str) -> Event {
 
 /// The real `main` agent, asked a real question, rendered for a real provider.
 ///
-/// `stages` overrides the loop the file declares. It matters here because
-/// `main` opens on `plan`, which is granted no tools on purpose — so the first
-/// prompt of a turn legitimately shows none, and a test that wants to see the
-/// toolbox has to ask for the stage that has one.
+/// `stages` overrides the loop the file declares — BOTH copies of it. `main`
+/// now declares `[strategy]`, and a turn begins by resetting the working list
+/// back to the declared one (`stages::open`), so setting only `stages` here
+/// would be overwritten before the first call was built. It matters because
+/// `strategy` and `plan` are granted no tools on purpose: a test that wants to
+/// see the toolbox has to ask for a stage that has one.
 fn rendered_at(question: &str, stages: &[&str]) -> String {
     let spec = parse_agent_file("main", MAIN).expect("the shipped main agent parses");
     let mut state = AgentState::new();
     adopt_spec(&mut state, &spec, &[]);
+    state.declared = stages.iter().map(|s| (*s).to_string()).collect();
     state.stages = stages.iter().map(|s| (*s).to_string()).collect();
     let (_, effects) = step(state, user(question));
     let document = effects
@@ -181,18 +184,35 @@ fn the_tools_shown_are_the_tools_granted() {
     );
 }
 
-/// A stage told in words to call nothing is SHOWN nothing. `main` opens on
-/// `plan` for exactly this reason: the brief is written before anything can be
-/// done, and a model shown a toolbox tends to reach for it. The words and the
-/// grant agree because the grant is what produces the words.
+/// A STAGE IS SHOWN EXACTLY WHAT IT MAY CALL, and for `plan` that is two
+/// things. Its brief tells it to list the installed skills and read the ones
+/// that apply, so showing it no tools would make that instruction a lie; the
+/// whole toolbox would let it start the work it is supposed to be planning.
+/// The words and the grant agree because the grant is what produces the words.
 #[test]
-fn a_planning_turn_is_shown_no_tools_at_all() {
+fn a_planning_turn_is_shown_the_skills_and_nothing_else() {
     let planning = rendered_at("what is in this folder?", &["plan", "work"]);
-    assert!(
-        planning.contains("No tools are installed; answer from what you know."),
-        "the planning turn offers nothing to call"
-    );
+    assert!(planning.contains("list_skills("), "it can see what instruction exists");
+    assert!(planning.contains("read_skill("), "…and pull one in");
+    assert!(!planning.contains("exec("), "but it cannot start the work");
+    assert!(!planning.contains("write_file("), "nor change anything");
     assert!(!planning.contains("now({})"), "…not even the harmless ones");
+}
+
+/// The strategy vote is shown nothing at all: it is one decision about the
+/// message, and a model shown a toolbox tends to reach for it instead.
+#[test]
+fn the_strategy_vote_is_shown_no_tools_at_all() {
+    let voting = rendered_at("what is in this folder?", &[agent::STAGE_STRATEGY]);
+    assert!(
+        voting.contains("No tools are installed; answer from what you know."),
+        "the vote offers nothing to call"
+    );
+    // …and it asks for the two lines the machine reads, in the block that is
+    // always last.
+    let contract = voting.split("\n## response_contract").nth(1).expect("a contract block");
+    assert!(contract.contains("ROUTE: one word"), "the shape is stated as fields: {contract}");
+    assert!(contract.contains("WHY: one short clause"));
 }
 
 /// The agent file's own headings sit BELOW the paper's. Without this the file's
@@ -259,9 +279,11 @@ fn a_stage_brief_is_a_block_and_not_a_forged_user_turn() {
     );
     // The brief sits after the conversation and immediately before the shape
     // of the reply — the last instruction read before writing one.
-    let d = planning.find("## directive").unwrap();
-    let r = planning.find("## response_contract").unwrap();
-    assert!(planning.find("## history").unwrap() < d && d < r);
+    // Anchored to the line start, because the agent's own prose NAMES the
+    // block — an unanchored search finds the sentence explaining the directive
+    // rather than the directive.
+    let at = |head: &str| planning.find(&format!("\n{head}")).expect(head);
+    assert!(at("## history") < at("## directive") && at("## directive") < at("## response_contract"));
 }
 
 /// A turn with no brief renders no empty block. A component with nothing to
@@ -269,4 +291,24 @@ fn a_stage_brief_is_a_block_and_not_a_forged_user_turn() {
 #[test]
 fn a_turn_with_no_brief_has_no_directive_block() {
     assert!(!heads(&rendered("hello")).contains(&"## directive"));
+}
+
+/// STATIC ONCE, DYNAMIC EVERY CALL — the property that makes a prompt cheap to
+/// rebuild and cacheable at the provider.
+///
+/// The static head (`soul`, `identity`, `operating_rules`) is rendered when the
+/// agent file is adopted and never again: two calls a turn apart produce
+/// byte-identical bytes up to the first thing that can change. Only the
+/// components that CAN differ are rebuilt before a call, and this asserts both
+/// halves — a build that re-rendered everything would still pass a test that
+/// only checked the output was correct.
+#[test]
+fn the_static_head_is_byte_identical_between_calls() {
+    let first = rendered_at("what is the time", &["work"]);
+    let second = rendered_at("something else entirely", &["work"]);
+    let head = |p: &str| p.split("\n## environment").next().unwrap().to_string();
+    assert_eq!(head(&first), head(&second), "nothing above the clock may differ");
+    // …and the parts that must differ, do.
+    assert!(first.contains("what is the time"));
+    assert!(!second.contains("what is the time"));
 }

@@ -6,7 +6,7 @@ use agent::{load_agents, parse_agent_file};
 /// The real shipped file, with every frontmatter key the Python loader
 /// knows: name, description, model, temperature, engine, tools, space.
 const REAL: &str = include_str!("../../../public/agents/main/agent.md");
-const SUMMARIZER: &str = include_str!("../../../public/agents/summarizer/agent.md");
+const SUMMARIZER: &str = include_str!("agents/summarizer.md");
 
 #[test]
 fn parses_every_frontmatter_key_and_the_body() {

@@ -13,7 +13,9 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 use kernel::Request;
 
+mod ctl;
 use crate::composer::Composer;
+use ctl::clear_row;
 use crate::recover::{fix_in_file, last_failed, nothing_said, Recovery};
 use crate::turn::{show, to, Shown, Turn};
 use crate::watch::follow;
@@ -57,16 +59,9 @@ pub fn ChatPane(
         tokens,
     };
     let mut note = turn.note;
-    // The region's accessible name, from the PROP and not from the last
-    // response: it must name the agent you just switched to before that
-    // agent's transcript has arrived. `· {name}` is the one pattern five cards
-    // use for "this card is about that agent" (R6-12); it is no longer drawn
-    // as an `<h2>`, because the thread summary above it says the same name and
-    // more (THREADS.md §5).
-    let title = match agent().is_empty() {
-        true => "Chat · no agent loaded".to_string(),
-        false => format!("Chat · {}", agent()),
-    };
+    // No longer drawn as an `<h2>`: the thread summary above says the same
+    // name and more (THREADS.md §5).
+    let title = ctl::title(&agent());
     // The ONE read the body comes from — and only while it is this agent's.
     let shown = turn.shown.read().clone();
     let mine = shown.who == agent();
@@ -83,6 +78,9 @@ pub fn ChatPane(
     let empty = !crate::ui::has_rows(&shown.html, "msg user");
 
     let watching = use_signal(|| false); // one poller per pane (`watch::follow`)
+    // Whether Clear has been pressed once (`chatctl::clear_row`). Held here so
+    // switching agents disarms it: the effect below already runs on that change.
+    let mut arm_clear = use_signal(|| false);
 
     // First paint, AND every arrival back at this view (R3-1). The pane stays
     // MOUNTED on every route (`stage`), so it fetched once, at boot, on an empty
@@ -90,6 +88,7 @@ pub fn ChatPane(
     // nothing here watching: "Read the reply" landed on "No messages yet".
     use_effect(move || {
         let (who, _, _) = (agent(), roster(), view());
+        arm_clear.set(false);
         if let Some(app) = web.read().clone() {
             note.set(String::new());
             show(&who, app.handle(to(&who, Request::get("/chat"))), turn);
@@ -189,6 +188,7 @@ pub fn ChatPane(
                 }
             }
             if !note.read().is_empty() { p { class: "error", "{note}" } }
+            {clear_row(web, turn, agent(), busy, empty, arm_clear)}
             Composer {
                 busy,
                 ready: endpoint_set(),

@@ -13,7 +13,7 @@ use kernel::{Event, EventId, EventKind, Timestamp, ToolId};
 
 use agent::{adopt_spec, ended_why, parse_agent_file, step, AgentState, Effect};
 
-const CRITIC: &str = include_str!("../../../public/agents/critic/agent.md");
+const CRITIC: &str = include_str!("agents/critic.md");
 const BUILDER: &str = include_str!("agents/builder.md");
 const INDEX: &str = include_str!("../../../public/agents/index.json");
 
@@ -102,10 +102,17 @@ fn the_shipped_critic_can_read_and_can_change_nothing() {
         assert!(!granted.contains(&forbidden), "the critic must not be granted `{forbidden}`");
     }
     assert!(box_.tools.iter().all(|t| !t.agent), "a critic that can delegate is not read-only");
-    // …and it is in the manifest, which IS the directory listing.
+    // …AND NOTHING SHIPS IT ANY MORE. The reviewer is the `critique` stage now:
+    // one call in the same window instead of a second agent, a second Worker
+    // and a second model to load, for a reading of the turn that is the same
+    // model's either way. The machinery below it — `role: critic`, the verdict
+    // fold, the ending a fault earns — is all still here and still tested
+    // against this fixture, because an agent installed in a browser can hold
+    // the role. The manifest names one agent, and that is the design.
     let index: serde_json::Value = serde_json::from_str(INDEX).expect("the manifest parses");
     let names = index["agents"].as_array().expect("agents is a list");
-    assert!(names.iter().any(|n| n.as_str() == Some("critic")), "critic is fetched at boot");
+    assert_eq!(names.len(), 1, "one agent ships: {names:?}");
+    assert_eq!(names[0].as_str(), Some("main"));
 }
 
 /// AND IT IS NOT THE `critique` STAGE. The stage is the same model in the same

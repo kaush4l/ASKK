@@ -19,6 +19,17 @@ pub(crate) fn answered(
     text: &str,
     at: kernel::Timestamp,
 ) -> (AgentState, Vec<Effect>) {
+    // THE STRATEGY VOTE IS NOT A TURN, so it is not written down as one. It is
+    // the machine asking the model a question about the message; putting
+    // `assistant: ROUTE: project` in the conversation would leave the person
+    // reading a reply they were never given, and would leave the model reading
+    // its own routing decision back as context on every turn after it. Ahead of
+    // everything else here for that reason: the gate, the ending words and the
+    // steer check are all about a turn that tried to ANSWER, and this did not.
+    if stages::current(&state) == crate::strategy::STRATEGY {
+        let effects = stages::next(&mut state, text, at).unwrap_or_default();
+        return (state, effects);
+    }
     paper::push_history(&mut state.paper, "assistant", text.trim(), at);
     // A steer that arrived while THIS call was in flight has not been answered
     // by it — the model never saw it. Ending the turn here would leave the
@@ -54,7 +65,7 @@ pub(crate) fn answered(
     // the ending and BEHIND the gate above, because a declared verify stage is
     // a better answer to "nothing has run since" than a nudge is — but only if
     // the gate has already had its say about the work stage itself.
-    if let Some(effects) = stages::next(&mut state, at) {
+    if let Some(effects) = stages::next(&mut state, text, at) {
         return (state, effects);
     }
     // …AND RUNNING OUT OF PASSES IS ITS OWN ENDING (22), ahead of the other

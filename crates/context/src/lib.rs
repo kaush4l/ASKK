@@ -9,6 +9,7 @@
 mod assemble;
 mod component;
 mod error;
+mod form;
 mod law;
 mod openai;
 mod render;
@@ -20,6 +21,7 @@ pub use assemble::assemble;
 pub use law::validate;
 pub use component::{text, Component};
 pub use error::ContextError;
+pub use form::Form;
 pub use slot::Slot;
 // PROVISIONAL (G4): the provider wire writer/reader — see openai.rs.
 pub use openai::{openai_reply_text, openai_request_body, openai_usage};

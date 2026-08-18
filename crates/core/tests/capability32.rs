@@ -43,11 +43,11 @@ const SHIPPED: [(&str, &str); 8] = [
     ("ask", include_str!("../../agent/tests/agents/ask.md")),
     ("author", include_str!("../../agent/tests/agents/author.md")),
     ("builder", include_str!("../../agent/tests/agents/builder.md")),
-    ("critic", include_str!("../../../public/agents/critic/agent.md")),
+    ("critic", include_str!("../../agent/tests/agents/critic.md")),
     ("main", include_str!("../../../public/agents/main/agent.md")),
     ("researcher", include_str!("../../agent/tests/agents/researcher.md")),
     ("scout", include_str!("../../agent/tests/agents/scout.md")),
-    ("summarizer", include_str!("../../../public/agents/summarizer/agent.md")),
+    ("summarizer", include_str!("../../agent/tests/agents/summarizer.md")),
 ];
 
 fn booted() -> Rc<RefCell<App>> {

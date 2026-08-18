@@ -131,25 +131,6 @@ pub(crate) fn model_line(spec: &AgentSpec, found: Option<(&str, &str)>) -> Strin
     )
 }
 
-/// THE LOOP THIS AGENT RUNS, in one line. Increment 20 shipped a declared
-/// plan→work→verify→critique loop and no surface named it: `verify`, `stage`,
-/// `loop` and `delegat` each occurred zero times in the rendered text of all six
-/// views (cold walk, 21). `stages:` is the whole source — this invents no state (I8).
-/// …AND HOW MANY LAPS OF IT (31): `main` and `builder` declare the same stages, so this
-/// line read identically for the agent that works a goal across laps and the one that
-/// answers once. `passes:` is a CEILING — a lap that changes nothing ends the turn.
-pub(crate) fn loop_line(spec: &AgentSpec) -> String {
-    match (spec.stages.is_empty(), spec.passes) {
-        // NOT "one reply": with no `stages:` a react agent still takes as many tool
-        // rounds as it needs. What it skips is the plan before and the check after.
-        (true, _) => "Runs no stages: it works and answers in one go, with no plan before it and \
-                      no check after."
-            .to_string(),
-        (false, 1) => format!("Runs in stages: {}.", spec.stages.join(" → ")),
-        (false, n) => format!("Runs in stages, up to {n} laps a turn: {}.", spec.stages.join(" → ")),
-    }
-}
-
 /// The split itself: `(peer agents, plain tools)`, both as the model sees them.
 fn split(spec: &AgentSpec, peers: &[AgentSpec]) -> (Vec<String>, Vec<String>) {
     let (agents, tools): (Vec<_>, Vec<_>) =

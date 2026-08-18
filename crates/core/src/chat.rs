@@ -39,6 +39,7 @@ pub(crate) fn manifest() -> Manifest {
                 method: "POST".into(),
                 path: "/chat/halt".into(),
             },
+            crate::clear::route(),
         ],
         slots: vec![],
         section: None,
@@ -65,6 +66,7 @@ pub(crate) fn chat(req: &Request, ctx: &mut Ctx) -> Response {
         ("POST", "/chat") => submit(req, ctx, &who),
         ("POST", "/chat/stop") => stop(ctx, &who),
         ("POST", "/chat/halt") => halt(ctx, &who),
+        ("POST", "/chat/clear") => crate::clear::clear(ctx, &who),
         _ => error_fragment(404, "chat: unknown subroute"),
     }
 }

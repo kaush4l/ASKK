@@ -20,6 +20,14 @@ use crate::effect::Effect;
 use crate::paper;
 use crate::state::AgentState;
 
+/// WHO the summarizing model is, which used to be a file. Short on purpose:
+/// everything about HOW to summarise is in `COMPACT_PROMPT`, which arrives as
+/// the task, and a soul that repeated it would be the same instruction twice at
+/// two levels of the prompt.
+pub const SUMMARIZE: &str = "You compress conversations. You are handed a transcript and you \
+return notes that replace it. You add nothing that is not in it, and you leave out nothing \
+that the conversation still depends on.";
+
 /// The line a compacted window opens with (Python `SUMMARY_HEADING`).
 pub const SUMMARY_HEADING: &str = "Summary of the conversation so far:";
 
@@ -87,13 +95,24 @@ pub fn compacted(paper: &mut State, summary: &str, keep: usize, at: Timestamp) -
     true
 }
 
-/// Hand the older window to the summarizer, if it is time and there is one.
-/// `None` means "just take the turn": no summarizer file loaded, or nothing old
-/// enough to summarise. A missing summarizer must cost a compaction and never a
-/// conversation (Python: a failed summarizer is warned about and carried on
-/// from).
+/// THE SUMMARIZER IS NO LONGER AN AGENT — it is a sheet.
+///
+/// It used to be a whole `agent.md` in `public/agents/`, found by the `role:`
+/// it declared and loaded into the state of every other agent as three fields.
+/// What that file actually contributed was a system prompt, because a summarizer
+/// has no tools, no space, no history and no conversation: the transcript is its
+/// whole task and its notes are its whole reply. So the prompt is [`SUMMARIZE`],
+/// the sheet below is the rest of it, and there is one agent in this build.
+///
+/// This also removes the silent failure the role key was introduced to catch.
+/// A missing summarizer file used to mean compaction never ran and nothing said
+/// so; a long conversation quietly degraded to a pointer instead. There is now
+/// nothing to be missing.
+///
+/// `None` means "just take the turn": the window is not long enough yet, or
+/// nothing in it is old enough to summarise.
 pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect> {
-    if state.summarizer_prompt.is_empty() || !due(&state.paper, state.compact_at) {
+    if !due(&state.paper, state.compact_at) {
         return None;
     }
     let transcript = transcript(&state.paper, state.keep_recent)?;
@@ -104,7 +123,7 @@ pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect
     // cannot steer it (Python `compact`). A Document, like every other model
     // call in this codebase (I13).
     let mut sheet = paper::seed();
-    let soul = Soul { text: state.summarizer_prompt.clone() };
+    let soul = Soul { text: SUMMARIZE.into() };
     let identity = Identity { name: "summarizer".into(), description: String::new() };
     paper::set_component(&mut sheet, &soul, at);
     paper::set_component(&mut sheet, &identity, at);
@@ -127,8 +146,12 @@ pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect
         document: context::assemble(&sheet, PhaseId::Work, crate::phase::v1_phases()[0].budget),
         format: ProviderFormat::OpenAiChat { vision: false, audio: false },
         endpoint: EndpointName("model".into()),
-        model: state.summarizer_model.clone(),
-        temperature: state.summarizer_temperature,
+        // The agent's own model. One agent, one endpoint: a second catalogue
+        // key here would be a second model to configure and a second thing to
+        // be misconfigured, for a job that is the same model reading its own
+        // conversation back.
+        model: state.model.clone(),
+        temperature: state.temperature,
         speaker: paper::SUMMARIZER.to_string(),
     })
 }

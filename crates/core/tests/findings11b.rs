@@ -168,8 +168,13 @@ fn the_board_names_an_agent_written_here_as_written_here() {
     // R4-18: ONE wording for this badge — the tab strip says the same.
     assert!(row.contains("written here"), "{row}");
     assert!(!row.contains("public/agents/"), "{row}");
-    // …and the two it did not write still say where they came from.
-    assert!(board.contains("built in to this build"), "{board}");
+    // …and the one it did not write does not claim to have been. There is no
+    // "built in to this build" row any more: the last compiled-in agent was the
+    // summarizer, and compaction stopped needing an agent (`agent::SUMMARIZE`),
+    // so every agent on this board is data fetched from `public/agents/`.
+    let (_, main_row) = board.split_once("data-agent=\"main\"").expect("a main row");
+    let main_row = main_row.split("data-agent").next().unwrap_or_default();
+    assert!(!main_row.contains("written here"), "main was not authored here: {main_row}");
 }
 
 /// FINDING 9. The Run box is this page's own shell. With another agent

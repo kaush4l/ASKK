@@ -27,13 +27,16 @@ pub const ENGINE_BASE: &str = "base";
 /// silently stopped compaction everywhere. A role is a DECLARATION now: the
 /// file says which job it holds, and the core looks the holder up.
 pub const ROLE_ENTRY: &str = "entry";
-pub const ROLE_SUMMARIZER: &str = "summarizer";
+// `summarizer` was a role until compaction stopped needing an agent to do it
+// (`window::SUMMARIZE`). It is gone from the vocabulary rather than left in it
+// unread: a `role:` line the machine parses and never looks up is the exact
+// "setting that looks applied" failure this file refuses everywhere else.
 /// …and the third (25): the agent whose answer is a VERDICT on another agent's
 /// work. A role rather than the name `critic`, for the reason above and for one
 /// more — `crate::critic` has to recognise a tool result as a verdict, and
 /// recognising it by a hardcoded name is what 20 was spent undoing.
 pub const ROLE_CRITIC: &str = "critic";
-pub const ROLES: [&str; 3] = [ROLE_ENTRY, ROLE_SUMMARIZER, ROLE_CRITIC];
+pub const ROLES: [&str; 2] = [ROLE_ENTRY, ROLE_CRITIC];
 
 /// One agent as its file declares it. The seven frontmatter keys of the Python
 /// loader, `max_rounds` (15C, which the Python had no equivalent of), and the
@@ -134,8 +137,16 @@ pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> 
     // A stage list with no `work` in it can never act, whatever its `tools:`
     // line says — the one shape of this key that would look applied and grant
     // nothing (`engine: reakt`'s rule, 19).
-    if !spec.stages.is_empty() && !spec.stages.iter().any(|s| s == crate::stages::WORK) {
-        return Err(bad("a stages: list must contain work — it is the stage that acts"));
+    // …with one exception, and it is the whole strategy loop: `[strategy]`
+    // contains no `work` because it does not know yet whether the turn needs
+    // one. The vote picks a list that does, so the guarantee this rule defends
+    // — a turn can always reach a stage that acts — still holds.
+    let acts = |s: &String| s == crate::stages::WORK || s == crate::strategy::STRATEGY;
+    if !spec.stages.is_empty() && !spec.stages.iter().any(acts) {
+        return Err(bad(
+            "a stages: list must contain work — it is the stage that acts — or strategy, \
+             which chooses a list that does",
+        ));
     }
     // …and the same rule again for the key that says how many times that list
     // is walked: a pass is a lap of the stages, so `passes:` with no stages to

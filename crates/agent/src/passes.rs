@@ -40,7 +40,13 @@ pub const PASS_SPENT: &str = "core.pass_spent";
 /// says `None` and the turn ends the way it always has, through `ending`.
 pub(crate) fn again(state: &mut AgentState, at: Timestamp) -> Option<Vec<Effect>> {
     // No stages, no laps: an agent with no `stages:` cannot be here twice.
-    let work = state.stages.iter().position(|s| s == WORK)?;
+    // The lap goes back to the stage that acts, which on the `answer` route is
+    // `answer` — the same stage with its tools taken away. A route with neither
+    // is not a route that can loop.
+    let work = state
+        .stages
+        .iter()
+        .position(|s| s == WORK || s == crate::stages::ANSWER)?;
     if state.pass + 1 >= state.passes || !state.acted {
         return None;
     }

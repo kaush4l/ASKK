@@ -18,6 +18,7 @@ mod contract;
 mod directive;
 mod history;
 mod person;
+mod respond;
 mod soul;
 mod world;
 
@@ -25,7 +26,9 @@ pub(crate) use affordances::Affordances;
 pub(crate) use contract::ResponseContract;
 pub(crate) use directive::Directive;
 pub(crate) use history::History;
+pub use history::SESSION_STARTED;
 pub(crate) use person::{Memory, User};
+pub(crate) use respond::{Field, ResponseObject};
 pub(crate) use soul::{Identity, OperatingRules, Soul};
 pub(crate) use world::{Environment, Observations, Task};
 

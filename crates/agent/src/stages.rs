@@ -1,9 +1,13 @@
-//! THE LOOP AN AGENT FILE DECLARES — plan, work, verify, critique.
+//! THE LOOP A TURN RUNS — and, since the strategy stage, the loop the turn
+//! CHOOSES.
 //!
-//! The react loop is one stage of four, and which of the four an agent runs is
-//! a line in its own `agent.md` (`stages: [plan, work, verify]`). A file that
-//! names none runs exactly what this build has always run: work, and nothing
-//! before or after it. That is the whole compatibility rule.
+//! An agent file used to name its stages outright (`stages: [plan, work,
+//! verify]`) and every turn walked all of them. That made the loop a property
+//! of the agent when it is a property of the message: the same assistant that
+//! should answer "hello" in one call should plan, work, check and critique when
+//! asked to build something. `strategy` is one cheap call that reads the
+//! message and picks; `crate::strategy` holds the three routes and why an
+//! unreadable vote lands in the middle one.
 //!
 //! A STAGE IS NOT A NEW MACHINE. It is one instruction pushed into the paper
 //! and one more call, taken by the same `step` against the same window: the
@@ -12,49 +16,54 @@
 //! already have, and there is no second state machine to keep in agreement
 //! with the first.
 //!
-//! WHY THE PLAN STAGE EXISTS AT ALL. A goal typed by a person carries none of
-//! the technical detail the work needs — which files, which command shows it
-//! worked, what makes it done. Every harness answers that by demanding the
-//! person write it into the prompt. One model call ahead of the work moves
-//! that job to the model: the reply is a brief in five named lines, and it is
-//! in the window for every round after it. The cognitive load shifts from
-//! figuring out HOW to prompt to saying WHAT is wanted.
-//!
-//! WHY NOT TOOLS IN EVERY STAGE. `plan` and `critique` are told to call
-//! nothing, and `ask::scoped_tools` enforces it rather than trusting the
+//! WHY NOT TOOLS IN EVERY STAGE. `strategy`, `plan`, `critique` and `answer`
+//! may not act, and `ask::scoped_tools` enforces it rather than trusting the
 //! sentence — the `engine: base` lesson (19): a capability that is described
-//! but not enforced is a setting that looks applied.
+//! but not enforced is a setting that looks applied. `plan` is the one
+//! exception and a narrow one: it is granted the two skill tools, because its
+//! brief tells it to read skills and an instruction to call a tool the agent
+//! was never given is noise.
 
 use kernel::{EventKind, Timestamp};
 
 use crate::ask::call_model;
+use crate::brief;
 use crate::effect::Effect;
 use crate::state::AgentState;
+use crate::strategy::{self, Route, STRATEGY};
 
 pub const PLAN: &str = "plan";
 pub const WORK: &str = "work";
 pub const VERIFY: &str = "verify";
 pub const CRITIQUE: &str = "critique";
+/// Work with the tools taken away, which is what the `answer` route is. A
+/// separate name rather than a flag on `work` because `stages::tools_on` is
+/// read in four places and a stage list is the thing they all read.
+pub const ANSWER: &str = "answer";
 
-/// The four, and there are only four — `spec` refuses any other name for the
-/// reason `engine` refuses `reakt`: a stage that parses clean and selects
-/// nothing is worse than no stage key at all.
-pub const STAGES: [&str; 4] = [PLAN, WORK, VERIFY, CRITIQUE];
+/// The stages that exist — `spec` refuses any other name for the reason
+/// `engine` refuses `reakt`: a stage that parses clean and selects nothing is
+/// worse than no stage key at all.
+pub const STAGES: [&str; 6] = [STRATEGY, PLAN, WORK, VERIFY, CRITIQUE, ANSWER];
 
 /// The fact a stage was entered. Emitted for `verify::VERIFY_NUDGED`'s reason
 /// (I8): the machine added a round, and a round nobody can see is a model
 /// talking to itself while the token meter charges for it.
 pub const STAGE_ENTERED: &str = "core.stage_entered";
 
+/// The fact a route was chosen, and what decided it. The strategy stage spends
+/// a call to make a decision the person never sees otherwise; a turn that
+/// silently became four calls instead of one is the sort of thing a bill
+/// explains and nothing else does.
+pub const ROUTE_CHOSEN: &str = "core.route_chosen";
+
 pub fn is_stage(name: &str) -> bool {
     STAGES.contains(&name)
 }
 
-/// Whether this stage may act. Work does the work and verify has to RUN the
-/// check — a verify stage that could not run a command would be one more
-/// model opinion about code it never executed.
+/// Whether this stage may call the agent's full toolbox.
 pub fn tools_on(stage: &str) -> bool {
-    matches!(stage, WORK | VERIFY)
+    brief::acts(stage)
 }
 
 /// The stage the turn is in. Absent `stages:` reads as `work`, which is what
@@ -63,61 +72,13 @@ pub(crate) fn current(state: &AgentState) -> &str {
     state.stages.get(state.stage).map(String::as_str).unwrap_or(WORK)
 }
 
-/// The goal→plan pre-pass. Five named lines, and the escape hatch in the last
-/// sentence: a greeting must not cost a plan.
-const PLAN_BRIEF: &str = "[First, turn the request into a brief and write nothing else. Five \
-    lines, each starting with its word: OUTCOME — what will be true when this is done. PATHS — \
-    the files, folders or commands involved, as far as they can be named. CHECK — the one \
-    command whose output would show it worked. DONE WHEN — the observable that ends the work. \
-    ASSUMED — what had to be filled in because the request did not say. If the request is a \
-    question or a greeting and needs no work, write the OUTCOME line alone. Call no tools.]";
-
-/// Verify: run the check the brief named, and quote what it printed. The word
-/// this asks for is what was OBSERVED — it never asks for a verdict on the work.
-const VERIFY_BRIEF: &str = "[Now check the work instead of describing it. Run the command the \
-    brief named under CHECK and read what it prints. Quote the line that shows the outcome, \
-    whichever way it went. If nothing can be run here, say in one sentence what is unchecked \
-    and why. Claim nothing you have not read back.]";
-
-/// Critique: the turn's own reviewer, and then the answer. Deliberately last
-/// and deliberately toolless — its job is to say what is still missing, which
-/// is the one thing a model that has been acting for sixty rounds stops doing.
-const CRITIQUE_BRIEF: &str = "[Now read the whole turn back as somebody who did not do it. In \
-    at most three lines, name what is still wrong, missing or unchecked. Then answer the \
-    person: what was done, what was checked and what was not. Call no tools, do not restate \
-    the brief, and do not pad.]";
-
-/// What the model is told on entering a stage. Work has nothing to add — the
-/// person's own request is the instruction, and a second one would compete.
-pub fn brief(stage: &str) -> &'static str {
-    match stage {
-        PLAN => PLAN_BRIEF,
-        VERIFY => VERIFY_BRIEF,
-        CRITIQUE => CRITIQUE_BRIEF,
-        _ => "",
-    }
-}
-
-/// THE GOAL HAS TO OUTLIVE THE WINDOW (22). `main` compacts at 8 entries, and
-/// a turn that walks its stages five times will summarise away the brief it
-/// opened with — the plan is then a thing the run used to know. The space is
-/// the durable place: `remember` writes survive compaction, are re-read by
-/// `core::space::refresh` before every pass, are already in the CONTEXT block
-/// and already cross Workers. So this is prose and one tool that already
-/// exists, not a second store. Added only where the agent HAS a space, because
-/// telling an agent to call a tool it was never granted is noise in the window.
-const DURABLE: &str = " [And the first thing to do in the work that follows: call `remember` \
-    twice — key `outcome` with the OUTCOME line, key `done_when` with the DONE WHEN line. This \
-    window gets compacted; the shared space does not, and it is read back to you before every \
-    pass.]";
-
 /// Enter the stage the cursor is on: its instruction into the window, and the
 /// fact into the log.
 pub(crate) fn enter(state: &mut AgentState, at: Timestamp) -> Effect {
     let stage = current(state).to_string();
-    let mut said = brief(&stage).to_string();
+    let mut said = brief::brief(&stage).to_string();
     if stage == PLAN && state.space.is_some() {
-        said.push_str(DURABLE);
+        said.push_str(brief::DURABLE);
     }
     // Into its own block, not into the conversation. A stage with no brief
     // writes an empty one, which is how the block disappears on `work` rather
@@ -127,11 +88,17 @@ pub(crate) fn enter(state: &mut AgentState, at: Timestamp) -> Effect {
     entered(&stage)
 }
 
-/// The start of a turn. Empty for an agent with no `stages:`, which is why
-/// nothing about the old single-stage turn changed.
+/// The start of a turn: the strategy vote first, then whatever it chooses.
+///
+/// A file that declares its own `stages:` keeps them — the route machinery is
+/// what an agent gets by declaring `[strategy]`, not something imposed on every
+/// file. Declaring nothing is still the bare react loop.
 pub(crate) fn open(state: &mut AgentState, at: Timestamp) -> Vec<Effect> {
     state.stage = 0;
     crate::passes::open(state);
+    // A turn that ran a route last time starts over from the declaration, or
+    // the second message of a conversation would inherit the first's plan.
+    state.stages = state.declared.clone();
     match state.stages.is_empty() {
         true => Vec::new(),
         false => vec![enter(state, at)],
@@ -141,7 +108,13 @@ pub(crate) fn open(state: &mut AgentState, at: Timestamp) -> Vec<Effect> {
 /// A stage produced prose. `None` when that was the last one AND the turn has
 /// not earned another pass — then the turn ends the way it always has, through
 /// `ending`.
-pub(crate) fn next(state: &mut AgentState, at: Timestamp) -> Option<Vec<Effect>> {
+pub(crate) fn next(state: &mut AgentState, reply: &str, at: Timestamp) -> Option<Vec<Effect>> {
+    // THE VOTE IS THE ONLY REPLY THAT REWRITES THE LIST. Read here rather than
+    // in `step` because this is where a stage's reply is already in hand, and
+    // splitting "read the reply" from "act on it" is how the two drift.
+    if current(state) == STRATEGY {
+        return Some(route(state, reply, at));
+    }
     if state.stage + 1 >= state.stages.len() {
         // …OR ROUND AGAIN, back to `work` and never to the start (22). The
         // budget and the mechanical continue condition are both in `passes`.
@@ -154,6 +127,15 @@ pub(crate) fn next(state: &mut AgentState, at: Timestamp) -> Option<Vec<Effect>>
     let entered = enter(state, at);
     let call = call_model(state, at);
     Some(vec![entered, call])
+}
+
+/// Install the route the vote named and open its first stage. The vote itself
+/// never reaches the person: it is a decision about the turn, not a turn.
+fn route(state: &mut AgentState, reply: &str, at: Timestamp) -> Vec<Effect> {
+    let route = strategy::route_of(reply);
+    state.stages = route.stages();
+    state.stage = 0;
+    vec![chosen(route, reply), enter(state, at), call_model(state, at)]
 }
 
 /// Whether a `verify` stage is still AHEAD in this turn. The mechanical gate
@@ -174,6 +156,23 @@ pub(crate) fn entered(stage: &str) -> Effect {
     }
 }
 
+fn chosen(route: Route, reply: &str) -> Effect {
+    // The WHY line, if the model wrote one — the difference between "the
+    // machine chose project" and "the machine chose project because the
+    // message asked for a working script".
+    let why = reply
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("WHY:"))
+        .unwrap_or_default()
+        .trim();
+    Effect::Emit {
+        kind: EventKind::Custom {
+            kind: ROUTE_CHOSEN.into(),
+            payload_json: serde_json::json!({ "route": route.as_str(), "why": why }).to_string(),
+        },
+    }
+}
+
 /// Which stage a `STAGE_ENTERED` fact names, for the projections.
 ///
 /// EVERY ASSERTION ABOUT THIS FILE IS IN `tests/stages.rs`, through `step` and
@@ -182,4 +181,14 @@ pub(crate) fn entered(stage: &str) -> Effect {
 /// turn it drives ended in the wrong place.
 pub fn stage_of(payload_json: &str) -> String {
     serde_json::from_str::<String>(payload_json).unwrap_or_default()
+}
+
+/// Which route a `ROUTE_CHOSEN` fact names, and what decided it.
+pub fn route_of(payload_json: &str) -> (String, String) {
+    let read = |v: &serde_json::Value, k: &str| {
+        v.get(k).and_then(|s| s.as_str()).unwrap_or_default().to_string()
+    };
+    serde_json::from_str::<serde_json::Value>(payload_json)
+        .map(|v| (read(&v, "route"), read(&v, "why")))
+        .unwrap_or_default()
 }

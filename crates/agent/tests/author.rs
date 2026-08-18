@@ -14,7 +14,7 @@ fn shipped() -> Vec<(&'static str, &'static str)> {
         ),
         (
             "summarizer",
-            include_str!("../../../public/agents/summarizer/agent.md"),
+            include_str!("agents/summarizer.md"),
         ),
         (
             "author",

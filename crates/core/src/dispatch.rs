@@ -94,6 +94,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         .collect();
 
     let mut ctx = Ctx {
+        wipe: false,
         kv: None, // no G4 module declares Kv
         clock: manifest
             .capabilities
@@ -132,6 +133,12 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         },
         Logic::Script { .. } => error_fragment(501, "tier-1 script modules land with the forge"),
     };
+    // A handler that asked for the conversation to be cleared could not reach
+    // it: `Ctx` carries a projection of the window, and clearing means writing
+    // the real one. Here is the one place that holds both (`clear::wipe`).
+    if ctx.wipe {
+        crate::clear::wipe(app);
+    }
 
     // Module-emitted facts: into the log now (I8) and into the pump queue.
     for kind in ctx.emit.take().into_iter().flatten() {

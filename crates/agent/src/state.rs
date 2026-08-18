@@ -101,16 +101,6 @@ pub struct AgentState {
     /// rather than another append.
     #[serde(default)]
     pub compactions: u32,
-    /// The summarizer agent's own prompt and catalogue key, taken from the
-    /// peer of that name at adoption. The Python registry hands the summarizer
-    /// to every other engine as the thing that compacts a history rather than
-    /// as a tool anyone calls — it is an ordinary agent, and this is its file.
-    #[serde(default)]
-    pub summarizer_prompt: String,
-    #[serde(default)]
-    pub summarizer_model: String,
-    #[serde(default)]
-    pub summarizer_temperature: Option<f64>,
     /// THIS TURN'S EVIDENCE (`crate::verify`). Two flags folded left-to-right
     /// over the turn's tool results, and `nudges` counting how many times the
     /// gate has already asked. All three are turn-scoped: cleared where
@@ -127,6 +117,13 @@ pub struct AgentState {
     /// about the old single-stage turn changed.
     #[serde(default)]
     pub stages: Vec<String>,
+    /// The list the agent's FILE declares, which `stages` is reset to at the
+    /// start of every turn. The two are separate because the strategy stage
+    /// REWRITES `stages` mid-turn: without a copy of the declaration, the
+    /// second message of a conversation would inherit the route the first one
+    /// chose, and a greeting after a project would still be planning.
+    #[serde(default)]
+    pub declared: Vec<String>,
     #[serde(default)]
     pub stage: usize,
     /// The `passes:` budget, the laps spent, and whether THIS lap changed or
@@ -181,10 +178,8 @@ impl AgentState {
             max_rounds: default_max_rounds(),
             compact_at: default_compact_at(), keep_recent: default_keep_recent(),
             compacting: false, compactions: 0,
-            summarizer_prompt: String::new(),
-            summarizer_model: String::new(), summarizer_temperature: None,
             mutated: false, green: false, nudges: 0,
-            stages: Vec::new(), stage: 0,
+            stages: Vec::new(), declared: Vec::new(), stage: 0,
             passes: default_passes(), pass: 0, acted: false,
             critic: String::new(), reviewed: None,
             space: None,

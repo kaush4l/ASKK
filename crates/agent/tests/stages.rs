@@ -8,7 +8,7 @@ use kernel::{Event, EventId, EventKind, Timestamp};
 
 const MAIN: &str = include_str!("../../../public/agents/main/agent.md");
 const SCOUT: &str = include_str!("agents/scout.md");
-const SUMMARIZER: &str = include_str!("../../../public/agents/summarizer/agent.md");
+const SUMMARIZER: &str = include_str!("agents/summarizer.md");
 /// The manifest itself, so the collision below is checked against what the app
 /// would actually FETCH rather than against whatever folders happen to exist.
 const INDEX: &str = include_str!("../../../public/agents/index.json");
@@ -37,9 +37,14 @@ fn replied(text: &str) -> Event {
     })
 }
 
+/// BOTH copies of the list. `declared` is what the file said and `stages` is
+/// what this turn is walking; a turn begins by resetting the second to the
+/// first (`stages::open`), because the strategy stage rewrites it mid-turn and
+/// the next message must not inherit the last one's route.
 fn staged(stages: &[&str]) -> AgentState {
     let mut state = AgentState::new();
-    state.stages = stages.iter().map(|s| (*s).to_string()).collect();
+    state.declared = stages.iter().map(|s| (*s).to_string()).collect();
+    state.stages = state.declared.clone();
     state
 }
 
@@ -59,19 +64,25 @@ fn is_stage_fact(effect: &Effect) -> Option<String> {
 fn the_shipped_files_carry_the_roles_and_the_loop() {
     let main = parse_agent_file("main", MAIN).expect("main parses");
     assert_eq!(main.role, agent::ROLE_ENTRY, "the core looks this up, not the name `main`");
-    assert_eq!(main.stages, ["plan", "work", "verify"]);
+    // …AND THE LOOP IS NO LONGER A FIXED LIST. `main` declares the one stage
+    // that CHOOSES a list: a fixed `[plan, work, verify]` billed a greeting for
+    // a brief and a check, and still had no critique on the message that needed
+    // one, because one list cannot be right for both (`crate::strategy`).
+    assert_eq!(main.stages, [agent::STAGE_STRATEGY]);
     let scout = parse_agent_file("scout", SCOUT).expect("scout parses");
     assert_eq!(scout.stages, ["plan", "work", "critique"]);
     let summarizer = parse_agent_file("summarizer", SUMMARIZER).expect("summarizer parses");
-    assert_eq!(summarizer.role, agent::ROLE_SUMMARIZER);
     assert!(summarizer.stages.is_empty(), "one reply; there is no loop to declare");
     // …and the job is found by the declaration (`loader::role_holder`).
+    //
+    // `summarizer` is a FIXTURE now and declares no role, because there is no
+    // longer a summarizer role to declare: compaction builds its own sheet
+    // (`agent::SUMMARIZE`) rather than looking an agent up. A `role:` line the
+    // machine parses and never reads is the "setting that looks applied"
+    // failure, so the value was removed from the vocabulary with the agent.
     let all = [summarizer.clone(), main.clone()];
     assert_eq!(agent::role_holder(&all, agent::ROLE_ENTRY).map(|s| &s.name), Some(&main.name));
-    assert_eq!(
-        agent::role_holder(&all, agent::ROLE_SUMMARIZER).map(|s| &s.name),
-        Some(&summarizer.name)
-    );
+    assert!(!agent::ROLES.contains(&"summarizer"), "the role went with the agent");
 }
 
 /// NO AGENT IS NAMED AFTER A STAGE (21). One agent was called `plan` while the
@@ -134,10 +145,14 @@ fn prose_advances_the_stage_instead_of_ending_the_turn() {
     );
 }
 
-/// THE TOOLLESS STAGES ARE TOOLLESS, AND IT IS ENFORCED. `plan` is told in
-/// words to call nothing; this asserts the model is not even shown the tools,
-/// which is what `engine: base` taught (19) — a described capability that is
-/// not enforced is a setting that looks applied.
+/// A STAGE IS SHOWN EXACTLY WHAT IT MAY CALL, AND IT IS ENFORCED — which is
+/// what `engine: base` taught (19): a described capability that is not enforced
+/// is a setting that looks applied.
+///
+/// `plan` is the narrow case. It may not do the work, and it may read the
+/// installed skills, because its own brief tells it to. Both halves are
+/// asserted here: an instruction to call a tool the stage was never granted is
+/// noise, and a grant the brief never mentions is an invitation.
 #[test]
 fn a_toolless_stage_is_shown_no_tools() {
     let mut state = staged(&["plan", "work"]);
@@ -146,7 +161,9 @@ fn a_toolless_stage_is_shown_no_tools() {
     let Effect::CallModel { document, .. } = &effects[1] else {
         panic!("expected the call");
     };
-    assert!(!format!("{document:?}").contains("now("), "plan may call nothing");
+    let planning = format!("{document:?}");
+    assert!(!planning.contains("now("), "plan may not do the work");
+    assert!(planning.contains("list_skills("), "…but it may read the instruction");
     // …and the work stage, one reply later, is shown them again.
     let (_, effects) = step(state, replied("OUTCOME: the user learns the time."));
     let Effect::CallModel { document, .. } = &effects[1] else {

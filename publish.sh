@@ -27,13 +27,17 @@ trunk build --release   # Trunk.toml: web/index.html -> dist/, public_url "./"
 # boots with the compiled-in built-ins only and no main agent (increment 03).
 [ -f "$DIR/agents/index.json" ] || fail "agent manifest missing: $DIR/agents/index.json"
 [ -f "$DIR/agents/main/agent.md" ] || fail "main agent missing: $DIR/agents/main/agent.md"
-# The two machinery agents. Neither is talked to: they are found by the `role:`
-# they declare and called by the loop. Without the summarizer a long
-# conversation stops being compacted and quietly degrades to a pointer instead;
-# without the critic no turn can be reviewed. Both failures are silent at boot,
-# which is exactly why they are gated here.
-[ -f "$DIR/agents/summarizer/agent.md" ] || fail "summarizer missing: $DIR/agents/summarizer/agent.md"
-[ -f "$DIR/agents/critic/agent.md" ] || fail "critic missing: $DIR/agents/critic/agent.md"
+# ONE agent ships, and the manifest must say so. A stale manifest naming a
+# folder that is no longer deployed is a fetch that 404s at boot, which is
+# silent — the page comes up with fewer agents than it listed and nothing says
+# which one it failed to get.
+python3 -c "
+import json,sys,pathlib
+d=pathlib.Path(sys.argv[1])
+names=json.loads((d/'agents/index.json').read_text())['agents']
+missing=[n for n in names if not (d/'agents'/n/'agent.md').is_file()]
+sys.exit('manifest names agents that are not deployed: '+', '.join(missing) if missing else 0)
+" "$DIR" || fail "agent manifest disagrees with the deployed folders"
 # The model catalogue (increment 04): without it the page has no endpoint at
 # all and every turn fails on EndpointUnknown.
 [ -f "$DIR/models.json" ] || fail "model catalogue missing: $DIR/models.json"

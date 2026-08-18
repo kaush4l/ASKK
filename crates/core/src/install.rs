@@ -10,15 +10,15 @@ use kernel::{EventKind, EventLog, Status};
 use crate::app::App;
 
 /// Agents compiled into the binary, so a first paint (or a failed fetch) is
-/// never an app with no agents at all. The summarizer is the Python
-/// project's built-in — `core/agents/summarizer` there, the same file here.
-/// It is listed FIRST wherever it is merged, which is what makes a project
-/// agent of the same name replace it (Python `registry._agent_dirs`).
+/// never an app with no agents at all.
+///
+/// EMPTY, AND THAT IS THE DESIGN. The one built-in was the summarizer, which
+/// compaction looked up by role; it builds its own sheet now
+/// (`agent::SUMMARIZE`), so nothing left needs a file to be found. The list
+/// stays because its merge order is real: a built-in is offered FIRST so a
+/// project agent of the same name replaces it (Python `registry._agent_dirs`).
 pub fn builtin_files() -> Vec<(String, String)> {
-    vec![(
-        "summarizer".into(),
-        include_str!("../../../public/agents/summarizer/agent.md").into(),
-    )]
+    Vec::new()
 }
 
 /// Install the fetched `public/agents/` files: built-ins first so a project

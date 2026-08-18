@@ -77,14 +77,14 @@ fn body(app: &Rc<RefCell<App>>, path: &str) -> String {
 fn the_model_calls_a_tool_and_the_result_comes_back_into_the_answer() {
     let app = booted(&[
         "list_agents()",
-        "One agent is loaded: summarizer.",
+        "One agent is loaded: main.",
     ]);
     ask(&app, "which agents are loaded");
 
     let trace = body(&app, "/tools");
     // Rendered, not the raw JSON envelope the model wrote (R2-18).
     assert!(trace.contains("list_agents()"), "the call, with its args: {trace}");
-    assert!(trace.contains("summarizer"), "and what came back: {trace}");
+    assert!(trace.contains("main"), "and what came back: {trace}");
 
     let chat = body(&app, "/chat");
     assert!(chat.contains("One agent is loaded"), "the answer: {chat}");

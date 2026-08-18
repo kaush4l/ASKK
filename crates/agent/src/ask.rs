@@ -30,7 +30,20 @@ pub(crate) fn scoped_tools(state: &AgentState, cfg: &PhaseConfig) -> Toolbox {
     // words to call nothing; this is what makes the words true. Enforcing it
     // here rather than trusting the brief is `engine: base`'s lesson — a
     // capability described but not enforced is a setting that looks applied.
-    match crate::stages::tools_on(crate::stages::current(state)) {
+    let stage = crate::stages::current(state);
+    // …AND THE PLAN STAGE GETS EXACTLY WHAT ITS BRIEF NAMES. It is told to list
+    // the skills and read the ones that apply, so refusing it every tool would
+    // make that instruction a lie, and granting it the whole toolbox would let
+    // it start the work it is supposed to be planning. Two tools, named here
+    // and nowhere else.
+    if crate::brief::skill_only(stage) {
+        let skills = [crate::skills::LIST_SKILLS, crate::skills::READ_SKILL]
+            .iter()
+            .map(|n| kernel::ToolId((*n).into()))
+            .collect();
+        return state.toolbox.scoped(&crate::phase::ToolScope::Only(skills));
+    }
+    match crate::stages::tools_on(stage) {
         true => state.toolbox.scoped(&cfg.tools),
         false => Toolbox::default(),
     }
@@ -46,7 +59,8 @@ pub(crate) fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effec
     // component that owns its shape. What the model may call and what it is
     // told it may call cannot drift, because both come from one toolbox (I13).
     paper::set_component(&mut state.paper, &Affordances::new(tools.usages()), at);
-    paper::set_component(&mut state.paper, &contract(&cfg, &tools), at);
+    let shape = stage_contract(state, &cfg, &tools);
+    paper::set_component(&mut state.paper, &shape, at);
     // Fresh every request, never cached: a cached clock is a wrong clock
     // (Python `Engine.context`).
     let environment = Environment {
@@ -77,5 +91,13 @@ pub(crate) fn contract(cfg: &PhaseConfig, tools: &Toolbox) -> Contract {
         (ResponseContract::ToolEnvelope, false) => Contract::tool_envelope(),
         _ => Contract::prose(),
     }
+}
+
+/// …UNLESS THE STAGE DEMANDS A SHAPE (the strategy vote). A stage whose reply
+/// the machine PARSES states the reply as fields; the phase's contract is what
+/// every other stage falls back to.
+fn stage_contract(state: &AgentState, cfg: &PhaseConfig, tools: &Toolbox) -> Contract {
+    crate::brief::contract(crate::stages::current(state))
+        .unwrap_or_else(|| contract(cfg, tools))
 }
 

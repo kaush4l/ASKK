@@ -7,6 +7,7 @@
 //! G3 interface freeze: types and signatures only; bodies are `todo!()`.
 
 mod answer;
+mod brief;
 mod defaults;
 mod author;
 mod calls;
@@ -32,6 +33,7 @@ mod steer;
 mod step;
 mod stages;
 mod stop;
+mod strategy;
 mod subagent;
 mod supervisor;
 mod toolbox;
@@ -52,7 +54,8 @@ pub use phase::{
 };
 pub use paper::adopt_spec;
 pub use now::{clock, environment};
-pub use window::{compacted, due, set_window, transcript, window, SUMMARY_HEADING};
+pub use window::{compacted, due, set_window, transcript, window, SUMMARIZE, SUMMARY_HEADING};
+pub use components::SESSION_STARTED;
 pub use space::{is_space_tool, space_tools, Change, Space, NOTE_LIMIT};
 pub use search::{results as search_results, search_path, WEB_SEARCH};
 pub use workspace::{is_workspace_tool, process_name, relative_path, workspace_tools};
@@ -64,13 +67,19 @@ pub use skills::{
 };
 pub use critic::{passed as critic_passed, FAULT as CRITIC_FAULT, PASS as CRITIC_PASS};
 pub use spec::{
-    parse_agent_file, AgentSpec, ENGINE_BASE, ENGINE_REACT, ROLE_CRITIC, ROLE_ENTRY,
-    ROLE_SUMMARIZER,
+    parse_agent_file, AgentSpec, ENGINE_BASE, ENGINE_REACT, ROLES, ROLE_CRITIC, ROLE_ENTRY,
 };
+pub use brief::brief;
 pub use stages::{
-    brief, is_stage, stage_of, tools_on, CRITIQUE as STAGE_CRITIQUE, PLAN as STAGE_PLAN,
-    STAGES, STAGE_ENTERED, VERIFY as STAGE_VERIFY, WORK as STAGE_WORK,
+    is_stage, route_of, stage_of, tools_on, ANSWER as STAGE_ANSWER,
+    CRITIQUE as STAGE_CRITIQUE, PLAN as STAGE_PLAN, STAGES, STAGE_ENTERED, ROUTE_CHOSEN,
+    VERIFY as STAGE_VERIFY, WORK as STAGE_WORK,
 };
+pub use strategy::{route_of as vote_of, Route, STRATEGY as STAGE_STRATEGY};
+/// The stage a state is on — `tests/strategy.rs` asserts a turn opens on the vote.
+pub fn current_stage(state: &AgentState) -> &str {
+    stages::current(state)
+}
 pub use state::{AgentState, PlanStep};
 pub use reply::{malformed_call, parse_reply, ParsedReply};
 pub use ending::{

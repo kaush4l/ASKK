@@ -1,9 +1,7 @@
 //! L2 wiring (ARCHITECTURE §2): the §3 seam, routing dispatch, the effect
-//! runtime loop, and boot. No domain logic lives here — this crate connects
-//! the pure crates to each other and to injected ports, and nothing else.
-//! G3 freeze: private fields are unread while bodies are todo!(); lift at G4.
+//! runtime loop, and boot. No domain logic — this crate connects the pure
+//! crates to each other and to injected ports, and nothing else.
 #![allow(dead_code)]
-
 mod agentcard;
 mod asked;
 mod agents;
@@ -18,6 +16,7 @@ mod calls;
 mod boot;
 mod builtins;
 mod chat;
+mod clear;
 mod ctx;
 mod dispatch;
 mod effects;
@@ -40,6 +39,7 @@ mod inspector;
 mod install;
 mod logbook;
 mod logs;
+mod loopline;
 mod markdown;
 mod memory;
 mod observe;

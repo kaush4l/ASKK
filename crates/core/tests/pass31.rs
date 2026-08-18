@@ -300,6 +300,9 @@ fn the_card_says_which_shipped_agent_works_across_laps() {
     };
 
     assert!(card("builder").contains("up to 4 laps a turn"), "{}", card("builder"));
-    assert!(card("main").contains("Runs in stages: plan → work → verify."), "{}", card("main"));
+    // …AND `main` NO LONGER HAS A LIST TO PRINT (`crate::loopline`).
+    // It declares the one stage that CHOOSES the list, so the card names what
+    // it can choose rather than repeating the word `strategy` back.
+    assert!(card("main").contains("Picks its loop per message"), "{}", card("main"));
     assert!(!card("main").contains("laps"), "an agent with one lap claims none: {}", card("main"));
 }

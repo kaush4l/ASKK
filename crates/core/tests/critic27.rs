@@ -130,7 +130,7 @@ fn a_non_critic_card_still_carries_both_doors() {
 /// you" while offering them a way in.
 #[test]
 fn the_shipped_critic_card_agrees_with_its_own_buttons() {
-    let shipped = include_str!("../../../public/agents/critic/agent.md");
+    let shipped = include_str!("../../agent/tests/agents/critic.md");
     let caller = include_str!("../../agent/tests/agents/builder.md");
     let page = listing(&[("critic", shipped), ("builder", caller)]);
     assert!(page.contains("Talk to critic"), "{page}");
