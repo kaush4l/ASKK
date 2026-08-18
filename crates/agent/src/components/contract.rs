@@ -57,9 +57,15 @@ impl ResponseContract {
     /// given a rule follows it.
     pub fn tool_envelope() -> Self {
         ResponseContract {
+            // NAMES THE BLOCK THAT IS ACTUALLY RENDERED. This said "as
+            // AFFORDANCES shows them" while the prompt emits `## affordances`,
+            // which is the same drift as the "CONTEXT block" that never
+            // existed: an instruction pointing at a heading the model cannot
+            // find is an instruction it has to guess at.
             instructions: "Either answer the user in plain prose, or call tools by writing \
-                 the calls exactly as AFFORDANCES shows them and nothing else. Results come \
-                 back on lines beginning `Result:` — read them, then answer."
+                 the calls exactly as the `## affordances` block shows them and nothing \
+                 else. Results come back on lines beginning `Result:` — read them, then \
+                 answer."
                 .into(),
             object: None,
         }

@@ -1,5 +1,23 @@
 # Upgrade plan — one agent, a strategy loop, and components that choose their format
 
+Status: DONE. Every section below shipped. Three things the plan did not foresee,
+recorded here because they are the parts a reader would otherwise have to
+rediscover:
+
+1. **`declared` and `stages` had to become two fields.** The strategy stage
+   rewrites the list mid-turn, so without a copy of what the file declared, the
+   second message of a conversation inherited the first one's route — a greeting
+   after a project would still be planning. Every test helper that sets a stage
+   list has to set both.
+2. **The plan stage reads before it writes.** Against the real model its first
+   act is a `list_skills` call, not the brief; the brief comes on the call after
+   the result lands. A live test that expected the brief immediately failed
+   against a prompt that was working exactly as written.
+3. **A pure tool's result is EMITTED, not run.** `step` answers `list_skills`
+   itself and emits the fact; the runtime appends it and steps again. Feeding a
+   hand-built result instead left `## observations` empty, and the model answered
+   with nothing — a harness bug that read exactly like a model failure.
+
 Follows `UPGRADE-COMPONENTS.md`, which made every part of the prompt a component
 ordered by `Slot`. That work stopped at "each component renders itself in one
 shape, and the loop an agent runs is a fixed list in its frontmatter". This plan
@@ -79,6 +97,22 @@ everything needed; this is a route and a button.
 
 ## 7. What proves it
 
-The workflow is pointed at a real local model —
-`gemma-4-12B-it-qat-mxfp8` at `http://127.0.0.1:8873/v1` — and each of the three
-routes is driven end to end against it.
+`crates/agent/tests/live.rs` drives the real `step` function against
+`gemma-4-12B-it-qat-mxfp8` at `http://127.0.0.1:8873/v1`, with the real shipped
+`main` agent — the one thing no scripted test can show, because the strategy
+loop is entirely a bet on whether a 12B writes the vote the contract asks for.
+A vote it cannot write lands in `react` by the fallback, and every other test in
+the repo stays green.
+
+```
+cargo test -p agent --test live -- --ignored --test-threads=1
+```
+
+Four tests, all passing: the vote is written in the shape asked for; the three
+routes are told apart on three messages a person would sort the same way; the
+project route plans (reading the skills first) and hands its brief to the work
+stage; the answer route replies in prose with no tool call.
+
+Ignored by default because it needs a model running, and it shells out to `curl`
+rather than adding an HTTP dependency to a crate whose whole rule is that it is
+pure and needs no network (I3).

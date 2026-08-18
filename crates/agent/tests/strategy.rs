@@ -186,3 +186,35 @@ fn the_chosen_route_is_recorded_with_its_reason() {
         "the route and what decided it: {effects:?}"
     );
 }
+
+/// THE PLAN STAGE'S TOOL RESULT COMES BACK TO THE PLAN STAGE.
+///
+/// `plan` is granted the skill tools so its brief's "read the ones that apply"
+/// is real. That makes it the first toolless-by-default stage that can produce
+/// a tool call, so the round-trip has to work there too: the call runs, the
+/// result lands in `## observations`, and the SAME stage is asked again with it.
+/// A result that arrived after the stage had moved on would be instruction
+/// pulled in for a stage that no longer needed it.
+#[test]
+fn a_skill_read_in_the_plan_stage_comes_back_to_the_plan_stage() {
+    let (state, _) = voted("ROUTE: project\nWHY: something to build");
+    assert_eq!(agent::current_stage(&state), "plan");
+    let (state, effects) = step(state, replied("list_skills({})"));
+    // `list_skills` is PURE, so `step` answers it itself and emits the result
+    // rather than asking the runtime to run it. The runtime appends that fact
+    // and steps again, which is what this does.
+    let Some(Effect::Emit { kind }) = effects.first() else {
+        panic!("the plan stage's call is answered: {effects:?}");
+    };
+    assert!(matches!(kind, EventKind::ToolInvoked { .. }), "{kind:?}");
+    let (state, effects) = step(state, ev(kind.clone()));
+    assert_eq!(agent::current_stage(&state), "plan", "still planning");
+    let Some(Effect::CallModel { document, .. }) =
+        effects.iter().find(|e| matches!(e, Effect::CallModel { .. }))
+    else {
+        panic!("the plan stage is asked again with what it read: {effects:?}");
+    };
+    let sent = format!("{document:?}");
+    assert!(sent.contains("agent-file"), "the skill listing is in the paper: {sent}");
+    assert!(sent.contains("OUTCOME"), "…under the plan brief, still");
+}
