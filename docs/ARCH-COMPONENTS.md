@@ -809,15 +809,22 @@ What this DOES cost: an agent cannot author-and-run a helper inside a single tur
 
 ### 10.3 Why (b) is also the OBSERVABLE one — the owner asked to verify a workflow ran
 
+> **The `path:line`s in this section were dropped for FUNCTION NAMES, deliberately.**
+> They resolved exactly when written and every one of them broke when `batch.rs` was
+> reflowed one increment later — the same defect as F10, this time caused rather than
+> inherited. A line number is only worth citing for something that will not move; a
+> function name in a named file is the stable address. §12.7 verifies these five facts
+> against the tree as it stands.
+
 Going through `Effect::Delegate` is not merely cheaper; it is the reason the result can
-be inspected at all. `crates/core/src/batch.rs:84` `delegate` already, for free:
+be inspected at all. `crates/core/src/batch.rs`'s `delegate` already, for free:
 
 - appends `EventKind::UserMessage { text: goal, agent, from }` — **what it was given**,
   in the callee's own history, attributed to the caller;
 - runs the turn on the callee's own Worker via `batch::run_on`
-  (`crates/core/src/batch.rs:31`) and records `ModelReplied` there — **that it ran**;
+  (`crates/core/src/batch.rs`'s `run_on`) and records `ModelReplied` there — **that it ran**;
 - moves the callee's board row Working -> Idle, or Failed WITH THE MESSAGE
-  (`crates/core/src/batch.rs:65` `refused`);
+  (`crates/core/src/batch.rs`'s `refused`);
 - emits `EventKind::ToolInvoked { tool: <agent name>, args: goal, ok, output }` —
   **what came back** — which the Tool trace pane (`crates/core/src/trace/pane.rs`)
   already renders and `/tools` already projects (I8).
@@ -881,7 +888,7 @@ pub trait ToolHost {
 pub fn install_tool_host(app: &mut App, host: Rc<dyn ToolHost>)
 ```
 
-Precedence in `crates/core/src/batch.rs:180-191` is **built-in → installed host → local
+Precedence in `crates/core/src/batch.rs`'s `invoke` is **built-in → installed host → local
 refusal**. Built-ins win on purpose: a host must not be able to shadow `exec` or
 `web_search`.
 
@@ -905,7 +912,7 @@ filling a block so a test could pass.
 | F2 | `write_agent` told the model "installed immediately" while `roster.rs:137` said "as soon as this turn ends" | tool description now states the turn-boundary rule and that `spawn_agent` cannot reach it until the next turn |
 | F2 | §10.4 still asserted the same-turn claim §10.2b had already retracted | corrected to "an EARLIER turn" |
 | F6 | `components/world.rs` cited `SharedSpace, Slot::SPACE` | now cites `crate::faculty::space` + `Sensed` |
-| F4 | `ALL: [&str; 1]` — a faculty missing from it gets ZERO structural coverage | **OPEN**, recorded below |
+| F4 | `ALL: [&str; 1]` — a faculty missing from it gets ZERO structural coverage | **CLOSED** — one `TABLE`, `of` and `all()` both derived from it (§12.5) |
 | F10 | §9.2's `path:line`s were exact against `ca59db1` and now point at shifted lines | **OPEN** — accepted cost of citing a baseline |
 
 ### 11.4 The honest extension cost, restated a third time
@@ -923,7 +930,20 @@ filling a block so a test could pass.
 too generous; this one is stated against a tree where both halves are proven by test
 (`crates/core/tests/faculty.rs`).
 
+> **RETRACTED — §12.4 MEASURED IT AND IT IS WRONG TOO.** This was the third statement of
+> the number and it was still an estimate, made before any second faculty existed. The
+> measured cost of building one is **six new files and five existing files, eleven lines**
+> (§12.4). The `zero edits to core` half survives only for a faculty whose capability is a
+> browser; `memory`'s capability is a core PORT, so it edits `core/src/{lib,faculty,boot}.rs`.
+> Do not quote this table. Quote §12.4.
+
 ### 11.5 What is still NOT true, and must not be claimed
+
+> **§11.5's first two items are NO LONGER TRUE, and §12 is why.** Item 1 was closed by
+> building a second faculty that declares tools (`memory`) and running one end to end;
+> item 2 (F4) was closed by collapsing `ALL` and `of` into one table. They are kept below
+> unedited, because a document that quietly rewrites what it admitted is worth less than
+> one that shows the admission and dates it. Item 3 still stands.
 
 1. **`agent::faculty::of` is a closed `match` with one arm**, and that arm gates BOTH
    halves — which is sharper than it first looks and was found by probing, not by
@@ -950,3 +970,255 @@ too generous; this one is stated against a tree where both halves are proven by 
    faculty its author forgets to add gets no structural check at all. The constraint
    harness is opt-in, which is the weakest thing about it.
 3. **No chrome faculty exists and none was built.** CLAUDE.md §17 user gate.
+
+---
+
+## 12. THE SECOND FACULTY — the round that made §11.5's three admissions false
+
+§11.5 said three things were not true. This section is written against a tree where the
+first two are, and it states the numbers rather than the intentions. Nothing here is
+taken from a coding agent's self-report; the counts are from `git diff --stat` against
+`9368d7e` with every changed file opened.
+
+### 12.1 What was actually unproven, in its own words
+
+> *"`core` can now run a faculty's tools, and no faculty yet declares any."* (§11.5)
+
+That was the sharp version and it was right. `faculty::of`'s single arm gated BOTH halves,
+so no non-built-in tool name existed in any toolbox in the build, and `Toolbox::check`
+refused one in the pure crate before any effect reached the executor. The host path was
+proven at "the one reachable equivalent seam" — a space tool the built-in handler
+DECLINES — and not by a faculty doing it.
+
+### 12.2 `memory`, and why it is a faculty rather than three more tools on `space`
+
+One agent's own durable lines: a `## memory` block at `Slot::MEMORY`, and two tools,
+`keep(note)` and `discard(note)`. It needs no browser, no network and no §17 gate,
+because the capability it rests on is a port the core already injects — `StorePort`,
+which in the browser is `harness` for the page and `harness-agent-<name>` inside a
+sub-agent's Worker, i.e. per-agent by construction.
+
+Three differences from the shared space, each enforced rather than asserted:
+
+1. **It needs no space.** `faculty::declared` only declares the space faculty when
+   `Space::named` resolves, so an agent with no folder had nowhere to keep anything.
+   Pinned by `crates/agent/tests/faculty.rs::memory_without_a_space_offers_its_own_tools_and_nothing_of_the_spaces`.
+2. **It is private to one agent.** A space is one database every Worker opens; memory is
+   the agent's own store. Nothing enforces the boundary at runtime because the boundary
+   IS the database.
+3. **It drags no workspace.** Naming a space brings the whole Linux toolset (ADR-006);
+   memory brings two tools and one block. Same test.
+
+**The honest argument for it, and it is not "the seam needed a second user."** The
+shipped `main` agent told the model *"The space is what the group needs, not a diary"* and
+then offered nowhere to put a diary; `Slot::MEMORY` — "Retained knowledge across
+sessions" — had sat in `crates/context/src/slot.rs:47` with no component filling it. The
+hole was named twice in the product before this round existed. **The counter-argument,
+which a reader should hold:** structurally it is the space with the sharing removed —
+`Memory::keep`/`discard` mirror `Space::post`/`forget`, and `memory/host.rs` mirrors
+`space/shared.rs`. What is genuinely new is not the mechanism but the *lifetime and
+audience*, and one arrangement that is better than the space's: the space needs two host
+paths (`shared::refresh` for the tools, `SpaceSense` for the prompt) and memory needs
+one, because its host reads the store itself on every call.
+
+### 12.3 The proof, and exactly how far it goes
+
+`keep` is in no table in `crates/core`: not in `agent::builtin_tools()`, not in
+`tools::tool_entry`, not in `tools::run`. So a call to it reaches
+`faculty::run_hosted`'s positive branch or it reaches a refusal, and the refusal has a
+signature the tests rule out. Six tests in `crates/core/tests/faculty.rs` walk it:
+declared by a config, offered in the affordances, called by the model, run by the host,
+the answer back as an ordinary `ToolInvoked`, the line in the NEXT prompt, still there
+after a reboot on the same store, gone from prompt AND store after `discard`, refused for
+an agent that does not declare the faculty, and the oldest dropped at the cap.
+
+**Where the proof is honest about its limit.** `MemoryHost` lives in `crates/core` and is
+installed by `boot`, not by a composition root outside it. That is the right home under
+the rule "a host lives where its capability is reachable" — durable storage is an
+injected port — but it means this faculty alone does not prove a host defined in a crate
+`core` has never heard of. `FakeBrowser` in the same test file does prove that, through
+the public `install_tool_host`. **Neither proof alone is the whole sentence; together
+they are, and that is worth stating rather than blurring.**
+
+### 12.4 THE MEASURED EXTENSION COST — §11.4's number was wrong and here is the real one
+
+§11.4 said *"Two new files, four one-line registry entries, zero edits to `context` and
+zero to `core`."* Measured against what `memory` actually cost:
+
+**Six new files.**
+
+| File | Lines |
+|---|---|
+| `crates/agent/src/memory.rs` | 140 |
+| `crates/agent/src/faculty/memory.rs` | 52 |
+| `crates/agent/src/components/memory.rs` | 35 |
+| `crates/core/src/memory/mod.rs` | 53 |
+| `crates/core/src/memory/sense.rs` | 55 |
+| `crates/core/src/memory/host.rs` | 129 |
+
+**Nine existing non-test files.** The first five are the per-faculty registry cost —
+eleven lines between them. The last four are not, and they are counted here anyway
+because a count that quietly drops the inconvenient rows is the thing this section
+exists to stop being.
+
+| File | Lines | What |
+|---|---|---|
+| `crates/agent/src/faculty/mod.rs` | 3 | `mod memory;`, `pub use memory::MEMORY;`, one `TABLE` row |
+| `crates/agent/src/components/mod.rs` | 2 | `mod memory;`, `pub use memory::memory_parts;` |
+| `crates/agent/src/lib.rs` | 3 | `mod memory;` and two export lines |
+| `crates/core/src/lib.rs` | 1 | `mod memory;` |
+| `crates/core/src/faculty.rs` | 2 | one line in `installed_by_default`, one in `hosts_by_default` |
+| `crates/core/src/boot.rs` | 12 | one-time seam: compute both host lists before `ports` moves |
+| `crates/core/src/README.md` | 1 | the subject table's `memory/` row |
+| `crates/agent/src/author.rs` | 14 | a PRE-EXISTING bug this exposed (§12.6), not an extension cost |
+| `public/agents/main/agent.md` | 62 | the shipped config that declares it, and its prose |
+
+Seven test files were also changed; they are not counted as extension cost either, and
+saying so is not the same as hiding them.
+
+**FIFTEEN NON-TEST FILES — six new and nine edited. THE OWNER'S BAR WAS TWO, AND THIS
+ROUND DID NOT MEET IT.** Say that plainly before anything else. An earlier draft of this
+section said "eleven files" by counting only the registry rows; the bar-raiser caught it,
+and a number that flatters itself in the section whose whole purpose is to be the honest
+number is worse than no number. Three qualifications belong beside it and none of them
+change it:
+
+- **`zero edits to core` is false for `memory` and remains true for a browser faculty.**
+  Memory touches `core/src/{lib,faculty,boot}.rs` *because its capability is a core
+  port*. A faculty whose capability is a browser puts both host halves in `adapters_web`
+  and arrives through `install_sense`/`install_tool_host` with no `core` edit at all —
+  which is what `FakeBrowser` demonstrates. The claim was not wrong about the chrome
+  case; it was wrong to state it as a property of the seam.
+- **Three of the six new files are a house style, not a requirement.** `agent` splits a
+  faculty into decisions / declaration / rendering because `space` does, and the three
+  together are 227 lines, so I12 forbids folding them into one anyway. A smaller faculty
+  is two files there.
+- **One-time seam work is in the diff and is not a per-faculty cost.** `hosts_by_default`
+  did not exist; `installed_by_default` had to take `&Ports`; `boot.rs` had to compute
+  both before `ports` moves (12 lines). A third faculty pays none of that.
+
+**What a THIRD faculty costs, projected from this one:**
+
+| | New files | Existing files | Core edits |
+|---|---|---|---|
+| Browser-hosted (host in `adapters_web`) | 2–3 in `agent`, 1 in `adapters_web` | 4 (`faculty/mod.rs`, `components/mod.rs`, `agent/lib.rs`, `adapters_web/lib.rs`) | **0** |
+| Core-port-hosted (like `memory`) | 2–3 in `agent`, 3 in `core` | 5 | 3 |
+
+A seam that costs four honest edits is a fine thing. Claiming it costs two is not.
+
+### 12.5 F4 is closed, and closed the way it was asked to be
+
+The instruction was "prefer impossible". `pub const ALL: [&str; 1]` and the `match` in
+`of` were two independent lists; a faculty added to one and not the other got zero
+structural coverage while every gate stayed green. Both are gone. There is one
+`const TABLE: &[(&str, fn() -> Faculty)]`; `of` looks up in it and `all()` is derived
+from it. **Registering IS adding a row — there is no second place left to forget.**
+`crates/agent/tests/faculty.rs::of_answers_to_every_name_in_the_table_and_to_nothing_outside_it`
+checks both directions, and the structural walk asserts the registry holds at least two
+faculties so a collapse back to one is visible.
+
+### 12.6 The defect this round found by accident, which is the best evidence the gate works
+
+`render_agent_file` — the stated INVERSE of `parse_agent_file`, whose own doc comment
+promises "every key is written even when empty" — **never wrote `faculties:`**. It had
+been wrong since the Faculty seam landed and no test saw it, because no shipped agent
+declared a faculty: the round-trip test compared two specs that were both empty there and
+agreed. The moment `main` declared one, `cargo test --workspace` went red.
+
+Consequence had it shipped: a model calling `write_agent` could not author an agent with
+a faculty, and exporting an agent silently dropped a declared capability. `passes:` was
+missing on identical terms and nobody had noticed at all.
+
+Fixed, and — more importantly — `crates/agent/tests/author.rs::every_field_survives_the_round_trip`
+now builds a spec with every field set to a non-default value, so the next field added to
+`AgentSpec` fails on the day it is added rather than on the day a shipped file first uses
+it. **The lesson is the one CRITIQUE-02 already recorded in a different form: a test that
+only sees what ships is a coincidence, not a check.**
+
+### 12.7 The spawn workflow, verified — and what an operator can actually see
+
+`crates/core/tests/spawn.rs` builds `LocalAgents`: an `AgentPort` where each callee is a
+REAL `core::App`, booted through `core::boot` with its own store, its own agent file and
+its own model, whose `delegate` puts the goal in through the same `/chat` door a person
+uses and runs `core::drive` on the callee's own loop. That is what
+`crates/adapters_web/src/workers.rs` does across `postMessage`, minus the message
+passing. It is not a scripted string: `adapters_test::ScriptedAgents` cannot run a second
+agent, and the round did not pretend otherwise.
+
+Proven end to end: the callee's own log holds the goal and its own reply; the caller's log
+holds `UserMessage { text: goal, agent, from }`, the `Working` → `Idle` transitions, and
+`ToolInvoked { tool: <callee>, args: goal, ok, output }`; a failing callee comes back
+named, with its own words, without killing the caller's turn.
+
+**WHAT AN OPERATOR LOOKS AT, and it is one surface, not four:**
+
+> **`GET /tools` with `x-agent: <the caller>` — the Tool trace pane for the agent that
+> delegated.** It carries the GOAL in full (as the call's arguments) and the ANSWER in
+> full (as its result). Nothing is truncated, because the 40/20-character quoting only
+> applies to JSON-object arguments and a delegation's argument is a bare string.
+
+Three gaps, found by asserting the true behaviour rather than the hoped-for one:
+
+1. **The callee's own `/tools` pane is EMPTY.** That branch projects `core.agent_activity`
+   reports a real Worker sends back, and a delegated turn is not one. The agent that did
+   the work shows "has not called a tool yet".
+2. **The board shows status and a turn count, never the goal or the answer.** `detail` is
+   `""` for Working and Idle and is rendered only for `Failed`.
+3. **`core::last_failure` on the caller is `None` after a delegated failure** — `refused`
+   logs `core.agent_error` and `last_failure` folds `core.error`. The failure is legible
+   in the tool envelope and the board row and nowhere else.
+
+None of the three is fixed here and each is recorded rather than smoothed over. The
+answer to "can an operator tell whether a workflow ran correctly" is **yes, from one
+pane, and only if they know to open the CALLER's**.
+
+### 12.8 The other half of F2, closed
+
+`batch.rs::refused` told a model that an agent it had written moments earlier "is not
+loaded in this browser" — asserting the one thing that would stop it waiting and
+retrying. It now says the agent was written this turn and starts when the turn ends, and
+it FORGETS the board row rather than leaving a phantom stuck working. `write_agent`'s
+description had already been corrected last round; the two now agree.
+
+### 12.9 What this round still does NOT prove
+
+1. **That a browser faculty's tools run.** No faculty reaching a browser exists and none
+   was built — CLAUDE.md §17 keeps it a user gate. What is now true, and was not, is that
+   a faculty declaring a tool works end to end; what remains untrue is that anything in
+   this build reaches a page.
+2. **That a host defined outside `core` runs a REAL faculty's tool.** `FakeBrowser` runs a
+   tool the space declares; `MemoryHost` runs a tool memory declares but lives in `core`.
+   The two together cover the sentence; neither does alone.
+3. **That the shipped `main` reliably reaches for `keep`.** Against the real 12B it did,
+   4 runs out of 4, when the message said the line was private — and 2 of 3 on a neutral
+   phrasing, once writing to the SHARED SPACE instead. That confusion is the exact one
+   `## Your own memory` was written to settle, and it is recorded here because a prompt
+   that works two times in three is a finding, not a pass.
+4. **Anything in a browser.** Nothing was run in one this round.
+
+### 12.10 The bar-raiser's findings, and what was done about each
+
+`docs/CRITIQUE-03.md`'s successor ran read-only against this tree and returned **GO on
+the faculty and on F4, QUALIFIED GO on the spawn verification**. Every finding, with the
+action, because a critique that is only summarised is a critique that was not taken.
+
+| # | Finding | Action |
+|---|---|---|
+| F1 HIGH | `run_on` APPENDED an `AgentStatus{Working}` fact for a name the roster never had, and `refused` corrected only the projection with `Board::forget`. `agents::install::replayed` counts a `Working` fact as a TURN, so a reload resurrected a phantom agent reporting a turn it never took | **FIXED at the fact.** `Working` is announced only for a name in `app.agents`; `Board::forget` is gone from the path. The test now asserts `statuses(caller, "helper") == []` instead of asserting on rendered HTML |
+| F2 MED | `memory.rs` illustrated "it needs no space" with "the shipped `main` among them" — and `main` names `space: research` | **FIXED**, and inverted: the comment now says plainly that `main` is the one reason for the faculty its own first user does not demonstrate |
+| F3 MED | two `path:line`s in `core/src/faculty.rs` broke when `batch.rs` was reflowed, and the reflow deleted the reasoning one of them pointed at | **FIXED.** Both re-resolved; "every 400 ms" restored |
+| F4 MED | four `batch.rs:NNN` citations in §10.3/§11.1 broke the same way | **FIXED by deleting the line numbers.** §10.3 now cites function names and says why — a line number is only worth citing for something that will not move |
+| F5 LOW | the live test's doc claimed the model called `keep` *and only* `keep`; the assertion checked only that `keep` appeared | **FIXED.** It now also asserts `remember` was NOT called. Verified 4 runs out of 4 against the real 12B |
+| F6 LOW | "exact rather than merely unlikely" overstated a per-process counter | **FIXED**: "exact WITHIN ONE PROCESS", with the reason it is enough |
+| F8 LOW | §12.4 said "eleven files" by counting only registry rows | **FIXED**: fifteen non-test files, with the four omitted rows named |
+| F9 LOW | §11.5's superseded items | already carried a supersede note; left standing beneath it on purpose |
+| F7 LOW | memory's store prefix is flat `memory/`, not `memory/<agent>/`, so privacy rests on one-database-per-agent rather than on the key | **NOT FIXED, and the reason is structural.** `Sensing` reaches the SENSE but `ToolHost::run(tool, args)` has no equivalent — the round gave perception a context and action none. Keying only the sense would desync the two halves. The fix is a `ToolHost` signature change and it is the next increment's, not a line in this one |
+| F10 LOW | `Slot::USER` ("Durable facts about the person") describes what `main`'s prompt teaches the model to write into `Slot::MEMORY` | **NOT FIXED.** A real taxonomy question. `Slot::USER` has no component and no author; resolving it means deciding whether "what this person is like" and "what I chose to keep" are one block or two, which is a design ruling and not a repair |
+| F11 — | two negative controls moved onto `web_search`; `docs/PARITY.md` proposes granting `main` `web_search`, which will turn both red | **RECORDED.** Whoever does that increment owns `prompt.rs` and `capability32.rs` |
+
+**One thing the critique found that this round did not report and should have: the live
+suite is NOT green.** `a_project_turn_plans_before_it_works` fails at
+`crates/agent/tests/live.rs` against the real model (the plan stage's brief arrives
+without `OUTCOME`). It is pre-existing, unrelated to memory, and `#[ignore]`d so no gate
+sees it — which is exactly why it needs writing down rather than leaving for the next
+round to rediscover.

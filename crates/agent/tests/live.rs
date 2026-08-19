@@ -102,6 +102,21 @@ fn pump(mut state: AgentState, mut effects: Vec<Effect>) -> (AgentState, String)
     panic!("the turn never came back to the model");
 }
 
+/// [`pump`], but `None` when the turn is over rather than a panic. A turn that
+/// ends is a legitimate outcome for a message the model chose to just answer.
+fn pumped(mut state: AgentState, mut effects: Vec<Effect>) -> Option<(AgentState, String)> {
+    for _ in 0..16 {
+        if let Some(call) = effects.iter().find(|e| matches!(e, Effect::CallModel { .. })) {
+            return Some((state, ask_the_model(call)));
+        }
+        let Some(Effect::Emit { kind }) = effects.first() else {
+            return None;
+        };
+        (state, effects) = step(state, Event { id: EventId(0), seq: 0, at: AT, kind: kind.clone() });
+    }
+    None
+}
+
 fn shipped_main() -> AgentState {
     let spec = parse_agent_file("main", MAIN).expect("the shipped main agent parses");
     let mut state = AgentState::new();
@@ -234,6 +249,81 @@ fn a_project_turn_plans_before_it_works() {
     assert!(
         format!("{document:?}").contains("OUTCOME"),
         "the work stage is given the plan it is working to"
+    );
+}
+
+/// THE MEMORY FACULTY IS ACTUALLY REACHED (increment 27). `main` declares
+/// `faculties: [memory]` and names `keep`, so the tool is in its toolbox and
+/// the file's `## Your own memory` section tells it when to reach for it. This
+/// asks the only question those two cannot answer between them: does a 12B,
+/// told something about the person that will still be true next week, actually
+/// call `keep`?
+///
+/// TWO THINGS WERE MEASURED TO GET HERE, and both are the reason this test is
+/// shaped the way it is rather than the obvious way.
+///
+/// **It is asked on the work stage, not through the vote.** Run through the
+/// strategy vote, this message is scored BOTH WAYS by the same model on the
+/// same prompt: once `ROUTE: react` ("it requires using the memory system to
+/// store a preference") and the next time `ROUTE: answer` ("a simple
+/// preference update that can be confirmed immediately") — and the answer
+/// stage is granted no tools, so that second turn replies "I have noted your
+/// preference" having noted nothing at all. Which way the vote falls is
+/// `the_three_routes_are_told_apart`'s question, not this one's.
+///
+/// **The message says the line is private, because that is the choice the
+/// prompt teaches.** Asked to remember a preference with nothing said about
+/// who it is for, the model split roughly two in three `keep` and one in three
+/// `remember` — writing a personal habit into the shared space, which is the
+/// exact confusion `## Your own memory` exists to settle. Told the same thing
+/// with "nobody else working in this space needs to know it", it called `keep`
+/// and only `keep` on four runs out of four. So this asserts on the harder and
+/// more useful claim: the prompt does not merely expose the tool, it gets the
+/// discrimination right.
+#[test]
+#[ignore = "needs the local model at 127.0.0.1:8873"]
+fn the_model_keeps_what_it_was_asked_to_remember() {
+    let message = "Remember that I prefer metric units. It is just about how I like you to \
+                   talk to me — nobody else working in this space needs to know it.";
+    let mut working = shipped_main();
+    working.declared = vec![agent::STAGE_WORK.to_string()];
+    working.stages = vec![agent::STAGE_WORK.to_string()];
+    let (state, effects) = step(working, user(message));
+    let (mut state, mut said) = pump(state, effects);
+    let mut heard = vec![said.clone()];
+    for _ in 0..4 {
+        if agent::named(&said).iter().any(|c| c.starts_with("keep")) {
+            break;
+        }
+        let (s, effects) = step(state, replied(&said));
+        // The turn may simply END here — the answer route finishes after one
+        // reply — and a turn that ended is an answer to the question this test
+        // asks, not a crash.
+        let Some((s, reply)) = pumped(s, effects) else { break };
+        state = s;
+        said = reply;
+        heard.push(said.clone());
+    }
+    let transcript = heard.join("\n---- NEXT CALL ----\n");
+    println!("EVERYTHING THE MODEL SAID:\n{transcript}");
+    assert!(
+        heard
+            .iter()
+            .any(|r| agent::named(r).iter().any(|c| c.starts_with("keep"))),
+        "the turn never called keep. everything it said:\n{transcript}"
+    );
+    // …AND ONLY `keep`. This is the half that makes the test about the PROMPT
+    // rather than about the toolbox: the failure mode actually observed was
+    // `remember`, which writes a private habit onto a board every agent in the
+    // space reads. Asserting the presence of `keep` alone would have been green
+    // through it, and the doc comment above would have been describing a
+    // discrimination the code never checked.
+    assert!(
+        !heard
+            .iter()
+            .any(|r| agent::named(r).iter().any(|c| c.starts_with("remember"))),
+        "it also wrote to the SHARED space, which is the confusion this prompt \
+         exists to settle:\n{transcript}"
     );
 }
 

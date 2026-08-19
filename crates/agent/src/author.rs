@@ -46,11 +46,25 @@ pub fn render_agent_file(spec: &AgentSpec) -> String {
     // somebody opened the editor and saved.
     out.push_str(&format!("role: {}\n", one_line(&spec.role)));
     out.push_str(&format!("stages: [{}]\n", spec.stages.join(", ")));
+    // THE FACULTIES, and they are here because leaving them out was a real
+    // defect rather than a hypothetical one. `faculties:` arrived with the
+    // Faculty seam and this function did not learn it, so every export dropped
+    // a declared capability in silence — the export said `keep` was in `tools:`
+    // and no longer said where `keep` came from, and the file that came back
+    // offered nothing to pick it from. It surfaced the moment a shipped agent
+    // declared one (`crates/agent/tests/author.rs`), which is one release too
+    // late; `every_field_survives_the_round_trip` is there so the next field
+    // added to `AgentSpec` fails here instead.
+    out.push_str(&format!("faculties: [{}]\n", spec.faculties.join(", ")));
     out.push_str(&format!("space: {}\n", one_line(&spec.space)));
     out.push_str(&format!("tools: [{}]\n", spec.tools.join(", ")));
     out.push_str(&format!("compact_at: {}\n", spec.compact_at));
     out.push_str(&format!("keep_recent: {}\n", spec.keep_recent));
     out.push_str(&format!("max_rounds: {}\n", spec.max_rounds));
+    // …and `passes`, the same defect one field over. It was invisible because
+    // nothing shipped a non-default value, so the round trip compared two
+    // specs that both held the default and agreed.
+    out.push_str(&format!("passes: {}\n", spec.passes));
     out.push_str("---\n\n");
     out.push_str(spec.prompt.trim());
     out.push('\n');

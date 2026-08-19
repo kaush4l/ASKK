@@ -1,14 +1,10 @@
 //! One line of tool calls, executed. `runtime/` owns *when* an effect runs;
 //! this file owns the one effect that fans out, and it is where the Python's
-//! layout rule finally becomes true in both halves:
-//!
-//! - calls on ONE line are independent and run AT THE SAME TIME — each in the
-//!   callee's own Worker, which is what makes "at the same time" real rather
-//!   than a comment (increment 05 shipped only the ordering half);
-//! - a NEW line runs after everything above it.
-//!
-//! Results are appended in the order the model WROTE the calls, never in the
-//! order they happened to finish: the transcript must be reproducible.
+//! layout rule becomes true in both halves: calls on ONE line are independent
+//! and run AT THE SAME TIME — each in the callee's own Worker, making "at the
+//! same time" real rather than a comment — and a NEW line runs after everything
+//! above it. Results append in the order the model WROTE them, never the order
+//! they finished: the transcript must be reproducible.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -21,12 +17,9 @@ use crate::app::App;
 
 /// One turn on another agent's Worker, recorded in THAT agent's own history
 /// (increment 07) and on its row: Working before, then Waiting if a PERSON
-/// asked it (they are the ones it now waits on) or Idle if the lead did (its
-/// caller already has the answer), Failed WITH THE MESSAGE if its turn raised
-/// — the Python `ThreadedAgent.invoke`, line for line.
-///
-/// One function for both callers, so a sub-agent's transcript is the same
-/// whether you typed to it or the lead delegated to it: the delegated turn
+/// asked it (they now wait on it) or Idle if the lead did (its caller already
+/// has the answer), Failed WITH THE MESSAGE if its turn raised — the Python
+/// `ThreadedAgent.invoke`. One function for both callers: a delegated turn
 /// belongs to the sub-agent, not to whoever asked.
 pub(crate) async fn run_on(
     app: &Rc<RefCell<App>>,
@@ -36,7 +29,12 @@ pub(crate) async fn run_on(
 ) -> Result<String, String> {
     let port = {
         let mut a = app.borrow_mut();
-        a.set_status(agent, Status::Working, "");
+        // ONLY FOR A NAME THE ROSTER HAS. `set_status` APPENDS a fact and a
+        // fact outlives the projection: `Working` for an unloaded name put a
+        // turn in the LOG that never happened, which `install::replayed` counts.
+        if a.agents.iter().any(|s| s.name == agent) {
+            a.set_status(agent, Status::Working, "");
+        }
         Rc::clone(&a.ports.agents)
     };
     let outcome = port.delegate(agent, goal).await;
@@ -60,24 +58,41 @@ pub(crate) async fn run_on(
 
 /// A delegated turn that raised, recorded and said. The RECORD keeps the typed
 /// payload the Worker sent, so the card can carry its disclosure; the BOARD
-/// gets the sentence, because a status row is one line a person reads at a
-/// glance. Returns the sentence, which is also what the caller is told.
+/// gets the sentence, a status row being one line a person reads at a glance.
+/// ONE NAME IS NOT A FAILURE: an agent AUTHORED this turn is not loaded yet
+/// BECAUSE the turn has not ended (`agents/roster.rs::reconcile` defers while
+/// `app.agent.task` is `Some`), so "no agent called 'X'" asserts the one thing
+/// stopping the model from asking again — and NO ROW AND NO FACT either.
 fn refused(a: &mut App, agent: &str, e: DelegateError) -> String {
-    let message = match e {
-        DelegateError::Unknown { agent: name } => {
-            format!("No agent called '{name}' is loaded in this browser.")
-        }
-        // Its OWN words. Carried across the `postMessage` boundary so a
+    let later = "was written in this turn; it is installed when this turn ends, so ask \
+                 again on your next turn.";
+    let gone = |n: &str| format!("No agent called '{n}' is loaded in this browser.");
+    let (message, on_board) = match e {
+        DelegateError::Unknown { agent: n } => match authored_this_turn(a, &n) {
+            true => (format!("'{n}' {later}"), false),
+            false => (gone(&n), true),
+        },
+        // Its OWN words, carried across the `postMessage` boundary so a
         // sub-agent's failure names its cause the way the lead's does.
-        DelegateError::Failed { message, .. } => message,
+        DelegateError::Failed { message, .. } => (message, true),
     };
     let said = crate::failure::from_worker::told(&message, agent);
-    a.set_status(agent, Status::Failed, &said);
+    if on_board {
+        a.set_status(agent, Status::Failed, &said);
+    }
     a.append(EventKind::Custom {
         kind: "core.agent_error".into(),
         payload_json: crate::failure::from_worker::agent_error(agent, &message),
     });
     said
+}
+
+/// Written by `write_agent` in the turn now running: the log's FOLD holds it,
+/// `app.authored` does not (`reconcile` refreshes that only at a turn boundary)
+/// — the difference between the two IS "authored this turn".
+fn authored_this_turn(a: &App, name: &str) -> bool {
+    let holds = |set: &[crate::agents::authored::Authored]| set.iter().any(|(n, ..)| n == name);
+    holds(&crate::agents::authored::set(&a.log)) && !holds(&a.authored)
 }
 
 /// A delegation as the LEAD sees it: the tool envelope the model reads next.
@@ -100,16 +115,15 @@ async fn delegate(app: &Rc<RefCell<App>>, agent: String, goal: String) -> EventK
     }
 }
 
-/// Execute the effects of one `pump`, respecting the layout rule. Everything
-/// that is not a delegation is instantaneous local work and stays in written
-/// order; a RUN of delegations sharing a batch index is awaited together.
+/// Execute the effects of one `pump`, respecting the layout rule. Anything not
+/// a delegation is instantaneous local work in written order; a RUN of
+/// delegations sharing a batch index is awaited together.
 pub(crate) async fn run_effects(app: &Rc<RefCell<App>>, effects: Vec<Effect>) {
     let mut rest = effects.as_slice();
     while let Some(first) = rest.first() {
         let Effect::Delegate { batch, .. } = first else {
-            let (one, tail) = rest.split_at(1);
-            single(app, one[0].clone()).await;
-            rest = tail;
+            single(app, first.clone()).await;
+            rest = &rest[1..];
             continue;
         };
         let line = *batch;
@@ -131,18 +145,17 @@ pub(crate) async fn run_effects(app: &Rc<RefCell<App>>, effects: Vec<Effect>) {
     }
 }
 
-/// One non-delegating effect: a local tool against the app, or a port call.
+/// One non-delegating effect: a local tool against the app, or a port call. A
+/// tool call's envelope is the fact that comes back (I8), refusal included; one
+/// table decides which half of the executor runs it.
 async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
-    // A tool call's envelope is the fact that comes back (I8) — including a
-    // refusal — and one table decides which half of the executor runs it.
     if let Effect::InvokeTool { tool, args_json } = &effect {
         invoke(app, tool, args_json).await;
         return;
     }
-    // The future is built in its OWN statement so the `borrow()` guard dies
-    // here rather than at the end of the expression — a guard alive across the
-    // await panics the next `borrow_mut`, and the seam's chat poll spawns a
-    // second `drive` every 400 ms, so there always is a next one.
+    // Built in its OWN statement so the `borrow()` guard dies here, not at the
+    // end of the expression: one alive across an await panics the next
+    // `borrow_mut`, and the chat poll spawns a `drive` every 400 ms.
     let running = crate::effects::execute_port_effect(&app.borrow().ports, effect);
     let result = running.await;
     let mut a = app.borrow_mut();
@@ -159,34 +172,24 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
 
 /// ONE tool call, run and recorded, by the first of THREE runners that claims
 /// it: the built-in table `tools::tool_entry`, then whatever `ToolHost` a
-/// composition root installed (`faculty::run_hosted`), then the local
-/// `tools::run`, which refuses an unknown name in words.
-///
+/// composition root installed (`faculty::run_hosted`), then `tools::run`.
 /// BUILT-INS WIN. A faculty widens what an agent may do; it may not redefine
 /// what this crate already does, so a host declaring `exec` or `web_search`
 /// never sees a call those actually run. The middle rung is what lets a faculty
 /// defined in a crate `core` has never heard of — a browser one, in
-/// `adapters_web` — have its tools RUN rather than be told it may act and then
-/// refused. A handler that DECLINES the call it was routed has run nothing and
-/// said nothing, so that call goes on to the hosts like any other.
-///
-/// The first two are awaited OUTSIDE any borrow of the app (they reach a
-/// Linux, the shared store, the network or a page, and a borrow held across an
-/// await panics the next `borrow_mut`); only `run`, which is sync, is called
-/// inside one.
-///
-/// The append-and-push that makes the envelope durable is written once, which
-/// is the whole point of the table: five copies of it is five places for the
-/// pump queue and the log to drift apart.
+/// `adapters_web` — have its tools RUN rather than be refused; a handler that
+/// DECLINES the call it was routed ran nothing, so that call goes on. The first
+/// two are awaited OUTSIDE any borrow (one held across an await panics the next
+/// `borrow_mut`); only `run`, which is sync, is inside one. The append-and-push
+/// is written once — five copies is five places to drift apart.
 async fn invoke(app: &Rc<RefCell<App>>, tool: &ToolId, args_json: &str) {
-    let built_in = match crate::tools::tool_entry(tool) {
+    let mut awaited = match crate::tools::tool_entry(tool) {
         Some(handler) => handler(app, tool, args_json).await,
         None => None,
     };
-    let awaited = match built_in {
-        Some(kind) => Some(kind),
-        None => crate::faculty::run_hosted(app, tool, args_json).await,
-    };
+    if awaited.is_none() {
+        awaited = crate::faculty::run_hosted(app, tool, args_json).await;
+    }
     let mut a = app.borrow_mut();
     let kind = match awaited {
         Some(kind) => kind,

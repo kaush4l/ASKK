@@ -136,8 +136,13 @@ fn every_board_row_publishes_the_toolbox_the_launcher_chooses_tasks_from() {
     // no tools at all and gets every built-in plus its space's set.
     let tools = |who| attr(&page, who, "data-toolset");
     assert!(tools("main").contains("exec") && tools("main").contains("write_file"), "main");
-    assert!(!tools("main").contains("write_agent"), "main's list does not name it");
-    assert!(tools("researcher").contains("write_agent"), "an empty list is every built-in");
+    // `web_search` stands where `write_agent` stood: the contrast being drawn
+    // is "a named list resolves to what it named, an empty one to every
+    // built-in", and it needs a built-in `main` has NOT asked for. `main` names
+    // `write_agent` since increment 27, so the assertion moved to a tool it
+    // still does not name rather than being weakened or dropped.
+    assert!(!tools("main").contains("web_search"), "main's list does not name it");
+    assert!(tools("researcher").contains("web_search"), "an empty list is every built-in");
     assert_eq!(
         tools("author"),
         "list_agents, read_agent, write_agent, list_skills, read_skill",

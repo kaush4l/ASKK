@@ -144,14 +144,22 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
         let log = replay_events(store.as_ref()).await?;
         let booted = log.len() as usize;
 
+        // Both halves of every faculty this crate can host, taken BEFORE
+        // `ports` is moved into the literal below. They are computed here and
+        // not by a composition root so that a build cannot forget one: an app
+        // that reached `handle` without its hosts would offer `keep` to the
+        // model and then refuse every call to it.
+        let senses = crate::faculty::installed_by_default(&ports);
+        let tool_hosts = crate::faculty::hosts_by_default(&ports);
+
         let mut app = App {
             registry: Registry::new(),
             agent: AgentState::new(),
             phases: agent::v1_phases(),
             log,
             ports,
-            senses: crate::faculty::installed_by_default(),
-            tool_hosts: Vec::new(),
+            senses,
+            tool_hosts,
             pending: Vec::new(),
             unpersisted: Vec::new(),
             unlogged: Vec::new(),

@@ -44,6 +44,43 @@ fn a_shipped_agent_file_survives_the_round_trip_through_export() {
     }
 }
 
+/// EVERY FIELD, NOT EVERY SHIPPED FILE. The test above only sees a field that
+/// some shipped agent happens to set to a non-default value, and that is how
+/// `faculties:` was dropped by `render_agent_file` for a whole increment: it
+/// existed, it parsed, nothing shipped it, and the round trip compared two
+/// specs that were both empty there and agreed. `passes:` was missing on the
+/// same terms and nobody had noticed at all.
+///
+/// So this builds one spec with EVERY field set to something no default would
+/// produce and asserts the whole struct comes back. The next field added to
+/// `AgentSpec` fails here on the day it is added rather than on the day a
+/// shipped file first uses it — which is the difference between a test and a
+/// coincidence.
+#[test]
+fn every_field_survives_the_round_trip() {
+    let full = AgentSpec {
+        name: "everything".into(),
+        description: "An agent with nothing left at its default.".into(),
+        model: "some-model-id".into(),
+        temperature: Some(0.25),
+        engine: "react".into(),
+        role: "critic".into(),
+        stages: vec!["plan".into(), "work".into()],
+        tools: vec!["now".into(), "keep".into()],
+        faculties: vec!["memory".into(), "space".into()],
+        space: "research".into(),
+        compact_at: 11,
+        keep_recent: 5,
+        max_rounds: 9,
+        passes: 3,
+        prompt: "You do everything.".into(),
+    };
+    let text = render_agent_file(&full);
+    let back = parse_agent_file("ignored", &text).expect("the export parses");
+    assert_eq!(back, full, "a field was written out or read back wrong:\n{text}");
+    assert_eq!(render_agent_file(&back), text, "and the second trip is stable");
+}
+
 /// A spec written from the five things an author chooses is a normal agent
 /// file — the model's `write_agent` and a person's textarea converge on one
 /// format, with the compaction defaults the parser would have supplied.

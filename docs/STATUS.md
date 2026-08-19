@@ -32,7 +32,42 @@ the container2wasm Alpine the agent owns.
 | 4 | CheerpX deleted; c2w the sole engine | COMMITTED main 51199eb, NOT PUBLISHED |
 | 4b | The image: audit measured, recipe repaired, `image/Dockerfile` written | DONE, unshipped |
 | 5 | Free size/memory wins: strip DWARF, gzip -9, VM_MEMORY_SIZE_MB | NAMED, needs a build round |
+| 6 | The SECOND faculty (`memory`), F4 closed, the spawn workflow verified | DONE, green, unshipped — 517 tests, 4 gates exit 0, `docs/ARCH-COMPONENTS.md` §12 |
 
+
+## PARITY, MEASURED (`docs/PARITY.md`, 2026-08-19) — the strategic finding
+
+Assessed on the owner's own axis: "define an agent and get the task done".
+
+**We are the BEST of the four at DEFINING an agent, and we fail at GETTING THE
+TASK DONE.** One `agent.md` expresses identity, model, engine, role, a declared
+loop, a tool allowlist, faculties, a space, compaction budgets, a round ceiling
+and a pass budget, and it REFUSES rather than defaults (`spec/yaml.rs:99-157`).
+Hermes has no per-agent file at all — an agent is a home directory. DeepSeek's
+is a DI wiring list. Eliza cannot express a loop, a budget or verification.
+Two things nobody else has: a loop the MESSAGE picks, and a verify gate ON BY
+DEFAULT (Hermes ships its better version opt-in; DeepSeek documents the absence
+as deliberate).
+
+**The agent we ship is handed a machine that cannot do work.** Stock busybox
+Alpine, no network so `apk add` is impossible, no python/node/git/compiler,
+tmpfs root (`image/Dockerfile:5-9,25-42`, `c2w.rs:23-28`). Hermes and DeepSeek
+run `bash` on the user's real machine. Every architecture round has been
+polishing the half that was already ahead.
+
+**Two direct hits on the owner's stated goal:**
+- `main` is granted almost nothing — no `web_search` — and NO agent holds
+  `role: critic`, so that seam is dead code in production.
+- **Stage prompts are Rust constants** (`brief.rs:22-52`). The owner asked for
+  configuration-driven agents; the loop's own instructions are compiled in.
+  DeepSeek and Hermes both keep theirs in data.
+
+**The three next things, in order:**
+1. Make the guest capable and state what it keeps (owner gate on size/storage).
+   Nothing else pays off until this lands.
+2. Grant what already exists and ship the critic agent.
+3. A standing `goal:` with a DATA-DECLARED check — continue on a verification
+   command's exit code, not a model's opinion.
 
 ## The bar-raiser verdict: GO (`docs/CRITIQUE-02.md`, 2026-08-19)
 
@@ -384,3 +419,96 @@ Recorded here so the next round can check the claim rather than take it:
   was full (I12)"`, `"cannot gain a module"`, `"split out for"`). Those were
   purged too. Statements of the form "its own fn so X stays one job (I12)" were
   KEPT — that is a cohesion claim, not an origin story.
+
+## Increment 6, run by the lead (2026-08-19) — the three unfinished things, closed
+
+Base `9368d7e`, nothing committed. Gates run by the lead on a quiet tree, unpiped,
+each command's own exit code: `cargo test --workspace` **517 passed / 0 failed /
+5 ignored, 98 binaries, TEST_EXIT=0** (baseline 496); `cargo check -p adapters_web
+--target wasm32-unknown-unknown` **WEB_EXIT=0**; same for `ui` **UI_EXIT=0**;
+`check-size.py` **SIZE_EXIT=0**, 289 files, longest 200, 52-entry function baseline
+untouched. **Zero warnings** across all three cargo runs.
+
+**1. The host path is proven by a faculty now, not by an equivalent seam.** `memory` —
+one agent's own durable lines, a `## memory` block plus `keep`/`discard`, resting on
+`StorePort` which is already per-agent in the browser. `keep` is in no table in `core`,
+so a call to it reaches `faculty::run_hosted` or a refusal with a signature the tests
+rule out. Declared by config, rendered before every call, called by the model, run by
+the host, back as a `ToolInvoked`, still there after a reboot on the same store. The
+shipped `main` declares it, and against the real 12B the model reached for `keep` 4/4
+when the message said the line was private.
+
+**2. F4 closed the way it was asked to be — impossible, not caught.** `pub const ALL`
+and the `match` in `of` were two lists that could disagree; there is now one `TABLE` and
+both are derived from it. Registering IS adding a row.
+
+**3. The spawn workflow is verified with a second agent that really runs** — its own
+`App`, its own log, `core::drive` on its own loop, which is what a Worker does minus the
+`postMessage`. `crates/core/tests/spawn.rs`.
+
+### THE NUMBER THE LEAD OWES THE OWNER, MEASURED
+
+The bar was "if a developer touches more than two files, the architecture has failed."
+Building the second faculty touched **six new files and five existing files, eleven
+lines**. **It did not meet the bar, and the doc's "two files, zero core edits" claim is
+retracted in place** (`docs/ARCH-COMPONENTS.md` §11.4 and §12.4). A browser faculty
+genuinely costs zero `core` edits; `memory` costs three because its capability is a core
+port, and stating that as a property of the seam was the error.
+
+### What an operator looks at to know a workflow ran — ONE pane, and it is not the obvious one
+
+`GET /tools` with `x-agent: <the CALLER>`. It carries the goal in full and the answer in
+full. Three gaps, asserted as true behaviour rather than smoothed over: the CALLEE's own
+trace pane is empty, the board carries status and a turn count but never the goal or the
+answer, and `core::last_failure` on the caller is `None` after a delegated failure
+(`refused` logs `core.agent_error`; `last_failure` folds `core.error`). None fixed here.
+
+### The defect the gate caught, which is the best thing that happened this round
+
+`render_agent_file` never wrote `faculties:` — the stated inverse of `parse_agent_file`,
+whose own comment promises every key is written. Invisible for a whole increment because
+no shipped agent declared a faculty, so the round-trip test compared two empty fields and
+agreed. `main` declaring one turned the workspace red. A model calling `write_agent`
+could not have authored an agent with a faculty. `passes:` was missing identically.
+Fixed, and pinned by a test that sets EVERY field to a non-default value so the next
+field fails on the day it is added.
+
+### Product changes an owner may want to reverse, in one file each
+
+- `public/agents/main/agent.md` now grants `write_agent` and `spawn_agent`. Without them
+  the whole delegation path was unreachable in the shipped build (CRITIQUE-03 F8), so it
+  could not be demonstrated at all. It is a real capability widening and it is one line
+  each to revert.
+- The same file declares `faculties: [memory]` and grants `keep`/`discard`.
+
+### The bar-raiser: GO on the faculty and on F4, QUALIFIED GO on the spawn work
+
+Eleven findings, all actioned or refused in writing (`docs/ARCH-COMPONENTS.md` §12.10).
+**The one that mattered was HIGH and the tests were green over it.** `run_on` appended a
+`Working` FACT for an agent name the roster never had; the refusal then tidied the board
+ROW away with `Board::forget`. The row went, the fact stayed, and `install::replayed`
+counts a `Working` fact as a turn — so the phantom came back on the next reload, one turn
+richer. The test that was supposed to catch it asserted on rendered HTML, which is the
+surface the in-memory tidy-up had repaired. Fixed at the fact: `Working` is announced only
+for a loaded name, and the test now asserts the log holds no status fact at all.
+
+That is the round's own lesson repeating: a test that asserts on a projection cannot see a
+defect in the log behind it.
+
+Two findings are recorded and NOT fixed, both with reasons rather than intentions:
+`ToolHost::run` gets no `Sensing` context where `Sense::read` does — so memory's store
+prefix cannot be keyed by agent without a trait change — and `Slot::USER` describes the
+content the prompt teaches the model to put in `Slot::MEMORY`, which is a taxonomy ruling
+and not a repair.
+
+**Also recorded, because this round should have said it first:** the live suite is not
+green. `a_project_turn_plans_before_it_works` fails against the real model. Pre-existing,
+unrelated to memory, `#[ignore]`d so no gate sees it.
+
+### Two things the lead did NOT do
+
+- **Nothing committed, nothing pushed.** The ship decision is the owner's.
+- **`docs/PARITY.md` and this file's PARITY section are NOT increment 6's work.** A
+  concurrent session wrote them while this round ran. Recorded so nobody credits the
+  wrong round; the hazard STATUS already names — two fan-outs in one tree — was live
+  again and this time it was two SESSIONS.

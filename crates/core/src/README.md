@@ -14,6 +14,7 @@ them are the wiring itself, which belongs to no subject.
 | `failure/` | What a failed turn looks like to the person reading it: the card, the actionable sentence, how the turn ended and what each ending is called, and the folds for a repeat or a sub-agent's failure. |
 | `files/` | The workspace's files as a person browses them — the pane, the folder listing, its rows and empty states, whether it may be shown at all, and the `find_files` tool that reaches the same subject from the agent's side. |
 | `log/` | One agent's own log: `decisions.rs` is the pure half, `store.rs` moves the bytes through `StorePort`. |
+| `memory/` | One agent's own kept lines: where they live in this agent's store, the sense that reads them back into every prompt, and the host that runs `keep` and `discard`. |
 | `proc/` | Long-running processes: the convention they are kept in, the four tools that supervise them, and the pane that shows what is running. |
 | `runtime/` | The effect runtime loop — `drive`, `pump`, and the page-requested effects that are not agent turns. |
 | `space/` | A space: the shared store an agent and its sub-agents both reach, and the inspector that shows it. |

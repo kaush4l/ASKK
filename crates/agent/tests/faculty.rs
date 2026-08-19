@@ -7,11 +7,14 @@
 //! checked once here rather than per faculty: a block's slot and its stability
 //! are ONE decision, and a block that can be absent must be able to render
 //! nothing. Getting either wrong does not spoil the block — it makes the whole
-//! document illegal, which is why the check walks `faculty::ALL`.
+//! document illegal, which is why the check walks the whole registry —
+//! `faculty_names()`, which is DERIVED from the one table `faculty_of` answers
+//! from, so a faculty cannot exist and be missing from this walk.
 
 use agent::{
-    adopt_spec, blocks_of, declared_faculties, faculty_of, parse_agent_file, step, AgentState,
-    Block, Effect, Sensed, FACULTIES, SPACE_FACULTY,
+    adopt_spec, blocks_of, declared_faculties, faculty_names, faculty_of, parse_agent_file, step,
+    unresolved_tools, AgentState, Block, Effect, Memory, Sensed, MEMORY_FACULTY, MEMORY_LIMIT,
+    SPACE_FACULTY,
 };
 use context::{Budget, Component, ContextError, Form, SectionSource, State};
 use kernel::{Event, EventId, EventKind, PhaseId, Timestamp};
@@ -61,9 +64,13 @@ fn explain(faculty: &str, block: &Block, filled: bool, err: ContextError) -> Str
 /// author is least likely to try.
 #[test]
 fn every_faculty_block_makes_a_legal_document_written_or_not() {
-    for name in FACULTIES {
+    assert!(
+        faculty_names().len() >= 2,
+        "the walk is over the whole registry; a collapse back to one faculty is visible here"
+    );
+    for name in faculty_names() {
         let faculty = faculty_of(name).unwrap_or_else(|| {
-            panic!("faculty::ALL lists '{name}' but faculty::of does not answer to it")
+            panic!("the table lists '{name}' but faculty::of does not answer to it")
         });
         for block in faculty.blocks {
             if let Err(err) = attached(block, Vec::new()) {
@@ -221,4 +228,112 @@ fn spawn_agent_is_allowlisted_like_every_other_tool() {
         }
         other => panic!("an ungranted tool is refused, not run: {other:?}"),
     }
+}
+
+/// THE TABLE IS THE WHOLE ANSWER, both directions. `of` answers to every name
+/// the registry lists and to nothing else — no near-miss, no empty string, and
+/// no name that merely sounds like a capability this build might have.
+#[test]
+fn of_answers_to_every_name_in_the_table_and_to_nothing_outside_it() {
+    for name in faculty_names() {
+        assert!(faculty_of(name).is_some(), "the table lists '{name}'");
+    }
+    for missing in ["memory_", "", "browser", "Memory", " memory"] {
+        assert!(faculty_of(missing).is_none(), "'{missing}' is not a faculty");
+    }
+}
+
+/// THE SECOND FACULTY, declared by one word in one file: it contributes its
+/// block at the slot that was declared for it and never filled, and it offers
+/// its two tools. No edit to `components::dynamic`, no edit to the toolbox.
+#[test]
+fn a_memory_faculty_contributes_its_block_and_offers_its_two_tools() {
+    let spec = spec_of("faculties: [memory]\n");
+    let declared = declared_faculties(&spec);
+    assert_eq!(declared, [MEMORY_FACULTY], "one word declares it");
+    let blocks = blocks_of(&declared);
+    assert_eq!(blocks.len(), 1, "one faculty, one block: {blocks:?}");
+    assert_eq!(blocks[0].id, MEMORY_FACULTY);
+    assert_eq!(blocks[0].slot, context::Slot::MEMORY, "the slot that waited for it");
+    let mut state = AgentState::new();
+    adopt_spec(&mut state, &spec, &[]);
+    assert!(state.toolbox.get("keep").is_some(), "keep is offered");
+    assert!(state.toolbox.get("discard").is_some(), "discard is offered");
+}
+
+/// MEMORY NEEDS NO SPACE, AND DRAGS NO WORKSPACE. That is the whole reason it
+/// is a faculty of its own rather than three more tools on the space: an agent
+/// that names no folder has somewhere to keep something, and keeping it does
+/// not hand anyone a shell (ADR-006, default deny).
+#[test]
+fn memory_without_a_space_offers_its_own_tools_and_nothing_of_the_spaces() {
+    let mut state = AgentState::new();
+    adopt_spec(&mut state, &spec_of("faculties: [memory]\n"), &[]);
+    assert!(state.toolbox.get("keep").is_some());
+    assert!(state.toolbox.get("discard").is_some());
+    assert!(state.toolbox.get("exec").is_none(), "no space, no workspace");
+    assert!(state.toolbox.get("remember").is_none(), "…and no shared space");
+}
+
+/// A FACULTY WIDENS WHAT MAY BE PICKED FROM AND GRANTS NOTHING. The same
+/// allowlist decides, so `tools: [keep]` grants exactly `keep` — and without
+/// the faculty the same line grants nothing at all and is REPORTED as
+/// unresolved rather than silently dropped.
+#[test]
+fn a_faculty_only_widens_the_allowlist_it_never_grants() {
+    let with = spec_of("faculties: [memory]\ntools: [keep]\n");
+    let mut state = AgentState::new();
+    adopt_spec(&mut state, &with, &[]);
+    assert!(state.toolbox.get("keep").is_some(), "the list named it and it was offered");
+    assert!(state.toolbox.get("discard").is_none(), "the list is the whole grant");
+    assert!(unresolved_tools(&with, &[]).is_empty(), "nothing was dropped");
+
+    let without = spec_of("tools: [keep]\n");
+    let mut state = AgentState::new();
+    adopt_spec(&mut state, &without, &[]);
+    assert!(state.toolbox.get("keep").is_none(), "no faculty, nothing to pick");
+    assert_eq!(unresolved_tools(&without, &[]), ["keep"], "and it is said out loud");
+}
+
+/// EVERY REFUSAL IS SPOKEN. A silent success leaves the agent believing it
+/// wrote something it did not, and it spends the next turn acting on a memory
+/// that is not there — so each of the three no-ops says which one it was, and
+/// the failed discard names what is actually held.
+#[test]
+fn memory_says_plainly_when_nothing_was_kept_or_dropped() {
+    let mut memory = Memory::default();
+    let (said, change) = memory.keep("   ");
+    assert_eq!(said, "Nothing kept: the note was empty.");
+    assert!(change.is_none() && memory.notes.is_empty());
+
+    let (_, change) = memory.keep("  she   prefers   short   answers ");
+    assert!(change.is_some(), "and it is collapsed to one line");
+    assert_eq!(memory.notes, ["she prefers short answers"]);
+
+    let (said, change) = memory.keep("she prefers short answers");
+    assert_eq!(said, "That line is already in your memory.");
+    assert!(change.is_none(), "one line, not two");
+    assert_eq!(memory.notes.len(), 1);
+
+    let (said, change) = memory.discard("something else entirely");
+    assert!(change.is_none(), "nothing was there to drop");
+    assert!(said.contains("she prefers short answers"), "it names what IS held: {said}");
+
+    let (_, change) = memory.discard("she prefers short answers");
+    assert!(change.is_some() && memory.notes.is_empty(), "word for word, it goes");
+    let (said, _) = memory.discard("anything");
+    assert!(said.contains("nothing"), "an empty memory says so: {said}");
+}
+
+/// THE OLDEST FALLS OFF, not the newest. A memory read inside every prompt may
+/// never become the prompt, and which end is dropped is the whole decision.
+#[test]
+fn memory_keeps_the_newest_and_drops_the_oldest() {
+    let mut memory = Memory::default();
+    for i in 0..MEMORY_LIMIT + 3 {
+        memory.keep(&format!("line {i}"));
+    }
+    assert_eq!(memory.notes.len(), MEMORY_LIMIT, "the ceiling holds");
+    assert_eq!(memory.notes[0], "line 3", "the three oldest went");
+    assert_eq!(memory.notes[MEMORY_LIMIT - 1], format!("line {}", MEMORY_LIMIT + 2));
 }

@@ -11,7 +11,10 @@
 //!
 //!     SHOW_PROMPT=1 cargo test -p agent --test prompt -- --nocapture
 
-use agent::{adopt_spec, parse_agent_file, space_parts, step, AgentState, Effect, SPACE_FACULTY};
+use agent::{
+    adopt_spec, memory_parts, parse_agent_file, space_parts, step, AgentState, Effect, Memory,
+    MEMORY_FACULTY, SPACE_FACULTY,
+};
 use context::{render, ContentPart, ProviderFormat, Role};
 use kernel::{Event, EventId, EventKind, Timestamp};
 
@@ -91,6 +94,38 @@ fn rendered_from(file: &str, question: &str, stages: &[&str]) -> String {
 fn sensed_by_the_host(state: &mut AgentState) {
     let parts = space_parts(&state.space);
     state.senses.insert(SPACE_FACULTY.to_string(), parts);
+}
+
+/// The same again, with the host having left LINES IN MEMORY. Memory is a
+/// faculty like the space, so it is rendered from whatever a host last wrote
+/// under its name — `sensed_by_the_host` leaves it empty, and this is the only
+/// place that does not.
+fn rendered_remembering(question: &str, kept: &[&str]) -> String {
+    let spec = parse_agent_file("main", MAIN).expect("the shipped main agent parses");
+    let mut state = AgentState::new();
+    adopt_spec(&mut state, &spec, &[]);
+    sensed_by_the_host(&mut state);
+    let memory = Memory { notes: kept.iter().map(|k| (*k).to_string()).collect() };
+    state.senses.insert(MEMORY_FACULTY.to_string(), memory_parts(&memory));
+    state.declared = vec!["work".to_string()];
+    state.stages = vec!["work".to_string()];
+    let (_, effects) = step(state, user(question));
+    let document = effects
+        .iter()
+        .find_map(|e| match e {
+            Effect::CallModel { document, .. } => Some(document),
+            _ => None,
+        })
+        .expect("asking a question calls the model");
+    render(document, FMT)[0]
+        .content
+        .iter()
+        .filter_map(|p| match p {
+            ContentPart::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 /// The paper's own headings. A heading is a line that STARTS with `## `;
@@ -193,7 +228,14 @@ fn the_space_is_a_block_of_its_own_and_not_a_paragraph_of_the_clock() {
 #[test]
 fn an_agent_with_no_space_has_no_space_block() {
     let alone = MAIN.replace("\nspace: research\n", "\n");
-    assert!(!alone.contains("space: research"), "the fixture really dropped it");
+    // The KEY is gone, not every mention of it: the file's own frontmatter
+    // comment quotes `space: research` in backticks when it explains that
+    // naming a space declares the space faculty, and a substring search here
+    // would be a test of the documentation rather than of the fixture.
+    assert!(
+        !alone.lines().any(|l| l.trim_end() == "space: research"),
+        "the fixture really dropped the key"
+    );
     let prompt = rendered_from(&alone, "hello", &["work"]);
     let headings = heads(&prompt);
     assert!(!headings.contains(&"## space"), "{headings:?}");
@@ -238,11 +280,67 @@ fn the_tools_shown_are_the_tools_granted() {
             "…and the prompt shows how to call it: {name}"
         );
     }
-    // Nothing the file did not name is offered.
+    // The roster pair and the memory pair are named now, so what the file
+    // grants is what the model is shown how to call.
+    for name in ["write_agent", "spawn_agent", "keep", "discard"] {
+        assert!(
+            spec.tools.iter().any(|t| t == name),
+            "the shipped file grants {name}"
+        );
+        assert!(
+            prompt.contains(&format!("{name}(")),
+            "…and the prompt shows how to call it: {name}"
+        );
+    }
+    // Nothing the file did not name is offered. `web_search` is a built-in
+    // this agent has never asked for, and it stands where `write_agent` stood
+    // before increment 27 named it: the assertion is the same assertion, made
+    // against a tool that is still ungranted.
     assert!(
-        !prompt.contains("write_agent("),
+        !spec.tools.iter().any(|t| t == agent::WEB_SEARCH),
+        "the shipped file does not name web_search"
+    );
+    assert!(
+        !prompt.contains(&format!("{}(", agent::WEB_SEARCH)),
         "a tool this agent was never granted must not appear"
     );
+}
+
+/// THE SECOND FACULTY REACHES THE SHIPPED PROMPT (increment 27). `main`
+/// declares `faculties: [memory]`, so the lines its host left under that name
+/// are read back to it — and when it has kept nothing there is no heading at
+/// all, because an empty component elides rather than announcing its own
+/// emptiness (`crates/agent/src/components/memory.rs`).
+#[test]
+fn the_shipped_agent_is_shown_what_it_kept_and_nothing_when_it_kept_nothing() {
+    let blank = rendered("hello");
+    assert!(
+        !heads(&blank).contains(&"## memory"),
+        "an agent that has kept nothing gets no memory block: {:?}",
+        heads(&blank)
+    );
+
+    let kept = rendered_remembering("hello", &["they prefer metric units"]);
+    let headings = heads(&kept);
+    assert!(headings.contains(&"## memory"), "{headings:?}");
+    let block = kept
+        .split("\n## memory\n")
+        .nth(1)
+        .expect("the memory block is present")
+        .split("\n## ")
+        .next()
+        .expect("…and ends at the next heading");
+    assert!(
+        block.contains("- they prefer metric units"),
+        "the kept line is shown verbatim: {block}"
+    );
+    // …at slot 50 (`crates/context/src/slot.rs:47`): inside the cacheable head,
+    // above the clock, and above the shared space it is deliberately not a
+    // corner of — what this agent kept is read before what the group posted.
+    let at = |head: &str| kept.find(&format!("\n{head}\n")).expect(head);
+    assert!(at("## affordances") < at("## memory"), "{headings:?}");
+    assert!(at("## memory") < at("## space"), "{headings:?}");
+    assert!(at("## space") < at("## environment"), "{headings:?}");
 }
 
 /// A STAGE IS SHOWN EXACTLY WHAT IT MAY CALL, and for `plan` that is two

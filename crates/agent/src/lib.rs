@@ -18,6 +18,7 @@ mod ending;
 mod error;
 mod faculty;
 mod forge;
+mod memory;
 mod paper;
 mod passes;
 mod skills;
@@ -53,11 +54,12 @@ pub use phase::{
 pub use paper::adopt_spec;
 pub use now::{clock, environment};
 pub use window::{compacted, due, set_window, transcript, window, SUMMARIZE, SUMMARY_HEADING};
-pub use components::{space_parts, Block, Sensed, SharedSpace, SESSION_STARTED};
+pub use components::{memory_parts, space_parts, Block, Sensed, SharedSpace, SESSION_STARTED};
 pub use faculty::{
-    blocks_of, declared as declared_faculties, of as faculty_of, Faculty, ALL as FACULTIES,
-    SPACE as SPACE_FACULTY,
+    all as faculty_names, blocks_of, declared as declared_faculties, of as faculty_of, Faculty,
+    MEMORY as MEMORY_FACULTY, SPACE as SPACE_FACULTY,
 };
+pub use memory::{is_memory_tool, memory_tools, Kept, Memory, MEMORY_LIMIT};
 pub use space::{is_space_tool, space_tools, Change, Space, NOTE_LIMIT};
 pub use search::{results as search_results, search_path, WEB_SEARCH};
 pub use workspace::{is_workspace_tool, process_name, relative_path, workspace_tools};

@@ -19,6 +19,7 @@ mod faculty;
 mod failure;
 mod files;
 mod log;
+mod memory;
 mod observe;
 mod proc;
 mod runtime;

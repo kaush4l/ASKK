@@ -3,8 +3,8 @@
 //!
 //! A faculty has two halves and they live in different crates on purpose. The
 //! PURE half is a declaration — its name, its tools, the blocks it contributes
-//! and where they sit — and it is a `match` arm in `agent::faculty`
-//! (`crates/agent/src/faculty/mod.rs:45`), compiled in, testable on the host.
+//! and where they sit — and it is one row of `agent::faculty`'s table
+//! (`crates/agent/src/faculty/mod.rs:65`), compiled in, testable on the host.
 //! The IMPURE half is this: something that reads the outside world and leaves
 //! parts for `components::Sensed` (`crates/agent/src/components/sensed.rs:47`)
 //! to render.
@@ -27,7 +27,7 @@ use std::rc::Rc;
 use context::Part;
 use kernel::BoxFuture;
 
-use crate::app::App;
+use crate::app::{App, Ports};
 
 /// What a sense may know about the agent it is sensing for. Read-only.
 pub struct Sensing {
@@ -56,8 +56,23 @@ pub trait Sense {
 /// The space is in here rather than special-cased upstream so that an app
 /// built by a test with no browser at all still renders its shared space —
 /// and renders it through the same path a browser faculty would use.
-pub(crate) fn installed_by_default() -> Vec<Rc<dyn Sense>> {
-    vec![Rc::new(crate::space::sense::SpaceSense)]
+///
+/// WHERE A HOST LIVES IS DECIDED BY WHERE ITS CAPABILITY IS REACHABLE: a
+/// faculty whose capability is a CORE PORT is hosted here, one whose capability
+/// is a browser in `adapters_web` through the public door ([`install_sense`]).
+/// `memory` is here because durable storage is an injected port (I3).
+pub(crate) fn installed_by_default(ports: &Ports) -> Vec<Rc<dyn Sense>> {
+    let memory = crate::memory::sense::MemorySense::new(Rc::clone(&ports.store));
+    vec![Rc::new(crate::space::sense::SpaceSense), Rc::new(memory)]
+}
+
+/// The tool hosts every app has, by the same rule — the ACTION twin above.
+/// Computed in `boot` and not by a composition root so that a forgotten host is
+/// impossible: the pure table offers `keep` the moment a file names the
+/// faculty, so an app missing this would list the tool and refuse every call.
+pub(crate) fn hosts_by_default(ports: &Ports) -> Vec<Rc<dyn ToolHost>> {
+    let (store, clock) = (Rc::clone(&ports.store), Rc::clone(&ports.clock));
+    vec![Rc::new(crate::memory::host::MemoryHost::new(store, clock))]
 }
 
 /// Install a host-side sense. The composition root's door: `adapters_web`
@@ -99,7 +114,7 @@ pub fn install_tool_host(app: &mut App, host: Rc<dyn ToolHost>) {
 ///
 /// The ACTION twin of [`refresh_all`], and its caller states the precedence it
 /// sits in the middle of: the built-in table first, then this, then the local
-/// `tools::run` (`crates/core/src/batch.rs:181`). `agent::builtin_tools` is
+/// `tools::run` (`crate::batch::invoke`). `agent::builtin_tools` is
 /// the authority for the names `run` holds and the table does not claim, so a
 /// host cannot shadow a compiled-in tool by declaring its name — a faculty
 /// widens what an agent may do and never redefines what it already did.
@@ -171,7 +186,7 @@ pub(crate) async fn refresh_all(app: &Rc<RefCell<App>>) {
 ///
 /// A borrow held across an await panics the next `borrow_mut`, and the seam's
 /// chat poll spawns a second `drive` every 400 ms, so there always is a next
-/// one (`crate::batch::single`, `crates/core/src/batch.rs:135`).
+/// one (`crate::batch::single`).
 fn about(app: &Rc<RefCell<App>>) -> (Vec<String>, Vec<Rc<dyn Sense>>, Sensing) {
     let a = app.borrow();
     (

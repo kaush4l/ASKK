@@ -14,6 +14,14 @@
 //! `ToolInvoked` fact, a failing host is a recorded failure rather than a lost
 //! turn, a host cannot shadow a compiled-in tool, and a name no faculty
 //! declares is still refused in words.
+//!
+//! The last six are the WHOLE PATH, walked once end to end on the second real
+//! faculty (`memory`): a config declares it, its block renders before every
+//! model call, its tools are offered, the model calls one, the host installed
+//! by `boot` runs it, the answer comes back as a successful call — and the line
+//! is still there on the next turn and after a reboot on the same store. That
+//! is the round's claim: a faculty declaring a tool NO TABLE IN THIS CRATE
+//! CLAIMS actually works.
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -71,20 +79,40 @@ impl ModelPort for Recorder {
 }
 
 /// One agent file, with whatever `space:` and `faculties:` the test wants.
+/// An empty `tools:` list is NOT an empty toolbox — it means "everything this
+/// file's faculties and the built-ins offer" (`agent::subagent::resolve`), so
+/// this is the file a faculty test wants unless it is testing the allowlist.
 fn agent_file(space: &str, faculties: &str) -> Vec<(String, String)> {
+    agent_file_with_tools(space, faculties, "[]")
+}
+
+/// The same file with an explicit `tools:` allowlist, which is the whole
+/// allowlist: a non-empty list can only PICK FROM what the faculties offer.
+fn agent_file_with_tools(space: &str, faculties: &str, tools: &str) -> Vec<(String, String)> {
     vec![(
         "main".to_string(),
         format!(
             "---\nname: main\ndescription: main does a thing\nspace: {space}\n\
-             faculties: {faculties}\ntools: []\n---\nbody"
+             faculties: {faculties}\ntools: {tools}\n---\nbody"
         ),
     )]
 }
 
 fn booted(model: Rc<dyn ModelPort>, files: Vec<(String, String)>) -> Rc<RefCell<App>> {
+    booted_on(model, files, Rc::new(MemStore::default()))
+}
+
+/// The same app on a store the test already holds — the only way to boot a
+/// SECOND app on the first one's bytes, which is what "survives a reload"
+/// means when there is no browser to reload.
+fn booted_on(
+    model: Rc<dyn ModelPort>,
+    files: Vec<(String, String)>,
+    store: Rc<MemStore>,
+) -> Rc<RefCell<App>> {
     let ports = Ports {
         model,
-        store: Rc::new(MemStore::default()),
+        store: store as Rc<dyn kernel::StorePort>,
         net: Rc::new(DenyAllNet),
         clock: Rc::new(FixedClock::at(Timestamp(1_753_800_000_000))),
         rng: Rc::new(SeededRng::seeded(7)),
@@ -276,10 +304,19 @@ impl ToolHost for FakeBrowser {
 /// An app whose model says exactly these things, in order — the only way to
 /// reach the tool executor, which runs what a model asked for and nothing else.
 fn scripted(replies: &[&str], files: Vec<(String, String)>) -> Rc<RefCell<App>> {
+    scripted_on(replies, files, Rc::new(MemStore::default()))
+}
+
+/// The same, on a store the test holds.
+fn scripted_on(
+    replies: &[&str],
+    files: Vec<(String, String)>,
+    store: Rc<MemStore>,
+) -> Rc<RefCell<App>> {
     let model = ScriptedModel::with_replies(
         replies.iter().map(|r| ScriptedModel::text_reply(r)).collect(),
     );
-    booted(Rc::new(model) as Rc<dyn ModelPort>, files)
+    booted_on(Rc::new(model) as Rc<dyn ModelPort>, files, store)
 }
 
 /// Every call the log holds: the tool, whether it succeeded, what came back.
@@ -317,7 +354,7 @@ fn a_host_cannot_shadow_a_built_in_tool() {
 
 /// A NAME NO FACULTY DECLARES IS STILL REFUSED IN WORDS, and no host gets to
 /// answer for it. Installing a runner does not install a tool: the DECLARATION
-/// is the pure half, `agent::faculty::of` (`crates/agent/src/faculty/mod.rs:45`),
+/// is the pure half, `agent::faculty::of` (`crates/agent/src/faculty/mod.rs:65`),
 /// and a call whose name is in no toolbox is refused by
 /// `Toolbox::check` (`crates/agent/src/toolbox.rs:76`) before the executor —
 /// and by `tools::run` (`crates/core/src/tools.rs:134`) if one ever reaches it
@@ -359,7 +396,7 @@ fn a_tool_no_faculty_declares_is_refused_before_any_host_is_asked() {
 /// It runs `remember` rather than `navigate` because a name has to be DECLARED
 /// before it can be called at all, and declaring is the PURE half: the `browser`
 /// faculty has no arm in `agent::faculty::of`
-/// (`crates/agent/src/faculty/mod.rs:45`), so `Toolbox::check`
+/// (`crates/agent/src/faculty/mod.rs:65`), so `Toolbox::check`
 /// (`crates/agent/src/toolbox.rs:76`) refuses `navigate` before the executor
 /// ever sees it. `remember` IS declared — by the space faculty this agent names
 /// — and the built-in handler DECLINES it for an agent with no space
@@ -411,4 +448,281 @@ fn a_host_that_fails_is_a_recorded_failed_call_and_not_a_lost_turn() {
         "and the turn went on to its next pass"
     );
     assert!(core::last_failure(&app.borrow()).is_none(), "nothing raised");
+}
+
+/// A model that answers from a script AND keeps every request body. The tests
+/// below need both halves at once: the model has to CALL `keep`, and the test
+/// has to read the prompt the NEXT call was handed.
+struct Script {
+    replies: RefCell<Vec<String>>,
+    seen: RefCell<Vec<String>>,
+}
+
+impl Script {
+    fn saying(replies: &[&str]) -> Rc<Script> {
+        Rc::new(Script {
+            replies: RefCell::new(replies.iter().rev().map(|r| r.to_string()).collect()),
+            seen: RefCell::new(Vec::new()),
+        })
+    }
+    fn last_prompt(&self) -> String {
+        self.seen.borrow().last().cloned().unwrap_or_default()
+    }
+    fn prompts(&self) -> usize {
+        self.seen.borrow().len()
+    }
+}
+
+impl ModelPort for Script {
+    fn call<'a>(
+        &'a self,
+        _endpoint: &'a kernel::EndpointName,
+        body_json: &'a str,
+    ) -> BoxFuture<'a, Result<kernel::ModelReply, kernel::ModelError>> {
+        self.seen.borrow_mut().push(body_json.to_string());
+        let text = self
+            .replies
+            .borrow_mut()
+            .pop()
+            .unwrap_or_else(|| "Nothing more.".to_string());
+        Box::pin(std::future::ready(Ok(kernel::ModelReply {
+            body_json: ScriptedModel::text_reply(&text),
+            usage: None,
+        })))
+    }
+}
+
+/// Every line the store itself holds under memory's prefix, in key order —
+/// the bytes, not the render. A test that only read the prompt could not tell
+/// a kept line from a remembered one.
+fn stored(store: &Rc<MemStore>) -> Vec<String> {
+    let kv = kernel::StorePort::kv(store.as_ref());
+    block_on(kv.list_prefix("memory/"))
+        .expect("the store lists")
+        .iter()
+        .filter_map(|key| block_on(kv.get(key)).expect("the store reads"))
+        .collect()
+}
+
+/// THE HEADLINE PROOF: a faculty's tool that NO TABLE IN `core` CLAIMS is run
+/// by the host `boot` installed for it, and comes back as an ordinary
+/// successful call.
+///
+/// `keep` has no arm in `tools::tool_entry` and no arm in `tools::run`
+/// (`crates/core/src/tools.rs`), and it is not in `agent::builtin_tools` —
+/// both asserted below. So the call reached `faculty::run_hosted`
+/// (`crates/core/src/batch.rs`, the middle rung of `invoke`) or it reached
+/// nothing at all, and "nothing" has a signature this test rules out: the
+/// refusal sentence `Toolbox::check` and `tools::run` both write. What ran it is `memory::host::MemoryHost`, which
+/// no test and no composition root installed — `boot` did, because the
+/// capability is an injected port.
+#[test]
+fn a_faculty_tool_no_core_table_claims_is_run_by_its_installed_host() {
+    let app = scripted(
+        &[
+            "keep({\"note\": \"the user prefers metric units\"})",
+            "Noted.",
+        ],
+        agent_file("", "[memory]"),
+    );
+    ask(&app, "remember how I like units");
+
+    let calls = invoked(&app);
+    assert_eq!(calls.len(), 1, "one call, once: {calls:?}");
+    assert_eq!(calls[0].0, "keep");
+    assert!(calls[0].1, "a successful ToolInvoked: {calls:?}");
+    assert!(
+        calls[0].2.starts_with("Kept."),
+        "the PURE half's own success sentence, unedited by the host: {calls:?}"
+    );
+    assert!(
+        !calls[0].2.starts_with("Tool not found. Available: "),
+        "no table in core refused it: {calls:?}"
+    );
+    assert!(
+        agent::builtin_tools().get("keep").is_none(),
+        "and `keep` is not a compiled-in tool — nothing in this crate could \
+         have answered it but the installed host"
+    );
+    assert_eq!(core::answer(&app.borrow()).as_deref(), Some("Noted."));
+}
+
+/// THE BLOCK RENDERS BEFORE EVERY CALL. What the host wrote to the store on
+/// turn one is inside the paper the model is handed on turn two, under the
+/// faculty's own `## memory` heading — which is `refresh_all` running at the
+/// top of every `drive` pass (`crates/core/src/runtime/mod.rs:59`) reading
+/// `MemorySense`, and not anything the turn that kept it did.
+#[test]
+fn what_a_host_kept_is_in_the_next_prompt_the_model_is_given() {
+    let model = Script::saying(&[
+        "keep({\"note\": \"the user prefers metric units\"})",
+        "Noted.",
+        "I know.",
+    ]);
+    let app = booted_on(
+        Rc::clone(&model) as Rc<dyn ModelPort>,
+        agent_file("", "[memory]"),
+        Rc::new(MemStore::default()),
+    );
+    ask(&app, "remember how I like units");
+    let after_first_turn = model.prompts();
+    ask(&app, "what do you know about me?");
+
+    assert!(
+        model.prompts() > after_first_turn,
+        "the second turn really did call the model"
+    );
+    let prompt = model.last_prompt();
+    assert!(prompt.contains("## memory"), "{prompt}");
+    assert!(prompt.contains("the user prefers metric units"), "{prompt}");
+    assert!(
+        sensed(&app, "memory").contains("the user prefers metric units"),
+        "and it got there through AgentState.senses, keyed by the block id"
+    );
+}
+
+/// THE CLAIM THE TOOL DESCRIPTION MAKES TO THE MODEL — "it survives a reload"
+/// — is true. A second `App` is booted on the SAME store and nothing else in
+/// common: fresh model, fresh clock, fresh everything. The line is in its
+/// prompt, because memory is the store and the store outlived the process.
+#[test]
+fn memory_survives_a_reboot_on_the_same_store() {
+    let store = Rc::new(MemStore::default());
+    let first = scripted_on(
+        &[
+            "keep({\"note\": \"the user prefers metric units\"})",
+            "Noted.",
+        ],
+        agent_file("", "[memory]"),
+        Rc::clone(&store),
+    );
+    ask(&first, "remember how I like units");
+    assert_eq!(stored(&store).len(), 1, "one key, one line");
+
+    let model = Script::saying(&["I still know."]);
+    let second = booted_on(
+        Rc::clone(&model) as Rc<dyn ModelPort>,
+        agent_file("", "[memory]"),
+        Rc::clone(&store),
+    );
+    ask(&second, "what do you know about me?");
+
+    assert!(
+        model
+            .last_prompt()
+            .contains("the user prefers metric units"),
+        "the rebooted app read it back out of the store: {}",
+        model.last_prompt()
+    );
+    assert!(sensed(&second, "memory").contains("the user prefers metric units"));
+}
+
+/// DISCARD IS A DELETION, in the prompt AND in the store. A line that vanished
+/// from the block but stayed on disk would come back at the next reload, which
+/// is the failure a person would find months later and never explain.
+#[test]
+fn discarding_removes_the_line_from_the_prompt_and_from_the_store() {
+    let store = Rc::new(MemStore::default());
+    let app = scripted_on(
+        &[
+            "keep({\"note\": \"the user prefers metric units\"})",
+            "keep({\"note\": \"the deploy target is gh-pages\"})",
+            "discard({\"note\": \"the user prefers metric units\"})",
+            "Done.",
+        ],
+        agent_file("", "[memory]"),
+        Rc::clone(&store),
+    );
+    ask(&app, "sort out what you know");
+
+    let calls = invoked(&app);
+    assert_eq!(calls.len(), 3, "{calls:?}");
+    assert!(calls.iter().all(|c| c.1), "all three succeeded: {calls:?}");
+    assert_eq!(
+        stored(&store),
+        vec!["the deploy target is gh-pages".to_string()],
+        "one key left, and it is the one that was not discarded"
+    );
+    let block = sensed(&app, "memory");
+    assert!(block.contains("the deploy target is gh-pages"), "{block}");
+    assert!(!block.contains("metric units"), "{block}");
+
+    let model = Script::saying(&["Still one thing."]);
+    let after = booted_on(
+        Rc::clone(&model) as Rc<dyn ModelPort>,
+        agent_file("", "[memory]"),
+        Rc::clone(&store),
+    );
+    ask(&after, "what do you know about me?");
+    assert!(model
+        .last_prompt()
+        .contains("the deploy target is gh-pages"));
+    assert!(!model.last_prompt().contains("metric units"));
+}
+
+/// DEFAULT DENY (I6, ADR-006). The host is installed in every app `boot`
+/// builds, and it is still not a tool: `keep` is offered only to an agent whose
+/// file DECLARES the faculty. This agent declares none, so `Toolbox::check`
+/// (`crates/agent/src/toolbox.rs:76`) refuses the name before the executor, in
+/// the words that say what there is instead — and nothing reaches the store.
+///
+/// It asks for `keep` in its `tools:` allowlist as loudly as a file can, which
+/// is the sharper form of the same point: an allowlist PICKS FROM what the
+/// faculties offer (`crates/agent/src/subagent.rs:68-72`) and can never add to
+/// it. Declaring the faculty is the only way in.
+#[test]
+fn an_agent_that_does_not_declare_memory_cannot_call_keep() {
+    let store = Rc::new(MemStore::default());
+    let app = scripted_on(
+        &["keep({\"note\": \"something private\"})", "I cannot."],
+        agent_file_with_tools("", "[]", "[keep]"),
+        Rc::clone(&store),
+    );
+    ask(&app, "remember something");
+
+    let calls = invoked(&app);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert!(!calls[0].1, "refused: {calls:?}");
+    assert!(
+        calls[0].2.starts_with("Tool not found. Available: "),
+        "refused in the words that name what there is: {calls:?}"
+    );
+    assert!(
+        stored(&store).is_empty(),
+        "installing a runner does not install a tool: nothing was written"
+    );
+}
+
+/// THE CAP IS A CAP, AND IT DROPS THE RIGHT END. `MEMORY_LIMIT + 2` lines are
+/// kept in one turn; the store and the block both hold exactly `MEMORY_LIMIT`,
+/// ending with the newest and no longer holding the two oldest. The trim
+/// deletes from the FRONT because `list_prefix` is sorted and the key is
+/// time-then-counter — which is also the proof the counter works, since all
+/// twenty-two of these puts share one millisecond on `FixedClock`.
+#[test]
+fn a_full_memory_drops_the_oldest_line_and_not_the_newest() {
+    let store = Rc::new(MemStore::default());
+    let mut replies: Vec<String> = (0..agent::MEMORY_LIMIT + 2)
+        .map(|n| format!("keep({{\"note\": \"note-{n:02}\"}})"))
+        .collect();
+    replies.push("Done.".to_string());
+    let script: Vec<&str> = replies.iter().map(String::as_str).collect();
+    let app = scripted_on(&script, agent_file("", "[memory]"), Rc::clone(&store));
+    ask(&app, "keep all of these");
+
+    let lines = stored(&store);
+    assert_eq!(
+        lines.len(),
+        agent::MEMORY_LIMIT,
+        "twenty-two puts, twenty keys — every one of them distinct, or the \
+         counter is not doing its job: {lines:?}"
+    );
+    assert_eq!(lines.first().map(String::as_str), Some("note-02"));
+    assert_eq!(lines.last().map(String::as_str), Some("note-21"));
+
+    let block = sensed(&app, "memory");
+    assert!(block.contains("note-21"), "the newest is there: {block}");
+    assert!(block.contains("note-02"), "{block}");
+    assert!(!block.contains("note-00"), "the oldest fell off: {block}");
+    assert!(!block.contains("note-01"), "and so did the next: {block}");
 }

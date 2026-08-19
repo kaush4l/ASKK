@@ -1,11 +1,11 @@
 //! A FACULTY: a named bundle of capability — the tools it offers and the
 //! prompt blocks it contributes — selected by an agent file writing its name.
 //!
-//! **This is a table, not a plugin loader.** [`of`] is a `match` on a string,
-//! the same shape `core::tools::tool_entry`
+//! **This is a table, not a plugin loader.** [`TABLE`] is a literal list of
+//! rows and [`of`] is a lookup in it — the same shape `core::tools::tool_entry`
 //! (`crates/core/src/tools.rs:107`) and `core::dispatch::builtin_entry`
 //! (`crates/core/src/dispatch.rs:42`) already use: a faculty is Rust compiled
-//! into this binary, and a name with no arm here does not exist. Nothing is
+//! into this binary, and a name with no row here does not exist. Nothing is
 //! fetched, nothing is registered at runtime, and no faculty can be added
 //! without a rebuild. Anything else would be a MODULE SYSTEM, and this repo
 //! already has one (`crates/module/`) with its own manifest, capability grants
@@ -19,12 +19,14 @@
 //! one file — with no edit to `components::dynamic`, no edit to the toolbox,
 //! and no new mechanism beside the one `space:` has always used.
 
+mod memory;
 mod space;
 
 use crate::components::Block;
 use crate::spec::AgentSpec;
 use crate::tools::Tool;
 
+pub use memory::MEMORY;
 pub use space::SPACE;
 
 /// A named bundle of capability: the tools it offers and the prompt blocks it
@@ -35,6 +37,24 @@ pub struct Faculty {
     pub blocks: Vec<Block>,
 }
 
+/// How a faculty is built, so a row can hold one.
+type Build = fn() -> Faculty;
+
+/// EVERY FACULTY THIS BUILD SHIPS. One row per faculty, and this table is the
+/// ONLY list: [`of`] answers from it and [`all`] is derived from it, so a
+/// faculty that exists cannot be missing from the structural walk in
+/// `tests/faculty.rs`. Registering IS adding a row; there is nowhere left to
+/// forget.
+///
+/// It used to be two independent places — a `match` and a `pub const ALL` — and
+/// a faculty added to the first but not the second got ZERO structural
+/// coverage while every gate stayed green. The test that would have caught it
+/// was the test that walked the list it was missing from.
+const TABLE: &[(&str, Build)] = &[
+    (space::SPACE, space::faculty),
+    (memory::MEMORY, memory::faculty),
+];
+
 /// The faculty of this name, or `None`.
 ///
 /// `None` is not an error anywhere: an unknown name offers no tools and
@@ -43,14 +63,16 @@ pub struct Faculty {
 /// rather than a capability one — `spec::loader::load_agents`' discipline, and
 /// `subagent::unresolved_tools`' for exactly this reason.
 pub fn of(name: &str) -> Option<Faculty> {
-    match name {
-        SPACE => Some(space::faculty()),
-        _ => None,
-    }
+    TABLE
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, build)| build())
 }
 
-/// Every faculty this build ships, by name.
-pub const ALL: [&str; 1] = [SPACE];
+/// Every faculty this build ships, by name. Derived from [`TABLE`] — see there.
+pub fn all() -> Vec<&'static str> {
+    TABLE.iter().map(|(n, _)| *n).collect()
+}
 
 /// The faculties one agent file declares, in order.
 ///
