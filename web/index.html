@@ -38,12 +38,15 @@
        build's own fingerprinted wasm bundle, whose URL the page reads off its
        own preload links and sends in the boot message. -->
   <link data-trunk rel="copy-file" href="agent-worker.js">
-  <!-- The container2wasm runtime (increment 18): the second Linux engine, and
-       the one this site hosts itself — engine, image mounter, an Alpine OCI
-       image and the xterm-pty/RunContainer glue, ~47 MB. Copied, not linked
-       from a CDN: that is the whole point of it next to CheerpX. It is FETCHED
-       ONLY IF the engine setting selects it (`adapters_web/src/engine.rs`), so
-       a page running CheerpX pays nothing for it being here. -->
+  <!-- The container2wasm runtime (increment 18): THE Linux engine, and an
+       image this site hosts itself — engine, image mounter, an
+       Alpine OCI image and the xterm-pty/RunContainer glue, ~47 MB. Copied,
+       not linked from a CDN, which is the whole point of it: no third-party
+       server and no licence stand between this page and its shell. It was one
+       of two engines until the CheerpX one was deleted; there is no engine
+       setting any more, and these bytes are the substrate. The service worker
+       holds them in a cache of their own (`sw.js`, RUNTIME) because they do
+       not change between deploys. -->
   <link data-trunk rel="copy-dir" href="c2w">
   <link data-trunk rel="copy-file" href="manifest.webmanifest">
   <link data-trunk rel="copy-file" href="icon.svg">

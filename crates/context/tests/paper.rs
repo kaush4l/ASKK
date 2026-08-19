@@ -214,6 +214,25 @@ fn the_cacheable_head_is_still_monotonic() {
     assert_eq!(tail.stability, Stability::Static);
 }
 
+/// The point of the open slot: a position no constant names still sorts where
+/// its number says. `Slot(92)` is the perception block ARCH-COMPONENTS §2 wants
+/// a faculty to declare from outside this crate — it lands between the last
+/// observation and the stage directive without a line changing here. With the
+/// old closed enum this was unrepresentable.
+#[test]
+fn an_unnamed_slot_sorts_by_its_number() {
+    let perception = context::Slot(92);
+    assert!(context::Slot::OBSERVATIONS < perception);
+    assert!(perception < context::Slot::DIRECTIVE);
+    let mut slots = vec![context::Slot::DIRECTIVE, perception, context::Slot::OBSERVATIONS];
+    slots.sort();
+    assert_eq!(
+        slots,
+        vec![context::Slot::OBSERVATIONS, perception, context::Slot::DIRECTIVE]
+    );
+    assert!(!perception.is_head() && !perception.is_tail());
+}
+
 /// (5) Golden: the rendered paper, byte for byte. A prompt regression is a
 /// `git diff`, not archaeology. Regenerate with UPDATE_GOLDEN=1.
 #[test]
@@ -241,4 +260,109 @@ fn content_hash_is_stable_and_sensitive() {
     changed.sources.last_mut().unwrap().section.parts = vec![Part::Text { text: "x".into() }];
     let m2 = render(&assemble(&changed, PhaseId::Work, Budget::unlimited()), FMT);
     assert_ne!(h1, content_hash(&m2));
+}
+
+/// Put a 200 KB screenshot (as base64) into `observations`, the way a
+/// perception block would.
+fn with_screenshot() -> context::State {
+    let mut state = fixture::example();
+    let obs = state
+        .sources
+        .iter_mut()
+        .find(|s| s.section.id.0 == "observations")
+        .expect("fixture has observations");
+    obs.section.parts.push(Part::Image {
+        media_type: "image/png".into(),
+        data_base64: "A".repeat(273_000),
+    });
+    state
+}
+
+/// (6) A blob never costs the conversation its transcript. Charged at bytes/4
+/// a screenshot is ~68k units against a 4096-token Work budget; before the
+/// guard the priority loop ate `history` (priority 9) down to a Pointer and
+/// was STILL over budget, with the blob sitting there at Full.
+#[test]
+fn oversized_binary_degrades_before_any_text() {
+    let doc = assemble(
+        &with_screenshot(),
+        PhaseId::Work,
+        Budget { max_tokens: 4096 },
+    );
+    validate(&doc).unwrap();
+    let get = |id: &str| doc.sections.iter().find(|s| s.id.0 == id).unwrap();
+    assert_eq!(
+        get("history").fidelity,
+        Fidelity::Full,
+        "the transcript survives the blob that caused the overrun"
+    );
+    let obs = get("observations");
+    assert_eq!(obs.fidelity, Fidelity::Full, "and so does its own section");
+    assert!(
+        !obs.parts
+            .iter()
+            .any(|p| matches!(p, Part::Image { data_base64, .. }
+            if data_base64.len() > 4096)),
+        "the oversized image is no longer carried"
+    );
+    assert!(
+        obs.parts.iter().any(|p| matches!(p, Part::Image { .. })),
+        "…while the small one, which the budget can afford, still is"
+    );
+    assert!(
+        obs.parts.iter().any(|p| matches!(p, Part::Text { text }
+            if text.contains("image (image/png) withheld"))),
+        "and it is named, not silently dropped (I15)"
+    );
+    assert!(doc.report.spent <= 4096, "the budget is actually reached");
+}
+
+/// The withhold is a reduction, and it is recorded as the part-level fact it
+/// is — never as a fidelity step the section did not take (I8) — then rendered
+/// into the compaction notice so the model knows what it is not looking at.
+#[test]
+fn withheld_binary_is_recorded_and_reaches_the_model() {
+    let doc = assemble(
+        &with_screenshot(),
+        PhaseId::Work,
+        Budget { max_tokens: 4096 },
+    );
+    assert_eq!(
+        doc.report.withheld,
+        vec![kernel::SectionId("observations".into())],
+        "the withhold has its own record"
+    );
+    assert!(
+        !doc.report
+            .steps
+            .iter()
+            .any(|s| s.section.0 == "observations"),
+        "and is NOT a fidelity step: that section never left Full"
+    );
+    let rendered = serde_json::to_string(&render(&doc, FMT)).unwrap();
+    assert!(rendered.contains("compaction_notice"));
+    assert!(rendered.contains("observations: a binary part was withheld"));
+    assert!(rendered.contains("image (image/png) withheld"));
+    assert!(
+        !rendered.contains(&"A".repeat(2048)),
+        "the blob did not travel"
+    );
+}
+
+/// …and it is as deterministic as everything else here (I14).
+#[test]
+fn withholding_is_deterministic() {
+    let state = with_screenshot();
+    let budget = Budget { max_tokens: 4096 };
+    let a = assemble(&state, PhaseId::Work, budget);
+    assert_eq!(a, assemble(&state, PhaseId::Work, budget));
+    assert_eq!(json(&state, budget), json(&state, budget));
+    // A budget with room for it still carries the image at full fidelity —
+    // the guard is a budget statement, not a ban on pictures.
+    let roomy = assemble(&state, PhaseId::Work, Budget::unlimited());
+    assert!(roomy.report.steps.is_empty() && roomy.report.withheld.is_empty());
+    assert!(roomy
+        .sections
+        .iter()
+        .any(|s| s.parts.iter().any(|p| matches!(p, Part::Image { .. }))));
 }

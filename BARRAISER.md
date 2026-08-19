@@ -16,6 +16,50 @@ the product's newest feature is one you can start and cannot watch.
 
 ---
 
+## Amendment — 2026-08-18: CheerpX was deleted after this was written
+
+**Nothing below is edited.** This document is a record of what was true on 2026-08-12 against
+`0bc51e7`/`c6e909c`, and a record that is silently updated is not a record. What follows is what
+the owner's decision — *CheerpX is deleted; container2wasm is the sole execution engine, chosen
+for sovereignty over an image this project hosts itself* — does to the findings, so a later
+reader does not act on a claim the code no longer supports.
+
+- **§1 (StackBlitz WebContainers) — the win survives, the citation does not.** "Our CheerpX
+  Alpine (`crates/adapters_web/src/cheerpx.rs`) is a real x86 kernel with a real ext2 root" is
+  now `crates/adapters_web/src/c2w.rs` and an Alpine OCI image this repo serves from `web/c2w/`.
+  The categorical
+  advantage over WebContainers — a real kernel, `apk add`, a native binary — still holds, and
+  the "nothing in the product surfaces it" half of the finding still holds. The performance
+  counterweight got **worse**: c2w was measured 13–15× slower than CheerpX on compute.
+- **§2 (Preview / dev server, P1) — reads "CheerpX has no port forwarding wired."** Neither does
+  container2wasm here. The gap is unchanged; only the name of the thing lacking it changed.
+- **§3 idea 10 (Export the work) — the file at `(c)` is gone.** Read it as `c2w.rs`. The
+  argument underneath it got sharper, not weaker: it said agent work is "trapped in an IndexedDB
+  overlay a browser can evict", and there is no overlay any longer — the root is tmpfs in guest
+  RAM, so the work is gone at the next reload with no eviction required. Export moves up.
+- **§4 idea 1 (ship the environment as a forkable workspace image URL) — DEAD as written.** It
+  is built entirely on "a streamed read-only base under an IDB overlay (`cheerpx.rs`) … a
+  workspace is a base image plus a diff". That structure was CheerpX's and it left with it.
+  A forkable environment is still possible, but it would be a new mechanism rather than the
+  free consequence the idea claimed — and it cannot start until the image has a recipe in this
+  repository at all (`docs/STATUS.md`, "the sovereignty hole this exposes").
+- **§6.2 (the stall detector) — the finding stands, the pressure rises.** "The one workload the
+  CheerpX substrate exists for (`apk add`, a build) is precisely the one that trips it" is now
+  the c2w substrate, on which that workload runs 13–15× slower. Every wall-clock patience number
+  in this document was measured against the faster engine.
+- **§6.7 (`cheerpx::prewarm` streams the engine and disk on every page load)** — that function is
+  gone with its module. Whether the c2w path prewarms unconditionally is a question for the next
+  pass, not an answer this document can give.
+
+**And one thing this document never had to say, which the product must.** `Engine::keeps_files`
+was true for CheerpX alone, so with CheerpX gone **files in an agent's folder never survive a
+reload**, unconditionally, with no setting that changes it. Any copy anywhere that still offers
+"choose the other engine if you want your files kept" is now false. `WorkspacePort::durable`
+stays — it is the port telling the truth about persistence, not part of the engine choice — and
+it now tells that truth uniformly.
+
+---
+
 ## §1 Verdict, one paragraph per competitor
 
 **Hermes Agent (Nous Research)** — https://hermes-agent.nousresearch.com/docs/user-guide/features/web-dashboard

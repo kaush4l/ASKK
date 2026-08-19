@@ -7,7 +7,6 @@
 //! Component
 //! ├─ render()    the object as instructions for the model   (its "toString")
 //! ├─ key()       content hash — identical key means identical bytes
-//! ├─ applies()   cheap emptiness check; empty components vanish
 //! └─ slot()      where in the prompt this component belongs
 //! ```
 //!
@@ -71,15 +70,23 @@ pub trait Component {
         self.render()
     }
 
+    /// The notation this component will actually use when `wanted` is asked
+    /// for: `wanted` if `forms()` lists it, else the first form it does list.
+    /// This is what makes `forms()` load-bearing rather than decorative — a
+    /// component that cannot honour a request says so by omission and the
+    /// request is quietly and correctly ignored: asked for JSON, a paragraph
+    /// is still a paragraph.
+    fn notation(&self, wanted: Form) -> Form {
+        match self.forms() {
+            f if f.contains(&wanted) => wanted,
+            f => f[0],
+        }
+    }
+
     /// One sentence: the question this component answers for the model.
     /// Mandatory and not decoration — it is the mechanism that stops prompts
     /// from accreting, and `validate` rejects an empty one as an error.
     fn intent(&self) -> String;
-
-    /// Tiebreak within one slot. Lower renders first.
-    fn priority(&self) -> u8 {
-        0
-    }
 
     /// How often this content changes — a declared cache class, and no longer
     /// the sort key. See [`Slot`] for why the two questions are separate.
@@ -104,12 +111,6 @@ pub trait Component {
         true
     }
 
-    /// Cheap pre-check. The assembler also drops anything that renders to
-    /// nothing, so this is an optimisation, not the guarantee.
-    fn applies(&self) -> bool {
-        true
-    }
-
     /// Content hash: identical key means identical rendered bytes.
     ///
     /// Prefixed with the component's own name so two types carrying identical
@@ -126,7 +127,7 @@ pub trait Component {
     /// The assembled section. This is the provided default — the inherited
     /// method that makes every component usable by `assemble` without writing
     /// the same conversion eleven times.
-    fn section(&self, at: Timestamp) -> Section {
+    fn section(&self, at: Timestamp, form: Form) -> Section {
         Section {
             id: self.id(),
             intent: self.intent(),
@@ -150,7 +151,7 @@ pub trait Component {
                     false => at,
                 },
             },
-            parts: self.render(),
+            parts: self.render_in(self.notation(form)),
         }
     }
 }
@@ -178,9 +179,19 @@ fn fnv(mut hash: u64, bytes: &[u8]) -> u64 {
 fn part_bytes(part: &Part) -> String {
     match part {
         Part::Text { text } => format!("t{text}"),
-        Part::Image { media_type, data_base64 } => format!("i{media_type}{data_base64}"),
-        Part::Audio { media_type, data_base64 } => format!("a{media_type}{data_base64}"),
-        Part::File { name, media_type, data_base64 } => {
+        Part::Image {
+            media_type,
+            data_base64,
+        } => format!("i{media_type}{data_base64}"),
+        Part::Audio {
+            media_type,
+            data_base64,
+        } => format!("a{media_type}{data_base64}"),
+        Part::File {
+            name,
+            media_type,
+            data_base64,
+        } => {
             format!("f{name}{media_type}{data_base64}")
         }
         Part::Fragment { id, html } => format!("g{id}{html}"),

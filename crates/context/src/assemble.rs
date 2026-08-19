@@ -1,10 +1,11 @@
 //! §8.1 first stage + §8.5 budget degradation. Pure, deterministic, no I/O:
 //! same state + phase + budget ⇒ the same document, bit for bit (I14).
 
-use kernel::PhaseId;
+use kernel::{PhaseId, SectionId};
 
+use crate::degrade::{degrade, withhold_oversized, BINARY_SHARE_DIVISOR};
 use crate::state::{SectionSource, State};
-use crate::types::{Budget, CompactionReport, CompactionStep, Document, Fidelity, Part, Section};
+use crate::types::{Budget, CompactionReport, Document, Fidelity, Part, Section};
 
 /// Rough token cost of a part list: bytes/4, floor 1 per part (Spike C).
 /// Not a tokenizer; good enough to make a budget bind deterministically.
@@ -29,7 +30,7 @@ pub(crate) fn cost(parts: &[Part]) -> u32 {
 /// (each level derives from the original, never from the previous level).
 /// Summarized uses the provider's precomputed summary when present, else a
 /// mechanical char-boundary-safe truncation (Spike C friction 3).
-fn effective_parts(src: &SectionSource, fid: Fidelity) -> Vec<Part> {
+pub(crate) fn effective_parts(src: &SectionSource, fid: Fidelity) -> Vec<Part> {
     let s = &src.section;
     match fid {
         Fidelity::Full => s.parts.clone(),
@@ -75,66 +76,59 @@ fn mechanical_summary(s: &Section) -> String {
     )
 }
 
-/// Build the paper for one call — the frozen §8.1 signature. Sorts sources by
-/// slot (stable sort: supplied order holds within a slot), degrades to
-/// budget by the ADR-009 loop (highest priority number first — LOWER number
-/// survives longer — ties to the later section, one level at a time, never
-/// past a floor), and records every step. Total, not fallible: malformed
-/// sections are rejected at module install time (ADR-004). Sections carry
-/// their EFFECTIVE parts at the chosen fidelity: the document is what the
-/// model sees, never a full-fidelity intermediate (ADR-009 Option C's lie).
-pub fn assemble(state: &State, phase: PhaseId, budget: Budget) -> Document {
-    // Every section starts at Full with its real (recomputed) cost — except
-    // one with nothing to say, which starts Elided. A component that does not
-    // apply this turn (no stage brief, no observations yet) vanishes from the
-    // prompt rather than rendering an empty heading: Elided is how the paper
-    // already spells "absent", and it is the level at which empty IS the
-    // content, so the law holds without an exception written for it.
+/// Every section, at the fidelity it starts from, ordered for the prompt.
+///
+/// A section starts at Full with its real (recomputed) cost — except one with
+/// nothing to say, which starts Elided. A component that does not apply this
+/// turn (no stage brief, no observations yet) vanishes rather than rendering
+/// an empty heading: Elided is how the paper already spells "absent", and it
+/// is the level at which empty IS the content, so the law holds without an
+/// exception written for it.
+///
+/// Order is structural: the slot decides, and nothing else. The sort is
+/// stable, so two components sharing a slot keep the order they were supplied
+/// in — deliberately NOT tie-broken on `Section::priority`, which is the
+/// budget rank. Letting a budget number reorder the prompt would be the same
+/// category error the slot type was introduced to end.
+///
+/// An oversized binary part is withheld here, before any ladder runs: charged
+/// at bytes/4 a screenshot outweighs the conversation the ladder would
+/// otherwise shred to make room for it.
+fn gather(
+    state: &State,
+    ceiling: u32,
+    withheld: &mut Vec<SectionId>,
+) -> Vec<(SectionSource, Fidelity, u32)> {
     let mut work: Vec<(SectionSource, Fidelity, u32)> = state
         .sources
         .iter()
         .map(|src| {
-            let start = match src.section.parts.is_empty() {
-                true => Fidelity::Elided,
-                false => Fidelity::Full,
+            let mut src = src.clone();
+            withhold_oversized(&mut src, ceiling, withheld);
+            let c = cost(&src.section.parts); // >= 1 per part: 0 means empty
+            let start = match c {
+                0 => Fidelity::Elided,
+                _ => Fidelity::Full,
             };
-            (src.clone(), start, cost(&src.section.parts))
+            (src, start, c)
         })
         .collect();
-    // Ordering is structural: the slot decides, and nothing else. The sort is
-    // stable, so two components sharing a slot keep the order they were
-    // supplied in — deliberately NOT tie-broken on `Section::priority`, which
-    // is the budget rank. Letting a budget number reorder the prompt would be
-    // the same category error the slot type was introduced to end.
     work.sort_by_key(|(src, _, _)| src.section.slot);
+    work
+}
 
-    let mut steps: Vec<CompactionStep> = Vec::new();
-    loop {
-        let spent: u32 = work.iter().map(|(_, _, c)| *c).sum();
-        if spent <= budget.max_tokens {
-            break;
-        }
-        // Highest priority number not yet at its floor; ties → later section.
-        let candidate = work
-            .iter()
-            .enumerate()
-            .filter(|(_, (src, fid, _))| *fid < src.section.floor)
-            .max_by_key(|(i, (src, _, _))| (src.section.priority, *i))
-            .map(|(i, _)| i);
-        let Some(i) = candidate else {
-            break; // everything at floor and still over budget: recorded below
-        };
-        let (src, fid, c) = &mut work[i];
-        let from = *fid;
-        *fid = fid.next().expect("below floor implies a next level");
-        *c = cost(&effective_parts(src, *fid));
-        steps.push(CompactionStep {
-            section: src.section.id.clone(),
-            from,
-            to: *fid,
-        });
-    }
-
+/// Build the paper for one call — the frozen §8.1 signature: gather every
+/// section at its starting fidelity in slot order, let the budget take what it
+/// must (`degrade`), and emit the document with a receipt for both. Total, not
+/// fallible: malformed sections are rejected at module install time (ADR-004).
+/// Sections carry their EFFECTIVE parts at the chosen fidelity: the document
+/// is what the model sees, never a full-fidelity intermediate (ADR-009 Option
+/// C's lie).
+pub fn assemble(state: &State, phase: PhaseId, budget: Budget) -> Document {
+    let mut withheld: Vec<SectionId> = Vec::new();
+    let ceiling = budget.max_tokens / BINARY_SHARE_DIVISOR;
+    let mut work = gather(state, ceiling, &mut withheld);
+    let steps = degrade(&mut work, budget);
     let spent = work.iter().map(|(_, _, c)| *c).sum();
     let sections = work
         .into_iter()
@@ -153,6 +147,7 @@ pub fn assemble(state: &State, phase: PhaseId, budget: Budget) -> Document {
             budget,
             spent,
             steps,
+            withheld,
         },
     }
 }

@@ -49,7 +49,7 @@ impl Component for Affordances {
         SectionId("affordances".into())
     }
     fn slot(&self) -> Slot {
-        Slot::Affordances
+        Slot::AFFORDANCES
     }
     fn intent(&self) -> String {
         "What exists and how to call it.".into()

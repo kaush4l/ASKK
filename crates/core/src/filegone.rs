@@ -62,10 +62,10 @@ fn listed(names: &[String]) -> String {
     }
 }
 
-/// WHY THIS FOLDER LOOKED EMPTY: because the listing found nothing in it, or
-/// because the reload that rebuilt this page's Linux took what had been written.
-/// `exists` is false for the folder `ls` could not find at all, which on a
-/// forgetting engine is the same loss wearing a different shell message.
+/// WHY THIS FOLDER LOOKED EMPTY: the listing found nothing in it, or the reload that rebuilt this
+/// page's Linux took what had been written. `exists` is false for the folder `ls` could not find
+/// at all, which on a forgetting engine is the same loss wearing a different shell message. The
+/// mechanism is `browsable::IN_MEMORY`, said once; the NAMES are why this is not `kept`.
 pub(crate) fn empty_said(ctx: &Ctx, at: &str, exists: bool) -> String {
     let gone = match ctx.durable {
         true => Vec::new(),
@@ -77,9 +77,9 @@ pub(crate) fn empty_said(ctx: &Ctx, at: &str, exists: bool) -> String {
             _ => ("were", "them"),
         };
         return format!(
-            "{} {was} written here, and nothing is left of {them}. This page's Linux keeps its \
-             filesystem in memory, so the reload that rebuilt it took {them} with it.",
-            listed(&gone)
+            "{} {was} written here, and nothing is left of {them}. {}, so the reload that \
+             rebuilt it took {them} with it.",
+            listed(&gone), crate::browsable::IN_MEMORY
         );
     }
     if exists {

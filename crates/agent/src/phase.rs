@@ -5,8 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use context::{Budget, Fidelity};
-use kernel::{PhaseId, SectionId, ToolId};
+use context::Budget;
+use kernel::{PhaseId, ToolId};
 
 /// Which capabilities a phase exposes. `None` is structural, not refused:
 /// `render` receives it and emits no tool schema at all — Plan and Verify
@@ -76,9 +76,6 @@ pub enum PhaseExit {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PhaseConfig {
     pub phase: PhaseId,
-    /// Which sections the paper contains, at what fidelity. Subsets the
-    /// canonical order, never reorders it (DOMAIN §2).
-    pub sections: Vec<(SectionId, Fidelity)>,
     pub contract: ResponseContract,
     pub tools: ToolScope,
     pub budget: Budget,
@@ -91,25 +88,6 @@ pub struct PhaseConfig {
 /// the cheap exit (RESEARCH phase-cut softening of §9's symmetric cut —
 /// changing this back is a config edit, which is the point of Option C).
 pub fn v1_phases() -> Vec<PhaseConfig> {
-    let all_full = |ids: &[&str]| -> Vec<(SectionId, Fidelity)> {
-        ids.iter()
-            .map(|id| (SectionId((*id).into()), Fidelity::Full))
-            .collect()
-    };
-    // The §8.2 starter set, canonical order.
-    let sections = [
-        "soul",
-        "identity",
-        "operating_rules",
-        "response_contract",
-        "affordances",
-        "user",
-        "memory",
-        "environment",
-        "task",
-        "history",
-        "observations",
-    ];
     vec![
         // Work: one conversational turn that may act. The contract is
         // ToolEnvelope — prose is still a legal reply and ends the turn (the
@@ -121,7 +99,6 @@ pub fn v1_phases() -> Vec<PhaseConfig> {
         // Agents card exposed: the file said `tools:` and nothing read it.
         PhaseConfig {
             phase: PhaseId::Work,
-            sections: all_full(&sections),
             contract: ResponseContract::ToolEnvelope,
             tools: ToolScope::All,
             budget: Budget { max_tokens: 4096 },
@@ -133,7 +110,6 @@ pub fn v1_phases() -> Vec<PhaseConfig> {
         // Verify: configured but unreachable until Work emits tool effects.
         PhaseConfig {
             phase: PhaseId::Verify,
-            sections: all_full(&sections),
             contract: ResponseContract::Verdict,
             tools: ToolScope::None,
             budget: Budget { max_tokens: 2048 },

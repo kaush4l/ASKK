@@ -133,9 +133,10 @@ pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect
         &Contract::saying("Reply with the notes and nothing else."),
         at,
     );
-    // No space: the summarizer reads the transcript and nothing else, and the
-    // group's facts are not part of the conversation it is compressing.
-    let environment = Environment { text: crate::now::environment(at, None) };
+    // No space block at all: the summarizer reads the transcript and nothing
+    // else, and the group's facts are not part of the conversation it is
+    // compressing. The sheet never sets one, so it stays Elided.
+    let environment = Environment { text: crate::now::environment(at) };
     paper::set_component(&mut sheet, &environment, at);
     paper::set_component(&mut sheet, &Task { text: transcript.clone() }, at);
     // Deliberately empty, not the seeded marker: the summarizer's transcript

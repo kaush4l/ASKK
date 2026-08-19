@@ -48,7 +48,7 @@ impl WorkspacePort for FakeShell {
     }
 
     fn durable(&self) -> bool {
-        !self.forgets
+        self.keeps
     }
 
     /// Counted, and refused unless this shell was built interruptible — a fake
@@ -140,5 +140,25 @@ impl WorkspacePort for FakeShell {
             status: 0,
             output: names.join("\n"),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kernel::WorkspacePort;
+
+    use crate::shell::FakeShell;
+
+    /// THE DEFAULT IS THE WORLD THE PRODUCT IS IN (26 walk). This fake used to
+    /// answer `durable == true` unless a test opted out, so 51 test files
+    /// asserted a machine that keeps files across a reload — which no shipped
+    /// engine is, and exactly one test opted out of. The default is the only
+    /// engine now; persistence is asked for by name.
+    #[test]
+    fn a_fake_shell_forgets_a_reload_the_way_the_only_engine_that_ships_does() {
+        assert!(!FakeShell::new().durable(), "the default is container2wasm");
+        assert!(!FakeShell::holding(&[("/root/a.md", "x")]).durable());
+        assert!(!FakeShell::unavailable("no workspace here").durable());
+        assert!(FakeShell::new().keeping().durable(), "…and persistence is asked for");
     }
 }

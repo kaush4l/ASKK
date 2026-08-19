@@ -97,14 +97,13 @@ fn typeable(mut response: Response, ctx: &Ctx, who: &str) -> Response {
     if let Some(why) = crate::scrollpanel::no_box_why(ctx, who) {
         response.headers.push(("x-typeable-why".into(), why));
     }
-    // WHAT A STOP WOULD DO HERE, so the pane can label one control with two
-    // different promises (R11-1b). A fact on a header rather than a fragment to
+    // WHAT A STOP WOULD DO HERE, so the pane offers the control only where it
+    // does something (R11-1b). A fact on a header rather than a fragment to
     // parse — the rule `x-turn`, `x-busy` and `x-typeable` already follow.
     response.headers.push((
         "x-interrupt".into(),
         match ctx.interrupt {
             kernel::Interrupt::Kill => "kill",
-            kernel::Interrupt::Abandon => "abandon",
             kernel::Interrupt::None => "none",
         }
         .into(),

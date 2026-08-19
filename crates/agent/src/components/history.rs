@@ -42,7 +42,7 @@ impl Component for History {
         SectionId("history".into())
     }
     fn slot(&self) -> Slot {
-        Slot::History
+        Slot::HISTORY
     }
     fn intent(&self) -> String {
         "Conversation and prior steps, oldest first; the last line is the newest.".into()
@@ -68,8 +68,5 @@ impl Component for History {
             .iter()
             .map(|text| Part::Text { text: text.clone() })
             .collect()
-    }
-    fn applies(&self) -> bool {
-        !self.entries.is_empty()
     }
 }

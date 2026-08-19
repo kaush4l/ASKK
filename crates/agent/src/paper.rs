@@ -18,6 +18,8 @@ pub(crate) use crate::components::seed;
 /// looks this up in `public/agents/`.
 pub(crate) const SUMMARIZER: &str = "summarizer";
 
+/// The section owning `id`, or a panic. STRICT ON PURPOSE, and only for the
+/// history writers: a window out of nowhere is a bug, not a feature.
 fn find<'a>(paper: &'a mut State, id: &str) -> &'a mut SectionSource {
     paper
         .sources
@@ -32,9 +34,20 @@ fn find<'a>(paper: &'a mut State, id: &str) -> &'a mut SectionSource {
 /// than only at seeding: the component renders itself, and its own declared
 /// slot, stability and floor come with the parts, so a section can never be
 /// shaped by one place and filled by another.
+///
+/// It UPSERTS: an id the seed never carried is APPENDED, which is what opens
+/// the prompt to blocks that were not compiled into `seed()`. Appending is
+/// safe because ORDERING IS STRUCTURAL — `assemble` sorts by `Section::slot`
+/// and nothing else, stably, so a source's POSITION in `State.sources` never
+/// reaches the prompt; the component's own `slot()` decides where it renders.
+/// The cost: a typo'd id adds a block instead of panicking, and only a
+/// COLLIDING one is still refused (`ContextError::DuplicateSection`).
 pub(crate) fn set_component(paper: &mut State, c: &dyn context::Component, at: Timestamp) {
-    let s = find(paper, &c.id().0);
-    *s = crate::components::source(c, at);
+    let built = crate::components::source(c, at, paper.form);
+    match paper.sources.iter_mut().find(|s| s.section.id == built.section.id) {
+        Some(s) => *s = built,
+        None => paper.sources.push(built),
+    }
 }
 
 /// Append one turn to the history section.
@@ -134,4 +147,53 @@ fn critic_among(
         .filter(|c| c.name != spec.name)
         .map(|c| c.name.clone())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    // `set_component` is `pub(crate)`: proved here, not widened for a test.
+    use super::*;
+    use context::{Budget, Component, Document, Slot, Stability};
+    use kernel::{PhaseId, SectionId};
+    /// A block the seed never heard of, live, at the observations slot.
+    struct Note;
+    impl Component for Note {
+        fn id(&self) -> SectionId { SectionId("note".into()) }
+        fn slot(&self) -> Slot { Slot::OBSERVATIONS }
+        fn stability(&self) -> Stability { Stability::Volatile }
+        fn render(&self) -> Vec<Part> { context::text("a note") }
+        fn intent(&self) -> String { "what a late-attached block says".into() }
+    }
+    fn document(paper: &State) -> Document {
+        context::assemble(paper, PhaseId::Work, Budget::unlimited())
+    }
+    /// The seeded paper plus a component never compiled into it.
+    fn noted() -> Document {
+        let mut paper = seed();
+        set_component(&mut paper, &Note, Timestamp(0));
+        document(&paper)
+    }
+
+    #[test]
+    fn an_unseeded_component_renders_at_its_slot_not_where_it_was_appended() {
+        let doc = noted();
+        let ids: Vec<&str> = doc.sections.iter().map(|s| s.id.0.as_str()).collect();
+        let at = ids.iter().position(|i| *i == "note").expect("it attached");
+        assert_eq!(ids[at - 1], "observations", "slot 90 sorts among slot 90");
+        assert_eq!(ids[at + 1], "directive", "…and ahead of slot 95, not last");
+    }
+
+    #[test]
+    fn an_attached_component_still_makes_a_legal_document() {
+        assert!(context::validate(&noted()).is_ok());
+    }
+
+    #[test]
+    fn a_seeded_id_updates_in_place_rather_than_duplicating() {
+        let mut paper = seed();
+        let before = document(&paper).sections.len();
+        set_component(&mut paper, &crate::components::OperatingRules, Timestamp(0));
+        set_component(&mut paper, &crate::components::OperatingRules, Timestamp(0));
+        assert_eq!(document(&paper).sections.len(), before);
+    }
 }

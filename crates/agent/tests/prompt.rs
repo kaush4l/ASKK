@@ -45,7 +45,14 @@ fn user(text: &str) -> Event {
 /// `strategy` and `plan` are granted no tools on purpose: a test that wants to
 /// see the toolbox has to ask for a stage that has one.
 fn rendered_at(question: &str, stages: &[&str]) -> String {
-    let spec = parse_agent_file("main", MAIN).expect("the shipped main agent parses");
+    rendered_from(MAIN, question, stages)
+}
+
+/// The same, from a given agent FILE — so a test can ask what an agent that
+/// named no space is shown, without a second fixture drifting away from the
+/// shipped one.
+fn rendered_from(file: &str, question: &str, stages: &[&str]) -> String {
+    let spec = parse_agent_file("main", file).expect("the shipped main agent parses");
     let mut state = AgentState::new();
     adopt_spec(&mut state, &spec, &[]);
     state.declared = stages.iter().map(|s| (*s).to_string()).collect();
@@ -114,7 +121,7 @@ fn the_prompt_opens_with_who_and_closes_with_how_to_reply() {
     );
 }
 
-/// Every one of the eleven appears exactly once, in slot order. A missing
+/// Every one of the ten appears exactly once, in slot order. A missing
 /// block is a capability the model silently lost; a duplicated one is two
 /// sources of truth for the same question.
 #[test]
@@ -128,8 +135,7 @@ fn every_component_appears_exactly_once_in_slot_order() {
             "## identity",
             "## operating_rules",
             "## affordances",
-            "## user",
-            "## memory",
+            "## space",
             "## environment",
             "## task",
             "## history",
@@ -137,6 +143,46 @@ fn every_component_appears_exactly_once_in_slot_order() {
             "## response_contract",
         ]
     );
+}
+
+/// THE SHARED SPACE IS ITS OWN BLOCK (increment 26, gap 8). It used to be
+/// three paragraphs appended to `## environment` by `now::environment` — 22
+/// lines of `push_str` prompt prose in a file that is not a component, which
+/// is the ad-hoc string building I13 forbids. It sits at slot 55 now, between
+/// the toolbox and the clock, and the two say different things.
+#[test]
+fn the_space_is_a_block_of_its_own_and_not_a_paragraph_of_the_clock() {
+    let prompt = rendered("hello");
+    let block = |head: &str| {
+        prompt
+            .split(&format!("\n{head}\n"))
+            .nth(1)
+            .unwrap_or_else(|| panic!("{head} is present"))
+            .split("\n## ")
+            .next()
+            .expect("…and ends at the next heading")
+            .to_string()
+    };
+    let space = block("## space");
+    assert!(space.contains("space: research"), "{space}");
+    assert!(space.contains("workspace: /root/spaces/research"), "{space}");
+    // The clock block is the clock, the day and the device, and nothing else.
+    let environment = block("## environment");
+    assert!(environment.contains("current time:"), "{environment}");
+    assert!(!environment.contains("workspace"), "the space has left: {environment}");
+    assert!(!environment.contains("shared facts"), "…all of it: {environment}");
+}
+
+/// An agent that named no space renders no space block — not an empty heading
+/// and not an apology, which is what the other two dead blocks used to do.
+#[test]
+fn an_agent_with_no_space_has_no_space_block() {
+    let alone = MAIN.replace("\nspace: research\n", "\n");
+    assert!(!alone.contains("space: research"), "the fixture really dropped it");
+    let prompt = rendered_from(&alone, "hello", &["work"]);
+    let headings = heads(&prompt);
+    assert!(!headings.contains(&"## space"), "{headings:?}");
+    assert!(headings.contains(&"## environment"), "…and the clock still runs");
 }
 
 /// Each block says what it is for. The intent line is the mechanism that stops

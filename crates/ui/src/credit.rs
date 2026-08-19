@@ -2,53 +2,38 @@
 //! `terminal.rs` for the 200-line rule (I12).
 //!
 //! VISIBLE, not behind a marker (R4-16): the headline claim is "runs in your
-//! browser" and the one third-party dependency it rests on was named only
-//! inside a collapsed disclosure. …AND IT NAMES THE ENGINE THAT IS ACTUALLY
-//! RUNNING (increment 18): crediting Leaning Tech under a page running
-//! container2wasm would be a false attribution in the one paragraph whose whole
-//! job is attribution — and it would hide that the c2w page has no third party
-//! to credit, which is the reason c2w exists.
+//! browser", and where the Linux comes from is part of that claim rather than
+//! a footnote inside a collapsed disclosure.
 //!
-//! The CheerpX Community Licence asks for "appropriate credits"; this is it.
+//! THERE IS NOBODY ELSE TO CREDIT NOW. This paragraph used to name a second
+//! vendor, whose community licence asked for "appropriate credits" in return
+//! for a runtime loaded from their CDN and a disk image streamed from their
+//! servers. None of that ships any more — no runtime, no CDN, no third-party
+//! image — so a credit naming them would attribute work this product does not
+//! use. What is left is the container2wasm attribution and the fact it
+//! carries: this site serves its own Linux, and that Linux forgets.
 //!
-//! EVERY OUTBOUND LINK LEAVES IN A NEW TAB (R14-P1-4). These two are the only
-//! links in the product that go anywhere but this page, and both navigated IN
-//! PLACE — a mis-click on a credit unloaded the app, which kills the Worker
-//! driving whatever the agent was doing and abandons any command in the Linux.
-//! The test below is the rule, not this file: it walks the whole crate.
+//! EVERY OUTBOUND LINK LEAVES IN A NEW TAB (R14-P1-4). It navigated IN PLACE —
+//! a mis-click on a credit unloaded the app, which kills the Worker driving
+//! whatever the agent was doing and abandons any command in the Linux. The
+//! test below is the rule, not this file: it walks the whole crate.
 
 use dioxus::prelude::*;
 
 pub(crate) fn credit() -> Element {
-    match adapters_web::engine() {
-        adapters_web::Engine::Cheerpx => rsx! {
-            p { class: "note credit",
-                "The Linux runs on "
-                a {
-                    href: "https://cheerpx.io/",
-                    target: "_blank",
-                    rel: "noopener noreferrer",
-                    "CheerpX",
-                }
-                " by Leaning Tech, loaded from their CDN under the CheerpX Community \
-                 Licence, with the Alpine disk image published by the WebVM project. \
-                 Everything else on this page is served by this site."
+    rsx! {
+        p { class: "note credit",
+            "The Linux is an Alpine container built with "
+            a {
+                href: "https://github.com/ktock/container2wasm",
+                target: "_blank",
+                rel: "noopener noreferrer",
+                "container2wasm",
             }
-        },
-        adapters_web::Engine::C2w => rsx! {
-            p { class: "note credit",
-                "The Linux is an Alpine container built with "
-                a {
-                    href: "https://github.com/ktock/container2wasm",
-                    target: "_blank",
-                    rel: "noopener noreferrer",
-                    "container2wasm",
-                }
-                ", served by this site — no CDN and no third-party disk. Its filesystem \
-                 is in memory, so anything written here is gone when the page reloads; \
-                 Settings has the other engine, which keeps files."
-            }
-        },
+            ", served by this site — no CDN and no third-party disk. Its filesystem \
+             is in memory, so anything written here is gone when the page reloads, \
+             and there is no setting that changes that."
+        }
     }
 }
 

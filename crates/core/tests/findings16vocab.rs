@@ -9,7 +9,7 @@
 //! the same word as two mechanisms — a shared store the three space tools
 //! write to, and a folder — and the code agrees with the critic: the facts and
 //! notes live in one IndexedDB database every Worker opens
-//! (`adapters_web::worker`), while the folder is CheerpX in the page and a
+//! (`adapters_web::worker`), while the folder is the Linux in the page and a
 //! sub-agent's `exec` is refused outright. So the noun stays one and the
 //! sentences stop claiming the folder is the shared thing.
 
@@ -112,8 +112,8 @@ fn say(app: &Rc<RefCell<App>>, who: &str) {
     block_on(drive(Rc::clone(app))).expect("the turn drives");
 }
 
-/// R16-4. `engine` means the Linux in Settings — CheerpX or container2wasm —
-/// and the agent card's fallback for an unrecognised `engine:` value was the
+/// R16-4. `engine` means the Linux in Settings — container2wasm — and the
+/// agent card's fallback for an unrecognised `engine:` value was the
 /// only other place a reader met the word. The YAML key is untouched: files
 /// depend on it.
 ///

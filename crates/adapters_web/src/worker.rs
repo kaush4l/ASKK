@@ -86,12 +86,12 @@ impl AgentWorker {
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
             // The SAME adapter the page uses, which refuses here in words: a
-            // Worker has no `document` to load the engine into, and two
-            // overlays over one IndexedDB cache would be two writers on one
-            // disk. A sub-agent's exec therefore comes back "no workspace is
-            // available here" instead of quietly corrupting the page's
+            // Worker has no `document` to load the engine into, and the one
+            // shell the container serves is the page's. A sub-agent's exec
+            // therefore comes back "the workspace runs in the page, not in an
+            // agent's Worker" instead of quietly fighting the page for it
             // (increment 10 — routing it back to the page is not done).
-            workspace: Rc::new(crate::CheerpxWorkspace),
+            workspace: Rc::new(crate::C2wWorkspace),
             // A sub-agent delegates to nobody: the wiring is one level deep on
             // purpose, so a cycle of agents calling each other cannot exist.
             agents: Rc::new(NoSubAgents),

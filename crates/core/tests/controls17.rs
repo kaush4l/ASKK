@@ -68,16 +68,14 @@ fn body(app: &Rc<RefCell<App>>, req: Request) -> String {
 }
 
 /// R17-P1-6. The command a person stopped, in the pane they stopped it from.
-/// Both engines end a stopped command through the same `Err` a crash arrives
-/// on, so the row could only tell the two apart by the sentence the engine
-/// wrote — and it did not try.
+/// A stopped command ends through the same `Err` a crash arrives on, so the row
+/// could only tell the two apart by the sentence the engine wrote — and it did
+/// not try.
 #[test]
 fn a_command_you_stopped_is_stopped_and_not_failed() {
     let app = booted(Rc::new(FakeShell::new().failing(
         "sleep 40",
-        "You stopped waiting. CheerpX runs each command as its own process with no way in \
-         from the page except the console, so the interrupt was typed at the console and the \
-         command may still be running; the workspace takes the next command when it ends.",
+        "You stopped it, and this Linux really interrupted the command; the shell recovered.",
     )));
     body(&app, Request::post_form("/terminal", &[("command", "sleep 40; echo done")]));
     let _ = block_on(drive(Rc::clone(&app)));
@@ -92,7 +90,7 @@ fn a_command_you_stopped_is_stopped_and_not_failed() {
     assert!(pane.contains("data-outcome=\"stopped\""), "{pane}");
     // THE LEAD. The explanation was never the problem; the sentence in front
     // of it was, and it no longer opens by calling the workspace broken.
-    assert!(pane.contains("You stopped waiting."), "{pane}");
+    assert!(pane.contains("You stopped it, and this Linux really interrupted"), "{pane}");
     assert!(!pane.contains("The Linux failed:"), "{pane}");
     // …and it is still our prose, so it still wraps (R12-4).
     assert!(pane.contains("<pre class=\"said\""), "{pane}");

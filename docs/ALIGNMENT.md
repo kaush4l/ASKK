@@ -474,15 +474,25 @@ Each with the one line that kills it.
 ## 7. The three decisions only the owner can make
 
 **1. Does the workspace survive a reload, and at what cost?**
-Today it depends on the engine and the port says so (`kernel/src/workspace.rs:104-114`): CheerpX
-keeps its overlay in IndexedDB, container2wasm's root is tmpfs in guest RAM. Every honest
-verification, artifact and plan-then-implement story assumes files persist.
-(a) Make CheerpX the default and accept the CDN/licence dependency.
-(b) Stay on c2w and snapshot only the *space folder* into `BlobStore` at each turn end (backlog 14).
-(c) Neither — state in the product that the Linux is ephemeral and mean it.
-**Recommendation: (b).** The prior ~79 KB/s measurement was for the whole image; a space folder is
-kilobytes, the restore path is the `write_file` that already exists, and it keeps engine choice a
-user setting rather than a product commitment. It is an ADR.
+**DECIDED 2026-08-18 by the owner: no, it does not — (c), and (b) is the way back.**
+This was written when it depended on the engine: CheerpX kept its overlay in IndexedDB,
+container2wasm's root is tmpfs in guest RAM. CheerpX is deleted — container2wasm is the sole
+engine, chosen for sovereignty over an image this project hosts itself — so the answer is no
+longer conditional and neither is the sentence the product has to say. **Files in an agent's
+folder do not survive a reload, there is no setting that changes that, and any copy still
+offering the other engine as the way to keep them is a lie.** The port still tells the truth
+about it: `WorkspacePort::durable` stays and is now uniformly false, which is exactly the point
+of having asked the port rather than the engine.
+
+What this costs, unchanged: every honest verification, artifact and plan-then-implement story
+assumes files persist, and none of them can any more.
+
+The route back, unchanged and now the ONLY route: (b) snapshot the *space folder* into
+`BlobStore` at each turn end (backlog 14). The prior ~79 KB/s measurement was for the whole
+image; a space folder is kilobytes and the restore path is the `write_file` that already exists.
+It is an ADR, and it is no longer competing with an engine choice — it is the whole feature.
+Option (a), "make CheerpX the default and accept the CDN/licence dependency", is off the table:
+the CDN and the licence are what the owner deleted.
 
 **2. Is voice in scope now, and is it worth an I5 exception?**
 No prior art exists in any of the eight (§4). The cheap version — `SpeechRecognition` filling the

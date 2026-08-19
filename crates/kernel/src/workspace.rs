@@ -2,7 +2,7 @@
 //! four operations that place has to offer — exec, read, write, list.
 //!
 //! It is a port for the reason every other capability is one: the core must
-//! not know Linux exists. `adapters_web` boots CheerpX behind this trait; a
+//! not know Linux exists. `adapters_web` boots container2wasm behind this trait; a
 //! host test drives a fake and never opens a browser (I3). A build with no
 //! workspace at all answers `Unavailable` and nothing breaks (I15).
 //!
@@ -37,14 +37,11 @@ pub enum WorkspaceError {
 
 /// WHAT A STOP CAN ACTUALLY DO to the command running right now (R11-1).
 ///
-/// Not a feature flag and not speculative generality — the same shape, and the
-/// same reason, as `durable`: there are two engines behind this port TODAY and
-/// they differ on exactly this. container2wasm drives one shared PTY, so an
-/// interrupt byte reaches the foreground process group and the command dies.
-/// CheerpX runs each command as its own `cx.run`, which has no stdin and no
-/// documented cancel, so the most that can honestly happen there is that the
-/// PAGE stops waiting while the command runs on. Those are two different
-/// promises and the button must not make them look like one, so the fact
+/// Not a feature flag and not speculative generality: a build may have no
+/// workspace at all (I15), and a control offering to stop a command in a Linux
+/// that is not there is worse than no control. container2wasm drives one
+/// shared PTY, so an interrupt byte reaches the foreground process group and
+/// the command dies — that is the only promise this product makes, and it
 /// travels with the port rather than with the copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Interrupt {
@@ -52,8 +49,6 @@ pub enum Interrupt {
     None,
     /// The command is signalled and really stops.
     Kill,
-    /// The wait ends; the command keeps running where we cannot reach it.
-    Abandon,
 }
 
 /// Quote one argument for `/bin/sh`. Single quotes take everything literally,
@@ -102,12 +97,11 @@ pub trait WorkspacePort {
 
     /// Whether what is written here is still here after a page reload.
     ///
-    /// Not a feature flag and not speculative generality: there are two
-    /// engines behind this port and they differ on exactly this. CheerpX keeps
-    /// its overlay in IndexedDB; container2wasm's root is tmpfs in guest RAM.
-    /// The product tells a person their files are kept, and that sentence has
-    /// to follow the engine rather than the other way round — so the fact
-    /// travels with the port, not with the copy. Default true, because a
+    /// Not a feature flag and not speculative generality: it is the port
+    /// telling the truth about the files, and the product's copy has to follow
+    /// it rather than the other way round. The browser workspace this build
+    /// ships (container2wasm) answers FALSE — its root is tmpfs in guest RAM —
+    /// while a host fake keeps what it was given. Default true, because a
     /// workspace that forgets is the unusual one.
     fn durable(&self) -> bool {
         true

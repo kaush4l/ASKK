@@ -136,7 +136,7 @@ pub(crate) fn spaceless(html: &str) -> bool {
 }
 
 /// How long a pane watches for a listing the async half is still producing. Two
-/// minutes at 500 ms: a cold CheerpX streams its disk before the first `ls`
+/// minutes at 500 ms: a cold Linux mounts its image before the first `ls`
 /// returns, and giving up early would leave the folder looking empty.
 pub(crate) const TICK_MS: i32 = 500;
 pub(crate) const WATCH_TICKS: u32 = 240;

@@ -27,7 +27,7 @@ impl Component for Soul {
         SectionId("soul".into())
     }
     fn slot(&self) -> Slot {
-        Slot::Soul
+        Slot::SOUL
     }
     fn intent(&self) -> String {
         "Who this agent is; values and voice.".into()
@@ -43,9 +43,6 @@ impl Component for Soul {
     }
     fn render(&self) -> Vec<Part> {
         text(nested(self.text.trim()))
-    }
-    fn applies(&self) -> bool {
-        !self.text.trim().is_empty()
     }
 }
 
@@ -92,7 +89,7 @@ impl Component for Identity {
         SectionId("identity".into())
     }
     fn slot(&self) -> Slot {
-        Slot::Identity
+        Slot::IDENTITY
     }
     fn intent(&self) -> String {
         "Name, role, presentation.".into()
@@ -128,7 +125,7 @@ impl Component for OperatingRules {
         SectionId("operating_rules".into())
     }
     fn slot(&self) -> Slot {
-        Slot::OperatingRules
+        Slot::OPERATING_RULES
     }
     fn intent(&self) -> String {
         "How to behave; the response discipline.".into()

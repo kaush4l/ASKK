@@ -1,14 +1,12 @@
-//! `WorkspacePort` over container2wasm — the SECOND Linux (increment 18), and
-//! the one this project builds and hosts itself.
+//! `WorkspacePort` over container2wasm — THE Linux, and the only one.
 //!
-//! Why a second one at all. `cheerpx.rs` streams its ext2 disk from Leaning
-//! Tech's CDN and loads their engine from their CDN under a Community Licence.
-//! That is three dependencies on somebody else's infrastructure for the thing
-//! the agent actually runs in. c2w is an image we build, gzip and serve from
-//! our own `web/c2w/` — no CDN, no licence, no third-party disk. It costs
-//! ~48 MB shipped and a guest that is one permanently interpreted Bochs
-//! thread; CheerpX JITs. The owner picks on measurements, so BOTH ship and the
-//! engine is a setting (`engine.rs`).
+//! Why this one. It is an image we build, gzip and serve from our own
+//! `web/c2w/` — no CDN, no licence, no third-party disk, nothing streamed from
+//! infrastructure this project does not control. It costs ~48 MB shipped and a
+//! guest that is one permanently interpreted Bochs thread, which is 13–15x
+//! slower on compute than a JIT would be. That cost was measured and accepted:
+//! sovereignty over the thing the agent actually runs in is the point, so
+//! there is no second engine and no setting to pick one.
 //!
 //! The JS in `c2w.js` is BINDING, not logic (I5). What is worth knowing here:
 //!
@@ -23,9 +21,10 @@
 //!   typed error here, because the interrupt also kills the trailing sentinel
 //!   that would otherwise have closed it.
 //! - **NOTHING WRITTEN HERE SURVIVES A RELOAD.** The container's root is
-//!   `overlay … upperdir=/run/rootfs-upper` — tmpfs, i.e. guest RAM. That is
-//!   the one behavioural difference the two engines have that a person can
-//!   feel, so it is a fact the port states (`durable`) rather than a surprise.
+//!   `overlay … upperdir=/run/rootfs-upper` — tmpfs, i.e. guest RAM. It is the
+//!   one thing about this Linux a person can feel, it is now unconditionally
+//!   true of the product, and it is a fact the port states (`durable`) rather
+//!   than a surprise.
 
 use kernel::{BoxFuture, Execution, WorkspaceError, WorkspacePort};
 use wasm_bindgen::prelude::*;
@@ -58,9 +57,9 @@ fn why(e: JsValue) -> String {
 }
 
 impl WorkspacePort for C2wWorkspace {
-    /// Run `command` in `cwd`, creating `cwd` first — the same contract, and
-    /// the same script, `cheerpx.rs` runs. That is the acceptance test: the
-    /// six process tools and the four file ones are unchanged code above this.
+    /// Run `command` in `cwd`, creating `cwd` first — the contract every
+    /// caller above this already had: the six process tools and the four file
+    /// ones are unchanged code, because they only ever knew the port.
     fn exec<'a>(
         &'a self,
         cwd: &'a str,
@@ -90,8 +89,8 @@ impl WorkspacePort for C2wWorkspace {
     /// KILL, really (R11-1b). One shared PTY with a container behind it means
     /// `0x03` reaches the foreground process group and the command dies — the
     /// primitive the 180s watchdog has always used, now offered to the person
-    /// watching instead of only to the clock. This is the engine that can make
-    /// the stronger promise, and `Interrupt` is how the button knows to.
+    /// watching instead of only to the clock. `Interrupt` is how the button
+    /// knows a stop here really stops something.
     fn interrupt(&self) -> kernel::Interrupt {
         kernel::Interrupt::Kill
     }

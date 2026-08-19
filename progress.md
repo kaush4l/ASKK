@@ -3888,3 +3888,85 @@ attached — it does nothing until a search address is set in Settings, and an
 agent whose one tool is refused is worse than an agent that answers from what
 it knows. That is also the honest half of the deferred `web_search` finding,
 delivered where it changes behaviour rather than only where it is read.
+
+## The CheerpX deletion — 2026-08-18 (assets, shell and docs)
+
+Owner's decision: **CheerpX is deleted; container2wasm is the sole execution
+engine, chosen for sovereignty over an image this project hosts itself.** This
+section is appended rather than written over the rows above — increments 10
+through 15L were measured on CheerpX and their numbers were true when taken.
+Read every `Linux 4.15.0-54-cheerpx i386` in this file as the record of a
+substrate the product no longer ships. Two of the entries above are now
+superseded and say so here rather than there:
+
+- The Decisions block under increment 01 says *"CheerpX is the VM backend, not
+  container2wasm."* **Reversed.** What it also says stays true and is now the
+  whole reason the shell works at all: cross-origin isolation is required, via
+  the header-injecting service worker, because container2wasm needs
+  `SharedArrayBuffer` for exactly the reason CheerpX did.
+- The same block says *"Credits are owed … the runtime is loaded from
+  `cxrtnc.leaningtech.com` because self-hosting it requires a commercial
+  licence."* **No longer applicable.** Nothing is loaded from that origin. The
+  licence that made the credit mandatory is the dependency the owner removed;
+  the credit obligation ends with the dependency, and the CDN fetch ends with
+  it too.
+
+### What this pass changed, outside `crates/`
+
+There was **no CheerpX `<script>` tag to delete**. The engine was injected by
+the adapter at boot, not linked from `web/index.html` — increment 10's own
+Decisions block says so ("`cx.js` is injected by the adapter, not by a
+`<script>` tag in `index.html`"). The CDN dependency dies in `crates/`, and
+this pass could not be the one to kill it.
+
+- `web/index.html` — the `copy-dir c2w` comment described a runtime fetched
+  *only if* the engine setting selected it, "so a page running CheerpX pays
+  nothing for it being here". There is no engine setting and no other page;
+  these 47 MB are the substrate now, and the comment says that.
+- `web/coi-sw.js` — kept, with its reason restated. It was written because
+  CheerpX refused to start without `SharedArrayBuffer`; `c2w/dist/runcontainer.js`
+  and `c2w/vendor/xterm-pty.js` both build on `SharedArrayBuffer` too, so
+  deleting the header rewrite would take the shell down with it. The
+  CheerpOS-specific note on the redirect branch is now stated as the general
+  correctness rule it always was.
+- `web/sw.js` — **untouched, and it does not need a version bump.** `publish.sh`
+  stamps `const VERSION` with the commit being published, so every deploy names
+  a new cache and `activate` drops the old one; a returning visitor cannot be
+  served a half-cached mixture across this change. One thing worth knowing and
+  not fixed here: the `askk-c2w` RUNTIME cache is deliberately outside that
+  sweep and is never invalidated, so if the c2w bytes ever *do* change, that
+  cache is the one that will lie.
+- `scripts/layout-probe.html` — the engine picker is gone from the fixture, and
+  with it the last `select` in a reading card. Two fixture strings that quoted
+  the CheerpX kernel and named CheerpX in a stop message are now engine-neutral.
+  Not run: `scripts/check-layout.sh` needs a built `dist/`, and `crates/` was
+  being changed by another hand at the same time.
+- `DESIGN.md`, `docs/ALIGNMENT.md`, `docs/STATUS.md` — updated. `BARRAISER.md`
+  carries a dated **amendment** instead: it is a competitive assessment written
+  on a date against a commit, and five of its findings rest on CheerpX
+  specifics (one of them, §4's forkable-workspace idea, dies outright because
+  it was built on the IDB overlay). The findings are left exactly as written.
+- `spikes/vm/sw.js` — left alone. It is a dead G0 spike, already promoted into
+  `web/` (see increment 10's notes, "`spikes/vm/index.html` did not exist");
+  editing a spike is editing a record of research that did happen.
+
+### The promise that changed, which is the point of the whole pass
+
+`Engine::keeps_files` was true for CheerpX and only CheerpX. With CheerpX gone:
+**files in an agent's folder do not survive a reload of this page, there is no
+setting that changes that, and nothing you can turn on keeps them.** The old
+warning was conditional — it offered the other engine as the way to keep your
+files — and that escape hatch does not exist. The warning is not dropped; it is
+restated unconditionally, in `scripts/layout-probe.html`'s Linux-engine card,
+in `DESIGN.md`'s changelog, and in `docs/ALIGNMENT.md` §7 where the question was
+still open.
+
+`WorkspacePort::durable` **stays.** It is the port telling the truth about
+whether files survive a reload — it has readers in `dispatch.rs`, `filelist.rs`,
+`filegone.rs`, `inspector.rs`, `procpanel.rs`, `spacenote.rs` and
+`kernel/src/ports.rs` — and it was never part of the engine choice. It now
+answers the same way every time, which is the answer a person is owed.
+
+The way back is `docs/ALIGNMENT.md` §7.1 option (b), now the only route:
+snapshot the space folder into `BlobStore` at each turn end (backlog 14). It is
+an ADR and it is no longer competing with an engine setting.

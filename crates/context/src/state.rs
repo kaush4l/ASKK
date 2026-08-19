@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::form::Form;
 use crate::types::{Part, Section};
 
 /// One section provider's output, gathered before assembly. Exists because
@@ -26,4 +27,14 @@ pub struct State {
     /// Sources in canonical §8.2 declaration order; assembly's stable sort
     /// preserves this order within each stability class.
     pub sources: Vec<SectionSource>,
+    /// The notation this paper is being written in. It lives on the paper so
+    /// that whoever rebuilds a section reads the request from the paper it is
+    /// already holding, rather than every call site having to carry one —
+    /// which is why adding the request changed no `set_component` caller.
+    /// A component that cannot honour it says so through `Component::forms`.
+    ///
+    /// `#[serde(default)]` because a paper persisted before the field existed
+    /// was written in the default notation and still is.
+    #[serde(default)]
+    pub form: Form,
 }

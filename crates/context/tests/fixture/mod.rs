@@ -14,17 +14,17 @@ fn text(t: &str) -> Vec<Part> {
 /// anywhere but first would let it prove something the real paper cannot do.
 fn slot_for(id: &str) -> Slot {
     match id {
-        "soul" => Slot::Soul,
-        "identity" => Slot::Identity,
-        "operating_rules" => Slot::OperatingRules,
-        "affordances" => Slot::Affordances,
-        "user" => Slot::User,
-        "memory" => Slot::Memory,
-        "environment" => Slot::Environment,
-        "task" => Slot::Task,
-        "history" => Slot::History,
-        "observations" => Slot::Observations,
-        "response_contract" => Slot::Response,
+        "soul" => Slot::SOUL,
+        "identity" => Slot::IDENTITY,
+        "operating_rules" => Slot::OPERATING_RULES,
+        "affordances" => Slot::AFFORDANCES,
+        "user" => Slot::USER,
+        "memory" => Slot::MEMORY,
+        "environment" => Slot::ENVIRONMENT,
+        "task" => Slot::TASK,
+        "history" => Slot::HISTORY,
+        "observations" => Slot::OBSERVATIONS,
+        "response_contract" => Slot::RESPONSE,
         other => panic!("fixture section '{other}' has no slot"),
     }
 }
@@ -65,6 +65,7 @@ fn src(
 /// LOWER survives longer — soul/contract at 0, history the sacrificial mass.
 pub fn example() -> State {
     State {
+        form: context::Form::DEFAULT,
         sources: vec![
             src(
                 "soul",

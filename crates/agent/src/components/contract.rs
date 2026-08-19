@@ -86,7 +86,7 @@ impl Component for ResponseContract {
         SectionId("response_contract".into())
     }
     fn slot(&self) -> Slot {
-        Slot::Response
+        Slot::RESPONSE
     }
     fn intent(&self) -> String {
         "The exact shape of the expected reply.".into()
@@ -119,10 +119,5 @@ impl Component for ResponseContract {
             Some(_) => &BOTH,
             None => &[Form::Markdown],
         }
-    }
-    /// Always renders: a prompt with no reply shape is the one thing the
-    /// assembler refuses to build.
-    fn applies(&self) -> bool {
-        true
     }
 }

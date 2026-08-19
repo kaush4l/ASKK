@@ -4,7 +4,7 @@
 //! a one-shot shell into somewhere an agent can live: start something that
 //! outlives the call, watch it, read it, stop it, ask what the machine is, and
 //! find a file. Every one of them is `WorkspacePort::exec` underneath, so
-//! `FakeShell` is the whole substrate — what a real CheerpX or container2wasm
+//! `FakeShell` is the whole substrate — what the real container2wasm guest
 //! does with the command is the browser's business.
 
 use std::cell::RefCell;

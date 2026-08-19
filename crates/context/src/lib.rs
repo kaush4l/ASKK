@@ -8,6 +8,7 @@
 
 mod assemble;
 mod component;
+mod degrade;
 mod error;
 mod form;
 mod law;

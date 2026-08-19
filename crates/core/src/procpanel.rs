@@ -74,9 +74,13 @@ fn lost(ctx: &Ctx, names: &[String]) -> FragmentBuilder {
         true => "and the Linux has no record of them left — the folder they were kept in \
                  is gone."
             .to_string(),
+        // The mechanism is `browsable::IN_MEMORY`, written once (R5-14); what
+        // is particular to this pane — that the reload also STOPPED them — is
+        // said here, because no other pane can say it.
         false => format!(
-            "and nothing is left of them. This page's Linux keeps its filesystem in memory, so \
-             the reload that rebuilt it took {} with it, and stopped whatever was still running.",
+            "and nothing is left of them. {}, so the reload that rebuilt it took {} with it, \
+             and stopped whatever was still running.",
+            crate::browsable::IN_MEMORY,
             crate::process::DIR
         ),
     };

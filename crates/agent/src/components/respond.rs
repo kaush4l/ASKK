@@ -131,4 +131,46 @@ mod tests {
         assert_eq!(contract.forms(), &[Form::Markdown]);
         assert_eq!(body(contract.render_in(Form::Json)), body(contract.render()));
     }
+
+
+    /// THE WIRE IS LIVE — the notation reaches the PAPER, not just `render_in`.
+    ///
+    /// The two tests above call `render_in` directly, so they passed even while
+    /// `Component::section` hardcoded `render()` and no caller ever chose a
+    /// notation. This one goes through the path a real call takes: set the
+    /// paper's form, rebuild the section through `set_component`, assemble, and
+    /// read the bytes the model would see.
+    ///
+    /// Both halves matter. The shaped contract must honour the request; the
+    /// soul, which declares one form, must IGNORE it. The second assertion is
+    /// what proves `forms()` is consulted rather than the form applied blindly.
+    #[test]
+    fn the_papers_form_reaches_the_assembled_section_and_only_where_supported() {
+        let at = kernel::Timestamp(0);
+        let mut paper = crate::components::seed();
+        paper.form = Form::Json;
+        let shaped = ResponseContract::shaped(crate::strategy::OBJECT);
+        crate::paper::set_component(&mut paper, &shaped, at);
+
+        let doc = context::assemble(&paper, kernel::PhaseId::Work, context::Budget::unlimited());
+        let section = |id: &str| {
+            body(
+                doc.sections
+                    .iter()
+                    .find(|s| s.id.0 == id)
+                    .unwrap_or_else(|| panic!("{id} is in the paper"))
+                    .parts
+                    .clone(),
+            )
+        };
+
+        let contract = section("response_contract");
+        assert!(contract.contains("\"route\""), "asked for Json, got: {contract}");
+        assert!(contract.contains("\"why\""), "{contract}");
+
+        // …and the component that has only one notation is untouched by the ask.
+        let soul = section("soul");
+        assert!(!soul.contains('{'), "a prose block stays prose in Json: {soul}");
+        assert_eq!(soul, body(super::super::Soul::default().render()));
+    }
 }

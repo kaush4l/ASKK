@@ -8,14 +8,13 @@ use std::rc::Rc;
 
 mod assets;
 mod c2w;
-mod cheerpx;
-mod engine;
 pub mod catalogue;
 mod endpoint;
 mod error;
 mod idb;
 mod idb_kv;
 mod idb_bridge;
+mod leftovers;
 mod model;
 pub mod ondevice;
 mod overrides;
@@ -30,8 +29,7 @@ mod worker;
 mod workers;
 
 pub use c2w::C2wWorkspace;
-pub use cheerpx::CheerpxWorkspace;
-pub use engine::{engine, set_engine, stored, Engine};
+pub use leftovers::{drop_engine_setting, drop_workspace_leftover, workspace_leftover, Leftover};
 pub use warmth::{prewarm, warmth, Warmth};
 pub use endpoint::Endpoint;
 pub use error::WebError;
@@ -129,15 +127,11 @@ impl WebApp {
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
             spaces: spaces as Rc<dyn kernel::KvStore>,
-            // The Linux, not booted — and WHICH Linux is a setting, read
-            // once, here (increment 18). Both implement the same port, so
-            // this is the only line in the codebase that knows there are two;
-            // changing the setting takes effect on the next load, because
-            // this line runs once.
-            workspace: match engine::engine() {
-                Engine::Cheerpx => Rc::new(CheerpxWorkspace) as Rc<dyn kernel::WorkspacePort>,
-                Engine::C2w => Rc::new(C2wWorkspace) as Rc<dyn kernel::WorkspacePort>,
-            },
+            // The Linux, not booted. ONE ENGINE, NOT A CHOICE: container2wasm
+            // is an image this project builds and serves itself, which is the
+            // whole reason it is the only one — nothing here streams a disk
+            // or a runtime from somebody else's CDN.
+            workspace: Rc::new(C2wWorkspace) as Rc<dyn kernel::WorkspacePort>,
             agents: Rc::clone(&agents) as Rc<dyn kernel::AgentPort>,
         };
         let mut app = core::boot(ports).await.map_err(js_err)?;

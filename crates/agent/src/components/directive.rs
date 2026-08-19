@@ -37,7 +37,7 @@ impl Component for Directive {
     /// the last thing read before the shape of the reply, because it is what
     /// the reply is supposed to do.
     fn slot(&self) -> Slot {
-        Slot::Directive
+        Slot::DIRECTIVE
     }
     fn intent(&self) -> String {
         "What to do on this turn, before replying.".into()
@@ -59,8 +59,5 @@ impl Component for Directive {
     }
     fn render(&self) -> Vec<Part> {
         text(self.text.trim())
-    }
-    fn applies(&self) -> bool {
-        !self.text.trim().is_empty()
     }
 }

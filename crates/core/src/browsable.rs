@@ -1,7 +1,8 @@
 //! WHETHER THIS PANE MAY SHOW A FOLDER AT ALL, and what it says when it may
 //! not. Split from `files.rs` — which owns the module and its two routes — so
 //! both hold the 200-line rule (I12); the question is its own subject, and the
-//! artifact shelf asks it too.
+//! artifact shelf asks it too. It is also where a wording about an agent's
+//! folder lives ONCE, so the panes that say it cannot drift apart.
 
 use kernel::Response;
 
@@ -35,6 +36,32 @@ const NO_SPACE: &str = "This agent is in no space, so there is no folder to brow
 pub(crate) const GIVE_IT_A_SPACE: &str =
     "The Agents view has a panel titled Write an agent; it opens with this agent's file already \
      in it, and naming a space in that file gives the agent one.";
+
+/// WHAT A RELOAD TAKES — the mechanism clause, said once. It is a sentence
+/// OPENER and carries no trailing punctuation: `procpanel` and `filegone` build
+/// their own sentence on it, because what those two report is a PARTICULAR loss
+/// — which processes were killed, which files went — rather than the standing
+/// rule `kept` states, and merging two different facts into one sentence is
+/// worse than repeating one.
+pub(crate) const IN_MEMORY: &str = "This page's Linux keeps its filesystem in memory";
+
+/// WHETHER THE FILES ARE STILL THERE TOMORROW — the standing rule, wherever a
+/// pane names an agent's folder. One wording, one place: `inspector::panel`
+/// says it of the space path and `spacenote.rs` of the same folder in the note
+/// telling a person how far an agent reaches; disagreeing is the defect this
+/// prevents. The true arm named Settings and the engine that kept files until
+/// 2026-08-18 — neither exists, and there is no escape hatch — but `durable` is
+/// still a fact the port states, so the arm belongs to the port, not a setting.
+/// It does not shout: this product states a cost plainly and moves on.
+pub(crate) fn kept(durable: bool) -> String {
+    match durable {
+        true => "What is written there survives a reload.".to_string(),
+        false => format!(
+            "{IN_MEMORY}, so what is written there is gone when the page reloads. \
+             No setting changes that, so copy out anything worth keeping."
+        ),
+    }
+}
 
 /// WHOSE folder this is, and whether this pane may show one at all (R5-1).
 /// `/files` was the last per-agent read taking no `x-agent`: with `author`
@@ -101,3 +128,17 @@ pub(crate) fn nothing_to_browse(why: &str) -> Response {
 /// finished-files panel beside it (R7-4).
 pub(crate) const NO_SPACE_WHY: &str = "no-space";
 
+#[cfg(test)]
+mod tests {
+    /// ONE WORDING, ONE PLACE (R5-14). The standing rule opens with the same
+    /// mechanism clause the two loss panes open with, and it states the cost
+    /// rather than shouting it. A second wording added tomorrow fails here
+    /// rather than in a walk.
+    #[test]
+    fn the_reload_s_cost_is_told_in_one_wording() {
+        let gone = super::kept(false);
+        assert!(gone.starts_with(super::IN_MEMORY), "{gone}");
+        assert!(!gone.contains("GONE"), "it states the cost, it does not shout: {gone}");
+        assert!(!super::kept(true).contains(super::IN_MEMORY));
+    }
+}

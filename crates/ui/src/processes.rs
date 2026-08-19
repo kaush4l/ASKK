@@ -43,23 +43,6 @@ fn running_in(html: &str) -> usize {
         .unwrap_or(0)
 }
 
-/// WHAT A RELOAD DOES TO THIS PANE, in words that are true on the engine this
-/// page is running (R10-2). The caption used to say the record survives, which
-/// is one engine's behaviour stated as both.
-fn survival() -> &'static str {
-    match adapters_web::engine() {
-        adapters_web::Engine::Cheerpx => {
-            "Reloading the tab rebuilds the Linux but keeps its disk, so a process from before a \
-             reload reads as gone: its record and its output survive, the process does not."
-        }
-        adapters_web::Engine::C2w => {
-            "This engine keeps its filesystem in memory, so reloading the tab takes the running \
-             processes AND their records with it. The pane then says what was started and that \
-             nothing is left of it, which is the whole of what is knowable."
-        }
-    }
-}
-
 #[component]
 pub fn Processes(
     web: Signal<Option<Rc<WebApp>>>,
@@ -139,7 +122,6 @@ pub fn Processes(
     // whose records a reload destroyed reports the loss instead of claiming
     // that nothing ever happened.
     let none = projection.contains("data-none=\"1\"");
-    let survives = survival();
     let title = match running_in(&projection) {
         0 => "Processes".to_string(),
         n => format!("Processes · {n} running"),
@@ -181,12 +163,20 @@ pub fn Processes(
             // reading once there is a mechanism on screen to read it against.
             if !none {
             Disclosure { summary: "How a process gets here",
+                // WHAT A RELOAD DOES TO THIS PANE (R10-2), in the last two
+                // sentences. They used to say the record survives, which was
+                // one engine's behaviour stated as both; there is one engine
+                // now and it keeps nothing, so the wording is unconditional.
                 p { class: "note",
                     "The agent starts one with start_process, giving it a short name it chooses. \
                      It keeps running after the call returns and everything it prints is captured \
                      to .harness/proc/<name>/log — pressing a row opens that log in the Files \
                      pane above, and Stop runs the agent's own stop_process on it. This list is \
-                     the agent's own list_processes, run for you. {survives}"
+                     the agent's own list_processes, run for you. \
+                     The Linux keeps its filesystem in memory, so reloading the tab takes the \
+                     running processes AND their records with it. The pane then says what was \
+                     started and that nothing is left of it, which is the whole of what is \
+                     knowable."
                 }
             }
             }

@@ -162,10 +162,10 @@ pub fn Stage(
                     settings::Settings { web, endpoint_set, tick }
                     endpointform::search::SearchEndpoint { web, tick }
                     skin::Appearance {} // out of the header (R2-14)
-                    // WHICH Linux the agent runs in (increment 18). Beside
-                    // Appearance because both are device-local preferences
-                    // stored outside the app's data, and both take one press.
-                    engine::LinuxEngine { web, tick, agent: selected }
+                    // WHAT Linux the agent runs in, and what it does to your
+                    // files. It was a picker; there is one engine now, so it
+                    // states the trade instead of offering one.
+                    engine::LinuxEngine {}
                     // …and NOTHING about the component gallery (R3-11): a
                     // maintainer's page citing DESIGN.md sections and E1/E2/E3
                     // shipped as the last line of the product's Settings. It

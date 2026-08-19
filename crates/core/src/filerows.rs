@@ -13,7 +13,7 @@ use crate::filelist::{listed, parent};
 fn row(at: &str, line: &str) -> String {
     let base = at.trim_end_matches('/');
     // Some `ls` builds answer a directory OPERAND with lines already carrying
-    // that directory — measured in this CheerpX Alpine, where `ls -1Ap -- notes`
+    // that directory — measured in this Alpine, where `ls -1Ap -- notes`
     // prints `notes/today.md`. Joining blind gives `notes/notes/today.md`, so
     // the prefix comes off first and the row is built from what is left.
     let name = match base {

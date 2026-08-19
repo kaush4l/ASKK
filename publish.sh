@@ -45,6 +45,24 @@ sys.exit('manifest names agents that are not deployed: '+', '.join(missing) if m
 # are no sub-agents and every delegation refuses as an unknown agent.
 [ -f "$DIR/agent-worker.js" ] || fail "agent worker missing: $DIR/agent-worker.js"
 
+# THE SHELL ITSELF. `web/c2w` reaches dist/ only through the trunk `copy-dir`
+# in web/index.html; nothing else references these paths at build time, so a
+# broken or renamed copy-dir deploys green and takes every command in the
+# product with it — no console error, just a Linux that never boots. While
+# there were two engines this cost you the second one; there is one now.
+# The names are the arguments `c2w.js` passes to
+# `RunContainer.createContainerWASI`, plus the two scripts it loads first.
+for path in c2w/out.wasm.gzip c2w/imagemounter.wasm.gzip c2w/worker.js \
+            c2w/dist/runcontainer.js c2w/vendor/xterm-pty.js; do
+  [ -f "$DIR/$path" ] || fail "Linux engine asset missing: $DIR/$path"
+done
+[ -d "$DIR/c2w/img" ] || fail "Linux engine image missing: $DIR/c2w/img"
+[ -n "$(find "$DIR/c2w/img" -type f -print -quit)" ] || fail "empty image dir: $DIR/c2w/img"
+# An empty or truncated wasm passes an `-f` test and fails at boot. 1 MB is a
+# floor, not a target: the real file is ~36 MB.
+[ "$(wc -c < "$DIR/c2w/out.wasm.gzip")" -gt $((1024 * 1024)) ] \
+  || fail "$DIR/c2w/out.wasm.gzip is too small to be the container image"
+
 # GitHub hard-caps files at 100MB; refuse anything >= 99MB
 big=$(find "$DIR" -type f -size +$((99 * 1024 * 1024 - 1))c)
 [ -z "$big" ] || fail "file(s) >= 99MB: $big"

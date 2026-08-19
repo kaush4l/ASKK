@@ -1511,7 +1511,7 @@ finding: the header rendered `Agent: main` and a sandbox state **while the core
 was still booting**, asserting two things it could not know — it had not read
 the roster, so it did not know `main` was on it, and it had not read that
 agent's file, so it did not know whether it has a workspace at all. At 138ms
-nobody catches it; a cold CheerpX boot holds it for seconds. **A status the app
+nobody catches it; a cold boot of the Linux holds it for seconds. **A status the app
 does not have yet is not rendered.** The wordmark is the one thing true before
 anything loads, and the wordmark is what shows.
 
@@ -1723,3 +1723,25 @@ anything loads, and the wordmark is what shows.
   the scrollback stopped claiming the first command boots the Linux — the page
   prewarms it, so that sentence sat under a header that had read `ready` for
   minutes, and boot is the header pill's job.
+- **2026-08-18 — one Linux, and the file warning stopped being conditional.**
+  CheerpX is deleted; container2wasm is the sole execution engine. No copy in
+  this document described the engine picker, so nothing here needed rewriting
+  except one sentence that used a product name as a unit of time (*"a cold
+  CheerpX boot"*, §R6-BOOT) — it reads *"a cold boot of the Linux"* now, which
+  is what it was always measuring. The design consequence is elsewhere and it
+  is not cosmetic: the workspace warning used to end on an escape hatch
+  ("choose the other engine if you want your files kept") and that hatch is
+  gone. **Files in an agent's folder do not survive a reload, and no setting
+  changes that.** Any surface that softens this — a warning offering a choice,
+  a status implying persistence — is now a lie and reads as one. Restated, not
+  dropped: it is a `.warn` paragraph — the colour that means "this costs you
+  something" — on the card the picker used to be, and `scripts/layout-probe.html`
+  carries that card VERBATIM in its default state — same wording, same two
+  paragraphs, same classes — as the fixture the layout gate measures. (The
+  card's third paragraph, the one about the deleted engine's leftover database,
+  renders only for a browser that still has one, so the fixture does not carry
+  it; it is the same `.warn` shape as the paragraph above it.) The probe drifted from it once (three
+  `.note` paragraphs and a `role="status"` line the product had already deleted),
+  which meant the gate was measuring the warning in the wrong colour and at the
+  wrong length; when `crates/ui/src/engine.rs` changes, that fixture changes with
+  it.

@@ -26,6 +26,9 @@ workspace = true
 # Only the IndexedDB surface + fetch + crypto — the ports we actually adapt.
 features = [
   "Window",
+  # `localStorage`, for the one key the deleted engine left behind
+  # (`leftovers.rs`). Nothing else in this crate stores anything there.
+  "Storage",
   "IdbFactory",
   "IdbOpenDbRequest",
   "IdbRequest",

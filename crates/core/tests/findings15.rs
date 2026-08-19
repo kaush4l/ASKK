@@ -186,7 +186,7 @@ fn commands_and_the_trace_render_one_refusal_the_same_way() {
 /// agent, dressed as the agent talking.
 #[test]
 fn the_app_s_note_about_a_turn_does_not_wear_the_agent_s_name() {
-    let shell = Rc::new(FakeShell::new().answering("uname", 0, "Linux 4.15.0-54-cheerpx"));
+    let shell = Rc::new(FakeShell::new().answering("uname", 0, "Linux 6.1.0"));
     let app = booted(
         &[r#"exec({"command": "uname -a"})"#, "This is a Linux machine."],
         shell,

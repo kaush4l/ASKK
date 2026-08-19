@@ -1,4 +1,4 @@
-//! A workspace on the host: no browser, no Linux, no CheerpX (I3). It records
+//! A workspace on the host: no browser, no Linux, no Wasm (I3). It records
 //! every command with the directory it was told to run in — which is the whole
 //! point of the capability gate — and keeps files in a map so a test can assert
 //! that what an agent wrote is what it reads back.
@@ -40,8 +40,13 @@ pub struct FakeShell {
     /// often it was asked to. `None` is the trait's own default (no way in).
     pub(crate) interrupt: Option<kernel::Interrupt>,
     pub(crate) stops: RefCell<usize>,
-    /// Whether a reload keeps what was written — `false` is container2wasm.
-    pub(crate) forgets: bool,
+    /// Whether a reload keeps what was written. `false` — the DEFAULT — is
+    /// container2wasm, which is the only engine that ships: its filesystem is
+    /// in memory and nothing written in it survives a reload. It used to
+    /// default to `true`, so the whole suite's baseline was a machine this
+    /// product cannot be, and every consumer's durable arm was asserted as the
+    /// norm. A test that wants persistence now asks for it by name.
+    pub(crate) keeps: bool,
 }
 
 impl FakeShell {
@@ -92,9 +97,16 @@ impl FakeShell {
         self
     }
 
-    /// …and one a reload rebuilds from nothing (c2w).
-    pub fn forgetting(mut self) -> FakeShell {
-        self.forgets = true;
+    /// …and one a reload does NOT rebuild from nothing. No shipped engine
+    /// answers this way; it exists so a test ABOUT durability can say which
+    /// world it is in out loud, instead of inheriting it — and so the arms
+    /// `docs/ALIGNMENT.md` §1 keeps for backlog 14 stay reachable.
+    ///
+    /// NOT `durable()`, which is what it says: an inherent method of that name
+    /// would shadow `WorkspacePort::durable` at every call site on a concrete
+    /// `FakeShell` — same name, one returning the fixture and one the fact.
+    pub fn keeping(mut self) -> FakeShell {
+        self.keeps = true;
         self
     }
 

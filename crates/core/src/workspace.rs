@@ -127,12 +127,12 @@ async fn perform(
 pub(crate) fn unavailable(e: WorkspaceError) -> String {
     match e {
         WorkspaceError::Unavailable { reason } => format!("{UNAVAILABLE}{reason}"),
-        // A STOP A PERSON ASKED FOR IS NOT A FAILURE (R17-P1-6). Both engines
-        // end a stopped command through the same `Err` as a crash, and the row
-        // read `you ran $ sleep 40 — failed`, in red, over an explanation that
+        // A STOP A PERSON ASKED FOR IS NOT A FAILURE (R17-P1-6). A stopped
+        // command ends through the same `Err` as a crash, and the row read
+        // `you ran $ sleep 40 — failed`, in red, over an explanation that
         // began *"The workspace failed: you stopped it"*. `failed` is what
-        // happens TO you; this was a deliberate act. The engines write the lead
-        // (they are the two that know what their own stop did), and it is the
+        // happens TO you; this was a deliberate act. The engine writes the lead
+        // (it is the one that knows what its own stop did), and that is the
         // only thing this file has to recognise.
         WorkspaceError::Failed { message } if message.starts_with(STOPPED) => message,
         WorkspaceError::Failed { message } => format!("{FAILED}{message}"),
@@ -144,9 +144,10 @@ pub(crate) fn unavailable(e: WorkspaceError) -> String {
 pub(crate) const UNAVAILABLE: &str = "No folder is available here: ";
 pub(crate) const FAILED: &str = "The Linux failed: ";
 pub(crate) const ALONE: &str = "This agent works alone, so it has no folder: ";
-/// What both engines write when the ending was a person pressing Stop. The
-/// sentence differs — one engine really interrupts and the other can only stop
-/// waiting — so only the opening is shared, and it is the whole test.
+/// What the engine writes when the ending was a person pressing Stop. Only the
+/// opening is the contract — the rest of the sentence belongs to the adapter,
+/// which is the half that knows what its own stop did — and it is the whole
+/// test.
 pub(crate) const STOPPED: &str = "You stopped ";
 
 /// Whether this ending was asked for. One predicate, so the row's word, its
@@ -159,8 +160,8 @@ pub(crate) fn was_stopped(output: &str) -> bool {
 /// (R12-4). It decides how the row WRAPS, and nothing else. The scrollback
 /// renders output with `white-space: pre` so that `ls -la` keeps its columns —
 /// deliberately, and right for a machine's output. It is wrong for a sentence
-/// we wrote: *"The workspace failed: you stopped it. CheerpX runs each command
-/// as its own pr…"* was 2208px of explanation clipped inside a 644px box, and
+/// we wrote: *"The workspace failed: you stopped it. The shell takes the next
+/// command when…"* was 2208px of explanation clipped inside a 644px box, and
 /// the hidden remainder was the only place the product explains why the
 /// workspace is still occupied. The distinction is by ORIGIN, not by width, so
 /// the two prefixes above are the test rather than a guess about the bytes.

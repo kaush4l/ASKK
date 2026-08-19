@@ -2,7 +2,14 @@
 //! name may be, what replaces what, what the board keeps, and what an agent is
 //! told back. Every one of these is a rule `core/space.py` guarantees.
 
-use agent::{parse_agent_file, toolbox_for, AgentSpec, Space, NOTE_LIMIT};
+use agent::{parse_agent_file, toolbox_for, AgentSpec, SharedSpace, Space, NOTE_LIMIT};
+
+/// What the model is actually shown. The space's prose is the `space`
+/// COMPONENT's `render()` now, not a method on the data (increment 26, I13),
+/// so every assertion about the prompt goes through the component.
+fn shown(space: &Space) -> String {
+    SharedSpace { space: Some(space.clone()) }.text()
+}
 
 fn spec(space: &str, tools: &str) -> AgentSpec {
     let text =
@@ -40,7 +47,7 @@ fn a_fact_written_twice_replaces_it_and_the_prompt_holds_it_once() {
     space.remember("port", "8000");
     let (said, _) = space.remember("port", "8873");
     assert_eq!(said, "Recorded in the research space: port = 8873");
-    let context = space.context();
+    let context = shown(&space);
     assert_eq!(context.matches("port:").count(), 1, "{context}");
     assert!(context.contains("port: 8873"), "{context}");
     assert!(!context.contains("8000"), "{context}");
@@ -58,8 +65,8 @@ fn an_empty_key_or_note_is_refused_in_words() {
     let (said, change) = space.post("main", "   ");
     assert_eq!(said, "Nothing posted: the note was empty.");
     assert!(change.is_none());
-    assert!(space.context().contains("space: research"));
-    assert!(!space.context().contains("shared facts"));
+    assert!(shown(&space).contains("space: research"));
+    assert!(!shown(&space).contains("shared facts"));
 }
 
 /// `forget` removes a fact, and reports PLAINLY when there was nothing to
@@ -72,7 +79,7 @@ fn forget_removes_a_fact_and_says_so_when_there_was_none() {
     space.remember("host", "localhost");
     let (said, _) = space.forget("port");
     assert_eq!(said, "Removed 'port' from the research space.");
-    assert!(!space.context().contains("port"), "{}", space.context());
+    assert!(!shown(&space).contains("port"), "{}", shown(&space));
 
     let (said, change) = space.forget("port");
     assert_eq!(said, "No fact called 'port'. The space holds: host");
@@ -103,7 +110,7 @@ fn notes_are_attributed_and_the_board_keeps_the_newest_twenty() {
     assert_eq!(space.notes.len(), NOTE_LIMIT);
     assert_eq!(space.notes.first().unwrap(), "[researcher] note 5"); // 0..4 fell off
     assert_eq!(space.notes.last().unwrap(), "[main] note 24");
-    let context = space.context();
+    let context = shown(&space);
     assert!(context.contains("recent notes:"), "{context}");
     assert!(!context.contains("note 4"), "the oldest fell off: {context}");
 }
@@ -222,11 +229,14 @@ fn without_a_usable_space_no_list_can_reach_the_workspace() {
 #[test]
 fn an_empty_space_renders_no_empty_headings() {
     let space = Space::named("research").expect("a usable name");
-    let context = space.context();
+    let context = shown(&space);
     assert!(
         context.starts_with("space: research\nworkspace: /root/spaces/research"),
         "{context}"
     );
     assert!(!context.contains("shared facts"), "{context}");
     assert!(!context.contains("recent notes"), "{context}");
+    // …and an agent with NO space renders nothing at all, so the block is
+    // absent rather than heading a blank space.
+    assert!(SharedSpace::default().text().is_empty());
 }

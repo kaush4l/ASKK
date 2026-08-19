@@ -77,7 +77,7 @@ fn a_file_the_reload_took_is_not_still_open_in_the_editor() {
     let before = booted(
         Rc::new(ScriptedModel::with_replies(Vec::new())),
         Rc::clone(&store),
-        Rc::new(FakeShell::new().forgetting()),
+        Rc::new(FakeShell::new()),
     );
     // Written, then read back — the page that had the file.
     body(
@@ -101,7 +101,7 @@ fn a_file_the_reload_took_is_not_still_open_in_the_editor() {
     let after = booted(
         Rc::new(ScriptedModel::with_replies(Vec::new())),
         store,
-        Rc::new(FakeShell::new().forgetting()),
+        Rc::new(FakeShell::new()),
     );
     let reopened = handle(&mut after.borrow_mut(), Request::get("/files"));
     let file = reopened
@@ -163,7 +163,7 @@ fn our_own_prose_in_a_command_row_is_marked_as_prose() {
     let app = booted(
         Rc::new(ScriptedModel::with_replies(Vec::new())),
         Rc::new(MemStore::default()),
-        Rc::new(FakeShell::unavailable("you stopped it. CheerpX runs each command as its own")),
+        Rc::new(FakeShell::unavailable("you stopped it. The shell takes the next command when")),
     );
     body(&app, Request::post_form("/terminal", &[("command", "echo hi")]));
     let _ = block_on(drive(Rc::clone(&app)));

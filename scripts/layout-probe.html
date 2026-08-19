@@ -287,7 +287,7 @@
               <textarea id="file-editor" class="file-editor" rows="6" spellcheck="false" aria-label="Editing notes/today.md">This line is deliberately one long unbroken sentence of prose, because the editor used to be white-space: pre and measured clientWidth 280 against scrollWidth 712 on a markdown file in the rail, which is what XOVERFLOW is here to catch (R16-P1-5).</textarea>
               <div class="file-actions">
                 <button type="button" class="btn-primary" disabled>Save to the folder</button>
-                <p class="file-state" role="status">Saved — this is what is on disk</p>
+                <p class="file-state" role="status">Saved to the folder — it is in this page's Linux, and goes when the page reloads.</p>
               </div>
             </div>
           </div>
@@ -416,10 +416,28 @@
       <!-- A CARD HOLDING ONLY A READING COLUMN STOPS AT ONE (R7-6b): this was
            1136px round 494px of text with an empty right half. -->
       <section class="panel flat reading" aria-label="Appearance"><h2>Appearance</h2><p class="note">This page has a plain background. Turning the glow on puts a tinted light behind the panels — nothing else changes.</p><button type="button" class="skin-toggle btn-secondary" aria-pressed="false"><span>Background glow</span><span class="toggle-state">off</span></button></section>
-      <!-- The engine picker (increment 18). A `select` in a reading card, which
-           no other fixture here has: the endpoint form's selects sit in a form
-           row, and this one is a card's only control. -->
-      <section class="panel flat reading" aria-label="Linux engine"><h2>Linux engine</h2><p class="note">The agent's shell runs in a Linux inside this tab. There are two, and they are not the same trade: one is faster and comes from somebody else's servers, the other is ours and forgets.</p><label for="workspace-engine">Which Linux this page runs</label><select id="workspace-engine"><option value="cheerpx" selected>CheerpX</option><option value="c2w">container2wasm</option></select><p class="note">Runs an image this site hosts itself — no third-party server and no licence. It is an emulator with no compiler, so commands take noticeably longer, and its filesystem lives in memory: FILES ARE GONE WHEN YOU RELOAD THE PAGE.</p><p class="note" role="status">This page is running CheerpX.</p></section>
+      <!-- The engine picker is GONE (2026-08-18). There was a `select` in a
+           reading card here, offering CheerpX beside container2wasm; CheerpX
+           was deleted and one engine is not a choice, so the card states what
+           the page runs instead of asking. The warning it used to end on was
+           conditional — pick the other one if you want your files kept — and
+           that escape hatch no longer exists, so the sentence is unconditional
+           here. This is now a reading card with no control at all, which is
+           the shape `Appearance` above would have without its toggle.
+
+           THIS IS A FIXTURE, SO IT IS A COPY, NOT A PARAPHRASE. It is the
+           markup `crates/ui/src/engine.rs` renders, word for word and class
+           for class: two paragraphs, the second `.warn`, and no live region.
+           The probe drifted from it once — three `.note` paragraphs and a
+           `role="status"` line the product had already deleted — which meant
+           the layout gate was measuring the durability warning in the wrong
+           colour and at the wrong length. If `engine.rs` changes, this
+           changes with it. The card has a THIRD `.warn` paragraph and a
+           `btn-danger` in one state only — a browser that still holds the
+           deleted engine's `askk-workspace` database — which is not the
+           default, so it is not the fixture; it is the same shape as the
+           `.warn` above it. -->
+      <section class="panel flat reading" aria-label="Linux engine"><h2>Linux engine</h2><p class="note">The agent's shell runs in a Linux inside this tab: an Alpine container built with container2wasm, served by this site. Nothing about it is fetched from anybody else's servers, and there is no second engine to pick — that is the trade this product makes, and it pays for it in speed.</p><p class="warn">Its filesystem is in memory: everything written in this Linux is lost when the page reloads, including anything an agent is part-way through. There is no setting that changes that, so copy out anything you need to keep.</p></section>
     </section>
   </div>
   <!-- ONE RAIL, ONE VIEW (R15-IA). It used to carry a compact copy of the agents panel and
@@ -428,7 +446,16 @@
        trace moved into the stage above, where the sweeps still measure them. -->
   <aside class="rail" id="rail" aria-label="folder for main">
     <p class="rail-who">folder · <strong>main</strong></p>
-    <section class="panel" aria-label="Commands for main"><h2>Commands · main</h2><div id="terminal"><div class="term-run earlier" data-outcome="ok, on an earlier page's Linux" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>uname -a</span><span class="term-outcome"> — ok, on an earlier page&#39;s Linux</span></p><pre>Linux localhost 6.1.0 x86_64</pre></div><div class="term-run" data-outcome="ok" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>uname -a</span><span class="term-outcome"> — ok</span></p><pre>Linux localhost 4.15.0-54-cheerpx i386</pre></div><div class="term-run pending" role="status" data-by="main"><p class="term-command"><span class="term-by">main ran </span><span class="term-prompt">$ </span><span>while true; do date &gt;&gt; pulse.log; sleep 1; done</span></p><pre>running for 412s…</pre></div><div class="term-run earlier" data-outcome="abandoned when the page reloaded" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>sleep 90</span><span class="term-outcome"> — abandoned when the page reloaded</span></p><pre class="said">This command was still running when the page was reloaded. Nothing came back, so there is no output and no exit status: the Linux it was running in was rebuilt with the page.</pre></div><div class="term-run" data-outcome="stopped" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>sleep 40; echo done</span><span class="term-outcome"> — stopped</span></p><pre class="said">You stopped waiting. CheerpX runs each command as its own process with no way in from the page except the console, so the interrupt was typed at the console and the command may still be running; the Linux takes the next command when it ends.</pre></div></div><div class="follow-up"><button type="button" class="btn-secondary">Stop waiting — the command keeps running</button><p class="note">This Linux gives the page no way to signal a command once it has started, so this stops the WAIT: the command may keep running in there, and the next one starts when it ends.</p></div></section>
+    <!-- THE STOP IS A COPY, NOT A PARAPHRASE (26 walk). This fixture carried
+         the DELETED engine's control — `Stop waiting — the command keeps
+         running` over a note saying the page had no way to signal a running
+         command — and, in the stopped row, the deleted engine's sentence with
+         the product name swapped. container2wasm drives one PTY and really
+         interrupts: the button is `crates/ui/src/stopcommand.rs` word for word,
+         and the `.said` line is what `crates/adapters_web/src/c2w.js` throws
+         and `core::workspace::unavailable` passes through untouched. If either
+         changes, this changes with it. -->
+    <section class="panel" aria-label="Commands for main"><h2>Commands · main</h2><div id="terminal"><div class="term-run earlier" data-outcome="ok, on an earlier page's Linux" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>uname -a</span><span class="term-outcome"> — ok, on an earlier page&#39;s Linux</span></p><pre>Linux localhost 6.1.0 x86_64</pre></div><div class="term-run" data-outcome="ok" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>uname -a</span><span class="term-outcome"> — ok</span></p><pre>Linux localhost 6.1.0 x86_64</pre></div><div class="term-run pending" role="status" data-by="main"><p class="term-command"><span class="term-by">main ran </span><span class="term-prompt">$ </span><span>while true; do date &gt;&gt; pulse.log; sleep 1; done</span></p><pre>running for 412s…</pre></div><div class="term-run earlier" data-outcome="abandoned when the page reloaded" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>sleep 90</span><span class="term-outcome"> — abandoned when the page reloaded</span></p><pre class="said">This command was still running when the page was reloaded. Nothing came back, so there is no output and no exit status: the Linux it was running in was rebuilt with the page.</pre></div><div class="term-run" data-outcome="stopped" data-by="you"><p class="term-command"><span class="term-by">you ran </span><span class="term-prompt">$ </span><span>sleep 40; echo done</span><span class="term-outcome"> — stopped</span></p><pre class="said">You stopped it, and this Linux really interrupted the command; the shell recovered</pre></div></div><div class="follow-up"><button type="button" class="btn-secondary">Stop the command</button><p class="note">It sends the shell the interrupt Ctrl-C sends, so the command really ends and the Linux is free.</p></div></section>
     <!-- WHAT IS RUNNING. It was a `<pre>` of the model's table in the RAIL —
          the narrowest column on the page — measuring scrollWidth 1770 against
          clientWidth 254, with the command column never on screen (R10-1). It is

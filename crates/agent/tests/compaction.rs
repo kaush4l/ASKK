@@ -116,11 +116,11 @@ fn the_context_block_is_assembled_fresh_for_every_request() {
     let first = Timestamp(1_753_800_000_000); // 2025-07-29 14:40:00 UTC, Tuesday
     let later = Timestamp(1_753_886_461_000); // a day and a minute after
     assert_eq!(
-        environment(first, None),
+        environment(first),
         "current time: 2025-07-29 14:40:00 UTC\nday: Tuesday\ndevice: a browser tab."
     );
     assert_eq!(
-        environment(later, None),
+        environment(later),
         "current time: 2025-07-30 14:41:01 UTC\nday: Wednesday\ndevice: a browser tab."
     );
 

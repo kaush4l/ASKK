@@ -20,7 +20,6 @@ mod dash;
 mod endpoint;
 mod endpointform;
 mod engine;
-mod enginecost;
 mod examples;
 mod fileedit;
 mod files;
@@ -61,6 +60,7 @@ fn main() {
     if web_sys::window().is_none() {
         return;
     }
+    adapters_web::drop_engine_setting(); // the deleted picker's orphaned bit (`engine.rs`)
     dioxus::launch(shell);
 }
 

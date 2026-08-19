@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::render::ProviderFormat;
+
 /// One notation a component can render itself in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Form {
@@ -29,6 +31,25 @@ pub enum Form {
 impl Form {
     /// The notation assumed wherever none is named.
     pub const DEFAULT: Form = Form::Markdown;
+
+    /// The notation to write a paper in for a given provider target. The
+    /// chooser: `Form` answers "what does this reader want", and the reader is
+    /// the endpoint.
+    ///
+    /// Markdown for every target today, and that is a REAL COMPUTED ANSWER,
+    /// not a stub, for the reason `agent::components::respond` states in full:
+    /// this build ships against a 12B running locally, which follows a
+    /// `ROUTE:` line nearly always and emits valid JSON only mostly, with
+    /// silent failures — a stray fence, a trailing comma, a preamble before
+    /// the brace. The `Json` branch becomes reachable the moment a target that
+    /// can constrain generation to a schema lands, which is the same one
+    /// `render` already carries a `todo!("G5: second provider")` for.
+    pub fn for_target(target: ProviderFormat) -> Form {
+        match target {
+            ProviderFormat::OpenAiChat { .. } => Form::Markdown,
+            ProviderFormat::Anthropic | ProviderFormat::Gemini => Form::Markdown,
+        }
+    }
 }
 
 impl Default for Form {

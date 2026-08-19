@@ -49,7 +49,12 @@ pub fn WorkspaceWarmth(
 ) -> Element {
     let mut state = use_signal(adapters_web::warmth);
     use_future(move || async move {
-        adapters_web::prewarm();
+        // IT NO LONGER STARTS THE THING IT REPORTS ON (2026-08-18). This pill
+        // called `prewarm()` here and mounts in the header on EVERY view, so a
+        // person who came to type one sentence into a chat paid 47 MB of
+        // container image first. The pill reports; `terminal.rs` asks. `exec`
+        // boots on demand anyway, so skipping it costs a wait, never a failure.
+        //
         // FOREVER, not until `Ready` (R11-1a). This used to stop the first time
         // it saw a booted workspace, which was defensible while `Ready` was the
         // last thing that could happen to one. It is not: a booted workspace
@@ -68,23 +73,13 @@ pub fn WorkspaceWarmth(
     });
     let (sandbox, class) = match &*state.read() {
         Warmth::Idle => ("idle".to_string(), "pill warmth idle"),
-        // …AND WHAT IT IS DOING (increment 18). c2w's first load moves ~48 MB
+        // …AND WHAT IT IS DOING (increment 18). The first load moves ~48 MB
         // and boots in three phases; one motionless `starting…` for a minute
         // and a half is true and tells nobody anything.
         Warmth::Booting(phase) => (phase.clone(), "pill warmth booting"),
         Warmth::Ready => ("ready".to_string(), "pill warmth ready"),
         Warmth::Busy => ("busy with a command".to_string(), "pill warmth busy"),
-        // The abandoned command, in the pill (R12-1); the hint says the rest.
-        Warmth::Occupied => (
-            "occupied by the command you stopped waiting for".to_string(),
-            "pill warmth busy",
-        ),
         Warmth::Failed(why) => (format!("unavailable: {why}"), "pill warmth failed"),
-    };
-    // …AND WHAT HAPPENS NEXT (R12-1): no room in the pill, room in the hint.
-    let tail = match &*state.read() {
-        Warmth::Occupied => " It takes the next command when that one ends.",
-        _ => "",
     };
     let subject = who();
     // TWO PARTS, SO IT CAN SHRINK INSTEAD OF DROPPING (R7-12). Below 48rem the
@@ -100,7 +95,7 @@ pub fn WorkspaceWarmth(
             format!("{subject}'s folder · "),
             format!("Linux {sandbox}"),
             class,
-            crate::statusbar::workspace_hint(&subject, &sandbox) + tail,
+            crate::statusbar::workspace_hint(&subject, &sandbox),
         ),
         // …and NO STATE AT ALL when there is nothing to have one. The Linux's
         // own readiness is still here, in the hint, where it is a fact about
@@ -109,7 +104,7 @@ pub fn WorkspaceWarmth(
             format!("{subject} has "),
             "no folder".to_string(),
             "pill warmth",
-            crate::statusbar::no_workspace_hint(&subject, &sandbox) + tail,
+            crate::statusbar::no_workspace_hint(&subject, &sandbox),
         ),
     };
     rsx! {

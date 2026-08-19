@@ -7,7 +7,8 @@
 use context::ProviderFormat;
 use kernel::EndpointName;
 
-use crate::components::{Affordances, Environment, ResponseContract as Contract};
+use crate::components;
+use crate::components::ResponseContract as Contract;
 use crate::effect::Effect;
 use crate::paper;
 use crate::phase::{v1_phases, PhaseConfig, ResponseContract};
@@ -55,25 +56,24 @@ pub(crate) fn scoped_tools(state: &AgentState, cfg: &PhaseConfig) -> Toolbox {
 pub(crate) fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effect {
     let cfg = config(state);
     let tools = scoped_tools(state, &cfg);
-    // The three sections that are rebuilt for every single call, each from the
-    // component that owns its shape. What the model may call and what it is
-    // told it may call cannot drift, because both come from one toolbox (I13).
-    paper::set_component(&mut state.paper, &Affordances::new(tools.usages()), at);
-    let shape = stage_contract(state, &cfg, &tools);
-    paper::set_component(&mut state.paper, &shape, at);
-    // Fresh every request, never cached: a cached clock is a wrong clock
-    // (Python `Engine.context`).
-    let environment = Environment {
-        text: crate::now::environment(at, state.space.as_ref()),
+    // WHO IS READING. This is the only place that holds both the endpoint and
+    // the paper, so it is the only place that can choose the notation the
+    // paper is written in (I13). Set BEFORE the rebuilds below, because each
+    // one reads the request off the paper.
+    // G4 target: the local OpenAI-compatible proxy, text-only.
+    let format = ProviderFormat::OpenAiChat {
+        vision: false,
+        audio: false,
     };
-    paper::set_component(&mut state.paper, &environment, at);
+    state.paper.form = context::Form::for_target(format);
+    // The sections rebuilt for every single call — WHICH ones, and why, is
+    // `components::dynamic`'s to say. This walks the set; it does not name it.
+    for block in components::dynamic(state, &cfg, &tools, at) {
+        paper::set_component(&mut state.paper, block.as_ref(), at);
+    }
     Effect::CallModel {
         document: context::assemble(&state.paper, state.phase, cfg.budget),
-        // G4 target: the local OpenAI-compatible proxy, text-only.
-        format: ProviderFormat::OpenAiChat {
-            vision: false,
-            audio: false,
-        },
+        format,
         endpoint: EndpointName("model".into()),
         model: state.model.clone(),
         temperature: state.temperature,
@@ -96,7 +96,7 @@ pub(crate) fn contract(cfg: &PhaseConfig, tools: &Toolbox) -> Contract {
 /// …UNLESS THE STAGE DEMANDS A SHAPE (the strategy vote). A stage whose reply
 /// the machine PARSES states the reply as fields; the phase's contract is what
 /// every other stage falls back to.
-fn stage_contract(state: &AgentState, cfg: &PhaseConfig, tools: &Toolbox) -> Contract {
+pub(crate) fn stage_contract(state: &AgentState, cfg: &PhaseConfig, tools: &Toolbox) -> Contract {
     crate::brief::contract(crate::stages::current(state))
         .unwrap_or_else(|| contract(cfg, tools))
 }

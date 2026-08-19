@@ -26,7 +26,7 @@
 //! make — it does not yet know the roster, so it does not know that `main` is
 //! on it, and it has not read the agent's file, so it does not know whether
 //! that agent has a workspace at all. At 138ms nobody catches it; a cold
-//! CheerpX boot holds it on screen for seconds. The wordmark is the one thing
+//! boot holds it on screen for seconds. The wordmark is the one thing
 //! that is true before anything loads, so the wordmark is what shows.
 
 use dioxus::prelude::*;

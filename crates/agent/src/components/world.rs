@@ -19,7 +19,7 @@ impl Component for Environment {
         SectionId("environment".into())
     }
     fn slot(&self) -> Slot {
-        Slot::Environment
+        Slot::ENVIRONMENT
     }
     fn intent(&self) -> String {
         "Time, locale, device, what is available right now.".into()
@@ -58,7 +58,7 @@ impl Component for Task {
         SectionId("task".into())
     }
     fn slot(&self) -> Slot {
-        Slot::Task
+        Slot::TASK
     }
     fn intent(&self) -> String {
         "What is being attempted.".into()
@@ -95,7 +95,7 @@ impl Component for Observations {
         SectionId("observations".into())
     }
     fn slot(&self) -> Slot {
-        Slot::Observations
+        Slot::OBSERVATIONS
     }
     fn intent(&self) -> String {
         "Results of the last actions.".into()

@@ -86,7 +86,7 @@ fn workspace_said(
             },
             theirs.name,
             theirs.path(),
-            crate::inspector::kept(durable)
+            crate::browsable::kept(durable)
         ),
     )
 }

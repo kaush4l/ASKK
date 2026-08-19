@@ -1,6 +1,6 @@
 //! The Alpine workspace, on the host with no browser and no Linux (I3). The
 //! port is a trait, so the exec tool, its capability gate, its path rule and
-//! its degradation all test here against `FakeShell` — what a real CheerpX
+//! its degradation all test here against `FakeShell` — what the real Linux
 //! does with the command is the browser's business and nobody else's.
 
 use std::cell::RefCell;

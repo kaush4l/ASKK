@@ -148,12 +148,14 @@ fn render_chat(doc: &Document, vision: bool, audio: bool) -> Vec<Message> {
         }
         text.push('\n');
     }
-    if !doc.report.steps.is_empty() {
-        text.push_str(
-            "## compaction_notice\n(what was compacted out of this document; ask to restore)\n",
-        );
+    if !doc.report.steps.is_empty() || !doc.report.withheld.is_empty() {
+        text.push_str("## compaction_notice\n");
+        text.push_str("(what was compacted out of this document; ask to restore)\n");
         for d in &doc.report.steps {
             text.push_str(&format!("- {}: {:?} -> {:?}\n", d.section.0, d.from, d.to));
+        }
+        for id in &doc.report.withheld {
+            text.push_str(&format!("- {}: a binary part was withheld\n", id.0));
         }
     }
     flush_text(&mut parts, &mut text);

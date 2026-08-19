@@ -66,8 +66,8 @@ fn observe_script() -> String {
 /// did not answer is absent: a line reading `memory unknown` is noise.
 ///
 /// AND A FIELD THE GUEST ANSWERED WITH A ZERO IS NOT AN ANSWER (R10-9). Both of
-/// these were measured in a browser, on CheerpX (`Linux 4.15.0-54-cheerpx`),
-/// against container2wasm (`Linux 6.1.0`) which answers both properly:
+/// these were measured in a browser, on a guest since deleted, against the
+/// container2wasm guest this build ships (`Linux 6.1.0`), which answers both:
 /// `/proc/uptime` reads `0 0` there — the reading `process.rs` already refused
 /// to build liveness on — so the block said `uptime 0s` on a half-hour-old tab;
 /// and `/proc/meminfo` holds `MemTotal:` and nothing else, no `MemAvailable`
@@ -146,8 +146,8 @@ mod tests {
         assert!(report("").contains("answered nothing about itself"));
     }
 
-    /// R10-9: what the CheerpX guest actually answers — `0 0` for uptime and a
-    /// total with no free number — is not printed as a reading.
+    /// R10-9: what a guest that answers badly gives back — `0 0` for uptime and
+    /// a total with no free number — is not printed as a reading.
     #[test]
     fn a_zero_the_guest_could_not_answer_is_not_a_reading() {
         let out = report("up\t0\nmemall\t716800\n");

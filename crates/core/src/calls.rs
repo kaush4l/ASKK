@@ -5,7 +5,7 @@
 //!
 //! IT IS THE PAGE'S VOICE, NOT THE AGENT'S (R15-P1-6). `MAIN: calling exec — 1
 //! call failed` sat above `MAIN: This is a Linux machine running kernel
-//! 4.15.0-54-cheerpx…` in one label and bubble. `transcript::announced` renders
+//! 6.1.0…` in one label and bubble. `transcript::announced` renders
 //! it as a `msg system` row: no label, no bubble, the subject named inside.
 
 /// THE SAME ANNOUNCEMENT, AGAIN (R7-15). A tool-calling round emits one reply

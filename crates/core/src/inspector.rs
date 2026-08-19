@@ -47,17 +47,6 @@ pub(crate) fn space(req: &Request, ctx: &mut Ctx) -> Response {
     }
 }
 
-/// WHETHER THE FILES ARE STILL THERE TOMORROW, in the two words that differ.
-/// One wording, one place: `scrollback.rs` says the same thing about the same
-/// folder, and the two disagreeing is the defect this fn exists to prevent.
-pub(crate) fn kept(durable: bool) -> &'static str {
-    match durable {
-        true => "What is written there survives a reload.",
-        false => "This engine's filesystem is in memory: what is written there is GONE when \
-                  the page reloads. Settings names the engine and the other one keeps files.",
-    }
-}
-
 fn line(class: &str, text: &str) -> Fragment {
     FragmentBuilder::new("p").class(class).text(text).build()
 }
@@ -122,13 +111,12 @@ fn panel(ctx: &Ctx, who: &str) -> Response {
         ))
         .child(line(
             "space-path",
-            // ONE FACT, ONE WORDING (R5-14): the terminal's own disclosure
-            // says this in exactly these words.
+            // ONE FACT, ONE WORDING (R5-14): `kept` is the one place it is said.
             &format!(
                 "{who}'s folder: {} — a real folder in the Linux that Commands runs in. \
                  Files an agent writes go there, not into the facts and notes above. {}",
                 space.path(),
-                kept(ctx.durable)
+                crate::browsable::kept(ctx.durable)
             ),
         ))
         .child(facts(space))

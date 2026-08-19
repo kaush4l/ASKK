@@ -44,12 +44,6 @@ impl Proc {
     }
 }
 
-/// The names of what is still running. `pub(crate)` for `enginecost.rs`, which
-/// counts what a reload would stop and must not define "running" a second time.
-pub(crate) fn running_names(rows: &[Proc]) -> Vec<String> {
-    rows.iter().filter(|p| p.running()).map(|p| p.name.clone()).collect()
-}
-
 /// One read of the projection for the selected agent: the fragment, and the rows
 /// off the header — the shape `listing::read` uses for the folder panes.
 pub(crate) fn read(web: &Signal<Option<Rc<WebApp>>>, agent: &str, req: Request) -> (String, Vec<Proc>) {

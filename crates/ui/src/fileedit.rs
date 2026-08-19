@@ -28,7 +28,8 @@ pub(crate) fn is_record(path: &str) -> bool {
 pub(crate) fn FileEdit(
     /// The open file's path, as the listing named it.
     open: String,
-    /// What the box holds — the draft when there is one, the disk otherwise.
+    /// What the box holds — the draft when there is one, the file's own bytes
+    /// as the listing last read them otherwise.
     text: String,
     dirty: bool,
     on_input: EventHandler<String>,
@@ -67,9 +68,9 @@ pub(crate) fn FileEdit(
                 } else {
                     // A BUTTON IS A VERB (R5-15). At rest this read `Saved` and
                     // was disabled — a primary action whose label was a
-                    // condition, so the control that writes to a real disk
-                    // described the past instead of the act. One label, always;
-                    // the state is the line beside it.
+                    // condition, so the control that commits a person's own
+                    // writing described the past instead of the act. One label,
+                    // always; the state is the line beside it.
                     Button {
                         variant: "primary",
                         disabled: !dirty,
@@ -87,7 +88,17 @@ pub(crate) fn FileEdit(
                         }
                         p { class: "file-state dirty", role: "status", "Unsaved changes" }
                     } else {
-                        p { class: "file-state", role: "status", "Saved — this is what is on disk" }
+                        // THERE IS NO DISK (26 walk). This read "Saved — this is
+                        // what is on disk", which was true of the engine that
+                        // kept files and was removed on 2026-08-18. The one
+                        // screen where a person commits their own writing may
+                        // not tell them it is safe: the save landed, and where
+                        // it landed forgets. Stated once, plainly, and no
+                        // louder than the rest of the pane.
+                        p { class: "file-state", role: "status",
+                            "Saved to the folder — it is in this page's Linux, and goes when \
+                             the page reloads."
+                        }
                     }
                 }
             }

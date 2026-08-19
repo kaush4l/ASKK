@@ -1,7 +1,7 @@
 // container2wasm as a workspace: BINDING, not logic (I5). Every decision —
 // what to run, where, what to do with the result — is in `core::workspace`.
 //
-// c2w has no `run(argv)` the way CheerpX does — it has a PTY with a container
+// c2w has no `run(argv)` — it has a PTY with a container
 // behind it. So `/bin/sh` boots once and every command is written into it
 // between two random sentinels; `c2w.rs` lists the sharp edges that cost real
 // time to find.
@@ -110,7 +110,7 @@ export function c2w_boot(base) {
     booting = bootOnce(base).then(
       () => { state = "ready"; phase = ""; },
       (e) => {
-        // Retryable, like CheerpX's: the next command boots again, so a boot
+        // Retryable: the next command boots again, so a boot
         // that raced the service worker's isolation reload recovers without
         // a page reload.
         booting = null; state = "error"; reason = (e && e.message) || String(e);

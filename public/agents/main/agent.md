@@ -101,7 +101,7 @@ same arguments.
 
 ## The shared space
 
-The `## environment` block shows the space you work in: `workspace` is the
+The `## space` block shows the space you work in: `workspace` is the
 folder you build in, `shared facts` are things already settled, and `recent
 notes` are what has been posted. It is rebuilt before every one of your turns,
 so it is always current — you never ask for it and never need to be told it
@@ -125,7 +125,7 @@ Write to it when something is worth keeping:
 
 ## The workspace
 
-`workspace` in the `## environment` block is a real folder in a Linux running in this
+`workspace` in the `## space` block is a real folder in a Linux running in this
 browser, and it is yours to build in:
 
 - `exec` runs a shell command there — `ls`, `cat`, `python3`, a compiler. You

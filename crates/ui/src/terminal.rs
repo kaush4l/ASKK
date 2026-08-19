@@ -3,8 +3,8 @@
 //! the scrollback is the core's projection of the `exec` facts (I8), the same
 //! list whether the agent ran the command or you did, still there after a reload.
 //!
-//! The credit to Leaning Tech is part of this pane, not a footnote — the CheerpX
-//! Community Licence asks for "appropriate credits".
+//! The credit for the Linux is part of this pane, not a footnote: where the
+//! machine an agent runs commands in comes from is part of the headline claim.
 
 use std::rc::Rc;
 
@@ -14,9 +14,8 @@ use kernel::Request;
 
 use crate::stopcommand::StopCommand;
 use crate::ui::{Button, Card, EmptyState, Field, Form, Skeleton};
-/// A command runs in the async half, so the pane re-reads until the scrollback
-/// grows. 700 ms: a person watches, not races; `MAX_TICKS` is generous because
-/// the FIRST command streams a disk image over the wire.
+/// A command runs in the async half, so the pane re-reads until the scrollback grows. 700 ms: a
+/// person watches, not races; `MAX_TICKS` is generous because the FIRST command waits on the boot.
 const TICK_MS: i32 = 700;
 /// The command field's id: the workspace EmptyState's action focuses it.
 const COMMAND_ID: &str = "workspace-command";
@@ -85,6 +84,7 @@ pub fn Terminal(
     let mut typeable = use_signal(|| false);
     let mut interrupt = use_signal(String::new);
     let mut no_box = use_signal(String::new);
+    use_hook(adapters_web::prewarm); // WHERE the ~47 MB starts moving, not page load (warmth.rs)
     use_effect(move || {
         let _ = (tick(), agent());
         let (body, can_type, how, why) = scrollback(&web, &agent());

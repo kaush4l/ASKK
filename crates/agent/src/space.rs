@@ -67,32 +67,6 @@ impl Space {
         format!("/root/spaces/{}", self.name)
     }
 
-    /// The space as CONTEXT lines — what goes into the prompt, as of right
-    /// now. Empty areas render nothing at all (Python `Space.context`).
-    pub fn context(&self) -> String {
-        let mut out = format!(
-            "space: {}\nworkspace: {} (a real folder in a Linux running in this browser; \
-             observe says what the machine is and find_files searches it. What you WRITE \
-             there survives a reload; the Linux does not, so nothing start_process started \
-             is still running after one)",
-            self.name,
-            self.path()
-        );
-        if !self.facts.is_empty() {
-            out.push_str("\nshared facts:");
-            for (key, value) in &self.facts {
-                out.push_str(&format!("\n  {key}: {value}"));
-            }
-        }
-        if !self.notes.is_empty() {
-            out.push_str("\nrecent notes:");
-            for note in &self.notes {
-                out.push_str(&format!("\n  {note}"));
-            }
-        }
-        out
-    }
-
     /// Settle a fact. Writing the same key again REPLACES it — a space that
     /// held two values for one key would put both in every agent's prompt and
     /// let the model pick.

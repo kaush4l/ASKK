@@ -146,6 +146,10 @@ pub struct CompactionReport {
     /// Estimated spend after degradation.
     pub spent: u32,
     pub steps: Vec<CompactionStep>,
+    /// Binary parts dropped for exceeding the per-part ceiling. A PART-level
+    /// fact, kept apart from `steps` because a section that lost a blob has not
+    /// changed fidelity — saying it had would be a false receipt (I8).
+    pub withheld: Vec<SectionId>,
 }
 
 /// The assembled paper (ADR-009 schema): sections in stable-first order plus
