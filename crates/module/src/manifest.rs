@@ -1,11 +1,17 @@
 //! The manifest — ADR-004's contract, field for field. What a module claims
 //! about itself; the host trusts it for narrowing only (Spike B: declared
 //! capabilities are an upper bound, never a grant).
+//!
+//! The claims a module can be HELD TO are its `tests`, so the runner that
+//! executes them before an install is the last thing in this file.
 
 use serde::{Deserialize, Serialize};
 
 use context::{Fidelity, Stability};
 use kernel::{CapabilityId, ModuleId, Request, SectionId, Version};
+
+use crate::error::ModuleError;
+use crate::registry::Logic;
 
 /// One route a module serves. A struct (not a bare path) so the registry can
 /// reject conflicts per method+path and later grow matching without a
@@ -101,4 +107,14 @@ pub struct Manifest {
     pub schema: DataSchema,
     pub tier: Tier,
     pub tests: Vec<Case>,
+}
+
+/// Execute a manifest's declared cases against its logic with all
+/// capabilities denied plus case-declared stubs (ADR-004 test-before-install;
+/// §7's contract-test stage). Tier-1 logic runs through `script` here; tier-0
+/// built-ins run the identical cases from `core`'s own tests — same runner,
+/// hosted natively (I3).
+pub fn run_install_tests(manifest: &Manifest, logic: &Logic) -> Result<(), ModuleError> {
+    let _ = (manifest, logic);
+    todo!("G4")
 }

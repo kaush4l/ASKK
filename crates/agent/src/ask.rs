@@ -1,8 +1,12 @@
-//! ASKING: the phase's configuration, the toolbox it grants, and the Document
-//! that goes to the model. Split from `step.rs`, which owns the transitions,
-//! so both hold the 200-line rule (I12) — and because these four functions are
-//! the ones that must agree with each other about what the model may call
-//! (I13), which is easier to check when they are together.
+//! ASKING — everything that decides what ONE model call contains: the phase's
+//! configuration, the toolbox that phase grants, the Document assembled under
+//! its budget, and the contract demanded back.
+//!
+//! It is apart from `step.rs`, which owns the TRANSITIONS, because these
+//! functions have one obligation to each other that no transition shares: what
+//! the model may call and what it is TOLD it may call must be the same set
+//! (I13). That is a property of these five together, and it is checkable by
+//! reading them together.
 
 use context::ProviderFormat;
 use kernel::EndpointName;

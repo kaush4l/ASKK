@@ -1,7 +1,7 @@
-//! The stored record: the user's layer written down and read back. Split from
-//! `endpoint.rs` so both hold the 200-line rule (I12) — and because this is the
-//! ONE shape a Worker is handed at boot (`workers::spawn`), which makes it the
-//! place a new setting belongs if every agent is to see it.
+//! The stored record: the user's layer written down and read back, including
+//! every migration of an older one. This is the ONE shape a Worker is handed
+//! at boot (`workers::spawn`), which makes it the place a new setting belongs
+//! if every agent is to see it.
 //!
 //! A child module, not a sibling: it writes `Endpoint`'s private fields, and
 //! the alternative — making `keys` visible to the whole crate — would open the

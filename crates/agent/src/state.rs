@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use context::State;
 use kernel::PhaseId;
 
-use crate::defaults::{default_compact_at, default_keep_recent, default_max_rounds, default_passes};
+use crate::spec::defaults::{
+    default_compact_at, default_keep_recent, default_max_rounds, default_passes,
+};
 use crate::toolbox::Toolbox;
 
 /// One planned step with its own success criteria — Verify judges against
@@ -20,7 +22,8 @@ pub struct PlanStep {
 
 /// The whole agent between events. Everything `step` may consult is a field
 /// here; everything not here does not exist to the agent (I7). Serializable
-/// because `Persist`ing this IS pause-and-resume (I11).
+/// because a state that can be written down is a state a refresh can resume
+/// (I11) — today through the stored LOG (`core::log::decisions`).
 /// (No `Eq`: `temperature` is an `f64`, which has no total equality.)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentState {

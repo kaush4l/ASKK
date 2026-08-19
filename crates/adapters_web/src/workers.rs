@@ -22,7 +22,9 @@ use wasm_bindgen_futures::JsFuture;
 
 use kernel::{AgentPort, BoxFuture, DelegateError, Status};
 
-use crate::spawn::{ask, bundle_urls, listen, start, Activity, Authored, Boot, Live, Memory};
+mod spawn;
+
+use spawn::{ask, bundle_urls, listen, start, Activity, Authored, Boot, Live, Memory};
 
 /// A lifecycle fact the page has not told the core about yet.
 type Report = (String, Status, String);
@@ -109,21 +111,29 @@ impl AgentWorkers {
             return;
         };
         for name in peers() {
-            match start(name, &glue, &wasm, &boot) {
-                Ok(worker) => {
-                    self.report(name, Status::Starting, "");
-                    let live = listen(
-                        name,
-                        worker,
-                        Rc::clone(&self.reports),
-                        Rc::clone(&self.memory),
-                        Rc::clone(&self.written),
-                        Rc::clone(&self.did),
-                    );
-                    self.live.borrow_mut().insert(name.clone(), live);
-                }
-                Err(e) => self.report(name, Status::Failed, &crate::wire::js_message(&e)),
+            self.start_one(name, &glue, &wasm, &boot);
+        }
+    }
+
+    /// One agent's Worker, started and listened to — or the row that says in
+    /// words why it is not there. Every outcome reaches the board (I8): a
+    /// Worker that failed silently used to render as "idle — nobody has
+    /// called it".
+    fn start_one(&self, name: &str, glue: &str, wasm: &str, boot: &Boot<'_>) {
+        match start(name, glue, wasm, boot) {
+            Ok(worker) => {
+                self.report(name, Status::Starting, "");
+                let live = listen(
+                    name,
+                    worker,
+                    Rc::clone(&self.reports),
+                    Rc::clone(&self.memory),
+                    Rc::clone(&self.written),
+                    Rc::clone(&self.did),
+                );
+                self.live.borrow_mut().insert(name.to_string(), live);
             }
+            Err(e) => self.report(name, Status::Failed, &crate::wire::js_message(&e)),
         }
     }
 

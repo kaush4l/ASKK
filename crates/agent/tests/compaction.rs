@@ -5,7 +5,7 @@
 
 use agent::{
     adopt_spec, environment, set_window, step, window, AgentSpec, AgentState, Effect,
-    SUMMARIZE, SUMMARY_HEADING,
+    SUMMARY_HEADING,
 };
 use kernel::{Event, EventId, EventKind, Timestamp};
 

@@ -83,12 +83,12 @@ pub fn new_spec(
         role: String::new(),
         stages: Vec::new(),
         // …and one pass, which is what "no stage list" already means (22).
-        passes: crate::defaults::default_passes(),
+        passes: crate::spec::defaults::default_passes(),
         tools: tools.iter().map(|t| one_line(t)).filter(|t| !t.is_empty()).collect(),
         space: one_line(space),
-        compact_at: crate::defaults::default_compact_at(),
-        keep_recent: crate::defaults::default_keep_recent(),
-        max_rounds: crate::defaults::default_max_rounds(),
+        compact_at: crate::spec::defaults::default_compact_at(),
+        keep_recent: crate::spec::defaults::default_keep_recent(),
+        max_rounds: crate::spec::defaults::default_max_rounds(),
         prompt: prompt.trim().to_string(),
     }
 }

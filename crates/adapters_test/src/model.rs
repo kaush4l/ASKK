@@ -1,11 +1,8 @@
-//! The scripted `ModelPort`. Split from `lib.rs`, which owns the crate's own
-//! small fakes — clock, RNG, deny-all net — so both hold the 200-line rule
-//! (I12), and because this is the only one that has to speak a PROVIDER'S
-//! wire format: replies here are chat-completion JSON bodies, so the crate
-//! carries a JSON string escaper it needs nowhere else.
-//!
-//! One fake per file is already this crate's shape (`agents`, `shell`,
-//! `stores`); this is that shape applied to the fake that outgrew the root.
+//! The scripted `ModelPort` — the only fake in this crate that has to speak a
+//! PROVIDER'S wire format. Replies here are chat-completion JSON bodies, so
+//! this is also the one file carrying a JSON string escaper, which nothing
+//! else in the crate needs. The small fakes with no wire format of their own
+//! — clock, RNG, deny-all net — stay in `lib.rs`.
 
 use std::cell::RefCell;
 

@@ -9,8 +9,9 @@ use serde_json::{Map, Value};
 use kernel::ModelError;
 
 use crate::catalogue::{Catalogue, Entry};
-use crate::overrides::pin;
+use overrides::pin;
 
+mod overrides;
 mod profile;
 
 /// The catalogue as shipped, plus the user's persisted layer on it.

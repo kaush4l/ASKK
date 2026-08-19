@@ -1,0 +1,67 @@
+//! ADOPTING AN AGENT FILE. One `AgentSpec` written onto one `AgentState`:
+//! which model it calls, what it may call, the loop it walks, who reviews it,
+//! and the two blocks its own markdown becomes.
+//!
+//! It is the paper's neighbour rather than the paper itself because it is the
+//! one operation that turns a FILE into a running agent — `spec.rs` reads the
+//! bytes, this decides what they mean to a live state, and `mod.rs` only knows
+//! how to write a block down. Nothing about `main` is hardcoded on this path;
+//! that is what makes the `public/agents/` loader real rather than decorative.
+
+use kernel::Timestamp;
+
+use super::set_component;
+use crate::spec::AgentSpec;
+use crate::state::AgentState;
+
+/// Adopt an agent's own file: the markdown body of `agent.md` IS this
+/// agent's system prompt (the `soul` section), and its description is the
+/// identity line. `peers` are the other loaded agents, from which this one's
+/// `tools:` list picks its sub-agents — so a change to the file changes the
+/// toolbox with no rebuild, exactly as it changes the prompt.
+pub fn adopt_spec(state: &mut AgentState, spec: &AgentSpec, peers: &[AgentSpec]) {
+    state.model = spec.model.clone();
+    state.temperature = spec.temperature;
+    // Naming the space IS the request: the tools come with it rather than
+    // having to be listed too (Python `utils.load_agent`), and a name that
+    // could walk out of `spaces/` attaches nothing at all.
+    state.space = crate::space::Space::named(&spec.space);
+    state.toolbox = crate::subagent::toolbox_for(spec, peers);
+    (state.compact_at, state.keep_recent) = (spec.compact_at, spec.keep_recent);
+    state.max_rounds = spec.max_rounds;
+    // THE LOOP THIS AGENT RUNS, from its own file and nowhere else (20).
+    state.declared = spec.stages.clone();
+    state.stages = spec.stages.clone();
+    // …and how many times it may walk it (22).
+    state.passes = spec.passes;
+    // THE SUMMARIZER IS NOT AN AGENT ANY MORE. Compaction builds its own
+    // sheet with its own prompt (`window::SUMMARIZE`) and runs on this agent's
+    // model, so there is no peer to find and no role to hold. Three fields and
+    // a lookup went with it.
+    state.critic = critic_among(spec, peers);
+    // The agent file IS the soul and the identity — rebuilt through the
+    // components that own those shapes, so adopting a spec cannot produce a
+    // section shaped differently from a seeded one.
+    let soul = crate::components::Soul { text: spec.prompt.clone() };
+    let identity = crate::components::Identity {
+        name: spec.name.clone(),
+        description: spec.description.clone(),
+    };
+    set_component(&mut state.paper, &soul, Timestamp(0));
+    set_component(&mut state.paper, &identity, Timestamp(0));
+}
+
+/// WHO REVIEWS THIS AGENT'S WORK (25), by the job the file declares and not by
+/// the name `critic` — 20's rule, for the same reason: a hardcoded name means
+/// renaming the folder silently unhooks the machinery.
+///
+/// It is recorded even where this agent cannot CALL the critic, because the
+/// field only decides whether a tool result is read as a verdict, and a result
+/// can only arrive from a tool the allowlist already granted. An agent that is
+/// itself the critic gets an empty name: nothing here reviews itself.
+fn critic_among(spec: &AgentSpec, peers: &[AgentSpec]) -> String {
+    crate::spec::loader::role_holder(peers, crate::spec::ROLE_CRITIC)
+        .filter(|c| c.name != spec.name)
+        .map(|c| c.name.clone())
+        .unwrap_or_default()
+}

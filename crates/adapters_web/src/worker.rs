@@ -44,6 +44,40 @@ pub struct AgentWorker {
     reported: std::cell::Cell<usize>,
 }
 
+/// A SUB-AGENT'S WORLD, and how it differs from the page's: its own log, the
+/// page's shared spaces, the page's allowlist, and nobody to delegate to.
+async fn worker_ports(name: &str, model: Rc<FetchModel>) -> Result<core::Ports, JsValue> {
+    Ok(core::Ports {
+        model: Rc::clone(&model) as Rc<dyn kernel::ModelPort>,
+        store: Rc::new(IdbStore::open(&database(name)).await.map_err(js_err)?),
+        // Its own log, but the SAME spaces database the page opened: that
+        // shared keyspace is what makes one space one space across Workers
+        // that share no memory (increment 09).
+        spaces: Rc::new(IdbStore::open(SPACES_DB).await.map_err(js_err)?) as Rc<dyn kernel::KvStore>,
+        // The SAME allowlist the page has, because it rides in the same
+        // profile record this Worker was booted from — a search a sub-agent
+        // cannot make is a capability the roster has and half of it does not
+        // (increment 21). Blank stays off the list.
+        net: {
+            let net = FetchNet::new();
+            net.allow(kernel::SEARCH_ENDPOINT, &model.search_url());
+            Rc::new(net)
+        },
+        clock: Rc::new(BrowserClock),
+        rng: Rc::new(BrowserRng),
+        // The SAME adapter the page uses, which refuses here in words: a
+        // Worker has no `document` to load the engine into, and the one shell
+        // the container serves is the page's. A sub-agent's exec therefore
+        // comes back "the workspace runs in the page, not in an agent's
+        // Worker" instead of quietly fighting the page for it (increment 10 —
+        // routing it back to the page is not done).
+        workspace: Rc::new(crate::C2wWorkspace),
+        // A sub-agent delegates to nobody: the wiring is one level deep on
+        // purpose, so a cycle of agents calling each other cannot exist.
+        agents: Rc::new(NoSubAgents),
+    })
+}
+
 #[wasm_bindgen]
 impl AgentWorker {
     /// Build this agent's app. `agents_json` is the `[[folder, text], …]` the
@@ -63,39 +97,7 @@ impl AgentWorker {
         if !profile_json.is_empty() {
             model.load_profile(&profile_json);
         }
-        let ports = core::Ports {
-            model: Rc::clone(&model) as Rc<dyn kernel::ModelPort>,
-            store: Rc::new(IdbStore::open(&database(&name)).await.map_err(js_err)?),
-            // Its own log, but the SAME spaces database the page opened: that
-            // shared keyspace is what makes one space one space across
-            // Workers that share no memory (increment 09).
-            spaces: Rc::new(
-                IdbStore::open(SPACES_DB)
-                    .await
-                    .map_err(js_err)?,
-            ) as Rc<dyn kernel::KvStore>,
-            // The SAME allowlist the page has, because it rides in the same
-            // profile record this Worker was booted from — a search a
-            // sub-agent cannot make is a capability the roster has and half of
-            // it does not (increment 21). Blank stays off the list.
-            net: {
-                let net = FetchNet::new();
-                net.allow(kernel::SEARCH_ENDPOINT, &model.search_url());
-                Rc::new(net)
-            },
-            clock: Rc::new(BrowserClock),
-            rng: Rc::new(BrowserRng),
-            // The SAME adapter the page uses, which refuses here in words: a
-            // Worker has no `document` to load the engine into, and the one
-            // shell the container serves is the page's. A sub-agent's exec
-            // therefore comes back "the workspace runs in the page, not in an
-            // agent's Worker" instead of quietly fighting the page for it
-            // (increment 10 — routing it back to the page is not done).
-            workspace: Rc::new(crate::C2wWorkspace),
-            // A sub-agent delegates to nobody: the wiring is one level deep on
-            // purpose, so a cycle of agents calling each other cannot exist.
-            agents: Rc::new(NoSubAgents),
-        };
+        let ports = worker_ports(&name, model).await?;
         let files: Vec<(String, String)> = serde_json::from_str(&agents_json).unwrap_or_default();
         let mut app = core::boot(ports).await.map_err(js_err)?;
         core::install_agents_as(&mut app, files, &name);

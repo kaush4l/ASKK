@@ -6,7 +6,7 @@
 //! P1-6. Pressing the Commands view's own Stop rendered `you ran $ sleep 40;
 //! echo done — failed`, in red, over an explanation that was honest and
 //! complete: *"The workspace failed: you stopped it…"*. `failed` is what
-//! happens TO you, and this was a deliberate act. `vouch::word` set the
+//! happens TO you, and this was a deliberate act. `trace::trustworthy::word` set the
 //! precedent — `not there yet` for an outcome that is neither ok nor failed.
 //!
 //! P0-1. The wait row on an agent this page cannot stop sent a stuck person to

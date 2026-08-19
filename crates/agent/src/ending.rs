@@ -9,8 +9,8 @@
 //! ceiling and the stop are three different lines of `step` — so this makes the
 //! ending a RECORD with a kind rather than a hole where the task was. One fact,
 //! `core.ended`, emitted by the pure step function at every ending it owns; the
-//! card, the board row and the conversation are folds of it (`core::ending`),
-//! which is the shape `halted.rs` already proved for the stop.
+//! card, the board row and the conversation are folds of it (`core::failure::ending`),
+//! which is the shape `core/src/failure/stopped_notice.rs` already proved for the stop.
 //!
 //! `core.stopped` keeps its own fact and its own file: it is emitted at the
 //! boundary rather than by an arm of the machine, it carries a wording no other

@@ -1,92 +1,47 @@
-//! L2 wiring (ARCHITECTURE §2): the §3 seam, routing dispatch, the effect
-//! runtime loop, and boot. No domain logic — this crate connects the pure
-//! crates to each other and to injected ports, and nothing else.
+//! L2 wiring (ARCHITECTURE §2): the §3 seam, routing dispatch, the effect runtime loop, and boot.
+//! No domain logic — this crate connects the pure crates to each other and to ports, and no more.
+//!
+//! The subjects this crate serves are directories, one line each in `README.md`;
+//! the loose files below them are the wiring itself. Both lists are sorted.
 #![allow(dead_code)]
-mod agentcard;
-mod asked;
 mod agents;
 mod app;
-mod authored;
-mod authoring;
 mod batch;
 mod board;
-mod boardrow;
-mod browsable;
-mod calls;
 mod boot;
 mod builtins;
 mod chat;
-mod clear;
 mod ctx;
 mod dispatch;
 mod effects;
-mod ending;
-mod endword; // `Ending` and its wordings — `ending.rs` was at 200
 mod error;
-mod failed;
 mod failure;
-mod filegone;
-mod filelist;
-mod findfiles;
-mod filerows;
 mod files;
-mod fold;
-mod form;
-mod halted;
-mod identity;
-mod inflight;
-mod inspector;
-mod install;
-mod logbook;
-mod logs;
-mod loopline;
-mod markdown;
-mod memory;
+mod log;
 mod observe;
-mod origin;
-mod pointer;
-mod process;
-mod procstart;
-mod procpanel;
-mod processes;
-mod procwatch;
-mod proctable;
-mod remedy;
-mod repeat;
-mod reported;
-mod roster;
-mod rowwords;
+mod proc;
 mod runtime;
-mod scrollback;
-mod scrollpanel;
-mod scrollrows;
 mod space;
-mod spacenote;
-mod stage; // which part of a turn is running — `fold.rs` and `boardrow.rs` were both at 200
-mod steered;
-mod told;
-mod tools;
-mod typed;
-mod vouch;
-mod websearch;
-mod transcript;
-mod trace;
-mod tracerow;
 mod terminal;
-mod tiles;
+mod tools;
+mod trace;
+mod websearch;
+mod words;
 mod workspace;
 
-pub use install::{builtin_files, install_agents, install_agents_as, report_agent, report_memory};
-pub use authored::{authored_here, report_authored};
-pub use told::report_activity;
+pub use agents::authored::{authored_here, report_authored};
+pub use agents::install::{
+    builtin_files, install_agents, install_agents_as, report_agent, report_memory,
+};
 pub use app::{App, Ports, ENTRY_AGENT};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
+pub use effects::execute_port_effect;
 pub use error::{provider_error, CoreError};
-// `drive` is PROVISIONAL (G4): the async runtime loop — see runtime.rs.
-pub use effects::execute_effect;
+pub use failure::from_worker::report_activity;
+pub use log::store::{activity_since, memory_held, restore_log, window};
+// `drive` is PROVISIONAL (G4): the async runtime loop — see `runtime/mod.rs`.
 pub use runtime::{drive, pump};
-pub use logs::{activity_since, memory_held, restore_log, window};
 use kernel::{Request, Response};
 
 /// Every loaded agent's name, in order — what the composition root needs to
@@ -100,10 +55,10 @@ pub fn agent_names(app: &App) -> Vec<String> {
 /// Worker must be booted with, so a sub-agent sees the same agents the page
 /// does, including one written here a moment ago.
 pub fn agent_files(app: &App) -> Vec<(String, String)> {
-    install::builtin_files()
+    agents::install::builtin_files()
         .into_iter()
         .chain(app.files.clone())
-        .chain(authored::files(&app.authored))
+        .chain(agents::authored::files(&app.authored))
         .collect()
 }
 
@@ -139,7 +94,7 @@ pub fn answer(app: &App) -> Option<String> {
 /// four words naming nothing, where the page's own failure named the endpoint
 /// and why it could not be reached (`ux-walker`, increment 06).
 pub fn last_failure(app: &App) -> Option<String> {
-    last_failure_payload(app).map(|payload| failure::sentence_of(&payload))
+    last_failure_payload(app).map(|payload| failure::card::sentence_of(&payload))
 }
 
 /// The same failure as the TYPED payload it was logged as — what a sub-agent's
@@ -173,11 +128,11 @@ pub fn handle(app: &mut App, req: Request) -> Response {
     // read that is about to project it — and never in the middle of a turn
     // (`roster::reconcile`). One door, so a page cannot show an agent the core
     // has not installed, or install one the page cannot see.
-    roster::reconcile(app);
+    agents::roster::reconcile(app);
     let response = dispatch::dispatch(app, &req);
     // …and again, so a request that AUTHORED an agent has installed it by the
     // time it returns: "no reload" should not mean "one request later".
-    roster::reconcile(app);
+    agents::roster::reconcile(app);
     // A request that CHANGED something, or failed, is a fact. A successful GET
     // is not: it is somebody looking at a projection of the log, and recording
     // that in the log is recording that someone looked.

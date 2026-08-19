@@ -10,7 +10,7 @@
 //!
 //! P1-3 is the same class one line down: the board row's `last tool:` counted
 //! the log's `ToolInvoked` facts raw, so the Processes pane's own polling was
-//! reported under the agent's name — `asked::Asked` had already attributed it
+//! reported under the agent's name — `trace::requested_by::Asked` had already attributed it
 //! to `this page` in the trace forty pixels away.
 
 use std::cell::RefCell;

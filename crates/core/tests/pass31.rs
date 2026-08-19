@@ -258,7 +258,7 @@ fn the_row_names_the_budget_as_a_ceiling_and_not_a_plan() {
 /// rule, applied to the second number).
 #[test]
 fn a_pass_is_defined_on_the_agents_view_beside_the_stages() {
-    let roster = include_str!("../../ui/src/roster.rs");
+    let roster = include_str!("../../ui/src/board/roster.rs");
     let paragraph = roster.split("A turn can run in stages.").nth(1).expect("the stage paragraph");
     let app = booted(LOOPER, AnswersThenHangs::with(&laps(1)));
     run(&app, "write index.md");

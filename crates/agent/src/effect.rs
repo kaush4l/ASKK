@@ -40,11 +40,6 @@ pub enum Effect {
     InvokeTool { tool: ToolId, args_json: String },
     /// Record a fact (I8) beyond what the runtime already logs.
     Emit { kind: EventKind },
-    /// Write through StorePort — the agent persists state as data, never
-    /// holds a connection (I2).
-    Persist { key: String, value_json: String },
-    /// Wake me later (heartbeat, retries with backoff).
-    Sleep { ms: u64 },
     /// Hand a goal to another agent running in its own Worker (§10 Tier 2,
     /// ADR-008), and take its answer back as an observation. This is the
     /// Python `Tool.from_engine`: the caller never touches the sub-agent's

@@ -27,17 +27,36 @@ the container2wasm Alpine the agent owns.
 | 1 | The component architecture standard, written | DONE — `docs/ARCH-COMPONENTS.md` |
 | 1b | Gaps 1-8 + 12 coded (deletions, the I13 fix, the wiring) | DONE, green, unshipped |
 | 1c | Bar-raiser round 1 | DONE — NO-GO, `docs/CRITIQUE-01.md` |
-| 2 | Structural remediation against the 9 exit criteria | NEXT |
+| 2 | Structural remediation against the 9 exit criteria | DONE, green, awaiting bar-raiser |
 | 3 | The Faculty seam, into the repaired tree | HELD until 2 lands |
-| 4 | CheerpX deleted; c2w the sole engine | CODE GREEN, 4x NO-GO on copy/docs, repairs out |
+| 4 | CheerpX deleted; c2w the sole engine | COMMITTED main 51199eb, NOT PUBLISHED |
 | 4b | The image: audit measured, recipe repaired, `image/Dockerfile` written | DONE, unshipped |
 | 5 | Free size/memory wins: strip DWARF, gzip -9, VM_MEMORY_SIZE_MB | NAMED, needs a build round |
 | 2 | An agent starts an agent with a goal, and the workflow is verified | NAMED, not started |
 
-## The standing bar-raiser verdict: NO-GO
+## The bar-raiser verdict: GO (`docs/CRITIQUE-02.md`, 2026-08-19)
 
-Nine exit criteria, all required, no partial credit (`docs/CRITIQUE-01.md`).
-It is not flipped by argument, only by the criteria being met.
+All nine criteria MET, verified by the critique against the tree rather than
+against the lead's report. It certifies NAVIGABILITY AND COMPREHENSION — not
+correctness, not product value.
+
+**The proof it used is better than the criteria it set.** Files at EXACTLY 200
+lines fell **23 -> 9** while the tree grew by 26 files. A tree still driven by a
+ceiling does not do that. And 252 -> 278 decomposes with no residue: +13 real
+`mod.rs` index files, +22 new sources (where the ten oversized functions went —
+`transcript` 177 lines became four files split by what each renders), -9
+deletions.
+
+**Two findings fixed before commit:**
+- The shrink-only function gate existed ONLY on this machine —
+  `scripts/function-baseline.txt` was untracked and `check-size.py:181`
+  re-seeds wholesale when it is absent. A fresh clone would have silently reset
+  it. Now tracked.
+- Thirteen doc comments pointed at filenames the round deleted.
+
+**Recorded, not fixed: THERE IS NO CI IN THIS REPOSITORY.** Criterion 4 asked
+for the function gate "in CI", which no round could satisfy. Every gate here is
+only as good as someone remembering to run it. That is an owner decision.
 
 The three SEVERE findings all say one thing: **I12 relocated bloat rather than
 removing it.**
@@ -118,6 +137,45 @@ delegates to nobody at all. This is increment 2 and it is a design question
 before it is a coding one: a spawned agent is either a configuration written at
 runtime or a goal handed to a copy of an existing configuration, and those are
 different products.
+
+## Structural round, verified by the lead (2026-08-19)
+
+`core/src` **75 -> 26** entries, `ui/src` **57 -> 15**. Criterion-3 grep returns
+0. `transport.js`/htmx gone from ARCHITECTURE.md. `Effect::Persist`/`Sleep`
+gone. Gate: 475 passed / 0 failed, size OK WITH the function gate now active
+(82 -> 52 offenders, shrink-only baseline), **zero build warnings**.
+
+The lead volunteered two things that make the rest credible:
+- **The critique's own criterion-3 grep is a weak proxy.** It matches three
+  phrasings; 26 more excuses were phrased around it. Gating on the literal grep
+  would have passed the round with a quarter of the excuses standing.
+- **It declined to fix `ui/src/terminal/mod.rs::Terminal` (125 lines)**. The
+  alternative was never a new file — it was an in-file extraction, and the one
+  on offer is the `submit` closure. `submit` reads or writes SIX `Signal`s
+  (`web`, `panel`, `draft`, `running`, `typeable`, `agent`), so lifting it into
+  a free `fn` beside the component turns a closure into a six-parameter
+  function and moves the complexity from length into signature. That is the
+  trade, and the decision to leave it stands on it.
+
+**The number the bar-raiser must rule on: total files went 253 -> 278.** More
+files, fewer top-level entries. Either directories legitimately hold files, or
+fragmentation rose under cover of the reorganisation. The lead did not address
+it; I will not call this round done until that is answered.
+
+## THE ONE THING WAITING ON THE OWNER
+
+`main` is at `51199eb`. **gh-pages was deliberately NOT published.**
+
+This change ships `leftovers.rs` — a control that deletes a person's IndexedDB
+database. CLAUDE.md §17 lets an unattended session decide at lowest reversal
+cost and never block, with three exceptions that ALWAYS stop: secrets, network
+allowlists, and **destructive storage**. This is the third one.
+
+Committing is reversible and keeps 90 files from sitting loose. Publishing is
+what puts a delete button in front of the returning visitors who are the exact
+population holding that database. That is the owner's press, not the lead's.
+
+Everything else in the round is landed and green.
 
 ## The image, measured (docs/IMAGE-AUDIT.md — passed its bar-raiser)
 
@@ -275,3 +333,54 @@ which is bar-raiser finding F1 arrived at from a different direction.
 - `crates/core/src` is 75 flat files, `crates/ui/src` is 57. I12 bought small
   files with a directory nobody can navigate. This is the first thing the
   bar-raiser is pointed at.
+
+## CRITIQUE-01 round: the naming-table decisions (exit criterion 2)
+
+Criterion 2 requires every rename in `docs/CRITIQUE-01.md`'s naming table to be
+applied, or **declined in writing**. This is that written record.
+
+**`crates/ui/src` — 19 of 19 applied, none declined.** Including the two F9
+calls the critique said were not judgement calls: `stage.rs` -> `centre/` and
+`tools.rs` -> `trace/`. Six further renames were made beyond the table for the
+same reason (the name did not say what was inside): `processes.rs` ->
+`proc/mod.rs`, `procrows.rs` -> `proc/row.rs`, `runstatus.rs` ->
+`board/launch/outcome.rs`, `receipt.rs` -> `board/launch/receipt.rs`,
+`settings_view.rs` -> `settings/view.rs`, `fileedit.rs` -> `files/openfile.rs`.
+
+**`crates/core/src` — applied except the four below.** Three of the four were
+declined because the file was **deleted outright**, which is a stronger outcome
+than the rename the table proposed:
+
+| Table entry | Decision | Reason (one line) |
+|---|---|---|
+| `form.rs` -> `form_value.rs` | DECLINED — **merged and deleted** | 39 lines, one fn; its own header said it was split out of `builtins.rs`, so it went back there. |
+| `rowwords.rs` -> `board/words.rs` | DECLINED — **merged and deleted** | 37 lines, two fns, one caller; merged into `board/row/reading.rs` and both fns demoted to private. A folder of 30-line fragments is the same failure with better signage. |
+| `loopline.rs` -> `agents/loop_sentence.rs` | DECLINED — **merged and deleted** | 29 lines, one fn, one caller; it *is* a card sentence, so it merged into `agents/card_sentences.rs`. |
+| `fold.rs` -> split into `chat/ownership.rs` + `chat/notices.rs` | DECLINED — kept whole | Every symbol in it is called from `board/`, `failure/` and `chat/` alike: it is the shared reading-of-the-log, not four private jobs. Splitting doubles cross-folder imports and changes no logic. The table's premise was that it sat at top level; inside `chat/` the name is guessable. |
+
+Two renames were made beyond the table, both name collisions of the same kind
+the table exists to fix: `filelist.rs::listed` -> `files/listing.rs::newest_listing`
+(it collided with `words::listed`, which writes "a, b and c"), and
+`observe.rs::secs` -> `observe.rs::uptime` (its opposite number is already
+`proc/table.rs::parse_secs`).
+
+## CRITIQUE-01 round: what the file-count rule cost, and what it bought back
+
+The critique's charge was that I12 was met by RELOCATING bloat, not removing it.
+Recorded here so the next round can check the claim rather than take it:
+
+- `crates/core/src` 77 -> 26 top-level entries; `crates/ui/src` 61 -> 15.
+- Files **deleted**, not moved: `core/src/form.rs`, `core/src/rowwords.rs`,
+  `core/src/loopline.rs`, `ui/src/stage/intro.rs` (a module for two string
+  constants), `adapters_web/src/warmth.rs`, `module/src/install.rs`.
+- Re-export facades deleted: `ui/src/runstatus.rs`'s (F7, nine call sites
+  rewritten) and one inside `core/src/failure/` of the same kind.
+- Duplicates removed: one `listed`, one duration formatter, one failure-header
+  read, one `/files` read, one `POST /files` builder, and one DOM read whose own
+  comment admitted it was "copied not shared".
+- Doc comments citing the line rule as a reason to exist: **89 -> 0**. Note the
+  critique's grep (`"200-line rule|was at 200|for the line count"`) is a PROXY:
+  26 further excuses were phrased so that grep missed them (`"because that file
+  was full (I12)"`, `"cannot gain a module"`, `"split out for"`). Those were
+  purged too. Statements of the form "its own fn so X stays one job (I12)" were
+  KEPT — that is a cohesion claim, not an origin story.

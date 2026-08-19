@@ -12,7 +12,7 @@ use crate::app::App;
 use crate::builtins;
 
 // `dispatch::Ctx` is the name the whole crate reaches for and the name ADR-004
-// uses; the type moved to `ctx.rs` for the line count, not for a new address.
+// uses; `ctx.rs` next door defines the SHAPE, this file is its one address.
 pub use crate::ctx::{BuiltinHandler, Ctx, KvHandle};
 
 /// A 200/4xx/5xx HTML fragment response — the seam's one output shape.
@@ -42,14 +42,14 @@ pub(crate) fn error_fragment(status: u16, message: &str) -> Response {
 pub fn builtin_entry(id: &ModuleId) -> Option<BuiltinHandler> {
     match id.0.as_str() {
         "dashboard" => Some(builtins::dashboard),
-        "chat" => Some(crate::chat::chat),
-        "agents" => Some(crate::agents::agents),
+        "chat" => Some(crate::chat::pane::chat),
+        "agents" => Some(crate::agents::pane::agents),
         "tools" => Some(crate::tools::tools),
-        "board" => Some(crate::board::board),
-        "space" => Some(crate::inspector::space),
-        "terminal" => Some(crate::terminal::terminal),
-        "files" => Some(crate::files::files),
-        "processes" => Some(crate::processes::processes),
+        "board" => Some(crate::board::pane::board),
+        "space" => Some(crate::space::pane::space),
+        "terminal" => Some(crate::terminal::pane::terminal),
+        "files" => Some(crate::files::pane::files),
+        "processes" => Some(crate::proc::pane::processes),
         "status" => Some(builtins::status),
         _ => None,
     }
@@ -120,7 +120,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
             .collect(),
         board: app.board.snapshot().to_vec(),
         me,
-        window: crate::logs::window(app),
+        window: crate::log::store::window(app),
         space: app.agent.space.clone(),
         durable: app.ports.workspace.durable(),
         booted: app.booted,
@@ -137,7 +137,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
     // it: `Ctx` carries a projection of the window, and clearing means writing
     // the real one. Here is the one place that holds both (`clear::wipe`).
     if ctx.wipe {
-        crate::clear::wipe(app);
+        crate::chat::clear::wipe(app);
     }
 
     // Module-emitted facts: into the log now (I8) and into the pump queue.

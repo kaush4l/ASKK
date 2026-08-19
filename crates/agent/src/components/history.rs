@@ -1,7 +1,7 @@
 //! The conversation so far.
 
 /// WHAT A FRESH WINDOW HOLDS. Not the empty vector: the history block would
-/// then render nothing, and `core::clear` needs to put a conversation BACK to
+/// then render nothing, and `core::chat::clear` needs to put a conversation BACK to
 /// what a new one starts on rather than to something no new one has ever been.
 pub const SESSION_STARTED: &str = "session started";
 

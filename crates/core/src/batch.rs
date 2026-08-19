@@ -1,6 +1,6 @@
-//! One line of tool calls, executed. Split from `runtime.rs` to hold the
-//! 200-line rule, and because this file is where the Python's layout rule
-//! finally becomes true in both halves:
+//! One line of tool calls, executed. `runtime/` owns *when* an effect runs;
+//! this file owns the one effect that fans out, and it is where the Python's
+//! layout rule finally becomes true in both halves:
 //!
 //! - calls on ONE line are independent and run AT THE SAME TIME — each in the
 //!   callee's own Worker, which is what makes "at the same time" real rather
@@ -54,27 +54,30 @@ pub(crate) async fn run_on(
             a.set_status(agent, next, "");
             Ok(answer)
         }
-        Err(e) => {
-            let message = match e {
-                DelegateError::Unknown { agent: name } => {
-                    format!("No agent called '{name}' is loaded in this browser.")
-                }
-                // Its OWN words. Carried across the `postMessage` boundary so
-                // a sub-agent's failure names its cause the way the lead's does.
-                DelegateError::Failed { message, .. } => message,
-            };
-            // The RECORD keeps the typed payload the Worker sent, so the card
-            // can carry its disclosure; the BOARD gets the sentence, because a
-            // status row is one line a person reads at a glance.
-            let said = crate::told::told(&message, agent);
-            a.set_status(agent, Status::Failed, &said);
-            a.append(EventKind::Custom {
-                kind: "core.agent_error".into(),
-                payload_json: crate::told::agent_error(agent, &message),
-            });
-            Err(said)
-        }
+        Err(e) => Err(refused(&mut a, agent, e)),
     }
+}
+
+/// A delegated turn that raised, recorded and said. The RECORD keeps the typed
+/// payload the Worker sent, so the card can carry its disclosure; the BOARD
+/// gets the sentence, because a status row is one line a person reads at a
+/// glance. Returns the sentence, which is also what the caller is told.
+fn refused(a: &mut App, agent: &str, e: DelegateError) -> String {
+    let message = match e {
+        DelegateError::Unknown { agent: name } => {
+            format!("No agent called '{name}' is loaded in this browser.")
+        }
+        // Its OWN words. Carried across the `postMessage` boundary so a
+        // sub-agent's failure names its cause the way the lead's does.
+        DelegateError::Failed { message, .. } => message,
+    };
+    let said = crate::failure::from_worker::told(&message, agent);
+    a.set_status(agent, Status::Failed, &said);
+    a.append(EventKind::Custom {
+        kind: "core.agent_error".into(),
+        payload_json: crate::failure::from_worker::agent_error(agent, &message),
+    });
+    said
 }
 
 /// A delegation as the LEAD sees it: the tool envelope the model reads next.
@@ -130,44 +133,17 @@ pub(crate) async fn run_effects(app: &Rc<RefCell<App>>, effects: Vec<Effect>) {
 
 /// One non-delegating effect: a local tool against the app, or a port call.
 async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
-    // A tool runs against the app, synchronously, and its envelope is the fact
-    // that comes back (I8) — including a refusal.
+    // A tool call's envelope is the fact that comes back (I8) — including a
+    // refusal — and one table decides which half of the executor runs it.
     if let Effect::InvokeTool { tool, args_json } = &effect {
-        // A space's tools write to the SHARED store, so they are the one tool
-        // family that cannot run inside a borrow of the app.
-        // A workspace tool runs a command in a Linux, which is I/O and cannot
-        // happen inside a borrow of the app either.
-        if let Some(kind) = crate::workspace::run(app, tool, args_json).await {
-            let mut a = app.borrow_mut();
-            let appended = a.append(kind);
-            a.pending.push(appended);
-            return;
-        }
-        // …and a search leaves the browser entirely, which is I/O of the same
-        // kind: it cannot happen inside a borrow of the app either.
-        if let Some(kind) = crate::websearch::run(app, tool, args_json).await {
-            let mut a = app.borrow_mut();
-            let appended = a.append(kind);
-            a.pending.push(appended);
-            return;
-        }
-        if let Some(kind) = crate::space::run(app, tool, args_json).await {
-            let mut a = app.borrow_mut();
-            let appended = a.append(kind);
-            a.pending.push(appended);
-            return;
-        }
-        let mut a = app.borrow_mut();
-        let kind = crate::tools::run(&mut a, tool, args_json);
-        let appended = a.append(kind);
-        a.pending.push(appended);
+        invoke(app, tool, args_json).await;
         return;
     }
     // The future is built in its OWN statement so the `borrow()` guard dies
     // here rather than at the end of the expression — a guard alive across the
     // await panics the next `borrow_mut`, and the seam's chat poll spawns a
     // second `drive` every 400 ms, so there always is a next one.
-    let running = crate::effects::execute_effect(&app.borrow().ports, effect);
+    let running = crate::effects::execute_port_effect(&app.borrow().ports, effect);
     let result = running.await;
     let mut a = app.borrow_mut();
     match result {
@@ -177,6 +153,30 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
                 a.pending.push(appended);
             }
         }
-        Err(e) => crate::failure::record(&mut a, e),
+        Err(e) => crate::failure::card::record(&mut a, e),
     }
+}
+
+/// ONE tool call, run and recorded. `tools::tool_entry` is the dispatch table:
+/// a name it claims is awaited OUTSIDE any borrow of the app (the awaiting
+/// tools reach a Linux, the shared store or the network, and a borrow held
+/// across an await panics the next `borrow_mut`); a name it does not claim, or
+/// a handler that declines the call it was routed, lands on the local
+/// `tools::run` inside the borrow, which refuses an unknown tool in words.
+///
+/// The append-and-push that makes the envelope durable is written once, which
+/// is the whole point of the table: five copies of it is five places for the
+/// pump queue and the log to drift apart.
+async fn invoke(app: &Rc<RefCell<App>>, tool: &ToolId, args_json: &str) {
+    let awaited = match crate::tools::tool_entry(tool) {
+        Some(handler) => handler(app, tool, args_json).await,
+        None => None,
+    };
+    let mut a = app.borrow_mut();
+    let kind = match awaited {
+        Some(kind) => kind,
+        None => crate::tools::run(&mut a, tool, args_json),
+    };
+    let appended = a.append(kind);
+    a.pending.push(appended);
 }

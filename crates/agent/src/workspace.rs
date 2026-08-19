@@ -20,6 +20,12 @@ use crate::tools::Tool;
 /// same `WorkspacePort::exec` underneath (ADR-013); none of them is a second
 /// way into the Linux.
 pub fn workspace_tools() -> Vec<Tool> {
+    [one_shot_tools(), process_tools(), discovery_tools()].concat()
+}
+
+/// The one-shot set: run something that finishes, and read or write a file.
+/// Every workspace session that does anything at all uses these.
+fn one_shot_tools() -> Vec<Tool> {
     vec![
         Tool::new(
             "exec",
@@ -44,7 +50,15 @@ pub fn workspace_tools() -> Vec<Tool> {
             "List a folder in the workspace. Use \".\" for the workspace itself.",
             &["path"],
         ),
-        // A server an agent starts and cannot leave running is not a server.
+    ]
+}
+
+/// OUTLIVING THE CALL — the thing `exec` cannot do. A server an agent starts
+/// and cannot leave running is not a server; one it cannot see is running blind;
+/// one it cannot stop is a leak. Four tools, one capability, and every one of
+/// them is the same `WorkspacePort::exec` underneath (ADR-013).
+fn process_tools() -> Vec<Tool> {
+    vec![
         Tool::new(
             "start_process",
             "Start a command in the background under a short name you choose. It keeps running \
@@ -52,33 +66,37 @@ pub fn workspace_tools() -> Vec<Tool> {
              watchers and long builds.",
             &["name", "command"],
         ),
-        // An agent cannot supervise what it cannot see.
         Tool::new(
             "list_processes",
             "Every process started in this workspace: its name, whether it is still running, how \
              long it has been running, and the command it runs.",
             &[],
         ),
-        // Starting a process and never reading it is running blind.
         Tool::new(
             "read_process",
             "The most recent output of a process started here, and whether it is still running.",
             &["name"],
         ),
-        // A process an agent started and cannot stop is a leak.
         Tool::new(
             "stop_process",
             "Stop a process started here. Its captured output stays readable afterwards.",
             &["name"],
         ),
-        // Asking the machine beats guessing at it with five shell commands.
+    ]
+}
+
+/// ASKING RATHER THAN GUESSING — the other two things a one-shot command cannot
+/// do. `observe` asks what the machine IS, which beats guessing at it with five
+/// shell commands; `find_files` finds a file whose name the agent does not
+/// already know, which `list_files` on an unknown folder shape is not.
+fn discovery_tools() -> Vec<Tool> {
+    vec![
         Tool::new(
             "observe",
             "What this machine is right now: kernel, how long it has been up, memory and disk \
              free, what the workspace folder holds, and how many processes were started here.",
             &[],
         ),
-        // `list_files` on a folder whose shape you do not know is not a search.
         Tool::new(
             "find_files",
             "Search the workspace. 'name' is a filename pattern like *.md; 'text' is what a line \

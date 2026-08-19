@@ -8,7 +8,6 @@
 
 mod answer;
 mod brief;
-mod defaults;
 mod author;
 mod calls;
 mod components;
@@ -26,7 +25,6 @@ mod space;
 mod reply;
 mod ask;
 mod search;
-mod loader;
 mod spec;
 mod state;
 mod steer;
@@ -41,7 +39,6 @@ mod tools;
 mod verify;
 mod window;
 mod workspace;
-mod yaml;
 
 pub use calls::{has_calls, named, parse_batches, swallowed_close, Call};
 pub use effect::Effect;
@@ -60,7 +57,7 @@ pub use space::{is_space_tool, space_tools, Change, Space, NOTE_LIMIT};
 pub use search::{results as search_results, search_path, WEB_SEARCH};
 pub use workspace::{is_workspace_tool, process_name, relative_path, workspace_tools};
 pub use author::{new_spec, render_agent_file, usable_agent_name};
-pub use loader::{load_agents, role_holder};
+pub use spec::loader::{load_agents, role_holder};
 pub use skills::{
     catalogue, instruction, parse_skill_file, skills, Skill, LIST_SKILLS, NONE_INSTALLED,
     READ_SKILL,

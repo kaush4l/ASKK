@@ -27,11 +27,10 @@ const TIMEOUT_MS: f64 = TIMEOUT_SECS as f64 * 1000.0;
 
 /// What SETTINGS asks of this broker — the choice of endpoint, as against the
 /// wire below (I12).
-mod asked;
+mod choice;
 
 use crate::endpoint::Endpoint;
-use crate::overrides::stamp_model;
-use crate::wire::{asked_model, read_reply};
+use crate::wire::{asked_model, read_reply, stamp_model};
 
 pub struct FetchModel {
     /// `config/keys/model` (ADR-005 record layout).

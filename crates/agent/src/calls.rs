@@ -70,7 +70,7 @@ pub fn named(text: &str) -> Vec<String> {
 /// argument one level too many and swallowed its own terminator; the file on
 /// disk was one line, `wc -l` said 0, and the `awk` that was to sum it printed
 /// nothing. Measured in a browser against gemma-4-12B, and the same signature
-/// is on record for `exec` (`failed.rs`: `$ "wc -l primes.txt"})`).
+/// is on record for `exec` (`core/src/failure/within_turn.rs`: `$ "wc -l primes.txt"})`).
 ///
 /// Nothing here can know an argument is WRONG, and this does not guess. It
 /// reports the one thing the arguments themselves show: a string value ending

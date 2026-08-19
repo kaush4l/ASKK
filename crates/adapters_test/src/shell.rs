@@ -10,6 +10,8 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+mod port;
+
 use kernel::WorkspaceError;
 
 /// A fake Linux. `unavailable` is the I15 case: a browser where no workspace

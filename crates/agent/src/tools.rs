@@ -104,8 +104,31 @@ impl ToolResult {
 /// executor table that matches them by name, exactly as `builtin_entry` does
 /// for modules; a tool declared here with no executor there refuses like any
 /// unknown tool rather than pretending to run.
+///
+/// Three groups: what stays in the tab, the one call that leaves it, and the
+/// skill tools, which are declared beside their own rules the way the space's
+/// and the workspace's sets are (`crate::skills`).
 pub fn builtin_tools() -> Toolbox {
-    Toolbox::of(vec![
+    Toolbox::of(
+        [inside_this_browser(), vec![web_search()], crate::skills::tools()].concat(),
+    )
+}
+
+/// The tools that never leave the tab: what time it is here, and reading and
+/// writing the agents installed here.
+///
+/// `write_agent` is increment 11. A model authoring an agent that then runs
+/// with real capabilities is a decision the user made explicitly; it is an
+/// ORDINARY tool because a built-in agent and an authored one must be
+/// indistinguishable to the system (I9).
+///
+/// Its 'space' sentence used to say naming one "also grants it a real shell".
+/// That was true when `toolbox_for` appended the workspace set AFTER the
+/// allowlist; it is now false for any non-empty list, and a tool description
+/// that overstates a capability boundary is the worst place in the product to
+/// be out of date — an authoring model reads it and writes the wrong file.
+fn inside_this_browser() -> Vec<Tool> {
+    vec![
         Tool::new("now", "The current date and time in this browser.", &[]),
         Tool::new(
             "list_agents",
@@ -117,17 +140,6 @@ pub fn builtin_tools() -> Toolbox {
             "One agent's definition: its model, its tools and its system prompt.",
             &["name"],
         ),
-        // Increment 11. A model authoring an agent that then runs with real
-        // capabilities is a decision the user made explicitly; it is an
-        // ORDINARY tool because a built-in agent and an authored one must be
-        // indistinguishable to the system (I9).
-        //
-        // The 'space' sentence used to say naming one "also grants it a real
-        // shell". That was true when `toolbox_for` appended the workspace set
-        // AFTER the allowlist; it is now false for any non-empty list, and a
-        // tool description that overstates a capability boundary is the worst
-        // place in the product to be out of date — an authoring model reads it
-        // and writes the wrong file.
         Tool::new(
             "write_agent",
             "Create or replace an agent in this browser: it is installed immediately, gets its \
@@ -139,24 +151,21 @@ pub fn builtin_tools() -> Toolbox {
              then grants exactly the ones it names and nothing else.",
             &["name", "description", "prompt", "tools", "space"],
         ),
-        // The first tool that leaves this browser for something other than the
-        // model (increment 21). WHERE it goes is a setting and not a constant:
-        // CLAUDE.md §17 makes a network allowlist a user gate, so the
-        // capability ships and the destination is chosen in Settings. With
-        // none chosen the call comes back refused, in the words that say where
-        // to choose one — never an empty result, which reads to a model like a
-        // web with nothing on it.
-        Tool::new(
-            crate::search::WEB_SEARCH,
-            "Search the web through the search endpoint configured in this browser's Settings. \
-             Returns at most five results, each a title, a URL and one line. It cannot open a \
-             page — it says what is there and where.",
-            &["query"],
-        ),
-        // …and the two skill tools, declared beside their own rules the way
-        // the space's and the workspace's sets are (`crate::skills`).
     ]
-    .into_iter()
-    .chain(crate::skills::tools())
-    .collect())
+}
+
+/// The first tool that leaves this browser for something other than the model
+/// (increment 21). WHERE it goes is a setting and not a constant: CLAUDE.md §17
+/// makes a network allowlist a user gate, so the capability ships and the
+/// destination is chosen in Settings. With none chosen the call comes back
+/// refused, in the words that say where to choose one — never an empty result,
+/// which reads to a model like a web with nothing on it.
+fn web_search() -> Tool {
+    Tool::new(
+        crate::search::WEB_SEARCH,
+        "Search the web through the search endpoint configured in this browser's Settings. \
+         Returns at most five results, each a title, a URL and one line. It cannot open a \
+         page — it says what is there and where.",
+        &["query"],
+    )
 }

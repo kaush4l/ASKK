@@ -4,13 +4,13 @@
 //!
 //! It is `WorkspacePort::exec` (ADR-013): run ONE script printing labelled
 //! fields, and render those fields here. `find_files` — the other tool this
-//! dispatch owns — is `findfiles.rs`, for the 200-line rule (I12).
+//! dispatch owns — has its own file, `files/find.rs`.
 
 use kernel::{shell_quote, Execution, WorkspacePort};
 
-use crate::findfiles::{find_script, found, pattern};
-use crate::process::DIR;
-use crate::workspace::unavailable;
+use crate::files::find::{find_script, found, pattern};
+use crate::proc::convention::DIR;
+use crate::workspace::gate::unavailable;
 
 /// `observe` or `find_files`, or `None` if this is neither.
 pub(crate) async fn run(
@@ -68,7 +68,7 @@ fn observe_script() -> String {
 /// AND A FIELD THE GUEST ANSWERED WITH A ZERO IS NOT AN ANSWER (R10-9). Both of
 /// these were measured in a browser, on a guest since deleted, against the
 /// container2wasm guest this build ships (`Linux 6.1.0`), which answers both:
-/// `/proc/uptime` reads `0 0` there — the reading `process.rs` already refused
+/// `/proc/uptime` reads `0 0` there — the reading `proc/convention.rs` already refused
 /// to build liveness on — so the block said `uptime 0s` on a half-hour-old tab;
 /// and `/proc/meminfo` holds `MemTotal:` and nothing else, no `MemAvailable`
 /// and no `MemFree`, so the unset awk variable went through `%d` and the block
@@ -82,7 +82,7 @@ fn report(raw: &str) -> String {
         let f: Vec<&str> = line.split('\t').collect();
         let said = match (f.first().copied().unwrap_or_default(), f.len()) {
             ("kernel", 2) => format!("kernel   {}", f[1]),
-            ("up", 2) => match secs(f[1]) {
+            ("up", 2) => match uptime(f[1]) {
                 Some(said) => format!("uptime   {said}"),
                 None => continue,
             },
@@ -115,15 +115,14 @@ fn kb(value: &str) -> String {
 }
 
 /// `/proc/uptime`'s float seconds as a duration — `None` when the guest does not
-/// keep one. A kernel that answers `0` has not been up for no time (R10-9).
-fn secs(value: &str) -> Option<String> {
-    let n = value.split('.').next()?.parse::<i64>().ok()?;
-    Some(match n {
-        n if n < 1 => return None,
-        n if n < 60 => format!("{n}s"),
-        n if n < 3600 => format!("{}m{:02}s", n / 60, n % 60),
-        n => format!("{}h{:02}m", n / 3600, (n % 3600) / 60),
-    })
+/// keep one. A kernel that answers `0` has not been up for no time (R10-9);
+/// past that guard the spelling is `words::spanned`, the same one the process
+/// table prints its `for` column with.
+fn uptime(value: &str) -> Option<String> {
+    match value.split('.').next()?.parse::<i64>().ok()? {
+        n if n < 1 => None,
+        n => Some(crate::words::spanned(n)),
+    }
 }
 
 #[cfg(test)]

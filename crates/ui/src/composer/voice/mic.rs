@@ -1,7 +1,6 @@
-//! The dictation machine, and nothing else. Split from `voice.rs` for the
-//! 200-line rule (I12); it is the half that talks to `SpeechRecognition`, so
-//! the half above it reads as a component and this one reads as a wiring
-//! diagram.
+//! The dictation machine, and nothing else: the half that talks to
+//! `SpeechRecognition`, so `voice.rs` above it reads as a component and this
+//! one reads as a wiring diagram.
 
 use dioxus::prelude::*;
 use wasm_bindgen::closure::Closure;

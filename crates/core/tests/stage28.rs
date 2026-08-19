@@ -204,7 +204,7 @@ fn a_turn_that_ended_leaves_no_stage_on_the_row() {
 /// here rather than on the page (`critic27.rs`'s rule, applied to a stage name).
 #[test]
 fn the_stage_word_is_the_one_the_roster_defines() {
-    let roster = include_str!("../../ui/src/roster.rs");
+    let roster = include_str!("../../ui/src/board/roster.rs");
     let paragraph = roster.split("A turn can run in stages.").nth(1).expect("the stage paragraph");
     let app = booted(STAGED, AnswersThenHangs::with(&["OUTCOME — the file exists."]));
     run(&app, "write index.md");

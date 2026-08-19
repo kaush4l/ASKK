@@ -30,7 +30,7 @@ pub(crate) fn Button(
     submit: Option<bool>,
     disabled: Option<bool>,
     onclick: Option<EventHandler<MouseEvent>>,
-    /// The tablist's arrow keys (`tabs.rs`). Optional so nothing else pays
+    /// The tablist's arrow keys (`shell/agent_switcher.rs`). Optional so nothing else pays
     /// for it.
     onkeydown: Option<EventHandler<KeyboardEvent>>,
     /// `id`, `role`, `aria-selected`, `aria-controls`, `aria-expanded`,

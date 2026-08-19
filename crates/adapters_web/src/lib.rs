@@ -12,25 +12,19 @@ pub mod catalogue;
 mod endpoint;
 mod error;
 mod idb;
-mod idb_kv;
-mod idb_bridge;
 mod leftovers;
 mod model;
 pub mod ondevice;
-mod overrides;
-mod wire;
 mod ports;
 mod roster;
-mod settings;
-mod spawn;
 mod seam;
-mod warmth;
+mod settings;
+mod wire;
 mod worker;
 mod workers;
 
-pub use c2w::C2wWorkspace;
+pub use c2w::{prewarm, warmth, C2wWorkspace, Warmth};
 pub use leftovers::{drop_engine_setting, drop_workspace_leftover, workspace_leftover, Leftover};
-pub use warmth::{prewarm, warmth, Warmth};
 pub use endpoint::Endpoint;
 pub use error::WebError;
 pub use idb::IdbStore;
@@ -77,12 +71,71 @@ fn js_err(e: impl std::fmt::Debug) -> JsValue {
     JsValue::from_str(&format!("{e:?}"))
 }
 
+/// WHAT THIS BROWSER MAY BE POINTED AT: the catalogue as shipped, plus an
+/// on-device entry where this browser has one, plus the user's own layer on
+/// top — in that order, because an override must land on whatever this
+/// deploy's file says. Returns the SHIPPED bytes, which are what a sub-agent's
+/// Worker is handed: Chrome does not offer the Prompt API inside a Worker, so
+/// an on-device entry there would be an entry that always fails.
+async fn offered_catalogue(model: &FetchModel, store: &IdbStore) -> String {
+    let models_json = assets::fetch_models().await.unwrap_or_default();
+    if !models_json.is_empty() {
+        model.set_catalogue(&models_json);
+    }
+    if let Some(entry) = ondevice::probe().await {
+        model.add_catalogue(&entry);
+    }
+    if let Ok(Some(raw)) = kernel::StorePort::kv(store).get(model.profile_key()).await {
+        model.load_profile(&raw);
+    }
+    models_json
+}
+
+/// The brokered net, carrying the one destination this build can reach.
+///
+/// THE ALLOWLIST IS BUILT FROM THE SETTING, never from a constant: an unset
+/// search endpoint is an empty list, and an empty list denies — which is what
+/// `web_search` turns into the sentence naming Settings (CLAUDE.md §17: a
+/// network allowlist is the user's gate, so this build ships the capability
+/// and not the destination).
+fn search_net(model: &FetchModel) -> Rc<FetchNet> {
+    let net = Rc::new(FetchNet::new());
+    net.allow(kernel::SEARCH_ENDPOINT, &model.search_url());
+    net
+}
+
+/// Bring the booted app to life: install the agent files, restore this page's
+/// own conversation from its log, then start a Worker for every OTHER agent.
+/// In that order, because a Worker is handed the roster at boot and the
+/// roster is not complete until both the shipped files and the ones this
+/// browser AUTHORED are in it. Returns those merged bytes.
+async fn wake_roster(
+    app: &mut core::App,
+    agents: &AgentWorkers,
+    model: &FetchModel,
+    models_json: &str,
+) -> Result<String, JsValue> {
+    // Agents are data fetched from `public/agents/`, not code compiled in:
+    // built-ins first so a project agent of the same name replaces one.
+    core::install_agents(app, assets::fetch_agents().await);
+    let files_json = serde_json::to_string(&core::agent_files(app)).unwrap_or_else(|_| "[]".into());
+    // This page's agent holds its conversation across a reload the way every
+    // sub-agent now does — from its own log, not from the transcript the
+    // screen happens to show (increment 08).
+    core::restore_log(app).await.map_err(js_err)?;
+    // Started at boot so the board is honest on first paint.
+    let names: Vec<String> = core::agent_names(app);
+    let profile_json = model.profile_json();
+    agents.spawn(&names, core::ENTRY_AGENT, &files_json, models_json, &profile_json);
+    Ok(files_json)
+}
+
 #[wasm_bindgen]
 impl WebApp {
     /// The composition root: construct the browser ports (IndexedDB store,
     /// fetch model/net brokers, real clock, WebCrypto rng), inject them,
-    /// run `core::boot` (migrations, event replay, built-in registration).
-    /// The ONLY place adapters meet the core.
+    /// run `core::boot` (migrations, event replay, built-in registration),
+    /// then bring the roster up. The ONLY place adapters meet the core.
     pub async fn boot() -> Result<WebApp, JsValue> {
         let store = Rc::new(IdbStore::open("harness").await.map_err(js_err)?);
         // Opened by the page and by every Worker: a space that lived in this
@@ -90,43 +143,15 @@ impl WebApp {
         let spaces = Rc::new(IdbStore::open(worker::SPACES_DB).await.map_err(js_err)?);
         let model = Rc::new(FetchModel::new("config/keys/"));
         let agents = Rc::new(AgentWorkers::none());
-        // The shipped catalogue FIRST, then the user's layer over it: an
-        // override must land on top of whatever this deploy's file says.
-        let models_json = assets::fetch_models().await.unwrap_or_default();
-        if !models_json.is_empty() {
-            model.set_catalogue(&models_json);
-        }
-        // …AND ONE ENTRY THAT IS NOT IN THE FILE, because it is not the same
-        // in every browser (I15). Where this browser has its own on-device
-        // model, it joins the catalogue here, before the user's layer goes on;
-        // where it does not, there is no such entry to pick and nothing on
-        // screen mentions it. Sub-agents are NOT given it: `AgentWorker::boot`
-        // gets the file alone, and Chrome does not offer the Prompt API inside
-        // a Worker, so an entry there would be an entry that always fails.
-        if let Some(entry) = ondevice::probe().await {
-            model.add_catalogue(&entry);
-        }
-        // The user's configured endpoint, restored before the first turn.
-        if let Ok(Some(raw)) = kernel::StorePort::kv(store.as_ref())
-            .get(model.profile_key())
-            .await
-        {
-            model.load_profile(&raw);
-        }
-        // THE ALLOWLIST IS BUILT FROM THE SETTING, never from a constant: an
-        // unset search endpoint is an empty list, and an empty list denies —
-        // which is what `web_search` turns into the sentence naming Settings
-        // (CLAUDE.md §17: a network allowlist is the user's gate, so this
-        // build ships the capability and not the destination).
-        let net = Rc::new(FetchNet::new());
-        net.allow(kernel::SEARCH_ENDPOINT, &model.search_url());
+        let models_json = offered_catalogue(&model, store.as_ref()).await;
+        let net = search_net(&model);
         let ports = core::Ports {
             model: Rc::clone(&model) as Rc<dyn kernel::ModelPort>,
             store: Rc::clone(&store) as Rc<dyn kernel::StorePort>,
             net: Rc::clone(&net) as Rc<dyn kernel::NetPort>,
             clock: Rc::new(BrowserClock),
             rng: Rc::new(BrowserRng),
-            spaces: spaces as Rc<dyn kernel::KvStore>,
+            spaces: Rc::clone(&spaces) as Rc<dyn kernel::KvStore>,
             // The Linux, not booted. ONE ENGINE, NOT A CHOICE: container2wasm
             // is an image this project builds and serves itself, which is the
             // whole reason it is the only one — nothing here streams a disk
@@ -135,29 +160,7 @@ impl WebApp {
             agents: Rc::clone(&agents) as Rc<dyn kernel::AgentPort>,
         };
         let mut app = core::boot(ports).await.map_err(js_err)?;
-        // Agents are data fetched from `public/agents/`, not code compiled in:
-        // built-ins first so a project agent of the same name replaces one.
-        let files = assets::fetch_agents().await;
-        core::install_agents(&mut app, files);
-        // …merged with whatever this browser AUTHORED, which the replayed log
-        // already holds (increment 11): a Worker boots from the same roster the
-        // page runs, or `main` could not delegate to an agent written here.
-        let files_json =
-            serde_json::to_string(&core::agent_files(&app)).unwrap_or_else(|_| "[]".into());
-        // This page's agent holds its conversation across a reload the way
-        // every sub-agent now does — from its own log, not from the transcript
-        // the screen happens to show (increment 08).
-        core::restore_log(&mut app).await.map_err(js_err)?;
-        // Every agent that is not this page gets its own Worker (Python
-        // `AgentThread`), started at boot so the board is honest on first paint.
-        let names: Vec<String> = core::agent_names(&app);
-        agents.spawn(
-            &names,
-            core::ENTRY_AGENT,
-            &files_json,
-            &models_json,
-            &model.profile_json(),
-        );
+        let files_json = wake_roster(&mut app, &agents, &model, &models_json).await?;
         Ok(WebApp {
             app: Rc::new(RefCell::new(app)),
             model,

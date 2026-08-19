@@ -41,42 +41,60 @@ pub fn unresolved_tools(spec: &AgentSpec, peers: &[AgentSpec]) -> Vec<String> {
 }
 
 /// The allowlist applied: what it resolved to, and what it did not.
+///
+/// `engine: base` IS THE EMPTY TOOLBOX (increment 19). The card has said
+/// "answers in one reply, without calling tools" since R2-16 and nothing
+/// enforced it: the summarizer's `tools: []` read as EVERY built-in, so the one
+/// shipped `base` agent was the most capable one in the tree. `spec.rs` refuses
+/// `base` with a non-empty list, so nothing is silently dropped here.
+///
+/// An EMPTY list keeps its meaning — "everything this agent could have locally"
+/// — and the space's tools ARE local capability, so they come with it. That
+/// stays safe because `spec.rs` refuses a malformed `tools:` line rather than
+/// emptying it: an empty list is a choice somebody wrote, never a line that
+/// failed to parse.
 fn resolve(spec: &AgentSpec, peers: &[AgentSpec]) -> (Vec<Tool>, Vec<String>) {
-    // `engine: base` IS THE EMPTY TOOLBOX (increment 19). The card has said
-    // "answers in one reply, without calling tools" since R2-16 and nothing
-    // enforced it: the summarizer's `tools: []` read as EVERY built-in, so the
-    // one shipped `base` agent was the most capable one in the tree. `spec.rs`
-    // refuses `base` with a non-empty list, so nothing is silently dropped here.
     if spec.engine == crate::spec::ENGINE_BASE {
         return (Vec::new(), Vec::new());
     }
-    let builtins = builtin_tools().tools;
-    // A space's three tools are attached to whoever NAMES the space, on top of
-    // the declared list rather than inside it: writing them out under `space:`
-    // would only be a second place to keep in step (Python `utils.load_agent`).
-    // …and its WORKSPACE tools with them (increment 10): the folder is the
-    // space's, so the capability to build in it arrives with the space and
-    // with nothing else. No space, no workspace — default deny (ADR-006).
-    let space = match crate::space::Space::named(&spec.space) {
+    let offered = [builtin_tools().tools, with_the_space(spec)].concat();
+    match spec.tools.is_empty() {
+        true => (offered, Vec::new()),
+        false => allowlisted(spec, peers, &offered),
+    }
+}
+
+/// What NAMING A SPACE brings with it. A space's three tools are attached to
+/// whoever names it, rather than having to be written out under `space:` too,
+/// which would only be a second place to keep in step (Python
+/// `utils.load_agent`) — and its WORKSPACE tools with them (increment 10): the
+/// folder is the space's, so the capability to build in it arrives with the
+/// space and with nothing else. No space, no workspace — default deny
+/// (ADR-006).
+fn with_the_space(spec: &AgentSpec) -> Vec<Tool> {
+    match crate::space::Space::named(&spec.space) {
         Some(_) => [crate::space::space_tools(), crate::workspace::workspace_tools()].concat(),
         None => Vec::new(),
-    };
-    // An EMPTY list keeps its meaning — "everything this agent could have
-    // locally" — and the space's tools ARE local capability, so they come with
-    // it. That stays safe because `spec.rs` refuses a malformed `tools:` line
-    // rather than emptying it: an empty list is a choice somebody wrote, never
-    // a line that failed to parse.
-    if spec.tools.is_empty() {
-        return ([builtins, space].concat(), Vec::new());
     }
-    // A NON-EMPTY list is the whole allowlist, so the space is what makes its
-    // tools AVAILABLE TO NAME and not a set appended after the filter. Appended,
-    // a read-only agent that can still see the filesystem would be
-    // unrepresentable: `tools: [read_file, list_files]` would silently also
-    // grant `exec` and `write_file`. The allowlist IS the mode (ALIGNMENT §1).
+}
+
+/// A NON-EMPTY `tools:` list is the WHOLE allowlist, so `offered` is what makes
+/// a tool available to name and not a set appended after the filter. Appended,
+/// a read-only agent that can still see the filesystem would be
+/// unrepresentable: `tools: [read_file, list_files]` would silently also grant
+/// `exec` and `write_file`. The allowlist IS the mode (ALIGNMENT §1).
+///
+/// A name that is neither an offered tool nor a peer agent resolves to nothing
+/// and is returned as such; see [`unresolved_tools`] for why it is reported
+/// rather than refused.
+fn allowlisted(
+    spec: &AgentSpec,
+    peers: &[AgentSpec],
+    offered: &[Tool],
+) -> (Vec<Tool>, Vec<String>) {
     let (mut tools, mut unresolved): (Vec<Tool>, Vec<String>) = (Vec::new(), Vec::new());
     for name in &spec.tools {
-        if let Some(t) = builtins.iter().chain(space.iter()).find(|t| &t.name == name) {
+        if let Some(t) = offered.iter().find(|t| &t.name == name) {
             tools.push(t.clone());
         } else if let Some(p) = peers.iter().find(|p| &p.name == name && p.name != spec.name) {
             tools.push(Tool::from_engine(&p.name, &p.description));

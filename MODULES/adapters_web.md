@@ -1,7 +1,8 @@
 # Module: adapters_web
 
 **One-sentence purpose:** The only browser-aware crate: wasm-bindgen port implementations plus the
-composition root that boots `core` and exposes the seam to `transport.js`.
+composition root that boots `core` and exposes the seam to `ui` in-process
+(`crates/adapters_web/src/seam.rs`).
 
 **Invariants upheld:** I1/I2 (fetch only to configured endpoints; storage is the browser's),
 I5 (the JS side stays a dumb transport because this crate answers it in full), I6 (credentials
@@ -27,8 +28,8 @@ Worker messaging. Each is wrapped once, behind a kernel port.
 - `WebError` — the residue browser failures that fit no kernel port error.
 
 **Depends on / Depended on by:** `kernel`, `core`, wasm-bindgen (=0.2.121), js-sys, web-sys —
-the layering check asserts these three appear in THIS crate's closure only / `web/transport.js`
-(not a crate) drives it.
+the layering check asserts these three appear in THIS crate's closure only. `ui` drives it by
+calling `WebApp::handle` (`crates/adapters_web/src/seam.rs`) directly — there is no JS transport.
 
 **Owns:** browser API translation, the Wasm entry, credential attachment, allowlist enforcement,
 persistence requests (`navigator.storage.persist()`).

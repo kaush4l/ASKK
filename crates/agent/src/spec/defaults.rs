@@ -1,0 +1,32 @@
+//! WHAT AN ABSENT KEY MEANS — the four numbers an agent file may override, in
+//! one audited place, so "what happens when the line is missing?" is one file
+//! to read rather than four scattered literals. They are functions and not
+//! consts because these are the paths `#[serde(default = …)]` names, on
+//! `AgentSpec` and on the state restored from a log alike.
+
+/// How far a turn may go before the machine stops it. Sixty-four, not four:
+/// four rounds cannot finish any real task — read a file, run a build, read
+/// the errors, edit, build again is already five — and the number exists to
+/// stop a MODEL LOOPING, not to stop an agent working. It is still a hard
+/// deterministic wall, and every agent may set its own.
+pub(crate) fn default_max_rounds() -> u16 {
+    64
+}
+
+/// Python `Engine.compact_at` / `keep_recent` defaults.
+pub(crate) fn default_compact_at() -> usize {
+    75
+}
+
+pub(crate) fn default_keep_recent() -> usize {
+    24
+}
+
+/// How many times one turn may walk the declared stage list (`crate::passes`).
+/// ONE, and one is not a placeholder: one pass is byte-for-byte the turn this
+/// build has always taken, which is the same compatibility rule `stages:` ships
+/// with. A file that wants the loop asks for it, and `main` deliberately does
+/// not — a greeting must not cost five passes.
+pub(crate) fn default_passes() -> u16 {
+    1
+}

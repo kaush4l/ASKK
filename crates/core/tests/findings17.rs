@@ -11,7 +11,7 @@
 //! *"A product whose whole promise is 'give it a task and walk away' cannot be
 //! trusted until its ending is true."*
 //!
-//! The endings are enumerated in `core::ending`, off ONE fact (`agent::ENDED`)
+//! The endings are enumerated in `core::failure::ending`, off ONE fact (`agent::ENDED`)
 //! that the pure step function writes at every ending it owns. These tests
 //! assert on the projections all three surfaces read: the board row's own
 //! attributes — which is literally what the Dashboard card renders — and the
@@ -83,7 +83,7 @@ fn body(app: &Rc<RefCell<App>>, path: &str) -> String {
     handle(&mut app.borrow_mut(), Request::get(path)).body
 }
 
-/// One `data-*` value off the row, exactly as `runstatus::cell` reads it: the
+/// One `data-*` value off the row, exactly as `ui::board::read_attrs::cell` reads it: the
 /// Dashboard card has no other source, so asserting here asserts the card.
 fn cell(board: &str, attr: &str) -> String {
     let at = board.find("data-agent=\"main\"").expect("main has a row");

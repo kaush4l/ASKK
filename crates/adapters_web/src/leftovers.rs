@@ -18,7 +18,7 @@
 //! dropping a folder somebody trusted us with would be exactly the failure
 //! I11 names. So this module does not delete it, and it does not stay quiet
 //! about it either — the two options a silent build picks between. It REPORTS
-//! that the database is there, and `ui/engine.rs` says so on the card that
+//! that the database is there, and `ui/settings/linux_engine.rs` says so on the card that
 //! used to carry the engine choice, with a control that removes it on a press.
 //! The person decides; the page tells them there is something to decide.
 //!

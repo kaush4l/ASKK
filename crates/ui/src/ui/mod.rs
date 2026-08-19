@@ -39,13 +39,13 @@ pub(crate) use form::Form;
 pub(crate) use select::SelectField;
 pub(crate) use skeleton::Skeleton;
 
-/// Move focus to an element by id. The roving tabindex in `tabs.rs` needs it
+/// Move focus to an element by id. The roving tabindex in `shell/agent_switcher.rs` needs it
 /// (the newly selected tab is the only one in the tab order, so focus has to
 /// follow it), and so does every `EmptyState` whose one action is "go and put
 /// something in this region" — the composer and the agent-name field are the
 /// two places anything on this page starts.
 ///
-/// It lived in `tabs.rs` as a private fn; it is here because it now has two
+/// It lived in `shell/agent_switcher.rs` as a private fn; it is here because it now has two
 /// callers, and a second copy is how the first one starts drifting.
 pub(crate) fn focus(id: &str) {
     let Some(element) = web_sys::window()
@@ -120,7 +120,7 @@ pub(crate) fn show_newest(id: &str) {
 
 /// …ONCE THE DOM HAS CAUGHT UP, and on every change rather than on the ones a
 /// person caused (R14-P1-5). Both traces render the log oldest-first — the rule
-/// `core::scrollrows` states — and they still read in opposite directions,
+/// `core::terminal::row_selection` states — and they still read in opposite directions,
 /// because the Tool trace scrolled to its newest row whenever its projection
 /// changed while the Commands pane scrolled only for a command the PERSON
 /// typed: `scrollTop: 0` over 1416px of scrollback after a reload, measured, so

@@ -1,6 +1,11 @@
-//! One model reply, parsed against one phase's contract. Its own file so
-//! `step.rs` stays inside the 200-line rule (I12) and so contract parsing is
-//! unit-testable against recorded model output without driving the machine.
+//! ONE MODEL REPLY, READ — the raw text a model sent back, turned into the
+//! typed [`ParsedReply`] the machine's exit table is exhaustive over, plus the
+//! one thing this can say about text that is neither a call nor an answer.
+//!
+//! Apart from `step.rs` because it is the only reading of a reply anywhere:
+//! `step` decides what a parsed reply MEANS for the turn, and this decides what
+//! the reply IS. That also makes it testable against recorded model output
+//! without driving the machine, which is how every case here was found.
 
 use crate::calls::{has_calls, is_ident, is_ident_start, parse_batches, skip_ws, Call};
 use crate::error::AgentError;

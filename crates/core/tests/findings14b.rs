@@ -2,7 +2,7 @@
 //!
 //! Both are one shape, the shape thirteen rounds keep finding: a projection
 //! reading the append-only log without a boundary its neighbour already
-//! applies. P0-3 is the tool trace reading `filelist::missing` — a
+//! applies. P0-3 is the tool trace reading `files::listing::missing` — a
 //! FILE-LISTING predicate — over any tool's output, so a shell line inside a
 //! failed `exec` handed the row a folder's empty state. P1-3 is the Files pane
 //! gating its refresh on the AGENT's status stamp, which a person typing a

@@ -25,7 +25,7 @@ use kernel::{EventKind, ToolId};
 
 use crate::effect::Effect;
 use crate::error::AgentError;
-use crate::yaml::unquote;
+use crate::spec::yaml::unquote;
 
 /// The two tools. Named for the pair they stand beside — `list_agents` and
 /// `read_agent` — because a tool the model has to learn a second convention for

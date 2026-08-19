@@ -5,62 +5,32 @@ use std::rc::Rc;
 
 use adapters_web::WebApp;
 use dioxus::prelude::*;
-mod adopt;
-mod agentfile;
-mod agentkeys;
-mod artifacts;
 mod authoring;
 mod board;
-mod boardcell;
+mod centre;
 mod chat;
 mod composer;
-mod credit;
-mod crumbs;
-mod dash;
-mod endpoint;
-mod endpointform;
-mod engine;
-mod examples;
-mod fileedit;
 mod files;
-mod frame;
 mod gallery;
-mod launch;
-mod listing;
-mod meter;
-mod processes;
-mod procrows;
-mod rail;
-mod receipt;
-mod recover;
-mod roster;
-mod route;
-mod runstatus;
-mod stage;
-mod statusbar;
-mod trouble;
-mod tabs;
-mod stopcommand;
-mod terminal;
-mod thread;
-mod tiles;
-mod tools;
-mod turn;
-mod wait;
-mod watch;
+mod proc;
 mod settings;
-mod settings_view;
-mod skin;
+mod shell;
 mod space;
-mod spacegap;
+mod terminal;
+mod trace;
 mod ui;
-mod views;
+
+// The frame's parts and the one settings read the shell itself makes: named
+// here so the layout below reads as regions, not as paths.
+use settings::endpoint;
+use shell::{boot_reads, dash, heartbeat, rail, route, status_pills, statusbar, views};
 
 fn main() {
     if web_sys::window().is_none() {
         return;
     }
-    adapters_web::drop_engine_setting(); // the deleted picker's orphaned bit (`engine.rs`)
+    // The deleted picker's orphaned bit (`settings::linux_engine`).
+    adapters_web::drop_engine_setting();
     dioxus::launch(shell);
 }
 
@@ -86,7 +56,7 @@ fn shell() -> Element {
     let endpoint_set = use_signal(|| false);
     let tick = use_signal(|| 0u32); // "something moved": a turn, or a save
     let tokens = use_signal(|| 0u64); // off `x-tokens`, for the meter
-    let fleet = trouble::Fleet::new(); // the chrome's two health pills
+    let fleet = status_pills::Fleet::new(); // the chrome's two health pills
     let (nav_open, rail_open) = (use_signal(dash::wide), use_signal(dash::wide));
     let chosen = use_signal(|| false); // width leads until a press (R2-3)
     use_hook(|| dash::follow_width(nav_open, rail_open, chosen));
@@ -100,11 +70,11 @@ fn shell() -> Element {
     // …and the arriving VIEW starts where it should be read from (R2-1).
     use_effect(move || route::land(view()));
     use_effect(move || {
-        adopt::adopt(&booted.read(), web, fragment, agents, failure, loaded, authored)
+        boot_reads::adopt(&booted.read(), web, fragment, agents, failure, loaded, authored)
     });
     use_effect(move || {
         let _ = tick();
-        adopt::watch_agents(web, agents, loaded, authored, selected);
+        boot_reads::watch_agents(web, agents, loaded, authored, selected);
     });
     // The roster's fingerprint: a memo, so it moves on a REAL change (11b).
     let roster = use_memo(move || agents());
@@ -141,7 +111,7 @@ fn shell() -> Element {
             statusbar::StatusStrip {
                 ready, selected, agents, fleet, tokens, endpoint: endpoint.clone(),
             }
-            frame::Heartbeat { web, tick, tokens, fleet }
+            heartbeat::Heartbeat { web, tick, tokens, fleet }
             // ABSENT, not disabled (R2-12); `views::rail_noun` has R17-P1-9.
             if has_rail() {
                 div { class: "switches",
@@ -153,7 +123,7 @@ fn shell() -> Element {
         }
         // A FAILED TURN GETS A ROW, NOT A SLOT (R8-2): in the strip it evicted
         // the endpoint and the spend, the two facts the failure needs.
-        if ready { trouble::TroublePill { fleet, view, tick } }
+        if ready { status_pills::TroublePill { fleet, view, tick } }
         main {
             if !failure.read().is_empty() {
                 p { class: "error", "core failed to boot: {failure}" }
@@ -186,7 +156,7 @@ fn shell() -> Element {
                     // in the tab order (R7-12, R7-13), at its foot.
                     statusbar::StatusFold { tokens, endpoint: endpoint::joined(&endpoint) }
                 }
-                stage::Stage {
+                centre::Stage {
                     web, endpoint_set, tick, tokens, roster, agents, loaded, authored,
                     selected, fragment, view,
                 }

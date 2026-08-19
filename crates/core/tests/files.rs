@@ -1,9 +1,7 @@
 //! The files pane on the host (I3): opening a folder and opening a file are
 //! two different tools, the pane projects whichever ran last, and a failure is
-//! shown rather than swallowed. (I3): a provider's accounting
-//! block becomes a `ModelCalled` fact, and the chat projection carries the
-//! running total as `x-tokens` — which is the only thing the header in the
-//! frame reads.
+//! shown rather than swallowed. A sub-agent's spend lands on the same page as
+//! `x-tokens`, which is the only thing the header in the frame reads.
 //!
 //! It is a projection of the log and nothing else (I8): no counter in a
 //! signal, no total kept beside the events it came from.
@@ -27,16 +25,6 @@ fn block_on<F: Future>(fut: F) -> F::Output {
         }
     }
     panic!("future not ready under in-memory ports");
-}
-
-/// A completion body with a `usage` block, the shape every OpenAI-compatible
-/// server sends. `text_reply` deliberately has none — a provider that reports
-/// nothing is the other half of this test.
-fn reply_costing(text: &str, prompt: u32, completion: u32) -> String {
-    format!(
-        "{{\"choices\":[{{\"message\":{{\"role\":\"assistant\",\"content\":\"{text}\"}}}}],\
-          \"usage\":{{\"prompt_tokens\":{prompt},\"completion_tokens\":{completion}}}}}"
-    )
 }
 
 /// An agent whose file names no space — the one case with no folder at all.

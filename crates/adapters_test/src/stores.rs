@@ -1,5 +1,6 @@
-//! The in-memory stores (`MemKv`/`MemBlob`/`MemStore`) — split from lib.rs
-//! to hold the 200-line rule.
+//! The stores that live for one test: `MemKv` for keys, `MemBlob` for bytes,
+//! and `MemStore` pairing them into the `StorePort` a pure crate is given
+//! where the browser would hand it IndexedDB.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

@@ -18,7 +18,7 @@ pub const ENTRY_AGENT: &str = "main";
 /// entry point). A struct, not five parameters, so adding a port later
 /// touches the composition roots and nothing between.
 ///
-/// PROVISIONAL (G4 discovery): `Rc`, not the frozen `Box`. `execute_effect`
+/// PROVISIONAL (G4 discovery): `Rc`, not the frozen `Box`. `execute_port_effect`
 /// must return a `'static` future — a future borrowing `App` across a model
 /// await would wedge the whole seam for the duration of the fetch (every
 /// poll round-trip would hit a live `&mut App`). Cloning an `Rc` handle out
@@ -64,9 +64,9 @@ pub struct App {
     /// This agent's OWN log — the Python's `agents/<name>/log.txt` — as writes
     /// waiting for the store, in the order they must happen. One ordered queue
     /// is what makes "drain before the rewrite" true by construction.
-    pub(crate) unlogged: Vec<crate::logbook::LogOp>,
+    pub(crate) unlogged: Vec<crate::log::decisions::LogOp>,
     /// How much of the window the log already holds.
-    pub(crate) logbook: crate::logbook::Logbook,
+    pub(crate) logbook: crate::log::decisions::Logbook,
     /// The agents loaded from `public/agents/` (plus the compiled-in
     /// built-ins they may override). Data, not code: installed after boot by
     /// `agents::install_agents`, replaced wholesale when the files change.
@@ -80,7 +80,7 @@ pub struct App {
     /// can tell "nothing changed" from "an agent was written" without
     /// re-installing on every seam round-trip. An empty author is the person at
     /// the keyboard; anything else is the agent that wrote it (11b walk).
-    pub(crate) authored: Vec<crate::authored::Authored>,
+    pub(crate) authored: Vec<crate::agents::authored::Authored>,
     /// One sentence per `agent.md` that could not be read. Skipping a broken
     /// file is correct; staying silent about it is not (`ux-walker`), so the
     /// Agents panel projects this list beside what did load.
@@ -107,7 +107,7 @@ pub struct App {
     /// as `running` one field above: an in-flight call has no fact to project
     /// until it returns, and for a command that never returns that was the
     /// whole seven minutes.
-    pub(crate) calling: Vec<crate::inflight::Inflight>,
+    pub(crate) calling: Vec<crate::trace::inflight::Inflight>,
     /// How much of the log was REPLAYED at boot — every entry before this index
     /// happened on an earlier page load, and therefore in a Linux this page does
     /// not have. Set once, by `boot`, and never moved: it is the only thing that

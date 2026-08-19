@@ -79,7 +79,7 @@ async fn drop_request_noise(store: &dyn StorePort) -> Result<(), CoreError> {
             .map(|e| matches!(e.kind, EventKind::RequestHandled { .. }))
             .unwrap_or(false);
         if !noise {
-            // The SAME key format `logs::record` writes (`{:08}`): two widths
+            // The SAME key format `log::store::record` writes (`{:08}`): two widths
             // sort differently as strings, and these keys are read back in key
             // order to rebuild the log.
             kept.push((format!("events/{:08}", kept.len()), raw));
@@ -153,7 +153,7 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
             pending: Vec::new(),
             unpersisted: Vec::new(),
             unlogged: Vec::new(),
-            logbook: crate::logbook::Logbook::default(),
+            logbook: crate::log::decisions::Logbook::default(),
             agents: Vec::new(),
             files: Vec::new(),
             authored: Vec::new(),

@@ -7,7 +7,10 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{IdbDatabase, IdbKeyRange, IdbRequest, IdbTransactionMode};
 
-use crate::idb_bridge::{await_request, err};
+mod bridge;
+mod kv;
+
+use bridge::{await_request, err};
 
 use kernel::{BlobStore, BoxFuture, KvStore, StoreError, StorePort};
 

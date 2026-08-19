@@ -11,17 +11,27 @@ integration tests have been over 200 lines since the walking skeleton
 that it governs source. Widening it here would be a new rule, not an enforced
 one.
 
-THE FILE CHECK IS THE GATE; THE FUNCTION CHECK IS `--functions`, OFF BY
-DEFAULT. Not because the scan is unsound — it is a brace-depth walk over
-source with comments and literals blanked out, it needs no `syn` dependency,
-and every one of the 74 functions it currently reports is a real function over
-40 lines, hand-checked against the source. It is off because a gate that fails
-on the tree it ships with is not a gate. Turning it on is a separate piece of
-work: 74 functions across 8 crates, most of them one `rsx!` or one
-`FragmentBuilder` chain, and splitting those is a judgement call per call site,
-not a mechanical one. Run `--functions` to see the list.
+BOTH HALVES OF I12 ARE GATED. The file rule is absolute: no file over 200
+lines, ever. The function rule is gated against a checked-in baseline,
+`scripts/function-baseline.txt`, which lists every function already over 40
+lines at the moment the gate was turned on. A function over 40 lines that is
+NOT in the baseline fails the run, so the debt cannot grow. A baseline entry
+that no longer violates ALSO fails the run, with instructions to delete the
+line — which is what makes the baseline shrink-only: `--bless` will remove
+entries and refuses to add them.
 
-Exit 0 = I12's file rule holds for Rust. Any violation exits 1.
+The baseline is keyed on `path::name`, not on a line number, because line
+numbers churn on every edit and a gate that fails on unrelated churn gets
+disabled. The cost of that choice is real and worth stating: renaming a file
+or a function drops its entry, and the function then reads as new debt. That
+is the correct default — a rename is a chance to fix it — but it means a
+large structural move must be followed by a deliberate re-blessing.
+
+`--functions` lists every offender, baseline or not, and is the report the
+next person shrinking this list should read.
+
+Exit 0 = I12 holds for Rust: the file rule outright, the function rule against
+a baseline that only shrinks. Any violation exits 1.
 """
 
 import re
@@ -124,12 +134,67 @@ def lines_in(src: str) -> int:
     return src.count("\n")
 
 
+BASELINE = ROOT / "scripts" / "function-baseline.txt"
+
+
+def read_baseline() -> set:
+    """The `path::name` keys of functions allowed to remain over 40 lines."""
+    if not BASELINE.exists():
+        return set()
+    return {
+        line.strip()
+        for line in BASELINE.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+
+
+def offenders(files):
+    """`{path::name}` -> longest span, for every function over MAX_FN."""
+    found = {}
+    for path in files:
+        rel = path.relative_to(ROOT)
+        for line, name, length in long_fns(path, path.read_text(encoding="utf-8")):
+            key = f"{rel}::{name}"
+            found[key] = max(found.get(key, 0), length)
+    return found
+
+
+def bless(files) -> int:
+    """Rewrite the baseline, removing fixed entries and REFUSING to add new ones.
+
+    The one exception is the file's first creation — turning the gate on has to
+    start somewhere. After that the list only shrinks.
+    """
+    current, allowed = offenders(files), read_baseline()
+    first_time = not BASELINE.exists()
+    added = [] if first_time else sorted(set(current) - allowed)
+    if first_time:
+        allowed = set(current)
+    if added:
+        print("REFUSING to bless: these are new violations, not existing debt.")
+        for key in added:
+            print(f"  {key} ({current[key]} lines)")
+        print("Shrink them, or shrink something else first. The baseline only shrinks.")
+        return 1
+    kept = sorted(set(current) & allowed)
+    BASELINE.write_text(
+        "# Functions over 40 lines (I12) that predate the gate. This list only\n"
+        "# shrinks: `--bless` removes fixed entries and refuses to add new ones.\n"
+        + "".join(f"{key}\n" for key in kept),
+        encoding="utf-8",
+    )
+    print(f"blessed: {len(allowed)} -> {len(kept)} baselined functions")
+    return 0
+
+
 def main():
     functions = "--functions" in sys.argv[1:]
     files = sorted(p for p in ROOT.glob("crates/*/src/**/*.rs"))
     if not files:
         print("FAIL: no Rust sources found under crates/*/src")
         return 1
+    if "--bless" in sys.argv[1:]:
+        return bless(files)
 
     failures = []
     for path in files:
@@ -138,9 +203,26 @@ def main():
         count = lines_in(src)
         if count > MAX_FILE:
             failures.append(f"{rel}: {count} lines (max {MAX_FILE})")
-        if functions:
-            for line, name, length in long_fns(path, src):
-                failures.append(f"{rel}:{line}: fn {name} is {length} lines (max {MAX_FN})")
+
+    current = offenders(files)
+    if functions:
+        # Report mode: every offender, baselined or not.
+        for key in sorted(current):
+            path, name = key.rsplit("::", 1)
+            failures.append(f"{path}: fn {name} is {current[key]} lines (max {MAX_FN})")
+    else:
+        allowed = read_baseline()
+        for key in sorted(set(current) - allowed):
+            path, name = key.rsplit("::", 1)
+            failures.append(
+                f"{path}: fn {name} is {current[key]} lines (max {MAX_FN}) "
+                f"— NEW. Shrink it; the baseline does not grow."
+            )
+        for key in sorted(allowed - set(current)):
+            failures.append(
+                f"{key} is no longer over {MAX_FN} lines — delete its line from "
+                f"{BASELINE.relative_to(ROOT)} (or run --bless)."
+            )
 
     if failures:
         print("I12 SIZE CHECK FAILED")
@@ -149,8 +231,11 @@ def main():
         return 1
 
     widest = max(lines_in(p.read_text(encoding="utf-8")) for p in files)
-    said = " + functions" if functions else ""
-    print(f"size OK{said}: {len(files)} files under crates/*/src, longest {widest} lines")
+    baselined = len(read_baseline())
+    print(
+        f"size OK: {len(files)} files under crates/*/src, longest {widest} lines; "
+        f"no function over {MAX_FN} lines outside the {baselined}-entry baseline"
+    )
     return 0
 
 

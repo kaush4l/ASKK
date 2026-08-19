@@ -1,8 +1,7 @@
-//! WHAT A MODULE'S LOGIC IS HANDED. Split from `dispatch.rs`, which owns the
-//! routing and CONSTRUCTS one of these per invocation, so both hold the
-//! 200-line rule (I12).
+//! WHAT A MODULE'S LOGIC IS HANDED. `dispatch.rs` owns the routing and
+//! CONSTRUCTS one of these per invocation; this file is only its shape.
 //!
-//! The split is along the same line ADR-006 draws: this file is the SHAPE of a
+//! The line between them is the one ADR-006 draws: this file is the SHAPE of a
 //! module's capability context — what may be granted, and what every built-in
 //! may read — and `dispatch.rs` is the one place that decides, from a
 //! manifest's grants, which of it is `Some`. A field's doc comment is where the
@@ -63,7 +62,7 @@ pub struct Ctx {
     /// Workspace calls handed to the port and not yet answered (`App::calling`,
     /// R11-4). Oldest first: the workspace runs one at a time, so the head is
     /// the one everything else is queued behind.
-    pub calling: Vec<crate::inflight::Inflight>,
+    pub calling: Vec<crate::trace::inflight::Inflight>,
     /// What a Stop could do to the call in flight, asked of the engine this
     /// build was composed with (R11-1). A fact like `durable` and stated for
     /// the same reason: one engine really kills a command and the other can
@@ -72,7 +71,7 @@ pub struct Ctx {
     /// Agents with an utterance ACCEPTED but not yet pumped — `roster::accepted`'s
     /// window, widened to every agent. It lives in memory only, so a replayed
     /// log has none of it: that is exactly what tells a turn something is
-    /// driving from a turn a reload abandoned (12 walk, `transcript::driven`).
+    /// driving from a turn a reload abandoned (12 walk, `chat::fold::driven`).
     pub queued: Vec<String>,
     /// The loaded agent specs (increment 03) — a projection like `recent`.
     pub agents: Vec<agent::AgentSpec>,

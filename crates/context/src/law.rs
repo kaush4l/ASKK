@@ -1,10 +1,9 @@
 //! The paper's laws, as a checkable contract rather than a convention.
 //!
-//! Split from `assemble.rs` so both hold the 200-line rule (I12), and because
-//! deciding what the document IS and judging whether it is legal are two jobs.
-//! `assemble` is total and cannot fail; everything that could be wrong with a
-//! document is named here, one variant per rule, so a failure says which rule
-//! broke instead of "invalid document".
+//! Building the document and judging it are two jobs, and only the second one
+//! can fail: `assemble` is total, and everything that could be wrong with what
+//! it produced is named here, one rule at a time, so a rejection says WHICH
+//! rule broke instead of "invalid document".
 
 use crate::error::ContextError;
 use crate::types::{Document, Fidelity};

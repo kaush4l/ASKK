@@ -1,6 +1,6 @@
-//! The reader — `speechSynthesis` and nothing else. Split from `voice.rs` for
-//! the 200-line rule (I12), the same way `mic.rs` was: that file reads as a
-//! component, this one as the machine underneath it.
+//! The reader — `speechSynthesis` and nothing else, the same way `mic.rs` is
+//! the dictation machine and nothing else. `voice.rs` above the two reads as a
+//! component; these two read as the machines underneath it.
 //!
 //! TWO WAYS THIS CONTROL CAN LIE, AND BOTH ARE CLOSED HERE (I15).
 //!

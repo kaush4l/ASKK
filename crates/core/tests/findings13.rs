@@ -108,7 +108,7 @@ fn stopping_the_wait_does_not_make_the_board_say_the_run_finished() {
 
     // …AND THE RUN IS STILL THE RUN THE TRACE IS SHOWING. `data-status` is what
     // the board row's word and the Dashboard card's `finished` / `Read the
-    // reply` are both computed from (`boardrow`, `runstatus::live`).
+    // reply` are both computed from (`core::board::row`, `ui::board::read_attrs::live`).
     let board = body(&app, "/board");
     assert!(
         board.contains("data-status=\"working\""),

@@ -1,5 +1,5 @@
 //! Voice in, voice out — and the ONE place in this codebase that touches a
-//! browser speech API. It is a child of `composer.rs` because that is the only
+//! browser speech API. It is a child of `composer/mod.rs` because that is the only
 //! screen it appears on, and because a module nobody else can reach cannot
 //! spread (INVARIANTS.md, I5's written exception).
 //!

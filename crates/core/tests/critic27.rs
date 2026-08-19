@@ -10,7 +10,7 @@
 //!
 //! 27 branched on `role:`. That was the same class of mistake it was fixing —
 //! `scout` declares no role, is read-only by the identical allowlist, and kept
-//! the door — so the branch is now `origin::can`, read off the RESOLVED tools.
+//! the door — so the branch is now `agents::card_sentences::can`, read off the RESOLVED tools.
 //! The fixtures below are what that costs the old tests: `role:` no longer
 //! decides anything, so the pair that used to prove "role, not name" now proves
 //! "tools, not name and not role" — same fixtures, one with tools that act and

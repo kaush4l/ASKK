@@ -1,4 +1,4 @@
-//! The tool executor. The trace the user reads is `trace.rs`.
+//! The tool executor. The trace the user reads is `trace/pane.rs`.
 //!
 //! `agent::tools` DECLARES what exists (descriptors, usage lines, the refusal
 //! rules); this file is the one place a tool actually runs, exactly as
@@ -9,6 +9,11 @@
 //! Every call, its arguments, its result and its errors are recorded as
 //! `EventKind::ToolInvoked`, and the `/tools` route projects those events
 //! (I8) — that projection is the `ToolTrace` component's whole content.
+
+use std::cell::RefCell;
+use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
 
 use kernel::{CapabilityId, EventKind, ModuleId, Request, Response, ToolId, Version};
 use module::{DataSchema, Manifest, RouteSpec, Tier};
@@ -52,7 +57,7 @@ pub(crate) fn tools(req: &Request, ctx: &mut Ctx) -> Response {
         // …and WHOSE WORK. `x-app-activity: 1` asks for the file panes' own
         // polling as well as the agent's calls (R7-1); absent, this log holds
         // only what the agent did, which is what a log named for it should say.
-        ("GET", "/tools") => crate::trace::trace(
+        ("GET", "/tools") => crate::trace::pane::trace(
             ctx,
             match req.header("x-agent").unwrap_or_default() {
                 "" => &ctx.me,
@@ -64,21 +69,59 @@ pub(crate) fn tools(req: &Request, ctx: &mut Ctx) -> Response {
     }
 }
 
-/// Run ONE tool. Sync and total: every failure comes back as a result, never
-/// as an error return, because that text is what lets the model correct itself
-/// on the next pass (Python `core/tools.py`: "nothing here raises").
+/// One handler's future. Boxed because an `async fn` has no nameable type and
+/// a table has to hold all of them under one.
+type Running<'a> = Pin<Box<dyn Future<Output = Option<EventKind>> + 'a>>;
+
+/// What an entry in the table below IS: the three arguments every tool call
+/// carries, and `Option` because a handler may still decline a call it was
+/// routed (a space tool asked of an agent with no space) — the local table
+/// answers then, exactly as it did when this was a fallthrough chain.
+pub(crate) type ToolHandler = for<'a> fn(&'a Rc<RefCell<App>>, &'a ToolId, &'a str) -> Running<'a>;
+
+fn workspace<'a>(app: &'a Rc<RefCell<App>>, tool: &'a ToolId, args: &'a str) -> Running<'a> {
+    Box::pin(crate::workspace::gate::run(app, tool, args))
+}
+fn websearch<'a>(app: &'a Rc<RefCell<App>>, tool: &'a ToolId, args: &'a str) -> Running<'a> {
+    Box::pin(crate::websearch::run(app, tool, args))
+}
+fn space<'a>(app: &'a Rc<RefCell<App>>, tool: &'a ToolId, args: &'a str) -> Running<'a> {
+    Box::pin(crate::space::shared::run(app, tool, args))
+}
+
+/// The AWAITING tool table, the twin of `dispatch::builtin_entry`: tool name
+/// in, handler out, and a name with no entry here is a local tool that `run`
+/// below answers (or refuses, if it has no arm there either).
 ///
-/// ponytail: sync because every tool THIS TABLE holds is local (the clock, the
-/// loaded agents). A tool that needs I/O is tried before this one, in
-/// `batch::single`, and comes back with the same `ToolInvoked` fact — the VM
-/// through `workspace::run`, the shared store through `space::run`, and the
-/// network through `websearch::run` (increment 21).
+/// These three are here rather than in `run` for one hard reason. A space's
+/// tools write to the SHARED store; a workspace tool runs a command in a
+/// Linux; a search leaves the browser entirely. All three are I/O, so all
+/// three are awaited — and a call awaited inside a borrow of the app holds
+/// that borrow across the await, which panics the next `borrow_mut`. `run`
+/// below is the sync half and the only one that may hold a borrow.
 ///
-/// That last clause used to say the first network tool would go through
-/// `execute_effect`. It would not: `execute_effect` walks the `Effect` enum for
-/// a model turn, and `Effect::InvokeTool` is `unreachable!()` there by the time
-/// the workspace shipped. The async tool path is `batch::single`, and this is
-/// the sentence a reader would have followed into the wrong file.
+/// Each arm states its own membership rather than discovering it by falling
+/// through: the sets are `agent::is_workspace_tool`, `agent::WEB_SEARCH` and
+/// `agent::is_space_tool`. They are disjoint today, so match order states
+/// precedence — workspace claims a shared name first — rather than tie-breaks.
+pub(crate) fn tool_entry(tool: &ToolId) -> Option<ToolHandler> {
+    match tool.0.as_str() {
+        name if agent::is_workspace_tool(name) => Some(workspace),
+        name if name == agent::WEB_SEARCH => Some(websearch),
+        name if agent::is_space_tool(name) => Some(space),
+        _ => None,
+    }
+}
+
+/// Run ONE LOCAL tool. Sync and total: every failure comes back as a result,
+/// never as an error return, because that text is what lets the model correct
+/// itself on the next pass (Python `core/tools.py`: "nothing here raises").
+///
+/// Sync because every tool THIS table holds is local — the clock, the loaded
+/// agents. Anything that needs I/O has an entry in `tool_entry` above, is
+/// tried first, and comes back with the same `ToolInvoked` fact. That path is
+/// `batch::single`, never `execute_port_effect` — `Effect::InvokeTool` is
+/// `unreachable!()` there, and the old sentence sent readers to the wrong file.
 pub(crate) fn run(app: &mut App, tool: &ToolId, args_json: &str) -> EventKind {
     let result = match tool.0.as_str() {
         "now" => Ok(format!("{} ms since the Unix epoch", app.ports.clock.now().0)),
@@ -87,7 +130,7 @@ pub(crate) fn run(app: &mut App, tool: &ToolId, args_json: &str) -> EventKind {
         // The only tool that writes a fact of its own before its envelope: it
         // AUTHORS an agent (increment 11), which the roster then installs at
         // the end of this turn.
-        "write_agent" => crate::roster::write_agent(app, args_json),
+        "write_agent" => crate::agents::roster::write_agent(app, args_json),
         _ => Err(format!(
             "Tool not found. Available: {}",
             agent::builtin_tools()

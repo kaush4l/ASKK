@@ -3,7 +3,7 @@
 //! PROVISIONAL (G4 discovery): the G3 freeze said "the exact JSON shape per
 //! provider is serialization detail applied when the request body is
 //! written" but gave that writer no home. It lives here because provider
-//! quirks live only in `context` (§8.1); `core::execute_effect` calls these
+//! quirks live only in `context` (§8.1); `core::execute_port_effect` calls these
 //! and `ModelPort` moves the bytes without interpreting them.
 
 use serde_json::{json, Value};

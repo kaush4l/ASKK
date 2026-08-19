@@ -1,7 +1,7 @@
-//! One effect, executed. Split from `runtime.rs`, which owns the drive loop,
-//! so both hold the 200-line rule (I12): this file is the only place in the
-//! core where a port is actually called for a model turn, and the loop above
-//! it is the only place that decides when.
+//! The one place in the core where a PORT is called for a model turn. Its
+//! neighbour `runtime/mod.rs` owns the drive loop and so owns *when*; this file
+//! owns *how*, and holds no policy about either. The effects that run against
+//! the app rather than a port — tools, delegations — are `batch.rs`'s.
 
 use std::rc::Rc;
 
@@ -11,12 +11,18 @@ use crate::app::Ports;
 use crate::error::CoreError;
 use agent::Effect;
 
-/// Execute ONE effect through the ports and return the resulting FACTS, in
+/// Execute ONE effect THROUGH THE PORTS and return the resulting FACTS, in
 /// order. Usually one; a model call that came back with an accounting block
 /// returns two, because what it cost is a different fact from what it said.
+///
+/// `port` is in the name because it is the whole contract: the two effects
+/// that run against the app instead — `InvokeTool` and `Delegate` — reach
+/// `batch::run_effects` and never this function, which is why their arms here
+/// are `unreachable!`.
+///
 /// `'static`: every port handle it needs is Rc-cloned before the future is
 /// built, so nothing borrows the app across the await.
-pub fn execute_effect(
+pub fn execute_port_effect(
     ports: &Ports,
     effect: Effect,
 ) -> impl std::future::Future<Output = Result<Vec<Event>, CoreError>> + 'static {
@@ -91,10 +97,6 @@ pub fn execute_effect(
             // live in `batch.rs`. See `batch::run_effects`.
             Effect::InvokeTool { .. } | Effect::Delegate { .. } => {
                 unreachable!("executed by batch::run_effects")
-            }
-            // The rest of the closed set lands with its first emitter.
-            Effect::Persist { .. } | Effect::Sleep { .. } => {
-                todo!("G5: first emitter of this effect")
             }
         }
     }

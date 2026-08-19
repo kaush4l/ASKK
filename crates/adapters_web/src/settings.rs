@@ -1,7 +1,7 @@
 //! The Settings pane's door to the credential broker. Deliberately NOT on the
 //! seam: `core::handle` records an Event for every request (I8), and an event
-//! log is exactly where a credential must never appear (ADR-006, I6). Split
-//! from lib.rs to hold the 200-line rule (I12).
+//! log is exactly where a credential must never appear (ADR-006, I6).
+//! `lib.rs` builds the broker; this is the only file that repoints it.
 
 use crate::{WebApp, WebError};
 

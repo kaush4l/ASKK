@@ -1,6 +1,7 @@
-//! Reading what came back off the wire, and the one thing we must read out of
-//! what went onto it. Split from `model.rs` so that file stays inside the
-//! 200-line rule (I12); no policy lives here, only bytes → values.
+//! THE WIRE ITSELF, for every caller in this crate: `fetch` off whatever
+//! global we are running in, the request body's model field read and written,
+//! a reply's status turned into a typed error, and a JS exception turned into
+//! one sentence a person can read. No policy lives here — only bytes ↔ values.
 
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -13,6 +14,21 @@ pub(crate) fn asked_model(body_json: &str) -> String {
         .ok()
         .and_then(|v| v.get("model")?.as_str().map(str::to_string))
         .unwrap_or_default()
+}
+
+/// Stamp the entry's model id into the request body, the inverse of
+/// `asked_model` on the same field. The core speaks the symbolic catalogue
+/// key; the concrete model id is the adapter's job, like a credential.
+pub(crate) fn stamp_model(body_json: &str, model: &str) -> String {
+    if model.is_empty() {
+        return body_json.to_string();
+    }
+    serde_json::from_str::<serde_json::Value>(body_json)
+        .map(|mut v| {
+            v["model"] = serde_json::Value::String(model.to_string());
+            v.to_string()
+        })
+        .unwrap_or_else(|_| body_json.to_string())
 }
 
 /// A JS exception in one readable sentence: `{:?}` on a `JsValue` prints the

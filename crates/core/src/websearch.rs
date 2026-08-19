@@ -1,6 +1,6 @@
 //! `web_search`, run. `agent::search` declares the name, writes the query and
 //! reads the answer; this file is the single place the `NetPort` is called for
-//! it, exactly as `workspace.rs` is for the Linux and `tools.rs` for the local
+//! it, exactly as `workspace/gate.rs` is for the Linux and `tools.rs` for the local
 //! table.
 //!
 //! THE GATE IS THE ALLOWLIST AND IT IS NOT HERE (ADR-006, I6). The core names
@@ -28,8 +28,8 @@ const UNSET: &str = "No search endpoint is configured in this browser, so nothin
                      A person sets one under Settings → Web search; nothing on this page can \
                      turn it on for you, and retrying will refuse again.";
 
-/// Run `web_search`, or `None` if this is not it (the caller then tries the
-/// local table). Total, like every tool.
+/// Run `web_search`. Reached through `tools::tool_entry`, which routes this
+/// one name here; `None` answers any other. Total, like every tool.
 pub(crate) async fn run(
     app: &Rc<RefCell<App>>,
     tool: &ToolId,

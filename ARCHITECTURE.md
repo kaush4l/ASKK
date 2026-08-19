@@ -1,9 +1,14 @@
 # ARCHITECTURE.md
 
-> **Status: intended architecture, pending spike evidence.** Every claim a spike could overturn is
-> marked `TBD(spike-…)`. Spike A = seam/transport, B = Rhai module round-trip, C = context assembly,
-> spike-idb = IndexedDB from Rust. Provisional calls are marked `PROVISIONAL` with the alternative
-> noted. Decisions are recorded in `DECISIONS/ADR-NNN` (owned elsewhere); this document references
+> **Status: SHIPPED as of 2026-08-19 — G4 walking skeleton and the increments after it are on
+> `main`.** §1–§5 are the G2 decision record, kept as written so the reasoning survives; where the
+> ship answered a question differently, the row says so inline (`SUPERSEDED`) rather than being
+> quietly rewritten. §6 is the current tree, re-derived hop by hop and cited by file and line —
+> it is the section to trust when the two disagree. Spike A = seam/transport, B = Rhai module
+> round-trip, C = context assembly, spike-idb = IndexedDB from Rust. Anything still marked
+> `PROVISIONAL` or `TBD(spike-…)` is unshipped or unproven.
+>
+> Decisions are recorded in `DECISIONS/ADR-NNN` (owned elsewhere); this document references
 > them and does not restate them. Vocabulary (Module, Section, Document, Phase, Event, Effect,
 > Capability, Affordance, Forge) is the `GLOSSARY.md` term set — PROMPT §14 G1.
 
@@ -107,18 +112,20 @@ as a rule: effects stay **coarse** (one `CallModel`, one `InvokeTool` — never 
 one Work-phase turn is one step in, one effect out, one event back (§9's "one step per call"
 already guarantees this granularity), and the runtime loop lives in `core` at under 40 lines.
 **Recommendation: `step()`.** Streaming is the one open threat — token deltas as Events could
-flood the log or force fine-grained effects. RESOLVED(spike-A → ADR-002): streaming is
-core-driven htmx chaining — each chunk is an ordinary `Request → Response` cycle, deltas never
-enter the event log, and only the completed message becomes an Event. Replay granularity holds.
+flood the log or force fine-grained effects. RESOLVED(spike-A → ADR-002),
+SUPERSEDED in form by the Dioxus ship: there is no streaming transport at all. The pane polls
+`GET /chat` every 400 ms (`crates/ui/src/chat/poller.rs:94`) and each poll is an ordinary
+`Request → Response` cycle. Deltas never enter the event log; only the completed message becomes
+an Event. Replay granularity holds — by a simpler mechanism than the one argued for here.
 
 ### 1d. Where the Worker boundary sits
 
-**Design 1 — core Wasm on the main thread.** `transport.js` calls the Wasm export directly. No
-postMessage, no structured-clone, trivially debuggable, one less moving part.
+**Design 1 — core Wasm on the main thread.** The page's view layer calls the Wasm export
+directly. No postMessage, no structured-clone, trivially debuggable, one less moving part.
 
-**Design 2 — core in one long-lived dedicated Worker.** Main thread holds htmx + a ~50-line
-transport that postMessages `Request`/`Response` (§5 option B); the Wasm instance and all port
-adapters live in the Worker.
+**Design 2 — core in one long-lived dedicated Worker.** Main thread holds the view layer plus a
+~50-line shim that postMessages `Request`/`Response` (§5 option B); the Wasm instance and all
+port adapters live in the Worker.
 
 **Against Design 2:** the Worker adds postMessage serialization on every interaction and makes
 DevTools debugging two-context. Model calls are async `fetch` either way — the main thread never
@@ -131,12 +138,15 @@ killing the observability and abortability the forge pipeline promises (§7). Sc
 mitigate but only the Worker makes the UI's liveness independent of the core's worst module.
 Tier 2 (§10) already commits to Workers for multi-agent; one Worker from day one is the same
 mental model, not a new one. **Recommendation: Design 2 — core in a Worker from the start.**
-`PROVISIONAL`, and PARTIALLY RESOLVED(spike-A): the seam spike proved the transport with the
-Wasm on the **main thread** (Design 1) — real htmx, 2/2 headless tests, zero app-route network
-requests. The Worker variant remains unproven; G4 must drive the same transport through
-postMessage, and if that is somehow prohibitive the fallback is the already-proven Design 1 —
-the move is transport-only (the §3 seam is unchanged). The service worker remains caching
-and updates only (ADR-002, ADR-007) — never a state holder.
+**SUPERSEDED by the ship — Design 1 is what runs.** The core is on the main thread and the
+`ui` crate's Dioxus handlers call it in-process; there is no serialization boundary in front of
+the seam at all (`crates/adapters_web/src/seam.rs:23`, §6 row 8). The jank argument was answered
+a different way than either design imagined: Workers do exist, but they hold **sub-agents** — one
+Worker per delegated agent (`Effect::Delegate`, `crates/agent/src/effect.rs:54`; `web/agent-worker.js`)
+— and their facts re-enter the log through the same one door on the way past
+(`seam.rs:27-47`). So the unbounded-compute risk sits off the main thread without the seam ever
+being remote. The service worker remains caching and updates only (ADR-002, ADR-007) — never a
+state holder.
 
 ---
 
@@ -156,8 +166,10 @@ and updates only (ADR-002, ADR-007) — never a state holder.
 
 `web/` is the trunk source dir: `index.html` (the `ui` bin + relative asset links), `theme.css`,
 `sw.js` (caching/updates only, ADR-007) which `importScripts("coi-sw.js")` for the cross-origin
-isolation headers. `transport.js` and `vendor/htmx.min.js` are deleted — Dioxus supersedes ADR-002's
-transport half.
+isolation headers, plus `agent-worker.js` (one Worker per sub-agent) and the stylesheets. There
+is no JS transport file and no vendored view library: Dioxus supersedes ADR-002's transport half,
+and the `hx-*` builders in `module::view` are the fragment vocabulary the forge will emit, not a
+runtime dependency of the shipped app.
 
 ---
 
@@ -166,9 +178,10 @@ transport half.
 ```mermaid
 graph TD
   subgraph browser["web/ (no logic — I5)"]
-    T[transport.js + index.html + sw.js]
+    T[index.html + sw.js + coi-sw.js + agent-worker.js]
   end
-  subgraph L3["L3 — composition root"]
+  subgraph L3["L3 — composition root + app"]
+    UI[ui]
     AW[adapters_web]
     AT[adapters_test]
   end
@@ -184,10 +197,15 @@ graph TD
   subgraph L0["L0 — vocabulary"]
     K[kernel]
   end
-  T -->|postMessage| AW
+  T -->|loads the Wasm bundle| UI
+  UI --> AW
+  UI --> K
   AW --> CORE
   CORE -. dev-dep .-> AT
   CORE --> AG
+  CORE --> MO
+  CORE --> CX
+  CORE --> SC
   CX --> K
   SC --> K
   MO --> K
@@ -259,33 +277,83 @@ the phase machine, the forge pipeline, the registry, the script engine. Effect o
 
 ---
 
-## 6. Data flow walkthroughs
+## 6. The turn, traced
 
-**An htmx click.** User clicks an element bearing `hx-get="/panels/water"`. The htmx extension
-(`transport.js`) intercepts, posts `{method, path, headers, body}` to the core Worker.
-`adapters_web` builds a `kernel::Request` and calls `core::handle`. Routing dispatch consults the
-Module registry, finds the Module serving `/panels/water`, and invokes its logic with a `ctx`
-carrying only its granted Capabilities (I6). The Module returns a Fragment (built via `view`
-escaping primitives); `handle` wraps it in a `Response`, an Event is appended to the log (I8),
-and the HTML string is postMessaged back. htmx swaps it into the `hx-target`. No JS logic ran (I5).
+This is the flow this document owes a reader, derived hop by hop from the tree on `main` and
+verified file by file. **There is no JS transport and no second wire format.** A Dioxus event
+handler calls `WebApp::handle`, which calls `core::handle`, in-process (I4) —
+`crates/adapters_web/src/seam.rs:1-3` says exactly that in its own words. The §1d Worker
+question was answered by the ship: the core runs on the main thread, and Workers hold
+*sub-agents*, not the seam.
 
-**An agent turn.** A user message arrives as an Event. `agent::step(state, event)` — pure — enters
-Phase `Plan`: the Phase selects the Section set, and the returned `Effect::CallModel` carries
-`context::assemble(state, Plan, budget)`, a Document with stable-first Section order and recorded
-compaction (§8.5). The `core` runtime loop executes the Effect through `ModelPort`
-(`adapters_web` → fetch → the configured endpoint; the Module never saw a key, I6). `render`
-maps the Document to the provider's message format. The reply returns as the next Event;
-`step` transitions `Plan → Work` (one tool step per call) `→ Verify` (no tools), each transition
-an Event, every Effect (`Persist`, `Emit`) executed through ports. The dashboard re-renders as a
-projection of the log — same mechanism as the click above.
+One turn has two halves that meet in the log. The **sync half** (rows 1–16) runs inside the
+event handler and returns a fragment immediately. The **async half** (rows 17–35) is a `drive`
+loop the same call spawns; the pane learns what it did by polling (rows 36–37). Nothing is
+pushed to the page — every repaint is another trip through the same seam.
 
-**A forge install.** Scout proposes; the Forge (a built-in Module) runs the §7 pipeline, each
-named stage emitting an Event: generate manifest + Rhai logic + view + tests (self-improvement
-rung L2) → static validate → dry run in `script` with **all** Capabilities denied → declared
-contract tests → preview Fragment rendered in a sandboxed iframe → Capability review (what it
-asks for, why) → user approval arrives as an Event — a gate, never inferred. Then
-`Effect::Persist` writes the module-as-data through `StorePort` (IndexedDB, ADR-005,
-`TBD(spike-idb)`), the registry registers its routes, and the Affordance document — generated
-from the registry, never hand-written — advertises it in the same instant (§6). The new panel is
-on the dashboard with no rebuild; built-in and forged are now indistinguishable (I9). Rollback
-is deletion of a record (I10); every prior version is kept.
+### 6a. The sync half — the message lands, the pane repaints
+
+| # | File:line | What happens |
+|---|---|---|
+| 1 | `crates/ui/src/composer/mod.rs:101` | `onsubmit` → `send(…)` |
+| 2 | `crates/ui/src/composer/mod.rs:76` | `send` ends in `on_send.call(text)` |
+| 3 | `crates/ui/src/chat/log.rs:68` | the handler bound to `on_send` is `say(pane, text)` |
+| 4 | `crates/ui/src/chat/mod.rs:97` | `say` — the one path a message takes out of this pane |
+| 5 | `crates/ui/src/chat/mod.rs:103` | builds `Request::post_form("/chat", &[("message", &text)])` |
+| 6 | `crates/ui/src/chat/state.rs:61` | `to()` stamps the `x-agent` header — which agent is being addressed |
+| 7 | `crates/ui/src/chat/mod.rs:104` | `app.handle(req)` — the Rust side of the seam, called directly |
+| 8 | `crates/adapters_web/src/seam.rs:23` | `WebApp::handle` — drains every Worker's queued reports first (`seam.rs:27-47`), so a sub-agent's facts land through the one door (I8) |
+| 9 | `crates/adapters_web/src/seam.rs:48` | `core::handle(&mut app, req)` |
+| 10 | `crates/core/src/lib.rs:126` | **the one seam** — `handle(&mut App, Request) -> Response` |
+| 11 | `crates/core/src/lib.rs:131` | `agents::roster::reconcile` — the page can never show an agent the core has not loaded |
+| 12 | `crates/core/src/dispatch.rs:62` | `dispatch`: route → registry → tier |
+| 13 | `crates/core/src/dispatch.rs:42` | `builtin_entry`, the module dispatch table; `"chat"` → `chat::pane::chat` (`dispatch.rs:45`) |
+| 14 | `crates/core/src/chat/pane.rs:56` | chat's own router; `("POST", "/chat") => submit` (`pane.rs:66`) |
+| 15 | `crates/core/src/chat/pane.rs:153` | `submit` pushes `EventKind::UserMessage` into `ctx.emit` (`pane.rs:164`) — the dispatcher drains it |
+| 16 | `crates/core/src/chat/transcript.rs:63` | `transcript` folds the log into the response fragment, with the new message already in place |
+
+### 6b. The async half — `drive`, the model, the tools
+
+| # | File:line | What happens |
+|---|---|---|
+| 17 | `crates/adapters_web/src/seam.rs:54` | `spawn_local(core::drive(app))` — the same seam call starts the async half |
+| 18 | `crates/core/src/runtime/mod.rs:44` | `drive` — the loop, 28 lines (`44-71`): refresh the space, take one pending event, run its effects, repeat; then persist through `StorePort` |
+| 19 | `crates/core/src/runtime/mod.rs:86` | `think` takes the one borrow that does not cross an await, and calls `pump` (`mod.rs:88`) |
+| 20 | `crates/core/src/runtime/mod.rs:25` | `pump` — sync, the ONLY runtime caller of `step`. This is the thinking/doing wall, and it has one door |
+| 21 | `crates/agent/src/step.rs:24` | `step` → `advance` (`step.rs:34`) → the `UserMessage` arm (`step.rs:45`) → `on_task` (`step.rs:93`) |
+| 22 | `crates/agent/src/ask.rs:60` | `call_model` picks the provider form and rebuilds the per-call components |
+| 23 | `crates/context/src/assemble.rs:127` | `assemble` builds the `Document` under the phase's budget (I13/I14) |
+| 24 | `crates/agent/src/effect.rs:20` | the returned `Effect::CallModel { document, format, endpoint, model, temperature, speaker }` |
+| 25 | `crates/core/src/batch.rs:106` | `run_effects` — a line of `Delegate`s is awaited as a group; everything else goes one at a time through `single` (`batch.rs:135`) |
+| 26 | `crates/core/src/effects.rs:25` | `execute_port_effect`: `context::render` (`:41`), `openai_request_body` (`:44`), `model.call` (`:46`) |
+| 27 | `crates/adapters_web/src/model.rs:87` | `ModelPort::call` — resolves the catalogue key against `models.json`, attaches the credential (the agent never saw it, I6), `global_fetch` (`model.rs:120`) |
+| 28 | `crates/core/src/effects.rs:74` + `:81` | the reply becomes two facts: `ModelCalled` (what it cost) then `ModelReplied` (what it said) |
+| 29 | back to 18 | `crates/core/src/batch.rs:152-153` appends each fact and pushes it back onto `pending`; `drive` loops |
+| 30 | `crates/agent/src/step.rs:128` | `on_reply` — one reply against the phase's contract, via `parse_reply` (`crates/agent/src/reply.rs:30`) |
+| 31 | `crates/agent/src/calls.rs:19` | `parse_batches`; each call becomes `Effect::InvokeTool` through `subagent::invoke_or_refuse` (`step.rs:148`). No calls → `answer::answered`, the turn's exit |
+| 32 | `crates/core/src/batch.rs:170` | `invoke` — one tool call, run and recorded, with the append-and-push written once |
+| 33 | `crates/core/src/tools.rs:107` | `tool_entry` — **the one tool dispatch table**: workspace / websearch / space handlers are awaited outside any borrow; a name it does not claim falls to `tools::run` (`tools.rs:125`) inside the borrow, which refuses an unknown tool in words |
+| 34 | back to 18 | the tool's fact goes round again — next model call, or a reply with no calls, which ends the turn |
+| 35 | `crates/core/src/lib.rs:76` | `answer` — a fold over the log for the last reply that called no tools; this is what a sub-agent hands back to its caller |
+
+### 6c. Back on screen
+
+| # | File:line | What happens |
+|---|---|---|
+| 36 | `crates/ui/src/chat/poller.rs:94` | while the turn is pending the pane polls `GET /chat` every `TICK_MS` = 400 ms (`poller.rs:14`) — each poll is rows 7–16 again |
+| 37 | `crates/ui/src/chat/state.rs:68` | `show` applies one seam response as a single value, reading `x-agent`, `x-turn` and `x-tokens` off the headers |
+
+Thirty-seven hops, five crates. Every read view in the product is the same shape: a `Request`
+through `WebApp::handle` into `core::handle`, a fold over the log, an HTML fragment back. The
+board, the trace, the files pane and the terminal differ from the transcript only in which
+`builtin_entry` row (row 13) they land on.
+
+### 6d. What is NOT yet in the tree
+
+The forge pipeline (§7) is typed but not wired: `crates/agent/src/forge.rs` defines
+`ForgeStage` and the stage events, and nothing in `builtin_entry` (`crates/core/src/dispatch.rs:42`)
+routes to it. When it lands, the install write goes through `StorePort` the same way the log
+does — in `drive`'s tail (`crates/core/src/runtime/mod.rs:67-68`), not through a dedicated effect.
+`Effect` has exactly four variants today (`crates/agent/src/effect.rs:16`): `CallModel`,
+`InvokeTool`, `Emit`, `Delegate`. The `Persist` and `Sleep` variants this document once
+described were speculative and have been deleted (CRITIQUE-01 F10).

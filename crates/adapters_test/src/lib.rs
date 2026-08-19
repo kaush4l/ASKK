@@ -17,7 +17,6 @@ use kernel::{
 mod agents;
 mod model;
 mod shell;
-mod shellport;
 mod stores;
 
 pub use agents::ScriptedAgents;

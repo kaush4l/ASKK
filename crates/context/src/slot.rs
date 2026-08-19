@@ -47,8 +47,10 @@ impl Slot {
     pub const MEMORY: Slot = Slot(50);
     /// The shared space: its workspace folder, its settled facts, its notes.
     pub const SPACE: Slot = Slot(55);
-    /// Time, locale, device, the shared space. Never cached: a cached clock is
-    /// a wrong clock.
+    /// Time, locale, device — what is true of this moment and no other.
+    /// Never cached: a cached clock is a wrong clock. The shared space is NOT
+    /// here; it is its own section, five slots up ([`Slot::SPACE`]), because
+    /// what a group has agreed is not a property of the current instant.
     pub const ENVIRONMENT: Slot = Slot(60);
     /// What is being attempted right now.
     pub const TASK: Slot = Slot(70);

@@ -47,8 +47,8 @@ pub fn is_mutating(tool: &str) -> bool {
 /// of a `read_process` answer, under a line naming the process and its line
 /// count, so this is a suffix and not an equality.
 ///
-/// IT LIVES HERE SO THERE IS ONE COPY. `core::vouch` refuses to say `ok` about
-/// a command that printed nothing and `core::scrollback` writes `ok, and it
+/// IT LIVES HERE SO THERE IS ONE COPY. `core::trace::trustworthy` refuses to say `ok` about
+/// a command that printed nothing and `core::terminal::row` writes `ok, and it
 /// printed nothing` beside it; this decides whether the same command counts as
 /// evidence. If those ever diverged the page could say a thing was checked over
 /// a row saying it printed nothing — two surfaces, one turn, two stories.

@@ -1,5 +1,6 @@
-//! The `AgentPort` fake — sub-agents that answer from a script. Split from
-//! lib.rs to hold the 200-line rule.
+//! The `AgentPort` fake — sub-agents that answer from a script, including the
+//! two answers only a fake can stage on demand: an agent whose turn RAISED,
+//! and a name that is not loaded at all.
 
 use std::cell::RefCell;
 

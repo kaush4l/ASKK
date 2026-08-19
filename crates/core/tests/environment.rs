@@ -97,7 +97,7 @@ fn an_agent_starts_a_process_and_is_told_where_to_find_it() {
     assert!(trace.contains("data-outcome=\"ok\""), "{trace}");
 }
 
-/// A TOOL THAT HALF-WORKED SAYS SO (`failed.rs`). A command that dies on a typo
+/// A TOOL THAT HALF-WORKED SAYS SO (`failure/within_turn.rs`). A command that dies on a typo
 /// must not be reported as a running process — the agent would supervise
 /// nothing for the rest of the run — and the failure must reach the summaries
 /// that carry the worst state they summarise.

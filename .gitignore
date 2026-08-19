@@ -19,3 +19,4 @@ out/
 docs/bin/
 docs/wasm/
 .gstack/
+__pycache__/

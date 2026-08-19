@@ -14,7 +14,7 @@
 //!
 //! …over a reply saying the file was written, and a file that was there. The
 //! Tool trace, one click away, already labelled the second call `ok, and this is
-//! the retry after the refused call` — off `vouch::Retries`. The fact was in the
+//! the retry after the refused call` — off `trace::trustworthy::Retries`. The fact was in the
 //! app; three summaries did not read it, and only the detail view retracted the
 //! alarm, which teaches a reader that the agent lies when it does not.
 //!
@@ -97,7 +97,7 @@ fn a_refusal_the_model_retried_is_reported_as_a_recovery_on_every_surface() {
     assert!(trace.contains("the retry after the refused call"), "{trace}");
 
     // THE THREE SUMMARIES. Same clause on each, because there is one clause
-    // (`failed::note`): the board row wears it, the Dashboard card renders the
+    // (`failure::within_turn::note`): the board row wears it, the Dashboard card renders the
     // row's own `data-line`, and Chat's announcement reads the same function.
     const SAID: &str = "a tool call was refused and the retry after it worked";
     for (view, page) in [("board", body(&app, "/board")), ("chat", body(&app, "/chat"))] {
@@ -105,7 +105,7 @@ fn a_refusal_the_model_retried_is_reported_as_a_recovery_on_every_surface() {
         assert!(!page.contains("call failed"), "{view} does not cry failure: {page}");
         assert!(!page.contains("calls in that turn failed"), "{view}: {page}");
     }
-    // The Dashboard's launch card is `runstatus.rs` rendering the row's own
+    // The Dashboard's launch card is `ui/src/board/launch/outcome.rs` rendering the row's own
     // `data-line` verbatim, so this is the string it puts on screen.
     let board = body(&app, "/board");
     let line = board.split("data-line=\"").nth(1).and_then(|r| r.split('"').next());
@@ -120,7 +120,7 @@ fn a_refusal_the_model_retried_is_reported_as_a_recovery_on_every_surface() {
 
 /// R16-P1-2. The doubt says what it saw, why it cannot stand behind it, and the
 /// one thing the reader can do — and it does NOT say the calls are absent from
-/// the trace, which is not what `vouch::doubt` checks.
+/// the trace, which is not what `trace::trustworthy::doubt` checks.
 #[test]
 fn the_warning_that_was_right_says_which_calls_and_why_and_what_to_do() {
     let shell = Rc::new(FakeShell::new().answering("wc", 0, ""));

@@ -1,10 +1,11 @@
 //! WHAT EACH STAGE IS TOLD — the words that go into the `## directive` block,
-//! and the reply shape that goes with them where the machine will read it back.
+//! the reply shape that goes with them where the machine will read it back,
+//! and which stages may act at all.
 //!
-//! Split out of `stages.rs`, which owns the cursor and the transitions. These
-//! are the prompts; that is the machine. They change for different reasons and
-//! at different rates, and holding them apart is what keeps either file
-//! readable — and both of them inside the 200-line rule (I12).
+//! These are the PROMPTS; `stages.rs` is the machine that walks them. They are
+//! apart because they change for different reasons and at different rates: a
+//! wording is edited by reading what a model did with it, a cursor is edited by
+//! reasoning about a turn.
 
 use crate::components::ResponseContract as Contract;
 use crate::stages::{ANSWER, CRITIQUE, PLAN, VERIFY};

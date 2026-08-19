@@ -76,7 +76,7 @@ fn ask(app: &Rc<RefCell<App>>, message: &str) {
 /// mount-time listing: a first act that produces a busy machine, a self-
 /// inflicted contention warning, and an instruction to go stop something.
 ///
-/// `asked::Asked` already knows the difference — it is the boundary the tool
+/// `trace::requested_by::Asked` already knows the difference — it is the boundary the tool
 /// trace's "Show the app's own activity" toggle is built on — so the pane uses
 /// that one rather than a second answer to the same question.
 #[test]

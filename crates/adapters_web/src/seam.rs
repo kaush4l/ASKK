@@ -1,7 +1,6 @@
 //! The seam as a RUST caller sees it: `ui`'s Dioxus handlers call
 //! `core::handle` through here with no JSON hop and no second wire format
-//! (I4). Split from `lib.rs`, which is the composition root, so both hold the
-//! 200-line rule (I12).
+//! (I4). `lib.rs` builds the app; this is the one door into it.
 //!
 //! Everything a Worker has to say reaches the log HERE, on the way past. That
 //! is the one door (I8), and it is also why the page keeps a heartbeat: a

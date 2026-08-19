@@ -135,7 +135,7 @@ fn a_write_that_swallowed_its_own_terminator_is_never_called_ok() {
 }
 
 /// `mkdir` printing nothing is a success and is never called anything else —
-/// the distinction `calls::READS` deliberately refused to make for `exec` is
+/// the distinction `chat::call_announcement::READS` deliberately refused to make for `exec` is
 /// made here without calling either one a failure.
 #[test]
 fn a_command_that_did_work_silently_is_still_not_a_command_that_answered() {

@@ -1,6 +1,7 @@
-//! Browser port implementations: brokered net, clock, rng, and the one
-//! timer the UI needs. The model broker lives in `model.rs`; IndexedDB
-//! storage in `idb.rs` (200-line rule).
+//! The SMALL browser ports, all four of them: the brokered net (an allowlist
+//! of named endpoints and nothing else reachable), the wall clock, the RNG,
+//! and the one timer the UI needs. The two big ports have crates' worth of
+//! their own: the model broker in `model.rs`, IndexedDB storage in `idb.rs`.
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -76,6 +77,41 @@ fn transport(e: ModelError) -> NetError {
     }
 }
 
+/// A GET this broker will actually make: the named endpoint's base joined to
+/// the caller's path, under the search timeout. A request body is refused
+/// rather than dropped — nothing asks this broker to send one.
+fn brokered_get(url: &str, req: &BrokeredRequest) -> Result<web_sys::Request, NetError> {
+    if req.body.is_some() {
+        return Err(NetError::Transport {
+            message: "this broker sends no request body; nothing asks it to".into(),
+        });
+    }
+    let init = web_sys::RequestInit::new();
+    init.set_method(&req.method);
+    init.set_signal(Some(&web_sys::AbortSignal::timeout_with_f64(
+        SEARCH_TIMEOUT_MS,
+    )));
+    web_sys::Request::new_with_str_and_init(url, &init).map_err(|e| NetError::Transport {
+        message: format!("request build: {e:?}"),
+    })
+}
+
+/// The response body as text.
+///
+/// Text, not bytes: every brokered endpoint this build has is a JSON API, and
+/// `arrayBuffer` would only add a conversion on the way to the same string.
+/// The port's type stays bytes because the port is not the one deciding that.
+async fn brokered_body(resp: &web_sys::Response) -> Result<String, NetError> {
+    let fail = |what: &str, e: JsValue| NetError::Transport {
+        message: format!("{what}: {e:?}"),
+    };
+    Ok(JsFuture::from(resp.text().map_err(|e| fail("text()", e))?)
+        .await
+        .map_err(|e| fail("body read", e))?
+        .as_string()
+        .unwrap_or_default())
+}
+
 impl NetPort for FetchNet {
     fn fetch<'a>(
         &'a self,
@@ -89,21 +125,8 @@ impl NetPort for FetchNet {
                     endpoint: endpoint.0.clone(),
                 });
             };
-            if req.body.is_some() {
-                return Err(NetError::Transport {
-                    message: "this broker sends no request body; nothing asks it to".into(),
-                });
-            }
             let url = format!("{base}{}", req.path);
-            let init = web_sys::RequestInit::new();
-            init.set_method(&req.method);
-            init.set_signal(Some(&web_sys::AbortSignal::timeout_with_f64(
-                SEARCH_TIMEOUT_MS,
-            )));
-            let request = web_sys::Request::new_with_str_and_init(&url, &init)
-                .map_err(|e| NetError::Transport {
-                    message: format!("request build: {e:?}"),
-                })?;
+            let request = brokered_get(&url, &req)?;
             let promise = crate::wire::global_fetch(&request).map_err(transport)?;
             let resp: web_sys::Response = JsFuture::from(promise)
                 .await
@@ -116,19 +139,7 @@ impl NetPort for FetchNet {
                 })?
                 .unchecked_into();
             let status = resp.status();
-            // Text, not bytes: every brokered endpoint this build has is a JSON
-            // API, and `arrayBuffer` would only add a conversion on the way to
-            // the same string. The port's type stays bytes because the port is
-            // not the one deciding that.
-            let text = JsFuture::from(resp.text().map_err(|e| NetError::Transport {
-                message: format!("text(): {e:?}"),
-            })?)
-            .await
-            .map_err(|e| NetError::Transport {
-                message: format!("body read: {e:?}"),
-            })?
-            .as_string()
-            .unwrap_or_default();
+            let text = brokered_body(&resp).await?;
             Ok(BrokeredResponse {
                 status,
                 body: text.into_bytes(),

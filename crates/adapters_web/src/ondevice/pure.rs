@@ -19,7 +19,7 @@ type Turn = (String, String);
 ///
 /// `base_url` IS EMPTY, because this entry has no address. The readers that
 /// print one, and the composer gate that used to require one, branch on this
-/// entry being the on-device one before they reach for a URL (`ui::endpoint`).
+/// entry being the on-device one before they reach for a URL (`ui::settings::endpoint`).
 pub fn entry_for(state: &str) -> Option<String> {
     let note = match state {
         "available" => {
@@ -53,7 +53,7 @@ pub fn entry_for(state: &str) -> Option<String> {
             // working, and the header pill then printed "at this device" — a
             // sentence sitting in the one field that means an address, in the
             // one widget whose job is naming where a turn goes. The readers
-            // branch on `kind` now (`ui::endpoint`), so this can be honest.
+            // branch on `kind` now (`ui::settings::endpoint`), so this can be honest.
             "base_url": "",
             "note": note,
         }}})

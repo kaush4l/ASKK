@@ -117,32 +117,7 @@ pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect
     }
     let transcript = transcript(&state.paper, state.keep_recent)?;
     state.compacting = true;
-    // The summarizer's OWN paper: its `agent.md` body is the system block and
-    // the transcript is the whole task. Stateless, and toolless — it reads the
-    // transcript and nothing else, so the calling agent's tools and prompt
-    // cannot steer it (Python `compact`). A Document, like every other model
-    // call in this codebase (I13).
-    let mut sheet = paper::seed();
-    let soul = Soul { text: SUMMARIZE.into() };
-    let identity = Identity { name: "summarizer".into(), description: String::new() };
-    paper::set_component(&mut sheet, &soul, at);
-    paper::set_component(&mut sheet, &identity, at);
-    paper::set_component(&mut sheet, &Affordances::default(), at);
-    paper::set_component(
-        &mut sheet,
-        &Contract::saying("Reply with the notes and nothing else."),
-        at,
-    );
-    // No space block at all: the summarizer reads the transcript and nothing
-    // else, and the group's facts are not part of the conversation it is
-    // compressing. The sheet never sets one, so it stays Elided.
-    let environment = Environment { text: crate::now::environment(at) };
-    paper::set_component(&mut sheet, &environment, at);
-    paper::set_component(&mut sheet, &Task { text: transcript.clone() }, at);
-    // Deliberately empty, not the seeded marker: the summarizer's transcript
-    // is the TASK it was handed, and a second copy of a conversation in the
-    // history block would be the thing it is being asked to compress, twice.
-    paper::set_component(&mut sheet, &History { entries: Vec::new() }, at);
+    let sheet = sheet(&transcript, at);
     Some(Effect::CallModel {
         document: context::assemble(&sheet, PhaseId::Work, crate::phase::v1_phases()[0].budget),
         format: ProviderFormat::OpenAiChat { vision: false, audio: false },
@@ -155,4 +130,34 @@ pub(crate) fn compaction(state: &mut AgentState, at: Timestamp) -> Option<Effect
         temperature: state.temperature,
         speaker: paper::SUMMARIZER.to_string(),
     })
+}
+
+/// THE SUMMARIZER'S OWN PAPER — the sheet that replaced its `agent.md`.
+/// [`SUMMARIZE`] is the system block and the transcript is the whole task.
+/// Stateless, and toolless: it reads the transcript and nothing else, so the
+/// calling agent's tools and prompt cannot steer it (Python `compact`). A
+/// Document, like every other model call in this codebase (I13).
+///
+/// No space block at all — the group's facts are not part of the conversation
+/// being compressed, and a sheet that never sets one leaves it Elided. The
+/// history block is deliberately EMPTY rather than the seeded marker: a second
+/// copy of the conversation there would be the thing it is being asked to
+/// compress, twice.
+fn sheet(transcript: &str, at: Timestamp) -> State {
+    let mut sheet = paper::seed();
+    let soul = Soul { text: SUMMARIZE.into() };
+    let identity = Identity { name: "summarizer".into(), description: String::new() };
+    paper::set_component(&mut sheet, &soul, at);
+    paper::set_component(&mut sheet, &identity, at);
+    paper::set_component(&mut sheet, &Affordances::default(), at);
+    paper::set_component(
+        &mut sheet,
+        &Contract::saying("Reply with the notes and nothing else."),
+        at,
+    );
+    let environment = Environment { text: crate::now::environment(at) };
+    paper::set_component(&mut sheet, &environment, at);
+    paper::set_component(&mut sheet, &Task { text: transcript.into() }, at);
+    paper::set_component(&mut sheet, &History { entries: Vec::new() }, at);
+    sheet
 }

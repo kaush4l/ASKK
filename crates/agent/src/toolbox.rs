@@ -1,6 +1,10 @@
-//! The set of tools ONE agent may call, and the check every call passes
-//! through. Split from `tools.rs` to hold the 200-line rule (I12): that file
-//! describes a tool, this one describes a toolkit.
+//! THE TOOLKIT, and the gate every call passes through: the set of tools ONE
+//! agent may call, that set narrowed by a phase's grant, the lines describing
+//! it to the model, and the refusals a call earns before it can run.
+//!
+//! `tools.rs` describes a TOOL — one callable, as data. This describes a SET of
+//! them and what may be done with one. Nothing here knows how a tool runs;
+//! running is I/O and happens in `core`.
 
 use serde::{Deserialize, Serialize};
 
@@ -114,13 +118,13 @@ impl Toolbox {
 /// be worse than the bug.
 ///
 /// `exec` is refused too, and deliberately: the same signature is on record for
-/// it (`core::failed`: `$ "wc -l primes.txt"})`), and a shell handed a
+/// it (`core::failure::within_turn`: `$ "wc -l primes.txt"})`), and a shell handed a
 /// swallowed terminator runs a command nobody wrote — quieter than a bad file
 /// and no easier to correct after the fact. One predicate, every tool, one
 /// place; a per-tool list here would only be a second thing to keep in step.
 /// The opening of the refusal above. It is written for the MODEL and goes to it
 /// unchanged; a person reading the same string in the trace gets one sentence
-/// and this behind a disclosure (`core::vouch::folded`), which needs a way to
+/// and this behind a disclosure (`core::trace::trustworthy::folded`), which needs a way to
 /// recognise it. One const, so the two cannot drift (R15-P1-5).
 pub const NOTHING_RAN: &str = "Nothing ran: an argument ends with";
 

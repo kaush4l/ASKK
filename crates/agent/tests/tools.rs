@@ -94,7 +94,7 @@ fn unreadable_arguments_are_refused_with_a_repair_message() {
 /// So there is no parser bug to fix here, and inventing one would be its own
 /// fabrication. What is fixable is the UI: `swallowed_close` is the page
 /// reading the bytes it is already displaying, so no row can print `"})` and
-/// stamp `ok` beside it (`core::vouch`).
+/// stamp `ok` beside it (`core::trace::trustworthy`).
 #[test]
 fn a_model_that_escapes_its_own_terminator_parses_and_is_seen_for_what_it_is() {
     let reply = r#"write_file({"path": "budget.csv", "contents": "\"item,cost\\ncoffee,4.50\\nrent,1800\\ninternet,60\"})"})"#;

@@ -10,7 +10,7 @@
 //!
 //! Three surfaces asked three different questions: the card asked the ROLE, the
 //! launcher asked whether there was a FOLDER, the pane asked for `exec` by name.
-//! `origin::can` is the one question, off the resolved toolbox, and these are
+//! `agents::card_sentences::can` is the one question, off the resolved toolbox, and these are
 //! the shipped files it has to be right about — not fixtures, because the defect
 //! was that the shipped roster and the shipped copy disagreed.
 

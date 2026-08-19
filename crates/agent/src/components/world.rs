@@ -3,12 +3,14 @@
 use context::{text, Component, Fidelity, Part, Slot, Stability};
 use kernel::SectionId;
 
-/// Time, locale, device, and the shared space.
+/// Time, locale, device — what is available right now.
 ///
-/// The one component that is never cached. A cached clock is a wrong clock,
-/// and the space block behind it is rewritten before every turn — reusing
-/// either would hand the model a confident statement about a moment that has
-/// already passed.
+/// The one component that is never cached. A cached clock is a wrong clock:
+/// reusing it would hand the model a confident statement about a moment that
+/// has already passed. The shared space is NOT in here; it is its own block at
+/// its own slot (`SharedSpace`, `Slot::SPACE`) because a peer's note changes
+/// rarely and this changes every call, and fusing them made the space
+/// uncacheable and this one bulky.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Environment {
     pub text: String,

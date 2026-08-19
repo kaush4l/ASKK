@@ -229,7 +229,7 @@ fn the_missing_model_card_names_the_file_and_never_the_api_key() {
         assert!(!chat.contains(wrong), "the missing model borrowed {wrong}: {chat}");
     }
     // The one bit the pane reads to swap `Open Settings` for the agent's file
-    // (`ui::recover::fix_in_file`) — the same class read `last_failed` makes.
+    // (`ui::chat::retry_actions::fix_in_file`) — the same class read `last_failed` makes.
     assert!(chat.contains("class=\"msg error fix-file\""), "{chat}");
 
     let board = body(&app, "/board");

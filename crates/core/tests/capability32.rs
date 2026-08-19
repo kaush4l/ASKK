@@ -1,6 +1,6 @@
 //! INCREMENT 32 — THE SAME QUESTION, IN THE FOUR PLACES 29 DID NOT REACH.
 //!
-//! 29 made `origin::can` the one predicate behind the task doors, the launcher
+//! 29 made `agents::card_sentences::can` the one predicate behind the task doors, the launcher
 //! and the Commands pane. A walk of the deployed build then found the same
 //! defect four more times, because the predicate had not reached them:
 //!
@@ -12,7 +12,7 @@
 //!    indistinguishable until you selected one and read the launcher.
 //!
 //! The Dashboard's starter tasks are the other half and they are asserted where
-//! they live (`crates/ui/src/examples.rs`), off the same three attributes this
+//! they live (`crates/ui/src/board/examples.rs`), off the same three attributes this
 //! file proves the board publishes. Shipped files, never fixtures: the defect
 //! was that the shipped roster and the shipped copy disagreed.
 
