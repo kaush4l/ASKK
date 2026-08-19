@@ -11,7 +11,7 @@
 //!
 //!     SHOW_PROMPT=1 cargo test -p agent --test prompt -- --nocapture
 
-use agent::{adopt_spec, parse_agent_file, step, AgentState, Effect};
+use agent::{adopt_spec, parse_agent_file, space_parts, step, AgentState, Effect, SPACE_FACULTY};
 use context::{render, ContentPart, ProviderFormat, Role};
 use kernel::{Event, EventId, EventKind, Timestamp};
 
@@ -55,6 +55,7 @@ fn rendered_from(file: &str, question: &str, stages: &[&str]) -> String {
     let spec = parse_agent_file("main", file).expect("the shipped main agent parses");
     let mut state = AgentState::new();
     adopt_spec(&mut state, &spec, &[]);
+    sensed_by_the_host(&mut state);
     state.declared = stages.iter().map(|s| (*s).to_string()).collect();
     state.stages = stages.iter().map(|s| (*s).to_string()).collect();
     let (_, effects) = step(state, user(question));
@@ -76,6 +77,20 @@ fn rendered_from(file: &str, question: &str, stages: &[&str]) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
+}
+
+/// THE HOST, STOOD IN FOR. A faculty block renders whatever a host last left
+/// under its id, and there is no host in this crate — in the running app
+/// `core::space::sense::SpaceSense` writes this before every pass, through the
+/// same port a browser faculty would use.
+///
+/// It is written HERE rather than in `adopt_spec` on purpose. `adopt_spec` used
+/// to fill the space block itself, which made the one faculty the pure crate
+/// knows by name a special case inside the very seam that exists to have none.
+/// Moving it into the test says what the test was always relying on: a host ran.
+fn sensed_by_the_host(state: &mut AgentState) {
+    let parts = space_parts(&state.space);
+    state.senses.insert(SPACE_FACULTY.to_string(), parts);
 }
 
 /// The paper's own headings. A heading is a line that STARTS with `## `;

@@ -24,7 +24,7 @@
 
 use std::process::Command;
 
-use agent::{adopt_spec, parse_agent_file, step, AgentState, Effect};
+use agent::{adopt_spec, parse_agent_file, space_parts, step, AgentState, Effect, SPACE_FACULTY};
 use context::{openai_reply_text, openai_request_body, render, ProviderFormat};
 use kernel::{Event, EventId, EventKind, Timestamp};
 
@@ -106,6 +106,13 @@ fn shipped_main() -> AgentState {
     let spec = parse_agent_file("main", MAIN).expect("the shipped main agent parses");
     let mut state = AgentState::new();
     adopt_spec(&mut state, &spec, &[]);
+    // THE HOST, STOOD IN FOR. A faculty block renders what a host last left
+    // under its id, and this crate has none — `core::space::sense::SpaceSense`
+    // does it in the running app. Without this the model would be asked about a
+    // workspace it was never shown, which is a harder question than the one the
+    // shipped agent actually gets.
+    let parts = space_parts(&state.space);
+    state.senses.insert(SPACE_FACULTY.to_string(), parts);
     state
 }
 

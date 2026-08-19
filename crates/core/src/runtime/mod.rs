@@ -44,9 +44,19 @@ pub fn pump(app: &mut App, event: Event) -> Vec<Effect> {
 pub fn drive(app: Rc<RefCell<App>>) -> kernel::BoxFuture<'static, Result<(), CoreError>> {
     Box::pin(async move {
         loop {
-            // The space, re-read before every pass: a peer on another Worker may
-            // have written to it since the last turn (Python `Engine.context`).
+            // THE "BEFORE EVERY MODEL CALL" HOOK. Every faculty this agent
+            // declared is re-read here, so what the model sees is what the
+            // world is now rather than what it was when the turn began — a
+            // page snapshot, a shared space, whatever the host can reach.
+            //
+            // The space goes first because it is two things: `refresh` re-reads
+            // the store into the state the space TOOLS use (a peer on another
+            // Worker may have written since the last turn — Python
+            // `Engine.context`), and `refresh_all` then renders it for the
+            // PROMPT as one faculty among the declared set, through the same
+            // port a browser faculty would arrive by.
             crate::space::shared::refresh(&app).await;
+            crate::faculty::refresh_all(&app).await;
             let Some(event) = next(&app) else { break };
             if let EventKind::UserMessage { text, agent, .. } = &event.kind {
                 if requests::ran_elsewhere(&app, text, agent).await {

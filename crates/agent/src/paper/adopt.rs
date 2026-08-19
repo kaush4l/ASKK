@@ -26,6 +26,7 @@ pub fn adopt_spec(state: &mut AgentState, spec: &AgentSpec, peers: &[AgentSpec])
     // having to be listed too (Python `utils.load_agent`), and a name that
     // could walk out of `spaces/` attaches nothing at all.
     state.space = crate::space::Space::named(&spec.space);
+    adopt_faculties(state, spec);
     state.toolbox = crate::subagent::toolbox_for(spec, peers);
     (state.compact_at, state.keep_recent) = (spec.compact_at, spec.keep_recent);
     state.max_rounds = spec.max_rounds;
@@ -49,6 +50,22 @@ pub fn adopt_spec(state: &mut AgentState, spec: &AgentSpec, peers: &[AgentSpec])
     };
     set_component(&mut state.paper, &soul, Timestamp(0));
     set_component(&mut state.paper, &identity, Timestamp(0));
+}
+
+/// WHAT THIS FILE DECLARED IT CAN DO (`crate::faculty`). Naming a space
+/// declares the space faculty; any other is named in `faculties:`. The list is
+/// the whole set, in the order the file wrote them, and it is what puts blocks
+/// in the prompt and tools in the toolbox.
+///
+/// It writes the DECLARATION and never a block's contents. A faculty block
+/// renders whatever a HOST last left under its id, and this crate has no host
+/// in it — so an agent adopted here starts with every sensed block empty, which
+/// renders as nothing at all until something outside fills it (I15). That is
+/// why there is no `senses` write beside this line: one for the space would be
+/// the one faculty this pure crate knows by name, and the seam would be a
+/// generalisation everywhere except at its own first entry.
+fn adopt_faculties(state: &mut AgentState, spec: &AgentSpec) {
+    state.faculties = crate::faculty::declared(spec);
 }
 
 /// WHO REVIEWS THIS AGENT'S WORK (25), by the job the file declares and not by

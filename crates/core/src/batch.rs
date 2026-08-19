@@ -157,20 +157,35 @@ async fn single(app: &Rc<RefCell<App>>, effect: Effect) {
     }
 }
 
-/// ONE tool call, run and recorded. `tools::tool_entry` is the dispatch table:
-/// a name it claims is awaited OUTSIDE any borrow of the app (the awaiting
-/// tools reach a Linux, the shared store or the network, and a borrow held
-/// across an await panics the next `borrow_mut`); a name it does not claim, or
-/// a handler that declines the call it was routed, lands on the local
-/// `tools::run` inside the borrow, which refuses an unknown tool in words.
+/// ONE tool call, run and recorded, by the first of THREE runners that claims
+/// it: the built-in table `tools::tool_entry`, then whatever `ToolHost` a
+/// composition root installed (`faculty::run_hosted`), then the local
+/// `tools::run`, which refuses an unknown name in words.
+///
+/// BUILT-INS WIN. A faculty widens what an agent may do; it may not redefine
+/// what this crate already does, so a host declaring `exec` or `web_search`
+/// never sees a call those actually run. The middle rung is what lets a faculty
+/// defined in a crate `core` has never heard of — a browser one, in
+/// `adapters_web` — have its tools RUN rather than be told it may act and then
+/// refused. A handler that DECLINES the call it was routed has run nothing and
+/// said nothing, so that call goes on to the hosts like any other.
+///
+/// The first two are awaited OUTSIDE any borrow of the app (they reach a
+/// Linux, the shared store, the network or a page, and a borrow held across an
+/// await panics the next `borrow_mut`); only `run`, which is sync, is called
+/// inside one.
 ///
 /// The append-and-push that makes the envelope durable is written once, which
 /// is the whole point of the table: five copies of it is five places for the
 /// pump queue and the log to drift apart.
 async fn invoke(app: &Rc<RefCell<App>>, tool: &ToolId, args_json: &str) {
-    let awaited = match crate::tools::tool_entry(tool) {
+    let built_in = match crate::tools::tool_entry(tool) {
         Some(handler) => handler(app, tool, args_json).await,
         None => None,
+    };
+    let awaited = match built_in {
+        Some(kind) => Some(kind),
+        None => crate::faculty::run_hosted(app, tool, args_json).await,
     };
     let mut a = app.borrow_mut();
     let kind = match awaited {

@@ -2,9 +2,11 @@
 //! refreshes all depend on this being serializable, which async-fn futures
 //! could never be — ARCHITECTURE §1c).
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
-use context::State;
+use context::{Part, State};
 use kernel::PhaseId;
 
 use crate::spec::defaults::{
@@ -31,15 +33,13 @@ pub struct AgentState {
     /// This agent's `model:` frontmatter key — a MODEL CATALOGUE key, never a
     /// URL (increment 04). It rides out on `Effect::CallModel` so the adapter
     /// can resolve it; empty means "the catalogue's default entry".
-    #[serde(default)]
-    pub model: String,
+    #[serde(default)] pub model: String,
     /// This agent's `temperature:` frontmatter key, or `None` where the file
     /// named none. Rides out on `Effect::CallModel` (increment 19): the key
     /// parsed, rendered back out and printed on the card for eighteen rounds
     /// while reaching no request body — the `compact_at: lots` failure
     /// (`spec::number`) in a key that looked applied.
-    #[serde(default)]
-    pub temperature: Option<f64>,
+    #[serde(default)] pub temperature: Option<f64>,
     /// What is being attempted; `None` = idle, awaiting a task.
     pub task: Option<String>,
     /// The current plan; empty in Work-first flows (RESEARCH phase-cut:
@@ -55,89 +55,70 @@ pub struct AgentState {
     /// Tool results still outstanding from the batch the model just wrote.
     /// The model sees none of them until this reaches zero — that is what
     /// makes one line of calls one observation (Python `core/tools.py`).
-    #[serde(default)]
-    pub pending_tools: usize,
+    #[serde(default)] pub pending_tools: usize,
     /// How many times this turn has already gone round the tool loop. A
     /// looping model terminates on this counter, never on prose.
-    #[serde(default)]
-    pub tool_rounds: u16,
+    #[serde(default)] pub tool_rounds: u16,
     /// A sentence the person typed while this turn was already running, not
     /// yet answered. It is a FLAG and not a queue: the sentence itself is
     /// already in the history, and this only records that nothing has replied
     /// to it since. Cleared the moment a call is made carrying it.
-    #[serde(default)]
-    pub steered: bool,
+    #[serde(default)] pub steered: bool,
     /// The person pressed Stop while this turn was running. A FLAG, like
     /// `steered`, and for the same reason: the press is a fact about the turn
     /// and not a queue of work. `stop::boundary` consumes it at the next step
     /// boundary; a new turn clears it.
-    #[serde(default)]
-    pub stopping: bool,
+    #[serde(default)] pub stopping: bool,
     /// The ceiling that counter terminates on, from this agent's `max_rounds:`
     /// frontmatter. It is per-agent because the right number is a property of
     /// the WORK: a summarizer that calls two tools and a coding agent that
     /// edits nine files, builds, reads the errors and edits again cannot share
     /// one constant, and the constant this replaced was four.
-    #[serde(default = "default_max_rounds")]
-    pub max_rounds: u16,
+    #[serde(default = "default_max_rounds")] pub max_rounds: u16,
     /// What THIS agent may call: its `agent.md` `tools:` list resolved
     /// against the built-ins and its peers (`subagent::toolbox_for`). In
     /// state, not in the phase table, because it is the agent's property and
     /// not the machine's — the phase only decides whether this phase may act.
-    #[serde(default)]
-    pub toolbox: Toolbox,
+    #[serde(default)] pub toolbox: Toolbox,
     /// Compact once the window reaches this many entries; 0 never compacts
     /// (Python `Engine.compact_at`, default 75, overridable in frontmatter).
-    #[serde(default = "default_compact_at")]
-    pub compact_at: usize,
+    #[serde(default = "default_compact_at")] pub compact_at: usize,
     /// How many of the newest entries survive a compaction verbatim (Python
     /// `Engine.keep_recent`, default 24).
-    #[serde(default = "default_keep_recent")]
-    pub keep_recent: usize,
+    #[serde(default = "default_keep_recent")] pub keep_recent: usize,
     /// The reply now in flight is the SUMMARIZER's, not this agent's answer.
     /// A summary is an artifact compaction produces and assembly reads back —
     /// `assemble` is pure and cannot author one (I14, RESEARCH).
-    #[serde(default)]
-    pub compacting: bool,
+    #[serde(default)] pub compacting: bool,
     /// How many times this window has been compacted. The log mirrors the
     /// window, and this counter is what tells the mirror a REWRITE is due
     /// rather than another append.
-    #[serde(default)]
-    pub compactions: u32,
+    #[serde(default)] pub compactions: u32,
     /// THIS TURN'S EVIDENCE (`crate::verify`). Two flags folded left-to-right
     /// over the turn's tool results, and `nudges` counting how many times the
     /// gate has already asked. All three are turn-scoped: cleared where
     /// `pending_tools` and `tool_rounds` are, and again when a turn ends.
-    #[serde(default)]
-    pub mutated: bool,
-    #[serde(default)]
-    pub green: bool,
-    #[serde(default)]
-    pub nudges: u8,
+    #[serde(default)] pub mutated: bool,
+    #[serde(default)] pub green: bool,
+    #[serde(default)] pub nudges: u8,
     /// The loop this agent's file declares (`crate::stages`), in order, and
     /// how far this turn has walked it. Empty is the react loop alone — which
     /// is every agent written before the key existed, and the reason nothing
     /// about the old single-stage turn changed.
-    #[serde(default)]
-    pub stages: Vec<String>,
+    #[serde(default)] pub stages: Vec<String>,
     /// The list the agent's FILE declares, which `stages` is reset to at the
     /// start of every turn. The two are separate because the strategy stage
     /// REWRITES `stages` mid-turn: without a copy of the declaration, the
     /// second message of a conversation would inherit the route the first one
     /// chose, and a greeting after a project would still be planning.
-    #[serde(default)]
-    pub declared: Vec<String>,
-    #[serde(default)]
-    pub stage: usize,
+    #[serde(default)] pub declared: Vec<String>,
+    #[serde(default)] pub stage: usize,
     /// The `passes:` budget, the laps spent, and whether THIS lap changed or
     /// ran anything — the continue condition, mechanical and never the model's
     /// verdict (`crate::passes`). 1/0/false is today's turn exactly.
-    #[serde(default = "default_passes")]
-    pub passes: u16,
-    #[serde(default)]
-    pub pass: u16,
-    #[serde(default)]
-    pub acted: bool,
+    #[serde(default = "default_passes")] pub passes: u16,
+    #[serde(default)] pub pass: u16,
+    #[serde(default)] pub acted: bool,
     /// THE SEPARATE REVIEWER (`crate::critic`, 25). `critic` names the agent
     /// holding `role: critic`, so its answer is recognised as a verdict rather
     /// than by a hardcoded name; `reviewed` is what that verdict said — `None`
@@ -148,8 +129,19 @@ pub struct AgentState {
     /// — its facts and notes go into CONTEXT on every call. `None` means the
     /// agent's file named no space, so it works alone (Python: `space` is an
     /// optional frontmatter key).
-    #[serde(default)]
-    pub space: Option<crate::space::Space>,
+    #[serde(default)] pub space: Option<crate::space::Space>,
+    /// The faculties this agent's file declared (`crate::faculty`), in order.
+    /// The host walks this list before every pass and writes fresh state into
+    /// `senses` for each. Empty is an agent that senses nothing, which is
+    /// every agent written before the key existed.
+    #[serde(default)] pub faculties: Vec<String>,
+    /// BLOCK ID -> the parts a host wrote for it, most recently. `space` one
+    /// step generalised: the slot where an impure host leaves fresh data for a
+    /// pure component (`components::Sensed`) to render. `Vec<Part>` and not
+    /// `String` so a screenshot is representable without a second mechanism;
+    /// `BTreeMap` and not `HashMap` so two identical agents assemble two
+    /// identical papers (I7, I14).
+    #[serde(default)] pub senses: BTreeMap<String, Vec<Part>>,
     /// The paper's assembly inputs — gathered section sources, refreshed by
     /// `core` (affordances from the registry, observations from effects)
     /// before each step. Inside AgentState so one snapshot restores the
@@ -186,6 +178,9 @@ impl AgentState {
             passes: default_passes(), pass: 0, acted: false,
             critic: String::new(), reviewed: None,
             space: None,
+            // Senses nothing until a faculty says otherwise, and remembers
+            // nothing sensed: both are what "no host has written yet" is.
+            faculties: Vec::new(), senses: BTreeMap::new(),
             paper: crate::paper::seed(),
         }
     }

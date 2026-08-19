@@ -52,10 +52,13 @@ JSON object, with newlines inside the prompt written as `\n`:
 - `tools` — a comma-separated list. NAME THEM: `""` means every built-in tool,
   including `write_agent`, and an agent that writes agents when its job is
   writing haiku is a capability nobody asked for. The built-ins are `now`,
-  `list_agents`, `read_agent`, `write_agent`, `list_skills`, `read_skill` and
-  `web_search`; you can also name another loaded agent, which makes that agent
-  callable as a tool. Most agents need none at all — write `now` if it needs
+  `list_agents`, `read_agent`, `write_agent`, `spawn_agent`, `list_skills`,
+  `read_skill` and `web_search`; you can also name another loaded agent, which
+  makes that agent callable as a tool. Most agents need none at all — write `now` if it needs
   the date, and nothing otherwise.
+  Name `spawn_agent` when the agent's job is to get OTHER agents working — it
+  hands a goal to one that already exists, so an agent that has it should also
+  have `list_agents` to find out which do.
   Name `list_skills, read_skill` when the agent's job has house rules written
   down: it reads them when the job comes up instead of carrying them in its
   prompt forever. Name `web_search` only when the job really needs the open

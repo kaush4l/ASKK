@@ -67,6 +67,13 @@ pub struct AgentSpec {
     #[serde(default)]
     pub stages: Vec<String>,
     pub tools: Vec<String>,
+    /// The FACULTIES this agent declares (`crate::faculty`) — each one a
+    /// bundle of tools and prompt blocks, selected by name. A non-empty
+    /// `space:` declares the space faculty on its own, so this key is what a
+    /// file writes to declare any OTHER one; an unknown name is reported and
+    /// never refused, on `subagent::unresolved_tools`' rule.
+    #[serde(default)]
+    pub faculties: Vec<String>,
     pub space: String,
     /// Compact once the history reaches this many entries; 0 never compacts
     /// (the shipped summarizer sets 0, so it never summarises itself).
@@ -129,6 +136,7 @@ fn unwritten(dir: &str, body: &str) -> AgentSpec {
         role: String::new(),
         stages: Vec::new(),
         tools: Vec::new(),
+        faculties: Vec::new(),
         space: String::new(),
         compact_at: defaults::default_compact_at(),
         keep_recent: defaults::default_keep_recent(),

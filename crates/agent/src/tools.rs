@@ -105,28 +105,16 @@ impl ToolResult {
 /// for modules; a tool declared here with no executor there refuses like any
 /// unknown tool rather than pretending to run.
 ///
-/// Three groups: what stays in the tab, the one call that leaves it, and the
-/// skill tools, which are declared beside their own rules the way the space's
-/// and the workspace's sets are (`crate::skills`).
+/// Four groups: what only LOOKS, the two that act on the ROSTER of agents, the
+/// one call that LEAVES the tab, and the skill tools, declared beside their own
+/// rules the way the space's and the workspace's sets are (`crate::skills`).
 pub fn builtin_tools() -> Toolbox {
-    Toolbox::of(
-        [inside_this_browser(), vec![web_search()], crate::skills::tools()].concat(),
-    )
+    let here = [inside_this_browser(), the_roster(), vec![web_search()]].concat();
+    Toolbox::of([here, crate::skills::tools()].concat())
 }
 
-/// The tools that never leave the tab: what time it is here, and reading and
-/// writing the agents installed here.
-///
-/// `write_agent` is increment 11. A model authoring an agent that then runs
-/// with real capabilities is a decision the user made explicitly; it is an
-/// ORDINARY tool because a built-in agent and an authored one must be
-/// indistinguishable to the system (I9).
-///
-/// Its 'space' sentence used to say naming one "also grants it a real shell".
-/// That was true when `toolbox_for` appended the workspace set AFTER the
-/// allowlist; it is now false for any non-empty list, and a tool description
-/// that overstates a capability boundary is the worst place in the product to
-/// be out of date — an authoring model reads it and writes the wrong file.
+/// The tools that never leave the tab and only LOOK: what time it is here, and
+/// what the agents installed here are.
 fn inside_this_browser() -> Vec<Tool> {
     vec![
         Tool::new("now", "The current date and time in this browser.", &[]),
@@ -140,19 +128,59 @@ fn inside_this_browser() -> Vec<Tool> {
             "One agent's definition: its model, its tools and its system prompt.",
             &["name"],
         ),
+    ]
+}
+
+/// THE TWO THAT ACT ON THE ROSTER: one writes an agent into this browser, the
+/// other sets one of them working. Each hands CAPABILITY to something that is
+/// not this turn, which is why their descriptions are the longest in the file.
+///
+/// `write_agent` is increment 11. A model authoring an agent that then runs
+/// with real capabilities is a decision the user made explicitly; it is an
+/// ORDINARY tool because a built-in agent and an authored one must be
+/// indistinguishable to the system (I9).
+///
+/// Its 'space' sentence used to say naming one "also grants it a real shell".
+/// That was true when `toolbox_for` appended the workspace set AFTER the
+/// allowlist; it is now false for any non-empty list, and a tool description
+/// that overstates a capability boundary is the worst place in the product to
+/// be out of date — an authoring model reads it and writes the wrong file.
+///
+/// `spawn_agent` (increment 27) states the boundary the other half implies: it
+/// starts an agent that ALREADY EXISTS, so it names `list_agents` for finding
+/// one and `write_agent` for authoring one first — composed, the two are
+/// "author a new role, then start it", with no second config format.
+fn the_roster() -> Vec<Tool> {
+    vec![
         Tool::new(
             "write_agent",
-            "Create or replace an agent in this browser: it is installed immediately, gets its \
-             own Worker and is listed beside the shipped agents. 'tools' is a comma-separated \
-             list of tool and agent names ('' means every built-in tool, plus the whole \
+            "Create or replace an agent in this browser. It is installed WHEN THIS TURN ENDS \
+             — not at once, so spawn_agent cannot reach it until your next turn — and it then \
+             gets its own Worker and is listed beside the shipped agents. 'tools' is a \
+             comma-separated list of tool and agent names ('' means every built-in, plus the \
              workspace set if a space is named). 'space' is the shared space it works in; \
              naming one makes the workspace tools AVAILABLE TO NAME — 'exec', 'write_file', \
              'read_file', 'list_files' and the process tools — and a non-empty 'tools' list \
              then grants exactly the ones it names and nothing else.",
             &["name", "description", "prompt", "tools", "space"],
         ),
+        Tool::new(
+            SPAWN_AGENT,
+            "Hand a goal to an agent that is ALREADY INSTALLED in this browser: it works on \
+             the goal in its own Worker, with its own tools and its own conversation, and \
+             its answer comes back to you as this call's result. 'agent' must be the name \
+             of an agent that already exists — list_agents says which do — and 'goal' is \
+             the whole task in one string. It does NOT create an agent and it cannot give \
+             one any capability it was not written with: write_agent is what authors a new \
+             agent, and this is what then sets one working.",
+            &["agent", "goal"],
+        ),
     ]
 }
+
+/// The one built-in whose result is a whole turn of somebody ELSE's loop. A
+/// constant because `subagent::delegated` branches on the name.
+pub(crate) const SPAWN_AGENT: &str = "spawn_agent";
 
 /// The first tool that leaves this browser for something other than the model
 /// (increment 21). WHERE it goes is a setting and not a constant: CLAUDE.md §17

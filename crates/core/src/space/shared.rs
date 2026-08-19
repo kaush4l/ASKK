@@ -69,6 +69,10 @@ pub(crate) async fn refresh(app: &Rc<RefCell<App>>) {
     };
     let Some(name) = name else { return };
     let space = load(kv.as_ref(), &name).await;
+    // `agent::space` and nothing else. What the PROMPT shows is written by
+    // `space::sense::SpaceSense` through the faculty port, from this same
+    // field, one step later in `runtime::drive` — so the space has no private
+    // path into the paper that a browser faculty would have to copy.
     app.borrow_mut().agent.space = Some(space);
 }
 
@@ -114,6 +118,9 @@ pub(crate) async fn run(
     };
     let stamp = format!("{:013}-{author}-{nonce:04x}", at.0);
     let stored = write(kv.as_ref(), &space.name, change, &stamp).await;
+    // What the tool just changed, in the state the tools read. The prompt
+    // catches up at the top of the next `drive` pass, which is before the next
+    // model call and therefore before anyone could read a stale one.
     app.borrow_mut().agent.space = Some(space);
     Some(EventKind::ToolInvoked {
         tool: tool.clone(),

@@ -9,8 +9,7 @@ use crate::calls::Call;
 use crate::effect::Effect;
 use crate::spec::AgentSpec;
 use crate::toolbox::Toolbox;
-use crate::tools::{builtin_tools, Tool};
-
+use crate::tools::{builtin_tools, Tool, SPAWN_AGENT};
 
 /// What one agent may call, from its own `agent.md` and its peers.
 ///
@@ -57,24 +56,12 @@ fn resolve(spec: &AgentSpec, peers: &[AgentSpec]) -> (Vec<Tool>, Vec<String>) {
     if spec.engine == crate::spec::ENGINE_BASE {
         return (Vec::new(), Vec::new());
     }
-    let offered = [builtin_tools().tools, with_the_space(spec)].concat();
+    // …AND WHAT THE FILE'S FACULTIES BRING WITH THEM (`faculty::tools_for`),
+    // which is where naming a space stopped being a special case.
+    let offered = [builtin_tools().tools, crate::faculty::tools_for(spec)].concat();
     match spec.tools.is_empty() {
         true => (offered, Vec::new()),
         false => allowlisted(spec, peers, &offered),
-    }
-}
-
-/// What NAMING A SPACE brings with it. A space's three tools are attached to
-/// whoever names it, rather than having to be written out under `space:` too,
-/// which would only be a second place to keep in step (Python
-/// `utils.load_agent`) — and its WORKSPACE tools with them (increment 10): the
-/// folder is the space's, so the capability to build in it arrives with the
-/// space and with nothing else. No space, no workspace — default deny
-/// (ADR-006).
-fn with_the_space(spec: &AgentSpec) -> Vec<Tool> {
-    match crate::space::Space::named(&spec.space) {
-        Some(_) => [crate::space::space_tools(), crate::workspace::workspace_tools()].concat(),
-        None => Vec::new(),
     }
 }
 
@@ -170,18 +157,42 @@ pub(crate) fn invoke_or_refuse(tools: &Toolbox, call: Call, batch: u16) -> Effec
     if let Some(effect) = crate::skills::effect(&tool.name, &call.args_json) {
         return effect;
     }
-    if !tool.agent {
+    // `spawn_agent` delegates too, so it cannot be told apart by `tool.agent`:
+    // it is a BUILT-IN, and the agent it starts is whatever the model wrote.
+    if !tool.agent && tool.name != SPAWN_AGENT {
         return Effect::InvokeTool {
             tool: ToolId(tool.name.clone()),
             args_json: call.args_json,
         };
     }
-    match goal_from(&tool.name, &call.args_json) {
-        Ok(goal) => Effect::Delegate {
-            agent: tool.name.clone(),
-            goal,
-            batch,
-        },
+    match delegated(&tool, &call.args_json) {
+        Ok((agent, goal)) => Effect::Delegate { agent, goal, batch },
         Err(problem) => refuse(tool.name.clone(), call.args_json, problem),
     }
 }
+
+/// THE AGENT AND THE GOAL OUT OF THE JSON THE MODEL WROTE, for both ways of
+/// asking. A SUB-AGENT tool IS its callee and carries only a goal, which is
+/// [`goal_from`]; `spawn_agent` names its callee in an argument, because the
+/// agent it starts is whichever one the model chose. Either way an unreadable
+/// call is REFUSED and never delivered with an empty goal — a sub-agent handed
+/// one answers it regardless, which is what this exists to prevent.
+fn delegated(tool: &Tool, args_json: &str) -> Result<(String, String), String> {
+    if tool.name != SPAWN_AGENT {
+        return goal_from(&tool.name, args_json).map(|goal| (tool.name.clone(), goal));
+    }
+    let value = serde_json::from_str::<serde_json::Value>(args_json).unwrap_or_default();
+    let field = |k: &str| value.get(k).and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    match (field("agent"), field("goal")) {
+        (agent, goal) if !agent.is_empty() && !goal.is_empty() => Ok((agent, goal)),
+        (agent, _) => Err(format!(
+            "{}. Call it as {SPAWN_AGENT}({{\"agent\": \"<one that already exists>\", \
+             \"goal\": \"<the whole task, in one string>\"}})",
+            match agent.is_empty() {
+                true => "no agent named — list_agents says which exist",
+                false => "no goal given, and an agent handed an empty goal answers it anyway",
+            }
+        )),
+    }
+}
+

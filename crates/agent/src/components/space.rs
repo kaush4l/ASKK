@@ -1,5 +1,5 @@
-//! The shared space as a block of its own: the folder a group builds in, the
-//! facts it has settled, and the notes it has left for each other.
+//! THE WORDS THE SPACE IS WRITTEN IN: the folder a group builds in, the facts
+//! it has settled, and the notes it has left for each other.
 //!
 //! It used to be three paragraphs appended to `## environment` by
 //! `now::environment`, built with `format!` and `push_str` in a file that is
@@ -8,9 +8,17 @@
 //! the clock is Dynamic and can never be cached. Fused, the clock's
 //! uncacheability infected the space and the space's bulk rode inside a block
 //! the budget is told is small. Two things, two components, two slots.
+//!
+//! It is no longer a `Component`. The space is a FACULTY now
+//! (`crate::faculty::space`), which declares the block — id, slot, intent,
+//! stability — and `components::Sensed` renders whatever a host wrote for it.
+//! What could not move is this file's VOCABULARY: [`lines`] is the exact
+//! wording the model reads, and it stays in one place, reached through
+//! [`space_parts`]. Splitting the declaration from the wording is the whole
+//! point of the seam — a browser faculty declares its own block and writes its
+//! own words, and neither has to touch the other.
 
-use context::{text, Component, Fidelity, Part, Slot, Stability};
-use kernel::SectionId;
+use context::{text, Part};
 
 use crate::space::Space;
 
@@ -18,59 +26,31 @@ use crate::space::Space;
 /// store. Named apart from [`Space`] on purpose: that type is the space's
 /// *decisions and data*, this one is the paragraph the model reads.
 ///
-/// `None` is an agent that works alone, and it renders NOTHING — no heading,
-/// no apology. Emptiness is `Fidelity::Elided`, which is how the paper already
-/// spells "absent".
+/// It is kept as a NAMED VIEW rather than deleted because `tests/space.rs`
+/// reads the block through it — the one place that asks "what was the model
+/// actually shown about this space", which is a question worth a name.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SharedSpace {
     pub space: Option<Space>,
 }
 
 impl SharedSpace {
-    /// This block as flat text. For the tests that read what the model was
-    /// shown — and it is empty exactly when there is no space, which is what
-    /// makes the block vanish rather than head a blank one.
+    /// This block as flat text. Empty exactly when there is no space, which is
+    /// what makes the block vanish rather than head a blank one.
     pub fn text(&self) -> String {
         self.space.as_ref().map(lines).unwrap_or_default()
     }
 }
 
-impl Component for SharedSpace {
-    fn id(&self) -> SectionId {
-        SectionId("space".into())
-    }
-    fn slot(&self) -> Slot {
-        Slot::SPACE
-    }
-    fn intent(&self) -> String {
-        "The folder this group shares, what it has settled, what it has posted.".into()
-    }
-    /// SemiStatic, and slotted ahead of the clock for that reason. A group's
-    /// facts change on the scale of a session, not of a turn, so the block
-    /// belongs inside the cacheable head — above the one section that can
-    /// never be cached rather than behind it.
-    fn stability(&self) -> Stability {
-        Stability::SemiStatic
-    }
-    /// Elided, and it has to be. An agent that named no space renders no
-    /// parts, and `assemble` starts a partless section at `Fidelity::Elided`
-    /// (`assemble.rs:97`) — which `law::validate` rejects as BelowFloor for
-    /// anything whose floor is higher. A floor of `Summarized` here would make
-    /// every spaceless agent's paper an illegal document, which is how this
-    /// number was chosen rather than assumed.
-    fn floor(&self) -> Fidelity {
-        Fidelity::Elided
-    }
-    /// More durable than the transcript, less critical than the task.
-    fn budget_priority(&self) -> u8 {
-        4
-    }
-    fn render(&self) -> Vec<Part> {
-        match self.text() {
-            empty if empty.is_empty() => Vec::new(),
-            block => text(block),
-        }
-    }
+/// The space as the PARTS a host leaves in `AgentState.senses["space"]` for
+/// `components::Sensed` to render.
+///
+/// `None` is an agent that works alone and it yields NOTHING — no heading, no
+/// apology. Emptiness becomes `Fidelity::Elided` (`assemble` starts a partless
+/// section there, `crates/context/src/assemble.rs:110`), which is how the
+/// paper already spells "absent".
+pub fn space_parts(space: &Option<Space>) -> Vec<Part> {
+    text(SharedSpace { space: space.clone() }.text())
 }
 
 /// The space as CONTEXT lines (Python `Space.context`). Empty areas render

@@ -150,6 +150,8 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
             phases: agent::v1_phases(),
             log,
             ports,
+            senses: crate::faculty::installed_by_default(),
+            tool_hosts: Vec::new(),
             pending: Vec::new(),
             unpersisted: Vec::new(),
             unlogged: Vec::new(),

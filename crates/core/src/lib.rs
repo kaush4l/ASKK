@@ -15,6 +15,7 @@ mod ctx;
 mod dispatch;
 mod effects;
 mod error;
+mod faculty;
 mod failure;
 mod files;
 mod log;
@@ -37,6 +38,7 @@ pub use app::{App, Ports, ENTRY_AGENT};
 pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
 pub use effects::execute_port_effect;
+pub use faculty::{install_sense, install_tool_host, Sense, Sensing, ToolHost};
 pub use error::{provider_error, CoreError};
 pub use failure::from_worker::report_activity;
 pub use log::store::{activity_since, memory_held, restore_log, window};
@@ -60,6 +62,15 @@ pub fn agent_files(app: &App) -> Vec<(String, String)> {
         .chain(app.files.clone())
         .chain(agents::authored::files(&app.authored))
         .collect()
+}
+
+/// What one faculty's block currently holds — the parts a `Sense` last left
+/// for `components::Sensed` to render (`crate::faculty`). Public for the same
+/// reason `log_kinds` is: "the host put fresh state in the prompt" is a fact
+/// about state, and a test that could only read the rendered prompt would be
+/// asserting on a renderer.
+pub fn sensed(app: &App, block: &str) -> Vec<context::Part> {
+    app.agent.senses.get(block).cloned().unwrap_or_default()
 }
 
 /// Every fact so far, in order — the log itself (I8). Public because a test

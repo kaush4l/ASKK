@@ -85,6 +85,9 @@ pub fn new_spec(
         // …and one pass, which is what "no stage list" already means (22).
         passes: crate::spec::defaults::default_passes(),
         tools: tools.iter().map(|t| one_line(t)).filter(|t| !t.is_empty()).collect(),
+        // No faculty beyond whatever the space declares (`crate::faculty`):
+        // the five things an author chooses do not include one.
+        faculties: Vec::new(),
         space: one_line(space),
         compact_at: crate::spec::defaults::default_compact_at(),
         keep_recent: crate::spec::defaults::default_keep_recent(),

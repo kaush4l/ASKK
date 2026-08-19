@@ -18,6 +18,7 @@ mod contract;
 mod directive;
 mod history;
 mod respond;
+mod sensed;
 mod soul;
 mod space;
 mod world;
@@ -28,8 +29,9 @@ pub(crate) use directive::Directive;
 pub(crate) use history::History;
 pub use history::SESSION_STARTED;
 pub(crate) use respond::{Field, ResponseObject};
+pub use sensed::{Block, Sensed};
 pub(crate) use soul::{Identity, OperatingRules, Soul};
-pub use space::SharedSpace;
+pub use space::{space_parts, SharedSpace};
 pub(crate) use world::{Environment, Observations, Task};
 
 use context::{Component, Form, SectionSource, State};
@@ -57,24 +59,35 @@ pub(crate) fn source(c: &dyn Component, at: Timestamp, form: Form) -> SectionSou
 /// (I13). The environment is fresh every request and never cached: a cached
 /// clock is a wrong clock (Python `Engine.context`).
 ///
-/// A block that must be rebuilt per call is added HERE, in order, rather than
-/// as a fourth statement in `ask::call_model`.
+/// A block that belongs to THE MACHINE — the toolbox, the contract, the clock
+/// — is added HERE, in order, rather than as a fourth statement in
+/// `ask::call_model`.
+///
+/// A block that belongs to A CAPABILITY is NOT added here and adding one does
+/// not mean editing this function. It arrives from the agent's own file: the
+/// file declares a faculty, `faculty::blocks_of` says which blocks that
+/// faculty contributes, and each is rendered by `Sensed` from whatever the
+/// host most recently left in `state.senses` under the block's id. That is the
+/// chrome agent's "latest page snapshot, always included" with one name
+/// substituted — a line of frontmatter, not a line of Rust.
 pub(crate) fn dynamic(
     state: &crate::state::AgentState,
     cfg: &crate::phase::PhaseConfig,
     tools: &crate::toolbox::Toolbox,
     at: Timestamp,
 ) -> Vec<Box<dyn Component>> {
-    vec![
+    let mut blocks: Vec<Box<dyn Component>> = vec![
         Box::new(Affordances::new(tools.usages())),
         Box::new(crate::ask::stage_contract(state, cfg, tools)),
-        Box::new(SharedSpace {
-            space: state.space.clone(),
-        }),
         Box::new(Environment {
             text: crate::now::environment(at),
         }),
-    ]
+    ];
+    for block in crate::faculty::blocks_of(&state.faculties) {
+        let parts = state.senses.get(block.id).cloned().unwrap_or_default();
+        blocks.push(Box::new(Sensed { block, parts }));
+    }
+    blocks
 }
 
 /// The starting paper: every component at its opening value.
@@ -83,6 +96,12 @@ pub(crate) fn dynamic(
 /// listing these in the wrong order would change nothing. They are listed in
 /// prompt order anyway, because a reader should not have to consult the slot
 /// table to picture the result.
+///
+/// THE SEED KNOWS NO FACULTY. `space` used to be listed below, which made the
+/// starting paper carry a block that only agents naming a space would ever
+/// fill; `set_component` UPSERTS, so a faculty block attaches at the first
+/// call that renders it and needs no place reserved here. What is left is
+/// exactly the set every agent has whatever it declared.
 pub(crate) fn seed() -> State {
     let at = Timestamp(0);
     let form = Form::DEFAULT;
@@ -92,7 +111,6 @@ pub(crate) fn seed() -> State {
             source(&Identity::default(), at, form),
             source(&OperatingRules, at, form),
             source(&Affordances::default(), at, form),
-            source(&SharedSpace::default(), at, form),
             source(&Environment::default(), at, form),
             source(&Task::default(), at, form),
             source(&History::default(), at, form),

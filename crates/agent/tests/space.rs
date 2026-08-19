@@ -158,6 +158,10 @@ fn an_empty_list_with_a_space_takes_every_builtin_and_the_whole_space_set() {
             "list_agents",
             "read_agent",
             "write_agent",
+            // Increment 27: starting an agent that already exists is an
+            // ordinary built-in, so an empty list takes it too — WHICH agent
+            // it may start is the callee's own business, not this list's.
+            "spawn_agent",
             // Increment 21: a built-in like any other, so an empty list takes
             // it — whether it can reach anything is the allowlist's business.
             "web_search",

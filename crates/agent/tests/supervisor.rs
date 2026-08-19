@@ -19,6 +19,7 @@ fn spec(name: &str, tools: &[&str]) -> AgentSpec {
         engine: "react".into(),
         role: String::new(),
         stages: Vec::new(),
+        faculties: Vec::new(),
         tools: tools.iter().map(|t| (*t).to_string()).collect(),
         space: String::new(),
         compact_at: 75,
@@ -132,6 +133,7 @@ fn the_frontmatter_tools_list_decides_the_toolbox() {
     // resolves differently from every other (I9). The consequence is that an
     // agent with an empty `tools:` can author agents — which is why the Agents
     // card prints the RESOLVED toolbox rather than the frontmatter's.
+    // `spawn_agent` (increment 27) joins it on exactly that rule.
     assert_eq!(
         names,
         [
@@ -139,6 +141,7 @@ fn the_frontmatter_tools_list_decides_the_toolbox() {
             "list_agents",
             "read_agent",
             "write_agent",
+            "spawn_agent",
             "web_search",
             // Skills are built-ins on the same rule: they run nothing, and a
             // skill's body stays out of the window until `read_skill` asks.

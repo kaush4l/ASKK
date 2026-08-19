@@ -56,6 +56,18 @@ pub struct App {
     pub(crate) phases: Vec<PhaseConfig>,
     pub(crate) log: EventLog,
     pub(crate) ports: Ports,
+    /// The host halves of the faculties this build can actually sense
+    /// (`crate::faculty`). Here rather than on `Ports` because a sense is
+    /// COMPOSED IN, not required: an app with none still runs every agent it
+    /// has, and the composition root adds what its platform can reach through
+    /// `faculty::install_sense`.
+    pub(crate) senses: Vec<std::rc::Rc<dyn crate::faculty::Sense>>,
+    /// The host halves that RUN what those faculties offer to call
+    /// (`crate::faculty::ToolHost`). Here beside `senses`, and for the same
+    /// reason: composed in through `faculty::install_tool_host`, absent by
+    /// default, and never a required field of `Ports` — a build with no host
+    /// still runs every tool compiled into this crate.
+    pub(crate) tool_hosts: Vec<std::rc::Rc<dyn crate::faculty::ToolHost>>,
     /// Events awaiting the agent pump (G4: filled by module emission in
     /// dispatch and by effect results in `drive`).
     pub(crate) pending: Vec<Event>,

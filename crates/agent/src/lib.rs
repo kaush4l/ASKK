@@ -16,6 +16,7 @@ mod now;
 mod effect;
 mod ending;
 mod error;
+mod faculty;
 mod forge;
 mod paper;
 mod passes;
@@ -52,7 +53,11 @@ pub use phase::{
 pub use paper::adopt_spec;
 pub use now::{clock, environment};
 pub use window::{compacted, due, set_window, transcript, window, SUMMARIZE, SUMMARY_HEADING};
-pub use components::{SharedSpace, SESSION_STARTED};
+pub use components::{space_parts, Block, Sensed, SharedSpace, SESSION_STARTED};
+pub use faculty::{
+    blocks_of, declared as declared_faculties, of as faculty_of, Faculty, ALL as FACULTIES,
+    SPACE as SPACE_FACULTY,
+};
 pub use space::{is_space_tool, space_tools, Change, Space, NOTE_LIMIT};
 pub use search::{results as search_results, search_path, WEB_SEARCH};
 pub use workspace::{is_workspace_tool, process_name, relative_path, workspace_tools};

@@ -43,8 +43,13 @@ pub(crate) fn read_frontmatter(frontmatter: &str, spec: &mut AgentSpec) -> Resul
         if let Some(item) = trimmed.strip_prefix("- ") {
             match list {
                 Some("stages") => spec.stages.push(unquote(item)),
-                Some(_) => spec.tools.push(unquote(item)),
-                None => {}
+                Some("faculties") => spec.faculties.push(unquote(item)),
+                Some("tools") => spec.tools.push(unquote(item)),
+                // A `- item` under no open list. NOT a fall-through to
+                // `tools:`, which is what the catch-all used to be: with a
+                // third list key that would silently feed the toolbox, and
+                // silence must never fail towards more capability.
+                _ => {}
             }
             continue;
         }
@@ -78,7 +83,11 @@ fn set_field(spec: &mut AgentSpec, key: &str, value: &str) -> Result<Option<&'st
         // case and not a misspelling — so it is the one blank this accepts.
         "role" if value.is_empty() => {}
         "role" => spec.role = one_of(spec, key, value, &ROLES)?,
-        "stages" | "tools" => return list_field(spec, key, value),
+        // Named one at a time so the `&'static str` a block list is keyed by
+        // comes from HERE and not from the borrowed line.
+        "stages" => return list_field(spec, "stages", value),
+        "tools" => return list_field(spec, "tools", value),
+        "faculties" => return list_field(spec, "faculties", value),
         "compact_at" | "keep_recent" | "max_rounds" | "passes" | "temperature" => {
             number_field(spec, key, value)?
         }
@@ -107,27 +116,31 @@ fn one_of(
     }
 }
 
-/// One key written as a list, in either of its two shapes: `[a, b]` here, or a
-/// bare `key:` opening the `- name` block on the lines below — which is what
-/// the returned name says is now open.
+/// One of the three keys written as a list, in either of its two shapes:
+/// `[a, b]` here, or a bare `key:` opening the `- name` block on the lines
+/// below — which is what the returned name says is now open. An unknown
+/// FACULTY name is not refused here; only an unreadable SHAPE is, because a
+/// name that resolves to nothing is a capability question and this file only
+/// judges what one line can be judged by (`crate::faculty::of`).
 ///
 /// Anything else is REFUSED, exactly as `compact_at: lots` is (11b walk): a
 /// dropped `tools:` line leaves the list empty, and empty means EVERY built-in.
 /// Silence must never fail towards more capability.
 fn list_field(
     spec: &mut AgentSpec,
-    key: &str,
+    key: &'static str,
     value: &str,
 ) -> Result<Option<&'static str>, AgentError> {
-    let stages = key == "stages";
-    let shape = match stages {
-        true => "write stages: [plan, work, verify]",
-        false => "write tools: [a, b], or a bare 'tools:' with '- name' lines under it, or \
-                  tools: [] for all of them",
+    let shape = match key {
+        "stages" => "write stages: [plan, work, verify]",
+        "faculties" => "write faculties: [space], or a bare 'faculties:' with '- name' \
+                        lines under it",
+        _ => "write tools: [a, b], or a bare 'tools:' with '- name' lines under it, or \
+              tools: [] for all of them",
     };
     let items = match value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
         Some(inline) => split_inline(inline),
-        None if value.is_empty() => return Ok(Some(if stages { "stages" } else { "tools" })),
+        None if value.is_empty() => return Ok(Some(key)),
         None => {
             return Err(malformed(
                 spec,
@@ -135,9 +148,10 @@ fn list_field(
             ))
         }
     };
-    match stages {
-        true => spec.stages = items,
-        false => spec.tools = items,
+    match key {
+        "stages" => spec.stages = items,
+        "faculties" => spec.faculties = items,
+        _ => spec.tools = items,
     }
     Ok(None)
 }

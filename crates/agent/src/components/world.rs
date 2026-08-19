@@ -7,10 +7,10 @@ use kernel::SectionId;
 ///
 /// The one component that is never cached. A cached clock is a wrong clock:
 /// reusing it would hand the model a confident statement about a moment that
-/// has already passed. The shared space is NOT in here; it is its own block at
-/// its own slot (`SharedSpace`, `Slot::SPACE`) because a peer's note changes
-/// rarely and this changes every call, and fusing them made the space
-/// uncacheable and this one bulky.
+/// has already passed. The shared space is NOT in here; it is a FACULTY's
+/// block now, declared at `Slot::SPACE` by `crate::faculty::space` and
+/// rendered by `Sensed`, because a peer's note changes rarely and this changes
+/// every call, and fusing them made the space uncacheable and this one bulky.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Environment {
     pub text: String,

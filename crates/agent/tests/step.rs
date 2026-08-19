@@ -53,18 +53,21 @@ fn work_turn_user_message_to_call_model_to_reply() {
         }
     );
     // The document is a real, law-abiding paper carrying the task: the nine
-    // standing blocks plus `directive` and `space`, both Elided on a turn with
-    // no stage instruction and no shared space, and so reaching the model as
-    // nothing at all.
+    // standing blocks plus `directive`, Elided on a turn with no stage
+    // instruction and so reaching the model as nothing at all.
     validate(document).unwrap();
-    assert_eq!(document.sections.len(), 11);
+    assert_eq!(document.sections.len(), 10);
     let directive = document.sections.iter().find(|s| s.id.0 == "directive").unwrap();
     assert_eq!(directive.fidelity, context::Fidelity::Elided, "no brief, no block");
-    // …and `space`, on the same rule: this agent named none, so the component
-    // renders no parts and the section lands Elided (increment 26).
-    let space = document.sections.iter().find(|s| s.id.0 == "space").unwrap();
-    assert!(space.parts.is_empty(), "no space, no parts");
-    assert_eq!(space.fidelity, context::Fidelity::Elided, "no space, no block");
+    // `space` is not merely empty — it is ABSENT (increment 27). It used to be
+    // seeded for every agent and render Elided for the ones that named none;
+    // it is a FACULTY's block now, so an agent that declared no faculty never
+    // has the section at all. The bytes are the same either way, which is what
+    // made the migration safe; the paper is one section honester.
+    assert!(
+        !document.sections.iter().any(|s| s.id.0 == "space"),
+        "no faculty declared it, so nothing reserved it a place"
+    );
     let task = document.sections.iter().find(|s| s.id.0 == "task").unwrap();
     assert!(matches!(&task.parts[0], Part::Text { text } if text == "Hello there"));
 

@@ -20,6 +20,7 @@ fn spec(name: &str, prompt: &str, compact_at: usize, keep: usize) -> AgentSpec {
         engine: "react".into(),
         role: String::new(),
         stages: Vec::new(),
+        faculties: Vec::new(),
         tools: vec![],
         space: String::new(),
         compact_at,

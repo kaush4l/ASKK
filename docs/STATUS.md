@@ -28,11 +28,11 @@ the container2wasm Alpine the agent owns.
 | 1b | Gaps 1-8 + 12 coded (deletions, the I13 fix, the wiring) | DONE, green, unshipped |
 | 1c | Bar-raiser round 1 | DONE — NO-GO, `docs/CRITIQUE-01.md` |
 | 2 | Structural remediation against the 9 exit criteria | DONE, green, awaiting bar-raiser |
-| 3 | The Faculty seam, into the repaired tree | HELD until 2 lands |
+| 3 | The Faculty seam + an agent that starts an agent with a goal | DONE, green, unshipped — 496 tests, 4 gates exit 0, `docs/CRITIQUE-03.md` GO |
 | 4 | CheerpX deleted; c2w the sole engine | COMMITTED main 51199eb, NOT PUBLISHED |
 | 4b | The image: audit measured, recipe repaired, `image/Dockerfile` written | DONE, unshipped |
 | 5 | Free size/memory wins: strip DWARF, gzip -9, VM_MEMORY_SIZE_MB | NAMED, needs a build round |
-| 2 | An agent starts an agent with a goal, and the workflow is verified | NAMED, not started |
+
 
 ## The bar-raiser verdict: GO (`docs/CRITIQUE-02.md`, 2026-08-19)
 

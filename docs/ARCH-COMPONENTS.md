@@ -635,3 +635,318 @@ hardcoded block in `seed()`, and the next faculty pays the same price again.
    problem, and runs (I15) — the `load_agents` discipline (`loader.rs:24`). HELD.
 5. The full rendered prompt of the chrome agent, printed via `SHOW_PROMPT=1` and read
    by a human. Nothing else proves the blocks say what was wanted. HELD (user gate).
+
+---
+
+## 9. The seam as BUILT — increment 27, and what changed since §5 was written
+
+Status: this section is the record of the round §5 designed. **§5's file paths are
+pre-reorganisation and many are dead.** Every path below was re-verified against the
+tree at `ca59db1` by opening the definition, not by trusting §5's map.
+
+### 9.1 Two of §5's three walls were already down
+
+§5.1 named three walls. Gaps 1–8 landed since, and two of them fell as a side effect:
+
+| Wall (§5.1) | Status at `ca59db1` | Where |
+|---|---|---|
+| 1 — `paper::find` panics on an unseeded id, so the paper is a closed world | **DOWN** | `crates/agent/src/paper/mod.rs:50` `set_component` UPSERTS. `find` still `expect`s but is now private and reached only by the two history writers, which is honest: a window out of nowhere IS a bug. |
+| 2 — the per-call refresh list is three literals in `ask::call_model` | **DOWN** | `crates/agent/src/components/mod.rs:62` `dynamic()` is the list; `crates/agent/src/ask.rs:75` walks it and does not name it. |
+| 3 — `AgentSpec` has no key by which a file can name a block | **STANDING** | `crates/agent/src/spec/mod.rs:54` — twelve fields, none of them a block. |
+
+So this round is wall 3 and the machinery behind it, not the whole of §5.
+
+### 9.2 The ruling that decides whether `Faculty` is a seam or a duplicate
+
+The sharpest objection to §5 is that `Faculty` is a second way to do what `space:`
+already does. It would be correct if `space:` kept its hardcoded path and `faculties:`
+were added beside it. So:
+
+> **`space:` is IMPLEMENTED BY the faculty seam. It does not sit beside it.**
+
+Concretely, `space` today is hardcoded in three places, and all three become table
+entries:
+
+| What `space` hardcodes today | `path:line` | Becomes |
+|---|---|---|
+| its tools | `crates/agent/src/subagent.rs:74` `with_the_space` | `faculty::of("space").tools`, concatenated in `resolve` beside the built-ins |
+| its prompt block | `crates/agent/src/components/mod.rs:71` — a `SharedSpace` literal in `dynamic()` | one generic `Sensed` built from `faculty::of("space").blocks` |
+| its host refresher | `crates/core/src/runtime/mod.rs:49` — an unconditional call | the first entry in the `Sense` list |
+
+A frontmatter `space: research` continues to mean exactly what it means today, because
+`adopt_spec` reads a non-empty `space:` as declaring the `space` faculty. **No agent
+file changes and the rendered prompt does not move.** That byte-identity is the proof
+the migration is inert, and it is the acceptance criterion for this round rather than a
+hope.
+
+### 9.3 The four parts
+
+1. **`Block`** (`crates/agent/src/components/sensed.rs`) — `id`, `slot`, `intent`,
+   `stability`. Declared data.
+2. **`Sensed`** — ONE generic component. Every faculty block is a `Sensed`; none of
+   them is a new Rust type. A component's job is to render bytes at a position, and
+   the bytes were produced elsewhere.
+3. **`Faculty`** (`crates/agent/src/faculty/`) — a named bundle of declared tools and
+   declared blocks, plus `faculty::of(name)`, the registry table.
+4. **`Sense`** (`crates/core/src/faculty.rs`) — the host half: a port, injected at the
+   composition root, that reads the outside world and returns `block id -> Vec<Part>`.
+
+`AgentState.senses: BTreeMap<String, Vec<Part>>` is where 4 leaves bytes for 2 to
+render. It is `AgentState.space` generalised.
+
+### 9.4 §5.5 corrected: the floor is not declared data, it is UNREPRESENTABLE
+
+§5.5 established that anything which can be absent must floor at `Elided`, and closed
+by arguing that slot, stability and floor should therefore be *declared data the
+harness checks once*. That is right about slot and stability and **wrong about the
+floor**, and this round does better than §5 asked for:
+
+`Block` has **no `floor` field**. `Sensed::floor()` returns `Fidelity::Elided`
+unconditionally. A sensed block is by definition state a host may not have written —
+I15 says every capability may be absent — so there is no honest second answer, and a
+field offering one is a field whose only use is to be filled in wrongly. The failure
+`validate` used to catch is now one the type system cannot express.
+
+Stability stays declared, because §5.4's constraint is real and directional: a block
+slotted after `observations` must be `Volatile` or `law::interleaved` refuses the whole
+document. That IS a genuine author choice within a constraint, so it stays data — and
+the constraint is checked ONCE, by a single test walking the whole registry, rather
+than by each faculty author rediscovering it.
+
+### 9.5 The chrome agent, traced end to end — and the honest file count
+
+`crates/agent/src/faculty/chrome.rs` and `crates/adapters_web/src/chrome.rs` are the
+two files. They are joined by one line each in two registry tables. **§7's flat claim
+of "two files" is not quite honest and this section replaces it:**
+
+> **TWO new files, TWO one-line registry entries, and ZERO changes to any existing
+> logic** — nothing in `context` (`assemble`, `law`, `render`, `slot`, `Component`),
+> nothing in `core`, and nothing in `agent` outside the new file and its registry arm.
+
+A registry line is the declaration itself, not a modification to behaviour; it is the
+same shape the repo already accepted for `core::tools::tool_entry` and
+`core::dispatch::builtin_entry`. Counting it as a touched file would make those tables
+failures too. Counting it as nothing would be the overstatement §5 made.
+
+DO NOT SHIP THE CHROME FACULTY. CLAUDE.md §17 makes a browser/network capability a user
+gate. It is designed here and reachable by configuration; it is built by nobody until
+the owner says so.
+
+---
+
+## 10. AN AGENT THAT STARTS AN AGENT WITH A GOAL — the written ruling
+
+The question put to the architecture lead: is a spawned agent (a) a configuration
+written at runtime, or (b) a goal handed to a copy of an existing configuration?
+
+### 10.1 The finding that decides it: (a) already shipped
+
+`grep -rn spawn_agent crates/agent/src` returns nothing, which is true and misleading.
+**Runtime configuration authoring is not missing — it is `write_agent`**
+(`crates/core/src/agents/roster.rs:98`, increment 11). A model calls
+`write_agent({name, description, prompt, tools, space})`; it appends an `AUTHORED` fact;
+`roster::reconcile` (`crates/core/src/agents/roster.rs:24`) re-parses the whole set
+through `agent::load_agents` at the next TURN BOUNDARY; the new agent is installed with
+its own Worker and is indistinguishable from a shipped one (I9). Every validation is
+already a runtime error path and every one of them already exists —
+`usable_agent_name`, `parse_agent_file`, `unresolved_tools`, `app.agent_problems`.
+
+So building "spawn = author a config at runtime" would be a SECOND config-authoring
+path. That is precisely the `Faculty`-versus-`space:` failure mode one increment over,
+and §9.2 rules against it.
+
+### 10.2 The ruling
+
+> **(b). And (a) is not the alternative — (a) is `write_agent`, which shipped in
+> increment 11.**
+>
+> `spawn_agent(agent, goal)` hands a goal to an agent that already exists. Composed
+> with `write_agent`, that gives the owner (a)'s full expressive power — a genuinely
+> new role, authored and then started — without a second file format, without a
+> second validation surface, and without a new error type.
+
+This is the smaller of the two options by a measurable amount: `spawn_agent` adds no
+new validation, no new parse path, no new `Effect` variant and no new port. It is one
+branch in `crates/agent/src/subagent.rs`'s `invoke_or_refuse`, which converts the call
+into the `Effect::Delegate` that already exists.
+
+### 10.2b CORRECTION — the composition spans TWO TURNS, not one
+
+An earlier draft of §10.2 claimed "already exists" included an agent `write_agent`
+created *ten milliseconds earlier in the same turn*. **That is false and it was the
+weakest sentence in this document.** Checked against the tree rather than remembered:
+
+`roster::reconcile` (`crates/core/src/agents/roster.rs:24-28`) returns early while
+`app.agent.task.is_some()`, and `runtime::drive` only calls it AFTER the turn loop
+(`crates/core/src/runtime/mod.rs:66`). `task` is `Some` from the utterance that starts
+a turn until the answer that ends it. So an agent authored mid-turn is installed at the
+TURN BOUNDARY, and a `spawn_agent` naming it in that same turn fails with
+`DelegateError::Unknown` — "No agent called 'X' is loaded in this browser."
+
+So the honest statement of the composition is:
+
+> **Turn 1** the agent calls `write_agent`. **Turn 2** it can `spawn_agent` the result.
+
+Three things follow, and none of them changes the ruling:
+
+1. **The deferral is deliberate and correct, not a defect.** Swapping an agent's
+   prompt between a model call and the reply it is waiting for would assemble the rest
+   of that turn out of one file and the history of another — the crossed-projection bug
+   increment 07 already produced once. `reconcile`'s own doc comment says so.
+2. **The failure is honest and recoverable.** It is a refused tool result naming the
+   cause, not a silent no-op, so the model can wait and retry. `write_agent`'s success
+   message already tells it the truth: *"It is installed in this browser as soon as this
+   turn ends."*
+3. **The ruling stands, and is if anything strengthened.** The alternative — option (a)
+   as a NEW mechanism that installs an agent mid-turn — would have to defeat exactly the
+   safety property `reconcile` exists to hold. That is a strong argument against building
+   it, not a reason to regret (b).
+
+What this DOES cost: an agent cannot author-and-run a helper inside a single turn, so
+"decompose this into three specialists and run them" is a multi-turn workflow. A
+`passes:` budget above 1 makes that reachable without the person asking again each time
+(`crates/agent/src/passes.rs`), which is the existing mechanism and not a new one.
+
+### 10.3 Why (b) is also the OBSERVABLE one — the owner asked to verify a workflow ran
+
+Going through `Effect::Delegate` is not merely cheaper; it is the reason the result can
+be inspected at all. `crates/core/src/batch.rs:84` `delegate` already, for free:
+
+- appends `EventKind::UserMessage { text: goal, agent, from }` — **what it was given**,
+  in the callee's own history, attributed to the caller;
+- runs the turn on the callee's own Worker via `batch::run_on`
+  (`crates/core/src/batch.rs:31`) and records `ModelReplied` there — **that it ran**;
+- moves the callee's board row Working -> Idle, or Failed WITH THE MESSAGE
+  (`crates/core/src/batch.rs:65` `refused`);
+- emits `EventKind::ToolInvoked { tool: <agent name>, args: goal, ok, output }` —
+  **what came back** — which the Tool trace pane (`crates/core/src/trace/pane.rs`)
+  already renders and `/tools` already projects (I8).
+
+Under a new spawn mechanism every one of those five would have to be built again.
+**Inheriting observability rather than rebuilding it is the strongest single argument
+for the ruling**, and it is what makes the owner's "verify that a workflow is working
+as expected" answerable today rather than after another increment.
+
+### 10.4 The capability rule, which is where this could go wrong
+
+`spawn_agent` may start any agent loaded in this browser. That is a real widening and
+it is granted the ordinary way: `spawn_agent` is a built-in tool, so an agent gets it
+only if its own `tools:` list names it (or the list is empty, which means every
+built-in). The allowlist IS the mode (ADR-006, ALIGNMENT §1) and nothing here bypasses
+it.
+
+Two ways to reach a peer now exist and they mean different things, both honest:
+
+- `tools: [researcher]` — a NAMED, statically known collaborator, resolved at load.
+- `tools: [spawn_agent]` — the capability to hand a goal to any loaded agent,
+  including one written in an EARLIER turn (§10.2b — not the same turn; `reconcile`
+  installs at the turn boundary). Dynamic, and the file that grants it said so.
+
+**A related defect, found while ruling and NOT fixed here.** `subagent::resolve`
+(`crates/agent/src/subagent.rs:56`) adds peers only through `allowlisted`, which runs
+only when `tools:` is NON-empty. An agent with `tools: []` therefore gets every
+built-in and NO peers — so the commonest default agent can delegate to nobody, and
+adding peers to the empty case would silently auto-grant every future authored agent to
+`main`. That is a capability widening and a user gate under CLAUDE.md §17. It is
+recorded here and left standing; `spawn_agent` serves the same need explicitly, which
+is the better answer anyway.
+
+---
+
+## 11. What the bar-raiser found, and what changed because of it
+
+`docs/CRITIQUE-03.md` — **GO on the prompt-side component requirement, NO-GO on §9.5's
+file-count claim.** Both halves of that verdict were acted on rather than argued with.
+
+### 11.1 The finding that mattered: perception was solved, action was not
+
+**F1 (HIGH).** This round built `App.senses` + `install_sense` so a host outside `core`
+could fill a prompt block — and did NOT apply the same lesson to running a faculty's
+TOOLS. `core::tools::tool_entry` was a closed `match` in the pure core; a name with no
+arm fell through to `"Tool not found"`. So a browser agent would have got its page
+snapshot, seen `navigate` in its affordances, and had every `navigate` call refused
+forever.
+
+That is the sharpest possible statement of the owner's requirement being half-met, and
+the asymmetry was self-inflicted: the right answer already existed one file away.
+
+**Fixed.** `crates/core/src/faculty.rs` now carries a second port beside `Sense`:
+
+```rust
+pub trait ToolHost {
+    fn handles(&self, tool: &str) -> bool;
+    fn run<'a>(&'a self, tool: &'a str, args_json: &'a str)
+        -> BoxFuture<'a, Result<String, String>>;
+}
+pub fn install_tool_host(app: &mut App, host: Rc<dyn ToolHost>)
+```
+
+Precedence in `crates/core/src/batch.rs:180-191` is **built-in → installed host → local
+refusal**. Built-ins win on purpose: a host must not be able to shadow `exec` or
+`web_search`.
+
+### 11.2 The special case that survived the seam, and no longer does
+
+**F3 (MEDIUM).** `paper::adopt.rs` was still seeding `senses["space"]` from a PURE
+crate — the one faculty that crate knew by name — which made the seam a generalisation
+everywhere except at its own first entry. It was load-bearing: `tests/prompt.rs` has no
+host in it, so deleting the write turned the byte-identity proof red.
+
+**Fixed properly rather than conveniently.** `adopt_faculties` now writes the
+DECLARATION and nothing else, and `crates/agent/tests/prompt.rs` and
+`crates/agent/tests/live.rs` each call a `sensed_by_the_host` helper that does what a
+host does. The tests now SAY they are standing in for one, instead of production code
+filling a block so a test could pass.
+
+### 11.3 The rest
+
+| # | Finding | Action |
+|---|---|---|
+| F2 | `write_agent` told the model "installed immediately" while `roster.rs:137` said "as soon as this turn ends" | tool description now states the turn-boundary rule and that `spawn_agent` cannot reach it until the next turn |
+| F2 | §10.4 still asserted the same-turn claim §10.2b had already retracted | corrected to "an EARLIER turn" |
+| F6 | `components/world.rs` cited `SharedSpace, Slot::SPACE` | now cites `crate::faculty::space` + `Sensed` |
+| F4 | `ALL: [&str; 1]` — a faculty missing from it gets ZERO structural coverage | **OPEN**, recorded below |
+| F10 | §9.2's `path:line`s were exact against `ca59db1` and now point at shifted lines | **OPEN** — accepted cost of citing a baseline |
+
+### 11.4 The honest extension cost, restated a third time
+
+§7 said two files. §9.5 said two files, two registry lines, zero core changes — and was
+**wrong**, because it counted only perception. With F1 fixed:
+
+| Half | Cost |
+|---|---|
+| Prompt block (perception) | `agent/src/faculty/chrome.rs` + one arm in `faculty/mod.rs`; `adapters_web/src/chrome.rs` + one `install_sense` |
+| Tools that RUN (action) | the same `adapters_web` file `impl ToolHost` + one `install_tool_host` |
+
+**Two new files, four one-line registry entries, zero edits to `context` and zero to
+`core`.** A third statement of this number was needed because the first two were both
+too generous; this one is stated against a tree where both halves are proven by test
+(`crates/core/tests/faculty.rs`).
+
+### 11.5 What is still NOT true, and must not be claimed
+
+1. **`agent::faculty::of` is a closed `match` with one arm**, and that arm gates BOTH
+   halves — which is sharper than it first looks and was found by probing, not by
+   reading. A toolbox is `builtin_tools() union faculty::tools_of(spec)`, so with only a
+   `space` arm there is **no non-built-in tool name in any toolbox in this build**. A
+   model calling `navigate` is refused by `Toolbox::check`
+   (`crates/agent/src/toolbox.rs:76`) in the PURE crate, before any effect reaches the
+   executor, with `"Tool not found. Available: …"`. The positive branch of
+   `faculty::run_hosted` is therefore **unreachable today by a name `core` does not
+   already own**.
+
+   This does not weaken §11.4's count — that one arm IS one of the four registry entries,
+   and adding it is what puts `navigate` in the toolbox and makes the host reachable. But
+   it means the honest sentence is: *`core` can now run a faculty's tools, and no faculty
+   yet declares any.* "A browser faculty's tools run" is true of `core` and still false
+   of the system.
+
+   `crates/core/tests/faculty.rs` proves the host path at the one reachable equivalent
+   seam: an agent declaring `faculties: [space]` with an EMPTY `space:` gets `remember`
+   in its toolbox, `tool_entry` routes it to the space handler, that handler DECLINES it
+   (no space to write to), and the call lands on exactly the fallthrough a browser tool
+   would take. Proven at a real seam rather than asserted, and the test says so.
+2. **F4 stands:** `ALL` is a fixed-length array and `tests/faculty.rs` iterates it, so a
+   faculty its author forgets to add gets no structural check at all. The constraint
+   harness is opt-in, which is the weakest thing about it.
+3. **No chrome faculty exists and none was built.** CLAUDE.md §17 user gate.
