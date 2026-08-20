@@ -69,6 +69,19 @@ pub enum ModelError {
     /// field, `Unsupported` claims a wire protocol. `detail` is why the
     /// browser said no, in its own words where it gave any.
     OnDevice { detail: String },
+    /// THE CALL WAS TO THIS MACHINE FROM A PAGE THAT IS NOT ON IT (28). A
+    /// hosted page reaching `127.0.0.1` is a cross-address-space fetch, which
+    /// the Local Network Access specification governs and the two engines
+    /// answer differently — Chrome asks the person, WebKit has never allowed
+    /// it. Folded into `Transport` this read as "the endpoint could not be
+    /// reached", which sent people to restart a server that was already
+    /// running: a denied prompt and a closed port reject identically, so the
+    /// error itself cannot tell them apart and nothing downstream should try.
+    /// This variant is not guessed from the failure — it is decided from two
+    /// addresses this application holds for certain, the `url` it called and
+    /// the `origin` it was served from, exactly as `NoKey` above decides from
+    /// a header it knows it did or did not send.
+    LocalNetwork { url: String, origin: String },
     /// The endpoint is configured and reachable, but asks for a wire protocol
     /// this build does not speak (a catalogue entry's `kind`/`api`). Distinct
     /// from `EndpointUnknown` on purpose: "unconfigured" and "configured for
@@ -104,4 +117,55 @@ pub enum NetError {
     Transport {
         message: String,
     },
+}
+
+/// Whether that URL names this machine. The one definition, so the transcript,
+/// the board, Settings and the adapter that declares a fetch's address space
+/// cannot disagree about what "local" means. It lives at the leaf because both
+/// sides of that agreement need it: `core` writes the sentence, `adapters_web`
+/// decides whether to declare the call `loopback` before it goes out.
+pub fn is_loopback(url: &str) -> bool {
+    host_of(url).is_some_and(|h| {
+        h == "localhost" || h == "[::1]" || h == "0.0.0.0" || is_v4_loopback(&h)
+    })
+}
+
+/// THE HOST, NOT THE URL. This was a substring test over the whole address —
+/// `url.contains("localhost")` — for as long as it only chose which sentence to
+/// print, where being wrong about `https://localhost.evil.example/` cost a
+/// paragraph of bad advice. It decides a NETWORK DECLARATION now
+/// (`adapters_web::model` sets `targetAddressSpace` from it), so the same
+/// looseness would put `"loopback"` on a call to somebody else's public host.
+/// Chrome re-checks the declaration against the response's real address space
+/// and fails the fetch on a mismatch, so the old test failed CLOSED rather than
+/// open — but it failed a legitimate endpoint for having six letters in its
+/// name, which is its own defect.
+///
+/// Not a URL parser and not trying to be: scheme off, userinfo off, path and
+/// query off, port off, brackets kept because `[::1]` IS the host. Anything it
+/// cannot read is `None`, which reads as "not loopback" — I15's direction,
+/// claim less rather than guess.
+fn host_of(url: &str) -> Option<String> {
+    let after = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = after.split(['/', '?', '#']).next()?;
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+    let host = match authority.starts_with('[') {
+        // A bracketed IPv6 literal keeps its brackets; the port is after `]`.
+        true => format!("{}]", authority.split_once(']')?.0),
+        false => authority.split(':').next()?.to_string(),
+    };
+    match host.is_empty() {
+        true => None,
+        false => Some(host.to_ascii_lowercase()),
+    }
+}
+
+/// The whole of `127.0.0.0/8` is loopback, not just `127.0.0.1` — a person
+/// running a server on `127.0.0.2` is on the same machine and the browser
+/// treats it the same way.
+fn is_v4_loopback(host: &str) -> bool {
+    let mut parts = host.split('.');
+    parts.next() == Some("127")
+        && parts.clone().count() == 3
+        && parts.all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }

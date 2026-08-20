@@ -154,6 +154,14 @@ fn submit(req: &Request, ctx: &mut Ctx, who: &str) -> Response {
     let Some(message) = form_value(&req.body, "message").filter(|m| !m.trim().is_empty()) else {
         return error_fragment(400, "chat: empty message");
     };
+    // A TAB THAT DOES NOT OWN THE LOG DOES NOT START TURNS (T29). Not an error
+    // fragment: that would replace the conversation with one red line, and the
+    // next poll would wipe the line. The transcript already carries the
+    // sentence saying why (`failure::second_tab`), so the answer to the press
+    // is the conversation, unchanged, with the reason at the bottom of it.
+    if !crate::log::writership::writes(ctx.writership) {
+        return transcript(ctx, who, None);
+    }
     // Empty means "this process's own agent": every log written before
     // per-agent chat says exactly that, and still reads correctly.
     let agent = match who == ctx.me {

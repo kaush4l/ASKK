@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::ResponseContract as Contract;
 use crate::error::AgentError;
-use crate::stages::{ANSWER, CRITIQUE, PLAN, VERIFY};
+use crate::stages::{CRITIQUE, PLAN, VERIFY, WORK};
 use crate::strategy::{self, STRATEGY};
 
 /// The paragraph appended to the `plan` brief for an agent that has a space.
@@ -170,11 +170,22 @@ pub(crate) fn skill_only(stage: &str) -> bool {
     stage == PLAN
 }
 
-/// Stages that may call the agent's full toolbox. `answer` is absent on
-/// purpose: the strategy vote said this needs no tool, and the enforcement is
-/// what makes the vote worth taking.
+/// Stages that may call the agent's full toolbox — WRITTEN AS WHAT MAY ACT,
+/// which is the point of this function and not a style choice.
+///
+/// It read `!matches!(stage, STRATEGY | PLAN | CRITIQUE | ANSWER)`: a
+/// default-ALLOW list in a codebase whose I6 is default-deny, and the only one
+/// of its three siblings written that way — `keyed` and `skill_only` both name
+/// what is INCLUDED. A sixth entry in `stages::STAGES` would have taken the
+/// agent's ENTIRE toolbox by omission — capability by forgetting, which is
+/// what I6 refuses.
+///
+/// `answer` is still absent on purpose — the vote said that turn needs no tool
+/// — but absent by not being listed, a fact about this line rather than about
+/// somebody's memory. `tests/stages.rs` pins the DIRECTION of the default, not
+/// a case — the shape `docs/CRITIQUE-04.md` says to look for first.
 pub(crate) fn acts(stage: &str) -> bool {
-    !matches!(stage, STRATEGY | PLAN | CRITIQUE | ANSWER)
+    matches!(stage, WORK | VERIFY)
 }
 
 fn malformed(key: &str, message: String) -> AgentError {

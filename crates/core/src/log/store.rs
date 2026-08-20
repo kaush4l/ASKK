@@ -84,9 +84,17 @@ pub(crate) fn record(app: &mut App) {
 /// Drain the queue, in order. A log that will not write must not cost the
 /// conversation (Python: "losing the log must not cost the conversation"), so a
 /// failure is recorded as a fact and the turn carries on.
+///
+/// A FOLLOWER DRAINS TO NOWHERE: `<agent>/<index>` is one key per tab of this
+/// origin, so a second tab's `Append` overwrites the first's and its `Rewrite`
+/// deletes the rest (`log::writership`). Silently — the seam already said so.
 pub(crate) async fn drain(app: &std::rc::Rc<std::cell::RefCell<App>>) {
     let (store, me, ops) = {
         let mut a = app.borrow_mut();
+        if crate::log::writership::muted(&a) {
+            a.unlogged.clear();
+            return;
+        }
         (
             std::rc::Rc::clone(&a.ports.store),
             a.me().to_string(),
@@ -154,9 +162,16 @@ pub async fn restore_log(app: &mut App) -> Result<(), CoreError> {
 /// Write every unpersisted log entry through `StorePort` (`events/<seq>`).
 /// The log is truth in memory the moment it is appended; the store catches up
 /// here, and a failed write is itself a fact.
+///
+/// `events/{seq}` races too: `seq` is the log length, so two tabs booted from
+/// one history give different events one key. A follower writes none.
 pub(crate) async fn persist(app: &std::rc::Rc<std::cell::RefCell<App>>) -> Result<(), CoreError> {
     let (store, batch) = {
         let mut a = app.borrow_mut();
+        if crate::log::writership::muted(&a) {
+            a.unpersisted.clear();
+            return Ok(());
+        }
         (
             std::rc::Rc::clone(&a.ports.store),
             std::mem::take(&mut a.unpersisted),

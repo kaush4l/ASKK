@@ -1,7 +1,7 @@
 //! WHAT SETTINGS SAYS ABOUT AN ADDRESS: whether the endpoint it names actually
-//! works, what a save did, the trust model, and why a typed base URL was
-//! refused. `endpoint.rs` next door owns the header's sentence and the
-//! composer's gate.
+//! works, what a save did, and why a typed base URL was refused. The trust
+//! model moved to the `trust` child below. `endpoint.rs` next door owns the
+//! header's sentence and the composer's gate.
 
 /// The search endpoint's own card, a child of this file rather than a module
 /// of its own: it is one more thing Settings says about an address.
@@ -11,6 +11,8 @@ pub(crate) mod search;
 pub(crate) mod ondevice;
 /// The destructive control — arm, then reset every endpoint.
 pub(crate) mod reset;
+/// The trust model and the one address a browser may refuse to call.
+pub(crate) mod trust;
 
 use std::rc::Rc;
 
@@ -103,34 +105,6 @@ pub(crate) fn unsaved(web: Signal<Option<Rc<WebApp>>>, f: crate::settings::Field
     }
     let (base, model, _) = app.entry_fields(&f.entry.read().clone());
     *f.base.read() != base || *f.model.read() != model
-}
-
-/// The trust model, stated where keys are entered (ADR-006).
-///
-/// IT SAID IT TWICE IN CAPITALS (R6-14). "stored against the ONE entry it was
-/// typed for" was the only shouting in the product — a tic that reads like a
-/// different author wrote this paragraph, in the one card where the tone has to
-/// be steady because it is about a credential. The sentence carries itself.
-///
-/// ONE CLAIM ABOUT CHROME, AND IT IS THE TRUE ONE (R8-8). This said Chrome 142+
-/// *blocks* a page from calling a local address while the failure that same
-/// condition produces said it *asks permission*. Local Network Access ships as
-/// a PERMISSION — the page prompts and the call goes through if it is granted;
-/// a block is what a DENIAL produces. Both places now say the permission
-/// (`core::failure::failure_line` is the other).
-#[component]
-pub(crate) fn TrustNote() -> Element {
-    rsx! {
-        p { class: "pending",
-            "The endpoints above are a file this site serves; what you save here is stored in \
-             this browser and layered on top of it. A key is stored against the one entry it \
-             was typed for, never shown again, and attached only to calls to that entry's \
-             endpoint — switching entries does not carry it across. But this is a browser: any \
-             code on this page could read it, so use a scoped, credit-limited key. A provider \
-             must send CORS headers, and Chrome 142+ asks permission before a page may call a \
-             local address such as 127.0.0.1."
-        }
-    }
 }
 
 /// Why this base URL cannot be saved, in this app's own words (R2-20). Blank

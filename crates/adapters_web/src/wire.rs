@@ -62,11 +62,46 @@ pub(crate) fn call_failed(url: &str, e: &JsValue, seconds: u32) -> ModelError {
             url: url.to_string(),
             seconds,
         },
+        // …AND ONE KIND OF UNREACHABLE IS KNOWN RATHER THAN GUESSED (28). A
+        // fetch refused by Local Network Access and a fetch to a closed port
+        // are the same `TypeError`, so the exception can never separate them.
+        // The two ADDRESSES can, and this page holds both for certain.
+        _ if crossing_into_loopback(url) => ModelError::LocalNetwork {
+            url: url.to_string(),
+            origin: page_origin(),
+        },
         _ => ModelError::Transport {
             message: format!("{url} unreachable: {}", js_message(e)),
             url: url.to_string(),
         },
     }
+}
+
+/// Whether this call leaves a public address space for a local one. Two
+/// addresses, both known before the request went out — which is the point:
+/// `model::request` declares the TARGET space on every loopback call, and this
+/// asks the further question only a failure needs, whether that target was
+/// across a boundary from here.
+///
+/// An origin we could not read claims NOTHING, and neither does a local page: a
+/// page served from `localhost` calling `localhost` crosses no boundary and
+/// must not be told about a permission it will never be asked for (I15).
+fn crossing_into_loopback(url: &str) -> bool {
+    let origin = page_origin();
+    kernel::is_loopback(url) && !origin.is_empty() && !kernel::is_loopback(&origin)
+}
+
+/// The address this code was served from, in a window OR a Worker. `location`
+/// is `Location` on one and `WorkerLocation` on the other and neither is
+/// reachable through `web_sys::window()` inside an agent's Worker, so it is
+/// reflected off `globalThis` for the same reason `global_fetch` below is.
+fn page_origin() -> String {
+    let global = js_sys::global();
+    js_sys::Reflect::get(&global, &"location".into())
+        .and_then(|loc| js_sys::Reflect::get(&loc, &"origin".into()))
+        .ok()
+        .and_then(|origin| origin.as_string())
+        .unwrap_or_default()
 }
 
 /// `fetch()` from whatever global this code is running in. `web_sys::window()`

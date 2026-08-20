@@ -18,7 +18,7 @@ use std::rc::Rc;
 use adapters_web::WebApp;
 use dioxus::prelude::*;
 
-use endpoint_copy::{refusal, saved_line, EndpointHealth, TrustNote};
+use endpoint_copy::{refusal, saved_line, trust::TrustNote, EndpointHealth};
 use view::endpoint_form;
 use crate::ui::Card;
 

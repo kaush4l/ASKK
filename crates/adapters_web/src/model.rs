@@ -59,6 +59,23 @@ impl FetchModel {
         init.set_method("POST");
         init.set_signal(Some(&web_sys::AbortSignal::timeout_with_f64(TIMEOUT_MS)));
         init.set_body(&JsValue::from_str(body));
+        // DECLARE THE ADDRESS SPACE, SO CHROME ASKS INSTEAD OF FAILING (28).
+        // The Local Network Access specification's `IPAddressSpace` is exactly
+        // `"public" | "local" | "loopback"` — it renamed Private Network
+        // Access's trio, so `"local"` still parses and now means the local
+        // NETWORK, which `127.0.0.1` is not. Only ever set for a loopback
+        // target: declaring it over a public endpoint makes the browser fail
+        // the fetch when the response comes back from a different space, which
+        // would break every hosted entry in the catalogue. `Reflect::set`
+        // because web-sys 0.3 has no setter for it, the idiom `ondevice.rs`
+        // already uses; a browser that does not know the member ignores it.
+        if kernel::is_loopback(url) {
+            let _ = js_sys::Reflect::set(
+                init.as_ref(),
+                &"targetAddressSpace".into(),
+                &"loopback".into(),
+            );
+        }
         let req = web_sys::Request::new_with_str_and_init(url, &init)
             .map_err(|e| transport(format!("request build: {e:?}")))?;
         let set = |k: &str, v: &str| {

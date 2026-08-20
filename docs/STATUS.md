@@ -749,3 +749,111 @@ the first pass under-reported, because rustfmt ALSO reorders imports and that ch
 order; the survivors needed a whitespace-insensitive diff. 31 files were restored this way,
 and the two carrying exactly one real change each were restored and had that change
 re-applied by hand.
+
+---
+
+# The T28–T29–T26 round (2026-08-20) — the default path, two tabs, and a default that leaked
+
+## T28 — our own discipline, turned on our own default
+
+`model: local` pointed at `http://127.0.0.1:8873/v1`. From the hosted origin that is a
+public page calling a loopback address: Chrome 142+ governs it with Local Network Access,
+and Safari has never allowed it at all. The failure was **silent and indistinguishable from
+a closed port** — which is `CRITIQUE-04`'s through-line in the product's front door.
+
+Two of the three changes the research named were wrong against this tree, and verifying
+before implementing is the only reason we know:
+
+- **"Put the first call behind a user gesture instead of a boot probe."** There is no boot
+  probe. `ondevice::probe()` is a `Reflect` lookup with no network, `fetch_models()` is
+  same-origin, `boot` never pushes to `pending`, and `restore_log` deliberately does not
+  resume a turn. The first model call is always a `POST /chat`. **Already true — recorded,
+  not built.**
+- **"Surface it through `ModelPort::resolves`."** `resolves` returns `Option<(entry, model)>`.
+  It is a fact accessor, not an error channel. A misreading from outside the code.
+- **What the research missed is worse than what it found:** a sub-agent's turn runs in a Web
+  Worker, and **a Worker never has user activation**, so a delegated agent can never answer
+  a permission prompt even on a page that was granted one. Structural. It is told, not
+  worked around.
+
+**The value had to be verified externally and the guess was wrong in a dangerous way.** The
+LNA spec's `IPAddressSpace` is `public | local | loopback`, renamed from PNA's
+`public | private | local`. So `"local"` still parses and now means the local NETWORK —
+declaring it for `127.0.0.1` would name the wrong space and fail silently. `"loopback"` is
+the value. That check was the difference between fixing this defect and reproducing it
+inside the fix.
+
+**The fact is computed BEFORE the call, not guessed after it.** A denied prompt and a closed
+port are the same `TypeError` and always will be. But "this call is loopback from a
+non-loopback origin" is deterministic and ours. That is `NoKey`'s doctrine — hold the fact,
+do not parse a stranger's error string.
+
+**A predicate's correctness is a function of what DEPENDS on it.** `is_loopback` was
+`url.contains("localhost")`, and that was genuinely fine while it only chose which paragraph
+of advice to print. T28 promoted it to gating a real network declaration, and the same eleven
+characters became a security-relevant bug — `https://localhost.evil.example/` is not a string
+anyone types by accident. That it fails CLOSED is Chrome re-checking the declaration, which
+is Chrome's defence and not ours. Fixed to a host test, and **proved by reverting it and
+watching the new test fail (exit 101)**.
+
+## T29 — Web Locks: one mechanism, two payoffs
+
+`log/store.rs::drain` writes `<agent>/<index>`; two tabs wrote the same keys, and a
+compaction's `replace_prefix` clobbered whatever the other appended. The lock is **per
+agent**, not per origin, because `main` (page) and `critic` (Worker) write disjoint ranges
+and one origin-wide lock would make every Worker a follower of its own page.
+
+A follower **refuses to take turns**, on one predicate, because taking a turn IS writing.
+"Run but persist nothing" was rejected: the window would diverge from a log it can never
+reconcile and the work would vanish at reload with nothing having said so.
+
+Freeze-exemption needs CONTENTION — a lock nobody wants exempts nothing. The page holds
+`askk/awake`; every agent Worker queues on it forever; **the queue is the mechanism.** And
+the honest limit is written into the file: a roster trimmed to `main` alone has no Worker, so
+no waiter, so no exemption, silently. That is `tracker.md` T52 and it is this round's own
+new instance of the standing defect.
+
+## T26 — a default-ALLOW list in a default-deny codebase
+
+`acts` read `!matches!(stage, STRATEGY | PLAN | CRITIQUE | ANSWER)` where both its siblings
+list what is INCLUDED. A sixth entry in `STAGES` would have taken the whole toolbox by
+omission. It now lists what MAY act, and **the test pins the DIRECTION, not a case**: every
+named-stage assertion in it passed under the old spelling too, and only the unlisted-name one
+fails. Proved by reverting `acts` and watching it fail on `"grounder"` (exit 101).
+
+## THE FIFTH WAY TO MEASURE THE WRONG THING — a count is not a count until you know its unit
+
+The last round found four: the wrong command (`rustfmt --check -l` lists what it WOULD
+change, the complement of what needed checking), the wrong granularity (`-U3` merges adjacent
+hunks), the wrong normalisation (rustfmt ADDS braces), and the wrong moment (claimed before
+re-running). This round found a fifth, and it is the subtlest of them.
+
+A subagent reported `cargo test --workspace` → exit 0, **"103 passed"**. The last accepted
+green was 548. A Web Locks change and a one-line predicate cannot delete 445 tests, so the
+green looked like a filtered or mis-rooted run — the failure family this file already names
+as law.
+
+**It was none of those. The command was right, the moment was right, the tree was right, and
+the number was true — of a different thing.** `103` is the count of `test result:` LINES,
+i.e. test BINARIES. The tests were 565. `103` was never wrong; it became a false statement
+only when it was reported under the word *passed*.
+
+Two things follow, and the second is the one to keep:
+
+1. **A count is not a count until you know its unit.** Reconcile arithmetic to the change
+   that caused it: 548 + 6 (`lna28` + the impostor test) + 10 (`writership` + `locks29`) + 1
+   (the direction test) = 565, each delta named against the file that added it. A number that
+   cannot be reconciled to a cause is not evidence, whatever its exit code.
+2. **A REPORT is a place a measurement can go wrong even when the measurement did not.** The
+   gate output was correct the entire time. The error entered in the summary written on top of
+   it — and every previous lesson in this file is about the measurement itself. This one is
+   about the sentence describing it, which is a larger surface and a less guarded one.
+
+## Two smaller things, recorded because they are habits and not events
+
+**Gates 2–4 predated the `tracker.md` and `docs/` edits in this round.** Neither path is
+compiled nor under `crates/*/src`, so the gates do describe the shipped code — but that is an
+ARGUMENT, not a measurement, and it was handed over labelled as one. The label is the point.
+
+**Five instances of one defect are now open** — T20, T25, T48, T50, T52 — and the count has
+stopped being a list and started being an argument. They are one round, not five patches.

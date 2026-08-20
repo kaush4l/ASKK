@@ -14,6 +14,7 @@ mod endpoint;
 mod error;
 mod idb;
 mod leftovers;
+mod locks;
 mod model;
 pub mod ondevice;
 mod ports;
@@ -104,6 +105,9 @@ impl WebApp {
             agents: Rc::clone(&agents) as Rc<dyn kernel::AgentPort>,
         };
         let mut app = core::boot(ports).await.map_err(js_err)?;
+        // THE PAGE'S TWO LOCKS (`locks.rs`), before the roster wakes so that no
+        // turn can start before the answer to "may this tab write" is in the log.
+        core::note_writership(&mut app, locks::page_claim().await);
         let files_json = wake_roster(&mut app, &agents, &model, &models_json).await?;
         Ok(WebApp {
             app: Rc::new(RefCell::new(app)),

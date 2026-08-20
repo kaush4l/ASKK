@@ -12,10 +12,12 @@
 /// Which failure this was, in two or three words — the disclosure's name.
 pub(crate) fn failure_kind(payload_json: &str) -> &'static str {
     use kernel::ModelError::{
-        EndpointUnknown, ModelMissing, NoKey, OnDevice, Provider, Timeout, Transport, Unsupported,
+        EndpointUnknown, LocalNetwork, ModelMissing, NoKey, OnDevice, Provider, Timeout, Transport,
+        Unsupported,
     };
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
         Ok(crate::error::CoreError::Model(EndpointUnknown { .. })) => "no endpoint configured",
+        Ok(crate::error::CoreError::Model(LocalNetwork { .. })) => "Local Network Access",
         Ok(crate::error::CoreError::Model(OnDevice { .. })) => "the browser's own model refused",
         Ok(crate::error::CoreError::Model(Transport { .. })) => "the endpoint was unreachable",
         // A TIMEOUT IS NOT UNREACHABILITY (R12-2a). Same rejection at the
@@ -73,7 +75,8 @@ pub(crate) fn typed(payload_json: &str) -> bool {
 /// payload. Each names its own fix; the fallback admits it has none.
 pub(crate) fn failure_line(payload_json: &str) -> String {
     use kernel::ModelError::{
-        EndpointUnknown, ModelMissing, NoKey, OnDevice, Provider, Timeout, Transport, Unsupported,
+        EndpointUnknown, LocalNetwork, ModelMissing, NoKey, OnDevice, Provider, Timeout, Transport,
+        Unsupported,
     };
     match serde_json::from_str::<crate::error::CoreError>(payload_json) {
         // …AND THE BROWSER'S OWN MODEL HAS NEITHER A URL NOR A KEY TO CORRECT.
@@ -81,7 +84,16 @@ pub(crate) fn failure_line(payload_json: &str) -> String {
         // The Local Network Access prompt is about LOOPBACK, and this sentence
         // named it while calling `https://198.51.100.7/v1` (increment 06). The
         // ADDRESS chooses which of the two real causes to name.
-        Ok(crate::error::CoreError::Model(Transport { url, .. })) => return unreachable_line(&url),
+        Ok(crate::error::CoreError::Model(Transport { url, .. })) => {
+            return crate::failure::local_network::unreachable_line(&url)
+        }
+        // …AND ONE OF THOSE TWO CAUSES IS KNOWN, NOT CHOSEN BY ADDRESS (28). A
+        // loopback call from an origin that is not loopback is decided before
+        // the fetch, so it never has to be inferred from a rejection that
+        // cannot carry it.
+        Ok(crate::error::CoreError::Model(LocalNetwork { url, origin })) => {
+            return crate::failure::local_network::local_network(&url, &origin)
+        }
         // …AND IT IS NOT SAID AT ALL ABOUT A TIMEOUT (R12-2c). The remedy above
         // sends a person to Settings to check an address that answered.
         Ok(crate::error::CoreError::Model(Timeout { seconds, .. })) => return timed_out(seconds),
@@ -141,21 +153,6 @@ fn on_device(detail: &str) -> String {
          endpoint in Settings if you need this turn now."
     )
 }
-/// The endpoint could not be reached, and what to check depends on where it is.
-fn unreachable_line(url: &str) -> String {
-    match is_loopback(url) {
-        true => "The model endpoint could not be reached. Check the endpoint in \
-                 Settings: it is an address on THIS machine, so the server must be \
-                 running, it must send CORS headers, and Chrome 142+ asks permission \
-                 before a page may call a local address."
-            .to_string(),
-        false => "The model endpoint could not be reached. Check the base URL in \
-                  Settings: the host must resolve and answer from this browser, and it \
-                  must send CORS headers allowing this page's origin."
-            .to_string(),
-    }
-}
-
 /// A SLOW OR STUCK MODEL, said as one (R12-2c). Nothing here sends a person to
 /// Settings: the address was right, the server took the request, and the only
 /// fact this page has is that no answer came back inside the budget.
@@ -189,12 +186,4 @@ fn no_such_model(model: &str, available: &[String]) -> String {
          the endpoint offers, or clear that line to take the endpoint's default. Nothing here \
          says the address or the key is wrong — the endpoint answered."
     )
-}
-
-/// Whether that URL is this machine. The one definition, so the transcript,
-/// the board and Settings cannot disagree about what "local" means.
-pub(crate) fn is_loopback(url: &str) -> bool {
-    ["127.0.0.1", "localhost", "[::1]", "0.0.0.0"]
-        .iter()
-        .any(|host| url.contains(host))
 }

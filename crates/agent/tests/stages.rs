@@ -237,3 +237,34 @@ fn a_declared_verify_stage_replaces_the_nudge() {
     );
     assert_eq!(is_stage_fact(&effects[0]).as_deref(), Some("verify"));
 }
+
+/// THE DIRECTION OF THE DEFAULT, NOT A CASE (T26). `brief::acts` — reached here
+/// through the public `tools_on` — decides whether a stage may call the agent's
+/// whole toolbox. It was written as an EXCLUSION list in a codebase whose I6 is
+/// default-deny, so the question "what happens to a stage nobody thought about?"
+/// answered "it gets everything".
+///
+/// Every assertion below about a NAMED stage passed under the old spelling too;
+/// only the last one fails, and it is the only one that states the rule. That is
+/// the point of the test and the reason it is written this way round.
+#[test]
+fn a_stage_nobody_listed_may_not_act() {
+    // The two that act, and every shipped stage that must not.
+    for acts in ["work", "verify"] {
+        assert!(agent::tools_on(acts), "{acts} is where the work happens");
+    }
+    for refused in ["strategy", "plan", "critique", "answer"] {
+        assert!(!agent::tools_on(refused), "{refused} may not call the toolbox");
+    }
+    // …AND THE RULE ITSELF. A stage this build has never heard of — the shape of
+    // a sixth entry somebody adds to `STAGES` next round — is refused BY DEFAULT.
+    // Under the old exclusion list every one of these was granted the full
+    // toolbox, silently, for the sole reason that nobody had written its name
+    // down to exclude it.
+    for unheard_of in ["grounder", "approve", "", "Work", "verify "] {
+        assert!(
+            !agent::tools_on(unheard_of),
+            "an unlisted stage must be refused, not granted: {unheard_of:?}"
+        );
+    }
+}

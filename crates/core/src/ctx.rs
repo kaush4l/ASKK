@@ -123,6 +123,11 @@ pub struct Ctx {
     /// the scrollback marks those rows instead of showing their output as
     /// current (R10-5).
     pub booted: usize,
+    /// Whether this CONTEXT owns the log it is projecting (`log::writership`).
+    /// A projection like `board`: the conversation has to say why it will not
+    /// take a turn, and the reason is a fact in the log, not a flag the adapter
+    /// reached in and set.
+    pub writership: crate::log::writership::Writership,
 }
 
 /// A tier-0 built-in's logic. A plain fn pointer, not a trait object: no

@@ -48,6 +48,12 @@ pub use faculty::{install_sense, install_tool_host, Sense, Sensing, ToolHost};
 pub use error::{provider_error, CoreError};
 pub use failure::from_worker::report_activity;
 pub use log::store::{activity_since, memory_held, restore_log, window};
+// The one-writer decision (`log/writership.rs`). The composition root asks the
+// browser and hands the answer in; everything downstream reads the log.
+pub use log::writership::{
+    decide as decide_writership, lock_name as log_lock_name, note as note_writership, Writership,
+    AWAKE_LOCK,
+};
 // `drive` is PROVISIONAL (G4): the async runtime loop — see `runtime/mod.rs`.
 pub use runtime::{drive, pump};
 use kernel::{Request, Response};

@@ -69,6 +69,13 @@ impl AgentWorker {
         // agent's own window comes back out of its own log (increment 08 —
         // the open item 07 recorded).
         core::restore_log(&mut app).await.map_err(js_err)?;
+        // This agent's own log lock — `askk/log/<name>`, not the page's, since
+        // a Worker writes its own key range and races nothing on the page.
+        core::note_writership(&mut app, crate::locks::writership(&name).await);
+        // …and the wait that keeps the page's `askk/awake` contended, which is
+        // what the freezer looks at. Fire and forget: it is never granted while
+        // the page that started this Worker is alive.
+        crate::locks::await_awake();
         Ok(AgentWorker {
             app: Rc::new(RefCell::new(app)),
             name,

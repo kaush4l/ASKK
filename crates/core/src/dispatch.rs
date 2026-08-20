@@ -124,6 +124,7 @@ pub fn dispatch(app: &mut App, req: &Request) -> Response {
         space: app.agent.space.clone(),
         durable: app.ports.workspace.durable(),
         booted: app.booted,
+        writership: crate::log::writership::of(app),
     };
 
     let response = match logic {

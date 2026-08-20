@@ -66,7 +66,12 @@ pub(crate) fn transcript(ctx: &Ctx, who: &str, appended: Option<&str>) -> Respon
         woven = woven.appended(ctx, who, text, &walk.files);
     }
     let pending = woven.awaiting && driven(ctx, who, appended.is_some());
-    headers::response(ctx, who, woven.tailed(pending, who), pending)
+    let mut woven = woven.tailed(pending, who);
+    // …AND WHY THIS TAB WILL NOT ADD TO IT (T29). Below the tail, so it is the
+    // last thing in a log that scrolls to its end — a second tab's whole
+    // explanation of itself lives in the conversation it is refusing to join.
+    woven.list = crate::failure::second_tab::noticed(woven.list, ctx.writership);
+    headers::response(ctx, who, woven, pending)
 }
 
 /// Every fact in this agent's slice of the log, in order, turned into rows.
