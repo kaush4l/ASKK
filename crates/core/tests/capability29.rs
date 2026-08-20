@@ -42,7 +42,7 @@ const SHIPPED: [(&str, &str); 8] = [
     ("ask", include_str!("../../agent/tests/agents/ask.md")),
     ("author", include_str!("../../agent/tests/agents/author.md")),
     ("builder", include_str!("../../agent/tests/agents/builder.md")),
-    ("critic", include_str!("../../agent/tests/agents/critic.md")),
+    ("critic", include_str!("../../../public/agents/critic/agent.md")),
     ("main", include_str!("../../../public/agents/main/agent.md")),
     ("researcher", include_str!("../../agent/tests/agents/researcher.md")),
     ("scout", include_str!("../../agent/tests/agents/scout.md")),
@@ -125,7 +125,14 @@ fn only_an_agent_that_can_act_is_offered_a_task() {
         );
         // …AND THE REASON IS THIS AGENT'S OWN (32): `summarizer` names no tool
         // at all, so "every tool it has reads" described an empty set.
-        let empty = who == "summarizer";
+        //
+        // `critic` JOINED IT, and not by weakening this: its file used to name
+        // `read_file`, `list_files` and `find_files`, which resolved — so this
+        // card said "every tool it has reads" while none of the three could
+        // read anything, in any path this build has (a critic always runs in a
+        // Worker, and a Worker's `C2wWorkspace` has no `document`). The grant
+        // is gone and the card now states the truth it always should have.
+        let empty = who == "summarizer" || who == "critic";
         assert_eq!(
             card.contains("nothing to read with either"), empty,
             "a toolless agent says so and a read-only one does not: {card}"
@@ -138,13 +145,24 @@ fn only_an_agent_that_can_act_is_offered_a_task() {
 }
 
 /// …AND WHO HANDS IT WORK IS READ OFF THE ROSTER, not guessed from the role.
-/// `critic` is named in `builder`'s `tools:`; nothing names `scout`, so its
-/// sentence sends the reader to the place it does take work rather than
-/// inventing a caller.
+/// `critic` is named in `builder`'s `tools:` and, since increment 28, in the
+/// SHIPPED `main`'s too; nothing names `scout`, so its sentence sends the
+/// reader to the place it does take work rather than inventing a caller.
 #[test]
 fn a_read_only_card_names_its_caller_or_names_chat() {
     let page = listing(&booted());
-    assert!(card(&page, "critic").contains("The builder agent hands it work"), "critic");
+    let critic = card(&page, "critic");
+    // Both callers, because the sentence is read off the roster and the roster
+    // now holds two — and the WHOLE phrase is pinned, verb included. A second
+    // caller is what first exercised the plural: the singular had been welded
+    // in while one caller was the only case anybody had, and the card rendered
+    // "The builder and the main agent hands it work". `words::handed_by` is the
+    // agreement now, so this asserts the sentence rather than only the names.
+    assert!(
+        critic.contains("The builder and main agents hand it work"),
+        "critic: {critic}"
+    );
+    assert!(!critic.contains("nothing on this roster hands it work"), "critic: {critic}");
     let scout = card(&page, "scout");
     assert!(
         scout.contains("Ask scout in chat — nothing on this roster hands it work"),
@@ -173,9 +191,17 @@ fn the_commands_pane_promises_no_first_command_to_an_agent_that_has_no_shell() {
         "no promise of a first one: {}",
         res.body
     );
-    // The sentence where the box would be is unchanged and still true for a
-    // reader — the two are now derived from one predicate, so they cannot part.
+    // The sentence where the box would be is still true for a reader — the two
+    // are derived from one predicate, so they cannot part. It MOVED to the
+    // bottom arm: this read `critic has no shell — it can read this Linux but
+    // not change it`, which was the same false claim the card made. The critic
+    // holds no tools now, so it takes the toolless sentence, and that sentence
+    // still contains everything the old one promised about the shell.
     let why = res.headers.iter().find(|(k, _)| k == "x-typeable-why").map(|(_, v)| v.clone());
     let why = why.unwrap_or_default();
-    assert!(why.contains("critic has no shell"), "{why}");
+    assert!(
+        why.contains("critic has no tools at all — no shell, and nothing that reads this Linux"),
+        "{why}"
+    );
+    assert!(!why.contains("it can read this Linux but not change it"), "it cannot read it: {why}");
 }

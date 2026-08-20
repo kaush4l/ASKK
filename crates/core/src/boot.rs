@@ -169,6 +169,10 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
             authored: Vec::new(),
             agent_problems: Vec::new(),
             board: agent::Board::default(),
+            // EMPTY UNTIL SOMETHING FETCHES THEM (`agents::briefs`). A boot
+            // that seeded them would be the compiled-in default the brief
+            // files exist to replace.
+            briefs: agent::Briefs::default(),
             me: crate::app::ENTRY_AGENT.to_string(),
             running: Vec::new(),
             calling: Vec::new(),

@@ -38,6 +38,13 @@ impl Slot {
     pub const IDENTITY: Slot = Slot(10);
     /// How to behave; the response discipline.
     pub const OPERATING_RULES: Slot = Slot(20);
+    /// WHAT THIS AGENT IS FOR — the standing goal its own file declares, and
+    /// the observable that ends the work (`agent::goal`). In the stable head
+    /// and not beside [`Slot::TASK`] on purpose: a task is what the person
+    /// typed on this turn and changes with every message, a standing goal
+    /// comes from the same file the soul does and outlives every turn. Who you
+    /// are, how you behave, what you are for, then what you may call.
+    pub const GOAL: Slot = Slot(25);
     /// What exists and how to call it — the toolbox. Stable, so it stays
     /// inside the cacheable head rather than after the transcript.
     pub const AFFORDANCES: Slot = Slot(30);

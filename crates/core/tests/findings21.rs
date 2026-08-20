@@ -27,6 +27,8 @@ use adapters_test::{
 use core::{boot, drive, handle, install_agents, App, Ports};
 use kernel::{BoxFuture, EndpointName, ModelError, ModelPort, ModelReply, Request, Timestamp};
 
+mod common;
+
 fn block_on<F: Future>(fut: F) -> F::Output {
     let mut fut = pin!(fut);
     let mut cx = Context::from_waker(Waker::noop());
@@ -89,6 +91,8 @@ fn booted(model: Rc<dyn ModelPort>, files: &[(&str, &str)]) -> Rc<RefCell<App>> 
         &mut app,
         files.iter().map(|(n, t)| (n.to_string(), t.to_string())).collect(),
     );
+    // As the page does it: a stage with no brief refuses to be entered.
+    common::brief(&mut app);
     Rc::new(RefCell::new(app))
 }
 

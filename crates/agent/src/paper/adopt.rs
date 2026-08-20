@@ -35,6 +35,10 @@ pub fn adopt_spec(state: &mut AgentState, spec: &AgentSpec, peers: &[AgentSpec])
     state.stages = spec.stages.clone();
     // …and how many times it may walk it (22).
     state.passes = spec.passes;
+    // …and WHAT IT IS FOR (26). The three declared lines onto the state; the
+    // two observed ones start empty, because nothing has been checked yet.
+    state.standing.goal = spec.goal.clone();
+    adopt_goal(state, spec);
     // THE SUMMARIZER IS NOT AN AGENT ANY MORE. Compaction builds its own
     // sheet with its own prompt (`window::SUMMARIZE`) and runs on this agent's
     // model, so there is no peer to find and no role to hold. Three fields and
@@ -50,6 +54,35 @@ pub fn adopt_spec(state: &mut AgentState, spec: &AgentSpec, peers: &[AgentSpec])
     };
     set_component(&mut state.paper, &soul, Timestamp(0));
     set_component(&mut state.paper, &identity, Timestamp(0));
+}
+
+/// THE STANDING GOAL, INTO THE PROMPT (26). A goal that only reached the Rust
+/// would be a setting that looks applied — the loop gated on an outcome the
+/// model was never told — so `outcome` and `done_when` become a block the model
+/// reads, and `components::goal` holds why the CHECK is deliberately not one.
+///
+/// AND A FILE THAT DECLARED NOTHING ATTACHES NOTHING. `set_component` upserts,
+/// so an absent block is absent rather than empty: every agent written before
+/// this key assembles the paper it always did, byte for byte, which is the same
+/// compatibility rule `stages:` and `passes:` ship with.
+fn adopt_goal(state: &mut AgentState, spec: &AgentSpec) {
+    if spec.goal.outcome.is_empty() && spec.goal.done_when.is_empty() {
+        return;
+    }
+    let goal = crate::components::Goal {
+        outcome: spec.goal.outcome.clone(),
+        done_when: spec.goal.done_when.clone(),
+    };
+    set_component(&mut state.paper, &goal, Timestamp(0));
+}
+
+/// WHAT EVERY STAGE IS TOLD (`crate::brief`), onto the state that will walk
+/// them. Its own function beside `adopt_spec` and deliberately not inside it:
+/// briefs are not a property of the spec, and folding them in would make them
+/// one — the per-agent model this increment rejected. The same set goes onto
+/// every agent in the process, which is what makes `verify` mean one thing.
+pub fn adopt_briefs(state: &mut AgentState, briefs: &crate::brief::Briefs) {
+    state.briefs = briefs.clone();
 }
 
 /// WHAT THIS FILE DECLARED IT CAN DO (`crate::faculty`). Naming a space

@@ -14,6 +14,13 @@ use crate::failure::ending::Ending;
 /// FAILED CALL (R9-3): `ready · 1 turn` was the whole row over a trace whose
 /// first line was red, so the failure clause — `failure::within_turn::clause`'s words,
 /// written once there — rides along whatever else this line says.
+///
+/// AND THE ERRAND LEADS (T4). The line reported that a turn was running, for how
+/// long, and what it last called, and never once said what the turn was FOR —
+/// so a delegated run was a status word and a clock. `board::errand` is the
+/// fold; it goes first because "what was it asked to do" is the question a
+/// person arrives at this row with, and the rest of the line answers "how is
+/// that going".
 pub(super) fn second_line(
     agent: &AgentRow,
     ctx: &Ctx,
@@ -21,7 +28,8 @@ pub(super) fn second_line(
     ending: Option<Ending>,
     hurt: &Option<String>,
 ) -> Option<String> {
-    let rest = match (agent.status.is_busy(), orphaned) {
+    let busy = agent.status.is_busy();
+    let rest = match (busy, orphaned) {
         (true, _) => live_line(agent, ctx),
         // The same sentence Chat gives it, short enough for a row — and not an
         // `.error`: nothing failed, the page was reloaded.
@@ -34,9 +42,11 @@ pub(super) fn second_line(
         // `failure/ending.rs` writes once for this row and the card both.
         (false, false) => ending.and_then(Ending::line),
     };
-    match (rest, hurt.clone()) {
-        (Some(rest), Some(clause)) => Some(format!("{rest} · {clause}")),
-        (rest, clause) => rest.or(clause),
+    let errand = crate::board::errand::clause(ctx, &agent.name, busy);
+    let parts: Vec<String> = [errand, rest, hurt.clone()].into_iter().flatten().collect();
+    match parts.is_empty() {
+        true => None,
+        false => Some(parts.join(" · ")),
     }
 }
 

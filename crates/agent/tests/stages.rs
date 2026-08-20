@@ -3,6 +3,8 @@
 //! cursor arithmetic underneath it. Host-only, like every other agent test:
 //! `step` is pure, and a stage is one more instruction and one more call.
 
+mod common;
+
 use agent::{parse_agent_file, step, AgentState, Effect};
 use kernel::{Event, EventId, EventKind, Timestamp};
 
@@ -45,6 +47,9 @@ fn staged(stages: &[&str]) -> AgentState {
     let mut state = AgentState::new();
     state.declared = stages.iter().map(|s| (*s).to_string()).collect();
     state.stages = state.declared.clone();
+    // …and the words those stages enter with, which are files now: a briefed
+    // stage refuses to be entered without them (`agent::brief`).
+    common::brief(&mut state);
     state
 }
 

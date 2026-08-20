@@ -18,6 +18,7 @@ mod ending;
 mod error;
 mod faculty;
 mod forge;
+mod goal;
 mod memory;
 mod paper;
 mod passes;
@@ -51,7 +52,7 @@ pub use forge::{forge_manifest, forge_step, Draft, ForgeRun, ForgeStage};
 pub use phase::{
     v1_phases, ExitCondition, PhaseConfig, PhaseExit, ResponseContract, ToolScope, Verdict,
 };
-pub use paper::adopt_spec;
+pub use paper::{adopt_briefs, adopt_spec};
 pub use now::{clock, environment};
 pub use window::{compacted, due, set_window, transcript, window, SUMMARIZE, SUMMARY_HEADING};
 pub use components::{memory_parts, space_parts, Block, Sensed, SharedSpace, SESSION_STARTED};
@@ -73,7 +74,7 @@ pub use critic::{passed as critic_passed, FAULT as CRITIC_FAULT, PASS as CRITIC_
 pub use spec::{
     parse_agent_file, AgentSpec, ENGINE_BASE, ENGINE_REACT, ROLES, ROLE_CRITIC, ROLE_ENTRY,
 };
-pub use brief::brief;
+pub use brief::{load as load_briefs, Briefs, BRIEF_KEYS, DURABLE as BRIEF_DURABLE};
 pub use stages::{
     is_stage, route_of, stage_of, tools_on, ANSWER as STAGE_ANSWER,
     CRITIQUE as STAGE_CRITIQUE, PLAN as STAGE_PLAN, STAGES, STAGE_ENTERED, ROUTE_CHOSEN,
@@ -87,10 +88,12 @@ pub fn current_stage(state: &AgentState) -> &str {
 pub use state::{AgentState, PlanStep};
 pub use reply::{malformed_call, parse_reply, ParsedReply};
 pub use ending::{
-    ended_rounds, ended_why, ANSWERED, CRITIC_FAULTED, ENDED, NO_ANSWER, PASS_CEILING,
-    ROUND_CEILING, UNCHECKED,
+    ended_rounds, ended_why, ANSWERED, BRIEF_MISSING, CRITIC_FAULTED, ENDED, GOAL_UNMET,
+    NO_ANSWER, PASS_CEILING, ROUND_CEILING, UNCHECKED,
 };
 pub use passes::{pass_of, PASS_SPENT};
+pub use goal::fact::{checked_of, GOAL_CHECKED};
+pub use goal::{Goal, Standing};
 pub use steer::STEERED;
 pub use verify::{is_mutating, says_nothing, VERIFY_NUDGED};
 pub use step::step;

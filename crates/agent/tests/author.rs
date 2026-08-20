@@ -73,6 +73,7 @@ fn every_field_survives_the_round_trip() {
         keep_recent: 5,
         max_rounds: 9,
         passes: 3,
+        goal: agent::Goal::default(),
         prompt: "You do everything.".into(),
     };
     let text = render_agent_file(&full);

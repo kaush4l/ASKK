@@ -97,6 +97,11 @@ pub struct App {
     /// file is correct; staying silent about it is not (`ux-walker`), so the
     /// Agents panel projects this list beside what did load.
     pub(crate) agent_problems: Vec<String>,
+    /// WHAT EVERY STAGE IS TOLD (`agent::brief`), loaded from `public/stages/`.
+    /// Held on the App and not only on the agent because every agent in this
+    /// process gets the same set — that is what makes `verify` mean one thing
+    /// — and `install_agents` re-adopts them onto whichever agent it adopts.
+    pub(crate) briefs: agent::Briefs,
     /// What every loaded agent is doing (Python `core/state.py`). Registered
     /// by `install_agents`, then moved ONLY by `AgentStatus` facts as they are
     /// appended — so the board a person watches and the log agree by

@@ -86,10 +86,20 @@ fn nudged(mut state: AgentState, at: kernel::Timestamp) -> (AgentState, Vec<Effe
     (state, vec![verify::nudged(), effect])
 }
 
-/// WHICH ENDING THIS TURN EARNED. Four folds already computed, read in the
+/// WHICH ENDING THIS TURN EARNED. Five folds already computed, read in the
 /// order of how much each one narrows what a person should do next.
 ///
-/// Running out of passes comes first (22): a turn the budget cut off is not a
+/// AN UNMET DECLARED GOAL COMES FIRST (26), ahead of the pass ceiling it would
+/// otherwise be reported as. Reaching here with `met == Some(false)` can only
+/// mean the harness ran the declared command, read a non-zero exit code, and
+/// had no lap left — so the budget did stop it, and the pass ceiling is true as
+/// far as it goes. It is just the weaker of two true things: "it was still
+/// changing files" is a fold over which tools got called, and "the command this
+/// file nominated still fails" is the command's own answer. The stronger
+/// statement wins, and it names a different act — read the check, not raise
+/// `passes:`.
+///
+/// Running out of passes comes next (22): a turn the budget cut off is not a
 /// turn that answered, and R17-P0-2 is the whole reason this file names endings
 /// at all.
 ///
@@ -99,15 +109,17 @@ fn nudged(mut state: AgentState, at: kernel::Timestamp) -> (AgentState, Vec<Effe
 /// stronger statement about the work than "nothing read it back". `reviewed` is
 /// the fold in `verify::observe` over a separate agent's answer, never a reading
 /// of this model's prose — the caller cannot summarise its way past it.
-fn why(state: &AgentState) -> &'static str {
+pub(crate) fn why(state: &AgentState) -> &'static str {
     match (
+        state.standing.met == Some(false),
         crate::passes::exhausted(state),
         state.reviewed == Some(false),
         state.mutated && !state.green,
     ) {
-        (true, _, _) => ending::PASS_CEILING,
-        (_, true, _) => ending::CRITIC_FAULTED,
-        (_, _, true) => ending::UNCHECKED,
+        (true, ..) => ending::GOAL_UNMET,
+        (_, true, _, _) => ending::PASS_CEILING,
+        (_, _, true, _) => ending::CRITIC_FAULTED,
+        (_, _, _, true) => ending::UNCHECKED,
         _ => ending::ANSWERED,
     }
 }

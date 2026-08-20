@@ -31,7 +31,12 @@ mod websearch;
 mod words;
 mod workspace;
 
+/// The five stage-brief keys, re-exported for the composition root that fetches
+/// their files — the list is closed and lives in `agent::brief`, so the fetcher
+/// asks for exactly the keys the machine knows.
+pub use agent::BRIEF_KEYS;
 pub use agents::authored::{authored_here, report_authored};
+pub use agents::briefs::install_briefs;
 pub use agents::install::{
     builtin_files, install_agents, install_agents_as, report_agent, report_memory,
 };
@@ -51,6 +56,13 @@ use kernel::{Request, Response};
 /// know which Workers to start (increment 06).
 pub fn agent_names(app: &App) -> Vec<String> {
     app.agents.iter().map(|s| s.name.clone()).collect()
+}
+
+/// THE STAGE BRIEFS THIS APP IS RUNNING ON, as the pairs they loaded from —
+/// what a Worker must be booted with, since it walks the same stages and has
+/// no way to fetch the files itself.
+pub fn brief_files(app: &App) -> Vec<(String, String)> {
+    app.briefs.pairs()
 }
 
 /// Every agent FILE this app is running from, in precedence order — built-ins,

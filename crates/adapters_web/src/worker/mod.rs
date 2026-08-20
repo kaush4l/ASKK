@@ -9,26 +9,21 @@
 //! files, the model catalogue, the endpoint profile — rather than fetching
 //! them again: one page, one download, and the sub-agent calls the endpoint
 //! the user configured on the page it was opened from.
+//!
+//! The ports it is booted with — its own log, the shared spaces, the page's
+//! allowlist, and no one to delegate to — are their own subject in `world.rs`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
 
-use crate::{js_err, BrowserClock, BrowserRng, FetchModel, FetchNet, IdbStore};
+use crate::{js_err, FetchModel};
 
-/// Where one sub-agent's own storage lives: its OWN database, not a corner of
-/// the page's. Sharing one would replay the lead's whole event log into every
-/// sub-agent and fight it for the `events/` keyspace; a database per agent is
-/// the Python's folder per agent, and it is one string.
-/// The one database every SPACE lives in — the browser's answer to "the same
-/// object for every caller" (Python `get_space`). One name, so the page and a
-/// Worker cannot open two different ones.
-pub(crate) const SPACES_DB: &str = "harness-spaces";
+mod world;
 
-fn database(name: &str) -> String {
-    format!("harness-agent-{name}")
-}
+pub(crate) use world::SPACES_DB;
+use world::worker_ports;
 
 /// One sub-agent, booted in its Worker and answering goals one at a time.
 /// Exported through the same wasm-bindgen glue the page loads, so there is one
@@ -44,49 +39,16 @@ pub struct AgentWorker {
     reported: std::cell::Cell<usize>,
 }
 
-/// A SUB-AGENT'S WORLD, and how it differs from the page's: its own log, the
-/// page's shared spaces, the page's allowlist, and nobody to delegate to.
-async fn worker_ports(name: &str, model: Rc<FetchModel>) -> Result<core::Ports, JsValue> {
-    Ok(core::Ports {
-        model: Rc::clone(&model) as Rc<dyn kernel::ModelPort>,
-        store: Rc::new(IdbStore::open(&database(name)).await.map_err(js_err)?),
-        // Its own log, but the SAME spaces database the page opened: that
-        // shared keyspace is what makes one space one space across Workers
-        // that share no memory (increment 09).
-        spaces: Rc::new(IdbStore::open(SPACES_DB).await.map_err(js_err)?) as Rc<dyn kernel::KvStore>,
-        // The SAME allowlist the page has, because it rides in the same
-        // profile record this Worker was booted from — a search a sub-agent
-        // cannot make is a capability the roster has and half of it does not
-        // (increment 21). Blank stays off the list.
-        net: {
-            let net = FetchNet::new();
-            net.allow(kernel::SEARCH_ENDPOINT, &model.search_url());
-            Rc::new(net)
-        },
-        clock: Rc::new(BrowserClock),
-        rng: Rc::new(BrowserRng),
-        // The SAME adapter the page uses, which refuses here in words: a
-        // Worker has no `document` to load the engine into, and the one shell
-        // the container serves is the page's. A sub-agent's exec therefore
-        // comes back "the workspace runs in the page, not in an agent's
-        // Worker" instead of quietly fighting the page for it (increment 10 —
-        // routing it back to the page is not done).
-        workspace: Rc::new(crate::C2wWorkspace),
-        // A sub-agent delegates to nobody: the wiring is one level deep on
-        // purpose, so a cycle of agents calling each other cannot exist.
-        agents: Rc::new(NoSubAgents),
-    })
-}
-
 #[wasm_bindgen]
 impl AgentWorker {
     /// Build this agent's app. `agents_json` is the `[[folder, text], …]` the
-    /// page already fetched, `models_json` the catalogue, `profile_json` the
-    /// user's endpoint choice and keys — a same-origin Worker is inside the
-    /// same trust boundary as the page that spawned it (ADR-006).
+    /// page already fetched, `briefs_json` the `public/stages/` words in the same
+    /// shape, `models_json` the catalogue, `profile_json` the endpoint and keys
+    /// — a same-origin Worker is inside the page's trust boundary (ADR-006).
     pub async fn boot(
         name: String,
         agents_json: String,
+        briefs_json: String,
         models_json: String,
         profile_json: String,
     ) -> Result<AgentWorker, JsValue> {
@@ -101,6 +63,8 @@ impl AgentWorker {
         let files: Vec<(String, String)> = serde_json::from_str(&agents_json).unwrap_or_default();
         let mut app = core::boot(ports).await.map_err(js_err)?;
         core::install_agents_as(&mut app, files, &name);
+        // It walks the same stages and refuses any it has no words for.
+        core::install_briefs(&mut app, serde_json::from_str(&briefs_json).unwrap_or_default());
         // A reload is a new Worker, but it is not a new conversation: this
         // agent's own window comes back out of its own log (increment 08 —
         // the open item 07 recorded).
@@ -178,20 +142,5 @@ impl AgentWorker {
             Some(payload) => payload,
             None => format!("{} produced no answer", self.name),
         }))
-    }
-}
-
-/// A sub-agent's own `AgentPort`: nothing to delegate to.
-struct NoSubAgents;
-
-impl kernel::AgentPort for NoSubAgents {
-    fn delegate<'a>(
-        &'a self,
-        agent: &'a str,
-        _goal: &'a str,
-    ) -> kernel::BoxFuture<'a, Result<String, kernel::DelegateError>> {
-        Box::pin(std::future::ready(Err(kernel::DelegateError::Unknown {
-            agent: agent.to_string(),
-        })))
     }
 }

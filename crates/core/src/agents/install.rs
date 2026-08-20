@@ -124,7 +124,7 @@ pub fn install_agents_as(app: &mut App, fetched: Vec<(String, String)>, adopt: &
             .set(&spec.name, status, failure.as_deref().unwrap_or(""), now);
     }
     if let Some(mine) = peers.iter().find(|s| s.name == adopt) {
-        agent::adopt_spec(&mut app.agent, mine, &peers);
+        crate::agents::briefs::adopt(app, mine, &peers);
     }
     let names: Vec<&str> = app.agents.iter().map(|s| s.name.as_str()).collect();
     app.append(EventKind::Custom {

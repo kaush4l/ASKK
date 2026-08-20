@@ -23,6 +23,11 @@ pub enum AgentError {
     UnexpectedEvent { phase: PhaseId, message: String },
     /// An `agent.md` could not be read. Costs that agent, never the boot.
     MalformedAgentFile { agent: String, message: String },
+    /// A stage brief could not be read: `public/stages/<key>.md` was missing,
+    /// was empty, or a key was loaded that no stage answers to. It costs the
+    /// BRIEFS whole and never one of them, because a half-loaded set is an app
+    /// that runs until the turn that needed the one that never arrived.
+    MalformedBrief { key: String, message: String },
     /// A `skill.md` could not be read. Costs that skill and nothing else — the
     /// other skills still list, and an agent that asks for this one gets the
     /// refusal every unknown skill gets.

@@ -5,7 +5,7 @@
 //! **It lives in `Ports::store`, not in `Ports::spaces`, and that is the whole
 //! placement decision.** `store` is THIS agent's own database — `harness` for
 //! the page and `harness-agent-<name>` inside a sub-agent's Worker
-//! (`crates/adapters_web/src/lib.rs`, `crates/adapters_web/src/worker.rs`) —
+//! (`crates/adapters_web/src/lib.rs`, `crates/adapters_web/src/worker/mod.rs`) —
 //! so a line kept by one agent is unreachable from another's process without
 //! anybody enforcing it. `spaces` is the opposite by construction: ONE database
 //! every Worker opens (`crate::space::shared`), which is what a shared space

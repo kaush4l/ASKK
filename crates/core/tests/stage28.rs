@@ -23,6 +23,8 @@ use adapters_test::{
 use core::{boot, drive, handle, install_agents, App, Ports};
 use kernel::{ModelPort, ModelReply, Request, Timestamp};
 
+mod common;
+
 fn block_on<F: Future>(fut: F) -> F::Output {
     let mut fut = pin!(fut);
     let mut cx = Context::from_waker(Waker::noop());
@@ -93,6 +95,9 @@ fn booted(agent: &str, model: Rc<dyn ModelPort>) -> Rc<RefCell<App>> {
     };
     let mut app = block_on(boot(ports)).expect("boot succeeds");
     install_agents(&mut app, vec![("main".to_string(), agent.to_string())]);
+    // The words every stage enters with, installed the way the page installs
+    // them: a stage with no brief refuses to be entered (`agent::brief`).
+    common::brief(&mut app);
     Rc::new(RefCell::new(app))
 }
 

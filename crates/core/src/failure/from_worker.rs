@@ -87,6 +87,34 @@ pub(crate) fn agent_error(agent: &str, message: &str) -> String {
     serde_json::json!({ "agent": agent, "message": message }).to_string()
 }
 
+/// The kind `batch.rs::refused` appends one of these under.
+pub(crate) const AGENT_ERROR: &str = "core.agent_error";
+
+/// THE LAST DELEGATED FAILURE IN A LOG: `(whose, its own words)`, `None` if no
+/// sub-agent has failed. It takes an ITERATOR rather than a `Ctx` or an `App`
+/// because the fact is a fold of a log and the reader that has one is
+/// `trace::from_worker::failed_line`, walking `ctx.recent`.
+///
+/// It is deliberately NOT the fold `core::last_failure` runs. That one reads
+/// `core.error`, which is THIS page's own turn dying; this one reads
+/// `core.agent_error`, which is a NAMED sub-agent's turn dying inside its own
+/// Worker. Folding both into one reading would let a callee's failure be
+/// presented in the page's own failure card, naming an endpoint the page never
+/// called — and the payloads are not even the same shape, since `agent_error`
+/// above wraps the callee's message in an envelope carrying its name.
+pub(crate) fn last_delegated<'a>(
+    kinds: impl Iterator<Item = &'a EventKind>,
+) -> Option<(String, String)> {
+    kinds
+        .filter_map(|kind| match kind {
+            EventKind::Custom { kind, payload_json } if kind == AGENT_ERROR => {
+                Some((agent_of(payload_json), message_of(payload_json)))
+            }
+            _ => None,
+        })
+        .last()
+}
+
 /// The same message as a person must READ it. A record is written once and
 /// replays forever, so records already in a store carry the shapes earlier
 /// builds wrote: the Rust debug wrapper `JsValue("…")` around a rejected

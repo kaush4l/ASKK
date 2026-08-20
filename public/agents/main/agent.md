@@ -43,6 +43,14 @@ tools:
   # list is a line each and a body enters the window only when it is read.
   - list_skills
   - read_skill
+  # THE ONE CALL THAT LEAVES THIS BROWSER for something other than the model,
+  # and it ships REFUSING. No search endpoint is configured out of the box —
+  # I2 makes the allowlist the person's to write, so `FetchNet::new()` is empty
+  # and Settings offers an address as placeholder text rather than as a saved
+  # value. Naming it here grants the capability; where it points is still
+  # nobody's decision but the user's, and until they make it the tool comes
+  # back saying so in words instead of pretending the web is empty.
+  - web_search
   - remember
   - forget
   - post_note
@@ -65,6 +73,18 @@ tools:
   # next turn's move (crates/core/src/agents/roster.rs).
   - write_agent
   - spawn_agent
+  # A PEER'S NAME IN THIS LIST IS HOW ONE AGENT CALLS ANOTHER
+  # (`subagent::toolbox_for`), and this name is the one the machine reads
+  # differently. `critic` holds `role: critic`, so its reply comes back as a
+  # VERDICT: `verify::observe` folds it in log order and `answer::why` reads
+  # the fold, which means a turn the critic did not clear cannot report itself
+  # as answered — it ends `critic-faulted`, whatever this agent's own prose
+  # about it says. That is the point of naming it rather than declaring a
+  # `critique` stage here: the stage is this same model in this same window,
+  # and a model marking its own homework can improve an answer but can never
+  # be the gate on one. Without this line the whole seam is installed and
+  # unreachable, which is the one failure this codebase refuses everywhere.
+  - critic
 compact_at: 8
 keep_recent: 3
 ---
@@ -201,3 +221,27 @@ A spawned agent runs on its own tools, never yours. You cannot lend it a
 capability it was not written with, so anything it will need has to be in the
 `tools` you gave `write_agent`. `list_agents` is how you find out which agents
 exist; call it before spawning one whose name you would otherwise be guessing.
+
+## Looking outward, and being checked
+
+`web_search` is the only call you make that leaves this browser for something
+other than the model. Reach for it when the answer depends on something that
+changed after you were trained, or on a fact you would otherwise be guessing at
+— a version, a price, a date, whether a thing still exists. Do not reach for it
+for anything you already know, and do not reach for it to confirm arithmetic. It
+returns at most five results and cannot open a page: it tells you what is there
+and where. If nobody has set a search endpoint in this page's Settings it comes
+back refused and says so — that is the setting missing, not the web being empty,
+and the honest reply is to say which setting and carry on without it.
+
+`critic` is a different agent, not a stage of yours. It did not do this work, it
+cannot change anything, and — this is the part that decides how you write to it
+— **it cannot see this conversation**. Hand it work you cannot check yourself:
+something you built, a claim resting on output you did not quote, anything where
+being wrong is expensive. The message you give it has to stand entirely on its
+own: what the goal was, what would make it finished, what you actually did, the
+command you ran and the output it printed, and what you could not check. Its
+first line is `PASS` or `FAULT` and the page reads that line, not your summary of
+it. If it answers `FAULT`, fix what it named or say plainly in your answer what
+it found and that you did not fix it. Hand it the work once, when you believe you
+are done; a critic asked to review nothing tells you nothing.

@@ -102,7 +102,7 @@ fn doors(spec: &AgentSpec, peers: &[AgentSpec]) -> Fragment {
     let said = match callers.is_empty() {
         // …AND NOBODY HANDS SCOUT WORK (29): it is asked, in chat, by a person.
         true => format!("Ask {name} in chat — nothing on this roster hands it work"),
-        false => format!("The {} agent hands it work", callers.join(" and the ")),
+        false => crate::words::handed_by(&callers),
     // THE BOTTOM OF THE SAME AXIS (32): "every tool it has reads" was said of
     // `summarizer`, whose toolbox is EMPTY — a sentence about the contents of
     // an empty set. It is about what it can USE and not what its file names,

@@ -2,13 +2,29 @@
 //! name may be, what replaces what, what the board keeps, and what an agent is
 //! told back. Every one of these is a rule `core/space.py` guarantees.
 
-use agent::{parse_agent_file, toolbox_for, AgentSpec, SharedSpace, Space, NOTE_LIMIT};
+use agent::{parse_agent_file, toolbox_for, AgentSpec, SharedSpace, Space, Toolbox, NOTE_LIMIT};
 
 /// What the model is actually shown. The space's prose is the `space`
 /// COMPONENT's `render()` now, not a method on the data (increment 26, I13),
 /// so every assertion about the prompt goes through the component.
 fn shown(space: &Space) -> String {
-    SharedSpace { space: Some(space.clone()) }.text()
+    shown_to(space, &toolbox_for(&spec(&space.name, "[]"), &[]))
+}
+
+/// …the same, to an agent holding a PARTICULAR set. The block names tools, and
+/// which tools it may name is the whole of `folder`'s job.
+fn shown_to(space: &Space, tools: &Toolbox) -> String {
+    SharedSpace { space: Some(space.clone()), tools: tools.clone() }.text()
+}
+
+/// The workspace paragraph alone — the parenthesis after the path, which is
+/// the only part of the block a grant can change.
+fn folder(space: &Space, tools: &Toolbox) -> String {
+    shown_to(space, tools)
+        .lines()
+        .nth(1)
+        .expect("the workspace line")
+        .to_string()
 }
 
 fn spec(space: &str, tools: &str) -> AgentSpec {
@@ -243,4 +259,75 @@ fn an_empty_space_renders_no_empty_headings() {
     // …and an agent with NO space renders nothing at all, so the block is
     // absent rather than heading a blank space.
     assert!(SharedSpace::default().text().is_empty());
+}
+
+/// THE FOLDER IS DESCRIBED HONESTLY TO WHOEVER IS READING IT (I15). This
+/// paragraph named `observe`, `find_files` and `start_process` unconditionally,
+/// to every agent that named a space — including the shipped `critic`, whose
+/// `engine: base` gives it no tools at all and whose own body tells it there is
+/// nothing here to call by any route. An environment advertising a capability
+/// that is not there is this codebase's stated worst failure mode, and one of
+/// those three names was a grant the critic had just had DELETED for being
+/// inert. What is left when nothing is granted is a true description of a
+/// folder: the agent can be shown the state of it and can do nothing to it.
+#[test]
+fn an_agent_granted_nothing_is_told_about_a_folder_and_not_about_calls() {
+    let space = Space::named("research").expect("a usable name");
+    let none = folder(&space, &Toolbox::default());
+    assert_eq!(
+        none,
+        "workspace: /root/spaces/research (a real folder in a Linux running in this browser. \
+         That Linux keeps its filesystem in memory, so nothing written there survives a reload)"
+    );
+    for ungranted in ["observe", "find_files", "start_process"] {
+        assert!(!none.contains(ungranted), "{none}");
+    }
+    // …and `engine: base` really is that empty toolbox, so the case above is
+    // the shipped critic's own and not a hypothetical one.
+    let base = parse_agent_file(
+        "critic",
+        "---\nname: critic\ndescription: it judges\nspace: research\nengine: base\n---\nbody",
+    )
+    .expect("a base agent parses");
+    assert!(toolbox_for(&base, &[]).is_empty(), "base grants nothing");
+}
+
+/// EVERY CLAUSE IS EARNED BY ITS OWN TOOL, and the sentence stays one sentence
+/// in each of the combinations. What no grant may take away is the SUBSTRATE:
+/// the folder is real and its filesystem is in memory, which is true of an
+/// agent that can only be shown it.
+#[test]
+fn each_clause_of_the_workspace_line_is_earned_by_its_own_tool() {
+    let space = Space::named("research").expect("a usable name");
+    let with = |tools: &str| folder(&space, &toolbox_for(&spec("research", tools), &[]));
+
+    let looking = with("[observe]");
+    assert!(looking.contains("browser; observe says what the machine is. That Linux"), "{looking}");
+    assert!(!looking.contains("find_files"), "{looking}");
+    assert!(!looking.contains("start_process"), "{looking}");
+
+    let searching = with("[find_files]");
+    assert!(searching.contains("browser; find_files searches it. That Linux"), "{searching}");
+    assert!(!searching.contains("observe"), "{searching}");
+
+    let running = with("[start_process]");
+    assert!(running.contains("in this browser. That Linux"), "{running}");
+    assert!(
+        running.ends_with("survives a reload, and nothing start_process started is still running after one)"),
+        "{running}"
+    );
+
+    // All three together is the sentence exactly as it has always read.
+    let every = with("[observe, find_files, start_process]");
+    assert!(
+        every.contains("browser; observe says what the machine is and find_files searches it. That Linux"),
+        "{every}"
+    );
+    assert!(every.contains("reload, and nothing start_process started"), "{every}");
+
+    // The substrate is said in all four, because it is true in all four.
+    for line in [looking, searching, running, every] {
+        assert!(line.contains("keeps its filesystem in memory"), "{line}");
+        assert!(line.contains("nothing written there survives a reload"), "{line}");
+    }
 }

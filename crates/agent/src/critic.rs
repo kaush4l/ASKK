@@ -14,6 +14,26 @@
 //! ending. Nothing here asks the model whether it agrees — the same reason
 //! `passes` never asks a model whether it is finished.
 //!
+//! BOTH SHIP, AND NEITHER REPLACES THE OTHER (28). For three increments the
+//! tree said the `critique` stage had replaced this agent, and nothing shipped
+//! the agent — so the seam below was machinery no installed file could reach.
+//! The two are different jobs and the difference is not a matter of degree:
+//!
+//! - The STAGE is REFLECTION. Same model, same window, still holding every
+//!   belief it held while doing the work. It produces PROSE for the person,
+//!   [`crate::answer::why`] never reads it, it costs one call, and it improves
+//!   the ANSWER. It cannot gate anything, because nothing mechanical reads it.
+//! - The AGENT is a VERDICT. Its own Worker, its own prompt, no sight of the
+//!   caller's conversation, read-only by allowlist. Its first line is read
+//!   MECHANICALLY by [`passed`] and a non-pass forces `ending::CRITIC_FAULTED`.
+//!   It cannot improve the answer — it can only refuse to clear it.
+//!
+//! So a model marking its own homework is worth having and is not a gate, for
+//! exactly the reason [`crate::passes`] never asks a model whether it is
+//! finished. `public/agents/critic/agent.md` is the shipped holder of the role
+//! and `main` names it in its `tools:`, because a role nobody names is a role
+//! nobody calls: invocation here is NAMED, never automatic.
+//!
 //! IT FAILS TOWARDS THE FAULT. Only the exact word `PASS` on the first line is
 //! a pass; a rambling verdict, a refusal, a sub-agent whose turn raised, or a
 //! critic that is not loaded at all are all "not passed". A false fault costs a

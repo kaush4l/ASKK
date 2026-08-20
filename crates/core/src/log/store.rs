@@ -25,10 +25,21 @@ pub fn memory_held(app: &App) -> (usize, Option<String>) {
     (window.len(), summary)
 }
 
-/// What this agent has done since fact `from`, as JSON, with the new cursor.
-/// Tool calls and model spend only: those are the facts another process can
-/// project (the Trace view, the Files pane, the meter) without needing this
-/// agent's conversation.
+/// What this agent has done since fact `from`, as JSON, with the new cursor —
+/// in LOG ORDER, because the order is the story.
+///
+/// Tool calls and model spend: the facts another process can project (the Trace
+/// view, the Files pane, the meter) without needing this agent's conversation.
+///
+/// …AND THE GOAL, AND THE ANSWER (T4). Those two ARE this agent's conversation,
+/// and they still belong here, because for a DELEGATED turn the caller wrote
+/// the goal and received the answer — it is being handed back the two facts it
+/// already owns, in the order they happened, so that its trace of this run can
+/// be read from end to end instead of starting at the first tool call and
+/// stopping before the reply. Nothing else of the conversation crosses: not the
+/// model's intermediate replies, not its window, not what a person said to it
+/// directly. The predicate for an answer is `core::answer`'s, so the page and
+/// the Worker cannot come to two views of what this turn answered.
 pub fn activity_since(app: &App, from: usize) -> (String, usize) {
     let mut out: Vec<serde_json::Value> = Vec::new();
     let mut seen = 0usize;
@@ -45,6 +56,14 @@ pub fn activity_since(app: &App, from: usize) -> (String, usize) {
             }
             kernel::EventKind::ModelCalled { spent_tokens, .. } => {
                 out.push(serde_json::json!({ "spent": spent_tokens }));
+            }
+            kernel::EventKind::UserMessage { text, .. } => {
+                out.push(serde_json::json!({ "goal": text }));
+            }
+            kernel::EventKind::ModelReplied { text, agent }
+                if agent.is_empty() && !agent::has_calls(text) =>
+            {
+                out.push(serde_json::json!({ "answer": text }));
             }
             _ => {}
         }

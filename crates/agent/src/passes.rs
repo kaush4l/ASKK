@@ -13,6 +13,12 @@
 //! loop's natural end. The evidence is the one `verify::observe` already folds
 //! (`state.acted`), reset at every lap.
 //!
+//! …AND WHERE A GOAL IS DECLARED, THE EVIDENCE IS AN EXIT CODE INSTEAD (26).
+//! `acted` is still a proxy — it says the lap moved, not that the work is done
+//! — so an agent file may declare `goal.check`, and then this fold reads what
+//! that command returned and never `acted` at all. `crate::goal` holds the
+//! whole argument, both phases of it, and why the check cannot run from here.
+//!
 //! IT LOOPS BACK TO `work`, NOT TO THE START. Re-planning from scratch every
 //! pass is how a run drifts off the goal it opened with; the plan stage runs
 //! once, and every later pass is work-and-check against it.
@@ -25,10 +31,9 @@
 
 use kernel::{EventKind, Timestamp};
 
-use crate::ask::call_model;
 use crate::effect::Effect;
 use crate::state::AgentState;
-use crate::stages::{enter, WORK};
+use crate::stages::WORK;
 
 /// A lap was spent. Emitted so the passes are VISIBLE, projected beside
 /// `core.stage_entered` (I8): a loop nobody can see is a token meter running
@@ -47,18 +52,26 @@ pub(crate) fn again(state: &mut AgentState, at: Timestamp) -> Option<Vec<Effect>
         .stages
         .iter()
         .position(|s| s == WORK || s == crate::stages::ANSWER)?;
-    if state.pass + 1 >= state.passes || !state.acted {
+    // PHASE ONE OF THE GOAL CHECK (26), ahead of every decision below: a
+    // declared goal that has not been read yet this lap is READ FIRST, and
+    // nothing is decided until its exit code comes back through
+    // `goal::returned`, which re-enters here with `met` set.
+    if crate::goal::declared(state) && state.standing.met.is_none() {
+        return Some(crate::goal::check(state));
+    }
+    if state.pass + 1 >= state.passes || !crate::goal::earned(state) {
         return None;
     }
     state.pass += 1;
     // Each pass earns its OWN continuation. Carrying the flag forward would let
-    // one productive pass buy the whole budget for four silent ones after it.
-    state.acted = false;
+    // one productive pass buy the whole budget for four silent ones after it,
+    // and a goal met on one lap say nothing about the next.
+    (state.acted, state.standing.met) = (false, None);
     state.stage = work;
     let spent = spent(state.pass + 1, state.passes);
-    let entered = enter(state, at);
-    let call = call_model(state, at);
-    Some(vec![spent, entered, call])
+    // A lap that cannot enter its stage is a lap that refuses it: `step_into`
+    // ends the turn in words rather than working on unbriefed (`crate::brief`).
+    Some(std::iter::once(spent).chain(crate::stages::step_into(state, at)).collect())
 }
 
 /// Whether the turn is ending because the BUDGET ran out rather than because
@@ -68,12 +81,14 @@ pub(crate) fn again(state: &mut AgentState, at: Timestamp) -> Option<Vec<Effect>
 /// It answers `false` for an agent that declared no budget, and that is what
 /// keeps every other agent's ending word exactly what it was.
 pub(crate) fn exhausted(state: &AgentState) -> bool {
-    state.passes > 1 && state.pass + 1 >= state.passes && state.acted
+    state.passes > 1 && state.pass + 1 >= state.passes && crate::goal::earned(state)
 }
 
-/// Turn-scoped, like the evidence flags: a new turn starts on lap one.
+/// Turn-scoped, like the evidence flags: a new turn starts on lap one, with
+/// nothing observed about its goal and no check in flight.
 pub(crate) fn open(state: &mut AgentState) {
     (state.pass, state.acted) = (0, false);
+    crate::goal::clear(state);
 }
 
 fn spent(pass: u16, of: u16) -> Effect {

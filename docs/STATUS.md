@@ -28,7 +28,7 @@ the container2wasm Alpine the agent owns.
 | 1b | Gaps 1-8 + 12 coded (deletions, the I13 fix, the wiring) | DONE, green, unshipped |
 | 1c | Bar-raiser round 1 | DONE — NO-GO, `docs/CRITIQUE-01.md` |
 | 2 | Structural remediation against the 9 exit criteria | DONE, green, awaiting bar-raiser |
-| 3 | The Faculty seam + an agent that starts an agent with a goal | DONE, green, unshipped — 496 tests, 4 gates exit 0, `docs/CRITIQUE-03.md` GO |
+| 3 | The Faculty seam + an agent that starts an agent with a goal | DONE, green, unshipped — 496 tests, 4 gates exit 0, `docs/CRITIQUE-03.md` **split verdict**: GO on the component requirement, NO-GO on its §9.5 file-count claim (`CRITIQUE-03.md:565`) |
 | 4 | CheerpX deleted; c2w the sole engine | COMMITTED main 51199eb, NOT PUBLISHED |
 | 4b | The image: audit measured, recipe repaired, `image/Dockerfile` written | DONE, unshipped |
 | 5 | Free size/memory wins: strip DWARF, gzip -9, VM_MEMORY_SIZE_MB | NAMED, needs a build round |
@@ -55,12 +55,17 @@ tmpfs root (`image/Dockerfile:5-9,25-42`, `c2w.rs:23-28`). Hermes and DeepSeek
 run `bash` on the user's real machine. Every architecture round has been
 polishing the half that was already ahead.
 
-**Two direct hits on the owner's stated goal:**
-- `main` is granted almost nothing — no `web_search` — and NO agent holds
-  `role: critic`, so that seam is dead code in production.
-- **Stage prompts are Rust constants** (`brief.rs:22-52`). The owner asked for
+**Two direct hits on the owner's stated goal:** — BOTH CLOSED 2026-08-20, see
+*The T1-T4 round* at the foot of this file. The two bullets are left as they
+were measured, because a measurement that gets edited when the world moves
+stops being a measurement; the closure is marked, not written over.
+- ~~`main` is granted almost nothing — no `web_search` — and NO agent holds
+  `role: critic`, so that seam is dead code in production.~~ CLOSED: `main`
+  names both, and `public/agents/critic/agent.md` ships holding the role.
+- ~~**Stage prompts are Rust constants** (`brief.rs:22-52`). The owner asked for
   configuration-driven agents; the loop's own instructions are compiled in.
-  DeepSeek and Hermes both keep theirs in data.
+  DeepSeek and Hermes both keep theirs in data.~~ CLOSED: they are
+  `public/stages/*.md`, loaded like agent files, and a missing one refuses.
 
 **The three next things, in order:**
 1. Make the guest capable and state what it keeps (owner gate on size/storage).
@@ -512,3 +517,235 @@ unrelated to memory, `#[ignore]`d so no gate sees it.
   concurrent session wrote them while this round ran. Recorded so nobody credits the
   wrong round; the hazard STATUS already names — two fan-outs in one tree — was live
   again and this time it was two SESSIONS.
+
+---
+
+# The T1–T4 round (2026-08-20) — briefs became data, the loop got an exit code
+
+Architecture lead's record. Four mandates, five coding subagents, one bar-raiser that
+returned **NO-GO**, three remediation subagents against its blocking findings, and one
+instruction violation that had to be repaired centrally.
+
+## RULING — a brief is a property of the STAGE, not of the AGENT
+
+The owner asked for configuration-driven agents and the loop's own prompts were Rust
+constants (`brief.rs:22-52`). Moving them to data settles nothing until you say *whose*
+data they are: does an AGENT declare how it plans, or does PLANNING mean one thing for
+everyone? **They are the stage's.** Three reasons, in the order they decided it:
+
+1. **A stage name is a closed vocabulary whose meaning belongs to the machine.**
+   `brief::acts`, `brief::skill_only`, `stages::verify_ahead` and `passes::again` all
+   branch on the name. If two agents could mean different things by `verify`, the machine
+   would be reasoning about a word it no longer knows the meaning of. The machine's
+   contract with the stage is the whole reason a stage is worth having.
+2. **The agent's own voice already reaches the model, in full, through `Soul`** — its
+   `agent.md` body. An agent that wants to plan differently edits its soul. Per-agent
+   briefs would be a SECOND place an agent's instructions live, competing with the first,
+   and `main`'s body already describes all four stages in prose.
+3. **The verify brief is coupled to the machine, not to the agent.** A per-agent copy
+   could quietly stop naming the thing the harness looks for while the harness kept
+   looking.
+
+The counter-argument, recorded because it is real: the owner said "every agent and its
+metadata is configuration". A stage brief is not the agent's metadata — it is the LOOP's.
+Making it per-agent hands every agent file four more blocks of prose to keep in agreement
+with a machine it cannot see.
+
+**The two hard constraints, both verified by the bar-raiser against the tree.** The core
+PARSES NONE OF THE BRIEF — the only operations anywhere on brief text are trim, non-empty
+and clone; greps for the words the prose itself contains (`CHECK`, `OUTCOME`, `done_when`)
+return nothing in `crates/*/src`. And a missing or blank brief FAILS LOUDLY — no
+`CallModel` is emitted, the turn ends, and the sentence names the file to create.
+`include_str!` of a brief appears only under `crates/*/tests`, which
+`crates/agent/tests/common/mod.rs` states as an exception and confines.
+
+`durable` is its own key rather than a section of `plan.md`, because the alternative is
+core splitting a file on a separator — which is core parsing a brief.
+
+## RULING — the `critique` STAGE and the `role: critic` AGENT are two different jobs
+
+`brief.rs:44-48` claimed the critic agent had become the stage; `critic.rs:1-21` argued a
+stage is exactly what a separate agent exists to fix. Two files in one tree disagreeing.
+Resolved in favour of `critic.rs`, and `brief.rs` corrected:
+
+- The **stage** is REFLECTION — the same model, in the same window, still holding every
+  belief it held while doing the work. It produces prose for the person, `answer::why`
+  never reads it, and it improves the ANSWER. It cannot gate one, because nothing
+  mechanical reads it.
+- The **agent** is a VERDICT — its own Worker, its own prompt, no sight of the caller's
+  conversation. Its first line is read mechanically and a non-pass forces
+  `CRITIC_FAULTED`. It gates the answer and cannot improve it.
+
+A model marking its own homework is worth having and is not a gate, for the same reason
+`passes` never asks a model whether it is finished. Neither replaces the other; both ship.
+
+## RULING — we do NOT widen `EventKind::ToolInvoked` to carry an exit status
+
+The obvious move for T2 was a `status: i32` on the fact, since the code is "narrowed to
+`ok: bool`". Refused. `gate.rs:85` computes `ok` as `ran.status == 0` off the port's own
+`Execution.status` — so `ok` IS the observed exit code, collapsed to the one bit the
+continue condition needs, and it is not a model's report or a parse of output. The numeral
+survives in the output (`gate::said` appends `(exit status N)`). Widening a deliberately
+closed vocabulary for a number nothing branches on is speculative generality across ~15
+construction sites. **What would change it: a continue condition that must tell exit 1
+from exit 2.** Recorded so the next round can reverse it on evidence.
+
+The real gap was never the bit — it was telling the HARNESS's check apart from the MODEL's
+own `exec` calls. That is a `checking` flag, correlated by the same `pending_tools == 0`
+precondition the loop already relies on, and asserted directly in a test.
+
+## What landed
+
+- **T1** — `public/stages/{strategy,plan,verify,critique,durable}.md`, loaded like agent
+  files, fetched at boot and forwarded into every sub-agent Worker. Unknown frontmatter
+  keys now REFUSE instead of being silently dropped (`yaml.rs`'s `_ => {}`).
+- **T2** — a standing `goal.outcome` / `goal.check` / `goal.done_when`, two-phase because
+  `WorkspacePort::exec` is async and `step` is pure (I7): `passes::again` returns an
+  `InvokeTool`, `step::advance` folds the result and re-enters. Continue-or-stop is the
+  command's observed exit code; `acted` is not consulted. Four loud refusals. Declared on
+  the `builder` fixture, deliberately NOT on `main` — a greeting arrives there.
+- **T3** — `web_search` and `critic` granted to `main`; the critic ships. I2 verified at
+  four points: `FetchNet::new()` empty, `allow` removes a blank entry, the settings
+  suggestion is placeholder text only. `web_search` ships REFUSING until a person
+  configures an endpoint, and that is the design.
+- **T4** — the delegated goal and answer on the board, both in `activity_since`, the
+  failed-callee `postMessage` no longer stranding its tool calls, and a separate
+  `last_delegated_failure` rather than widening `last_failure` (a callee's cause must not
+  appear in the page's own failure card naming an endpoint the page never called).
+
+## The bar-raiser said NO-GO, and it was right
+
+`docs/CRITIQUE-04.md` holds both passes in full — written to disk because the first draft
+of this section cited them as `CRITIQUE-03`, which is the *Faculty seam* review and carries
+a **GO**, so this file called one document both a GO and a NO-GO seventeen lines apart. The
+second pass caught it. Summarised: it confirmed both of T1's hard constraints
+survived every attack it made, cleared I2 independently, and confirmed the negative-control
+tests were preserved rather than weakened. Then it found:
+
+- **The critic's whole tool grant is inert in every path this build has, and its own file
+  claimed a path where the tools work.** Chatting to a non-entry agent routes through
+  `run_on` into its own Worker, whose workspace port refuses. The agent was functionally
+  the `engine: base` shape its own frontmatter argued against — "a setting that looks
+  applied", inside the increment whose thesis is deleting those.
+- **The I12 measure went backwards.** Files at exactly 200 lines: 11 at HEAD → 17. Not one
+  new one landed at 197–199. The ceiling, not the subject, was ending those files.
+- **T4's board fold worked for a model-delegated run and not a person-launched one**, since
+  only `delegate()` appends the goal record and the Dashboard path calls `run_on` directly.
+- **`last_delegated_failure` was public API with no production caller**, and its test drove
+  a fake sending a different shape than production sends.
+
+Its answer to "what did the tests not catch" is the finding worth carrying forward:
+**the brief refusal is erased from the screen by the next roster reconcile**, because
+`install_briefs` PUSHES onto `agent_problems` while `roster::reconcile` ASSIGNS it — so the
+first `write_agent` silently deletes the message telling a person which file to add. And
+`agent_problems` has zero test coverage anywhere. The loud-failure channel is not reliably
+loud. **Not fixed this round; named here so it is the next one's.**
+
+## THE INCIDENT — `rustfmt` on a crate root reformatted 43 files, and nobody meant to
+
+**The first diagnosis was wrong and the corrected one is the point.** It looked like an
+agent had run `cargo fmt` over the crate against an explicit prohibition. It had not.
+An agent ran, on five files it genuinely owned:
+
+    rustfmt --edition 2021 crates/core/src/board/errand.rs crates/core/src/lib.rs \
+        crates/core/src/failure/from_worker.rs crates/core/src/trace/from_worker.rs \
+        crates/core/tests/spawn.rs
+
+**One of those five is the crate root, and `rustfmt` FOLLOWS `mod` DECLARATIONS.** Measured
+after the fact, non-destructively: `rustfmt --edition 2021 --check -l crates/core/src/lib.rs`
+names **43 files**. Naming the crate root formats the entire crate. The agent then
+hand-reverted every hunk in the five files it had named and reported honestly that it had
+cleaned up after itself — it had, for the five. It never knew about the other thirty-eight.
+
+So the standing instruction in every brief, *"format only files you own"*, is **not
+achievable with rustfmt** whenever one of the files you own is a crate root or a `mod.rs`.
+The agent obeyed the letter and the tool silently expanded the blast radius. **The brief was
+wrong, not just the agent.** Future briefs must say: run no formatter at all, and if you
+must, never name a `lib.rs`, a `main.rs` or a `mod.rs`, because the argument list is not the
+blast radius.
+
+It broke gate 4: 12 files over the 200-line limit and 9 new over-40-line functions against a
+shrink-only baseline, including files in nobody's mandate.
+
+This is not a formatting nit. HEAD is deliberately not rustfmt-clean *because* this
+codebase's line style is hand-set so its long doc comments and prose strings fit inside
+I12; rustfmt's defaults inflate them straight past the ceiling. The formatter mechanically
+attacks the invariant, across hundreds of lines the round never touched, and it would have
+destroyed the measure the bar-raiser judges rounds by.
+
+**Repaired without `git checkout`, `restore`, `stash` or `clean`** — see the lesson below
+for the technique and why its first pass under-reported.
+
+**AND THE FIRST REPAIR WAS NOT THE LAST.** A second bar-raiser pass found **nine more files**
+still carrying rustfmt output (+53 lines), and found that the method used to verify the first
+repair could not possibly have seen them: `rustfmt --check -l` lists the files rustfmt *would
+change* — that is, the correctly restored ones. A file left in rustfmt's output is ABSENT from
+that list, so the command named 43 files before the repair and 43 after, and was worthless as
+evidence either way. The detector that works compares each file's token stream against HEAD
+with whitespace and commas stripped **and `use` lines compared as a sorted set**; without that
+last clause rustfmt's import reordering hides the file.
+
+**The measure was satisfied by the bug it was measuring.** `crates/core/src/agents/authoring.rs`
+(200 → 199) was the ONLY file that had left the exact-200 list, and its whole diff was
+unrepaired reformat. So the round's first headline — "10 exact-200 files, below HEAD's 11" —
+was an artifact of the incident, and on a restored tree it read **11, level with HEAD**.
+**Always restore the tree before reading a line-count measure.**
+
+**The final number is 10, and this time it is audited rather than asserted.** The last repair
+split `crates/core/src/faculty.rs` (200) into `faculty/mod.rs` (103, the SEAM a host is handed)
+and `faculty/run.rs` (132, the loop that walks an agent's faculties), to make room for
+`Sensing.tools`. Set-differenced against HEAD rather than counted:
+
+    at HEAD, not now (left the ceiling):  crates/core/src/faculty.rs   — split by subject
+    now, not at HEAD (grew into it):      (none)
+
+That second line is the one that matters and it is the claim `docs/CRITIQUE-02.md` cares
+about: **no file in this round ended on the ceiling.** The residue detector also reports zero
+remaining reformatted files, so the number is measured on a clean tree.
+
+**AND THAT SENTENCE WAS FALSE WHEN FIRST WRITTEN — a third pass proved it.** The detector
+above is WHOLE-FILE, and residue also lives in HUNKS inside files that carry real changes,
+where a whole-file comparison is blind by construction. Worse, the "compare `use` lines as a
+sorted set" clause classifies a no-op import edit (`use x as x;` -> `use x;`) as a real
+change, which pushed a fully-reformatted file into the "has real changes" bucket where it was
+never examined. A per-hunk sweep found **22 more pure-format hunks across 14 files, +86 net
+lines** — more than the +53 that produced the standing NO-GO, merely distributed where the
+first detector could not look. **The detector must run per HUNK, not per file.**
+
+**AND THAT WAS STILL NOT THE END — a fourth pass proved the per-hunk sweep wrong too, twice.**
+`git diff -U3` MERGES adjacent changes into one hunk, so a pure-format change sitting near a
+real one is absorbed into a "mixed" hunk and skipped; `-U0` isolates each change. And the
+normaliser stripped whitespace, commas and semicolons but **not braces** — while rustfmt ADDS
+braces, wrapping closure bodies and match arms (`|o| f(x)` -> `|o| { f(x) }`). That blind spot
+hid seven more files from every sweep in this round, the lead's and both bar-raisers'.
+
+So the rule, in the form that finally held: **`git diff -U0`, and normalise away whitespace,
+commas, semicolons AND braces.** Under that detector the tree reads zero at both hunk and
+whole-file granularity, and that was measured AFTER the last revert rather than asserted
+before it — which is the failure this section describes four times over.
+
+**One flagged hunk was not residue at all, and the GATE is what proved it.**
+`crates/agent/src/step.rs`'s one-line `ToolResult` literal reads as a pure-format hunk to any
+text comparison. Restoring it to six lines put `fn advance` at 41 and I12's function gate
+refused it; extracting the arm into its own function put the file at 201. It was a DELIBERATE
+hand-collapse holding the exit table under the gate. It stays, and it now carries a comment
+saying why it is one line. **A text-level detector cannot tell a deliberate hand-collapse from
+formatter residue** — no better regex fixes that, and writing the intent down does.
+
+**The lesson for the fan-out, corrected.** The first version of this section blamed an
+agent for ignoring a prohibition. That was the easy reading and it was false: three of the
+four agents asked answered honestly and none had run `cargo fmt`. What actually happened is
+that a tool's blast radius did not match its argument list, and no instruction could have
+prevented it because the instruction itself assumed a file-scoped tool.
+
+The generalisation worth keeping: **when a brief constrains a subagent by naming files, the
+constraint only holds for tools that are actually file-scoped.** `rustfmt` is not, and
+neither is anything else that walks a module tree, a workspace, or a config's `include`s.
+Two defences follow, and neither is an instruction: a check that runs AFTER the fan-out
+rather than a rule before it (there is still no CI — T12), and the classification technique
+this repair used, which is reusable — compare each changed file's token stream against HEAD
+with whitespace and commas stripped to separate reformat from real change mechanically. Note
+the first pass under-reported, because rustfmt ALSO reorders imports and that changes token
+order; the survivors needed a whitespace-insensitive diff. 31 files were restored this way,
+and the two carrying exactly one real change each were restored and had that change
+re-applied by hand.

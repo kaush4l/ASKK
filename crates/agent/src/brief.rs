@@ -1,86 +1,158 @@
-//! WHAT EACH STAGE IS TOLD — the words that go into the `## directive` block,
-//! the reply shape that goes with them where the machine will read it back,
-//! and which stages may act at all.
+//! WHAT EACH STAGE IS TOLD — and, since this increment, the fact that it is
+//! not told it from here. The words live in `public/stages/<key>.md` and arrive
+//! the way `public/agents/*/agent.md` arrives: fetched at boot, handed into the
+//! pure core as `(key, text)` pairs. What is left in this file is what was
+//! never prose — the reply shape a stage demands, and which stages may act.
 //!
-//! These are the PROMPTS; `stages.rs` is the machine that walks them. They are
-//! apart because they change for different reasons and at different rates: a
-//! wording is edited by reading what a model did with it, a cursor is edited by
-//! reasoning about a turn.
+//! A BRIEF IS A PROPERTY OF THE STAGE, NOT OF THE AGENT. A stage name is a
+//! member of a closed vocabulary (`stages::STAGES`) and its meaning belongs to
+//! the MACHINE: `acts`, `skill_only`, `stages::verify_ahead` and `passes::again`
+//! all branch on the name. If two agents could mean different things by
+//! `verify`, the machine would be reasoning about a word whose meaning it no
+//! longer knows. The agent's own voice already reaches the model in full,
+//! through `Soul` — an agent that wants to plan differently edits its soul, and
+//! a per-agent brief would be a SECOND place an agent's instructions live,
+//! competing with the first. The verify brief is the plainest case: it names
+//! the CHECK line the plan brief asked for, so a per-agent copy could quietly
+//! stop naming CHECK while the other half kept telling the model to write one.
+//!
+//! …AND THAT CHECK LINE IS A NOTE TO THE MODEL, NOT TO THE MACHINE (26). It is
+//! prose the plan stage writes for the verify stage to act on, and nothing here
+//! parses it — the paragraph above is why. The one check a MACHINE reads is
+//! `goal.check` in the agent's own frontmatter (`crate::goal`), which is a
+//! declared command run by the harness itself. There is exactly one of those,
+//! so there is no question of which wins; reading structure out of a brief to
+//! find a second would hardcode the brief again in a new place.
+//!
+//! THE CORE PARSES NONE OF IT. A brief is opaque prose that reaches the model
+//! through `components::Directive`, and the only operations here are trim and
+//! is-it-empty. No line splitting, no keyword search: the moment core reads
+//! structure out of a brief, the brief is hardcoded again in a new place.
+//!
+//! AND THERE IS NO COMPILED-IN COPY. A missing or blank file REFUSES, loudly,
+//! at load and again at the stage that wanted it. A default here would be the
+//! `engine: reakt` failure with better manners — a setting that looks applied.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 
 use crate::components::ResponseContract as Contract;
+use crate::error::AgentError;
 use crate::stages::{ANSWER, CRITIQUE, PLAN, VERIFY};
 use crate::strategy::{self, STRATEGY};
 
-/// The goal→plan pre-pass, and the place SKILLS enter the prompt.
-///
-/// The plan stage is granted the skill tools and nothing else (`stages::
-/// tool_scope`), so "read the ones that apply" is a real instruction rather
-/// than a suggestion it has no way to act on. It is here and not in `work`
-/// because instruction is cheapest to load before the work starts and most
-/// expensive to discover you needed halfway through it.
-const PLAN_BRIEF: &str = "First, turn the request into a brief and write nothing else. \
-    Before you write it, call `list_skills`. If any of them is instruction for the kind of \
-    work this is, `read_skill` it — its body is written for exactly this and will be better \
-    than what you would improvise. Skip the call entirely if the work is plainly outside \
-    everything listed.\n\n\
-    Then write five lines, each starting with its word: OUTCOME — what will be true when \
-    this is done. PATHS — the files, folders or commands involved, as far as they can be \
-    named. CHECK — the one command whose output would show it worked. DONE WHEN — the \
-    observable that ends the work. ASSUMED — what had to be filled in because the request \
-    did not say.";
+/// The paragraph appended to the `plan` brief for an agent that has a space.
+/// NOT a stage — a key, and a key rather than the tail of `plan.md`, because
+/// the alternative is core splitting one file on a separator, which is parsing
+/// the brief.
+pub const DURABLE: &str = "durable";
 
-/// Verify: run the check the brief named, and quote what it printed. The word
-/// this asks for is what was OBSERVED — it never asks for a verdict on the work.
-const VERIFY_BRIEF: &str = "Now check the work instead of describing it. Run the command the \
-    brief named under CHECK and read what it prints. Quote the line that shows the outcome, \
-    whichever way it went. If nothing can be run here, say in one sentence what is unchecked \
-    and why. Claim nothing you have not read back.";
+/// Every brief there is. Closed, like `stages::STAGES`, and for the same
+/// reason: an unknown key is a file somebody wrote that nothing will ever read.
+/// `work` and `answer` are absent BY DESIGN — the person's own request is the
+/// instruction there, and a second one would compete with it.
+pub const BRIEF_KEYS: [&str; 5] = [STRATEGY, PLAN, VERIFY, CRITIQUE, DURABLE];
 
-/// Critique: the turn's own reviewer, and then the answer. Deliberately last
-/// and deliberately toolless — its job is to say what is still missing, which
-/// is the one thing a model that has been acting for sixty rounds stops doing.
-///
-/// This is where the separate `critic` agent went. It was a whole extra Worker,
-/// a whole extra file and a whole extra model to load, and what it produced was
-/// this: a reading of the turn by something that did not do the work. Asking
-/// for that reading in a stage whose directive says to take that stance costs
-/// one call instead of a second agent, and it is the same model either way.
-const CRITIQUE_BRIEF: &str = "Now read the whole turn back as somebody who did not do it and \
-    is not impressed by it. In at most three lines, name what is still wrong, missing or \
-    unchecked — not what went well. Then answer the person: what was done, what was checked \
-    and what was not. Do not restate the brief, and do not pad.";
+/// The loaded briefs, by key. `BTreeMap` and not `HashMap` so two identical
+/// agents assemble two identical papers (I7, I14) — the same rule `senses`
+/// carries, for the same reason.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Briefs(BTreeMap<String, String>);
 
-/// THE GOAL HAS TO OUTLIVE THE WINDOW (22). `main` compacts at 8 entries, and
-/// a turn that walks its stages five times will summarise away the brief it
-/// opened with — the plan is then a thing the run used to know. The space is
-/// the durable place: `remember` writes survive compaction, are re-read by
-/// `core::space::refresh` before every pass, are already in the environment
-/// block and already cross Workers. So this is prose and one tool that already
-/// exists, not a second store. Added only where the agent HAS a space, because
-/// telling an agent to call a tool it was never granted is noise in the window.
-pub(crate) const DURABLE: &str = "\n\nAnd the first thing to do in the work that follows: call \
-    `remember` twice — key `outcome` with the OUTCOME line, key `done_when` with the DONE WHEN \
-    line. This window gets compacted; the shared space does not, and it is read back to you \
-    before every pass.";
-
-/// What the model is told on entering a stage. `work` and `answer` have nothing
-/// to add — the person's own request is the instruction, and a second one would
-/// compete with it.
-pub fn brief(stage: &str) -> &'static str {
-    match stage {
-        STRATEGY => strategy::BRIEF,
-        PLAN => PLAN_BRIEF,
-        VERIFY => VERIFY_BRIEF,
-        CRITIQUE => CRITIQUE_BRIEF,
-        _ => "",
+impl Briefs {
+    /// Whether any brief was loaded at all. What the loud path asks before it
+    /// blames one key: an app that fetched nothing has a different problem
+    /// from an app missing `verify.md`.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
+
+    /// The set back as the `(key, text)` pairs it was loaded from. A sub-agent's
+    /// Worker boots from what the page already fetched — it cannot fetch these
+    /// itself — so the loaded set has to be able to say what it holds.
+    pub fn pairs(&self) -> Vec<(String, String)> {
+        self.0.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
+}
+
+/// The file a key is read from, which is the sentence a person needs. It is
+/// built here rather than at each refusal so the two refusals — the load and
+/// the stage — cannot name two different paths.
+pub(crate) fn path_of(key: &str) -> String {
+    format!("public/stages/{key}.md")
+}
+
+/// EVERY KEY, OR A REFUSAL. An unknown key, a missing one, or one whose file is
+/// empty once trimmed is `MalformedBrief` naming the file to fix. It refuses
+/// the whole set rather than the one key because a half-loaded set is an app
+/// that runs until the turn that needed the missing one, which is the failure
+/// this increment exists to delete.
+pub fn load(pairs: impl IntoIterator<Item = (String, String)>) -> Result<Briefs, AgentError> {
+    let mut loaded = BTreeMap::new();
+    for (key, text) in pairs {
+        if !BRIEF_KEYS.contains(&key.as_str()) {
+            return Err(malformed(
+                &key,
+                format!("no stage is briefed by that name — the briefs are: {}", BRIEF_KEYS.join(", ")),
+            ));
+        }
+        if text.trim().is_empty() {
+            return Err(malformed(&key, format!("{} is empty", path_of(&key))));
+        }
+        loaded.insert(key, text.trim().to_string());
+    }
+    if let Some(missing) = BRIEF_KEYS.iter().find(|k| !loaded.contains_key(**k)) {
+        return Err(malformed(
+            missing,
+            format!("{} was not loaded, so the {missing} stage has nothing to say", path_of(missing)),
+        ));
+    }
+    Ok(Briefs(loaded))
+}
+
+/// THE WORDS THIS STAGE ENTERS WITH. `work` and `answer` get an empty string,
+/// which is how the block disappears on them rather than lingering with the
+/// previous stage's instruction still in it. A briefed stage whose file never
+/// loaded is `Err` naming the key: entering it unbriefed is a plan stage that
+/// writes no plan and a verify stage that names no CHECK, both of them looking
+/// exactly like a stage that ran.
+///
+/// The `\n\n` before the durable paragraph is the APPENDER's business and never
+/// the file's. `durable.md` holds prose and this joins it on; the alternative —
+/// one `plan.md` split on a separator — is core parsing a brief.
+pub(crate) fn directive(briefs: &Briefs, stage: &str, has_space: bool) -> Result<String, String> {
+    if !keyed(stage) {
+        return Ok(String::new());
+    }
+    let mut said = of(briefs, stage).ok_or_else(|| stage.to_string())?.to_string();
+    if stage == PLAN && has_space {
+        let durable = of(briefs, DURABLE).ok_or_else(|| DURABLE.to_string())?;
+        said.push_str(&format!("\n\n{durable}"));
+    }
+    Ok(said)
+}
+
+/// The words this stage was given, if it is a stage that gets any. `None`
+/// covers two different things on purpose — `work` and `answer`, which are
+/// right to have none, and a briefed stage whose file never arrived, which is
+/// the loud case. `keyed` is what tells the caller which one it is holding.
+fn of<'a>(briefs: &'a Briefs, stage: &str) -> Option<&'a str> {
+    briefs.0.get(stage).map(String::as_str)
+}
+
+/// Whether this stage is one that must be briefed before it may be entered.
+fn keyed(stage: &str) -> bool {
+    matches!(stage, STRATEGY | PLAN | VERIFY | CRITIQUE)
 }
 
 /// The reply shape this stage demands, where it demands one.
 ///
 /// `None` means "whatever the phase would have asked for anyway" — prose to the
 /// person, or a tool envelope where there are tools. Only a stage whose reply
-/// the MACHINE reads needs to override that, and today exactly one does.
+/// the MACHINE reads needs to override that, and today exactly one does. It
+/// stays compiled in because it is not prose: it is the shape `strategy::
+/// route_of` parses back, and the two are one decision.
 pub(crate) fn contract(stage: &str) -> Option<Contract> {
     match stage {
         STRATEGY => Some(Contract::shaped(strategy::OBJECT)),
@@ -93,7 +165,7 @@ pub(crate) fn contract(stage: &str) -> Option<Contract> {
 /// `plan` is the interesting one. It is told to read skills, so refusing it
 /// every tool would make that instruction a lie; granting it the whole toolbox
 /// would let it start the work it is supposed to be planning. It gets the two
-/// skill tools, which is exactly the capability the brief names.
+/// skill tools, which is exactly the capability its brief names.
 pub(crate) fn skill_only(stage: &str) -> bool {
     stage == PLAN
 }
@@ -103,4 +175,11 @@ pub(crate) fn skill_only(stage: &str) -> bool {
 /// what makes the vote worth taking.
 pub(crate) fn acts(stage: &str) -> bool {
     !matches!(stage, STRATEGY | PLAN | CRITIQUE | ANSWER)
+}
+
+fn malformed(key: &str, message: String) -> AgentError {
+    AgentError::MalformedBrief {
+        key: key.to_string(),
+        message,
+    }
 }

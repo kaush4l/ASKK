@@ -107,6 +107,3 @@ pub const OBJECT: ResponseObject = ResponseObject {
     ],
 };
 
-/// The instruction that goes in the `## directive` block for this stage. The
-/// shape is in the response object; this is the job.
-pub const BRIEF: &str = "Do not answer the message yet. Decide only how it should be handled.";

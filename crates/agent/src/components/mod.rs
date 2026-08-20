@@ -16,6 +16,7 @@
 mod affordances;
 mod contract;
 mod directive;
+mod goal;
 mod history;
 mod memory;
 mod respond;
@@ -27,6 +28,7 @@ mod world;
 pub(crate) use affordances::Affordances;
 pub(crate) use contract::ResponseContract;
 pub(crate) use directive::Directive;
+pub(crate) use goal::Goal;
 pub(crate) use history::History;
 pub use history::SESSION_STARTED;
 pub(crate) use respond::{Field, ResponseObject};

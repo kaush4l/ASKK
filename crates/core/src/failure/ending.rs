@@ -57,7 +57,7 @@ fn one(kind: &EventKind) -> Option<Option<Ending>> {
             // …and a stage opening, for the same reason: what came before is
             // over, and nothing has ended (`agent::stages`). A pass spent is
             // the same shape one level up (22): a new lap, nothing ended.
-            k if k == agent::STAGE_ENTERED || k == agent::PASS_SPENT => Some(None),
+            k if crate::failure::loop_note::is_loop_fact(k) => Some(None),
             k if k == agent::STOPPED => Some(Some(Ending::StoppedByYou)),
             "core.error" | "core.agent_error" => Some(Some(Ending::Failed)),
             _ => None,
@@ -74,8 +74,7 @@ pub(crate) fn is_note(kind: &str) -> bool {
         || kind == agent::ENDED
         || kind == agent::STOPPED
         || kind == agent::VERIFY_NUDGED
-        || kind == agent::STAGE_ENTERED
-        || kind == agent::PASS_SPENT
+        || crate::failure::loop_note::is_loop_fact(kind)
         || kind == crate::chat::pane::TURN_STOPPED
 }
 
@@ -103,15 +102,11 @@ pub(crate) fn machine_note(kind: &str, payload_json: &str, who: &str) -> Option<
                 .to_string(),
         ));
     }
-    // The loop's own two notices — which stage (20, 21) and which lap (22).
-    // Both wordings live in `ending_kind` beside the endings' because they are
-    // the same job: what the page SAYS about a turn the machine moved on by
-    // itself.
-    if kind == agent::STAGE_ENTERED {
-        return Some(crate::failure::ending_kind::stage_note(payload_json));
-    }
-    if kind == agent::PASS_SPENT {
-        return Some(crate::failure::ending_kind::pass_note(payload_json));
+    // The loop's own notices — which stage (20, 21), which lap (22), which goal
+    // check (26). One dispatcher, because a fact the loop emits and a sentence
+    // about it are one decision (`failure::loop_note`).
+    if let Some(said) = crate::failure::loop_note::note(kind, payload_json) {
+        return Some(said);
     }
     if kind == crate::chat::pane::TURN_STOPPED {
         return Some((crate::chat::fold::NOTICE.to_string(), crate::chat::fold::STOPPED.to_string()));
@@ -170,6 +165,11 @@ pub(crate) fn machine_note(kind: &str, payload_json: &str, who: &str) -> Option<
                 }
             ),
         )),
+        // NO SECOND SENTENCE FOR AN UNMET GOAL (26), on this function's own
+        // rule: the `core.goal_checked` notice is directly above with the
+        // command and its output, and repeating it would be two records of one
+        // ending. The row and the card carry the word (`ending_kind`).
+        Ending::GoalUnmet => None,
         _ => None,
     }
 }

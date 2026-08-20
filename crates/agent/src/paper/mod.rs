@@ -16,7 +16,7 @@ use context::{Part, SectionSource, State};
 use kernel::Timestamp;
 
 pub(crate) use crate::components::seed;
-pub use adopt::adopt_spec;
+pub use adopt::{adopt_briefs, adopt_spec};
 
 /// The speaker a compaction call is attributed to. A LABEL on a model call,
 /// not an agent: `window::compaction` builds the sheet itself, so nothing

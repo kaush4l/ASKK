@@ -1,6 +1,11 @@
 //! The pure step function (§11) — the hard wall between thinking and doing.
 //! `step` cannot do I/O; it can only describe it, so everything here tests on
 //! the host by asserting on the returned effects (ARCHITECTURE §5).
+//!
+//! EVERY ARM HERE IS THIS AGENT'S OWN TURN. Two are not, and they live in
+//! [`compaction`]: the reply in flight there is the SUMMARIZER's, not an answer
+//! to anything the person asked, and the whole reason those two arms are hard
+//! to read in place is that they are about a different conversation.
 
 use kernel::{Event, EventKind};
 
@@ -12,6 +17,8 @@ use crate::reply::{parse_reply, ParsedReply};
 use crate::state::AgentState;
 use crate::tools::ToolResult;
 use crate::{answer, ending, stages, steer, stop, verify, window};
+
+mod compaction;
 
 /// A state and the effects it wants run — what every transition below returns.
 type Stepped = (AgentState, Vec<Effect>);
@@ -31,6 +38,9 @@ pub fn step(state: AgentState, input: Event) -> Stepped {
 /// THE EXIT TABLE — one arm per fact the agent can be handed. Every arm is a
 /// pure state transform returning effects; the arms with anything to explain
 /// are functions below, so this reads as the list of things that can happen.
+/// TWO ARMS FOR ONE FACT (26): a `ToolInvoked` is the model's own call, unless
+/// `standing.checking` says it is the HARNESS's goal check — which must not
+/// become an observation, spend a round, or ask the model again (`crate::goal`).
 fn advance(mut state: AgentState, input: Event) -> Stepped {
     match input.kind {
         // Stop pressed: recorded, NOTHING emitted (`stop.rs` holds why). An
@@ -44,25 +54,26 @@ fn advance(mut state: AgentState, input: Event) -> Stepped {
         }
         EventKind::UserMessage { text, .. } => on_task(state, text, input.at),
         EventKind::ModelReplied { text, .. } if state.compacting => {
-            on_summary(state, &text, input.at)
+            compaction::summarised(state, &text, input.at)
         }
         EventKind::Custom { ref kind, .. }
             if kind == "core.compaction_failed" && state.compacting =>
         {
-            on_compaction_failed(state, input.at)
+            compaction::failed(state, input.at)
         }
         // The completed reply (ADR-002: deltas never reach the log): either
         // tool calls to run, or the answer that ends the turn.
         EventKind::ModelReplied { text, .. } => on_reply(state, &text, input.at),
+        EventKind::ToolInvoked { ok, ref output, .. } if state.standing.checking => {
+            crate::goal::returned(state, ok, output, input.at)
+        }
         // One tool came back. The batch is done when the last result lands,
         // and then — and only then — the model sees them all.
         EventKind::ToolInvoked { tool, ok, output, .. } => {
-            let result = ToolResult {
-                tool: tool.0,
-                ok,
-                output: output.clone(),
-                error: output,
-            };
+            // ONE LINE ON PURPOSE, and not a formatter's doing: spelled over
+            // six lines this arm puts `advance` at 41 and the I12 function gate
+            // refuses it. The exit table stays a table.
+            let result = ToolResult { tool: tool.0, ok, output: output.clone(), error: output };
             on_tool_result(state, &result, input.at)
         }
         // Facts observed but not acted on: quiescence, not effects.
@@ -97,30 +108,14 @@ fn on_task(mut state: AgentState, text: String, at: kernel::Timestamp) -> Steppe
     (state.pending_tools, state.tool_rounds, state.stopping) = (0, 0, false);
     verify::clear(&mut state);
     let opened = stages::open(&mut state, at);
+    // A turn that could not enter its first stage is over before it began
+    // (`ending::unbriefed`), and calling the model anyway would be the stage
+    // running unbriefed by another door.
+    if opened.iter().any(ending::is_ending) {
+        return (state, opened);
+    }
     let effect = window::compaction(&mut state, at).unwrap_or_else(|| call_model(&mut state, at));
     (state, opened.into_iter().chain([effect]).collect())
-}
-
-/// The summarisation FAILED. A compaction costs a compaction and never a
-/// conversation (Python `compact`: warned about, carried on from), so the
-/// window is left as it was and the turn the person asked for is taken now, in
-/// full — it was never asked at all before (09 walk).
-fn on_compaction_failed(mut state: AgentState, at: kernel::Timestamp) -> Stepped {
-    state.compacting = false;
-    let effect = call_model(&mut state, at);
-    (state, vec![effect])
-}
-
-/// The summary is back. It REPLACES the older window, and the turn the person
-/// asked for is taken against the compacted paper. The reply is the
-/// summarizer's, which is why it never becomes an answer.
-fn on_summary(mut state: AgentState, text: &str, at: kernel::Timestamp) -> Stepped {
-    state.compacting = false;
-    if window::compacted(&mut state.paper, text, state.keep_recent, at) {
-        state.compactions += 1;
-    }
-    let effect = call_model(&mut state, at);
-    (state, vec![effect])
 }
 
 /// One reply against the phase's contract. Tool calls act; anything else goes

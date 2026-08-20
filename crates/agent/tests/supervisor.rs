@@ -26,6 +26,7 @@ fn spec(name: &str, tools: &[&str]) -> AgentSpec {
         keep_recent: 24,
         max_rounds: 64,
         passes: 1,
+        goal: agent::Goal::default(),
         prompt: "body".into(),
     }
 }

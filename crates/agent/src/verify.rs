@@ -87,6 +87,10 @@ pub(crate) fn clear(state: &mut AgentState) {
     // …and `acted`, which is the same fold on a shorter clock: `passes` resets
     // it at every lap, this resets it at every turn.
     state.acted = false;
+    // …and what the goal check observed (26), for the identical reason: an exit
+    // code is evidence about ONE turn's work. The DECLARATION survives — it
+    // came from the agent's file and not from the turn.
+    crate::goal::clear(state);
 }
 
 /// Whether this answer may end the turn yet. Consumes a nudge when it may not,

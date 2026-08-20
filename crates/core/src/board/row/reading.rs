@@ -9,9 +9,9 @@
 use agent::AgentRow;
 use kernel::Status;
 
+use crate::board::offer::Offer;
 use crate::dispatch::Ctx;
 use crate::failure::ending::Ending;
-use crate::board::stage::Offer;
 
 /// One agent as the board reads it.
 pub(super) struct Reading {
@@ -44,7 +44,7 @@ impl Reading {
         let ended = ending.and_then(Ending::word);
         let word = word_for(orphaned, ended, status);
         let said = format!("{word} · {}{}", turns(agent), origin_clause(agent, ctx));
-        let offer = crate::board::stage::offer(ctx, &agent.name);
+        let offer = crate::board::offer::offer(ctx, &agent.name);
         let (hurt, ran) = crate::failure::within_turn::clause(ctx, &agent.name);
         let live = super::live::second_line(agent, ctx, orphaned, ending, &hurt);
         Reading {

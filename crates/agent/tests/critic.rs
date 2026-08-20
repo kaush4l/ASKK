@@ -13,9 +13,13 @@ use kernel::{Event, EventId, EventKind, Timestamp, ToolId};
 
 use agent::{adopt_spec, ended_why, parse_agent_file, step, AgentState, Effect};
 
-const CRITIC: &str = include_str!("agents/critic.md");
+const CRITIC: &str = include_str!("../../../public/agents/critic/agent.md");
 const BUILDER: &str = include_str!("agents/builder.md");
 const INDEX: &str = include_str!("../../../public/agents/index.json");
+/// The other shipped file, because increment 28 is only half done in this one:
+/// a role nobody NAMES is a role nobody calls, and the seam is proven live from
+/// the manifest through `main`'s allowlist to `state.critic` or not at all.
+const MAIN: &str = include_str!("../../../public/agents/main/agent.md");
 
 /// A caller that may call the critic, cut to the bone.
 const CALLER: &str = "---\nname: lead\ndescription: d\nmodel: local\nspace: research\n\
@@ -77,15 +81,26 @@ fn reviewed(verdict: &str, ok: bool) -> String {
     ending(&step(state, said("Done — notes.md is written and reads back.")).1)
 }
 
-/// THE SHIPPED FILE IS READ-ONLY BY ALLOWLIST. Every name it grants reads and
-/// nothing else — no shell, no write, no process, no space write, and no other
-/// agent, so it cannot delegate its way around any of them.
+/// THE SHIPPED FILE GRANTS NOTHING, AND THE SPACE IT KEEPS IS NOT A GRANT.
+///
+/// This used to assert `engine: react` and an allowlist of `read_file`,
+/// `list_files` and `find_files`, under the heading "read-only by allowlist".
+/// It is NOT a weakening to assert the empty toolbox instead — it is strictly
+/// stronger, and it is the assertion that would have caught the defect. The
+/// three names resolved, so this test was green, while none of the three could
+/// return data by any route this build has: a review reaches the critic in its
+/// own Worker (`batch::run_on` → `AgentPort::delegate`), so does a person
+/// typing to it in the page (`chat/pane::submit` → `requests::ran_elsewhere`),
+/// and a Worker's `C2wWorkspace` has no `document`. An allowlist of three
+/// inert names asserted a capability the product did not have (I15). An EMPTY
+/// toolbox is checkable, and under `engine: base` it is the loader's doing
+/// rather than a list somebody has to keep correct.
 #[test]
-fn the_shipped_critic_can_read_and_can_change_nothing() {
+fn the_shipped_critic_is_granted_nothing_and_keeps_the_space_it_judges_against() {
     let critic = parse_agent_file("critic", CRITIC).expect("critic parses");
     assert_eq!(critic.role, agent::ROLE_CRITIC, "the machine looks the role up, not the name");
-    assert_eq!(critic.tools, ["read_file", "list_files", "find_files"]);
-    assert_eq!(critic.engine, agent::ENGINE_REACT);
+    assert_eq!(critic.engine, agent::ENGINE_BASE, "one reply, and no toolbox to be wrong about");
+    assert!(critic.tools.is_empty(), "and no list: `base` with one would not even parse");
     // The peers include everything it could name, so a granted tool here would
     // be a real capability and not an unresolved word.
     let peers: Vec<agent::AgentSpec> = [("builder", BUILDER)]
@@ -94,25 +109,67 @@ fn the_shipped_critic_can_read_and_can_change_nothing() {
         .collect();
     let box_ = agent::toolbox_for(&critic, &peers);
     let granted: Vec<&str> = box_.tools.iter().map(|t| t.name.as_str()).collect();
-    assert_eq!(granted, ["read_file", "list_files", "find_files"], "the allowlist IS the mode");
+    assert!(granted.is_empty(), "nothing is granted, not even a reader: {granted:?}");
+    // The old forbidden list stands unchanged beside the stronger assertion:
+    // an empty box implies it, and naming them keeps the record of what this
+    // agent must never acquire if the shape is ever revisited.
     for forbidden in [
         "exec", "write_file", "write_agent", "start_process", "stop_process", "remember",
-        "forget", "post_note", "web_search", "builder",
+        "forget", "post_note", "web_search", "builder", "read_file", "list_files", "find_files",
     ] {
         assert!(!granted.contains(&forbidden), "the critic must not be granted `{forbidden}`");
     }
     assert!(box_.tools.iter().all(|t| !t.agent), "a critic that can delegate is not read-only");
-    // …AND NOTHING SHIPS IT ANY MORE. The reviewer is the `critique` stage now:
-    // one call in the same window instead of a second agent, a second Worker
-    // and a second model to load, for a reading of the turn that is the same
-    // model's either way. The machinery below it — `role: critic`, the verdict
-    // fold, the ending a fault earns — is all still here and still tested
-    // against this fixture, because an agent installed in a browser can hold
-    // the role. The manifest names one agent, and that is the design.
+    // …AND THE ONE CAPABILITY THAT IS REAL SURVIVED THE CUT. `space:` here is
+    // not a tool grant — under `base` it grants no tool at all — it is the
+    // `## space` block, whose shared facts (`outcome`, `done_when`) ARE
+    // readable from a Worker, because Workers open the same spaces database the
+    // page does. It is what the verdict is judged against, so removing the
+    // tools must not have removed it too.
+    assert_eq!(critic.space, "research", "the space it judges against");
+    assert!(
+        agent::declared_faculties(&critic).iter().any(|f| f == agent::SPACE_FACULTY),
+        "so the `## space` block is still in its paper"
+    );
+    // …AND IT SHIPS (28). This assertion used to read `names.len() == 1` and
+    // call that the design: the reviewer had been "replaced by the `critique`
+    // stage", so `role: critic`, the verdict fold and the ending a fault earns
+    // were all machinery no installed file could reach — tested against a
+    // fixture, dead in the product. It is not a weakening to say two, because
+    // what replaces the count is stronger than the count was: the file the app
+    // will actually FETCH is the file asserted above, it HOLDS the role, and
+    // `role_holder` finds it in the roster the loader would build.
     let index: serde_json::Value = serde_json::from_str(INDEX).expect("the manifest parses");
     let names = index["agents"].as_array().expect("agents is a list");
-    assert_eq!(names.len(), 1, "one agent ships: {names:?}");
-    assert_eq!(names[0].as_str(), Some("main"));
+    let listed: Vec<&str> = names.iter().filter_map(serde_json::Value::as_str).collect();
+    assert_eq!(listed, ["main", "critic"], "both jobs ship: {names:?}");
+    let main = parse_agent_file("main", MAIN).expect("the shipped main parses");
+    let roster = [main.clone(), critic.clone()];
+    let holder = agent::role_holder(&roster, agent::ROLE_CRITIC).expect("the role has a holder");
+    assert_eq!(holder.name, "critic", "and it is the shipped file, found by role");
+    // THE SEAM IS LIVE, NOT MERELY INSTALLED. Invocation is NAMED: a caller
+    // that does not hold the critic's name in its own `tools:` can never
+    // receive a verdict, however well the machinery underneath works.
+    assert!(main.tools.contains(&"critic".to_string()), "main names it: {:?}", main.tools);
+}
+
+/// AND THE CALLER ADOPTS IT (28). `critic_among` is what turns "a peer holds
+/// the role" into "this agent's tool results may be read as a verdict", and it
+/// is looked up by ROLE rather than by the name `critic` — so this pins the
+/// pair the browser will actually boot with, not a fixture standing in for it.
+#[test]
+fn the_shipped_pair_resolves_the_reviewer_and_nobody_reviews_themselves() {
+    let main = parse_agent_file("main", MAIN).expect("the shipped main parses");
+    let critic = parse_agent_file("critic", CRITIC).expect("critic parses");
+    let mut state = AgentState::new();
+    adopt_spec(&mut state, &main, &[critic.clone()]);
+    assert_eq!(state.critic, "critic", "the entry agent knows who reviews it");
+    // A critic handed its own file among its peers gets no reviewer at all.
+    // Nothing here marks its own homework — that is the whole reason the agent
+    // exists beside the `critique` stage rather than instead of it.
+    let mut own = AgentState::new();
+    adopt_spec(&mut own, &critic, &[critic.clone()]);
+    assert_eq!(own.critic, "", "a critic does not review itself");
 }
 
 /// AND IT IS NOT THE `critique` STAGE. The stage is the same model in the same
@@ -129,6 +186,18 @@ fn the_reviewer_is_a_different_agent_and_not_the_critique_stage() {
     assert!(
         !builder.stages.contains(&agent::STAGE_CRITIQUE.to_string()),
         "the builder marks no homework of its own; it hands the work to the critic"
+    );
+    // AND THE SHIPPED CALLER HOLDS BOTH AT ONCE (28), which is the clearest
+    // statement that they are two jobs. `main` reaches the `critique` stage —
+    // the strategy vote can put it in the list — and it ALSO names `critic`.
+    // The stage is reflection that improves the answer and gates nothing; the
+    // agent is a verdict that gates the answer and improves nothing. Either
+    // one alone is a hole, and neither one is the other done cheaper.
+    let main = parse_agent_file("main", MAIN).expect("the shipped main parses");
+    assert!(main.tools.contains(&"critic".to_string()), "the verdict is reachable");
+    assert!(
+        main.prompt.contains(agent::STAGE_CRITIQUE),
+        "and the stage is still described to it as its own reading of its own turn"
     );
 }
 

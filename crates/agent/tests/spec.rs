@@ -34,6 +34,12 @@ fn parses_every_frontmatter_key_and_the_body() {
             // when a job calls for it, and that costs nothing until it does.
             "list_skills",
             "read_skill",
+            // The one call that leaves the browser for something other than
+            // the model (increment 28 grants it; 21 built it). It is named
+            // here and it still REFUSES until a person sets a search endpoint
+            // in Settings — I2 keeps the allowlist theirs, so what shipped is
+            // the capability and never the destination.
+            "web_search",
             "remember",
             "forget",
             "post_note",
@@ -54,7 +60,13 @@ fn parses_every_frontmatter_key_and_the_body() {
             "discard",
             // Author a role, then set it working. Two turns, not one.
             "write_agent",
-            "spawn_agent"
+            "spawn_agent",
+            // A PEER, not a built-in — and the one peer whose reply the
+            // machine reads differently (increment 28). `critic` holds
+            // `role: critic`, so its result is folded as a verdict and a turn
+            // it did not clear cannot end as `answered`. Invocation is named:
+            // without this line the whole seam is installed and unreachable.
+            "critic"
         ]
     );
     // …and the key that made the last two of those nameable. `space: research`

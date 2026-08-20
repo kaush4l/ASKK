@@ -1,6 +1,6 @@
-//! CONSTRUCTION of one agent's Worker: finding this build's bundle, starting
-//! the Worker, installing its one message handler, and handing it a goal.
-//! `workers.rs`, the parent, owns the port and the lifecycle.
+//! WHAT A WORKER SAYS BACK: the handle to a running agent, the one message
+//! handler installed on it, the side channels it reports about itself, and the
+//! call that hands it a goal. [`super`] owns the other direction.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -8,64 +8,9 @@ use std::rc::Rc;
 use js_sys::{Function, Object, Promise, Reflect};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{MessageEvent, Worker, WorkerOptions, WorkerType};
+use web_sys::{MessageEvent, Worker};
 
 use kernel::Status;
-
-/// Where the Worker gets this build's Wasm from. Trunk fingerprints both files
-/// and writes them into `index.html` as preload links, so the page reads its
-/// own bundle's URLs rather than anyone hardcoding a hash; the snippet links
-/// Dioxus adds are skipped by name.
-pub(crate) fn bundle_urls() -> Option<(String, String)> {
-    let document = web_sys::window()?.document()?;
-    let links = document.query_selector_all("link[rel=modulepreload]").ok()?;
-    let href = |i| links.item(i)?.dyn_into::<web_sys::Element>().ok()?.get_attribute("href");
-    let glue = (0..links.length())
-        .filter_map(href)
-        .find(|href| !href.contains("/snippets/"))?;
-    let wasm = document
-        .query_selector("link[type='application/wasm']")
-        .ok()??
-        .get_attribute("href")?;
-    Some((glue, wasm))
-}
-
-/// The three JSON blobs a sub-agent boots from — named rather than three
-/// `&str` in a row, so nobody can pass them in the wrong order.
-#[derive(Clone)]
-pub(crate) struct Boot<'a> {
-    pub agents: &'a str,
-    pub models: &'a str,
-    pub profile: &'a str,
-}
-
-/// Spawn one Worker and send it its boot message — a plain object, because
-/// `postMessage` structured-clones it: no Wasm memory, nothing shared (ADR-008).
-pub(crate) fn start(
-    name: &str,
-    glue: &str,
-    wasm: &str,
-    boot: &Boot<'_>,
-) -> Result<Worker, JsValue> {
-    let options = WorkerOptions::new();
-    options.set_type(WorkerType::Module);
-    options.set_name(&format!("agent-{name}"));
-    let worker = Worker::new_with_options("agent-worker.js", &options)?;
-    let message = Object::new();
-    for (key, value) in [
-        ("kind", "boot"),
-        ("name", name),
-        ("glue", glue),
-        ("wasm", wasm),
-        ("agents", boot.agents),
-        ("models", boot.models),
-        ("profile", boot.profile),
-    ] {
-        Reflect::set(&message, &key.into(), &value.into())?;
-    }
-    worker.post_message(&message)?;
-    Ok(worker)
-}
 
 /// One running agent: its Worker, and the resolver of the turn in flight.
 /// The reply handler is installed ONCE per Worker rather than per call, so a
@@ -121,6 +66,11 @@ fn memory_of(data: &JsValue, who: &str) -> Option<Memory> {
 }
 
 /// Drain all three of those off one message, in the order the pane reads them.
+///
+/// Called BEFORE the `ok` branch below and deliberately so: a turn that FAILED
+/// reports what it did on the way to failing, and that is the trace worth
+/// reading. `web/agent-worker.js` puts the same fields on both outcomes; if
+/// this only ran for `ok`, that fix would be inert.
 fn drain_side_channels(
     data: &JsValue,
     who: &str,
@@ -196,4 +146,5 @@ pub(crate) fn ask(live: &Live, goal: &str) -> Promise {
         }
     })
 }
+
 

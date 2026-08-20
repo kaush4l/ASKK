@@ -55,6 +55,12 @@
        rebuild. public/agents/index.json is the manifest (a static host cannot
        list a directory). -->
   <link data-trunk rel="copy-dir" href="../public/agents">
+  <!-- …and what every STAGE is told, one file per key (crates/agent/src/brief.rs).
+       Same road as the agents and for the same reason: the loop's own prompts are
+       data, edited and redeployed without a rebuild. There is no manifest — the
+       five keys are a closed list in Rust, because a stage name is a word the
+       machine reasons about. -->
+  <link data-trunk rel="copy-dir" href="../public/stages">
   <!-- The model catalogue, same deal: a named entry per endpoint, edited and
        redeployed without a rebuild (increment 04). -->
   <link data-trunk rel="copy-file" href="../public/models.json">

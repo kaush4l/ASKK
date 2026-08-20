@@ -688,7 +688,7 @@ hope.
    the bytes were produced elsewhere.
 3. **`Faculty`** (`crates/agent/src/faculty/`) — a named bundle of declared tools and
    declared blocks, plus `faculty::of(name)`, the registry table.
-4. **`Sense`** (`crates/core/src/faculty.rs`) — the host half: a port, injected at the
+4. **`Sense`** (`crates/core/src/faculty/mod.rs`) — the host half: a port, injected at the
    composition root, that reads the outside world and returns `block id -> Vec<Part>`.
 
 `AgentState.senses: BTreeMap<String, Vec<Part>>` is where 4 leaves bytes for 2 to
@@ -877,7 +877,7 @@ forever.
 That is the sharpest possible statement of the owner's requirement being half-met, and
 the asymmetry was self-inflicted: the right answer already existed one file away.
 
-**Fixed.** `crates/core/src/faculty.rs` now carries a second port beside `Sense`:
+**Fixed.** `crates/core/src/faculty/mod.rs` now carries a second port beside `Sense`:
 
 ```rust
 pub trait ToolHost {
@@ -1067,7 +1067,7 @@ exists to stop being.
 | `crates/agent/src/components/mod.rs` | 2 | `mod memory;`, `pub use memory::memory_parts;` |
 | `crates/agent/src/lib.rs` | 3 | `mod memory;` and two export lines |
 | `crates/core/src/lib.rs` | 1 | `mod memory;` |
-| `crates/core/src/faculty.rs` | 2 | one line in `installed_by_default`, one in `hosts_by_default` |
+| `crates/core/src/faculty/run.rs` | 2 | one line in `installed_by_default`, one in `hosts_by_default` |
 | `crates/core/src/boot.rs` | 12 | one-time seam: compute both host lists before `ports` moves |
 | `crates/core/src/README.md` | 1 | the subject table's `memory/` row |
 | `crates/agent/src/author.rs` | 14 | a PRE-EXISTING bug this exposed (§12.6), not an extension cost |
@@ -1198,7 +1198,9 @@ description had already been corrected last round; the two now agree.
 
 ### 12.10 The bar-raiser's findings, and what was done about each
 
-`docs/CRITIQUE-03.md`'s successor ran read-only against this tree and returned **GO on
+`docs/CRITIQUE-03.md`'s successor FOR THAT ROUND — not `docs/CRITIQUE-04.md`, which is the
+later T1-T4 round and returned NO-GO three times — ran read-only against this tree and
+returned **GO on
 the faculty and on F4, QUALIFIED GO on the spawn verification**. Every finding, with the
 action, because a critique that is only summarised is a critique that was not taken.
 

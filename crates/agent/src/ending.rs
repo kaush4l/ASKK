@@ -44,6 +44,17 @@ pub const ROUND_CEILING: &str = "round ceiling";
 /// stopped on the budget.
 pub const PASS_CEILING: &str = "pass ceiling";
 
+/// THE DECLARED GOAL WAS NOT MET (26). A `goal.check` was declared, the harness
+/// ran it, and the command exited non-zero with no lap left to try again. Its
+/// own ending beside `PASS_CEILING` because a surface can offer a different act
+/// for it, which is the whole rule for naming one: the pass ceiling says the
+/// budget ran out while the work was still moving and the act is to raise
+/// `passes:`; this says a command the file itself nominated still fails, and
+/// the act is to read what it printed. It is also the one ending on this page
+/// that rests on nothing anybody said — not the model's summary, not a critic's
+/// verdict, not a fold over which tools were called. An exit code.
+pub const GOAL_UNMET: &str = "goal unmet";
+
 /// THE REVIEWER SAID NO (25). A separate agent — `role: critic`, its own
 /// prompt, its own Worker, no sight of this conversation — was handed the work
 /// and did not clear it. The answer is real and is shown; what this says is
@@ -59,6 +70,32 @@ pub const CRITIC_FAULTED: &str = "critic faulted";
 /// answer: an ending that says which of the two things a reader might assume is
 /// actually known.
 pub const UNCHECKED: &str = "unchecked";
+
+/// A STAGE HAD NO BRIEF, SO THE TURN DID NOT TAKE IT (`crate::brief`). The
+/// words a stage enters with are data now — `public/stages/<key>.md`, fetched
+/// at boot — and the one thing that must never happen when a file is missing is
+/// the stage running anyway on a compiled-in copy: a plan stage that writes no
+/// plan still looks exactly like a plan stage that ran.
+pub const BRIEF_MISSING: &str = "brief missing";
+
+/// REFUSE THE STAGE, IN WORDS, AND END THE TURN. Two facts and not one: the
+/// ending carries the KIND, which the board and the card fold, and the note
+/// carries the sentence — which has to name the one file a person must add,
+/// and a kind cannot say which of five it was.
+pub(crate) fn unbriefed(state: &mut AgentState, key: &str) -> Vec<Effect> {
+    let said = format!(
+        "The {key} stage has no brief, so it was not entered and this turn stopped before \
+         it started. Add {} and reload — its whole body is what that stage is told.",
+        crate::brief::path_of(key)
+    );
+    let note = Effect::Emit {
+        kind: EventKind::Custom {
+            kind: "core.note".into(),
+            payload_json: serde_json::to_string(&said).unwrap_or_default(),
+        },
+    };
+    vec![note, end(state, BRIEF_MISSING)]
+}
 
 /// END THE TURN, AND SAY WHY. Every arm of `step` that ends one goes through
 /// here, so "what a turn ending clears" is written once and the reason is never

@@ -34,13 +34,19 @@ impl Sense for SpaceSense {
     /// faculty name, the block id and this key, so they cannot drift.
     ///
     /// An agent with no space yields no parts and therefore no section: that
-    /// is `space_parts`' own rule (`crates/agent/src/components/space.rs:52`),
+    /// is `space_parts`' own rule (`crates/agent/src/components/space.rs:63`),
     /// and it is the same degradation any absent capability gets (I15).
+    ///
+    /// The TOOLBOX goes with the space for the same invariant one step in:
+    /// the paragraph names the tools that reach into that folder, and an agent
+    /// holding none of them must be told about a folder and not about calls it
+    /// cannot make. Both facts arrive in [`Sensing`], so this still holds no
+    /// state and still reads nothing itself.
     fn read<'a>(&'a self, of: &'a Sensing) -> BoxFuture<'a, Vec<(String, Vec<Part>)>> {
         Box::pin(async move {
             vec![(
                 agent::SPACE_FACULTY.to_string(),
-                agent::space_parts(&of.space),
+                agent::space_parts(&of.space, &of.tools),
             )]
         })
     }

@@ -50,7 +50,7 @@ pub(crate) fn reconcile(app: &mut App) {
         // The prompt, the toolbox and the space change; the paper's HISTORY is
         // untouched, which is what "the next turn uses the new one with the
         // conversation intact" means.
-        agent::adopt_spec(&mut app.agent, mine, &peers);
+        crate::agents::briefs::adopt(app, mine, &peers);
     }
     let names: Vec<&str> = app.agents.iter().map(|s| s.name.as_str()).collect();
     app.append(EventKind::Custom {

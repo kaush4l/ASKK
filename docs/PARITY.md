@@ -16,6 +16,49 @@ the CheerpX deletion and the tree repair are **not live**.
 gap 2 while this was being written. `web_search` is still not granted, and no agent holds
 `role: critic`. The assessment below is against the committed tree; adjust gap 2 for whatever lands.
 
+
+## WHAT THIS ROUND CLOSED (2026-08-20) — read this before the measurements below
+
+The body of this document is a MEASUREMENT taken on 2026-08-19 and it is left exactly as it was
+taken. A measured record that gets edited when the world moves stops being a record. This banner
+says which of its findings are now closed and by what; where the two disagree, the banner is
+newer and the body is the evidence it was true.
+
+- **Gap 2 (the shipped agent is granted almost nothing) — CLOSED for `main`; the critic SEAM is
+  live and the critic READS NOTHING.** `main` now names `web_search` and `critic`, and
+  `public/agents/critic/agent.md` ships holding `role: critic`, listed in
+  `public/agents/index.json`. The seam itself is live end to end rather than dead code: the role is
+  found by lookup (`role_holder`), the reply is folded as a verdict (`verify::observe`), and a
+  non-pass forces `ending::CRITIC_FAULTED` — proven in `crates/agent/tests/critic.rs` against the
+  shipped pair, not a fixture. `web_search` ships REFUSING until a person configures a search
+  endpoint in Settings — that is I2 working, not a defect
+  (`crates/ui/src/settings/endpoint_copy/search.rs`, placeholder only).
+
+  What was OVERSTATED here was the critic's reach. It shipped with `read_file`, `list_files` and
+  `find_files`, and its own file claimed they worked when a person asked it something in the page.
+  They never did, by any route: a message addressed to an agent that is not the page's own goes to
+  that agent's Worker (`chat/pane::submit` → `requests::ran_elsewhere` → `batch::run_on` →
+  `AgentPort::delegate`), exactly as a delegated review does, and a Worker's `WorkspacePort` is
+  `C2wWorkspace`, which needs a `document` a Worker has not got. The grant is gone: the file is
+  `engine: base`, whose toolbox is empty by construction. It keeps `space: research`, because the
+  `## space` block IS readable from a Worker — Workers open the same spaces database the page does
+  — and its shared facts (`outcome`, `done_when`) are what the verdict is judged against. So the
+  critic judges the REPORT it is handed, which has two possible answers with no tools at all. A
+  critic that can read the workspace needs a Worker's workspace calls routed back to the page,
+  which `adapters_web/src/worker/world.rs` records, in the comment beside that very port, as not
+  done.
+- **"Roster that actually ships: one agent" — SUPERSEDED.** Two ship. The `index.json` comment that
+  argued one was the design has been replaced with the ruling: the `critique` STAGE is reflection
+  that improves the answer and gates nothing; the `role: critic` AGENT is a verdict that gates the
+  answer and improves nothing. Neither replaces the other.
+- **The `brief.rs` / `critic.rs` contradiction this document identified — RESOLVED**, in favour of
+  `critic.rs`. See `docs/STATUS.md` for the argument.
+- **"Stage prompts are Rust constants" — CLOSED.** They are `public/stages/*.md` now, loaded like
+  agent files, and a missing or blank one refuses loudly instead of falling back.
+- **Gap 3 (no standing goal) — see `docs/STATUS.md`** for what landed and what did not.
+- **Gap 1 (the machine cannot do the work) — STILL OPEN.** It is an owner gate (`tracker.md` T9),
+  and this document's judgement that nothing else pays off until it lands is unchanged.
+
 ---
 
 ## The verdict
@@ -74,7 +117,7 @@ true, and none of them is an architecture problem.
 | **Sub-agents / delegation** | A peer agent named in `tools:` becomes a tool; `spawn_agent(agent, goal)` starts an installed one (`crates/agent/src/tools.rs:167-177`, `subagent.rs:180-197`). Each gets its own Worker. **`main` names neither** (`public/agents/main/agent.md:31-46`) | `delegate_task(goal, context, max_iterations, tasks[], role, background)`; children inherit the parent model and **inherit toolsets but cannot widen them**; leaf children lose `delegate_task`/`clarify`/`memory`; `max_spawn_depth` 1 (range 1–3) ([delegation](https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation)) | `SubagentStartRequest` carries **`outputSchema` (object-rooted JSON Schema for structured results)**, **`toolFilter`**, **per-child `persona`**, `maxDepth`; one-shot or continuable; providers include **`subagent-claude-code` and `subagent-codex`** — it delegates to other vendors' harnesses ([subagent.md](https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/subsystems/subagent.md)) | Co-presence in a room, not delegation ([add-multiple-agents](https://docs.elizaos.ai/guides/add-multiple-agents.md)) |
 | **Standing goal across turns** | **None.** `passes:` laps the stage list within *one* turn, budget default 1 (`crates/agent/src/passes.rs:41-62`, `spec/defaults.rs:30`) | `/goal` — standing objective, judge model each turn, **completion contract** with a `verification` field, **quality gates** (shell commands that must pass before judging), `wait` verdicts on background PIDs, 20-turn budget ([goals.md](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/website/docs/user-guide/features/goals.md)) | `create_goal`/`get_goal`/`update_goal` with durable phases and `maxGoalRounds`; `ralph` runs fresh children per round with a validated `{status, summary, evidence[], nextSteps[], blocker}` handoff ([tool-catalog.md](https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/tool-catalog.md)) | No. "Task" = a background cron job returning `Promise<void>` ([background-tasks](https://docs.elizaos.ai/guides/background-tasks.md)) |
 | **Verification that a task is done** | **A real mechanical gate.** A turn that wrote a file and ran nothing since cannot answer; the model is nudged twice, then the answer lands with an ending that says what is unknown (`crates/agent/src/verify.rs:41-108`, `ending.rs:56-60`). Log order *is* the freshness rule (`verify.rs:63-80`) | Same idea, richer, **and ahead of us**: a policy-only nudge over an evidence ledger ([verification_stop.py](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/agent/verification_stop.py) — *"intentionally policy-only … never runs checks itself"*), plus `/goal` **quality gates: shell commands that must exit 0, run before the judge each turn, 3 retries, auto-pause on exhaustion** ([goals.md](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/website/docs/user-guide/features/goals.md)). Opt-in: docs say `verify_on_stop: false` ([configuration](https://hermes-agent.nousresearch.com/docs/user-guide/configuration)), example says `auto` | **Explicitly none.** *"there is no independent evaluator or verifier deciding whether the objective is actually complete … deferred"* ([tool-ralph README](https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/packages/workflow/tool-ralph/README.md)); completion is worker self-declaration | Runtime: none. Dev-time `elizaos scenario` YAML with `string_contains` / `regex_match` / `llm_evaluation` ([scenario](https://docs.elizaos.ai/cli-reference/scenario.md)) |
-| **Independent critic** | `role: critic` is a real seam — a separate agent, own Worker, no sight of the conversation; only bare `PASS` clears (`crates/agent/src/critic.rs:28-40`), and a caller cannot report ANSWERED over a non-pass (`ending.rs:47-55`). **No critic agent ships** — the only one is a test fixture (`crates/agent/tests/agents/critic.md:16`), so in the product the fold is always `None` | Background review fork writes skills/memory; not a gate on the answer (unverified) | **Absent, deliberately** — four "no independent evaluator … deferred" notes across `packages/goal/*` and `tool-ralph` (repo READMEs, unverified by direct fetch) | None |
+| **Independent critic** | `role: critic` is a real seam — a separate agent, own Worker, no sight of the conversation; only bare `PASS` clears (`crates/agent/src/critic.rs:28-40`), and a caller cannot report ANSWERED over a non-pass (`ending.rs:47-55`). **No critic agent ships** — the only one is a test fixture (`crates/agent/tests/agents/critic.md:16`), so in the product the fold is always `None` *(CLOSED 2026-08-20: the fixture was promoted to `public/agents/critic/agent.md` and ships; that path no longer exists — see the banner)* | Background review fork writes skills/memory; not a gate on the answer (unverified) | **Absent, deliberately** — four "no independent evaluator … deferred" notes across `packages/goal/*` and `tool-ralph` (repo READMEs, unverified by direct fetch) | None |
 | **Round / budget ceiling** | `max_rounds` default **64**, per turn, hard and deterministic (`crates/agent/src/spec/defaults.rs:12`, `step.rs:186`); `passes` spans laps without multiplying it (`passes.rs:20-24`) | `agent.max_turns: 500` ([configuration](https://hermes-agent.nousresearch.com/docs/user-guide/configuration)); `/goal` default 20 continuation turns ([goals.md](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/website/docs/user-guide/features/goals.md)) | **No round counter in the loop.** A turn closes on no-tool-calls + no queued steering + no `concludesTurn`; caps live in the goal domain and `ralph` (`maxRounds`, cap 256) ([core.md](https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/subsystems/core.md), [tool-ralph README](https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/packages/workflow/tool-ralph/README.md)) | No documented step cap on action plans ([action-planning](https://docs.elizaos.ai/guides/action-planning.md)) |
 | **Typed ending** | Yes: `answered`, `no answer`, `round ceiling`, `pass ceiling`, `critic faulted`, plus the unverified-change ending, all as one `core.ended` fact (`crates/agent/src/ending.rs:26-60`) | 14+ named `_turn_exit_reason` values (unverified line) | Five loop exits (unverified line) | `RUN_ENDED` with completed/error ([runtime-and-lifecycle](https://docs.elizaos.ai/agents/runtime-and-lifecycle)) |
 | **Mid-run steering / stop** | Both, as facts in the log (`crates/agent/src/steer.rs:24-30`, `stop.rs:19-24`) | `/queue`, `/steer`, `/redirect`, `/stop`, `/busy` (repo `website/docs/reference/slash-commands.md`, unverified line) | `send_message`, `interrupt_agent` ([tool-catalog.md](https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/tool-catalog.md)) | Not documented |
@@ -109,7 +152,9 @@ room with no tools in it.
 The one agent that ships therefore cannot look anything up, cannot delegate, and cannot author a
 collaborator. Meanwhile `public/agents/index.json` ships exactly one agent, and no agent holds
 `role: critic`, so the critic seam built in increment 25 is dead code in production
-(`crates/agent/tests/agents/critic.md:16` is the only holder in the tree).
+(`crates/agent/tests/agents/critic.md:16` is the only holder in the tree — CLOSED 2026-08-20:
+that file was MOVED to `public/agents/critic/agent.md` and is now shipped and listed in the
+manifest, so this path no longer exists).
 **To close:** three lines in one file plus one new `public/agents/critic/agent.md` and a manifest
 entry. This is the cheapest high-value change in this document.
 

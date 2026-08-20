@@ -3,6 +3,8 @@
 //! rather than the arithmetic underneath it. Host-only, like every other agent
 //! test: a pass is one more instruction and one more call.
 
+mod common;
+
 use agent::{step, AgentState, Effect};
 use kernel::{Event, EventId, EventKind, Timestamp, ToolId};
 
@@ -37,6 +39,9 @@ fn agent_with(frontmatter: &str) -> AgentState {
     let file = format!("---\nname: a\ndescription: d\ntools: []\n{frontmatter}---\nbody");
     let spec = agent::parse_agent_file("a", &file).expect("spec parses");
     agent::adopt_spec(&mut fresh, &spec, &[]);
+    // Beside the spec, exactly as `core` installs them: a stage refuses to be
+    // entered without the words it enters with (`agent::brief`).
+    common::brief(&mut fresh);
     fresh
 }
 

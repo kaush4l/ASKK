@@ -1,0 +1,1 @@
+And the first thing to do in the work that follows: call `remember` twice — key `outcome` with the OUTCOME line, key `done_when` with the DONE WHEN line. This window gets compacted; the shared space does not, and it is read back to you before every pass.

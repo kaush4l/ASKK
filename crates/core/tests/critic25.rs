@@ -17,7 +17,7 @@ use adapters_test::{
 use core::{boot, drive, handle, install_agents, App, Ports};
 use kernel::{Request, Timestamp};
 
-const CRITIC: &str = include_str!("../../agent/tests/agents/critic.md");
+const CRITIC: &str = include_str!("../../../public/agents/critic/agent.md");
 
 /// A lead that can run a command, write a file and ask the critic.
 const LEAD: &str = "---\nname: main\ndescription: the lead\nspace: research\n\
@@ -132,15 +132,35 @@ fn the_critic_copy_vouches_for_nothing() {
 }
 
 /// THE CRITIC'S CARD SAYS WHAT IT CANNOT DO. Its tool list is its whole grant,
-/// so the roster must not describe it as able to change anything.
+/// so the roster must not describe it as able to change anything — and since
+/// the grant went to NOTHING, the card must not describe it as able to read
+/// anything either. The old three (`read_file`, `list_files`, `find_files`)
+/// were declared and resolved while none of them could return data: a critic
+/// answers in its own Worker by every route, and a Worker's `C2wWorkspace` has
+/// no `document`. The forbidden loop below is unchanged and the positive
+/// assertion is new, because a loop of `!contains` would have stayed green over
+/// a card offering three tools that do not work.
+///
+/// AND THE SLICE ITSELF WAS BROKEN, which is why it never noticed. It read
+/// `agents[at..].split("data-agent=\"").next()` — a slice that STARTS at the
+/// needle, so the first split segment is the empty string before it. Every
+/// `!contains` in here was asserted against `""` and could not have failed. It
+/// now cuts from this card to the start of the next one, the way
+/// `capability29`'s helper does, so the subject is the critic's card.
 #[test]
 fn the_roster_shows_the_critic_reading_and_nothing_else() {
     let app = booted(&[RAN], "PASS\nfine.");
     let agents = body(&app, "/agents");
     assert!(agents.contains("critic"), "the critic is loaded: {agents}");
+    let at = agents.find("data-agent=\"critic\"").expect("a card for the critic");
+    let rest = &agents[at..];
+    let card = rest.find("<div class=\"agent-card\"").map_or(rest, |end| &rest[..end]);
+    assert!(!card.is_empty(), "the slice is the card, not the empty string before it");
     for forbidden in ["exec(", "write_file(", "write_agent(", "start_process("] {
-        let at = agents.find("data-agent=\"critic\"").map(|i| &agents[i..]).unwrap_or(&agents);
-        let card = at.split("data-agent=\"").next().unwrap_or(at);
         assert!(!card.contains(forbidden), "the critic's card offers `{forbidden}`: {card}");
+    }
+    assert!(card.contains("No tools"), "and it names none at all: {card}");
+    for gone in ["read_file", "list_files", "find_files"] {
+        assert!(!card.contains(gone), "an inert grant is not offered: {card}");
     }
 }

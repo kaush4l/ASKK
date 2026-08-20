@@ -24,7 +24,9 @@ use kernel::{AgentPort, BoxFuture, DelegateError, Status};
 
 mod spawn;
 
-use spawn::{ask, bundle_urls, listen, start, Activity, Authored, Boot, Live, Memory};
+use spawn::{ask, bundle_urls, listen, start, Activity, Authored, Live, Memory};
+/// The blobs a Worker boots from, built by the composition root and passed whole.
+pub(crate) use spawn::Boot;
 
 /// A lifecycle fact the page has not told the core about yet.
 type Report = (String, Status, String);
@@ -83,22 +85,11 @@ impl AgentWorkers {
         std::mem::take(&mut self.written.borrow_mut())
     }
 
-    /// Start a Worker for every agent except the one the page itself is.
-    /// `agents_json`, `models_json` and `profile_json` are forwarded whole, so
-    /// a sub-agent boots from exactly the files and endpoint the page did.
-    pub fn spawn(
-        &self,
-        names: &[String],
-        lead: &str,
-        agents_json: &str,
-        models_json: &str,
-        profile_json: &str,
-    ) {
-        let boot = Boot {
-            agents: agents_json,
-            models: models_json,
-            profile: profile_json,
-        };
+    /// Start a Worker for every agent except the one the page itself is. Every
+    /// blob is forwarded whole, so a sub-agent boots from exactly the files,
+    /// briefs and endpoint the page did — including the stage briefs, without
+    /// which it would refuse the first stage of the loop it walks.
+    pub(crate) fn spawn(&self, names: &[String], lead: &str, boot: Boot<'_>) {
         let peers = || names.iter().filter(|n| n.as_str() != lead);
         let Some((glue, wasm)) = bundle_urls() else {
             // Not a warning in a console nobody has open: without the bundle

@@ -32,13 +32,16 @@ impl WebApp {
         }
         *self.spawned.borrow_mut() = world.clone();
         self.workers.close_all();
-        self.workers.spawn(
-            &self.agent_names(),
-            core::ENTRY_AGENT,
-            &world,
-            &self.models.borrow(),
-            &self.model.profile_json(),
-        );
+        let (models, profile) = (self.models.borrow(), self.model.profile_json());
+        // The briefs go with them: a respawned Worker walks the same stages and
+        // refuses every one it has no words for (`agent::brief`).
+        let boot = crate::workers::Boot {
+            agents: &world,
+            briefs: &self.briefs_json(),
+            models: &models,
+            profile: &profile,
+        };
+        self.workers.spawn(&self.agent_names(), core::ENTRY_AGENT, boot);
     }
 
     /// Every agent THIS BROWSER authored — the only ones the editor's Delete
@@ -49,6 +52,11 @@ impl WebApp {
             .into_iter()
             .map(|(name, ..)| name)
             .collect()
+    }
+
+    /// The stage briefs, in the same shape and for the same reason.
+    pub(crate) fn briefs_json(&self) -> String {
+        serde_json::to_string(&core::brief_files(&self.app.borrow())).unwrap_or_else(|_| "[]".into())
     }
 
     /// Every agent file, as the JSON blob a Worker boots from — read from the

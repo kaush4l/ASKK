@@ -9,6 +9,14 @@
 //! because the split falls where the others do — this is the FOLD and `row/`
 //! renders it — and the board's live line is its only reader.
 //!
+//! ONE SUBJECT ONLY, SINCE T4. This file also held `Offer`, which reads the
+//! ROSTER and says what an agent is for whether or not it is running, and it
+//! now grew a third subject — the goal a delegation handed this agent and the
+//! answer it gave back. Three subjects in one file is how a file passes 200
+//! lines, so the two that are not "which part of the turn is running" left:
+//! `board/offer.rs` for the standing facts, `board/errand.rs` for the errand.
+//! Everything below is a fold of THIS turn's log and nothing else.
+//!
 //! THE STAGE IS A FACT OR IT IS NOTHING. It is read from `STAGE_ENTERED`
 //! records in the CURRENT turn only — never from the `stages:` list an agent
 //! file declares, which says what the turn WOULD do, not what it has done. A
@@ -25,60 +33,6 @@
 use kernel::EventKind;
 
 use crate::dispatch::Ctx;
-
-/// WHAT YOU CAN DO WITH THIS AGENT, for its card on the board (32). Eight cards
-/// differed in name and status word and in nothing else, so the four agents you
-/// can hand a task to and the four you cannot were indistinguishable until you
-/// selected one and read the launcher two views away. The word is
-/// `agents::card_sentences::can`'s — the same predicate the agent card's doors and the Commands
-/// pane ask — so the board cannot come to a fifth answer about one agent.
-///
-/// It is in THIS file because it is a fold of the CURRENT turn's log, which is
-/// this file's one subject; `last_tool` is here with it for the same reason.
-pub(crate) struct Offer {
-    /// `run`, `change` or `read` — `agents::card_sentences::can`, verbatim.
-    pub(crate) can: &'static str,
-    /// The clause the card's status line ends with, empty for an agent this
-    /// roster holds no file for: a card says nothing rather than guessing (I15).
-    pub(crate) said: String,
-    /// Every tool the file really RESOLVED to, by name — the list the agent
-    /// card prints in words. The Dashboard's starter tasks are chosen from it,
-    /// so a task offered is a task some named tool can finish (32).
-    pub(crate) toolset: String,
-    /// …and the pass ceiling with it, because it is the one declared fact that
-    /// separates an agent that works a goal over laps from one that answers once.
-    pub(crate) laps: u16,
-}
-
-/// The fold itself, off the roster this request already holds.
-pub(crate) fn offer(ctx: &Ctx, who: &str) -> Offer {
-    let mut offer =
-        Offer { can: "read", said: String::new(), toolset: String::new(), laps: 1 };
-    let Some(spec) = ctx.agents.iter().find(|spec| spec.name == who) else {
-        return offer;
-    };
-    let names: Vec<String> =
-        agent::toolbox_for(spec, &ctx.agents).tools.into_iter().map(|t| t.name).collect();
-    offer.can = crate::agents::card_sentences::can(spec, &ctx.agents);
-    offer.laps = spec.passes;
-    // AN EMPTY TOOLBOX IS NOT A READING ONE (32). `can` answers `read` for both,
-    // which is right for the door it guards — neither takes a task — and wrong
-    // for a card that then says which tools it has.
-    offer.said = match (offer.can, names.is_empty()) {
-        (_, true) => "no task to give it — it has no tools at all".into(),
-        ("read", _) => "no task to give it — every tool it has reads".into(),
-        ("run", _) => "you can give it a task, and it runs commands".into(),
-        _ => "you can give it a task; it runs no commands".into(),
-    };
-    // …AND HOW MANY LAPS ONE TASK MAY TAKE, where that is more than one: it is
-    // the difference between handing over a goal and asking a question, and it
-    // was legible on no card at all. `up to`, because `passes:` is a ceiling.
-    if spec.passes > 1 {
-        offer.said.push_str(&format!(" · it works one task over up to {} passes", spec.passes));
-    }
-    offer.toolset = names.join(", ");
-    offer
-}
 
 /// The last tool this process's agent called, by name — ITS OWN CALLS ONLY
 /// (R18-P1-3). The pill read `last tool: list_processes` under the agent's name

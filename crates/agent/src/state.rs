@@ -1,6 +1,12 @@
 //! AgentState — plain data (§11: snapshot/restore, pause-and-resume across
 //! refreshes all depend on this being serializable, which async-fn futures
 //! could never be — ARCHITECTURE §1c).
+//!
+//! THIS FILE IS THE VOCABULARY: every field the agent has, with the argument
+//! for why it exists beside it. [`opening`] holds the one particular VALUE of
+//! that vocabulary a fresh agent starts as, in one piece, because "what is an
+//! agent before anything has happened to it" is a question with its own answer
+//! and reading the record should not mean reading past forty initialisers.
 
 use std::collections::BTreeMap;
 
@@ -125,6 +131,13 @@ pub struct AgentState {
     /// where it was never asked, or a write since made it stale.
     #[serde(default)] pub critic: String,
     #[serde(default)] pub reviewed: Option<bool>,
+    /// THE STANDING GOAL (26) — what this agent's FILE declares it is for, and
+    /// what the harness last observed about it. One field and not five because
+    /// the three declared lines and the two observations are one mechanism;
+    /// `crate::goal` holds it, and the default is an agent that declared none,
+    /// which is every agent written before the key and the reason the continue
+    /// condition of all of them is untouched.
+    #[serde(default)] pub standing: crate::goal::Standing,
     /// The shared space this agent works in, as of the last time it was read
     /// — its facts and notes go into CONTEXT on every call. `None` means the
     /// agent's file named no space, so it works alone (Python: `space` is an
@@ -142,6 +155,11 @@ pub struct AgentState {
     /// `BTreeMap` and not `HashMap` so two identical agents assemble two
     /// identical papers (I7, I14).
     #[serde(default)] pub senses: BTreeMap<String, Vec<Part>>,
+    /// WHAT EACH STAGE IS TOLD (`crate::brief`), loaded from `public/stages/`.
+    /// Here and not in the spec because a brief is a property of the STAGE —
+    /// whose meaning belongs to the machine — and not of the agent, whose own
+    /// voice is already the `Soul` block.
+    #[serde(default)] pub briefs: crate::brief::Briefs,
     /// The paper's assembly inputs — gathered section sources, refreshed by
     /// `core` (affordances from the registry, observations from effects)
     /// before each step. Inside AgentState so one snapshot restores the
@@ -149,45 +167,4 @@ pub struct AgentState {
     pub paper: State,
 }
 
-impl AgentState {
-    /// A fresh idle agent — the boot and the tests start here. Work is the
-    /// resting phase (Plan-on-demand, RESEARCH phase-cut); the paper is the
-    /// seeded §8.2 starter set.
-    pub fn new() -> AgentState {
-        AgentState {
-            phase: PhaseId::Work,
-            model: String::new(),
-            temperature: None,
-            task: None,
-            plan: Vec::new(),
-            cursor: 0,
-            retries: 0,
-            replans: 0,
-            pending_tools: 0,
-            tool_rounds: 0,
-            // No agent file adopted yet: an agent with no spec has no tools,
-            // which is the honest default (nothing is attached that an agent
-            // did not ask for).
-            toolbox: Toolbox::default(),
-            steered: false, stopping: false,
-            max_rounds: default_max_rounds(),
-            compact_at: default_compact_at(), keep_recent: default_keep_recent(),
-            compacting: false, compactions: 0,
-            mutated: false, green: false, nudges: 0,
-            stages: Vec::new(), declared: Vec::new(), stage: 0,
-            passes: default_passes(), pass: 0, acted: false,
-            critic: String::new(), reviewed: None,
-            space: None,
-            // Senses nothing until a faculty says otherwise, and remembers
-            // nothing sensed: both are what "no host has written yet" is.
-            faculties: Vec::new(), senses: BTreeMap::new(),
-            paper: crate::paper::seed(),
-        }
-    }
-}
-
-impl Default for AgentState {
-    fn default() -> AgentState {
-        AgentState::new()
-    }
-}
+mod opening;

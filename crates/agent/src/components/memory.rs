@@ -4,7 +4,7 @@
 //! which declares the block — id, slot, intent, stability — and
 //! `components::Sensed` renders whatever a host most recently wrote for it.
 //! What lives here is the VOCABULARY, in one place, exactly as
-//! `space_parts` holds the space's (`crates/agent/src/components/space.rs:52`).
+//! `space_parts` holds the space's (`crates/agent/src/components/space.rs:63`).
 //!
 //! There is no header, no count and no apology around the lines. The block
 //! already carries its own `## memory` heading and its intent sentence from

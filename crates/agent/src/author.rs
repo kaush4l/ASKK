@@ -96,8 +96,10 @@ pub fn new_spec(
         // runs the react loop, which is what its card says (I9).
         role: String::new(),
         stages: Vec::new(),
-        // …and one pass, which is what "no stage list" already means (22).
+        // …and one pass, which is what "no stage list" already means (22), and
+        // no standing goal, which is what "no stage list" means too (26).
         passes: crate::spec::defaults::default_passes(),
+        goal: crate::goal::Goal::default(),
         tools: tools.iter().map(|t| one_line(t)).filter(|t| !t.is_empty()).collect(),
         // No faculty beyond whatever the space declares (`crate::faculty`):
         // the five things an author chooses do not include one.

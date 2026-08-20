@@ -21,6 +21,7 @@
 use context::{text, Part};
 
 use crate::space::Space;
+use crate::toolbox::Toolbox;
 
 /// The space this agent works in, as of the last time it was read from the
 /// store. Named apart from [`Space`] on purpose: that type is the space's
@@ -32,13 +33,20 @@ use crate::space::Space;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SharedSpace {
     pub space: Option<Space>,
+    /// WHAT THIS AGENT MAY ACTUALLY DO IN THAT FOLDER (I15). The paragraph
+    /// below names tools by name, and a name here that the agent was never
+    /// granted is the environment advertising a capability that is not there —
+    /// which is the one failure this product may not ship. So the wording is
+    /// DERIVED from the resolved toolbox rather than written once for the
+    /// best-equipped agent and shown to every other one.
+    pub tools: Toolbox,
 }
 
 impl SharedSpace {
     /// This block as flat text. Empty exactly when there is no space, which is
     /// what makes the block vanish rather than head a blank one.
     pub fn text(&self) -> String {
-        self.space.as_ref().map(lines).unwrap_or_default()
+        self.space.as_ref().map(|s| lines(s, &self.tools)).unwrap_or_default()
     }
 }
 
@@ -49,25 +57,22 @@ impl SharedSpace {
 /// apology. Emptiness becomes `Fidelity::Elided` (`assemble` starts a partless
 /// section there, `crates/context/src/assemble.rs:110`), which is how the
 /// paper already spells "absent".
-pub fn space_parts(space: &Option<Space>) -> Vec<Part> {
-    text(SharedSpace { space: space.clone() }.text())
+///
+/// `tools` is the agent's RESOLVED toolbox (`AgentState.toolbox`), because the
+/// folder reads differently to an agent that can search it and one that cannot.
+pub fn space_parts(space: &Option<Space>, tools: &Toolbox) -> Vec<Part> {
+    text(SharedSpace { space: space.clone(), tools: tools.clone() }.text())
 }
 
 /// The space as CONTEXT lines (Python `Space.context`). Empty areas render
 /// nothing at all: a `shared facts:` heading over no facts spends budget
 /// saying that nothing has been settled.
-fn lines(space: &Space) -> String {
+fn lines(space: &Space, tools: &Toolbox) -> String {
     let mut out = format!(
-        // WHAT THE MODEL IS TOLD MUST BE WHAT THE PERSON IS TOLD (26 walk).
-        // This said "What you WRITE there survives a reload" — true of the
-        // engine removed on 2026-08-18, and the exact opposite of what every
-        // pane now tells the person reading the same folder.
-        "space: {}\nworkspace: {} (a real folder in a Linux running in this browser; \
-         observe says what the machine is and find_files searches it. That Linux keeps \
-         its filesystem in memory, so nothing written there survives a reload, and \
-         nothing start_process started is still running after one)",
+        "space: {}\nworkspace: {} ({})",
         space.name,
-        space.path()
+        space.path(),
+        folder(tools)
     );
     if !space.facts.is_empty() {
         out.push_str("\nshared facts:");
@@ -83,3 +88,45 @@ fn lines(space: &Space) -> String {
     }
     out
 }
+
+/// The parenthesis after the path: what the folder IS, and only the tools this
+/// agent actually holds for it.
+///
+/// TWO SENTENCES, TWO KINDS OF FACT. The first names capability and is earned
+/// tool by tool — an agent granted neither reader is told about a folder it can
+/// see the state of and not act on, which is the true description of its
+/// situation (I15). The second is a property of the SUBSTRATE and is said to
+/// everyone, because it is true whether or not anything can write there.
+///
+/// WHAT THE MODEL IS TOLD MUST BE WHAT THE PERSON IS TOLD (26 walk). That
+/// second sentence once said "What you WRITE there survives a reload" — true of
+/// the engine removed on 2026-08-18, and the exact opposite of what every pane
+/// now tells the person reading the same folder. It is the one clause here that
+/// no grant may take away.
+fn folder(tools: &Toolbox) -> String {
+    let held: Vec<&str> = READERS
+        .iter()
+        .filter(|(name, _)| tools.get(name).is_some())
+        .map(|(_, clause)| *clause)
+        .collect();
+    let reading = match held.is_empty() {
+        true => String::new(),
+        false => format!("; {}", held.join(" and ")),
+    };
+    let started = match tools.get("start_process").is_some() {
+        true => ", and nothing start_process started is still running after one",
+        false => "",
+    };
+    format!(
+        "a real folder in a Linux running in this browser{reading}. That Linux keeps \
+         its filesystem in memory, so nothing written there survives a reload{started}"
+    )
+}
+
+/// The tools that let an agent LOOK at the folder, each with the clause that
+/// says so. A pair rather than a name alone because the clause cannot be spelled
+/// out of the name, and a list rather than two `if`s so the joining reads once.
+const READERS: [(&str, &str); 2] = [
+    ("observe", "observe says what the machine is"),
+    ("find_files", "find_files searches it"),
+];

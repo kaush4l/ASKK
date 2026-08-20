@@ -5,6 +5,8 @@
 //! believing it. A unit test of the parser could pass while the turn it steers
 //! ended in the wrong place, which is the failure this file exists to catch.
 
+mod common;
+
 use agent::{
     adopt_spec, parse_agent_file, step, AgentState, Effect, Route, STAGE_ANSWER, STAGE_STRATEGY,
 };
@@ -34,6 +36,7 @@ fn voted(vote: &str) -> (AgentState, Vec<Effect>) {
     let spec = parse_agent_file("main", MAIN).expect("the shipped main agent parses");
     let mut state = AgentState::new();
     adopt_spec(&mut state, &spec, &[]);
+    common::brief(&mut state);
     let (state, _) = step(state, user("do the thing"));
     step(state, replied(vote))
 }
@@ -60,6 +63,7 @@ fn a_turn_opens_by_asking_which_loop_to_run() {
     assert_eq!(spec.stages, [STAGE_STRATEGY], "the shipped file declares the vote");
     let mut state = AgentState::new();
     adopt_spec(&mut state, &spec, &[]);
+    common::brief(&mut state);
     let (state, effects) = step(state, user("hello"));
     assert_eq!(stage_facts(&effects), ["strategy"]);
     assert_eq!(agent::current_stage(&state), STAGE_STRATEGY);

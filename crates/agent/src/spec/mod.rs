@@ -14,6 +14,7 @@
 
 pub(crate) mod defaults;
 pub(crate) mod loader;
+pub(crate) mod value;
 pub(crate) mod yaml;
 
 use serde::{Deserialize, Serialize};
@@ -88,6 +89,10 @@ pub struct AgentSpec {
     /// goal without being asked again each time.
     #[serde(default = "crate::spec::defaults::default_passes")]
     pub passes: u16,
+    /// THE STANDING GOAL this file declares (`crate::goal`), or the empty one
+    /// that means it declared none. Its own type because the three dotted
+    /// keys are one thing, and because the same shape is what the state holds.
+    #[serde(default)] pub goal: crate::goal::Goal,
     /// The markdown body: this agent's system prompt.
     pub prompt: String,
 }
@@ -102,7 +107,7 @@ pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> 
     let (frontmatter, body) = rest
         .split_once("\n---")
         .ok_or_else(|| bad(dir, "unterminated YAML frontmatter (no closing '---')"))?;
-    let mut spec = unwritten(dir, body);
+    let mut spec = defaults::unwritten(dir, body);
     read_frontmatter(frontmatter, &mut spec)?;
     if spec.name.is_empty() {
         return Err(bad(dir, "frontmatter 'name' is empty"));
@@ -112,37 +117,10 @@ pub fn parse_agent_file(dir: &str, text: &str) -> Result<AgentSpec, AgentError> 
 }
 
 /// One file this cannot read, as the typed error the UI shows.
-fn bad(dir: &str, message: &str) -> AgentError {
+pub(crate) fn bad(dir: &str, message: &str) -> AgentError {
     AgentError::MalformedAgentFile {
         agent: dir.to_string(),
         message: message.to_string(),
-    }
-}
-
-/// The spec a file that declared nothing would produce: the folder for a name,
-/// the body for a prompt, and [`defaults`] for every number.
-fn unwritten(dir: &str, body: &str) -> AgentSpec {
-    AgentSpec {
-        name: dir.to_string(),
-        description: String::new(),
-        model: String::new(),
-        temperature: None,
-        // REACT, NOT `base` — the default has to be the loop that actually
-        // runs. It read `base` while nothing branched on the key, and now that
-        // `base` means "no tools at all", defaulting to it would disarm every
-        // file that simply omits the line. Absence means the loop this build
-        // has always run; `base` is a choice somebody writes.
-        engine: ENGINE_REACT.into(),
-        role: String::new(),
-        stages: Vec::new(),
-        tools: Vec::new(),
-        faculties: Vec::new(),
-        space: String::new(),
-        compact_at: defaults::default_compact_at(),
-        keep_recent: defaults::default_keep_recent(),
-        max_rounds: defaults::default_max_rounds(),
-        passes: defaults::default_passes(),
-        prompt: body.trim().to_string(),
     }
 }
 
@@ -194,5 +172,7 @@ fn refuse_contradictions(dir: &str, spec: &AgentSpec) -> Result<(), AgentError> 
              [plan, work, verify], or drop the passes: line",
         ));
     }
-    Ok(())
+    // …and the goal's four, which need the whole file for the same reason and
+    // are kept together with its keys (`crate::goal::declare`).
+    crate::goal::declare::refuse(dir, spec)
 }

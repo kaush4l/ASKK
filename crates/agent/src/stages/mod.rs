@@ -23,14 +23,23 @@
 //! exception and a narrow one: it is granted the two skill tools, because its
 //! brief tells it to read skills and an instruction to call a tool the agent
 //! was never given is noise.
+//!
+//! The FACTS a staged turn leaves behind, and the projections that read them,
+//! are their own subject next door in `facts.rs`.
 
-use kernel::{EventKind, Timestamp};
+use kernel::Timestamp;
 
 use crate::ask::call_model;
 use crate::brief;
 use crate::effect::Effect;
 use crate::state::AgentState;
-use crate::strategy::{self, Route, STRATEGY};
+use crate::strategy::{self, STRATEGY};
+
+mod facts;
+
+pub use facts::{route_of, stage_of, ROUTE_CHOSEN, STAGE_ENTERED};
+pub(crate) use facts::entered;
+use facts::chosen;
 
 pub const PLAN: &str = "plan";
 pub const WORK: &str = "work";
@@ -46,16 +55,6 @@ pub const ANSWER: &str = "answer";
 /// worse than no stage key at all.
 pub const STAGES: [&str; 6] = [STRATEGY, PLAN, WORK, VERIFY, CRITIQUE, ANSWER];
 
-/// The fact a stage was entered. Emitted for `verify::VERIFY_NUDGED`'s reason
-/// (I8): the machine added a round, and a round nobody can see is a model
-/// talking to itself while the token meter charges for it.
-pub const STAGE_ENTERED: &str = "core.stage_entered";
-
-/// The fact a route was chosen, and what decided it. The strategy stage spends
-/// a call to make a decision the person never sees otherwise; a turn that
-/// silently became four calls instead of one is the sort of thing a bill
-/// explains and nothing else does.
-pub const ROUTE_CHOSEN: &str = "core.route_chosen";
 
 pub fn is_stage(name: &str) -> bool {
     STAGES.contains(&name)
@@ -72,20 +71,23 @@ pub(crate) fn current(state: &AgentState) -> &str {
     state.stages.get(state.stage).map(String::as_str).unwrap_or(WORK)
 }
 
-/// Enter the stage the cursor is on: its instruction into the window, and the
-/// fact into the log.
-pub(crate) fn enter(state: &mut AgentState, at: Timestamp) -> Effect {
+/// Enter the stage the cursor is on: its instruction into its own block, the
+/// fact into the log. `Err(key)` is a stage whose brief never loaded, and
+/// `brief::directive` says why that refuses rather than entering empty.
+pub(crate) fn enter(state: &mut AgentState, at: Timestamp) -> Result<Effect, String> {
     let stage = current(state).to_string();
-    let mut said = brief::brief(&stage).to_string();
-    if stage == PLAN && state.space.is_some() {
-        said.push_str(brief::DURABLE);
+    let text = brief::directive(&state.briefs, &stage, state.space.is_some())?;
+    crate::paper::set_component(&mut state.paper, &crate::components::Directive { text }, at);
+    Ok(entered(&stage))
+}
+
+/// Enter the next stage and ask the model — or refuse the turn, in words. Every
+/// cursor move comes through here, so no path can forget the refusal.
+pub(crate) fn step_into(state: &mut AgentState, at: Timestamp) -> Vec<Effect> {
+    match enter(state, at) {
+        Ok(entered) => vec![entered, call_model(state, at)],
+        Err(key) => crate::ending::unbriefed(state, &key),
     }
-    // Into its own block, not into the conversation. A stage with no brief
-    // writes an empty one, which is how the block disappears on `work` rather
-    // than lingering with the previous stage's instruction still in it.
-    let directive = crate::components::Directive { text: said };
-    crate::paper::set_component(&mut state.paper, &directive, at);
-    entered(&stage)
 }
 
 /// The start of a turn: the strategy vote first, then whatever it chooses.
@@ -99,9 +101,13 @@ pub(crate) fn open(state: &mut AgentState, at: Timestamp) -> Vec<Effect> {
     // A turn that ran a route last time starts over from the declaration, or
     // the second message of a conversation would inherit the first's plan.
     state.stages = state.declared.clone();
-    match state.stages.is_empty() {
-        true => Vec::new(),
-        false => vec![enter(state, at)],
+    if state.stages.is_empty() {
+        return Vec::new();
+    }
+    // Not `step_into`: the first call is the caller's, after compaction.
+    match enter(state, at) {
+        Ok(entered) => vec![entered],
+        Err(key) => crate::ending::unbriefed(state, &key),
     }
 }
 
@@ -124,9 +130,7 @@ pub(crate) fn next(state: &mut AgentState, reply: &str, at: Timestamp) -> Option
     // The evidence flags are NOT cleared here: they are the turn's, and a
     // verify stage that forgot what the work stage wrote would ask the model
     // to check nothing (`verify.rs` — order is the freshness rule).
-    let entered = enter(state, at);
-    let call = call_model(state, at);
-    Some(vec![entered, call])
+    Some(step_into(state, at))
 }
 
 /// Install the route the vote named and open its first stage. The vote itself
@@ -135,7 +139,8 @@ fn route(state: &mut AgentState, reply: &str, at: Timestamp) -> Vec<Effect> {
     let route = strategy::route_of(reply);
     state.stages = route.stages();
     state.stage = 0;
-    vec![chosen(route, reply), enter(state, at), call_model(state, at)]
+    let chosen = chosen(route, reply);
+    std::iter::once(chosen).chain(step_into(state, at)).collect()
 }
 
 /// Whether a `verify` stage is still AHEAD in this turn. The mechanical gate
@@ -145,50 +150,4 @@ fn route(state: &mut AgentState, reply: &str, at: Timestamp) -> Vec<Effect> {
 /// declaration wins: it is the loop this agent's own file asked for.
 pub(crate) fn verify_ahead(state: &AgentState) -> bool {
     state.stages.iter().skip(state.stage + 1).any(|s| s == VERIFY)
-}
-
-pub(crate) fn entered(stage: &str) -> Effect {
-    Effect::Emit {
-        kind: EventKind::Custom {
-            kind: STAGE_ENTERED.into(),
-            payload_json: serde_json::to_string(stage).unwrap_or_else(|_| "\"\"".into()),
-        },
-    }
-}
-
-fn chosen(route: Route, reply: &str) -> Effect {
-    // The WHY line, if the model wrote one — the difference between "the
-    // machine chose project" and "the machine chose project because the
-    // message asked for a working script".
-    let why = reply
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("WHY:"))
-        .unwrap_or_default()
-        .trim();
-    Effect::Emit {
-        kind: EventKind::Custom {
-            kind: ROUTE_CHOSEN.into(),
-            payload_json: serde_json::json!({ "route": route.as_str(), "why": why }).to_string(),
-        },
-    }
-}
-
-/// Which stage a `STAGE_ENTERED` fact names, for the projections.
-///
-/// EVERY ASSERTION ABOUT THIS FILE IS IN `tests/stages.rs`, through `step` and
-/// against the real shipped agent files — what a stage does is a sequence of
-/// effects a turn produces, and a unit test of the cursor could pass while the
-/// turn it drives ended in the wrong place.
-pub fn stage_of(payload_json: &str) -> String {
-    serde_json::from_str::<String>(payload_json).unwrap_or_default()
-}
-
-/// Which route a `ROUTE_CHOSEN` fact names, and what decided it.
-pub fn route_of(payload_json: &str) -> (String, String) {
-    let read = |v: &serde_json::Value, k: &str| {
-        v.get(k).and_then(|s| s.as_str()).unwrap_or_default().to_string()
-    };
-    serde_json::from_str::<serde_json::Value>(payload_json)
-        .map(|v| (read(&v, "route"), read(&v, "why")))
-        .unwrap_or_default()
 }

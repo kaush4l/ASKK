@@ -126,7 +126,7 @@ fn shipped_main() -> AgentState {
     // does it in the running app. Without this the model would be asked about a
     // workspace it was never shown, which is a harder question than the one the
     // shipped agent actually gets.
-    let parts = space_parts(&state.space);
+    let parts = space_parts(&state.space, &state.toolbox);
     state.senses.insert(SPACE_FACULTY.to_string(), parts);
     state
 }

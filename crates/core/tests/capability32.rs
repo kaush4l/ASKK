@@ -43,7 +43,7 @@ const SHIPPED: [(&str, &str); 8] = [
     ("ask", include_str!("../../agent/tests/agents/ask.md")),
     ("author", include_str!("../../agent/tests/agents/author.md")),
     ("builder", include_str!("../../agent/tests/agents/builder.md")),
-    ("critic", include_str!("../../agent/tests/agents/critic.md")),
+    ("critic", include_str!("../../../public/agents/critic/agent.md")),
     ("main", include_str!("../../../public/agents/main/agent.md")),
     ("researcher", include_str!("../../agent/tests/agents/researcher.md")),
     ("scout", include_str!("../../agent/tests/agents/scout.md")),
@@ -100,16 +100,27 @@ fn the_board_card_says_whether_there_is_a_task_to_give_this_agent() {
     }
     let author = row(&page, "author");
     assert!(author.contains("you can give it a task; it runs no commands"), "{author}");
-    for who in ["ask", "critic", "scout"] {
+    for who in ["ask", "scout"] {
         let said = row(&page, who);
         assert!(said.contains("no task to give it — every tool it has reads"), "{who}: {said}");
         assert!(!said.contains("you can give it a task"), "{who}: {said}");
     }
     // AN EMPTY TOOLBOX IS NOT A READING ONE: `summarizer` has no tools, so the
     // sentence about what its tools read is not said about it.
-    let summarizer = row(&page, "summarizer");
-    assert!(summarizer.contains("no task to give it — it has no tools at all"), "{summarizer}");
-    assert!(!summarizer.contains("every tool it has reads"), "{summarizer}");
+    //
+    // `critic` MOVED HERE from the loop above, and that is the correction, not
+    // a weakening. Its file named three readers that resolved, so this row said
+    // "every tool it has reads" — of tools that could not read: a critic runs
+    // in its own Worker whichever way it is reached, and a Worker's
+    // `C2wWorkspace` has no `document`. The grant is gone; its row now says the
+    // same true thing `summarizer`'s does, and BOTH are asserted so the branch
+    // is still exercised from both sides.
+    for who in ["summarizer", "critic"] {
+        let said = row(&page, who);
+        assert!(said.contains("no task to give it — it has no tools at all"), "{who}: {said}");
+        assert!(!said.contains("every tool it has reads"), "{who}: {said}");
+        assert!(!said.contains("you can give it a task"), "{who}: {said}");
+    }
     // …and the one agent that laps says so, where nothing else on the board did.
     assert!(row(&page, "builder").contains("over up to 4 passes"), "builder laps");
     assert!(!row(&page, "main").contains("passes"), "main does not");
@@ -136,12 +147,17 @@ fn every_board_row_publishes_the_toolbox_the_launcher_chooses_tasks_from() {
     // no tools at all and gets every built-in plus its space's set.
     let tools = |who| attr(&page, who, "data-toolset");
     assert!(tools("main").contains("exec") && tools("main").contains("write_file"), "main");
-    // `web_search` stands where `write_agent` stood: the contrast being drawn
-    // is "a named list resolves to what it named, an empty one to every
-    // built-in", and it needs a built-in `main` has NOT asked for. `main` names
-    // `write_agent` since increment 27, so the assertion moved to a tool it
-    // still does not name rather than being weakened or dropped.
-    assert!(!tools("main").contains("web_search"), "main's list does not name it");
+    // `web_search` stood where `write_agent` stood before it: the contrast
+    // being drawn is "a named list resolves to what it named, an empty one to
+    // every built-in", and it needs something `main` has NOT asked for. `main`
+    // names `write_agent` since increment 27 and `web_search` since 28, so the
+    // assertion moves AGAIN rather than being weakened or dropped — this time
+    // onto a peer, because every built-in this build ships is now named. A
+    // `tools:` list filters built-ins and agents in the same breath, so the
+    // mechanism under test is unchanged and the coverage is wider.
+    assert!(tools("main").contains("web_search"), "main names it now");
+    assert!(tools("main").contains("critic"), "…and the peer whose reply is a verdict");
+    assert!(!tools("main").contains("researcher"), "main's list does not name it");
     assert!(tools("researcher").contains("web_search"), "an empty list is every built-in");
     assert_eq!(
         tools("author"),
@@ -175,8 +191,16 @@ fn the_commands_pane_says_no_tools_where_there_are_none() {
     assert!(none.contains("summarizer has no tools at all"), "{none}");
     assert!(!none.contains("can read this Linux"), "it cannot read it either: {none}");
     // The agent that really does read one keeps the sentence that is true of it.
-    let reads = why("critic");
-    assert!(reads.contains("critic has no shell — it can read this Linux"), "{reads}");
+    // It USED to be `critic`, whose three read tools resolved and could not
+    // read: every route into that agent lands in a Worker, and a Worker's
+    // `C2wWorkspace` has no `document`. `scout` is read-only under the same
+    // allowlist mechanism and its tools DO run, so the contrast this test draws
+    // — empty toolbox against a reading one — is unchanged and now truthful.
+    let reads = why("scout");
+    assert!(reads.contains("scout has no shell — it can read this Linux"), "{reads}");
+    // …and the agent that was wrongly on that arm is now on the empty one.
+    let none = why("critic");
+    assert!(none.contains("critic has no tools at all"), "{none}");
     // …and an agent that can change but not run is still told the third thing.
     let changes = why("author");
     assert!(changes.contains("it cannot run a command here"), "{changes}");

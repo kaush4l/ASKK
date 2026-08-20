@@ -19,6 +19,26 @@ engine: react
 # four is a ceiling and not a schedule, and the usual run is shorter.
 stages: [plan, work, verify]
 passes: 4
+# THE STANDING GOAL, AND THE ONE LINE OF IT A MACHINE READS (26).
+#
+# `goal.check` is a command. The harness runs it itself, after the last stage of
+# every pass, and its EXIT CODE — not this agent's account of its own progress —
+# decides whether the turn goes round again or stops. Exit 0 stops the turn even
+# with passes left over; anything else spends another pass, with the command and
+# its output put in front of the model so the next lap knows what failed.
+#
+# It runs on the SPACE grant below and not on the `tools:` list: the harness
+# issues it, so the allowlist that governs what this MODEL may call never sees
+# it. The measuring instrument does not belong to the thing being measured.
+#
+# `goal.outcome` and `goal.done_when` are read by the MODEL, not by the machine
+# — they are the standing goal in its prompt, above every turn's own request.
+# The CHECK line the plan brief asks for is a different thing and does not
+# compete with this one: that is a note the model writes for its own verify
+# stage, and this is the only check anything mechanical reads.
+goal.outcome: the work you were given is finished in the workspace and there is a written record of what was built and how it was checked
+goal.check: test -f DONE.md
+goal.done_when: DONE.md exists in the workspace, naming what was built, the command that checks it, and what that command printed
 # The round budget spans the passes — `max_rounds` is per TURN, and a pass is
 # not a new turn. Four laps of a 64-round budget is 64 rounds, not 256.
 max_rounds: 64
@@ -80,6 +100,19 @@ There is also a hard ceiling on passes, and it can run out with work left. If
 you can see that happening, spend the last pass on the most valuable unfinished
 part and say plainly in your answer what is done and what is not — a report that
 claims completion it cannot show is worse than a short one that admits the gap.
+
+## The finish line is a file, and the machine reads it, not you
+
+Your goal block names `test -f DONE.md`. After the last stage of every pass the
+page runs that command itself and reads its exit code. You are never asked
+whether you are done and your answer to that question would not be used.
+
+So: write `DONE.md` in the workspace when — and only when — the work is really
+finished, and put in it what was built, the command that checks it, and what
+that command printed. Writing it early does not make the work done; it makes the
+turn stop with the work undone, and the record you left will say so. If the file
+is not there when the passes run out, the page reports the goal as unmet and
+shows what the check printed.
 
 ## The space is your memory, not this conversation
 

@@ -65,7 +65,7 @@ pub(crate) fn belongs_to(kind: &EventKind, me: &str, who: &str) -> bool {
             // — and so do the ending, steer, verify nudge, stage and pass (22).
             k if k == agent::STOPPED || k == agent::ENDED => who == me,
             k if k == agent::STEERED || k == agent::VERIFY_NUDGED => who == me,
-            k if k == agent::STAGE_ENTERED || k == agent::PASS_SPENT => who == me,
+            k if crate::failure::loop_note::is_loop_fact(k) => who == me,
             // Whose wait ended. Empty is this process's own agent, which is
             // every record written before a pane could stop waiting on a turn
             // running in somebody else's Worker (12b).
@@ -116,8 +116,8 @@ pub(crate) fn awaits(kind: &EventKind) -> Option<bool> {
             k if k == agent::STOPPED => Some(false), // the turn ended, by you
             k if k == agent::ENDED => Some(false),   // …and this one says how
             k if k == agent::VERIFY_NUDGED => Some(true), // …and this reopens it
-            // …and so does a stage (20), or a new lap of them (22).
-            k if k == agent::STAGE_ENTERED || k == agent::PASS_SPENT => Some(true),
+            // …and so does every fact the LOOP emits (`failure::loop_note`).
+            k if crate::failure::loop_note::is_loop_fact(k) => Some(true),
             k if k == crate::chat::pane::TURN_STOPPED => Some(false),
             _ => None,
         },

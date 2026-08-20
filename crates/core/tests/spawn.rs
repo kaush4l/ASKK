@@ -16,8 +16,8 @@ use std::task::{Context, Poll, Waker};
 
 use adapters_test::{DenyAllNet, FixedClock, MemStore, ScriptedAgents, ScriptedModel, SeededRng};
 use core::{
-    agent_names, answer, boot, drive, handle, install_agents_as, last_failure, log_kinds, App,
-    Ports,
+    agent_names, answer, boot, drive, handle, install_agents_as, last_failure,
+    last_failure_payload, log_kinds, App, Ports,
 };
 use kernel::{AgentPort, BoxFuture, DelegateError, EventKind, Request, Status, Timestamp};
 
@@ -92,8 +92,15 @@ impl AgentPort for LocalAgents {
             // its `drive` returns Err and its failure is its own words.
             let _ = block_on(drive(Rc::clone(&callee)));
             let said = answer(&callee.borrow());
+            // THE PAYLOAD, NOT THE SENTENCE. `adapters_web/src/worker/mod.rs`
+            // rejects with `last_failure_payload` — the TYPED `core.error` —
+            // so everything downstream (`from_worker::told`, `detail_of`,
+            // `told_kind`) takes its typed branch in the browser. A fake
+            // sending `last_failure`'s rendered sentence instead put this
+            // whole suite on the other branch, green over a path no browser
+            // takes.
             said.ok_or_else(|| DelegateError::Failed {
-                message: last_failure(&callee.borrow())
+                message: last_failure_payload(&callee.borrow())
                     .unwrap_or_else(|| format!("{agent} produced no answer")),
                 agent,
             })
@@ -224,6 +231,19 @@ fn get_as(app: &Rc<RefCell<App>>, path: &str, who: &str) -> String {
     .body
 }
 
+/// ONE agent's row out of the board fragment — up to the next row's start, so
+/// an assertion about `researcher` cannot be satisfied by `main`'s card below it.
+fn one_row<'a>(board: &'a str, who: &str) -> &'a str {
+    let start = board
+        .find(&format!(r#"data-agent="{who}""#))
+        .unwrap_or_else(|| panic!("{who} has a row: {board}"));
+    let rest = &board[start..];
+    match rest[1..].find(r#"<div class="agent-row"#) {
+        Some(end) => &rest[..end + 1],
+        None => rest,
+    }
+}
+
 const GOAL: &str = "find the melting point of gallium and say it in one line";
 const FOUND: &str = "Gallium melts at 29.76 degrees Celsius.";
 
@@ -319,13 +339,15 @@ fn the_board_shows_the_spawned_agent_working_then_idle() {
 /// is `Failed` carrying them, and the caller's turn does NOT die — it reads the
 /// refusal and answers the person.
 ///
-/// FINDING, and the one part of the brief that is not true: `core::last_failure`
-/// on the CALLER is `None`. `batch.rs::refused` records the callee's failure as
-/// a `core.agent_error` fact, and `last_failure` folds `core.error` — the
-/// caller's OWN turn — so a caller reading `last_failure` learns nothing about
-/// a sub-agent that failed. That is arguably right (the caller's turn did not
-/// fail) but it means the failure of a delegated run is only reachable through
-/// the tool envelope and the board row, never through the caller's failure card.
+/// THE FINDING THIS TEST RECORDED, AND WHAT T4 DID ABOUT IT. `core::last_failure`
+/// on the CALLER is still `None`, and that is still right: `last_failure` folds
+/// `core.error`, the caller's OWN turn, and the caller's turn did not fail.
+/// What was missing is that a delegated failure had NO fold at all — it was
+/// reachable only through the tool envelope and the board row. It has one now,
+/// over `core.agent_error`, and it is asserted below THROUGH THE PANE A PERSON
+/// OPENS rather than through a reading exported beside it: a second public
+/// entry point briefly existed with no caller in the product, so this test was
+/// the only thing that could report the fold as shipped. Assert the surface.
 #[test]
 fn a_spawned_agent_whose_turn_fails_comes_back_named_and_the_caller_is_told_why() {
     // No replies queued for the callee: its model is exhausted, which is a
@@ -376,7 +398,129 @@ fn a_spawned_agent_whose_turn_fails_comes_back_named_and_the_caller_is_told_why(
     assert_eq!(
         last_failure(&caller.borrow()),
         None,
-        "FINDING: the caller's own failure card knows nothing about the callee"
+        "the caller's own failure card still says nothing: the caller did not fail"
+    );
+    // …and the delegated failure has its own reading, attributed, on the one
+    // surface an operator opens to watch that run.
+    let trace = get_as(&caller, "/tools", "researcher");
+    assert!(
+        trace.contains("endpoint"),
+        "the sub-agent's trace ends with why it stopped: {trace}"
+    );
+}
+
+/// A DELEGATED RUN, READ END TO END (T4). The five things an operator watching
+/// one needs — the goal it was given, that it is working, the tools it called,
+/// its answer, and (in the test above) the reason when it failed — asserted as
+/// facts in a log and then as the projections a person actually looks at.
+///
+/// The Worker's report is made by hand here because `LocalAgents` is the port,
+/// not the transport: `web/agent-worker.js` calls `activity()` after every
+/// turn and the composition root feeds it to `report_activity`. Those two calls
+/// are exactly what is written out below, so the assertion is over the real
+/// producer (`core::activity_since`) and the real consumer.
+#[test]
+fn a_delegated_run_is_readable_from_the_goal_to_the_answer() {
+    let (caller, roster) = wired(
+        &[
+            &format!(r#"spawn_agent({{"agent": "researcher", "goal": "{GOAL}"}})"#),
+            "The researcher says gallium melts at 29.76 degrees Celsius.",
+        ],
+        vec![("researcher", vec!["now({})", FOUND])],
+    );
+    ask(&caller, "ask the researcher about gallium");
+    let callee = roster
+        .app("researcher")
+        .expect("the researcher has a Worker");
+
+    // 1. THE GOAL, on the callee's own row, off the caller's own log — the
+    //    `UserMessage` carrying `from: main` and nothing new recorded for it.
+    let board = get(&caller, "/board");
+    let row = one_row(&board, "researcher");
+    assert!(row.contains("asked to: find the melting point"), "{row}");
+    // 2. …AND WHAT IT ANSWERED, on the same row, now that the turn has ended.
+    assert!(row.contains("answered: Gallium melts"), "{row}");
+
+    // 3. THE TOOLS IT CALLED — and the two ends of the run — in the trace, via
+    //    the report its Worker makes about itself.
+    let (reported, _) = core::activity_since(&callee.borrow(), 0);
+    core::report_activity(&mut caller.borrow_mut(), "researcher", &reported);
+    let trace = get_as(&caller, "/tools", "researcher");
+    assert!(
+        trace.contains("was asked to: find the melting point"),
+        "{trace}"
+    );
+    assert!(
+        trace.contains(r#"data-calls="1""#) && trace.contains("now"),
+        "the one tool it called is in the trace: {trace}"
+    );
+    assert!(trace.contains(&format!("answered: {FOUND}")), "{trace}");
+    // Whole, not clipped: the trace is where the full text is read.
+    assert!(
+        trace.contains(GOAL),
+        "the trace carries the goal in full: {trace}"
+    );
+
+    // 4. NOTHING IS ATTRIBUTED TO THE PAGE'S OWN AGENT. `main` was never given
+    //    a goal by anybody — a person typed to it — so its row says no such
+    //    thing (I15: no goal fact, no clause).
+    let mine = one_row(&board, "main");
+    assert!(
+        !mine.contains("asked to:"),
+        "a person typing is not a delegation: {mine}"
+    );
+}
+
+/// THE SAME RUN, LAUNCHED BY A PERSON (S3). Everything above drives the board
+/// through `spawn_agent` — a MODEL delegating — and that is not how the defect
+/// was reported. A person presses an agent's card on the Dashboard, which is a
+/// `POST /chat` addressed to that agent through the one seam (I4), and it never
+/// touches `batch::delegate`: `runtime/requests.rs::ran_elsewhere` sees a
+/// message for somebody else and calls `batch::run_on` straight.
+///
+/// The goal fact is there either way — `chat/pane.rs::submit` wrote it, with
+/// `from` EMPTY because a person typed it and the callee's own transcript must
+/// say "You" rather than invent an agent that asked. What was missing was the
+/// fold's test for it, so this drives the person's route end to end and reads
+/// the row a person reads.
+#[test]
+fn a_run_a_person_launched_carries_its_goal_and_its_answer_on_the_board() {
+    let (caller, _) = wired(&[], vec![("researcher", vec![FOUND])]);
+    handle(
+        &mut caller.borrow_mut(),
+        Request::post_form("/chat", &[("message", GOAL)]).with_header("x-agent", "researcher"),
+    );
+    let _ = block_on(drive(Rc::clone(&caller)));
+
+    // The FACT first (I8): the person's goal, addressed to the callee, said by
+    // nobody — which is exactly what makes it a person's and not a delegation.
+    assert!(
+        user_messages(&caller).contains(&(
+            GOAL.to_string(),
+            "researcher".to_string(),
+            String::new()
+        )),
+        "the person's goal is a fact in this log: {:?}",
+        user_messages(&caller)
+    );
+
+    let board = get(&caller, "/board");
+    let row = one_row(&board, "researcher");
+    assert!(
+        row.contains("asked to: find the melting point"),
+        "the row says what the person asked it to do: {row}"
+    );
+    assert!(
+        row.contains("answered: Gallium melts"),
+        "…and what it came back with, the turn having ended: {row}"
+    );
+
+    // And the page's own agent is still not reporting an errand: nobody sent
+    // `main` anywhere, and a person's conversation is not a goal handed over.
+    let mine = one_row(&board, "main");
+    assert!(
+        !mine.contains("asked to:"),
+        "a person's own chat is not an errand: {mine}"
     );
 }
 
@@ -527,25 +671,26 @@ fn and_the_next_turn_it_works() {
 
 /// WHAT AN OPERATOR LOOKS AT — through the seam (I4), as the page does.
 ///
-/// FINDINGS, all asserted below rather than fixed:
+/// THIS TEST USED TO RECORD THREE FINDINGS AS FACTS. T4 fixed two of them and
+/// it now asserts the fixed state; the diff of this test is the increment.
 ///
-/// 1. `GET /tools` with `x-agent: main` DOES carry both the goal (as the call's
-///    `args`) and the answer (as its `output`): `trace::row` renders both. This
-///    is the one place a workflow is legible end to end.
-/// 2. `GET /tools` with `x-agent: researcher` shows the callee NOTHING. That
-///    pane reads `core.agent_activity` reports (`trace/from_worker.rs::reported`),
-///    which only a real Worker sends back over `postMessage`; the delegated turn
-///    itself is not one, so the callee's pane says "researcher has not called a
-///    tool yet" even though it just took a whole turn. An operator looking at the
-///    agent that DID the work sees an empty log — the delegation lands only in
-///    the caller's pane.
-/// 3. `GET /board` says the STATUS and the turn count and nothing about the
-///    goal: the row for `researcher` carries neither the goal it was given nor
-///    the answer it produced. The board answers "is it running", never "what is
-///    it doing".
+/// 1. UNCHANGED. `GET /tools` with `x-agent: main` carries both the goal (as
+///    the call's `args`) and the answer (as its `output`): `trace::row` renders
+///    both. The CALLER's pane was always legible end to end.
+/// 2. FIXED. `GET /tools` with `x-agent: researcher` used to show the callee
+///    NOTHING — that pane reads `core.agent_activity`, and the goal and the
+///    answer were never in one. `log::store::activity_since` now reports both,
+///    so the pane of the agent that DID the work says what it was asked and
+///    what it said. It still needs the report to have been made: a caller that
+///    has adopted no report of a run still has an empty pane for it, which is
+///    the honest reading and is asserted below.
+/// 3. FIXED. `GET /board` said the status and the turn count and nothing about
+///    the goal. `board::errand` folds the caller's own log — the goal it wrote
+///    and the answer it received — so the row now answers "what is it doing",
+///    not only "is it running".
 #[test]
 fn what_an_operator_can_see_of_a_spawned_run() {
-    let (caller, _) = wired(
+    let (caller, roster) = wired(
         &[
             &format!(r#"spawn_agent({{"agent": "researcher", "goal": "{GOAL}"}})"#),
             "Gallium melts at 29.76 C.",
@@ -566,27 +711,45 @@ fn what_an_operator_can_see_of_a_spawned_run() {
         "the ANSWER is in the caller's trace: {mine}"
     );
 
-    // 2. The callee's own trace: empty. A delegated turn is not an activity report.
+    // 2. The callee's own trace, BEFORE its Worker has reported anything: still
+    //    empty, and saying so is right — nothing was reported, so there is
+    //    nothing to project (I8, I15).
     let theirs = get_as(&caller, "/tools", "researcher");
     assert!(
         theirs.contains("has not called a tool yet"),
-        "FINDING: the agent that did the work has an empty pane: {theirs}"
+        "no report adopted yet, so the pane says so: {theirs}"
+    );
+    // …and once its Worker HAS reported, the same pane holds both ends of the
+    // run. This is the `activity()` + `report_activity` pair the composition
+    // root runs after every delegated turn.
+    let (reported, _) = core::activity_since(
+        &roster
+            .app("researcher")
+            .expect("the researcher has a Worker")
+            .borrow(),
+        0,
+    );
+    core::report_activity(&mut caller.borrow_mut(), "researcher", &reported);
+    let theirs = get_as(&caller, "/tools", "researcher");
+    assert!(
+        theirs.contains(&format!("was asked to: {GOAL}")),
+        "the goal is in the pane of the agent that did the work: {theirs}"
     );
     assert!(
-        !theirs.contains("29.76"),
-        "FINDING: its answer is not in its own pane either: {theirs}"
+        theirs.contains("29.76"),
+        "…and so is what it answered: {theirs}"
     );
 
-    // 3. The board: status and turns, never the goal.
+    // 3. The board: status, turns, AND what it was asked.
     let board = get(&caller, "/board");
     assert!(board.contains(r#"data-agent="researcher""#), "{board}");
     assert!(board.contains("1 turn"), "the row counts the turn: {board}");
     assert!(
-        !board.contains("gallium"),
-        "FINDING: no goal on the row: {board}"
+        board.contains("asked to: find the melting point of gallium"),
+        "the goal is on the row: {board}"
     );
     assert!(
-        !board.contains("29.76"),
-        "FINDING: no answer on the row: {board}"
+        board.contains("answered: Gallium melts at 29.76"),
+        "…and so is the answer: {board}"
     );
 }

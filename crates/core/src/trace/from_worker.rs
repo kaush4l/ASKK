@@ -2,6 +2,13 @@
 //! page's own agent's calls; these are records of a different kind — not
 //! `ToolInvoked` facts this loop appended, but what another agent's Worker
 //! REPORTED across `postMessage`.
+//!
+//! END TO END, SINCE T4. This pane showed the middle of a delegated run and
+//! neither end of it: the tool calls, but not the goal that started them, not
+//! the answer they produced, and — when the run failed — not the reason. All
+//! three are facts here now; the first two ride in the Worker's own report
+//! (`log::store::activity_since`), the third is the caller's own
+//! `core.agent_error`.
 
 use kernel::{EventKind, Response};
 use module::view::FragmentBuilder;
@@ -28,10 +35,17 @@ pub(crate) fn reported(ctx: &Ctx, who: &str) -> Response {
             continue;
         }
         let Some((agent, value)) = crate::failure::from_worker::activity(payload_json) else { continue };
-        let Some(tool) = value.get("tool").and_then(|t| t.as_str()) else { continue };
         if agent != who {
             continue;
         }
+        // THE TWO ENDS OF THE RUN. They are not calls and are not counted as
+        // any: a run whose whole report is "it was asked to X" still has to say
+        // it has called no tool yet, or the count and the pane disagree.
+        if let Some(said) = errand_line(&value) {
+            list = list.child(FragmentBuilder::new("p").class("note").text(&said).build());
+            continue;
+        }
+        let Some(tool) = value.get("tool").and_then(|t| t.as_str()) else { continue };
         // Its shell is in Commands too (`terminal::row_selection::reported`, R15-P1-4).
         if crate::trace::pane::is_shell(tool) {
             shell += 1;
@@ -56,8 +70,46 @@ pub(crate) fn reported(ctx: &Ctx, who: &str) -> Response {
         );
         list = list.child(FragmentBuilder::new("p").class("pending").text(&said).build());
     }
+    // …AND WHY IT STOPPED, when it stopped badly. A failed delegation is the
+    // run whose trace matters most, and this pane used to end at the last call
+    // it managed to make. The words are `from_worker::told`'s — the same
+    // sentence the board row carries — so one failure has one wording.
+    if let Some(said) = failed_line(ctx, who) {
+        list = list.child(FragmentBuilder::new("p").class("error").text(&said).build());
+    }
     let mut response =
         html(200, list.attr("data-calls", &calls.to_string()).build().into_html());
     response.headers.push(("x-shell-calls".into(), shell.to_string()));
     response
+}
+
+/// THE GOAL OR THE ANSWER, out of one reported item. A Worker reports what it
+/// DID as a list of small objects, one shape per kind of fact; these are the
+/// two T4 added, and an item that is neither is not this function's business.
+///
+/// The words are the pane's, not the agent's: the report carries the text and
+/// nothing else, and "was asked to" / "answered" is what makes a bare sentence
+/// in a trace legible as one end of a run rather than as prose that appeared.
+fn errand_line(value: &serde_json::Value) -> Option<String> {
+    for (key, said) in [("goal", "was asked to"), ("answer", "answered")] {
+        if let Some(text) = value.get(key).and_then(|t| t.as_str()) {
+            return Some(format!("{said}: {text}"));
+        }
+    }
+    None
+}
+
+/// WHY THIS AGENT'S LAST DELEGATED TURN FAILED, `None` if none did or if the
+/// last one to fail was somebody else. This pane is the ONLY reader of
+/// `failure::from_worker::last_delegated`, and deliberately so: a second
+/// public reading of it existed for one round with nothing in the product
+/// behind it, which made a test the only thing that could say the fold had
+/// shipped. A person watching a delegated run opens this pane; the fold ends
+/// here.
+fn failed_line(ctx: &Ctx, who: &str) -> Option<String> {
+    let (agent, message) = crate::failure::from_worker::last_delegated(ctx.recent.iter())?;
+    match agent == who {
+        true => Some(crate::failure::from_worker::told(&message, who)),
+        false => None,
+    }
 }

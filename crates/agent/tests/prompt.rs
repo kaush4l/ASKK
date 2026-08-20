@@ -16,6 +16,8 @@ use agent::{
     MEMORY_FACULTY, SPACE_FACULTY,
 };
 use context::{render, ContentPart, ProviderFormat, Role};
+
+mod common;
 use kernel::{Event, EventId, EventKind, Timestamp};
 
 const MAIN: &str = include_str!("../../../public/agents/main/agent.md");
@@ -55,12 +57,36 @@ fn rendered_at(question: &str, stages: &[&str]) -> String {
 /// named no space is shown, without a second fixture drifting away from the
 /// shipped one.
 fn rendered_from(file: &str, question: &str, stages: &[&str]) -> String {
+    rendered_with(file, question, stages, &[])
+}
+
+/// The same again, with a ROSTER around it — because a `tools:` list names
+/// built-ins and peer agents in one breath, and "the list resolves to what it
+/// named and nothing else" is only half-tested against an empty roster.
+fn rendered_with(file: &str, question: &str, stages: &[&str], peers: &[&str]) -> String {
     let spec = parse_agent_file("main", file).expect("the shipped main agent parses");
+    let peers: Vec<agent::AgentSpec> = peers
+        .iter()
+        .map(|text| parse_agent_file("peer", text).expect("a peer parses"))
+        .collect();
     let mut state = AgentState::new();
-    adopt_spec(&mut state, &spec, &[]);
+    adopt_spec(&mut state, &spec, &peers);
     sensed_by_the_host(&mut state);
+    // A BRIEFED STAGE REFUSES TO BE ENTERED WITHOUT ITS WORDS (T1). The words
+    // are `public/stages/*.md` now, not Rust constants, so a test that walks a
+    // stage installs them exactly as `core` does — and reads the shipped files,
+    // so a brief deleted from the repo fails here rather than in a browser.
+    common::brief(&mut state);
     state.declared = stages.iter().map(|s| (*s).to_string()).collect();
     state.stages = stages.iter().map(|s| (*s).to_string()).collect();
+    bytes_of(state, question)
+}
+
+/// The bytes a PREPARED state produces when it is asked something — the half
+/// of `rendered_with` below building `main`. Split out so a test can prepare a
+/// different agent entirely and still go through the one real path, rather
+/// than a second rendering that could drift from this one.
+fn bytes_of(state: AgentState, question: &str) -> String {
     let (_, effects) = step(state, user(question));
     let document = effects
         .iter()
@@ -92,7 +118,10 @@ fn rendered_from(file: &str, question: &str, stages: &[&str]) -> String {
 /// knows by name a special case inside the very seam that exists to have none.
 /// Moving it into the test says what the test was always relying on: a host ran.
 fn sensed_by_the_host(state: &mut AgentState) {
-    let parts = space_parts(&state.space);
+    // The GRANT travels with the space: the block names the tools that reach
+    // into that folder, so it is rendered against what this agent actually
+    // holds (I15), exactly as `core::space::sense::SpaceSense` renders it.
+    let parts = space_parts(&state.space, &state.toolbox);
     state.senses.insert(SPACE_FACULTY.to_string(), parts);
 }
 
@@ -292,17 +321,30 @@ fn the_tools_shown_are_the_tools_granted() {
             "…and the prompt shows how to call it: {name}"
         );
     }
-    // Nothing the file did not name is offered. `web_search` is a built-in
-    // this agent has never asked for, and it stands where `write_agent` stood
-    // before increment 27 named it: the assertion is the same assertion, made
-    // against a tool that is still ungranted.
+    // …AND `web_search` JOINS THEM (increment 28). It stood on the other side
+    // of this test until now, as the ungranted built-in that proved a named
+    // list resolves to what it named and nothing else.
+    for name in [agent::WEB_SEARCH] {
+        assert!(spec.tools.iter().any(|t| t == name), "the shipped file grants {name}");
+        assert!(prompt.contains(&format!("{name}(")), "…and shows how to call it: {name}");
+    }
+    // WHICH MOVES THE NEGATIVE CONTROL, and does not retire it. Every built-in
+    // this build ships is now named by `main`, so the ungranted thing has to be
+    // a PEER — which is the better target anyway, because a `tools:` list
+    // filters built-ins and agents in the same breath. `critic` is named and
+    // resolves; `builder`, loaded beside it, is not named and must not appear.
+    const CRITIC: &str = include_str!("../../../public/agents/critic/agent.md");
+    const BUILDER: &str = include_str!("agents/builder.md");
+    let peopled = rendered_with(MAIN, "hello", &["work"], &[CRITIC, BUILDER]);
+    assert!(spec.tools.iter().any(|t| t == "critic"), "the shipped file names critic");
+    assert!(peopled.contains("critic("), "…and a named peer is shown as a call");
     assert!(
-        !spec.tools.iter().any(|t| t == agent::WEB_SEARCH),
-        "the shipped file does not name web_search"
+        !spec.tools.iter().any(|t| t == "builder"),
+        "the shipped file does not name builder"
     );
     assert!(
-        !prompt.contains(&format!("{}(", agent::WEB_SEARCH)),
-        "a tool this agent was never granted must not appear"
+        !peopled.contains("builder("),
+        "an agent this one was never granted must not appear: {peopled}"
     );
 }
 
@@ -470,4 +512,110 @@ fn the_static_head_is_byte_identical_between_calls() {
     // …and the parts that must differ, do.
     assert!(first.contains("what is the time"));
     assert!(!second.contains("what is the time"));
+}
+
+/// Every tool name this build ships: the built-in table, plus every faculty's
+/// own set — the space's three and the workspace's, which is where `observe`
+/// and `find_files` live. A WALK and not a list of three names typed by hand,
+/// so a built-in added next year cannot slip past the test below by not having
+/// been thought of when it was written.
+fn every_tool_name() -> Vec<String> {
+    let mut names: Vec<String> =
+        agent::builtin_tools().tools.iter().map(|t| t.name.clone()).collect();
+    for faculty in agent::faculty_names() {
+        let tools = agent::faculty_of(faculty).map(|f| f.tools).unwrap_or_default();
+        names.extend(tools.into_iter().map(|t| t.name));
+    }
+    names
+}
+
+/// THE SHIPPED CRITIC'S OWN PROMPT (I15). Nothing rendered it before this:
+/// `tests/critic.rs` asserts the space faculty is DECLARED, and the test above
+/// loads this file only as a peer of `main`. The suite proved the block was
+/// reachable and never asked what it said — and what it said, to an agent with
+/// an empty toolbox by construction, was that `observe` reports the machine and
+/// `find_files` searches the folder. Its own body says "you have no tools. Not
+/// a restriction to work around — there is nothing here to call, by any route."
+/// A prompt that contradicts itself over what the agent can do is the setting
+/// that looks applied, in the block the verdict is judged against.
+///
+/// It fails if any tool this build ships is shown to this agent AS A CALL —
+/// `name(` and not the bare word, because the critic's prose legitimately talks
+/// about the space, about processes and about files.
+#[test]
+fn the_shipped_critic_is_shown_no_tool_it_was_never_granted() {
+    const CRITIC: &str = include_str!("../../../public/agents/critic/agent.md");
+    let spec = parse_agent_file("critic", CRITIC).expect("the shipped critic parses");
+    let mut state = AgentState::new();
+    adopt_spec(&mut state, &spec, &[]);
+    assert!(
+        state.toolbox.is_empty(),
+        "`engine: base` is an empty toolbox by construction, and that is the premise here"
+    );
+    sensed_by_the_host(&mut state);
+    common::brief(&mut state);
+    let prompt = bytes_of(state, "I wrote the file and the tests pass.");
+
+    // The space block IS there — that is the point. It is live in a Worker,
+    // it carries the shared facts the verdict is judged against, and this test
+    // would be vacuous if the block had simply vanished.
+    let headings = heads(&prompt);
+    assert!(headings.contains(&"## space"), "{headings:?}");
+    assert!(prompt.contains("space: research"), "{prompt}");
+    assert!(
+        prompt.contains("nothing written there survives a reload"),
+        "…and the folder is still described truthfully: {prompt}"
+    );
+
+    let harness = what_the_harness_says(&prompt);
+    for name in every_tool_name() {
+        assert!(
+            !names_a_tool(&harness, &name),
+            "the critic was granted nothing and must be told about nothing: {name} in\n{harness}"
+        );
+    }
+}
+
+/// The prompt MINUS the agent's own body.
+///
+/// `## soul` is the file's prose, written by whoever wrote the agent; every
+/// block after it is the HARNESS describing the world to that agent, and the
+/// world is what this test governs. The distinction is not a convenience: the
+/// critic's own body says "not against how the report describes the goal now",
+/// and `now` is a built-in tool — scanning the author's English for tool names
+/// would be a test of the file's vocabulary rather than of what it was told it
+/// can do.
+fn what_the_harness_says(prompt: &str) -> String {
+    prompt
+        .split("\n## identity\n")
+        .nth(1)
+        .expect("the identity block follows the agent's own words")
+        .lines()
+        // …and without the FRAME either. A heading and its one-line intent are
+        // written once for every agent and say nothing about this one's grant;
+        // `## environment`'s reads "what is available right now", and `now` is
+        // a built-in. What is left is only what the harness said about THIS
+        // agent's world, which is the sentence a false grant would live in.
+        .filter(|l| !l.starts_with("## "))
+        .filter(|l| !(l.starts_with('(') && l.ends_with(')')))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Does this prompt NAME that tool — as a call, or as the word itself?
+///
+/// `prompt.rs` matches `name(` everywhere else, because a signature is how the
+/// affordances block writes one. That is too narrow HERE: the sentence this
+/// test was written for named its three tools in running prose, as bare words,
+/// and matched nothing. So a whole-word hit counts too, and the boundary is
+/// what keeps it from being a substring search — `now` must not fire on
+/// "known", and `keep` must not fire on "keeps its filesystem in memory".
+fn names_a_tool(prompt: &str, name: &str) -> bool {
+    if prompt.contains(&format!("{name}(")) {
+        return true;
+    }
+    let inside = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
+    prompt.match_indices(name).any(|(at, _)| {
+        !inside(prompt[..at].chars().next_back()) && !inside(prompt[at + name.len()..].chars().next())
+    })
 }

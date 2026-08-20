@@ -1,4 +1,5 @@
-//! Same-origin static assets: the `public/agents/` tree, fetched at boot.
+//! Same-origin static assets: the `public/agents/` tree and the `public/stages/`
+//! briefs, fetched at boot.
 //!
 //! Not `NetPort`: that port is the brokered, allowlisted outside world
 //! (I2/I6). These are the app's own files, served beside `index.html` — the
@@ -64,6 +65,27 @@ pub async fn fetch_agents() -> Vec<(String, String)> {
             Some(text) => files.push((name, text)),
             None => web_sys::console::warn_1(
                 &format!("agents/{name}/agent.md not found; skipping that agent").into(),
+            ),
+        }
+    }
+    files
+}
+
+/// THE WORDS EVERY STAGE ENTERS WITH (`agent::brief`), one file per key. No
+/// manifest: the keys are a CLOSED list in Rust, because a stage name is a word
+/// the machine reasons about — so this asks for exactly the five it knows.
+///
+/// A MISSING FILE IS NOT SKIPPED THE WAY AN AGENT IS. A skipped agent costs
+/// that agent; a skipped brief would cost the first turn that reached its
+/// stage, silently. So nothing is pushed for it and `core::install_briefs`
+/// refuses the set downstream, which is the one place the sentence is written.
+pub async fn fetch_briefs() -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    for key in core::BRIEF_KEYS {
+        match fetch_text(&format!("stages/{key}.md")).await {
+            Some(text) => files.push((key.to_string(), text)),
+            None => web_sys::console::warn_1(
+                &format!("stages/{key}.md not found; the {key} stage will refuse to run").into(),
             ),
         }
     }
