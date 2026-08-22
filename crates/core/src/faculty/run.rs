@@ -70,7 +70,8 @@ pub(crate) async fn run_hosted(
             .find(|h| h.handles(&tool.0))
             .map(Rc::clone)
     }?;
-    let (ok, output) = match host.run(&tool.0, args_json).await {
+    let args = context::Args::parse(args_json);
+    let (ok, output) = match host.run(&tool.0, &args).await {
         Ok(output) => (true, output),
         Err(error) => (false, error),
     };

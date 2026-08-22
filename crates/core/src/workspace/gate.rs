@@ -11,6 +11,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use context::Args;
 use kernel::{CapabilityGrant, EventKind, Execution, ToolId, WorkspaceError};
 
 use crate::app::App;
@@ -53,12 +54,11 @@ pub(crate) async fn run(
         let a = app.borrow();
         (Rc::clone(&a.ports.workspace), grant(&a))
     };
-    let arg = |name: &str| -> String {
-        serde_json::from_str::<serde_json::Value>(args_json)
-            .ok()
-            .and_then(|v| Some(v.get(name)?.as_str()?.to_string()))
-            .unwrap_or_default()
-    };
+    // ONE READER, PARSED ONCE, and handed down to the two dispatches below.
+    // It was a `&dyn Fn(&str) -> String` closure duplicated here, in
+    // `proc/convention.rs` and in `observe.rs`; the CHOICE between its two
+    // halves is what each call site below states.
+    let args = Args::parse(args_json);
     // IN FLIGHT, WHERE A PROJECTION CAN SEE IT (R11-4). Every workspace call —
     // the agent's, the file panes', the Processes pane's, and yours — passes
     // through here, so this is the one place that has to know. A refused call
@@ -73,7 +73,7 @@ pub(crate) async fn run(
                 at: app.borrow().ports.clock.now().0,
             };
             app.borrow_mut().calling.push(call.clone());
-            let ran = perform(port.as_ref(), &root, &tool.0, &arg).await;
+            let ran = perform(port.as_ref(), &root, &tool.0, &args).await;
             let mut a = app.borrow_mut();
             if let Some(i) = a.calling.iter().position(|c| *c == call) {
                 a.calling.remove(i);
@@ -100,25 +100,37 @@ async fn perform(
     port: &dyn kernel::WorkspacePort,
     root: &str,
     tool: &str,
-    arg: &dyn Fn(&str) -> String,
+    args: &Args,
 ) -> Result<Execution, String> {
     // The environment tools first, and through the SAME port: a process, an
     // observation and a search are all one `exec` with a shape we defined on
     // top of it, never a second door into the Linux (ADR-013).
-    if let Some(ran) = crate::proc::convention::run(port, root, tool, arg).await {
+    if let Some(ran) = crate::proc::convention::run(port, root, tool, args).await {
         return ran;
     }
-    if let Some(ran) = crate::observe::run(port, root, tool, arg).await {
+    if let Some(ran) = crate::observe::run(port, root, tool, args).await {
         return ran;
     }
-    let path = || agent::relative_path(&arg("path"));
+    // `path` is a NAME: an identifier for a place, where surrounding space is a
+    // typo — and `agent::relative_path` already trims it
+    // (`crates/agent/src/workspace.rs:153`), so the reader agrees with the
+    // validator instead of disagreeing with it silently.
+    let path = || agent::relative_path(args.name("path").unwrap_or_default());
     let ran = match tool {
-        "exec" => match arg("command").trim().is_empty() {
-            true => return Err("no command given. Call it as exec({\"command\": \"ls -l\"})".into()),
-            false => port.exec(root, &arg("command")).await,
+        // `command` is a NAME: blank must be refused, which is the check that
+        // was here by hand, and a shell does not care about the space around it.
+        "exec" => match args.name("command") {
+            Err(_) => {
+                return Err("no command given. Call it as exec({\"command\": \"ls -l\"})".into())
+            }
+            Ok(command) => port.exec(root, command).await,
         },
         "read_file" => port.read(root, &path()?).await,
-        "write_file" => port.write(root, &path()?, &arg("contents")).await,
+        // `contents` is TEXT, and this is the line the split exists for. A
+        // reader that trimmed here would strip the trailing newline off every
+        // file an agent ever wrote, silently, with the gate green
+        // (`crates/core/tests/roundtrip.rs`).
+        "write_file" => port.write(root, &path()?, args.text("contents").unwrap_or_default()).await,
         _ => port.list(root, &path()?).await,
     };
     ran.map_err(unavailable)

@@ -21,6 +21,7 @@
 //! installs its files live outside this increment. The include list below is
 //! the one place that changes when it is.
 
+use context::Args;
 use kernel::{EventKind, ToolId};
 
 use crate::effect::Effect;
@@ -151,17 +152,16 @@ pub fn catalogue(skills: &[Skill]) -> String {
 /// names it and lists what is here — `read_agent`'s discipline, and the reason
 /// deleting a skill cannot break the agent that asks for it: the turn carries
 /// on with a result it can read.
-pub fn instruction(skills: &[Skill], args_json: &str) -> Result<String, String> {
-    let asked = serde_json::from_str::<serde_json::Value>(args_json)
-        .ok()
-        .and_then(|v| v.get("name")?.as_str().map(str::to_string))
-        .unwrap_or_default();
-    let asked = asked.trim();
-    if asked.is_empty() {
+pub fn instruction(skills: &[Skill], args: &Args) -> Result<String, String> {
+    // `name`, because a skill name is an IDENTIFIER matched against
+    // `Skill::name` below: surrounding space is a typo and a blank one names
+    // nothing. The reader's refusal and the words below are the same rule that
+    // was written by hand here before (`crates/context/src/args.rs`).
+    let Ok(asked) = args.name("name") else {
         return Err(format!(
             "no skill named. Call it as {READ_SKILL}({{\"name\": \"<skill>\"}})"
         ));
-    }
+    };
     match skills.iter().find(|s| s.name == asked) {
         Some(s) => Ok(format!("SKILL {} — {}\n\n{}", s.name, s.description, s.body)),
         None if skills.is_empty() => Err(format!("No skill called '{asked}'. {NONE_INSTALLED}")),
@@ -182,7 +182,7 @@ pub fn instruction(skills: &[Skill], args_json: &str) -> Result<String, String> 
 pub(crate) fn effect(tool: &str, args_json: &str) -> Option<Effect> {
     let (ok, output) = match tool {
         LIST_SKILLS => (true, catalogue(&skills())),
-        READ_SKILL => match instruction(&skills(), args_json) {
+        READ_SKILL => match instruction(&skills(), &Args::parse(args_json)) {
             Ok(body) => (true, body),
             Err(refusal) => (false, refusal),
         },

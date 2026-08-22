@@ -30,7 +30,9 @@ pub enum CapabilityId {
 /// One scoped grant (ADR-006 Option B). The scope rides the grant so the
 /// handle built from it physically cannot exceed it — default deny is
 /// structural, not checked. Effective grants = manifest-declared ∩
-/// host-granted (Spike B), computed in `script::effective_grants`.
+/// host-granted (Spike B). The function that computed it, `script::effective_grants`,
+/// is gone with `crates/script` (increment 09, ADR-003); the intersection rule is
+/// the contract and Spike B is still its running proof in `spikes/forge/`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CapabilityGrant {
     /// KV access confined to one key prefix — the handle cannot form a key

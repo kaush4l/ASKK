@@ -39,6 +39,14 @@ violation cannot compile, let alone pass CI.
 - `script` **stays its own crate.** Not for layering — to quarantine the one heavy external
   dependency (Rhai, per ADR-003) so the pure domain's compile graph and dependency audit stay
   clean. A dependency-isolation boundary is a real boundary.
+  **SUPERSEDED by the ship — the crate is deleted (increment 09), leaving 8 workspace members.**
+  The reasoning was sound and the quarantine held; what it quarantined never arrived. `script`
+  froze at G3 with eight `todo!("G4")` bodies and no caller, and the boundary that was meant to
+  keep `rhai` out of the pure domain's audit had the opposite effect: `crates/core/src/error.rs:13`
+  and an unused path dependency in `crates/module/Cargo.toml` carried `rhai` into the shipped
+  bundle's closure to serve one unconstructed error variant. **A dependency-isolation boundary is a
+  real boundary; it is not a substitute for not taking the dependency.** See ADR-003's "Unbuilt,
+  and what survives" — the engine decision stands, the crate does not.
 
 **Against my preferred option (Design 2):** merging crates deletes compile-time walls, and a solo
 engineer has no reviewer to catch a casual `use` that welds `context` to the registry. In-crate
@@ -60,6 +68,11 @@ crate makes the forge structurally privileged — exactly what I9 (uniform modul
 installs others through. **Against:** the forge is the flagship subsystem and will grow; burying
 it risks `agent` blowing the I12 size limits. Accepted: promote to a crate the day it outgrows its
 directory — same one-row reversal as above.
+**SUPERSEDED by the ship — `crates/agent/src/forge.rs` is deleted (increment 09).** It never
+outgrew its directory because it never grew: two `todo!("G4")` bodies, re-exported at `lib.rs:52`
+with zero callers in the tree and no `builtin_entry` route (§6d). The crate-vs-module argument is
+undisturbed and is the one to re-read when the forge is built — I9 still forbids a privileged forge
+crate. `ForgeStage`, `Draft` and `ForgeRun` are recoverable verbatim from git history at `ab3e14d`.
 
 ### 1b. `view` as a crate vs HTML-in-module templates
 
@@ -156,9 +169,9 @@ state holder.
 |---|---|---|
 | `kernel` | Leaf vocabulary: ids, typed errors, Event + event log types, `Request`/`Response`, port traits (`ModelPort`, `StorePort`, `NetPort`, `ClockPort`, `RngPort`) | Any behavior; routing dispatch; HTML; anything importing another workspace crate |
 | `context` | `Document`, `Section`, stability classes, budget/compaction, pure `assemble` + `render` (§8) | The module registry; model transport; any I/O. RESOLVED(spike-C): Part = Text/Image/Audio/File/Fragment carrying bytes not URLs (R2), proven under golden + prefix-identity tests |
-| `script` | Embedded interpreter (Rhai per ADR-003) + capability binding table | Knowledge of agents, phases, or the registry; any ambient capability. RESOLVED(spike-B): binding = per-module Engine with capability closures, effective grants = manifest ∩ host-granted |
-| `module` | Module trait + manifest + registry + generated Affordance document (§6, ADR-004); `view` submodule: escaping, page shell, `hx-*` builders, Fragment type | Business logic of any specific module; the interpreter itself (it *invokes* `script`) |
-| `agent` | Pure `step()`, `AgentState`, the phase machine (§9, ADR-010), Scout + Forge roles; forge pipeline as a built-in module (§7) | I/O of any kind; port implementations; rendering beyond its own fragments |
+| `script` | ~~Embedded interpreter (Rhai per ADR-003) + capability binding table~~ **SUPERSEDED — deleted, increment 09.** It froze at G3 and never gained a body or a caller; see §1a and ADR-003's "Unbuilt, and what survives" | ~~Knowledge of agents, phases, or the registry; any ambient capability.~~ RESOLVED(spike-B) stands as evidence: binding = per-module Engine with capability closures, effective grants = manifest ∩ host-granted |
+| `module` | Module trait + manifest + registry + generated Affordance document (§6, ADR-004); `view` submodule: escaping, page shell, `hx-*` builders, Fragment type | Business logic of any specific module; the interpreter itself (it would *invoke* `script`, and holds a tier-1 `Logic` variant for it — but takes no dependency on it, increment 09) |
+| `agent` | Pure `step()`, `AgentState`, the phase machine (§9, ADR-010), Scout role; ~~forge pipeline as a built-in module (§7)~~ **the forge is unbuilt — `forge.rs` deleted, increment 09** | I/O of any kind; port implementations; rendering beyond its own fragments |
 | `core` | The seam: `handle(Request) -> Response` (§3); routing dispatch; effect-runtime loop (≤40 lines); wiring + built-in module registration | Domain logic; direct Web APIs; anything an adapter should own |
 | `adapters_web` | wasm-bindgen port impls: fetch, IndexedDB (ADR-005; RESOLVED(spike-idb): hand-rolled web-sys, no wrapper crate — 52-crate tree + pin conflict), OPFS, WebCrypto, Worker glue; the composition root that owns the Wasm entry | Domain types beyond `kernel`'s; any logic that could run on the host |
 | `adapters_test` | In-memory port impls for `cargo test` (dev-dependency of the pure crates) | Anything shipped to production |
@@ -192,7 +205,6 @@ graph TD
     AG[agent] --> MO[module]
     AG --> CX[context]
     MO --> CX
-    MO --> SC[script]
   end
   subgraph L0["L0 — vocabulary"]
     K[kernel]
@@ -205,9 +217,7 @@ graph TD
   CORE --> AG
   CORE --> MO
   CORE --> CX
-  CORE --> SC
   CX --> K
-  SC --> K
   MO --> K
   AG --> K
   CORE --> K
@@ -215,7 +225,7 @@ graph TD
   AT --> K
 ```
 
-Intra-domain direction is `agent → module → {context, script}` and is **declared here, which the
+Intra-domain direction is `agent → module → context` and is **declared here, which the
 straw-man's table never did** — its four rows left the seven domain crates free to import each
 other arbitrarily; the split was partly ceremonial for exactly that reason. `module → context`
 (a module can provide a Section, so it needs the Section type) is the assumed direction —
@@ -229,13 +239,13 @@ RESOLVED(spike-C): assembly ergonomics raised no pressure for the reverse direct
 | Layer | Crates | May import (workspace) | Must NOT import |
 |---|---|---|---|
 | L0 | `kernel` | — (std, serde only) | any workspace crate |
-| L1 | `context`, `script` | `kernel` | each other; `module`; `agent`; `core`; `adapters_*` |
-| L1 | `module` | `kernel`, `context`, `script` | `agent`, `core`, `adapters_*` |
-| L1 | `agent` | `kernel`, `context`, `module` | `script` (only via `module`), `core`, `adapters_*` |
+| L1 | `context` | `kernel` | `module`; `agent`; `core`; `adapters_*` |
+| L1 | `module` | `kernel`, `context` | `agent`, `core`, `adapters_*` |
+| L1 | `agent` | `kernel`, `context`, `module` | `core`, `adapters_*` |
 | L2 | `core` | all L0–L1 | `adapters_*` |
-| L3 | `adapters_web` | `kernel`, `core` | `agent`, `module`, `context`, `script` directly |
+| L3 | `adapters_web` | `kernel`, `core` | `agent`, `module`, `context` directly |
 | L3 | `adapters_test` | `kernel` | everything else (pure crates take it as a dev-dependency) |
-| L3 | `ui` | `kernel`, `adapters_web` | `core`, `agent`, `module`, `context`, `script` directly |
+| L3 | `ui` | `kernel`, `adapters_web` | `core`, `agent`, `module`, `context` directly |
 
 **Straw-man bug, fixed here:** §11 forbade `adapters_*` from importing `core` *and* `core` from
 importing adapters — leaving no crate able to wire the application without a fourteenth it never
@@ -274,6 +284,10 @@ the phase machine, the forge pipeline, the registry, the script engine. Effect o
 - **Rhai in `script` (ADR-003):** Rhai is pure Rust, so forged-module logic itself is exercised
   by host tests — RESOLVED(spike-B): the capability-denied dry run runs under plain
   `cargo test` (6/6 green, typed denial errors, no browser).
+  **SUPERSEDED (increment 09): `script` is deleted and the excluded-crate list is unchanged at
+  exactly `adapters_web`.** The property this bullet defends never depended on the crate; the 6/6
+  green run it cites was `spikes/forge/`, on the host, and is still there. Deleting the crate
+  removes a `todo!()` surface from the host-testable set, not a tested one.
 
 ---
 
@@ -350,9 +364,13 @@ board, the trace, the files pane and the terminal differ from the transcript onl
 
 ### 6d. What is NOT yet in the tree
 
-The forge pipeline (§7) is typed but not wired: `crates/agent/src/forge.rs` defines
-`ForgeStage` and the stage events, and nothing in `builtin_entry` (`crates/core/src/dispatch.rs:42`)
-routes to it. When it lands, the install write goes through `StorePort` the same way the log
+The forge pipeline (§7) is not in the tree at all. It used to be typed-but-not-wired —
+`crates/agent/src/forge.rs` defined `ForgeStage` and the stage events, and nothing in
+`builtin_entry` (`crates/core/src/dispatch.rs:42`) routed to it — and increment 09 deleted both it
+and `crates/script`, the tier-1 substrate it would have driven (§1a, ADR-003). What remains is the
+one honest trace of it: `dispatch.rs:135` answers a `Logic::Script` route with `501 tier-1 script
+modules land with the forge`, which is now a promise rather than a description of a nearby file.
+When it lands, the install write goes through `StorePort` the same way the log
 does — in `drive`'s tail (`crates/core/src/runtime/mod.rs:67-68`), not through a dedicated effect.
 `Effect` has exactly four variants today (`crates/agent/src/effect.rs:16`): `CallModel`,
 `InvokeTool`, `Emit`, `Delegate`. The `Persist` and `Sleep` variants this document once

@@ -30,7 +30,7 @@
 
 use std::rc::Rc;
 
-use context::Part;
+use context::{Args, Part};
 use kernel::BoxFuture;
 
 use crate::app::App;
@@ -92,7 +92,13 @@ pub trait ToolHost {
     /// Run one call. `Ok`/`Err` both become a recorded `ToolInvoked` fact —
     /// NOTHING HERE RAISES, because that text is what lets the model correct
     /// itself on the next pass (`crates/core/src/tools.rs:116-118`).
-    fn run<'a>(&'a self, tool: &'a str, args_json: &'a str)
+    ///
+    /// The arguments arrive PARSED. A host handed the raw string would have to
+    /// re-decide what a missing key and a blank value mean, which is how
+    /// sixteen copies of that read came to disagree; [`context::Args`] makes the
+    /// choice between an identifier and content explicit instead. The bytes the
+    /// model sent are still there — `Args::raw` — for a host that records them.
+    fn run<'a>(&'a self, tool: &'a str, args: &'a Args)
         -> BoxFuture<'a, Result<String, String>>;
 }
 

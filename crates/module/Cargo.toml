@@ -8,7 +8,6 @@ description = "Module contract, manifest, registry, affordances, view primitives
 [dependencies]
 kernel = { path = "../kernel" }
 context = { path = "../context" }
-script = { path = "../script" }
 serde = { workspace = true }
 
 [lints]

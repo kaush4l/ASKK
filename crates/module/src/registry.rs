@@ -17,7 +17,9 @@ use crate::manifest::Manifest;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Logic {
     BuiltIn,
-    /// Rhai source, compiled by `script` at activation (ADR-003).
+    /// Rhai source (ADR-003). The interpreter is UNBUILT — `crates/script`
+    /// went in increment 09 with no caller. The variant stays because the
+    /// tier is a contract, not a constant: `dispatch` answers it 501 by name.
     Script {
         source: String,
     },

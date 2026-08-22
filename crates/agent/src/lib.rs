@@ -1,8 +1,11 @@
 //! The agent (§11, ADR-010): a pure step function walking a phase machine
 //! whose phases are data. No I/O of any kind lives here — `step` describes
-//! effects, the `core` runtime executes them (I3, I7). The forge pipeline is
-//! agent behavior (Scout proposes, Forge master builds) and a built-in
-//! module, not a privileged subsystem (ARCHITECTURE §1a, I9).
+//! effects, the `core` runtime executes them (I3, I7). The forge pipeline WOULD
+//! live here — it is agent behavior (Scout proposes, Forge master builds) and a
+//! built-in module, not a privileged subsystem (ARCHITECTURE §1a, I9) — but it
+//! was never built, and `forge.rs` was deleted in increment 09 rather than kept
+//! as two unwritten G4 bodies nothing called. That placement ruling still holds
+//! for whoever builds it; ADR-003's "Unbuilt, and what survives" is the record.
 //!
 //! G3 interface freeze: types and signatures only; bodies are `todo!()`.
 
@@ -18,7 +21,6 @@ mod environment;
 mod ending;
 mod error;
 mod faculty;
-mod forge;
 mod goal;
 mod memory;
 mod paper;
@@ -49,7 +51,6 @@ pub use effect::Effect;
 pub use toolbox::{Toolbox, NOTHING_RAN};
 pub use tools::{builtin_tools, Tool, ToolResult};
 pub use error::AgentError;
-pub use forge::{forge_manifest, forge_step, Draft, ForgeRun, ForgeStage};
 pub use phase::{
     v1_phases, ExitCondition, PhaseConfig, PhaseExit, ResponseContract, ToolScope, Verdict,
 };

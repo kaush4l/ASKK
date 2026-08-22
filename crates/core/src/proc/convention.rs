@@ -29,6 +29,7 @@
 //! The OUTPUT a model reads is ours, from tab-separated fields, never forwarded
 //! from `ps`: an agent handed `ps aux` to parse will misparse it.
 
+use context::Args;
 use kernel::{Execution, WorkspacePort};
 
 use crate::workspace::gate::unavailable;
@@ -60,15 +61,21 @@ pub(crate) async fn run(
     port: &dyn WorkspacePort,
     root: &str,
     tool: &str,
-    arg: &dyn Fn(&str) -> String,
+    args: &Args,
 ) -> Option<Result<Execution, String>> {
-    let named = || agent::process_name(&arg("name"));
+    // Both arguments are NAMES. A process name is an identifier in the most
+    // literal sense — it is a directory under `.harness/proc/` — and
+    // `agent::process_name` trims it anyway
+    // (`crates/agent/src/workspace.rs:132`). A command must not be blank, which
+    // is the check that was written by hand below, and a shell does not care
+    // about the space around it.
+    let named = || agent::process_name(args.name("name").unwrap_or_default());
     let sh = |s: String| async move { port.exec(root, &s).await.map_err(unavailable) };
     use crate::proc::start::{start_script, started};
     use crate::proc::table as table;
     use crate::proc::watch as watch;
     Some(match tool {
-        "start_process" => match (named(), arg("command").trim().to_string()) {
+        "start_process" => match (named(), args.name("command").unwrap_or_default().to_string()) {
             (Err(refusal), _) => Err(refusal),
             (_, empty) if empty.is_empty() => Err("no command given. Call it as \
                  start_process({\"name\": \"watch\", \"command\": \"tail -f log\"})"

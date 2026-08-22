@@ -21,10 +21,9 @@ from collections import defaultdict
 ALLOWED = {
     "kernel": set(),
     "context": {"kernel"},
-    "script": {"kernel"},
-    "module": {"kernel", "context", "script"},
+    "module": {"kernel", "context"},
     "agent": {"kernel", "context", "module"},
-    "core": {"kernel", "context", "script", "module", "agent"},
+    "core": {"kernel", "context", "module", "agent"},
     "adapters_web": {"kernel", "core"},
     "adapters_test": {"kernel"},
     "ui": {"kernel", "adapters_web"},

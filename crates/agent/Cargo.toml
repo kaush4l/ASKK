@@ -3,7 +3,7 @@ name = "agent"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Pure step(), AgentState, Effect, the phase machine, the forge (ADR-010)"
+description = "Pure step(), AgentState, Effect, the phase machine (ADR-010)"
 
 [dependencies]
 kernel = { path = "../kernel" }

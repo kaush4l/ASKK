@@ -3,6 +3,7 @@
 //! (`core/utils.py::load_agent`, `core/tools.py::Tool.from_engine`), and both
 //! were found there BY TEST rather than by reading — so both are pinned here.
 
+use context::Args;
 use kernel::{EventKind, ToolId};
 
 use crate::calls::Call;
@@ -106,30 +107,16 @@ pub fn goal_from(agent: &str, args_json: &str) -> Result<String, String> {
              \"<the whole task, in one string>\"}})"
         )
     };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(args_json) else {
-        return Err(refusal());
-    };
-    let Some(object) = value.as_object() else {
-        return Err(refusal());
-    };
-    let text = |v: Option<&serde_json::Value>| -> String {
-        v.and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .trim()
-            .to_string()
-    };
-    let goal = match text(object.get("query")) {
-        found if !found.is_empty() => found,
-        _ => object
-            .values()
-            .map(|v| text(Some(v)))
-            .find(|t| !t.is_empty())
-            .unwrap_or_default(),
-    };
-    match goal.is_empty() {
-        true => Err(refusal()),
-        false => Ok(goal),
-    }
+    // `name` for the goal, not `text`: it is trimmed and a blank one is refused,
+    // which is this function's entire contract. Unreadable JSON and JSON that is
+    // not an object both arrive as "no key was written" and reach the same
+    // refusal they always did (`crates/context/src/args.rs`).
+    let args = Args::parse(args_json);
+    args.name("query")
+        .ok()
+        .or_else(|| args.first_name())
+        .map(str::to_string)
+        .ok_or_else(refusal)
 }
 
 /// Run the call, or refuse it in the words that let the model rewrite it. A
@@ -181,8 +168,11 @@ fn delegated(tool: &Tool, args_json: &str) -> Result<(String, String), String> {
     if tool.name != SPAWN_AGENT {
         return goal_from(&tool.name, args_json).map(|goal| (tool.name.clone(), goal));
     }
-    let value = serde_json::from_str::<serde_json::Value>(args_json).unwrap_or_default();
-    let field = |k: &str| value.get(k).and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    // Both `name`: one is an agent name matched against the roster, the other a
+    // goal that must not be blank — a sub-agent handed one answers it anyway,
+    // which is what the refusal below exists to prevent.
+    let args = Args::parse(args_json);
+    let field = |k: &str| args.name(k).unwrap_or_default().to_string();
     match (field("agent"), field("goal")) {
         (agent, goal) if !agent.is_empty() && !goal.is_empty() => Ok((agent, goal)),
         (agent, _) => Err(format!(

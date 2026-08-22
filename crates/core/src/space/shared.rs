@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use agent::{Change, Space, NOTE_LIMIT};
+use context::Args;
 use kernel::{EventKind, KvStore, ToolId};
 
 use crate::app::App;
@@ -105,16 +106,18 @@ pub(crate) async fn run(
             u16::from_be_bytes(bytes),
         )
     };
-    let arg = |name: &str| -> String {
-        serde_json::from_str::<serde_json::Value>(args_json)
-            .ok()
-            .and_then(|v| Some(v.get(name)?.as_str()?.to_string()))
-            .unwrap_or_default()
-    };
+    // `key` is a NAME: it is the identity of a fact, matched against the keys
+    // already in the space (`crates/agent/src/space.rs:78`). `value` and `note`
+    // are TEXT: they are what the group is being told, so the reader hands them
+    // over untouched and `Space` — the pure half — decides what normalising a
+    // fact or a board note means, in one place, where it is tested.
+    let args = Args::parse(args_json);
+    let name = |k: &str| args.name(k).unwrap_or_default();
+    let text = |k: &str| args.text(k).unwrap_or_default();
     let (said, change) = match tool.0.as_str() {
-        "remember" => space.remember(&arg("key"), &arg("value")),
-        "forget" => space.forget(&arg("key")),
-        _ => space.post(&author, &arg("note")),
+        "remember" => space.remember(name("key"), text("value")),
+        "forget" => space.forget(name("key")),
+        _ => space.post(&author, text("note")),
     };
     let stamp = format!("{:013}-{author}-{nonce:04x}", at.0);
     let stored = write(kv.as_ref(), &space.name, change, &stamp).await;

@@ -6,6 +6,7 @@
 //! fields, and render those fields here. `find_files` — the other tool this
 //! dispatch owns — has its own file, `files/find.rs`.
 
+use context::Args;
 use kernel::{shell_quote, Execution, WorkspacePort};
 
 use crate::files::find::{find_script, found, pattern};
@@ -17,7 +18,7 @@ pub(crate) async fn run(
     port: &dyn WorkspacePort,
     root: &str,
     tool: &str,
-    arg: &dyn Fn(&str) -> String,
+    args: &Args,
 ) -> Option<Result<Execution, String>> {
     let sh = |script: String| async move { port.exec(root, &script).await.map_err(unavailable) };
     Some(match tool {
@@ -26,7 +27,12 @@ pub(crate) async fn run(
             output: report(&ran.output),
         }),
         "find_files" => {
-            let (name, text) = (arg("name").trim().to_string(), arg("text").trim().to_string());
+            // `name` is a NAME — a filename glob, an identifier for a place.
+            // `text` is TEXT and stays verbatim: a grep for `TODO ` with the
+            // trailing space is a different search from one without it, and
+            // trimming it would quietly run the search nobody asked for.
+            let name = args.name("name").unwrap_or_default().to_string();
+            let text = args.text("text").unwrap_or_default().to_string();
             match (agent::relative_path(&pattern(&name)), name.is_empty() && text.is_empty()) {
                 (_, true) => Err(
                     "nothing to search for. Call it as find_files({\"name\": \"*.md\"}) or \

@@ -38,11 +38,11 @@ pub(crate) async fn run(
     if tool.0 != agent::WEB_SEARCH {
         return None;
     }
-    let query = serde_json::from_str::<serde_json::Value>(args_json)
-        .ok()
-        .and_then(|v| Some(v.get("query")?.as_str()?.to_string()))
-        .unwrap_or_default();
-    let outcome = match query.trim().is_empty() {
+    // `name`, not `text`: the query becomes a URL path below, a blank one must be
+    // refused, and leading space in a search term changes no result — which is
+    // exactly the trim-and-refuse contract (`crates/context/src/args.rs`).
+    let query = context::Args::parse(args_json).name("query").unwrap_or_default().to_string();
+    let outcome = match query.is_empty() {
         // The `read_agent` discipline: an unreadable argument is refused in the
         // words that name the fix, never delivered as an empty search.
         true => Err("no query given. Call it as web_search({\"query\": \"<what to look up>\"})"

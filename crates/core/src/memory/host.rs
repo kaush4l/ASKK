@@ -6,6 +6,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use agent::{Kept, MEMORY_LIMIT};
+use context::Args;
 use kernel::{BoxFuture, ClockPort, KvStore, StoreError, StorePort};
 
 use crate::faculty::ToolHost;
@@ -85,15 +86,16 @@ async fn drop_line(kv: &dyn KvStore, line: &str) -> Result<(), String> {
     Err(format!("no key in the store holds that line: {line}"))
 }
 
-/// The `note` argument, read the way `space::shared::run` reads its own
-/// (`crates/core/src/space/shared.rs:108-113`): missing, mistyped or unreadable
-/// JSON becomes an empty string, and the pure half refuses an empty note in
-/// words. Nothing here raises — the text IS the correction the model gets.
-fn note_of(args_json: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(args_json)
-        .ok()
-        .and_then(|v| Some(v.get("note")?.as_str()?.to_string()))
-        .unwrap_or_default()
+/// The `note` argument, read the way `space::shared::run` reads its own: TEXT,
+/// because a note is what the agent is telling itself and not an identifier —
+/// `Memory::keep` (`crates/agent/src/memory.rs:68`) is the pure half that
+/// decides what normalising one means, and it does it in one place.
+///
+/// Missing, mistyped or unreadable JSON becomes an empty string, and that pure
+/// half refuses an empty note in words. Nothing here raises — the text IS the
+/// correction the model gets.
+fn note_of(args: &Args) -> &str {
+    args.text("note").unwrap_or_default()
 }
 
 impl ToolHost for MemoryHost {
@@ -105,17 +107,13 @@ impl ToolHost for MemoryHost {
     ///
     /// Never cached, for the reason the clock is not cached: this process may
     /// have been reloaded since the last turn, and the store is the memory.
-    fn run<'a>(
-        &'a self,
-        tool: &'a str,
-        args_json: &'a str,
-    ) -> BoxFuture<'a, Result<String, String>> {
+    fn run<'a>(&'a self, tool: &'a str, args: &'a Args) -> BoxFuture<'a, Result<String, String>> {
         Box::pin(async move {
             let kv = self.store.kv();
             let mut memory = load(kv).await;
             let (said, kept) = match tool {
-                "discard" => memory.discard(&note_of(args_json)),
-                _ => memory.keep(&note_of(args_json)),
+                "discard" => memory.discard(note_of(args)),
+                _ => memory.keep(note_of(args)),
             };
             match self.perform(kv, kept).await {
                 Ok(()) => Ok(said),

@@ -50,6 +50,11 @@ pub use boot::{boot, migrate, schema_version};
 pub use dispatch::{builtin_entry, dispatch, BuiltinHandler, Ctx, KvHandle};
 pub use effects::execute_port_effect;
 pub use faculty::{install_sense, install_tool_host, Sense, Sensing, ToolHost};
+/// The reader every tool's arguments come through (`crates/context/src/args.rs`).
+/// Re-exported because `ToolHost::run` is handed one, and a host lives in a
+/// crate that reaches this tree only through the composition root — a second
+/// implementor that could not name the type could not implement the seam.
+pub use context::Args;
 pub use error::{provider_error, CoreError};
 pub use failure::from_worker::report_activity;
 pub use log::store::{activity_since, memory_held, restore_log, window};

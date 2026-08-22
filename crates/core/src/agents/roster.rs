@@ -8,6 +8,7 @@
 //! Last wins, so authoring `main` OVERRIDES the shipped `main` and deleting
 //! that record reverts to the file. A live prompt edit is exactly this.
 
+use context::Args;
 use kernel::{EventKind, Status};
 
 use crate::app::App;
@@ -96,16 +97,16 @@ fn rows(app: &mut App, gone: &[String], fresh: &[String]) {
 /// Worker, and are told apart on screen only by who wrote them (I9). The
 /// capability it ends up with still comes from its SPACE and nowhere else.
 pub(crate) fn write_agent(app: &mut App, args_json: &str) -> Result<String, String> {
-    let value = serde_json::from_str::<serde_json::Value>(args_json).unwrap_or_default();
-    let field = |k: &str| {
-        value
-            .get(k)
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .trim()
-            .to_string()
-    };
-    let (name, prompt) = (field("name"), field("prompt"));
+    // FOUR NAMES AND ONE TEXT. The name, the description, the tools list and
+    // the space are identifiers — each is validated, split or matched below,
+    // and space around any of them is a typo. The PROMPT is content: it is the
+    // whole of what the agent will be told, and this is the one field here
+    // where trimming would be editing the model's writing rather than reading
+    // it. Blank is still refused, on the trimmed view, because an agent with
+    // nothing but whitespace for a prompt has no instructions at all.
+    let args = Args::parse(args_json);
+    let field = |k: &str| args.name(k).unwrap_or_default().to_string();
+    let (name, prompt) = (field("name"), args.text("prompt").unwrap_or_default());
     if !agent::usable_agent_name(&name) {
         return Err(format!(
             "'{name}' cannot be an agent name — letters, digits, - and _ only. Call it as \
@@ -113,7 +114,7 @@ pub(crate) fn write_agent(app: &mut App, args_json: &str) -> Result<String, Stri
              \"prompt\": \"<the system prompt>\", \"tools\": \"\", \"space\": \"\"}})"
         ));
     }
-    if prompt.is_empty() {
+    if prompt.trim().is_empty() {
         return Err("no prompt given. An agent with no system prompt has no instructions at \
                     all; write the whole prompt as the 'prompt' argument."
             .into());
@@ -124,7 +125,7 @@ pub(crate) fn write_agent(app: &mut App, args_json: &str) -> Result<String, Stri
     // would only put a capability line on the card that grants nothing. A real
     // name survives untouched.
     let space = agent::Space::named(&field("space")).map(|s| s.name).unwrap_or_default();
-    let spec = agent::new_spec(&name, &field("description"), &unescaped(&prompt), &tools, &space);
+    let spec = agent::new_spec(&name, &field("description"), &unescaped(prompt), &tools, &space);
     let text = agent::render_agent_file(&spec);
     // WHO wrote it: this process's own agent, on the record with the file, so
     // the card can say "written by main" rather than claiming your work (11b).

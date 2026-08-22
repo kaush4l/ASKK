@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use agent::AgentError;
 use kernel::{ModelError, NetError, StoreError};
 use module::ModuleError;
-use script::ScriptError;
 
 /// What wiring can fail on. Public because the composition root (adapters)
 /// must render these to the user — a boot that cannot migrate, a pump that
@@ -21,7 +20,6 @@ pub enum CoreError {
     Model(ModelError),
     Net(NetError),
     Module(ModuleError),
-    Script(ScriptError),
     Agent(AgentError),
     /// Stored schema is NEWER than this build (ADR-005/007): refuse to boot,
     /// offer export — never silently downgrade.

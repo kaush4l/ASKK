@@ -32,8 +32,8 @@ use std::task::{Context, Poll, Waker};
 
 use adapters_test::{DenyAllNet, FixedClock, MemStore, ScriptedAgents, ScriptedModel, SeededRng};
 use core::{
-    boot, drive, handle, install_agents_as, install_sense, install_tool_host, App, Ports, Sense,
-    Sensing, ToolHost,
+    boot, drive, handle, install_agents_as, install_sense, install_tool_host, App, Args, Ports,
+    Sense, Sensing, ToolHost,
 };
 use kernel::{BoxFuture, KvStore, ModelPort, Request, Timestamp};
 
@@ -287,14 +287,13 @@ impl ToolHost for FakeBrowser {
     fn handles(&self, tool: &str) -> bool {
         tool == self.claims
     }
-    fn run<'a>(
-        &'a self,
-        tool: &'a str,
-        args_json: &'a str,
-    ) -> BoxFuture<'a, Result<String, String>> {
+    fn run<'a>(&'a self, tool: &'a str, args: &'a Args) -> BoxFuture<'a, Result<String, String>> {
         self.calls.set(self.calls.get() + 1);
         let answer = match &self.answer {
-            Ok(said) => Ok(format!("{said} — {tool}{args_json}")),
+            // `Args::raw` — the bytes the model sent. A host that echoes its
+            // call must show what the transcript shows, which is why the reader
+            // keeps the string as well as the parse.
+            Ok(said) => Ok(format!("{said} — {tool}{}", args.raw())),
             Err(problem) => Err(problem.clone()),
         };
         Box::pin(std::future::ready(answer))

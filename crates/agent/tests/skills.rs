@@ -11,6 +11,7 @@ use agent::{
     catalogue, instruction, parse_skill_file, skills, step, toolbox_for, AgentState, Effect, Skill,
     LIST_SKILLS, NONE_INSTALLED, READ_SKILL,
 };
+use context::Args;
 use kernel::{Event, EventId, EventKind, Timestamp, ToolId};
 
 const MANIFEST: &str = include_str!("../../../public/skills/index.json");
@@ -123,7 +124,7 @@ fn a_skill_that_cannot_say_what_it_is_for_is_refused() {
 fn with_no_skill_installed_the_tool_says_exactly_that() {
     assert_eq!(catalogue(&[]), NONE_INSTALLED);
     assert_eq!(NONE_INSTALLED, "No skills are installed in this browser.");
-    let refusal = instruction(&[], "{\"name\": \"agent-file\"}").expect_err("nothing to read");
+    let refusal = instruction(&[], &Args::parse("{\"name\": \"agent-file\"}")).expect_err("nothing to read");
     assert!(refusal.contains("agent-file"), "it names what was asked for: {refusal}");
     assert!(refusal.contains(NONE_INSTALLED), "and why there is none: {refusal}");
     // The populated catalogue is names AND descriptions: the description is
@@ -198,7 +199,7 @@ fn a_skill_that_is_not_installed_is_refused_by_name_and_the_turn_carries_on() {
     assert!(output.contains("agent-file"), "it lists what IS installed: {output}");
     // …and an empty name is refused in the words that name the fix, never
     // delivered as a load of nothing (`read_agent`'s discipline).
-    let empty = instruction(&skills(), "{}").expect_err("no name");
+    let empty = instruction(&skills(), &Args::parse("{}")).expect_err("no name");
     assert!(empty.contains("read_skill({\"name\": \"<skill>\"})"), "{empty}");
 
     let (state, effects) = step(

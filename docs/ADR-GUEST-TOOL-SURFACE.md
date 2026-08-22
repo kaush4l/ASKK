@@ -197,7 +197,11 @@ for search and fetch.
 - **Bytes:** +1.1–1.3 MB to the app bundle; guest unchanged.
 - **Compute:** near-native. This is the only option that *removes* a 13–15x multiplier rather than
   arranging around it.
-- **Files:** `crates/script` (the crate exists), `crates/agent/src/tools.rs`, capability binding.
+- **Files:** `crates/script` (**deleted in increment 09 — the crate no longer exists**; it was 155
+  lines of `todo!("G4")` with no caller, and ADR-003's engine choice survives it), plus
+  `crates/agent/src/tools.rs` and capability binding. This raises C's cost from "wire up what is
+  already there" to "port Spike B into a new crate", which does not change the decision below —
+  Option B won on grounds independent of C's price — but it is the honest number now.
 - **Invariants stressed:** **I6 is the whole risk** — a script must reach only granted tools; I7
   (the interpreter must be deterministic); I3 is satisfied (both candidates are pure Rust).
 

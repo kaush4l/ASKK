@@ -167,14 +167,14 @@ fn list_agents(app: &App) -> String {
 /// One agent's definition. A missing `name` is refused in the words that name
 /// the fix — the same discipline as an unreadable argument.
 fn read_agent(app: &App, args_json: &str) -> Result<String, String> {
-    let asked = serde_json::from_str::<serde_json::Value>(args_json)
-        .ok()
-        .and_then(|v| v.get("name")?.as_str().map(str::to_string))
-        .unwrap_or_default();
-    if asked.trim().is_empty() {
+    // `name`: an agent name is an identifier matched against the roster below,
+    // so the reader trims it once and refuses a blank one — the check that was
+    // written by hand here, and the reason `asked.trim()` appeared three times.
+    let args = context::Args::parse(args_json);
+    let Ok(asked) = args.name("name") else {
         return Err("no agent named. Call it as read_agent({\"name\": \"<agent>\"})".into());
-    }
-    match app.agents.iter().find(|s| s.name == asked.trim()) {
+    };
+    match app.agents.iter().find(|s| s.name == asked) {
         Some(s) => Ok(format!(
             "{} — {}\nmodel: {}\ntools: {}\n\n{}",
             s.name,
@@ -188,7 +188,7 @@ fn read_agent(app: &App, args_json: &str) -> Result<String, String> {
         )),
         None => Err(format!(
             "No agent called '{}'. Loaded: {}",
-            asked.trim(),
+            asked,
             app.agents
                 .iter()
                 .map(|s| s.name.as_str())

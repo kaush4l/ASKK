@@ -439,6 +439,15 @@ a *host* capability the agent calls. Pre-bake tools into the image rather than i
 
 ## 11. Straw-man architecture — attack this
 
+> **SUPERSEDED IN PART — read `ARCHITECTURE.md` for what was built.** This section is the G2
+> straw-man, kept because the reasoning behind it is still the reasoning. The tree below is a
+> proposal, not an inventory. What it names that does not exist: `http/`, `view/`, and `phase/`
+> never became crates (routing, rendering and the loop live inside `core`); `forge/` and `script/`
+> were built and then **deleted** — see `DECISIONS/ADR-003-script-engine.md` § "Unbuilt, and what
+> survives". The eight crates that exist are `kernel`, `context`, `module`, `agent`, `core`,
+> `adapters_test`, `adapters_web`, `ui`. `scripts/check-layering.py` is the CI enforcement the
+> table below asks for, and **it** is the layering of record.
+
 ```
 crates/
   kernel/        ids, errors, events, the event log             [pure, no deps]

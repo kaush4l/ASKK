@@ -6,6 +6,7 @@
 //!
 //! G3 interface freeze: types and signatures only; bodies are `todo!()`.
 
+mod args;
 mod assemble;
 mod component;
 mod degrade;
@@ -18,6 +19,7 @@ mod slot;
 mod state;
 mod types;
 
+pub use args::{ArgError, Args};
 pub use assemble::assemble;
 pub use law::validate;
 pub use component::{text, Component};
