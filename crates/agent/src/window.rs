@@ -155,7 +155,9 @@ fn sheet(transcript: &str, at: Timestamp) -> State {
         &Contract::saying("Reply with the notes and nothing else."),
         at,
     );
-    let environment = Environment { text: crate::now::environment(at) };
+    // The clock and NOT the guest: this sheet holds no tools, so there is no
+    // shell it could describe honestly (I15, and `environment::facts`' rule).
+    let environment = Environment { text: crate::now::environment(at), guest: String::new() };
     paper::set_component(&mut sheet, &environment, at);
     paper::set_component(&mut sheet, &Task { text: transcript.into() }, at);
     paper::set_component(&mut sheet, &History { entries: Vec::new() }, at);

@@ -31,9 +31,17 @@ pub use c2w::{prewarm, warmth, C2wWorkspace, Warmth};
 pub use leftovers::{drop_engine_setting, drop_workspace_leftover, workspace_leftover, Leftover};
 pub use endpoint::Endpoint;
 pub use error::WebError;
+/// The workspace clause every pane must print in the model's own words (I16).
+pub use core::GUEST_MEMORY;
 pub use idb::IdbStore;
 pub use model::{FetchModel, TIMEOUT_SECS};
 pub use ports::{sleep, BrowserClock, BrowserRng, FetchNet};
+/// THE FREEZE EXEMPTION'S PRECONDITION, ASKED OF THE BROWSER (T52). Public
+/// because the half that says it in words belongs in `core::failure`, where
+/// every sentence a person reads about something not working already lives —
+/// and a second wording of it in here would be the drift that register exists
+/// to prevent. This end only answers the question; it never claims anything.
+pub use locks::awake_contended;
 pub use worker::AgentWorker;
 
 pub use workers::AgentWorkers;

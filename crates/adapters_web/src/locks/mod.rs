@@ -1,8 +1,15 @@
-//! WEB LOCKS: the two things this origin uses them for, and the only code in
-//! this project that touches `navigator.locks`.
+//! WEB LOCKS, HALF ONE: **who may WRITE this agent's log** — and the reach into
+//! `navigator.locks` that both halves share.
 //!
-//! **WHO HOLDS WHAT, AND WHO WAITS.** Read this before deleting anything below
-//! as pointless — the second lock is deliberately never used for what it names.
+//! The other half is [`awake`], and the split is the one `core::faculty` made
+//! for the same reason: two subjects at the 200-line ceiling, where neither
+//! could grow a sentence without the other paying for it. Two SUBJECTS, not two
+//! functions — this lock decides something and is read; that one decides
+//! nothing, is read by nobody, and exists only to be QUEUED ON. Filed together,
+//! "the second lock is never used for what it names" was a warning a reader had
+//! to be given first. Apart, it is simply what each file is about.
+//!
+//! **WHO HOLDS IT, AND WHO WAITS.**
 //!
 //! ```text
 //!   askk/log/<agent>     exclusive, ifAvailable: true
@@ -17,26 +24,7 @@
 //!                follower would be promoted long after its window went stale,
 //!                and would then write the log from a snapshot — the exact
 //!                corruption the lock exists to prevent.
-//!
-//!   askk/awake           exclusive, queueing
-//!     HELD BY    the PAGE, from boot until the tab closes.
-//!     AWAITED BY every agent Worker this page starts, forever — and by any
-//!                second tab's page, which queues behind the first.
 //! ```
-//!
-//! The second lock is the freeze story and nothing else. Chrome 133+ freezes a
-//! hidden, CPU-heavy context group — page and Workers together — after five
-//! minutes, and the exemption is holding a lock some other context is WAITING
-//! on. An uncontended lock exempts nothing, so the contention is manufactured:
-//! the Workers queue on a lock they will never receive, and the queue is the
-//! whole mechanism. Nothing reads it, nothing is guarded by it.
-//!
-//! Two honest limits. **A page with no agent Workers has no waiter**, so it is
-//! not exempt; this build ships `critic` beside `main`, so a default roster
-//! always has one, but a roster trimmed to `main` alone loses the exemption
-//! silently. And a Worker's grant would mean the page is gone — it never
-//! arrives, because a dedicated Worker is terminated with the page that made
-//! it.
 //!
 //! Reached with `js_sys::Reflect` off `globalThis`, for the reason `ondevice.rs`
 //! states: `LockManager` is not in this project's enabled `web-sys` features,
@@ -49,6 +37,10 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
 use core::Writership;
+
+mod awake;
+
+pub use awake::{await_awake, awake_contended};
 
 /// Ask for this agent's log lock and report what the answer means. `None`
 /// anywhere on this path — no `navigator`, no `locks`, a `request` that is not
@@ -101,26 +93,8 @@ fn ask(locks: &js_sys::Object, name: &str, answer: js_sys::Function) {
 pub async fn page_claim() -> Writership {
     let mine = writership(core::ENTRY_AGENT).await;
     // The page's end of the contended pair: take `askk/awake` and keep it.
-    queue(true);
+    awake::queue(true);
     mine
-}
-
-/// A Worker's end: queue on `askk/awake` behind the page and never get it.
-/// This call IS the contention; there is nothing to await and nothing to read.
-pub fn await_awake() {
-    queue(false);
-}
-
-fn queue(hold: bool) {
-    let Some(locks) = manager() else { return };
-    let cb = Closure::wrap(Box::new(move |_lock: JsValue| -> JsValue {
-        match hold {
-            true => forever().into(),
-            false => JsValue::UNDEFINED,
-        }
-    }) as Box<dyn FnMut(JsValue) -> JsValue>);
-    let _ = request(&locks, core::AWAKE_LOCK, &options(false), cb.as_ref());
-    cb.forget();
 }
 
 /// `navigator.locks`, in a window or a Worker, or `None` where there is none.

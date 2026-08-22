@@ -32,7 +32,7 @@
 //! projections; this card says the same thing in the place the choice used to
 //! be.
 
-use adapters_web::Leftover;
+use adapters_web::{Leftover, GUEST_MEMORY};
 use dioxus::prelude::*;
 
 use crate::ui::{Button, Card};
@@ -67,7 +67,10 @@ pub fn LinuxEngine() -> Element {
             // WORK, on its own line, in the one colour that means "this costs
             // you something" (R10-7).
             p { class: "warn",
-                "Its filesystem is in memory: everything written in this Linux is lost when the \
+                // The opening clause is `adapters_web::GUEST_MEMORY` verbatim, not a
+                // second spelling of it: this is the sentence the model reads about
+                // the same folder, and `tests/told.rs` fails if the two drift (I16).
+                "It {GUEST_MEMORY}: everything written in this Linux is lost when the \
                  page reloads, including anything an agent is part-way through. There is no \
                  setting that changes that, so copy out anything you need to keep."
             }

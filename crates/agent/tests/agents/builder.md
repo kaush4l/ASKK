@@ -37,6 +37,13 @@ passes: 4
 # compete with this one: that is a note the model writes for its own verify
 # stage, and this is the only check anything mechanical reads.
 goal.outcome: the work you were given is finished in the workspace and there is a written record of what was built and how it was checked
+# THE PLAIN FACT ABOUT THIS PARTICULAR CHECK (T50): `test -f DONE.md` proves a
+# CLAIM, not a RESULT. It passes the moment the file exists, whatever is in it
+# and whatever does or does not work — writing the file and stopping satisfies
+# it completely. It is the strongest check this guest can run today, not the
+# strongest one worth running, and the difference is the agent's to carry:
+# `goal.done_when` below is what makes the file worth anything, and nothing
+# mechanical reads that line.
 goal.check: test -f DONE.md
 goal.done_when: DONE.md exists in the workspace, naming what was built, the command that checks it, and what that command printed
 # The round budget spans the passes — `max_rounds` is per TURN, and a pass is

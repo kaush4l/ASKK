@@ -51,3 +51,49 @@ Hard invariants. Reference by ID in every module spec. Source: `docs/PROMPT.md` 
   byte-identically.
 - **I15 Degradable.** Every capability may be absent; the environment advertises only what is actually
   available and never breaks when a substrate is missing.
+- **I16 Stated truth (PROVISIONAL — the owner may strike it).** A truth the system holds and
+  does not state is a defect, whether or not anything is wrong underneath it.
+
+  It is the converse of `docs/CRITIQUE-04.md`'s through-line, and the pair is the whole idea:
+  *an assertion that a capability resolves is not an assertion that its description is true*,
+  **and** a truth never asserted is not a safe default — it is a lie of omission that the
+  model then reasons from. A model told nothing about a constraint does not treat it as
+  unknown; it treats it as absent, and plans accordingly.
+
+  Five instances were open when this was written, and they differ in depth rather than kind:
+  prose describing a computer we do not ship (T20), a block true of the agent and false of the
+  turn (T25), four true things about the workspace the agent is never told (T48), a
+  verification ceiling nobody stated (T50), and a freeze exemption whose precondition can
+  vanish silently (T52). Every one of them ships green. That is the point: **no test in this
+  tree asserted PROSE against the MACHINE**, so the class was unfalsifiable and accumulated
+  without one red gate.
+
+  *What it demands.* Where the system holds a fact in a form a machine can read, the prose
+  shown to a model or a person must be checkable against it, and checked. Where it holds a
+  fact only in prose — a comment, a doc, a Dockerfile — that is the defect to fix first: a
+  truth no test can reach is a truth that will drift. `image/Dockerfile:25-40` is the worked
+  example. It carries a complete, correct, carefully argued inventory of every binary the
+  guest has, and it is a COMMENT, so neither the model nor the suite can read it.
+
+  *What it does not demand.* Not that everything true be said — a prompt is a budget, and
+  saying everything is its own failure. It demands that what IS said be true, and that a fact
+  the system depends on the reader knowing be said at all.
+
+  *The boundary, as a worked example — the law needs one or it will be misread.* This does NOT
+  say "delete every sentence about a capability we lack". `crates/core/src/files/permitted.rs`
+  carries a live `durable == true` arm reading *"What is written there survives a reload."* It
+  is unreachable in this build, because this guest does not persist and the owner has ruled
+  that permanently. **It stays.** `WorkspacePort::durable()` is a PORT CONTRACT, not a
+  constant: the ruling is that THIS GUEST does not persist, not that no workspace port ever
+  could. Deleting the true branch of a correctly-gated conditional would encode a product
+  ruling into a port abstraction, and the next engine would rediscover it by being surprised.
+  **A string gated on a fact is what this invariant asks for; a string gated on nothing is what
+  it forbids.** The test is not whether a sentence could be false — it is whether anything
+  checks before saying it.
+
+  *The honest limit, recorded with the law.* Checking prose against a DECLARATION is not
+  checking the declaration against REALITY. `crates/agent/src/environment.rs` says what the
+  guest contains; only the image can settle whether that is so, and confirming it needs a
+  build this project has deliberately frozen. So this invariant closes the gap between what we
+  say and what we have written down, and leaves open the gap between what we have written down
+  and what we ship. Naming that second gap is part of obeying the first.

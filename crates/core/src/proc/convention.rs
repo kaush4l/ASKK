@@ -48,6 +48,14 @@ pub(crate) const STATE: &str = "state() { [ -f \"$1/pid\" ] || { echo unknown; r
 
 /// One process tool, or `None` if this is not one. Total: a refusal is a result
 /// the model can act on, never an error return.
+///
+/// THE EXAMPLE IN THE REFUSAL BELOW IS A COMMAND THIS GUEST CAN RUN (T20, I16).
+/// It said `python3 -m http.server`, which describes a computer we do not ship:
+/// there is no `apk add` line in `image/Dockerfile` and no network in the guest
+/// to add one with, so a model reading this refusal — at the moment it is least
+/// certain — spent its next turn on a missing interpreter. The command named
+/// now is drawn from `agent::environment::BINARIES`, and
+/// `crates/agent/tests/stated.rs` fails if this line ever drifts off it again.
 pub(crate) async fn run(
     port: &dyn WorkspacePort,
     root: &str,
@@ -63,7 +71,7 @@ pub(crate) async fn run(
         "start_process" => match (named(), arg("command").trim().to_string()) {
             (Err(refusal), _) => Err(refusal),
             (_, empty) if empty.is_empty() => Err("no command given. Call it as \
-                 start_process({\"name\": \"web\", \"command\": \"python3 -m http.server\"})"
+                 start_process({\"name\": \"watch\", \"command\": \"tail -f log\"})"
                 .into()),
             (Ok(name), cmd) => sh(start_script(&name, &cmd)).await.map(|r| started(&name, &r)),
         },

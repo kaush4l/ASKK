@@ -619,3 +619,235 @@ fn names_a_tool(prompt: &str, name: &str) -> bool {
         !inside(prompt[..at].chars().next_back()) && !inside(prompt[at + name.len()..].chars().next())
     })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CLASS, NOT THE CASE (T25, I16).
+//
+// The test above governs ONE agent and knows nothing about stages. This section
+// governs the CLASS the defect belonged to: for EVERY agent this build ships,
+// in EVERY stage that agent can enter, the prompt must name no tool that stage
+// cannot call. It is the falsifier the tree did not have — `docs/CRITIQUE-04`'s
+// through-line is that a test naming one instance passes over the rule, and
+// I16's is that a truth held and not stated is a defect. A prompt that says a
+// capability is there when the grant says it is not fails both at once.
+//
+// Nothing below names `space`, `observe`, `main` or `strategy`. A new agent, a
+// new stage, a new faculty block or a new sentence in an old one is checked the
+// moment it exists, because every list here is derived: the agents from
+// `public/agents/index.json`, the stages from `agent::STAGES` and the routes,
+// the tool universe from `every_tool_name`'s walk, and the grant itself from
+// the `## affordances` block the machine rendered from `ask::scoped_tools`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const INDEX: &str = include_str!("../../../public/agents/index.json");
+const CRITIC: &str = include_str!("../../../public/agents/critic/agent.md");
+
+/// Every shipped agent, as (folder, file). A static host cannot list a
+/// directory, so `index.json` is the listing — and `include_str!` needs a
+/// literal, so this table is compiled in and CHECKED against that listing by
+/// [`the_manifest_and_this_table_name_the_same_agents`]. A third agent added to
+/// the manifest fails there, loudly, rather than being silently unexamined
+/// here; being unexamined is the failure this whole section exists about.
+const SHIPPED: [(&str, &str); 2] = [("main", MAIN), ("critic", CRITIC)];
+
+fn manifest_agents() -> Vec<String> {
+    let json: serde_json::Value =
+        serde_json::from_str(INDEX).expect("the shipped agent manifest is JSON");
+    json["agents"]
+        .as_array()
+        .expect("the manifest lists agents")
+        .iter()
+        .map(|n| n.as_str().expect("an agent name is a string").to_string())
+        .collect()
+}
+
+#[test]
+fn the_manifest_and_this_table_name_the_same_agents() {
+    let listed = manifest_agents();
+    let known: Vec<String> = SHIPPED.iter().map(|(n, _)| (*n).to_string()).collect();
+    assert_eq!(
+        listed, known,
+        "an agent this build ships is not being checked by the class test below"
+    );
+}
+
+/// EVERY STAGE THIS AGENT CAN ENTER — derived, never typed out.
+///
+/// An empty `stages:` is the bare react loop, which `stages::current` reads as
+/// `work`. A file that declares `strategy` declares a VOTE, not a loop: the
+/// list it walks for the rest of the turn is whichever `Route` the vote names,
+/// so every stage of every route is reachable from that one word.
+fn stages_of(spec: &agent::AgentSpec) -> Vec<String> {
+    let mut out = match spec.stages.is_empty() {
+        true => vec![agent::STAGE_WORK.to_string()],
+        false => spec.stages.clone(),
+    };
+    if out.iter().any(|s| s == agent::STAGE_STRATEGY) {
+        let routes = [agent::Route::Answer, agent::Route::React, agent::Route::Project];
+        for stage in routes.into_iter().flat_map(agent::Route::stages) {
+            if !out.contains(&stage) {
+                out.push(stage);
+            }
+        }
+    }
+    out
+}
+
+/// The bytes one shipped agent is shown in ONE stage, with every other shipped
+/// agent loaded beside it — because a `tools:` list names built-ins and peers
+/// in one breath, and a grant only half-resolved is a grant only half-tested.
+fn shipped_prompt(name: &str, file: &str, stage: &str) -> String {
+    let spec = parse_agent_file(name, file).expect("a shipped agent parses");
+    let peers: Vec<agent::AgentSpec> = SHIPPED
+        .iter()
+        .filter(|(n, _)| *n != name)
+        .map(|(n, f)| parse_agent_file(n, f).expect("a shipped peer parses"))
+        .collect();
+    let mut state = AgentState::new();
+    adopt_spec(&mut state, &spec, &peers);
+    sensed_by_the_host(&mut state);
+    common::brief(&mut state);
+    state.declared = vec![stage.to_string()];
+    state.stages = vec![stage.to_string()];
+    bytes_of(state, "what is in this folder?")
+}
+
+/// One block of the rendered prompt, heading excluded, up to the next heading.
+fn block_of<'a>(prompt: &'a str, head: &str) -> &'a str {
+    prompt
+        .split(&format!("\n## {head}\n"))
+        .nth(1)
+        .unwrap_or("")
+        .split("\n## ")
+        .next()
+        .unwrap_or("")
+}
+
+/// WHAT THIS STAGE MAY CALL, TAKEN FROM THE MACHINE AND NOT FROM A LIST.
+///
+/// `## affordances` is rendered from `ask::scoped_tools` and from nothing else
+/// (`components::dynamic`), so the block IS the machine's own statement of this
+/// call's grant. Reading the oracle out of the artifact under test is what
+/// keeps this from being a second copy of the scoping rules, which could agree
+/// with itself while both copies were wrong.
+fn granted_in_this_stage(prompt: &str) -> Vec<String> {
+    let shown = block_of(prompt, "affordances");
+    every_tool_name()
+        .into_iter()
+        .filter(|name| shown.contains(&format!("{name}(")))
+        .collect()
+}
+
+/// THE BLOCKS THAT SAY WHAT IS TRUE, as opposed to the blocks that say what to
+/// do about it. Four things are taken out, and each exclusion is a claim.
+///
+/// `## soul` is the agent's own body, for `what_the_harness_says`' reason: it
+/// is the author's English, and scanning it would test the file's vocabulary.
+///
+/// [`NOT_THE_WORLD`] is the other three, and they are excluded as a CLASS
+/// rather than one by one: none of them describes the world, so none of them
+/// can misdescribe it. `affordances` IS the grant, so every name in it is true
+/// by construction and it is the oracle above besides. `directive` is one
+/// instruction for a whole TURN and may legitimately speak of a later stage —
+/// `public/stages/durable.md` tells the `plan` stage to call `remember` "in the
+/// work that follows", true of the turn and false of the stage; it gets its own
+/// weaker rule below rather than going unchecked. `response_contract` is the
+/// shape of the REPLY, and it is built from the same toolbox as the affordances
+/// (`ask::contract` offers the envelope form only when there is something to
+/// call).
+///
+/// THE LIMIT, RECORDED WITH THE RULE (I16). That third exclusion is also a
+/// concession to the token rule: `now` is a shipped tool AND an ordinary
+/// English word, and the strategy stage's contract says "you can answer it now
+/// from what you already know". The alternative was rewording harness prose to
+/// dodge a tool's name, which is the tail wagging the dog. So a tool named in
+/// the response contract and nowhere else is not caught here.
+const NOT_THE_WORLD: [&str; 3] = ["affordances", "directive", "response_contract"];
+
+fn the_world_as_described(prompt: &str) -> String {
+    let after = prompt
+        .split("\n## identity\n")
+        .nth(1)
+        .expect("the identity block follows the agent's own words");
+    let mut head = "identity".to_string();
+    let mut kept: Vec<&str> = Vec::new();
+    for line in after.lines() {
+        if let Some(name) = line.strip_prefix("## ") {
+            head = name.trim().to_string();
+            continue;
+        }
+        if line.starts_with('(') && line.ends_with(')') {
+            continue;
+        }
+        if NOT_THE_WORLD.contains(&head.as_str()) {
+            continue;
+        }
+        kept.push(line);
+    }
+    kept.join("\n")
+}
+
+/// THE ROUND'S ARTIFACT. Every shipped agent × every stage it can enter: the
+/// world the harness describes may name a tool only if this stage can call it.
+///
+/// T25 was one instance — `## space` fed the AGENT's toolbox while the TURN ran
+/// under `ask::scoped_tools` — and it shipped green because no test in this
+/// tree asserted PROSE against the MACHINE. This one does, in both directions
+/// and over the whole cross product.
+#[test]
+fn no_shipped_agent_is_told_of_a_tool_the_stage_it_is_in_cannot_call() {
+    let universe = every_tool_name();
+    let mut walked: Vec<String> = Vec::new();
+    for (name, file) in SHIPPED {
+        let spec = parse_agent_file(name, file).expect("a shipped agent parses");
+        for stage in stages_of(&spec) {
+            assert!(agent::is_stage(&stage), "{stage} is not a stage");
+            if !walked.contains(&stage) {
+                walked.push(stage.clone());
+            }
+            let prompt = shipped_prompt(name, file, &stage);
+            let granted = granted_in_this_stage(&prompt);
+            let world = the_world_as_described(&prompt);
+            for tool in &universe {
+                assert!(
+                    !names_a_tool(&world, tool) || granted.contains(tool),
+                    "{name} in the {stage} stage is told about `{tool}`, which it cannot call \
+                     there — the grant is {granted:?}. The sentence is in:\n{world}"
+                );
+            }
+        }
+    }
+    // …AND THE CROSS PRODUCT REALLY COVERED THE VOCABULARY. A seventh stage
+    // added to `STAGES` that no shipped agent can reach is a stage nothing
+    // above examines, which is how this test would quietly stop being a class
+    // test. It fails here instead, and the fix is a route that reaches it or a
+    // stage deleted from the list.
+    for stage in agent::STAGES {
+        assert!(
+            walked.contains(&stage.to_string()),
+            "no shipped agent can enter `{stage}`, so nothing checked its prompt: {walked:?}"
+        );
+    }
+}
+
+/// THE DIRECTIVE'S OWN, WEAKER RULE. A brief is one instruction for a whole
+/// turn and may name a tool a LATER stage will call — so it is not held to the
+/// stage's grant. It is held to the AGENT's: a brief naming a tool this agent
+/// was never granted at all is an instruction it can never carry out, in any
+/// stage, which is `engine: base`'s lesson said in prose.
+#[test]
+fn a_stage_brief_names_no_tool_the_agent_was_never_granted() {
+    for (name, file) in SHIPPED {
+        let spec = parse_agent_file(name, file).expect("a shipped agent parses");
+        for stage in stages_of(&spec) {
+            let prompt = shipped_prompt(name, file, &stage);
+            let brief = block_of(&prompt, "directive");
+            for tool in every_tool_name() {
+                assert!(
+                    !names_a_tool(brief, &tool) || spec.tools.iter().any(|t| *t == tool),
+                    "the {stage} brief tells {name} to call `{tool}`, which it does not have"
+                );
+            }
+        }
+    }
+}

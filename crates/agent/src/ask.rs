@@ -75,6 +75,10 @@ pub(crate) fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effec
     for block in components::dynamic(state, &cfg, &tools, at) {
         paper::set_component(&mut state.paper, block.as_ref(), at);
     }
+    // …AND THEN THE ONES WHOSE WORDS NAME TOOLS, AGAIN, HONESTLY (T25).
+    for block in per_stage_blocks(state, &tools) {
+        paper::set_component(&mut state.paper, &block, at);
+    }
     Effect::CallModel {
         document: context::assemble(&state.paper, state.phase, cfg.budget),
         format,
@@ -83,6 +87,49 @@ pub(crate) fn call_model(state: &mut AgentState, at: kernel::Timestamp) -> Effec
         temperature: state.temperature,
         speaker: String::new(), // this agent's own turn
     }
+}
+
+/// THE FACULTY BLOCKS WHOSE PROSE NAMES TOOLS, RE-RENDERED AGAINST THE GRANT
+/// THIS CALL ACTUALLY HAS (T25).
+///
+/// THE DEFECT. `## space` names `observe`, `find_files` and `start_process`
+/// when the agent holds them — a fix that made the block honest per AGENT. But
+/// a host writes that block from `AgentState.toolbox`, and what a TURN may call
+/// is [`scoped_tools`], narrowed by the stage. On shipped `main` in `strategy`
+/// — the first call of every single turn — `## affordances` said "No tools are
+/// installed" and `## space` named three of them five lines later.
+///
+/// WHY THE SEAM IS HERE AND NOT IN THE HOST. `core::faculty::run::refresh_all`
+/// runs ONCE per pass, before an event is pumped, and it is async. The stage
+/// cursor moves INSIDE that pump: a stage's reply advances `state.stage` and
+/// builds the next call in the same synchronous `step`. So a block written by a
+/// host is always at least one stage stale, and handing the host a stage-scoped
+/// toolbox would only move the lie rather than remove it. The grant is decided
+/// here, synchronously, by the function above; the words that name it belong
+/// beside the decision. That is this file's stated obligation — what the model
+/// may call and what it is TOLD it may call must be the same set.
+///
+/// WHAT WAS REJECTED. (1) Scoping `faculty::Sensing.tools` — stale, above.
+/// (2) Predicting the next stage in `refresh_all` — a second copy of
+/// `stages::next` living in the runtime. (3) Censoring tool names out of
+/// rendered parts at assembly — text surgery on prose the core did not write.
+/// (4) A `fn(&Toolbox)` hook on `faculty::Faculty` so any faculty could declare
+/// grant-dependent prose — generality with one user today; the class test in
+/// `tests/prompt.rs` is what makes the SECOND user fail loudly instead.
+///
+/// It writes to the PAPER and never back into `senses`: `senses` is the record
+/// of what a host last saw, read elsewhere as exactly that, and the paper is
+/// the per-call artifact. `set_component` upserts by id, so this replaces the
+/// host's wording for this call only.
+fn per_stage_blocks(state: &AgentState, tools: &Toolbox) -> Vec<components::Sensed> {
+    crate::faculty::blocks_of(&state.faculties)
+        .into_iter()
+        .filter(|block| block.id == crate::faculty::SPACE)
+        .map(|block| components::Sensed {
+            block,
+            parts: components::space_parts(&state.space, tools),
+        })
+        .collect()
 }
 
 /// What the phase demands back, as the component that will render it.

@@ -26,9 +26,9 @@ use crate::ui::Button;
 /// stages twice. Order is priority — top is the task fewest agents can be
 /// offered, so an agent's three are the three most its own.
 const CANDIDATES: [(&str, &str); 5] = [
-    ("laps", "Find out what this Linux can do: check whether python3, node and git are there, \
-              write what you found to tools.md in the folder, then read it back and fix anything \
-              you got wrong before you report."),
+    ("laps", "Write a shell script that counts the words in every .md file in the folder, run \
+              it, and if the total looks wrong read the script back and fix it — keep going \
+              until the number it prints is one you can defend, then report it."),
     ("write_agent", "Write me an agent that takes an error message I paste in and suggests three \
                      things to try, install it, then tell me its name and one thing to ask it."),
     ("exec", "Run `uname -a` in the folder and tell me, in one sentence, what machine this is."),
@@ -168,13 +168,13 @@ mod tests {
     fn the_tasks_follow_from_the_tools_and_no_two_toolboxes_get_one_set() {
         let set = |t: &str, laps| super::offered("x", "run", t, laps).expect("can act").1;
         let (shell, builder) = ("exec, write_file, post_note, read_file", 4);
-        assert!(set(shell, builder)[0].contains("fix anything you got wrong"), "laps first");
+        assert!(set(shell, builder)[0].contains("keep going until"), "laps first");
         assert_ne!(set(shell, builder), set(shell, 1), "the pass ceiling is a difference");
         let researcher = set("write_agent, exec, write_file, read_file", 1);
         assert_ne!(researcher, set(shell, 1), "so is a tool one of them does not have");
         assert!(researcher[0].contains("Write me an agent"), "{researcher:?}");
         // A laps agent with no shell is not offered the shell task (I15).
-        assert!(!set("write_agent, post_note", 4)[0].contains("python3"), "no shell");
+        assert!(!set("write_agent, post_note", 4)[0].contains("keep going until"), "no shell");
         // …and nothing is offered a task its toolbox cannot finish.
         let author =
             super::offered("author", "change", "list_agents, read_agent, write_agent", 1)

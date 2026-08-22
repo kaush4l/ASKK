@@ -83,8 +83,14 @@ pub(crate) fn dynamic(
     let mut blocks: Vec<Box<dyn Component>> = vec![
         Box::new(Affordances::new(tools.usages())),
         Box::new(crate::ask::stage_contract(state, cfg, tools)),
+        // THE CLOCK AND THE COMPUTER, from the two places that know them: the
+        // injected timestamp, and the declaration of the guest image
+        // (`crate::environment`). The declaration is asked about THIS STAGE's
+        // toolbox, so a stage granted no workspace tool is told nothing about
+        // a shell it cannot reach this turn (I15, I16).
         Box::new(Environment {
             text: crate::now::environment(at),
+            guest: crate::environment::lines(tools),
         }),
     ];
     for block in crate::faculty::blocks_of(&state.faculties) {

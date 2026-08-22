@@ -22,9 +22,16 @@
 # Record whether the digest you resolve still yields that layer.
 FROM --platform=linux/amd64 alpine:3.24.1 AS base
 
+# PROVISIONAL (CLAUDE.md §17), 2026-08-20: `echo` was missing from the inventory
+# below while being a real ash builtin that this project's own liveness script
+# calls (`core/src/proc/convention.rs`). Adding it here changes NO image bytes —
+# this is a comment, nothing was rebuilt, and the shipped layer is untouched.
+# The correction is to the DOCUMENTATION so it agrees with
+# `crates/agent/src/environment.rs`, which is now the machine-readable copy of
+# this list (I16). Reverse it in one line if the owner disagrees.
 # NO `apk add` LINE. Every binary the harness names is a busybox applet already
 # in the minirootfs. The complete named-caller inventory, from the source:
-#   /bin/sh, set, printf, kill, wait, test  ash builtins
+#   /bin/sh, set, printf, echo, kill, wait, test  ash builtins
 #                                           (adapters_web/src/c2w.js:100,177;
 #                                            core/src/process.rs, procwatch.rs)
 #   stty                                    c2w.js:100 — `stty -echo` on the PTY
@@ -38,6 +45,15 @@ FROM --platform=linux/amd64 alpine:3.24.1 AS base
 #                                           procwatch.rs:18,69-72,
 #                                           proctable.rs:28-35
 # Nothing in crates/ shells out to python3, node, git, curl, make or a compiler.
+#
+# THIS LIST IS NOW ALSO A VALUE: `crates/agent/src/environment.rs` carries it as
+# `BINARIES`/`ABSENT`, renders it into the `## environment` block so the model
+# can read it, and `crates/agent/tests/stated.rs` fails the build if shipped
+# prose names anything else (I16 — a truth the system holds and does not state
+# is a defect). This file stays the SOURCE OF TRUTH; that one is the copy the
+# machine can reach, and it says so. Change a package here and change it there.
+# (`echo` is in that list and not in this one: it is an ash builtin like `set`
+# and `printf` above, and core/src/proc/convention.rs's liveness script calls it.)
 # `grep -I` (core/findfiles.rs:26) is the one applet flag under question — see
 # docs/IMAGE-RECIPE.md §6 item 1.
 

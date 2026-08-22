@@ -14,6 +14,7 @@ mod components;
 mod critic;
 mod now;
 mod effect;
+mod environment;
 mod ending;
 mod error;
 mod faculty;
@@ -54,6 +55,10 @@ pub use phase::{
 };
 pub use paper::{adopt_briefs, adopt_spec};
 pub use now::{clock, environment};
+pub use crate::environment::{
+    facts as guest_facts, lines as guest_lines, Fact as GuestFact, ABSENT as GUEST_ABSENT,
+    BINARIES as GUEST_BINARIES, DURABLE as GUEST_DURABLE, MEMORY as GUEST_MEMORY,
+};
 pub use window::{compacted, due, set_window, transcript, window, SUMMARIZE, SUMMARY_HEADING};
 pub use components::{memory_parts, space_parts, Block, Sensed, SharedSpace, SESSION_STARTED};
 pub use faculty::{

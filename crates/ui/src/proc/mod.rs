@@ -20,7 +20,7 @@ pub(crate) mod row;
 
 use std::rc::Rc;
 
-use adapters_web::{sleep, WebApp};
+use adapters_web::{sleep, WebApp, GUEST_MEMORY};
 use dioxus::prelude::*;
 use kernel::Request;
 
@@ -174,7 +174,7 @@ pub fn Processes(
                      to .harness/proc/<name>/log — pressing a row opens that log in the Files \
                      pane above, and Stop runs the agent's own stop_process on it. This list is \
                      the agent's own list_processes, run for you. \
-                     The Linux keeps its filesystem in memory, so reloading the tab takes the \
+                     The Linux {GUEST_MEMORY}, so reloading the tab takes the \
                      running processes AND their records with it. The pane then says what was \
                      started and that nothing is left of it, which is the whole of what is \
                      knowable."

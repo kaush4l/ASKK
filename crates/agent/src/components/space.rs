@@ -113,13 +113,22 @@ fn folder(tools: &Toolbox) -> String {
         true => String::new(),
         false => format!("; {}", held.join(" and ")),
     };
+    // THE SUBSTRATE SENTENCE LIVES HERE AND NOWHERE ELSE, and which of the two
+    // places was chosen is a fact a test settled rather than an argument.
+    // `environment::facts` is a function of the TOOLBOX, so it renders nothing
+    // for an agent that has a folder and no workspace tools — the shipped
+    // `critic` exactly — and putting the sentence there described that agent's
+    // folder without its one important property. This block renders whenever
+    // there IS a folder to describe, which is precisely when the fact applies.
+    // One truth, one wording, one place: `is_loopback`'s rule, one component over.
     let started = match tools.get("start_process").is_some() {
         true => ", and nothing start_process started is still running after one",
         false => "",
     };
     format!(
-        "a real folder in a Linux running in this browser{reading}. That Linux keeps \
-         its filesystem in memory, so nothing written there survives a reload{started}"
+        "a real folder in a Linux running in this browser{reading}. That Linux {}, \
+         so nothing written there survives a reload{started}",
+        crate::environment::MEMORY
     )
 }
 

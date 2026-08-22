@@ -12,6 +12,24 @@
 //! all; a nested `goal:` block would be an indentation-sensitive shape that
 //! reader has never had to understand, bought for nothing.
 //!
+//! THE CEILING, STATED (T50, I16). The strongest verification this harness can
+//! express is ONE COMMAND'S EXIT CODE, and the strongest one the guest we ship
+//! can actually produce is `test -f DONE.md`. **That proves a CLAIM was
+//! written, not that anything WORKS** — an agent that writes the file and stops
+//! satisfies it perfectly. Saying so here is the point of I16: the limit is
+//! real either way, and a person choosing a `goal.check` should meet it while
+//! choosing, not discover it from a run that reported success.
+//!
+//! THE CEILING IS THE GUEST'S, NOT THE LOOP'S. `passes::again` reads whatever
+//! exit code the guest can produce; it has no opinion about how strong the
+//! command is. So this rises for free as the environment gains capability
+//! (`tracker.md` T44-T49) and needs no change here — which is also why the
+//! tempting fix is the wrong one. Letting `goal.check` be a script, a pattern
+//! or several commands would put a small language in the harness and start the
+//! core parsing again, which is exactly what the briefs were moved out to
+//! `public/stages/` to stop. One command, one exit code, is the right
+//! primitive; what is missing is a guest that can run a strong one.
+//!
 //! EVERY REFUSAL HERE IS LOUD, on the rule that runs through the whole spec
 //! module: a value this cannot honour is refused, never defaulted. A goal that
 //! parses clean and gates nothing is `engine: reakt` with better manners.

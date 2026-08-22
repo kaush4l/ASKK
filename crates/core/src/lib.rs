@@ -35,6 +35,11 @@ mod workspace;
 /// their files — the list is closed and lives in `agent::brief`, so the fetcher
 /// asks for exactly the keys the machine knows.
 pub use agent::BRIEF_KEYS;
+/// The one clause the model and the person are BOTH told about the workspace
+/// folder (`agent::environment::MEMORY`). Re-exported because the UI reaches
+/// this tree only through the composition root, and a pane that prints its own
+/// spelling of this fact is the drift I16 forbids — `ui` pins its panes to this.
+pub use agent::GUEST_MEMORY;
 pub use agents::authored::{authored_here, report_authored};
 pub use agents::briefs::install_briefs;
 pub use agents::install::{

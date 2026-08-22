@@ -11,9 +11,26 @@ use kernel::SectionId;
 /// block now, declared at `Slot::SPACE` by `crate::faculty::space` and
 /// rendered by `Sensed`, because a peer's note changes rarely and this changes
 /// every call, and fusing them made the space uncacheable and this one bulky.
+/// WHAT IS AVAILABLE RIGHT NOW INCLUDES THE COMPUTER (I16, T48). The clock is
+/// `text`; `guest` is what `crate::environment` declares about the Linux this
+/// browser runs commands in, already rendered for the grant this stage holds.
+/// It is EMPTY for an agent that holds no workspace tool, which is how an
+/// agent with nothing to run is told nothing about a shell (I15).
+///
+/// The two arrive as separate fields rather than one pre-joined string because
+/// they have different lifetimes and different authors: the clock is rebuilt
+/// from the injected timestamp every call, the guest is a property of a frozen
+/// image. Joining them here is the component's own job, which is the only
+/// place I13 allows a prompt's bytes to be decided.
+///
+/// The guest lines never repeat the workspace PATH. `## space` renders that
+/// path, five slots above, and one fact in two blocks is two things to keep in
+/// agreement — so these sentences say "your space's folder" and let the block
+/// that owns the path own it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Environment {
     pub text: String,
+    pub guest: String,
 }
 
 impl Component for Environment {
@@ -39,9 +56,13 @@ impl Component for Environment {
         false
     }
     fn render(&self) -> Vec<Part> {
-        match self.text.trim().is_empty() {
-            true => text("A browser tab; environment sensing not yet implemented."),
-            false => text(self.text.trim_end()),
+        let clock = match self.text.trim().is_empty() {
+            true => "A browser tab; environment sensing not yet implemented.",
+            false => self.text.trim_end(),
+        };
+        match self.guest.trim().is_empty() {
+            true => text(clock),
+            false => text(&format!("{clock}\n{}", self.guest.trim_end())),
         }
     }
 }
