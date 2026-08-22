@@ -33,6 +33,8 @@ the container2wasm Alpine the agent owns.
 | 4b | The image: audit measured, recipe repaired, `image/Dockerfile` written | DONE, unshipped |
 | 5 | Free size/memory wins: strip DWARF, gzip -9, VM_MEMORY_SIZE_MB | NAMED, needs a build round |
 | 6 | The SECOND faculty (`memory`), F4 closed, the spawn workflow verified | DONE, green, unshipped — 517 tests, 4 gates exit 0, `docs/ARCH-COMPONENTS.md` §12 |
+| 7 | The honesty round: I16, the guest inventory as a value, the pinnability table | COMMITTED main `de10ca8`, NOT PUBLISHED — 581 passed, 4 gates exit 0 |
+| 8 | **I17 + the gate that can execute its own claims** | COMMITTED main `090cd5b`, NOT PUBLISHED — 588 workspace + 15 browser = 603 passed, **6 checks** exit 0. Bar-raised NO-GO once and re-earned it; see `docs/ROADMAP.md` |
 
 
 ## PARITY, MEASURED (`docs/PARITY.md`, 2026-08-19) — the strategic finding
