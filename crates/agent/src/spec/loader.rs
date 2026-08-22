@@ -3,7 +3,7 @@
 //! parent module parses a single file; nothing here reads one.
 
 use crate::error::AgentError;
-use crate::spec::{parse_agent_file, AgentSpec};
+use crate::spec::{parse_agent_file, AgentSpec, ROLES};
 
 /// Every agent, from files given built-ins FIRST and the project's second — so
 /// a project agent of the same name REPLACES the built-in (Python
@@ -36,7 +36,44 @@ where
         }
     }
     found.sort_by(|a, b| a.name.cmp(&b.name));
+    settle_roles(&mut found, &mut problems);
     (found, problems)
+}
+
+/// TWO FILES CLAIMING ONE JOB (increment 30). Copying `main/agent.md` is how a
+/// person writes a new agent, and that file carries `role: entry` — so the copy
+/// held the role too, `problems` came back EMPTY, and the page started talking
+/// to whichever name sorted first. Determinism was never the defect; silence
+/// was, and the two are different properties: [`role_holder`] still resolves
+/// the same way on every boot, and now the boot SAYS a job was contested.
+///
+/// THE RULING: the loser is reported AND stripped, rather than merely reported.
+/// Stripping is what makes the state match the resolution. `spec.role` is read
+/// in more places than the lookup below — the agent's card prints it, and
+/// `paper::adopt` reads it — so a loser that keeps the word is a file saying it
+/// holds a job it does not hold, which is the "setting that looks applied"
+/// failure `spec::mod` refuses everywhere else. It costs that one agent its
+/// ROLE and nothing else: it still loads, still answers, still has its tools,
+/// which is the same bargain a malformed file gets above.
+fn settle_roles(found: &mut [AgentSpec], problems: &mut Vec<String>) {
+    for role in ROLES {
+        let claimants: Vec<String> =
+            found.iter().filter(|s| s.role == role).map(|s| s.name.clone()).collect();
+        let Some((winner, losers)) = claimants.split_first() else {
+            continue;
+        };
+        if losers.is_empty() {
+            continue;
+        }
+        problems.push(format!(
+            "{} agents declare `role: {role}` ({}); {winner} holds it because it sorts first,              and the rest hold no role. Delete the line from all but one.",
+            claimants.len(),
+            claimants.join(", ")
+        ));
+        for spec in found.iter_mut().filter(|s| losers.contains(&s.name)) {
+            spec.role.clear();
+        }
+    }
 }
 
 /// WHO HOLDS A JOB (20). `main` and `summarizer` were string literals in the

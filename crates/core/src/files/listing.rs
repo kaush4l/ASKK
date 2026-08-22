@@ -2,6 +2,7 @@
 //! the `ToolInvoked` facts (I8). `pane.rs` owns the module and its two routes;
 //! this file is what those routes project.
 
+use context::Args;
 use kernel::EventKind;
 
 use crate::dispatch::Ctx;
@@ -9,11 +10,33 @@ use crate::dispatch::Ctx;
 /// Which path a `list_files` or `read_file` call was about. `pub(crate)` for
 /// the trace, which answers "who asked for this listing" the same way it
 /// answers it for a command (R4-1).
+///
+/// `path` is a NAME: an identifier for a place, where surrounding space is a
+/// typo — and the CHOICE IS THE GATE'S, not this file's. It reads the argument
+/// with `Args::name` and hands it to `agent::relative_path`
+/// (`crates/core/src/workspace/gate/files.rs:41`); calling the same pair here is
+/// what makes the two agree by construction. Read raw,
+/// `list_files({"path": " notes "})` listed `notes` and projected `" notes "` —
+/// a folder no call ever made, and one the pane scoped to `notes` then could not
+/// see, because `x-at` is compared against this string.
+///
+/// A CALL THAT NAMED NO PATH IS ABOUT NO PATH. This used to answer `"."` for
+/// one, which was a guess that happened to match the gate's own guess; the gate
+/// now refuses — *"no path given, and this tool will not guess one"* — so a
+/// projection still answering `"."` would claim the workspace root was listed
+/// when nothing was. The refused call is still SHOWN, as every failed call in
+/// this pane is; it is shown as being about nothing, which is what it was.
+///
+/// A path the gate REFUSES for its shape (absolute, or walking out with `..`)
+/// comes back as what the model wrote: there is a `ToolInvoked` fact carrying
+/// that refusal, and a trace that renamed the path it refused would be lying
+/// about the call.
 pub(crate) fn path_of(args_json: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(args_json)
-        .ok()
-        .and_then(|v| Some(v.get("path")?.as_str()?.to_string()))
-        .unwrap_or_else(|| ".".into())
+    let said = Args::parse(args_json);
+    let Ok(said) = said.name("path") else {
+        return String::new();
+    };
+    agent::relative_path(said).unwrap_or_else(|_| said.to_string())
 }
 
 /// One call this pane projects: which path, whether it worked, and what came
@@ -85,9 +108,10 @@ pub(crate) fn says_missing(output: &str) -> bool {
 /// `exec` a file-listing outcome: `pwd; ls -la; wc -l primes.txt; …` exited 1
 /// with `wc: primes.txt: No such file or directory` in it, and the trace called
 /// that entry `— not there yet` over the invented sentence *"There is no .
-/// folder yet"* — `.` from `path_of`, which defaults to the workspace root for
-/// arguments that name no path at all. The Commands pane, reading the same
-/// fact, said `failed` with the true stdout.
+/// folder yet"* — `.` from `path_of`, which back then answered the workspace
+/// root for arguments that named no path at all (it names nothing now, and the
+/// gate refuses such a call outright). The Commands pane, reading the same fact,
+/// said `failed` with the true stdout.
 ///
 /// The boundary is the one `newest` above already applies: only `list_files`
 /// and `read_file` are ABOUT a path, so only they can be "not there yet". A

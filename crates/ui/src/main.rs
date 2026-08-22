@@ -10,6 +10,7 @@ mod board;
 mod centre;
 mod chat;
 mod composer;
+mod debug;
 mod files;
 mod gallery;
 mod proc;

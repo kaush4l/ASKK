@@ -12,7 +12,7 @@ use crate::chat::thread;
 use crate::settings::{self, endpoint_copy, linux_engine};
 use crate::shell::views::View;
 use crate::shell::{agent_switcher, skin};
-use crate::{authoring, terminal, trace};
+use crate::{authoring, debug, terminal, trace};
 
 /// THE STAGE'S HEAD — one band above whatever is routed. The EYEBROW names the
 /// view (R5-misc); it is also the only `--t-caption` outside a message speaker,
@@ -140,6 +140,26 @@ pub(crate) fn TraceView(
             id: "trace-view",
             aria_label: "Tool trace",
             trace::ToolTrace { web, tick, agent: selected, view }
+        }
+    }
+}
+
+/// WHAT IS GOING ON UNDERNEATH — the facts the harness records about a turn and
+/// nothing else in the product reads. One panel, its own view: the tool trace
+/// answers "what did it DO", and this answers "what did it decide, what did it
+/// cost, and what broke" (R15-IA — one panel, one home).
+#[component]
+pub(crate) fn DebugView(
+    web: Signal<Option<Rc<WebApp>>>,
+    tick: Signal<u32>,
+    selected: Signal<String>,
+) -> Element {
+    rsx! {
+        section {
+            class: "view-panel debug-view",
+            id: "debug-view",
+            aria_label: "Debug",
+            debug::Debug { web, tick, agent: selected }
         }
     }
 }

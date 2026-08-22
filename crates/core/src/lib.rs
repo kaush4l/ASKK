@@ -12,6 +12,7 @@ mod boot;
 mod builtins;
 mod chat;
 mod ctx;
+mod debug;
 mod dispatch;
 mod effects;
 mod error;

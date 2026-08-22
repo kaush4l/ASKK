@@ -17,9 +17,20 @@
 //! - **The watchdog is not optional.** One malformed command (`echo a; (echo`)
 //!   wedges the shell permanently, and every later command with it — one shell
 //!   serves every agent, so that is shared fate. A timeout writes `0x03`, then
-//!   proves the shell answers again; the interrupted call is resolved as a
-//!   typed error here, because the interrupt also kills the trailing sentinel
-//!   that would otherwise have closed it.
+//!   proves the shell answers again.
+//! - **A TIMEOUT IS AN EXECUTION, NOT A `Failed`.** The interrupt kills the
+//!   trailing sentinel, but the command ran and what it printed is in the
+//!   buffer. That output used to be DROPPED, which is not a wording problem:
+//!   `WorkspaceError` has nowhere to put one, so choosing it was choosing to
+//!   throw it away — a 179-second build that printed 4 MB then wedged reported
+//!   "no answer in 180s" and nothing else. It now comes back as `Execution {
+//!   status: 130, .. }` — 128 + SIGINT, what every shell gives a command the
+//!   watchdog's own signal killed — carrying the partial output and a closing
+//!   `[PARTIAL: …]` note, so it cannot read as whole. A STOP is still an error.
+//! - **The model is TOLD about the ceiling**, because a limit nobody states is
+//!   one it plans as if absent (I16). The seconds and the `[PARTIAL:` mark are
+//!   declared once in `agent::environment::deadline` and asserted against
+//!   `RUN_MS` by `crates/agent/tests/environment.rs`.
 //! - **NOTHING WRITTEN HERE SURVIVES A RELOAD.** The container's root is
 //!   `overlay … upperdir=/run/rootfs-upper` — tmpfs, i.e. guest RAM. It is the
 //!   one thing about this Linux a person can feel, it is now unconditionally

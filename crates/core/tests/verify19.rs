@@ -61,7 +61,12 @@ fn body(app: &Rc<RefCell<App>>, path: &str) -> String {
     handle(&mut app.borrow_mut(), Request::get(path)).body
 }
 
-const WRITE: &str = r#"write_file({"path": "notes.md", "content": "hello"})"#;
+// `contents`, spelled the way the tool declares it. It said `content` — one
+// letter short — and the gate used to fill the missing argument in with `""`,
+// so this fixture wrote an empty file and the test read as a write that landed.
+// The gate refuses that call now (`workspace/gate/files.rs::no_contents`), which
+// is what turned the silent version of this fixture red.
+const WRITE: &str = r#"write_file({"path": "notes.md", "contents": "hello"})"#;
 const CAT: &str = r#"exec({"command": "cat notes.md"})"#;
 
 /// A file written, an answer given, and nothing run in between. The turn is

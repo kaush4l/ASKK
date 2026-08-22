@@ -108,7 +108,13 @@ fn ours(ctx: &Ctx) -> Vec<Fragment> {
 pub(crate) fn in_flight(ctx: &Ctx, typed: Option<&str>) -> Vec<Fragment> {
     let mut out = Vec::new();
     let mut said: Vec<String> = Vec::new();
+    // TRIMMED, because the gate is: `App::running` holds the raw bytes a person
+    // typed and `command_of` reads the argument the way `exec` will run it, so
+    // `  ls -l  ` in the box and `ls -l` in the call are one command here. Left
+    // raw, the person's own in-flight command failed to match its own call and
+    // came back a second time, in the loop below, billed to the agent.
     for command in ctx.running.iter().map(String::as_str).chain(typed) {
+        let command = command.trim();
         let age = ctx
             .calling
             .iter()

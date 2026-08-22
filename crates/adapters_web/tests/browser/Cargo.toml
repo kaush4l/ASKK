@@ -51,3 +51,7 @@ wasm-bindgen-test = "0.3"
 wasm-bindgen = "=0.2.121"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
+# `Worker`, because `AgentWorkers::listen_to` takes the typed one the crate
+# under test installs its handlers on. Same version the crate itself resolves
+# (one lock, one copy), or the two `Worker` types would not be the same type.
+web-sys = { version = "0.3", features = ["Worker", "MessageEvent"] }

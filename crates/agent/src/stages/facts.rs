@@ -31,19 +31,41 @@ pub(crate) fn entered(stage: &str) -> Effect {
     }
 }
 
+/// What the `how` field of a `ROUTE_CHOSEN` fact says: the model wrote this
+/// route down, or nothing readable was written and the machine chose the
+/// middle one.
+///
+/// WHY A THIRD FLAT FIELD and not a reserved `why` or a second event kind. A
+/// sentinel `why` is a value a reader has to be told about before it can be
+/// read, and a second kind forks every projection and every view that already
+/// handles this one. Two closed string values on a scalar key is the shape a
+/// panel can render without knowing anything: a label and its value.
+pub const VOTE_VOTED: &str = "voted";
+pub const VOTE_FELL_BACK: &str = "fallback";
+
+/// A FALLBACK IS NOT A VOTE, AND THE FACT NOW SAYS WHICH.
+///
+/// `react` reached two ways — the model asked for it, or the model was
+/// unreadable and `route_of` failed towards the middle — and the two emitted
+/// byte-identical payloads. That made the one decision this stage exists to
+/// make the one decision nobody could audit: a run that routed everything to
+/// react because the model started bolding its labels looked exactly like a
+/// run whose messages all wanted react.
 pub(super) fn chosen(route: Route, reply: &str) -> Effect {
     // The WHY line, if the model wrote one — the difference between "the
     // machine chose project" and "the machine chose project because the
-    // message asked for a working script".
-    let why = reply
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("WHY:"))
-        .unwrap_or_default()
-        .trim();
+    // message asked for a working script". Read through the same helper the
+    // vote is, so a model that bolds one label does not lose the other.
+    let why = crate::strategy::labelled(reply, crate::strategy::WHY).unwrap_or_default();
+    let how = match crate::strategy::vote_in(reply) {
+        Some(_) => VOTE_VOTED,
+        None => VOTE_FELL_BACK,
+    };
     Effect::Emit {
         kind: EventKind::Custom {
             kind: ROUTE_CHOSEN.into(),
-            payload_json: serde_json::json!({ "route": route.as_str(), "why": why }).to_string(),
+            payload_json: serde_json::json!({ "route": route.as_str(), "why": why, "how": how })
+                .to_string(),
         },
     }
 }
@@ -56,6 +78,19 @@ pub(super) fn chosen(route: Route, reply: &str) -> Effect {
 /// turn it drives ended in the wrong place.
 pub fn stage_of(payload_json: &str) -> String {
     serde_json::from_str::<String>(payload_json).unwrap_or_default()
+}
+
+/// Whether the model actually voted for the route a `ROUTE_CHOSEN` fact names.
+/// `false` is the fallback: nothing readable was written and `react` is the
+/// machine's own choice, not the model's.
+///
+/// A separate reader rather than a third element on `route_of`'s tuple, so a
+/// view that only wants the route and the reason keeps compiling.
+pub fn route_voted(payload_json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(payload_json)
+        .ok()
+        .and_then(|v| v.get("how").and_then(|s| s.as_str()).map(|s| s == VOTE_VOTED))
+        .unwrap_or_default()
 }
 
 /// Which route a `ROUTE_CHOSEN` fact names, and what decided it.

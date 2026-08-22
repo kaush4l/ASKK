@@ -31,6 +31,11 @@
 
 use crate::toolbox::Toolbox;
 
+/// The one fact whose source of truth is `c2w.js`, not `image/Dockerfile`.
+mod deadline;
+
+pub use deadline::{PARTIAL_MARK, RUN_LIMIT_SECS};
+
 /// One thing that is true of the workspace, and the sentence that says it.
 ///
 /// The `id` is for the machine — `tests/stated.rs` reports which fact went
@@ -113,6 +118,7 @@ pub fn facts(tools: &Toolbox) -> Vec<Fact> {
     vec![
         fact("cwd", CWD.into()),
         fact("queue", QUEUE.into()),
+        fact("deadline", deadline::deadline()),
         fact("network", network(tools)),
         fact("binaries", binaries()),
     ]
@@ -152,8 +158,9 @@ const CWD: &str = "linux: a real Linux, in this browser, that runs the commands 
 /// that the SCHEDULING cost of that refusal was nowhere on screen or in the
 /// prompt. It is here now.
 const QUEUE: &str = "one shell: there is a single shell in there, shared by every agent in \
-                     this browser, so commands queue — yours waits for whatever is already \
-                     running, and a long one holds up everybody else's.";
+                     this browser AND by the person's own Commands view and file panes, so \
+                     everything queues — yours waits for whatever is already running, and a \
+                     long one holds up everybody else's.";
 
 // THE `durable()` FACT IS NOT SAID HERE, and a test decided that rather than an
 // argument. It belongs to `components::space`, which renders whenever there IS a

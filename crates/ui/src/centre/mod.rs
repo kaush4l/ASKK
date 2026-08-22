@@ -29,7 +29,7 @@ use crate::shell::views::View;
 use crate::files::breadcrumbs;
 use crate::gallery;
 use dashboard::DashboardView;
-use panels::{AgentsView, ChatView, SettingsView, StageHead, TraceView, WorkspaceView};
+use panels::{AgentsView, ChatView, DebugView, SettingsView, StageHead, TraceView, WorkspaceView};
 
 /// The centre column. One `Signal` per thing two regions disagree about; the
 /// prop list is long because the shell owns the state and this the layout.
@@ -58,15 +58,12 @@ pub fn Stage(
         // the nav; `tabindex=-1` so it holds focus outside the tab order.
         div { class: "stage primary", id: "content", tabindex: "-1",
             StageHead { here, loaded, authored, selected }
-            if here == View::Dashboard {
-                DashboardView { web, tick, selected, agents, view, fragment }
-            }
+            if here == View::Dashboard { DashboardView { web, tick, selected, agents, view, fragment } }
             ChatView { here, web, endpoint_set, tick, tokens, roster, loaded, selected, view }
-            if here == View::Agents {
-                AgentsView { web, tick, loaded, authored, agents, selected }
-            }
+            if here == View::Agents { AgentsView { web, tick, loaded, authored, agents, selected } }
             if here == View::Workspace { WorkspaceView { web, tick, selected } }
             if here == View::Trace { TraceView { web, tick, selected, view } }
+            if here == View::Debug { DebugView { web, tick, selected } }
             if here == View::Settings { SettingsView { web, endpoint_set, tick } }
             if here == View::DesignSystem {
                 breadcrumbs::DesignCrumb { view }

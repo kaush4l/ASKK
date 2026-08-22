@@ -5,14 +5,17 @@
 //! spawner as an `error` event, and that the Worker keeps running afterwards so
 //! the next goal can be delivered to it. Both are pinned below.
 //!
-//! What is NOT pinned here, and why: `ask`, `listen` and `Live` are
-//! `pub(crate)` behind a private `mod workers` (`lib.rs`), so this package —
-//! which depends on `adapters_web` as an ordinary crate — cannot call them.
-//! These tests therefore exercise the same Worker mechanics through the same
-//! browser API, one layer under the code that uses them; the refusal SENTENCE
-//! is host-tested in `reply/turn.rs`. A test that drove `ask` end to end would
-//! need those items exported, which is a change to files this round does not
-//! own.
+//! What is NOT pinned here, and why: `ask` and `Live` are `pub(crate)` behind a
+//! private `mod workers` (`lib.rs`), so this package — which depends on
+//! `adapters_web` as an ordinary crate — cannot call them. These tests
+//! therefore exercise the same Worker mechanics through the same browser API,
+//! one layer under the code that uses them; the refusal SENTENCE is host-tested
+//! in `reply/turn.rs`. A test that drove `ask` end to end would need it
+//! exported, and nothing has yet needed that enough to widen the seam.
+//!
+//! `listen` IS reachable now, through `AgentWorkers::listen_to` — opened for
+//! `crashed_peer.rs` beside this, which runs our own `on_error` rather than
+//! only the browser behaviour it stands on.
 
 use std::cell::RefCell;
 use std::rc::Rc;

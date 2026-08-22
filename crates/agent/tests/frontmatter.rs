@@ -103,3 +103,70 @@ fn every_key_the_refusal_offers_is_a_key_the_reader_accepts() {
     // …and a name in neither place is still refused.
     assert!(parse_agent_file("fixture", "---\nname: h\ngoal.chck: x\n---\nB.\n").is_err());
 }
+
+/// THE GLOSS IS PART OF THE PARSER'S VOCABULARY, AND NOW SOMETHING SAYS SO.
+///
+/// `ui/authoring/key_help.rs` claims in its own doc comment that "a key that
+/// exists in the parser and not here is a visible gap rather than a silent
+/// one". That was true only of a reader who happened to compare the two lists:
+/// nothing enforced it, and five keys — `faculties`, `passes` and the three
+/// dotted `goal.*` — had already gone missing, while `role` was still glossed
+/// with `summarizer`, a job deleted from `spec::ROLES`. The panel whose whole
+/// subject is what an agent file may say was the thing saying it wrongly (I16).
+///
+/// The source is read as TEXT because the gloss lives in the UI crate, which
+/// this pure one cannot depend on (I3). The refusal is the same machine-read
+/// vocabulary `every_key_the_refusal_offers_is_a_key_the_reader_accepts` uses,
+/// so neither side of this comparison is typed out here.
+const KEY_HELP: &str = include_str!("../../ui/src/authoring/key_help.rs");
+
+fn glossed() -> Vec<(String, String)> {
+    let block = KEY_HELP
+        .split("const KEYS: &[(&str, &str)] = &[")
+        .nth(1)
+        .expect("the gloss list is where this test says it is")
+        .split("\n];")
+        .next()
+        .expect("…and it ends");
+    block
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("(\""))
+        .filter_map(|l| l.split_once("\", \""))
+        .map(|(key, said)| (key.to_string(), said.trim_end_matches("\"),").to_string()))
+        .collect()
+}
+
+#[test]
+fn every_key_the_parser_reads_is_glossed_for_the_person_writing_the_file() {
+    let offered = refusal("---\nname: helper\nnosuchkey: x\n---\nBody.\n");
+    let mut parser: Vec<String> = offered
+        .split("the keys are: ")
+        .nth(1)
+        .expect("the refusal prints the vocabulary")
+        .split(", ")
+        .map(|k| k.trim().to_string())
+        .collect();
+    let mut shown: Vec<String> = glossed().into_iter().map(|(k, _)| k).collect();
+    assert!(!shown.is_empty(), "the gloss list was found and parsed");
+    parser.sort();
+    shown.sort();
+    assert_eq!(shown, parser, "the Agents panel glosses exactly the keys the parser reads");
+}
+
+/// …and the gloss of `role` names the jobs that EXIST. It named `summarizer`
+/// for three increments after the role was deleted, which is worse than a
+/// missing key: a person following it writes a line the parser now refuses.
+#[test]
+fn the_role_gloss_names_every_role_and_no_deleted_one() {
+    let (_, said) = glossed()
+        .into_iter()
+        .find(|(k, _)| k == "role")
+        .expect("`role` is glossed");
+    for role in agent::ROLES {
+        assert!(said.contains(role), "the gloss of `role` names `{role}`: {said}");
+    }
+    assert!(
+        !KEY_HELP.contains("summarizer"),
+        "`summarizer` is not a role any more; the panel must not offer it"
+    );
+}

@@ -320,7 +320,7 @@ text, concatenated in log order — the same material `Observations` renders.
 
 | Failure | What actually happens | What the person sees |
 |---|---|---|
-| Strategy votes `project` on a greeting | four calls billed for "hello" | `core.route_chosen` carries `{route, why}`; the WHY clause is on the trace row beside the token meter. Already shipped |
+| Strategy votes `project` on a greeting | four calls billed for "hello" | `core.route_chosen` carries `{route, why, how}`; the WHY clause is on the trace row beside the token meter, and `how` says whether the route was VOTED for or fallen back to — `react` reached both ways used to emit an identical fact. Already shipped |
 | Strategy votes `react` on a build request | no plan, no verify, no critique — one react loop | Nothing distinguishes it from a correct react turn. **Unfixed, and named in §8** |
 | Plan writes no CHECK line | verify sheet has no command named | Verify's reply says what is unchecked and why; the turn ends `unchecked` (`ending::UNCHECKED`) |
 | CHECK line exists, `goal.check` does not | the harness runs nothing | Verify's reply says the CHECK line is prose and no `goal.check` is declared. This is the one *new* confusing state and it earns its own sentence in `verify.md` |

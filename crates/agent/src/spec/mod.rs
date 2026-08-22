@@ -59,8 +59,11 @@ pub struct AgentSpec {
     pub model: String,
     pub temperature: Option<f64>,
     pub engine: String,
-    /// Which job in the app this agent holds — `entry`, `summarizer`, or
-    /// empty for the ordinary case of holding none (`ROLE_ENTRY`).
+    /// Which job in the app this agent holds — one of [`ROLES`], or empty for
+    /// the ordinary case of holding none. It is the FILE's declaration, and
+    /// `loader::settle_roles` may clear it when a second file claims the same
+    /// job: one holder per role, and the collision is reported rather than
+    /// resolved in silence.
     #[serde(default)]
     pub role: String,
     /// The loop this agent runs, in order (`crate::stages`). Empty is the

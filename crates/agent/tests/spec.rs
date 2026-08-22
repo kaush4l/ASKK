@@ -199,3 +199,48 @@ fn an_empty_frontmatter_name_falls_back_to_the_folder() {
     let nameless = parse_agent_file("", "---\nname: \n---\nbody").expect_err("no name anywhere");
     assert!(format!("{nameless:?}").contains("name"), "{nameless:?}");
 }
+
+/// TWO FILES CLAIMING ONE JOB IS A PROBLEM, AND SAYING SO IS THE FIX.
+///
+/// Copying `public/agents/main/agent.md` is how a person writes a new agent —
+/// there is no template and no scaffold — and that file carries `role: entry`
+/// buried in its frontmatter. The copy then held the role too, `problems` came
+/// back empty, and `role_holder` handed the conversation to whichever name
+/// sorted first: a new `librarian` silently became the agent this page talks
+/// to. Determinism was never the defect; SILENCE was.
+#[test]
+fn two_agents_claiming_one_role_is_reported_and_only_one_keeps_it() {
+    let entry = |dir: &str| {
+        (
+            dir.to_string(),
+            format!("---\nname: {dir}\ndescription: d\nrole: entry\n---\nYou answer."),
+        )
+    };
+    let (loaded, problems) = load_agents(vec![entry("main"), entry("librarian")]);
+    assert_eq!(loaded.len(), 2, "both agents still load: a collision is not a parse failure");
+    assert_eq!(problems.len(), 1, "the collision is reported: {problems:?}");
+    let said = &problems[0];
+    assert!(said.contains("entry"), "the job is named: {said}");
+    assert!(said.contains("librarian") && said.contains("main"), "both files are named: {said}");
+    // FIRST BY NAME WINS, on `loader`'s determinism rule, and the loser does
+    // not go on carrying a job it does not hold.
+    let holder = agent::role_holder(&loaded, agent::ROLE_ENTRY).expect("someone holds it");
+    assert_eq!(holder.name, "librarian", "sorted first, as it resolves on every boot");
+    let loser = loaded.iter().find(|s| s.name == "main").expect("still loaded");
+    assert_eq!(loser.role, "", "the loser's card no longer claims a job it does not hold");
+}
+
+/// …and the same hole was open on `critic`, whose loser is `state.critic`.
+#[test]
+fn a_second_critic_is_reported_too() {
+    let file = |dir: &str| {
+        (
+            dir.to_string(),
+            format!("---\nname: {dir}\ndescription: d\nrole: critic\n---\nYou judge."),
+        )
+    };
+    let (loaded, problems) = load_agents(vec![file("critic"), file("auditor")]);
+    assert_eq!(problems.len(), 1, "reported: {problems:?}");
+    assert!(problems[0].contains("critic"), "{problems:?}");
+    assert_eq!(loaded.iter().filter(|s| s.role == agent::ROLE_CRITIC).count(), 1, "one holder");
+}

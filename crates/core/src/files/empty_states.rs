@@ -159,13 +159,23 @@ pub(crate) fn folder(ctx: &Ctx, listed: &Option<Seen>) -> FragmentBuilder {
         Some(Seen { path: at, ok: false, output }) => list
             .attr("data-path", at)
             .attr("data-failed", "1")
-            .child(
-                FragmentBuilder::new("p")
-                    .class("error")
-                    .text(&format!("Could not list {at}: {output}"))
-                    .build(),
-            ),
+            .child(FragmentBuilder::new("p").class("error").text(&refused(at, output)).build()),
         Some(Seen { path: at, output, .. }) => entries(ctx, list, at, output),
+    }
+}
+
+/// WHY A LISTING THAT FAILED MAY HAVE NO FOLDER TO NAME. `list_files` refuses a
+/// missing `path` rather than guessing the workspace root
+/// (`workspace/gate/files.rs`, `no_path`), and the projection stopped guessing
+/// with it — so `at` is empty on exactly that refusal. "Could not list : …"
+/// puts a colon where the folder should be, and reads as a rendering fault
+/// rather than as the refusal it is. The `output` beside it already says what
+/// was wrong; the headline only has to stop claiming a folder was involved.
+fn refused(at: &str, output: &str) -> String {
+    if at.is_empty() {
+        format!("Could not list a folder: {output}")
+    } else {
+        format!("Could not list {at}: {output}")
     }
 }
 

@@ -126,9 +126,12 @@ fn the_facts_are_the_environment_block_and_not_loose_text() {
     for fact in guest_facts(&main_toolbox()) {
         assert!(block.contains(&fact.says), "`{}` is outside the block: {block}", fact.id);
     }
-    // The four T48 sentences, by their subject rather than by their wording,
-    // so a rewrite that keeps the meaning keeps this test green.
-    for subject in ["one shell", "network: none", "web_search", "busybox"] {
+    // The T48 sentences, by their subject rather than by their wording, so a
+    // rewrite that keeps the meaning keeps this test green. `180 seconds` is
+    // T53's: an agent that does not know the ceiling writes commands that
+    // cannot finish, and one that does not know a cut-off answer is MARKED
+    // reads a truncated build log as the whole of it.
+    for subject in ["one shell", "network: none", "web_search", "busybox", "180 seconds"] {
         assert!(
             block.to_lowercase().contains(&subject.to_lowercase()),
             "the block never mentions {subject}: {block}"
@@ -168,4 +171,66 @@ fn an_agent_that_cannot_run_a_command_is_told_nothing_about_the_shell() {
         }
     }
     assert!(guest_facts(&Toolbox::default()).is_empty());
+}
+
+/// **THE DEADLINE IS ONE NUMBER, DECLARED HERE AND ENFORCED IN THE .JS.**
+///
+/// `RUN_MS` lives in `crates/adapters_web/src/c2w.js`, which Rust cannot
+/// import: it is a wasm-bindgen snippet, loaded by the browser, in a crate the
+/// pure core is forbidden to depend on (I3). So the number is DECLARED in
+/// `agent::environment` — the file that already declares what the guest
+/// contains, for the same reason and with the same honest limit — and this
+/// test reads the JavaScript and asserts the two agree. A number typed twice
+/// is a number that will drift; this is the gate that turns red when it does.
+///
+/// It greps a source file, which is the weaker half of I17 and is said out
+/// loud: it pins the DECLARATION against the SOURCE, not against a running
+/// engine. What a booted container2wasm actually does at 180 seconds is
+/// unpinnable from this crate and from the browser suite alike — the machine
+/// fact that would settle it is a cross-origin-isolated document serving the
+/// ~48 MB guest image inside the test harness, and no gate command has one.
+#[test]
+fn the_deadline_the_model_is_told_is_the_one_the_engine_enforces() {
+    let js = std::fs::read_to_string(C2W_JS).expect("c2w.js is readable");
+    let ms = after(&js, "RUN_MS = ").expect("c2w.js declares RUN_MS");
+    assert_eq!(
+        ms.parse::<u64>().expect("RUN_MS is a number of milliseconds"),
+        agent::GUEST_RUN_LIMIT_SECS * 1000,
+        "the engine's watchdog and the sentence the model reads disagree: \
+         c2w.js says {ms}ms, `agent::environment::RUN_LIMIT_SECS` says {}s",
+        agent::GUEST_RUN_LIMIT_SECS
+    );
+}
+
+/// …AND THE MARK ON A TRUNCATED ANSWER IS ONE STRING TOO. The model is told to
+/// look for it, so a rewording in the JavaScript that never reached the prompt
+/// would teach the model to watch for a mark that no longer appears — the
+/// drift I16 exists to stop, in the one place a model is least able to notice
+/// it: an answer that looks complete.
+#[test]
+fn the_mark_on_a_truncated_answer_is_the_one_the_engine_writes() {
+    let js = std::fs::read_to_string(C2W_JS).expect("c2w.js is readable");
+    assert!(
+        js.contains(agent::GUEST_PARTIAL_MARK),
+        "c2w.js never writes {:?}, which the prompt tells the model means the \
+         output above it was cut off",
+        agent::GUEST_PARTIAL_MARK
+    );
+    let block = std::fs::read_to_string(C2W_JS).expect("c2w.js");
+    assert!(
+        block.contains("status: KILLED"),
+        "a timeout must come back as an EXECUTION carrying what the command printed, \
+         not as a `WorkspaceError::Failed` that has nowhere to put it"
+    );
+}
+
+/// Where the watchdog actually lives. Relative to this crate, because the
+/// suite is run from anywhere.
+const C2W_JS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../adapters_web/src/c2w.js");
+
+/// The digits immediately after `needle`, if it is there.
+fn after(text: &str, needle: &str) -> Option<String> {
+    let rest = text.split_once(needle)?.1;
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    (!digits.is_empty()).then_some(digits)
 }

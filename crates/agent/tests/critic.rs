@@ -142,7 +142,16 @@ fn the_shipped_critic_is_granted_nothing_and_keeps_the_space_it_judges_against()
     let index: serde_json::Value = serde_json::from_str(INDEX).expect("the manifest parses");
     let names = index["agents"].as_array().expect("agents is a list");
     let listed: Vec<&str> = names.iter().filter_map(serde_json::Value::as_str).collect();
-    assert_eq!(listed, ["main", "critic"], "both jobs ship: {names:?}");
+    // BOTH JOBS SHIP is what this line says, so both jobs shipping is what it
+    // asserts (increment 30). It used to be `assert_eq!(listed, ["main",
+    // "critic"])`, which also refused every THIRD agent — an undocumented
+    // fourth step in "add an agent", failing here in a test about the critic
+    // for a reason nothing on the path mentioned. The exact-roster tripwire
+    // belongs where the table it guards lives, and it is there, once:
+    // `tests/prompt.rs::the_manifest_and_this_table_name_the_same_agents`.
+    for job in ["main", "critic"] {
+        assert!(listed.contains(&job), "both jobs ship: {names:?}");
+    }
     let main = parse_agent_file("main", MAIN).expect("the shipped main parses");
     let roster = [main.clone(), critic.clone()];
     let holder = agent::role_holder(&roster, agent::ROLE_CRITIC).expect("the role has a holder");

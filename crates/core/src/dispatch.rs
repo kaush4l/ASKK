@@ -50,6 +50,7 @@ pub fn builtin_entry(id: &ModuleId) -> Option<BuiltinHandler> {
         "terminal" => Some(crate::terminal::pane::terminal),
         "files" => Some(crate::files::pane::files),
         "processes" => Some(crate::proc::pane::processes),
+        "debug" => Some(crate::debug::pane::debug),
         "status" => Some(builtins::status),
         _ => None,
     }

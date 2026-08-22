@@ -120,6 +120,20 @@ pub(crate) async fn run(
         _ => space.post(&author, text("note")),
     };
     let stamp = format!("{:013}-{author}-{nonce:04x}", at.0);
+    // A REFUSAL IS NOT A SUCCESS, and `ok` is the flag every projection colours
+    // by. `Change::None` is the pure half saying it did nothing — *"Nothing
+    // recorded: a fact needs a key."*, *"Nothing posted: the note was empty."*,
+    // *"No fact called 'x'"* — and `write` answers `Ok(())` to it, correctly:
+    // there was nothing to store and the STORE did not fail. Reading that
+    // `Ok` as the CALL's outcome painted those three sentences green in the
+    // Tool trace, which is the pane a person opens to find out what went
+    // wrong. The prose was always right; only the flag was lying.
+    //
+    // The duplicate note — *"That note is already on the research board."* — is
+    // here too, and deliberately: the board is unchanged and this call put
+    // nothing on it. A row that says "nothing happened" in green is the same
+    // lie in a milder form.
+    let refused = change.is_none();
     let stored = write(kv.as_ref(), &space.name, change, &stamp).await;
     // What the tool just changed, in the state the tools read. The prompt
     // catches up at the top of the next `drive` pass, which is before the next
@@ -128,7 +142,7 @@ pub(crate) async fn run(
     Some(EventKind::ToolInvoked {
         tool: tool.clone(),
         args: args_json.to_string(),
-        ok: stored.is_ok(),
+        ok: stored.is_ok() && !refused,
         output: match stored {
             Ok(()) => said,
             // The space is what the GROUP knows; a write nobody else can read

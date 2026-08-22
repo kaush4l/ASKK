@@ -37,7 +37,7 @@ use crate::strategy::{self, STRATEGY};
 
 mod facts;
 
-pub use facts::{route_of, stage_of, ROUTE_CHOSEN, STAGE_ENTERED};
+pub use facts::{route_of, route_voted, stage_of, ROUTE_CHOSEN, STAGE_ENTERED, VOTE_FELL_BACK, VOTE_VOTED};
 pub(crate) use facts::entered;
 use facts::chosen;
 

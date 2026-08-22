@@ -101,13 +101,22 @@ pub(crate) fn current(ctx: &Ctx, who: &str) -> Option<String> {
 /// what it says today.
 pub(crate) fn said(ctx: &Ctx, who: &str) -> Option<String> {
     let stage = current(ctx, who)?;
-    let declared = ctx
-        .agents
-        .iter()
-        .find(|spec| spec.name == who)
-        .map_or(&[][..], |spec| spec.stages.as_slice());
-    let clause = match declared.iter().position(|s| *s == stage) {
-        Some(nth) => format!("stage {} of {}: {stage}", nth + 1, declared.len()),
+    let declared = || {
+        ctx.agents
+            .iter()
+            .find(|spec| spec.name == who)
+            .map_or_else(Vec::new, |spec| spec.stages.clone())
+    };
+    // THE LIST THE TURN IS REALLY WALKING, and only then the file's. The vote
+    // REPLACES `state.stages` with `Route::stages()` (`agent::stages::route`),
+    // so counting against the declaration was counting against a list the turn
+    // stopped walking the moment it chose one: the only shipped agent declares
+    // `stages: [strategy]`, so `work`, `plan`, `verify` and `critique` all
+    // missed the lookup and printed a bare name. No shipped agent has ever had
+    // a correct stage count. The route fact is what says which list it is.
+    let walking = crate::debug::route::walked_now(ctx, who).unwrap_or_else(declared);
+    let clause = match walking.iter().position(|s| *s == stage) {
+        Some(nth) => format!("stage {} of {}: {stage}", nth + 1, walking.len()),
         None => stage,
     };
     // …AND WHICH LAP OF THEM (31). The stage says where in one walk of the list

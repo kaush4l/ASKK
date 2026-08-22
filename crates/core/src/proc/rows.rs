@@ -4,6 +4,7 @@
 //! what those routes project — the same split `files/pane.rs` and `files/listing.rs`
 //! have.
 
+use context::Args;
 use kernel::{EventKind, ToolId};
 use module::view::FragmentBuilder;
 
@@ -39,11 +40,20 @@ fn started(ctx: &Ctx) -> Vec<String> {
         if *tool != ToolId("start_process".into()) {
             continue;
         }
-        let name = serde_json::from_str::<serde_json::Value>(args)
-            .ok()
-            .and_then(|v| Some(v.get("name")?.as_str()?.to_string()))
-            .unwrap_or_default();
-        if !name.is_empty() && !names.contains(&name) {
+        // `name` is a NAME — an identifier, and literally a directory under
+        // `.harness/proc/`. The reading is not this pane's to decide: it is the
+        // EXECUTOR's own, `agent::process_name` through
+        // `proc::convention::run` (`crates/core/src/proc/convention.rs:72`), so
+        // the row can only name a directory that was actually made. It used to
+        // read `v.get("name")` raw, and `start_process({"name": " web "})` made
+        // `.harness/proc/web` while this pane listed `" web "` — a row whose
+        // Stop button pointed at nothing. A name the executor would have
+        // REFUSED started no process, so it belongs in no row either.
+        let said = Args::parse(args);
+        let Ok(name) = agent::process_name(said.name("name").unwrap_or_default()) else {
+            continue;
+        };
+        if !names.contains(&name) {
             names.push(name);
         }
     }

@@ -1,6 +1,7 @@
 //! The workspace, run. `agent::workspace` declares the four tools and the one
-//! path rule; this file is the single place a command actually runs, exactly
-//! as `tools::run` is for the local tools and `builtin_entry` is for a module.
+//! path rule; this module — this file and the two children below it — is the
+//! single place a command actually runs, exactly as `tools::run` is for the
+//! local tools and `builtin_entry` is for a module.
 //!
 //! The GATE is here and nowhere else (ADR-006, I6). An agent's grant comes
 //! from its space and from nothing it can write: no space, no root, no
@@ -15,6 +16,12 @@ use context::Args;
 use kernel::{CapabilityGrant, EventKind, Execution, ToolId, WorkspaceError};
 
 use crate::app::App;
+
+/// The ceiling on one result, and the four one-shot tools with the words that
+/// refuse a call missing an argument. Both are prose written for the model, and
+/// prose takes room: this file is at the 200-line ceiling (I12).
+mod cap;
+mod files;
 
 /// This agent's workspace grant, or the reason it has none. One definition,
 /// so the tool, the terminal pane and the prompt cannot disagree about who may
@@ -111,29 +118,9 @@ async fn perform(
     if let Some(ran) = crate::observe::run(port, root, tool, args).await {
         return ran;
     }
-    // `path` is a NAME: an identifier for a place, where surrounding space is a
-    // typo — and `agent::relative_path` already trims it
-    // (`crates/agent/src/workspace.rs:153`), so the reader agrees with the
-    // validator instead of disagreeing with it silently.
-    let path = || agent::relative_path(args.name("path").unwrap_or_default());
-    let ran = match tool {
-        // `command` is a NAME: blank must be refused, which is the check that
-        // was here by hand, and a shell does not care about the space around it.
-        "exec" => match args.name("command") {
-            Err(_) => {
-                return Err("no command given. Call it as exec({\"command\": \"ls -l\"})".into())
-            }
-            Ok(command) => port.exec(root, command).await,
-        },
-        "read_file" => port.read(root, &path()?).await,
-        // `contents` is TEXT, and this is the line the split exists for. A
-        // reader that trimmed here would strip the trailing newline off every
-        // file an agent ever wrote, silently, with the gate green
-        // (`crates/core/tests/roundtrip.rs`).
-        "write_file" => port.write(root, &path()?, args.text("contents").unwrap_or_default()).await,
-        _ => port.list(root, &path()?).await,
-    };
-    ran.map_err(unavailable)
+    // …and then the four one-shot tools, which are the ones that read a `path`
+    // and a `contents` and therefore the ones with arguments to refuse.
+    files::run(port, root, tool, args).await
 }
 
 /// A port failure in the words a model — or a person — can act on. An absent
@@ -185,11 +172,13 @@ pub(crate) fn is_prose(output: &str) -> bool {
 
 /// What the caller is told. The exit status is reported in words whenever it
 /// is not zero: a command that failed silently reads exactly like one that
-/// printed nothing and succeeded.
+/// printed nothing and succeeded. Over the ceiling the middle is cut and the
+/// cut says so — see `cap`, which is the only edit this function makes to
+/// bytes the guest printed.
 pub(crate) fn said(ran: &Execution) -> String {
     let output = match ran.output.trim().is_empty() {
         true => "(no output)".to_string(),
-        false => ran.output.trim_end().to_string(),
+        false => cap::capped(ran.output.trim_end().to_string()),
     };
     match ran.status {
         0 => output,

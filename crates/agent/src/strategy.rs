@@ -65,24 +65,90 @@ impl Route {
     }
 }
 
-/// The vote, read out of the reply. Only a line whose first word is `ROUTE`
-/// counts, and only the three words count as votes — everything else is the
-/// middle route, for the reason in this file's header.
-pub fn route_of(reply: &str) -> Route {
-    let voted = reply
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("ROUTE"))
-        .filter_map(|rest| rest.trim_start().strip_prefix(':'))
-        .map(|word| word.trim().trim_matches(['*', '`', '.', '"']).to_lowercase())
-        .next();
-    match voted.as_deref() {
-        Some("answer") => Route::Answer,
-        Some("project") => Route::Project,
-        _ => Route::React,
+/// The label the vote is written under, and the label its reason is written
+/// under. Named here because `stages::facts` reads the second one out of the
+/// same reply and the two must be read the same way — a model that decorates
+/// one label decorates both.
+pub const ROUTE: &str = "ROUTE";
+pub const WHY: &str = "WHY";
+
+/// The value written on the line labelled `label`, or `None` if no line is.
+///
+/// THE LABEL IS CLEANED EXACTLY AS THE VALUE IS, which is the whole of this
+/// function. The contract asks for two named lines; a small model writes them
+/// as a markdown list about as often as it writes them bare, and it emphasises
+/// the label because a label looks like a heading. `**ROUTE:** project`,
+/// `- ROUTE: answer` and `1. ROUTE: project` were all unreadable while the
+/// value alone was being trimmed, and an unreadable vote is a silent `react`.
+///
+/// It still has to OPEN its line, after a list marker and emphasis come off and
+/// after nothing else. Finding the label anywhere would make a sentence about
+/// routing into a vote, and the model is asked to explain itself on the line
+/// below.
+pub(crate) fn labelled<'a>(reply: &'a str, label: &str) -> Option<&'a str> {
+    reply.lines().find_map(|line| {
+        let (found, value) = unmarked(line).split_once(':')?;
+        plain(found).eq_ignore_ascii_case(label).then(|| plain(value))
+    })
+}
+
+/// A line with its list marker taken off: `-`, `*`, `+`, `1.`, `2)`. A marker
+/// counts only when whitespace follows it, which is what stops `**ROUTE**`
+/// from being read as a bullet.
+fn unmarked(line: &str) -> &str {
+    let line = line.trim();
+    match line.split_once(char::is_whitespace) {
+        Some((head, rest)) if is_marker(head) => rest.trim_start(),
+        _ => line,
     }
 }
 
-/// The reply shape the strategy stage demands.
+fn is_marker(head: &str) -> bool {
+    let numbered = head
+        .strip_suffix(['.', ')'])
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+    matches!(head, "-" | "*" | "+") || numbered
+}
+
+/// Whitespace and the decoration a model puts round a field: emphasis, code
+/// spans, quotes, and the full stop it ends a sentence with.
+fn plain(text: &str) -> &str {
+    text.trim_matches(|c: char| c.is_whitespace() || "*`_\"'.".contains(c))
+}
+
+/// THE VOTE, or `None` when the reply did not contain one. The `None` is the
+/// point: `route_of` turns it into `react`, and a fallback that looked
+/// identical to a vote for `react` made the one decision this stage exists to
+/// make unreadable in the log (`stages::facts`).
+pub fn vote_in(reply: &str) -> Option<Route> {
+    match labelled(reply, ROUTE)?.to_lowercase().as_str() {
+        "answer" => Some(Route::Answer),
+        "react" => Some(Route::React),
+        "project" => Some(Route::Project),
+        _ => None,
+    }
+}
+
+/// The vote, read out of the reply, failing towards the middle route for the
+/// reason in this file's header.
+pub fn route_of(reply: &str) -> Route {
+    vote_in(reply).unwrap_or(Route::React)
+}
+
+/// The reply shape the strategy stage demands — THE SHAPE, AND NOT THE
+/// CRITERIA.
+///
+/// The criteria used to be here, as a string literal, while the file a person
+/// opens to tune routing — `public/stages/strategy.md` — held one sentence and
+/// no criteria at all. So the half that decided the route could not be edited
+/// without a rebuild and the half that could be edited changed nothing.
+///
+/// THEY MOVED TO THE BRIEF, AND IT IS SAFE FOR THEM TO LIVE ONLY THERE. This
+/// object reaches a model through exactly one path — `brief::contract` returns
+/// it for the `strategy` stage and no other — and `brief::keyed` lists that
+/// same stage among the ones that MUST be briefed, so `strategy.md` is loaded
+/// or the turn refuses before this constant is ever rendered. One source, no
+/// copy to drift; `tests/strategy.rs` holds the test that keeps it that way.
 ///
 /// WHY IT ALSO ASKS FOR `WHY`. A single-token reply from a small model is a
 /// guess as often as a decision; one clause of justification is the cheapest
@@ -91,17 +157,15 @@ pub fn route_of(reply: &str) -> Route {
 /// machine chose, and the line says what it chose it on.
 pub const OBJECT: ResponseObject = ResponseObject {
     about: "Decide how much work this message needs before anything is done about it. \
-        `answer` — you can answer it now from what you already know or from earlier turns. \
-        `react` — it needs a tool first: a search, a file, a command, something you must look \
-        up. `project` — it is something to build or work through in more than one step, and \
-        it is worth planning before starting. When two fit, pick the smaller one.",
+        The routes, and how to choose between them, are set out in the directive block \
+        above.",
     fields: &[
         Field {
-            name: "ROUTE",
+            name: ROUTE,
             about: "one word — answer, react, or project",
         },
         Field {
-            name: "WHY",
+            name: WHY,
             about: "one short clause saying what decided it",
         },
     ],

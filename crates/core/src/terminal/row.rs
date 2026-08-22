@@ -74,11 +74,16 @@ pub(crate) fn space_of(ctx: &Ctx, who: &str) -> Option<agent::Space> {
 
 /// The command out of the JSON the tool was called with; the raw arguments if
 /// it was something else, because a trace that hides what was asked is not one.
+///
+/// `command` is a NAME, and again the choice is the GATE's: it reads this
+/// argument with `Args::name` (`crates/core/src/workspace/gate/files.rs:48`) because
+/// a blank command must be refused and a shell does not care about the space
+/// around one. So the row shows the command that RAN. Read raw, `  ls -l  `
+/// typed into the box was echoed with its padding while the workspace was handed
+/// `ls -l`, and `trace::requested_by::pop_typed` matched the two by luck.
 pub(crate) fn command_of(args_json: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(args_json)
-        .ok()
-        .and_then(|v| Some(v.get("command")?.as_str()?.to_string()))
-        .unwrap_or_else(|| args_json.to_string())
+    let said = context::Args::parse(args_json);
+    said.name("command").map(str::to_string).unwrap_or_else(|_| args_json.to_string())
 }
 
 /// The prompt, and WHO typed at it. The trace attributed every call and this

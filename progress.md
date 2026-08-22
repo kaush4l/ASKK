@@ -156,8 +156,14 @@ they are `node` inside the VM, priced after increment 10.
 
 - **`public/agents/index.json` is the manifest, and it is the one place to register an agent.** A
   static host cannot list a directory, so the app cannot discover folders on its own. Adding an
-  agent is two steps and no code: create `public/agents/<name>/agent.md`, add `"<name>"` to the
-  `agents` array in `public/agents/index.json`. A folder that is not listed is never fetched. The
+  agent is two steps and no code IN THE APP: create `public/agents/<name>/agent.md`, add `"<name>"`
+  to the `agents` array in `public/agents/index.json`. A folder that is not listed is never fetched.
+  (Corrected in increment 30: SHIPPING one takes a third step in the SUITE.
+  `crates/agent/tests/prompt.rs` holds a compiled-in `SHIPPED` table of every shipped agent —
+  `include_str!` needs a literal path — and `cargo test --workspace` fails on it until the new
+  name is added there too.
+  That sentence stood at "two steps" from increment 25, when `critic` shipped, until a person
+  followed it and exited 101.) The
   alternative — generating the list at build time — was rejected because it puts the agents back
   behind a rebuild, which is the thing this increment exists to remove.
 - **Built-ins are compiled in, the project files are fetched, and the fetched file wins.** The

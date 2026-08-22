@@ -758,10 +758,13 @@ fn granted_in_this_stage(prompt: &str) -> Vec<String> {
 ///
 /// THE LIMIT, RECORDED WITH THE RULE (I16). That third exclusion is also a
 /// concession to the token rule: `now` is a shipped tool AND an ordinary
-/// English word, and the strategy stage's contract says "you can answer it now
-/// from what you already know". The alternative was rewording harness prose to
-/// dodge a tool's name, which is the tail wagging the dog. So a tool named in
-/// the response contract and nowhere else is not caught here.
+/// English word, and the strategy stage's contract used to say "you can answer
+/// it now from what you already know" — a sentence that has since moved into
+/// `public/stages/strategy.md`, which is excluded on the line above for its own
+/// reason. The concession stands whether or not that particular sentence is
+/// still there: rewording harness prose to dodge a tool's name is the tail
+/// wagging the dog. So a tool named in the response contract and nowhere else
+/// is not caught here.
 const NOT_THE_WORLD: [&str; 3] = ["affordances", "directive", "response_contract"];
 
 fn the_world_as_described(prompt: &str) -> String {
@@ -850,4 +853,53 @@ fn a_stage_brief_names_no_tool_the_agent_was_never_granted() {
             }
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE INSTRUCTIONS FOR ADDING AN AGENT, CHECKED AGAINST WHAT IT ACTUALLY TAKES
+//
+// Three documents tell a person how to ship an agent — the manifest's own
+// `comment`, the Agents panel's repository fold, and `progress.md`'s increment
+// 03 entry — and all three said TWO steps: write the file, list it in the
+// manifest. Doing exactly that exits 101, because [`SHIPPED`] above is a
+// compiled-in table of every shipped agent and
+// [`the_manifest_and_this_table_name_the_same_agents`] compares the two.
+//
+// THE RULING. The tripwire STAYS and the documents change. It cannot be
+// derived away: `include_str!` takes a literal, so the file contents of a third
+// agent cannot enter this suite without somebody typing its path — a derived
+// roster would mean the class tests below silently stop examining the new
+// agent, which is the exact failure that comment says the table exists to
+// prevent. What was wrong was never the tripwire; it was three documents
+// describing a two-step process that has been a three-step one since increment
+// 25 shipped `critic`.
+//
+// (`tests/critic.rs`'s `assert_eq!(listed, ["main", "critic"])` was a FOURTH
+// step and is not one any more: its stated subject is that both jobs ship, and
+// a third agent joining the roster does not make that false. It now asserts
+// what it says. The exact-roster tripwire is here, once, where the table it
+// guards lives.)
+//
+// Each document is read as text and must name this file, so the instructions
+// cannot quietly go back to two steps.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const KEY_HELP: &str = include_str!("../../ui/src/authoring/key_help.rs");
+const PROGRESS: &str = include_str!("../../../progress.md");
+
+#[test]
+fn every_document_that_says_how_to_add_an_agent_names_the_table_it_must_also_edit() {
+    let manifest: serde_json::Value =
+        serde_json::from_str(INDEX).expect("the shipped agent manifest is JSON");
+    let comment = manifest["comment"].as_str().expect("the manifest explains itself");
+    for (what, said) in [("index.json", comment), ("key_help.rs", KEY_HELP), ("progress.md", PROGRESS)]
+    {
+        assert!(
+            said.contains("crates/agent/tests/prompt.rs"),
+            "{what} tells a person how to add an agent and does not mention the compiled-in \
+             roster table they must edit for `cargo test` to pass"
+        );
+    }
+    // …and none of them still calls it a two-step job.
+    assert!(!comment.contains("Two entries"), "the manifest's comment counts the agents it lists");
 }

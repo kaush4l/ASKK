@@ -97,8 +97,15 @@ fn a_command_you_stopped_is_stopped_and_not_failed() {
 }
 
 /// …and a command that really broke is still a failure, in red. The predicate
-/// keys on the engines' own opening, so a timeout — which c2w reports through
-/// the same `Err` — keeps every word it had.
+/// keys on the engines' own opening, so any `WorkspaceError::Failed` keeps every
+/// word it had.
+///
+/// A TIMEOUT NO LONGER ARRIVES HERE. It used to reach this arm through the same
+/// `Err`, and this comment said so; `c2w.js` now returns the partial output as
+/// an `Execution` with status 130 instead, because a `WorkspaceError` has no
+/// field that can carry an output and choosing it was choosing to discard the
+/// bytes. The test below is still a correct rendering test for a command that
+/// genuinely could not run — it just no longer covers the timeout it named.
 #[test]
 fn a_command_that_really_failed_is_still_a_failure() {
     let app = booted(Rc::new(FakeShell::new().failing(

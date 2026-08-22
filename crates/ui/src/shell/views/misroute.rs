@@ -107,6 +107,10 @@ mod tests {
         assert!(super::said().is_none(), "a bare load named nothing");
         assert!(View::from_slug("trace").is_some());
         assert!(super::said().is_none(), "a real view is not a misroute");
+        // …and so is the Debug view: a nav entry the address bar cannot reach
+        // is a nav entry that lands on the Dashboard with an apology.
+        assert!(View::from_slug("debug").is_some());
+        assert!(super::said().is_none(), "the debug view is a real view");
         // …and the name this view shipped under is still a real one (F13).
         assert!(View::from_slug("workspace").is_some());
         assert!(super::said().is_none(), "the old spelling still resolves");

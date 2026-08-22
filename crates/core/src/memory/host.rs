@@ -115,7 +115,19 @@ impl ToolHost for MemoryHost {
                 "discard" => memory.discard(note_of(args)),
                 _ => memory.keep(note_of(args)),
             };
+            // A REFUSAL IS NOT A SUCCESS. `kept == None` is the pure half
+            // saying it did nothing — *"Nothing kept: the note was empty."*,
+            // *"That line is already in your memory."*, *"Nothing called that
+            // in your memory."* — and `perform` answers `Ok(())` to it,
+            // correctly: there was nothing to write and the STORE did not
+            // fail. `run_hosted` turns that `Ok` into `ok=true`, which painted
+            // all three green in the Tool trace. The words stay exactly as the
+            // pure half wrote them; only the side of the `Result` changes, and
+            // that is the side every projection colours by. The same fix, for
+            // the same reason, as `space::shared::run`.
+            let refused = kept.is_none();
             match self.perform(kv, kept).await {
+                Ok(()) if refused => Err(said),
                 Ok(()) => Ok(said),
                 // A write nobody can read back is not something the agent kept,
                 // so it is told plainly — the shape `space::shared::run` uses

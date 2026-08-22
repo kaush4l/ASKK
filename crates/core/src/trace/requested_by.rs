@@ -2,6 +2,7 @@
 //! "who did this" is a question two readers ask: the trace and the workspace
 //! scrollback.
 
+use context::Args;
 use kernel::EventKind;
 
 /// Whether this `exec` is one of the commands a PERSON typed, popping the
@@ -23,7 +24,8 @@ use kernel::EventKind;
 /// it: that index is the call's START (R13-4, `trace::row::when`).
 pub(crate) fn pop_typed(typed: &mut Vec<(&str, usize)>, args: &str) -> Option<usize> {
     let ran = crate::terminal::row::command_of(args);
-    let at = typed.iter().position(|(head, _)| typed_command(head) == ran)?;
+    // BOTH SIDES, THE ONE WAY THE GATE READS IT: it trims what it runs.
+    let at = typed.iter().position(|(head, _)| typed_command(head).trim() == ran)?;
     Some(typed.remove(at).1)
 }
 
@@ -36,12 +38,14 @@ pub(crate) fn typed_command(payload_json: &str) -> String {
         .unwrap_or_else(|_| payload_json.to_string())
 }
 
-/// Which process a `stop_process` call was about.
+/// Which process a `stop_process` call was about. `name` is a NAME and the
+/// reading is the EXECUTOR's — `agent::process_name`
+/// (`crates/core/src/proc/convention.rs:72`) — because a match is only a match
+/// when both sides read alike. `""` for a name it would refuse: no such process
+/// was started, so there is no press to find.
 fn name_of(args_json: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(args_json)
-        .ok()
-        .and_then(|v| Some(v.get("name")?.as_str()?.to_string()))
-        .unwrap_or_default()
+    let said = Args::parse(args_json);
+    agent::process_name(said.name("name").unwrap_or_default()).unwrap_or_default()
 }
 
 /// THE THIRD ACTOR'S NAME (R6-10, renamed R16-1). Not `you` and not the agent:
@@ -85,37 +89,44 @@ impl<'a> Asked<'a> {
         }
         if kind == crate::proc::pane::PANE_REQUEST {
             self.procs.push(nth);
-            match serde_json::from_str::<String>(payload_json) {
-                Ok(name) if !name.is_empty() => self.stops.push((name, nth)),
-                _ => {}
+            let said = serde_json::from_str::<String>(payload_json).unwrap_or_default();
+            if let Ok(pressed) = agent::process_name(&said) {
+                self.stops.push((pressed, nth));
             }
         }
         // Both file requests are a `(path, _)` pair, which is the whole reason
         // they can share one queue.
         if kind == crate::files::pane::OPEN_REQUEST || kind == crate::files::pane::SAVE_REQUEST {
-            if let Ok((path, _)) =
-                serde_json::from_str::<(String, serde_json::Value)>(payload_json)
-            {
-                // A SAVE IS TWO CALLS (R5-12). `workspace::save_typed` writes
-                // the file and then READS IT BACK — that read is what makes the
-                // pane show what is on disk rather than what was typed. One
-                // request accounted for the write alone, so the read came out
-                // as the agent's, over a file nobody had asked it for.
-                //
-                // …and the two halves have different OWNERS (R6-10). The write
-                // is the press: a person typed those bytes and pressed a button
-                // that says `Save to the workspace`. The read back is the pane
-                // refreshing itself. An OPEN is the pane's throughout: it lists
-                // the root on mount and re-lists on every status change, so
-                // most of that queue was never a gesture at all.
-                match kind == crate::files::pane::SAVE_REQUEST {
-                    true => {
-                        self.paths.push((path.clone(), "you", nth));
-                        self.paths.push((path, PANE, nth));
-                    }
-                    false => self.paths.push((path, PANE, nth)),
-                }
+            self.enqueue_path(kind, payload_json, nth);
+        }
+    }
+
+    /// A file request, queued under the path the GATE will read
+    /// (`agent::relative_path`, `crates/core/src/workspace/gate/files.rs:41`) — which
+    /// is how `pop_path` compares it against `files::listing::path_of`: one
+    /// reading of the argument, not two that agree by luck.
+    ///
+    /// A SAVE IS TWO CALLS (R5-12). `workspace::save_typed` writes the file and
+    /// then READS IT BACK — that read is what makes the pane show what is on
+    /// disk rather than what was typed. One request accounted for the write
+    /// alone, so the read came out as the agent's, over a file nobody had asked
+    /// it for. …and the two halves have different OWNERS (R6-10). The write is
+    /// the press: a person typed those bytes and pressed `Save to the
+    /// workspace`. The read back is the pane refreshing itself, and an OPEN is
+    /// the pane's throughout — it lists the root on mount and re-lists on every
+    /// status change, so most of that queue was never a gesture at all.
+    fn enqueue_path(&mut self, kind: &str, payload_json: &str, nth: usize) {
+        let Ok((asked, _)) = serde_json::from_str::<(String, serde_json::Value)>(payload_json)
+        else {
+            return;
+        };
+        let path = agent::relative_path(&asked).unwrap_or(asked);
+        match kind == crate::files::pane::SAVE_REQUEST {
+            true => {
+                self.paths.push((path.clone(), "you", nth));
+                self.paths.push((path, PANE, nth));
             }
+            false => self.paths.push((path, PANE, nth)),
         }
     }
 

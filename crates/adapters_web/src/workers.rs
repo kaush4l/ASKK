@@ -20,6 +20,8 @@ use std::rc::Rc;
 
 use wasm_bindgen_futures::JsFuture;
 
+use web_sys::Worker;
+
 use kernel::{AgentPort, BoxFuture, DelegateError, Status};
 
 mod spawn;
@@ -114,18 +116,36 @@ impl AgentWorkers {
         match start(name, glue, wasm, boot) {
             Ok(worker) => {
                 self.report(name, Status::Starting, "");
-                let live = listen(
-                    name,
-                    worker,
-                    Rc::clone(&self.reports),
-                    Rc::clone(&self.memory),
-                    Rc::clone(&self.written),
-                    Rc::clone(&self.did),
-                );
-                self.live.borrow_mut().insert(name.to_string(), live);
+                self.listen_to(name, worker);
             }
             Err(e) => self.report(name, Status::Failed, &crate::wire::js_message(&e)),
         }
+    }
+
+    /// Adopt a started Worker as `name`: install the two handlers on it and
+    /// hold it. The second half of `start_one`, and the whole of what this
+    /// crate does with a Worker after `postMessage` returns.
+    ///
+    /// PUBLIC FOR ONE REASON, and it is I17's. Everything this page claims
+    /// about a peer that crashes — the turn is lost with a sentence, the row
+    /// goes `Failed`, the Worker comes back — happens inside those handlers,
+    /// and the browser gate could not run a single line of them: `listen`,
+    /// `ask` and `Live` are all `pub(crate)` behind a private `mod workers`,
+    /// so `tests/browser/` could only ever exercise Chrome's Worker mechanics
+    /// one layer underneath the code that depends on them. A claim the gate
+    /// cannot execute is not a verified claim, so the seam is opened here,
+    /// deliberately and at its narrowest: a Worker in, nothing out, and the
+    /// caller cannot reach the handle it makes.
+    pub fn listen_to(&self, name: &str, worker: Worker) {
+        let live = listen(
+            name,
+            worker,
+            Rc::clone(&self.reports),
+            Rc::clone(&self.memory),
+            Rc::clone(&self.written),
+            Rc::clone(&self.did),
+        );
+        self.live.borrow_mut().insert(name.to_string(), live);
     }
 
     /// Stop every Worker (Python `aclose`: close, stop the thread, mark the row

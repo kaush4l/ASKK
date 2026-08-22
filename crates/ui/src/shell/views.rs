@@ -1,5 +1,6 @@
-//! WHERE you are — the seven views the left panel navigates between (VIEWS.md,
-//! plus the Dashboard the product goal adds).
+//! WHERE you are — the eight views the left panel navigates between (VIEWS.md,
+//! plus the Dashboard the product goal adds and the Debug view that projects the
+//! facts the log already held and nothing drew).
 //!
 //! ONE PANEL, ONE HOME (R15-IA). Six nav entries held about four panels,
 //! re-shuffled per view, and nobody can infer a map like that. The rule: every
@@ -35,13 +36,14 @@
 //! navigation. Each carries `title` and `aria-label` too, because `.nav-label`
 //! is `display: none` at the icon-rail breakpoint.
 
-use dioxus::prelude::*;
-
-use crate::ui::Button;
-
 /// When the address bar names no view. Beside `from_slug` below, which is the
 /// only place that knows a slug matched none.
 pub(crate) mod misroute;
+/// The list you click. Split out when the Debug view took this file past I12's
+/// 200 lines; `ViewNav` is re-exported so every call site is unchanged.
+mod nav;
+pub(crate) use nav::ViewNav;
+
 /// WHICH surface the centre stage shows. The chat pane stays mounted and
 /// `hidden` off its route: unmounting it drops the poller of a turn in flight.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -55,19 +57,25 @@ pub(crate) enum View {
     /// processes and shelf in the rail. Labelled `Commands` since R15-IA.
     Workspace,
     Trace,
+    /// WHAT IS GOING ON UNDERNEATH — the facts the log already held and nothing
+    /// drew; `ui/debug/mod.rs` lists them and says why they were unread.
+    Debug,
     Settings,
     DesignSystem,
 }
 
-/// The nav list, in order. SIX. `DesignSystem` is not among them, and neither
-/// is the shared space (R5-22): a destination byte-identical to a tile the
+/// The nav list, in order. SEVEN since Debug. `DesignSystem` is not among them,
+/// and neither is the shared space (R5-22): a destination byte-identical to a tile the
 /// Dashboard already renders is a duplicate, not navigation.
-pub(crate) const NAV: [View; 6] = [
+pub(crate) const NAV: [View; 7] = [
     View::Dashboard,
     View::Chat,
     View::Agents,
     View::Workspace,
     View::Trace,
+    // After the trace: the last of the "what happened" views, and where to go
+    // when the trace does not explain what you just watched.
+    View::Debug,
     View::Settings,
 ];
 
@@ -82,6 +90,7 @@ impl View {
             // by R17-IA above); "workspace" means one thing — the folder.
             View::Workspace => "commands",
             View::Trace => "trace",
+            View::Debug => "debug",
             View::Settings => "settings",
             View::DesignSystem => "design-system",
         }
@@ -115,6 +124,7 @@ impl View {
             View::Agents => "Agents",
             View::Workspace => "Commands",
             View::Trace => "Tool trace",
+            View::Debug => "Debug",
             View::Settings => "Settings",
             View::DesignSystem => "Design system",
         }
@@ -131,7 +141,7 @@ impl View {
     /// Whether this view is about ONE agent (R5-6). Agents and Settings are
     /// about the fleet and the browser, so they get no picker, not an inert one.
     pub(crate) fn scoped(self) -> bool {
-        matches!(self, View::Dashboard | View::Chat | View::Workspace | View::Trace)
+        matches!(self, View::Dashboard | View::Chat | View::Workspace | View::Trace | View::Debug)
     }
 
     /// WHAT IS IN THE RAIL HERE (R8-7). It said `Side panel · main` — a region
@@ -152,49 +162,6 @@ impl View {
         match self {
             View::Dashboard => ("task-field", "Which agent runs the task"),
             _ => ("content", "Which agent this view is about"),
-        }
-    }
-}
-
-/// The left panel. One `<button>` per view.
-#[component]
-pub(crate) fn ViewNav(
-    view: Signal<View>,
-    /// Whether the panel this list is in is shown. Below the three-column
-    /// breakpoint it is a SHEET over the content (R3-9), so choosing a view
-    /// puts it away rather than standing on top of what you just picked.
-    nav: Signal<bool>,
-) -> Element {
-    let here = view();
-    rsx! {
-        // THE WAY OUT OF THE DRAWER (R5-8). Below 1100px this list is a sheet
-        // over the page and had no close control. `display:none` above it.
-        Button {
-            class: "nav-close",
-            variant: "ghost",
-            onclick: move |_| { nav.to_owned().set(false) },
-            "✕ Close"
-        }
-        div { class: "view-list",
-            for entry in NAV {
-                Button {
-                    key: "{entry.slug()}",
-                    // NO VARIANT (R4-17): with `secondary` the nav entries and
-                    // the form actions computed to the same everything.
-                    id: "view-{entry.slug()}",
-                    class: if entry == here { "view-item current" } else { "view-item" },
-                    // NOT aria-selected. This is navigation.
-                    aria_current: (entry == here).then_some("page"),
-                    // Both: `.nav-label` is `display:none` on the icon rail.
-                    title: "{entry.label()}",
-                    aria_label: "{entry.label()}",
-                    onclick: move |_| {
-                        view.to_owned().set(entry);
-                        if !crate::shell::dash::wide() { nav.to_owned().set(false) }
-                    },
-                    span { class: "nav-label", "{entry.label()}" } // no glyph (F8)
-                }
-            }
         }
     }
 }

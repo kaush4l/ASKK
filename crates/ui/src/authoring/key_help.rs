@@ -16,6 +16,15 @@ use crate::shell::views::View;
 /// loader's, in the order the blank file writes them, so a key that exists in
 /// the parser and not here is a visible gap rather than a silent one.
 ///
+/// …AND SOMETHING ENFORCES THAT NOW. The sentence above was true only of a
+/// reader who happened to compare the two lists: five keys had already gone
+/// missing (`faculties`, `passes`, the three dotted `goal.*`) and `role` was
+/// still glossed with a job deleted from `agent::ROLES` two increments before,
+/// while every gate stayed green. `crates/agent/tests/frontmatter.rs::
+/// every_key_the_parser_reads_is_glossed_for_the_person_writing_the_file`
+/// reads this list as text and compares it with the vocabulary the parser's
+/// own refusal prints, so the two cannot drift again.
+///
 /// `engine` is glossed WITHOUT the word engine (R16-4) — Settings calls the
 /// Linux that — and `max_rounds` is glossed without the word round (R16-3),
 /// which appears nowhere else in this interface and would be a third counter
@@ -27,13 +36,18 @@ const KEYS: &[(&str, &str)] = &[
     ("model", "which model to ask, by its name in the endpoint's catalogue; blank means the endpoint's default"),
     ("temperature", "how loose its wording is, 0 to 2; leave it out to take the model's own"),
     ("engine", "how it works: react calls a tool, reads the result, then decides again; base answers in one reply and calls nothing"),
-    ("role", "which job in this app it holds: entry is the agent this page talks to, summarizer is the one that compacts every other agent's history. Leave it out and it holds neither"),
+    ("role", "which job in this app it holds: entry is the agent this page talks to, critic is the one whose PASS or FAULT on another agent's work the page reads. Leave it out and it holds neither. Two files claiming one job is reported when they load, and only the first by name keeps it"),
     ("stages", "the loop it runs, in order: plan turns your request into a brief before any work, work is the tool loop, verify runs the check the brief named, critique reads the turn back before answering. Leave it out and it runs work alone"),
+    ("faculties", "extra bundles of capability it gets by name — each one brings its own tools and its own block of the prompt. memory is the one to name: it lets the agent keep lines of its own across conversations. Naming a space already brings the space bundle, so this is for the others"),
     ("space", "the name of the group it works in — it gets a folder in the Linux this page runs, and the facts and notes every agent naming the same space shares"),
     ("tools", "which tools it may call. tools: [] is EVERY built-in one; tools: [now] is only that one"),
     ("compact_at", "how many turns it keeps in full before the oldest are summarised: 8"),
     ("keep_recent", "how many of the newest turns are never summarised: 3"),
     ("max_rounds", "how many steps it may take in one turn before it must stop: 64"),
+    ("passes", "how many times one turn may walk that list of stages before it must stop: 1 is one pass, which is the ordinary turn. More lets it keep working toward a goal without you asking again, and it stops early the moment a pass does nothing"),
+    ("goal.outcome", "the standing goal, in one line: what it is working toward across those passes"),
+    ("goal.check", "one shell command whose exit status decides whether the goal is met — 0 is met. One command, not a script: the strongest check this page can run is something like test -f DONE.md, which proves a file was written and not that the work is right"),
+    ("goal.done_when", "what being finished looks like, in one line for the agent to read. It is the words, not the check: goal.check is what the machine reads"),
 ];
 
 /// THE PATH THAT ALREADY WORKS, SAID FIRST (R17-P1-7). The plain-English route
@@ -84,9 +98,9 @@ pub fn notes() -> Element {
                 "The file is an agent.md: YAML frontmatter, then the instructions the agent \
                  follows. What you save here takes effect at the end of the current turn — no \
                  reload — and beats a shipped agent of the same name, so an agent named main \
-                 replaces main until you delete it again. It is kept in this browser: \
-                 clearing this site's data takes it with them, and another browser does not \
-                 have it. Export downloads the same file the site serves."
+                 replaces main until you delete it again. It is kept in this browser: clearing \
+                 this site's data takes it with them, and another browser does not have it. \
+                 Export downloads the same file the site serves."
             }
         }
         // …AND THE REPOSITORY INSTRUCTIONS SAY WHO THEY ARE FOR (R16-P1-6). Two
@@ -95,10 +109,11 @@ pub fn notes() -> Element {
         // repository and cannot follow either step.
         Disclosure { summary: "If you have this site's source and want to ship the agent with it",
             p { class: "note",
-                "This part is for whoever builds the site, not for using it here. Committing \
-                 an exported file takes two steps, not one: put it at \
-                 public/agents/<name>/agent.md, AND add <name> to public/agents/index.json — \
-                 that file is the manifest, and a folder it does not list is never fetched."
+                "For whoever builds the site, not for using it here. Committing an exported file \
+                 takes THREE steps: public/agents/<name>/agent.md, then <name> in \
+                 public/agents/index.json (the manifest — an unlisted folder is never fetched), \
+                 then the SHIPPED table in crates/agent/tests/prompt.rs, the compiled-in roster \
+                 every prompt test walks. Skip the third and cargo test fails there."
             }
         }
     }
