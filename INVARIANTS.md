@@ -97,3 +97,61 @@ Hard invariants. Reference by ID in every module spec. Source: `docs/PROMPT.md` 
   build this project has deliberately frozen. So this invariant closes the gap between what we
   say and what we have written down, and leaves open the gap between what we have written down
   and what we ship. Naming that second gap is part of obeying the first.
+- **I17 Executable claims (PROVISIONAL — the owner may strike it).** A claim the gate cannot
+  execute is not a verified claim.
+
+  This is I16 one level up, and the pair is the whole idea. I16 says a truth the system holds
+  and does not state is a defect. I17 says the converse: **a claim the system states and
+  cannot check is a defect too**, whether or not anything is wrong underneath it. The project
+  wrote the first law in the honesty round and never wrote the second, and the cost was
+  measured on 2026-08-21: `grep -rn wasm_bindgen_test crates` returned **0**, so every
+  mechanism behind the owner's three headline goals — parallel agents, agents talking across
+  threads, an environment that does real work — lived only in `crates/adapters_web`, which the
+  gate merely `cargo check`s. 581 tests were green over the half that cannot fail in the ways
+  that matter.
+
+  *The worked example, because the law needs one — and EVERY CITATION BELOW IS PINNED TO
+  `de10ca8`, the commit before the round that fixed it.* Read them with `git show de10ca8:<path>`.
+  This is not pedantry: the first draft of this invariant cited these paths in the present tense,
+  and by the time it was written every one of them had already been repaired in the same working
+  tree. A reader sent to the evidence found the fix and not the defect, which destroys the record
+  at the moment it becomes law — I16's own failure mode, committed inside I17. **A law's evidence
+  must name the state it was true of.** The bar-raiser of that round caught it; it is written
+  here so the next law is drafted this way from the start.
+
+  At `de10ca8`, `crates/core/tests/delegation.rs:180-201` carried a doc comment saying "both
+  sub-agents receive their goals before either result comes back, which is what 'at the same
+  time' means", and asserted an ORDER that a fully serial `for … .await` loop produces
+  identically — because the host double resolved synchronously (`crates/adapters_test/src/lib.rs:27-29`,
+  `crates/adapters_test/src/agents.rs:46-63` at that commit), so `join_all` at
+  `crates/core/src/batch.rs:139` drove delegation 1 to completion before delegation 2 existed.
+  The comment asserted the opposite of what the test measured, on the owner's headline
+  capability, and it shipped green. **A test that would pass under the broken implementation
+  proves nothing**, and that is not a weak test — it is an unverified claim wearing a test's
+  clothes. Beside it, `crates/adapters_web/src/workers/spawn/reply.rs:138` at `de10ca8` was a
+  one-slot resolver that hung a turn forever, sitting in the untested half while the tested half
+  certified the capability it breaks.
+
+  *What it demands.* Three things, in order. A capability asserted in prose, in a prompt, or in
+  a test is verified only when some command in the gate can turn RED on it. Every negative or
+  concurrency assertion carries a POSITIVE CONTROL that was actually run — break the thing,
+  watch the exit code go 101, put it back — and the control is recorded, not implied. And where
+  no command can settle a claim, the absence is written down explicitly as **unpinnable**,
+  with the machine fact that does not exist named, rather than left to look guarded. T50 is the
+  model: the verification ceiling has no machine fact, says so in the pinnability table, and is
+  deliberately not given a weak test that would pin prose to prose.
+
+  *What it does not demand — the boundary, or this becomes vandalism.* It does NOT demand that
+  every claim be executable. Most of this tree's best writing is argument, history and ruling,
+  and none of that is testable; deleting it would destroy the record I16 exists to protect. It
+  does NOT demand a test per sentence, and it does NOT license removing a claim because no test
+  reaches it. **It demands that an unexecutable claim be LABELLED as one.** An honest
+  "unpinnable, and here is the machine fact that would settle it" satisfies this invariant
+  completely. A confident sentence with no check behind it and no admission that there is none
+  is the only thing it forbids.
+
+  *The honest limit, recorded with the law.* A gate step that exists is not a gate step that
+  runs — there is no CI in this repository (`docs/STATUS.md`), so every command here is only as
+  good as someone remembering it. I17 raises the ceiling on what CAN be checked; it cannot make
+  anyone check. That gap is an owner decision and is named here so it is not mistaken for
+  covered.

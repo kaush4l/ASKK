@@ -1,26 +1,43 @@
-//! WHAT A WORKER SAYS BACK: the handle to a running agent, the one message
-//! handler installed on it, the side channels it reports about itself, and the
-//! call that hands it a goal. [`super`] owns the other direction.
+//! WHAT A WORKER SAYS BACK: the handle to a running agent, the two handlers
+//! installed on it, and the side channels it reports about itself. [`turn`]
+//! owns the one turn it can have in flight; [`super`] owns the other direction.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use js_sys::{Function, Object, Promise, Reflect};
+use js_sys::Reflect;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{MessageEvent, Worker};
 
 use kernel::Status;
 
-/// One running agent: its Worker, and the resolver of the turn in flight.
-/// The reply handler is installed ONCE per Worker rather than per call, so a
+mod turn;
+
+pub(crate) use turn::ask;
+use turn::{lose, Turn};
+
+/// One running agent: its Worker, and the turn in flight on it.
+/// The handlers are installed ONCE per Worker rather than per call, so a
 /// `ready` message arriving mid-turn cannot be mistaken for an answer.
 pub(crate) struct Live {
     pub(crate) worker: Worker,
-    pub(crate) waiting: Rc<RefCell<Option<(Function, Function)>>>,
-    /// Kept alive for as long as the Worker is: dropping it would silently
-    /// detach the only handler that can ever resolve a turn.
+    pub(crate) waiting: Rc<RefCell<Option<Turn>>>,
+    /// Kept alive for as long as the Worker is: dropping either would silently
+    /// detach a handler that is the only thing able to settle a turn.
     _handler: Closure<dyn FnMut(MessageEvent)>,
+    _raised: Closure<dyn FnMut(JsValue)>,
+}
+
+impl Drop for Live {
+    /// A stopped Worker answers nothing. `AgentWorkers::close_all`
+    /// (`workers.rs:139-144`) terminates these and drops them to swap the
+    /// endpoint, and until this existed a turn in flight had no sender left
+    /// afterwards: its promise never settled and the lead's turn hung, exactly
+    /// the way the overwrite bug it replaced used to hang it.
+    fn drop(&mut self) {
+        lose(&self.waiting, "its Worker was stopped mid-turn, so that turn has no answer");
+    }
 }
 
 // The three things a Worker says about itself alongside an answer. All are
@@ -89,17 +106,15 @@ fn drain_side_channels(
 
 /// The ONE message handler for this Worker: `ready` is a lifecycle fact,
 /// anything else is the answer to the turn in flight.
-pub(crate) fn listen(
-    name: &str,
-    worker: Worker,
+fn on_message(
+    who: String,
+    pending: Rc<RefCell<Option<Turn>>>,
     queue: Rc<RefCell<Vec<(String, Status, String)>>>,
     memory: Rc<RefCell<Vec<Memory>>>,
     written: Rc<RefCell<Vec<Authored>>>,
     did: Rc<RefCell<Vec<Activity>>>,
-) -> Live {
-    let waiting: Rc<RefCell<Option<(Function, Function)>>> = Rc::new(RefCell::new(None));
-    let (pending, who) = (Rc::clone(&waiting), name.to_string());
-    let handler = Closure::wrap(Box::new(move |e: MessageEvent| {
+) -> Closure<dyn FnMut(MessageEvent)> {
+    Closure::wrap(Box::new(move |e: MessageEvent| {
         let data = e.data();
         let text = said(&data, "text").unwrap_or_default();
         let ok = Reflect::get(&data, &"ok".into()).ok().and_then(|v| v.as_bool()) == Some(true);
@@ -112,39 +127,56 @@ pub(crate) fn listen(
             queue.borrow_mut().push((who.clone(), status, text));
             return;
         }
-        let Some((resolve, reject)) = pending.borrow_mut().take() else {
+        let Some(turn) = pending.borrow_mut().take() else {
             return; // an answer to nothing: the turn was already settled
         };
         match ok {
-            true => resolve.call1(&JsValue::UNDEFINED, &text.into()),
-            false => reject.call1(&JsValue::UNDEFINED, &text.into()),
+            true => turn.resolve.call1(&JsValue::UNDEFINED, &text.into()),
+            false => turn.reject.call1(&JsValue::UNDEFINED, &text.into()),
         }
         .ok();
-    }) as Box<dyn FnMut(MessageEvent)>);
+    }) as Box<dyn FnMut(MessageEvent)>)
+}
+
+/// A Worker that RAISES is the one lost turn this side can actually observe,
+/// and the only reason a crashed peer can come back at all: the slot is freed
+/// here, so the NEXT ask is delivered instead of refused forever.
+///
+/// Both halves of that are browser behaviour, so both are pinned rather than
+/// assumed — an uncaught error inside a Worker reaches its spawner as an
+/// `error` event, and the Worker keeps running afterwards
+/// (`tests/browser/tests/worker_error.rs`). The `run` message's own failures do
+/// NOT arrive here: `web/agent-worker.js` catches those and posts `ok: false`,
+/// which is an answer. This is for what escapes it.
+fn on_error(pending: Rc<RefCell<Option<Turn>>>) -> Closure<dyn FnMut(JsValue)> {
+    Closure::wrap(Box::new(move |e: JsValue| {
+        // `messageerror` is deliberately not handled beside this: every field
+        // crossing this boundary is a string, so there is no clone failure to
+        // report and a handler for one would assert a case that cannot arise.
+        let raised = said(&e, "message").unwrap_or_else(|| "an error it did not describe".into());
+        let why = format!("its Worker raised \"{raised}\", so the turn it was given has no answer");
+        lose(&pending, &why);
+    }) as Box<dyn FnMut(JsValue)>)
+}
+
+/// Install both handlers on a freshly started Worker and hand back the handle.
+pub(crate) fn listen(
+    name: &str,
+    worker: Worker,
+    queue: Rc<RefCell<Vec<(String, Status, String)>>>,
+    memory: Rc<RefCell<Vec<Memory>>>,
+    written: Rc<RefCell<Vec<Authored>>>,
+    did: Rc<RefCell<Vec<Activity>>>,
+) -> Live {
+    let waiting: Rc<RefCell<Option<Turn>>> = Rc::new(RefCell::new(None));
+    let handler = on_message(name.to_string(), Rc::clone(&waiting), queue, memory, written, did);
     worker.set_onmessage(Some(handler.as_ref().unchecked_ref()));
+    let raised = on_error(Rc::clone(&waiting));
+    worker.set_onerror(Some(raised.as_ref().unchecked_ref()));
     Live {
         worker,
         waiting,
         _handler: handler,
+        _raised: raised,
     }
 }
-
-/// Send one goal and resolve when that Worker answers.
-pub(crate) fn ask(live: &Live, goal: &str) -> Promise {
-    let goal = goal.to_string();
-    let (worker, waiting) = (live.worker.clone(), Rc::clone(&live.waiting));
-    Promise::new(&mut |resolve, reject| {
-        let refuse = reject.clone();
-        *waiting.borrow_mut() = Some((resolve, reject));
-        let message = Object::new();
-        let sent = Reflect::set(&message, &"kind".into(), &"run".into())
-            .and_then(|_| Reflect::set(&message, &"goal".into(), &goal.as_str().into()))
-            .and_then(|_| worker.post_message(&message));
-        if let Err(e) = sent {
-            waiting.borrow_mut().take();
-            refuse.call1(&JsValue::UNDEFINED, &e).ok();
-        }
-    })
-}
-
-

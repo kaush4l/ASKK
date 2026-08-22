@@ -295,23 +295,97 @@ The lesson for the roadmap: **prompt text is product copy and needs the same
 truth gate.** A component renders a promise to a model exactly as a pane renders
 one to a person, and only one of the two had anyone checking it.
 
-## THE GATE WAS INCOMPLETE, and the lead owns it
+## THE GATE — six CHECKS, never piped, each read by its own exit code
 
+Read this before every round. Each one exists because something shipped green
+past its absence.
+
+    1. cargo test --workspace
+    2. cargo check -p adapters_web --target wasm32-unknown-unknown
+    3. cargo check -p ui --target wasm32-unknown-unknown
+    4. python3 scripts/check-size.py
+    5. scripts/check-browser.sh          # the browser suite over adapters_web
+    6. ./publish.sh --dry-run            # every publish check, stopping before the push
+
+**EVERY STEP HERE IS A CHECK. NONE OF THEM DEPLOYS.** Step 6 is `--dry-run` and
+that is not a detail — the first draft of this section wrote bare `./publish.sh`
+into this numbered list and called a green round reaching the phone "the default".
+`publish.sh:122` is `git -C "$WT" push origin gh-pages`; T10 records the publish
+as an OWNER GATE, and CLAUDE.md §17 says destructive storage always stops. A
+numbered list headed "the gate" is what the next agent will run top to bottom, so
+putting a push in it inverts an owner gate by formatting. The lead wrote that
+brief and the bar-raiser caught it. **A gate step may only ever be something that
+can fail; never something that changes the world.**
+
+**Never pipe one of these into anything.** In a pipeline the shell reports the
+exit code of the LAST stage, so `cargo test … | grep -E …` reports grep's status
+over a plausible list of passing tests while a compile failure sits above it.
+That mistake was made twice here. Run the command, let it print, read ITS code.
+
+**Steps 5 and 6 are gate steps, not optional extras.** They were added on
+2026-08-21 against four measured facts, and the argument for each is the fact.
+
+*Why 5.* `grep -rn wasm_bindgen_test crates` returned **0**. Every mechanism
+behind the owner's three headline goals — parallel agents, agents talking across
+threads, an environment that does real work — lives only in `crates/adapters_web`,
+and steps 1-4 never RUN that crate; step 2 only proves it compiles. Two
+consequences were measured, not argued:
+
+- The host double makes concurrency **unobservable by construction**.
+  `crates/adapters_test/src/lib.rs:27-29` is `Box::pin(std::future::ready(value))`
+  and `crates/adapters_test/src/agents.rs:46-63` pushes to `seen` synchronously
+  before returning, so `join_all` at `crates/core/src/batch.rs:139` drives
+  delegation 1 to completion before delegation 2 exists. The test that claims to
+  prove parallelism (`crates/core/tests/delegation.rs:180-201`) asserts an ORDER a
+  fully serial `for … .await` loop produces identically, under a doc comment
+  claiming the opposite of what it measures. 581 green tests measured the half
+  that cannot fail in the ways that matter.
+- A LIVE WEDGE sat in the untested half. `crates/adapters_web/src/workers/spawn/reply.rs:138`
+  is `*waiting.borrow_mut() = Some((resolve, reject))` — ONE slot per peer. Two
+  concurrent asks to the same sub-agent overwrite a resolver; the dropped promise
+  never settles, `pending_tools` never reaches 0, and the lead's turn hangs
+  forever with no timeout and no error card. Reachable two ways: the model names
+  one peer twice on a batch line (`crates/agent/src/step.rs:126-141` does not
+  dedupe), or a person messages that agent from Threads while the lead delegates
+  to it (`crates/core/src/runtime/requests.rs:101`).
+
+A `cargo check` cannot fail either of those. Only a suite that runs in a browser
+can, which is why running it is a step and not a suggestion. Worker C owns the
+runner and therefore its exact name; `scripts/check-browser.sh` is the path this
+file points at until C's lands, and this line gets corrected to match it rather
+than the other way round.
+
+*Why 6, and why only its dry run.* `origin/gh-pages` is `81d2826 deploy 187dc39`;
+`main` is `de10ca8`. Six increments — including the fix that stops the default
+model path failing silently on a phone (T28) — exist only on a developer's
+machine. "On gh-pages" is in the owner's first sentence, so a round that is green
+and unshipped has not finished; it has only stopped.
+
+But the thing that was UNCHECKED is not the push, it is everything `publish.sh`
+verifies before it: assets present, manifest and folders in agreement, the engine
+wasm floor, the 99MB cap, the relative-URL rule. Those can all fail, and until now
+nothing ran them until the moment somebody was already deploying. `--dry-run` runs
+every one and stops before git. That is the half that belongs in a gate.
+
+The push itself stays where T10 put it: **the owner's call, asked for each time.**
+A green gate is the evidence that the answer COULD be yes. It is not the answer.
+
+`publish.sh` is at the REPO ROOT, not under `scripts/`.
+
+**Why steps 1-4 exist**, kept from when this section was three commands:
 `cargo test --workspace` builds `adapters_web` and `ui` FOR THE HOST, where the
-browser paths are compiled out. A wasm-only break therefore passes the workspace
-gate in silence.
+browser paths are compiled out, so a wasm-only break passes it in silence. Proven,
+not theorised: the CheerpX excision landed an `adapters_web` module calling
+`w.local_storage()` without web-sys feature `"Storage"` in `Cargo.toml`. **The
+crate did not compile for its own target**, and every gate the lead ran was green
+across it. Steps 2 and 3 are that failure, written down as commands. Step 4 is
+I12.
 
-Proven, not theorised: the CheerpX excision landed a new `adapters_web` module
-calling `w.local_storage()` without web-sys feature `"Storage"` in `Cargo.toml`.
-**The crate did not compile for its own target.** Every gate I ran was green
-across it. A later agent found it only because its own fix could not be verified
-until the crate built.
-
-THE GATE IS NOW THREE COMMANDS, not one:
-    cargo test --workspace                                  # exit code, unpiped
-    cargo check -p adapters_web --target wasm32-unknown-unknown
-    cargo check -p ui --target wasm32-unknown-unknown
-plus `python3 scripts/check-size.py`.
+**What the six still cannot settle.** There is no CI in this repository; every
+step here is only as good as someone remembering to run it. And step 5 checks the
+browser we point it at, not every browser — the twelve claims in T51 need a real
+Chrome and a real Safari against a served build. Both gaps are stated rather than
+papered over, which is what I17 asks for.
 
 ## Gate state (run by the lead, 2026-08-18)
 

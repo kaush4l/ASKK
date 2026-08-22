@@ -175,15 +175,61 @@ fn a_delegation_with_no_goal_is_refused_and_the_sub_agent_never_runs() {
     assert!(!html.contains(r#"data-status="working""#), "{html}");
 }
 
+/// The layout rule as an assertion over ONE timeline: line 1's two delegations
+/// overlap, and line 2's runs after BOTH of their answers. Each half is an
+/// ORDER between the `entered` and `resolved` sequences, so this reads their
+/// indices and never their contents — the names, and the order those names
+/// arrived in, are identical with the rule and without it (T60). Each failure
+/// says WHICH claim broke: they are two rules with two different causes.
+fn layout_rule_holds(timeline: &[String]) {
+    let at = |word: &'static str| -> Vec<usize> {
+        let hit = |(i, e): (usize, &String)| e.starts_with(word).then_some(i);
+        timeline.iter().enumerate().filter_map(hit).collect()
+    };
+    let (entered, resolved) = (at("entered"), at("resolved"));
+    assert_eq!((entered.len(), resolved.len()), (3, 3), "three delegations ran: {timeline:?}");
+    assert!(
+        entered[1] < resolved[0],
+        "CLAIM 1 (one line is one batch) BROKE: line 1's second delegation was entered only \
+         after something had already answered, so the line ran serially: {timeline:?}"
+    );
+    assert!(
+        entered[2] > resolved[1],
+        "CLAIM 2 (a new line runs after everything above it) BROKE: line 2's delegation was \
+         entered with only {} of line 1's two delegations resolved, so it joined line 1's \
+         batch — the boundary in `core::batch::run_effects` is gone: {timeline:?}",
+        resolved.iter().filter(|r| **r < entered[2]).count()
+    );
+}
+
 /// Calls on ONE line are one batch: both sub-agents receive their goals before
 /// either result comes back, which is what "at the same time" means when each
 /// runs in its own Worker. A call on the NEXT line runs after them.
+///
+/// It is the TIMELINE that earns that first sentence, not `seen`. Arrivals in
+/// the order the model wrote them are exactly what a serial `for … .await`
+/// produces, so asserting only their order proved nothing (T59). The
+/// rendezvous fake holds every delegation open until both have been ENTERED:
+/// under `join_all` both entries land and the gate opens, and under a serial
+/// loop the first `await` never returns and this test hangs into `block_on`'s
+/// panic.
+///
+/// The SECOND sentence needs its own assertion, and asserting arrival order or
+/// "the last thing that happened" does not give it one: a boundary-free batch
+/// produces both by construction, so deleting the `batch == line` guard at
+/// `core::batch::run_effects` left the whole workspace green (T60). What
+/// separates the two worlds is WHERE line 2's entry falls among line 1's
+/// ANSWERS — after both of them with the boundary, in the middle of them
+/// without it. That is `entered[2] > resolved[1]`.
 #[test]
 fn one_line_of_delegations_is_one_batch_and_the_next_line_follows_it() {
-    let agents = Rc::new(ScriptedAgents::with(vec![
-        ("researcher", Ok("found it")),
-        ("summarizer", Ok("compressed")),
-    ]));
+    let agents = Rc::new(
+        ScriptedAgents::with(vec![
+            ("researcher", Ok("found it")),
+            ("summarizer", Ok("compressed")),
+        ])
+        .rendezvous(2),
+    );
     let app = booted(
         &[
             "researcher({\"query\": \"a\"}), summarizer({\"query\": \"b\"})\n\
@@ -197,6 +243,14 @@ fn one_line_of_delegations_is_one_batch_and_the_next_line_follows_it() {
         agents.seen.borrow().as_slice(),
         ["researcher: a", "summarizer: b", "researcher: c"],
         "the second line ran after the first line's two"
+    );
+
+    let timeline = agents.timeline();
+    layout_rule_holds(&timeline);
+    assert_eq!(
+        timeline.last().map(String::as_str),
+        Some("resolved researcher"),
+        "the next line's call is the last thing to happen: {timeline:?}"
     );
 }
 

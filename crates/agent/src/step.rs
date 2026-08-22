@@ -19,6 +19,7 @@ use crate::tools::ToolResult;
 use crate::{answer, ending, stages, steer, stop, verify, window};
 
 mod compaction;
+mod line;
 
 /// A state and the effects it wants run — what every transition below returns.
 type Stepped = (AgentState, Vec<Effect>);
@@ -136,11 +137,17 @@ fn on_reply(mut state: AgentState, text: &str, at: kernel::Timestamp) -> Stepped
     let effects: Vec<Effect> = batches
         .into_iter()
         .enumerate()
-        .flat_map(|(line, calls)| {
+        .flat_map(|(nth, calls)| {
             let tools = &tools;
-            calls
-                .into_iter()
-                .map(move |call| crate::subagent::invoke_or_refuse(tools, call, line as u16))
+            // …AND ONE PEER ONLY ONCE PER LINE (`line.rs`): a sub-agent takes
+            // one turn at a time, so the second call to it is refused in words
+            // rather than delivered into a slot that drops the first.
+            line::one_turn_each(
+                calls
+                    .into_iter()
+                    .map(move |call| crate::subagent::invoke_or_refuse(tools, call, nth as u16))
+                    .collect(),
+            )
         })
         .collect();
     state.pending_tools = effects.len();

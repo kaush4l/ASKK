@@ -3,9 +3,12 @@
 //! network (I3). Imports `kernel` only; consumed as a dev-dependency. Never
 //! shipped to production — that is its entire "must not absorb" list.
 //!
-//! Every future here is immediately ready — a single poll with a noop waker
-//! resolves it, which is what lets `core`'s tests drive the async runtime
-//! loop without an executor dependency.
+//! Almost every future here is immediately ready — a single poll with a noop
+//! waker resolves it, which is what lets `core`'s tests drive the async runtime
+//! loop without an executor dependency. The ONE exception is deliberate and is
+//! why concurrency is observable at all on the host: a `ScriptedAgents` built
+//! with `rendezvous` returns `Pending` until enough delegations have been
+//! entered, so a test can hold two open at once (`agents.rs`).
 
 use std::cell::RefCell;
 
