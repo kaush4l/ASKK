@@ -12,7 +12,7 @@
 // stopping flags — and wasm-bindgen copies only the file named in
 // `module = "…"` into `snippets/`, so a sibling this imported would not be
 // emitted and the page would 404 at boot. Two-thirds of the length is the
-// argued comments; the code is ~80 lines.
+// argued comments; the code is ~95 lines.
 
 let state = "idle", phase = "", reason = "", booting = null;
 let queue = Promise.resolve();
@@ -30,6 +30,13 @@ let wake = null;     // a reader parked on the next byte
 // one boot probe, retried until BOOT_MS is spent; RESYNC_MS is how long an
 // interrupted shell gets to prove it is still a shell.
 const BOOT_MS = 180000, RUN_MS = 180000, PROBE_MS = 20000, RESYNC_MS = 15000;
+// THE STATUS A TIMED-OUT COMMAND COMES BACK WITH, and it is a shell convention
+// rather than a number we invented: 128 + SIGINT(2), which is what any Unix
+// shell reports for the very signal the watchdog sends (`0x03` below). A
+// timeout is an EXECUTION here, not a `WorkspaceError` — the command really
+// ran and really printed things, and `kernel::Execution` is the only shape in
+// this port that can carry an output at all. See `c2w_exec`.
+const KILLED = 130;
 
 function load(src) {
   return new Promise((resolve, reject) => {
@@ -99,7 +106,11 @@ async function bootOnce(rel) {
   // before then is gone rather than queued.
   const setup = "set +m; stty -echo 2>/dev/null; PS1=''";
   for (let spent = 0; spent < BOOT_MS; spent += PROBE_MS) {
-    if (await run(setup, PROBE_MS)) return;
+    // `!done.timedout` IS LOAD-BEARING: `run` now answers a deadline with an
+    // object, and a truthy object here would declare a shell that never
+    // appeared. Only a sentinel-to-sentinel round trip proves this is a shell.
+    const done = await run(setup, PROBE_MS);
+    if (done && !done.timedout) return;
   }
   throw new Error("the container did not reach a shell in " + BOOT_MS / 1000 + "s");
 }
@@ -163,10 +174,13 @@ async function until(re, ms, abortable) {
   }
 }
 
-// One command, sentinel to sentinel. Returns `{status, output}` or null if it
-// did not finish in `ms` — the caller owns the recovery, because the Ctrl-C
-// that unwedges the shell also kills the trailing `printf` that would have
-// closed this call.
+// One command, sentinel to sentinel. THREE endings, and the caller owns the
+// recovery in two of them, because the Ctrl-C that unwedges the shell also
+// kills the trailing `printf` that would have closed this call:
+//   {status, output}            it finished
+//   {timedout: true, output}    it did not finish in `ms`, and this is what it
+//                               printed before the deadline
+//   null                        somebody pressed Stop
 async function run(command, ms, abortable) {
   const n = id();
   buf = "";
@@ -176,19 +190,56 @@ async function run(command, ms, abortable) {
   const end = new RegExp("#E" + n + "#(\\d+)");
   type_in("printf '%s\\n' '#B" + n + "#'; " + command + "\nprintf '%s%s\\n' '#E" + n + "#' \"$?\"\n");
   const hit = await until(end, ms, abortable);
-  if (hit === null) return null;
-  const begun = hit.text.indexOf("#B" + n + "#");
-  const raw = begun < 0 ? hit.text : hit.text.slice(begun + n.length + 3);
-  // The PTY is a terminal: escape sequences and CRLF belong to a screen, not
-  // to a captured result. `stty -onlcr` does NOT stick in this guest, so every
-  // capture is CRLF and the translation is not optional. The first line break
-  // is the begin marker's own and is not the command's output.
-  const output = raw
+  // NULL IS NOW ONLY A STOP. A deadline hands back what the command printed,
+  // flagged, because the caller is the only one that can decide what a partial
+  // is worth — and it cannot decide about bytes it was never given.
+  if (hit === null) return stopping ? null : { timedout: true, output: so_far(n) };
+  return { status: parseInt(hit.m[1], 10) | 0, output: clean(hit.text, n) };
+}
+
+// What the guest wrote, as a result rather than as a screen. The PTY is a
+// terminal: escape sequences and CRLF belong to a screen, not to a captured
+// result. `stty -onlcr` does NOT stick in this guest, so every capture is CRLF
+// and the translation is not optional. The first line break is the begin
+// marker's own and is not the command's output.
+//
+// Its own function because a TIMED-OUT command's bytes need exactly the same
+// treatment as a finished one's — see `so_far`. They were one expression
+// inside `run` while a timeout threw the bytes away and there was only one
+// caller.
+function clean(text, n) {
+  const begun = text.indexOf("#B" + n + "#");
+  const raw = begun < 0 ? text : text.slice(begun + n.length + 3);
+  return raw
     .replace(/^\r?\n/, "")
     .replace(/\x1b\][^\x07]*\x07/g, "")
     .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")
     .replace(/\r\n/g, "\n");
-  return { status: parseInt(hit.m[1], 10) | 0, output };
+}
+
+// EVERYTHING THIS COMMAND HAS PRINTED SO FAR, read off the live buffer. Called
+// only on the deadline, and BEFORE `recover`, which clears `buf`.
+//
+// Until this existed, a 179-second build that printed 4 MB and then wedged
+// reported "no answer in 180s" and every byte of it was lost — so the one
+// thing an agent could have used to decide what to do next was the one thing
+// the engine dropped.
+function so_far(n) {
+  return clean(buf, n);
+}
+
+// The note that goes on the end, so nothing can read a cut-off answer as a
+// whole one. `agent::environment::PARTIAL_MARK` is the same string on the Rust
+// side — it is what the model is TOLD to look for, and
+// `crates/agent/tests/environment.rs` fails if the two stop matching.
+function truncated(output, alive) {
+  const shell = alive ? "" : "; the shell did not answer afterwards, so later commands may fail too";
+  const said = output.trim() === ""
+    ? "it printed nothing before then"
+    : "everything above this line is only what it printed before then";
+  return (output ? output.replace(/\n?$/, "\n") : "") +
+    "[PARTIAL: the command did NOT finish — it hit the " + RUN_MS / 1000 +
+    "s limit and was interrupted, and " + said + shell + "]";
 }
 
 // The watchdog's second half: interrupt, then prove the shell came back.
@@ -222,15 +273,23 @@ export function c2w_exec(base, command) {
       stopping = false;
       inflight = false;
     }
-    if (done !== null) return JSON.stringify(done);
+    if (done !== null && !done.timedout) return JSON.stringify(done);
     // WHICH of the two endings this was. Both interrupt and both resync; a
     // person who pressed Stop should not be told about a timeout they did not
     // reach.
     const alive = await recover();
+    // A TIMEOUT IS AN EXECUTION, NOT A FAILURE. `WorkspaceError::Failed` means
+    // the command could not be run (`kernel/src/workspace.rs`), and it has
+    // nowhere to put an output — so reporting a timeout that way is what threw
+    // the partial away in the first place, not merely how it was worded. The
+    // command DID run, printed what is below, and was killed by a signal;
+    // `KILLED` is the status every shell gives that, and every caller above
+    // this already reads a non-zero status with an output. A stop is still an
+    // error: the person who pressed it knows what they interrupted, and
+    // `core::failure` has a whole vocabulary for saying so in their words.
+    if (done !== null) return JSON.stringify({ status: KILLED, output: truncated(done.output, alive) });
     throw new Error(
-      (stopped
-        ? "You stopped it, and this Linux really interrupted the command"
-        : "no answer in " + RUN_MS / 1000 + "s, so the command was interrupted") +
+      "You stopped it, and this Linux really interrupted the command" +
       (alive ? "; the shell recovered" : "; the shell did not recover"),
     );
   });
