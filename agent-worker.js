@@ -11,6 +11,9 @@
 // Every message back is TAGGED: "ready" is a lifecycle fact the page turns
 // into a row on the board, "answer" settles the turn in flight. Untagged, a
 // boot report arriving mid-turn would be read as that turn's answer.
+//
+// Every answer also carries what the agent HOLDS, what it WROTE and what it
+// DID, whether the turn succeeded or failed — see `side` below.
 
 let ready = null;
 
@@ -19,7 +22,7 @@ const reason = (e) => String(e && e.message ? e.message : e);
 async function boot(m) {
   const bundle = await import(m.glue);
   await bundle.default({ module_or_path: m.wasm });
-  return await bundle.AgentWorker.boot(m.name, m.agents, m.models, m.profile);
+  return await bundle.AgentWorker.boot(m.name, m.agents, m.briefs, m.models, m.profile);
 }
 
 self.onmessage = (event) => {
@@ -40,21 +43,27 @@ self.onmessage = (event) => {
     self.postMessage({ kind: "answer", ok: false, text: "this agent was never booted" });
     return;
   }
+  // The three things a turn says about itself alongside its text, on EITHER
+  // outcome. They were on the success path only, so a delegated turn that
+  // failed reported nothing it had done — and a failed run is the one whose
+  // trace is worth reading. Same envelope, same fields, one place: this is
+  // the shape of the message, not a decision about it (I5).
+  //
+  // It cannot throw. `ready` may itself be what rejected — a Worker that
+  // never built its agent has nothing to report — and a side channel that
+  // raised while reporting a failure would swallow the reason for it.
+  const side = async () => {
+    try {
+      const agent = await ready;
+      return { memory: agent.memory(), authored: agent.authored(), activity: agent.activity() };
+    } catch {
+      return {};
+    }
+  };
   ready
     .then((agent) => agent.run(m.goal))
-    .then(async (text) =>
-      self.postMessage({
-        kind: "answer",
-        ok: true,
-        text,
-        memory: (await ready).memory(),
-        // Agents this one WROTE (increment 11): its log is its own, so the
-        // page has to be told, exactly as it is told about the window.
-        authored: (await ready).authored(),
-        // What it DID, not only what it said: its tool calls and its spend,
-        // cursored so each one crosses once (worker.rs `activity`).
-        activity: (await ready).activity(),
-      }),
-    )
-    .catch((e) => self.postMessage({ kind: "answer", ok: false, text: reason(e) }));
+    .then(async (text) => self.postMessage({ kind: "answer", ok: true, text, ...(await side()) }))
+    .catch(async (e) =>
+      self.postMessage({ kind: "answer", ok: false, text: reason(e), ...(await side()) }),
+    );
 };

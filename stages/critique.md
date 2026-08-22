@@ -1,0 +1,1 @@
+Now read the whole turn back as somebody who did not do it and is not impressed by it. In at most three lines, name what is still wrong, missing or unchecked — not what went well. Then answer the person: what was done, what was checked and what was not. Do not restate the brief, and do not pad.
