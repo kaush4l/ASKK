@@ -12,6 +12,7 @@ mod component;
 mod degrade;
 mod error;
 mod form;
+mod hash;
 mod law;
 mod openai;
 mod render;
@@ -28,7 +29,8 @@ pub use form::Form;
 pub use slot::Slot;
 // PROVISIONAL (G4): the provider wire writer/reader — see openai.rs.
 pub use openai::{openai_reply_text, openai_request_body, openai_usage};
-pub use render::{content_hash, render, ContentPart, Message, ProviderFormat, Role};
+pub use hash::content_hash;
+pub use render::{render, ContentPart, Message, ProviderFormat, Role};
 pub use state::{SectionSource, State};
 pub use types::{
     Budget, CompactionReport, CompactionStep, Document, Fidelity, Part, Provenance, Section,

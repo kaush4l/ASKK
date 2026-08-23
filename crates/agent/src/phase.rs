@@ -84,6 +84,25 @@ pub struct PhaseConfig {
     pub exits: Vec<(ExitCondition, PhaseExit)>,
 }
 
+/// WHAT ONE WORKING TURN'S PAPER MAY COST. **PROVISIONAL (§17)** — 4096 was
+/// too small for the agent that actually ships, and it was failing silently.
+///
+/// Measured 2026-08-23, `main` with its shipped peer `critic` loaded, in
+/// `work`, asked "what is in this folder?": the paper wanted 4174 tokens before
+/// a conversation existed, so the ladder pointered `## history`, pointered
+/// `## space` and ELIDED `## observations` — on every single turn. The agent's
+/// own prose tells it to read `## observations`; the budget was deleting the
+/// block. `crates/agent/tests/prompt.rs` fails on exactly that now, by name.
+///
+/// 8192 and not more: the standing paper is ~4.2k (soul 2187 + affordances
+/// ~1450 + environment 370), `compact_at: 8` means the window must hold eight
+/// turns beside it, and doubling leaves ~4k for them while keeping the whole
+/// prompt inside a 16k context — the floor for the local models this page is
+/// pointed at. A number chosen against a MEASURED model context would be
+/// better than one chosen against this arithmetic; that measurement is the
+/// owner's to take, which is why this is marked provisional and not settled.
+const WORK_BUDGET: Budget = Budget { max_tokens: 8192 };
+
 /// The v1 phase set: Work/Verify default with Plan-on-demand and Answer as
 /// the cheap exit (RESEARCH phase-cut softening of §9's symmetric cut —
 /// changing this back is a config edit, which is the point of Option C).
@@ -101,7 +120,7 @@ pub fn v1_phases() -> Vec<PhaseConfig> {
             phase: PhaseId::Work,
             contract: ResponseContract::ToolEnvelope,
             tools: ToolScope::All,
-            budget: Budget { max_tokens: 4096 },
+            budget: WORK_BUDGET,
             exits: vec![
                 (ExitCondition::ToolResultReceived, PhaseExit::To(PhaseId::Work)),
                 (ExitCondition::AnswerProduced, PhaseExit::Answer),

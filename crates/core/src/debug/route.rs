@@ -73,13 +73,16 @@ pub(crate) fn read(payload_json: &str) -> Chosen {
 }
 
 /// The stages a route ACTUALLY walks, or `None` for a word this build does not
-/// know. The parse is the vote's own (`agent::vote_of`), which falls to `react`
-/// on anything unreadable — right for a vote and wrong here, because a list
-/// printed for a word we did not recognise is a confident sentence about a turn
-/// nobody can check. So the answer is only kept when it round-trips.
+/// know. `Route::named` is the one place in the tree that turns a route word
+/// into a route, and it answers `None` honestly where the VOTE's own parser
+/// (`agent::vote_of`) falls to `react` on anything unreadable — right for a
+/// vote, wrong here, because a list drawn for a word nobody recognised is a
+/// confident sentence about a turn that cannot be checked. This used to spell
+/// that by round-tripping a forged `ROUTE: {route}` line through the vote and
+/// keeping the answer only if it came back unchanged; the honest `None` was
+/// always one call away, and `board::flow` derives from the same call.
 pub(crate) fn walked(route: &str) -> Option<Vec<String>> {
-    let voted = agent::vote_of(&format!("ROUTE: {route}"));
-    (voted.as_str() == route).then(|| voted.stages())
+    agent::Route::named(route).map(agent::Route::stages)
 }
 
 /// Whether a fact of the loop's belongs to `who`. `chat::fold::belongs_to`
@@ -125,9 +128,3 @@ pub(crate) fn chosen_now(ctx: &Ctx, who: &str) -> Option<Chosen> {
     found
 }
 
-/// The list the turn open for `who` is really walking, `None` where no vote has
-/// happened — then the file's own `stages:` is all there is, and the caller
-/// says so.
-pub(crate) fn walked_now(ctx: &Ctx, who: &str) -> Option<Vec<String>> {
-    walked(&chosen_now(ctx, who)?.route)
-}

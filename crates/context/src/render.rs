@@ -1,14 +1,31 @@
 //! §8.1 second stage: how THIS provider wants to hear the paper. Pure and
 //! deterministic like `assemble`; the two never collapse (§8.1). Three
 //! targets suffice per the multimodal research; provider quirks live only here.
+//!
+//! TWO LAWS MET HERE AND ONE HAD TO WIN. The compaction notice was appended
+//! after EVERY section for a cache reason — a notice that changes each turn
+//! must not sit in the stable prefix — and `Slot::RESPONSE` is pinned last
+//! because the reply's shape is the instruction to hold while writing. Both
+//! cannot be last, and the notice silently won: measured, ONE extra tool in
+//! `public/agents/main/agent.md` ended the headings `…, "## compaction_notice"`.
+//!
+//! THE RESPONSE CONTRACT WINS, and the cache argument survives whole, because
+//! `Slot::is_tail`'s own comment had already answered it — caching caches a
+//! PREFIX, so once `environment` and `history` have changed nothing after them
+//! was going to be cached wherever it sat. The notice always follows `history`,
+//! so moving it before the tail costs no cache that was reachable. THE COST:
+//! this stage now reads a STRUCTURAL property of the paper (`Section::slot`)
+//! where it walked an opaque list — accepted, because emitting the notice as a
+//! section would put a ladder-derived string into the very document the ladder
+//! is deciding about, and that is a loop, not a component.
 
 use serde::{Deserialize, Serialize};
 
 use crate::types::{CompactionReport, Document, Fidelity, Part};
 
 /// Provider wire formats `render` knows (RESEARCH multimodal: OpenAI-compat
-/// intersection + the two majors). Capability flags ride the variant because
-/// "OpenAI-compatible" endpoints differ in what parts they accept.
+/// intersection + the two majors). Capability flags ride the variant: not every
+/// "OpenAI-compatible" endpoint accepts the same parts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProviderFormat {
     OpenAiChat { vision: bool, audio: bool },
@@ -16,8 +33,8 @@ pub enum ProviderFormat {
     Gemini,
 }
 
-/// Message roles across all three targets. Closed: a fourth role is a
-/// provider quirk to map here, not a concept the paper needs.
+/// Message roles across all three targets. Closed: a fourth role is a provider
+/// quirk to map here, not a concept the paper needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
     System,
@@ -58,8 +75,7 @@ pub struct Message {
 }
 
 /// Render the assembled paper for one provider — the frozen §8.1 signature.
-/// Document order becomes the cacheable prefix; every downgrade a target
-/// forces is visible in the output, never silent.
+/// Document order becomes the cacheable prefix; every downgrade is visible.
 pub fn render(doc: &Document, target: ProviderFormat) -> Vec<Message> {
     match target {
         ProviderFormat::OpenAiChat { vision, audio } => render_chat(doc, vision, audio),
@@ -68,12 +84,16 @@ pub fn render(doc: &Document, target: ProviderFormat) -> Vec<Message> {
 }
 
 /// One system message carrying the paper in document order (the assembled
-/// text IS the cacheable prefix), then one fixed user message. Ported from
-/// Spike C.
+/// text IS the cacheable prefix), then one fixed user message (Spike C).
 fn render_chat(doc: &Document, vision: bool, audio: bool) -> Vec<Message> {
     let mut parts: Vec<ContentPart> = Vec::new();
     let mut text = String::new();
     for s in &doc.sections {
+        // Before the tail, never after it (header). Ahead of the Elided skip
+        // because `law::ends` guarantees exactly one tail, words or not.
+        if s.slot.is_tail() {
+            append_compaction_notice(&mut text, &doc.report);
+        }
         if s.fidelity == Fidelity::Elided {
             continue;
         }
@@ -83,7 +103,6 @@ fn render_chat(doc: &Document, vision: bool, audio: bool) -> Vec<Message> {
         }
         text.push('\n');
     }
-    append_compaction_notice(&mut text, &doc.report);
     flush_text(&mut parts, &mut text);
     vec![
         Message {
@@ -155,8 +174,8 @@ fn withheld(p: &Part) -> String {
     format!("[{kind} withheld: text-only target]\n")
 }
 
-/// What was compacted out of this document, appended AFTER every section: a
-/// notice that changes each turn must not sit inside the stable prefix.
+/// What was compacted out of this document, emitted immediately BEFORE the
+/// tail section and never after it — the header records why.
 fn append_compaction_notice(text: &mut String, report: &CompactionReport) {
     if report.steps.is_empty() && report.withheld.is_empty() {
         return;
@@ -178,20 +197,4 @@ fn flush_text(parts: &mut Vec<ContentPart>, text: &mut String) {
             text: std::mem::take(text),
         });
     }
-}
-
-/// Content hash of a rendered document, for the per-turn event-log record
-/// (ADR-009: hash + fidelities persist; full text only on request — it
-/// contains everything personal). Hand-rolled FNV-style, no crypto dependency:
-/// the requirement is stable identity in a diffable log, not collision
-/// resistance.
-pub fn content_hash(messages: &[Message]) -> String {
-    // FNV-1a 64 over the serde_json bytes of the messages.
-    let bytes = serde_json::to_string(messages).expect("messages serialize");
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in bytes.bytes() {
-        hash ^= u64::from(b);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    format!("{hash:016x}")
 }

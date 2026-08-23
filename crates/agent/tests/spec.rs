@@ -46,6 +46,11 @@ fn parses_every_frontmatter_key_and_the_body() {
             "exec",
             "read_file",
             "write_file",
+            // Granted in this increment, and only once the budget had room for
+            // it: `edit_file` is named BESIDE `write_file`, not instead of it.
+            // A whole-file write is right when a file is being authored and
+            // wrong when one line of a large file is being changed.
+            "edit_file",
             "list_files",
             "start_process",
             "list_processes",

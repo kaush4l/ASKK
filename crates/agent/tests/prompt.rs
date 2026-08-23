@@ -15,7 +15,7 @@ use agent::{
     adopt_spec, memory_parts, parse_agent_file, space_parts, step, AgentState, Effect, Memory,
     MEMORY_FACULTY, SPACE_FACULTY,
 };
-use context::{render, ContentPart, ProviderFormat, Role};
+use context::{render, ContentPart, Document, ProviderFormat, Role};
 
 mod common;
 use kernel::{Event, EventId, EventKind, Timestamp};
@@ -82,20 +82,29 @@ fn rendered_with(file: &str, question: &str, stages: &[&str], peers: &[&str]) ->
     bytes_of(state, question)
 }
 
+/// The DOCUMENT a PREPARED state assembles when it is asked something — the
+/// same real path `bytes_of` renders, stopped one step earlier. Stopping there
+/// is the point: the rendered bytes are what the model reads, and the
+/// `CompactionReport` riding on the document is the only place the machine ever
+/// says WHAT it stopped showing.
+fn paper_of(state: AgentState, question: &str) -> Document {
+    let (_, effects) = step(state, user(question));
+    effects
+        .iter()
+        .find_map(|e| match e {
+            Effect::CallModel { document, .. } => Some(document.clone()),
+            _ => None,
+        })
+        .expect("asking a question calls the model")
+}
+
 /// The bytes a PREPARED state produces when it is asked something — the half
 /// of `rendered_with` below building `main`. Split out so a test can prepare a
 /// different agent entirely and still go through the one real path, rather
 /// than a second rendering that could drift from this one.
 fn bytes_of(state: AgentState, question: &str) -> String {
-    let (_, effects) = step(state, user(question));
-    let document = effects
-        .iter()
-        .find_map(|e| match e {
-            Effect::CallModel { document, .. } => Some(document),
-            _ => None,
-        })
-        .expect("asking a question calls the model");
-    let messages = render(document, FMT);
+    let document = paper_of(state, question);
+    let messages = render(&document, FMT);
     assert_eq!(messages[0].role, Role::System, "the paper is the system turn");
     messages[0]
         .content
@@ -697,6 +706,21 @@ fn stages_of(spec: &agent::AgentSpec) -> Vec<String> {
 /// agent loaded beside it — because a `tools:` list names built-ins and peers
 /// in one breath, and a grant only half-resolved is a grant only half-tested.
 fn shipped_prompt(name: &str, file: &str, stage: &str) -> String {
+    bytes_of(shipped_state(name, file, stage), SHIPPED_QUESTION)
+}
+
+/// …and the DOCUMENT behind those bytes, for the one reader that needs the
+/// budget's receipt rather than the words.
+fn shipped_paper(name: &str, file: &str, stage: &str) -> Document {
+    paper_of(shipped_state(name, file, stage), SHIPPED_QUESTION)
+}
+
+/// The question both of them ask. Named because the two must ask the SAME one:
+/// what a paper costs depends on what was said to it, so a guard reading the
+/// budget and a test reading the words have to be looking at one document.
+const SHIPPED_QUESTION: &str = "what is in this folder?";
+
+fn shipped_state(name: &str, file: &str, stage: &str) -> AgentState {
     let spec = parse_agent_file(name, file).expect("a shipped agent parses");
     let peers: Vec<agent::AgentSpec> = SHIPPED
         .iter()
@@ -709,7 +733,7 @@ fn shipped_prompt(name: &str, file: &str, stage: &str) -> String {
     common::brief(&mut state);
     state.declared = vec![stage.to_string()];
     state.stages = vec![stage.to_string()];
-    bytes_of(state, "what is in this folder?")
+    state
 }
 
 /// One block of the rendered prompt, heading excluded, up to the next heading.
@@ -902,4 +926,114 @@ fn every_document_that_says_how_to_add_an_agent_names_the_table_it_must_also_edi
     }
     // …and none of them still calls it a two-step job.
     assert!(!comment.contains("Two entries"), "the manifest's comment counts the agents it lists");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE BUDGET, AS A GATE STEP
+//
+// A person adds one line to a shipped agent's `tools:` list and the agent stops
+// being shown what it observed. Measured on `main` at HEAD: the paper spends
+// 4018 of its 4096 tokens before anyone has said anything, one more tool line
+// costs about 100, and the ladder then pointered `## history`, pointered
+// `## space` and elided `## observations` — three components, to recover a
+// 22-token overshoot. Nothing in the product said so. The model was told, in
+// `## compaction_notice`; nobody else was, and the prompt that carries that
+// notice is the one artifact ADR-009 deliberately does not persist.
+//
+// So the AUTHOR is told here, at the gate, by name. I17: a claim the gate
+// cannot execute is not a verified claim, and "the shipped agents are shown
+// their whole paper" was exactly such a claim until these two ran.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// NOTHING A SHIPPED AGENT DECLARES IS EVICTED BY ITS OWN BUDGET — and when
+/// that stops being true, this says WHICH components went and how far down.
+///
+/// The receipt is read rather than the headings, on purpose. Only `Elided`
+/// removes a heading, so a heading-list assertion sees one of the three losses
+/// above and calls the other two green: a `## history` degraded to
+/// `[section 'history': 4 part(s) available; ask for them]` still has its
+/// heading and has lost the conversation.
+#[test]
+fn no_shipped_agents_budget_takes_a_component_away_from_it() {
+    for (name, file) in SHIPPED {
+        let spec = parse_agent_file(name, file).expect("a shipped agent parses");
+        for stage in stages_of(&spec) {
+            let paper = shipped_paper(name, file, &stage);
+            let took: Vec<String> = paper
+                .report
+                .steps
+                .iter()
+                .map(|s| format!("`## {}` {:?}→{:?}", s.section.0, s.from, s.to))
+                .collect();
+            assert!(
+                took.is_empty(),
+                "`{name}` in stage `{stage}` spent {} of its {} token budget, so the ladder \
+                 took {}. Whatever was just added to that agent, the model is paying for it \
+                 with something it can no longer see. Give the paper headroom (its own prose \
+                 and its `tools:` list are the two things in it that a person chose) or raise \
+                 the phase budget in `crates/agent/src/phase.rs`.",
+                paper.report.spent,
+                paper.report.budget.max_tokens,
+                took.join(", ")
+            );
+        }
+    }
+}
+
+/// …AND IT STILL HAS ROOM FOR ONE MORE TOOL. The test above fires only once
+/// the budget has ALREADY bitten, which is one edit too late: the person who
+/// crosses the line is the person who must be told, and they find out here.
+///
+/// [`A_TOOL_LINE`] is measured, not guessed — granting `edit_file` to `main`
+/// grew `## affordances` from 1274 to 1374 tokens. So this asserts the law the
+/// defect broke: a shipped agent always has room for the next tool somebody
+/// grants it, and an agent that does not is one whose paper or whose budget has
+/// to move BEFORE the grant, not after the model quietly stops seeing a block.
+const A_TOOL_LINE: u32 = 100;
+
+#[test]
+fn a_shipped_agents_paper_has_room_for_one_more_tool() {
+    let mut tightest: Option<(String, u32)> = None;
+    for (name, file) in SHIPPED {
+        let spec = parse_agent_file(name, file).expect("a shipped agent parses");
+        for stage in stages_of(&spec) {
+            let paper = shipped_paper(name, file, &stage);
+            let spare = paper.report.budget.max_tokens.saturating_sub(paper.report.spent);
+            if tightest.as_ref().is_none_or(|(_, least)| spare < *least) {
+                tightest = Some((format!("{name}/{stage}"), spare));
+            }
+        }
+    }
+    let (where_, spare) = tightest.expect("a shipped agent assembles a paper");
+    assert!(
+        spare >= A_TOOL_LINE,
+        "the tightest shipped paper is `{where_}`, and it has {spare} tokens spare — less          than the ~{A_TOOL_LINE} one more `tools:` line costs. Granting a tool from here          does not add a capability; it trades one for whatever the ladder takes instead.          Move the paper or the budget first."
+    );
+}
+
+/// RULING (b), PINNED. When the ladder does bite, the model is told what it
+/// lost — and the response contract is STILL the last instruction it reads.
+///
+/// Both halves matter. `crates/context/src/render.rs` appended the notice after
+/// every section, which meant the one turn the model most needed its output
+/// format was the turn the format stopped being last.
+#[test]
+fn a_compacted_paper_says_so_before_the_contract_and_not_after_it() {
+    // A question far larger than the whole budget, so the ladder certainly
+    // runs. Crude on purpose: it goes through the real shipped path rather than
+    // through a document built to compact, so what is pinned is what the model
+    // would actually receive on a turn whose conversation outgrew its budget.
+    let prompt = rendered(&"tell me about this folder in detail. ".repeat(600));
+    let headings = heads(&prompt);
+    let at = |head: &str| headings.iter().position(|h| *h == head);
+    assert!(
+        at("## compaction_notice").is_some(),
+        "the ladder did not bite, so this test measured nothing: {headings:?}"
+    );
+    assert_eq!(
+        headings.last(),
+        Some(&"## response_contract"),
+        "the compaction notice displaced the shape of the reply: {headings:?}"
+    );
+    assert!(at("## compaction_notice") < at("## response_contract"), "{headings:?}");
 }
