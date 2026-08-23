@@ -132,24 +132,24 @@ fn inside_this_browser() -> Vec<Tool> {
 }
 
 /// THE TWO THAT ACT ON THE ROSTER: one writes an agent into this browser, the
-/// other sets one of them working. Each hands CAPABILITY to something that is
-/// not this turn, which is why their descriptions are the longest in the file.
+/// other sets one working. Each hands CAPABILITY to something that is not this
+/// turn, which is why their descriptions are the longest in the file. And
+/// `write_agent` is increment 11: a model authoring an agent that then runs with
+/// real capabilities is the user's explicit decision; it is an ORDINARY tool
+/// because a built-in and an authored agent must be indistinguishable (I9).
 ///
-/// `write_agent` is increment 11. A model authoring an agent that then runs
-/// with real capabilities is a decision the user made explicitly; it is an
-/// ORDINARY tool because a built-in agent and an authored one must be
-/// indistinguishable to the system (I9).
-///
-/// Its 'space' sentence used to say naming one "also grants it a real shell".
-/// That was true when `toolbox_for` appended the workspace set AFTER the
-/// allowlist; it is now false for any non-empty list, and a tool description
-/// that overstates a capability boundary is the worst place in the product to
-/// be out of date — an authoring model reads it and writes the wrong file.
+/// ITS 'space' SENTENCE HAS NOW BEEN WRONG TWICE, WHICH IS WHY THERE IS A TEST.
+/// It once claimed naming a space "also grants it a real shell"; then its list of
+/// workspace tools went stale — `edit_file` shipped in `0a99e9f`, reached `main`
+/// in `5131e0b`, and this sentence never learned it, so an agent authored THROUGH
+/// THE PRODUCT could not be given a tool the product has. Twice one defect: a
+/// hand-kept copy of a list the machine holds. So `tests/write_agent_names.rs`
+/// walks `workspace_tools` and reddens on any name missing here (I16, I17).
 ///
 /// `spawn_agent` (increment 27) states the boundary the other half implies: it
-/// starts an agent that ALREADY EXISTS, so it names `list_agents` for finding
-/// one and `write_agent` for authoring one first — composed, the two are
-/// "author a new role, then start it", with no second config format.
+/// starts an agent that ALREADY EXISTS, so it names `list_agents` for finding one
+/// and `write_agent` for authoring one first — composed, "author a new role, then
+/// start it", with no second config format.
 fn the_roster() -> Vec<Tool> {
     vec![
         Tool::new(
@@ -159,9 +159,10 @@ fn the_roster() -> Vec<Tool> {
              gets its own Worker and is listed beside the shipped agents. 'tools' is a \
              comma-separated list of tool and agent names ('' means every built-in, plus the \
              workspace set if a space is named). 'space' is the shared space it works in; \
-             naming one makes the workspace tools AVAILABLE TO NAME — 'exec', 'write_file', \
-             'read_file', 'list_files' and the process tools — and a non-empty 'tools' list \
-             then grants exactly the ones it names and nothing else.",
+             naming one makes the workspace tools AVAILABLE TO NAME — exec, read_file, \
+             write_file, edit_file, list_files, start_process, list_processes, read_process, \
+             stop_process, observe, find_files — and a non-empty 'tools' list then grants \
+             exactly the ones it names and nothing else.",
             &["name", "description", "prompt", "tools", "space"],
         ),
         Tool::new(

@@ -114,8 +114,19 @@ pub(crate) fn labelled<'a>(reply: &'a str, label: &str) -> Option<&'a str> {
 }
 
 /// A line with its list marker taken off: `-`, `*`, `+`, `1.`, `2)`. A marker
-/// counts only when whitespace follows it, which is what stops `**ROUTE**`
-/// from being read as a bullet.
+/// counts only when whitespace follows it, which stops `**ROUTE**` being a bullet.
+///
+/// **TWO SHAPES ARE STILL DROPPED HERE, MEASURED 2026-08-23 AND NOT FIXED.**
+/// `## ROUTE: project` and `> ROUTE: project` both read as `react`: `#` and `>`
+/// are neither markers below nor decoration in `plain`, so the label never opens
+/// its line. Same cause `e27a387` fixed for `**` and `-` — a small model asked
+/// for two named lines turns a label into a heading, or pulls it into a quote,
+/// for the reason it bolds one — and an unreadable vote is a SILENT `react`, so
+/// the cost is the `answer` route's cheap turn and the `project` route's plan on
+/// replies well formed in every other way. Adding them is a grammar change and
+/// this increment was scoped to measurement, so it is recorded here and in
+/// `tests/vote_shapes.rs` for the lead. Deliberately not pinned green in either
+/// place: a test asserting `## ROUTE: project` means `react` makes it law.
 fn unmarked(line: &str) -> &str {
     let line = line.trim();
     match line.split_once(char::is_whitespace) {

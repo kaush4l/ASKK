@@ -1,10 +1,20 @@
 //! Event + event-log types (I8: every transition emits an event; every view is
 //! a projection of the log). Events are the sole input to `step()` and the
 //! material of replay (GLOSSARY: Event — a fact about the past).
+//!
+//! **CHANGING A VARIANT'S SHAPE IS A MIGRATION, AND HERE IS WHY IT IS NOT
+//! FREE.** `core::log::store::persist` writes every event to `events/{seq}` as
+//! serde JSON, and `core::boot::replay_events` reads them back at boot and
+//! REFUSES BOOT LOUDLY on a record it cannot deserialize (ADR-005: no silent
+//! drops of history). So a field added without `#[serde(default)]` does not
+//! degrade — it bricks every browser that already has a log. Every optional
+//! field below carries that attribute for exactly this reason, and
+//! `crates/core/tests/log_shape.rs` executes the claim rather than asserting
+//! it in prose (I17).
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{EventId, ModuleId, PhaseId, Timestamp, ToolId, Version};
+use crate::ids::{EventId, ModuleId, PhaseId, Timestamp, SectionId, ToolId, Version};
 use crate::status::Status;
 
 /// One recorded fact. Public: the whole system communicates through these —
@@ -69,6 +79,34 @@ pub enum EventKind {
     ModelCalled {
         document_hash: String,
         spent_tokens: u32,
+        /// WHICH COMPONENTS THE BUDGET REMOVED ENTIRELY from the paper this
+        /// call was sent — the ladder's `Fidelity::Elided` steps and no others.
+        ///
+        /// It is here because of ADR-009's one sharp edge: the rendered prompt
+        /// is the artifact this product deliberately does NOT persist, and the
+        /// `## compaction_notice` block is the system's ONLY statement of what
+        /// it evicted. So the single sentence naming the loss was being written
+        /// into the one place guaranteed to be thrown away, and the person was
+        /// never told at all — measured on `main` in `work`, where the paper
+        /// wanted 4174 tokens against a 4096 budget and `## observations` was
+        /// elided on EVERY turn while the agent's own prose told it to read
+        /// that block (`5131e0b`). I16: a truth the system holds and does not
+        /// state is a defect.
+        ///
+        /// ELISIONS ONLY, AND THAT IS THE WHOLE DESIGN. `Summarized` and
+        /// `Pointer` still put the section in the prompt and tell the model how
+        /// to ask for it back; that is a budget working, it happens on any long
+        /// conversation, and recording it here would put three to nine rows in
+        /// the log on every model call to say nothing was wrong. `Elided`
+        /// removes the heading, so the agent's prose then names a block that is
+        /// not there. A healthy turn carries an empty vector; a line only
+        /// appears when something is actually gone.
+        ///
+        /// COST: `"evicted":[]` on every persisted `ModelCalled` record, and
+        /// `#[serde(default)]` so the records written before this field still
+        /// replay (see this module's header — they would otherwise refuse boot).
+        #[serde(default)]
+        evicted: Vec<SectionId>,
     },
     /// The completed reply (ADR-002: token deltas never enter the log).
     /// Scoped like `UserMessage`: a sub-agent's answer is recorded against
