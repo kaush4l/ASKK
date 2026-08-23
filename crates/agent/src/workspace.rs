@@ -1,30 +1,27 @@
-//! The workspace as the MODEL sees it (increment 10): four tools, and the one
+//! The workspace as the MODEL sees it (increment 10): the tools, and the one
 //! rule about the paths they may name. Pure — running a command is I/O and
-//! happens in `core::workspace` through `kernel::WorkspacePort`, so this file
-//! tests on the host like every other decision the agent makes (I3).
-//!
-//! The workspace belongs to the SPACE. Increment 09 put `spaces/<name>` in
-//! every prompt as a path "named; not writable from this browser yet"; this is
-//! where it becomes a folder, and it is the same folder for every agent whose
-//! file names that space — which is what a shared workspace has to mean.
+//! happens in `core::workspace` through `kernel::WorkspacePort` (I3). The
+//! workspace belongs to the SPACE: the same folder for every agent whose file
+//! names that space, which is what a shared workspace has to mean.
 
 use crate::tools::Tool;
 
-/// The tools a workspace brings with it, attached to whoever names the space,
-/// exactly as the space's own three are (Python `utils.load_agent`).
+/// The tools a workspace brings with it, attached to whoever names the space.
 ///
-/// ONE SET, not four tools and six bolt-ons. `exec` runs something that
-/// finishes; the rest are the three things an agent in an environment cannot
-/// do with a one-shot command — outlive the call, ask what the machine IS, and
-/// find a file it does not already know the name of. Every one of them is the
-/// same `WorkspacePort::exec` underneath (ADR-013); none of them is a second
-/// way into the Linux.
+/// ONE SET, not a handful of tools and a pile of bolt-ons. `exec` runs
+/// something that finishes; the rest are what an agent in an environment cannot
+/// do with a one-shot command — outlive the call, ask what the machine IS, find
+/// a file it does not know the name of. Every one is the same
+/// `WorkspacePort::exec` underneath (ADR-013), never a second way into the Linux.
 pub fn workspace_tools() -> Vec<Tool> {
     [one_shot_tools(), process_tools(), discovery_tools()].concat()
 }
 
-/// The one-shot set: run something that finishes, and read or write a file.
-/// Every workspace session that does anything at all uses these.
+/// The one-shot set: run something that finishes, and read, write or CHANGE a
+/// file. `edit_file` is here because `write_file` REPLACES — altering one line
+/// of a long file otherwise means reproducing every other line from memory, and
+/// a model that misremembers one destroys work this guest cannot get back
+/// (`DURABLE` is false). Its exactly-once rule is in `gate::edit`.
 fn one_shot_tools() -> Vec<Tool> {
     vec![
         Tool::new(
@@ -36,7 +33,9 @@ fn one_shot_tools() -> Vec<Tool> {
         ),
         Tool::new(
             "read_file",
-            "Read a file in the workspace. The path is relative to the workspace folder.",
+            "Read a file in the workspace. The path is relative to the workspace folder. For a \
+             big file, add 'offset' and 'limit' — whole numbers of BYTES — to read one window of \
+             it; the answer states the whole file's size, so you can ask for the rest.",
             &["path"],
         ),
         Tool::new(
@@ -46,6 +45,14 @@ fn one_shot_tools() -> Vec<Tool> {
             &["path", "contents"],
         ),
         Tool::new(
+            "edit_file",
+            "Change part of a file, leaving the rest of it exactly as it is. 'find' is the \
+             text to replace, verbatim, and it must appear in the file exactly once — if it \
+             appears no times or more than once, nothing is written and you are told what was \
+             there. Prefer this to write_file when the file already holds something worth keeping.",
+            &["path", "find", "replace"],
+        ),
+        Tool::new(
             "list_files",
             "List a folder in the workspace. Use \".\" for the workspace itself.",
             &["path"],
@@ -53,10 +60,9 @@ fn one_shot_tools() -> Vec<Tool> {
     ]
 }
 
-/// OUTLIVING THE CALL — the thing `exec` cannot do. A server an agent starts
-/// and cannot leave running is not a server; one it cannot see is running blind;
-/// one it cannot stop is a leak. Four tools, one capability, and every one of
-/// them is the same `WorkspacePort::exec` underneath (ADR-013).
+/// OUTLIVING THE CALL — the thing `exec` cannot do. A server an agent cannot
+/// leave running is not a server; one it cannot stop is a leak. Four tools, one
+/// capability, one `exec` (ADR-013).
 fn process_tools() -> Vec<Tool> {
     vec![
         Tool::new(
@@ -86,9 +92,8 @@ fn process_tools() -> Vec<Tool> {
 }
 
 /// ASKING RATHER THAN GUESSING — the other two things a one-shot command cannot
-/// do. `observe` asks what the machine IS, which beats guessing at it with five
-/// shell commands; `find_files` finds a file whose name the agent does not
-/// already know, which `list_files` on an unknown folder shape is not.
+/// do. `observe` asks what the machine IS rather than guessing with five shell
+/// commands; `find_files` finds a file whose name the agent does not know.
 fn discovery_tools() -> Vec<Tool> {
     vec![
         Tool::new(
@@ -113,6 +118,7 @@ pub fn is_workspace_tool(name: &str) -> bool {
         "exec"
             | "read_file"
             | "write_file"
+            | "edit_file"
             | "list_files"
             | "start_process"
             | "list_processes"
@@ -123,11 +129,10 @@ pub fn is_workspace_tool(name: &str) -> bool {
     )
 }
 
-/// A process name the model chose, checked. A NAME and not a number, because a
-/// number is what the model has to remember and a pid is not stable across a
-/// reload: the model says `web` and means the same process next turn. It also
-/// becomes a directory name under `.harness/proc/`, so it is checked the way a
-/// space name is (`Space::named`) — refused, never rewritten.
+/// A process name the model chose, checked. A NAME and not a number: a pid is
+/// not stable across a reload, and the model says `web` and means the same
+/// process next turn. It also becomes a directory name under `.harness/proc/`,
+/// so it is checked the way a space name is — refused, never rewritten.
 pub fn process_name(name: &str) -> Result<String, String> {
     let name = name.trim();
     let usable = !name.is_empty()
@@ -145,10 +150,9 @@ pub fn process_name(name: &str) -> Result<String, String> {
 }
 
 /// A path the model wrote, checked against the one rule: it stays inside the
-/// workspace. Absolute paths and `..` segments are REFUSED rather than
-/// clamped — a silently rewritten path writes a file the agent cannot find,
-/// and the refusal is what lets it correct itself. Empty means the workspace
-/// folder itself.
+/// workspace. Absolute paths and `..` segments are REFUSED rather than clamped
+/// — a silently rewritten path writes a file the agent cannot find, and the
+/// refusal is what lets it correct itself. Empty is the workspace folder.
 pub fn relative_path(path: &str) -> Result<String, String> {
     let path = path.trim();
     if path.is_empty() || path == "." {

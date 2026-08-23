@@ -51,7 +51,11 @@ pub(super) async fn run(
             }
             Ok(command) => port.exec(root, command).await,
         },
-        "read_file" => port.read(root, &path()?).await,
+        "read_file" => match window(args) {
+            (0, 0) => port.read(root, &path()?).await,
+            (offset, limit) => port.read_range(root, &path()?, offset, limit).await,
+        },
+        "edit_file" => return super::edit::run(port, root, &path()?, args).await,
         // `contents` is TEXT, and this is the line the split exists for. A
         // reader that trimmed here would strip the trailing newline off every
         // file an agent ever wrote, silently, with the gate green
@@ -65,12 +69,32 @@ pub(super) async fn run(
     ran.map_err(super::unavailable)
 }
 
+/// THE WINDOW THE MODEL ASKED FOR, in bytes.
+///
+/// A WINDOW IS A REQUEST, NOT A SECOND READER. Absent, unreadable or negative
+/// is `(0, 0)`, and the caller above then asks for `read` rather than for a
+/// zero-width `read_range` — not a tidiness point, but the one that keeps an
+/// ADAPTER'S OWN `read` in play. `WorkspacePort::read`'s default already
+/// delegates here, and an adapter with a cheaper path overrides `read`; routing
+/// every call through `read_range` walked straight past those overrides and the
+/// files pane started reading a command instead of a file. A window is the
+/// model reaching for LESS, and a number it did not manage to write is not a
+/// smaller ask. Read
+/// through `Args::whole`, which is the ONE reader for a number the model wrote
+/// — a hand-rolled `serde_json::from_str::<Value>` here would be the shape
+/// `crates/core/tests/onereader.rs` keeps at one site, and that test caught
+/// this function written the wrong way round.
+fn window(args: &Args) -> (usize, usize) {
+    (args.whole("offset").unwrap_or(0), args.whole("limit").unwrap_or(0))
+}
+
 /// The call shape this tool wants, in the tool's own vocabulary. A refusal a
 /// model cannot act on is a dropped call wearing words, so every refusal below
 /// ends in the line the model should have written.
 fn shape(tool: &str) -> &'static str {
     match tool {
         "read_file" => r#"read_file({"path": "notes/today.md"})"#,
+        "edit_file" => r#"edit_file({"path": "notes/today.md", "find": "…", "replace": "…"})"#,
         "write_file" => r#"write_file({"path": "notes/today.md", "contents": "…"})"#,
         _ => r#"list_files({"path": "."})"#,
     }

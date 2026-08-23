@@ -21,6 +21,9 @@ use crate::app::App;
 /// refuse a call missing an argument. Both are prose written for the model, and
 /// prose takes room: this file is at the 200-line ceiling (I12).
 mod cap;
+/// The checked edit, whose refusals are three paragraphs of prose for the
+/// model — its own file for the reason `files` is one.
+mod edit;
 mod files;
 
 /// This agent's workspace grant, or the reason it has none. One definition,

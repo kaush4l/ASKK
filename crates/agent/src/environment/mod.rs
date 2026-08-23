@@ -3,24 +3,21 @@
 //!
 //! The complete inventory of this guest lived in `image/Dockerfile:25-40` as a
 //! COMMENT: correct, argued line by line, naming the caller of every applet —
-//! and unreadable by the model it describes and by the suite that certifies
-//! the tree. That is the shape I16 names as the defect to fix first: a truth
-//! held only in prose is a truth that will drift, because nothing can fail
-//! when it does. This file is that comment turned into something a test can
-//! hold, and `tests/stated.rs` is the test that holds it.
+//! and unreadable by the model it describes and by the suite that certifies the
+//! tree. That is the shape I16 names as the defect to fix first: a truth held
+//! only in prose will drift, because nothing can fail when it does. This file
+//! is that comment turned into something a test can hold.
 //!
 //! **WHY THIS IS RUST AND NOT `public/*.json`.** The stage briefs became data
 //! in the T1 round, and the reason was a rate of change: a prompt is edited by
-//! watching a model answer, one wording at a time, and it must be possible to
-//! ship a better sentence without a rebuild. Nothing here has that property.
-//! What is written down below is the content of a COMPILED ARTIFACT — the
-//! guest image, built from `image/Dockerfile`, frozen by the owner, and
-//! shipped as bytes under `web/c2w/`. It cannot change without a rebuild, so
-//! it must not be editable without one. A JSON file beside it would offer
-//! exactly one new capability: to state, without recompiling, that the guest
-//! has a compiler. Different rate of change, different home — the same
-//! reasoning `docs/STATUS.md` records for T1, applied to a fact that moves the
-//! other way.
+//! watching a model answer, one wording at a time, and a better sentence must
+//! ship without a rebuild. Nothing here has that property. What is written
+//! below is the content of a COMPILED ARTIFACT — the guest image, built from
+//! `image/Dockerfile`, frozen by the owner, shipped as bytes under `web/c2w/`.
+//! It cannot change without a rebuild, so it must not be editable without one.
+//! A JSON file beside it would offer exactly one new capability: to state,
+//! without recompiling, that the guest has a compiler. Different rate of
+//! change, different home — `docs/STATUS.md`'s T1 reasoning, run the other way.
 //!
 //! **THE HONEST LIMIT (I16's own closing paragraph).** Checking prose against
 //! this file is not checking this file against the image. Only a build can
@@ -39,9 +36,8 @@ pub use deadline::{PARTIAL_MARK, RUN_LIMIT_SECS};
 /// One thing that is true of the workspace, and the sentence that says it.
 ///
 /// The `id` is for the machine — `tests/stated.rs` reports which fact went
-/// unrendered by name — and `says` is the model's, verbatim. One struct rather
-/// than a bare string because a fact nobody can name is a fact nobody can
-/// prove reached the model.
+/// unrendered by name — and `says` is the model's, verbatim. A fact nobody can
+/// name is a fact nobody can prove reached the model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fact {
     pub id: &'static str,
@@ -78,12 +74,18 @@ pub const MEMORY: &str = "keeps its filesystem in memory";
 /// missing. `echo` is the one name here the Dockerfile's list does not carry:
 /// it is an ash builtin exactly as `set`, `printf`, `test`, `kill` and `wait`
 /// are, and `proc/convention.rs`'s own liveness script calls it.
+///
+/// `true` is NOT here and `c2w.js` exports `EDITOR=true` anyway — a real gap,
+/// labelled rather than papered over (I17). This array is pinned to
+/// `image/Dockerfile`'s inventory by `tests/inventory.rs`, that file is the
+/// source of truth, and the image is frozen, so declaring `true` is a change to
+/// the RECIPE. `crates/core/tests/guest_truth.rs` names the same gap.
 pub const BINARIES: [&str; 28] = [
     // The shell and its builtins (adapters_web/src/c2w.js, core/src/proc).
     "sh", "set", "test", "printf", "echo", "kill", "wait", "stty",
     // Files and folders (kernel/workspace.rs, core/src/proc/start.rs).
     "cat", "base64", "mkdir", "dirname", "basename", "ls", "rm", "df",
-    // Finding and reading (core/src/findfiles.rs, core/src/proc/watch.rs).
+    // Finding and reading (core/src/files/find.rs, core/src/proc/watch.rs).
     "find", "grep", "head", "tail", "wc", "cut", "tr", "awk",
     // The machine and the clock (core/src/observe.rs, core/src/proc/start.rs).
     "uname", "pwd", "date", "sleep",
@@ -101,16 +103,14 @@ pub const ABSENT: [&str; 6] = ["python3", "node", "git", "curl", "make", "compil
 /// WHAT THIS AGENT'S WORKSPACE IS, as the facts that are true FOR THIS GRANT.
 ///
 /// A function of the toolbox and not a constant, for the reason
-/// `components::space::folder` is one (I15): an agent granted no workspace
-/// tool has no workspace to be told about, and the block is absent rather than
-/// describing a folder nobody in this turn can reach. The toolbox handed in is
-/// the STAGE's, not the agent's, so the strategy vote — which is granted
-/// nothing — is told nothing (T25's rule, applied here from the start).
+/// `components::space::folder` is one (I15): an agent granted no workspace tool
+/// has no workspace to be told about, so the block is absent rather than
+/// describing a folder nobody this turn can reach. The toolbox handed in is the
+/// STAGE's, so the strategy vote — granted nothing — is told nothing (T25).
 ///
 /// Every fact returned is rendered by [`lines`], and `tests/stated.rs` asserts
-/// each one reaches an actual prompt. Adding a fact here is therefore the
-/// whole of adding a fact to the prompt; there is no second list to keep in
-/// agreement with this one.
+/// each one reaches an actual prompt. Adding a fact here is the whole of adding
+/// one to the prompt; there is no second list to keep in agreement with this.
 pub fn facts(tools: &Toolbox) -> Vec<Fact> {
     if !tools.tools.iter().any(|t| crate::workspace::is_workspace_tool(&t.name)) {
         return Vec::new();

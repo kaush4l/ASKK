@@ -105,6 +105,36 @@ impl Args {
         }
     }
 
+    /// One argument as a WHOLE NUMBER of things — a byte offset, a count — or
+    /// `None`.
+    ///
+    /// THE THIRD READER, AND WHY THERE IS ONE. The module note above says three
+    /// of the next four increments each add a tool argument; this is the first
+    /// of them, and `read_file`'s `offset`/`limit` are the first NUMBERS a model
+    /// sends this product. Neither existing reader can take them: [`Args::text`]
+    /// and [`Args::name`] both refuse a JSON number as `NotText`, correctly, and
+    /// a call site that reached around them with its own
+    /// `serde_json::from_str::<Value>` would be the sixteenth hand-rolled reader
+    /// — the shape `crates/core/tests/onereader.rs` exists to keep at one.
+    ///
+    /// TOTAL, AND `None` MEANS "THE MODEL DID NOT SAY". Absent, unparseable,
+    /// negative, fractional and out-of-range all answer `None` rather than an
+    /// `ArgError`, because unlike a path or a file's contents there is nothing a
+    /// refusal would be protecting: the one caller reads a WINDOW, and no window
+    /// is the whole file. A site that needs the difference between "not said"
+    /// and "said badly" should not use this.
+    ///
+    /// A STRING OF DIGITS COUNTS. `{"limit": "500"}` is a thing models write and
+    /// it means five hundred; refusing it would be re-deciding, at one call
+    /// site, what the model said — which is the whole defect this file ended.
+    pub fn whole(&self, key: &str) -> Option<usize> {
+        match self.value.get(key)? {
+            Value::Number(n) => usize::try_from(n.as_u64()?).ok(),
+            Value::String(said) => said.trim().parse().ok(),
+            _ => None,
+        }
+    }
+
     /// The first non-blank string value under ANY key, trimmed.
     ///
     /// For the one call that has to accept a key it did not name: a sub-agent

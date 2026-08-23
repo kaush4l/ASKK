@@ -1,5 +1,6 @@
 //! The workspace port (ADR-013): a place the agent can RUN a command, and the
-//! four operations that place has to offer — exec, read, write, list.
+//! operations that place has to offer — exec, read (whole or windowed), write,
+//! list.
 //!
 //! It is a port for the reason every other capability is one: the core must
 //! not know Linux exists. `adapters_web` boots container2wasm behind this trait; a
@@ -7,13 +8,16 @@
 //! workspace at all answers `Unavailable` and nothing breaks (I15).
 //!
 //! `exec` is the only required method. Reading, writing and listing a file in
-//! a Unix are three commands, so they are DEFAULTS built on `exec` rather than
-//! three more things an adapter has to get right — and an adapter with a
-//! cheaper path may still override them.
+//! a Unix are commands, so they are DEFAULTS built on `exec` rather than more
+//! things an adapter has to get right — and an adapter with a cheaper path may
+//! still override them.
 
 use serde::{Deserialize, Serialize};
 
 use crate::ports::BoxFuture;
+
+/// The one command that reads a file, whole or in part (I12: prose takes room).
+mod window;
 
 /// One finished command: the shell's exit status and everything it wrote.
 /// Output is merged (stdout and stderr as the terminal saw them) because that
@@ -37,12 +41,11 @@ pub enum WorkspaceError {
 
 /// WHAT A STOP CAN ACTUALLY DO to the command running right now (R11-1).
 ///
-/// Not a feature flag and not speculative generality: a build may have no
-/// workspace at all (I15), and a control offering to stop a command in a Linux
-/// that is not there is worse than no control. container2wasm drives one
-/// shared PTY, so an interrupt byte reaches the foreground process group and
-/// the command dies — that is the only promise this product makes, and it
-/// travels with the port rather than with the copy.
+/// Not a feature flag: a build may have no workspace at all (I15), and a
+/// control offering to stop a command in a Linux that is not there is worse
+/// than no control. container2wasm drives one shared PTY, so an interrupt byte
+/// reaches the foreground process group and the command dies — the only
+/// promise this product makes, travelling with the port and not with the copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Interrupt {
     /// No way in from here at all — the control is not offered.
@@ -68,11 +71,27 @@ pub trait WorkspacePort {
         command: &'a str,
     ) -> BoxFuture<'a, Result<Execution, WorkspaceError>>;
 
-    /// A file's contents. `cat` reports its own failure on stderr, which is
-    /// already the output — a missing file comes back as a non-zero status
-    /// with the message, not as a silent empty string.
+    /// A file's contents: [`WorkspacePort::read_range`] with no window asked
+    /// for. ONE reader, which a caller may ask for part of.
     fn read<'a>(&'a self, cwd: &'a str, path: &'a str) -> BoxFuture<'a, Result<Execution, WorkspaceError>> {
-        Box::pin(async move { self.exec(cwd, &format!("cat -- {}", shell_quote(path))).await })
+        self.read_range(cwd, path, 0, 0)
+    }
+
+    /// PART of a file, and the file's true size, without shipping the rest of
+    /// it through the one shared PTY. `offset` and `limit` are BYTES and
+    /// `limit == 0` is "to the end"; `window::read_script` owns the command
+    /// and the argument for every applet in it. Without it a build log bigger
+    /// than the 180 s watchdog can transfer is a file this agent cannot read
+    /// at all — a `cat` that half-arrives is a loss the cap in
+    /// `core::workspace::gate` can only describe after the fact.
+    fn read_range<'a>(
+        &'a self,
+        cwd: &'a str,
+        path: &'a str,
+        offset: usize,
+        limit: usize,
+    ) -> BoxFuture<'a, Result<Execution, WorkspaceError>> {
+        Box::pin(async move { self.exec(cwd, &window::read_script(path, offset, limit)).await })
     }
 
     /// Write a file, creating its directory. The contents travel as base64 so
@@ -128,10 +147,9 @@ pub trait WorkspacePort {
     }
 
     /// What is in a directory, one name per line, with a trailing `/` on the
-    /// folders (`-p`). The slash is not decoration: it is the only thing that
-    /// distinguishes a folder from an extensionless file, and both the model
-    /// deciding whether to descend and the files pane deciding what a click
-    /// means need to know which they are looking at.
+    /// folders (`-p`). The slash is the only thing that distinguishes a folder
+    /// from an extensionless file, and both the model deciding whether to
+    /// descend and the pane deciding what a click means need to know which.
     fn list<'a>(&'a self, cwd: &'a str, path: &'a str) -> BoxFuture<'a, Result<Execution, WorkspaceError>> {
         Box::pin(async move {
             self.exec(cwd, &format!("ls -1Ap -- {}", shell_quote(path)))
@@ -141,8 +159,7 @@ pub trait WorkspacePort {
 }
 
 /// Standard base64, no line breaks. Sixteen lines beats a dependency for the
-/// one place this codebase encodes anything (PROMPT §13: every dependency
-/// justified — this one could not be).
+/// one place this codebase encodes anything (PROMPT §13).
 pub fn base64(bytes: &[u8]) -> String {
     const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);

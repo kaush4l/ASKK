@@ -191,6 +191,10 @@ fn an_empty_list_with_a_space_takes_every_builtin_and_the_whole_space_set() {
             "exec",
             "read_file",
             "write_file",
+            // Increment 3 of the roadmap: the checked edit. It is a one-shot
+            // workspace tool like the three around it, so an empty list takes
+            // it on exactly the same rule.
+            "edit_file",
             "list_files",
             "start_process",
             "list_processes",

@@ -334,6 +334,46 @@ fn every_workspace_tool_is_one_the_declaration_gates_on() {
     assert!(guest_lines(&Toolbox::default()).is_empty());
 }
 
+/// **THE NEW CAPABILITY SENTENCES ARE SWEPT LIKE EVERY OTHER ONE.**
+///
+/// This increment gave the model two things it did not have — a windowed
+/// `read_file` and a checked `edit_file` — and each arrived as a sentence a
+/// model reads and acts on. `corpus()` already sweeps `Tool::usage` over
+/// `every_tool()`, so rule (b) above holds them automatically; what it does NOT
+/// hold is that they are IN that set, and a capability described in a tool that
+/// no roster grants is prose nothing checks.
+///
+/// So this asserts the MEMBERSHIP rather than re-asserting the rule: the words
+/// of both new sentences are inside the string
+/// `no_shipped_prose_names_a_binary_this_guest_does_not_have` reads, and they
+/// are there because both tools are in `workspace_tools()`.
+#[test]
+fn the_two_new_capability_sentences_are_inside_the_swept_corpus() {
+    let swept: String = corpus().iter().map(|(_, text)| text.as_str()).collect();
+    // The two sentences, by the words that carry the CAPABILITY rather than by
+    // the whole string: a rewording keeps this green, and a capability quietly
+    // withdrawn does not.
+    for claim in [
+        "'offset' and 'limit'",
+        "the whole file's size",
+        "must appear in the file exactly once",
+        "nothing is written",
+    ] {
+        assert!(
+            swept.contains(claim),
+            "\"{claim}\" is a capability this increment added and it is not in the corpus that \
+             rule (b) reads, so nothing checks it against `agent::environment::BINARIES` (I16)"
+        );
+    }
+    // NOT VACUOUS: the sweep only reaches these because both tools are in the
+    // set every roster can grant. Drop either name from `workspace_tools()` and
+    // the words above leave the corpus with it (T59).
+    let names: Vec<String> = workspace_tools().into_iter().map(|t| t.name).collect();
+    for added in ["read_file", "edit_file"] {
+        assert!(names.iter().any(|n| n == added), "{added} is not among {names:?}");
+    }
+}
+
 /// THIS PRODUCT'S OWN NOUNS. Every one is a word that appears in backticks in
 /// shipped prose and is not a thing to run: a block name, a stage, an engine,
 /// a role, a frontmatter key, a shared-fact key, an ending. Adding to this

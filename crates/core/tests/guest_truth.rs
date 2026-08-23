@@ -64,3 +64,66 @@ fn the_model_and_the_person_are_told_the_same_thing_about_the_folder() {
         "the clause reached the block without the consequence that makes it matter: {said}"
     );
 }
+
+/// **THE GUEST BOOTS NON-INTERACTIVE, AND THE TEST READS THE SHIPPED `.js`.**
+///
+/// There is no terminal on the far end of that PTY and nobody can press `q`, so
+/// a command that opens a pager or an editor does not slow a turn down — it
+/// eats the whole 180 s watchdog and comes back `[PARTIAL: …]` with the work
+/// gone. That is the "environment loses work" failure with no error message at
+/// all, and the three exports are the whole fix.
+///
+/// Asserted against `crates/adapters_web/src/c2w.js` and not against a comment,
+/// for the reason `crates/agent/tests/environment.rs` reads the same file for
+/// `RUN_MS`: the boot line is JavaScript in the one crate the pure core may not
+/// depend on (I3), so grepping the source is the only check that exists. That
+/// is the weaker half of I17 and it is said out loud — what a booted
+/// container2wasm actually has in its environment is UNPINNABLE from any gate
+/// command here, and the machine fact that would settle it is a
+/// cross-origin-isolated document serving the ~48 MB image inside the harness.
+#[test]
+fn the_guest_boots_with_nothing_in_it_that_can_wait_for_a_keypress() {
+    let js = std::fs::read_to_string(C2W_JS).expect("c2w.js is readable");
+    let boot = js
+        .split("const setup =")
+        .nth(1)
+        .expect("c2w.js still builds a boot `setup` line")
+        // The assignment and nothing after it: a bounded window, so this cannot
+        // pass on an export that happens to appear elsewhere in the file.
+        .lines()
+        .take(3)
+        .collect::<String>();
+    for export in ["PAGER=cat", "GIT_PAGER=cat", "EDITOR=true"] {
+        assert!(
+            boot.contains(export),
+            "the boot line no longer exports {export}, so a command that opens a pager or an \
+             editor in this guest waits for a keypress nobody can send until the watchdog \
+             kills it: {boot}"
+        );
+    }
+    // …AND EVERY VALUE IT NAMES IS A BINARY THE DECLARATION CARRIES (I16). An
+    // `EDITOR` pointing at something this guest does not have is the same trap
+    // wearing a fix, so the values are checked and not only the keys.
+    //
+    // `true` IS THE ONE EXEMPTION, AND IT IS A LABELLED GAP, NOT A WAIVER
+    // (I17). It is an ash builtin in the same class as `set`, `printf` and
+    // `test`, which the declaration does carry — but `agent::GUEST_BINARIES` is
+    // pinned to `image/Dockerfile`'s inventory by
+    // `crates/agent/tests/inventory.rs`, the Dockerfile is the source of truth,
+    // and the image is FROZEN. So the machine fact that would settle `true` is
+    // one line in a recipe this round may not edit, and pretending otherwise by
+    // adding the name here would put the declaration and its source out of
+    // agreement — the exact drift both files exist to prevent. Listed by name
+    // so a second exemption has to be argued for rather than slipped in.
+    let builtin_not_in_the_recipe = ["true"];
+    for named in ["cat", "true"] {
+        assert!(
+            agent::GUEST_BINARIES.contains(&named) || builtin_not_in_the_recipe.contains(&named),
+            "the boot line sets a variable to `{named}`, which \
+             `agent::environment::BINARIES` does not declare this guest has"
+        );
+    }
+}
+
+/// Where the shipped watchdog and boot line actually live.
+const C2W_JS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../adapters_web/src/c2w.js");
