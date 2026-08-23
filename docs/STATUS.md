@@ -320,6 +320,31 @@ past its absence.
                                         # unless sw.js serves it network-first, so this
                                         # check no longer runs offline.
 
+### What check 6 costs now, and how it can surprise you
+
+`scripts/check-url-churn.py` compares the built tree against the LIVE deploy,
+so check 6 is no longer a pure read of this working tree. Five consequences,
+each named because a person hitting one cold would reasonably assume the gate
+is broken:
+
+1. **It needs the network and fails without it.** The message says the
+   comparison did not happen rather than that it passed — "could not compare"
+   must never read as "compared and fine" (I17).
+2. **It writes `FETCH_HEAD` and moves `origin/gh-pages`.** Running the gate is
+   now a side-effecting act on the repository, in a small way.
+3. **The same tree can pass and later fail.** The far side moves: deploy from
+   another machine between two runs and check 6 changes verdict with no change
+   to the source. That is correct — the check is about a RELATIONSHIP between
+   two deploys — but it breaks the usual assumption that a green gate stays
+   green for a given commit.
+4. **A repo that has never deployed cannot pass check 6.** There is nothing to
+   compare against, and it says so rather than passing vacuously.
+5. **It reads its rules out of `web/sw.js`'s `const isData = ...` block** rather
+   than keeping a second copy, so editing that binding's NAME or shape makes the
+   check refuse to guess and exit. Deliberate — a silent fallback is the exact
+   defect the round was about — but it is a coupling a person editing `sw.js`
+   would not expect.
+
 **EVERY STEP HERE IS A CHECK. NONE OF THEM DEPLOYS.** Step 6 is `--dry-run` and
 that is not a detail — the first draft of this section wrote bare `./publish.sh`
 into this numbered list and called a green round reaching the phone "the default".
