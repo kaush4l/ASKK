@@ -75,6 +75,20 @@ cat > "$SUITE/webdriver.json" <<JSON
 JSON
 
 echo "browser suite: Chrome $MAJOR at $BROWSER, driven by $DRIVER"
+
+# THE SERVICE WORKER, before the Rust suite — because the Rust suite cannot
+# reach it. `wasm-bindgen-test-runner` serves the tests out of its own temp
+# directory, and a service worker may only be registered from a script on the
+# page's own origin, so no `#[wasm_bindgen_test]` can ever load `web/sw.js`.
+# That gap shipped a bricked page on 2026-08-23: the worker's "network-first"
+# branch called a plain `fetch`, which the HTTP cache answered, and every
+# returning visitor with a warm cache got the previous deploy's wasm-bindgen
+# snippet behind the new `index.html`'s SRI hash. The probe drives the real
+# file in the same Chrome this script already resolved. Its exit code gates,
+# with no skip flag: an off switch on a gate step is a way to make the gate
+# green without checking, which is the defect this whole increment is about.
+python3 scripts/sw-cache-probe.py --driver "$DRIVER" --browser "$BROWSER" || exit 1
+
 cd "$SUITE" || exit 1
 # UNPIPED, and its exit code is this script's. A pipeline here would report the
 # exit status of whatever it was piped INTO — the mistake this repo made twice.

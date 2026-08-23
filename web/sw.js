@@ -93,10 +93,15 @@ async function respond(request) {
   // …and so is every wasm-bindgen SNIPPET: trunk fingerprints the bundle but
   // NOT the snippet modules it imports, so their URLs are fixed while their
   // contents change with every build. Cache-first served a new bundle the
-  // PREVIOUS build's snippet, the module graph failed to link, and the page
-  // stayed on the boot message with no console error — the exact failure
-  // #boot's text describes. A deploy dodges it by stamping a new cache name;
-  // a dev server with a fixed VERSION does not, which is where it was found.
+  // PREVIOUS build's snippet and the page stayed on the boot message.
+  //
+  // THAT COMMENT WAS HERE, AND THE BUG SHIPPED ANYWAY (2026-08-23). It said a
+  // deploy dodges the problem by stamping a new cache NAME. It does not: the
+  // stamp only empties this worker's Cache Storage, and the stale bytes were
+  // never coming from there — they came from the HTTP cache underneath
+  // `fetch`. Routing `/snippets/` here was the right rule with a mechanism
+  // that did not obey it; see the branch below for what does. A comment that
+  // names the bug is not a fix.
   const isData =
     path.includes("/snippets/") ||
     path.includes("/agents/") ||
@@ -106,8 +111,45 @@ async function respond(request) {
     // Network-first: a stale index.html would point at asset names that no
     // longer exist, and refresh is the update channel (I11). Same reason the
     // agent files ride this branch.
+    //
+    // `{cache: "reload"}` IS THE NETWORK-FIRST. A plain `fetch(request)` runs
+    // at cache mode "default", so the BROWSER HTTP CACHE — a layer below this
+    // worker — answers it without a round trip. GitHub Pages serves these
+    // files with `cache-control: max-age=600` (measured 2026-08-23 against
+    // the live origin), so for ten minutes after a visit "network-first" was
+    // reading the same stale bytes cache-first would have. That is how a
+    // returning visitor got a page where the NEW index.html and the OLD
+    // `snippets/adapters_web-<crate-hash>/src/c2w.js` were paired: the snippet
+    // path is keyed by the CRATE hash, not the file's content, so its URL is
+    // identical across deploys while its bytes change. Subresource Integrity
+    // then blocked the module and the boot fallback stayed up forever.
+    //
+    // WHY "reload" AND NOT "no-store". Both skip the cache on the way in;
+    // only "reload" WRITES THE RESPONSE BACK, so the HTTP cache converges on
+    // the truth. "no-store" would leave the poisoned entry in place for every
+    // consumer that does not come through this worker — the browser's own
+    // module preload on an uncontrolled first load, or the same page after the
+    // worker is unregistered — and re-brick exactly the visitor this fixes.
+    //
+    // BOTH ARMS OF THIS BRANCH OR NEITHER. The failure is a MISMATCH, not
+    // staleness: an old index.html with an old snippet boots fine. Bypassing
+    // the cache for `isData` alone would hand a new snippet to an old
+    // document, whose `integrity` attribute names the old hash — the same SRI
+    // block from the other side. One call site covers navigations and data
+    // together, which is why the fix is one argument and not two.
+    //
+    // OFFLINE IS UNCHANGED: "reload" fails the same way a plain fetch does
+    // when there is no network, and the `catch` below still answers from the
+    // Cache Storage copy `store` wrote. THE NEW FAILURE MODE IS COST, not
+    // correctness: these few files (the document, `/snippets/`, `/agents/`,
+    // `models.json`, `agent-worker.js`) now spend a real round trip on every
+    // load instead of a free cache hit, so a slow connection pays for them
+    // each time. Everything else on the page is content-hashed and still
+    // cache-first. Unchanged and still true: a reachable origin that answers
+    // 404 or 500 does not throw, so `store` skips it and the error response is
+    // returned rather than the cached copy.
     try {
-      return store(request, await fetch(request));
+      return store(request, await fetch(request, { cache: "reload" }));
     } catch (e) {
       return (await caches.match(request)) || Response.error();
     }
