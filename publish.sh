@@ -77,6 +77,23 @@ bad=$(find "$DIR" -name '*.html' -o -name '*.js' \
   | xargs grep -nE 'serviceWorker\.register\(["'"'"']/' 2>/dev/null || true)
 [ -z "$bad" ] || fail "absolute service-worker path: $bad"
 
+# CHANGED BYTES AT AN UNCHANGED URL. Every gate above asks whether this ONE
+# artifact is self-consistent, and on 2026-08-23 it was — and the page still
+# bricked, because the browser paired the new document with the previous
+# deploy's copy of a file whose URL had not moved. That relationship only
+# exists BETWEEN two deploys, so no check of a single directory can see it.
+# This one compares against what is live and fails if any path changes content
+# under a fixed URL without `web/sw.js` serving it network-first.
+#
+# The fetch is required, not best-effort: "could not compare" must not read as
+# "compared and fine" (I17). A machine that cannot reach the remote is not in a
+# position to deploy to it anyway.
+git fetch -q origin gh-pages \
+  || fail "cannot reach origin/gh-pages, so this build could not be compared against the
+  deploy it replaces. That comparison is the only check here that can see a file whose
+  bytes changed while its URL did not — it is not being skipped quietly."
+python3 scripts/check-url-churn.py "$DIR" FETCH_HEAD || fail "unguarded URL churn (above)"
+
 echo "deploy size: $(du -sh "$DIR" | cut -f1)"
 
 if [ "$DRY_RUN" = 1 ]; then
