@@ -63,6 +63,27 @@ impl Route {
             Route::Project => "project",
         }
     }
+
+    /// The route one WORD names, `None` for a word this build does not know —
+    /// `as_str` read backwards, and the only place in the tree that turns a
+    /// route word into a route.
+    ///
+    /// IT DELIBERATELY DOES NOT FALL TO `React`, WHICH IS THE WHOLE REASON IT
+    /// IS SEPARATE FROM `route_of`. A VOTE fails towards the middle because a
+    /// turn has to run and react can still reach either outcome (this file's
+    /// header). A PROJECTION has no such duty: a surface handed `quest` would
+    /// draw `work` and say the turn is doing one thing while it does another,
+    /// and drawing the wrong flow is worse than drawing none. So the vote keeps
+    /// its fallback in `route_of` and every reader that is merely LOOKING at a
+    /// recorded route gets the honest `None`.
+    pub fn named(word: &str) -> Option<Route> {
+        match word {
+            "answer" => Some(Route::Answer),
+            "react" => Some(Route::React),
+            "project" => Some(Route::Project),
+            _ => None,
+        }
+    }
 }
 
 /// The label the vote is written under, and the label its reason is written
@@ -121,12 +142,7 @@ fn plain(text: &str) -> &str {
 /// identical to a vote for `react` made the one decision this stage exists to
 /// make unreadable in the log (`stages::facts`).
 pub fn vote_in(reply: &str) -> Option<Route> {
-    match labelled(reply, ROUTE)?.to_lowercase().as_str() {
-        "answer" => Some(Route::Answer),
-        "react" => Some(Route::React),
-        "project" => Some(Route::Project),
-        _ => None,
-    }
+    Route::named(&labelled(reply, ROUTE)?.to_lowercase())
 }
 
 /// The vote, read out of the reply, failing towards the middle route for the

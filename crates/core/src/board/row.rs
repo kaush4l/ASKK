@@ -42,7 +42,7 @@ pub(crate) fn row(agent: &AgentRow, ctx: &Ctx) -> Fragment {
 /// this row without re-deriving it: the Dashboard card, the launch
 /// confirmation and the Chat strip all quote these attributes.
 fn shell(agent: &AgentRow, ctx: &Ctx, read: &Reading) -> FragmentBuilder {
-    FragmentBuilder::new("div")
+    let card = FragmentBuilder::new("div")
         .class(&format!("agent-row status-{}", read.status.label()))
         .attr("data-agent", &agent.name)
         .attr("data-status", read.status.label())
@@ -73,7 +73,12 @@ fn shell(agent: &AgentRow, ctx: &Ctx, read: &Reading) -> FragmentBuilder {
         // chosen from, so a task offered is one some named tool can finish.
         .attr("data-can", read.offer.can)
         .attr("data-toolset", &read.offer.toolset)
-        .attr("data-laps", &read.offer.laps.to_string())
+        .attr("data-laps", &read.offer.laps.to_string());
+    // …AND WHICH LOOP THE OPEN TURN IS RUNNING (34): the route it voted for, the
+    // stage list that route walks, where it is in it, and which lap — plus
+    // whether this process can see any of that at all (I16). `board/flow.rs`
+    // owns all five, so the row and the sentence beside it cannot fork.
+    crate::board::flow::hang(card, ctx, &agent.name)
         .child(FragmentBuilder::new("h3").text(&agent.name).build())
 }
 
