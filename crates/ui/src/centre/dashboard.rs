@@ -37,6 +37,12 @@ pub(crate) fn DashboardView(
             // second count of it (`core::board::tiles`), and no tile reports
             // health: a failure is stated, a success is never announced.
             tiles::FleetTiles { web, tick }
+            // WHICH LOOP THE SELECTED AGENT'S TURN IS RUNNING (ROADMAP #7).
+            // Under the fleet band and above the launcher, because it is about
+            // ONE agent where the band is about all of them, and because the
+            // question it answers — "what is this turn actually doing" — is the
+            // one the board's status word underneath cannot answer.
+            crate::flow::FlowDeck { web, tick, agent: selected }
             LauncherAndBoard { web, tick, selected, agents, view }
         }
     }

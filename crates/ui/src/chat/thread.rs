@@ -125,7 +125,18 @@ pub fn ThreadList(
             for name in names {
                 {
                     let open = name == here;
-                    let head = summary(&name, &projection, open, selected);
+                    let row = summary(&name, &projection, open, selected);
+                    // WHICH LOOP THE OPEN THREAD IS RUNNING (ROADMAP #7), under
+                    // its summary and off the SAME projection string — rule 1
+                    // of this file's header holds, and the rail costs no second
+                    // request. Only the open thread gets one: a collapsed row
+                    // is one line of the board's own sentence, and a walk under
+                    // it would be a taller row for a conversation nobody is
+                    // looking at.
+                    let head = match open {
+                        true => rsx! { {row} {crate::flow::from_board(&projection, &name)} },
+                        false => row,
+                    };
                     rsx! {
                         if open {
                             crate::chat::ChatPane {

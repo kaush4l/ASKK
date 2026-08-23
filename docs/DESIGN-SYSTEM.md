@@ -25,9 +25,9 @@
 
 ## 1. What the page is made of
 
-Ten stylesheets, 1,785 lines, no framework, no CDN, no third-party script, no
-font file. The file set is closed: `scripts/check-selectors.py:28-30` fails on
-an eleventh. Every file is ≤ 200 lines (I12).
+ELEVEN stylesheets, 1,902 lines — ten and 1,785 before ROADMAP #7 added
+`web/flow.css` — no framework, no CDN, no third-party script, no font file. The file set is closed: `scripts/check-selectors.py:28-30` fails on
+a TWELFTH. Every file is ≤ 200 lines (I12).
 
     wc -l web/*.css
     python3 scripts/check-selectors.py
@@ -313,3 +313,113 @@ project's own named failure classes.**
   `scripts/layout-audit.js`.** Until it lands, hover-state contrast on
   `.file-entry`, `.file-ref` and `.nav .view-item` is UNPINNABLE and is recorded
   as such rather than dressed as covered.
+
+---
+
+## 10. ROADMAP #7, the Flow Rail — what moved, and the two open items it closed
+
+Written by TEAM RAIL. Every number is a command above it or beside it.
+
+### The eleventh sheet
+
+`web/flow.css`, 109 lines, added to `check-selectors.py` EXPECTED and to
+`crates/ui/src/posture/css.rs`'s `SHEETS` in the same change. The second half is
+the load-bearing one: a sheet missing from `SHEETS` is a sheet the five posture
+tests cannot see, so it could have shipped an ungated hover with the gate green.
+That is why `posture.rs` — which sat at exactly the 200-line I12 ceiling — was
+split into `posture/mod.rs` (the claims) plus `posture/css.rs` (the reader), the
+shape §9 named in advance. Nothing in the reader changed in the move.
+
+**`flow.css` has no `:hover` rule and no `:active` rule, deliberately.** The rail
+is read-only — no button, no link, no `summary` — so a pointer state would paint
+a response to a gesture that does nothing. `docs/ROADMAP.md` #7 asked this file
+to carry "the product's FIRST `@media (hover: hover)` guard"; that sentence was
+written before commit `d5b1cb0` and is now false — see the corrections below.
+
+### Motion: keyframes 4 → 5
+
+`flow-pulse`, on the dot of the ONE step a turn is currently in. It is the moment
+this product is about, and it is the only thing in the rail that moves.
+
+    grep -c '^@keyframes' web/*.css     # chrome 2, strip 1, surfaces 1, flow 1
+
+`posture::tests::the_one_arrival_does_not_arrive_for_someone_who_asked_for_stillness`
+was **widened** from `chrome.css` to all eleven sheets and renamed
+`nothing_animates_for_someone_who_asked_for_stillness`, so the new keyframe is
+held to the rule the nav's arrival is held to rather than being trusted. It
+counts its subject (`assert_eq!(seen, 6)`) so it cannot go quiet.
+
+That widening surfaced **one pre-existing ungated animation, recorded rather than
+hidden**: `.skeleton::after` (`web/surfaces.css:181-185`) runs `askk-shimmer`
+with no `prefers-reduced-motion: no-preference` guard. `check-layout.sh` cannot
+see it either — the probe fixture has no `.skeleton` — so it is an exception in
+the test with its reason inline and it belongs to whoever next owns
+`surfaces.css`. This team did not edit that file.
+
+### §9's two open items are closed
+
+**1. The hover assertions have their subject back.** `scripts/layout-audit.js`'s
+`forced()` walked only the top level of each sheet, where a `CSSMediaRule` has no
+`selectorText`; it now recurses through `collect()` (grouping rules expose the
+same `cssRules` interface, so @media, @supports and @layer are all covered).
+
+    bash scripts/check-layout.sh > after.txt
+    grep ':hover\[' after.txt | sed 's/.* on //' | sort | uniq -c | sort -rn
+
+| | `:hover[` lines | reading `rgba(0, 0, 0, 0)` (the RESTING paint) |
+|---|---|---|
+| before the recursion (control, re-measured) | 810 | **594** |
+| after | 810 | **0** |
+
+594 is the same number §9 recorded, arrived at independently — the positive
+control was run by deleting the one recursion line and re-running the whole
+suite, not by reasoning about it.
+
+**2. The 44px floor is a gate.** `scripts/layout-audit.js` reported targets as
+`info(...)` at 24px, and `info` is not counted as a failure. It is now
+`say(...)` at **44**, the number `web/controls.css:15` has claimed since
+increment 12.
+
+**Ruling on `.skip-link`: EXEMPT, and the exemption is a named selector rather
+than a lowered threshold.** Two reasons, both structural:
+
+1. It is `position: absolute; transform: translateY(-300%)` until `:focus`
+   (`web/base.css:116-128`) — off-screen, and therefore not hit-testable by any
+   pointer. It is reachable only by Tab, i.e. only by the input class that has no
+   thumb. A target-size floor exists to protect a thumb; there is no thumb path
+   to this control.
+2. Growing it to 44 would put a taller bar over the header the instant a keyboard
+   user presses Tab — a regression in the one interaction it serves, paid to a
+   pointer that cannot reach it.
+
+The other exemption is WCAG 2.5.8's own: an inline `<a>` inside `p`/`li`/`td`.
+
+*Positive control, run:* deleting the `.skip-link` line from `exempt()` and
+re-running gives `LAYOUT CHECK FAILED: 54` — one per width×skin×route run — each
+reading `FAIL TARGETS: under 44px: Skip to conten 134x42`. That independently
+confirms both halves of §5's hand walk: the measurement (134×42) and the claim
+that it is the ONLY element in the page under the floor.
+
+### Corrections to `docs/ROADMAP.md` #7, measured
+
+Another team's file; recorded here rather than edited.
+
+| the roadmap says | measured on this tree |
+|---|---|
+| `flow.css` carries the product's FIRST `(hover: hover)` guard; baseline `grep -c 'pointer: coarse\|hover: none' web/*.css` = 0 across all ten sheets | **FALSE since `d5b1cb0`.** That grep is 1 (`base.css`), and `grep -c 'hover: hover'` finds guards in `base.css`, `chrome.css`, `controls.css` and `workspace.css`. All eleven hover rules were already gated. `flow.css` follows the posture; it does not establish it. |
+| keyframe baseline 3 (surfaces 1 + strip 2) | **FALSE twice over.** `grep -c '^@keyframes'` = 4: chrome 2 (`nav-rise`, `scrim-in`, both added by `d5b1cb0`), surfaces 1, strip 1. Strip's "second" is the word inside a comment at `strip.css:106`, which §7 already caught. The rail takes it 4 → 5, not 3 → 4. |
+| `grep -rin 'quest\|strategy' crates/ui/src` returns 100 hits | 105. Still all `Request`; the shape of the claim survives, the number drifted. |
+
+### The limits, stated (I17)
+
+- **`scripts/layout-probe.html` contains no rail markup and this team does not own
+  that file**, so `check-layout.sh` measures the rail's stylesheet in the cascade
+  but never an instance of the component. The rendering evidence is the hand walk
+  at 375×812 and 1280×720 against a real `project` turn.
+- **The lap clause has no live rendering.** Neither shipped agent declares
+  `passes:`, so `crates/core/src/board/offer.rs:40,51` leaves `laps` at its
+  default and the board hangs `data-laps="1"` (measured in the page); with
+  `of <= 1` `crates/core/src/board/flow.rs:79-88` deliberately says nothing (I15).
+  So `pass {n} of up to {of}` is proved only through `read.rs`'s verbatim
+  round-trip test and the attribute pipeline; no shipped agent can produce it.
+  `public/agents/**` is not this team's file.
