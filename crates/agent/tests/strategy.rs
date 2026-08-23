@@ -105,6 +105,43 @@ fn each_route_installs_the_loop_it_named() {
     }
 }
 
+/// **A MARKDOWN-DECORATED VOTE INSTALLS THE SAME LOOP — THROUGH THE REAL TURN.**
+///
+/// `tests/vote_shapes.rs` measures `unmarked`'s grammar cheaply and broadly.
+/// This is the half that a parser test cannot settle: the shipped agent's turn,
+/// stepped, ending in the four-stage `project` walk rather than in the silent
+/// one-stage `react` fallback. Both shapes here were MEASURED landing on `react`
+/// on 2026-08-23 (`crates/agent/tests/vote_shapes.rs` header) — a heading and a
+/// blockquote are what a small model asked for two named lines actually writes —
+/// and the cost of the drop was this: the person's build request got no plan,
+/// no verify and no critique, and nothing anywhere said so.
+///
+/// Positive control, run and restored: drop `">"` from `is_marker`'s `matches!`
+/// in `crates/agent/src/strategy.rs` and the blockquote case fails with
+/// `["work"]`, which is exactly the defect this pins.
+#[test]
+fn a_vote_wearing_a_heading_or_a_quote_still_installs_the_loop_it_named() {
+    for (vote, because) in [
+        ("## ROUTE: project\n## WHY: it asks for a script", "written as headings"),
+        ("> ROUTE: project\n> WHY: it asks for a script", "written inside a quote"),
+    ] {
+        let (state, effects) = voted(vote);
+        assert_eq!(
+            state.stages,
+            ["plan", "work", "verify", "critique"],
+            "{because}: a dropped vote is a SILENT one-stage react"
+        );
+        assert_eq!(stage_facts(&effects), ["plan"], "{because}");
+        // The reason is read by the same grammar, so it survives too — the
+        // half that makes a wrong route debuggable rather than merely logged.
+        assert_eq!(
+            route_fact(&effects),
+            Some(("project".into(), "it asks for a script".into())),
+            "{because}: the WHY is decorated identically and must read identically"
+        );
+    }
+}
+
 /// THE VOTE IS NOT A TURN, so it is not written down as one. Putting
 /// `assistant: ROUTE: project` in the conversation would show the person a
 /// reply they were never given, and would leave the model reading its own

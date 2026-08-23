@@ -9,24 +9,39 @@
 
 use crate::calls::{has_calls, is_ident, is_ident_start, parse_batches, skip_ws, Call};
 use crate::error::AgentError;
-use crate::phase::{ResponseContract, Verdict};
-use crate::state::PlanStep;
+use crate::phase::ResponseContract;
 
 /// A model reply, parsed against a contract. Typed so `step`'s transition
 /// match is exhaustive — a reply shape the contract doesn't name cannot
 /// reach the exit table.
+///
+/// **`Plan(Vec<PlanStep>)` AND `Verdict { .. }` WERE DELETED (2026-08-23).**
+/// Neither was ever constructed: the only arm that could have built them was
+/// the `todo!()` below, and the only `PhaseConfig` in the tree contracts
+/// `ToolEnvelope`. They were the reply half of the PHASE machine, which the
+/// STAGE machine superseded — `project` still gets a plan, a verify and a
+/// critique, but as stages (`strategy::Route::stages`), read as prose and tool
+/// calls like every other stage. Keeping the typed pair as a foundation for a
+/// machine that had already been replaced is speculative generality with a
+/// panic in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedReply {
-    Plan(Vec<PlanStep>),
     /// Batches of tool calls, in the order the layout scheduled them.
     Tools(Vec<Vec<Call>>),
-    Verdict { verdict: Verdict, reason: String },
     Answer(String),
 }
 
 /// Parse one raw reply against one contract. Public and separate from `step`
 /// so contract parsing is unit-testable against recorded model output
 /// without driving the whole machine.
+///
+/// **THE `todo!("Plan/Verify contracts")` IS GONE AND SO ARE ITS CONTRACTS.**
+/// It was a live panic reachable the moment any `PhaseConfig` named
+/// `PlanSteps` or `Verdict`, which is precisely what `phase.rs`'s deleted
+/// `Verify` entry did — and `ResponseContract` is `Copy` data a config sets,
+/// so nothing but a code change could have kept it unreachable. Both variants
+/// were deleted with it, which is why this match is now total in two arms
+/// rather than three: an unwritable contract cannot be requested.
 pub fn parse_reply(contract: ResponseContract, raw: &str) -> Result<ParsedReply, AgentError> {
     match contract {
         // Prose is always well-formed prose.
@@ -34,10 +49,6 @@ pub fn parse_reply(contract: ResponseContract, raw: &str) -> Result<ParsedReply,
         // The tool contract is total too: no call in the text means the model
         // answered, which is a legal reply and the turn's cheap exit.
         ResponseContract::ToolEnvelope => Ok(ParsedReply::Tools(parse_batches(raw))),
-        // The remaining structured contracts arrive with Plan and Verify.
-        ResponseContract::PlanSteps | ResponseContract::Verdict => {
-            todo!("Plan/Verify contracts")
-        }
     }
 }
 

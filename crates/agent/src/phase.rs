@@ -24,41 +24,48 @@ pub enum ToolScope {
 /// The exact reply shape a phase demands — parsed, never trusted. One
 /// variant per §9 contract; a new contract is a new variant plus a parser
 /// arm, surfaced as a design change rather than smuggled in via prose.
+///
+/// **`PlanSteps` AND `Verdict` WERE DELETED (2026-08-23), WITH THE `Verdict`
+/// ENUM AND THE FIVE `ExitCondition` VARIANTS THAT ONLY SERVED THEM.** They
+/// were the last of the PHASE machine that the STAGE machine superseded, and
+/// none of them had a construction site: `grep -rn 'Verdict::' crates` returned
+/// 0 across the whole tree, and `PlanSteps`/`PlanProduced` had had none since
+/// before that. `reply.rs` answered both with `todo!("Plan/Verify contracts")`
+/// — a panic that was unreachable only because no `PhaseConfig` happened to
+/// name them, which is an accident and not a design.
+///
+/// **WHAT DID NOT GO WITH THEM, AND WHY THAT IS NOT A LOSS.** `project` still
+/// plans, verifies and critiques — as STAGES (`strategy::Route::stages`,
+/// `public/stages/*.md`), read as prose and tool calls like every other stage,
+/// with the criteria in a file a person can edit without a rebuild. The typed
+/// pair was the OLD way of doing what the tree already does the new way; the
+/// deletion removes a mechanism and keeps the capability, which is the shape
+/// this project's simplicity law asks an increment to have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ResponseContract {
-    /// Ordered steps + success criteria (Plan).
-    PlanSteps,
     /// Exactly one tool envelope (Work).
     ToolEnvelope,
-    /// pass / fail / retry / replan + reason (Verify).
-    Verdict,
     /// Prose to the user — the cheap exit every graph must have
     /// (RESEARCH phase-cut).
     Answer,
 }
 
-/// Verify's four legal judgments (ADR-010). An enum so an illegal fifth
-/// judgment is a parse error the machine handles, not a string the loop
-/// improvises on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Verdict {
-    Pass,
-    Fail,
-    Retry,
-    Replan,
-}
-
 /// What a parsed reply can signal about where to go next. Matched against a
 /// phase's `exits`; anything unmatched is an illegal transition the machine
 /// repairs or fails deterministically (ADR-010).
+///
+/// **STILL DEAD, AND STATED RATHER THAN QUIETLY LEFT (I16).** Both surviving
+/// variants are CONSTRUCTED — in `v1_phases` below — and neither is ever READ:
+/// `grep -rn 'exits' crates` finds the field's declaration, its one write, and
+/// no reader anywhere. So the whole exit table is config nothing consults, the
+/// same defect class as the vocabulary just deleted. It is not deleted HERE
+/// because removing it removes the last of the phase machine — `PhaseConfig`,
+/// `PhaseId`, `ask::config`, `state.phase` — and that is a different increment
+/// with a stored-state migration in it (`AgentState` is `Deserialize`d from the
+/// log). Labelled, measured, and handed on rather than half-done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExitCondition {
-    PlanProduced,
     ToolResultReceived,
-    VerdictPass,
-    VerdictFail,
-    VerdictRetry,
-    VerdictReplan,
     AnswerProduced,
 }
 
@@ -122,18 +129,13 @@ const WORK_BUDGET: Budget = Budget { max_tokens: 8192 };
 /// panicked the turn. Keeping unreachable config would have preserved a
 /// panic-in-waiting as though it were a plan.
 ///
-/// **WHAT THIS DELETION LEAVES BEHIND, STATED RATHER THAN QUIETLY SHIPPED.**
-/// `ResponseContract::Verdict`, `ExitCondition::{VerdictPass, VerdictRetry,
-/// VerdictReplan}` and every `Verdict` now have zero construction sites in the
-/// tree. They join `ResponseContract::PlanSteps` and
-/// `ExitCondition::PlanProduced`, which already had none before this change —
-/// so this is a pre-existing condition made one step wider, not a new one.
-/// Removing that vocabulary cascades into `reply.rs`, `lib.rs`'s exports and
-/// `core::App.phases`, which this team does not own; it is a separate increment
-/// for the lead to rule on. Measured beside it: `core::App.phases` is written
-/// at `boot.rs:158` from this function and read by **nothing**
-/// (`grep -rn '\.phases\b' crates/core/src | grep -v debug/` is empty), so the
-/// field is itself dead config.
+/// **THE CASCADE IT LEFT BEHIND IS NOW DONE (2026-08-23).** That deletion left
+/// `ResponseContract::{PlanSteps, Verdict}`, every `Verdict`, five
+/// `ExitCondition` variants and `core::App.phases` with zero construction sites
+/// or zero readers, and named the four files a follow-on would have to open.
+/// All four are opened above and in `reply.rs`, `lib.rs` and `crates/core`: the
+/// vocabulary is gone, the `todo!("Plan/Verify contracts")` panic with it, and
+/// `App.phases` — written here at boot and read by nothing — with them.
 pub fn v1_phases() -> Vec<PhaseConfig> {
     vec![
         // Work: one conversational turn that may act. The contract is

@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use agent::{AgentSpec, AgentState, Board, PhaseConfig};
+use agent::{AgentSpec, AgentState, Board};
 use kernel::{
     AgentPort, ClockPort, Event, EventKind, EventLog, ModelPort, NetPort, RngPort, StorePort,
 };
@@ -46,14 +46,23 @@ pub struct Ports {
     pub agents: Rc<dyn AgentPort>,
 }
 
-/// Everything alive at runtime: the registry fold, the agent, the phase
-/// configs, the log, the ports. Fields private — the seam (`handle`), the
-/// runtime (`drive`), and boot are the only doors, which is what keeps every
-/// mutation an Event (I8).
+/// Everything alive at runtime: the registry fold, the agent, the log, the
+/// ports. Fields private — the seam (`handle`), the runtime (`drive`), and boot
+/// are the only doors, which is what keeps every mutation an Event (I8).
+///
+/// **`phases: Vec<PhaseConfig>` WAS DELETED FROM HERE (2026-08-23).** Boot
+/// filled it from `agent::v1_phases()` and NOTHING ever read it: the phase a
+/// turn runs is resolved inside `agent` (`ask::config`, from `state.phase`), so
+/// this copy was a second authority that no reader consulted and no test could
+/// have caught diverging. Re-runnable: `grep -rn '\.phases' crates/core/src`
+/// now returns only `debug/`, which is the unrelated `Turn.phases` string list.
+/// It went with `PhaseId::Verify`'s config (`crates/agent/src/phase.rs`,
+/// deleted the same day) and the `Verdict` vocabulary below it — one increment,
+/// because config with no reader is the same defect as a type with no
+/// construction site, and this project has already paid once for keeping one.
 pub struct App {
     pub(crate) registry: Registry,
     pub(crate) agent: AgentState,
-    pub(crate) phases: Vec<PhaseConfig>,
     pub(crate) log: EventLog,
     pub(crate) ports: Ports,
     /// The host halves of the faculties this build can actually sense
