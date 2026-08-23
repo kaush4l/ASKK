@@ -104,7 +104,20 @@ async function bootOnce(rel) {
   // of unrelated commands' output. RETRIED, not awaited once: the first bytes go
   // into a PTY whose far end may not have reached `/bin/sh`, and input written
   // before then is gone rather than queued.
-  const setup = "set +m; stty -echo 2>/dev/null; PS1=''";
+  //
+  // NOTHING IN HERE MAY WAIT FOR A KEY. There is no terminal on the far end of
+  // this PTY — nobody can press `q` — so a command that opens a pager or an
+  // editor does not slow the turn down, it consumes the whole 180s watchdog and
+  // comes back `[PARTIAL: …]` with the work lost. The three names are exported
+  // once at boot because `c2w.rs::exec` runs each command in a SUBSHELL of a
+  // shell that was `cd`'d for it, so an export inside a command cannot outlive
+  // it; the boot shell is the only scope that survives.
+  // `cat` and `true` are `agent::environment::BINARIES` names and
+  // `crates/core/tests/guest_truth.rs` fails if they stop being. GIT_PAGER is
+  // set although `git` is in `ABSENT` and therefore INERT in this guest: it
+  // costs nothing, and the day the image carries git the trap is already shut.
+  const setup = "set +m; stty -echo 2>/dev/null; PS1=''; " +
+    "export PAGER=cat GIT_PAGER=cat EDITOR=true";
   for (let spent = 0; spent < BOOT_MS; spent += PROBE_MS) {
     // `!done.timedout` IS LOAD-BEARING: `run` now answers a deadline with an
     // object, and a truthy object here would declare a shell that never

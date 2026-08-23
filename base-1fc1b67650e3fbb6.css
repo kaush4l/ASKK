@@ -90,9 +90,21 @@ a {
   text-underline-offset: 0.2em;
   text-decoration-thickness: 1px;
   transition: color var(--dur-fast) var(--ease);
+  /* The UA's own press flash is a second, undesigned press affordance on a
+     surface that already paints one; a link's designed state is below. */
+  -webkit-tap-highlight-color: transparent;
 }
 
-a:hover { text-decoration-thickness: 2px; }
+/* HOVER IS A POINTER THAT CAN HOVER (R20-TOUCH). On a coarse pointer a tap
+   LATCHES :hover on the element it touched until the next tap elsewhere; the
+   painting then says "the pointer is here" to a person whose finger has gone.
+   NOT REPRODUCED IN ISOLATION HERE and said so rather than dressed up: the one
+   attempt left the automation's button DOWN, so the tab matched :active too and
+   the two cannot be told apart in that evidence (docs/DESIGN-SYSTEM.md §5).
+   What IS measured is the posture: 11 hover rules, 0 reachable under
+   `(hover: none)`, 11 under `(pointer: fine)`, and `crates/ui/src/posture.rs`
+   fails the build if one escapes the guard. */
+@media (hover: hover) and (pointer: fine) { a:hover { text-decoration-thickness: 2px; } }
 a:active { color: var(--ink); }
 a[aria-disabled="true"] { color: var(--ink-3); text-decoration: none; pointer-events: none; }
 

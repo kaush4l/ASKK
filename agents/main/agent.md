@@ -57,6 +57,12 @@ tools:
   - exec
   - read_file
   - write_file
+  # NAMED BESIDE `write_file`, NOT INSTEAD OF IT. A whole-file write is right
+  # when a file is being authored and wrong when one line of a large file is
+  # being changed: `write_file` has to re-emit every line it is not touching,
+  # which is a copy the model can get wrong and a cost it pays for nothing.
+  # `edit_file` names the text to find and the text to put in its place.
+  - edit_file
   - list_files
   - start_process
   - list_processes
@@ -173,6 +179,12 @@ browser, and it is yours to build in:
 - `read_file`, `write_file` and `list_files` are the short way to do the three
   things you will do most. Paths are relative to the workspace folder; a path
   starting with `/` or containing `..` is refused.
+- `edit_file` changes one part of a file in place: you give it the exact text
+  to find and the text to put there. Reach for it whenever the file already has
+  content you are keeping — `write_file` replaces the whole file, so using it to
+  change a line means retyping every line you were not changing, and any of
+  them you retype wrongly is simply lost. Author with `write_file`, amend with
+  `edit_file`.
 
 The `## environment` block says what that Linux actually is: everything it has
 installed, that every command starts in your space's folder, that one shell
