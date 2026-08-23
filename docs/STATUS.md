@@ -314,7 +314,11 @@ past its absence.
     4. python3 scripts/check-size.py
     5. scripts/check-browser.sh          # the service-worker cache probe, then
                                         # the browser suite over adapters_web
-    6. ./publish.sh --dry-run            # every publish check, stopping before the push
+    6. ./publish.sh --dry-run            # every publish check, stopping before the push.
+                                        # Now also fetches the live deploy and refuses a
+                                        # path whose bytes changed under an unchanged URL
+                                        # unless sw.js serves it network-first, so this
+                                        # check no longer runs offline.
 
 **EVERY STEP HERE IS A CHECK. NONE OF THEM DEPLOYS.** Step 6 is `--dry-run` and
 that is not a detail — the first draft of this section wrote bare `./publish.sh`
