@@ -15,6 +15,14 @@
 //! Document that round was sent (I13), which makes it the one fact that
 //! settles the commonest question a stuck turn raises: two rounds carrying the
 //! same hash were sent the SAME prompt, and that is a loop, not progress.
+//!
+//! …AND WHAT THE BUDGET TOOK OUT OF THAT DOCUMENT (`ModelCalled::evicted`).
+//! This is the surface the person gets for the eviction the product could only
+//! ever tell the model about, in a block ADR-009 guarantees to throw away. It
+//! is a clause on a heading that already exists and NOT a new pane: the fact is
+//! about one model call, the round IS one model call, and a fact drawn beside
+//! its own cost and its own document needs no second home. Absent on a healthy
+//! round, so it reads as news rather than as furniture.
 
 use module::view::{Fragment, FragmentBuilder};
 
@@ -50,7 +58,22 @@ fn heading(n: usize, one: &Round) -> String {
         true => String::new(),
         false => format!(" · document {}", short(&one.hash)),
     };
-    format!("round {n}{stage} · {did}{spent}{sent}")
+    format!("round {n}{stage} · {did}{spent}{sent}{}", lost(one))
+}
+
+/// WHAT THE BUDGET REMOVED FROM THIS ROUND'S PAPER, in the words a person can
+/// act on. The last clause of the heading because it is the one that is usually
+/// absent: a round that lost nothing says nothing, which is what keeps the
+/// sentence readable on the ninety-nine rounds where the budget behaved.
+///
+/// It names the COMPONENT and not a number. "1 section dropped" is a fact
+/// nobody can do anything with; "the budget dropped observations" is the same
+/// fact and also the reason the agent could not see its own tool results.
+fn lost(one: &Round) -> String {
+    match one.evicted.is_empty() {
+        true => String::new(),
+        false => format!(" · the budget dropped {}", one.evicted.join(", ")),
+    }
 }
 
 /// One round. The model's own text is shown ONLY for a round that called a

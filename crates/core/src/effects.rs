@@ -74,6 +74,7 @@ pub fn execute_port_effect(
                     fact(EventKind::ModelCalled {
                         document_hash: context::content_hash(&messages),
                         spent_tokens: u.input_tokens + u.output_tokens,
+                        evicted: evicted(&document),
                     })
                 });
                 Ok(spent
@@ -99,6 +100,87 @@ pub fn execute_port_effect(
                 unreachable!("executed by batch::run_effects")
             }
         }
+    }
+}
+
+/// WHAT THE BUDGET TOOK OUT OF THIS PAPER ALTOGETHER — the sections the ADR-009
+/// ladder walked all the way to `Elided`, in the order it walked them.
+///
+/// THE FILTER IS THE POINT, AND IT IS NOT AN OPTIMISATION. `degrade::degrade`
+/// records every step it takes, and most of them are a budget working correctly:
+/// a long conversation summarises its history and points at its space, the
+/// headings stay, and the model is told how to ask for either back. Recording
+/// those would put a row in the log on every model call to say nothing was
+/// wrong, and a person who is shown a warning on every healthy turn stops
+/// reading warnings. `Elided` is the step that is different in KIND: the heading
+/// goes, so an agent whose prose says "read `## observations`" is now looking at
+/// a paper that has no such block, and neither it nor the person can tell.
+///
+/// Read off the DOCUMENT and not off the ladder: `report` is the assembly's own
+/// receipt (I8, no second truth), and this is the only place in the core that
+/// holds a Document and an event emitter at the same time.
+fn evicted(document: &context::Document) -> Vec<kernel::SectionId> {
+    document
+        .report
+        .steps
+        .iter()
+        .filter(|step| step.to == context::Fidelity::Elided)
+        .map(|step| step.section.clone())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use context::{Budget, CompactionReport, CompactionStep, Document, Fidelity};
+    use kernel::SectionId;
+
+    /// A report the ladder could have produced: two sections stepped down and
+    /// only one of them gone. Built as a literal because the FILTER is what
+    /// this file owns — that the ladder reaches `Elided` at all is
+    /// `context::degrade`'s behaviour and is tested there.
+    fn document(steps: Vec<(&str, Fidelity)>) -> Document {
+        Document {
+            phase: kernel::PhaseId::Work,
+            sections: Vec::new(),
+            report: CompactionReport {
+                budget: Budget { max_tokens: 4096 },
+                spent: 4096,
+                steps: steps
+                    .into_iter()
+                    .map(|(id, to)| CompactionStep {
+                        section: SectionId(id.into()),
+                        from: Fidelity::Full,
+                        to,
+                    })
+                    .collect(),
+                withheld: Vec::new(),
+            },
+        }
+    }
+
+    /// **ONLY THE SECTIONS THAT ARE GONE.** Positive control: change the filter
+    /// in `evicted` to `!=` and this fails naming `history` and `space`, which
+    /// is the noisy-log outcome the field's doc comment argues against.
+    #[test]
+    fn a_working_budget_records_nothing_and_an_eviction_records_itself() {
+        let healthy = document(vec![
+            ("history", Fidelity::Summarized),
+            ("space", Fidelity::Pointer),
+        ]);
+        assert!(
+            super::evicted(&healthy).is_empty(),
+            "a budget that summarised and pointered lost nothing: {:?}",
+            super::evicted(&healthy)
+        );
+        let lost = document(vec![
+            ("history", Fidelity::Pointer),
+            ("observations", Fidelity::Elided),
+        ]);
+        assert_eq!(
+            super::evicted(&lost),
+            vec![SectionId("observations".into())],
+            "the elided component is the one fact this field carries"
+        );
     }
 }
 

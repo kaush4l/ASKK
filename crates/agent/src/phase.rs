@@ -103,9 +103,37 @@ pub struct PhaseConfig {
 /// owner's to take, which is why this is marked provisional and not settled.
 const WORK_BUDGET: Budget = Budget { max_tokens: 8192 };
 
-/// The v1 phase set: Work/Verify default with Plan-on-demand and Answer as
-/// the cheap exit (RESEARCH phase-cut softening of §9's symmetric cut —
-/// changing this back is a config edit, which is the point of Option C).
+/// The v1 phase set. ONE ENTRY, and the shrinking is the record.
+///
+/// **`Verify` WAS DELETED FROM HERE (2026-08-23), WITH ITS 2048-TOKEN BUDGET.**
+/// It was configuration nothing could read, which under this project's
+/// simplicity law is the same defect class as a type with no construction site.
+/// The measurement, re-runnable: `grep -rn 'state\.phase' crates` returns two
+/// reads (`ask.rs:26`, `ask.rs:83`) and one test assertion, and **no
+/// assignment** — `AgentState::phase` is set once in `state::opening` and never
+/// moved again, because the STAGE machine (`stages`, `strategy`) superseded the
+/// phase machine and left the field behind. `ask::config` finds a config by
+/// `c.phase == state.phase`, so only `Work` was ever reachable.
+///
+/// It was not merely dead, which is why deleting beat labelling. Its
+/// `VerdictReplan` exit led `To(PhaseId::Plan)`, and **there has never been a
+/// `Plan` entry in this list** — so had anything ever reached it, the next call
+/// would have hit `ask::config`'s `.expect("current phase is configured")` and
+/// panicked the turn. Keeping unreachable config would have preserved a
+/// panic-in-waiting as though it were a plan.
+///
+/// **WHAT THIS DELETION LEAVES BEHIND, STATED RATHER THAN QUIETLY SHIPPED.**
+/// `ResponseContract::Verdict`, `ExitCondition::{VerdictPass, VerdictRetry,
+/// VerdictReplan}` and every `Verdict` now have zero construction sites in the
+/// tree. They join `ResponseContract::PlanSteps` and
+/// `ExitCondition::PlanProduced`, which already had none before this change —
+/// so this is a pre-existing condition made one step wider, not a new one.
+/// Removing that vocabulary cascades into `reply.rs`, `lib.rs`'s exports and
+/// `core::App.phases`, which this team does not own; it is a separate increment
+/// for the lead to rule on. Measured beside it: `core::App.phases` is written
+/// at `boot.rs:158` from this function and read by **nothing**
+/// (`grep -rn '\.phases\b' crates/core/src | grep -v debug/` is empty), so the
+/// field is itself dead config.
 pub fn v1_phases() -> Vec<PhaseConfig> {
     vec![
         // Work: one conversational turn that may act. The contract is
@@ -124,18 +152,6 @@ pub fn v1_phases() -> Vec<PhaseConfig> {
             exits: vec![
                 (ExitCondition::ToolResultReceived, PhaseExit::To(PhaseId::Work)),
                 (ExitCondition::AnswerProduced, PhaseExit::Answer),
-            ],
-        },
-        // Verify: configured but unreachable until Work emits tool effects.
-        PhaseConfig {
-            phase: PhaseId::Verify,
-            contract: ResponseContract::Verdict,
-            tools: ToolScope::None,
-            budget: Budget { max_tokens: 2048 },
-            exits: vec![
-                (ExitCondition::VerdictPass, PhaseExit::Answer),
-                (ExitCondition::VerdictRetry, PhaseExit::To(PhaseId::Work)),
-                (ExitCondition::VerdictReplan, PhaseExit::To(PhaseId::Plan)),
             ],
         },
     ]

@@ -27,6 +27,10 @@ pub(crate) struct Round {
     /// hash are two identical prompts, and that is a loop.
     pub(crate) hash: String,
     pub(crate) spent: u32,
+    /// `ModelCalled::evicted` — the components the budget removed from this
+    /// round's paper altogether. Empty on a healthy round, which is why the
+    /// heading says nothing about it then.
+    pub(crate) evicted: Vec<String>,
     /// The tools this reply called, `agent::named`'s folding. Empty means the
     /// reply was prose.
     pub(crate) tools: Vec<String>,
@@ -58,7 +62,7 @@ pub(crate) struct Turn {
 /// Every turn in the log for `who`, oldest first — the pane reverses it.
 pub(crate) fn turns(ctx: &Ctx, who: &str) -> Vec<Turn> {
     let mut out: Vec<Turn> = Vec::new();
-    let mut pending: Option<(String, u32)> = None;
+    let mut pending: Option<Called> = None;
     for (nth, kind) in ctx.recent.iter().enumerate() {
         if !route::mine(kind, ctx, who) {
             continue;
@@ -81,20 +85,43 @@ pub(crate) fn turns(ctx: &Ctx, who: &str) -> Vec<Turn> {
     out
 }
 
+/// What a `ModelCalled` said, held for exactly one reply. A named type and not
+/// a third tuple slot: `(String, u32, Vec<String>)` at two call sites is a
+/// shape only the compiler can read.
+#[derive(Default)]
+struct Called {
+    hash: String,
+    spent: u32,
+    evicted: Vec<String>,
+}
+
+impl Called {
+    /// The call as the fold holds it — `SectionId`s flattened to the names the
+    /// heading prints, so nothing downstream of here needs the kernel's type.
+    fn from(document_hash: &str, spent_tokens: u32, evicted: &[kernel::SectionId]) -> Called {
+        Called {
+            hash: document_hash.to_string(),
+            spent: spent_tokens,
+            evicted: evicted.iter().map(|s| s.0.clone()).collect(),
+        }
+    }
+}
+
 /// One fact onto the open turn.
-fn note(turn: &mut Turn, kind: &EventKind, at: i64, pending: &mut Option<(String, u32)>) {
+fn note(turn: &mut Turn, kind: &EventKind, at: i64, pending: &mut Option<Called>) {
     match kind {
-        EventKind::ModelCalled { document_hash, spent_tokens } => {
+        EventKind::ModelCalled { document_hash, spent_tokens, evicted } => {
             turn.called += 1;
             turn.tokens += spent_tokens;
-            *pending = Some((document_hash.clone(), *spent_tokens));
+            *pending = Some(Called::from(document_hash, *spent_tokens, evicted));
         }
         EventKind::ModelReplied { text, .. } => {
-            let (hash, spent) = pending.take().unwrap_or_default();
+            let Called { hash, spent, evicted } = pending.take().unwrap_or_default();
             turn.rounds.push(Round {
                 at,
                 hash,
                 spent,
+                evicted,
                 stage: turn.entered.last().cloned().unwrap_or_default(),
                 tools: agent::named(text),
                 text: text.trim().to_string(),

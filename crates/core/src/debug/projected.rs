@@ -73,6 +73,7 @@ fn a_calls_cost_and_document_land_on_the_reply_it_produced() {
         EventKind::ModelCalled {
             document_hash: "abc123def4567890".into(),
             spent_tokens: 512,
+            evicted: Vec::new(),
         },
         EventKind::ModelReplied {
             text: "First I look.\nread_file({\"path\": \"a\"})".into(),
@@ -96,4 +97,36 @@ fn the_answering_round_is_counted_but_its_text_is_left_to_chat() {
     }]);
     assert!(round.contains("round 1"), "the round is not counted: {round}");
     assert!(!round.contains("The answer is 4."), "the answer is copied here: {round}");
+}
+
+/// **AN EVICTION REACHES THE PERSON, AND A HEALTHY ROUND SAYS NOTHING.**
+///
+/// Both halves are the test. `## observations` was being elided on every work
+/// turn of the shipped agent and the ONLY statement of it went into the
+/// rendered prompt, which ADR-009 guarantees not to persist — so the person
+/// could not have found out. The negative half is what stops the fix becoming
+/// its own defect: a budget that summarises history on a long conversation is
+/// working, and a warning printed on every round is a warning nobody reads.
+#[test]
+fn the_component_a_budget_dropped_is_named_and_a_healthy_round_is_quiet() {
+    let called = |evicted: Vec<&str>| {
+        said(vec![
+            EventKind::ModelCalled {
+                document_hash: "abc123def4567890".into(),
+                spent_tokens: 512,
+                evicted: evicted.into_iter().map(|s| kernel::SectionId(s.into())).collect(),
+            },
+            EventKind::ModelReplied { text: "done".into(), agent: String::new() },
+        ])
+    };
+    let lost = called(vec!["observations"]);
+    assert!(
+        lost.contains("the budget dropped observations"),
+        "the person is not told which component went: {lost}"
+    );
+    let fine = called(Vec::new());
+    assert!(
+        !fine.contains("the budget dropped"),
+        "a round that lost nothing is warning about nothing: {fine}"
+    );
 }
