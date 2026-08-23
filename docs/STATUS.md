@@ -320,6 +320,20 @@ past its absence.
                                         # unless sw.js serves it network-first, so this
                                         # check no longer runs offline.
 
+### DEPLOY NOTE for the round that ships the service-worker fix
+
+A visitor who is on a bricked page today needs TWO navigations after this
+deploy, and this is measured, not reasoned (`scripts/sw-cache-probe.py`,
+scenario B): `under_old v1 -> during v1 -> after v2`. The navigation that
+installs the replacement worker is still served by the outgoing one; the fix
+takes effect on the one after it.
+
+This belongs here and NOT in the product. It is true for one deploy, for the
+subset of visitors whose worker is the old one, and nothing in the page would
+ever remove it — a permanent sentence about a transient state ages into a lie,
+which is I16 inverted. `#boot`'s wording tells a person to reload, and that
+remains correct advice both during this transition and after it.
+
 ### What check 6 costs now, and how it can surprise you
 
 `scripts/check-url-churn.py` compares the built tree against the LIVE deploy,
