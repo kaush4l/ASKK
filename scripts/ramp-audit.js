@@ -38,22 +38,65 @@
   // between 6:1 and 12:1 — and raising these two constants is that round's
   // exit criterion, not its opening move. A gate that fails on the day it is
   // written teaches the next reader to edit the gate.
-  var MIN_RANGE = 1.6;
-  var MAX_DOMINANCE = 0.75;
+  // RAISED IN THE EDITORIAL ROUND, in the same change that earns it. The floors
+  // are the ROUND'S STATED GOAL and not flush against the measurement: a page
+  // that reads as cinematic runs 6:1 to 12:1, and the ruled plate puts 68px at
+  // 390 and 136px at 1440 over an 11px caption on ALL THREE routes — 6.18:1 and
+  // 12.36:1. Dominance falls because ~one text node in three changed register
+  // by KIND (editorial.css §7): output is READ and went up, an index or a state
+  // is SCANNED and went down.
+  var MIN_RANGE = 6.0;
+  var MAX_DOMINANCE = 0.45;
+  // ...AND THE ONE THE ROUND'S OWN CRITIC CAUGHT. Everything above counts every
+  // text node in the DOCUMENT, and at 390 the Dashboard is 3,400px tall — so a
+  // dominance earned over four screens of content was being reported as the
+  // answer to "what does the first screen look like", which is the only
+  // question the brief asks. Measured both ways on the same tree: whole-page
+  // 38% / above-the-fold 70% on dash, 38/63 on chat, 43/65 on deck. The gate
+  // was passing 0.45 on a page whose first screen is 70%. That is I17 turned
+  // on its author: the claim the round says it earned is not the claim the
+  // command executes.
+  //
+  // So the fold gets its own floor, ratcheted at today's measured worst rather
+  // than at the goal — the fix for a too-generous gate is a second honest gate,
+  // not a second aspirational one. RANGE survives fold-scoping unchanged
+  // (6.18:1 above the fold on all three routes) and so keeps one floor.
+  var MAX_FOLD_DOMINANCE = 0.75;
+  // A FOLD TOO SHORT TO HOLD CONTENT IS NOT A FOLD. 320x256 is the WCAG 1.4.10
+  // case — 1280x1024 at 400% browser zoom — and 256px of viewport holds the
+  // header and nothing else, so a ramp measured there measures the chrome. It
+  // is the ONLY config that fails FOLDRANGE (3 steps, 11-16px, 1.45:1, on all
+  // three routes in both skins) and it fails it for a reason that is correct:
+  // somebody at 400% zoom is reading, not being sold a nameplate. Skipped
+  // loudly rather than silently, and the whole-page assertions still run on it.
+  var MIN_FOLD_PX = 400;
 
-  var sizes = {};
-  var total = 0;
-  document.querySelectorAll("body *").forEach(function (el) {
-    if (!el.offsetParent && el !== document.body) return;
-    var text = Array.prototype.some.call(el.childNodes, function (n) {
-      return n.nodeType === 3 && n.textContent.trim();
+  // ONE SWEEP, TWO SCOPES. `foldOnly` keeps a node when any part of it is
+  // painted inside the first viewport — the same rule a reader's eye uses.
+  var sweep = function (foldOnly) {
+    var sizes = {};
+    var total = 0;
+    document.querySelectorAll("body *").forEach(function (el) {
+      if (!el.offsetParent && el !== document.body) return;
+      var text = Array.prototype.some.call(el.childNodes, function (n) {
+        return n.nodeType === 3 && n.textContent.trim();
+      });
+      if (!text || el.closest("#report")) return;
+      if (foldOnly) {
+        var r = el.getBoundingClientRect();
+        if (r.top >= window.innerHeight || r.bottom <= 0) return;
+      }
+      var s = parseFloat(getComputedStyle(el).fontSize);
+      if (!s) return;
+      sizes[s] = (sizes[s] || 0) + 1;
+      total++;
     });
-    if (!text || el.closest("#report")) return;
-    var s = parseFloat(getComputedStyle(el).fontSize);
-    if (!s) return;
-    sizes[s] = (sizes[s] || 0) + 1;
-    total++;
-  });
+    return { sizes: sizes, total: total };
+  };
+
+  var page = sweep(false);
+  var sizes = page.sizes;
+  var total = page.total;
 
   // A page with almost nothing rendered on it cannot be judged on its ramp,
   // and saying so beats reporting a confident ratio over four nodes. The
@@ -84,4 +127,33 @@
   say(dominance <= MAX_DOMINANCE, "RAMPDOMINANCE",
     topSize + "px holds " + top + " of " + total + " nodes = "
     + (dominance * 100).toFixed(0) + "% (max " + (MAX_DOMINANCE * 100) + "%)");
+
+  // ---- and the same question asked of the first screen only ----
+  var fold = sweep(true);
+  if (window.innerHeight < MIN_FOLD_PX) {
+    info("RAMPFOLD", "fold is " + window.innerHeight + "px (< " + MIN_FOLD_PX
+      + ") — zoom/short-viewport case, not judged on type");
+  } else if (fold.total >= 12) {
+    var fsteps = Object.keys(fold.sizes).map(Number).sort(function (a, b) { return a - b; });
+    var ftop = 0, ftopSize = 0;
+    fsteps.forEach(function (s) { if (fold.sizes[s] > ftop) { ftop = fold.sizes[s]; ftopSize = s; } });
+    var fdom = ftop / fold.total;
+    var frange = fsteps[fsteps.length - 1] / fsteps[0];
+
+    info("RAMPFOLD", fsteps.length + " steps " + fsteps[0] + "-" + fsteps[fsteps.length - 1] + "px"
+      + " range=" + frange.toFixed(2) + ":1"
+      + " top=" + ftopSize + "px@" + (fdom * 100).toFixed(0) + "%"
+      + " n=" + fold.total + " of " + total);
+
+    say(fdom <= MAX_FOLD_DOMINANCE, "FOLDDOMINANCE",
+      ftopSize + "px holds " + ftop + " of " + fold.total + " above-fold nodes = "
+      + (fdom * 100).toFixed(0) + "% (max " + (MAX_FOLD_DOMINANCE * 100) + "%)");
+
+    say(frange >= MIN_RANGE, "FOLDRANGE",
+      fsteps[fsteps.length - 1] + "/" + fsteps[0] + " = " + frange.toFixed(2)
+      + ":1 above the fold (floor " + MIN_RANGE + ":1)");
+  } else {
+    info("RAMPFOLD", "only " + fold.total + " text nodes above the fold — not judged");
+  }
+
 })();
