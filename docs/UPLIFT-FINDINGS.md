@@ -55,9 +55,27 @@ clamps down). A page that reads as cinematic normally runs somewhere between
 6:1 and 12:1. 30 of 55 nodes sit on one size.
 
 `DESIGN.md:1402` §10 item 13 already asserts "the ramp is USED" and
-`layout-audit.js` prints `INFO SIZES` for exactly this — so the system has the
-instrument and passes the check while the page has no hierarchy. **The check
-tests for a majority on one size; it does not test for RANGE.** That is the gap.
+`DESIGN.md:1402` §10 item 13 already asserts "the ramp is USED" — and
+`layout-audit.js:24` prints `INFO SIZES` and then **stops**. There is no
+`say()`. Nothing in the gate has ever been able to fail on it, which makes §10
+item 13 a pass/fail criterion the gate cannot execute (I17).
+
+### CORRECTION — F2 was measured on the best route in the product
+
+The figures above are the DASHBOARD's, and the Dashboard is the only screen
+with a masthead on it. `scripts/ramp-audit.js`, added this round, measures all
+three routes at nine widths:
+
+| route | steps | span | range | top step |
+|-------|------:|------|------:|---------:|
+| dash  | 6 | 11–32px | 2.91:1 | 14px @ 65% |
+| chat  | 5 | 11–20px | 1.82:1 | 14px @ 72% |
+| deck  | 4 | 11–18px | 1.64:1 | 14px @ 72% |
+
+**Chat and Deck carry no display type at all**, and on both of them a single
+14px step holds nearly three quarters of the rendered text. The real worst case
+is 1.64:1, not 2.91:1. Any redesign that fixes only the Dashboard's first
+screen will leave the two routes a user actually spends time in untouched.
 
 ## F3 — THE MASTHEAD DOES NOT DOMINATE ANYTHING.
 
@@ -99,6 +117,23 @@ ornament posing as data, no unreadable contrast) while dropping the assumption
 that CALM and INERT are the same thing. A control surface can have a
 commanding front door and a quiet working middle; the constitution currently
 does not distinguish between them, and that is the sentence to rewrite.
+
+---
+
+## F6 — THE RAMP NOW HAS A GATE, AND IT IS A RATCHET.
+
+`scripts/ramp-audit.js` (78 lines, its own file because `layout-audit.js` is
+already 245 and its header records being split at the 200-line rule) asserts
+two things §10 item 13 only ever claimed: RAMPRANGE and RAMPDOMINANCE. It is
+wired into `scripts/layout-probe.html:525` before `layout-audit.js`, which
+writes `#report` last, and into `scripts/check-layout.sh:21`.
+
+The floors are the measured WORST CASE across all routes — `MIN_RANGE = 1.6`,
+`MAX_DOMINANCE = 0.75` — so it passes today and can only be raised. The round's
+exit criterion is raising them to **6.0** and **0.45**.
+
+Positive control: `MIN_RANGE` 1.6 → 3.0 produces `LAYOUT CHECK FAILED: 54`;
+restored, `LAYOUT CHECK OK`.
 
 ---
 

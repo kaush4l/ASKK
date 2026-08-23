@@ -520,6 +520,9 @@ document.querySelectorAll(".panel-toggle").forEach(function (b) {
 <script src="deck-probe.js"></script>
 <script src="fold-probe.js"></script>
 <script src="glass-audit.js"></script>
+<!-- BEFORE layout-audit.js, which writes #report last: a verdict pushed
+     after that runs would not reach the reader. -->
+<script src="ramp-audit.js"></script>
 <script src="layout-audit.js"></script>
 </body>
 </html>
