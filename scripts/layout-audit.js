@@ -146,16 +146,35 @@
   // CURRENTLY at, and these fills are transitioned at `--dur-fast`: read in the
   // same frame, the browser answers "still the old colour", and the audit would
   // pass a 1.1:1 painting by measuring the paint before it happened.
+  // …AND INSIDE THE @media THE HOVER RULES NOW LIVE IN (R20-RAIL). This walked
+  // only the TOP level, where a `CSSMediaRule` has no `selectorText` — so after
+  // commit d5b1cb0 put all eleven hover rules behind
+  // `@media (hover: hover) and (pointer: fine)`, every one of them became
+  // invisible here. MEASURED: the 810 `:hover` assertion lines survived and 594
+  // of them started reading `rgba(0, 0, 0, 0)`, the RESTING paint. The
+  // assertions did not disappear; they lost their subject, which is worse than
+  // no gate because the report still says PASS. `cssRules` on a grouping rule
+  // is the same interface as on a sheet, so one recursive walk covers @media,
+  // @supports and @layer alike.
+  var collect = function (rules, state, marker) {
+    var css = "";
+    for (var j = 0; j < rules.length; j++) {
+      var r = rules[j];
+      if (r.cssRules && !r.selectorText) { css += collect(r.cssRules, state, marker); continue; }
+      if (!r.selectorText || r.selectorText.indexOf(state) < 0) continue;
+      // Lifted OUT of its media query on purpose: the probe is measuring the
+      // painting, and whether this device would ever enter the state is the
+      // question `crates/ui/src/posture/mod.rs` answers, not this one.
+      css += r.cssText.split(state).join(marker) + "\n";
+    }
+    return css;
+  };
   var forced = function (state, marker) {
     var css = "*, *::before, *::after { transition: none !important; }\n";
     for (var i = 0; i < document.styleSheets.length; i++) {
       var rules;
       try { rules = document.styleSheets[i].cssRules; } catch (e) { continue; }
-      for (var j = 0; j < rules.length; j++) {
-        var r = rules[j];
-        if (!r.selectorText || r.selectorText.indexOf(state) < 0) continue;
-        css += r.cssText.split(state).join(marker) + "\n";
-      }
+      css += collect(rules, state, marker);
     }
     var tag = document.createElement("style");
     tag.textContent = css;
@@ -186,17 +205,39 @@
     b.click();
     void document.body.offsetHeight;
   });
-  // Pointer targets, as INFO: the only thing under 24 is an inline link in
-  // prose, which WCAG 2.5.8 exempts (13d walk).
+  // POINTER TARGETS, AS A GATE (R20-RAIL). This was `info(...)` at 24px, and
+  // `info` is not counted as a failure — so `web/controls.css:15` carried the
+  // comment "the target a thumb can hit (WCAG 2.2), a floor" since increment 12
+  // with nothing able to fail on it. 44 is the number the product's own comment
+  // states, so 44 is what is checked.
+  //
+  // TWO EXEMPTIONS, EACH NAMED WITH ITS REASON, because a lowered threshold
+  // would exempt everything silently:
+  //  - `.skip-link` is `position: absolute; transform: translateY(-300%)`
+  //    (`web/base.css:116-128`) until `:focus`. It is OFF-SCREEN for a pointer
+  //    and reachable only by Tab, i.e. only by the input class that has no
+  //    thumb. Measured by hand at 375x812: 134x42, the ONE element in the page
+  //    under the floor. Growing it to 44 would put a taller bar over the header
+  //    the instant a keyboard user presses Tab — a regression in the one
+  //    interaction it serves, paid to a pointer that cannot reach it.
+  //  - an inline `<a>` inside prose, which WCAG 2.5.8 exempts by name (13d).
+  var FLOOR = 44;
+  var exempt = function (el) {
+    if (el.classList.contains("skip-link")) return true;
+    var p = el.parentElement;
+    return el.tagName === "A" && !!p && ["P", "LI", "TD"].indexOf(p.tagName) >= 0;
+  };
   var small = [];
   document.querySelectorAll("button, a, input, summary").forEach(function (el) {
     var r = rect(el);
-    if (r.width && r.height && Math.min(r.width, r.height) < 24) {
+    if (!r.width || !r.height || exempt(el)) return;
+    if (Math.min(r.width, r.height) < FLOOR) {
       small.push((el.textContent || el.tagName).trim().slice(0, 14) + " " +
                  Math.round(r.width) + "x" + Math.round(r.height));
     }
   });
-  info("TARGETS", small.length ? "under 24px: " + small.join(", ") : "none under 24px");
+  say(small.length === 0, "TARGETS",
+      small.length ? "under " + FLOOR + "px: " + small.join(", ") : "none under " + FLOOR + "px");
 
   document.getElementById("report").textContent =
     "== " + W + "x" + window.innerHeight + " skin=" + (q.get("skin") || "machine") +

@@ -12,6 +12,7 @@ mod chat;
 mod composer;
 mod debug;
 mod files;
+mod flow;
 mod gallery;
 mod posture;
 mod proc;
