@@ -155,7 +155,6 @@ pub fn boot(ports: Ports) -> BoxFuture<'static, Result<App, CoreError>> {
         let mut app = App {
             registry: Registry::new(),
             agent: AgentState::new(),
-            phases: agent::v1_phases(),
             log,
             ports,
             senses,

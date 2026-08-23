@@ -51,9 +51,7 @@ pub use effect::Effect;
 pub use toolbox::{Toolbox, NOTHING_RAN};
 pub use tools::{builtin_tools, Tool, ToolResult};
 pub use error::AgentError;
-pub use phase::{
-    v1_phases, ExitCondition, PhaseConfig, PhaseExit, ResponseContract, ToolScope, Verdict,
-};
+pub use phase::{v1_phases, ExitCondition, PhaseConfig, PhaseExit, ResponseContract, ToolScope};
 pub use paper::{adopt_briefs, adopt_spec};
 pub use now::{clock, environment};
 pub use crate::environment::{

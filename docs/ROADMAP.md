@@ -7,6 +7,55 @@
 > accepting it. This file is the plan of record; `docs/STATUS.md` records what has
 > actually landed.
 
+## RE-MEASURED 2026-08-23 — the survey below is dated, and these claims are now FALSE
+
+**Read this before trusting anything under it.** The survey was taken on
+2026-08-22 and four increments have landed since. Over two rounds, five teams
+re-verified this file before relying on it and each found claims that no longer
+hold — eleven were reported before this table was written, and re-running the
+reports found errors in them too. What follows is every claim I could settle with
+a command, with the command. Everything below this section is left as WRITTEN ON
+2026-08-22, because a survey is a dated measurement and silently editing one
+destroys the record of what was true when the plan was made; where a claim is
+load-bearing for an increment that has not landed, it is corrected in place too.
+
+**Increments 1, 2, 3 and 4 have LANDED.** Their acceptance criteria are marked at
+each heading. 5 is in progress, 6 and 7 are not started.
+
+| Claim below | Status | Command that settled it |
+|---|---|---|
+| "`grep -rn wasm_bindgen_test crates` returns 0" (twice) | **FALSE — 32 mentions, of which 20 are actual `#[wasm_bindgen_test]` TESTS.** Counting mentions is what the original claim did, so both numbers are given rather than the flattering one | `grep -rn wasm_bindgen_test crates \| wc -l`; `grep -rn '#\[wasm_bindgen_test\]' crates \| wc -l` |
+| "`crates/script` is 155 lines of `todo!()` in `core`'s closure", "`rhai`" | **GONE** (commit `3033672`) | `ls crates` → 8 crates, no `script`; `grep -rn rhai crates/core/Cargo.toml` = 0 |
+| "`crates/agent/src/forge.rs` … re-exported at `lib.rs:52-53`" | **GONE** | `ls crates/agent/src/forge.rs` → no such file |
+| "25 `todo!()` across 14 files" | **9 in code** (rest are prose about them) | `grep -rn 'todo!' crates \| grep -v '///' \| grep -v '//!'` |
+| "`origin/gh-pages` is `81d2826 deploy 187dc39` … `main` is `de10ca8`" (3 places) | **STALE** — `71022f8 deploy fab8f7c` / `9fe9542`; gh-pages is 5 commits behind, not six increments | `git log -1 --oneline origin/gh-pages`; `git log -1 --oneline main` |
+| "`docs/STATUS.md` gate = four commands, none of them `publish.sh`" | **FALSE — six**, step 6 is `./publish.sh --dry-run` | `grep -n 'THE GATE' docs/STATUS.md` |
+| "9 files sit at exactly 200 lines" | **16** | `find crates -name '*.rs' -exec wc -l {} \; \| awk '$1==200' \| wc -l` |
+| "`crates/agent/src/environment.rs:76-94`, `:99`, `:54`" | **WRONG PATH** — it is a directory: `environment/mod.rs:83` (BINARIES[28]), `:101` (ABSENT[6]), `:55` (`DURABLE`) | `ls crates/agent/src/environment/` |
+| "`crates/core/src/findfiles.rs` already caps at 60" | **WRONG PATH** — `crates/core/src/files/find.rs` | `find crates -name '*.rs' -path '*find*'` |
+| "`read_range` … busybox-only (`dd`/`sed -n`)" | **LANDED, and the applets were wrong** — neither `dd` nor `sed` is in `BINARIES` | `grep -rn '"dd"\|"sed"' crates/agent/src/environment/` = 0; `grep -rn read_range crates/kernel/src/workspace.rs` |
+| "`crates/ui` has no tests at all" / "3% of the tests" | **FALSE — 24 `#[test]` inside `src`.** What is absent is `crates/ui/tests/`, which is the bin-only fact the file states correctly elsewhere | `grep -rn '#\[test\]' crates/ui/src \| wc -l`; `ls crates/ui/tests` → no such directory |
+| "zero touch-input media queries … `grep -c 'pointer: coarse\|hover: none' web/*.css` = 0" | **The grep is still 0 for real rules and the CLAIM is still false.** `d5b1cb0` landed the guard as `@media (hover: hover) and (pointer: fine)` at `web/base.css:107` — a pattern this grep does not match. `base.css`'s only `hover: none` is inside a comment at `:105`. A measure that cannot see the fix is not a measure | `grep -n 'pointer: coarse\|hover: none\|hover: hover' web/base.css` |
+| "`@keyframes` = 3 (surfaces 1 + strip 2)" | **4 real rules** — chrome 2 (`:195,196`), strip 1 (`:109`), surfaces 1 (`:187`). `grep -c` says 5; `strip.css:106` is the words inside a COMMENT. This is the same comment-counting trap a prior team reported here, so I re-ran it by eye | `grep -n '@keyframes' web/*.css` (read each hit — do NOT use `-c`) |
+| "4 `transition:` declarations" (body) | **6, all real** — base 1, chrome 1, controls 2, surfaces 2. The file's own evidence line already said 6; the prose beside it said 4, so this file disagreed with itself | `grep -n 'transition:' web/*.css` |
+| "`grep -rn ROUTE_CHOSEN crates` hits ONLY `crates/agent`" (twice) | **FALSE** — also `core/src/board/flow.rs`, `core/src/debug/{route,turns}.rs`, `core/tests/route34.rs` | `grep -rln ROUTE_CHOSEN crates` |
+| "`board/stage.rs` ≤ 130 (from 149)"; "`board/flow.rs` ≤ 90" | **LANDED** — 127 and 90; `flow.rs` did not exist when the plan was written | `wc -l crates/core/src/board/*.rs` |
+| "`workers/spawn/reply.rs:138` keeps ONE slot per peer" (4 places) | **FIXED, and the path moved** — `workers/spawn/reply/turn.rs:116`, whose header records the overwrite it replaced | `grep -rn 'waiting.borrow_mut' crates/adapters_web/src` |
+| "the word `quest` appears nowhere in `crates/`, `public/` or `docs/`" | **FALSE for `crates/` and `docs/`** — 4 hits in `crates` (a test fixture and a doc comment that use it as a deliberately UNKNOWN word), 13 in `docs` (this file). The substantive claim — no quest FLOW — still stands | `grep -rniE '\bquest\b' crates public docs` |
+| T53 "Nothing in this tree tests the ROUTER" | **FALSE — 22 tests** across `agent/tests/{strategy,vote_shapes,route34}.rs` and `core/tests/route34.rs` | `grep -c '#\[test\]' crates/agent/tests/strategy.rs crates/agent/tests/vote_shapes.rs crates/agent/tests/route34.rs crates/core/tests/route34.rs` |
+| "`crates/agent/src/strategy.rs:71-83` — any unparseable vote becomes `Route::React`" | **STALE LINE** — `route_of` is at `:162`; `:71-83` is now `Route::named`'s doc | `grep -n 'fn route_of' crates/agent/src/strategy.rs` |
+| "`crates/agent/src/reply.rs:39` is a live `todo!("Plan/Verify contracts")`" | **DELETED 2026-08-23** with `ResponseContract::{PlanSteps,Verdict}`, the `Verdict` enum, five `ExitCondition` variants and `core::App.phases` | `grep -rn 'Verdict' crates` → 7 hits, all prose recording the deletion |
+| "`Verdict::` has ZERO references" | **TRUE when written, and the TYPE is now gone too** | `grep -rn 'Verdict::' crates \| wc -l` = 0 |
+| "`state.phase` is written once at `state/opening.rs:26` and never reassigned" | **STILL TRUE** — and `PhaseId::Verify`'s config was deleted for it (`9fe9542`) | `grep -rn 'state\.phase' crates` → two reads, one test, no assignment |
+| "`grep -rn 'struct Artifact\|enum Artifact' crates` = 0" | **STILL TRUE** (increment 5 in progress) | `grep -rn 'struct Artifact\|enum Artifact' crates \| wc -l` |
+| "`PendingAgents` in `adapters_test`" (increment 1's acceptance) | **LANDED UNDER ANOTHER NAME** — the rendezvous is inside `ScriptedAgents`; the test hangs into `block_on`'s panic under a serial loop, which is the control the criterion asked for | `grep -n 'rendezvous' crates/core/tests/delegation.rs` |
+| "`crates/context/src/args.rs`" (increment 2's acceptance) | **LANDED** | `ls crates/context/src/args.rs` |
+
+Two claims I could NOT settle and am leaving standing rather than deleting:
+"~2.3 MB of wasm" and "the guest wants roughly 578 MiB" both need a build and a
+running tab, which no command in this checkout produces. They are marked here as
+unverified rather than quietly dropped.
+
 ## What the product is today
 
 Open it on a phone today and here is what happens.
@@ -121,7 +170,14 @@ It is cheap, every piece of it already exists somewhere in the tree, and it is t
 
 ## The ordered plan
 
-### 1. [backend] Two agents at once actually works, and a test can tell: key the sub-agent waiter, make concurrency observable in the test double, and grow the gate to six commands — one that executes the browser half, one that deploys.
+### 1. ✅ LANDED. [backend] Two agents at once actually works, and a test can tell: key the sub-agent waiter, make concurrency observable in the test double, and grow the gate to six commands — one that executes the browser half, one that deploys.
+
+> **Landed by 2026-08-23.** `grep -rn wasm_bindgen_test crates` = 32 (was 0); the
+> gate is six checks (`docs/STATUS.md`), step 6 `./publish.sh --dry-run`; the
+> one-slot-per-peer wedge is fixed at `workers/spawn/reply/turn.rs:116`; the
+> rendezvous double is inside `ScriptedAgents` rather than a new `PendingAgents`.
+> One criterion was NOT taken as written: step 6 is the DRY RUN, not the push —
+> `docs/STATUS.md` records why a gate step may never change the world.
 
 **Why here.** It unblocks everything and is blocked by nothing. Three charters wrote ~40 acceptance criteria against `cargo test --workspace --exclude adapters_web`, which is the exclusion that makes each of their headline claims unfalsifiable; two bar-raisers found one instance each and nobody named the class. It also fixes a live product wedge on the owner's headline capability: `crates/adapters_web/src/workers/spawn/reply.rs:138` keeps ONE `Some((resolve, reject))` slot per peer, `crates/agent/src/step.rs:126-141` does not dedupe a batch line, and `crates/core/src/runtime/requests.rs:101` gives a person a second route to the same collision — the dropped promise never settles, `state.pending_tools` never reaches 0, and the turn hangs with no error and no card. And it ships: `origin/gh-pages` is six increments stale.
 
@@ -138,7 +194,11 @@ It is cheap, every piece of it already exists somewhere in the tree, and it is t
 - SIXTH GATE STEP: `scripts/publish.sh` runs and `git log -1 origin/gh-pages` names the current `main` sha. `docs/STATUS.md` records the gate as six, not four.
 - `cargo test --workspace --exclude adapters_web` still exits 0 (baseline 559 passed / 0 failed / 5 ignored); `python3 scripts/check-size.py` exits 0; `git diff --exit-code scripts/function-baseline.txt` exits 0.
 
-### 2. [standards] One non-trimming typed reader in `crates/context` owns every argument on the INVOKE PATH, `ToolHost::run` stops seeing the raw string — and the same round deletes `crates/script` and `agent::forge` out of the shipping dependency graph.
+### 2. ✅ LANDED. [standards] One non-trimming typed reader in `crates/context` owns every argument on the INVOKE PATH, `ToolHost::run` stops seeing the raw string — and the same round deletes `crates/script` and `agent::forge` out of the shipping dependency graph.
+
+> **Landed by 2026-08-23.** `crates/context/src/args.rs` exists; `crates/script`
+> and `crates/agent/src/forge.rs` are deleted (`3033672`), `rhai` has left
+> `core`'s closure, and the workspace is 8 crates.
 
 **Why here.** Sequencing: three of the next four increments add a tool argument (`record_artifact`/`read_artifact`, a delegation handle, a quest status). Without this each adds another hand-rolled reader and inherits whichever semantics it pasted. The deletion rides here and nowhere else because `crates/core/src/error.rs:13` `use script::ScriptError;` is the ONLY thing keeping `crates/script` in the graph, and this is the only increment that opens `core::error`.
 
@@ -157,7 +217,14 @@ It is cheap, every piece of it already exists somewhere in the tree, and it is t
 - DELETION: `crates/script/` gone, `crates/agent/src/forge.rs` gone. `grep -rn 'script' Cargo.toml crates/*/Cargo.toml` = 0; workspace crate count 9 → 8; `todo!()` count 25 → ≤ 11; `scripts/check-layering.py` updated and exits 0. `rhai` leaves `core`'s closure.
 - NO `scripts/check-args.py` this round. Its rule as written is unsatisfiable — 65 `serde_json::from_str` sites exist in `crates/*/src`, 48 outside the migrated files — and the gate must not hold the correct half hostage. It follows in its own increment once the rule is measured.
 
-### 3. [backend] The environment stops losing work: a windowed read and a checked edit on the port, partial output surfaced when the watchdog fires, `exec` capped into the window with the cap stated, and a non-interactive boot environment.
+### 3. ✅ LANDED. [backend] The environment stops losing work: a windowed read and a checked edit on the port, partial output surfaced when the watchdog fires, `exec` capped into the window with the cap stated, and a non-interactive boot environment.
+
+> **Landed by 2026-08-23** (`0a99e9f`, `e27a387`). `WorkspacePort::read_range`
+> exists at `crates/kernel/src/workspace.rs:87` and `read` is `read_range(…,0,0)`.
+> TWO of this section's own facts were wrong and are corrected in the table at the
+> top: `dd`/`sed -n` are NOT in `environment::BINARIES` (the applets the landed
+> window is built on are), and `crates/agent/src/environment.rs` / 
+> `crates/core/src/findfiles.rs` are both wrong paths.
 
 **Why here.** Largest MEASURED capability delta in the tree (`docs/PARITY.md` gap 1: nothing else on the list pays off while `exec` runs in a guest that loses what it saw), it is NOT owner-gated (unlike the image rebuild and network egress, T9/T27), and increment 5's `read_artifact` needs `read_range` to exist or it must ship a sentence claiming a ranged read that `cat -- path` performed. The backend bar-raiser identified exactly this convergence in its `better_increment` and I am taking it.
 
@@ -175,7 +242,20 @@ It is cheap, every piece of it already exists somewhere in the tree, and it is t
 - `crates/agent/tests/stated.rs` extended: every new capability sentence is checked against `environment::BINARIES`, so no sentence describes an applet this guest does not have (I16).
 - All six gate commands green, including the browser suite from increment 1.
 
-### 4. [backend] The route becomes a fact the core owns: decide `ROUTE_CHOSEN`'s ownership, fold it, hang `data-route` / `data-walk` / `data-stage` / `data-lap` and the rendered lap clause on the board row, and fix `stage::said` so the walk comes from the route rather than the declared list.
+### 4. ✅ LANDED. [backend] The route becomes a fact the core owns: decide `ROUTE_CHOSEN`'s ownership, fold it, hang `data-route` / `data-walk` / `data-stage` / `data-lap` and the rendered lap clause on the board row, and fix `stage::said` so the walk comes from the route rather than the declared list.
+
+> **Landed by 2026-08-23** (`2f3af83`). `ROUTE_CHOSEN` is read in `crates/core`
+> (`board/flow.rs`, `debug/route.rs`, `debug/turns.rs`, `tests/route34.rs`), so
+> this section's own "`grep -rn ROUTE_CHOSEN crates` hits only `crates/agent`" is
+> now false where it appears TWICE below. `board/stage.rs` is 127 (target ≤ 130)
+> and `board/flow.rs` is 90 (target ≤ 90) — it did not exist when this was
+> written, which is why the "from 149" is unrecognisable today.
+>
+> Its `Route::named` criterion also landed, and 2026-08-23 finished the parser it
+> sits beside: `unmarked` now strips the CLOSED CommonMark set of block prefixes
+> (heading, blockquote, bullet, ordered marker, nesting), so `## ROUTE: project`
+> and `> ROUTE: project` stop being silent `react`s. See
+> `crates/agent/src/strategy.rs` and `crates/agent/tests/vote_shapes.rs`.
 
 **Why here.** It fixes a LIVE defect on the one shipped agent and it is the prerequisite the frontend charter assumed it already had. `public/agents/main/agent.md:22` declares `stages: [strategy]` and `crates/agent/src/stages/mod.rs:137-142` rewrites the walk at runtime, so `stage::said` counts a position against a list of one and every post-vote stage prints bare. And `ROUTE_CHOSEN` is not folded by core for anybody: `crates/core/src/failure/loop_note.rs:19` lists only STAGE_ENTERED/PASS_SPENT/GOAL_CHECKED, `crates/core/src/chat/fold.rs:77` catches the rest with `_ => false`, and `grep -rn ROUTE_CHOSEN crates` hits only `crates/agent`. Small, gateable today, and it is the half that can actually fail.
 
@@ -193,7 +273,7 @@ It is cheap, every piece of it already exists somewhere in the tree, and it is t
 - `crates/agent/src/strategy.rs` gains `Route::named(&str) -> Option<Route>` beside `as_str`, deliberately NOT falling to `React` — `route_of` fails toward the middle because a turn must run; a projection must not, because drawing the wrong flow is worse than drawing none.
 - `shell()` in `board/row.rs` stays ≤ 40 lines; `python3 scripts/check-size.py --functions` reports no new entry.
 
-### 5. [backend] An artifact becomes a typed, addressable, cross-thread object: a third faculty whose record lives in the shared space, whose catalog renders for every route, and whose reader is increment 3's `read_range`.
+### 5. ⏳ IN PROGRESS (Team ARTIFACT, 2026-08-23). [backend] An artifact becomes a typed, addressable, cross-thread object: a third faculty whose record lives in the shared space, whose catalog renders for every route, and whose reader is increment 3's `read_range`.
 
 **Why here.** The owner named artifacts by name and said they are under-built; `grep -rn 'struct Artifact\|enum Artifact' crates` = 0. It is the substrate under increment 6 (a quest needs somewhere to put a deliverable that outlives a turn) and under any `returns:` shape on delegation. It comes FIFTH, not first, because two of its three mechanisms depend on work above it: the window needs increment 3's port, and the cross-thread claim is only checkable with increment 1's browser suite.
 
@@ -213,7 +293,7 @@ It is cheap, every piece of it already exists somewhere in the tree, and it is t
 - `crates/agent/tests/window.rs` pins the rendered cost of a full `SHELF_LIMIT` shelf, so the cap has a number behind it.
 - `grep -rn artifact crates/kernel/src` = 0; no new `EventKind`; the delta to `crates/core/src/tools.rs` and `crates/core/src/faculty/run.rs` is one line each.
 
-### 6. [backend] QUEST becomes the third first-class flow: a durable objective with a lifecycle that outlives the turn, survives a reload, can report BLOCKED, and whose termination rule is that a reply is an update rather than an ending.
+### 6. ⬜ NOT STARTED. [backend] QUEST becomes the third first-class flow: a durable objective with a lifecycle that outlives the turn, survives a reload, can report BLOCKED, and whose termination rule is that a reply is an update rather than an ending.
 
 **Why here.** One of the owner's three named first-class flows does not exist — `grep -rniE '\bquest\b' crates public docs` = 0 — and all three teams deferred it. It comes sixth because everything it needs now exists: a typed deliverable (increment 5), an environment that does not lose its check output (increment 3), a route fact a surface can read (increment 4), and a browser gate that can prove the reload (increment 1). Building it earlier means inventing a second registry for its outputs and then reconciling it.
 
@@ -231,7 +311,7 @@ It is cheap, every piece of it already exists somewhere in the tree, and it is t
 - NO new entry in `crates/agent/src/stages/mod.rs:44-56` and NO fourth `Route` variant unless the route work in increment 4 made one free. A quest is a LIFECYCLE on the standing goal, not a fifth stage name — 'declare policy and budget, never topology' is a standing ruling in `tracker.md` and it holds here.
 - `docs/PARITY.md` updated with what this does and does not claim: resumability and auditability, never quality (the tracker's own DFAH ruling).
 
-### 7. [frontend] The Flow Rail: every agent's route, the stage walk it is actually taking, and which lap it is on, rendered as one component built from typed reads of facts core already publishes — mounted in Chat and on the Dashboard, and costing zero files when a fourth flow lands.
+### 7. ⬜ NOT STARTED. [frontend] The Flow Rail: every agent's route, the stage walk it is actually taking, and which lap it is on, rendered as one component built from typed reads of facts core already publishes — mounted in Chat and on the Dashboard, and costing zero files when a fourth flow lands.
 
 **Why here.** Last because it is the only increment in the plan that is pure surface, and because every fact it draws is published by increment 4 and every flow it must represent exists only after increment 6. Shipping it earlier would render `data-route=""` for every agent on every turn, which is what the frontend charter would have done.
 

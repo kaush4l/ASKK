@@ -2,20 +2,17 @@
 //! message deserves.
 //!
 //! `stages:` used to be a fixed list in `agent.md`, so every turn walked all of
-//! it. An agent declaring `[plan, work, verify]` paid for a brief and a check to
-//! answer "hello", and one declaring `[work]` had no plan for a project. Neither
-//! is a property of the AGENT; both are properties of the MESSAGE, and the only
-//! thing that has read the message by then is the model.
+//! it: `[plan, work, verify]` paid for a brief and a check to answer "hello",
+//! and `[work]` had no plan for a project. Neither is a property of the AGENT;
+//! both are properties of the MESSAGE, and the only thing that has read the
+//! message by then is the model.
 //!
-//! So the first stage asks it. Three routes, and they are deliberately the three
-//! a person would name:
-//!
-//! - `answer` — this can be answered from what is already known. No tools, one
-//!   call, done. The greeting stops costing a plan.
-//! - `react` — this needs a tool: a search, a file, a command. The react loop,
-//!   which is what this build has always run.
-//! - `project` — this is something to build. Plan first (enhance the request,
-//!   pull in the skills that apply), then work, then check, then critique.
+//! So the first stage asks it. Three routes — `answer`, `react`, `project` —
+//! and WHAT DISTINGUISHES THEM IS NOT WRITTEN HERE. It is in
+//! `public/stages/strategy.md`, the file a person edits to tune routing without
+//! a rebuild; restating it in this header would be the second copy that drifts.
+//! [`Route::stages`] below says what each route COSTS, which is this file's
+//! half of the answer.
 //!
 //! IT FAILS TOWARDS THE MIDDLE. An unreadable vote, a missing line, a model that
 //! answered the question instead of voting — all become `react`, because react
@@ -38,8 +35,7 @@ pub enum Route {
 
 impl Route {
     /// The stages this route walks. `work` is in all three — it is the turn
-    /// that talks to the person — and what changes around it is what the route
-    /// is FOR.
+    /// that talks to the person — and what changes around it is the route.
     pub fn stages(self) -> Vec<String> {
         let names: &[&str] = match self {
             // No tools: `stages::tools_on` reads `answer` and refuses them, so
@@ -68,14 +64,12 @@ impl Route {
     /// `as_str` read backwards, and the only place in the tree that turns a
     /// route word into a route.
     ///
-    /// IT DELIBERATELY DOES NOT FALL TO `React`, WHICH IS THE WHOLE REASON IT
-    /// IS SEPARATE FROM `route_of`. A VOTE fails towards the middle because a
-    /// turn has to run and react can still reach either outcome (this file's
-    /// header). A PROJECTION has no such duty: a surface handed `quest` would
-    /// draw `work` and say the turn is doing one thing while it does another,
-    /// and drawing the wrong flow is worse than drawing none. So the vote keeps
-    /// its fallback in `route_of` and every reader that is merely LOOKING at a
-    /// recorded route gets the honest `None`.
+    /// IT DELIBERATELY DOES NOT FALL TO `React`, WHICH IS WHY IT IS SEPARATE
+    /// FROM `route_of`. A VOTE fails towards the middle because a turn has to
+    /// run (this file's header). A PROJECTION has no such duty: a surface
+    /// handed `quest` would draw `work` and say the turn is doing one thing
+    /// while it does another. So the fallback stays in `route_of`, and every
+    /// reader merely LOOKING at a recorded route gets the honest `None`.
     pub fn named(word: &str) -> Option<Route> {
         match word {
             "answer" => Some(Route::Answer),
@@ -86,26 +80,21 @@ impl Route {
     }
 }
 
-/// The label the vote is written under, and the label its reason is written
-/// under. Named here because `stages::facts` reads the second one out of the
-/// same reply and the two must be read the same way — a model that decorates
-/// one label decorates both.
+/// The label the vote is written under, and the one its reason is. Named here
+/// because `stages::facts` reads the second out of the same reply and the two
+/// must be read the same way — a model decorating one label decorates both.
 pub const ROUTE: &str = "ROUTE";
 pub const WHY: &str = "WHY";
 
 /// The value written on the line labelled `label`, or `None` if no line is.
 ///
 /// THE LABEL IS CLEANED EXACTLY AS THE VALUE IS, which is the whole of this
-/// function. The contract asks for two named lines; a small model writes them
-/// as a markdown list about as often as it writes them bare, and it emphasises
-/// the label because a label looks like a heading. `**ROUTE:** project`,
-/// `- ROUTE: answer` and `1. ROUTE: project` were all unreadable while the
-/// value alone was being trimmed, and an unreadable vote is a silent `react`.
-///
-/// It still has to OPEN its line, after a list marker and emphasis come off and
-/// after nothing else. Finding the label anywhere would make a sentence about
-/// routing into a vote, and the model is asked to explain itself on the line
-/// below.
+/// function: a small model writes the two named lines as markdown about as
+/// often as it writes them bare, and `**ROUTE:** project` was unreadable while
+/// only the value was being trimmed. It still has to OPEN its line, after
+/// [`unmarked`]'s block prefixes and [`plain`]'s decoration and after nothing
+/// else — finding the label anywhere would make a sentence about routing into
+/// a vote, and the model is asked to explain itself on the line below.
 pub(crate) fn labelled<'a>(reply: &'a str, label: &str) -> Option<&'a str> {
     reply.lines().find_map(|line| {
         let (found, value) = unmarked(line).split_once(':')?;
@@ -113,51 +102,63 @@ pub(crate) fn labelled<'a>(reply: &'a str, label: &str) -> Option<&'a str> {
     })
 }
 
-/// A line with its list marker taken off: `-`, `*`, `+`, `1.`, `2)`. A marker
-/// counts only when whitespace follows it, which stops `**ROUTE**` being a bullet.
+/// A line with every MARKDOWN BLOCK PREFIX taken off it, so that what remains
+/// either opens with the label or is not a vote.
 ///
-/// **TWO SHAPES ARE STILL DROPPED HERE, MEASURED 2026-08-23 AND NOT FIXED.**
-/// `## ROUTE: project` and `> ROUTE: project` both read as `react`: `#` and `>`
-/// are neither markers below nor decoration in `plain`, so the label never opens
-/// its line. Same cause `e27a387` fixed for `**` and `-` — a small model asked
-/// for two named lines turns a label into a heading, or pulls it into a quote,
-/// for the reason it bolds one — and an unreadable vote is a SILENT `react`, so
-/// the cost is the `answer` route's cheap turn and the `project` route's plan on
-/// replies well formed in every other way. Adding them is a grammar change and
-/// this increment was scoped to measurement, so it is recorded here and in
-/// `tests/vote_shapes.rs` for the lead. Deliberately not pinned green in either
-/// place: a test asserting `## ROUTE: project` means `react` makes it law.
+/// **THE GRAMMAR, STATED AND CLOSED (2026-08-23).** IN: the prefixes CommonMark
+/// defines and no others — a bullet (`-`, `*`, `+`), an ordered marker (`1.`,
+/// `2)`), an ATX heading (`#` … `######`), a blockquote (`>`), and indentation,
+/// which `trim` already ate. They NEST, so this strips them in written order:
+/// `> - ROUTE: answer` is one quoted bullet.
+///
+/// THE CLOSED SET IS THE WHOLE CHANGE. `e27a387` added `**` and `-` to a list;
+/// 2026-08-23 then measured `## ROUTE: project` and `> ROUTE: project` still
+/// landing silently on `react`. A list that grows one character per surprise
+/// never finishes, because the failure is SILENT — an unreadable vote is a
+/// `react` indistinguishable from a vote for `react`. Naming the RULE lets the
+/// next round argue with the rule instead of adding a sixth character.
+///
+/// OUT, each a decision and each a named case in `tests/vote_shapes.rs`. A
+/// table pipe, a definition-list colon, a footnote bracket: not block prefixes,
+/// and two would make the SEPARATOR ambiguous. `>ROUTE:` unspaced, because a
+/// marker is only a marker when whitespace follows — the rule that stops
+/// `**ROUTE**` being a bullet and `#tag` a heading. `####### `, not a heading in
+/// CommonMark either. And anything altering the SEPARATOR (`=`, `->`), the
+/// VALUE (a clause, a hedge, a second field) or the LINE (a label mid-sentence).
 fn unmarked(line: &str) -> &str {
-    let line = line.trim();
-    match line.split_once(char::is_whitespace) {
-        Some((head, rest)) if is_marker(head) => rest.trim_start(),
-        _ => line,
+    let mut line = line.trim();
+    while let Some((head, rest)) = line.split_once(char::is_whitespace) {
+        if !is_marker(head) {
+            break;
+        }
+        line = rest.trim_start();
     }
+    line
 }
 
+/// One markdown block prefix — bullet, ordered marker, ATX heading, blockquote.
 fn is_marker(head: &str) -> bool {
     let numbered = head
         .strip_suffix(['.', ')'])
         .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
-    matches!(head, "-" | "*" | "+") || numbered
+    let heading = (1..=6).contains(&head.len()) && head.bytes().all(|c| c == b'#');
+    matches!(head, "-" | "*" | "+" | ">") || numbered || heading
 }
 
-/// Whitespace and the decoration a model puts round a field: emphasis, code
-/// spans, quotes, and the full stop it ends a sentence with.
+/// Whitespace and the INLINE decoration a model puts round a field: emphasis,
+/// code spans, quotes, and the full stop it ends a sentence with.
 fn plain(text: &str) -> &str {
     text.trim_matches(|c: char| c.is_whitespace() || "*`_\"'.".contains(c))
 }
 
 /// THE VOTE, or `None` when the reply did not contain one. The `None` is the
-/// point: `route_of` turns it into `react`, and a fallback that looked
-/// identical to a vote for `react` made the one decision this stage exists to
-/// make unreadable in the log (`stages::facts`).
+/// point: `route_of` turns it into `react`, and a fallback indistinguishable
+/// from a vote FOR `react` made this stage's one decision unreadable in the log.
 pub fn vote_in(reply: &str) -> Option<Route> {
     Route::named(&labelled(reply, ROUTE)?.to_lowercase())
 }
 
-/// The vote, read out of the reply, failing towards the middle route for the
-/// reason in this file's header.
+/// The vote, failing towards the middle route for this file's header's reason.
 pub fn route_of(reply: &str) -> Route {
     vote_in(reply).unwrap_or(Route::React)
 }
@@ -165,27 +166,26 @@ pub fn route_of(reply: &str) -> Route {
 /// The reply shape the strategy stage demands — THE SHAPE, AND NOT THE
 /// CRITERIA.
 ///
-/// The criteria used to be here, as a string literal, while the file a person
+/// The criteria used to live here as a string literal while the file a person
 /// opens to tune routing — `public/stages/strategy.md` — held one sentence and
-/// no criteria at all. So the half that decided the route could not be edited
-/// without a rebuild and the half that could be edited changed nothing.
+/// no criteria at all. THEY MOVED TO THE BRIEF, AND ONLY THERE: this object
+/// reaches a model through one path (`brief::contract`, `strategy` and no other
+/// stage) and `brief::keyed` makes that brief mandatory, so the turn refuses
+/// before this constant renders unbriefed. `tests/strategy.rs` keeps it so.
 ///
-/// THEY MOVED TO THE BRIEF, AND IT IS SAFE FOR THEM TO LIVE ONLY THERE. This
-/// object reaches a model through exactly one path — `brief::contract` returns
-/// it for the `strategy` stage and no other — and `brief::keyed` lists that
-/// same stage among the ones that MUST be briefed, so `strategy.md` is loaded
-/// or the turn refuses before this constant is ever rendered. One source, no
-/// copy to drift; `tests/strategy.rs` holds the test that keeps it that way.
+/// THE READING TOLERANCE IS IN NEITHER, deliberately. `unmarked` accepts a
+/// markdown heading or blockquote round the label; the brief says nothing about
+/// it and must not, because that tolerance exists for a model that FAILED to
+/// follow this contract, and printing it would read as permission to.
 ///
 /// WHY IT ALSO ASKS FOR `WHY`. A single-token reply from a small model is a
 /// guess as often as a decision; one clause of justification is the cheapest
-/// available form of "think before answering", and it costs about six tokens.
-/// It is also what makes a wrong route debuggable — the vote alone says the
-/// machine chose, and the line says what it chose it on.
+/// form of "think before answering" and costs about six tokens. It is also what
+/// makes a wrong route debuggable — the vote says the machine chose, the line
+/// says what it chose on.
 pub const OBJECT: ResponseObject = ResponseObject {
     about: "Decide how much work this message needs before anything is done about it. \
-        The routes, and how to choose between them, are set out in the directive block \
-        above.",
+        The routes, and how to choose between them, are in the directive block above.",
     fields: &[
         Field {
             name: ROUTE,

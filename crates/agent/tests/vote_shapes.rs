@@ -7,22 +7,22 @@
 //! middle and look exactly like a build whose messages all wanted the middle.
 //!
 //! `e27a387` fixed the parser for bold, bullets and numbering, and
-//! `tests/strategy.rs` pins fifteen shapes through the real `step`. This file
-//! measures what that fix LEFT — the shapes a small model also writes that
-//! nothing had checked either way — and pins the accepted ones so they cannot
-//! be lost to a future tightening of `plain`. Measured 2026-08-23 over 46 shapes
-//! against `agent::vote_of`.
+//! `tests/strategy.rs` pins the shapes that matter through the real `step`.
+//! This file measures what that fix LEFT — the shapes a small model also writes
+//! that nothing had checked either way — and pins the accepted ones so they
+//! cannot be lost to a future tightening of `plain`. Measured 2026-08-23 over 46
+//! shapes against `agent::vote_of`.
 //!
-//! **THE FINDING, AND IT IS NOT FIXED HERE.** Two shapes are still dropped for
-//! precisely the reason `e27a387` existed. `## ROUTE: project` and
-//! `> ROUTE: project` both read as `react`, because `#` and `>` are neither list
-//! markers in `is_marker` nor decoration in `plain` — and a label is exactly
-//! what a small model turns into a heading or pulls into a quote, for the same
-//! reason it bolds one. That is a grammar change to `strategy.rs::unmarked`, it
-//! is not measurement, and this increment was scoped to measurement plus a test.
-//! It is written down for the lead rather than done quietly, and it is
-//! deliberately NOT pinned green below: a test asserting `## ROUTE: project`
-//! means `react` would make the defect law.
+//! **THE FINDING, NOW FIXED.** That measurement left two shapes dropped for
+//! precisely the reason `e27a387` existed: `## ROUTE: project` and
+//! `> ROUTE: project` read as `react`, because `#` and `>` were neither list
+//! markers in `is_marker` nor decoration in `plain`. They are pinned ACCEPTED
+//! below, and the fix was not two more characters — `unmarked` now strips the
+//! CommonMark set of block prefixes and says in its header that the set is
+//! closed, so the next surprising shape has to argue with a stated rule instead
+//! of appending a character to a list. The refusals that BOUND that rule
+//! (`>ROUTE:` unspaced, seven hashes) are pinned here too, because a grammar
+//! with no stated edge is not closed, only unmeasured.
 //!
 //! **WHY THIS IS A UNIT TEST AND `strategy.rs` IS NOT.** That file's header is
 //! right — a parser test can pass while the turn it steers ends in the wrong
@@ -40,8 +40,13 @@ use agent::{vote_of, Route};
 /// would drop them with no gate going red, which is how the bold-label defect
 /// shipped in the first place.
 ///
-/// Positive control, run and restored: remove the backtick from `plain`'s trim
-/// set in `crates/agent/src/strategy.rs` and the two code-span cases go red.
+/// Positive controls, each run and restored. (a) Remove the backtick from
+/// `plain`'s trim set in `crates/agent/src/strategy.rs` and the two code-span
+/// cases go red. (b) Drop `">"` from `is_marker`'s `matches!` and the three
+/// blockquote cases go red. (c) Delete the `heading` term from `is_marker` and
+/// the five heading cases go red. (d) Replace `unmarked`'s `while` with a
+/// single `if` and only the two NESTED cases go red — which is the whole reason
+/// they are listed separately.
 #[test]
 fn the_decorated_shapes_a_model_writes_are_all_read_as_the_same_vote() {
     for (reply, expected, because) in [
@@ -70,6 +75,18 @@ fn the_decorated_shapes_a_model_writes_are_all_read_as_the_same_vote() {
         // which comes first, or about thinking out loud above them.
         ("WHY: it needs a build\nROUTE: project", Route::Project, "WHY written first"),
         ("Reasoning...\n\nROUTE: project", Route::Project, "a preamble, then the vote"),
+        // THE TWO SHAPES MEASURED DROPPED ON 2026-08-23, now accepted: a model
+        // asked for two named lines turns a label into a heading, or pulls it
+        // into a quote, for the same reason it bolds one.
+        ("## ROUTE: project", Route::Project, "the label written as a heading"),
+        ("> ROUTE: project", Route::Project, "the label pulled into a blockquote"),
+        // …and the rest of the same CLOSED set, so the rule is pinned and not
+        // just the two shapes that happened to be measured.
+        ("# ROUTE: answer", Route::Answer, "a one-hash heading"),
+        ("###### ROUTE: answer", Route::Answer, "six hashes, the deepest heading"),
+        ("## **ROUTE:** project", Route::Project, "a heading AND bold together"),
+        ("> - ROUTE: answer", Route::Answer, "prefixes NEST: a quoted bullet"),
+        ("> 1. **ROUTE**: project", Route::Project, "quote, numbering and bold at once"),
     ] {
         assert_eq!(vote_of(reply), expected, "{reply:?} — {because}");
     }
@@ -79,13 +96,19 @@ fn the_decorated_shapes_a_model_writes_are_all_read_as_the_same_vote() {
 ///
 /// Everything below SHOULD fall to `react`, and each for a stated reason, so
 /// that widening the grammar later has to argue with a named case rather than
-/// with a silence. The shapes that fall to `react` and should NOT — the heading
-/// and the blockquote — are in this file's header as a finding and are pointedly
-/// absent here.
+/// with a silence. Since 2026-08-23 this also carries the EDGE of the block-
+/// prefix rule: a set called closed with nothing pinned just outside it is not
+/// closed, only unmeasured.
 #[test]
 fn a_reply_that_is_not_a_vote_falls_to_the_middle_route_for_a_reason() {
     for (reply, because) in [
         ("ROUTE = project", "not the separator the contract states"),
+        // THE EDGE OF THE BLOCK-PREFIX SET (`strategy.rs::unmarked`).
+        (">ROUTE: project", "a marker is only a marker when whitespace follows it"),
+        ("#ROUTE: project", "same rule, and `#tag` is not a heading in CommonMark"),
+        ("####### ROUTE: project", "seven hashes is not a heading in CommonMark"),
+        ("| ROUTE: project", "a table pipe is not a block prefix"),
+        ("~ ROUTE: project", "not a markdown construct at all"),
         ("ROUTE -> project", "an arrow is not a colon either"),
         ("[ROUTE] project", "a bracketed label with no separator at all"),
         ("ROUTE project", "no separator"),
