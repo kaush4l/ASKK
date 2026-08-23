@@ -14,6 +14,7 @@
 //! particular content.
 
 mod affordances;
+mod artifacts;
 mod contract;
 mod directive;
 mod goal;
@@ -32,6 +33,7 @@ pub(crate) use goal::Goal;
 pub(crate) use history::History;
 pub use history::SESSION_STARTED;
 pub(crate) use respond::{Field, ResponseObject};
+pub use artifacts::artifact_parts;
 pub use memory::memory_parts;
 pub use sensed::{Block, Sensed};
 pub(crate) use soul::{Identity, OperatingRules, Soul};

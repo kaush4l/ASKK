@@ -86,7 +86,7 @@ fn websearch<'a>(app: &'a Rc<RefCell<App>>, tool: &'a ToolId, args: &'a str) -> 
     Box::pin(crate::websearch::run(app, tool, args))
 }
 fn space<'a>(app: &'a Rc<RefCell<App>>, tool: &'a ToolId, args: &'a str) -> Running<'a> {
-    Box::pin(crate::space::shared::run(app, tool, args))
+    Box::pin(crate::space::run(app, tool, args))
 }
 
 /// The AWAITING tool table, the twin of `dispatch::builtin_entry`: tool name
@@ -102,13 +102,14 @@ fn space<'a>(app: &'a Rc<RefCell<App>>, tool: &'a ToolId, args: &'a str) -> Runn
 ///
 /// Each arm states its own membership rather than discovering it by falling
 /// through: the sets are `agent::is_workspace_tool`, `agent::WEB_SEARCH` and
-/// `agent::is_space_tool`. They are disjoint today, so match order states
-/// precedence — workspace claims a shared name first — rather than tie-breaks.
+/// `crate::space::is_space_call` (the space's own three plus the shelf's two).
+/// They are disjoint today, so match order states precedence — workspace claims
+/// a shared name first — rather than tie-breaks.
 pub(crate) fn tool_entry(tool: &ToolId) -> Option<ToolHandler> {
     match tool.0.as_str() {
         name if agent::is_workspace_tool(name) => Some(workspace),
         name if name == agent::WEB_SEARCH => Some(websearch),
-        name if agent::is_space_tool(name) => Some(space),
+        name if crate::space::is_space_call(name) => Some(space),
         _ => None,
     }
 }

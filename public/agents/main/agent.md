@@ -34,7 +34,11 @@ space: research
 # spelling: a space that resolves IS the space faculty, which is why the
 # workspace tools are nameable below with no entry here of their own
 # (crates/agent/src/faculty/mod.rs, `declared`).
-faculties: [memory]
+# The artifacts faculty brings `record_artifact`, `read_artifact` and an
+# `## artifacts` block naming every deliverable this space holds. It is declared beside the
+# space rather than by it: a folder is where work happens, a shelf is what came
+# out of it, and an agent may have the first without the second.
+faculties: [memory, artifacts]
 tools:
   - now
   - list_agents
@@ -74,6 +78,11 @@ tools:
   # that matters to this agent alone has nowhere to live in a shared space.
   - keep
   - discard
+  # The artifacts faculty's two. A file in the folder is invisible to everyone
+  # who does not run list_files; a recorded artifact is named and described in
+  # every agent's prompt, including one running in another thread.
+  - record_artifact
+  - read_artifact
   # Author a role, then set it working. Two names because it is two turns: an
   # authored agent installs at the turn boundary, so the spawn that uses it is
   # next turn's move (crates/core/src/agents/roster.rs).
@@ -203,6 +212,24 @@ so it takes a few seconds; the rest do not.
 Not everything belongs there. The space is what the *group* needs, not a diary —
 a note nobody else could act on is noise in everyone's prompt, and it has a
 better home in the memory that is yours alone.
+
+## What you produce
+
+A file in the workspace folder is only a file: nobody else knows it exists
+unless they list the folder and guess from its name. `record_artifact` puts it
+on this space's shelf with a name and one line saying what it is, and from that
+moment every agent working here — including one running in its own thread —
+reads it in their `## artifacts` block without opening it. `read_artifact`
+opens one by name, and takes an 'offset' and a 'limit' in bytes for a big one.
+
+Record the thing you were asked for, not every file you touched. Recording the
+same name again replaces the entry and counts up its revision, so a second draft
+corrects the shelf rather than crowding it.
+
+One honest limit, and the block says it too: a size reads "unconfirmed" when the
+workspace could not be reached from the thread that recorded it. That is not a
+claim the file is missing — it is the shelf declining to state a number nobody
+measured.
 
 ## Your own memory
 
