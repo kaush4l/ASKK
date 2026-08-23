@@ -118,7 +118,7 @@ header .pill.running::before { content: "\25C6  "; color: var(--accent); }
 /* HOVER IS WEAKER THAN SELECTION (R18-P2). `--e2-fill` IS `--surface-2` in the
    plain skin, and `--surface-2` is what `[aria-current="page"]` paints: two items
    read as selected at once. A tint ("+4% ink"), not a surface. */
-.nav .view-item:hover { background-color: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink); }
+@media (hover: hover) and (pointer: fine) { .nav .view-item:hover { background-color: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink); } }
 .nav .view-item:active { background-color: color-mix(in srgb, var(--ink) 7%, transparent); }
 .nav .view-item[aria-current="page"] {
   box-shadow: inset 4px 0 0 0 var(--accent); background-color: var(--surface-2);
@@ -171,3 +171,26 @@ header .pill-label { color: var(--ink-2); }
 /* THE DRAWER'S WAY OUT (R5-8); layout.css positions both. */
 .nav-scrim { background-color: var(--e3-scrim); border: 0; }
 .nav-close { margin-left: auto; }
+
+/* THE ONE ARRIVAL (docs/DESIGN-SYSTEM.md §7). Below 1100px the nav is a sheet
+   that comes up over a scrim (layout.css positions both), and until now it
+   appeared in a single frame. `--dur-slow` (380ms, "something arriving") and
+   `--ease-out` ("entrances") were declared in tokens.css and had ZERO readers
+   in the whole tree — measured, `grep -ro -- '--ease-out' web scripts crates`
+   = 0. This is their first reader and it is the only moment in this product
+   that IS an arrival, which is why it is the only thing given one.
+   THERE IS NO MATCHING EXIT and that is not an oversight: both elements leave
+   by `[hidden]` and by unmounting, which no transition or animation can
+   follow, so `--ease-in` still has no reader and §7 says so rather than
+   inventing a use for it. AND THE GUARD IS `no-preference`, NOT base.css's
+   duration cut: `layout-audit.js:36` asserts every `animation-name` resolves to
+   `none`, and `animation-duration: 0.01ms !important` leaves the NAME standing.
+   Written the other way first, `scripts/check-layout.sh --reduced-motion` went
+   from OK to `LAYOUT CHECK FAILED: 30` — 5 widths x 2 skins x 3 routes, every
+   run below the breakpoint. `strip.css:121` already had the right shape. */
+@media (max-width: 1099px) and (prefers-reduced-motion: no-preference) {
+  main > .nav:not([hidden]) { animation: nav-rise var(--dur-slow) var(--ease-out) both; }
+  .nav-scrim { animation: scrim-in var(--dur) var(--ease-out) both; }
+}
+@keyframes nav-rise { from { translate: 0 var(--s-5); opacity: 0; } }
+@keyframes scrim-in { from { opacity: 0; } }

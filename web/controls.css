@@ -31,9 +31,10 @@ input, textarea, select { flex: 0 1 auto; background-color: var(--surface-1); co
 form.oneline > input, form.oneline > textarea, form.oneline > select { flex: 1 1 14rem; }
 select { cursor: pointer; }
 
-/* Five states, gated on :not(:disabled). */
-input:not(:disabled):hover, textarea:not(:disabled):hover,
-select:not(:disabled):hover { border-color: var(--ink-3); }
+/* Five states on :not(:disabled), and every :hover here is gated on a pointer
+   that can hover; the rationale and its limits are in base.css and §5. */
+@media (hover: hover) and (pointer: fine) { input:not(:disabled):hover,
+  textarea:not(:disabled):hover, select:not(:disabled):hover { border-color: var(--ink-3); } }
 input:not(:disabled):active, textarea:not(:disabled):active, select:not(:disabled):active,
 input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 
@@ -60,11 +61,10 @@ textarea { min-height: calc(var(--s-8) + var(--s-4)); resize: vertical; }
 }
 #agent-md { width: 100%; font-family: var(--mono); min-height: 12rem; }
 
-button { background-color: var(--accent); color: var(--accent-ink); border: 1px solid transparent; cursor: pointer; font-weight: var(--w-strong); }
+button { background-color: var(--accent); color: var(--accent-ink); border: 1px solid transparent; cursor: pointer; font-weight: var(--w-strong); -webkit-tap-highlight-color: transparent; user-select: none; }
 
 /* hover lifts the fill, active pushes further and adds the 2% squash. */
-button:not(:disabled):hover { background-color: color-mix(in srgb, var(--accent) 96%, white); }
-
+@media (hover: hover) and (pointer: fine) { button:not(:disabled):hover { background-color: color-mix(in srgb, var(--accent) 96%, white); } }
 button:not(:disabled):active { background-color: color-mix(in srgb, var(--accent) 93%, white); transform: scale(0.98); }
 
 /* THE PRIMARY ACTION, said in a class (R3-16). It NAMES the four actions. */
@@ -83,14 +83,13 @@ button:disabled { background-color: transparent; color: var(--ink-3); border-col
 }
 
 .btn-ghost { background-color: transparent; color: var(--ink); border: 1px solid var(--control); font-weight: var(--w-medium); }
-.btn-ghost:not(:disabled):hover { background-color: var(--e2-fill); border-color: var(--ink-3); }
+@media (hover: hover) and (pointer: fine) { .btn-ghost:not(:disabled):hover { background-color: var(--e2-fill); border-color: var(--ink-3); } }
 .btn-ghost:not(:disabled):active { background-color: color-mix(in srgb, var(--ink) 7%, transparent); }
 
-.btn-secondary:not(:disabled):hover, .panel-toggle:not(:disabled):hover,
-.skin-toggle:not(:disabled):hover, .agent-tabs .tab:not(:disabled):hover {
-  background-color: color-mix(in srgb, var(--ink) 4%, var(--e2-fill));
-  border-color: var(--ink-3);
-}
+@media (hover: hover) and (pointer: fine) {
+  .btn-secondary:not(:disabled):hover, .panel-toggle:not(:disabled):hover,
+  .skin-toggle:not(:disabled):hover, .agent-tabs .tab:not(:disabled):hover {
+    background-color: color-mix(in srgb, var(--ink) 4%, var(--e2-fill)); border-color: var(--ink-3); } }
 
 /* DESIGN §8's "+7% fill", against --ink: that is what a glass fill IS. */
 .btn-secondary:not(:disabled):active, .panel-toggle:not(:disabled):active,
@@ -102,7 +101,7 @@ button:disabled { background-color: transparent; color: var(--ink-3); border-col
 /* danger is fill-less and needs its own hover/active, or the accent hover
    above repaints a destructive control PURPLE (R4-17). */
 .btn-danger { background-color: transparent; color: var(--danger); border-color: var(--danger); font-weight: var(--w-medium); }
-.btn-danger:not(:disabled):hover { background-color: color-mix(in srgb, var(--danger) 12%, transparent); }
+@media (hover: hover) and (pointer: fine) { .btn-danger:not(:disabled):hover { background-color: color-mix(in srgb, var(--danger) 12%, transparent); } }
 .btn-danger:not(:disabled):active { background-color: color-mix(in srgb, var(--danger) 20%, transparent); }
 /* NO :disabled exception: F15's overreached and a disabled Delete looked live. */
 
@@ -162,8 +161,8 @@ button:disabled { background-color: transparent; color: var(--ink-3); border-col
 }
 
 /* The selected tab keeps its painting under the pointer. */
-.agent-tabs .tab.current:hover,
-.agent-tabs .tab[aria-selected="true"]:hover { background-color: var(--surface-2); border-color: var(--control); }
+@media (hover: hover) and (pointer: fine) { .agent-tabs .tab.current:hover,
+  .agent-tabs .tab[aria-selected="true"]:hover { background-color: var(--surface-2); border-color: var(--control); } }
 .tab-origin { color: var(--ink-2); font-size: var(--t-caption); font-weight: var(--w-normal); }
 .tab.current .tab-origin { color: var(--ink); }
 
@@ -178,8 +177,8 @@ button:disabled { background-color: transparent; color: var(--ink-3); border-col
 .badge::before { content: ""; width: var(--s-2); height: var(--s-2); border-radius: var(--r-full); background: var(--tone); }
 
 /* ---- disclosure states (box in surfaces.css; INTERACTION here) -------- */
-summary { transition: color var(--dur-fast) var(--ease); }
-summary:hover { color: var(--ink); }
+summary { transition: color var(--dur-fast) var(--ease); -webkit-tap-highlight-color: transparent; user-select: none; }
+@media (hover: hover) and (pointer: fine) { summary:hover { color: var(--ink); } }
 summary:active { color: var(--accent); }
 
 /* The way out of a failed turn (F11). */

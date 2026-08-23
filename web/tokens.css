@@ -117,16 +117,14 @@
      paragraphs. Labels and controls keep the tight one. */
   --lh-display: 1.15; --lh-subhead: 1.25; --lh-heading: 1.35; --lh-body: 1.6;
   --lh-label: 1.4; --lh-caption: 1.35;
-  /* `--tr-subhead` DELETED (R11): h2 is not uppercase and takes no tracking. */
-  --tr-display: -0.01em; --tr-label: 0.01em; --tr-caption: 0.14em;
+  /* `--tr-subhead` (R11) and `--tr-label` (R20-TOUCH) deleted: 0 readers. */
+  --tr-display: -0.01em; --tr-caption: 0.14em;
   --w-normal: 400; --w-medium: 500; --w-strong: 600;
 
   /* ---- space: base 4px, eight steps, nothing else ---------------------- */
 
-  /* The nav's two widths and the one measure. 54ch, not 68 (R4-13): `ch` is
-     the width of the digit ZERO, so 68ch MEASURED 90 characters a line. */
-  --nav-w: 13rem;
-  --nav-icon-w: 3.5rem;
+  /* The one measure. 54ch, not 68 (R4-13): `ch` is the width of the digit ZERO,
+     so 68ch MEASURED 90 a line. (`--nav-w`/`--nav-icon-w`: 0 readers, gone.) */
   --measure: 54ch;
   /* THE READING COLUMN, AS A CARD (R6-LAYOUT). `--measure` is one line of
      prose; `--column` is the SURFACE holding one — the measure plus the two
@@ -135,7 +133,9 @@
 
   --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
   --s-5: 1.5rem; --s-6: 2rem; --s-7: 3rem; --s-8: 4rem;
-  /* kept as an alias because check-layout.sh and three scripts name it */
+  /* This alias has 0 readers and the sentence that stood here claimed three
+     scripts name it (I16). It survives only because DESIGN.md:603 repeats that
+     claim and DESIGN.md is another team's file — delete both together. */
   --gap: var(--s-4);
 
   --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-full: 999px;

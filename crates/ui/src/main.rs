@@ -13,6 +13,7 @@ mod composer;
 mod debug;
 mod files;
 mod gallery;
+mod posture;
 mod proc;
 mod settings;
 mod shell;
