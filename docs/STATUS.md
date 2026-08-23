@@ -312,7 +312,8 @@ past its absence.
     2. cargo check -p adapters_web --target wasm32-unknown-unknown
     3. cargo check -p ui --target wasm32-unknown-unknown
     4. python3 scripts/check-size.py
-    5. scripts/check-browser.sh          # the browser suite over adapters_web
+    5. scripts/check-browser.sh          # the service-worker cache probe, then
+                                        # the browser suite over adapters_web
     6. ./publish.sh --dry-run            # every publish check, stopping before the push
 
 **EVERY STEP HERE IS A CHECK. NONE OF THEM DEPLOYS.** Step 6 is `--dry-run` and
