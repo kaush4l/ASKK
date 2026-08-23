@@ -34,7 +34,7 @@
 use std::fs;
 
 use agent::{
-    builtin_tools, guest_lines, is_workspace_tool, memory_tools, space_tools, workspace_tools,
+    builtin_tools, faculty_names, faculty_of, guest_lines, is_workspace_tool, workspace_tools,
     SharedSpace, Space, Toolbox, GUEST_ABSENT, GUEST_BINARIES,
 };
 
@@ -43,15 +43,19 @@ const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 /// Every tool this build can grant anybody, so "a granted tool name" is a set
 /// and not a guess.
 fn every_tool() -> Toolbox {
-    Toolbox::of(
-        [
-            builtin_tools().tools,
-            workspace_tools(),
-            space_tools(),
-            memory_tools(),
-        ]
-        .concat(),
-    )
+    // DERIVED FROM THE FACULTY TABLE, never listed beside it. This was three
+    // hand-written calls — `workspace_tools`, `space_tools`, `memory_tools` —
+    // which is the second-list defect `agent::faculty::TABLE`'s own comment
+    // warns about, one crate over: the third faculty's tool names looked like
+    // binaries this guest does not have, and the sweep failed on prose that was
+    // true. `faculty_names` is derived from the one table, so a faculty cannot
+    // exist and be missing from this set.
+    let offered: Vec<agent::Tool> = faculty_names()
+        .iter()
+        .filter_map(|name| faculty_of(name))
+        .flat_map(|f| f.tools)
+        .collect();
+    Toolbox::of([builtin_tools().tools, offered].concat())
 }
 
 /// THE PROSE THIS BUILD SHIPS, gathered from where it actually lives.

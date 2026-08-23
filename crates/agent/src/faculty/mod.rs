@@ -19,6 +19,7 @@
 //! one file — with no edit to `components::dynamic`, no edit to the toolbox,
 //! and no new mechanism beside the one `space:` has always used.
 
+mod artifact;
 mod memory;
 mod space;
 
@@ -53,6 +54,7 @@ type Build = fn() -> Faculty;
 const TABLE: &[(&str, Build)] = &[
     (space::SPACE, space::faculty),
     (memory::MEMORY, memory::faculty),
+    (crate::artifact::ARTIFACTS_FACULTY, artifact::faculty),
 ];
 
 /// The faculty of this name, or `None`.

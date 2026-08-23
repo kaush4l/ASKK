@@ -29,7 +29,8 @@ use super::{Sense, Sensing, ToolHost};
 /// injected port (I3).
 pub(crate) fn installed_by_default(ports: &Ports) -> Vec<Rc<dyn Sense>> {
     let memory = crate::memory::sense::MemorySense::new(Rc::clone(&ports.store));
-    vec![Rc::new(crate::space::sense::SpaceSense), Rc::new(memory)]
+    let shelf = crate::space::artifact::sense::ArtifactSense::new(Rc::clone(&ports.spaces));
+    vec![Rc::new(crate::space::sense::SpaceSense), Rc::new(memory), Rc::new(shelf)]
 }
 
 /// The tool hosts every app has, by the same rule — the ACTION twin above.

@@ -63,6 +63,11 @@ fn parses_every_frontmatter_key_and_the_body() {
             // a faculty widens what a list may pick from, and this list picks.
             "keep",
             "discard",
+            // The artifacts faculty's two (increment 5), nameable for the same
+            // reason and by the same rule: `faculties: [memory, artifacts]`
+            // widens what this list may pick from, and this list picks.
+            "record_artifact",
+            "read_artifact",
             // Author a role, then set it working. Two turns, not one.
             "write_agent",
             "spawn_agent",
@@ -77,11 +82,12 @@ fn parses_every_frontmatter_key_and_the_body() {
     // …and the key that made the last two of those nameable. `space: research`
     // above declares the space faculty under its older spelling; this is the
     // general form, and both end up in `declared_faculties`.
-    assert_eq!(spec.faculties, ["memory"]);
+    assert_eq!(spec.faculties, ["memory", "artifacts"]);
     // The body after the frontmatter IS the system prompt — no fence, no
     // frontmatter, and not truncated.
     assert!(spec.prompt.starts_with("You are a helpful assistant."));
     assert!(spec.prompt.contains("## The shared space"));
+    assert!(spec.prompt.contains("## What you produce"));
     assert!(spec.prompt.contains("## Your own memory"));
     assert!(!spec.prompt.contains("---"));
 }

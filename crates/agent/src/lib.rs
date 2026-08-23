@@ -10,6 +10,7 @@
 //! G3 interface freeze: types and signatures only; bodies are `todo!()`.
 
 mod answer;
+mod artifact;
 mod brief;
 mod author;
 mod calls;
@@ -62,7 +63,13 @@ pub use crate::environment::{
     PARTIAL_MARK as GUEST_PARTIAL_MARK, RUN_LIMIT_SECS as GUEST_RUN_LIMIT_SECS,
 };
 pub use window::{compacted, due, set_window, transcript, window, SUMMARIZE, SUMMARY_HEADING};
-pub use components::{memory_parts, space_parts, Block, Sensed, SharedSpace, SESSION_STARTED};
+pub use components::{
+    artifact_parts, memory_parts, space_parts, Block, Sensed, SharedSpace, SESSION_STARTED,
+};
+pub use artifact::{
+    artifact_tools, is_artifact_tool, Artifact, Shelf, ARTIFACTS_FACULTY, READ_ARTIFACT,
+    RECORD_ARTIFACT, SHELF_LIMIT,
+};
 pub use faculty::{
     all as faculty_names, blocks_of, declared as declared_faculties, of as faculty_of, Faculty,
     MEMORY as MEMORY_FACULTY, SPACE as SPACE_FACULTY,
