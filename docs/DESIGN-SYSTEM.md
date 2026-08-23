@@ -423,3 +423,75 @@ Another team's file; recorded here rather than edited.
   So `pass {n} of up to {of}` is proved only through `read.rs`'s verbatim
   round-trip test and the attribute pipeline; no shipped agent can produce it.
   `public/agents/**` is not this team's file.
+
+---
+
+## 11. The boot notice, and the one listener that earns its `<script>`
+
+TEAM BOOT wrote the prose and proposed the listener; TEAM RAIL landed both. Its
+author flagged that neither had been executed in a browser and that the
+capture-phase `error` firing for a refused module script was an EXPECTATION.
+It was run before it was landed, in both directions.
+
+### The prose
+
+`web/index.html`'s boot note now names Shift-reload FIRST, because that is the
+fix for this failure class: it sets document AND subresource cache mode to
+`reload` and bypasses the service worker for the navigation. The old copy said
+"reload once", which reads the stale cached copy again — it told a stuck person
+to do the thing that cannot work. The private-window advice is dropped: it was
+diagnostic, and a person staring at a dead page wants the fix.
+
+### The listener — measured in both directions
+
+An `error` event on a resource element **does not bubble**, so a listener
+registered without `true` never sees one; capture phase is the whole mechanism.
+It is registered FIRST in `<head>`, because trunk appends its `modulepreload`
+links at the END of `<head>` and a listener registered after them would miss the
+ones that had already failed.
+
+*Rig:* the SHIPPED `dist/index.html`, with the `integrity` on its own
+`modulepreload` for `ui-*.js` replaced by a wrong hash. Nothing else altered.
+
+| | `#boot-blocked` | `#main` children | `#boot` |
+|---|---|---|---|
+| integrity rigged | **shown**, naming `…/ui-1a46f2584785e4d8.js` | 0 | `flex` |
+| unmodified (negative control) | hidden, empty | 3 | `none` |
+
+**Two events arrive, not one, and the order is not the useful one.** `SCRIPT`
+fires first — the inline module whose `import` failed — and it carries **no**
+`href` or `src`, because it is inline. `LINK` (the modulepreload) follows and
+carries the URL. The `href || src` guard is what makes the ordering irrelevant:
+only an event that knows a file name is ever allowed to write. A handler that
+wrote on every error would have printed an empty file name half the time.
+
+The negative control matters as much as the positive one: a listener that fired
+on a healthy page would print "the browser refused …" under a working app.
+It fires **zero** times there.
+
+### One defect this found, measured rather than guessed
+
+The URL is the only string on that page whose length is not ours, and a
+fingerprinted asset path has no space to break at. At 375px, with a path this
+build really emits
+(`snippets/dioxus-interpreter-js-…/src/js/set_attribute.js`):
+
+| | `scrollWidth` | `clientWidth` |
+|---|---|---|
+| before | **748** | 544 |
+| after `overflow-wrap: anywhere` | 343 | 343 |
+
+The property is folded into the existing `#boot` rule and inherited, rather than
+given a selector of its own: one line instead of six, and a no-op on prose that
+already fits. **`web/base.css` is now at exactly 200 lines with no headroom** —
+the same shape `posture.rs` was in before ROADMAP #7 split it. The next rule
+that belongs to boot chrome forces that split; recorded here so it is a decision
+and not a surprise.
+
+### What is still NOT gated
+
+This listener is not executed by any of the six checks, nor by
+`check-layout.sh` — the probe fixture is the shell's markup and has no `#boot`.
+The evidence is the rig above, run by hand, and it is reproducible: corrupt one
+`integrity` in `dist/index.html` and load the page. That is a smaller claim than
+"the gate proves it", and it is stated rather than dressed up (I17).

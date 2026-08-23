@@ -7,6 +7,37 @@
        say ASKK, which is the repository's name and nobody else's (F1). -->
   <title>HARNESS — AI agents in your browser</title>
   <base data-trunk-public-url>
+  <!-- WHICH FILE THE BROWSER REFUSED (I5's exception, fourth and last).
+       Diagnostic only: it reads an event and writes one sentence into an
+       element that is already in the document. No application logic, no state,
+       nothing the app can depend on — delete it and HARNESS behaves identically,
+       it just stops naming the file.
+
+       CAPTURE PHASE IS THE WHOLE MECHANISM. An `error` event on a resource
+       element does NOT bubble, so a listener registered without `true` never
+       sees one; this is why the fallback copy below could never name a file
+       before. FIRST IN <head>, because trunk appends its `modulepreload` links
+       at the END of <head> (dist/index.html) and a listener registered after
+       them would miss the ones that already failed.
+
+       MEASURED, NOT ASSUMED. Rigged the built page with a deliberately wrong
+       `integrity` on `ui-*.js`: two events arrive, `SCRIPT` (the inline module
+       whose import failed, which carries NO url) then `LINK` (the modulepreload,
+       which carries one), and #main stays empty. The `href || src` guard is what
+       makes the ordering irrelevant — only the event that knows a file name ever
+       writes. On the unrigged page the same listener fires ZERO times and the
+       paragraph stays hidden; both directions were run in a browser. -->
+  <script>
+    addEventListener("error", function (event) {
+      var el = event.target;
+      var url = el && (el.href || el.src);
+      var note = document.getElementById("boot-blocked");
+      if (!url || !note) return;
+      note.textContent = "The browser refused " + url +
+        " — that is the file to get a fresh copy of.";
+      note.hidden = false;
+    }, true);
+  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <meta name="theme-color" content="#0b0611">
@@ -126,10 +157,18 @@
       browser tab.</p>
     <p class="pending" role="status">Starting…</p>
     <p class="note">If this message is still here after a few seconds, the page
-      loaded but its application bundle did not. That is almost always an old
-      service worker holding a stale copy: <strong>reload once</strong>, and if
-      it persists, open this page in a private window to confirm, then clear
-      this site's data.</p>
+      loaded but its application bundle did not. A plain reload will not fix
+      that — the stale copy is in the browser's own cache, and a reload reads it
+      again. <strong>Hold Shift while you reload</strong> (Cmd-Shift-R on a Mac,
+      Ctrl-Shift-R elsewhere): that fetches the page and its bundle from the
+      network, bypassing both the cache and this site's service worker. If it
+      comes back after that, clear this site's data in your browser settings.</p>
+    <!-- …AND WHICH FILE, WHEN THE BROWSER WILL SAY. Filled only by the listener
+         in <head>, and only when a resource with a URL was refused. Empty and
+         hidden otherwise, because a diagnosis nothing measured is worse than
+         none. `base.css` hides the whole of #boot the moment #main has
+         children, so a refusal the app survived is never shown. -->
+    <p class="note" id="boot-blocked" hidden></p>
   </div>
   <noscript>
     <!-- The app is Rust compiled to WebAssembly and mounted by JavaScript;
