@@ -138,8 +138,8 @@
 #terminal { max-height: 13rem; overflow-y: auto; border-radius: var(--r-sm); padding: var(--s-3); }
 .term-run { padding: var(--s-3); border-left: 3px solid var(--control); }
 .term-run.error { border-left-color: var(--danger); }
-/* Same row, same rule (R14-P0-1): this pane prints the agent's commands too. */
-.term-command { margin: 0; font-family: var(--mono); font-size: var(--t-label); color: var(--machine); white-space: pre-wrap; }
+/* Same row, same rule (R14-P0-1); and 14 -> 16, because output is READ. */
+.term-command { margin: 0; font-family: var(--mono); font-size: var(--t-body); color: var(--machine); white-space: pre-wrap; }
 .term-prompt { color: var(--accent); font-weight: var(--w-strong); }
 
 /* WHO ran it and HOW IT ENDED (R3-18): same words, same order, both places. */

@@ -6,10 +6,11 @@
 //! split is the shape `docs/DESIGN-SYSTEM.md §9` named in advance: the reader
 //! here, the claims next door. Nothing in it changed in the move.
 
-/// Every stylesheet the page links, in `web/index.html` order. ELEVEN since
-/// ROADMAP #7; a sheet missing from this list is a sheet the posture tests
-/// cannot see, which is how an ungated hover would ship green.
-pub(super) const SHEETS: [(&str, &str); 11] = [
+/// Every stylesheet the page links, in `web/index.html` order. TWELVE since
+/// the editorial round added `editorial.css`; a sheet missing from this list
+/// is a sheet the posture tests cannot see, which is how an ungated hover
+/// would ship green.
+pub(super) const SHEETS: [(&str, &str); 12] = [
     ("tokens.css", include_str!("../../../../web/tokens.css")),
     ("base.css", include_str!("../../../../web/base.css")),
     ("glass.css", include_str!("../../../../web/glass.css")),
@@ -21,6 +22,7 @@ pub(super) const SHEETS: [(&str, &str); 11] = [
     ("workspace.css", include_str!("../../../../web/workspace.css")),
     ("mission.css", include_str!("../../../../web/mission.css")),
     ("flow.css", include_str!("../../../../web/flow.css")),
+    ("editorial.css", include_str!("../../../../web/editorial.css")),
 ];
 
 /// The sheet named, so a test that is ABOUT one file says which by name rather

@@ -101,17 +101,33 @@ pub fn Stage(
 /// without calling it, and I15 says say less rather than claim either way. A
 /// probe would also fire on a render, against an address the person has not
 /// finished typing — so the honest cue is the one that costs nothing.
-pub(crate) const TAGLINE: &str = "This runs AI agents in your browser, and it has no model of its \
-    own: every turn is sent to a model endpoint you choose, and nothing here has called that \
-    endpoint yet. This build ships pointed at a server on this machine, so unless one is running \
-    there, the first turn will fail and say what to do — Settings is where the address is \
-    changed. An agent whose file names a space also gets a folder in the Linux this page runs, \
-    where it can write files and run commands, and it shares facts and notes with every other \
-    agent naming that space. Each turn opens by deciding how much work the message needs: a \
-    question it can answer gets one reply, something needing a tool gets as many steps as it \
-    takes, and something to build gets planned, worked, checked and criticised — and the \
-    conversation names each stage as it opens. Give an agent a task and walk away, or talk to \
-    it while it works.";
+/// …AND IT IS A STANDFIRST NOW, NOT THE WHOLE STORY (the editorial round).
+/// The one paragraph measured 170 words, 403px tall at 1440 and 605px of an
+/// 844px screen at 390 — 1.78x the masthead it was meant to sit under, and the
+/// largest ink mass above the fold at every width (UPLIFT F3). NOTHING IS
+/// DELETED: this is the first 22 words, and `TAGLINE_MORE` is the rest,
+/// verbatim, behind a real `<details>` that is in the tab order.
+///
+/// The FOREWARNING stays HERE, in the visible half, and a test holds it there:
+/// pushing "nothing here has called that endpoint yet" down into the disclosed
+/// half would undo 31-walk F1 while leaving both strings intact.
+pub(crate) const TAGLINE: &str = "AI agents in your browser. Every turn is sent to a model \
+    endpoint you choose, and nothing here has called that endpoint yet.";
+
+/// THE REST OF THE STORY, DISCLOSED. Word for word what stood in `TAGLINE`
+/// after its first sentence: the endpoint this build ships pointed at, the
+/// space a file can name, and how much of a loop a turn runs. It is deferred,
+/// not dropped — a first-time reader who wants it opens one disclosure, and a
+/// returning one is not charged 150 words of screen for prose they have read.
+pub(crate) const TAGLINE_MORE: &str = "This build ships pointed at a server on this machine, so \
+    unless one is running there, the first turn will fail and say what to do — Settings is where \
+    the address is changed. An agent whose file names a space also gets a folder in the Linux \
+    this page runs, where it can write files and run commands, and it shares facts and notes \
+    with every other agent naming that space. Each turn opens by deciding how much work the \
+    message needs: a question it can answer gets one reply, something needing a tool gets as \
+    many steps as it takes, and something to build gets planned, worked, checked and criticised \
+    — and the conversation names each stage as it opens. Give an agent a task and walk away, or \
+    talk to it while it works.";
 
 /// The Commands view's one gloss. `Commands` names the panel you type into; the
 /// three panels beside it are that panel's leavings, and nothing on screen said
@@ -133,11 +149,30 @@ mod tests {
     /// whether the endpoint answers, because nothing on this page knows (I15).
     #[test]
     fn the_intro_says_a_turn_needs_an_endpoint_before_it_invites_a_task() {
-        let t = super::TAGLINE;
+        // RE-POINTED AT THE WHOLE INTRO (the editorial round). The prose split
+        // in two; the ORDERING guarantee is about the prose, not about which
+        // half it lives in, so it is asserted over both halves in render order.
+        let t = format!("{} {}", super::TAGLINE, super::TAGLINE_MORE);
         let warned = t.find("endpoint").expect("the intro names the model endpoint");
         let invited = t.find("Give an agent a task").expect("the intro still invites a task");
         assert!(warned < invited, "the warning arrives after the invitation: {t}");
         assert!(t.contains("Settings"), "nothing says where the address goes: {t}");
         assert!(t.contains("nothing here has called that endpoint yet"), "unchecked, not ok: {t}");
+    }
+
+    /// …AND THE SPLIT CANNOT BE UNDONE BY PUSHING THE WARNING DOWN. "Short" is
+    /// not a claim a gate can execute; 25 words is (I17). Both halves of this
+    /// are load-bearing: without the word count the standfirst grows back into
+    /// the 170-word wall, and without the substring the count could be met by
+    /// deferring the one sentence 31-walk F1 exists to bring forward.
+    #[test]
+    fn the_visible_lede_fits_a_glance_and_still_carries_the_forewarning() {
+        let words = super::TAGLINE.split_whitespace().count();
+        assert!(words <= 25, "the visible lede is {words} words: {}", super::TAGLINE);
+        assert!(
+            super::TAGLINE.contains("nothing here has called that endpoint yet"),
+            "the forewarning was deferred into the disclosure: {}",
+            super::TAGLINE
+        );
     }
 }

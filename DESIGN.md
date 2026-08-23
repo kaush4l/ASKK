@@ -26,10 +26,36 @@ than a breath; any surface whose boundary you have to hunt for. It refuses to be
 prettier at the cost of being readable — the plain skin is a full product, not a
 degradation, and it ships every feature the glass one does.
 
+### The amendment (the editorial round, `docs/UPLIFT-FINDINGS.md` F5)
+
+**CALM AND INERT ARE NOT THE SAME THING, and this section used to assume they
+were.** Every refusal above is defensible and every one of them stands. What
+does not stand is the inference eight rounds of critique drew from them: each
+round removed one more source of visual interest, each correctly by this
+paragraph's own standard, and the page arrived where the owner found it — *"a
+cheap imitation of a webpage."* The live page was measured running the FALLBACK
+skin, with `--e1-blur: 0px`, a flat two-stop ground, a 32px masthead under a
+403px paragraph, and a type ramp of 1.64:1 on the worst of its three routes.
+None of that was a bug. All of it was policy.
+
+So:
+
+> **A control surface has a commanding front door and a quiet working middle.**
+> **There is one display register and it is a ruled plate naming the screen's
+> SUBJECT — the product on the Dashboard, the agent everywhere else. It is
+> never a view's own name.**
+
+The middle still stays calm; what changes is that the page is now allowed a
+place where it is not. The room gets its light back in BOTH skins, because blur
+is a material and can fail while light is the room and cannot — which is why
+`plain` keeps `--ground-field` at a dimmed key rather than flattening it.
+
 A designer who has never seen this app should be able to reject a mockup with
-this paragraph. If the mockup's centre column is translucent, reject it. If the
+this section. If the mockup's centre column is translucent, reject it. If the
 text sits directly on a blur, reject it. If you cannot tell in one second which
-panel is on top, reject it.
+panel is on top, reject it. If a view's own NAME is the largest thing on the
+screen, reject it: the name is an 11px kicker and the subject is the plate. And
+if the first screen has no plate at all, reject that too.
 
 ---
 
@@ -51,6 +77,17 @@ arrangement, in `web/index.html` link order:
 | `controls.css` | button, input, textarea, select, tab, badge, toggle | 200 |
 | `workspace.css` | what is inside the Linux: the folder listing, one file's contents | 200 |
 | `mission.css` | the Dashboard's fleet surface: the tile strip, and the board's deck | 200 |
+| `flow.css` | the flow rail: which stage of a turn is running | 200 |
+| `editorial.css` | the FRONT PAGE: the ruled plate, the standfirst, the kicker, the contents column, and the ground behind all of it | 200 |
+
+**TWELVE sheets since the editorial round**, and `editorial.css` is the last of
+them in link order for the reason it is the only one whose subject is a SCREEN
+rather than a component: it composes over every component the first screen is
+built from. `.masthead`, `.tagline` and `.view-eyebrow` moved into it whole out
+of `chrome.css` — declared in two files they would be exactly the G1 failure the
+split exists to prevent — and it is registered in three places or it is
+invisible: `web/index.html`, `crates/ui/src/posture/css.rs` (`SHEETS`, whose
+length is compile-time) and `scripts/check-selectors.py`'s `EXPECTED`.
 
 `mission.css` is the tenth (increment 27). It owns two things and they are one
 region: the strip of tiles across the top of the Dashboard, and the deck the
@@ -600,8 +637,12 @@ backdrop at the lightest lobe**, not against the fill colour.
 --s-4:  1rem;     /* 16 */   --s-8: 4rem;     /* 64 */
 ```
 
-`--gap` is kept as an alias of `--s-4` because the layout guard and three
-scripts reference it by name.
+`--gap` is DELETED (the editorial round). The sentence that stood here — that
+the layout guard and three scripts reference it by name — was false, measured:
+`grep -ro -- '--gap' scripts crates web` found it nowhere but its own
+declaration. `docs/DESIGN-SYSTEM.md §6` had the alias and both sentences filed
+as one open edit; this is that edit. The two lines it freed in `tokens.css` are
+`--rule` and `--rule-hair`.
 
 **Glass needs air.** Internal padding minimums, and they are minimums:
 
@@ -1418,10 +1459,16 @@ here means the composer is always exactly where you left it.
 10. **Token count down**: ≤6 font sizes (§5 — raised from 5 in R5-A, once, in
     writing), ≤8 spacing values, 0 roles with two values, 0 (selector,
     property) pairs in two files (G1), 0 skin-gated rules (G2).
-13. **The ramp is USED.** Counted over rendered leaf nodes, no single size may
-    hold the overwhelming majority of the text on a screen, prose sits on
-    `--t-body` at `--lh-body`, and `--t-caption` is never a single orphan
-    instance. `layout-audit.js` prints `INFO SIZES` for exactly this.
+13. **The ramp is USED, and the test is RANGE and not majority.** `scripts/
+    ramp-audit.js` executes this at every width on every probed route:
+    `RAMPRANGE` (largest ÷ smallest rendered size) ≥ **6.0**, and
+    `RAMPDOMINANCE` (the share held by the commonest size) ≤ **0.45**. Prose
+    still sits on `--t-body` at `--lh-body` and `--t-caption` is never a single
+    orphan. Until the editorial round this item tested only for a MAJORITY on
+    one size and never for range, which is how three routes shipped at 2.91:1,
+    1.82:1 and 1.64:1 while it passed (I17: a claim the gate cannot execute is
+    not a verified claim). The two constants are a RATCHET — raise them in the
+    same change that earns them, never lower them.
 11. `cargo test`, `scripts/check-layering.py`, `scripts/check-size.py`,
     `scripts/check-layout.sh` green.
 12. A fresh agent shown a screen cold says what it is for within five seconds.

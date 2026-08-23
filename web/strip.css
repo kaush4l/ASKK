@@ -1,6 +1,6 @@
 /* THE STATUS STRIP, AT EVERY WIDTH. Split out of `chrome.css` (I12): the strip
-   carries five pills, three breakpoints and one scrollport, and chrome.css was
-   at the 200-line ceiling before the 24-walk's pill fix could land in it. The
+   carries five pills and three breakpoints, and chrome.css was at the
+   200-line ceiling before the 24-walk's pill fix could land in it. The
    chrome's own furniture — the bar, the banner, the switches — stays there.
    Loaded AFTER chrome.css so the cascade order is unchanged. */
 /* WHOLE ITEMS, IN A STATED ORDER (R6-4). Nothing leaves at any width — the
@@ -27,9 +27,38 @@ header .chat-endpoint {
   header .chat-endpoint .pill-short { display: inline; }
 }
 
-/* …and the strip takes a second line rather than clipping one (R5-7): a sixth
-   item at tablet width costs a row of height, never a shorn glyph. */
-@media (max-width: 64rem) { .status-strip { flex-wrap: wrap; overflow: visible; } }
+/* …AND BELOW 64rem IT STOPS BEING A ROW AND BECOMES A TABLE (UPLIFT F4).
+   The strip read `calls g…` at 390 — cut inside a word — because it was one
+   nowrap row with a mask fade over the overflow, and a fade at that size reads
+   as damage rather than as an affordance. THE ANSWER IS TO NEED LESS ROOM, not
+   to draw a longer fade: two equal columns, and `minmax(0, 1fr)` is the whole
+   mechanism — an `auto` track is floored at its content's min-content width,
+   so without the zero the endpoint would push the track wide and clip past the
+   bar again instead of ellipsising inside its own cell.
+   `gap: 0` because the pills already carry their own padding, and nothing
+   scrolls any more, so `overflow: visible` and `mask-image: none` are the two
+   properties that retire the scrollport with it. */
+@media (max-width: 64rem) {
+  .status-strip {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0; overflow: visible; mask-image: none; flex-basis: auto;
+  }
+  /* …AND A CELL THAT IS TOO NARROW TAKES A SECOND LINE. `header .pill` is
+     `white-space: nowrap` and carries NO `overflow: hidden` on purpose (R6-4:
+     one that can clip will), so in a 183px track the workspace sentence ran
+     past the bar. A table row is allowed to be two lines deep; that costs 15px
+     and loses nothing, where an ellipsis would lose the word `command`.
+     THE ENDPOINT IS THE EXCEPTION and keeps its one line: it already owns an
+     ellipsis (above), and the model id is a single unbreakable token that
+     wrapping cannot help. */
+  /* AND THE ROWS COST LESS. A table three rows deep at 320 put the routed
+     view 534px down a 780px screen, and `fold-probe.js:94` caps furniture at a
+     third — the row count is the point of the table, so the ROW HEIGHT is what
+     gives. `--s-1` block, `--s-3` inline: the pills keep their horizontal
+     rhythm and lose 8px of leading each, which is 24px of the 780. */
+  .status-strip > .pill { min-width: 0; padding-block: var(--s-1); }
+  .status-strip > .pill:not(.chat-endpoint) { white-space: normal; }
+}
 /* The model id is the part that ellipsises. */
 .chat-endpoint .pill-subject { overflow: hidden; text-overflow: ellipsis; }
 
@@ -47,43 +76,31 @@ header .chat-endpoint {
 
 /* TWO ROWS AT PHONE WIDTH, ALWAYS (R8-1). At 390 the two switches left the
    strip 71px and `Agent: main` clipped to `Agent: m`. `order`, not DOM order:
-   the switches keep the top row and the tab order is unchanged. */
-/* …AND IT DOES NOT WRAP ON A PHONE (R18-P1-9). Wrapping is cheap at tablet width
-   and ruinous at 390: five pills over four rows made the header 296px, which with
-   the failure banner under it left the conversation 78px of an 844px screen. One
-   row that swipes sideways — every pill still in the DOM and none of them shorn,
-   because a scrollport you can move is not the clipped box R5-7 objected to. */
+   the switches keep the top row and the tab order is unchanged. R18-P1-9 then
+   forbade WRAPPING here — five pills over four ragged rows made the header
+   296px — and answered with one row that swipes sideways.
+   IT TAKES ITS OWN ROW STILL (R9-5) — a two-column table of
+   five pills, three rows deep, and every glyph of every pill on screen. What
+   this REPLACES is R20-C's scrollport: `flex: 0 0 auto` on the endpoint plus a
+   swipe mask, which is the arrangement UPLIFT F4 measured rendering `calls g…`.
+   The endpoint keeps `min-width: 0` from its own track and ellipsises inside
+   it, so the model id is shortened by the SAME rule that shortens it at every
+   other width instead of by a fade over the bar's edge.
+   `.pill-tail` is NOT restored here: the 75rem rule hides it, and a tail
+   restored into a 165px cell would be ellipsised off in the first three words.
+   Nothing scrolls, so `SWIPECUE` and `SWIPEEND` (deck-probe.js:109, :164) have
+   nothing to require of this element and nothing to fail on. */
 @media (max-width: 30rem) {
   /* the header's own `flex-wrap` at this width is chrome.css's line — one
      property, one file (G1) — and it is what lets this strip take a row. */
-  .status-strip { /* its OWN row (R9-5) */
-    flex: 1 1 100%; order: 1; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
-    scrollbar-width: none; overscroll-behavior-x: contain;
-  }
-  .status-strip::-webkit-scrollbar { display: none; }
-  /* …AND THE ONE PILL STILL SHORN INSIDE IT (R20-C): `flex: 1 1 auto` above
-     shrank it to `--s-8` in a row that already scrolls, so 390 rendered the
-     sentence as `call…` — the model id R11-10 keeps at every width, gone where
-     nothing else names it and recoverable only two clicks into the drawer. A
-     scrollport does not shrink its contents. It stays LAST rather than taking a
-     row: a row costs ~75px of the 844 ONESCREEN (layout-probe.js) measures. */
-  header .chat-endpoint { flex: 0 0 auto; overflow: visible; }
-  /* …AND THE SWIPE PAYS OUT (24-walk F1). The 75rem rule hides `.pill-tail`,
-     where the ADDRESS and the with-or-without-a-key fact live, so the full
-     188px swipe bought `calls <model id>` and stopped. Restored HERE only: at
-     30–75rem the strip does not scroll, so there a tail would clip, not move.
-     The mask is the sole cue that it moves — the scrollbar is hidden above, and
-     text shorn at a rounded edge reads as a bug, not as an invitation. */
-  header .chat-endpoint .pill-tail { display: inline; }
-  .status-strip { mask-image: linear-gradient(to right, #000 calc(100% - var(--swipe-fade, 2rem)), transparent); }
-  .status-strip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .status-strip { flex: 1 1 100%; order: 1; }
 }
 
-/* THE CUE TURNS OFF WHERE THERE IS NOWHERE TO GO (31-walk F3). Both sideways
-   scrollports carried this mask unconditionally, so at the end of the travel
-   the last pill — and, on the agent strip, the last chip — was still dimmed and
-   the container's right border had vanished: an affordance saying "keep going"
-   where going is impossible. The fade is a REGISTERED custom property, because
+/* THE CUE TURNS OFF WHERE THERE IS NOWHERE TO GO (31-walk F3). ONE sideways
+   scrollport is left — the agent strip; the status strip stopped being one in
+   the editorial round. It carried this mask unconditionally, so at the end of
+   the travel the last chip was still dimmed and the container's right border
+   had vanished: an affordance saying "keep going" where going is impossible. The fade is a REGISTERED custom property, because
    an unregistered one cannot interpolate, and a scroll-driven animation empties
    it over the last fifth of the scroll.
 
@@ -102,17 +119,15 @@ header .chat-endpoint {
    — strictly worse than the always-on mask this replaces. Guarded, a browser
    without scroll timelines keeps exactly today's behaviour.
 
-   Two ports, one machine: `.agent-tabs` (layout.css) uses these same two names.
    Declared at top level because `@property` and `@keyframes` are document-wide;
-   both ports only ever apply them inside their own breakpoint. */
+   the one port left applies them inside its own breakpoint. */
 @property --swipe-fade { syntax: "<length>"; inherits: false; initial-value: 2rem; }
 @keyframes swipe-cue { 0%, 80% { --swipe-fade: 2rem; } 100% { --swipe-fade: 0rem; } }
 
-/* …and what drives it, for BOTH ports, in one place. The agent strip's
-   geometry — the scrollport and the mask it wears — stays layout.css's, which
-   is geometry only and was at the 200-line ceiling (I12); the machine is here.
-   Each port keeps its own breakpoint, because outside it there is no mask and
-   an animation on an element with nothing to fade is noise.
+/* …and what drives it. The agent strip's geometry — the scrollport and the
+   mask it wears — stays layout.css's, which is geometry only and was at the
+   200-line ceiling (I12); the machine is here, inside the port's own
+   breakpoint, because outside it there is nothing to fade.
    REDUCED MOTION TAKES THE STATIC MASK, like a browser with no scroll
    timelines: the promise this product makes is that NOTHING animates when it
    is asked (`layout-audit.js`, REDUCEDMOTION), and an exception argued from
@@ -120,9 +135,6 @@ header .chat-endpoint {
    lost is the withdrawal of a cue, not the cue. */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: scroll()) {
-    @media (max-width: 30rem) {
-      .status-strip { animation: swipe-cue linear both; animation-timeline: scroll(self inline); }
-    }
     @media (max-width: 48rem) {
       .stage-head .agent-tabs {
         animation: swipe-cue linear both; animation-timeline: scroll(self inline);

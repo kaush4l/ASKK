@@ -27,8 +27,9 @@ pub(crate) fn DashboardView(
             aria_label: "Dashboard",
             // The one <h1> on the page, in the seam's own words.
             div { class: "masthead", dangerous_inner_html: "{fragment}" }
-            // What this thing IS, under the one heading (`TAGLINE`).
-            p { class: "tagline", {super::TAGLINE} }
+            // What this thing IS, under the one heading — a standfirst and a
+            // disclosure now rather than 170 words (`Lede`).
+            Lede {}
             // THE FLEET AT A GLANCE, ABOVE THE GRID (27). The Dashboard
             // answered "what is this thing doing right now" only by being
             // read — the launcher, then the board's rows, then the space
@@ -44,6 +45,25 @@ pub(crate) fn DashboardView(
             // one the board's status word underneath cannot answer.
             crate::flow::FlowDeck { web, tick, agent: selected }
             LauncherAndBoard { web, tick, selected, agents, view }
+        }
+    }
+}
+
+/// THE STANDFIRST AND THE REST OF THE STORY (the editorial round). Its own
+/// component because `DashboardView` above is at the 40-line function ceiling
+/// (I12) and this is two elements, not one.
+///
+/// The disclosure is a real `<details>`: the deferred half is in the tab order
+/// and in the accessibility tree at every moment, which is the difference
+/// between DEFERRED and HIDDEN. It ships CLOSED because a returning reader has
+/// read it and a first-time reader has not reached it yet.
+#[component]
+fn Lede() -> Element {
+    rsx! {
+        p { class: "tagline", {super::TAGLINE} }
+        details { class: "lede-more",
+            summary { "How a turn works, and what it needs" }
+            p { {super::TAGLINE_MORE} }
         }
     }
 }

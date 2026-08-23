@@ -16,7 +16,7 @@ header {
 
 /* The wordmark is a LOGO, third of the display family's three (R5-B). */
 header .wordmark {
-  font-family: var(--display); font-size: var(--t-label);
+  font-family: var(--display); font-size: var(--t-caption);
   font-weight: var(--w-strong); letter-spacing: var(--tr-caption); color: var(--accent);
 }
 
@@ -24,7 +24,7 @@ header .wordmark {
 header .pill {
   margin: 0; flex: 0 0 auto; padding: var(--s-2) var(--s-3); color: var(--ink-2);
   background-color: var(--surface-1); border-radius: var(--r-full); white-space: nowrap;
-  font-size: var(--t-label); line-height: var(--lh-label);
+  font-size: var(--t-caption); line-height: var(--lh-caption);
 }
 
 /* THE LAST TURN FAILED (F12), on a ROW OF ITS OWN under the header (R8-2): in
@@ -121,7 +121,7 @@ header .pill.running::before { content: "\25C6  "; color: var(--accent); }
 @media (hover: hover) and (pointer: fine) { .nav .view-item:hover { background-color: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink); } }
 .nav .view-item:active { background-color: color-mix(in srgb, var(--ink) 7%, transparent); }
 .nav .view-item[aria-current="page"] {
-  box-shadow: inset 4px 0 0 0 var(--accent); background-color: var(--surface-2);
+  box-shadow: inset 4px 0 0 0 var(--accent); background-color: transparent;
   color: var(--ink); font-weight: var(--w-strong);
 }
 
@@ -150,24 +150,13 @@ header .pill.running::before { content: "\25C6  "; color: var(--accent); }
 .rail-who strong { color: var(--ink); font-weight: var(--w-strong); }
 .stage { padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 
-.masthead { display: flex; align-items: baseline; gap: var(--s-3); flex: 0 0 auto; }
-
 header .meter { font-variant-numeric: tabular-nums; color: var(--ink); }
 header .pill-label { color: var(--ink-2); }
 
-/* What this is (F1), as a LEDE (R4-13) — second of the display family (R5-B). */
-.tagline {
-  margin: 0; max-width: var(--measure); color: var(--ink-2); font-family: var(--display);
-  font-size: var(--t-heading); line-height: var(--lh-body);
-}
-
-/* THE STAGE'S OWN HEAD (R5-6, R5-A): the agent strip and the view's eyebrow. */
+/* THE STAGE'S OWN HEAD (R5-6, R5-A). `.masthead`, `.tagline` and
+   `.view-eyebrow` left this file for `editorial.css`: they are the FRONT PAGE,
+   not furniture, and a pair declared in two sheets is what G1 fails on. */
 .stage-head { display: flex; flex-direction: column; gap: var(--s-2); flex: 0 0 auto; }
-
-.view-eyebrow {
-  margin: 0; font-size: var(--t-caption); line-height: var(--lh-caption); color: var(--ink-2);
-  letter-spacing: var(--tr-caption); text-transform: uppercase; font-weight: var(--w-strong);
-}
 /* THE DRAWER'S WAY OUT (R5-8); layout.css positions both. */
 .nav-scrim { background-color: var(--e3-scrim); border: 0; }
 .nav-close { margin-left: auto; }

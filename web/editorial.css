@@ -1,0 +1,200 @@
+/* editorial.css — THE FRONT PAGE. The twelfth sheet, and the only one whose
+   subject is a SCREEN rather than a component: the ruled plate, the rules that
+   set the page's rhythm, the standfirst, the contents column, and the ground
+   the whole thing sits on. It exists because `chrome.css` had four lines left
+   and owned three of the four elements this round is about; `.masthead`,
+   `.tagline` and `.view-eyebrow` moved here whole rather than being declared
+   twice (G1).
+
+   THE THESIS IN ONE LINE: a control surface can be a broadsheet. Two rule
+   weights, one serif, one plate, a standfirst, an index table, and silence.
+   THE ONLY MATERIAL IN THIS FILE IS THE GROUND, AND IT SITS BEHIND EVERYTHING:
+   the grain below is the one thing here that is not a line, a size or a
+   silence, and it is a fixed layer at z-index -1 that no text composites on.
+
+   THE DESIGN LAW THIS FILE EXECUTES (DESIGN.md §1): there is exactly ONE
+   display register and it is a ruled plate naming the screen's SUBJECT — the
+   product on the Dashboard, the agent everywhere else, never a view's own
+   name. */
+
+/* ---- 1. the folio line -------------------------------------------------
+   The header was 12 nodes at 14px, the wordmark among them at the same step as
+   the endpoint URL beside it. It runs at the caption step now (set in
+   `chrome.css`, where `header .pill` lives) and this is the rule under it. */
+header { border-bottom: var(--rule-hair); }
+
+/* ---- 2. the plate ------------------------------------------------------
+   TWO RULES AND A WORD, and it is the SAME frame on every route: `--rule`
+   above (2px `--control`, the page's one heavy line, spent once per screen)
+   and `--rule-hair` below. What sits between them is what the screen is ABOUT,
+   which is why chat and deck stop measuring 1.82:1 and 1.64:1 with no display
+   type anywhere on them (UPLIFT F2). */
+.masthead {
+  display: block;
+  margin: var(--s-5) 0;
+  padding: var(--s-5) 0 var(--s-4);
+  border-top: var(--rule);
+  border-bottom: var(--rule-hair);
+}
+/* The seam returns `<div id="dashboard"><h1>…` inside this box
+   (`core::builtins`) and the layout fixture writes the `<h1>` bare.
+   `display: contents` makes the two DOMs one layout and costs nothing where
+   the wrapper is absent. */
+.masthead > div { display: contents; }
+
+/* THE NAMEPLATE — Dashboard only, the PRODUCT, spanned. `--tr-nameplate` fills
+   the column, which is what makes it a nameplate and not a big heading: at
+   1440 the lede used 541 of 1060px and the right 49% was empty, so the
+   emptiness moves ABOVE and BELOW the word, where it reads as silence. */
+.masthead h1 {
+  color: var(--ink);
+  letter-spacing: var(--tr-nameplate);
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* CSS puts the tracking AFTER the last letter too, so a word solved to span
+     the column is one gap too wide and reads ragged right. This is exactly
+     that trailing gap: without it the word overflowed 365 into 334 at 390. */
+  margin-right: calc(-1 * var(--tr-nameplate));
+}
+
+/* THE SUBJECT PLATE — every other view, and it is the AGENT, not the view.
+   The view's own name carries no information on a screen whose subject is a
+   conversation; the agent whose turn you are watching does. LOWERCASE, as the
+   name ships: caps + column-spanned is the product, said once; lowercase at
+   natural width is the agent, said per route. That distinction is what lets
+   ONE frame carry TWO contents legibly, and uppercasing this would put
+   "SUMMARIZER" at ~1150px into a 1136px column. */
+.masthead .plate {
+  margin: 0; color: var(--ink);
+  font-family: var(--display); font-weight: var(--w-normal);
+  font-size: var(--t-display); line-height: var(--lh-display);
+  letter-spacing: var(--tr-display);
+  max-width: 100%; text-wrap: balance; overflow-wrap: anywhere; hyphens: auto;
+}
+
+/* AT 22rem THE PLATE BREAKS THE MARGIN — what a broadsheet nameplate does, and
+   here also arithmetic. At 320 the column is 272px (`main`'s `--s-2` at
+   layout.css:172 plus `.stage`'s `--s-4`) and HARNESS is 322.5px of glyph at
+   the 68px floor: XOVERFLOW read 356 vs 320 at 320x256, the one height where
+   no ancestor clips it. Both paddings reclaimed, the column is 320 and the
+   negative tracking floor brings the word to 308.2 — 11.8px of margin. */
+@media (max-width: 22rem) {
+  .masthead { margin-inline: calc(-1 * (var(--s-2) + var(--s-4))); }
+}
+
+/* ---- 3. the kicker: the view's name, 11px, ALL routes, above the plate. It
+   is the one register that was already right — what was wrong was that on
+   chat and deck it was the ONLY one. */
+.view-eyebrow, .kicker {
+  margin: 0; font-size: var(--t-caption); line-height: var(--lh-caption);
+  color: var(--ink-2); letter-spacing: var(--tr-caption);
+  text-transform: uppercase; font-weight: var(--w-strong);
+}
+
+/* ---- 4. the standfirst -------------------------------------------------
+   THE 170-WORD PARAGRAPH, ANSWERED. It was the largest ink mass above the fold
+   — 605px of an 844px screen at 390, 1.78x the masthead it sat under (UPLIFT
+   F3). A broadsheet runs a STANDFIRST under the nameplate, not the body copy.
+   `.tagline` is 22 words and the remaining ~150 are a real `<details>` under
+   it: nothing deleted, nothing out of the tab order, closed by default. */
+.tagline {
+  margin: 0; max-width: var(--measure); color: var(--ink);
+  font-family: var(--display); font-weight: var(--w-normal);
+  font-size: var(--t-subhead); line-height: var(--lh-subhead);
+  text-wrap: balance;
+}
+
+/* `--s-4` of BLOCK PADDING, not a `min-height`: the caption label is 15px tall
+   and `layout-audit.js:239` holds every `summary` to 44px. */
+.lede-more { margin: 0; max-width: var(--measure); }
+.lede-more > summary {
+  padding: var(--s-4) 0; color: var(--ink-2);
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase;
+  font-weight: var(--w-strong);
+}
+/* NO `text-wrap: balance` on the disclosed body: Chrome stops balancing past
+   ~6 lines, so on 150 words it is a cost with no effect. */
+.lede-more > p {
+  margin: 0 0 var(--s-4); max-width: var(--measure); color: var(--ink-2);
+  font-family: var(--display); font-size: var(--t-body); line-height: var(--lh-body);
+}
+
+/* ---- 5. the section strip: FOUR ROUNDED BOXES INSIDE A FIFTH was the shape
+   the whole page was made of. The strip keeps its SURFACE (glass.css:150
+   records 1.99:1 text on the lit lobe without it) and loses its boxes: names
+   as a caps strip, selection the accent rule `controls.css` already draws. */
+.stage-head .agent-tabs .tab {
+  border: 0; border-radius: 0; background-color: transparent;
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase;
+}
+
+/* ---- 6. the contents list: SEVEN FLAT ITEMS AT ONE SIZE WITH ONE GAP was a
+   7-way choice with no shape. The items read at the body step now — a contents
+   column is meant to be READ — and one gap in six is six times the others,
+   splitting the choice into the four views you WORK in and the three you
+   INSPECT with: a max/modal ratio of 6.0 against a baseline of 1.0. SQUARE,
+   because a rounded fill in a ruled column is the last shape off the card
+   page. */
+.nav .view-item { font-size: var(--t-body); line-height: var(--lh-label); border-radius: 0; }
+/* THE GAP IS THE RULE, and that is a correction the gate made: written as a
+   `border-top` this failed `BOUNDARY view-commands` at 1.53:1 — an unfilled
+   control owes its border 3:1 (WCAG 1.4.11), and a divider drawn ON a control
+   is a border to the audit and to the eye alike. Space owes nothing. */
+/* `margin-block-START`, not -end: `.view-list` holds exactly the seven items,
+   so -end on the fifth drew the boundary between Tool trace and Debug, one
+   item away from the split the paragraph above names. */
+.nav .view-item:nth-child(5) { margin-block-start: var(--s-6); }
+
+/* ---- 7. the ramp, redistributed: THE HALF NO TOKEN FIXES. One step held
+   65-72% of the text on all three routes and a plate is ONE node. Getting
+   under 45% is one text node in three changing register, per KIND:
+     the machine's own output    14 -> 16   it is READ, so it goes UP
+     an index, a name, a state   14 -> 11   it is SCANNED, so it goes DOWN
+   The rest lives where the element already had a `font-size` (surfaces.css,
+   controls.css, chrome.css, workspace.css): a second declaration here is the
+   G1 failure this file exists to avoid. Nothing changes what anything SAYS. */
+.proc-row { font-size: var(--t-caption); line-height: var(--lh-caption); }
+.thread-who, .thread-mark {
+  font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase;
+}
+
+/* ---- 8. the ground: a 120x120 tile of fractal noise, rasterised ONCE, fixed
+   behind everything at z-index -1. THE `@supports` GUARD IS MANDATORY — an
+   unsupported blend falls back to `normal`, which lifts the darkest ground
+   pixel rgb(9,5,13) to rgb(46,43,50), 12.7x, a violet black turned neutral
+   grey and measurably cheaper than what ships. Soft-light measured
+   byte-identical. The VIGNETTE is layer 1 of `--ground-field`. */
+html::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: var(--grain); background-size: 120px 120px;
+  mix-blend-mode: soft-light; opacity: .055;
+}
+@supports not (mix-blend-mode: soft-light) { html::before { display: none; } }
+
+/* ---- 9. the entrance ---------------------------------------------------
+   `--ease-out` was declared in tokens.css as "entrances" and had exactly ONE
+   reader in the whole tree. These are the next three: the parts of the front
+   page arrive in reading order, on the curve that reads as mass. `opacity` and
+   `translate` only — both composited, neither triggers layout — and
+   `backwards`, not `both`: with `both` the delayed elements held opacity 0
+   after finishing in one measured frame (a 450px void at 390 on chat).
+
+   THE GUARD IS `no-preference`, NOT a duration cut: `layout-audit.js:36`
+   asserts every running `animation-name` resolves to `none`, and a 0.01ms
+   duration leaves the NAME standing. `chrome.css:191` learned that over 30
+   failures across 5 widths x 2 skins x 3 routes. */
+@media (prefers-reduced-motion: no-preference) {
+  .masthead { animation: set var(--dur-slow) var(--ease-out) backwards; }
+  .tagline { animation: set var(--dur-slow) var(--ease-out) var(--dur-fast) backwards; }
+  .lede-more { animation: set var(--dur-slow) var(--ease-out) var(--dur) backwards; }
+}
+/* `0%` AND NOT `from`, WHICH IS A GATE ARTIFACT WRITTEN DOWN RATHER THAN
+   WORKED AROUND SILENTLY: `check-selectors.py` treats every block prelude as a
+   selector, so two sheets each holding a keyframe whose first step sets
+   `opacity` read as G1 "the same selector sets the same property in two
+   files", and `chrome.css:195` already owns `from`. `0%` is the identical step
+   and does not collide. The right fix is for G1 to skip `@keyframes`
+   descendants; until it does, this is the honest note. */
+@keyframes set { 0% { opacity: 0; translate: 0 var(--s-3); } }

@@ -32,6 +32,24 @@
   chat.hidden = route !== "chat";
   dash.hidden = route !== "dash";
   var region = route === "deck" ? deck : route === "dash" ? dash : chat;
+
+  // THE KICKER NAMES THE ROUTE, because the shell's does (`StageHead` renders
+  // `View::label`) and this fixture hardcoded "Dashboard" on all three. That
+  // was invisible while it was an 11px label everywhere; it is the line above
+  // a 68-136px plate now, and a fixture naming the wrong route measures the
+  // wrong width. `Commands` is the deck route's name in the shipped nav.
+  // The `kicker` CLASS is the Dashboard's, exactly as `panels.rs` writes it —
+  // a class the markup STATES, never a `:has()` on the routed panel.
+  var eyebrow = document.querySelector(".view-eyebrow");
+  if (eyebrow) {
+    eyebrow.textContent =
+      route === "deck" ? "Commands" : route === "chat" ? "Chat" : "Dashboard";
+    eyebrow.className = route === "dash" ? "view-eyebrow kicker" : "view-eyebrow";
+  }
+  // …AND THE PLATE NAMES THE AGENT. `summarizer` is the longest name in this
+  // fixture's roster, which is the one the display step has to fit.
+  var plate = region.querySelector(".masthead .plate");
+  if (plate) plate.textContent = "summarizer";
   // …AND THE AGENT STRIP IS NOT ON CHAT (R19-IA, docs/THREADS.md §7): the
   // thread list is the picker there, so the strip is chrome this route no
   // longer has — leaving it standing would model 60px the app does not spend.

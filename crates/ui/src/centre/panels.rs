@@ -14,12 +14,18 @@ use crate::shell::views::View;
 use crate::shell::{agent_switcher, skin};
 use crate::{authoring, debug, terminal, trace};
 
-/// THE STAGE'S HEAD — one band above whatever is routed. The EYEBROW names the
-/// view (R5-misc); it is also the only `--t-caption` outside a message speaker,
-/// which stops 11px being an orphan node (R5-A). The STRIP is the agent
-/// switcher (R5-6), ONE instance, so `tab-{name}` is still unique and the
-/// roving tabindex still works; `View::picker` re-points its accessible name
-/// per view, because one name for five jobs is R4-10.
+/// THE STAGE'S HEAD — one band above whatever is routed. The KICKER names the
+/// view (R5-misc) at `--t-caption`; the STRIP is the agent switcher (R5-6),
+/// ONE instance, so `tab-{name}` stays unique and the roving tabindex works.
+/// …AND THE SUBJECT PLATE UNDER IT (the editorial round). There is exactly one
+/// display register in this product and it is a ruled plate naming the
+/// SCREEN'S SUBJECT: the product on the Dashboard, where `core::builtins` owns
+/// the `<h1>`, and the SELECTED AGENT everywhere else. NEVER the view's own
+/// name — `Chat` at 136px says nothing on a screen whose subject is a
+/// conversation, and chat/deck are the routes measured at 1.82:1 and 1.64:1
+/// with no display type at all (UPLIFT F2).
+///
+/// `<h2>`, NOT `<h1>`: `core/tests/skeleton.rs:118` pins `GET /` at one.
 #[component]
 pub(crate) fn StageHead(
     here: View,
@@ -28,11 +34,16 @@ pub(crate) fn StageHead(
     selected: Signal<String>,
 ) -> Element {
     let (controls, label) = here.picker();
+    // The class the MARKUP states, not a `:has()` on the routed panel: that
+    // selector flaked one run in five against the probe's own routing.
+    let kicker = if here == View::Dashboard { "view-eyebrow kicker" } else { "view-eyebrow" };
     rsx! {
         div { class: "stage-head",
-            p { class: "view-eyebrow", "{here.label()}" }
-            // …AND WHAT ELSE IS ON IT, WHERE THE NAME IS READ (R17-P1-9) —
-            // the copy and its reasons are `WORKSPACE_NOTE`, in `centre/mod.rs`.
+            p { class: "{kicker}", "{here.label()}" }
+            if here != View::Dashboard {
+                div { class: "masthead", h2 { class: "plate", "{selected}" } }
+            }
+            // …AND WHAT ELSE IS ON IT (R17-P1-9): `WORKSPACE_NOTE`.
             if here == View::Workspace {
                 p { class: "note", {super::WORKSPACE_NOTE} }
             }
@@ -47,10 +58,9 @@ pub(crate) fn StageHead(
     }
 }
 
-/// MOUNTED ALWAYS, hidden when it is not the route. See the module note in
-/// `centre/mod.rs`: the poller. The list around the pane is mounted with it — it is
-/// the same region — and reads nothing while this is not the routed view
-/// (`thread.rs`, rule 1).
+/// MOUNTED ALWAYS, hidden when it is not the route (see `centre/mod.rs`: the
+/// poller). The list around the pane is mounted with it, and reads nothing
+/// while this is not the routed view (`thread.rs`, rule 1).
 #[component]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn ChatView(
@@ -81,12 +91,9 @@ pub(crate) fn ChatView(
 /// The roster is its subject, and it is a DECK of reading columns rather than
 /// one wide card (R7-6b, `roster.rs`).
 ///
-/// …AND THE EDITOR, WITH NOTHING BESIDE IT (R15-IA). This view used to end with
-/// a second `Run a task` card — the Dashboard's own panel, 600px of it, under
-/// six long roster cards — which put the editor 2168px down a page whose whole
-/// job is writing an agent. The launcher has one home and the roster links to
-/// it per agent; what is left here is the catalogue and the thing that adds to
-/// it.
+/// …AND THE EDITOR, WITH NOTHING BESIDE IT (R15-IA). A second `Run a task`
+/// card here put the editor 2168px down a page whose whole job is writing an
+/// agent. The launcher has one home; what is left here is the catalogue.
 #[component]
 pub(crate) fn AgentsView(
     web: Signal<Option<Rc<WebApp>>>,

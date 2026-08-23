@@ -166,7 +166,7 @@ reader (§7). **Four remain, and each is named rather than silently kept:**
 | `--ease-in` | "exits only", and this product has no exit — see §7 |
 | `--e3-dim` | `DESIGN.md` names it 7 times; deleting it without editing that file swaps one contradiction for another |
 | `--s-7` | declared as part of the eight-step scale `DESIGN.md:599` prints whole |
-| `--gap` | **the comment beside it was FALSE.** It claimed the alias was kept "because check-layout.sh and three scripts name it"; `grep -ro -- '--gap' scripts crates web` finds it nowhere but its own declaration. `DESIGN.md:603` repeats the same false sentence. The comment in `tokens.css` is now true; `DESIGN.md:603` is still false and is another team's file. **Open: delete the alias and both sentences in one edit.** |
+| `--gap` | **CLOSED in the editorial round.** The comment beside it was FALSE — it claimed the alias was kept "because check-layout.sh and three scripts name it", and `grep -ro -- '--gap' scripts crates web` found it nowhere but its own declaration. The alias and both sentences (`tokens.css`, `DESIGN.md §6`) were deleted in one edit, and the two lines paid for `--rule` and `--rule-hair`. |
 
 ## 7. Motion — the vocabulary, and what each duration MEANS
 

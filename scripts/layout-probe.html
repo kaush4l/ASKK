@@ -153,7 +153,7 @@
          which are agent-scoped. The ids are the shipped ones: a single
          instance is what keeps `tab-{name}` unique. -->
     <div class="stage-head">
-      <p class="view-eyebrow">Dashboard</p>
+      <p class="view-eyebrow kicker">Dashboard</p>
       <!-- The Workspace head's extra line (R17-P1-9), measured here because the
            probe carries ONE stage-head and this is the widest thing that goes
            in it: a full sentence between the eyebrow and the agent strip. It is
@@ -188,7 +188,19 @@
            forewarning that a turn needs a model endpoint, before the launcher
            rather than after the failure. A fixture measuring shorter prose
            than the page renders cannot see the height the page spends. -->
-      <p class="tagline">This runs AI agents in your browser, and it has no model of its own: every turn is sent to a model endpoint you choose, and nothing here has called that endpoint yet. This build ships pointed at a server on this machine, so unless one is running there, the first turn will fail and say what to do — Settings is where the address is changed. An agent whose file names a space also gets a folder in the Linux this page runs, where it can write files and run commands, and it shares facts and notes with every other agent naming that space. Most agents take a turn in stages — plan what is wanted, do the work, then verify it by running something and reading what came back — and the conversation names each stage as it opens. Give an agent a task and walk away, or talk to it while it works.</p>
+      <p class="tagline">AI agents in your browser. Every turn is sent to a model endpoint you choose, and nothing here has called that endpoint yet.</p>
+      <!-- THE REST OF THE STORY, DISCLOSED (the editorial round). The lede was
+           one 170-word paragraph, permanent and first: 605px of an 844px screen
+           at 390 and the largest ink mass above the fold at every width. It is
+           a standfirst plus a real `<summary>` now — nothing deleted, nothing
+           hidden from the tab order — and the fixture carries it CLOSED
+           because that is the state the page loads in. VERBATIM
+           `centre::TAGLINE` + `centre::TAGLINE_MORE`: the fixture was already
+           156 words against a shipped 170 before this split, so the whole
+           paragraph was re-synced rather than paraphrased. -->
+      <details class="lede-more"><summary>How a turn works, and what it needs</summary>
+        <p>This build ships pointed at a server on this machine, so unless one is running there, the first turn will fail and say what to do — Settings is where the address is changed. An agent whose file names a space also gets a folder in the Linux this page runs, where it can write files and run commands, and it shares facts and notes with every other agent naming that space. Each turn opens by deciding how much work the message needs: a question it can answer gets one reply, something needing a tool gets as many steps as it takes, and something to build gets planned, worked, checked and criticised — and the conversation names each stage as it opens. Give an agent a task and walk away, or talk to it while it works.</p>
+      </details>
       <!-- THE FLEET AT A GLANCE (27), above the grid, where `stage.rs` mounts
            it. The probe models it because the strip is the one region on the
            Dashboard whose children are FIXED-width cells in a wrapping track:
@@ -307,6 +319,13 @@
          between them scrolls (R3-10). It used to be a bare div beside the
          panel, which is a shape the stylesheet cannot pin. -->
     <section class="view-panel chat-view" id="chat-view" aria-label="Chat">
+      <!-- THE SUBJECT PLATE (the editorial round). `StageHead` renders this
+           inside `.stage-head` on every non-Dashboard route; here it stands at
+           the top of the routed panel, because this fixture carries ONE
+           stage-head shared by all three routes and a plate in it would paint
+           on the Dashboard too. `layout-probe.js` writes the agent's name into
+           it. `<h2>`, so the fixture keeps the shipped page's one `<h1>`. -->
+      <div class="masthead"><h2 class="plate">main</h2></div>
     <!-- THE THREAD LIST (docs/THREADS.md): one row per loaded agent, the routed
          one open in place, and NO agent strip above it — the list is the picker
          there (R19-IA), so `layout-probe.js` hides the strip on this route. The
@@ -357,6 +376,13 @@
          deck route because that is the route this fixture uses for the
          full-width takeover the gallery is. -->
     <section class="deck" id="deck-panel" role="tabpanel" aria-labelledby="deck-tab" aria-label="Setup" hidden>
+      <!-- THE SUBJECT PLATE (the editorial round). `StageHead` renders this
+           inside `.stage-head` on every non-Dashboard route; here it stands at
+           the top of the routed panel, because this fixture carries ONE
+           stage-head shared by all three routes and a plate in it would paint
+           on the Dashboard too. `layout-probe.js` writes the agent's name into
+           it. `<h2>`, so the fixture keeps the shipped page's one `<h1>`. -->
+      <div class="masthead"><h2 class="plate">main</h2></div>
       <p class="crumb"><button type="button" class="btn-ghost">← Settings</button><span> / Developer / Design system</span></p>
       <!-- THE AGENTS VIEW TAKES THE DASHBOARD'S SHAPE (R7-6b): writing an
            agent is what the view is FOR, so the editor is the reading column

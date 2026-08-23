@@ -1,59 +1,49 @@
 /* tokens.css — the only file that defines a value (DESIGN.md §3-§7). NOTHING
    here targets an element, and the whole skin/fallback story is a token swap:
-   `[data-skin="plain"]`, a browser with no `backdrop-filter`, and
-   `prefers-reduced-transparency` all re-point the SAME tokens (G2). A
-   both-skins rule written machine-skin-only was this repo's most-repeated
-   defect: five occurrences across increments 12 and 13. Now inexpressible. */
+   `[data-skin="plain"]`, no `backdrop-filter`, and `prefers-reduced-
+   transparency` all re-point the SAME tokens (G2). A both-skins rule written
+   machine-skin-only was this repo's most-repeated defect. Now inexpressible. */
 
 :root {
   /* ---- the ground ------------------------------------------------------
-     A fixed field, never an image: costs nothing, cannot fail to load. The
-     TOP-LEFT beam is the lightest region on the page and therefore the worst
-     case for light-on-glass; every contrast number in DESIGN.md is measured
-     there, and the guard measures there rather than trusting a fill colour. */
+     A fixed field, never an image: costs nothing, cannot fail to load. The lit
+     lobe is the worst case for light-on-glass, and every contrast number in
+     DESIGN.md is measured there. THE ROOM, REBUILT (the editorial round):
+     UPLIFT F1 measured what R5-C's "cleaner and more focused" ruling shipped —
+     default and fallback are ONE flat two-stop gradient and the light field is
+     inert. Plain stays the default and now means NO BLUR, not NO LIGHT: blur
+     is a material and can fail, light is the room and cannot. FOUR layers,
+     EVERY ONE SIZED IN PERCENT — in rem a 30rem lobe is 480px across a 390px
+     screen, the full-screen violet wash this round is fighting. One hue only
+     (R8-GLOW): the blue-cyan lobe belonged to nothing else on the page. */
   --ground: #0b0611;
   --ground-deep: #070409;
-  /* CONCENTRATED, then PLACED — two rounds of critique, one lesson each. v1:
-     three faint lobes, brightest pixel 55/255. v2: right brightness, parked at
-     14% 2%, above y=98 where no panel touched it. Light nothing can transmit
-     is not light. These peak at rgb(190,160,226), sit behind the side panels,
-     and since R5-C are OPT-IN: the plain ground is the default.
-
-     …AND IT IS ONE COLOUR NOW (R8-GLOW). The second lobe was
-     `rgba(126,172,255,0.52)` — a blue-cyan wash across the top right of a
-     violet product, the one hue on the page belonging to nothing else on it,
-     and bright enough to be the first thing seen on a screen whose subject is
-     the panel below it. A skin worth shipping has to be the SAME identity in a
-     different register, not a second one; so all three lobes are now steps of
-     the accent, and the cool one is the coolest violet rather than a blue. */
-  --lobe-accent: rgba(214, 178, 255, 0.88);
-  --lobe-cool: rgba(168, 140, 255, 0.30);
-  --lobe-warm: rgba(226, 138, 226, 0.16);
+  --lobe-key: rgba(206, 172, 255, 0.52);
+  --lobe-fill: rgba(150, 122, 214, 0.20);
+  --horizon: rgba(63, 36, 99, 0.50);
+  --vignette: rgba(0, 0, 0, 0.55);
   --ground-field:
-    radial-gradient(30rem 30rem at 6% 46%, var(--lobe-accent), transparent 62%),
-    radial-gradient(26rem 26rem at 97% 34%, var(--lobe-cool), transparent 62%),
-    radial-gradient(34rem 24rem at 55% 96%, var(--lobe-warm), transparent 62%),
+    radial-gradient(112% 86% at 50% 32%, transparent 46%, var(--vignette) 100%),
+    radial-gradient(72% 56% at 104% 14%, var(--lobe-key), transparent 74%),
+    radial-gradient(84% 52% at 4% 96%, var(--lobe-fill), transparent 72%),
+    radial-gradient(130% 62% at 50% 116%, var(--horizon), transparent 66%),
     linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
 
-  /* ---- ink: --ink-3 is the only one that does NOT clear 4.5:1 on E3 glass
-     over the lit lobe (3.5:1); it is legal on opaque surfaces only. */
-  --ink: #f4f0fa;
+  --ink: #f4f0fa;   /* --ink-3 misses 4.5:1 on E3 over the lobe: opaque only */
   --ink-2: #c6bad8;
   --ink-3: #8d80a6;
   --machine: #a9c6e0;
 
-  /* One accent. #b98cff measured 4.49:1 on E3 over the lit lobe and failed. */
-  --accent: #c9a4ff;
+  --accent: #c9a4ff;   /* #b98cff measured 4.49:1 on E3 over the lobe: failed */
   --accent-ink: #1a0f2b;
   --success: #8fe0b4;
   --warning: #f2cf87;
-  /* Danger was #ffadad — a pale pink two steps from the pale purple accent
-     (F18). This is red: ~90° of hue from --accent, 7.5:1 on --surface-1. */
+  /* Danger was #ffadad, a pale pink two steps from the accent (F18). This is
+     red: ~90° of hue from --accent, 7.5:1 on --surface-1. */
   --danger: #ff7b72;
 
-  /* A HAIRLINE is a light catch, but it is also the EDGE — the thing the glow
-     softened worst (R8-GLOW), so it is 0.15 rather than 0.10 and the panel
-     keeps its boundary with the light on. A CONTROL border is the only thing
+  /* A HAIRLINE is a light catch and also the EDGE — the thing the glow softened
+     worst (R8-GLOW), so 0.15 not 0.10. A CONTROL border is the only thing
      drawing a fill-less control: 3.50:1 over the lit lobe (WCAG 1.4.11). */
   --hairline: rgba(255, 255, 255, 0.15);
   --hairline-lit: rgba(255, 255, 255, 0.30);
@@ -66,15 +56,11 @@
   --surface-2: #1c1428;
   --surface-3: #241a33;
 
-  /* ---- the material -----------------------------------------------------
-     Calibrated against reference/NOTES.md, not guessed. Blur never exceeds
-     22px; saturate stays near 100%; E1 and E2 carry no outer shadow. Fill and
-     dim are COMPOSITED into one rgba — two layers missed a scrolling panel's
-     scrolled area. */
+  /* ---- the material: calibrated against reference/NOTES.md. Blur never
+     exceeds 22px; fill and dim are COMPOSITED into one rgba. */
   --e1-fill: rgba(31, 28, 35, 0.575); --e1-blur: 20px; --e1-sat: 110%;
   --e1-line: var(--hairline);
   --e1-lit: inset 0 1px 0 0 var(--hairline-lit);
-  --e1-shadow: 0 0 0 0 transparent;
   --e1-radius: var(--r-lg);
 
   --e2-fill: rgba(255, 255, 255, 0.032); --e2-blur: 15px; --e2-sat: 100%;
@@ -89,54 +75,67 @@
   --e3-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.75), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
   --e3-radius: var(--r-lg);
   --e3-scrim: rgba(7, 4, 12, 0.5); --e3-dim: rgba(7, 4, 12, 0.35);
+
+  /* ---- mass: a region SITS on the ground. Five stops, geometric falloff —
+     what an occlusion does and what one 24px stop never looks like. CAPPED at
+     the four region planes (`header`, `.nav`, `.rail`, the E1 set): on the 31
+     hairline boxes it is 155 blur passes above the fold. `--e1-shadow` is a
+     REPOINT, so `glass.css` keeps sole ownership of the (header, box-shadow)
+     pair and G1 never fires. The GRAIN is 310 bytes of inline SVG rasterised
+     once into a 120x120 tile, composited SOFT-LIGHT by `editorial.css`. */
+  --lift: 0 1px 1px rgba(0,0,0,.30), 0 2px 4px rgba(0,0,0,.26), 0 6px 12px rgba(0,0,0,.24),
+          0 16px 28px rgba(0,0,0,.20), 0 34px 64px rgba(0,0,0,.38);
+  --lift-edge: inset 0 1px 0 0 rgba(255,255,255,0.14);
+  --e1-shadow: var(--lift);
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)'/></svg>");
+
   /* ---- type: SIX sizes, three weights, three families (R5-A, R5-B) ------
      THREE FAMILIES, because the product had none: everything was
-     `ui-sans-serif`, which on a Mac is the OS and not a choice. No font FILE
-     ships — this build is offline-first and a webfont is a network dependency,
-     a publish gate and 40-80KB for one aesthetic — so the identity comes from a
-     family every target already has and almost nobody uses for chrome: a
-     transitional serif, on the masthead and the lede only. --display was
-     deleted once for being an alias of --mono; it is a real family now. */
+     `ui-sans-serif`, the OS and not a choice. No font FILE ships — offline
+     first, and a webfont is a network dependency for one aesthetic. */
   --font: Inter, "SF Pro Text", -apple-system, "Segoe UI Variable Text",
           "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
              Georgia, ui-serif, serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono",
           "Cascadia Mono", Menlo, Consolas, monospace;
-  /* SIX, not five (R5-A). The page was 42 rendered nodes at 14px against 5 at
-     18, 2 at 32 and 1 at 11, and 32→18→14 left no subhead register. The sixth
-     is `--t-subhead`; check-selectors.py rose with it. */
-  --t-display: clamp(1.5rem, 1.15rem + 1.4vw, 2rem);
-  --t-subhead: 1.25rem;
+  /* SIX, not five (R5-A), and STILL six: the display step was re-scaled, not
+     added to. 2rem capped "display" one step off a heading, which is how three
+     routes shipped a 1.64-2.91:1 ramp (UPLIFT F2, F3). */
+  --t-display: clamp(4.25rem, 1.5rem + 11vw, 8.5rem);
+  --t-subhead: 1.375rem;
   --t-heading: 1.125rem;
   --t-body: 1rem;
   --t-label: 0.875rem;
   --t-caption: 0.6875rem;
-  /* 1.6, not 1.55, and only on PROSE: the app's teaching surface ran 14px on
-     a 1.40 label leading, which is a control's rhythm applied to seven-line
-     paragraphs. Labels and controls keep the tight one. */
-  --lh-display: 1.15; --lh-subhead: 1.25; --lh-heading: 1.35; --lh-body: 1.6;
+  /* 1.6 only on PROSE: the teaching surface ran a control's leading. */
+  --lh-display: 0.9; --lh-subhead: 1.25; --lh-heading: 1.35; --lh-body: 1.6;
   --lh-label: 1.4; --lh-caption: 1.35;
   /* `--tr-subhead` (R11) and `--tr-label` (R20-TOUCH) deleted: 0 readers. */
-  --tr-display: -0.01em; --tr-caption: 0.14em;
+  --tr-display: -0.03em; --tr-caption: 0.14em;
+  /* A FIT, NOT A STEP, and MEASURED: HARNESS is 4.74em of Iowan caps (322.5px
+     at 68px), so spanning costs (col - 4.74*size)/6 = 1.95px at 390 and 81.9px
+     at 1440; the 4.62em ESTIMATE overflowed 365 into 334. THE FLOOR IS
+     NEGATIVE and that is the 320 case, not a taste: below ~337px the fit
+     solves negative, and -0.03em is `--tr-display`'s own value. It buys
+     14.3px; the other 48 are editorial.css's full-bleed rule at 22rem. */
+  --tr-nameplate: clamp(-0.03em, -1.734rem + 7.61vw, 5.2rem);
   --w-normal: 400; --w-medium: 500; --w-strong: 600;
 
   /* ---- space: base 4px, eight steps, nothing else ---------------------- */
 
-  /* The one measure. 54ch, not 68 (R4-13): `ch` is the width of the digit ZERO,
-     so 68ch MEASURED 90 a line. (`--nav-w`/`--nav-icon-w`: 0 readers, gone.) */
-  --measure: 54ch;
-  /* THE READING COLUMN, AS A CARD (R6-LAYOUT). `--measure` is one line of
-     prose; `--column` is the SURFACE holding one — the measure plus the two
+  /* 54ch, not 68 (R4-13): `ch` is the digit ZERO, so 68ch MEASURED 90 a line.
+     `--column` is the SURFACE holding one line — the measure plus the two
      inline padding steps a card pays at >=64rem, which is also the gutter. */
+  --measure: 54ch;
   --column: calc(var(--measure) + 2 * var(--s-6));
 
   --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
   --s-5: 1.5rem; --s-6: 2rem; --s-7: 3rem; --s-8: 4rem;
-  /* This alias has 0 readers and the sentence that stood here claimed three
-     scripts name it (I16). It survives only because DESIGN.md:603 repeats that
-     claim and DESIGN.md is another team's file — delete both together. */
-  --gap: var(--s-4);
+  /* THE TWO RULES: a broadsheet is horizontal lines and nothing else;
+     `--control` on the ground is 9.6:1. (Replaces `--gap`, 0 readers.) */
+  --rule: 2px solid var(--control);
+  --rule-hair: 1px solid var(--hairline);
 
   --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-full: 999px;
 
@@ -146,35 +145,36 @@
   --ease-out: cubic-bezier(0.16, 1, 0.30, 1);
   --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
 
+  /* The flow dot's halo. It read `--lobe-cool`, a GROUND lobe the four-layer
+     field deleted, which dimmed it with the skin (one reader, flow.css:99). */
+  --pulse: rgba(168, 140, 255, 0.30);
   --tone: var(--control);   /* per-row status channel, written by the board */
 }
 
-/* ---- the light is only safe where a PANEL stands between it and the words
-   The lobes are POSITIONED in percent and SIZED in rem, so the accent lobe —
-   parked at 6% and measured behind the left panel — is 480px across on a 390px
-   screen: it does not sit beside the reading column, it covers it, and below
-   1100px the nav is a drawer and the lede the only prose with no surface of its
-   own. MEASURED, --ink-2 against the worst composited pixel under it: 1.31:1 at
-   390 and 768, 4.90:1 at 1440 where the nav covers the lobe, 5.87:1 at this. */
-@media (max-width: 1099px) { :root { --lobe-accent: rgba(214, 178, 255, 0.30); } }
+/* The light is safe only where a PANEL stands between it and the words: below
+   1100px the nav is a drawer, so the room DIMS. The lobes are percent-sized,
+   so what changes here is brightness and never extent. */
+@media (max-width: 1099px) {
+  :root { --lobe-key: rgba(206, 172, 255, 0.20); --lobe-fill: rgba(150, 122, 214, 0.10); }
+}
 
 /* ---- the opaque path: one body, three triggers -------------------------
-   The border swap is the part people forget: with no material behind it the
-   hairline is the ONLY thing drawing the box, so it is promoted from 1.4:1 to
-   --control at 4.4:1. The BOUNDARY assertion in layout-audit.js fails on
-   exactly that mistake. The three blocks are byte-identical on purpose.
-
-   Since R5-C this is also the DEFAULT path: the two blurred blobs were the one
-   ornament in the product and the only thing dating it. The glow is what you
-   opt in to; both skins stay reachable and both are still audited. */
+   The border swap is what people forget: with no material behind it the
+   hairline is the ONLY thing drawing the box, so it goes 1.4:1 -> --control at
+   4.4:1 — the mistake layout-audit.js BOUNDARY fails on. The three blocks are
+   byte-identical on purpose (G2 forbids consolidating them).
+   WHAT LEAVES IS THE BLUR, NOT THE ROOM (UPLIFT F1): these used to flatten
+   `--ground-field`, and since R5-C this is the DEFAULT path, so that
+   flattening WAS the shipped page. The field stays at a dimmed key, and the
+   dropped `--e1-lit` returns as `--lift-edge`: an inset needs no material. */
 :root[data-skin="plain"],
 :root[data-glass="off"] {
   --e1-fill: var(--surface-1); --e2-fill: var(--surface-2); --e3-fill: var(--surface-3);
   --e1-blur: 0px; --e2-blur: 0px; --e3-blur: 0px;
   --e1-sat: 100%; --e2-sat: 100%; --e3-sat: 100%;
   --e1-line: var(--control); --e2-line: var(--control); --e3-line: var(--control);
-  --e1-lit: none; --e2-lit: none; --e3-lit: none;
-  --ground-field: linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
+  --e1-lit: var(--lift-edge); --e2-lit: var(--lift-edge); --e3-lit: var(--lift-edge);
+  --lobe-key: rgba(206, 172, 255, 0.40); --lobe-fill: rgba(150, 122, 214, 0.15);
 }
 
 @supports not (backdrop-filter: blur(1px)) {
@@ -183,8 +183,8 @@
     --e1-blur: 0px; --e2-blur: 0px; --e3-blur: 0px;
     --e1-sat: 100%; --e2-sat: 100%; --e3-sat: 100%;
     --e1-line: var(--control); --e2-line: var(--control); --e3-line: var(--control);
-    --e1-lit: none; --e2-lit: none; --e3-lit: none;
-    --ground-field: linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
+    --e1-lit: var(--lift-edge); --e2-lit: var(--lift-edge); --e3-lit: var(--lift-edge);
+    --lobe-key: rgba(206, 172, 255, 0.40); --lobe-fill: rgba(150, 122, 214, 0.15);
   }
 }
 
@@ -194,7 +194,7 @@
     --e1-blur: 0px; --e2-blur: 0px; --e3-blur: 0px;
     --e1-sat: 100%; --e2-sat: 100%; --e3-sat: 100%;
     --e1-line: var(--control); --e2-line: var(--control); --e3-line: var(--control);
-    --e1-lit: none; --e2-lit: none; --e3-lit: none;
-    --ground-field: linear-gradient(180deg, var(--ground) 0%, var(--ground-deep) 100%);
+    --e1-lit: var(--lift-edge); --e2-lit: var(--lift-edge); --e3-lit: var(--lift-edge);
+    --lobe-key: rgba(206, 172, 255, 0.40); --lobe-fill: rgba(150, 122, 214, 0.15);
   }
 }

@@ -126,6 +126,14 @@ mod tests {
     /// from `web/chrome.css:191`, or drop the guard round `flow-pulse`.
     #[test]
     fn nothing_animates_for_someone_who_asked_for_stillness() {
+        // SIX BECAME EIGHT IN THE EDITORIAL ROUND, and the arithmetic is worth
+        // stating because the brief predicted NINE: `editorial.css` adds three
+        // (the plate, the standfirst and the disclosure arriving in reading
+        // order), and `strip.css` LOSES one — the status strip stopped being a
+        // sideways scrollport, so its scroll-driven swipe cue went with it.
+        // 6 + 3 - 1 = 8. The count is here so that a fourth animation cannot
+        // arrive without someone reading this sentence.
+        //
         // ONE EXCEPTION, AND IT IS A DEFECT RECORDED RATHER THAN HIDDEN.
         // `.skeleton::after` (`web/surfaces.css:181-185`) animates ungated and
         // predates this test. `check-layout.sh` cannot see it either — the probe
@@ -147,6 +155,6 @@ mod tests {
             }
         }
         assert!(bad.is_empty(), "animates outside a no-preference guard:\n  {}", bad.join("\n  "));
-        assert_eq!(seen, 6, "this tree has six `animation:` rules; this test found {seen}");
+        assert_eq!(seen, 8, "this tree has eight `animation:` rules; this test found {seen}");
     }
 }
