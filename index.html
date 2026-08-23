@@ -7,6 +7,37 @@
        say ASKK, which is the repository's name and nobody else's (F1). -->
   <title>HARNESS — AI agents in your browser</title>
   <base href="./">
+  <!-- WHICH FILE THE BROWSER REFUSED (I5's exception, fourth and last).
+       Diagnostic only: it reads an event and writes one sentence into an
+       element that is already in the document. No application logic, no state,
+       nothing the app can depend on — delete it and HARNESS behaves identically,
+       it just stops naming the file.
+
+       CAPTURE PHASE IS THE WHOLE MECHANISM. An `error` event on a resource
+       element does NOT bubble, so a listener registered without `true` never
+       sees one; this is why the fallback copy below could never name a file
+       before. FIRST IN <head>, because trunk appends its `modulepreload` links
+       at the END of <head> (dist/index.html) and a listener registered after
+       them would miss the ones that already failed.
+
+       MEASURED, NOT ASSUMED. Rigged the built page with a deliberately wrong
+       `integrity` on `ui-*.js`: two events arrive, `SCRIPT` (the inline module
+       whose import failed, which carries NO url) then `LINK` (the modulepreload,
+       which carries one), and #main stays empty. The `href || src` guard is what
+       makes the ordering irrelevant — only the event that knows a file name ever
+       writes. On the unrigged page the same listener fires ZERO times and the
+       paragraph stays hidden; both directions were run in a browser. -->
+  <script>
+    addEventListener("error", function (event) {
+      var el = event.target;
+      var url = el && (el.href || el.src);
+      var note = document.getElementById("boot-blocked");
+      if (!url || !note) return;
+      note.textContent = "The browser refused " + url +
+        " — that is the file to get a fresh copy of.";
+      note.hidden = false;
+    }, true);
+  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <meta name="theme-color" content="#0b0611">
@@ -15,8 +46,8 @@
        production and publish.sh gates on it. -->
   
 <script type="module">
-import init, * as bindings from './ui-257579dcb10efbc0.js';
-const wasm = await init({ module_or_path: './ui-257579dcb10efbc0_bg.wasm' });
+import init, * as bindings from './ui-ddcae1bdc63f078f.js';
+const wasm = await init({ module_or_path: './ui-ddcae1bdc63f078f_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -34,7 +65,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
        glass is the material, layout is geometry, then the three that compose
        over all of it. -->
   <link rel="stylesheet" href="./tokens-6dd6e40612a6a6e9.css" integrity="sha384-xBUVynpatpGzjf8LZNhGKrh6L+Q6B28g3YdzaiqwJTiPVtKlXdZRU+zwDAdpy6cz"/>
-  <link rel="stylesheet" href="./base-1fc1b67650e3fbb6.css" integrity="sha384-Q+jTXXJASxMEIW0gTmw5GCsgWU4xwqZLOeSyhAhkxkH7MzIFDlw6zZ3c1AEB/8Fz"/>
+  <link rel="stylesheet" href="./base-d12a3003a7e0ff6a.css" integrity="sha384-YAvZ84bqvFCom448HL7UaRPNVJd3yIBPIbC4Hrsd3bU8P0QHThqnGtSVApe0e7uJ"/>
   <link rel="stylesheet" href="./glass-3d748a3a705cfd88.css" integrity="sha384-m35RA9OsUbQim+ykrQv1z87imlDP+WWu8PcEzSSbKUCcZEJ+k2nGD8mJuG1smu8k"/>
   <link rel="stylesheet" href="./layout-5ba89946ee823c3b.css" integrity="sha384-2VlEV9ejpKwjHygqX0IPot7wZB31BpVKMhDY2WoLOn4my7bt9z/2dRSiLZCJYurN"/>
   <link rel="stylesheet" href="./chrome-3badbd5936521ef1.css" integrity="sha384-8WN9O4WLpKhMcbyU2UaXtpFtTx2JNYTpOJm1b8x9lgGfrDA1Y8EAWzRyniULRP9I"/>
@@ -43,6 +74,8 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
   <link rel="stylesheet" href="./controls-5fac85a806fa27d0.css" integrity="sha384-yRlUuuhmyylSOy6F6Y61oKfLQegr4Og75tv94wQwTxIt1HUk+Ce1bsinm7UMnr6+"/>
   <link rel="stylesheet" href="./workspace-3d883e38780138bb.css" integrity="sha384-1hdrD/+5zuYHsH+3sXhSv1zBQ83qqth7FIOC4VWidCI1rNTL1zobbELuNIjiQCY2"/>
   <link rel="stylesheet" href="./mission-6b1ec3bcc2c64a67.css" integrity="sha384-Azr9CZpfBcpmFzjniVBlKPLOhWzkM/ne8RgCwV+Qc2okiaLi5yFDDUUpGXt4xWST"/>
+  <!-- The flow rail (ROADMAP #7). Last, so it composes over surfaces.css. -->
+  <link rel="stylesheet" href="./flow-d864efab811727a7.css" integrity="sha384-+ulcskOVOMJpc30NcMyOZxpyK8l0vGQcwchdQdHMfuEZXQOfruSQsAvwjtQNrEXj"/>
   
   
   <!-- One Worker per agent (increment 06). Transport only: it imports this
@@ -115,7 +148,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.SpeechRecognition = window.webkitSpeechRecognition;
     }
   </script>
-<link rel="modulepreload" href="./ui-257579dcb10efbc0.js" crossorigin="anonymous" integrity="sha384-dRLcECyqkD3aQ1bOHOeH0qWlHJVCZnRyiozE10gtZTKIE49xMOeub+wxrisZ08RY"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/src/c2w.js" crossorigin="anonymous" integrity="sha384-r9x/JTBH62aiG0fEj88VTw2Eou3USgugEK9mpWGBG5jcHoeqNuOG15MqdOjYUYDB"><link rel="preload" href="./ui-257579dcb10efbc0_bg.wasm" crossorigin="anonymous" integrity="sha384-QpjVMZE3Bhqbtof4Ca9VW3D9v+IQqQ2PPZekh7Tuucjb9SvgfMTBsV+FJ5CrRxI/" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./ui-ddcae1bdc63f078f.js" crossorigin="anonymous" integrity="sha384-mFDNWOSxikgzqdZIGZB7aFlUvp5MJNTHSaAwuKe5iKG3JukbOm6t/MpuOIX8Zjy7"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/src/c2w.js" crossorigin="anonymous" integrity="sha384-r9x/JTBH62aiG0fEj88VTw2Eou3USgugEK9mpWGBG5jcHoeqNuOG15MqdOjYUYDB"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="preload" href="./ui-ddcae1bdc63f078f_bg.wasm" crossorigin="anonymous" integrity="sha384-O7/GKQl2UmnpHaVeXqDZLomte+7OtRbYzsH7n36dueJVeONd3rOMbCfDeQs4WfO5" as="fetch" type="application/wasm"></head>
 <body>
   <!-- What a person sees BEFORE the Wasm mounts, and what they are left with
        if it never does: the bundle 404s, a stale service worker serves a shell
@@ -135,10 +168,18 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       browser tab.</p>
     <p class="pending" role="status">Starting…</p>
     <p class="note">If this message is still here after a few seconds, the page
-      loaded but its application bundle did not. That is almost always an old
-      service worker holding a stale copy: <strong>reload once</strong>, and if
-      it persists, open this page in a private window to confirm, then clear
-      this site's data.</p>
+      loaded but its application bundle did not. A plain reload will not fix
+      that — the stale copy is in the browser's own cache, and a reload reads it
+      again. <strong>Hold Shift while you reload</strong> (Cmd-Shift-R on a Mac,
+      Ctrl-Shift-R elsewhere): that fetches the page and its bundle from the
+      network, bypassing both the cache and this site's service worker. If it
+      comes back after that, clear this site's data in your browser settings.</p>
+    <!-- …AND WHICH FILE, WHEN THE BROWSER WILL SAY. Filled only by the listener
+         in <head>, and only when a resource with a URL was refused. Empty and
+         hidden otherwise, because a diagnosis nothing measured is worse than
+         none. `base.css` hides the whole of #boot the moment #main has
+         children, so a refusal the app survived is never shown. -->
+    <p class="note" id="boot-blocked" hidden></p>
   </div>
   <noscript>
     <!-- The app is Rust compiled to WebAssembly and mounted by JavaScript;

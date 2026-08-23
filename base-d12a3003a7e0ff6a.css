@@ -193,4 +193,8 @@ pre {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
+  /* `#boot-blocked` prints the URL the browser refused and a fingerprinted path
+     has no space to break at: measured 748px of text in a 544px box at 375px.
+     Inherited rather than given its own rule, and a no-op on prose that fits. */
+  overflow-wrap: anywhere;
 }
