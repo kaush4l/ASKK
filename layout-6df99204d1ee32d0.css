@@ -13,7 +13,7 @@ body > #main { display: flex; flex-direction: column; height: 100%; min-height: 
 
 main {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3);
+  display: flex; flex-direction: column; gap: var(--s-3); padding: var(--gutter);
 }
 
 /* `flex: 0 0 auto` fixes a bug this file shipped once: as shrinkable items the regions
@@ -171,9 +171,9 @@ main {
   }
 }
 
-@media (max-width: 22rem) {
-  main { padding: var(--s-2); gap: var(--s-2); }
-}
+/* The PADDING half is `--gutter` now (tokens.css), read by the header and the banner too:
+   it was the one edge in the shell that stepped alone. */
+@media (max-width: 22rem) { main { gap: var(--s-2); } }
 
 /* ---- THREADS (docs/THREADS.md): one column at every width, one row per loaded agent,
    the open one taking the room. `[data-chat]`, not `#chat-panel`: the panel's id is the

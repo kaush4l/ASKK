@@ -46,8 +46,8 @@
        production and publish.sh gates on it. -->
   
 <script type="module">
-import init, * as bindings from './ui-8d18fba7fffcd567.js';
-const wasm = await init({ module_or_path: './ui-8d18fba7fffcd567_bg.wasm' });
+import init, * as bindings from './ui-fb54904f20b80907.js';
+const wasm = await init({ module_or_path: './ui-fb54904f20b80907_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -64,13 +64,13 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
        Link order is dependency order — tokens define, base sets defaults,
        glass is the material, layout is geometry, then the three that compose
        over all of it. -->
-  <link rel="stylesheet" href="./tokens-994061cf69a92484.css" integrity="sha384-c7/I/D4bvlfknUNooa+3r+TzKJWG9OtI44lVHkuYMErEjpiOoRfVmKTOMHZk+MWo"/>
+  <link rel="stylesheet" href="./tokens-67cac510cb127960.css" integrity="sha384-lXOP6dTXful/lYTcl8ZZshOAD/cJzsP9dLzDx5Krdwmnc5fwTsh0oro95Zvr8ads"/>
   <link rel="stylesheet" href="./base-62ed4c4003c9b5f2.css" integrity="sha384-nGd1Nr0y0imvdZndSU95FyrftXuKVVNxZR8v9ZWbcgG1ZIkfBaLWF5JbDT0dgtOn"/>
   <link rel="stylesheet" href="./glass-4c15271b5989acd4.css" integrity="sha384-9Ts7Vwc3Hx3KYmwHO1csCg/MkYpwT1vFmyxiSw1/jhNXwHNVzgpYeidNCLlC1IS1"/>
-  <link rel="stylesheet" href="./layout-b1a0413d76b9e277.css" integrity="sha384-M3v2A7addqMNa6+47/vqsz5DKpyvlyWMQ1V/uNIX0n3kFcxtCYGyYQsDc9b1wt7S"/>
-  <link rel="stylesheet" href="./chrome-3f10b40e75b6225.css" integrity="sha384-jfId9zPNxtiGvOZHzyowKAqmyLBKh34sWN+1R6xvwG6HyeSwNsuBcNzVuNRgLZ3g"/>
+  <link rel="stylesheet" href="./layout-6df99204d1ee32d0.css" integrity="sha384-WIORL5L9DKbUjKy5F9fKRVNlLos4QSDO9fvdjFDtaFvcIcI3jpXQlLk5P0Lt/3wn"/>
+  <link rel="stylesheet" href="./chrome-b05b3c5285ff0e65.css" integrity="sha384-XzGokZ8tRcA53DFqJ70LtQT6MGk8iPPTBHzJ2aiGgPNrEp/9LzeJ3R3ezH4jh3Ty"/>
   <link rel="stylesheet" href="./strip-271309f0165d9fb.css" integrity="sha384-xtEaqJUlYpPZ+bEPfIPIvmNYIbXaTGlcztvnykc38V5q+fr6SWb+/R09iM2c7r2y"/>
-  <link rel="stylesheet" href="./surfaces-b04e13fb14d29a96.css" integrity="sha384-AGSVvYipLU3DHYTwW1+plB88lLdInfVM9z8s4HgjenJHgZEK9Yck/EGY3ytsCRp2"/>
+  <link rel="stylesheet" href="./surfaces-1bc881d67e005a13.css" integrity="sha384-7k3FqzRr5F44LMpHRVCmrbfzNfnhq3CuUEIp4cSPwVrsh8a+RtgLEhuHJPeOp4lV"/>
   <link rel="stylesheet" href="./controls-6660ad899c3e2f53.css" integrity="sha384-RZnm6038/O5qIhAOntJGoUzLJ//TjyZ/lJRaJG2gydo4jVF5CN0AK6mr1TrBanQ4"/>
   <link rel="stylesheet" href="./workspace-22ec26894ffa13f8.css" integrity="sha384-yQMZwU846o+VDr2TCpNHS9nrSouoscHC1TBh+ZUDUr4ZeedFM+F+PMseQsMOXibq"/>
   <link rel="stylesheet" href="./mission-bdeb47dc209c23b1.css" integrity="sha384-c4NKIdHH7danW1KffLPRzLm/Sv5v9a1IkCrDIKFx/9sl06nxte5iq0Gx1FuQayt8"/>
@@ -79,7 +79,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
   <!-- THE FRONT PAGE (the editorial round). LAST, because it is the only sheet
        whose subject is a SCREEN rather than a component, and it composes over
        every component the first screen is built from. -->
-  <link rel="stylesheet" href="./editorial-20470a105d6f26aa.css" integrity="sha384-Z3qy6Sd0xj5ukYizYfJxQn5SpNzbNzWmMSMjHBRhbM/xEmk8HC0QsTgv1yAAFzx3"/>
+  <link rel="stylesheet" href="./editorial-835e063dafcffe3d.css" integrity="sha384-xJ2OpX0RYnK59uZjePHeREiQwDbdz9Va/+eB4NFRF/+GlDQdpb5DX2pqgOOhasEE"/>
   
   
   <!-- One Worker per agent (increment 06). Transport only: it imports this
@@ -152,7 +152,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.SpeechRecognition = window.webkitSpeechRecognition;
     }
   </script>
-<link rel="modulepreload" href="./ui-8d18fba7fffcd567.js" crossorigin="anonymous" integrity="sha384-Y9XylTSj4MNbZXUpnZucE+LhryXdcB0mmgeMYDJHV941c2kxUE9ViVVyBdREjtO1"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/src/c2w.js" crossorigin="anonymous" integrity="sha384-r9x/JTBH62aiG0fEj88VTw2Eou3USgugEK9mpWGBG5jcHoeqNuOG15MqdOjYUYDB"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="preload" href="./ui-8d18fba7fffcd567_bg.wasm" crossorigin="anonymous" integrity="sha384-oWmGFpjCVGDak01PynYLk9DmZ/VKtCLpZTKyCB/zpq/0rNIB8k9YVmrAn+0Db7E1" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./ui-fb54904f20b80907.js" crossorigin="anonymous" integrity="sha384-C9TuHD3r5yn/t8Gz3NjZO+DPLkBc38tN9/6KWLtPSlV8oW54HkdxrG+LhBVZ3Ufd"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/src/c2w.js" crossorigin="anonymous" integrity="sha384-r9x/JTBH62aiG0fEj88VTw2Eou3USgugEK9mpWGBG5jcHoeqNuOG15MqdOjYUYDB"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="preload" href="./ui-fb54904f20b80907_bg.wasm" crossorigin="anonymous" integrity="sha384-G326Og8DYxyObVRGKJhQFxY8YmAuOpXqYPym998iK/KUP2FlL6R0blIcI2oKfLk3" as="fetch" type="application/wasm"></head>
 <body>
   <!-- What a person sees BEFORE the Wasm mounts, and what they are left with
        if it never does: the bundle 404s, a stale service worker serves a shell

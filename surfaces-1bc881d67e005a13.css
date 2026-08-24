@@ -8,7 +8,7 @@
 @media (min-width: 64rem) { .panel { padding: var(--s-5) var(--s-6); } } /* Reflect's card: 24/32 */
 /* PROSE, AT PROSE SIZE (R5-A). `.note` was 14px on a label leading — a form
    label's treatment on a paragraph. Explanation is content, not chrome. */
-.note { color: var(--ink-2); font-size: var(--t-body); line-height: var(--lh-body); max-width: var(--measure); }
+.note { color: var(--ink-2); font-size: var(--t-body); line-height: var(--lh-body); max-width: var(--measure); overflow-wrap: break-word; }
 .note-author { color: var(--accent); font-weight: var(--w-strong); }
 .pending { color: var(--ink-2); max-width: var(--measure); }
 .error { color: var(--danger); }
