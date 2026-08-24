@@ -197,8 +197,46 @@ worth more than the fix:
    critic's zero-error result at seven widths from 1024 to 2560 was taken
    against the real app, and that is the bar.
 
-**So the fix needs the real app at a range of widths, not the probe.** Until
-that rig exists the shipped term stays, because it is the one that was measured
-on the thing users load. Trading a verified desktop for an unverified phone is
-the wrong direction, and shipping a calibration that cannot be checked is how
-`--gap` survived four rounds claiming three readers it never had.
+**So the fix needs the real app at a range of widths, not the probe.**
+
+### THE RIG NOW EXISTS, AND THE ANSWER IS WORSE THAN F7 ASSUMED
+
+`scripts/measure-app.sh` serves `dist/` and drives the actual Wasm build.
+Measured on the real app — glyph extent against the element's own box, both
+skins identical because geometry is skin-independent:
+
+| vw | 320 | 360 | 375 | 390 | 400 | 500 | 768 | 1024 | 1280 | 1440 | 1920 |
+|----|----|----|----|----|----|----|----|----|----|----|----|
+| err px | −9.7 | **+16.5** | **+8.3** | +0.2 | −5.3 | −7.4 | −13.2 | −21.8 | **+87.1** | +0.1 | −87.7 |
+| overflow | 0 | 16 | 8 | 0 | 0 | 0 | 0 | 0 | **87** | 0 | 0 |
+
+**The fit is exact at two of eleven widths — 390 and 1440 — and nowhere else.**
+It overhangs its own rule at 360, 375 and, worst, by 87px at 1280, which is one
+of the most common laptop widths there is.
+
+**This corrects a claim this round was partly judged on.** The desktop critic
+reported "measured last-glyph right edge vs column right edge: 1024 → 996.0/
+996.0 … 2560 → 2000.0/2000.0. Zero error at seven widths. That is craft. Do not
+touch it." On the real app 1024 is −21.8, 1280 is +87.1 and 1920 is −87.7. The
+two widths that do solve are the two the term was fitted at. The judge scored
+EDITORIAL's craft partly on that claim, and the direction still wins on the
+other evidence — but the claim itself does not hold.
+
+### WHY ARITHMETIC IS THE WRONG TOOL HERE
+
+`tr = (column - 4.74em * size) / 6` assumes `column` is a smooth function of
+`vw`. It is not: the nav and the rail appear and disappear at breakpoints, so
+the column steps. A single clamp cannot model a stepped function, which is why
+adding a second line fixed the phone and left 1280 at +87. Any further term is
+another point-fit at another width.
+
+The fix is to stop solving it and let the renderer fit the word — an
+`<svg><text textLength="100%" lengthAdjust="spacing">` spans its box exactly by
+construction at every width, needs no constant, no clamp and no cap, ships no
+font file and runs no script. That is the shape of the next change; it touches
+markup and needs an accessible-name check, so it is chartered rather than
+improvised.
+
+Until then the shipped term stays, because reverting to no tracking loses the
+span entirely and the two widths it does solve are the two most common. What
+does NOT stay is the claim that it is solved.
