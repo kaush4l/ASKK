@@ -86,7 +86,19 @@
     var sizes = {};
     var total = 0;
     document.querySelectorAll("body *").forEach(function (el) {
-      if (!el.offsetParent && el !== document.body) return;
+      // AN SVG `<text>` IS TEXT, and this line is why that has to be said. The
+      // `offsetParent` property belongs to HTMLElement and is `undefined` on every
+      // SVG element, so when the plate became an inline `<svg>` (editorial.css §2)
+      // the page's ONE display node stopped being counted and RAMPRANGE fell from
+      // 6.18:1 to 2.00:1 on a page whose type had not changed by a pixel — 54 of the
+      // 114 failures in that run. `getClientRects()` asks the SVG side the same
+      // question. The HTML branch is deliberately untouched: `offsetParent` is also
+      // null for a `position: fixed` element, so the folded nav's items have never
+      // been counted here, and widening the test would move every number in this
+      // file for a reason unrelated to the change that made it necessary.
+      var shown = el.ownerSVGElement ? el.getClientRects().length > 0
+                                     : (el.offsetParent || el === document.body);
+      if (!shown) return;
       var text = Array.prototype.some.call(el.childNodes, function (n) {
         return n.nodeType === 3 && n.textContent.trim();
       });

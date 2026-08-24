@@ -10,20 +10,20 @@ use dioxus::prelude::*;
 use crate::board::roster;
 use crate::chat::thread;
 use crate::settings::{self, endpoint_copy, linux_engine};
+use crate::centre::plate;
 use crate::shell::views::View;
 use crate::shell::{agent_switcher, skin};
 use crate::{authoring, debug, terminal, trace};
 
 /// THE STAGE'S HEAD — one band above whatever is routed: the KICKER names the
-/// view (R5-misc) at `--t-caption`, then the SUBJECT PLATE (the editorial
-/// round), then the agent switcher where the route has one. There is exactly
-/// one display register in this product and it is a ruled plate naming the
-/// SCREEN'S SUBJECT: the product on the Dashboard, where `core::builtins` owns
-/// the `<h1>` inside the routed panel, and the SELECTED AGENT everywhere else.
-/// NEVER the view's own name — `Chat` at 136px says nothing on a screen whose
-/// subject is a conversation (UPLIFT F2).
-///
-/// `<h2>`, NOT `<h1>`: `core/tests/skeleton.rs:118` pins `GET /` at one.
+/// view (R5-misc) at `--t-caption`, then the SUBJECT PLATE (`plate.rs`), then
+/// the agent switcher where the route has one. There is exactly one display
+/// register in this product and it is a ruled plate naming the SCREEN'S
+/// SUBJECT: the product on the Dashboard, where `core::builtins` owns the
+/// `<h1>` inside the routed panel, and the SELECTED AGENT everywhere else —
+/// never the view's own name, which says nothing on a screen whose subject is
+/// a conversation (UPLIFT F2). `<h2>` there, not `<h1>`:
+/// `core/tests/skeleton.rs:118` pins `GET /` at one.
 #[component]
 pub(crate) fn StageHead(
     here: View,
@@ -39,17 +39,17 @@ pub(crate) fn StageHead(
         div { class: "stage-head",
             p { class: "{kicker}", "{here.label()}" }
             if here != View::Dashboard {
-                div { class: "masthead", h2 { class: "plate", "{selected}" } }
+                // One word, spanned to its box; `plate.rs` says why by `<svg>`.
+                plate::SubjectPlate { word: selected.read().clone() }
             }
             // …AND NOT ON CHAT (R15-IA): the thread list IS the picker there.
             // …AND NOT ON THE DASHBOARD (lap 2's mobile critic, measured at
-            // 390x844): the head sits above the routed panel and the
-            // Dashboard's `<h1>` is INSIDE it, so a switcher here read
-            // kicker -> TAB BAND -> nameplate, y=371 / 394 / 462 — navigation
-            // cutting between an eyebrow and the product's one nameplate.
-            // `dashboard.rs` renders it under the nameplate now, above the
-            // agent-scoped panels it actually switches, so all three routes
-            // read kicker -> subject -> switcher.
+            // 390x844): the head sits above the routed panel and the Dashboard's
+            // `<h1>` is INSIDE it, so a switcher here read kicker -> TAB BAND ->
+            // nameplate, y=371 / 394 / 462 — navigation cutting between an eyebrow
+            // and the product's one nameplate. `dashboard.rs` renders it under the
+            // nameplate now, above the agent-scoped panels it switches, so all
+            // three routes read kicker -> subject -> switcher.
             if here.scoped() && here != View::Chat && here != View::Dashboard {
                 agent_switcher::AgentTabs { loaded, authored, selected, controls, label }
             }

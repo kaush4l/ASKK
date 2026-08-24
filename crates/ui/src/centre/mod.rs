@@ -18,6 +18,7 @@
 
 pub(crate) mod dashboard;
 pub(crate) mod panels;
+pub(crate) mod plate;
 
 use std::rc::Rc;
 

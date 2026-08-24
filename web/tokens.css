@@ -86,12 +86,10 @@
   --lh-label: 1.4; --lh-caption: 1.35; --w-normal: 400; --w-medium: 500; --w-strong: 600;
   /* `--tr-subhead` (R11) and `--tr-label` (R20-TOUCH) deleted: 0 readers. */
   --tr-display: -0.03em; --tr-caption: 0.14em;
-  /* A FIT, NOT A STEP, and MEASURED: HARNESS is 4.74em of Iowan caps (322.5px at 68px),
-     so spanning costs (col - 4.74*size)/6 = 1.95px at 390 and 81.9px at 1440; the 4.62em
-     ESTIMATE overflowed 365 into 334. THE FLOOR IS NEGATIVE and that is the 320 case, not
-     a taste: below ~337px the fit solves negative, and -0.03em is `--tr-display`'s own
-     value. It buys 14.3px; the other 48 are editorial.css's full-bleed rule at 22rem. */
-  --tr-nameplate: clamp(-0.03em, -1.734rem + 7.61vw, 5.2rem);
+  /* `--tr-nameplate` DELETED — 0 readers. A clamp fitting HARNESS's seven glyphs to the
+     column, exact at its two fitted widths and wrong at the other nine (+87.1px at 1280,
+     measured on the app). The plate spans by `textLength` now: the renderer does the
+     arithmetic per width, instead of this file guessing a constant. */
 
   /* ---- space: base 4px, eight steps, nothing else ---------------------- */
 
@@ -104,6 +102,11 @@
 
   --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
   --s-5: 1.5rem; --s-6: 2rem; --s-7: 3rem; --s-8: 4rem;
+  /* THE SHELL'S ONE OUTER INSET. `main` padded by `--s-3`, header and banner margined by
+     `--s-3`, and at 22rem `main` ALONE dropped to `--s-2` — so a 320px phone had the
+     header's box on x=12 and `main`'s content on x=8. One name, two bands, every outer
+     edge reading it. Not a ninth step: it re-points one of the eight. */
+  --gutter: var(--s-3);
   /* THE TWO RULES: a broadsheet is horizontal lines and nothing else. */
   --rule: 2px solid var(--control); --rule-hair: 1px solid var(--hairline);
 
@@ -143,14 +146,11 @@
    a descender by 4.5px. 1.12 is that measured ratio, 76/68; editorial.css takes the 15px
    it adds back out of the plate's own padding, so the head's height is unchanged. */
 .stage-head .masthead { --t-display: clamp(4.25rem, 1.5rem + 11vw, 5rem); --lh-display: 1.35; }
-/* …AND AT 22rem IT CONDENSES: `summarizer` is 340.6px of Iowan at the 68px floor and 320
-   is every pixel the viewport has once editorial.css reclaims both paddings, so the head
-   wrapped and hyphenated and stood 380px inside a 352px scroller. -0.08em is the FLOOR of
-   that fit and not a taste — each 0.01em is 6.8px over ten gaps, so it brings 340.6 to
-   306.6 and nothing smaller reaches 320. THE SMALLER STEP lap 2's critic preferred is
-   arithmetically shut: 11px is the caption and FOLDRANGE's floor is 6.0, so any plate
-   under 66px fails the ratchet at 320. Same move `--tr-nameplate` makes for HARNESS. */
-@media (max-width: 22rem) { .stage-head .masthead { --tr-display: -0.08em; } }
+@media (max-width: 22rem) { :root { --gutter: var(--s-2); } }
+
+/* …AND THE 22rem `--tr-display: -0.08em` CONDENSE IS DELETED WITH IT: it existed because
+   `summarizer` is 340.6px of Iowan at the 68px floor against a 320px viewport, and a span
+   condenses by exactly what the box is short, for a word of any length. */
 
 /* The light is safe only where a PANEL stands between it and the words: below
    1100px the nav is a drawer, so the room DIMS. The lobes are percent-sized,

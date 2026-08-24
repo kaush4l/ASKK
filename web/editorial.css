@@ -26,27 +26,38 @@ header { border-bottom: var(--rule-hair); }
    fixture writes the `<h1>` bare. `display: contents` makes the two DOMs one layout. */
 .masthead > div { display: contents; }
 
-/* THE NAMEPLATE — Dashboard only, the PRODUCT, spanned. `--tr-nameplate` fills the column,
-   which is what makes it a nameplate and not a big heading: at 1440 the lede used 541 of
-   1060px, so the emptiness moves ABOVE and BELOW the word, where it reads as silence. */
-.masthead h1 {
-  color: var(--ink); letter-spacing: var(--tr-nameplate);
-  text-transform: uppercase; white-space: nowrap;
-  /* CSS puts the tracking AFTER the last letter too, so a word solved to span
-     the column is one gap too wide and reads ragged right. This is exactly
-     that trailing gap: without it the word overflowed 365 into 334 at 390. */
-  margin-right: calc(-1 * var(--tr-nameplate));
-}
-
+/* THE NAMEPLATE AND THE SUBJECT PLATE ARE ONE MECHANISM, AND IT IS NOT A FIT ANY MORE.
+   `--tr-nameplate` solved tr = (column - 4.74em * size) / 6 for HARNESS's seven glyphs. It
+   was exact at the two widths it was fitted at and wrong at the other nine — measured on
+   the APP by `scripts/measure-app.sh`: -21.8px at 1024, +87.1px at 1280, -87.7px at 1920.
+   The column STEPS (the nav and the rail arrive at breakpoints) and no clamp models a
+   step, so a third linear term would be a third point-fit. An `<svg>` whose `<text>`
+   carries `textLength="100%"` spans its own box BY CONSTRUCTION — every width, any word
+   length, no constant, no cap, no font file, no script — and `lengthAdjust="spacing"`
+   moves the GAPS and never the letterforms (`spacingAndGlyphs` distorts them and is
+   forbidden). The word is the SVG's accessible name via `<title>` + `role="img"`, and the
+   heading is still the element that carries it. `--tr-nameplate` is deleted: 0 readers. */
+.masthead h1 { color: var(--ink); }
 /* THE SUBJECT PLATE — every other view, and it is the AGENT, not the view: a view's own
    name carries no information on a screen whose subject is a conversation. LOWERCASE, as
-   the name ships — caps + column-spanned is the product, said once. */
+   the name ships — caps is the product, said once. `text-wrap`/`hyphens`/`overflow-wrap`
+   are gone with the wrapping they managed: a span cannot wrap. */
 .masthead .plate {
   margin: 0; color: var(--ink); font-family: var(--display);
-  font-weight: var(--w-normal); font-size: var(--t-display);
-  line-height: var(--lh-display); letter-spacing: var(--tr-display);
-  max-width: 100%; text-wrap: balance; overflow-wrap: anywhere; hyphens: auto;
+  font-weight: var(--w-normal); font-size: var(--t-display); line-height: var(--lh-display);
 }
+/* NO `viewBox`, and that is the whole trick: a viewBox scales the type WITH the box, which
+   is the one thing that must not happen. Without one, a user unit is a CSS pixel and the
+   face is whatever `--display` resolved to on the heading. The box is the line box the
+   text node used to make, so the plate's vertical rhythm is unchanged; `overflow: visible`
+   because a 0.9 line box has never held its own ascenders and did not before either. */
+.masthead svg { display: block; width: 100%; height: calc(1em * var(--lh-display)); overflow: visible; }
+/* `currentColor`, so both skins and every contrast guard go on reading the same ink.
+   `dominant-baseline: central` at `y="50%"` lands the baseline within 0.2px of where the
+   browser put it when this was a text node (measured, chrome-headless-shell). And
+   `letter-spacing: normal`, so the span is the ONLY tracking in the word: `--tr-display`
+   inherited from `h1` would be tracking the span then has to take back out. */
+.masthead svg text { fill: currentColor; dominant-baseline: central; letter-spacing: normal; }
 
 /* …AND THE HEAD'S PLATE IS A HEAD, NOT A NAMEPLATE. Same two rules, same word, a THIRD
    of the vertical spend: the Dashboard's frame pays `--s-5` above and below the rules and
@@ -63,38 +74,23 @@ header { border-bottom: var(--rule-hair); }
   margin: calc(-1 * var(--s-2)) 0 var(--s-3); padding: var(--s-1) 0;
 }
 
-/* BELOW 30rem THE HEAD'S PLATE BREAKS OUT TO THE STAGE'S EDGE — AND NOT PAST IT (lap 2's
-   mobile critic, measured). It breaks out at all because at the 68px floor `summarizer` is
-   340.6px of glyph against a 334px column at 390: the head wrapped and HYPHENATED, `sum-`
-   over `marizer`, 122px of an 844px screen. It broke out by `--s-2 + --s-4` = 24px a side
-   against a 28px gutter, leaving 4px of air at 390 and `.stage-head` reading scrollWidth
-   358 vs clientWidth 334 — an overflow only `.stage` hid. `--s-4` is the stage's own
-   inline padding and no more: the plate ends on the stage's padding edge, inside its
-   scrollport, so the head overflows 16 not 24 and `.stage` by nothing. */
+/* THE THREE BREAK-OUT BLOCKS THAT USED TO STAND HERE ARE DELETED, and what they were
+   FOR is why. All three reclaimed `.stage`'s inline padding with a negative margin —
+   at 30rem for the head's plate, at 24rem again, at 22rem for the nameplate — because
+   `summarizer` is 340.6px of glyph against a 334px column at 390 and HARNESS is 322.5
+   against 272 at 320. A span cannot overflow, so none of them buys anything now, and
+   each of them cost: the plate broke out to x=12 while the kicker above it stayed at
+   x=28, so ONE component sat 16px inside its own hairline on chat and deck and flush on
+   the Dashboard, and at 320 `.stage` read scrollWidth 312 against clientWidth 304 — an
+   8px overflow no document-level check could see, because `main` clipped it. The stage
+   gives up its inline padding below 30rem instead (`chrome.css`), which is one gutter
+   for the whole shell rather than three negative margins undoing one positive one.
+   WHAT SURVIVES OF THE 30rem BLOCK IS ITS BLOCK AXIS, and only because deleting that too
+   cost 12px of a 780px phone: the plate's own padding is 8 of it and its bottom margin 4,
+   and `fold-probe.js` CHROME failed at 320x780 on chat (238px left of a 260px floor) and
+   on deck. The plate's line box already holds its ink at `--lh-display: 1.35`. */
 @media (max-width: 30rem) {
-  .stage-head .masthead {
-    margin-inline: calc(-1 * var(--s-4));
-    margin-block: calc(-1 * var(--s-2)) var(--s-2); padding: 0;
-  }
-}
-
-/* AT 22rem THE NAMEPLATE BREAKS THE MARGIN WHOLE — what a broadsheet does, and here also
-   arithmetic. At 320 the column is 272px (`main`'s `--s-2` plus `.stage`'s `--s-4`) and
-   HARNESS is 322.5px of glyph at the 68px floor: XOVERFLOW read 356 vs 320 at 320x256,
-   the one height where no ancestor clips it. Both paddings reclaimed, the column is 320.
-   The HEAD's plate has no optical margin at 320 either, and that is arithmetic and not
-   taste: -0.08em is already the tracking floor that fits `summarizer` into 320, and the
-   smaller display step that would buy a margin back is shut by the ratchet (11px caption,
-   FOLDRANGE floor 6.0 → no plate under 66px). Said here rather than hidden. */
-@media (max-width: 22rem) {
-  .masthead { margin-inline: calc(-1 * (var(--s-2) + var(--s-4))); }
-}
-/* …and the HEAD's plate takes the whole bleed from 24rem DOWN, not 22: at 360 the
-   stage's own padding leaves 336px against 340.6px of word, so `--s-4` alone wrapped it
-   and put 187px of two-line plate in a 780px screen. 24rem is the last width where 366px
-   of column still fits the word; below it, both paddings come back. */
-@media (max-width: 24rem) {
-  .stage-head .masthead { margin-inline: calc(-1 * (var(--s-2) + var(--s-4))); }
+  .stage-head .masthead { margin-bottom: var(--s-2); padding: 0; }
 }
 
 /* ---- 3. the kicker: the view's name, 11px, ALL routes, above the plate — the one

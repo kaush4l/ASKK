@@ -15,12 +15,19 @@
 # Usage: scripts/measure-app.sh '<js expression returning a string>' [widths...]
 #   e.g. scripts/measure-app.sh 'document.querySelectorAll("h1").length' 390 1440
 # Default widths: 320 360 375 390 400 500 768 1024 1280 1440 1920
+#
+# ROUTE=chat|deck|workspace|... picks the view. Three of the four defects this
+# rig was built for are only WRONG on a route the default load never reaches,
+# and the rig could only ever see the Dashboard. The address bar IS the view
+# (`crates/ui/src/shell/route.rs`), so a route here is a hash and nothing else;
+# the app reads it at boot. Unset = whatever a bare load lands on.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 EXPR=${1:?usage: measure-app.sh '<js expression>' [widths...]}
 shift || true
 WIDTHS=${*:-"320 360 375 390 400 500 768 1024 1280 1440 1920"}
+HASH=${ROUTE:+#/$ROUTE}
 
 [ -f dist/index.html ] || { echo "measure-app.sh: no dist/ — run trunk build" >&2; exit 1; }
 SB=$(find "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwright" \
@@ -103,7 +110,7 @@ done
 for W in $WIDTHS; do
   H=$([ "$W" -lt 500 ] && echo 844 || echo 900)
   "$SB" --headless --disable-gpu --hide-scrollbars --window-size="$W,$H" \
-    --virtual-time-budget=45000 --dump-dom "http://127.0.0.1:$PORT/" 2>/dev/null \
+    --virtual-time-budget=45000 --dump-dom "http://127.0.0.1:$PORT/$HASH" 2>/dev/null \
   | grep -o '<title>MEASURE|[^<]*</title>' | sed 's/<[^>]*>//g' \
   || echo "MEASURE|$W|NOTITLE|"
 done

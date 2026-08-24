@@ -55,8 +55,18 @@
   // the display step has to fit.
   var stagePlate = document.getElementById("stage-plate");
   if (stagePlate) stagePlate.hidden = route === "dash";
+  // …AND IT WRITES THE WORD INTO THE `<text>`, NOT INTO THE HEADING. The plate is an
+  // inline `<svg>` since the span fix, and `plate.textContent = …` DELETES it — the
+  // fixture would then render an ordinary unspanned text node and every shot taken of
+  // it would be of a page the app does not serve. The accessible name is the svg's
+  // `aria-label` and moves with the word, exactly as `centre/panels.rs` emits the pair.
   var plate = document.querySelector("#stage-plate .plate");
-  if (plate) plate.textContent = "summarizer";
+  if (plate) {
+    var word = plate.querySelector("text");
+    (word || plate).textContent = "summarizer";
+    var label = plate.querySelector("svg");
+    if (label) label.setAttribute("aria-label", "summarizer");
+  }
   // …AND THE ACTIVE TAB IS THE AGENT THE PLATE NAMES (lap 2's desktop critic).
   // The fixture wrote `summarizer` into the plate as a longest-name width
   // stress and left the band underlining MAIN, so every desktop render showed a
@@ -369,6 +379,41 @@
   }
   say(doc.scrollWidth <= doc.clientWidth, "XOVERFLOW",
       doc.scrollWidth + " vs " + doc.clientWidth);
+
+  // …AND THE SAME QUESTION OF EVERY BOX, BECAUSE THE DOCUMENT CANNOT SEE PAST ITS
+  // OWN CLIP. `body` and `main` are `overflow: hidden` in the one-screen chain, so
+  // an element that spills inside them leaves the document's scrollWidth untouched
+  // and XOVERFLOW above prints OK over it. Measured on the app at 320 before this
+  // existed: `.stage` scrollWidth 312 against clientWidth 304, the routed panel 296
+  // against 272, and at 360 `.masthead` and its `<h1>` 320 against 304 — content
+  // outside a box nothing can scroll, which is content a person cannot reach. A
+  // lap-2 report called this fixed having measured 390 and nothing else, and 390
+  // was itself 336/334.
+  //
+  // THE EXCEPTIONS ARE NAMED, because a silent one is how this would quietly stop
+  // asserting anything. `.status-strip` and `.agent-tabs.band` scroll sideways ON
+  // PURPOSE (strip.css, layout.css) and each carries its own fade or snap to say so;
+  // `pre` is machine output, which four rules in surfaces.css give `overflow: auto`
+  // and which is the one kind of content this product may not re-wrap.
+  //
+  // NAMED AND NOT COMPUTED, AND THAT IS MEASURED: `getComputedStyle` reports
+  // `overflow-x: auto` for `.stage`, which declares only `overflow-y: auto` — CSS
+  // computes the other axis to `auto` when one axis is not `visible`. A rule written
+  // on the computed value would have skipped the exact box this was built to catch.
+  var sideways = ".status-strip, .agent-tabs.band, pre";
+  var spill = [];
+  document.querySelectorAll("body *").forEach(function (el) {
+    if (!el.offsetParent && el !== document.body) return;
+    if (el.closest("#report") || el.closest(sideways)) return;
+    if (el.clientWidth > 0 && el.scrollWidth - el.clientWidth > 1) {
+      spill.push(el.tagName.toLowerCase() + "." +
+                 String(el.className || "").split(" ")[0] + " " +
+                 el.scrollWidth + "/" + el.clientWidth);
+    }
+  });
+  say(spill.length === 0, "XOVERFLOWEACH",
+      spill.length ? spill.join(", ") : document.querySelectorAll("body *").length +
+      " boxes, none wider than itself");
 
   // The deck's three assertions are `deck-probe.js` and the audit half is
   // `layout-audit.js`, which writes the report last — so a verdict pushed by

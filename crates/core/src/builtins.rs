@@ -100,12 +100,40 @@ pub(crate) fn dashboard(req: &Request, ctx: &mut Ctx) -> Response {
 /// page is mounted by the component that owns it; the placeholder that used to
 /// stand here for a panel "arriving in a later update" is gone with the plan
 /// that promised it (12 walk, finding 3).
+///
+/// THE WORD IS DRAWN BY AN `<svg>`, and that is a LAYOUT decision made in
+/// markup because CSS cannot express it. The nameplate must span its column
+/// exactly, and the column STEPS — the nav and the rail arrive at breakpoints —
+/// so the letter-spacing clamp that used to do it (`--tr-nameplate`) was a fit
+/// through two widths that missed the other nine by up to 87px. `textLength`
+/// with `lengthAdjust="spacing"` spans the box by construction at every width
+/// and for a word of any length, moving the GAPS and never the letterforms.
+/// The heading is still the heading; `role="img"` + `aria-label` is what keeps
+/// its accessible name the word itself. No script, no font file, no network.
 fn root(_ctx: &mut Ctx) -> Response {
-    let page = FragmentBuilder::new("div")
-        .id("dashboard")
-        .child(FragmentBuilder::new("h1").text("HARNESS").build())
-        .build();
+    let page = FragmentBuilder::new("div").id("dashboard").child(nameplate("HARNESS")).build();
     html(200, page.into_html())
+}
+
+/// One word, spanned to its box. `crates/ui/src/centre/panels.rs` writes the
+/// same three elements in `rsx!` for the agent's name on every other route —
+/// two spellings because the two live on opposite sides of the seam, and the
+/// pair is the thing to keep in step (`scripts/layout-probe.html` is a third).
+fn nameplate(word: &str) -> module::view::Fragment {
+    let text = FragmentBuilder::new("text")
+        .attr("x", "0")
+        .attr("y", "50%")
+        .attr("textLength", "100%")
+        .attr("lengthAdjust", "spacing")
+        .text(word)
+        .build();
+    let svg = FragmentBuilder::new("svg")
+        .attr("role", "img")
+        .attr("aria-label", word)
+        .attr("focusable", "false")
+        .child(text)
+        .build();
+    FragmentBuilder::new("h1").child(svg).build()
 }
 
 /// Minimal `application/x-www-form-urlencoded` decoding, for the handlers

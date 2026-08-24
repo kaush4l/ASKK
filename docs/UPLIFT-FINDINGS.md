@@ -199,6 +199,30 @@ worth more than the fix:
 
 **So the fix needs the real app at a range of widths, not the probe.**
 
+### CLOSED — and the class of fix was wrong, not the constants
+
+Run on the app by `scripts/measure-app.sh`, glyph extent against the element's
+own box, the shipped clamp was exact at exactly the two widths it was fitted at:
+
+| vw | 320 | 360 | 375 | 390 | 400 | 500 | 768 | 1024 | 1280 | 1440 | 1920 |
+|---:|----:|----:|----:|----:|----:|----:|----:|-----:|-----:|-----:|-----:|
+| err | -9.7 | +16.5 | +8.3 | **+0.2** | -5.3 | -7.4 | -13.2 | -21.8 | **+87.1** | **+0.1** | -87.7 |
+
+A third linear term would have been a third point-fit, so the class ended
+instead. The plate is an inline `<svg>` whose `<text>` carries
+`textLength="100%"` with `lengthAdjust="spacing"`: it spans its box by
+construction, at every width and for a word of any length, with no constant, no
+clamp, no cap, no font file and no script. The same eleven widths now read
+**0.0 on all eleven, on the Dashboard's HARNESS and on the head's four-letter
+`main` alike** — the half the constant never had, since 4.74em was HARNESS's
+seven glyphs. `--tr-nameplate` is deleted (0 readers), and with it the 22rem
+`--tr-display: -0.08em` condense and three break-out media blocks that existed
+only to give an overflowing word somewhere to go.
+
+`core::builtins::nameplate`, `crates/ui/src/centre/plate.rs` and
+`scripts/layout-probe.html` are three spellings of one shape; Chrome's
+accessibility tree reads `heading "HARNESS" → img "HARNESS"`.
+
 ### THE RIG NOW EXISTS, AND THE ANSWER IS WORSE THAN F7 ASSUMED
 
 `scripts/measure-app.sh` serves `dist/` and drives the actual Wasm build.

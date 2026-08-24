@@ -33,27 +33,21 @@ header .pill {
    SENTENCE below 48rem, and the second made the first a lie — a 48px box over 179px of
    text at 390, an overlay scrollbar, and no other cue. */
 .banner {
-  margin: var(--s-3) var(--s-3) 0; padding: var(--s-2) var(--s-3);
+  margin: var(--s-3) var(--gutter) 0; padding: var(--s-2) var(--s-3);
   border-radius: 0; flex: 0 0 auto;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
 }
 
-/* …AND IT IS INSIDE THE SAME FRAME AS THE PAGE (lap 2's desktop critic, measured). `main`
-   is capped at `--frame` and centred (layout.css); the header was not, so at 1920 it ran
-   [12..1908] while the nav began at 208 and the rail ended at 1712 — two stacked frames
-   196px apart with 416px of black holding nothing. `max()` and MARGIN, not
-   `margin-inline: auto`: an auto cross-margin cancels a flex item's stretch and the bar
-   would shrink to its content. Under the cap the first branch wins and `--s-3` is today's
-   gutter, so 1440 and down is byte-identical; at 1920 the header's OUTER edges land on the
-   nav's and the rail's, and it takes the second row 1440 has always had. */
-@media (min-width: 1100px) {
-  /* …AND THE BANNER UNDER IT IS THE SAME BAR. Capping the header alone just moved the
-     mismatch down one element: at 1920 the header sat 208..1712 with the failure banner
-     still running 12..1908. `header > .banner` keeps its own zero margin — that one is a
-     ROW of the header and its `margin` shorthand outranks this longhand. */
-  header, .banner {
-    margin-inline: max(var(--s-3), calc((100% - var(--frame)) / 2 + var(--s-4)));
-  }
+/* …AND HEADER AND BANNER ARE INSIDE THE SAME FRAME AS THE PAGE, AT EVERY WIDTH. `main` is
+   capped at `--frame` and centred (layout.css); the header was not, so at 1920 it ran
+   [12..1908] while the nav began at 208 and the rail ended at 1712. `max()` and MARGIN, not
+   `margin-inline: auto`: an auto cross-margin cancels a flex item's stretch. UNGATED is the
+   change this lap — at `min-width: 1100px` the one expression for the shell's edge held
+   only above 1100 and a phone got whatever four rules added up to. Below the cap `max()`
+   picks `--gutter`, the number `main` pads by: 1440 down is byte-identical, 320 stops
+   disagreeing with itself by 4px. */
+header, .banner {
+  margin-inline: max(var(--gutter), calc((100% - var(--frame)) / 2 + var(--s-4)));
 }
 
 /* …AND ONE OF THEM IS INSIDE THE HEADER (31-walk F4). The misrouted-address notice is
@@ -64,8 +58,11 @@ header:has(> .banner) { flex-wrap: wrap; }
 /* `order`, because the component that renders this row is the header's FIRST child and
    the rail switch is a sibling it cannot get after: without it the notice takes row one
    and pushes every pill down. DOM order is unchanged for a screen reader. */
+/* …AND IT REACHES THE HEADER'S OWN EDGE: the OTHER banner (`TroublePill`, a sibling of
+   `header` in `main.rs`) is a top-level row, so one class drew on x=24 here and x=12 there
+   on one phone. The negative is the header's inline PADDING — `--s-3` below 48rem. */
 header > .banner {
-  flex: 1 0 100%; order: 9; margin: var(--s-2) 0 0; max-width: none;
+  flex: 1 0 100%; order: 9; margin: var(--s-2) calc(-1 * var(--s-4)) 0; max-width: none;
   background-color: var(--surface-1);
 }
 
@@ -108,6 +105,7 @@ header .panel-toggle[aria-controls="nav"]::before { content: "\2630  "; }
    truncated"; 3rem is two lines of an eleven-line remedy. Deleted (28). */
 @media (max-width: 48rem) {
   header { padding: var(--s-2) var(--s-3); gap: var(--s-2); }
+  header > .banner { margin-inline: calc(-1 * var(--s-3)); }
   .switches { gap: var(--s-1); }
 }
 
@@ -162,11 +160,12 @@ header .pill.running::before { content: "\25C6  "; color: var(--accent); }
 .rail-who { margin: 0; font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-2); }
 .rail-who strong { color: var(--ink); font-weight: var(--w-strong); }
 .stage { padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
-/* …AND ITS VERTICAL GUTTER IS CHEAPER ON A PHONE. The INLINE gutter is untouched
-   — it is what keeps the plate's full-bleed arithmetic (editorial.css) exact —
-   and the block half is 12px the head already spends twice over in the header's
-   own margin and the plate's two rules. 12px of the CHROME floor, measured. */
-@media (max-width: 30rem) { .stage { padding-block: var(--s-2); gap: var(--s-2); } }
+/* …AND ON A PHONE IT HAS NO INLINE GUTTER AT ALL, which is where the shell's four left
+   edges become one. At 390 it put the stage's CONTENT on x=28 inside a stage box on x=12,
+   and `editorial.css` paid the 16 back with a negative margin on the PLATE alone — plate
+   on 12, kicker above it on 28, one component inside its own hairline. Zero, and every
+   child lands on the gutter `main` set. The block half stays cheap: 12px of CHROME. */
+@media (max-width: 30rem) { .stage { padding: var(--s-2) 0; gap: var(--s-2); } }
 
 header .meter { font-variant-numeric: tabular-nums; color: var(--ink); }
 header .pill-label { color: var(--ink-2); }
