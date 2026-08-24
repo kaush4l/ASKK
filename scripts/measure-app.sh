@@ -51,9 +51,19 @@ cp -R dist/. "$WORK/"
 # no masthead. Freshness comes from the PORT instead — a new port is a new
 # origin and therefore an empty worker registry — and isolation comes from the
 # server below sending the two headers itself, which needs no worker at all.
-python3 - "$WORK/index.html" "$EXPR" <<'PY'
+# THE ANSWER HAS TO NAME ITS OWN QUESTION. This rig once returned, under state
+# `booted`, the output of a DIFFERENT invocation's expression at eight of twelve
+# widths — plausible numbers, correctly formatted, belonging to another probe.
+# The file's own comment below says a missing answer and a wrong answer must not
+# look the same; that was a wrong answer that looked right, in the rig every
+# geometric number in this repo rests on. So the probe stamps a hash of the
+# expression it was built from and the loop rejects any line that does not carry
+# the hash it just injected. A stale page, a cached title or a crossed port now
+# reads TAGMISMATCH instead of a number.
+TAG=$(printf '%s' "$EXPR" | shasum | cut -c1-8)
+python3 - "$WORK/index.html" "$EXPR" "$TAG" <<'PY'
 import pathlib, sys, json
-p = pathlib.Path(sys.argv[1]); expr = sys.argv[2]
+p = pathlib.Path(sys.argv[1]); expr = sys.argv[2]; tag = sys.argv[3]
 html = p.read_text()
 probe = """
 <script>
@@ -67,7 +77,7 @@ probe = """
   // and a wrong answer must not look the same.
   var tries = 0;
   function stamp(state, out) {
-    document.title = 'MEASURE|' + window.innerWidth + '|' + state + '|' + out;
+    document.title = 'MEASURE|' + window.innerWidth + '|' + state + '|%s|' + out;
   }
   stamp('waiting', '');
   (function wait(){
@@ -92,7 +102,7 @@ probe = """
   })();
 })();
 </script>
-""" % expr
+""" % (tag, expr)
 p.write_text(html.replace("</body>", probe + "</body>") if "</body>" in html else html + probe)
 PY
 
@@ -112,5 +122,9 @@ for W in $WIDTHS; do
   "$SB" --headless --disable-gpu --hide-scrollbars --window-size="$W,$H" \
     --virtual-time-budget=45000 --dump-dom "http://127.0.0.1:$PORT/$HASH" 2>/dev/null \
   | grep -o '<title>MEASURE|[^<]*</title>' | sed 's/<[^>]*>//g' \
+  | awk -F'|' -v w="$W" -v tag="$TAG" \
+      '{ st = $3; \
+         if ($4 != tag) print "MEASURE|" w "|TAGMISMATCH|answer for " $4 ", expected " tag; \
+         else { sub(/^[^|]*\|[^|]*\|[^|]*\|[^|]*\|/, ""); print "MEASURE|" w "|" st "|" $0 } }' \
   || echo "MEASURE|$W|NOTITLE|"
 done
