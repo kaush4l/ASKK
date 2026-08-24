@@ -39,7 +39,7 @@ mkdir -p "$(dirname "$OUT")" out/shot-work
 # markup: layout-probe.js routes it and builds window.__probe, and the audits
 # read the cascade. check-layout.sh copies exactly this list.
 cp scripts/layout-probe.js scripts/deck-probe.js scripts/fold-probe.js \
-   scripts/glass-audit.js scripts/ramp-audit.js scripts/layout-audit.js out/shot-work/
+   scripts/glass-audit.js scripts/ramp-audit.js scripts/span-audit.js scripts/layout-audit.js out/shot-work/
 
 # The sheets, in the order index.html links them — READ OFF index.html, never
 # listed here. check-layout.sh learned this the hard way: a hardcoded list went

@@ -26,38 +26,41 @@ header { border-bottom: var(--rule-hair); }
    fixture writes the `<h1>` bare. `display: contents` makes the two DOMs one layout. */
 .masthead > div { display: contents; }
 
-/* THE NAMEPLATE AND THE SUBJECT PLATE ARE ONE MECHANISM, AND IT IS NOT A FIT ANY MORE.
-   `--tr-nameplate` solved tr = (column - 4.74em * size) / 6 for HARNESS's seven glyphs. It
-   was exact at the two widths it was fitted at and wrong at the other nine — measured on
-   the APP by `scripts/measure-app.sh`: -21.8px at 1024, +87.1px at 1280, -87.7px at 1920.
-   The column STEPS (the nav and the rail arrive at breakpoints) and no clamp models a
-   step, so a third linear term would be a third point-fit. An `<svg>` whose `<text>`
-   carries `textLength="100%"` spans its own box BY CONSTRUCTION — every width, any word
-   length, no constant, no cap, no font file, no script — and `lengthAdjust="spacing"`
-   moves the GAPS and never the letterforms (`spacingAndGlyphs` distorts them and is
-   forbidden). The word is the SVG's accessible name via `<title>` + `role="img"`, and the
-   heading is still the element that carries it. `--tr-nameplate` is deleted: 0 readers. */
+/* THE NAMEPLATE — Dashboard only, the PRODUCT, spanned to its column. NOT A FIT ANY MORE:
+   `--tr-nameplate` solved tr = (column - 4.74em * size) / 6 for HARNESS's seven glyphs, was
+   exact at the two widths it was fitted at, and wrong at the other nine — measured on the
+   APP by `scripts/measure-app.sh`: -21.8px at 1024, +87.1px at 1280, -87.7px at 1920. The
+   column STEPS and no clamp models a step. An `<svg>` whose `<text>` carries
+   `textLength="100%"` spans its box BY CONSTRUCTION, and `lengthAdjust="spacing"` moves the
+   GAPS and never the letterforms (`spacingAndGlyphs` distorts them and is forbidden). The
+   word is the SVG's accessible name via `aria-label` + `role="img"` — NOT an SVG `<title>`,
+   which `crates/ui/src/centre/plate.rs` explains. `--tr-nameplate` is deleted: 0 readers.
+
+   ONLY `h1`, ONLY HERE. Applied to `.plate` for one round, it shipped: HARNESS spans at
+   1.13x-1.91x, but the agent name `main` stretched 6.33x at 1440 and 6.87x at 1920 —
+   350.9px between each pair of letters. Span error stayed 0.0px throughout, because that is
+   the metric an over-tracked word satisfies best. `layout-probe.js` now asserts STRETCH. */
 .masthead h1 { color: var(--ink); }
+/* NO `viewBox`: a viewBox scales the type WITH the box, the one thing that must not happen.
+   Without one a user unit is a CSS pixel and the face is whatever `--display` resolved to.
+   The box is the line box the text node made, so vertical rhythm is unchanged. */
+.masthead h1 svg { display: block; width: 100%; height: calc(1em * var(--lh-display)); overflow: visible; }
+/* `currentColor`, so both skins and every contrast guard read the same ink. `central` at
+   `y="50%"` lands the baseline within 0.2px of the text node's (measured). And
+   `letter-spacing: normal`, so the span is the ONLY tracking in the word. */
+.masthead h1 svg text { fill: currentColor; dominant-baseline: central; letter-spacing: normal; }
+
 /* THE SUBJECT PLATE — every other view, and it is the AGENT, not the view: a view's own
    name carries no information on a screen whose subject is a conversation. LOWERCASE, as
-   the name ships — caps is the product, said once. `text-wrap`/`hyphens`/`overflow-wrap`
-   are gone with the wrapping they managed: a span cannot wrap. */
+   the name ships — caps + column-spanned is the product, said once. It is a HEADING and it
+   WRAPS: a four-letter agent name is shorter than its rule, and the round that refused to
+   let it be shorter is the round that stretched it to 6.87x. */
 .masthead .plate {
   margin: 0; color: var(--ink); font-family: var(--display);
-  font-weight: var(--w-normal); font-size: var(--t-display); line-height: var(--lh-display);
+  font-weight: var(--w-normal); font-size: var(--t-display);
+  line-height: var(--lh-display); letter-spacing: var(--tr-display);
+  max-width: 100%; text-wrap: balance; overflow-wrap: anywhere; hyphens: auto;
 }
-/* NO `viewBox`, and that is the whole trick: a viewBox scales the type WITH the box, which
-   is the one thing that must not happen. Without one, a user unit is a CSS pixel and the
-   face is whatever `--display` resolved to on the heading. The box is the line box the
-   text node used to make, so the plate's vertical rhythm is unchanged; `overflow: visible`
-   because a 0.9 line box has never held its own ascenders and did not before either. */
-.masthead svg { display: block; width: 100%; height: calc(1em * var(--lh-display)); overflow: visible; }
-/* `currentColor`, so both skins and every contrast guard go on reading the same ink.
-   `dominant-baseline: central` at `y="50%"` lands the baseline within 0.2px of where the
-   browser put it when this was a text node (measured, chrome-headless-shell). And
-   `letter-spacing: normal`, so the span is the ONLY tracking in the word: `--tr-display`
-   inherited from `h1` would be tracking the span then has to take back out. */
-.masthead svg text { fill: currentColor; dominant-baseline: central; letter-spacing: normal; }
 
 /* …AND THE HEAD'S PLATE IS A HEAD, NOT A NAMEPLATE. Same two rules, same word, a THIRD
    of the vertical spend: the Dashboard's frame pays `--s-5` above and below the rules and

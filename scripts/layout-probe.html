@@ -170,7 +170,7 @@
            renders the `<h1>` nameplate inside the routed panel instead, and
            writes the agent's name into it. `<h2>`, so the fixture keeps the
            shipped page's one `<h1>`. -->
-      <div class="masthead" id="stage-plate"><h2 class="plate"><svg role="img" aria-label="main" focusable="false"><text x="0" y="50%" textLength="100%" lengthAdjust="spacing">main</text></svg></h2></div>
+      <div class="masthead" id="stage-plate"><h2 class="plate">main</h2></div>
       <!-- The Workspace head's extra line (R17-P1-9), measured here because the
            probe carries ONE stage-head and this is the widest thing that goes
            in it: a full sentence between the eyebrow and the agent strip. It is
@@ -566,6 +566,7 @@ document.querySelectorAll(".panel-toggle").forEach(function (b) {
 <!-- BEFORE layout-audit.js, which writes #report last: a verdict pushed
      after that runs would not reach the reader. -->
 <script src="ramp-audit.js"></script>
+<script src="span-audit.js"></script>
 <script src="layout-audit.js"></script>
 </body>
 </html>

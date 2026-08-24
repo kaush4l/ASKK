@@ -18,7 +18,7 @@ SHELL_BIN=$(find "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwrigh
 
 OUT=out/layout-probe
 mkdir -p "$OUT"
-cp scripts/layout-probe.js scripts/deck-probe.js scripts/fold-probe.js scripts/glass-audit.js scripts/ramp-audit.js scripts/layout-audit.js "$OUT/"
+cp scripts/layout-probe.js scripts/deck-probe.js scripts/fold-probe.js scripts/glass-audit.js scripts/ramp-audit.js scripts/span-audit.js scripts/layout-audit.js "$OUT/"
 
 # The stylesheets in the order index.html links them, fingerprints and all —
 # READ OFF index.html rather than listed here. The hardcoded list was itself an

@@ -51,30 +51,27 @@
   // `panels.rs::StageHead` puts it. It is the Dashboard that does NOT get one
   // there: `dashboard.rs` renders the `<h1>` nameplate inside the routed panel,
   // so the head's plate is hidden on that route the way the head's sentence is.
-  // `summarizer` is the longest name in this fixture's roster, which is the one
-  // the display step has to fit.
   var stagePlate = document.getElementById("stage-plate");
   if (stagePlate) stagePlate.hidden = route === "dash";
-  // …AND IT WRITES THE WORD INTO THE `<text>`, NOT INTO THE HEADING. The plate is an
-  // inline `<svg>` since the span fix, and `plate.textContent = …` DELETES it — the
-  // fixture would then render an ordinary unspanned text node and every shot taken of
-  // it would be of a page the app does not serve. The accessible name is the svg's
-  // `aria-label` and moves with the word, exactly as `centre/panels.rs` emits the pair.
+  // …AND THE WORD IS A TEXT NODE, because the subject plate is type and not a
+  // span. It carried an inline `<svg><text textLength>` for one round and the
+  // four-letter name `main` came out 6.87x over-tracked at 1920; the mechanism
+  // is now the Dashboard `<h1>`'s alone (`centre/plate.rs`).
+  //
+  // THE FIXTURE'S WORD IS THE APP'S SHORTEST, NOT ITS LONGEST. `summarizer` is
+  // ten glyphs and was chosen as an OVERFLOW stress — and it is the most
+  // flattering word in the roster for every other question, so a design loop
+  // looking at these renders saw a plate that was fine while the app served a
+  // stretched one. The shipped roster is `main` and `critic`. Overflow is
+  // covered by `XOVERFLOWEACH` and the tagline, which is far wider than any
+  // name; what a render of a plate needs to show is the SHORT case.
   var plate = document.querySelector("#stage-plate .plate");
-  if (plate) {
-    var word = plate.querySelector("text");
-    (word || plate).textContent = "summarizer";
-    var label = plate.querySelector("svg");
-    if (label) label.setAttribute("aria-label", "summarizer");
-  }
+  if (plate) plate.textContent = "main";
   // …AND THE ACTIVE TAB IS THE AGENT THE PLATE NAMES (lap 2's desktop critic).
-  // The fixture wrote `summarizer` into the plate as a longest-name width
-  // stress and left the band underlining MAIN, so every desktop render showed a
-  // page whose plate and switcher disagreed — an artifact a reader has to
-  // correct for before they can judge the pairing at all. The stress is kept;
-  // the highlight moves with it.
+  // The plate and the switcher used to disagree — an artifact a reader has to
+  // correct for before they can judge the pairing at all. They move together.
   document.querySelectorAll("#agent-strip .tab").forEach(function (b) {
-    var on = b.id === "tab-summarizer";
+    var on = b.id === "tab-main";
     b.classList.toggle("current", on);
     b.setAttribute("aria-selected", on ? "true" : "false");
     b.setAttribute("tabindex", on ? "0" : "-1");
