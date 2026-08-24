@@ -19,7 +19,7 @@
 // worker that can serve a shell from a build whose assets are gone.
 importScripts("coi-sw.js");
 
-const VERSION = "e02f173";
+const VERSION = "e10ed34";
 const CACHE = "askk-" + VERSION;
 
 // The container2wasm runtime is ~47MB of bytes that DO NOT CHANGE between

@@ -46,8 +46,8 @@
        production and publish.sh gates on it. -->
   
 <script type="module">
-import init, * as bindings from './ui-ccecf4bb3723b62b.js';
-const wasm = await init({ module_or_path: './ui-ccecf4bb3723b62b_bg.wasm' });
+import init, * as bindings from './ui-6aae36d26db8aca4.js';
+const wasm = await init({ module_or_path: './ui-6aae36d26db8aca4_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -80,6 +80,25 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
        whose subject is a SCREEN rather than a component, and it composes over
        every component the first screen is built from. -->
   <link rel="stylesheet" href="./editorial-c320311102d22a38.css" integrity="sha384-nokTdWM+jPeTUX3zAAlu5x79oDzt4ZWL6emWk0ePFp/NmzdX3MHyDSPQWKJmsKSf"/>
+  <!-- The ADE surfaces (ADE-DESIGN.md §3). After the components, before the
+       four themes, so a theme can re-point anything in it. -->
+  <link rel="stylesheet" href="./ade-fe73723a7678c665.css" integrity="sha384-BLL8g9PjDJcsKUaUMXjNDg/kT4htAnjOyDishKjsWGEkZrcHlzuJiKYjoCkpAD/1"/>
+  <!-- THE FOUR DIRECTIONS (ADE-DESIGN.md §4). LAST of all the stylesheets,
+       because a theme composes over every sheet above it including the front
+       page's, and because a theme that had to out-specify editorial.css would
+       be writing !important instead of a selector.
+
+       ALL FOUR SHIP ON EVERY LOAD and three of them match nothing: each file's
+       every selector is prefixed with its own `[data-theme]` attribute, which
+       `scripts/check-themes.py` executes, so the unselected three cost their
+       bytes and no rules. Four files of ~4KB against a wasm bundle measured in
+       hundreds is the cheaper half of the trade; the other half is that
+       switching theme is one attribute and no fetch, which is what makes the
+       owner's side-by-side comparison possible at all. -->
+  <link rel="stylesheet" href="./theme-halo-e9850be2b579d094.css" integrity="sha384-tJWO1QKCNcRxpZqbw9Bt689GY/E7j6xyC8kCyUNj6aYwXReTsi4SM/pox9mqjAAi"/>
+  <link rel="stylesheet" href="./theme-console-eea9f7e73568d8d6.css" integrity="sha384-M3mVRmmadHNmZAWPrqzUGsh6YSxt7voiXcSLYPVslskaUNDJeSElCFqkLdyagp3u"/>
+  <link rel="stylesheet" href="./theme-gallery-1562de9b6854bbca.css" integrity="sha384-4PIE4+ARpNXe2GLW44gUh6nBSgYl2lT19mCtNJyk+5Y+P7X/iBcThZWk4J/+s5sm"/>
+  <link rel="stylesheet" href="./theme-atelier-411773e36fc68eb1.css" integrity="sha384-usSOEfmo2zmmRx3UzmjEbwfdTlOFhgM9ZDoPlYquRfRf1YnB0jB8ZHiGX4Hm14hT"/>
   
   
   <!-- One Worker per agent (increment 06). Transport only: it imports this
@@ -141,6 +160,32 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       document.documentElement.setAttribute("data-skin", "plain");
     }
   </script>
+  <!-- THE SAVED THEME, BEFORE THE FIRST PAINT — the same argument the skin
+       block above makes, for the same reason: this crate is Wasm and the bundle
+       arrives after the first frame, so a stored preference about how the page
+       LOOKS cannot be applied by it without painting the wrong page first.
+
+       `?theme=` WINS OVER STORAGE and does not write to it. That is what makes
+       a link shareable and what lets `scripts/check-layout.sh` render a theme
+       without touching the machine's own choice — the same contract `?skin=`
+       already has. An unknown slug falls through to the default rather than
+       stamping an attribute that matches no stylesheet, so a typo lands on a
+       real page instead of an unstyled one.
+
+       No application logic (I5): four names and one attribute. -->
+  <script>
+    (function () {
+      var known = ["halo", "console", "gallery", "atelier"];
+      var want = null;
+      try {
+        want = new URLSearchParams(location.search).get("theme");
+        if (!want) { want = localStorage.getItem("askk.theme"); }
+      } catch (e) { want = null; }
+      if (known.indexOf(want) >= 0) {
+        document.documentElement.setAttribute("data-theme", want);
+      }
+    })();
+  </script>
   <!-- ONE VENDOR PREFIX, NOT A BEHAVIOUR (increment 19, I5's exception).
        Chrome and Safari expose speech recognition as `webkitSpeechRecognition`
        and web-sys binds the standard name; this aliases the two so the whole
@@ -152,7 +197,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.SpeechRecognition = window.webkitSpeechRecognition;
     }
   </script>
-<link rel="modulepreload" href="./ui-ccecf4bb3723b62b.js" crossorigin="anonymous" integrity="sha384-WzXsVmuo0X7+it9+OPHfLq0OPvrBvxX790QnC+ZqgP8t0seviBgxhmsFAQ3UXZEj"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/src/c2w.js" crossorigin="anonymous" integrity="sha384-r9x/JTBH62aiG0fEj88VTw2Eou3USgugEK9mpWGBG5jcHoeqNuOG15MqdOjYUYDB"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="preload" href="./ui-ccecf4bb3723b62b_bg.wasm" crossorigin="anonymous" integrity="sha384-TTtpF9sXkSGpxmzX0DY33/Xd4p1o3lEiS8/Ggrg5w5SxU5PKAgTnNPNGR1UDDnyR" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./ui-6aae36d26db8aca4.js" crossorigin="anonymous" integrity="sha384-ig4LPNUpmShjTZe0qgaEyiXKlxax3yL+qsgZ8zlbgg7WkNdPqOi1InmqlR45/mV9"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/hydrate.js" crossorigin="anonymous" integrity="sha384-Ocp9HYCb7T7M2KNri/Y2CHx/JgjlahEvu2KUTc/YKyGLB0s0pgNeCaanjX7egjMz"><link rel="modulepreload" href="./snippets/dioxus-cli-config-74c4aa43f52789a0/inline0.js" crossorigin="anonymous" integrity="sha384-63GOaGGIhEHCB9m4vzzYEBfUIIUWiAYuNlk/LB2TuDDcjK13LO2II01K9xxO0fFG"><link rel="modulepreload" href="./snippets/adapters_web-c6ebf9abec03fbbe/src/c2w.js" crossorigin="anonymous" integrity="sha384-r9x/JTBH62aiG0fEj88VTw2Eou3USgugEK9mpWGBG5jcHoeqNuOG15MqdOjYUYDB"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/set_attribute.js" crossorigin="anonymous" integrity="sha384-KzHUe16NLJR2eaeVyqeB7zwb1qHGH3sV/aw0aS7V/+IeQwWH6OAnZ9nbGkwEyGzZ"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/src/js/eval.js" crossorigin="anonymous" integrity="sha384-p8SsdRWHMmi6kI0ok6n5NV3mpIQPM5rkaJiiTwobcDIXKNhvajvPCqsBACIQVcP8"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/inline0.js" crossorigin="anonymous" integrity="sha384-j0LKwUivj+3TJqebf9mBv6v1Yu2sX+LAJanOVfQAVOZpWTU0+pzzo8XExJBFDUso"><link rel="modulepreload" href="./snippets/dioxus-interpreter-js-20451f6aefec841d/src/js/patch_console.js" crossorigin="anonymous" integrity="sha384-r+5veWcnM6yFNXixia5X8SIr1KdMZfaSc4dp0/8fqFpt3s6gK4zUXXSkvHdZ4TmG"><link rel="modulepreload" href="./snippets/dioxus-web-eae67878b22d6805/inline0.js" crossorigin="anonymous" integrity="sha384-2v8X0XAeO26J0vmoLhIbIeAjVzFnrY9iLhlYJcksTMp7Ip2tbDcoX4vD/hCan7M7"><link rel="preload" href="./ui-6aae36d26db8aca4_bg.wasm" crossorigin="anonymous" integrity="sha384-zxZNATDulI8QNIOF3G6k1UTaqw+8rYV/WrMvI+DQb50MUlrPFRcC/ExU+ZC4kllv" as="fetch" type="application/wasm"></head>
 <body>
   <!-- What a person sees BEFORE the Wasm mounts, and what they are left with
        if it never does: the bundle 404s, a stale service worker serves a shell
