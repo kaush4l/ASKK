@@ -144,3 +144,61 @@ restored, `LAYOUT CHECK OK`.
 - It does not measure contrast for any proposed design. Every number above is
   about the page as it ships today.
 - It does not evaluate any view other than the Dashboard's first screen.
+
+---
+
+## F7 — THE NAMEPLATE OVERHANGS ITS OWN RULE ON A PHONE (open, with the arithmetic)
+
+Measured on the LIVE page at 375px, deploy `8508789` of `1e3a061`:
+
+```
+.plate box   right = 347.8
+.plate glyphs right = 356.1     err = +8.3px
+scrollWidth 328 vs clientWidth 320   over = 8px
+```
+
+The rules above and below the word end at 347.8; the word ends at 356.1. It
+reads as the nameplate breaking out of its own frame, which is the kind of
+detail that reads as a mistake rather than as an optical bleed.
+
+**The cause is a knee the fit does not model.** `--tr-nameplate` solves the
+letter-spacing that makes HARNESS span the column exactly:
+
+```
+tr = (column - 4.74em * size) / 6        (7 glyphs, 6 inter-letter gaps)
+```
+
+`--t-display` is itself a clamp with a `4.25rem` floor, so **below ~400px the
+word stops growing while the column keeps shrinking**, and the relation between
+`tr` and `vw` changes slope. The shipped term `-1.734rem + 7.61vw` was fitted on
+the growing side. On the pinned side it over-tracks by 1.34px per gap at 375 —
+which is 6 × 1.34 ≈ the 8px measured.
+
+| vw | true fit | shipped |
+|---:|---------:|--------:|
+| 375 | −0.55 | **+0.79** |
+| 390 | +1.95 | +1.94 |
+| 500 | +11.59 | +10.31 |
+
+### WHY IT IS NOT FIXED HERE
+
+A two-line form — `min(16.667vw - 3.94rem, <the original term>)` — fixes 375 to
++0.3px. It was written, measured and **reverted**, for two reasons that are
+worth more than the fix:
+
+1. **A first attempt broke the desktop.** Re-deriving the upper line as
+   `7.977vw - 1.768rem` pushed 1440 into the `5.2rem` cap and overhung by
+   8.3px — trading a phone defect for a desktop one.
+2. **The measurement rig cannot settle it.** The numbers above the phone band
+   were taken against `scripts/layout-probe.html`, whose column widths are not
+   the app's, and whose non-Dashboard plate is the word "main" — four letters,
+   not seven — so the 4.74em constant does not apply to it at all. A fit
+   verified on that fixture is not a fit verified on the product. The desktop
+   critic's zero-error result at seven widths from 1024 to 2560 was taken
+   against the real app, and that is the bar.
+
+**So the fix needs the real app at a range of widths, not the probe.** Until
+that rig exists the shipped term stays, because it is the one that was measured
+on the thing users load. Trading a verified desktop for an unverified phone is
+the wrong direction, and shipping a calibration that cannot be checked is how
+`--gap` survived four rounds claiming three readers it never had.
