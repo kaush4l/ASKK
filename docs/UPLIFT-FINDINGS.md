@@ -264,3 +264,35 @@ improvised.
 Until then the shipped term stays, because reverting to no tracking loses the
 span entirely and the two widths it does solve are the two most common. What
 does NOT stay is the claim that it is solved.
+
+---
+
+## F8 — THE PRODUCT'S ONE ACT IS NOT ON THE FIRST SCREEN
+
+F1–F7 are all about how the page LOOKS. The owner's verdict on the round that
+fixed them was that it "uplifted nothing", and F8 is why: eight rounds moved
+type and spacing across an information architecture nobody had questioned.
+
+Measured on the real build (`scripts/measure-app.sh`), Dashboard, distance from
+the top of the viewport to the first text input — the only place a person can
+give an agent a task:
+
+| viewport | input at y | fold | verdict |
+|---|---:|---:|---|
+| 390 x 844 | **1162** | 844 | 318px BELOW the fold |
+| 1440 x 900 | **896** | 900 | flush against the bottom edge |
+
+The wordmark starts at y=232 (phone) and y=202 (desktop). So above the fold the
+page spends its whole first screen on identity, a tagline, a collapsed
+disclosure and a stat table, and the act the product exists for is not on it at
+either size.
+
+Second finding, structural rather than positional: **watching an agent work is
+split across three sibling destinations** — Chat, Tool trace and Debug — each a
+separate navigation, while the run itself is one continuous event. The nav is
+eight entries of equal visual weight (`crates/ui/src/shell/views.rs:71`), two of
+which (Debug, Design system) are instrumentation for the person building the
+product, ranked identically to the ones a user needs.
+
+This is not a CSS defect and cannot be fixed by a CSS change. It is chartered as
+a ground-up rethink of what screens exist.
