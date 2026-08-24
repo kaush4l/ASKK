@@ -1498,7 +1498,15 @@ here means the composer is always exactly where you left it.
     not a verified claim). The two constants are a RATCHET — raise them in the
     same change that earns them, never lower them.
 11. `cargo test`, `scripts/check-layering.py`, `scripts/check-size.py`,
-    `scripts/check-layout.sh` green.
+    `scripts/check-themes.py`, `scripts/check-layout.sh` green. `check-themes.py`
+    is the ADE round's (ADE-DESIGN.md §5.5): a SKIN is held to a token swap by
+    G2, but a THEME may carry rules, so the thing that keeps four extra
+    stylesheets from breaking G1 is that every selector in one is prefixed with
+    its own `[data-theme]` attribute. `check-layout.sh` also renders the four at
+    two viewports on all three routes, which is where the gate caught them: each
+    theme opened with a smaller `--t-display` and each failed RAMPRANGE and
+    STRETCH for it, one of them at 2.18:1 — the exact arithmetic UPLIFT F2
+    recorded as the cheap-imitation signature.
 12. A fresh agent shown a screen cold says what it is for within five seconds.
 
 ---

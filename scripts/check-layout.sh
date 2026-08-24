@@ -81,5 +81,33 @@ print(html.unescape(m.group(1)) if m else "")')
   done
 done
 
+# ---- and every one of them again, in each of the four themes ---------------
+# ADE-DESIGN.md E8: a theme that passes nothing is not a direction the owner can
+# choose. The sweep above is 54 configurations and multiplying it by five would
+# be 270 headless launches, so the themed pass is TWO viewports — the phone and
+# the laptop the exit criteria are written against — on all three routes, in the
+# shipped skin. That is 24 more runs and it is stated here rather than left
+# implicit, because a gate that quietly covers less than it appears to is the
+# defect this repo has already shipped twice.
+for size in 390x844 1440x900; do
+  for theme in halo console gallery atelier; do
+    for route in dash chat deck; do
+      url="file://$PWD/$OUT/index.html?skin=plain&theme=$theme&route=$route"
+      dom=$("$SHELL_BIN" --headless --disable-gpu --no-sandbox $EXTRA \
+        --window-size="${size/x/,}" --virtual-time-budget=1500 --dump-dom "$url" 2>/dev/null)
+      report=$(printf '%s' "$dom" | python3 -c '
+import html, re, sys
+m = re.search(r"<pre id=\"report\">(.*?)</pre>", sys.stdin.read(), re.S)
+print(html.unescape(m.group(1)) if m else "")')
+      [ -n "$report" ] || { echo "GATE FAIL: no report at $size $theme $route" >&2; fails=$((fails+1)); continue; }
+      echo "== $size $theme $route"
+      echo "$report"
+      echo
+      n=$(printf '%s' "$report" | grep -c '^FAIL ' || true)
+      fails=$((fails + n))
+    done
+  done
+done
+
 if [ "$fails" -gt 0 ]; then echo "LAYOUT CHECK FAILED: $fails" >&2; exit 1; fi
 echo "LAYOUT CHECK OK"

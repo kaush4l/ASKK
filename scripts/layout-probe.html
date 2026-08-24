@@ -14,6 +14,33 @@
 <meta charset="utf-8">
 <title>ASKK layout probe</title>
 <!--CSS-->
+<!-- THE THEME, IN THE HEAD, BEFORE ANYTHING IS PAINTED (ADE-DESIGN.md §4).
+
+     It was one line in `layout-probe.js` and it cost an hour: every token
+     resolved correctly — root `--ink` read `#1b1c1f` under `?theme=gallery` —
+     while `getComputedStyle(button).color` answered `rgb(244,240,250)`, the
+     shipped ink, and eighteen CONTRAST assertions failed against a colour the
+     page was not painting. `controls.css` transitions `color`, `layout-probe.js`
+     runs in the BODY, so flipping the attribute there starts a transition and
+     `getComputedStyle` reports the value a transition is CURRENTLY at — which
+     `layout-audit.js:145` already says in its own comment about the hover pass,
+     for exactly this reason.
+
+     The app has never had this bug, because `web/index.html` applies the saved
+     theme in its `<head>` before the body exists. So does this now: the fixture
+     models what the page does, which is the only thing a fixture is for. -->
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search);
+    var want = q.get("theme");
+    if (["halo", "console", "gallery", "atelier"].indexOf(want) >= 0) {
+      document.documentElement.setAttribute("data-theme", want);
+    }
+    if (q.get("skin") === "plain") {
+      document.documentElement.setAttribute("data-skin", "plain");
+    }
+  })();
+</script>
 </head>
 <body>
 <!-- Dioxus mounts the whole app into this div (web/index.html), so `header`
@@ -446,6 +473,13 @@
       <!-- A CARD HOLDING ONLY A READING COLUMN STOPS AT ONE (R7-6b): this was
            1136px round 494px of text with an empty right half. -->
       <section class="panel flat reading" aria-label="Appearance"><h2>Appearance</h2><p class="note">This page has a plain background. Turning the glow on puts a tinted light behind the panels — nothing else changes.</p><button type="button" class="skin-toggle btn-secondary" aria-pressed="false"><span>Background glow</span><span class="toggle-state">off</span></button></section>
+      <!-- THE THEME PICKER (ADE-DESIGN.md §4), as `crates/ui/src/shell/theme.rs`
+           renders it: five rows, one of them marked with `aria-checked="true"`,
+           which is the state `ade.css` paints and therefore the state the
+           contrast audit has to be able to see. A fixture that only ever showed
+           the UNCHOSEN row would leave the accent-on-surface-2 pairing — the one
+           combination this control invents — unmeasured in every theme. -->
+      <section class="panel flat reading" aria-label="Theme"><h2>Theme</h2><p class="note">Four directions for what this product looks and feels like, plus the page as it ships.</p><div class="theme-list" role="radiogroup" aria-label="Theme"><button type="button" class="theme-choice btn-ghost" role="radio" aria-checked="true"><span class="theme-name">As it ships</span><span class="theme-what">The current page: violet ground, serif headline, ruled panels.</span></button><button type="button" class="theme-choice btn-ghost" role="radio" aria-checked="false"><span class="theme-name">Halo</span><span class="theme-what">One light, one field, centred. Voice first, air everywhere, no corners.</span></button><button type="button" class="theme-choice btn-ghost" role="radio" aria-checked="false"><span class="theme-name">Console</span><span class="theme-what">Monospace and dense. No light, no blur, square. Rows over room.</span></button></div></section>
       <!-- The engine picker is GONE (2026-08-18). There was a `select` in a
            reading card here, offering CheerpX beside container2wasm; CheerpX
            was deleted and one engine is not a choice, so the card states what

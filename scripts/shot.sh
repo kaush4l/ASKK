@@ -12,6 +12,9 @@
 #   width  device-independent px (390 phone, 768 tablet, 1440 desktop)
 #   skin   glass (default) | plain   — BOTH ship, so both get looked at
 #   route  dash (default) | chat | deck
+#   theme  (5th arg) halo | console | gallery | atelier — omit for the shipped
+#          page. ADE-DESIGN.md §4: four directions the owner is choosing
+#          between, and the whole point of them is that they are LOOKED at.
 #
 # THE ROUTE ARGUMENT IS NOT OPTIONAL POLISH. The first version of this script
 # copied no JavaScript into the working directory, so the probe's own
@@ -23,10 +26,11 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-W=${1:?usage: shot.sh <width> [out.png] [skin] [route]}
+W=${1:?usage: shot.sh <width> [out.png] [skin] [route] [theme]}
 OUT=${2:-out/shots/shot-$W.png}
 SKIN=${3:-glass}
 ROUTE=${4:-dash}
+THEME=${5:-}
 H=${HEIGHT:-}
 
 SB=$(find "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwright" \
@@ -69,7 +73,7 @@ PY
   --window-size="$W,${H:-$(( W < 500 ? 844 : 900 ))}" \
   --virtual-time-budget=3000 \
   --screenshot="$OUT" \
-  "file://$PWD/out/shot-work/index.html?skin=$SKIN&route=$ROUTE" >/dev/null 2>&1
+  "file://$PWD/out/shot-work/index.html?skin=$SKIN&route=$ROUTE&theme=$THEME" >/dev/null 2>&1
 
 [ -s "$OUT" ] || { echo "shot.sh: no bytes written" >&2; exit 1; }
-echo "$OUT  ${W}px  skin=$SKIN  route=$ROUTE  $(wc -c < "$OUT" | tr -d ' ') bytes"
+echo "$OUT  ${W}px  skin=$SKIN  route=$ROUTE  theme=${THEME:-shipped}  $(wc -c < "$OUT" | tr -d ' ') bytes"

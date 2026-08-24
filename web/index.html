@@ -69,6 +69,25 @@
        whose subject is a SCREEN rather than a component, and it composes over
        every component the first screen is built from. -->
   <link data-trunk rel="css" href="editorial.css">
+  <!-- The ADE surfaces (ADE-DESIGN.md §3). After the components, before the
+       four themes, so a theme can re-point anything in it. -->
+  <link data-trunk rel="css" href="ade.css">
+  <!-- THE FOUR DIRECTIONS (ADE-DESIGN.md §4). LAST of all the stylesheets,
+       because a theme composes over every sheet above it including the front
+       page's, and because a theme that had to out-specify editorial.css would
+       be writing !important instead of a selector.
+
+       ALL FOUR SHIP ON EVERY LOAD and three of them match nothing: each file's
+       every selector is prefixed with its own `[data-theme]` attribute, which
+       `scripts/check-themes.py` executes, so the unselected three cost their
+       bytes and no rules. Four files of ~4KB against a wasm bundle measured in
+       hundreds is the cheaper half of the trade; the other half is that
+       switching theme is one attribute and no fetch, which is what makes the
+       owner's side-by-side comparison possible at all. -->
+  <link data-trunk rel="css" href="theme-halo.css">
+  <link data-trunk rel="css" href="theme-console.css">
+  <link data-trunk rel="css" href="theme-gallery.css">
+  <link data-trunk rel="css" href="theme-atelier.css">
   <link data-trunk rel="copy-file" href="sw.js">
   <link data-trunk rel="copy-file" href="coi-sw.js">
   <!-- One Worker per agent (increment 06). Transport only: it imports this
@@ -129,6 +148,32 @@
     } catch (e) {
       document.documentElement.setAttribute("data-skin", "plain");
     }
+  </script>
+  <!-- THE SAVED THEME, BEFORE THE FIRST PAINT — the same argument the skin
+       block above makes, for the same reason: this crate is Wasm and the bundle
+       arrives after the first frame, so a stored preference about how the page
+       LOOKS cannot be applied by it without painting the wrong page first.
+
+       `?theme=` WINS OVER STORAGE and does not write to it. That is what makes
+       a link shareable and what lets `scripts/check-layout.sh` render a theme
+       without touching the machine's own choice — the same contract `?skin=`
+       already has. An unknown slug falls through to the default rather than
+       stamping an attribute that matches no stylesheet, so a typo lands on a
+       real page instead of an unstyled one.
+
+       No application logic (I5): four names and one attribute. -->
+  <script>
+    (function () {
+      var known = ["halo", "console", "gallery", "atelier"];
+      var want = null;
+      try {
+        want = new URLSearchParams(location.search).get("theme");
+        if (!want) { want = localStorage.getItem("askk.theme"); }
+      } catch (e) { want = null; }
+      if (known.indexOf(want) >= 0) {
+        document.documentElement.setAttribute("data-theme", want);
+      }
+    })();
   </script>
   <!-- ONE VENDOR PREFIX, NOT A BEHAVIOUR (increment 19, I5's exception).
        Chrome and Safari expose speech recognition as `webkitSpeechRecognition`

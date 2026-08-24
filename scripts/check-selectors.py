@@ -27,7 +27,19 @@ CSS = sorted((ROOT / "web").glob("*.css"))
 # DESIGN.md §2. A file not on this list is a file nobody agreed to.
 EXPECTED = {"tokens.css", "base.css", "glass.css", "layout.css",
             "chrome.css", "strip.css", "surfaces.css", "controls.css",
-            "workspace.css", "mission.css", "flow.css", "editorial.css"}
+            "workspace.css", "mission.css", "flow.css", "editorial.css",
+            # ADE-DESIGN.md §3 — the screens this round introduces. Its own
+            # header says why it is a file and not four more lines of
+            # controls.css, which is at 199 of 200.
+            "ade.css"}
+# ADE-DESIGN.md §4. One file per theme, and `scripts/check-themes.py` asserts
+# that every selector inside one is prefixed with that theme's own attribute —
+# which is what keeps G1 above from firing the moment a fourth direction is
+# added. They are listed separately from EXPECTED because the set above is
+# "the files DESIGN.md §2 names" and a theme is not one of those; it is an
+# additive layer over all of them.
+THEMES = {"halo", "console", "gallery", "atelier"}
+EXPECTED |= {f"theme-{t}.css" for t in sorted(THEMES)}
 
 MAX_LINES = 200          # I12
 # DESIGN.md §5. RAISED 5 -> 6 IN R5-A, deliberately and once. The ceiling

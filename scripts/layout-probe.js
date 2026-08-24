@@ -16,7 +16,12 @@
   };
   var info = function (name, detail) { out.push("INFO " + name + ": " + detail); };
 
-  if (q.get("skin") === "plain") document.documentElement.setAttribute("data-skin", "plain");
+  // THE SKIN AND THE THEME ARE SET IN THE HEAD, not here — `layout-probe.html`
+  // carries both and says why: this file runs in the BODY, `controls.css`
+  // transitions `color`, and an attribute flipped after first paint is read
+  // back by `getComputedStyle` as the value the transition is currently at.
+  // Eighteen CONTRAST assertions failed against a colour the page was not
+  // painting before that moved. `q` is still read below for the route.
   // Route exactly the way the shell does: one `hidden` attribute per region,
   // and ONE VIEW MOUNTED AT A TIME. The fixture used to leave the Dashboard
   // standing under whichever route it was measuring, which no shipped page

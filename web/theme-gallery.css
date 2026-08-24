@@ -1,0 +1,142 @@
+/* GALLERY — the on-device model shelf (ADE-DESIGN.md §4).
+
+   The reference is Google's AI Edge Gallery: a light Material surface, big
+   rounded cards, a hero you act in at the top, capability tiles under it, and
+   chips for the things a model can do. It is the only one of the four that is
+   MOBILE-FIRST by construction rather than by breakpoint, and the only one that
+   is light — which matters, because every measurement this product has ever
+   taken was taken on a dark page, and a light one is the honest test of whether
+   the contrast tokens are doing work or whether the ground was doing it.
+
+   Its argument: an assistant you carry is a thing you TOUCH, and touch wants
+   big soft targets with air between them, not rows.
+
+   Every selector is prefixed (ADE-DESIGN.md §5.5, `scripts/check-themes.py`). */
+
+:root[data-theme="gallery"] {
+  /* PAPER, WITH ONE TINT. Not pure white: a flat #fff under a full-bleed
+     surface is the one thing that reads as an unstyled document. */
+  --ground: #f6f7fb;
+  --ground-deep: #eceef5;
+  --vignette: transparent;
+  --lobe-key: rgba(120, 160, 255, 0.10);
+  --lobe-fill: rgba(150, 120, 255, 0.07);
+  --horizon: transparent;
+  --ground-field:
+    radial-gradient(80% 40% at 12% 0%, var(--lobe-key), transparent 70%),
+    radial-gradient(70% 40% at 92% 6%, var(--lobe-fill), transparent 72%),
+    linear-gradient(180deg, var(--ground), var(--ground-deep));
+
+  /* INK IS DARK HERE, and every one of these is measured against --surface-1
+     (#ffffff) rather than against the ground: body text sits on a card in this
+     theme, always. #1b1c1f on white is 15.5:1; --ink-2 #43474e is 8.9:1;
+     --ink-3 #6b7079 is 4.9:1 and is the floor, used for captions only. */
+  --ink: #1b1c1f;
+  --ink-2: #43474e;
+  --ink-3: #6b7079;
+  --machine: #1f5a4a;
+
+  /* The accent must carry white text at 4.5:1 to be a filled button's ground:
+     #1f4fd8 on #ffffff is 7.0:1, and #ffffff on #1f4fd8 is 7.0:1 both ways. */
+  --accent: #1f4fd8;
+  --accent-ink: #ffffff;
+  --success: #15683f;
+  --warning: #7a5300;
+  --danger: #b3261e;
+
+  /* ON A LIGHT GROUND A HAIRLINE IS DARK. The shipped tokens are white at low
+     alpha, which on paper is invisible — the single most common way a dark
+     design fails when it is inverted. */
+  --hairline: rgba(20, 22, 28, 0.10);
+  --hairline-lit: rgba(20, 22, 28, 0.18);
+  --control: #43474e;
+  --divider: rgba(20, 22, 28, 0.07);
+  --focus-halo: rgba(255, 255, 255, 0.9);
+
+  --surface-1: #ffffff;
+  --surface-2: #ffffff;
+  --surface-3: #ffffff;
+
+  /* MATERIAL 3 DOES NOT BLUR, IT ELEVATES. Cards are opaque white lifted off
+     the paper by a soft shadow; there is no glass in this theme at all, so the
+     `backdrop-filter` fallback and the theme are the same picture. */
+  --e1-fill: #ffffff;
+  --e1-blur: 0px;
+  --e1-sat: 100%;
+  --e2-fill: rgba(20, 22, 28, 0.03);
+  --e3-fill: #ffffff;
+  --e3-blur: 0px;
+  --lift:
+    0 1px 2px rgba(20, 22, 28, 0.07),
+    0 4px 10px rgba(20, 22, 28, 0.06),
+    0 12px 28px rgba(20, 22, 28, 0.07);
+  --e1-shadow: var(--lift);
+  --e3-shadow: 0 8px 24px rgba(20, 22, 28, 0.10);
+  --lift-edge: none;
+  --e1-lit: none;
+  --e3-lit: none;
+  --grain: none;
+
+  /* ONE FAMILY, and it is the system's — Material's whole point is that the
+     interface font is the platform's, not a signature. The display step comes
+     right down: a gallery has a title, not a headline. */
+  --display: var(--font);
+  /* THE DISPLAY STEP IS NOT A THEME'S TO SHRINK, and this was measured the hard
+     way: each of the four opened with its own smaller `--t-display`, and each
+     failed two gates at once. RAMPRANGE fell to 2.18:1 on Console — the exact
+     "no hierarchy" arithmetic UPLIFT F2 recorded as the cheap-imitation
+     signature — and STRETCH failed everywhere, because the Dashboard nameplate
+     is an `<svg><text textLength="100%">` that spans its column BY
+     CONSTRUCTION: shrink the type and the same word is pulled across the same
+     box, which is the 6.87x regression of the previous round arriving by a new
+     road. So the step stays where `tokens.css` puts it and the themes differ on
+     FAMILY, TRACKING, LINE BOX and CASE instead — which is the honest set of
+     levers anyway. Whether a 136px word belongs on the first screen at all is
+     ADE-DESIGN.md F8's question, and it is answered by the IA round, not here. */
+  --lh-display: 1.15;
+  --tr-display: -0.01em;
+  --tr-caption: 0.08em;
+
+  /* ROOMY, BUT NOT AIRY. The space goes INSIDE the cards, which is the
+     difference between Material and the ambient theme above. */
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --gutter: var(--s-4);
+
+  /* BIG CORNERS. This is the single most recognisable thing about the
+     reference and it is one token. */
+  --r-sm: 16px;
+  --r-md: 24px;
+  --r-full: 999px;
+  --e2-radius: 16px;
+  --e3-radius: 28px;
+  /* NO RULES. A card's edge is its shadow; drawing a line as well is the
+     hybrid that makes a Material page look like a bootstrap page. */
+  --rule: 0;
+  --rule-hair: 0;
+
+  --pulse: rgba(31, 79, 216, 0.22);
+}
+
+/* CARDS, NOT PANES. The radius and the lift are tokens above; what this rule
+   adds is that a panel here has no line at all, which the ruled themes need. */
+:root[data-theme="gallery"] .panel {
+  border-radius: var(--r-md);
+  border: 0;
+  box-shadow: var(--lift);
+}
+
+/* A TURN IS A BUBBLE. The shipped transcript is a left-ruled block; on a touch
+   surface the two speakers are told apart by SHAPE, which costs nothing and
+   survives being read at arm's length. */
+:root[data-theme="gallery"] .msg {
+  border: 0;
+  border-radius: var(--r-sm);
+  box-shadow: var(--e3-shadow);
+}
+
+/* THE NAV IS A SHELF OF PILLS. */
+:root[data-theme="gallery"] .nav .view-item {
+  border-radius: var(--r-full);
+}

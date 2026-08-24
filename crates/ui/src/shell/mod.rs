@@ -20,6 +20,8 @@ pub(crate) mod heartbeat;
 pub(crate) mod rail;
 pub(crate) mod route;
 pub(crate) mod skin;
+/// Which of the four directions this device draws (ADE-DESIGN.md §4).
+pub(crate) mod theme;
 pub(crate) mod status_pills;
 pub(crate) mod statusbar;
 pub(crate) mod token_meter;

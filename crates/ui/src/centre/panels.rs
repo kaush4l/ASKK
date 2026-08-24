@@ -12,7 +12,7 @@ use crate::chat::thread;
 use crate::settings::{self, endpoint_copy, linux_engine};
 use crate::centre::plate;
 use crate::shell::views::View;
-use crate::shell::{agent_switcher, skin};
+use crate::shell::{agent_switcher, skin, theme};
 use crate::{authoring, debug, terminal, trace};
 
 /// THE STAGE'S HEAD — one band above whatever is routed: the KICKER names the
@@ -191,9 +191,9 @@ pub(crate) fn SettingsView(
             settings::Settings { web, endpoint_set, tick }
             endpoint_copy::search::SearchEndpoint { web, tick }
             skin::Appearance {} // out of the header (R2-14)
-            // WHAT Linux the agent runs in, and what it does to your
-            // files. It was a picker; there is one engine now, so it
-            // states the trade instead of offering one.
+            theme::Themes {} // the four directions (ADE-DESIGN.md §4)
+            // WHAT Linux the agent runs in, and what it does to your files. It
+            // was a picker; there is one engine now, so it states the trade.
             linux_engine::LinuxEngine {}
         }
     }
