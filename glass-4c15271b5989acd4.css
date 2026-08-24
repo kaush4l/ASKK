@@ -25,9 +25,21 @@ header,
   background-color: var(--e1-fill);
   backdrop-filter: blur(var(--e1-blur)) saturate(var(--e1-sat));
   -webkit-backdrop-filter: blur(var(--e1-blur)) saturate(var(--e1-sat));
-  border: 1px solid var(--e1-line);
+  /* THE FURNITURE IS RULED, NOT BOXED (the editorial round). The FILL stays —
+     `glass.css:150` records what happens without it, and the nav covers the lit
+     lobe at 1440, so `--ink` on the bare ground there is light on light. What
+     goes is the 1px outline and the 16px radius: three of the page's 31 rounded
+     rectangles were the header, the nav and the rail, and none of the three is
+     a THING you act on. One rule per region draws the edge instead — the same
+     information in one line rather than four sides. The surface roles this
+     leaves are two and they are legible: a REGION is a plane with a rule, a
+     CARD is a box you can act on.
+     `--e1-lit, --e1-shadow` is unchanged and now resolves to `--lift-edge` and
+     the five-stop `--lift` (tokens.css), which is a REPOINT: this file keeps
+     sole ownership of the (header, box-shadow) pair and G1 never fires. */
+  border: 0;
   box-shadow: var(--e1-lit), var(--e1-shadow);
-  border-radius: var(--e1-radius);
+  border-radius: 0;
 }
 
 /* ---- E2: resting glass, for a surface that is the OUTERMOST glass in its
@@ -108,7 +120,7 @@ header,
   -webkit-backdrop-filter: none;
   border: 1px solid var(--divider);
   box-shadow: none;
-  border-radius: var(--r-sm);
+  border-radius: 0;
 }
 
 /* …except a FLAT card, which is not a row. `.panel .panel` above is (0,2,0)
@@ -145,6 +157,9 @@ header,
   z-index: 40;
 }
 
+/* ONE RULE PER REGION, on the side facing the middle. */
+.nav { border-right: var(--rule-hair); }
+.rail { border-left: var(--rule-hair); }
 .nav, .rail, .e1 { position: relative; isolation: isolate; }
 
 /* The agent strip is a SURFACE, not four buttons floating on the page.
@@ -155,9 +170,21 @@ header,
    lobe and the guard measured 1.99:1 text and a 1.17:1 outline. It gets the
    ground back, as the material it always had — and since R5-6 it has ONE home
    (`.stage-head`) rather than a selector per view that carries it. */
-.stage-head .agent-tabs {
+/* …AS A BAND AND NOT A CARD (the editorial round). The fill stays, because the contrast
+   above is why it exists; the 1px outline and the 12px radius go, because a card drawn
+   round four more cards was five of the page's 31 rounded rectangles and none of the five
+   carried information. `.agent-tabs.band`, NOT `.stage-head .agent-tabs`: since lap 2 the
+   Dashboard renders this strip inside its own panel (`dashboard.rs`), and a scope written
+   as an ANCESTOR silently dropped every rule here the moment the element moved — four
+   bordered chips came back in one screenshot. A class travels with the thing. */
+.agent-tabs.band {
   background-color: var(--surface-1);
-  border: 1px solid var(--e2-line);
-  border-radius: var(--e2-radius);
-  padding: var(--s-2);
+  border: 0;
+  border-radius: 0;
+  padding: var(--s-2) var(--s-3);
 }
+/* …AND ON A PHONE THE BAND IS ITS CHIPS AND NOTHING ELSE. The chips already carry the
+   44px touch floor, so `--s-2` of block padding was 16px of surface around a control that
+   needed none — 60px of a picker where `fold-probe.js` measures the head against a third
+   of the screen, and at 320x780 the deck route stood 3px the wrong side of that floor. */
+@media (max-width: 30rem) { .agent-tabs.band { padding-block: 0; } }

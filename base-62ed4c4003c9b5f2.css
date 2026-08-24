@@ -35,7 +35,9 @@ h1 {
   font-size: var(--t-display);
   line-height: var(--lh-display);
   letter-spacing: var(--tr-display);
-  font-weight: var(--w-strong);
+  /* THE ROMAN FACE, NOT THE BOLD ONE: 600 on a transitional serif resolves to
+     the Bold cut, a TEXT weight drawn to hold at 14px, not at 136. */
+  font-weight: var(--w-normal);
 }
 
 /* THE SUBHEAD REGISTER (R5-A). `h2` names a region and sat at 18px, the same
@@ -46,12 +48,10 @@ h1 {
    and the tracking pulled to 0.06em; what that produced, once every region got
    a title, was `RUN A TASK · MAIN` over `AGENTS AND WHAT THEY ARE DOING` over
    `PROCESSES · 1 RUNNING` over `WORKSPACE ARTIFACTS` over `TOOL TRACE · MAIN` —
-   five caps-and-tracking banners in one column, shouting in unison, with
-   nothing in the stack louder than anything else. Uppercase is a register this
-   design already spends on the 11px eyebrow (`--t-caption`, the view name and
-   the rail's `.rail-who`), and a register used at two sizes stops marking
-   anything. Size and weight carry a panel title; the caps are deleted, and the
-   tracking with them. */
+   five caps-and-tracking banners in one column, shouting in unison. Uppercase
+   is a register this design already spends on the 11px kicker, and a register
+   used at two sizes stops marking anything. Size and weight carry a panel
+   title; the caps are deleted, and the tracking with them. */
 h2 {
   margin: 0 0 var(--s-2);
   font-size: var(--t-subhead);

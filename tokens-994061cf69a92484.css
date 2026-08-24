@@ -1,0 +1,200 @@
+/* tokens.css — the only file that defines a value (DESIGN.md §3-§7). NOTHING
+   here targets an element, and the whole skin/fallback story is a token swap:
+   `[data-skin="plain"]`, no `backdrop-filter`, and `prefers-reduced-
+   transparency` all re-point the SAME tokens (G2). A both-skins rule written
+   machine-skin-only was this repo's most-repeated defect. Now inexpressible. */
+
+:root {
+  /* ---- the ground ------------------------------------------------------ A fixed
+     field, never an image: costs nothing, cannot fail to load. The lit lobe is the worst
+     case for light-on-glass and every contrast number in DESIGN.md is measured there.
+     THE ROOM, REBUILT (the editorial round): plain is the default and means NO BLUR, not
+     NO LIGHT — blur is a material and can fail, light is the room and cannot. FOUR
+     layers, EVERY ONE SIZED IN PERCENT: in rem a 30rem lobe is 480px across a 390px
+     screen. One hue (R8-GLOW): the blue-cyan lobe belonged to nothing else. */
+  --ground: #0b0611; --ground-deep: #070409; --vignette: rgba(0, 0, 0, 0.55);
+  --lobe-key: rgba(206, 172, 255, 0.52); --lobe-fill: rgba(150, 122, 214, 0.20);
+  --horizon: rgba(63, 36, 99, 0.50);
+  --ground-field:
+    radial-gradient(112% 86% at 50% 32%, transparent 46%, var(--vignette) 100%),
+    radial-gradient(72% 56% at 104% 14%, var(--lobe-key), transparent 74%),
+    radial-gradient(84% 52% at 4% 96%, var(--lobe-fill), transparent 72%),
+    radial-gradient(130% 62% at 50% 116%, var(--horizon), transparent 66%),
+    linear-gradient(180deg, var(--ground), var(--ground-deep));
+
+  --ink: #f4f0fa;   /* --ink-3 misses 4.5:1 on E3 over the lobe: opaque only */
+  --ink-2: #c6bad8; --ink-3: #8d80a6; --machine: #a9c6e0;
+
+  --accent: #c9a4ff;   /* #b98cff measured 4.49:1 on E3 over the lobe: failed */
+  --accent-ink: #1a0f2b; --success: #8fe0b4; --warning: #f2cf87;
+  /* Danger was #ffadad, a pale pink two steps from the accent (F18). This is
+     red: ~90° of hue from --accent, 7.5:1 on --surface-1. */
+  --danger: #ff7b72;
+
+  /* A HAIRLINE is a light catch and also the EDGE — what the glow softened worst
+     (R8-GLOW), so 0.15 not 0.10. A CONTROL border is the only thing drawing a
+     fill-less control: 3.50:1 over the lit lobe (WCAG 1.4.11). */
+  --hairline: rgba(255, 255, 255, 0.15); --hairline-lit: rgba(255, 255, 255, 0.30);
+  --control: #c0b3d4; --divider: rgba(255, 255, 255, 0.07);
+  --focus-halo: rgba(11, 6, 17, 0.85);
+
+  --surface-1: #150e1f; --surface-2: #1c1428; --surface-3: #241a33;
+
+  /* Opaque: body text sits on --surface-*, never on a blur (G3); also the fallback.
+     ---- the material: calibrated against reference/NOTES.md. Blur never exceeds 22px;
+     fill and dim are COMPOSITED into one rgba. */
+  --e1-fill: rgba(31, 28, 35, 0.575); --e1-blur: 20px; --e1-sat: 110%;
+  --e1-line: var(--hairline);
+  --e1-lit: inset 0 1px 0 0 var(--hairline-lit);
+
+  --e2-fill: rgba(255, 255, 255, 0.032); --e2-blur: 15px; --e2-sat: 100%;
+  --e2-line: rgba(255, 255, 255, 0.14); --e2-radius: 0;
+  --e2-lit: inset 0 1px 0 0 rgba(255,255,255,.06); --e2-shadow: 0 0 0 0 transparent;
+
+  --e3-fill: rgba(62, 59, 66, 0.409); --e3-blur: 22px; --e3-sat: 115%;
+  --e3-line: rgba(255, 255, 255, 0.15); --e3-lit: inset 0 1px 0 0 rgba(255,255,255,.16);
+  --e3-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.75), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+  --e3-radius: 0; --e3-scrim: rgba(7, 4, 12, 0.5); --e3-dim: rgba(7, 4, 12, 0.35);
+
+  /* ---- mass: a region SITS on the ground. Five stops, geometric falloff — what an
+     occlusion does and what one 24px stop never looks like. CAPPED at the four region
+     planes: on the 31 hairline boxes it is 155 blur passes above the fold. `--e1-shadow`
+     is a REPOINT, so `glass.css` keeps the (header, box-shadow) pair and G1 never fires.
+     The GRAIN is 310 bytes of inline SVG in a 120x120 tile, SOFT-LIGHT by editorial. */
+  --lift: 0 1px 1px rgba(0,0,0,.30), 0 2px 4px rgba(0,0,0,.26), 0 6px 12px rgba(0,0,0,.24),
+          0 16px 28px rgba(0,0,0,.20), 0 34px 64px rgba(0,0,0,.38);
+  --lift-edge: inset 0 1px 0 0 rgba(255,255,255,0.14); --e1-shadow: var(--lift);
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)'/></svg>");
+
+  /* ---- type: SIX sizes, three weights, three families (R5-A, R5-B) ------
+     THREE FAMILIES, because the product had none: everything was
+     `ui-sans-serif`, the OS and not a choice. No font FILE ships — offline
+     first, and a webfont is a network dependency for one aesthetic. */
+  --font: Inter, "SF Pro Text", -apple-system, "Segoe UI Variable Text", "Segoe UI",
+          ui-sans-serif, system-ui, sans-serif;
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia,
+             ui-serif, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", "Cascadia Mono",
+          Menlo, Consolas, monospace;
+  /* SIX, not five (R5-A): the display step was re-scaled, not added to. */
+  --t-display: clamp(4.25rem, 1.5rem + 11vw, 8.5rem);
+  --t-subhead: 1.375rem; --t-heading: 1.125rem; --t-body: 1rem;
+  --t-label: 0.875rem; --t-caption: 0.6875rem;
+  /* 0.9 is the NAMEPLATE's: HARNESS is uppercase, so a 122px line box holds a word whose
+     ink box is 96. 1.6 is PROSE alone — the teaching surface once ran a control's. */
+  --lh-display: 0.9; --lh-subhead: 1.25; --lh-heading: 1.35; --lh-body: 1.6;
+  --lh-label: 1.4; --lh-caption: 1.35; --w-normal: 400; --w-medium: 500; --w-strong: 600;
+  /* `--tr-subhead` (R11) and `--tr-label` (R20-TOUCH) deleted: 0 readers. */
+  --tr-display: -0.03em; --tr-caption: 0.14em;
+  /* A FIT, NOT A STEP, and MEASURED: HARNESS is 4.74em of Iowan caps (322.5px at 68px),
+     so spanning costs (col - 4.74*size)/6 = 1.95px at 390 and 81.9px at 1440; the 4.62em
+     ESTIMATE overflowed 365 into 334. THE FLOOR IS NEGATIVE and that is the 320 case, not
+     a taste: below ~337px the fit solves negative, and -0.03em is `--tr-display`'s own
+     value. It buys 14.3px; the other 48 are editorial.css's full-bleed rule at 22rem. */
+  --tr-nameplate: clamp(-0.03em, -1.734rem + 7.61vw, 5.2rem);
+
+  /* ---- space: base 4px, eight steps, nothing else ---------------------- */
+
+  /* 54ch, not 68 (R4-13): `ch` is the digit ZERO, so 68ch MEASURED 90 a line. `--column`
+     is the SURFACE holding one line: the measure plus a card's two padding steps. */
+  --measure: 54ch; --column: calc(var(--measure) + 2 * var(--s-6));
+  /* …and the measure of the PAGE: `main` caps itself here and `header` reads the same
+     number, which is how the two sit in one frame at 1920 (chrome.css). */
+  --frame: 96rem;
+
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
+  --s-5: 1.5rem; --s-6: 2rem; --s-7: 3rem; --s-8: 4rem;
+  /* THE TWO RULES: a broadsheet is horizontal lines and nothing else. */
+  --rule: 2px solid var(--control); --rule-hair: 1px solid var(--hairline);
+
+  /* SURFACES ARE RULED AND SQUARE; CONTROLS ARE CAPSULES — one sentence, because the
+     editorial round shipped two vocabularies: `.e1` went square (glass.css:42) and the
+     stat row became an index table, while E2 and E3 kept 12 and 16px, so a 16px-radius
+     launcher card sat directly under a plate between two rules in one screenshot. A
+     plane is drawn by its RULE and its FILL now, never by a corner; a thing you PRESS
+     keeps its corners — `--r-sm` on a button, `--r-full` on a pill — and that is the
+     one contrast left standing, the only one that carries information.
+     `--r-lg` and `--e1-radius` go with it: both were dead once `.e1` squared. */
+  --r-sm: 8px; --r-md: 12px; --r-full: 999px;
+
+  /* ---- motion: glass has mass; it settles, it does not snap ---------- */
+  --dur-fast: 120ms; --dur: 220ms; --dur-slow: 380ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1); --ease-out: cubic-bezier(0.16, 1, 0.30, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+
+  /* The flow dot's halo: it read a GROUND lobe, so it dimmed with the skin. */
+  --pulse: rgba(168, 140, 255, 0.30);
+  --tone: var(--control);   /* per-row status channel, written by the board */
+}
+
+/* ONE STEP, TWO JOBS — SCOPED, never forked. 8.5rem is what spanning the Dashboard's
+   1136px column costs; the head's plate is the AGENT, and at 1440 the same 136px moved
+   chat's first panel y=349 -> 573 to restate what the header and the thread row say twice.
+   A FLAT 4.25rem WAS THE WRONG SHAPE OF THAT ARGUMENT (lap 2's desktop critic): the
+   PHONE's floor applied at every width, so the two routes a person lives in ran 68px
+   beside the Dashboard's 136 and FOLDRANGE fell to 6.18:1 — its own floor — on both.
+   Only the CEILING moves: at 390 the middle term is 66.9px so the floor still wins and
+   the phone is unchanged; 1440/1920 reach 80px and FOLDRANGE 7.27:1. 5rem, not 6: the
+   plate is sized by the VIEWPORT but lives in the STAGE, and at 1100 that stage is 460px
+   against 480.8px of word at 96 — it wrapped, and put the deck's panel at y=711 of 900.
+   NOT a seventh step: `check-selectors.py:110` counts `font-size` VALUES, not tokens. */
+/* …AND ITS LINE BOX HOLDS ITS OWN INK. The head's plate is LOWERCASE, so 0.9 put a 61px
+   box around a 76px ink box: scrollHeight 84 vs clientHeight 77, and the hairline cleared
+   a descender by 4.5px. 1.12 is that measured ratio, 76/68; editorial.css takes the 15px
+   it adds back out of the plate's own padding, so the head's height is unchanged. */
+.stage-head .masthead { --t-display: clamp(4.25rem, 1.5rem + 11vw, 5rem); --lh-display: 1.35; }
+/* …AND AT 22rem IT CONDENSES: `summarizer` is 340.6px of Iowan at the 68px floor and 320
+   is every pixel the viewport has once editorial.css reclaims both paddings, so the head
+   wrapped and hyphenated and stood 380px inside a 352px scroller. -0.08em is the FLOOR of
+   that fit and not a taste — each 0.01em is 6.8px over ten gaps, so it brings 340.6 to
+   306.6 and nothing smaller reaches 320. THE SMALLER STEP lap 2's critic preferred is
+   arithmetically shut: 11px is the caption and FOLDRANGE's floor is 6.0, so any plate
+   under 66px fails the ratchet at 320. Same move `--tr-nameplate` makes for HARNESS. */
+@media (max-width: 22rem) { .stage-head .masthead { --tr-display: -0.08em; } }
+
+/* The light is safe only where a PANEL stands between it and the words: below
+   1100px the nav is a drawer, so the room DIMS. The lobes are percent-sized,
+   so what changes here is brightness and never extent. */
+@media (max-width: 1099px) {
+  :root { --lobe-key: rgba(206, 172, 255, 0.20); --lobe-fill: rgba(150, 122, 214, 0.10); }
+}
+
+/* ---- the opaque path: one body, three triggers ------------------------- The border
+   swap is what people forget: with no material behind it the hairline is the ONLY thing
+   drawing the box, so it goes 1.4:1 -> --control at 4.4:1 — the mistake layout-audit.js
+   BOUNDARY fails on. The three blocks are byte-identical on purpose (G2 forbids
+   consolidating them). WHAT LEAVES IS THE BLUR, NOT THE ROOM (UPLIFT F1): these used to
+   flatten `--ground-field`, and since R5-C this is the DEFAULT path, so that flattening
+   WAS the shipped page. The field stays at a dimmed key, and the dropped `--e1-lit`
+   returns as `--lift-edge`: an inset needs no material. */
+:root[data-skin="plain"],
+:root[data-glass="off"] {
+  --e1-fill: var(--surface-1); --e2-fill: var(--surface-2); --e3-fill: var(--surface-3);
+  --e1-blur: 0px; --e2-blur: 0px; --e3-blur: 0px;
+  --e1-sat: 100%; --e2-sat: 100%; --e3-sat: 100%;
+  --e1-line: var(--control); --e2-line: var(--control); --e3-line: var(--control);
+  --e1-lit: var(--lift-edge); --e2-lit: var(--lift-edge); --e3-lit: var(--lift-edge);
+  --lobe-key: rgba(206, 172, 255, 0.40); --lobe-fill: rgba(150, 122, 214, 0.15);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  :root {
+    --e1-fill: var(--surface-1); --e2-fill: var(--surface-2); --e3-fill: var(--surface-3);
+    --e1-blur: 0px; --e2-blur: 0px; --e3-blur: 0px;
+    --e1-sat: 100%; --e2-sat: 100%; --e3-sat: 100%;
+    --e1-line: var(--control); --e2-line: var(--control); --e3-line: var(--control);
+    --e1-lit: var(--lift-edge); --e2-lit: var(--lift-edge); --e3-lit: var(--lift-edge);
+    --lobe-key: rgba(206, 172, 255, 0.40); --lobe-fill: rgba(150, 122, 214, 0.15);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --e1-fill: var(--surface-1); --e2-fill: var(--surface-2); --e3-fill: var(--surface-3);
+    --e1-blur: 0px; --e2-blur: 0px; --e3-blur: 0px;
+    --e1-sat: 100%; --e2-sat: 100%; --e3-sat: 100%;
+    --e1-line: var(--control); --e2-line: var(--control); --e3-line: var(--control);
+    --e1-lit: var(--lift-edge); --e2-lit: var(--lift-edge); --e3-lit: var(--lift-edge);
+    --lobe-key: rgba(206, 172, 255, 0.40); --lobe-fill: rgba(150, 122, 214, 0.15);
+  }
+}

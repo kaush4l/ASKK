@@ -15,32 +15,40 @@
    `core::tiles` refuses to render. The 12rem floor is set by the WORDS and
    not by the numbers: a tile with nothing to report says `nothing spent yet`
    where the figure would be, and a track sized for `8,653` would wrap it. */
+/* …AND IT IS AN INDEX TABLE NOW, not four cards. Four bordered rounded boxes
+   were four more of the 31 rounded rectangles that make a page read as a dark
+   admin template; a broadsheet prints its figures under one rule with hairlines
+   between the columns, which is the same information with three fewer
+   treatments. `gap: 0` because the rules ARE the gap. */
 .tiles {
-  display: grid; gap: var(--s-3);
+  display: grid; gap: 0;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  border-top: var(--rule);
 }
 
-/* ONE SURFACE, AND STATUS CARRIES THE ONLY COLOUR (G2). The reference this
-   was built from gives every tile its own orange/violet/teal wash; here
-   `--danger`, `--warning` and `--success` already mean something on a card,
-   and a decorative gradient beside them is how a red state stops reading as
-   red. So a tile is the same opaque block a board row is, and the only thing
-   that can tint one is a fact. */
+/* ONE SURFACE, AND STATUS CARRIES THE ONLY COLOUR (G2) — and the surface is
+   now the PAGE. A column of the index table has no fill and no box; what
+   separates it from its neighbour is a hairline, and what separates the band
+   from the standfirst above it is the one heavy rule. */
 .tile {
   --tone: var(--control);
-  background-color: var(--surface-2);
-  border: 1px solid var(--divider);
-  border-left: 3px solid var(--tone);
-  border-radius: var(--r-sm);
-  padding: var(--s-3);
-  display: flex; flex-direction: column; gap: var(--s-1);
+  background-color: transparent;
+  border: 0;
+  border-left: var(--rule-hair);
+  border-radius: 0;
+  padding: var(--s-3) var(--s-4);
+  display: flex; flex-direction: column; gap: var(--s-2);
   min-width: 0;
 }
+/* The first column starts at the page's left edge, so its figure lines up with
+   the plate and the standfirst above it — the left-edge anchor the first
+   screen had exactly one of. A wrapped row keeps its rule. */
+.tile:first-child { border-left: 0; padding-left: 0; }
 
-/* The only tinted state. `idle` is deliberately not a colour: this product
-   reports a failure and never infers a success from the absence of one, so
-   there is no green tile and no rule here that could make one. */
-.tile[data-status="failed"] { --tone: var(--danger); }
+/* The only tinted state, and it is a 3px rule at the HEAD of the column now
+   rather than a tinted card. `idle` is deliberately not a colour: this product
+   reports a failure and never infers a success from the absence of one. */
+.tile[data-status="failed"] { --tone: var(--danger); box-shadow: inset 0 3px 0 0 var(--tone); }
 
 /* An eyebrow, the same register the view's own eyebrow uses — 11px is for
    naming a region, and a tile's name is what the number underneath is OF. */
@@ -52,14 +60,17 @@
 }
 
 /* THE VALUE, AND IT KEEPS ONE SIZE IN EVERY STATE (§5): `8,653` and `nothing
-   spent yet` are the same element and read at the same step. `--t-heading`
-   and not `--t-subhead`, because a panel's `h2` is 20px/600 and a tile is not
-   a heading — two things a step apart must not arrive in one voice.
+   spent yet` are the same element and read at the same step. `--t-subhead` in
+   the DISPLAY family now, at the Roman weight: these four figures are the
+   second-loudest thing on the first screen and the only other place the serif
+   appears below the plate, which is what makes the band read as the front
+   page's index rather than as four widgets.
    `tabular-nums` keeps the column still while a number grows (R3-23). */
 .tile-said {
   margin: 0; color: var(--ink);
-  font-size: var(--t-heading); line-height: var(--lh-heading);
-  font-weight: var(--w-medium);
+  font-family: var(--display);
+  font-size: var(--t-subhead); line-height: var(--lh-subhead);
+  font-weight: var(--w-normal);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }

@@ -133,7 +133,8 @@ button:disabled { background-color: transparent; color: var(--ink-3); border-col
 
 /* ---- THE KEYBINDING, SAID (R5-5). A LINE UNDER the field, not a third item
    in the row: `form.oneline` wraps, so without the basis it sat beside Send. */
-.hint { margin: 0; flex: 1 0 100%; color: var(--ink-2); font-size: var(--t-label); line-height: var(--lh-label); }
+/* SCANNED, not read (the ramp, step 8): a keybinding is an index entry. */
+.hint { margin: 0; flex: 1 0 100%; color: var(--ink-2); font-size: var(--t-caption); line-height: var(--lh-caption); }
 
 .hint kbd { color: var(--ink); font-family: var(--mono); }
 
@@ -142,14 +143,13 @@ button:disabled { background-color: transparent; color: var(--ink-3); border-col
 .agent-tabs .tab { border-radius: var(--r-sm); justify-content: flex-start; }
 
 /* ONE SELECTION LANGUAGE, FORTY PIXELS APART (R8-12). A selected nav item was
-   a fill plus a purple EDGE and no border; a selected tab was a fill plus a
-   brightened BORDER plus the edge — two lists in one column saying "this one"
-   two ways, one of them spending the accent on a boundary. Selection is now the
-   same three things in both: the fill, the accent edge (turned 90° for a row,
-   where it replaced the `▸` — F17), and the weight. */
+   a fill plus a purple EDGE; a selected tab was a fill plus a brightened BORDER
+   plus the edge — two lists in one column saying "this one" two ways.
+   …AND IT IS NOW THE EDGE ALONE (the editorial round): a filled chip inside an
+   unboxed band is the last card left in the strip, on both lists. */
 .agent-tabs .tab.current,
 .agent-tabs .tab[aria-selected="true"] {
-  background-color: var(--surface-2);
+  background-color: transparent;
   box-shadow: inset 0 -3px 0 0 var(--accent); font-weight: var(--w-strong);
 }
 

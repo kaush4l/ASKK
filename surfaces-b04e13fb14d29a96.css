@@ -17,7 +17,7 @@
 /* THE TRANSCRIPT IS NOT THE FLEX LOSER (R8-3). `min-height: 0` let it yield
    everything: 24px of client height over 1306px of conversation at 390x844.
    Below its floor the PANEL scrolls instead. */
-.chat-log { display: flex; flex-direction: column; gap: var(--s-2); border-radius: var(--r-md);
+.chat-log { display: flex; flex-direction: column; gap: var(--s-2); border-radius: 0;
   padding: var(--s-3); flex: 1 1 auto; min-height: 12rem; overflow-y: auto; }
 
 .msg {
@@ -86,10 +86,10 @@
 .agent-row[data-status="failed"], .badge[data-status="failed"] { --tone: var(--danger); }
 .agent-row[data-status="closed"], .badge[data-status="closed"] { --tone: var(--control); border-left-style: dotted; }
 
-/* A dense row keeps ONE size. A status is a channel, not a type scale. */
-.agent-row h3 { font-size: var(--t-label); font-weight: var(--w-medium); }
-.agent-status { margin: 0; color: var(--ink-2); font-size: var(--t-label); }
-.agent-live { margin: 0; color: var(--accent); font-size: var(--t-label); }
+/* THE RAMP, PER KIND: the agent's NAME is read, its STATE is scanned. */
+.agent-row h3 { font-size: var(--t-heading); font-weight: var(--w-medium); }
+.agent-status { margin: 0; color: var(--ink-2); font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; }
+.agent-live { margin: 0; color: var(--accent); font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; }
 .thread-line { color: var(--ink-2); font-weight: var(--w-normal); max-width: var(--measure); }
 /* A COLLAPSED THREAD IS A ROW, NOT A CARD: six at a panel's own padding left
    the conversation 194px of 844 — the furniture beating its own subject. */
@@ -131,7 +131,7 @@
 .agent-card p, .agent-card summary { max-width: var(--measure); }
 .agent-card[data-origin="authored"] { border-left: 3px solid var(--accent); }
 .agent-card h3 { color: var(--accent); }
-.agent-meta, .agent-origin, .agent-header, .agent-memory { color: var(--ink-2); font-size: var(--t-label); margin: 0; }
+.agent-meta, .agent-origin, .agent-header, .agent-memory { color: var(--ink-2); font-size: var(--t-caption); line-height: var(--lh-caption); margin: 0; }
 /* The slot where a `description:` would be, when the file has none (R5-19).
    Body size for one rhythm on all five; `--ink-2` because it is the machine
    describing the agent, not the author. */

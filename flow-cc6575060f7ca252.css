@@ -96,7 +96,7 @@
 }
 
 @keyframes flow-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--lobe-cool); }
+  0%, 100% { box-shadow: 0 0 0 0 var(--pulse); }
   50% { box-shadow: 0 0 0 var(--s-1) transparent; }
 }
 
