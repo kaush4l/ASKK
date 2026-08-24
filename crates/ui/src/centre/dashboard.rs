@@ -7,6 +7,7 @@ use adapters_web::WebApp;
 use dioxus::prelude::*;
 
 use crate::board::{self, launch, tiles};
+use crate::shell::agent_switcher;
 use crate::shell::views::View;
 use crate::space;
 
@@ -16,10 +17,13 @@ pub(crate) fn DashboardView(
     tick: Signal<u32>,
     selected: Signal<String>,
     agents: Signal<String>,
+    loaded: Signal<Vec<String>>,
+    authored: Signal<Vec<String>>,
     view: Signal<View>,
     /// The masthead fragment: `GET /`, built by the core's escaping primitives.
     fragment: Signal<String>,
 ) -> Element {
+    let (controls, label) = View::Dashboard.picker();
     rsx! {
         section {
             class: "view-panel dashboard-view",
@@ -30,19 +34,19 @@ pub(crate) fn DashboardView(
             // What this thing IS, under the one heading — a standfirst and a
             // disclosure now rather than 170 words (`Lede`).
             Lede {}
-            // THE FLEET AT A GLANCE, ABOVE THE GRID (27). The Dashboard
-            // answered "what is this thing doing right now" only by being
-            // read — the launcher, then the board's rows, then the space
-            // card. Four facts about the whole fleet, in one band, before
-            // any of that. It is the same fold the board renders and not a
-            // second count of it (`core::board::tiles`), and no tile reports
-            // health: a failure is stated, a success is never announced.
+            // THE FLEET AT A GLANCE (27): four facts about the WHOLE fleet, in
+            // one band, before the launcher and the board. Same fold the board
+            // renders, not a second count of it; no tile reports health.
             tiles::FleetTiles { web, tick }
-            // WHICH LOOP THE SELECTED AGENT'S TURN IS RUNNING (ROADMAP #7).
-            // Under the fleet band and above the launcher, because it is about
-            // ONE agent where the band is about all of them, and because the
-            // question it answers — "what is this turn actually doing" — is the
-            // one the board's status word underneath cannot answer.
+            // WHICH AGENT — under the nameplate, not above it (lap 2). In
+            // `.stage-head` this band sat BETWEEN the kicker and the `<h1>`,
+            // because the head is pinned above the routed panel and this route's
+            // nameplate is inside it. Here it is under the band that is about
+            // ALL agents and above everything scoped to ONE, which is what it
+            // switches.
+            agent_switcher::AgentTabs { loaded, authored, selected, controls, label }
+            // WHICH LOOP THE SELECTED AGENT'S TURN IS RUNNING (ROADMAP #7) —
+            // the one question the board's status word underneath cannot answer.
             crate::flow::FlowDeck { web, tick, agent: selected }
             LauncherAndBoard { web, tick, selected, agents, view }
         }

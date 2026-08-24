@@ -169,8 +169,7 @@
    AND IT LOOKS PRESSABLE (R11-12). The whole row is a button that opens a log,
    and it was drawn as plain text with a 3px edge: nothing said it could be
    pressed except a sentence inside a collapsed disclosure. It carries a
-   surface and a boundary now — the two things everything else pressable in
-   this product carries — so the affordance is in the picture. */
+   surface and a boundary now, so the affordance is in the picture. */
 .proc-list { display: flex; flex-direction: column; gap: var(--s-2); }
 .proc-row { display: flex; align-items: center; gap: var(--s-2); }
 .proc-row .proc-open {
@@ -180,21 +179,22 @@
 }
 .proc-row[data-state="running"] .proc-open { border-left-color: var(--success); }
 
-/* GONE IS NOT STOPPED (R11-AESTHETIC). Both rendered as the same grey caption
-   in the same weight, and they are not the same news: `stopped` is a thing you
-   chose, `gone` is work a reload destroyed. The alarming one may not be the
-   quieter-looking one, so it takes the warning channel the rest of the product
-   uses for a loss — and a mark, because colour is never the only signal. */
+/* GONE IS NOT STOPPED (R11-AESTHETIC): `stopped` is a thing you chose, `gone` is work a
+   reload destroyed, and they rendered as the same grey caption. The alarming one may not
+   be the quieter one, so it takes the warning channel — and a mark, colour never alone. */
 .proc-row[data-state="gone"] .proc-open { border-left-color: var(--warning); }
 .proc-row[data-state="gone"] .proc-meta { color: var(--warning); font-weight: var(--w-strong); }
 .proc-row[data-state="gone"] .proc-meta::before { content: "\26A0  "; }
 .proc-name { font-family: var(--font); font-weight: var(--w-strong); color: var(--ink); }
 .proc-meta { font-family: var(--font); font-size: var(--t-caption); color: var(--ink-2);
   letter-spacing: var(--tr-caption); text-transform: uppercase; }
-.proc-cmd { color: var(--machine); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* IT WRAPS, IT DOES NOT ELLIPSISE (lap 2's desktop critic, measured). One nowrap line held
+   514px of command in 199px at 1440 and 240 at 1920 — 61% and 53% of the string gone — and
+   a command is the string a person has to READ before pressing Stop. `title` is not an
+   answer on a touch screen; three lines of rail cost less than a truth held (I16). */
+.proc-cmd { color: var(--machine); white-space: pre-wrap; overflow-wrap: anywhere; }
 .proc-stop { flex: none; }
 
-/* A COMMAND WHOSE ANSWER IS NO LONGER CURRENT (R10-5). The log outlives the
-   Linux — and the ENGINE. Dotted, like a closed agent's row. */
+/* A COMMAND WHOSE ANSWER IS NO LONGER CURRENT (R10-5): the log outlives the Linux. */
 .term-run.earlier { border-left-style: dotted; }
 .term-run.earlier .term-outcome { color: var(--warning); }

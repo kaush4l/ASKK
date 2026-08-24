@@ -82,7 +82,8 @@ fails the build on one. Measured usage:
 | `--s-7` | 48px | **0** |
 | `--s-8` | 64px | 5 |
 
-Radius: `--r-sm` 18, `--r-md` 5, `--r-full` 4, `--r-lg` 2.
+Radius: `--r-sm` 16, `--r-md` 2, `--r-full` 5. `--r-lg` is deleted, and so is
+`--e1-radius`: surfaces are ruled and square, controls keep their corners.
 
 ## 4. Colour and skin
 

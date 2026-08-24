@@ -11,7 +11,7 @@
 (function () {
   var P = window.__probe;
   if (!P) return;
-  var say = P.say, W = P.W, region = P.region;
+  var say = P.say, info = P.info, W = P.W, region = P.region;
 
   // THE DECK'S CARDS ARE THE DECK'S CELLS (27). `display: grid` on the
   // Dashboard's board says nothing about whether the CARDS are its items: two
@@ -70,27 +70,41 @@
   // The banner's recovery sentence measured clientHeight 48 against 179 at 390
   // and 48 against 128 at 768 — a 3rem cap, `overflow: auto`, overlay
   // scrollbars, no other cue — and the half that vanished is the half saying
-  // what to DO. The rule is not "never cap": at 320 the whole remedy is 401px
-  // and CHROME's third-of-the-screen floor leaves it 270. It is that the BANNER
-  // is the only thing that may give and only under 30rem; a cap on a child is a
-  // box with no cue inside a box that has one, and it is what shipped. Scoped
-  // to what this product calls an explanation (DESIGN §5), not to every
-  // scroller — the transcript and the shell log are frames you browse.
-  var cut = [];
-  var band = W < 480 && window.innerHeight >= 480;
+  // what to DO. Scoped to what this product calls an explanation (DESIGN §5),
+  // not to every scroller: the transcript and the shell log are frames you
+  // browse.
+  //
+  // AND IT IS A BUDGET NOW, NOT AN EXEMPTION (lap 2's mobile critic, and I17).
+  // This printed `only the banner gives way, and only under 30rem` at all six
+  // mobile configs while 172-261px of prose was hidden, because it exempted
+  // `banner && band` outright and never measured HOW MUCH — it would have
+  // printed the same PASS at `max-height: 1vh`, and it printed it unchanged
+  // while a lap moved the cap 30vh -> 18vh and hid 101px more at 390. "Only
+  // the banner gives way" was executable; "and only by an amount a reader can
+  // recover" was not, so the number moved where the gate could not see it.
+  // The tolerance is ZERO and that is not strictness for its own sake: with
+  // the long remedy behind a `<details>` (`status_pills.rs`) nothing is hidden
+  // at any of the 54 configs, so zero is what the tree actually measures. The
+  // px hidden is printed at EVERY config either way, so the next lap sees the
+  // number move before a reader does.
+  var cut = [], worst = 0, deep = "";
   document.querySelectorAll(".banner, .banner *, .note").forEach(function (el) {
     var what = (el.className || el.tagName) + " ";
     var banner = el.classList.contains("banner");
     if (!banner && getComputedStyle(el).maxHeight !== "none") {
       cut.push(what + "caps its own height inside the banner");
-    } else if (el.scrollHeight > el.clientHeight + 4 &&
-               (el.textContent || "").trim().length > 40 && !(banner && band)) {
-      cut.push(what + "hides " + (el.scrollHeight - el.clientHeight) + "px of prose");
+      return;
     }
+    var hidden = el.scrollHeight - el.clientHeight;
+    if (hidden <= 4 || (el.textContent || "").trim().length <= 40) return;
+    var pct = Math.round((100 * hidden) / el.scrollHeight);
+    if (hidden > worst) { worst = hidden; deep = what + hidden + "px = " + pct + "%"; }
+    cut.push(what + "hides " + hidden + "px of prose = " + pct + "% of itself");
   });
   say(!cut.length, "CLIPPED", cut.join(", ") ||
-      (band ? "only the banner gives way, and only under 30rem"
-            : "no explanation is cut at this width"));
+      "no explanation hides any of itself at this width");
+  info("CLIPPEDPX", worst ? "deepest cut " + deep : "0px hidden across " +
+       document.querySelectorAll(".banner, .banner *, .note").length + " explanations");
 
   // ---- SWIPECUE: a scrollport that hides its scrollbar owes a cue ----------
   // `.agent-tabs` at 390 held five of eight chips in 332px of a 615px row with

@@ -87,7 +87,7 @@ pub fn AgentTabs(
     let count = names.len();
     rsx! {
         div {
-            class: "agent-tabs",
+            class: "agent-tabs band",
             role: "tablist",
             // It is a ROW now — it moved out of the left panel and into the
             // Chat view (15B) — and a screen reader is told what it is, because

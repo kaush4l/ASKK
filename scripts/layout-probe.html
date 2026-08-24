@@ -101,7 +101,10 @@
        this row (`core::failure::lifecycle`). That is the longest sentence the
        banner can ever carry, which makes it the one CLIPPED is measured
        against: 401px of it at 320, 324 at 390, whole at 768 and above. -->
-  <span class="problem-line">⚠ author's last turn failed: An older copy of this page's own code is still being served from this browser's cache, so its agents asked for a file this build does not have. Reload once: the page always fetches its shell from the network, and the worker that arrives with the newer build deletes every cache but its own as it takes over. If it is still here after that reload, open this page in a private window to confirm, then clear this site's data.</span>
+  <details class="problem-line problem-why">
+    <summary>⚠ author's last turn failed — why, and what to do</summary>
+    <p>An older copy of this page's own code is still being served from this browser's cache, so its agents asked for a file this build does not have. Reload once: the page always fetches its shell from the network, and the worker that arrives with the newer build deletes every cache but its own as it takes over. If it is still here after that reload, open this page in a private window to confirm, then clear this site's data.</p>
+  </details>
   <button type="button" class="btn-ghost">Open Settings</button>
   <button type="button" class="btn-ghost">Dismiss</button>
 </div>
@@ -154,6 +157,20 @@
          instance is what keeps `tab-{name}` unique. -->
     <div class="stage-head">
       <p class="view-eyebrow kicker">Dashboard</p>
+      <!-- THE SUBJECT PLATE (the editorial round), SECOND — directly under the
+           kicker and ABOVE both the head's sentence and the agent strip, which
+           is the order `panels.rs::StageHead` emits and the order the Dashboard
+           already had. This fixture stood it at the TOP OF THE ROUTED PANEL
+           instead, i.e. below all of them, and that is a page the app cannot
+           reach: at 390 on the deck route the word measured top=752 bottom=874
+           against an 844px fold, so the critic's eye read a display word sliced
+           by the viewport edge that no shipped route renders. A fixture whose
+           element ORDER differs from the component's measures a different page.
+           `layout-probe.js` hides it on the Dashboard, where `dashboard.rs`
+           renders the `<h1>` nameplate inside the routed panel instead, and
+           writes the agent's name into it. `<h2>`, so the fixture keeps the
+           shipped page's one `<h1>`. -->
+      <div class="masthead" id="stage-plate"><h2 class="plate">main</h2></div>
       <!-- The Workspace head's extra line (R17-P1-9), measured here because the
            probe carries ONE stage-head and this is the widest thing that goes
            in it: a full sentence between the eyebrow and the agent strip. It is
@@ -161,8 +178,7 @@
            and this fixture stood it on all three routes, charging ~180px of a
            paragraph the Dashboard never draws against the CHROME floor, on the
            one route where the failure banner is also at its longest. -->
-      <p class="note">The shell below. The folder these commands run in, what is still running, and the files they finished are in the folder panel — the switch for it is in the header.</p>
-      <div class="agent-tabs" id="agent-strip" role="tablist" aria-orientation="horizontal" aria-label="Which agent runs the task">
+      <div class="agent-tabs band" id="agent-strip" role="tablist" aria-orientation="horizontal" aria-label="Which agent runs the task">
         <button type="button" id="tab-author" role="tab" class="tab" aria-selected="false" aria-controls="task-field" tabindex="-1">author<span class="tab-origin"> · written here</span></button>
         <button type="button" id="tab-main" role="tab" class="tab current" aria-selected="true" aria-controls="task-field" tabindex="0"><strong>main</strong></button>
         <button type="button" id="tab-researcher" role="tab" class="tab" aria-selected="false" aria-controls="task-field" tabindex="-1">researcher</button>
@@ -319,13 +335,6 @@
          between them scrolls (R3-10). It used to be a bare div beside the
          panel, which is a shape the stylesheet cannot pin. -->
     <section class="view-panel chat-view" id="chat-view" aria-label="Chat">
-      <!-- THE SUBJECT PLATE (the editorial round). `StageHead` renders this
-           inside `.stage-head` on every non-Dashboard route; here it stands at
-           the top of the routed panel, because this fixture carries ONE
-           stage-head shared by all three routes and a plate in it would paint
-           on the Dashboard too. `layout-probe.js` writes the agent's name into
-           it. `<h2>`, so the fixture keeps the shipped page's one `<h1>`. -->
-      <div class="masthead"><h2 class="plate">main</h2></div>
     <!-- THE THREAD LIST (docs/THREADS.md): one row per loaded agent, the routed
          one open in place, and NO agent strip above it — the list is the picker
          there (R19-IA), so `layout-probe.js` hides the strip on this route. The
@@ -364,7 +373,7 @@
     </section>
       <!-- The COLLAPSED rows. A summary is a wrapping button, never nowrap and
            never a scroller of its own: the sideways treatment at 48rem belongs
-           to `.stage-head .agent-tabs` and is not extended here (§7). The
+           to `.agent-tabs.band` and is not extended here (§7). The
            longest ending the core writes is here on purpose. -->
       <section class="panel"><button type="button" class="btn-ghost thread-summary" id="thread-researcher" aria-expanded="false"><span class="thread-mark" aria-hidden="true">▸ </span><strong class="thread-who">researcher</strong><span class="badge" data-status="idle">ready</span><span class="thread-line">2 turns in all · written here</span></button></section>
       <section class="panel"><button type="button" class="btn-ghost thread-summary" id="thread-summarizer" aria-expanded="false"><span class="thread-mark" aria-hidden="true">▸ </span><strong class="thread-who">summarizer</strong><span class="badge" data-status="idle">stopped at its round ceiling</span><span class="thread-line">1 turn in all — it took every step its file allows; raise max_rounds:</span></button></section>
@@ -376,14 +385,8 @@
          deck route because that is the route this fixture uses for the
          full-width takeover the gallery is. -->
     <section class="deck" id="deck-panel" role="tabpanel" aria-labelledby="deck-tab" aria-label="Setup" hidden>
-      <!-- THE SUBJECT PLATE (the editorial round). `StageHead` renders this
-           inside `.stage-head` on every non-Dashboard route; here it stands at
-           the top of the routed panel, because this fixture carries ONE
-           stage-head shared by all three routes and a plate in it would paint
-           on the Dashboard too. `layout-probe.js` writes the agent's name into
-           it. `<h2>`, so the fixture keeps the shipped page's one `<h1>`. -->
-      <div class="masthead"><h2 class="plate">main</h2></div>
       <p class="crumb"><button type="button" class="btn-ghost">← Settings</button><span> / Developer / Design system</span></p>
+      <p class="note">The shell below. The folder these commands run in, what is still running, and the files they finished are in the folder panel — the switch for it is in the header.</p>
       <!-- THE AGENTS VIEW TAKES THE DASHBOARD'S SHAPE (R7-6b): writing an
            agent is what the view is FOR, so the editor is the reading column
            and the task launcher is the companion beside it. Both cards used to
@@ -518,8 +521,22 @@
      a permanent overlay in the bottom-right corner otherwise swallows one of
      HITTEST's 25 sampled points at every width under 768 and reports a layout
      bug that does not exist. It changes nothing N1-N4 or G3 measure — those
-     read backdrop-filter and background, neither of which hit-testing touches. -->
-<div class="e3 toast" role="status" style="position:fixed;right:1rem;bottom:1rem;padding:.5rem .75rem;pointer-events:none">Saved <button type="button">Dismiss</button></div>
+     read backdrop-filter and background, neither of which hit-testing touches.
+
+     THE GEOMETRY IS DESIGN.md §8's, NOT THIS FILE'S, and that is the editorial
+     round critic's finding answered: "E3, bottom-LEFT >=768 / bottom
+     full-width below". The stand-in was bottom-right at EVERY width, so at 390
+     it measured 153x62 parked in the right-hand thumb arc over a 300x91
+     `button.thread-summary` — a shape the specification does not describe.
+     §8 says LEFT since lap 2, and that is also measured: bottom-right the
+     specimen sat on a heading and a control on all three routes at 1440 and
+     1920, because the folder rail owns that corner at every width. The
+     `@media` half of that cannot be written inline, so `layout-probe.js` sets
+     it; NO `.toast` rule is added to `web/`, because DESIGN.md:1104 records
+     Toast as "not built. No component, no CSS, no specimen" and :1109 says an
+     integrator does not invent one. `FLOATOVER` in `layout-probe.js` is the
+     gate that will read a real one the day it is written. -->
+<div class="e3 toast" role="status" style="position:fixed;left:1rem;bottom:1rem;padding:.5rem .75rem;pointer-events:none">Saved <button type="button">Dismiss</button></div>
 <pre id="report"></pre>
 <!-- The fold wiring, so the probe can PRESS the switches rather than set
      `hidden` itself (13c walk: "it never presses the buttons"). This is the

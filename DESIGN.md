@@ -351,7 +351,6 @@ across one panel, ~14×.
 --e1-line:    var(--hairline);                    /* 1px @ .10 — a COLOUR */
 --e1-lit:     inset 0 1px 0 0 var(--hairline-lit);/* the separate top edge */
 --e1-shadow:  0 0 0 0 transparent;       /* blur + hairline carry it */
---e1-radius:  var(--r-lg);   /* 16px */
 ```
 
 Two shapes in that block are corrections to this document, not to the code.
@@ -376,7 +375,7 @@ when an E2 is the outermost glass in its chain.
 --e2-line:    rgba(255, 255, 255, 0.08);
 --e2-lit:     inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
 --e2-shadow:  0 0 0 0 transparent;
---e2-radius:  var(--r-md);   /* 12px */
+--e2-radius:  0;             /* SQUARE since the critic's round — see §3 radius */
 ```
 
 `--e2-line` is also the border of every `.panel`, which is the surface class the
@@ -403,7 +402,7 @@ because nothing in it floats over its own app.
 --e3-lit:     inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
 --e3-shadow:  0 24px 60px -20px rgba(0, 0, 0, 0.75),
               0 2px 8px -2px rgba(0, 0, 0, 0.4);
---e3-radius:  var(--r-lg);
+--e3-radius:  0;
 --e3-scrim:   rgba(7, 4, 12, 0.5);       /* over the page, behind the surface */
 --e3-dim:     rgba(7, 4, 12, 0.35);      /* HIG's 35%, defined and UNUSED */
 ```
@@ -679,10 +678,29 @@ element.
 **Radius** — four values:
 ```css
 --r-sm: 8px;    /* inputs, buttons, badges */
---r-md: 12px;   /* E2 cards, rows */
---r-lg: 16px;   /* E1 chrome, E3 floating */
+--r-md: 12px;   /* the skip link, the flow rail */
 --r-full: 999px;/* pills, dots, avatars */
 ```
+
+SURFACES ARE RULED AND SQUARE; CONTROLS KEEP THEIR CORNERS. The editorial round
+squared `.e1` and left E2 at 12px and E3 at 16px, which is how a 16px-radius
+launcher card and a 16px toast came to sit directly under a plate between two
+rules in one screenshot — the "two design systems" the round's judge docked
+INSTRUMENT for. `--e2-radius` and `--e3-radius` are `0`; `--r-lg` and
+`--e1-radius` are DELETED, both having had no reader once `.e1` squared. A plane
+is drawn by its rule and its fill; a thing you press keeps its corners, and that
+is the only radius contrast left in the tree.
+
+…AND THE HEADER'S STATUS CELLS ARE NOT AN EXCEPTION TO THAT, THEY ARE A
+SECOND CASE OF IT. Below 64rem the status strip stops being a ROW and becomes a
+two-column TABLE (`strip.css`), and a table cell is a surface: `--r-full` there
+drew five stacked lozenges in a dark box directly above a squared banner, which
+lap 2's mobile critic measured as the cheapest surface in the phone render.
+Below 64rem the cells are square. Above it the strip really is a row of chips on
+one line, each carrying live state, and the capsule does the work the desktop
+critic measured it doing at 1440 — so it stays there. One rule read twice: the
+radius follows the SHAPE an element has at that width, not its class name.
+
 The old `border-radius: 0` overrides in `screen.css` are deleted. The product
 has rounded corners; it does not argue with itself about it.
 
@@ -1348,8 +1366,18 @@ with a 1.4s shimmer that stops under reduced motion. Replaces the current
 behaviour of an empty box.
 
 ### Toast
-E3, bottom-right ≥768 / bottom full-width below, `role="status"`, auto-dismiss
-6s with a pause on hover/focus, manual dismiss always present.
+E3, bottom-**left** ≥768 / bottom full-width below, `role="status"`, auto-dismiss
+6s with a pause on hover/focus, manual dismiss always present. LEFT, not right,
+and that is measured rather than chosen: pinned bottom-right the specimen landed
+on `<h2>Processes · 1 running</h2>` and a `button.file-entry.proc-open` on chat
+and deck and on `<h2>Run a task · main</h2>` on the Dashboard, at 1440x900 and at
+1920x1080, at every settle delay from 0 to 1200ms — three routes of three. The
+folder rail owns the bottom-right corner at every width the guard measures; the
+bottom-left corner is under the nav, which ends where its content does. A
+floating surface belongs over the region with the least standing content, and on
+this page that is the left. Below 768 it is still a full-width band, and the
+region it floats over owes it the same height in bottom padding so it never
+comes to rest on the last control (`layout-probe.js`).
 
 ### Modal / Sheet
 E3 over `--e3-scrim`. Focus trapped, `Esc` closes, focus returns to the invoker,

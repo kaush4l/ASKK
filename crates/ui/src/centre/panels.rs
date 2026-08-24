@@ -14,16 +14,14 @@ use crate::shell::views::View;
 use crate::shell::{agent_switcher, skin};
 use crate::{authoring, debug, terminal, trace};
 
-/// THE STAGE'S HEAD — one band above whatever is routed. The KICKER names the
-/// view (R5-misc) at `--t-caption`; the STRIP is the agent switcher (R5-6),
-/// ONE instance, so `tab-{name}` stays unique and the roving tabindex works.
-/// …AND THE SUBJECT PLATE UNDER IT (the editorial round). There is exactly one
-/// display register in this product and it is a ruled plate naming the
+/// THE STAGE'S HEAD — one band above whatever is routed: the KICKER names the
+/// view (R5-misc) at `--t-caption`, then the SUBJECT PLATE (the editorial
+/// round), then the agent switcher where the route has one. There is exactly
+/// one display register in this product and it is a ruled plate naming the
 /// SCREEN'S SUBJECT: the product on the Dashboard, where `core::builtins` owns
-/// the `<h1>`, and the SELECTED AGENT everywhere else. NEVER the view's own
-/// name — `Chat` at 136px says nothing on a screen whose subject is a
-/// conversation, and chat/deck are the routes measured at 1.82:1 and 1.64:1
-/// with no display type at all (UPLIFT F2).
+/// the `<h1>` inside the routed panel, and the SELECTED AGENT everywhere else.
+/// NEVER the view's own name — `Chat` at 136px says nothing on a screen whose
+/// subject is a conversation (UPLIFT F2).
 ///
 /// `<h2>`, NOT `<h1>`: `core/tests/skeleton.rs:118` pins `GET /` at one.
 #[component]
@@ -43,15 +41,16 @@ pub(crate) fn StageHead(
             if here != View::Dashboard {
                 div { class: "masthead", h2 { class: "plate", "{selected}" } }
             }
-            // …AND WHAT ELSE IS ON IT (R17-P1-9): `WORKSPACE_NOTE`.
-            if here == View::Workspace {
-                p { class: "note", {super::WORKSPACE_NOTE} }
-            }
-            // …AND NOT ON CHAT (R15-IA, THREADS.md §7): the thread list IS
-            // the picker there, and two controls for "which conversation"
-            // on one screen is the bug R15 exists to prevent. It stays on
-            // Dashboard, Commands and Trace, which are one-subject views.
-            if here.scoped() && here != View::Chat {
+            // …AND NOT ON CHAT (R15-IA): the thread list IS the picker there.
+            // …AND NOT ON THE DASHBOARD (lap 2's mobile critic, measured at
+            // 390x844): the head sits above the routed panel and the
+            // Dashboard's `<h1>` is INSIDE it, so a switcher here read
+            // kicker -> TAB BAND -> nameplate, y=371 / 394 / 462 — navigation
+            // cutting between an eyebrow and the product's one nameplate.
+            // `dashboard.rs` renders it under the nameplate now, above the
+            // agent-scoped panels it actually switches, so all three routes
+            // read kicker -> subject -> switcher.
+            if here.scoped() && here != View::Chat && here != View::Dashboard {
                 agent_switcher::AgentTabs { loaded, authored, selected, controls, label }
             }
         }
@@ -88,12 +87,10 @@ pub(crate) fn ChatView(
 }
 
 /// THE AGENTS FIRST (R2-17): the view named "Agents" opened on a task launcher.
-/// The roster is its subject, and it is a DECK of reading columns rather than
-/// one wide card (R7-6b, `roster.rs`).
+/// The roster is its subject, a DECK of reading columns (R7-6b, `roster.rs`).
 ///
-/// …AND THE EDITOR, WITH NOTHING BESIDE IT (R15-IA). A second `Run a task`
-/// card here put the editor 2168px down a page whose whole job is writing an
-/// agent. The launcher has one home; what is left here is the catalogue.
+/// …AND THE EDITOR, WITH NOTHING BESIDE IT (R15-IA): a second `Run a task` card
+/// here put the editor 2168px down a page whose job is writing an agent.
 #[component]
 pub(crate) fn AgentsView(
     web: Signal<Option<Rc<WebApp>>>,
@@ -129,6 +126,13 @@ pub(crate) fn WorkspaceView(
             class: "view-panel workspace-view",
             id: "workspace-view",
             aria_label: "Commands",
+            // WHAT ELSE IS ON THIS VIEW (R17-P1-9) — IN the panel now, not
+            // pinned above it in `.stage-head`, where one sentence about this
+            // view's content cost 77px of chrome at 1440 and ~100px at 320
+            // against `fold-probe.js`'s third-of-the-screen floor: at 390 the
+            // deck panel opened at y=650 with 194px left and the toast band
+            // over 62 of them. Nothing hidden; it scrolls with its subject.
+            p { class: "note", {super::WORKSPACE_NOTE} }
             terminal::Terminal { web, tick, agent: selected }
         }
     }
@@ -151,10 +155,9 @@ pub(crate) fn TraceView(
     }
 }
 
-/// WHAT IS GOING ON UNDERNEATH — the facts the harness records about a turn and
-/// nothing else in the product reads. One panel, its own view: the tool trace
-/// answers "what did it DO", and this answers "what did it decide, what did it
-/// cost, and what broke" (R15-IA — one panel, one home).
+/// WHAT IS GOING ON UNDERNEATH — the facts the harness records and nothing else
+/// reads. The tool trace answers "what did it DO"; this answers "what did it
+/// decide, what did it cost, and what broke" (R15-IA).
 #[component]
 pub(crate) fn DebugView(
     web: Signal<Option<Rc<WebApp>>>,
@@ -171,12 +174,9 @@ pub(crate) fn DebugView(
     }
 }
 
-/// …and NOTHING about the component gallery (R3-11): a maintainer's page citing
-/// DESIGN.md sections and E1/E2/E3 shipped as the last line of the product's
-/// Settings. It stays reachable at `#/design-system`, which is MOUNTED ONLY ON
-/// ITS OWN ROUTE (R4-9) — it was a `display: none` section inside `.stage` on
-/// every screen, so a maintainer's specimen sheet was in the document of every
-/// page anybody loaded.
+/// …and NOTHING about the component gallery (R3-11): a maintainer's specimen
+/// sheet shipped as the last line of the product's Settings. It stays reachable
+/// at `#/design-system`, MOUNTED ONLY ON ITS OWN ROUTE (R4-9).
 #[component]
 pub(crate) fn SettingsView(
     web: Signal<Option<Rc<WebApp>>>,

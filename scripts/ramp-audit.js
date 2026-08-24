@@ -61,7 +61,16 @@
   // than at the goal — the fix for a too-generous gate is a second honest gate,
   // not a second aspirational one. RANGE survives fold-scoping unchanged
   // (6.18:1 above the fold on all three routes) and so keeps one floor.
-  var MAX_FOLD_DOMINANCE = 0.75;
+  // RAISED 0.75 -> 0.70 IN LAP 2, in the change that earns it. The worst config
+  // was 390x844 and 320x780 dash at 71% — one 68px word over a field of 11px
+  // micro-caps with nothing between, which is the arithmetic signature of the
+  // "cheap imitation" impression the round exists to answer. Two moves paid for
+  // it and neither was a token: the agent tab band left the Dashboard's head
+  // for the routed panel (`dashboard.rs`), which took 18 caption nodes off the
+  // first screen with the nameplate; and the failure banner's remedy became a
+  // 16px disclosure. Measured worst is now 65% at 54 configs, so 0.70 is the
+  // ratchet at today's number with five points of air, not at an aspiration.
+  var MAX_FOLD_DOMINANCE = 0.70;
   // A FOLD TOO SHORT TO HOLD CONTENT IS NOT A FOLD. 320x256 is the WCAG 1.4.10
   // case — 1280x1024 at 400% browser zoom — and 256px of viewport holds the
   // header and nothing else, so a ramp measured there measures the chrome. It

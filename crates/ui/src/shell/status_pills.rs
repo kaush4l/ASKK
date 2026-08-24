@@ -140,20 +140,35 @@ pub fn TroublePill(fleet: Fleet, view: Signal<View>, tick: Signal<u32>) -> Eleme
     if why.is_empty() || hushed() == news {
         return rsx! {};
     }
-    let line = match who.is_empty() {
-        true => format!("⚠ The last turn failed: {why}"),
-        false => format!("⚠ {who}'s last turn failed: {why}"),
+    let head = match who.is_empty() {
+        true => "⚠ The last turn failed".to_string(),
+        false => format!("⚠ {who}'s last turn failed"),
     };
+    // A LONG REMEDY IS DISCLOSED, NOT CAPPED (lap 2, both critics). Below
+    // 30rem `chrome.css` held the banner to 18vh with `overflow-y: auto`:
+    // 172px of 324 hidden at 390, 261 of 401 at 320, and no cue a touch phone
+    // paints — overlay scrollbars appear only mid-gesture, and a render taken
+    // without --hide-scrollbars was byte-identical. A `<details>` hides the
+    // same prose behind a triangle the phone DOES paint, keeps it in the tab
+    // order and the a11y tree, and pays back 140px at 1440 too. 160 chars is
+    // the fence: what fits on two phone lines stays open, in the shape
+    // `misroute.rs` already renders and the gate already measures on dash.
+    let long = why.chars().count() > 160;
     let dismissed = news.clone();
     rsx! {
-        // ITS OWN ROW, UNDER THE HEADER (R8-2). It was a pill inside the
-        // header's strip, which meant the strip had to evict pills to fit it —
-        // and the two it evicted were the spend and the model line, so being
-        // told the endpoint was unreachable removed the only place the page
-        // said WHICH endpoint. An error may add a row; it may not subtract a
-        // fact. `banner`, not `pill`: it is as wide as the page and it wraps.
+        // ITS OWN ROW, UNDER THE HEADER (R8-2). In the header's strip it fitted
+        // only by evicting the spend and the model line — so being told the
+        // endpoint was unreachable removed the only place the page said WHICH
+        // endpoint. An error may add a row; it may not subtract a fact.
         div { class: "banner problem", role: "status",
-            span { class: "problem-line", "{line}" }
+            if long {
+                details { class: "problem-line problem-why",
+                    summary { "{head} — why, and what to do" }
+                    p { "{why}" }
+                }
+            } else {
+                span { class: "problem-line", "{head}: {why}" }
+            }
             Button {
                 variant: "ghost",
                 onclick: move |_| {

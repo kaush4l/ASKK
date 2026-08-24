@@ -87,7 +87,14 @@
   //
   // Height-gated the way ONESCREEN is: at 320x256 (400% zoom) there is no share
   // to promise, and asserting one would assert the trap.
-  var view = document.querySelector(".view-panel:not([hidden])");
+  //
+  // …AND IT COVERS THE DECK ROUTE TOO (lap 2's mobile critic). `#deck-panel` is
+  // `class="deck"`, not `.view-panel`, so this selector missed it: 24 of the 54
+  // configs printed CHROME and none of the deck ones did, while at 390x844 the
+  // deck's head stood 293px tall and the panel opened at y=650 with 194px of
+  // screen left. A route the brief calls one of the two a person lives in had
+  // the assertion's number claimed in a report and held by nothing.
+  var view = document.querySelector(".view-panel:not([hidden]), .deck:not([hidden])");
   if (view && window.innerHeight >= 480) {
     var top = Math.round(rect(view).top);
     var left = window.innerHeight - top;

@@ -17,7 +17,7 @@
 /* THE TRANSCRIPT IS NOT THE FLEX LOSER (R8-3). `min-height: 0` let it yield
    everything: 24px of client height over 1306px of conversation at 390x844.
    Below its floor the PANEL scrolls instead. */
-.chat-log { display: flex; flex-direction: column; gap: var(--s-2); border-radius: var(--r-md);
+.chat-log { display: flex; flex-direction: column; gap: var(--s-2); border-radius: 0;
   padding: var(--s-3); flex: 1 1 auto; min-height: 12rem; overflow-y: auto; }
 
 .msg {

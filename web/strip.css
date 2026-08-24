@@ -56,8 +56,28 @@ header .chat-endpoint {
      third — the row count is the point of the table, so the ROW HEIGHT is what
      gives. `--s-1` block, `--s-3` inline: the pills keep their horizontal
      rhythm and lose 8px of leading each, which is 24px of the 780. */
-  .status-strip > .pill { min-width: 0; padding-block: var(--s-1); }
+  /* …AND A CELL IS NOT A LOZENGE. `--r-full` is this round's mark for a thing you PRESS,
+     and none of these five is pressable — they are read-only facts. It reads as a chip in
+     a ROW, which is what the strip is above 64rem and what the desktop critic measured
+     working at 1440; below it the strip is a TABLE, and five capsules stacked in a dark
+     box was the cheapest surface in the phone render, directly over a squared banner. */
+  .status-strip > .pill { min-width: 0; padding-block: var(--s-1); border-radius: 0; }
   .status-strip > .pill:not(.chat-endpoint) { white-space: normal; }
+  /* …AND THE ENDPOINT TAKES THE WHOLE ROW (the editorial round's critic). A
+     half-width cell was 167px against 199px of content, so the one fact a
+     person needs to diagnose a failed turn rendered as
+     `calls gemma-4-12B-it-qa…` — the model id, ellipsised inside the pill that
+     exists to state it, which is I16 with the truth held and not said. The
+     strip is 342px wide at 390 and the sentence is 199px, so a full-bleed cell
+     holds every glyph of it with room to spare and costs no row: `order` moves
+     it to the head of the grid, where a spanning item does not leave a hole
+     beside the item it was placed after.
+     …AND THE SPEND GOES LAST. It never leaves (R13-P1-5) and it is still two
+     lines, but a running total nobody acts on had the same cell as the address
+     the next turn is sent to. `order` is the whole demotion: nothing is hidden,
+     the DOM order the screen reader follows is unchanged. */
+  .status-strip > .chat-endpoint { grid-column: 1 / -1; order: -1; }
+  .status-strip > .meter { order: 1; }
 }
 /* The model id is the part that ellipsises. */
 .chat-endpoint .pill-subject { overflow: hidden; text-overflow: ellipsis; }
@@ -136,7 +156,7 @@ header .chat-endpoint {
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: scroll()) {
     @media (max-width: 48rem) {
-      .stage-head .agent-tabs {
+      .agent-tabs.band {
         animation: swipe-cue linear both; animation-timeline: scroll(self inline);
       }
     }

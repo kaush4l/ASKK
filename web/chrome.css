@@ -8,7 +8,6 @@ header {
   position: relative; isolation: isolate; z-index: 10; flex: 0 0 auto;
   transition: box-shadow var(--dur) var(--ease);
 }
-
 /* …EXCEPT AT PHONE WIDTH (R8-1), where the strip takes a row of its own and the
    header must be allowed to give it one. The property lives here, with the rest
    of `header`, and `strip.css` owns what the strip then does with that row. */
@@ -16,61 +15,77 @@ header {
 
 /* The wordmark is a LOGO, third of the display family's three (R5-B). */
 header .wordmark {
-  font-family: var(--display); font-size: var(--t-caption);
-  font-weight: var(--w-strong); letter-spacing: var(--tr-caption); color: var(--accent);
+  font-family: var(--display); font-size: var(--t-caption); color: var(--accent);
+  font-weight: var(--w-strong); letter-spacing: var(--tr-caption);
 }
 
 /* PILLS: opaque for G3, no `overflow: hidden` (R6-4) — one that can clip will. */
 header .pill {
   margin: 0; flex: 0 0 auto; padding: var(--s-2) var(--s-3); color: var(--ink-2);
-  background-color: var(--surface-1); border-radius: var(--r-full); white-space: nowrap;
-  font-size: var(--t-caption); line-height: var(--lh-caption);
+  background-color: var(--surface-1); white-space: nowrap;
+  font-size: var(--t-caption); line-height: var(--lh-caption); border-radius: var(--r-full);
 }
 
-/* THE LAST TURN FAILED (F12), on a ROW OF ITS OWN under the header (R8-2): in
-   the strip it fitted only by evicting the model line and the spend — an error
-   state may add a row, never subtract a fact. */
-/* AND IT IS NOT HEIGHT-CAPPED (28). It had TWO caps — its own 30vh, and a 3rem
-   cap on the SENTENCE below 48rem — and the second one made the first a lie:
-   at 390 a 48px box over 179px of text, at 768 a 48px box over 128, with the
-   scrollbar overlay and no other cue. The half that went missing is the half
-   that says what to DO (the address is on THIS machine, so the server must be
-   running, must send CORS headers, and Chrome 142+ asks permission first).
-   Both are gone here, so at 768 and up the whole remedy is on screen. */
+/* THE LAST TURN FAILED (F12), on a ROW OF ITS OWN under the header (R8-2): in the strip
+   it fitted only by evicting the model line and the spend — an error may add a row,
+   never subtract a fact. */
+/* AND IT IS NOT HEIGHT-CAPPED (28): it had TWO caps, its own 30vh and a 3rem cap on the
+   SENTENCE below 48rem, and the second made the first a lie — a 48px box over 179px of
+   text at 390, an overlay scrollbar, and no other cue. */
 .banner {
   margin: var(--s-3) var(--s-3) 0; padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md); flex: 0 0 auto;
+  border-radius: 0; flex: 0 0 auto;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
 }
 
-/* …AND ONE OF THEM IS INSIDE THE HEADER (31-walk F4). The misrouted-address
-   notice is written by `statusbar.rs`, whose whole output is the header's
-   content, so it takes a ROW of the header rather than a second mechanism: a
-   full basis, and the header is allowed to wrap for it at every width — which
-   `flex-wrap: nowrap` above otherwise forbids. `:has`, so nothing changes on
-   the ordinary header that has no banner in it. */
+/* …AND IT IS INSIDE THE SAME FRAME AS THE PAGE (lap 2's desktop critic, measured). `main`
+   is capped at `--frame` and centred (layout.css); the header was not, so at 1920 it ran
+   [12..1908] while the nav began at 208 and the rail ended at 1712 — two stacked frames
+   196px apart with 416px of black holding nothing. `max()` and MARGIN, not
+   `margin-inline: auto`: an auto cross-margin cancels a flex item's stretch and the bar
+   would shrink to its content. Under the cap the first branch wins and `--s-3` is today's
+   gutter, so 1440 and down is byte-identical; at 1920 the header's OUTER edges land on the
+   nav's and the rail's, and it takes the second row 1440 has always had. */
+@media (min-width: 1100px) {
+  /* …AND THE BANNER UNDER IT IS THE SAME BAR. Capping the header alone just moved the
+     mismatch down one element: at 1920 the header sat 208..1712 with the failure banner
+     still running 12..1908. `header > .banner` keeps its own zero margin — that one is a
+     ROW of the header and its `margin` shorthand outranks this longhand. */
+  header, .banner {
+    margin-inline: max(var(--s-3), calc((100% - var(--frame)) / 2 + var(--s-4)));
+  }
+}
+
+/* …AND ONE OF THEM IS INSIDE THE HEADER (31-walk F4). The misrouted-address notice is
+   written by `statusbar.rs`, whose whole output is the header's content, so it takes a ROW
+   of the header rather than a second mechanism: a full basis, and the header may wrap for
+   it at every width. `:has`, so an ordinary header with no banner is unchanged. */
 header:has(> .banner) { flex-wrap: wrap; }
-/* `order`, because the component that renders this row is the header's FIRST
-   child and the rail switch is a sibling it cannot get after: without it the
-   notice takes row one and pushes every pill down. DOM order is unchanged, so
-   a screen reader still meets it beside the statuses it belongs with. */
+/* `order`, because the component that renders this row is the header's FIRST child and
+   the rail switch is a sibling it cannot get after: without it the notice takes row one
+   and pushes every pill down. DOM order is unchanged for a screen reader. */
 header > .banner {
   flex: 1 0 100%; order: 9; margin: var(--s-2) 0 0; max-width: none;
   background-color: var(--surface-1);
 }
 
-/* …EXCEPT IN THE ONE BAND WHERE THE SCREEN REFUSES (28), and this is measured,
-   not chosen. The longest failure the core writes is 401px of remedy at 320,
-   350 at 360, 324 at 390. `fold-probe.js` holds the routed view to a third of
-   the viewport, which leaves the banner 270 / 266 / 309 there — so below 30rem
-   it gives way, and only there. Above it, nothing is hidden at any width.
-   `min-height` because under 30rem of height the page is an ordinary scrolling
-   document (layout.css, WCAG 1.4.10) and a cap would be a trap with no floor
-   to justify it. `scrollbar-color` is what opts a box out of overlay
-   scrollbars, so where it does give way there is a bar to see. */
-@media (max-width: 30rem) and (min-height: 30rem) {
-  .banner { max-height: 30vh; overflow-y: auto; scrollbar-color: var(--control) transparent; }
+/* AND IT IS STILL NOT HEIGHT-CAPPED — the 18vh band is gone too (lap 2, both critics). A
+   cap bought the conversation its third by destroying the half of the remedy that says what
+   to DO: 172px of 324 hidden at 390, 261 of 401 at 320, the red border closing under a
+   severed sentence. `scrollbar-color` was the claimed cue and a 390 chat render taken
+   WITHOUT --hide-scrollbars came back byte-identical — a touch phone paints an overlay bar
+   only mid-gesture, and a phone is the only device in the band the rule fired in.
+   `status_pills.rs` discloses the long form behind a `<details>`: same prose, a triangle
+   the phone does paint, and it pays at 1440 too, where the banner was 140px of 900. */
+.problem-why > summary {
+  /* `--s-3` of BLOCK PADDING is the 44px `layout-audit.js` holds every `summary` to; the
+     caret is the cue. …AND THE BODY STEP, not `base.css`'s 14px label: this is the
+     failure's HEADLINE and the prose it opens is 16px, so at 14 it was the smaller of
+     the two — and it was the one 14px node that took RAMPDOMINANCE 43% -> 44%. */
+  padding-block: var(--s-3); font-size: var(--t-body); line-height: var(--lh-body);
+  font-weight: var(--w-strong); cursor: pointer;
 }
+.problem-why > p { margin: 0 0 var(--s-2); max-width: var(--measure); }
 
 .banner.problem {
   background-color: color-mix(in srgb, var(--danger) 18%, var(--surface-1));
@@ -89,10 +104,8 @@ header .meter, header .warmth, header .subject { flex: 0 0 auto; white-space: no
 /* THE MENU (R2-3): the views switch is the header's first control. */
 header .panel-toggle[aria-controls="nav"]::before { content: "\2630  "; }
 
-/* R18-P1-9 moved the cap off the banner and onto the SENTENCE and claimed
-   "nothing is truncated"; 3rem is two lines of an eleven-line remedy, so it
-   was the truncation, moved — and moved onto the element that has no cue,
-   because the buttons it was protecting sat outside it. Deleted (28). */
+/* R18-P1-9 moved the cap off the banner onto the SENTENCE and claimed "nothing is
+   truncated"; 3rem is two lines of an eleven-line remedy. Deleted (28). */
 @media (max-width: 48rem) {
   header { padding: var(--s-2) var(--s-3); gap: var(--s-2); }
   .switches { gap: var(--s-1); }
@@ -136,7 +149,7 @@ header .pill.running::before { content: "\25C6  "; color: var(--accent); }
    reachable at every width and the fold sits at its foot. …AND IT SCROLLS INSIDE
    ITSELF rather than past the nav's edge (R11); `min-height: 0` allows it. */
 .nav .status-fold {
-  margin-top: auto; min-height: 0; overflow-y: auto; padding: var(--s-2); border-radius: var(--r-md);
+  margin-top: auto; min-height: 0; overflow-y: auto; padding: var(--s-2); border-radius: 0;
 }
 
 .crumb { margin: 0; display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-caption); color: var(--ink-2); }
@@ -149,34 +162,36 @@ header .pill.running::before { content: "\25C6  "; color: var(--accent); }
 .rail-who { margin: 0; font-size: var(--t-caption); letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-2); }
 .rail-who strong { color: var(--ink); font-weight: var(--w-strong); }
 .stage { padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
+/* …AND ITS VERTICAL GUTTER IS CHEAPER ON A PHONE. The INLINE gutter is untouched
+   — it is what keeps the plate's full-bleed arithmetic (editorial.css) exact —
+   and the block half is 12px the head already spends twice over in the header's
+   own margin and the plate's two rules. 12px of the CHROME floor, measured. */
+@media (max-width: 30rem) { .stage { padding-block: var(--s-2); gap: var(--s-2); } }
 
 header .meter { font-variant-numeric: tabular-nums; color: var(--ink); }
 header .pill-label { color: var(--ink-2); }
 
-/* THE STAGE'S OWN HEAD (R5-6, R5-A). `.masthead`, `.tagline` and
-   `.view-eyebrow` left this file for `editorial.css`: they are the FRONT PAGE,
-   not furniture, and a pair declared in two sheets is what G1 fails on. */
+/* THE STAGE'S OWN HEAD (R5-6, R5-A). `.masthead`, `.tagline` and `.view-eyebrow` left
+   this file for `editorial.css`: they are the FRONT PAGE, not furniture. */
 .stage-head { display: flex; flex-direction: column; gap: var(--s-2); flex: 0 0 auto; }
 /* THE DRAWER'S WAY OUT (R5-8); layout.css positions both. */
 .nav-scrim { background-color: var(--e3-scrim); border: 0; }
 .nav-close { margin-left: auto; }
 
-/* THE ONE ARRIVAL (docs/DESIGN-SYSTEM.md §7). Below 1100px the nav is a sheet
-   that comes up over a scrim (layout.css positions both), and until now it
-   appeared in a single frame. `--dur-slow` (380ms, "something arriving") and
-   `--ease-out` ("entrances") were declared in tokens.css and had ZERO readers
-   in the whole tree — measured, `grep -ro -- '--ease-out' web scripts crates`
-   = 0. This is their first reader and it is the only moment in this product
-   that IS an arrival, which is why it is the only thing given one.
-   THERE IS NO MATCHING EXIT and that is not an oversight: both elements leave
-   by `[hidden]` and by unmounting, which no transition or animation can
-   follow, so `--ease-in` still has no reader and §7 says so rather than
-   inventing a use for it. AND THE GUARD IS `no-preference`, NOT base.css's
-   duration cut: `layout-audit.js:36` asserts every `animation-name` resolves to
-   `none`, and `animation-duration: 0.01ms !important` leaves the NAME standing.
-   Written the other way first, `scripts/check-layout.sh --reduced-motion` went
-   from OK to `LAYOUT CHECK FAILED: 30` — 5 widths x 2 skins x 3 routes, every
-   run below the breakpoint. `strip.css:121` already had the right shape. */
+/* THE ONE ARRIVAL (docs/DESIGN-SYSTEM.md §7). Below 1100px the nav is a sheet that comes up
+   over a scrim (layout.css positions both), and until now it appeared in a single frame.
+   `--dur-slow` (380ms, "something arriving") and `--ease-out` ("entrances") were declared
+   in tokens.css and had ZERO readers in the whole tree — measured, `grep -ro -- '--ease-
+   out' web scripts crates` = 0. This is their first reader and it is the only moment in
+   this product that IS an arrival, which is why it is the only thing given one. THERE IS NO
+   MATCHING EXIT and that is not an oversight: both elements leave by `[hidden]` and by
+   unmounting, which no transition or animation can follow, so `--ease-in` still has no
+   reader and §7 says so rather than inventing a use for it. AND THE GUARD IS `no-
+   preference`, NOT base.css's duration cut: `layout-audit.js:36` asserts every `animation-
+   name` resolves to `none`, and `animation-duration: 0.01ms !important` leaves the NAME
+   standing. Written the other way first, `scripts/check-layout.sh --reduced-motion` went
+   from OK to `LAYOUT CHECK FAILED: 30` — 5 widths x 2 skins x 3 routes, every run below the
+   breakpoint. `strip.css:121` already had the right shape. */
 @media (max-width: 1099px) and (prefers-reduced-motion: no-preference) {
   main > .nav:not([hidden]) { animation: nav-rise var(--dur-slow) var(--ease-out) both; }
   .nav-scrim { animation: scrim-in var(--dur) var(--ease-out) both; }

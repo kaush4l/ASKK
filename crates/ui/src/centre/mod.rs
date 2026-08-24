@@ -58,7 +58,9 @@ pub fn Stage(
         // the nav; `tabindex=-1` so it holds focus outside the tab order.
         div { class: "stage primary", id: "content", tabindex: "-1",
             StageHead { here, loaded, authored, selected }
-            if here == View::Dashboard { DashboardView { web, tick, selected, agents, view, fragment } }
+            if here == View::Dashboard {
+                DashboardView { web, tick, selected, agents, loaded, authored, view, fragment }
+            }
             ChatView { here, web, endpoint_set, tick, tokens, roster, loaded, selected, view }
             if here == View::Agents { AgentsView { web, tick, loaded, authored, agents, selected } }
             if here == View::Workspace { WorkspaceView { web, tick, selected } }
