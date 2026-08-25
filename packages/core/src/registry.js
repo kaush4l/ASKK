@@ -48,8 +48,12 @@ export class Registry {
     if (manifest.id === '') {
       throw new ModuleError('invalid_manifest', 'a module needs an id, and this manifest has none')
     }
-    if (this.get(manifest.id)) {
-      throw new ModuleError('already_installed', `${manifest.id} is already live at version ${this.get(manifest.id)?.manifest.version}`)
+    const live = this.get(manifest.id)
+    if (live) {
+      throw new ModuleError(
+        'already_installed',
+        `${manifest.id} is already live at version ${live.manifest.version}`,
+      )
     }
     for (const route of manifest.routes) {
       const holder = this.resolve(route.method, route.path)
@@ -73,10 +77,5 @@ export class Registry {
   /** The live version of one module, if any. */
   get(/** @type {string} */ id) {
     return this.#live.find((r) => r.manifest.id === id) ?? null
-  }
-
-  /** Everything alive, in install order. What the roster and `/tools` project. */
-  active() {
-    return [...this.#live]
   }
 }

@@ -14,7 +14,7 @@
  * @module
  */
 
-import { problem } from '@harness/kernel'
+import { HarnessError, problem } from '@harness/kernel'
 
 import { contextFor } from './ctx.js'
 
@@ -33,7 +33,7 @@ import { contextFor } from './ctx.js'
 export function handle(app, request) {
   const hit = app.registry.resolve(request.method, request.path)
   const response = hit
-    ? hit.handler(request, contextFor(app, hit.manifest))
+    ? invoke(app, hit, request)
     : problem(404, `Nothing here answers ${request.method} ${request.path}.`, {
         kind: 'no_route',
         detail: 'No installed module declares that method and path.',
@@ -52,4 +52,36 @@ export function handle(app, request) {
     )
   }
   return response
+}
+
+/**
+ * Run one handler and GUARANTEE a projection. The Rust handler returned a
+ * `Response` and could not fail, so there was nothing here to port — but in
+ * JavaScript every handler can throw, and a throw that escapes `handle` leaves
+ * the interface with no projection and the log with no record that anything
+ * was asked. The language introduced a failure channel the design did not have,
+ * so the seam closes it: one door, one error shape (I4).
+ * @param {App} app
+ * @param {import('./registry.js').Registered} hit
+ * @param {Request} request
+ * @returns {Response}
+ */
+function invoke(app, hit, request) {
+  const where = `${hit.manifest.id} module failed while answering ${request.method} ${request.path}`
+  try {
+    return hit.handler(request, contextFor(app, hit.manifest))
+  } catch (err) {
+    if (err instanceof HarnessError) {
+      return problem(500, `The ${where}.`, {
+        kind: err.kind,
+        detail: err.detail === '' ? err.message : `${err.message} — ${err.detail}`,
+        repair: `The request changed nothing. Check the debug view for the ${hit.manifest.id} module's history.`,
+      })
+    }
+    return problem(500, `The ${where}.`, {
+      kind: 'handler_crashed',
+      detail: err instanceof Error ? err.message : String(err),
+      repair: 'This is a bug in the module, not in what you asked. The debug view holds the request that reached it.',
+    })
+  }
 }

@@ -1,6 +1,6 @@
 import { expect, test, describe } from 'bun:test'
 import { Glob } from 'bun'
-import { ok, problem } from '@harness/kernel'
+import { CAPABILITIES, ok, problem } from '@harness/kernel'
 import { testPorts, fakeClock } from '@harness/adapters-test'
 import { createApp, install, handle, ModuleError } from '@harness/core'
 
@@ -42,7 +42,7 @@ function echo(view) {
 
 /** @param {Array<[string, Array<{method: string, path: string}>, import('@harness/kernel').CapabilityId[]?]>} mods */
 function appWith(...mods) {
-  const app = createApp(testPorts({ clock: fakeClock({ start: 1000, step: 0 }) }))
+  const app = createApp(testPorts({ clock: fakeClock({ start: 1000, step: 0 }) }), [...CAPABILITIES])
   for (const [id, routes, caps] of mods) install(app, manifest(id, routes, caps), echo(id))
   return app
 }
@@ -82,7 +82,14 @@ describe('the registry', () => {
 describe('dispatch', () => {
   test('every route in the frozen seam table reaches the module that declared it', async () => {
     const routes = await seamRoutes()
+    // Two parses that must agree. The cell parse is what dispatch is driven
+    // from; this one counts rows a person reading the table would count, so a
+    // row that stops having seven cells is a failure and not silent coverage
+    // of four fewer routes (I16).
+    const declared = (await Bun.file(SEAM).text()).split('\n')
+      .filter((line) => /^\|\s*`?(GET|POST)`?\s*\|/.test(line)).length
     expect(routes.length).toBeGreaterThan(20)
+    expect(routes.length).toBe(declared)
     /** @type {Map<string, Array<{method: string, path: string}>>} */
     const byView = new Map()
     for (const r of routes) byView.set(r.view, [...(byView.get(r.view) ?? []), { method: r.method, path: r.path }])
@@ -141,7 +148,7 @@ describe('the context a handler is handed', () => {
   })
 
   test('a grant is narrowed to what this build offers, never to what was asked', () => {
-    const app = createApp(testPorts(), { available: ['clock'] })
+    const app = createApp(testPorts(), ['clock'])
     install(app, manifest('greedy', [{ method: 'GET', path: '/g' }], ['clock', 'workspace']), echo('greedy'))
     expect(handle(app, { method: 'GET', path: '/g', headers: {}, body: {} }).data.granted).toEqual(['clock'])
   })
@@ -149,7 +156,7 @@ describe('the context a handler is handed', () => {
   test('emit is absent without the grant, and appends to the log with it', () => {
     /** @type {any} */
     let seen = null
-    const app = createApp(testPorts({ clock: fakeClock({ start: 7, step: 0 }) }))
+    const app = createApp(testPorts({ clock: fakeClock({ start: 7, step: 0 }) }), [...CAPABILITIES])
     const speak = (/** @type {any} */ _req, /** @type {any} */ ctx) => {
       seen = ctx.emit
       ctx.emit?.({ type: 'agent_status', agent: 'main', status: 'idle', detail: '' })
