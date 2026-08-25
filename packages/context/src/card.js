@@ -104,6 +104,10 @@ export function modelCard(name, entry) {
  * message at the moment a person can still fix it, rather than into a prompt
  * that quietly loses a section eight turns later.
  *
+ * The keys are sorted, so the FIRST refusal is the same entry whatever order
+ * `JSON.parse` hands the map back in. A caller building a picker from this map
+ * is looking at alphabetical order, not at the order models.json authored.
+ *
  * @param {unknown} doc the parsed contents of models.json
  * @returns {Record<string, ModelCard>}
  */

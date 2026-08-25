@@ -70,14 +70,16 @@ const RESERVE_FLOOR = 128
  * @param {Turn} turn
  */
 function replyReservation(card, turn) {
-  const asked = turn.replyTokens
+  // Read ONCE: a `replyTokens` of 0 is a number that is not an ask, and spelling
+  // "did the turn ask?" twice let a 0 take the derived eighth past the ceiling.
+  const asked = typeof turn.replyTokens === 'number' && turn.replyTokens > 0 ? Math.floor(turn.replyTokens) : null
   const derived = Math.round(card.contextTokens * REPLY_SHARE)
-  let tokens = typeof asked === 'number' && asked > 0 ? Math.floor(asked) : derived
+  let tokens = asked ?? derived
   let why =
-    typeof asked === 'number' && asked > 0
-      ? 'this turn asked for that many output tokens'
-      : `an eighth of the ${card.contextTokens}-token window, clamped to ${REPLY_FLOOR}..${REPLY_CEILING}`
-  if (tokens > REPLY_CEILING && typeof asked !== 'number') tokens = REPLY_CEILING
+    asked === null
+      ? `an eighth of the ${card.contextTokens}-token window, clamped to ${REPLY_FLOOR}..${REPLY_CEILING}`
+      : 'this turn asked for that many output tokens'
+  if (asked === null && tokens > REPLY_CEILING) tokens = REPLY_CEILING
   if (tokens < REPLY_FLOOR) tokens = REPLY_FLOOR
   if (card.maxOutputTokens !== null && tokens > card.maxOutputTokens) {
     tokens = card.maxOutputTokens

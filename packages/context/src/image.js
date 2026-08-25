@@ -13,7 +13,13 @@
  * @module
  */
 
-/** OpenAI's published high-detail arithmetic: a base charge plus a charge per 512px tile. */
+/**
+ * OpenAI's published high-detail arithmetic: a base charge plus a charge per
+ * 512px tile. It is ONE provider's rule applied to every card in the catalogue.
+ * Anthropic bills roughly w*h/750, which this understates by ~3x — a 1600x1200
+ * JPEG is ~2560 tokens there against the 765 counted here — so a per-card rule
+ * is owed before an image part is sent to a `kind: anthropic` entry.
+ */
 const BASE_TOKENS = 85
 const TILE_TOKENS = 170
 const TILE = 512

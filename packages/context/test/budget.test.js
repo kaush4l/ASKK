@@ -101,6 +101,14 @@ describe('the budget is derived from the window', () => {
     expect(plain.maxTokens - wordy.maxTokens).toBe(32000 - 4096)
   })
 
+  test('replyTokens: 0 is not an ask, so the derived eighth still meets the ceiling', () => {
+    // 0 is a number and a falsy one: the two spellings of "did the turn ask?"
+    // disagreed about it, and the eighth of a 200k window escaped the clamp.
+    const zero = budgetFor(card({ contextTokens: 200000 }), { replyTokens: 0 })
+    expect(zero.subtractions[0]?.tokens).toBe(4096)
+    expect(zero).toEqual(budgetFor(card({ contextTokens: 200000 })))
+  })
+
   test('a window with no room left says so rather than handing back a ceiling of zero', () => {
     expect(() => budgetFor(card({ contextTokens: 300 }))).toThrow(/300-token window/)
   })

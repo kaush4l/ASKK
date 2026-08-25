@@ -24,7 +24,7 @@ describe('an image is estimated by what it renders to, not by its bytes', () => 
     const { tokens, basis } = estimatePart(part)
 
     expect(tokens).toBe(255) // 85 base + 170 for the single 512px tile
-    expect(basis).toContain('512x512')
+    expect(basis).toBe('512x512, billed as 512px tiles (OpenAI high-detail rule)')
     // The arithmetic this replaces, stated so the regression is visible:
     expect(Math.ceil(dataBase64.length / 4)).toBeGreaterThan(50_000)
   })
@@ -41,7 +41,7 @@ describe('an image is estimated by what it renders to, not by its bytes', () => 
       type: 'image', mediaType: 'image/webp', dataBase64: 'UklGRhoAAABXRUJQVlA4TA0=',
     })
     expect(tokens).toBe(UNKNOWN_IMAGE_TOKENS)
-    expect(basis).toContain('unreadable')
+    expect(basis).toBe('image/webp header unreadable; charged as four tiles (OpenAI high-detail rule)')
   })
 })
 
@@ -87,6 +87,6 @@ describe('a part list keeps its arithmetic', () => {
     ])
     expect(parts.map((p) => p.tokens)).toEqual([100, 255])
     expect(tokens).toBe(355)
-    expect(parts.map((p) => p.basis)).toEqual(['characters/4', '512x512, billed as 512px tiles'])
+    expect(parts.map((p) => p.basis)).toEqual(['characters/4', '512x512, billed as 512px tiles (OpenAI high-detail rule)'])
   })
 })

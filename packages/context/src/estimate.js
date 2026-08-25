@@ -55,8 +55,8 @@ export function estimatePart(part) {
       return { tokens: Math.max(FLOOR, Math.ceil(part.text.length / CHARS_PER_TOKEN)), basis: 'characters/4' }
     case 'image': {
       const size = imageSize(part.dataBase64)
-      if (!size) return { tokens: UNKNOWN_IMAGE_TOKENS, basis: `${part.mediaType} header unreadable; charged as four tiles` }
-      return { tokens: imageTokens(size.width, size.height), basis: `${size.width}x${size.height}, billed as 512px tiles` }
+      if (!size) return { tokens: UNKNOWN_IMAGE_TOKENS, basis: `${part.mediaType} header unreadable; charged as four tiles (OpenAI high-detail rule)` }
+      return { tokens: imageTokens(size.width, size.height), basis: `${size.width}x${size.height}, billed as 512px tiles (OpenAI high-detail rule)` }
     }
     case 'audio': {
       const seconds = Math.ceil(decodedBytes(part.dataBase64) / AUDIO_BYTES_PER_SECOND)
