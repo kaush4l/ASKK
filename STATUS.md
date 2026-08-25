@@ -114,3 +114,9 @@ Gate: `bun run gate` = `tsc --checkJs` + `bun test packages` + the I12 size chec
 - Which of the nine ports survive (the `ports` critique decides).
 - Whether the emulated-Linux workspace survives, or becomes OPFS + a Worker.
 - The compaction ladder's shape under a 200k-context model.
+
+## Cross-lane requests
+
+| # | From | Ask |
+|---|---|---|
+| 1 | B · LOOP | **`docs/PORT-MAP.md` row B6 and `docs/RULINGS.md` 274/310 disagree, and B11 is about to depend on the answer.** PORT-MAP B6 sends `crates/agent/src/phase.rs` to `packages/agent/src/phase.js`; RULINGS:274 retires `PhaseId` and `PhaseConfig` by name, and RULINGS:310 states B8's done-when as an executable check — `grep -rn phase packages/agent` returns only stage names — which a file called `phase.js` cannot pass. The lane has deleted `PhaseConfig.phase` and stopped exporting `PhaseConfig`; what remains in the file (`ToolScope`/`grant`/`RESPONSE_CONTRACTS`/`WORK_BUDGET`) is read every call. **Rule on the NAME before B11 (`ask.js`) reads `WORK`**, so the import is written once. The lane will not resolve this itself. |

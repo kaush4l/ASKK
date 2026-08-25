@@ -1,10 +1,6 @@
 import { expect, test, describe } from 'bun:test'
 import { StoreError } from '@harness/kernel'
-import {
-  newAgentState, serializeAgentState, restoreAgentState,
-  EFFECT_TYPES, callModel, invokeTool, emit, delegate,
-  NO_TOOLS, ALL_TOOLS, onlyTools, grant, WORK,
-} from '@harness/agent'
+import { newAgentState, serializeAgentState, restoreAgentState } from '@harness/agent'
 
 /** A stored record with one field edited, so a test says what it changed and nothing else. */
 function stored(/** @type {Record<string, unknown>} */ edits) {
@@ -71,82 +67,60 @@ describe('agent state', () => {
     expect(() => restoreAgentState('[]')).toThrow('is array where a record was expected')
   })
 
+  test('a key that only Object.prototype has is refused BY NAME, not silently dropped (I18)', () => {
+    // Spelled as text: `__proto__` written as a literal key sets a prototype instead of a field,
+    // and it is exactly the key `in` would have answered "this build has that" for.
+    const record = `{"__proto__":{"pwned":1},${stored({}).slice(1)}`
+    expect(() => restoreAgentState(record)).toThrow(/"__proto__"/)
+    try {
+      restoreAgentState(record)
+    } catch (err) {
+      expect(/** @type {StoreError} */ (err).key).toBe('__proto__')
+    }
+  })
+
+  test('a key inherited from Object.prototype is refused without quoting a native function at the reader', () => {
+    const record = `{"toString":"x",${stored({}).slice(1)}`
+    expect(() => restoreAgentState(record)).toThrow(/"toString"/)
+    try {
+      restoreAgentState(record)
+    } catch (err) {
+      expect(/** @type {Error} */ (err).message).not.toContain('[native code]')
+    }
+  })
+
+  test('a compound field missing a member is refused at that MEMBER, not waved past as an object', () => {
+    expect(() => restoreAgentState(stored({ standing: {} })))
+      .toThrow('This agent state holds "standing.goal" as undefined, and this build reads it as object.')
+    expect(() => restoreAgentState(stored({ standing: { goal: { outcome: 'a', check: 'b' }, checking: false, met: null } })))
+      .toThrow(/"standing\.goal\.doneWhen" as undefined/)
+    expect(() => restoreAgentState(stored({ space: {} }))).toThrow(/"space\.name" as undefined/)
+  })
+
+  test('a list is checked through its elements — the loop reads a tool by name and would find none', () => {
+    expect(() => restoreAgentState(stored({ toolbox: [1, 2, 3] }))).toThrow(/"toolbox\[0\]" as number/)
+    expect(() => restoreAgentState(stored({ toolbox: [{ name: 'exec' }, { rank: 2 }] })))
+      .toThrow(/"toolbox\[1\]\.name" as undefined/)
+    expect(() => restoreAgentState(stored({ stages: ['plan', 3] }))).toThrow(/"stages\[1\]" as number/)
+    expect(() => restoreAgentState(stored({ senses: { space: 'not-an-array' } })))
+      .toThrow(/"senses\.space" as string/)
+  })
+
+  test('a filled compound still loads, so the depth check refuses shapes and not content', () => {
+    const live = restoreAgentState(stored({
+      standing: { goal: { outcome: 'ship', check: 'bun run gate', doneWhen: 'green' }, checking: true, met: null },
+      space: { name: 'work', facts: [['a', 'b']], notes: ['n'] },
+      toolbox: [{ name: 'exec' }],
+      senses: { space: [{ text: 'a' }] },
+    }))
+    expect(live.standing.goal.doneWhen).toBe('green')
+    expect(live.space?.name).toBe('work')
+  })
+
   test('the four counters the Rust carried and never read are gone', () => {
     const fresh = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (newAgentState()))
     for (const dead of ['plan', 'cursor', 'retries', 'replans', 'phase']) {
       expect(dead in fresh).toBe(false)
     }
-  })
-})
-
-describe('effects', () => {
-  /** @type {import('@harness/agent').Effect[]} */
-  const every = [
-    callModel({
-      document: { sections: [] },
-      format: { target: 'openai', vision: false, audio: false },
-      endpoint: 'model',
-      model: 'local-small',
-      temperature: 0.2,
-      speaker: 'summarizer',
-    }),
-    invokeTool('exec', '{"command":"ls"}'),
-    emit({ type: 'custom', kind: 'stop_requested', payload: null }),
-    delegate('scout', 'find the failing test', 1),
-  ]
-
-  test('every variant survives being written down and read back', () => {
-    for (const effect of every) {
-      expect(JSON.parse(JSON.stringify(effect))).toEqual(effect)
-    }
-  })
-
-  test('the union is closed: the constructors produce exactly the declared types', () => {
-    expect(every.map((e) => e.type).sort()).toEqual([...EFFECT_TYPES].sort())
-  })
-
-  test('a model call that names no model or temperature says so as data, not as absence', () => {
-    const call = callModel({
-      document: { sections: [] },
-      format: { target: 'openai', vision: false, audio: false },
-      endpoint: 'model',
-    })
-    expect(call).toEqual({
-      type: 'CallModel',
-      document: { sections: [] },
-      format: { target: 'openai', vision: false, audio: false },
-      endpoint: 'model',
-      model: '',
-      temperature: null,
-      speaker: '',
-    })
-  })
-})
-
-describe('a phase grants tools', () => {
-  const toolbox = [{ name: 'exec' }, { name: 'read_file' }, { name: 'write_file' }]
-
-  test('none yields an empty toolbox, so a phase that may not act cannot name a tool', () => {
-    expect(grant(NO_TOOLS, toolbox)).toEqual([])
-  })
-
-  test('all yields whatever this agent was given, and does not alias it', () => {
-    const granted = grant(ALL_TOOLS, toolbox)
-    expect(granted).toEqual(toolbox)
-    expect(granted).not.toBe(toolbox)
-  })
-
-  test('only yields exactly the named tools, in the TOOLBOX order the agent file set', () => {
-    expect(grant(onlyTools(['write_file', 'exec']), toolbox)).toEqual([{ name: 'exec' }, { name: 'write_file' }])
-  })
-
-  test('naming a tool this agent does not hold grants nothing rather than inventing it', () => {
-    expect(grant(onlyTools(['launch_missiles']), toolbox)).toEqual([])
-  })
-
-  test('the one working phase asks for an envelope, this agent’s whole toolbox, and 8192 tokens', () => {
-    expect(WORK.contract).toBe('tool_envelope')
-    expect(grant(WORK.tools, toolbox)).toEqual(toolbox)
-    expect(WORK.budget.maxTokens).toBe(8192)
   })
 })

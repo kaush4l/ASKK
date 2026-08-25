@@ -7,6 +7,14 @@
  * back. Plain serializable data because pending effects must survive a refresh
  * — replay reloads the state and its outstanding effects from the log (I11).
  *
+ * THREE OF THE FOUR CARRY A `turnId`, AND IT IS REQUIRED (I21). A model call,
+ * a tool invocation and a delegation all outlive the step that asked for them,
+ * so each is stamped with the turn it was queued under and the reducer drops a
+ * result whose turn is no longer live — that is the whole of how an abandoned
+ * turn stops billing a model call. Required and never defaulted, so an
+ * unstamped effect cannot be constructed: a default would be a stamp that lies.
+ * `Emit` is answered inside the same step and carries none.
+ *
  * FOUR VARIANTS, AND THE FIFTH THAT IS NOT HERE. `docs/PORT-MAP.md` sketches a
  * `Store` effect; the Rust has none and never did — persistence is the driver's
  * business on the way out of `handle`, not something a turn asks for. An effect
@@ -17,6 +25,8 @@
 /** @typedef {import('@harness/kernel').EndpointName} EndpointName */
 /** @typedef {import('@harness/kernel').ToolId} ToolId */
 /** @typedef {import('@harness/kernel').Fact} Fact */
+
+/** The turn an effect was queued under. A plain string; `core`'s driver mints them (I7 — never here). @typedef {string} TurnId */
 
 /**
  * The assembled paper, opaque here. `packages/context` owns its shape and
@@ -34,11 +44,11 @@
 
 /**
  * @typedef {(
- *   | {type: 'CallModel', document: Document, format: ProviderFormat, endpoint: EndpointName,
- *      model: string, temperature: number | null, speaker: string}
- *   | {type: 'InvokeTool', tool: ToolId, args: string}
+ *   | {type: 'CallModel', turnId: TurnId, document: Document, format: ProviderFormat,
+ *      endpoint: EndpointName, model: string, temperature: number | null, speaker: string}
+ *   | {type: 'InvokeTool', turnId: TurnId, tool: ToolId, args: string}
  *   | {type: 'Emit', fact: Fact}
- *   | {type: 'Delegate', agent: string, goal: string, batch: number}
+ *   | {type: 'Delegate', turnId: TurnId, agent: string, goal: string, batch: number}
  * )} Effect
  */
 
@@ -55,13 +65,14 @@ export const EFFECT_TYPES = /** @type {const} */ (['CallModel', 'InvokeTool', 'E
  * will belong to — empty is the process's own agent — because compaction is a
  * turn taken by the summarizer, and its words must never land as this agent's
  * answer.
- * @param {{document: Document, format: ProviderFormat, endpoint: EndpointName,
+ * @param {{turnId: TurnId, document: Document, format: ProviderFormat, endpoint: EndpointName,
  *          model?: string, temperature?: number | null, speaker?: string}} call
  * @returns {Effect}
  */
 export function callModel(call) {
   return {
     type: 'CallModel',
+    turnId: call.turnId,
     document: call.document,
     format: call.format,
     endpoint: call.endpoint,
@@ -75,10 +86,10 @@ export function callModel(call) {
  * Run one tool through its granted capability. `args` is the JSON TEXT the
  * model wrote, not a parsed object: a refusal quotes it back verbatim so the
  * model can see what it actually sent, and parsing here would lose that.
- * @param {ToolId} tool @param {string} args @returns {Effect}
+ * @param {TurnId} turnId @param {ToolId} tool @param {string} args @returns {Effect}
  */
-export function invokeTool(tool, args) {
-  return { type: 'InvokeTool', tool, args }
+export function invokeTool(turnId, tool, args) {
+  return { type: 'InvokeTool', turnId, tool, args }
 }
 
 /** Record a fact (I8) beyond what the driver already logs. @param {Fact} fact @returns {Effect} */
@@ -96,8 +107,8 @@ export function emit(fact) {
  * here because the ORDER half of that rule is pure and the CONCURRENCY half —
  * one Worker per agent — belongs to the driver, which needs to be told which
  * calls it may overlap.
- * @param {string} agent @param {string} goal @param {number} batch @returns {Effect}
+ * @param {TurnId} turnId @param {string} agent @param {string} goal @param {number} batch @returns {Effect}
  */
-export function delegate(agent, goal, batch) {
-  return { type: 'Delegate', agent, goal, batch }
+export function delegate(turnId, agent, goal, batch) {
+  return { type: 'Delegate', turnId, agent, goal, batch }
 }

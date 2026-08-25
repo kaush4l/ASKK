@@ -21,9 +21,9 @@ export { NO_TOOLS, ALL_TOOLS, onlyTools, grant, RESPONSE_CONTRACTS, WORK, WORK_B
 /** @typedef {import('./state.js').Space} Space */
 /** @typedef {import('./state.js').Paper} Paper */
 /** @typedef {import('./effect.js').Effect} Effect */
+/** @typedef {import('./effect.js').TurnId} TurnId */
 /** @typedef {import('./effect.js').Document} Document */
 /** @typedef {import('./effect.js').ProviderFormat} ProviderFormat */
 /** @typedef {import('./phase.js').ToolScope} ToolScope */
 /** @typedef {import('./phase.js').ResponseContract} ResponseContract */
-/** @typedef {import('./phase.js').PhaseConfig} PhaseConfig */
 /** @typedef {import('./phase.js').Budget} Budget */

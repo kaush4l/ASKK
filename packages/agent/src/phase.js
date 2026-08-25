@@ -16,7 +16,6 @@
  */
 
 /** @typedef {import('@harness/kernel').ToolId} ToolId */
-/** @typedef {import('@harness/kernel').PhaseId} PhaseId */
 
 /**
  * Which of an agent's tools a phase exposes. `none` is structural, not a
@@ -94,7 +93,10 @@ export const RESPONSE_CONTRACTS = /** @type {const} */ (['tool_envelope', 'answe
 export const WORK_BUDGET = Object.freeze({ maxTokens: 8192 })
 
 /**
- * @typedef {{phase: PhaseId, contract: ResponseContract, tools: ToolScope, budget: Budget}} PhaseConfig
+ * NO `phase` FIELD. It was the lookup key of the table this file deletes, and
+ * carrying an index into a world with nothing to index is how a retired machine
+ * survives its own retirement.
+ * @typedef {{contract: ResponseContract, tools: ToolScope, budget: Budget}} PhaseConfig
  */
 
 /**
@@ -107,7 +109,6 @@ export const WORK_BUDGET = Object.freeze({ maxTokens: 8192 })
  * @type {PhaseConfig}
  */
 export const WORK = Object.freeze({
-  phase: /** @type {PhaseId} */ ('work'),
   contract: /** @type {ResponseContract} */ ('tool_envelope'),
   tools: ALL_TOOLS,
   budget: WORK_BUDGET,

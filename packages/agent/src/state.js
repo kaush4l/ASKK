@@ -18,6 +18,7 @@
  */
 
 import { StoreError } from '@harness/kernel'
+import { checkField, shapeOf } from './shape.js'
 
 /** The agent's paper — `packages/context`'s assembly input; A-PAPER owns its shape. @typedef {{sources: unknown[]}} Paper */
 
@@ -81,10 +82,14 @@ export const DEFAULT_PASSES = 1
  * no tools — the honest default is that nothing is attached an agent did not
  * ask for. No briefs either: seeding them here would be the compiled-in
  * fallback that makes a missing `public/stages/` file invisible.
- * @param {Paper} [paper] the seeded starter set; `paper.js` (B5) supplies it once components exist
+ *
+ * NO ARGUMENTS. A seeded paper was a parameter every caller passed the same
+ * value for; the code that would have a real one to give does not exist yet,
+ * and when it does it adopts one through a named door in `paper.js` (B5)
+ * rather than through an optional argument here.
  * @returns {AgentState}
  */
-export function newAgentState(paper = { sources: [] }) {
+export function newAgentState() {
   return {
     model: '', temperature: null, task: null, toolbox: [],
     pendingTools: 0, toolRounds: 0, maxRounds: DEFAULT_MAX_ROUNDS,
@@ -96,7 +101,7 @@ export function newAgentState(paper = { sources: [] }) {
     passes: DEFAULT_PASSES, pass: 0, acted: false,
     critic: '', reviewed: null,
     standing: { goal: { outcome: '', check: '', doneWhen: '' }, checking: false, met: null },
-    space: null, faculties: [], senses: {}, briefs: {}, paper,
+    space: null, faculties: [], senses: {}, briefs: {}, paper: { sources: [] },
   }
 }
 
@@ -117,41 +122,32 @@ export function serializeAgentState(state) {
 }
 
 /**
- * Fields a fresh state leaves null and a live one fills. Shape checking needs
- * both halves of the union, and there is no other way to know that a `task` of
- * `null` and a `task` of `'summarise this'` are the same field.
- * @type {Record<string, string>}
- */
-const NULLABLE = { task: 'string', temperature: 'number', reviewed: 'boolean', space: 'object' }
-
-/** Arrays and objects are one `typeof`, and confusing them is the mistake a stored record actually makes. */
-function shapeOf(/** @type {unknown} */ value) {
-  if (value === null) return 'null'
-  return Array.isArray(value) ? 'array' : typeof value
-}
-
-/**
  * One stored state, read back. Absent keys take the fresh default, which is how
  * a record written before a field existed still loads.
  *
  * Everything else REFUSES, by name (I18). A key this build has no field for
  * means a record from a newer build, and a key of the wrong shape means a
  * record this reader cannot understand; guessing at either would put an agent
- * on the page in a state no code was written for.
+ * on the page in a state no code was written for. `shape.js` decides the second
+ * half, and it checks THROUGH the compound fields.
+ *
+ * `Object.hasOwn` and not `in`: `in` walks the prototype chain, so a record
+ * carrying `__proto__` or `toString` would answer "this build has that field",
+ * be waved past, and then be silently dropped by the spread below — which is
+ * the one thing I18 says a reader may never do.
  * @param {string} text @returns {AgentState}
  */
 export function restoreAgentState(text) {
   const raw = readRecord(text)
   const fresh = newAgentState()
   for (const key of Object.keys(raw)) {
-    if (key in fresh) continue
+    if (Object.hasOwn(fresh, key)) continue
     throw new StoreError('corrupt', `This agent state was written by a newer build: it carries "${key}", which this one has no field for.`, { key })
   }
   for (const [key, value] of Object.entries(raw)) {
-    const want = [shapeOf(/** @type {Record<string, unknown>} */ (fresh)[key])]
-    if (NULLABLE[key]) want.push(NULLABLE[key])
-    if (want.includes(shapeOf(value))) continue
-    throw new StoreError('corrupt', `This agent state holds "${key}" as ${shapeOf(value)}, and this build reads it as ${want.join(' or ')}.`, { key })
+    const bad = checkField(key, value, /** @type {Record<string, unknown>} */ (fresh)[key])
+    if (!bad) continue
+    throw new StoreError('corrupt', `This agent state holds "${bad.key}" as ${bad.found}, and this build reads it as ${bad.want}.`, { key: bad.key })
   }
   // Every key was proved present in `fresh` and every shape was proved above;
   // tsc cannot follow a proof that walks a table, so the cast carries it.
