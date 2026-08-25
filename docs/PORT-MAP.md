@@ -267,16 +267,29 @@ scraper (see "Files that should NOT be ported").
 
 Freeze these before the consuming lane starts. Signatures only — implementations are the lane's business.
 
+> **CORRECTION (lead, 2026-08-25).** This section was drafted before the seam
+> was frozen and restated the RUST shapes. `docs/SEAM.md` and
+> `packages/kernel/src/` are the authority; where they disagree with anything
+> below, they win. The kernel shapes as they actually are:
+
 ```js
-// ── packages/kernel (ALREADY FROZEN — restated so lanes can code against it) ──
+// ── packages/kernel — FROZEN. Read the source, not this restatement. ──
 
 /**
- * @typedef {{method: string, path: string, query: Object<string,string>, body: string}} Request
- * @typedef {{status: number, body: unknown, headers?: Object<string,string>}} Response
- * @typedef {{id: number, seq: number, at: number, kind: EventKind}} Event
- * @typedef {{type: string} & Object<string, unknown>} EventKind  // 12 closed variants
+ * @typedef {{method: string, path: string, headers: Record<string,string>, body: Record<string,string>}} Request
+ * @typedef {{status: number, view: string, data: Record<string,unknown>}} Response
+ * @typedef {{id: number, seq: number, at: number, v: number, fact: Fact}} Event
+ * @typedef {{type: string} & Record<string, unknown>} Fact  // 11 closed variants
  */
 ```
+
+Three differences from the Rust, all deliberate: a response carries a NAMED
+PROJECTION rather than an HTML body; a request's body is named fields rather
+than a form-encoded string, so nothing needs escaping on the way in; and an
+event carries an envelope version `v` beside a NESTED `fact`, so a new payload
+key cannot collide with envelope metadata (I18). Eleven fact types, not twelve:
+`module_deactivated` and `module_reactivated` were measured dead and one
+survives as `module_removed`.
 
 ```js
 // ── A-PAPER publishes BEFORE B-LOOP increment 4 ──
