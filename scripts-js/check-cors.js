@@ -14,6 +14,11 @@
  *   bun scripts-js/check-cors.js [origin]
  */
 
+// `export {}` and nothing else: top-level await needs this file to be a module,
+// and the probe deliberately exports no function — it is a thing you RUN and
+// read, not a thing another script can quietly depend on.
+export {}
+
 const ORIGIN = process.argv[2] ?? 'https://kaush4l.github.io'
 
 /** @type {Array<{name: string, url: string, method: string, headers: string[]}>} */
@@ -32,6 +37,7 @@ const CANDIDATES = [
 
 /** What one candidate's preflight actually says. */
 async function probe(/** @type {typeof CANDIDATES[number]} */ c) {
+  /** @type {Record<string, string>} */
   const headers = { origin: ORIGIN, 'access-control-request-method': c.method }
   if (c.headers.length) headers['access-control-request-headers'] = c.headers.join(',')
   try {
