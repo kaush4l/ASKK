@@ -44,6 +44,24 @@ export const STABILITIES = /** @type {readonly Stability[]} */ ([
 ])
 
 /**
+ * Where a section's content came from, and therefore what may be done with
+ * it. `authored` is ours or the person's — the agent file, the operating
+ * rules. `derived` is ours, computed from those. `untrusted` is everything
+ * that arrived from outside this agent: a fetched page, a tool result,
+ * another agent's words.
+ *
+ * It is declared per section rather than inferred, because by the time a
+ * string reaches assembly nothing about it says where it came from — and a
+ * boundary that has to be guessed is a boundary that will be guessed wrong.
+ * `assemble` refuses untrusted content in the system region and wraps the
+ * rest in a nonce-delimited envelope.
+ * @typedef {'authored'|'derived'|'untrusted'} Trust
+ */
+
+/** @type {readonly Trust[]} */
+export const TRUSTS = Object.freeze(['authored', 'derived', 'untrusted'])
+
+/**
  * How much of a section survives this assembly. `Fidelity` is the LEVEL;
  * compaction is the process that moves a section down the ladder and records
  * each step.
@@ -107,6 +125,7 @@ export function nextFidelity(fidelity) {
  *   priority: number,
  *   fidelity: Fidelity,
  *   floor: Fidelity,
+ *   trust: Trust,
  *   budgetHint: number,
  *   provenance: Provenance,
  *   parts: Part[],

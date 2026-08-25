@@ -89,6 +89,22 @@ export function isHead(slot) {
 }
 
 /**
+ * The system region: everything the model reads as ITS OWN standing
+ * instructions — who it is, how to behave, what it may call — plus the
+ * response contract at the pinned tail.
+ *
+ * The boundary is HISTORY, because a conversation is the first thing in the
+ * prompt that somebody other than this build wrote. Untrusted content may not
+ * sit before it (`assemble` refuses), which is the structural half of the
+ * trust boundary; the other half is the provider adapter, which carries an
+ * untrusted section to the user role rather than the system one.
+ * @param {number} slot
+ */
+export function isSystemSlot(slot) {
+  return slot < SLOT.HISTORY || isTail(slot)
+}
+
+/**
  * The pinned tail. Exactly one component may claim it, and it sorts last.
  *
  * This is also the one place the stability order is allowed to break. Prefix

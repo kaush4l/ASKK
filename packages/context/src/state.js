@@ -6,6 +6,7 @@
  */
 
 /** @typedef {import('./types.js').Part} Part */
+/** @typedef {import('@harness/kernel').StageId} StageId */
 /** @typedef {import('./types.js').Section} Section */
 
 /**
@@ -29,7 +30,11 @@
  *
  * The order is the canonical declaration order, and assembly's sort is stable,
  * so two sources sharing a slot come out in the order they were supplied in.
- * @typedef {{sources: SectionSource[]}} State
+ * `stage` travels with the sources because it is what the assembled document
+ * is FOR — the same sources assembled for `plan` and for `work` are two
+ * different papers, and a document that could not say which one it was would
+ * make the golden that proves determinism prove nothing.
+ * @typedef {{stage: StageId, sources: SectionSource[]}} State
  */
 
 export {}

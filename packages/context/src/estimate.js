@@ -21,8 +21,13 @@ import { imageSize, imageTokens, UNKNOWN_IMAGE_TOKENS } from './image.js'
 /** One part's cost and the reason to believe it. */
 /** @typedef {{tokens: number, basis: string}} Estimate */
 
-/** English averages about four characters per token; every provider's tokenizer is near it. */
-const CHARS_PER_TOKEN = 4
+/**
+ * English averages about four characters per token; every provider's tokenizer
+ * is near it. Exported because `fit` sizes a cut in CHARACTERS and the two
+ * must use one number: a divisor spelled twice is a budget that disagrees
+ * with the estimate it was derived from.
+ */
+export const CHARS_PER_TOKEN = 4
 
 /**
  * Audio is billed by DURATION, and a base64 blob does not carry one. 16 kB/s

@@ -23,6 +23,7 @@ function section(id, slot, over = {}) {
     priority: 0,
     fidelity: 'full',
     floor: 'elided',
+    trust: 'authored',
     budgetHint: 10,
     provenance: { module: id, version: '1', inputHash: 'abc', producedAt: 1 },
     parts: [{ type: 'text', text: id }],
