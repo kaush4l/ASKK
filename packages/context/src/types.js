@@ -10,6 +10,8 @@
  * @module
  */
 
+import { HarnessError } from '@harness/kernel'
+
 /** @typedef {import('@harness/kernel').ModuleId} ModuleId */
 /** @typedef {import('@harness/kernel').PhaseId} PhaseId */
 /** @typedef {import('@harness/kernel').SectionId} SectionId */
@@ -56,11 +58,23 @@ export const FIDELITIES = /** @type {readonly Fidelity[]} */ ([
 /**
  * One step down the ladder, `null` at the end of it. One definition, so the
  * compaction loop and the tests that judge it cannot disagree about "next".
+ *
+ * A name that is not on the ladder THROWS rather than answering. Documents are
+ * persisted and cross a Worker boundary, so an older build's or a renamed
+ * fidelity arrives here as unchecked data; `indexOf` would say -1 and the step
+ * after -1 is `'full'`, which walks a compacting section back UP the ladder and
+ * never terminates (I16).
  * @param {Fidelity} fidelity
  * @returns {Fidelity|null}
  */
 export function nextFidelity(fidelity) {
-  return FIDELITIES[FIDELITIES.indexOf(fidelity) + 1] ?? null
+  const at = FIDELITIES.indexOf(fidelity)
+  if (at < 0) {
+    throw new HarnessError('unknown_fidelity', `no fidelity named "${String(fidelity)}"`, {
+      detail: `the ladder is ${FIDELITIES.join(' -> ')}`,
+    })
+  }
+  return FIDELITIES[at + 1] ?? null
 }
 
 /**

@@ -2,6 +2,7 @@ import { expect, test, describe } from 'bun:test'
 import {
   SLOT, isHead, isTail, FIDELITIES, STABILITIES, nextFidelity, UNLIMITED_BUDGET,
 } from '@harness/context'
+import { HarnessError } from '@harness/kernel'
 
 /** @typedef {import('@harness/context').Section} Section */
 /** @typedef {import('@harness/context').Document} Document */
@@ -53,7 +54,21 @@ describe('the document is JSON', () => {
         withheld: ['space'],
       },
     }
-    expect(JSON.parse(JSON.stringify(doc))).toEqual(doc)
+    expect(JSON.parse(JSON.stringify(doc))).toStrictEqual(doc)
+  })
+
+  test('toStrictEqual is the matcher this file needs — toEqual cannot see the drift', () => {
+    /** @type {Document} */
+    const doc = { phase: 'work', sections: [section('soul', SLOT.SOUL)], report: {
+      budget: { maxTokens: 4096 }, spent: 300, steps: [], withheld: [],
+    } }
+    // The cast is the point: `spent: undefined` is exactly what the types forbid,
+    // and a test cannot show the guard biting without building the forbidden value.
+    const drifted = /** @type {Document} */ (/** @type {unknown} */ (
+      { ...doc, report: { ...doc.report, spent: undefined } }
+    ))
+    expect(() => expect(JSON.parse(JSON.stringify(drifted))).toStrictEqual(drifted)).toThrow()
+    expect(JSON.parse(JSON.stringify(drifted))).toEqual(drifted)
   })
 
   test('an unlimited budget survives the round trip — Infinity would not', () => {
@@ -64,7 +79,7 @@ describe('the document is JSON', () => {
   test('a source with no curated summary says null, because absent does not survive', () => {
     /** @type {SectionSource} */
     const source = { section: section('history', SLOT.HISTORY), summary: null }
-    expect(JSON.parse(JSON.stringify(source))).toEqual(source)
+    expect(JSON.parse(JSON.stringify(source))).toStrictEqual(source)
     expect(Object.keys(JSON.parse(JSON.stringify({ summary: undefined })))).toEqual([])
   })
 })
@@ -125,5 +140,12 @@ describe('the fidelity ladder', () => {
     }
     expect(walk).toEqual([...FIDELITIES])
     expect(nextFidelity('elided')).toBeNull()
+  })
+
+  test('a name that is not on the ladder throws instead of answering "full"', () => {
+    // The cast reaches the runtime guard: a persisted document from another
+    // build arrives as unchecked data, which is the only way this is called.
+    expect(() => nextFidelity(/** @type {any} */ ('bogus'))).toThrow(HarnessError)
+    expect(() => nextFidelity(/** @type {any} */ (undefined))).toThrow(HarnessError)
   })
 })
