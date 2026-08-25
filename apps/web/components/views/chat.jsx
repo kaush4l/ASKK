@@ -42,9 +42,12 @@ import s from './views.module.css'
  * cannot inject markup into the page it is talking to, structurally rather than
  * by sanitizer (STATUS.md, ruling 6).
  *
- * @param {{data: ChatData}} props
+ * @param {{data: ChatData, onSend?: (text: string) => void}} props `onSend` is
+ *   absent wherever nothing is listening — the gallery, and every pane that is
+ *   showing a transcript rather than driving one — and the composer states that
+ *   for itself rather than sitting disabled with no reason given.
  */
-export function Chat({ data }) {
+export function Chat({ data, onSend }) {
   return (
     <div className={s.stack}>
       <Panel caption={data.stageLabel}>
@@ -59,7 +62,7 @@ export function Chat({ data }) {
         )}
         {data.waitingLabel ? <Badge status={data.waitingStatus} label={data.waitingLabel} /> : null}
       </Panel>
-      <Composer data={data.composer} />
+      <Composer data={data.composer} onSend={onSend} />
     </div>
   )
 }

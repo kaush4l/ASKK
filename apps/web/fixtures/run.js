@@ -31,8 +31,8 @@ export const tiles = {
  * SCREEN: `Dashboard` gives the `waiting` group its own slot at the top, so it
  * is the slot and not this array's order that puts it there — the fixture ends
  * with it precisely so an in-order render could not fake the same result. Six
- * statuses appear between the six rows, which is every state this product draws
- * a shape for (`ui/glyph.jsx`) — the roster is where they are all visible at
+ * statuses appear between the six rows, which is the whole of the kernel's
+ * closed vocabulary (`STATUSES`) — the roster is where they are all visible at
  * once, and where a greyscale screenshot is judged.
  */
 export const dashboard = {
@@ -45,8 +45,8 @@ export const dashboard = {
       id: 'live',
       label: 'Working — 2 agents',
       rows: [
-        { name: 'main', status: 'working', statusLabel: 'Working — inside a turn', detail: 'Reading three search results.' },
-        { name: 'indexer', status: 'starting', statusLabel: 'Starting', detail: 'Its file is being read.' },
+        { name: 'main', status: 'thinking', statusLabel: 'Working — inside a turn', detail: 'Reading three search results.' },
+        { name: 'indexer', status: 'calling', statusLabel: 'Running a tool', detail: 'Reading the index it keeps.' },
       ],
     },
     {
@@ -59,7 +59,7 @@ export const dashboard = {
       label: 'Not running — 2 agents',
       rows: [
         { name: 'scout', status: 'idle', statusLabel: 'Idle', detail: 'Last answered 6 minutes ago.' },
-        { name: 'compactor', status: 'closed', statusLabel: 'Stopped — you ended its run', detail: 'Ran for 4 minutes.' },
+        { name: 'compactor', status: 'stopped', statusLabel: 'Stopped — you ended its run', detail: 'Ran for 4 minutes.' },
       ],
     },
     {
@@ -75,7 +75,7 @@ export const board = {
   emptyNote: 'No agents are loaded, so there is nothing running.',
   rows: [
     {
-      name: 'main', status: 'working', statusLabel: 'Working — inside a turn',
+      name: 'main', status: 'thinking', statusLabel: 'Working — inside a turn',
       routeLabel: 'Route: react — the question needs a lookup, not an answer',
       stageLabel: 'Stage: work, 2 of 4', lapLabel: '14s in this stage',
       detail: 'Second tool call of this turn.',

@@ -1,3 +1,5 @@
+'use client'
+
 import { Facts } from './facts'
 import { Ring } from './ring'
 import s from './meter.module.css'
@@ -24,17 +26,23 @@ import s from './meter.module.css'
  * had answered by reading the reply. A composer that does not state its own
  * envelope is a send button with a surprise attached.
  *
- * IT IS DISABLED, AND IT SAYS WHY. The seam that would carry a message is not
- * wired yet, so an enabled box would be a control lying about what pressing it
- * does — the same reason `Empty` ships without its action. The refusal is a
- * sentence the projection carries, so wiring it is deleting a string rather
- * than editing this file.
+ * IT SENDS NOW, AND IT IS A FORM. `onSend` is what a press does; the draft is
+ * the browser's, not React's, because a half-typed sentence is not a fact and
+ * the log is the authority on every fact this screen shows. `required` is what
+ * refuses an empty message, so the refusal happens in the browser before a
+ * request is built — the core refuses it a second time, which is where the
+ * rule actually lives.
  *
- * @param {{data: ComposerData}} props
+ * A COMPOSER WITH NOWHERE TO SEND SAYS SO, and that is `NOWHERE`: the gallery
+ * renders this component with no session behind it, and a disabled control
+ * whose reason is unstated is the dead switch this product keeps deleting.
+ *
+ * @param {{data: ComposerData, onSend?: (text: string) => void}} props
  */
-export function Composer({ data }) {
+export function Composer({ data, onSend }) {
+  const refusedLabel = data.refusedLabel || (onSend ? '' : NOWHERE)
   return (
-    <section className={s.composer} aria-label={data.promptLabel}>
+    <form className={s.composer} aria-label={data.promptLabel} onSubmit={(event) => submit(event, onSend)}>
       {/* THE LABEL WRAPS THE BOX rather than pointing at it by id. This
           component renders twice on one document — `/design-system/` puts every
           state in both rooms — and an id is a promise of uniqueness that a
@@ -42,8 +50,8 @@ export function Composer({ data }) {
       <label className={s.promptLabel}>
         {data.promptLabel}
         <textarea
-          className={s.prompt} rows={3} placeholder={data.placeholder}
-          disabled={Boolean(data.refusedLabel)}
+          className={s.prompt} rows={3} name="message" required
+          placeholder={data.placeholder} disabled={Boolean(refusedLabel)}
         />
       </label>
       <div className={s.envelope}>
@@ -51,11 +59,31 @@ export function Composer({ data }) {
       </div>
       <div className={s.send}>
         <Ring cost={data.cost} />
-        <button type="button" className={s.sendButton} disabled={Boolean(data.refusedLabel)}>
+        <button type="submit" className={s.sendButton} disabled={Boolean(refusedLabel)}>
           {data.sendLabel}
         </button>
       </div>
-      {data.refusedLabel ? <p className={s.refusal}>{data.refusedLabel}</p> : null}
-    </section>
+      {refusedLabel ? <p className={s.refusal}>{refusedLabel}</p> : null}
+    </form>
   )
+}
+
+/** Interface copy, because there is no core on the other side to have worded
+ *  it: a composer with no `onSend` is one nothing is listening to. */
+const NOWHERE = 'Nothing typed here is sent — this composer is not attached to a running agent.'
+
+/**
+ * @param {React.FormEvent<HTMLFormElement>} event
+ * @param {((text: string) => void) | undefined} onSend
+ */
+function submit(event, onSend) {
+  event.preventDefault()
+  const field = event.currentTarget.elements.namedItem('message')
+  if (!onSend || !(field instanceof HTMLTextAreaElement)) return
+  const text = field.value.trim()
+  if (text === '') return
+  onSend(text)
+  // The draft is gone because the message is a fact now: leaving it in the box
+  // is the second copy the person then sends twice.
+  event.currentTarget.reset()
 }

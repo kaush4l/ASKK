@@ -16,6 +16,11 @@
  * @property {string} path     the address, always with its trailing slash (I1: GitHub
  *                             Pages has no rewrites, so every route is a real directory)
  * @property {string} label    the nav entry, and the destination's own kicker
+ * @property {string} heading  what the region is, above its content
+ * @property {string} note     one line of the region's own voice. ONE line: the
+ *                             editorial round measured the predecessor's lede at
+ *                             170 words and 403 pixels between a person and the
+ *                             product (DESIGN.md §1)
  * @property {string[]} panes  the seam views this screen composes, from docs/SEAM.md
  * @property {boolean} rail    whether the instruments column has anything to say here
  * @property {boolean} scoped  whether this screen is about ONE agent (?agent=)
@@ -26,6 +31,8 @@ export const WORK = {
   slug: '',
   path: '/',
   label: 'Work',
+  heading: 'The run, and the whole of it',
+  note: 'Which agent needs you, the transcript you type into, and the fleet under both.',
   panes: ['chat', 'board', 'files', 'terminal', 'trace', 'processes', 'space', 'debug'],
   rail: true,
   scoped: true,
@@ -36,6 +43,8 @@ export const AGENTS = {
   slug: 'agents',
   path: '/agents/',
   label: 'Agents',
+  heading: 'What agents exist, and the surface for writing another',
+  note: 'Every agent, the file it was read from, the model it calls, and what failed to load. You edit what an agent IS here, and Work shows you the effect.',
   panes: ['agents', 'tools'],
   rail: false,
   scoped: false,
@@ -46,6 +55,8 @@ export const SETUP = {
   slug: 'setup',
   path: '/setup/',
   label: 'Setup',
+  heading: 'Where turns are sent, and what this browser holds',
+  note: 'The endpoint catalogue and what each entry resolves to, the one-line health of this build, and the appearance of the page.',
   panes: ['settings', 'status'],
   rail: false,
   scoped: false,
@@ -63,6 +74,8 @@ export const GALLERY = {
   slug: 'design-system',
   path: '/design-system/',
   label: 'Design system',
+  heading: 'Every component, every variant, every state',
+  note: 'The internal gallery, over the real ground. It is reached by address and is deliberately not linked from the product. Every number, agent and endpoint below is a fixture; nothing here was read from a log.',
   panes: [],
   rail: false,
   scoped: false,

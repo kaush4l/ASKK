@@ -1,7 +1,5 @@
 import { Shell } from '@/components/shell/shell'
-import { Work } from '@/components/work/work'
-import { chat } from '@/fixtures/transcript'
-import { dashboard } from '@/fixtures/run'
+import { LiveWork } from '@/components/work/live-work'
 
 /**
  * WORK, at `/`. The run and the whole of it: which agent needs you, the
@@ -11,15 +9,15 @@ import { dashboard } from '@/fixtures/run'
  * from the path — a page that names a slug the table does not list throws at
  * render instead of quietly becoming Work.
  *
- * THE PROJECTIONS ARE FIXTURES, and they are imported here rather than reached
- * for inside a component so that wiring the seam is one edit in one file: these
- * two names become `handle(app, request).data` and nothing below this line
- * changes (increment 4).
+ * THE FIXTURES ARE GONE FROM THIS FILE and the seam is in their place. They
+ * were imported HERE, one line each, precisely so that wiring the core was one
+ * edit in one file — and this is that edit. They live on in `/design-system/`,
+ * where a fixture is what a critic looks at, and in the tests.
  */
 export default function Page() {
   return (
     <Shell slug="">
-      <Work roster={dashboard} transcript={chat} />
+      <LiveWork />
     </Shell>
   )
 }

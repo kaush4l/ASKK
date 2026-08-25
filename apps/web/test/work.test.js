@@ -2,13 +2,16 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'bun:test'
 
+import { STATUSES, ok, problem } from '@harness/kernel'
+
 import { Glyph, GLYPH_STATES } from '../components/ui/glyph.jsx'
 import { NEEDS_YOU } from '../components/views/dashboard.jsx'
 import { Work } from '../components/work/work.jsx'
+import { renderable } from '../components/work/live-work.jsx'
 import { chat } from '../fixtures/transcript.js'
 import { dashboard } from '../fixtures/run.js'
 
-const work = renderToStaticMarkup(createElement(Work, { roster: dashboard, transcript: chat }))
+const work = renderToStaticMarkup(createElement(Work, { roster: ok('dashboard', dashboard), transcript: ok('chat', chat) }))
 
 /** Where a substring first appears in the rendered Work screen, or -1. */
 function at(/** @type {string} */ needle) {
@@ -62,4 +65,55 @@ test('every status on the Work screen draws a shape, and no two shapes are alike
   const marks = GLYPH_STATES.map((status) => renderToStaticMarkup(createElement(Glyph, { status })))
   expect(new Set(marks).size).toBe(GLYPH_STATES.length)
   for (const status of rendered) expect(work).toContain('data-status="' + status + '"')
+})
+
+/**
+ * THE MAP IS TOTAL OVER THE VOCABULARY THE CORE CAN ACTUALLY SEND.
+ *
+ * It was not: the six keys read `working`, `starting` and `closed`, so
+ * `thinking`, `calling` and `stopped` — three of the kernel's six — drew NO
+ * MARK, and nothing failed, because `Glyph` renders nothing for a status it has
+ * never heard of. That is the right behaviour for an unknown status and the
+ * wrong outcome for a known one, and only a test that reads `STATUSES` can tell
+ * the two apart. Widen the kernel's vocabulary and this fails here.
+ */
+test('every status the kernel can send draws a mark, and no two of them are alike', () => {
+  for (const status of STATUSES) {
+    expect(GLYPH_STATES).toContain(status)
+    expect(renderToStaticMarkup(createElement(Glyph, { status }))).not.toBe('')
+  }
+  const marks = STATUSES.map((status) => renderToStaticMarkup(createElement(Glyph, { status })))
+  expect(new Set(marks).size).toBe(STATUSES.length)
+})
+
+/**
+ * A PANE THAT COULD NOT BE PROJECTED TAKES ONLY ITS OWN SLOT.
+ *
+ * A build that serves `/chat` and not `/` is a real state of this system, and
+ * one 404 used to replace the whole screen — including the transcript that had
+ * projected perfectly well. The screen COMPOSES panes; a failed one says so
+ * where it sits and the rest of the screen still works.
+ */
+test('a roster that could not be projected does not take the transcript with it', () => {
+  const refused = problem(404, 'Nothing here answers GET /.', { kind: 'no_route', id: '/' })
+  const html = renderToStaticMarkup(createElement(Work, { roster: refused, transcript: ok('chat', chat) }))
+  expect(html).toContain('Nothing here answers GET /.')
+  expect(html).toContain(chat.composer.promptLabel)
+  expect(html).toContain('Find out whether Firecrawl still answers without a key.')
+})
+
+/**
+ * THE DISAGREEMENT IS ON THE SCREEN AND NOT A WHITE PAGE. The core projects a
+ * transcript this interface cannot draw (`live-work.jsx`, `renderable`), and
+ * the branch that says so is executed here — because the day the shapes agree,
+ * this test failing is the signal that the bridge can go.
+ */
+test('a transcript in a shape this interface cannot draw becomes a stated failure', () => {
+  const theirs = ok('chat', { agent: 'main', messages: [{ id: 'e1', kind: 'user', speaker: 'You', said: 'hello' }] })
+  const said = renderable(theirs)
+  expect(said.view).toBe('problem')
+  expect(said.data.kind).toBe('projection_mismatch')
+
+  const ours = ok('chat', { ...chat })
+  expect(renderable(ours)).toBe(ours)
 })

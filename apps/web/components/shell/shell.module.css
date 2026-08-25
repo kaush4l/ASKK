@@ -33,25 +33,6 @@
   overflow-wrap: anywhere;
 }
 
-/* ---- the strip of facts. Above 64rem a row of chips on one line, each
-   carrying live state; below it a two-column TABLE, and a table cell is a
-   surface, so it is square there. The radius follows the SHAPE an element has
-   at that width, not its class name. */
-.strip { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); margin: 0; }
-/* `contents` so the label and the value are cells of the STRIP's grid rather
-   than a stack inside a wrapper: below 64rem this really is a two-column table,
-   and a wrapper between the grid and its cells is what turns one into two. */
-.cell { display: contents; }
-.stripLabel {
-  font-size: var(--t-caption); line-height: var(--lh-caption);
-  letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
-}
-.stripValue { margin: 0; font-size: var(--t-label); line-height: var(--lh-label); color: var(--machine); }
-@media (min-width: 64rem) {
-  .strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2) var(--s-5); }
-  .cell { display: flex; align-items: baseline; gap: var(--s-2); border-radius: var(--r-full); }
-}
-
 /* ---- the three columns. The rail is ABSENT where it has nothing to say, never
    rendered disabled: a switch for a region that is not on the page is a dead
    control reporting a state it does not have. */

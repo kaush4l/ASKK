@@ -4,8 +4,7 @@ import { expect, test } from 'bun:test'
 
 import { Composer } from '../components/ui/composer.jsx'
 import { Ring } from '../components/ui/ring.jsx'
-import { NEARLY_FULL } from '../app/design-system/specimens.jsx'
-import { chat } from '../fixtures/transcript.js'
+import { NEARLY_FULL, chat } from '../fixtures/transcript.js'
 
 /** Every value of one attribute, in the order the document carries them. */
 function attrs(/** @type {string} */ markup, /** @type {string} */ name) {
@@ -52,19 +51,40 @@ test('the parts of a window never sum past the whole of it', () => {
 })
 
 /**
- * IT IS DISABLED, AND IT SAYS WHY — executed, because the next increment flips
- * `refusedLabel` to '' and that is the moment a box that stayed disabled, or one
- * that was never disabled, would both ship green. Two controls are refused: the
- * text box and the send button.
+ * A CONTROL IS NEVER DISABLED WITHOUT SAYING WHY, AND THE TWO REASONS ARE
+ * DIFFERENT ONES. Nothing listening is the interface's own fact — a gallery
+ * specimen, a session that never booted — and a refusal is the core's sentence.
+ * The core's outranks: a build that cannot record facts does not become able to
+ * because a component was handed a callback.
+ *
+ * This is the test the previous increment wrote for the moment `refusedLabel`
+ * went to '', which is this increment: a box that stayed disabled and one that
+ * armed itself with nothing behind it would both have shipped green.
  */
-test('a refusal disables the box and the button and is on screen; no refusal arms both', () => {
-  const refused = renderToStaticMarkup(createElement(Composer, { data: chat.composer }))
-  expect(attrs(refused, 'disabled').length).toBe(2)
-  expect(refused).toContain(chat.composer.refusedLabel)
+test('a composer with nowhere to send is refused, and says which of the two reasons it is', () => {
+  const nobody = renderToStaticMarkup(createElement(Composer, { data: chat.composer }))
+  expect(attrs(nobody, 'disabled').length).toBe(2)
+  expect(nobody).toContain('not attached to a running agent')
 
-  const armed = renderToStaticMarkup(
-    createElement(Composer, { data: { ...chat.composer, refusedLabel: '' } }),
+  const listening = renderToStaticMarkup(createElement(Composer, { data: chat.composer, onSend: () => {} }))
+  expect(attrs(listening, 'disabled').length).toBe(0)
+  expect(listening).not.toContain('not attached to a running agent')
+
+  const refusal = 'This build did not grant the chat module the right to record facts.'
+  const refused = renderToStaticMarkup(
+    createElement(Composer, { data: { ...chat.composer, refusedLabel: refusal }, onSend: () => {} }),
   )
-  expect(attrs(armed, 'disabled').length).toBe(0)
-  expect(armed).not.toContain(chat.composer.refusedLabel)
+  expect(attrs(refused, 'disabled').length).toBe(2)
+  expect(refused).toContain(refusal)
+})
+
+/**
+ * THE BROWSER REFUSES AN EMPTY MESSAGE BEFORE A REQUEST IS BUILT. `required` on
+ * the box is what does it, and it is asserted because the alternative — a guard
+ * in the submit handler alone — is invisible to a person until they press.
+ */
+test('the message box is required, so an empty send never reaches the seam', () => {
+  const armed = renderToStaticMarkup(createElement(Composer, { data: chat.composer, onSend: () => {} }))
+  expect(armed).toContain('required=""')
+  expect(armed).toContain('name="message"')
 })

@@ -7,7 +7,7 @@ import s from './ui.module.css'
  * The predecessor's board painted a `--tone` edge and said the status in prose
  * beside it, which is the same rule reached by two routes; this is the one
  * implementation. The LABEL is the primary channel and it is the core's word
- * (I5) — this component never turns `working` into "Working", because the
+ * (I5) — this component never turns `thinking` into "Working", because the
  * moment it does, the board and the roster word one status differently.
  *
  * THE MARK IS A SHAPE AND NOT A DOT (`glyph.jsx`). One 8px dot in six colours

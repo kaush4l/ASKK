@@ -8,7 +8,8 @@ import s from './ui.module.css'
  *   a call is not something anybody SAID, and the tag is what stops the two
  *   from being rendered by one component that then has to guess
  * @property {string} name         the tool, as the model spelled it
- * @property {string} status       pending · working · ok · failed
+ * @property {string} status       pending · calling · ok · failed, and the
+ *   middle two are the kernel's own words (`STATUSES`)
  * @property {string} statusLabel  the same fact in words, and the primary channel
  * @property {string} argsLabel    what it was called with, already one line
  * @property {string} resultLabel  what came back, '' while nothing has
@@ -16,7 +17,7 @@ import s from './ui.module.css'
 
 /** The two states with nothing to open yet. Layout, not a fact: the core says
  *  which state this is, and this decides how much room it takes. */
-const IN_FLIGHT = ['pending', 'working']
+const IN_FLIGHT = ['pending', 'calling']
 
 /**
  * THE WORK BETWEEN THE TURNS, IN FOUR STATES — pending, running, complete,

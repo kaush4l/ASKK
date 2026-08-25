@@ -36,7 +36,7 @@ export const terminal = {
       output: 'total 12\ndrwxr-xr-x 2 root root 4096 Aug 25 09:12 .\n-rw-r--r-- 1 root root 2048 Aug 25 09:12 report.md' },
     { id: 'r2', command: 'python3 -c "print(1)"', status: 'failed', statusLabel: 'Exited 127',
       output: '/bin/sh: python3: not found' },
-    { id: 'r3', command: 'tail -f tick.log', status: 'working', statusLabel: 'Running — 7m 41s',
+    { id: 'r3', command: 'tail -f tick.log', status: 'calling', statusLabel: 'Running — 7m 41s',
       output: 'tick 41\ntick 42' },
   ],
 }
@@ -45,9 +45,9 @@ export const terminal = {
 export const processes = {
   emptyNote: 'pulse_logger and ticker were started here, and the reload took them.',
   rows: [
-    { id: 'p1', name: 'ticker', status: 'working', statusLabel: 'Running', ageLabel: 'Started 12 minutes ago',
+    { id: 'p1', name: 'ticker', status: 'calling', statusLabel: 'Running', ageLabel: 'Started 12 minutes ago',
       commandLabel: 'sh -c "while true; do echo tick >> tick.log; sleep 5; done"' },
-    { id: 'p2', name: 'pulse_logger', status: 'closed', statusLabel: 'Stopped — you ended it', ageLabel: 'Ran for 4 minutes',
+    { id: 'p2', name: 'pulse_logger', status: 'stopped', statusLabel: 'Stopped — you ended it', ageLabel: 'Ran for 4 minutes',
       commandLabel: 'sh -c "python3 pulse.py >> pulse.log"' },
     { id: 'p3', name: 'watcher', status: 'failed', statusLabel: 'Gone — the reload destroyed it', ageLabel: 'Ran for 31 seconds',
       commandLabel: 'sh -c "inotifywait -m artifacts"' },

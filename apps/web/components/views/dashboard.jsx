@@ -7,7 +7,8 @@ import s from './views.module.css'
 /**
  * @typedef {object} RosterRow
  * @property {string} name
- * @property {string} status       the machine field: idle · starting · waiting · working · failed · closed
+ * @property {string} status       the machine field, from the kernel's closed
+ *   vocabulary: idle · thinking · calling · waiting · failed · stopped
  * @property {string} statusLabel  the same fact in words, and the primary channel
  * @property {string} detail       why it is in that state, or what it is doing
  */

@@ -4,7 +4,7 @@ import { GLYPH_STATES } from '@/components/ui/glyph'
 import { Inspector } from '@/components/ui/inspector'
 import { Markdown } from '@/components/ui/markdown'
 import { Ring } from '@/components/ui/ring'
-import { chat, reply } from '@/fixtures/transcript'
+import { NEARLY_FULL, chat, reply } from '@/fixtures/transcript'
 import s from './gallery.module.css'
 
 /**
@@ -18,28 +18,13 @@ import s from './gallery.module.css'
  */
 
 /** One tool call in each of the four states, differing only in the state. */
-const CALLS = ['pending', 'working', 'ok', 'failed'].map((status, i) => ({
+const CALLS = ['pending', 'calling', 'ok', 'failed'].map((status, i) => ({
   id: `call-${status}`, row: /** @type {'call'} */ ('call'), name: 'read_page', status,
   statusLabel: ['Queued behind the read', 'Running — 14s', 'Finished in 0.8s', 'Refused by the browser'][i] ?? '',
   argsLabel: 'url="https://firecrawl.dev/docs"',
   resultLabel: ['', '', 'access-control-allow-origin: *\ncontent-type: text/html',
     'No access-control-allow-origin on the response, so this page never saw the body.'][i] ?? '',
 }))
-
-/** A window that is nearly spent — the state the ring exists to make visible.
- *  Exported because `test/composer.test.js` lays its four arcs out and checks
- *  they are laid end to end; a second copy of it there would be a second
- *  fixture free to drift from the one a critic actually looks at. */
-export const NEARLY_FULL = {
-  label: '119,540 of 128,000 tokens',
-  headroomLabel: '8,460 tokens before the oldest turn is dropped from the window.',
-  parts: [
-    { id: 'input', key: 'Input', value: '81,200 tokens', fraction: 0.634 },
-    { id: 'output', key: 'Output', value: '12,410 tokens', fraction: 0.097 },
-    { id: 'reasoning', key: 'Reasoning', value: '18,930 tokens, never fed back', fraction: 0.148 },
-    { id: 'cached', key: 'Cached', value: '7,000 tokens, billed at a tenth', fraction: 0.055 },
-  ],
-}
 
 /** @type {ReadonlyArray<{name: string, node: React.ReactNode}>} */
 export const COMPONENTS = [
@@ -57,5 +42,13 @@ export const COMPONENTS = [
   },
   { name: 'markdown — every node kind the core can send', node: <Markdown blocks={reply} /> },
   { name: 'context ring — a window nearly spent', node: <Ring cost={NEARLY_FULL} /> },
-  { name: 'composer — three bands, and why it cannot send', node: <Composer data={chat.composer} /> },
+  // TWO REFUSALS, AND THEY COME FROM DIFFERENT PLACES. The first is the
+  // interface's own — a specimen has no session behind it, so nothing is
+  // listening — and the second is the core's sentence, which is the one a
+  // person meets when a build was assembled without the right to record facts.
+  { name: 'composer — three bands, and nothing listening', node: <Composer data={chat.composer} /> },
+  {
+    name: 'composer — the core refused it',
+    node: <Composer data={{ ...chat.composer, refusedLabel: 'This build did not grant the chat module the right to record facts, so nothing can be sent.' }} />,
+  },
 ]

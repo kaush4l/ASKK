@@ -46,13 +46,34 @@ export const reply = [
   },
 ]
 
+/**
+ * A WINDOW THAT IS NEARLY SPENT — the state the context ring exists to make
+ * visible, and the one a realistic transcript does not contain.
+ *
+ * It lived in `app/design-system/specimens.jsx` for an increment and moved
+ * here when `test/composer.test.js` became its second reader: a fixture two
+ * things share belongs beside the other fixtures, or the gallery becomes a
+ * module the tests import from.
+ * @type {import('@/components/ui/ring').CostData}
+ */
+export const NEARLY_FULL = {
+  label: '119,540 of 128,000 tokens',
+  headroomLabel: '8,460 tokens before the oldest turn is dropped from the window.',
+  parts: [
+    { id: 'input', key: 'Input', value: '81,200 tokens', fraction: 0.634 },
+    { id: 'output', key: 'Output', value: '12,410 tokens', fraction: 0.097 },
+    { id: 'reasoning', key: 'Reasoning', value: '18,930 tokens, never fed back', fraction: 0.148 },
+    { id: 'cached', key: 'Cached', value: '7,000 tokens, billed at a tenth', fraction: 0.055 },
+  ],
+}
+
 /** @type {import('@/components/views/chat').ChatData} */
 export const chat = {
   agent: 'main',
   stageLabel: 'main · work stage, 2 of 4',
   emptyNote: 'Nothing has been said to main yet. What you type starts a turn.',
   waitingLabel: 'Working — 14 seconds in this call',
-  waitingStatus: 'working',
+  waitingStatus: 'thinking',
   rows: [
     {
       id: 'm1', row: 'said', kind: 'user', speaker: 'You',
@@ -70,7 +91,7 @@ export const chat = {
       resultLabel: 'No access-control-allow-origin on the response, so this page never saw the body.',
     },
     {
-      id: 'c3', row: 'call', name: 'read_page', status: 'working', statusLabel: 'Running — 14s',
+      id: 'c3', row: 'call', name: 'read_page', status: 'calling', statusLabel: 'Running — 14s',
       argsLabel: 'url="https://firecrawl.dev/docs"', resultLabel: '',
     },
     {
@@ -86,7 +107,11 @@ export const chat = {
     promptLabel: 'Say the next thing to main',
     placeholder: 'Ask main to look something up…',
     sendLabel: 'Send',
-    refusedLabel: 'Nothing can be sent yet — the seam that would carry it is not wired.',
+    // EMPTY, because the composer sends now. What refuses a message is the
+    // core — an ungranted build, an endpoint with no address — and this fixture
+    // is a healthy transcript. The gallery still shows a composer that cannot
+    // send, because nothing is listening to a specimen (`ui/composer.jsx`).
+    refusedLabel: '',
     sentWith: [
       { key: 'Agent', value: 'main' },
       { key: 'Model', value: 'gemma-3-12b-it, at the local endpoint' },

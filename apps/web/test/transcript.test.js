@@ -21,7 +21,7 @@ const base = { id: 'c1', row: 'call', name: 'read_page', argsLabel: 'url="x"' }
  * and a finished call that hides its output makes every result a press.
  */
 test('a call in flight is one line; a call that finished opens itself', () => {
-  const running = call({ ...base, status: 'working', statusLabel: 'Running — 14s', resultLabel: '' })
+  const running = call({ ...base, status: 'calling', statusLabel: 'Running — 14s', resultLabel: '' })
   expect(running).not.toContain('<details')
   expect(running).toContain('data-flying="true"')
 

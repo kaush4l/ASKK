@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test'
 
 import { ALL, GALLERY, NAV, WORK, land, subjectOf } from '../lib/destinations.js'
-import { REGIONS } from '../lib/placeholder.js'
 
 /**
  * THE COUNT IS THE CLAIM. The predecessor's diagnosis was that seven equal
@@ -73,12 +72,17 @@ test('no destination puts its own label in the display register', () => {
 })
 
 /**
- * THE THIRD SLUG-KEYED REGISTRY, MADE EXECUTABLE. Nothing in the language ties
- * `ALL` to `REGIONS` to the slug literals the four route files pass, and the
- * shell now throws on a destination with no region copy rather than rendering
- * Work's words under it. This is the check that finds that at `bun test` rather
- * than on screen.
+ * THE THIRD SLUG-KEYED REGISTRY IS GONE: the region's heading and note are
+ * fields on the destination itself, so `tsc` is what now catches a destination
+ * with no copy. What it cannot catch is copy that is PRESENT AND EMPTY, or one
+ * screen wearing another's words — which is what the second registry actually
+ * produced when it drifted.
  */
-test('every destination has region copy of its own', () => {
-  for (const to of ALL) expect(REGIONS[to.slug]).toBeDefined()
+test('every destination says what its region is, in words nobody else uses', () => {
+  for (const to of ALL) {
+    expect(to.heading.length).toBeGreaterThan(0)
+    expect(to.note.length).toBeGreaterThan(0)
+  }
+  expect(new Set(ALL.map((to) => to.heading)).size).toBe(ALL.length)
+  expect(new Set(ALL.map((to) => to.note)).size).toBe(ALL.length)
 })

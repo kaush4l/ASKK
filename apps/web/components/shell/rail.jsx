@@ -1,4 +1,3 @@
-import { NOT_REAL_YET } from '@/lib/placeholder'
 import s from './shell.module.css'
 
 /**
@@ -12,17 +11,24 @@ import s from './shell.module.css'
  *
  * It is named for what is IN it and never for its geometry: it wore `Side panel
  * · main` once, a region named after itself, which tells a reader nothing they
- * cannot already see.
+ * cannot already see. The noun and the line are the interface's own, because
+ * this column says what it is FOR — the folder, the processes and the artifacts
+ * inside it are projections, and they arrive when the seam serves those panes.
  *
- * @param {{noun: string, subject: string, note: string}} props
+ * @param {{subject: string}} props
  */
-export function Rail({ noun, subject, note }) {
+export function Rail({ subject }) {
   return (
-    <aside className={s.rail} aria-label={noun} data-placeholder={NOT_REAL_YET}>
+    <aside className={s.rail} aria-label={NOUN}>
       <p className={s.railWho}>
-        {noun} · <strong>{subject}</strong>
+        {NOUN} · <strong>{subject}</strong>
       </p>
-      <p>{note}</p>
+      <p>{NOTE}</p>
     </aside>
   )
 }
+
+/** Named for its CONTENTS and not its position (DESIGN.md §11, R8-7). */
+const NOUN = 'folder'
+
+const NOTE = 'The folder this agent’s commands ran in, what is still running in it, and what the turn left behind.'

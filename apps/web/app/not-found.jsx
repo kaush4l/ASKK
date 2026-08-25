@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 
 import { BASE } from '@/lib/base'
 import { land } from '@/lib/destinations'
-import { MISROUTE } from '@/lib/placeholder'
+import { MISROUTE } from '@/lib/misroute'
 import { Problem } from '@/components/views/problem'
 import { Nav } from '@/components/shell/nav'
 import { Masthead } from '@/components/shell/masthead'

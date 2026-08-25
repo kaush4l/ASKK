@@ -1,5 +1,8 @@
+import { isProblem } from '@harness/kernel'
+
 import { Attention, Fleet, Glance } from '@/components/views/dashboard'
 import { Chat } from '@/components/views/chat'
+import { View } from '@/components/views'
 import s from './work.module.css'
 
 /**
@@ -14,19 +17,43 @@ import s from './work.module.css'
  * the four numbers, the rest of the fleet — is below both, where a person goes
  * looking rather than lands.
  *
- * It composes PANES it does not own: `dashboard` and `chat` are two projections
- * the seam produces (docs/SEAM.md), and this file decides only where they sit.
+ * IT TAKES RESPONSES AND NOT DATA, because a screen COMPOSES PANES and a pane
+ * can fail on its own. A build that serves `/chat` and not `/` is a real state
+ * of this system, and the previous shape — two projections, both assumed
+ * present — meant one 404 replaced the whole screen including the transcript
+ * that had projected perfectly well.
  *
- * @param {{roster: import('@/components/views/dashboard').DashboardData,
- *          transcript: import('@/components/views/chat').ChatData}} props
+ * @param {{roster: import('@harness/kernel').Response,
+ *          transcript: import('@harness/kernel').Response,
+ *          onSend?: (text: string) => void}} props
  */
-export function Work({ roster, transcript }) {
+export function Work({ roster, transcript, onSend }) {
+  const noRoster = isProblem(roster)
   return (
     <div className={s.work}>
-      <Attention data={roster} />
-      <Chat data={transcript} />
-      <Glance data={roster} />
-      <Fleet data={roster} />
+      {noRoster ? <View view={roster.view} data={roster.data} /> : <Attention data={shaped(roster.data)} />}
+      {isProblem(transcript)
+        ? <View view={transcript.view} data={transcript.data} />
+        : <Chat data={shaped(transcript.data)} onSend={onSend} />}
+      {noRoster ? null : (
+        <>
+          <Glance data={shaped(roster.data)} />
+          <Fleet data={shaped(roster.data)} />
+        </>
+      )}
     </div>
   )
+}
+
+/**
+ * THE ONE NARROWING THIS FILE DOES, and it is the same one the view registry
+ * writes down: the seam types `data` as `Record<string, unknown>` and each
+ * component declares the shape ITS view carries. Narrowing here would mean a
+ * second copy of every projection's shape living in the interface, which is the
+ * defect the registry exists to remove.
+ * @param {Record<string, unknown>} data
+ * @returns {any} the written reason is the paragraph above, not the signature.
+ */
+function shaped(data) {
+  return data
 }

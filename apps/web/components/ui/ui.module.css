@@ -22,12 +22,13 @@
    core, so this rule only tints what the words already say. */
 .toned { --tone: var(--control); }
 .toned[data-status='idle'] { --tone: var(--ink-3); }
-.toned[data-status='starting'] { --tone: var(--machine); }
+.toned[data-status='calling'] { --tone: var(--machine); }
+.toned[data-status='pending'] { --tone: var(--ink-3); }
 .toned[data-status='waiting'] { --tone: var(--warning); }
-.toned[data-status='working'] { --tone: var(--accent); }
+.toned[data-status='thinking'] { --tone: var(--accent); }
 .toned[data-status='ok'] { --tone: var(--success); }
 .toned[data-status='failed'] { --tone: var(--danger); }
-.toned[data-status='closed'] { --tone: var(--ink-3); }
+.toned[data-status='stopped'] { --tone: var(--ink-3); }
 .panel.toned { border-left: 3px solid var(--tone); }
 
 /* ---- Badge: MARK AND LABEL, never a mark alone. The mark is `.glyph` below. */
