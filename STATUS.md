@@ -18,7 +18,7 @@ parts the rewrite exposes as wrong.
 | Lane | Owns | Increment | State |
 |---|---|---|---|
 | LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
-| RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md` | 🔄 synthesizing |
+| RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md`, 360 lines | ✅ landed |
 | — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
 | A · PAPER | `packages/context` | 1/7 — shapes: parts, sections, documents, slots | 🔄 round 1 |
 | B · LOOP | `packages/agent` | 1/8 — state, effects, the phase vocabulary | 🔄 round 1 |
@@ -71,6 +71,43 @@ Gate: `bun run gate` = `tsc --checkJs` + `bun test packages` + the I12 size chec
      browser and a build-time parse cannot see it.
    - Bun's own batteries are used where they belong: the gate, the scripts, and
      anything that runs before the page ships.
+
+## What the ruling changed
+
+`docs/RULINGS.md` is the architecture of record. Eight attacks; three changed law.
+
+- **I20 Bounded boot** (new). Boot read one IndexedDB record per event, in its
+  own transaction, against a real browser holding **39,237** of them — and every
+  seam request then deep-cloned the whole log, making a session O(history²) with
+  four panes polling. Facts now persist as SEGMENTS (~512 per record, NDJSON)
+  with periodic SNAPSHOTS, and every projection is a registered reducer folded
+  incrementally. No handler ever receives the event array.
+- **I21 Turn identity** (new). A tool result from an abandoned turn silently
+  billed a model call. Every effect carries its `turnId`; the reducer drops what
+  is not live; every outstanding call has a deadline and an `AbortController`.
+- **I5 gains the view-model clause.** A projection carries the already-worded
+  string beside the machine field, because the moment two panes word one fact
+  for themselves they word it differently.
+- **The phase machine is retired.** `state.phase` was assigned nowhere in 67,476
+  lines and the exit table had zero readers. Stages survive.
+- **The budget is derived, never declared.** Every catalogue entry now carries
+  `context_tokens`; an entry without one is a configuration error at install.
+- **Head-of-string truncation is banned.** The Rust kept the FRONT 200 characters
+  of an oldest-first history — on any constrained turn it kept the greeting and
+  lost the message.
+- **The emulator does not come back.** 47 MB to serve four file operations, and
+  `durable()` returned false, so every file was lost on refresh. OPFS instead,
+  and `durable()` finally returns true.
+- **Search ships working.** Firecrawl keyless is verified CORS-`*` with no
+  Authorization header. Two things this project's own memory believed are
+  measured FALSE: public SearXNG (60 of 76 instances 429, two emit any
+  `access-control-allow-origin`) and `r.jina.ai` keyless (hard 401 against
+  consumer residential ISPs — exactly where a browser agent lives).
+- **Reasoning passback is provider-conditional**, and one detail bricks a whole
+  session: an assistant turn with only reasoning or only tool calls must
+  serialise `content` as `""` and never `null`.
+- **Dependencies below the UI stay at zero.** Refused by name: zod, Tailwind,
+  framer-motion, charting, marked + dompurify, any public CORS proxy.
 
 ## Open questions
 
