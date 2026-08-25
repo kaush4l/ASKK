@@ -68,12 +68,17 @@ tools:
   # `edit_file` names the text to find and the text to put in its place.
   - edit_file
   - list_files
-  - start_process
-  - list_processes
-  - read_process
-  - stop_process
-  - observe
   - find_files
+  # FIVE NAMES LEFT THIS LIST ON 2026-08-25, and the reason is I16 rather than
+  # tidiness. `start_process`, `list_processes`, `read_process`, `stop_process`
+  # and `observe` were declared here and this build answers to none of them —
+  # they need a RUNNER, a place that keeps a command alive between turns, and
+  # the workspace this build ships is OPFS: it stores files and runs nothing.
+  # A tool named and unresolvable is worse than one absent. The agents pane says
+  # so out loud now, and the model was being handed five affordances it could
+  # reach for and never use, which is the same lie by a different route: a model
+  # told a capability exists does not treat it as uncertain, it plans with it.
+  # They come back the day a runner does, in one edit, and not before.
   # The memory faculty's two, and the reason it was worth declaring: a line
   # that matters to this agent alone has nowhere to live in a shared space.
   - keep
