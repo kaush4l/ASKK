@@ -3,17 +3,15 @@
  * the ending that turn recorded is what goes home.
  *
  * Every claim here is one a person can see on a screen: whose name is on the
- * message that opened the conversation, whether the caller was told an answer
- * or a failure, and whether any of it is still there after the Worker that
- * wrote it is gone.
+ * message that opened the conversation, and whether the caller was told an
+ * answer, a failure, or somebody else's sentence. That the turn is WRITTEN DOWN
+ * before the Worker dies is the entry module's line to run, and it is executed
+ * where it lives (`adapters-web/test/agent-entry.test.js`).
  */
 import { expect, test, describe } from 'bun:test'
-import { CAPABILITIES } from '@harness/kernel'
 import { beginMessage } from '@harness/agent'
-import { boot, errandTurn, segStream, NO_ENDING } from '@harness/core'
-import { fakeClock, testPorts } from '@harness/adapters-test'
+import { errandTurn, NO_ENDING } from '@harness/core'
 import { harness, rows } from './harness.js'
-import { memorySegments } from './doubles.js'
 
 /** @param {string} goal @param {string} from */
 const begin = (goal, from) => ({ v: 1, type: /** @type {const} */ ('begin'), errandId: 'e-1', goal, from })
@@ -57,28 +55,6 @@ describe("an errand is one ordinary turn of the sub-agent's own loop", () => {
     const ended = await errandTurn(app, begin('measure it', 'main'), { timer })
     expect(ended.text).toBe('the file is 12 lines long')
   })
-
-  test("its conversation is in the store under its own name, and a later boot reads it back", async () => {
-    // THE DEFECT THIS IS ABOUT: a sub-agent whose store is a Map loses its whole
-    // conversation the moment its Worker is terminated — which is at the end of
-    // every errand. One store, two boots, and the second one is a reload.
-    const segments = memorySegments()
-    const { app, timer } = harness({ me: 'scout', segments, script: [{ text: 'looked, and here it is' }], auto: true })
-    await errandTurn(app, begin('go and look', 'main'), { timer })
-    await app.log.persist()
-
-    const again = await boot({
-      ports: testPorts({ clock: fakeClock() }),
-      available: [...CAPABILITIES],
-      segments,
-      me: 'scout',
-    })
-    expect(rows(again, 'scout').map((r) => r.said)).toEqual(['go and look', 'looked, and here it is'])
-    // …and under ITS name, not the entry agent's: a stream per agent is what
-    // lets two conversations share one browser without crossing.
-    expect(segments.indices(segStream('scout')).length).toBeGreaterThan(0)
-    expect(segments.indices(segStream('main'))).toEqual([])
-  })
 })
 
 describe('what the caller is told when the run went sideways', () => {
@@ -91,6 +67,19 @@ describe('what the caller is told when the run went sideways', () => {
     const two = await errandTurn(app, { ...begin('second errand', 'main'), errandId: 'e-2' }, { timer })
     expect([one.text, two.text]).toEqual(['first', 'second'])
     expect(two.errandId).toBe('e-2')
+  })
+
+  test('an errand whose model said NOTHING answers with nothing, never with the last errand`s sentence', async () => {
+    // A reply with no text and no tool calls ends `ok` and writes no row — so a
+    // reader that scanned the whole transcript backwards for the newest
+    // assistant row handed this caller the PREVIOUS errand's answer to the
+    // question it had just asked. Empty is honest; borrowed is not (I21, I16).
+    const { app, timer } = harness({ me: 'scout', script: [{ text: 'the release was in March' }, { text: '' }], auto: true })
+    const one = await errandTurn(app, begin('look it up', 'main'), { timer })
+    const two = await errandTurn(app, { ...begin('and the price?', 'main'), errandId: 'e-2' }, { timer })
+    expect(one.text).toBe('the release was in March')
+    expect(two.text).not.toBe(one.text)
+    expect(two.text).toBe('')
   })
 })
 

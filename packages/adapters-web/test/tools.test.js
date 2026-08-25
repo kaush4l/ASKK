@@ -11,6 +11,13 @@ import { matches } from '../src/find.js'
 /** The tools `apps/web/public/agents/main/agent.md` names, read off that file rather than copied. */
 const AGENT_FILE = `${import.meta.dir}/../../../apps/web/public/agents/main/agent.md`
 
+/** The shipped entry agent's file, through the loader the browser boots it with. @returns {Promise<import('@harness/agent').AgentSpec>} */
+async function mainSpec() {
+  const read = loadAgents([{ path: 'agents/main/agent.md', text: await Bun.file(AGENT_FILE).text() }])
+  if (!read.specs[0]) throw new Error(read.refusals[0]?.message ?? 'main/agent.md did not parse')
+  return read.specs[0]
+}
+
 /** One build with a real tool table over a fake workspace. @param {Record<string, string>} [files] */
 function build(files = {}) {
   const clock = fakeClock({ start: 1_700_000_000_000, step: 0 })
@@ -48,35 +55,38 @@ function call(app, name, args) {
 describe('every tool the shipped agent file names', () => {
   test('resolves to a descriptor with a runner behind it, or is named in a request to the lead', async () => {
     // THE GAP, EXECUTED. `unresolved` is honest and the agents pane is the only
-    // place a person meets it, so this is the check that says which names are
-    // still owed. Anything appearing here that is not in `OWED` is a name the
-    // shipped file grants and this build silently cannot answer.
+    // place a person meets it, so anything appearing here that is not in `OWED`
+    // is a name the shipped file grants and this build silently cannot answer.
     //
     // THE LIST IS EMPTY, and it took two strikings to get there. The lead
-    // struck `observe` and the four process tools from
-    // `apps/web/public/agents/main/agent.md`, because they need a place that
-    // keeps a command alive between turns and this build's workspace is OPFS,
-    // which stores files and runs nothing. `write_agent` and `spawn_agent` were
-    // the last two: they needed one Worker per agent, and the composition root
-    // now starts one. An empty list is the claim — anything appearing here is a
-    // name the shipped file grants and this build silently cannot answer.
+    // struck `observe` and the four process tools from the shipped file,
+    // because they need a place that keeps a command alive between turns and
+    // this build's workspace is OPFS, which stores files and runs nothing.
+    // `write_agent` and `spawn_agent` were the last two: they needed one Worker
+    // per agent, and the composition root now starts one.
     const OWED = /** @type {string[]} */ ([])
     const app = build()
-    const read = loadAgents([{ path: 'agents/main/agent.md', text: await Bun.file(AGENT_FILE).text() }])
-    const spec = read.specs[0]
-    if (!spec) throw new Error(read.refusals[0]?.message ?? 'main/agent.md did not parse')
+    const spec = await mainSpec()
     const peers = [{ ...spec, name: 'critic', description: 'checks work' }]
     const box = toolboxFor(spec, { catalogue: catalogueFor(spec), offered: [...CAPABILITIES], peers })
     expect([...box.unresolved].sort()).toEqual([...OWED].sort())
   })
 
+  test('and it does not tell the model a constraint this build no longer has', async () => {
+    // THE PROSE IS GATED BECAUSE IT WAS WRONG: the file told the model to spend
+    // a turn between `write_agent` and `spawn_agent`, which stopped being true
+    // the moment the roster was READ at the call — and a model plans around a
+    // constraint it is told about, so a stale one costs a turn every read (I16).
+    const spec = await mainSpec()
+    expect(spec.prompt).toMatch(/spawn_agent/)
+    expect(spec.prompt).not.toMatch(/do not compose|next turn/i)
+  })
+
   test('and no tool it DOES resolve is a descriptor with nothing behind it', async () => {
     // The other half of the same defect: a name the model is told it may call
-    // and that comes back refused. The faculty tools are exempt — the loop
-    // answers those, not this table.
+    // and that comes back refused. Faculty tools are the loop's, not this table's.
     const app = build()
-    const read = loadAgents([{ path: 'agents/main/agent.md', text: await Bun.file(AGENT_FILE).text() }])
-    const spec = /** @type {any} */ (read.specs[0])
+    const spec = await mainSpec()
     const faculty = new Set(catalogueFor(spec).filter((t) => !CATALOGUE.includes(t)).map((t) => t.name))
     const box = toolboxFor(spec, { catalogue: catalogueFor(spec), offered: [...CAPABILITIES] })
     const runnerless = box.toolbox.filter((t) => !faculty.has(t.name) && !Object.hasOwn(app.tools, t.name))

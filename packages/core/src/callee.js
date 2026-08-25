@@ -69,7 +69,7 @@ export async function errandTurn(app, begin, opts) {
 function answer(app, errandId, turnId) {
   const turns = /** @type {Record<string, Turns>} */ (app.log.read(TURNS))[app.me] ?? NO_TURNS
   const ending = turns.last
-  const said = lastSaid(app)
+  const said = lastSaid(app, turnId)
   if (!ending || ending.turnId !== turnId) return endedMessage(errandId, { ok: false, text: said, why: NO_ENDING })
   // `tone` IS THE FOLD'S OWN VERDICT and `ok` is nothing more than that word.
   // Reading `why === ANSWERED` here would be a second reader of the ending
@@ -78,19 +78,27 @@ function answer(app, errandId, turnId) {
 }
 
 /**
- * THE LAST THING THE MODEL ACTUALLY SAID, off the transcript this turn wrote.
+ * THE LAST THING THE MODEL SAID IN THIS TURN, off the transcript the turn wrote.
  * An ending fact carries the REASON a turn stopped and never the words, and a
  * reply with nothing in it is not a row (`reducers.js`) — so the newest
  * assistant row is the answer, and a turn that ended after a silent tool round
  * still reports the sentence the caller is waiting for.
- * @param {App} app @returns {string}
+ *
+ * BOUNDED BY THE TURN FOR THE SAME REASON THE ENDING IS (I21). A second errand
+ * whose reply is empty ends `ok` and writes no row of its own; an unbounded
+ * scan would then hand the caller the FIRST errand's sentence as the answer to
+ * the question it just asked. Empty is the honest answer to "this turn said
+ * nothing", and a caller resolving on it is a different bug from one resolving
+ * on somebody else's words (I16).
+ * @param {App} app @param {string} turnId @returns {string}
  */
-function lastSaid(app) {
+function lastSaid(app, turnId) {
   const held = /** @type {Record<string, Conversation>} */ (app.log.read(CONVERSATION))[app.me]
   const rows = held?.rows ?? []
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const row = rows[i]
-    if (row && row.kind === 'assistant') return row.said
+    if (!row || row.turnId !== turnId) continue
+    if (row.kind === 'assistant') return row.said
   }
   return ''
 }

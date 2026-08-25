@@ -24,7 +24,7 @@ describe('what the lead refuses, and the Worker it does not leave running', () =
     scout.says({ v: 99, type: 'ended', errandId: 'e-1', ok: true, text: 'hi', why: 'answered' })
     const cause = await finding.catch((thrown) => thrown)
     if (!(cause instanceof DelegateError)) throw cause
-    expect(cause.kind).toBe('unreadable')
+    expect(cause.kind).toBe('crashed')
     expect(cause.message).toContain(`this errand speaks protocol ${ERRAND_PROTOCOL} and the message says 99`)
     expect(scout.closed()).toBe(1)
   })
@@ -38,7 +38,7 @@ describe('what the lead refuses, and the Worker it does not leave running', () =
     scout.says({ v: ERRAND_PROTOCOL, type: 'ended', errandId: 'e-9', ok: true, text: 'found it', why: 'answered' })
     const cause = await finding.catch((thrown) => thrown)
     if (!(cause instanceof DelegateError)) throw cause
-    expect(cause.kind).toBe('unreadable')
+    expect(cause.kind).toBe('crashed')
     expect(cause.message).toBe('scout answered errand e-9 on the channel carrying e-1.')
     expect(scout.closed()).toBe(1)
   })

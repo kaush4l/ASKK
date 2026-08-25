@@ -7,8 +7,6 @@
  */
 
 export { bootBrowser, offered, PROFILE_KEY } from './boot.js'
-export { adopted, authored, rosterNames } from './adopt.js'
-export { browserWorkers, canDelegate, channelTo, startWorker } from './workers.js'
 export { attach } from './attach.js'
 export { saveEndpoint, saveSearchEndpoint, readEndpoints, resetEndpoints, useBroker } from './settings.js'
 export { makeEndpoint } from './endpoint.js'

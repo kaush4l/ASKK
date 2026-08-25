@@ -50,10 +50,18 @@ export function canDelegate() {
  * @param {string} agent @param {string} basePath @returns {WorkerLike}
  */
 export function startWorker(agent, basePath) {
-  return new Worker(new URL('./agent-entry.js', import.meta.url), {
-    type: 'module',
-    name: JSON.stringify({ agent, basePath }),
-  })
+  return new Worker(new URL('./agent-entry.js', import.meta.url), { type: 'module', name: deskName(agent, basePath) })
+}
+
+/**
+ * THE HANDSHAKE, WRITTEN ONCE. `agent-entry.js` parses this back before its
+ * first message, and the two halves are a producer and a consumer of one format
+ * — so the format is a function both a host test and the browser can call,
+ * rather than a JSON literal in each file that can drift apart in silence.
+ * @param {string} agent @param {string} basePath @returns {string}
+ */
+export function deskName(agent, basePath) {
+  return JSON.stringify({ agent, basePath })
 }
 
 /**
@@ -76,8 +84,12 @@ export function browserWorkers(opts) {
       if (running.has(agent)) {
         throw new DelegateError('refused', `${agent} is already working on an errand from this page, and it keeps one conversation — wait for that answer before sending another goal.`)
       }
-      running.add(agent)
+      // THE NAME IS CLAIMED ONLY ONCE A WORKER EXISTS. `spawn` is `new Worker`,
+      // which throws on a URL this origin refuses — and a name added before it
+      // is a name nothing ever removes, so every later delegation is refused
+      // with "already working on an errand" while nothing is working (I16).
       const channel = channelTo(opts.spawn(agent))
+      running.add(agent)
       return { ...channel, close: () => { running.delete(agent); channel.close() } }
     },
   }

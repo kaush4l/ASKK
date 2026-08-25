@@ -71,7 +71,7 @@ describe('a sub-agent is the same loop in its own Worker, reachable only by mess
     const cause = await finding.catch((thrown) => thrown)
     expect(cause).toBeInstanceOf(DelegateError)
     if (!(cause instanceof DelegateError)) throw cause
-    expect(cause.kind).toBe('failed')
+    expect(cause.kind).toBe('refused')
     expect(cause.message).toContain('its turn ended "truncated"')
     // What it managed to say is carried, and it is NOT the answer.
     expect(cause.detail).toBe('I was half way through when')

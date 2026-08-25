@@ -44,7 +44,7 @@ export function agentsOver(workers) {
         // NAMED, NOT SILENT (I15). A model that asked for an agent this build
         // does not have gets the refusal as its observation and can pick
         // another; an empty string would read as an agent that answered nothing.
-        return Promise.reject(new DelegateError('unknown', `There is no agent called "${agent}" in this build, so nothing ran that errand.`, { detail: workers.names.join(', ') }))
+        return Promise.reject(new DelegateError('unknown_agent', `There is no agent called "${agent}" in this build, so nothing ran that errand.`, { detail: workers.names.join(', ') }))
       }
       if (opts?.signal?.aborted) {
         // ALREADY ABORTED FIRES NO EVENT. Opening the channel first would spawn
@@ -52,7 +52,17 @@ export function agentsOver(workers) {
         return Promise.reject(new DelegateError('abandoned', `${agent} was stopped before that errand was sent, so no worker was started.`))
       }
       minted += 1
-      return awaited(workers.open(agent), `e-${minted}`, agent, goal, workers.me, opts?.signal)
+      // OPENING THE CHANNEL IS THE ONE LINE HERE THAT TOUCHES THE BROWSER, and
+      // it throws: an agent already on an errand is refused, and `new Worker`
+      // itself fails on a URL the origin will not load. A method the port
+      // declares as returning a promise must not throw past its caller for
+      // either — an `await` catches one and a bare call does not, so which one
+      // a caller wrote would decide whether the failure is reportable.
+      try {
+        return awaited(workers.open(agent), `e-${minted}`, agent, goal, workers.me, opts?.signal)
+      } catch (cause) {
+        return Promise.reject(cause instanceof DelegateError ? cause : new DelegateError('crashed', `${agent} could not be started: ${cause instanceof Error ? cause.message : String(cause)}`, { cause }))
+      }
     },
   }
 }
@@ -74,15 +84,15 @@ function awaited(channel, errandId, agent, goal, me, signal) {
     signal?.addEventListener('abort', () => settle(() => reject(new DelegateError('abandoned', `${agent} was stopped before it finished that errand.`))), { once: true })
     channel.onMessage((message) => {
       const said = readMessage(message)
-      if ('unreadable' in said) return settle(() => reject(new DelegateError('unreadable', `${agent} sent something this build cannot read: ${said.unreadable}`)))
+      if ('unreadable' in said) return settle(() => reject(new DelegateError('crashed', `${agent} sent something this build cannot read: ${said.unreadable}`)))
       // A `begin` echoed back is noise; an `ended` naming ANOTHER errand on a
       // channel carrying exactly one is a Worker confused about what it is
       // running, and waiting on in silence is the failure nobody can read (I16).
       if (said.type === 'ended' && said.errandId !== errandId) {
-        return settle(() => reject(new DelegateError('unreadable', `${agent} answered errand ${said.errandId} on the channel carrying ${errandId}.`)))
+        return settle(() => reject(new DelegateError('crashed', `${agent} answered errand ${said.errandId} on the channel carrying ${errandId}.`)))
       }
       if (said.type !== 'ended') return
-      if (!said.ok) return settle(() => reject(new DelegateError('failed', `${agent} did not answer: its turn ended "${said.why}".`, { detail: said.text })))
+      if (!said.ok) return settle(() => reject(new DelegateError('refused', `${agent} did not answer: its turn ended "${said.why}".`, { detail: said.text })))
       return settle(() => resolve(said.text))
     })
     channel.post(beginMessage(errandId, goal, me))

@@ -43,7 +43,15 @@ export const CONVERSATION = 'conversation'
  */
 export const CLEARED = 'core.cleared'
 
-/** @typedef {{id: string, kind: string, speaker: string, said: string}} Row */
+/** What one fact says, before the fold stamps the turn it belongs to onto it. @typedef {{id: string, kind: string, speaker: string, said: string}} Said */
+
+/**
+ * A row carries its TURN, because a reader that has to answer "what did THIS
+ * turn say" cannot get it from the order: an errand whose model reply was empty
+ * writes no row at all, and the newest assistant row is then the previous
+ * errand's sentence (I21).
+ * @typedef {Said & {turnId: string}} Row
+ */
 
 /**
  * One agent's conversation and what the log says about it. `open` is whether a
@@ -63,7 +71,10 @@ export function projections(me) {
   return [
     {
       name: CONVERSATION,
-      version: 1,
+      // 2: rows carry their turn. A snapshot written before this has rows that
+      // cannot answer which turn said what, and a version that did not move
+      // would restore them beside rows that can.
+      version: 2,
       init: () => /** @type {Record<string, Conversation>} */ ({}),
       fold: (/** @type {Record<string, Conversation>} */ state, /** @type {Event} */ event) => fold(state, event, me),
     },
@@ -82,7 +93,7 @@ function fold(state, event, me) {
   const who = factAgent(event.fact) || me
   const held = state[who] ?? (state[who] = blank())
   const row = rowFor(event, who)
-  if (row) held.rows.push(row)
+  if (row) held.rows.push({ ...row, turnId: event.turnId })
   moved(held, event.fact)
   return state
 }
@@ -114,7 +125,7 @@ function moved(/** @type {Conversation} */ held, /** @type {Fact} */ fact) {
  * ONE FACT AS ONE ROW, already worded (I5). The interface chooses layout and
  * composes no prose — the moment two panes word one fact for themselves they
  * word it differently.
- * @param {Event} event @param {string} who @returns {Row|null}
+ * @param {Event} event @param {string} who @returns {Said|null}
  */
 function rowFor(event, who) {
   const fact = event.fact
@@ -141,7 +152,7 @@ function rowFor(event, who) {
  * can act on, which is why an ANSWERED ending is not one: the reply above it is
  * the answer, and a line saying so under every healthy turn is a line people
  * stop reading.
- * @param {string} id @param {string} kind @param {unknown} payload @returns {Row|null}
+ * @param {string} id @param {string} kind @param {unknown} payload @returns {Said|null}
  */
 function noted(id, kind, payload) {
   if (kind === ENDED || kind === STOPPED) {
@@ -165,7 +176,7 @@ function noted(id, kind, payload) {
   return null
 }
 
-/** @param {string} id @param {string} kind @param {string} said @returns {Row} */
+/** @param {string} id @param {string} kind @param {string} said @returns {Said} */
 function note(id, kind, said) {
   // `Note` and not the agent's name: this is the page talking about the turn,
   // and every other row in the column says who is speaking.

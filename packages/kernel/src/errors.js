@@ -53,14 +53,35 @@ export class NetError extends HarnessError {
   }
 }
 
-/** @typedef {'unknown_agent'|'refused'|'crashed'|'timeout'|'cycle'} DelegateErrorKind */
-export class DelegateError extends HarnessError {}
+/**
+ * `abandoned` is here because a person pressing Stop is neither the sub-agent
+ * refusing nor the sub-agent breaking, and a caller that has to tell "nothing
+ * ran because you stopped it" from "nothing ran because it broke" cannot do it
+ * off `refused`.
+ * @typedef {'unknown_agent'|'refused'|'crashed'|'timeout'|'cycle'|'abandoned'} DelegateErrorKind
+ */
+export class DelegateError extends HarnessError {
+  /** @param {DelegateErrorKind} kind @param {string} message @param {{cause?: unknown, detail?: string}} [opts] */
+  constructor(kind, message, opts = {}) {
+    super(kind, message, opts)
+  }
+}
 
 /** @typedef {'unavailable'|'timeout'|'interrupted'|'not_found'|'refused'} WorkspaceErrorKind */
-export class WorkspaceError extends HarnessError {}
+export class WorkspaceError extends HarnessError {
+  /** @param {WorkspaceErrorKind} kind @param {string} message @param {{cause?: unknown, detail?: string}} [opts] */
+  constructor(kind, message, opts = {}) {
+    super(kind, message, opts)
+  }
+}
 
 /** @typedef {'denied'|'unknown'} CapabilityErrorKind */
-export class CapabilityError extends HarnessError {}
+export class CapabilityError extends HarnessError {
+  /** @param {CapabilityErrorKind} kind @param {string} message @param {{cause?: unknown, detail?: string}} [opts] */
+  constructor(kind, message, opts = {}) {
+    super(kind, message, opts)
+  }
+}
 
 /**
  * Whether an endpoint looks like LOOPBACK — the one distinction worth drawing,

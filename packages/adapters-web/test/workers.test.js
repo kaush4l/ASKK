@@ -158,10 +158,32 @@ describe('the ways an errand does not answer', () => {
     const scout = deskWorker('scout')
     const { port } = leadOver({ scout })
     const first = port.delegate('scout', 'the first goal')
-    expect(() => port.delegate('scout', 'the second goal')).toThrow(/already working on an errand/)
+    // A REJECTION AND NOT A THROW. `delegate` is declared as returning a
+    // promise, and a caller that wrote `await` catches this while one that
+    // wrote a bare call does not — so a synchronous throw would make whether
+    // the refusal is reportable depend on how the call site was spelled.
+    await expect(port.delegate('scout', 'the second goal')).rejects.toThrow(/already working on an errand/)
     await first
     // …and once it has settled, the next one runs.
     expect(await port.delegate('scout', 'the third goal')).toBe('scout answered')
+  })
+
+  test('a worker that will not START leaves the agent delegable, and says why', async () => {
+    // `spawn` IS `new Worker`, WHICH THROWS — on a URL this origin refuses, or
+    // a SecurityError. Claiming the name before it returned left that agent
+    // refused for the life of the page with "already working on an errand",
+    // which is a sentence about work that does not exist (I16).
+    const scout = deskWorker('scout')
+    let refuse = true
+    const workers = browserWorkers({
+      me: 'main',
+      roster: () => ['main', 'scout'],
+      spawn: () => { if (refuse) throw new Error('SecurityError'); return scout },
+    })
+    const port = agentsOver(workers)
+    await expect(port.delegate('scout', 'go')).rejects.toThrow(/SecurityError/)
+    refuse = false
+    expect(await port.delegate('scout', 'go')).toBe('scout answered')
   })
 
   test('a worker that dies is an ENDING and not a wait for the driver`s deadline', async () => {
