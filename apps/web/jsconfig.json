@@ -1,0 +1,14 @@
+{
+  "extends": "../../jsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "paths": {
+      "@/*": ["./*"],
+      "@harness/kernel": ["../../packages/kernel/src/index.js"],
+      "@harness/core": ["../../packages/core/src/index.js"],
+      "@harness/adapters-web": ["../../packages/adapters-web/src/index.js"]
+    }
+  },
+  "include": ["**/*.js", "**/*.jsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next", "out"]
+}
