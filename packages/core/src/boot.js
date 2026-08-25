@@ -17,12 +17,24 @@
  */
 
 import { ENTRY_AGENT } from '@harness/kernel'
+import { loadAgents } from '@harness/agent'
 
-import { createApp, install } from './app.js'
+import { AUTHORED } from './agents.js'
+import { agents, agentsManifest } from './agents.js'
+import { board, boardManifest } from './board.js'
 import { chat, chatManifest } from './chat.js'
+import { createApp, install } from './app.js'
+import { dashboard, dashboardManifest } from './dashboard.js'
+import { debug, debugManifest } from './debug.js'
 import { files, filesManifest } from './files.js'
 import { bootLog, freshLog } from './log/index.js'
+import { processes, processesManifest } from './processes.js'
 import { projections } from './reducers.js'
+import { artifactTools } from './shelf.js'
+import { settings, settingsManifest } from './settings.js'
+import { space, spaceManifest } from './space.js'
+import { terminal, terminalManifest } from './terminal.js'
+import { tools, toolsManifest } from './tools.js'
 
 /** @typedef {import('@harness/kernel').CapabilityId} CapabilityId */
 /** @typedef {import('@harness/kernel').Ports} Ports */
@@ -32,8 +44,17 @@ import { projections } from './reducers.js'
 
 /** Every module this build serves, with the logic each route reaches. */
 const MODULES = [
+  { manifest: dashboardManifest, handler: dashboard },
   { manifest: chatManifest, handler: chat },
+  { manifest: boardManifest, handler: board },
+  { manifest: agentsManifest, handler: agents },
+  { manifest: toolsManifest, handler: tools },
+  { manifest: spaceManifest, handler: space },
   { manifest: filesManifest, handler: files },
+  { manifest: terminalManifest, handler: terminal },
+  { manifest: processesManifest, handler: processes },
+  { manifest: debugManifest, handler: debug },
+  { manifest: settingsManifest, handler: settings },
 ]
 
 /**
@@ -44,6 +65,9 @@ const MODULES = [
  *   me?: string,
  *   tools?: Record<string, ToolRun>,
  *   agent?: import('@harness/agent').AgentState,
+ *   roster?: import('./app.js').Roster,
+ *   briefs?: Record<string, string>,
+ *   settings?: import('./app.js').SettingsFace,
  * }} Assembly
  */
 
@@ -56,7 +80,7 @@ const MODULES = [
 export async function boot(parts) {
   const me = parts.me ?? ENTRY_AGENT
   const log = await bootLog(parts.segments, { clock: parts.ports.clock, reducers: projections(me), stream: me })
-  return installed(createApp(parts.ports, parts.available, { log, me, tools: parts.tools, agent: parts.agent }))
+  return installed(createApp(parts.ports, parts.available, assembled(parts, log, me)))
 }
 
 /**
@@ -69,7 +93,53 @@ export async function boot(parts) {
 export function bootFresh(parts) {
   const me = parts.me ?? ENTRY_AGENT
   const log = freshLog(parts.segments, { clock: parts.ports.clock, reducers: projections(me), stream: me })
-  return installed(createApp(parts.ports, parts.available, { log, me, tools: parts.tools, agent: parts.agent }))
+  return installed(createApp(parts.ports, parts.available, assembled(parts, log, me)))
+}
+
+/**
+ * WHAT THE APP IS BUILT FROM, once, for both doors.
+ *
+ * The briefs are SPREAD ONTO THE STATE here rather than adopted by a function
+ * of their own: a wrapper whose whole body was one property assignment is the
+ * ceremony this rewrite exists to remove, and the state is already being built
+ * on this line.
+ *
+ * An agent AUTHORED IN THIS BROWSER is in the log, so the roster the pane reads
+ * is the shipped files plus what replay found — which is what makes an agent a
+ * person wrote survive a refresh without a second store beside the log.
+ * @param {Assembly} parts @param {import('./log/index.js').Log} log @param {string} me
+ */
+function assembled(parts, log, me) {
+  const shipped = parts.roster ?? { specs: [], refusals: [], paths: {} }
+  const state = parts.agent
+  return {
+    log,
+    me,
+    // THE DOOR OUT OF THE SHELF IS ALWAYS OPEN. `read_artifact` is core's
+    // because the thing that shelved the bytes has to be the thing that can
+    // produce them again — a build could otherwise ship the spill without the
+    // way back, and a receipt naming a handle nothing answers is worse than a
+    // long result. A composition root may still override it by name.
+    tools: { ...artifactTools(parts.ports), ...parts.tools },
+    agent: state && parts.briefs ? { ...state, briefs: parts.briefs } : state,
+    roster: withAuthored(shipped, log),
+    settings: parts.settings,
+  }
+}
+
+/** @param {import('./app.js').Roster} shipped @param {import('./log/index.js').Log} log */
+function withAuthored(shipped, log) {
+  const authored = /** @type {Array<{name: string, path: string, text: string}>} */ (log.read(AUTHORED))
+  if (authored.length === 0) return shipped
+  // The authored files are re-read rather than trusted: a file that parsed when
+  // it was written may not parse against a build that has since changed what a
+  // key means, and a refusal beside the roster is how a person finds out.
+  const read = loadAgents(authored)
+  const paths = { ...shipped.paths }
+  for (const one of authored) paths[one.name] = one.path
+  const byName = new Map(shipped.specs.map((s) => [s.name, s]))
+  for (const spec of read.specs) byName.set(spec.name, spec)
+  return { specs: [...byName.values()], refusals: [...shipped.refusals, ...read.refusals], paths }
 }
 
 /** @param {App} app @returns {App} */

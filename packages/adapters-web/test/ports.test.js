@@ -32,8 +32,11 @@ test('clearing the setting takes the destination off the list', async () => {
   expect(net.port.fetch(SEARCH_ENDPOINT, GET)).rejects.toThrow(/Nothing may be fetched/)
 })
 
-test('a request body is refused rather than dropped in silence', async () => {
+test('a GET body is refused rather than dropped in silence', async () => {
   const net = brokeredNet({ fetch: scriptedFetch([{ json: {} }]).fetch })
   net.allow(SEARCH_ENDPOINT, 'https://search.test')
-  expect(net.port.fetch(SEARCH_ENDPOINT, { ...GET, method: 'POST', body: '{}' })).rejects.toThrow(/sends no request body/)
+  // A POST body is CARRIED now — the shipped search default puts its query in
+  // one — and a GET body is still refused, because `fetch` discards it without
+  // saying so and a body that vanishes silently is the defect worth refusing.
+  expect(net.port.fetch(SEARCH_ENDPOINT, { ...GET, body: '{}' })).rejects.toThrow(/carries no body/)
 })

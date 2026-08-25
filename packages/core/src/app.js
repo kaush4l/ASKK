@@ -31,6 +31,34 @@ import { Registry } from './registry.js'
 /** @typedef {import('@harness/kernel').Fact} Fact */
 /** @typedef {import('@harness/kernel').Timestamp} Timestamp */
 /** @typedef {import('@harness/kernel').TurnId} TurnId */
+/** @typedef {import('@harness/agent').Effect} Effect */
+/** @typedef {import('@harness/agent').AgentSpec} AgentSpec */
+/** @typedef {import('@harness/agent').Refusal} Refusal */
+
+/**
+ * WHICH AGENT FILES THIS BUILD LOADED, and which would not load. Both halves,
+ * because a file that will not parse costs that one agent and the rest still
+ * load — and the roster pane exists to say which one, by name.
+ *
+ * `paths` is name -> the file it was read from. `AgentSpec` deliberately does
+ * not carry it — a spec is what a file SAYS and not where it lives — but the
+ * pane's whole job is telling a person which file to edit.
+ * @typedef {{specs: AgentSpec[], refusals: Refusal[], paths: Record<string, string>}} Roster
+ */
+
+/**
+ * THE ENDPOINT CATALOGUE, READABLE THROUGH THE SEAM AND NEVER THE KEY.
+ * `null` is a build that shipped no catalogue reader, which `/settings` says in
+ * one sentence rather than rendering an empty list that looks like a person has
+ * no endpoints (I15, I16). `apply` takes effect immediately in memory and
+ * persists behind the request, because a setting that needs a reload to take is
+ * a setting the page lies about; `saveEndpoint` in `adapters-web` remains the
+ * only door a CREDENTIAL goes through (docs/SEAM.md).
+ * @typedef {{
+ *   read: () => {selected: string, search: string, entries: Array<Record<string, unknown>>},
+ *   apply: (patch: {entry?: string, baseUrl?: string, model?: string, search?: string}) => void,
+ * }|null} SettingsFace
+ */
 
 /**
  * ONE FACT ON ITS WAY TO THE LOOP: what happened, when, and WHICH TURN it
@@ -52,7 +80,7 @@ import { Registry } from './registry.js'
  *   registry: Registry, log: Log, ports: Ports, available: CapabilityId[],
  *   agent: AgentState, me: string, tools: Record<string, ToolRun>,
  *   pending: Incoming[], bootedAt: number, quiet: Record<string, number>,
- *   errands: Set<string>,
+ *   errands: Set<string>, chores: Effect[], roster: Roster, settings: SettingsFace,
  * }} App
  */
 
@@ -64,7 +92,7 @@ import { Registry } from './registry.js'
  * `./log/` are the two honest ways to obtain one.
  * @param {Ports} ports
  * @param {CapabilityId[]} available what THIS build can actually offer a module
- * @param {{log: Log, me?: string, tools?: Record<string, ToolRun>, agent?: AgentState}} opts
+ * @param {{log: Log, me?: string, tools?: Record<string, ToolRun>, agent?: AgentState, roster?: Roster, settings?: SettingsFace}} opts
  * @returns {App}
  */
 export function createApp(ports, available, opts) {
@@ -87,11 +115,27 @@ export function createApp(ports, available, opts) {
     // taken off before the await. Without it the pane told the person their
     // page had been reloaded for the whole duration of the call.
     errands: new Set(),
+    // WORK A PERSON'S PRESS PRODUCED. A terminal command and a file write have
+    // no reply behind them and no turn to belong to, so they cannot ride the
+    // fact queue — `step` would drop them. The driver drains this first.
+    chores: [],
+    roster: opts.roster ?? { specs: [], refusals: [], paths: {} },
+    settings: opts.settings ?? null,
     // Consecutive silent completions, per model. A model that answers with
     // nothing twice running is not worth a third attempt, and the driver stops
     // retrying it rather than paying to learn the same thing again.
     quiet: {},
   }
+}
+
+/**
+ * AN ID FROM INJECTED BYTES (I7), so a replay of a test is byte-identical.
+ * Turn ids and artifact handles are both minted here because both are drawn
+ * from the same port, and an id spelled twice is an id that will differ once.
+ * @param {App} app @param {number} [bytes]
+ */
+export function mintId(app, bytes = 8) {
+  return [...app.ports.rng.bytes(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 /**

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@harness/kernel": "workspace:*",
+    "@harness/agent": "workspace:*",
     "@harness/core": "workspace:*"
   },
   "scripts": {

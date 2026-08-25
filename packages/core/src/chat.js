@@ -16,16 +16,17 @@
  * @module
  */
 
-import { addressee, ok, problem, statusSentence } from '@harness/kernel'
+import { addressee, ok, problem } from '@harness/kernel'
 import { STOP_REQUESTED } from '@harness/agent'
 
-import { CONVERSATION } from './reducers.js'
+import { readAttachments, refusedBy, attach } from './attachments.js'
+import { CLEARED } from './reducers.js'
+import { projected } from './transcript.js'
 
 /** @typedef {import('@harness/kernel').Manifest} Manifest */
 /** @typedef {import('@harness/kernel').Request} Request */
 /** @typedef {import('@harness/kernel').Response} Response */
 /** @typedef {import('./ctx.js').Ctx} Ctx */
-/** @typedef {import('./reducers.js').Conversation} Conversation */
 
 /** @type {Manifest} */
 export const chatManifest = {
@@ -33,12 +34,17 @@ export const chatManifest = {
   version: '1',
   title: 'Chat',
   summary: "One agent's conversation: the transcript and the turn trigger.",
-  capabilities: ['emit'],
+  // `workspace` is asked for so a dropped file can be KEPT, not so the chat
+  // module can reach the substrate: the write goes out as the same `write_file`
+  // chore the files pane queues, through the same gate.
+  capabilities: ['emit', 'workspace'],
   view: 'chat',
   routes: [
     { method: 'GET', path: '/chat' },
     { method: 'POST', path: '/chat' },
     { method: 'POST', path: '/chat/stop' },
+    { method: 'GET', path: '/chat/halt' },
+    { method: 'GET', path: '/chat/clear' },
   ],
 }
 
@@ -46,6 +52,8 @@ export const chatManifest = {
 export function chat(request, ctx) {
   const who = addressee(request) || ctx.me
   if (request.path === '/chat/stop') return stop(ctx, who)
+  if (request.path === '/chat/halt') return halt(ctx, who)
+  if (request.path === '/chat/clear') return clear(request, ctx, who)
   if (request.method === 'POST') return submit(request, ctx, who)
   return ok('chat', projected(ctx, who))
 }
@@ -63,11 +71,29 @@ function submit(request, ctx, who) {
       id: who, kind: 'empty_message', repair: 'Type something and send it again.',
     })
   }
+  const dropped = readAttachments(request.body.attachments ?? '')
+  if ('problem' in dropped) {
+    return problem(400, `Those attachments could not be read: ${dropped.problem}.`, {
+      id: who, kind: 'unreadable_attachment', repair: 'Send the message again without them, or attach the files afresh.',
+    })
+  }
+  const refusal = dropped.parts.map((p) => refusedBy(ctx, p)).find((why) => why !== '')
+  if (refusal) {
+    return problem(400, refusal, { id: who, kind: 'card_cannot_read', repair: 'Nothing was recorded, so nothing is lost.' })
+  }
   if (!ctx.emit) return ungranted(who)
+  // THE ATTACHMENTS GO FIRST. A part recorded after the message would be a part
+  // the turn the message started could not see: the driver takes the message
+  // off the queue and steps on it, and the fold behind it is already fixed.
+  const notes = dropped.parts.map((part) => {
+    const made = attach(ctx, part)
+    ctx.emit?.(made.fact)
+    return made.note
+  })
   // Empty means "this process's own agent": every log written before per-agent
   // chat says exactly that, and still reads correctly.
   ctx.emit({ type: 'user_message', text: message, agent: who === ctx.me ? '' : who, from: '' })
-  return ok('chat', projected(ctx, who))
+  return ok('chat', { ...projected(ctx, who), attachedLabel: notes.join(' ') })
 }
 
 /**
@@ -92,6 +118,41 @@ function stop(ctx, who) {
   return ok('chat', projected(ctx, who))
 }
 
+/**
+ * A HARD HALT. Stop asks the loop to end at its next boundary; this declares
+ * the turn over now, because the boundary never came — a driver that died with
+ * the tab, a turn the log says is open with nothing behind it. It is a
+ * DIFFERENT act from Stop and so it is a different route: conflating them is
+ * how a person pressing Stop twice loses the answer that was one round away.
+ * @param {Ctx} ctx @param {string} who @returns {Response}
+ */
+function halt(ctx, who) {
+  if (who !== ctx.me) {
+    return problem(409, `${who} runs in its own Worker, which this page cannot halt.`, {
+      id: who, kind: 'not_ours', repair: `Halt ${who} from the page that is running it.`,
+    })
+  }
+  if (!ctx.emit) return ungranted(who)
+  ctx.emit({ type: 'agent_status', agent: who, status: 'idle', detail: 'This turn was halted from the page.' })
+  return ok('chat', projected(ctx, who))
+}
+
+/**
+ * EMPTY THE TRANSCRIPT, ON THE SECOND PRESS. Two clicks because there is no
+ * undo button in front of a person mid-conversation, and one because the fact
+ * is reversible in the log even when the screen is not (I10). `x-confirm` is a
+ * header for the same reason `x-agent` is: `/chat/clear` stays one route.
+ * @param {Request} request @param {Ctx} ctx @param {string} who @returns {Response}
+ */
+function clear(request, ctx, who) {
+  if ((request.headers['x-confirm'] ?? '') !== 'yes') {
+    return ok('chat', { ...projected(ctx, who), armedLabel: `Press again to empty ${who}'s transcript. The facts stay in the log; the conversation starts over.` })
+  }
+  if (!ctx.emit) return ungranted(who)
+  ctx.emit({ type: 'custom', kind: CLEARED, payload: { agent: who === ctx.me ? '' : who } })
+  return ok('chat', projected(ctx, who))
+}
+
 /** @param {string} who @returns {Response} */
 function ungranted(who) {
   return problem(500, 'This build did not grant the chat module the right to record facts.', {
@@ -99,50 +160,4 @@ function ungranted(who) {
     detail: 'The `emit` capability is not in this build\'s available list, so nothing could be written.',
     repair: 'This is a build assembled wrong, not something the message did.',
   })
-}
-
-/**
- * ONE AGENT'S TRANSCRIPT, ITS STAGE, AND WHAT IT IS WAITING ON. Read straight
- * off the registered fold — no walk, no clone, no array crossing the seam.
- * @param {Ctx} ctx @param {string} who @returns {Record<string, unknown>}
- */
-function projected(ctx, who) {
-  const held = /** @type {Record<string, Conversation>} */ (ctx.project(CONVERSATION))[who] ?? EMPTY
-  const wait = waiting(held, ctx.driving(who))
-  return {
-    agent: who,
-    stageLabel: held.stage === '' ? `${who} · ${statusSentence(status(held))}` : `${who} · ${held.stage} stage`,
-    messages: held.rows,
-    emptyNote: `Nothing has been said to ${who} yet. What you type starts a turn.`,
-    waitingLabel: wait.label,
-    waitingStatus: wait.status,
-  }
-}
-
-/** @type {Conversation} */
-const EMPTY = { rows: [], open: false, tools: 0, status: 'idle', detail: '', stage: '' }
-
-/** The status as the kernel's closed vocabulary, so an older record cannot widen it. */
-function status(/** @type {Conversation} */ held) {
-  return /** @type {import('@harness/kernel').Status} */ (held.status)
-}
-
-/**
- * WHAT THE TURN IS WAITING ON, AND WHY.
- *
- * The third case is the one that matters: the log says a turn is open and
- * NOTHING IN THIS PROCESS IS DRIVING IT. That is a reload landing on a turn
- * that was in flight — the shape of the log survives, the fetch behind it does
- * not — and the pane used to render it as "thinking…" with a frozen clock and a
- * disabled composer, recoverable only by wiping storage.
- * @param {Conversation} held @param {boolean} driven
- * @returns {{label: string, status: string}}
- */
-function waiting(held, driven) {
-  if (!held.open) return { label: '', status: 'idle' }
-  if (driven) return { label: `Working — ${held.detail || 'this turn is running'}`, status: status(held) === 'idle' ? 'thinking' : held.status }
-  return {
-    label: 'That turn is not running any more — the page was reloaded while it was in flight, so nothing is driving it. Nothing was lost; ask again.',
-    status: 'stopped',
-  }
 }

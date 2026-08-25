@@ -17,15 +17,31 @@
  */
 
 import { factAgent } from '@harness/kernel'
-import { ANSWERED, DROPPED, ENDED, STOPPED, endedRounds, endedWhy } from '@harness/agent'
+import { DROPPED, ENDED, STOPPED } from '@harness/agent'
 
+import { ATTACHED } from './attachments.js'
 import { EFFECT_FAILED } from './effects.js'
+import { authoredReducer } from './agents.js'
+import { activityReducer, traceReducer } from './panels.js'
+import { endingOf, text, turnsReducer } from './turns.js'
 import { folderReducer } from './folder.js'
+import { shelfReducer } from './shelf.js'
+import { terminalReducer } from './terminal.js'
 
 /** @typedef {import('@harness/kernel').Event} Event */
 /** @typedef {import('@harness/kernel').Fact} Fact */
 
 export const CONVERSATION = 'conversation'
+
+/**
+ * THE FACT THAT EMPTIES A TRANSCRIPT. The Rust dropped the `seg-*` archive off
+ * the store; this appends instead, and the fold below forgets everything before
+ * it. Same visible outcome, and three things the deletion could not offer: it
+ * is reversible (I10), the debug view can still say a clear happened, and no
+ * route in this build reaches past the append-only log to erase storage.
+ * Payload: `{agent}`.
+ */
+export const CLEARED = 'core.cleared'
 
 /** @typedef {{id: string, kind: string, speaker: string, said: string}} Row */
 
@@ -51,7 +67,13 @@ export function projections(me) {
       init: () => /** @type {Record<string, Conversation>} */ ({}),
       fold: (/** @type {Record<string, Conversation>} */ state, /** @type {Event} */ event) => fold(state, event, me),
     },
+    turnsReducer(me),
     folderReducer,
+    shelfReducer,
+    terminalReducer,
+    authoredReducer,
+    activityReducer,
+    traceReducer,
   ]
 }
 
@@ -85,6 +107,7 @@ function moved(/** @type {Conversation} */ held, /** @type {Fact} */ fact) {
     if (fact.status === 'idle') held.open = false
   }
   if (fact.type === 'custom' && (fact.kind === ENDED || fact.kind === STOPPED)) held.open = false
+  if (fact.type === 'custom' && fact.kind === CLEARED) held.rows.length = 0
 }
 
 /**
@@ -121,18 +144,22 @@ function rowFor(event, who) {
  * @param {string} id @param {string} kind @param {unknown} payload @returns {Row|null}
  */
 function noted(id, kind, payload) {
-  if (kind === ENDED) {
-    const why = endedWhy(payload)
-    if (why === ANSWERED || why === '') return null
-    return note(id, 'error', `That turn ended without an answer: ${why}, after ${rounds(endedRounds(payload))}.`)
-  }
-  if (kind === STOPPED) {
-    return note(id, 'pending', `You stopped the turn after ${rounds(endedRounds(payload))}. Nothing already running was cancelled — a command in flight runs to its end, and what it says lands in the log.`)
+  if (kind === ENDED || kind === STOPPED) {
+    // ONE SITE DECIDES WHAT AN ENDING SAYS (`turns.js`), and this one decides
+    // only whether it is a ROW. An answered turn is not: the reply above it is
+    // the answer, and a line saying so under every healthy turn is a line
+    // people stop reading.
+    const ending = endingOf(kind, payload)
+    if (ending.tone === 'ok') return null
+    return note(id, ending.tone === 'stopped' ? 'pending' : 'error', ending.label)
   }
   if (kind === DROPPED) {
     return note(id, 'error', `A ${text(payload, 'fact')} arrived that this turn could not use: ${text(payload, 'why')}.`)
   }
   if (kind === EFFECT_FAILED) return note(id, 'error', text(payload, 'message'))
+  // AN ATTACHMENT IS A ROW A PERSON SENT, not a note the machine wrote about
+  // the turn — so it is spoken by `You`, above the message it came with.
+  if (kind === ATTACHED) return { id, kind: 'attachment', speaker: 'You', said: text(payload, 'name') }
   // `core.steered` needs no row: the sentence IS the message above it, already
   // in the log in full, and a second line repeating it reads as a second one.
   return null
@@ -145,14 +172,3 @@ function note(id, kind, said) {
   return { id, kind, speaker: 'Note', said }
 }
 
-/** @param {number} n */
-function rounds(n) {
-  return n === 1 ? '1 tool round' : `${n} tool rounds`
-}
-
-/** One string out of a custom fact's payload, or '' where the record is older than the field. */
-function text(/** @type {unknown} */ payload, /** @type {string} */ key) {
-  if (typeof payload !== 'object' || payload === null) return ''
-  const value = /** @type {Record<string, unknown>} */ (payload)[key]
-  return typeof value === 'string' ? value : ''
-}

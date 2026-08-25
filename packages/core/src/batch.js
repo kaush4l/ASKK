@@ -9,7 +9,9 @@
  * @module
  */
 
+import { mintId } from './app.js'
 import { LATE, lateAfter, said, within } from './deadline.js'
+import { ARTIFACT_KEPT, SPILL_CHARS, receipt, shelve, summarise } from './shelf.js'
 
 /** @typedef {import('@harness/agent').Effect} Effect */
 /** @typedef {import('./app.js').App} App */
@@ -26,14 +28,49 @@ export async function callTool(app, effect, opts) {
   const at = app.ports.clock.now()
   const runner = app.tools[effect.tool]
   const answered = (/** @type {boolean} */ ok, /** @type {string} */ output) =>
-    result({ at, turnId: effect.turnId, callId: effect.callId, tool: effect.tool, args: effect.args, ok, output })
-  if (!runner) return [answered(false, `there is no tool called "${effect.tool}" in this build`)]
+    [result({ at, turnId: effect.turnId, callId: effect.callId, tool: effect.tool, args: effect.args, ok, output })]
+  if (!runner) return answered(false, `there is no tool called "${effect.tool}" in this build`)
   try {
     const ran = await within(opts, (signal) => runner(effect.args, { signal }))
-    if (ran === LATE) return [answered(false, `it did not answer within ${lateAfter(opts)} seconds, so this call was abandoned`)]
-    return [answered(ran.ok, ran.output)]
+    if (ran === LATE) return answered(false, `it did not answer within ${lateAfter(opts)} seconds, so this call was abandoned`)
+    if (ran.output.length <= SPILL_CHARS) return answered(ran.ok, ran.output)
+    return await spilled(app, effect, ran, at, answered)
   } catch (cause) {
-    return [answered(false, said(cause))]
+    return answered(false, said(cause))
+  }
+}
+
+/**
+ * A RESULT TOO BIG TO SAY. The bytes go to the shelf and the FACT carries the
+ * receipt — so the log holds one copy of a 200KB listing, the assembled
+ * document holds none, and the model reads back only the part it asks for.
+ *
+ * The `ARTIFACT_KEPT` fact comes FIRST, because the receipt names a handle and
+ * a reader folding the log must meet the thing before the reference to it.
+ * @param {App} app @param {Effect & {type: 'InvokeTool'}} effect
+ * @param {{ok: boolean, output: string}} ran @param {number} at
+ * @param {(ok: boolean, output: string) => Incoming[]} answered
+ * @returns {Promise<Incoming[]>}
+ */
+async function spilled(app, effect, ran, at, answered) {
+  const handle = mintId(app, 6)
+  const summary = summarise(effect.tool, ran.output)
+  try {
+    const kept = await shelve(app.ports, handle, effect.tool, ran.output)
+    return [
+      { at, turnId: effect.turnId, fact: { type: 'custom', kind: ARTIFACT_KEPT, payload: { handle, tool: effect.tool, bytes: ran.output.length, summary } } },
+      ...answered(ran.ok, kept),
+    ]
+  } catch (cause) {
+    // THE SHELF FAILED, AND NOTHING PRETENDS OTHERWISE. Handing back the
+    // receipt anyway would name a handle `read_artifact` cannot answer, and the
+    // model would spend a round discovering that. The excerpt is the same one;
+    // only the promise of the rest is withdrawn.
+    const excerpt = receipt(handle, effect.tool, ran.output).split('\n').slice(3).join('\n')
+    return [
+      { at, turnId: effect.turnId, fact: { type: 'store_failed', key: handle, message: said(cause) } },
+      ...answered(ran.ok, `This result could not be kept whole (${said(cause)}), so only its ends survive.\n${excerpt}`),
+    ]
   }
 }
 

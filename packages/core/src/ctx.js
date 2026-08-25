@@ -26,8 +26,13 @@ import { driving } from './drive.js'
 /** @typedef {import('@harness/kernel').CapabilityGrant} CapabilityGrant */
 /** @typedef {import('@harness/kernel').Fact} Fact */
 /** @typedef {import('@harness/kernel').Manifest} Manifest */
+/** @typedef {import('@harness/kernel').CapabilityId} CapabilityId */
 /** @typedef {import('@harness/kernel').Timestamp} Timestamp */
+/** @typedef {import('@harness/agent').AgentState} AgentState */
+/** @typedef {import('@harness/agent').Effect} Effect */
 /** @typedef {import('./app.js').App} App */
+/** @typedef {import('./app.js').Roster} Roster */
+/** @typedef {import('./app.js').SettingsFace} SettingsFace */
 
 /**
  * @typedef {{
@@ -39,6 +44,13 @@ import { driving } from './drive.js'
  *   driving: (agent: string) => boolean,
  *   durable: boolean,
  *   bootedAt: number,
+ *   agent: AgentState,
+ *   available: CapabilityId[],
+ *   tools: string[],
+ *   roster: Roster,
+ *   settings: SettingsFace,
+ *   chore: ((effect: Effect) => void)|null,
+ *   interrupt: (() => string)|null,
  * }} Ctx
  */
 
@@ -86,5 +98,50 @@ export function contextFor(app, manifest) {
     // an adapter that returned `false` is the defect this build refuses.
     durable: app.ports.workspace.durable(),
     bootedAt: app.bootedAt,
+    ...reads(app),
+    ...acts(app, grant),
+  }
+}
+
+/**
+ * WHAT A HANDLER MAY LOOK AT. Ungated, like `project` and for the same reason:
+ * answering a GET is reading, and a capability every module must hold to do its
+ * job is a line of configuration rather than a boundary. None of it is a
+ * projection this file computed — each is a reference to state the App already
+ * holds, so nothing here can drift from what the driver is acting on.
+ * @param {App} app
+ */
+function reads(app) {
+  return {
+    // `step` is the only writer of an AgentState (`@harness/agent` deliberately
+    // exports no other), so handing it over buys a pane its stage walk and its
+    // toolbox without opening a second write path — which is what a hand-rolled
+    // copy of those fields would have been.
+    agent: app.agent,
+    available: app.available,
+    // WHICH TOOLS HAVE A RUNNER IN THIS BUILD. A descriptor without one is a
+    // tool the model would be told about and then refused, and the `/tools`
+    // pane exists to say which of the two a name is.
+    tools: Object.keys(app.tools),
+    roster: app.roster,
+    settings: app.settings,
+  }
+}
+
+/**
+ * WHAT A HANDLER MAY DO TO THE WORLD, both gated on `workspace` — every chore
+ * this build has runs a command or writes a file, and a module refused the
+ * substrate must not reach it through the driver instead.
+ * @param {App} app @param {CapabilityGrant} grant
+ */
+function acts(app, grant) {
+  const may = grants(grant, 'workspace')
+  return {
+    chore: may ? (/** @type {Effect} */ effect) => void app.chores.push(effect) : null,
+    // SYNCHRONOUS ON PURPOSE, and the one port call a handler makes directly:
+    // an interrupt that waits for the driver's next drain is an interrupt that
+    // arrives after the thing it was meant to stop. It returns a sentence, does
+    // no I/O, and cannot fail.
+    interrupt: may ? () => app.ports.workspace.interrupt() : null,
   }
 }

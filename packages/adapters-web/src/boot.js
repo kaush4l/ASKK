@@ -14,8 +14,13 @@
  */
 
 import { CAPABILITIES, DelegateError, ENTRY_AGENT, SEARCH_ENDPOINT, StoreError, WorkspaceError } from '@harness/kernel'
+import { adoptSpec, newAgentState } from '@harness/agent'
 import { boot } from '@harness/core'
 
+import { fetchRoster, fetchBriefs } from './files.js'
+import { CATALOGUE, toolRunners } from './toolset.js'
+import { SEARCH_HOSTS } from './search.js'
+import { settingsFace } from './face.js'
 import { fetchText } from './assets.js'
 import { makeEndpoint } from './endpoint.js'
 import { idbKv, idbStore, openDb } from './idb.js'
@@ -50,8 +55,7 @@ export async function bootBrowser(opts = {}) {
   if (!(catalogue instanceof StoreError)) endpoint.setCatalogue(catalogue.text)
   const stored = await kv.get(PROFILE_KEY)
   if (stored !== null) endpoint.loadProfile(stored)
-  const net = brokeredNet()
-  net.allow(SEARCH_ENDPOINT, endpoint.search())
+  const net = addressBook(endpoint)
   useBroker({ endpoint, kv, key: PROFILE_KEY, net })
   const workspace = await openWorkspace()
   const ports = {
@@ -64,9 +68,51 @@ export async function bootBrowser(opts = {}) {
     workspace: workspace ?? noWorkspace(),
     spaces: idbKv(await openDb(SPACES_DB)),
   }
-  const app = await boot({ ports, available: offered(workspace !== null), segments: idbSegments(db), me })
+  const available = offered(workspace !== null)
+  const roster = await fetchRoster(basePath)
+  const briefed = await fetchBriefs(basePath)
+  const app = await boot({
+    ports,
+    available,
+    segments: idbSegments(db),
+    me,
+    tools: toolRunners(ports, { keyFor: endpoint.apiKeyFor }),
+    agent: adopted(roster, me, available),
+    briefs: briefed.briefs,
+    roster: { ...roster, refusals: [...roster.refusals, ...briefed.refusals] },
+    settings: settingsFace(endpoint, net, { persist: (json) => kv.put(PROFILE_KEY, json) }),
+  })
   if (catalogue instanceof StoreError) noCatalogue(app, catalogue, ports.clock.now())
   return app
+}
+
+/**
+ * EVERYWHERE THIS BUILD MAY REACH, before anybody configures anything. The
+ * ladder's keyless hosts are the shipped address book — verified callable from
+ * the real origin by `scripts-js/check-cors.js` — and `search` stays the one
+ * name a person can point somewhere else, absent from the list until they do.
+ * @param {ReturnType<typeof makeEndpoint>} endpoint
+ */
+function addressBook(endpoint) {
+  const net = brokeredNet()
+  for (const [name, url] of Object.entries(SEARCH_HOSTS)) net.allow(name, url)
+  net.allow(SEARCH_ENDPOINT, endpoint.search())
+  return net
+}
+
+/**
+ * THE ENTRY AGENT, BUILT FROM ITS OWN FILE. A state adopted from no file is the
+ * defect this replaces: the predecessor hardcoded `main`, so an agent file a
+ * person edited changed the prompt and nothing else. `undefined` when the file
+ * did not load — `createApp` then starts a blank agent, and the roster pane says
+ * by name which file was missing rather than the page looking merely empty.
+ * @param {import('@harness/core').Roster} roster @param {string} me
+ * @param {import('@harness/kernel').CapabilityId[]} available
+ */
+function adopted(roster, me, available) {
+  const spec = roster.specs.find((s) => s.name === me)
+  if (!spec) return undefined
+  return adoptSpec(newAgentState(), spec, { catalogue: CATALOGUE, offered: available, peers: roster.specs }).state
 }
 
 /**

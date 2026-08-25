@@ -96,9 +96,9 @@ export function brokeredNet(opts = {}) {
  * @returns {Promise<import('@harness/kernel').BrokeredResponse>}
  */
 async function get(send, url, request, opts) {
-  if (request.body !== undefined) {
-    throw new NetError('not_allowed', 'This broker sends no request body.', {
-      detail: 'nothing asks it to, and a body dropped in silence is worse than one refused',
+  if (request.body !== undefined && request.method === 'GET') {
+    throw new NetError('not_allowed', 'A GET carries no body, so this one was refused rather than dropped.', {
+      detail: 'fetch discards a body on GET without saying so, and a body that vanishes in silence is the defect this refusal exists to prevent',
     })
   }
   const deadline = AbortSignal.timeout(opts.timeoutMs)
@@ -106,6 +106,11 @@ async function get(send, url, request, opts) {
     const response = await send(url, {
       method: request.method,
       headers: request.headers ?? {},
+      // A BODY IS ALLOWED NOW, AND IT HAD TO BE. The shipped search default is
+      // Firecrawl's `POST /v2/search`, whose query IS its body; refusing one
+      // meant the only browser-callable general index was unreachable through
+      // the one broker every outbound call goes through.
+      ...(request.body === undefined ? {} : { body: request.body }),
       signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline,
     })
     return { status: response.status, body: await response.text() }

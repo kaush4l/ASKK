@@ -36,6 +36,7 @@
       "name": "@harness/adapters-web",
       "version": "0.1.0",
       "dependencies": {
+        "@harness/agent": "workspace:*",
         "@harness/core": "workspace:*",
         "@harness/kernel": "workspace:*",
       },
@@ -46,6 +47,9 @@
       "dependencies": {
         "@harness/context": "workspace:*",
         "@harness/kernel": "workspace:*",
+      },
+      "devDependencies": {
+        "@harness/adapters-test": "workspace:*",
       },
     },
     "packages/context": {

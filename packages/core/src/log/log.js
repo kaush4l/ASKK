@@ -75,8 +75,14 @@ function appendTo(state, fact, at, turnId = '') {
  */
 function createLog(state) {
   return {
-    /** @param {Fact} fact @param {Timestamp} at */
-    append: (fact, at) => appendTo(state, fact, at),
+    /**
+     * The four-argument door, not a two-argument narrowing of it. I21 needs the
+     * turn PERSISTED — a replay that cannot see which turn a fact belonged to
+     * cannot reproduce the drops the reducer makes live — and a `log` that
+     * accepted only two would have made that unreachable from every caller.
+     * @param {Fact} fact @param {Timestamp} at @param {string} [turnId]
+     */
+    append: (fact, at, turnId) => appendTo(state, fact, at, turnId),
     get length() {
       return state.nextSeq
     },

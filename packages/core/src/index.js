@@ -21,6 +21,21 @@ export { CONVERSATION, projections } from './reducers.js'
 export { FOLDER, folderReducer, folderNote, named, listed, parent, pathOf, IN_MEMORY } from './folder.js'
 export { chat, chatManifest } from './chat.js'
 export { files, filesManifest } from './files.js'
+export { CLEARED } from './reducers.js'
+export { projected } from './transcript.js'
+export { ATTACHED, ATTACHMENT_DIR, attach, partOf, readAttachments, refusedBy } from './attachments.js'
+export { TURNS, NO_TURNS, endingOf, laps } from './turns.js'
+export { SHELF, SPILL_CHARS, ARTIFACT_KEPT, ARTIFACT_TOOLS, artifactPath, artifactTools, shelfReducer } from './shelf.js'
+export { ACTIVITY, TRACE, TRACE_KEPT } from './panels.js'
+export { AUTHORED, AGENT_AUTHORED, AGENT_MODULE, agents, agentsManifest } from './agents.js'
+export { board, boardManifest } from './board.js'
+export { dashboard, dashboardManifest, plural } from './dashboard.js'
+export { debug, debugManifest } from './debug.js'
+export { processes, processesManifest } from './processes.js'
+export { settings, settingsManifest } from './settings.js'
+export { space, spaceManifest } from './space.js'
+export { TERMINAL, terminal, terminalManifest } from './terminal.js'
+export { tools, toolsManifest } from './tools.js'
 
 /** @typedef {import('./app.js').App} App */
 /** @typedef {import('./ctx.js').Ctx} Ctx */
@@ -40,3 +55,10 @@ export { files, filesManifest } from './files.js'
 /** @typedef {import('./reducers.js').Conversation} Conversation */
 /** @typedef {import('./reducers.js').Row} Row */
 /** @typedef {import('./folder.js').Folder} Folder */
+/** @typedef {import('./app.js').Roster} Roster */
+/** @typedef {import('./app.js').SettingsFace} SettingsFace */
+/** @typedef {import('./turns.js').Turns} Turns */
+/** @typedef {import('./turns.js').Ending} Ending */
+/** @typedef {import('./shelf.js').Kept} Kept */
+/** @typedef {import('./panels.js').Activity} Activity */
+/** @typedef {import('./panels.js').Traced} Traced */

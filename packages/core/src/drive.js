@@ -20,6 +20,7 @@
 import { factAgent } from '@harness/kernel'
 import { step } from '@harness/agent'
 
+import { mintId } from './app.js'
 import { runEffect } from './effects.js'
 import { addressedElsewhere, runErrand } from './errand.js'
 import { CONVERSATION } from './reducers.js'
@@ -35,7 +36,16 @@ import { CONVERSATION } from './reducers.js'
  * @param {App} app @param {Driving} opts @returns {Promise<void>}
  */
 export async function drive(app, opts) {
-  while (app.pending.length > 0) {
+  while (app.chores.length > 0 || app.pending.length > 0) {
+    // A PERSON'S PRESS IS NOT A MODEL TURN. Running a command from the terminal
+    // pane, or writing a file from the files pane, produces an effect with no
+    // reply behind it and no turn to stamp it with — so it is drained here,
+    // ahead of the queue, rather than forged into a fact `step` would drop.
+    if (app.chores.length > 0) {
+      const chores = app.chores.splice(0, app.chores.length)
+      await runEffects(app, chores, opts)
+      continue
+    }
     const next = app.pending.shift()
     if (!next) break
     if (addressedElsewhere(app, next.fact)) {
@@ -58,12 +68,7 @@ export async function drive(app, opts) {
 function stamp(app, incoming) {
   if (incoming.turnId !== null) return incoming
   if (incoming.fact.type !== 'user_message') return { ...incoming, turnId: app.agent.turnId }
-  return { ...incoming, turnId: mint(app) }
-}
-
-/** A turn id from injected bytes (I7), so a replay of a test is byte-identical. */
-function mint(/** @type {App} */ app) {
-  return [...app.ports.rng.bytes(8)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return { ...incoming, turnId: mintId(app) }
 }
 
 /**
@@ -109,7 +114,7 @@ function sameLine(first, next) {
  * @param {App} app @param {Incoming} incoming
  */
 function record(app, incoming) {
-  app.log.append(incoming.fact, incoming.at)
+  app.log.append(incoming.fact, incoming.at, incoming.turnId ?? '')
   app.pending.push(incoming)
 }
 
