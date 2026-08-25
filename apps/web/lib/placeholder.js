@@ -34,7 +34,7 @@ export const REGIONS = {
   },
   'design-system': {
     heading: 'Every component, every variant, every state',
-    note: 'The internal gallery, over the real ground. It is reached by address and is deliberately not linked from the product.',
+    note: 'The internal gallery, over the real ground. It is reached by address and is deliberately not linked from the product. Every number, agent and endpoint below is invented; nothing here was read from the log.',
   },
 }
 
@@ -53,13 +53,13 @@ export const STRIP = [
 
 /**
  * The `problem` projection an unknown address will earn from the seam once it
- * is wired — `{status: 404, view: 'problem', data: {kind, message, detail,
- * repair}}`, the ONE failure shape (docs/SEAM.md). The interface renders these
+ * is wired — the ONE failure shape (docs/SEAM.md). The interface renders these
  * strings and never writes one, so the component that shows it needs no change
  * when the real projection arrives.
- * @type {{kind: string, message: string, detail: string, repair: string}}
+ * @type {import('@/components/views/problem').ProblemData}
  */
 export const MISROUTE = {
+  id: 'misroute',
   kind: 'no_such_destination',
   // TRUE ON BOTH DOCUMENTS. The 404 page renders this before the correction
   // runs, and Work renders it after; a past tense would be a lie on the first

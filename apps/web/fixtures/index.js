@@ -34,3 +34,6 @@ export const FIXTURES = Object.freeze({
   settings: shape.settings,
   problem: shape.problem,
 })
+
+/** The same views, holding nothing — the state `Empty` is for (`fixtures/empty.js`). */
+export { EMPTY } from './empty'

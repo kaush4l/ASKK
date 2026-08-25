@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'bun:test'
 
 import { VIEWS, View } from '../components/views/index.jsx'
-import { FIXTURES } from '../fixtures/index.js'
+import { EMPTY, FIXTURES } from '../fixtures/index.js'
 
 const seam = await Bun.file(new URL('../../../docs/SEAM.md', import.meta.url)).text()
 
@@ -41,15 +41,50 @@ test('every view has a fixture, and no fixture belongs to no view', () => {
 })
 
 /**
- * A COMPONENT AND ITS PROJECTION AGREE, and this is what proves it: every view
- * is rendered against the fixture the gallery shows it with. A component that
- * reads a field its fixture does not carry throws here rather than on screen.
+ * Every string a projection carries, and `id` is not one of them: it is the key
+ * React reconciles on and it is never text on a screen.
+ *
+ * @param {unknown} value
+ * @returns {Generator<string>} annotated because the recursion is its own
+ *   return expression, which `tsc` cannot infer through.
  */
-test('every view renders its own fixture', () => {
+function* strings(value) {
+  if (typeof value === 'string') {
+    if (value) yield value
+    return
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) yield* strings(item)
+  } else if (value && typeof value === 'object') {
+    for (const [key, inner] of Object.entries(value)) if (key !== 'id') yield* strings(inner)
+  }
+}
+
+/** What `react-dom/server` does to text, so a fixture's apostrophe is looked
+ *  for the way it actually lands in the markup. */
+function escaped(/** @type {string} */ said) {
+  return said.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
+}
+
+/**
+ * A COMPONENT AND ITS PROJECTION AGREE, IN BOTH DIRECTIONS — and asserting the
+ * render is non-empty did not execute that. Delete `note` from the settings
+ * projection, or `detail` from status, or `ownLogNote` from debug, and the
+ * component renders an empty `<p>`: the old test passed and the page silently
+ * said nothing, which is the I16 failure it was written to prevent.
+ *
+ * Every string a fixture carries must reach the markup of one of that view's
+ * states — populated, or holding nothing. So a field a component drops fails
+ * here by its own value, and so does the inverse, a projection field nothing
+ * renders at all.
+ */
+test('every string a fixture carries reaches the screen', () => {
   for (const name of Object.keys(VIEWS)) {
-    const html = renderToStaticMarkup(createElement(View, { view: name, data: FIXTURES[name] }))
-    expect(html.length).toBeGreaterThan(0)
+    const states = [FIXTURES[name], ...(EMPTY[name] ?? [])]
+    const html = states.map((data) => renderToStaticMarkup(createElement(View, { view: name, data }))).join('')
     expect(html).not.toContain('no_such_view')
+    for (const said of strings(states)) expect(html).toContain(escaped(said))
   }
 })
 

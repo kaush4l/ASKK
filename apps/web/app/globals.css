@@ -138,7 +138,7 @@
   --lift: 0 1px 1px rgba(0, 0, 0, 0.30), 0 6px 12px rgba(0, 0, 0, 0.24),
           0 34px 64px rgba(0, 0, 0, 0.38);
   --lift-edge: inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
-  --tone: var(--control);  /* per-row status channel, written by the board */
+  --tone: var(--control);  /* the status tone's floor; `.toned` in ui.module.css writes it per row */
 }
 
 /* ---- the light room. PROVISIONAL: DESIGN.md specifies one palette and it is

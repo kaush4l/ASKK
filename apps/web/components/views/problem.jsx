@@ -2,7 +2,11 @@ import s from './problem.module.css'
 
 /**
  * @typedef {object} ProblemData The seam's ONE failure shape (docs/SEAM.md).
- * @property {string} kind     the machine field, for a probe and for the debug view
+ * @property {string} id       WHICH OCCURRENCE this is, and never `kind`: two
+ *   agents missing from the manifest fail the same way, so a list of failures
+ *   keyed on anything a second one can equal reconciles two rows into one. The
+ *   FACE lane has asked SPINE for this field on the projection (STATUS.md).
+ * @property {string} kind     how it failed, for a probe and for the debug view
  * @property {string} message  one sentence a person can act on
  * @property {string} detail   for the person who opens the debug view
  * @property {string} repair   what to do about it, empty when there is nothing to do
@@ -52,6 +56,7 @@ export function Problem({ data, subject = '', placement = 'region' }) {
  * @type {ProblemData}
  */
 export const UNKNOWN_VIEW = {
+  id: 'unknown_view',
   kind: 'no_such_view',
   message: 'The core asked for a view this interface has no component for.',
   detail: 'docs/SEAM.md lists every view name the seam can return, and each one has exactly one component. A name outside that table is a defect in whichever side spelled it.',

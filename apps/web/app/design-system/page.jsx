@@ -1,6 +1,8 @@
+import { Fragment } from 'react'
+
 import { Shell } from '@/components/shell/shell'
 import { VIEWS, View } from '@/components/views'
-import { FIXTURES } from '@/fixtures'
+import { EMPTY, FIXTURES } from '@/fixtures'
 import s from './gallery.module.css'
 
 /**
@@ -24,7 +26,19 @@ export default function Page() {
     <Shell slug="design-system">
       <div className={s.gallery}>
         {names.map((name) => (
-          <Specimen key={name} name={name} data={FIXTURES[name]} />
+          <Fragment key={name}>
+            <Specimen name={name} data={FIXTURES[name]} />
+            {/* AND THE SAME VIEW HOLDING NOTHING, next to it. Every list in
+                `fixtures/` is populated, so the sentence a region says when it
+                is empty — the one place this product refuses to draw a blank
+                box — had never been rendered anywhere a person could read it.
+                Files and processes carry two, because 'the reload took them'
+                and 'it never held any' are the distinction those notes exist
+                to make and one specimen cannot show it. */}
+            {(EMPTY[name] ?? []).map((data, i) => (
+              <Specimen key={i} name={`${name} — holding nothing`} data={data} view={name} />
+            ))}
+          </Fragment>
         ))}
         {/* THE STRUCTURAL REFUSAL, AS A SPECIMEN. A name the route table does
             not list cannot be produced; this is what the page does if one ever

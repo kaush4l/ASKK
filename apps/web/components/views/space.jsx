@@ -44,7 +44,7 @@ export function Space({ data }) {
       <Panel caption="Shared facts">
         {data.facts.length === 0
           ? <Empty note={data.factsEmptyNote} />
-          : <Facts label="Shared facts" facts={data.facts} />}
+          : <Facts facts={data.facts} />}
       </Panel>
       <Panel caption="Recent notes">
         {data.notes.length === 0 ? <Empty note={data.notesEmptyNote} /> : (

@@ -37,12 +37,12 @@ export function Debug({ data }) {
   return (
     <div className={s.stack}>
       <Panel caption="This log">
-        <Facts label="What this log holds" facts={data.counts} />
+        <Facts facts={data.counts} />
         <p className={s.meta}>{data.ownLogNote}</p>
       </Panel>
       {data.turns.length === 0 ? <Empty note={data.emptyNote} /> : data.turns.map((turn) => (
         <Panel key={turn.id} caption={turn.headline}>
-          <Facts label={turn.headline} facts={turn.facts} />
+          <Facts facts={turn.facts} />
         </Panel>
       ))}
     </div>

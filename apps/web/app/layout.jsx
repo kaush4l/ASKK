@@ -26,12 +26,6 @@ export const viewport = {
   ],
 }
 
-/**
- * `unknown` and not `React.ReactNode`: this tree has no React type declarations
- * yet — see the FACE lane's request in STATUS.md — and naming a namespace that
- * does not resolve is a type that reads as checked and is not.
- * @param {{children: unknown}} props
- */
 /** @param {{children: React.ReactNode}} props */
 export default function RootLayout({ children }) {
   return (

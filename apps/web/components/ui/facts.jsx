@@ -6,13 +6,15 @@ import s from './ui.module.css'
  * of counts under the log — so a screen reader says "key, value" instead of
  * reading two unrelated paragraphs.
  *
- * @param {{label: string, facts: ReadonlyArray<{key: string, value: string}>}} props
- *   `label` names the list for assistive technology; the pane's own caption is
- *   not always the right name for the values inside it.
+ * No accessible name of its own. Two of the three call sites passed the
+ * enclosing `<h2>` verbatim, so a screen reader said the caption twice; a
+ * definition list inside a `Panel` is already named by that heading.
+ *
+ * @param {{facts: ReadonlyArray<{key: string, value: string}>}} props
  */
-export function Facts({ label, facts }) {
+export function Facts({ facts }) {
   return (
-    <dl className={s.facts} aria-label={label}>
+    <dl className={s.facts}>
       {facts.map((fact) => (
         <div key={fact.key} className={s.fact}>
           <dt>{fact.key}</dt>

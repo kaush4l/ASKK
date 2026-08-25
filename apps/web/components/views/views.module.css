@@ -5,7 +5,15 @@
 
 .stack { display: flex; flex-direction: column; gap: var(--s-4); }
 .rows { display: flex; flex-direction: column; gap: var(--s-3); margin: 0; padding: 0; list-style: none; }
+
+/* THE TONE ARRIVES BY COMPOSITION, and it has to: the `[data-status]` rules
+   that turn a row's status into a colour live on `.toned` in `ui/ui.module.css`
+   beside the panel edge and the badge dot, and a class in one CSS module cannot
+   be selected from another module's file. Without this line every one of the
+   nine row sites stamped `data-status` for nothing and `--tone` fell through to
+   the `:root` grey — a failed archivist and an idle main drew the same edge. */
 .row {
+  composes: toned from '../ui/ui.module.css';
   display: flex; flex-direction: column; gap: var(--s-1);
   padding: var(--s-3);
   background: var(--surface-2);

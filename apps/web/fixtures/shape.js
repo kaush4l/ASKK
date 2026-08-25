@@ -18,6 +18,7 @@ export const agents = {
   ],
   problems: [
     {
+      id: 'agents/archivist/agent.md',
       kind: 'agent_file_unreadable',
       message: 'archivist was listed in the manifest and its file could not be read.',
       detail: 'agents/archivist/agent.md answered 404. The manifest lists it, so nothing else fetched it.',
@@ -64,6 +65,7 @@ export const status = {
  * @type {import('@/components/views/problem').ProblemData}
  */
 export const problem = {
+  id: 'GET /wharrgarbl',
   kind: 'no_such_route',
   message: 'The seam has no route at that address.',
   detail: 'GET /wharrgarbl reached handle and matched nothing in the route table.',

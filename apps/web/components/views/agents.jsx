@@ -52,7 +52,7 @@ export function Agents({ data }) {
         )}
       </Panel>
       {data.problems.map((problem) => (
-        <Problem key={problem.detail} data={problem} placement="banner" />
+        <Problem key={problem.id} data={problem} placement="banner" />
       ))}
     </div>
   )
