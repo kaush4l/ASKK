@@ -79,3 +79,34 @@ debug view. A failure that returns an empty projection instead of this is a bug.
 - Reach past `handle`. There is no second door and no direct read of `App`.
 - Invent a view name. A `view` the table above does not list cannot be produced,
   so a component for it is a component for a state that cannot happen.
+
+## Where the interface lives, in the address bar
+
+The predecessor put every view in the location HASH, because a Wasm bundle
+served from one URL had no other option. A static export does have another
+option, and it is better: **one real directory per view**, so a reload serves
+the page it is on, a link is a link, and browser Back works without a listener.
+
+| View | URL |
+|---|---|
+| dashboard | `/` |
+| chat | `/chat/` |
+| board | `/board/` |
+| agents | `/agents/` |
+| files | `/files/` |
+| terminal | `/terminal/` |
+| space | `/space/` |
+| tools | `/tools/` |
+| processes | `/processes/` |
+| debug | `/debug/` |
+| settings | `/settings/` |
+
+**Which agent** a view is about rides in the query string — `?agent=scout` —
+and NOT in the path. A path segment would need `generateStaticParams`, and the
+set of agents is not known at build time: a person may author one in the
+browser. A query string is read on the client, needs no route to exist, and
+survives a reload. Absent means the entry agent.
+
+`trailingSlash: true` is set for exactly this reason: GitHub Pages has no
+rewrite rules, so every route must be a real directory with an `index.html` in
+it or a reload 404s.
