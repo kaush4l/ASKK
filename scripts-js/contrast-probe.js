@@ -25,6 +25,12 @@
  * which is punctuation between two things that were each measured.
  */
 
+/** WCAG 1.4.3 for text and 1.4.11 for a control's boundary. They are here and
+ *  not in the driver because the probe COUNTS what fails before it truncates,
+ *  and a second copy of a threshold is a second thing that can drift. */
+export const TEXT_MIN = 4.5
+export const EDGE_MIN = 3
+
 /** Colour arithmetic: parse, composite, relative luminance, WCAG ratio. */
 const COLOR = `
   const parse = (s) => {
@@ -111,5 +117,9 @@ ${COLOR}${BASES}${SUBJECTS}
     edges.push({ r, on, el: where(el), fg: cs.borderTopColor, size: cs.fontSize, says: el.textContent.trim().slice(0, 32) })
   }
   const by = (a, b) => a.r - b.r
-  return JSON.stringify({ text: text.sort(by).slice(0, 8), edges: edges.sort(by).slice(0, 8), seen: text.length + edges.length })
+  // THE COUNTS ARE NOT THE SAMPLES. Only the eight worst of each are carried
+  // back, and a person handed eight failures fixes eight and reruns into eight
+  // more unless the answer says how many there were.
+  const bad = { text: text.filter((t) => t.r < ${TEXT_MIN}).length, edges: edges.filter((e) => e.r < ${EDGE_MIN}).length }
+  return JSON.stringify({ text: text.sort(by).slice(0, 8), edges: edges.sort(by).slice(0, 8), seen: text.length + edges.length, bad })
 })()`

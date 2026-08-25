@@ -23,7 +23,7 @@
  * ABSENT MEANS FAIL, because a gate that quietly does not run is the defect it
  * exists for.
  */
-import { PROBE } from './contrast-probe.js'
+import { PROBE, TEXT_MIN, EDGE_MIN } from './contrast-probe.js'
 
 const ROOT = new URL('..', import.meta.url).pathname
 const BASE = process.env.HARNESS_BASE_PATH ?? '/ASKK'
@@ -31,13 +31,11 @@ const PORT = Number(process.env.HARNESS_CONTRAST_PORT ?? 4319)
 const BROWSE = process.env.HARNESS_BROWSE ?? `${process.env.HOME}/.claude/skills/gstack/browse/dist/browse`
 const OUT = ROOT + 'apps/web/out'
 const FLOORS = ROOT + 'scripts-js/contrast-floor.json'
-const TEXT_MIN = 4.5
-const EDGE_MIN = 3
 const ROOMS = ['dark', 'light']
 const DESTINATIONS = ['', 'agents/', 'setup/', 'design-system/']
 
 /** @typedef {{r: number, on: string, el: string, fg: string, size: string, says: string}} Sample */
-/** @typedef {{text: Sample[], edges: Sample[], seen: number}} Report */
+/** @typedef {{text: Sample[], edges: Sample[], seen: number, bad: {text: number, edges: number}}} Report */
 
 /** The screen is not ready until the core has filled it — `smoke.js`'s wait,
  *  for the same reason: the booting sentence is in the exported HTML. */
@@ -46,7 +44,8 @@ const SETTLED = `new Promise((done) => {
   const look = () => {
     const region = document.querySelector('#region')
     const filled = region && !/Reading this browser/.test(region.innerText)
-    return filled || Date.now() > deadline ? done(1) : setTimeout(look, 100)
+    if (filled) return done(1)
+    return Date.now() > deadline ? done(0) : setTimeout(look, 100)
   }
   look()
 })`
@@ -75,6 +74,16 @@ function chain(/** @type {string} */ room, /** @type {string} */ slug) {
     ['js', SETTLED],
     ['js', PROBE],
   ])
+}
+
+/** Did the region fill, off the settle step's own `[js]` line — the last bare
+ *  digit, since the theme step answers 1 too and the probe answers JSON. Read
+ *  back because the shell is server-rendered: a route whose core never boots
+ *  still shows a dozen measurable things and would be ratcheted as if it ran. */
+function filled(/** @type {string} */ output) {
+  const line = output.split('\n').filter((l) => /^\[js\] [01]$/.test(l)).pop()
+  if (!line) throw new Error(`the settle step never reported:\n${output}`)
+  return line.endsWith('1')
 }
 
 /** The probe's answer, off the driver's last `[js]` line. */
@@ -107,29 +116,45 @@ if (!process.env.HARNESS_CONTRAST_BUILT) {
 }
 if (!(await Bun.file(`${OUT}/index.html`).exists())) throw new Error('the export produced no index.html')
 
-/** @typedef {{text: number, edge: number | null}} Floor `edge` is null where a
- *  screen draws no measurable control edge at all — `/design-system/` renders
- *  most of its controls disabled on purpose, and a route with nothing to
- *  measure must not record a floor of zero and call it a floor. */
+/** @typedef {{text: number | null, edge: number | null}} Floor Either is null
+ *  where a screen drew none of that kind — `/design-system/` renders most of
+ *  its controls disabled on purpose — and a route with nothing to measure must
+ *  not record a floor of zero and call it a floor. */
 /** @type {Record<string, Floor>} */
 const floor = await Bun.file(FLOORS).json()
 /** @type {Record<string, Floor>} */
 const measured = {}
 /** @type {string[]} */
 const failures = []
+let seen = 0
+
+/** The probe returns only the eight worst of each kind; where it truncated, its
+ *  count is the part a person cannot get from the lines it did print. */
+function capped(/** @type {string} */ at, /** @type {string} */ kind, /** @type {number} */ bad, /** @type {number} */ shown) {
+  if (bad > shown) failures.push(`${at}: showing the ${shown} worst of ${bad} failing ${kind} elements`)
+}
 const server = Bun.serve({ port: PORT, fetch: serve })
 try {
   for (const room of ROOMS) {
     for (const slug of DESTINATIONS) {
       const at = `${room} /${slug}`
-      const report = readBack(await run([BROWSE, 'chain'], chain(room, slug)))
-      if (report.seen < 10) failures.push(`${at}: the probe found only ${report.seen} things to measure — the screen did not fill`)
-      for (const s of report.text.filter((t) => t.r < TEXT_MIN)) failures.push(`${at}: text at ${say(s, TEXT_MIN)}`)
-      for (const s of report.edges.filter((e) => e.r < EDGE_MIN)) failures.push(`${at}: control edge at ${say(s, EDGE_MIN)}`)
+      const output = await run([BROWSE, 'chain'], chain(room, slug))
+      if (!filled(output)) failures.push(`${at}: the region never filled inside 8s — nothing measured here is a measurement`)
+      const report = readBack(output)
+      seen += report.seen
+      const badText = report.text.filter((t) => t.r < TEXT_MIN)
+      const badEdges = report.edges.filter((e) => e.r < EDGE_MIN)
+      for (const s of badText) failures.push(`${at}: text at ${say(s, TEXT_MIN)}`)
+      for (const s of badEdges) failures.push(`${at}: control edge at ${say(s, EDGE_MIN)}`)
+      capped(at, 'text', report.bad.text, badText.length)
+      capped(at, 'control edge', report.bad.edges, badEdges.length)
       // TEXT AND EDGES RATCHET SEPARATELY. One number for both hides the case
       // this gate exists for: on a route whose worst thing is a 3.9:1 control
       // edge, prose sliding from 9:1 to 4.6:1 moves no floor at all.
-      measured[at] = { text: report.text[0]?.r ?? 0, edge: report.edges[0]?.r ?? null }
+      // NOTHING TO MEASURE IS NOT A ZERO: a floor of 0 is one every future run
+      // satisfies, so recording it would make the one route where the probe
+      // found no text the one route the ratchet is permanently blind on.
+      measured[at] = { text: report.text[0]?.r ?? null, edge: report.edges[0]?.r ?? null }
     }
   }
 } finally {
@@ -137,8 +162,8 @@ try {
 }
 
 /** THE RATCHET. A floor may be raised by the change that earns it and never
- *  lowered — a room or a route missing from the file is a new one, and its
- *  first measurement becomes its floor. */
+ *  lowered; a room or route missing from the file is new, and its first
+ *  measurement becomes its floor. */
 const raised = []
 for (const [at, now] of Object.entries(measured)) {
   for (const kind of /** @type {const} */ (['text', 'edge'])) {
@@ -157,11 +182,18 @@ if (failures.length) {
   process.exit(1)
 }
 if (raised.length) {
-  await Bun.write(FLOORS, JSON.stringify(Object.fromEntries(Object.entries(measured).sort()), null, 2) + '\n')
+  // MERGED FORWARD, NEVER REPLACED. A run where a route drew no measurable edge
+  // measures null there, and writing that over a recorded 3.94 would let the
+  // next build set a "new" floor at 3.10 and print it as a raise — a loss
+  // announced as a win, riding on whatever unrelated raise wrote the file.
+  const next = Object.fromEntries(Object.entries(measured)
+    .map(([at, m]) => [at, { text: m.text ?? floor[at]?.text ?? null, edge: m.edge ?? floor[at]?.edge ?? null }])
+    .sort())
+  await Bun.write(FLOORS, JSON.stringify(next, null, 2) + '\n')
   console.log('contrast ratchet raised:')
   for (const line of raised) console.log('  ' + line)
 }
-const worstText = Math.min(...Object.values(measured).map((m) => m.text))
+const texts = Object.values(measured).map((m) => m.text).filter((t) => t !== null)
 const edges = Object.values(measured).map((m) => m.edge).filter((e) => e !== null)
-const worstEdge = Math.min(...edges)
-console.log(`contrast ok — ${ROOMS.length} rooms x ${DESTINATIONS.length} destinations; worst text ${worstText.toFixed(2)}:1 (floor ${TEXT_MIN}) and worst control edge ${worstEdge.toFixed(2)}:1 (floor ${EDGE_MIN}, over the ${edges.length} of ${Object.keys(measured).length} screens that draw one)`)
+const screens = Object.keys(measured).length
+console.log(`contrast ok — ${ROOMS.length} rooms x ${DESTINATIONS.length} destinations, ${seen} things measured; worst text ${Math.min(...texts).toFixed(2)}:1 (floor ${TEXT_MIN}, over ${texts.length} of ${screens} screens) and worst control edge ${Math.min(...edges).toFixed(2)}:1 (floor ${EDGE_MIN}, over the ${edges.length} of ${screens} that draw one)`)
