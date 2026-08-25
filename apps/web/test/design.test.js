@@ -123,3 +123,28 @@ test('the region, a panel and a row are three different surfaces', () => {
   ]
   expect(ladder).toEqual(['--surface-1', '--surface-2', '--surface-3'])
 })
+
+/**
+ * THE GROUND IS NOT A SURFACE YOU CAN PUT QUIET TEXT ON.
+ *
+ * The field's key lobe composites to rgb(89,72,112) in the dark room, where
+ * --ink-2 measures 4.40:1 and --ink-3 measures 2.22:1 — and the rail's
+ * `railWho`, which names the agent the whole screen is about, shipped at the
+ * second of those. `scripts-js/check-contrast.js` measures this against the
+ * rendered page and is the authority; this is the same rule stated where a
+ * person WRITES the defect, so it is caught before a build and a browser are
+ * needed. Every selector below is one whose box has no fill of its own.
+ *
+ * --accent-ink counts because it comes with `background: var(--accent)`: the
+ * element stops standing on the ground the moment it fills itself.
+ */
+test('nothing standing on the ground is set in a quiet ink', () => {
+  const onTheGround = ['.kicker', '.plate', '.navItem', ".navItem[aria-current='page']", '.railWho', '.roomName']
+  const wrong = []
+  for (const selector of onTheGround) {
+    const body = sheets.map(({ text }) => ruleFor(text, selector)).find((found) => found !== '') ?? ''
+    const color = /(?:^|;)\s*color:\s*var\((--[a-z0-9-]+)\)/.exec(body)?.[1]
+    if (color !== '--ink' && color !== '--accent-ink') wrong.push(`${selector}: ${color ?? 'declares no colour'}`)
+  }
+  expect(wrong).toEqual([])
+})

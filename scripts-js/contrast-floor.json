@@ -1,0 +1,34 @@
+{
+  "dark /": {
+    "text": 4.54,
+    "edge": 3.94
+  },
+  "dark /agents/": {
+    "text": 7.2,
+    "edge": 3.94
+  },
+  "dark /design-system/": {
+    "text": 4.54,
+    "edge": null
+  },
+  "dark /setup/": {
+    "text": 7.2,
+    "edge": 3.94
+  },
+  "light /": {
+    "text": 4.7,
+    "edge": 5.3
+  },
+  "light /agents/": {
+    "text": 7.17,
+    "edge": 5.3
+  },
+  "light /design-system/": {
+    "text": 4.54,
+    "edge": null
+  },
+  "light /setup/": {
+    "text": 7.17,
+    "edge": 5.3
+  }
+}

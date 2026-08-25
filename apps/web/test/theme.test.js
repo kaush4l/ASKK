@@ -57,3 +57,29 @@ test('a palette is reachable by attribute, not only at the root', () => {
   expect(css).toContain('\n[data-theme="dark"] {')
   expect(css).toContain('\n[data-theme="light"] {')
 })
+
+/**
+ * …AND THE FIELD IS DECLARED IN BOTH, BECAUSE A TOKEN DOES NOT INHERIT ITS OWN
+ * REFERENCES.
+ *
+ * `--ground-field` is composed out of four lobe tokens, and CSS substitutes
+ * those `var()`s where the property is DECLARED — so the value that inherits
+ * out of `:root` has the dark lobes already frozen into it, and re-pointing
+ * `--lobe-key` under `[data-theme="light"]` moves nothing. That is invisible
+ * while the room is stamped on the root and exactly wrong when it is stamped on
+ * a DIV, which is what `/design-system/` does: the light room shipped the dark
+ * room's key lobe and its black 0.55 vignette over a white ground, measured at
+ * 1.07:1 by `scripts-js/check-contrast.js`.
+ *
+ * The fix is the second declaration, so this is the guard the second
+ * declaration needs: the two must be the same field, character for character,
+ * or the rooms are two different grounds and nobody finds out from the source.
+ */
+test('both rooms declare the same ground field', () => {
+  const field = (/** @type {string} */ needle) =>
+    /--ground-field:\s*([^;]+);/.exec(block(needle))?.[1]?.replace(/\s+/g, ' ').trim()
+  const dark = field('[data-theme="dark"]')
+  const light = field('[data-theme="light"]')
+  expect(dark).toBeTruthy()
+  expect(light).toBe(dark ?? '')
+})

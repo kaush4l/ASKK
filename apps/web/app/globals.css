@@ -19,9 +19,8 @@
   color-scheme: dark;
 
   /* ---- the ground. A fixed field, never an image: costs nothing, cannot fail
-     to load. The lit lobe is the worst case for light-on-glass and every
-     contrast number in DESIGN.md is measured there. Percent-sized, because in
-     rem a 30rem lobe is wider than a 390px phone. */
+     to load. The lit lobe is the worst case and every contrast number is
+     measured there. Percent-sized: in rem a 30rem lobe outgrows a 390px phone. */
   --ground: #0b0611;
   --ground-deep: #070409;
   --vignette: rgba(0, 0, 0, 0.55);
@@ -169,6 +168,19 @@
   --ink: #1a1024; --ink-2: #4c4160; --ink-3: #6d6285; --machine: #2c4f6e;
   --accent: #6432c8; --accent-ink: #ffffff; --success: #12603f;
   --warning: #6f4a00; --danger: #b3261e;
+  /* THE SECOND UNAVOIDABLE SPELLING. A `var()` is substituted where the
+     property is DECLARED, so `--ground-field` inherits out of `:root` with the
+     dark lobes already frozen in and re-pointing `--lobe-key` above moves
+     nothing. Invisible while the room is stamped on the root; exactly wrong on
+     `/design-system/`, which stamps it on a DIV — the light room shipped the
+     dark vignette over a white ground at 1.07:1. `test/theme.test.js` asserts
+     the two fields are identical, as it does for the `themeColor` literals. */
+  --ground-field:
+    radial-gradient(112% 86% at 50% 32%, transparent 46%, var(--vignette) 100%),
+    radial-gradient(72% 56% at 104% 14%, var(--lobe-key), transparent 74%),
+    radial-gradient(84% 52% at 4% 96%, var(--lobe-fill), transparent 72%),
+    radial-gradient(130% 62% at 50% 116%, var(--horizon), transparent 66%),
+    linear-gradient(180deg, var(--ground), var(--ground-deep));
   --hairline: rgba(26, 16, 36, 0.16); --hairline-lit: rgba(255, 255, 255, 0.70);
   --control: #4c4160; --divider: rgba(26, 16, 36, 0.09);
   --focus-halo: rgba(255, 255, 255, 0.85);

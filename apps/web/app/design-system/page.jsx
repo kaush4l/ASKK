@@ -81,7 +81,7 @@ function Specimen({ name, data, view, children }) {
           // otherwise be answered yes by the gallery doing its job.
           <div key={room} className={s.room} data-theme={room} data-specimen="true">
             <span className={s.roomName}>{room}</span>
-            {children ?? <View view={view ?? name} data={data} />}
+            <div className={s.stage}>{children ?? <View view={view ?? name} data={data} />}</div>
           </div>
         ))}
       </div>
