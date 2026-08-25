@@ -20,10 +20,10 @@ parts the rewrite exposes as wrong.
 | LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
 | RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md`, 360 lines | ✅ landed |
 | — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
-| A · PAPER | `packages/context` | 6 ✅ one vocabulary, real goldens, a measured cache head · 7 🔄 the wire, every modality |
-| B · LOOP | `packages/agent` | 6 ✅ one prompt vocabulary, Workers, the retry ceiling · 7 🔄 the stages walk, and the critic gates |
-| C · SPINE | `packages/core`, `packages/adapters-web` | 6 ✅ the dashboard, seven tools that run · 7 🔄 delegation, composed |
-| D · FACE | `apps/web` | 6 ✅ every destination wired, the bridge deleted · 7 🔄 the contrast ratchet, and motion |
+| A · PAPER | `packages/context` | 7 ✅ every modality on the wire, streamed == buffered, the receipts have readers |
+| B · LOOP | `packages/agent` | 7 ✅ the stages walk, the critic gates, the lap re-enters `work` |
+| C · SPINE | `packages/core`, `packages/adapters-web` | 7 ✅ delegation composed: one real Worker per agent, its own conversation |
+| D · FACE | `apps/web` | 7 ✅ a contrast ratchet that measures every word on the screen |
 
 ## What exists
 
@@ -182,6 +182,18 @@ a probe channel: React re-applies the metadata title over it. `localStorage` is.
 tests, five checks, and a page that renders and does nothing passed all of them
 (I17). A smoke test that drives the built artifact in a browser lands with the
 fix.
+
+## Cross-lane rulings — round 7
+
+| Request | Ruling |
+|---|---|
+| D: wire the contrast gate in | **Done.** `bun run contrast` exists, and `publish.sh` runs it after the smoke test on the same build. Not in `bun run gate`, and that is deliberate: the gate must run for a contributor who has no gstack browser. |
+| D: a `next build` took over fifteen minutes | **Contention, not cost.** Four lanes were building concurrently on one machine. Measured alone: about ten seconds. No rule needs changing. |
+| C: `CapabilityError` still has zero construction sites | **Deleted.** A class nothing throws cannot be matched on. |
+| C: confirm the `DelegateError` mapping | **Confirmed, and the six names now carry their reasons in the file.** `abandoned` is right to add: a caller cannot tell a person's Stop from a sub-agent's failure off one name, and "the agent refused" is a wrong sentence to show somebody who stopped it themselves. |
+| C: the CONVERSATION reducer went 1→2, so a deployed browser replays once | **Accepted, and it is I20 working.** A reducer version that invalidates its own snapshot is the mechanism; one full replay on one release is what it costs, and the alternative is a projection quietly disagreeing with the log. |
+| C: four directed edits fell outside its ownership | **Recorded.** A bar-raiser may direct a change into a neighbour's file, and when it does, the lane says so in its report — which this one did. The rule is that nobody reaches across UNASKED. |
+| B: `stageIn` lives in `stages.js`, not `state.js`, because I12 | **Upheld.** I12 is law and the alternative was gutting the reasoning or moving a storage codec unasked. One spelling, one answer, and the constraint is named in the comment. |
 
 ## Cross-lane rulings — round 2
 
