@@ -16,9 +16,12 @@
 //! Dashboard's own tile, with 60% of the viewport empty below it. The tile
 //! stays where it has context, beside the board.
 
-pub(crate) mod dashboard;
 pub(crate) mod panels;
+/// SHAPE — the roster and the setup (ADE-DESIGN.md §3).
+pub(crate) mod shape;
 pub(crate) mod plate;
+/// THE RUN — what the Dashboard became (ADE-DESIGN.md §3).
+pub(crate) mod work;
 
 use std::rc::Rc;
 
@@ -29,8 +32,9 @@ use dioxus::prelude::*;
 use crate::shell::views::View;
 use crate::files::breadcrumbs;
 use crate::gallery;
-use dashboard::DashboardView;
-use panels::{AgentsView, ChatView, DebugView, SettingsView, StageHead, TraceView, WorkspaceView};
+use work::WorkView;
+use panels::{ChatView, DebugView, ShellPanel, StageHead, TraceView};
+use shape::{AgentsView, SetupView};
 
 /// The centre column. One `Signal` per thing two regions disagree about; the
 /// prop list is long because the shell owns the state and this the layout.
@@ -49,8 +53,6 @@ pub fn Stage(
     loaded: Signal<Vec<String>>,
     authored: Signal<Vec<String>>,
     selected: Signal<String>,
-    /// The masthead fragment: `GET /`, built by the core's escaping primitives.
-    fragment: Signal<String>,
     view: Signal<View>,
 ) -> Element {
     let here = view();
@@ -58,16 +60,19 @@ pub fn Stage(
         // `content` is where the skip link lands (R2-19), past the header and
         // the nav; `tabindex=-1` so it holds focus outside the tab order.
         div { class: "stage primary", id: "content", tabindex: "-1",
-            StageHead { here, loaded, authored, selected }
-            if here == View::Dashboard {
-                DashboardView { web, tick, selected, agents, loaded, authored, view, fragment }
-            }
+            StageHead { here, selected }
+            // THE RUN, TOP TO BOTTOM, IN THE ORDER IT HAPPENS (ADE-DESIGN.md
+            // §3). The field you type into, the walk it starts, the transcript
+            // it fills, the tool calls inside that, the shell they ran in, and
+            // last what the harness recorded underneath. These were four
+            // sibling destinations and they are four regions of one scroller.
+            if here == View::Work { WorkView { web, tick, selected, agents, view } }
             ChatView { here, web, endpoint_set, tick, tokens, roster, loaded, selected, view }
-            if here == View::Agents { AgentsView { web, tick, loaded, authored, agents, selected } }
-            if here == View::Workspace { WorkspaceView { web, tick, selected } }
-            if here == View::Trace { TraceView { web, tick, selected, view } }
-            if here == View::Debug { DebugView { web, tick, selected } }
-            if here == View::Settings { SettingsView { web, endpoint_set, tick } }
+            if here == View::Work { TraceView { web, tick, selected, view } }
+            if here == View::Work { ShellPanel { web, tick, selected } }
+            if here == View::Work { DebugView { web, tick, selected } }
+            if here == View::Agents { AgentsView { web, tick, loaded, authored, agents, selected, view } }
+            if here == View::Setup { SetupView { web, endpoint_set, tick } }
             if here == View::DesignSystem {
                 breadcrumbs::DesignCrumb { view }
                 gallery::DesignSystem {}

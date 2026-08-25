@@ -46,7 +46,7 @@ pub(crate) fn NothingMadeYet(who: String, view: Signal<View>) -> Element {
                 variant: "secondary",
                 onclick: move |_| {
                     let mut view = view;
-                    view.set(View::Chat);
+                    view.set(View::Work);
                     // `spawn_forever`: routing UNMOUNTS this pane and a
                     // plain task dies with its scope (see `space/mod.rs`).
                     spawn_forever(async move {

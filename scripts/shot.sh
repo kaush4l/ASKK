@@ -11,7 +11,7 @@
 # Usage: scripts/shot.sh <width> [out.png] [skin] [route]
 #   width  device-independent px (390 phone, 768 tablet, 1440 desktop)
 #   skin   glass (default) | plain   — BOTH ship, so both get looked at
-#   route  dash (default) | chat | deck
+#   route  work (default) | agents | setup   — the whole map (ADE-DESIGN.md §3)
 #   theme  (5th arg) halo | console | gallery | atelier — omit for the shipped
 #          page. ADE-DESIGN.md §4: four directions the owner is choosing
 #          between, and the whole point of them is that they are LOOKED at.
@@ -29,7 +29,7 @@ cd "$(git rev-parse --show-toplevel)"
 W=${1:?usage: shot.sh <width> [out.png] [skin] [route] [theme]}
 OUT=${2:-out/shots/shot-$W.png}
 SKIN=${3:-glass}
-ROUTE=${4:-dash}
+ROUTE=${4:-work}
 THEME=${5:-}
 H=${HEIGHT:-}
 

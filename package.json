@@ -1,0 +1,18 @@
+{
+  "name": "harness",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "test": "bun test packages",
+    "typecheck": "bunx tsc -p jsconfig.json",
+    "gate": "bun run typecheck && bun test packages && bun run size",
+    "size": "bun run scripts-js/check-size.js",
+    "dev": "bun --filter @harness/web dev",
+    "build": "bun --filter @harness/web build"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2"
+  }
+}

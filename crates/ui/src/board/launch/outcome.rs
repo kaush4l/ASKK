@@ -42,7 +42,7 @@ pub fn LaunchedRun(
     let ended = !matches!(status.as_str(), "working" | "starting");
     let open_chat = move |_| {
         let mut view = view;
-        view.set(View::Chat);
+        view.set(View::Work);
     };
     if moved && status == "failed" {
         return rsx! {
@@ -95,7 +95,7 @@ pub fn LaunchedRun(
                     variant: "secondary",
                     onclick: move |_| {
                         let mut view = view;
-                        view.set(View::Trace);
+                        view.set(View::Work);
                     },
                     "Open the tool trace"
                 }
@@ -134,7 +134,7 @@ pub fn LaunchedRun(
                         variant: "secondary",
                         onclick: move |_| {
                             let mut view = view;
-                            view.set(View::Trace);
+                            view.set(View::Work);
                         },
                         "Open the tool trace"
                     }

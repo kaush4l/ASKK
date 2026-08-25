@@ -161,7 +161,7 @@ fn shell() -> Element {
                 }
                 centre::Stage {
                     web, endpoint_set, tick, tokens, roster, agents, loaded, authored,
-                    selected, fragment, view,
+                    selected, view,
                 }
                 // WHOSE instruments, and which ones (VIEWS.md §5).
                 if rail_open() && has_rail() {

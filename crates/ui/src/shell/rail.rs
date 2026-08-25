@@ -38,7 +38,7 @@ fn spaceless(web: &Signal<Option<Rc<WebApp>>>, agent: &str) -> bool {
 /// `#rail` that was `display: none` at 0x0 — a dead control reporting a state
 /// it did not have, and a press that changed the label and nothing else.
 pub fn instruments(web: &Signal<Option<Rc<WebApp>>>, here: View, agent: &str) -> bool {
-    here.rail() && !(here == View::Workspace && spaceless(web, agent))
+    here.rail() && !(here == View::Work && spaceless(web, agent))
 }
 
 /// The shell's one read of it, as a signal the header's switch and the region
@@ -85,7 +85,7 @@ pub fn Rail(
     let mut denial = use_signal(String::new);
     use_effect(move || {
         let _ = tick();
-        if view() != View::Workspace {
+        if view() != View::Work {
             return;
         }
         let now = refused(&web, &selected())
@@ -121,9 +121,9 @@ pub fn Rail(
             // NOT on Agents (F24) or Trace (R2-18). On Commands the terminal
             // has the centre, so the folder, what is running and the shelf go
             // BESIDE it, and ALL RE-READ ON EVERY AGENT CHANGE (R5-1).
-            if here == View::Workspace && !denial.read().is_empty() {
+            if here == View::Work && !denial.read().is_empty() {
                 div { aria_live: "polite", dangerous_inner_html: "{denial}" }
-            } else if here == View::Workspace {
+            } else if here == View::Work {
                 files::Files { web, tick, agent: selected, at }
                 // …and WHAT IS RUNNING: Commands is what happened. It shares
                 // the folder signal so a log opens in the Files editor (R10-6).

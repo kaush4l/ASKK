@@ -65,7 +65,7 @@ pub(crate) fn ShellCallsDoor(shell_calls: usize, view: Signal<View>) -> Element 
                 variant: "ghost",
                 onclick: move |_| {
                     let mut view = view;
-                    view.set(View::Workspace);
+                    view.set(View::Work);
                 },
                 "Open Commands"
             }

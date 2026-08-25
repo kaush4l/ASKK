@@ -25,7 +25,7 @@ pub(crate) fn ElsewhereRun(who: String, busy: String) -> Element {
                 variant: "ghost",
                 onclick: {
                     let other = other.clone();
-                    move |_| crate::shell::route::show(View::Chat, &other)
+                    move |_| crate::shell::route::show(View::Work, &other)
                 },
                 "Open {other}'s chat"
             }

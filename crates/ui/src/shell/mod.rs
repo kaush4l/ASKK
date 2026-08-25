@@ -13,7 +13,6 @@
 //! The centre column itself is `centre`, not here: what the frame does is the
 //! same on every view, and what the middle shows is not.
 
-pub(crate) mod agent_switcher;
 pub(crate) mod boot_reads;
 pub(crate) mod dash;
 pub(crate) mod heartbeat;

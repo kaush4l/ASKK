@@ -176,7 +176,7 @@ pub fn TroublePill(fleet: Fleet, view: Signal<View>, tick: Signal<u32>) -> Eleme
                     hush(&news);
                     let n = *tick.peek();
                     tick.set(n + 1);
-                    view.set(View::Settings);
+                    view.set(View::Setup);
                 },
                 "Open Settings"
             }

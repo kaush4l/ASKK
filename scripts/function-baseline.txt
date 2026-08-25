@@ -40,7 +40,6 @@ crates/ui/src/settings/endpoint_copy/search.rs::SearchEndpoint
 crates/ui/src/settings/linux_engine.rs::LinuxEngine
 crates/ui/src/settings/mod.rs::Settings
 crates/ui/src/settings/view.rs::endpoint_form
-crates/ui/src/shell/agent_switcher.rs::AgentTabs
 crates/ui/src/shell/heartbeat.rs::Heartbeat
 crates/ui/src/shell/rail.rs::Rail
 crates/ui/src/shell/status_pills.rs::TroublePill

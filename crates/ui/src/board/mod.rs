@@ -52,8 +52,8 @@ fn show(res: Response, mut rows: Signal<String>, mut busy: Signal<bool>) -> bool
 fn opened(event: Event<MouseData>) -> Option<()> {
     let (open, name) = read_attrs::pressed(&event, ".agent-row")?;
     let to = match open.as_str() {
-        "trace" => View::Trace,
-        _ => View::Chat,
+        "trace" => View::Work,
+        _ => View::Work,
     };
     crate::shell::route::show(to, &name);
     Some(())

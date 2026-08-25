@@ -104,8 +104,8 @@ pub(crate) fn agent_panel(
                             crate::board::read_attrs::pressed(&e, ".agent-card")
                         else { return };
                         let to = match where_to.as_str() {
-                            "task" => View::Dashboard,
-                            _ => View::Chat,
+                            "task" => View::Work,
+                            _ => View::Work,
                         };
                         crate::shell::route::show(to, &name);
                     },

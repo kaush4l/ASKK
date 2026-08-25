@@ -97,7 +97,7 @@ fn rolling_log(pane: Pane, html: &str, state: &State) -> Element {
                         let Some(path) = crate::files::listing::clicked_path(&e) else { return };
                         crate::files::listing::open_path(pane.web, &(pane.agent)(), &path, false);
                         let mut view = view;
-                        view.set(View::Workspace);
+                        view.set(View::Work);
                     },
                     dangerous_inner_html: "{html}",
                 }

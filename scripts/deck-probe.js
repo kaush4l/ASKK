@@ -188,18 +188,37 @@
   // the PROSE, which carries its own (`surfaces.css`), not on the card. One
   // column, one edge — asserted at every width, since the failure was that two
   // cards in the same column disagreed about where the column ends.
-  var dash = region.querySelectorAll(".dash-grid .panel");
-  if (dash.length > 1) {
+  // REPOINTED AT THE RUN (ADE-DESIGN.md §3). This read `.dash-grid .panel`, and
+  // `.dash-grid` was the Dashboard's launcher-and-board row — a class no
+  // component emits any more, so the assertion would have gone on printing
+  // nothing at 54 configurations while reading PASS by absence. A gate that
+  // loses its subject is worse than no gate, because the report still says OK
+  // (`layout-audit.js:145` says the same thing about the hover rules).
+  //
+  // The claim survives the rename unchanged, and it is now about MORE: the run
+  // stacks the launcher, the conversation and the tool trace in one column, and
+  // two panels in one column that disagree about where the column ends is the
+  // exact defect 31-walk F5 recorded. `.reading` is excluded because a panel
+  // holding only prose is capped at `--column` ON PURPOSE (`layout.css:122`),
+  // so it is narrower by design and not by accident.
+  var col = document.querySelectorAll(
+    "#work-view > .panel:not(.reading), #chat-view > .panel:not(.reading), " +
+    "#trace-view > .panel:not(.reading)");
+  var run = [];
+  col.forEach(function (c) { if (!c.closest("[hidden]")) run.push(c); });
+  if (run.length > 1) {
     var widths = [];
-    dash.forEach(function (c) { widths.push(Math.round(c.getBoundingClientRect().width)); });
+    run.forEach(function (c) { widths.push(Math.round(c.getBoundingClientRect().width)); });
     var ragged = widths.some(function (w) { return Math.abs(w - widths[0]) > 1; });
-    say(!ragged, "DASHEDGE", ragged
-      ? "the Dashboard's cards are " + widths.join("/") + "px wide in one column"
-      : dash.length + " cards, all " + widths[0] + "px");
-    var field = region.querySelector(".dash-grid .grows");
+    say(!ragged, "RUNEDGE", ragged
+      ? "the run's panels are " + widths.join("/") + "px wide in one column"
+      : run.length + " panels, all " + widths[0] + "px");
+    var field = document.querySelector("#work-view .grows");
     if (field) {
-      P.info("DASHFIELD", "the task field is " + Math.round(field.getBoundingClientRect().width) +
+      P.info("TASKFIELD", "the task field is " + Math.round(field.getBoundingClientRect().width) +
              "px in a " + widths[0] + "px card");
     }
+  } else {
+    P.info("RUNEDGE", run.length + " unhidden run panels — not judged");
   }
 })();

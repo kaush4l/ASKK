@@ -1,36 +1,34 @@
-//! WHERE you are — the eight views the left panel navigates between (VIEWS.md,
-//! plus the Dashboard the product goal adds and the Debug view that projects the
-//! facts the log already held and nothing drew).
+//! WHERE you are — and since the ADE round (docs/ADE-DESIGN.md §3) that is one
+//! of THREE places, not seven.
 //!
-//! ONE PANEL, ONE HOME (R15-IA). Six nav entries held about four panels,
-//! re-shuffled per view, and nobody can infer a map like that. The rule: every
-//! panel appears on exactly one view, the centre column is what the nav entry
-//! names, the rail beside it is the live state of that same thing, and every
-//! other mention of a panel is a LINK to its home rather than a second copy.
+//! WHAT WAS WRONG, AND IT WAS NOT THE STYLING. Eight rounds moved type and
+//! spacing across an information architecture nobody had questioned, and the
+//! owner's verdict on all eight was that they "uplifted nothing".
+//! UPLIFT-FINDINGS F8 is the diagnosis: watching an agent work was split across
+//! THREE SIBLING DESTINATIONS — Chat, Tool trace and Debug — while the run is
+//! one continuous event, and the nav ranked two builder instruments level with
+//! the screens a user needs.
+//!
+//! So the run is one surface. `Work` holds a turn from the sentence you typed
+//! to the verdict it ends on: the transcript, the stage walk, the tool calls,
+//! the shell and the folder, in one scroller, without moving. `Agents` is where
+//! agents are written. `Setup` is where turns are addressed. Nothing else is a
+//! destination, and the two views that were instruments for the person building
+//! this product are reached from the run they are about.
+//!
+//! THE OLD NAMES STILL RESOLVE. `#/dashboard`, `#/chat/main`, `#/trace`,
+//! `#/debug`, `#/commands` and `#/settings` are all links somebody may already
+//! have; `from_slug` lands each on the view that absorbed it and `slug()`
+//! writes the canonical spelling back, so the address bar corrects itself
+//! rather than a copied URL breaking.
 //!
 //! A VIEW IS NAMED AFTER THE PANEL YOU ACT IN, AND ITS RAIL IS THE LIVE STATE
-//! OF WHAT THAT PANEL DID (R17-IA, amending R15-IA) — so `Commands` keeps its
-//! name, and the folder, processes and finished files beside it are what those
-//! commands run in and leave behind, not a second place called Workspace.
+//! OF WHAT THAT PANEL DID (R17-IA, held): Work's rail is the folder its
+//! commands ran in and the files they left behind.
 //!
-//! Round 17's rename to `Workspace` was REFUSED: R16 settled that word on the
-//! Linux folder alone, so a view named after it would put it back on two things
-//! and the panel — `Commands · main` — would disagree with its own nav entry,
-//! the bug R15 fixed. What that critique measured, that `Commands` does not
-//! predict the three panels beside it, is answered under the eyebrow
-//! (`centre/mod.rs`) rather than by moving the view a third time.
-//!
-//! A VIEW HAS ONE CONTROL FOR ITS OWN SUBJECT (R19-IA, holding R15-IA): where
-//! the panel a view is named after already lists the agents — Chat's thread
-//! list, one row each — that list IS the picker and no strip is rendered beside
-//! it (`centre/mod.rs`, §7). Two controls for "which conversation" is what R15 bans.
-//!
-//! Agents is not the navigation; agents is one view, and switching agent is a
-//! strip in the stage's head (`shell/agent_switcher.rs`, R5-6) — on the views without a list.
-//!
-//! `DesignSystem` is deliberately NOT in the list and since R3-11 not linked
-//! from the product at all: an internal gallery citing DESIGN.md sections. It
-//! is reached by URL — `#/design-system` — and carries a crumb back.
+//! `DesignSystem` is deliberately NOT in the list and not linked from the
+//! product: an internal gallery citing DESIGN.md sections, reached by URL —
+//! `#/design-system` — carrying a crumb back.
 //!
 //! These are BUTTONS carrying `aria-current="page"`, not tabs: this is
 //! navigation. Each carries `title` and `aria-label` too, because `.nav-label`
@@ -48,65 +46,53 @@ pub(crate) use nav::ViewNav;
 /// `hidden` off its route: unmounting it drops the poller of a turn in flight.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum View {
-    /// WHERE YOU LAND: the only surface answering "what is this thing doing
-    /// right now" across all agents — launcher, board, shared-space tile.
-    Dashboard,
-    Chat,
+    /// THE RUN, AND THE WHOLE OF IT. One agent, one folder, watched: the
+    /// transcript you type into, the loop's walk, every tool call with its
+    /// arguments and output, the shell, and what the turn left on disk. This is
+    /// where the application opens and it absorbed four of the seven views it
+    /// replaced (ADE-DESIGN.md §3, "WATCH").
+    Work,
+    /// WHAT AGENTS EXIST, and the surface for writing another. The ADE's
+    /// "SHAPE": you edit what the agent IS, and Work shows you the effect.
     Agents,
-    /// THE SHELL. A real x86 Linux the agent builds in, with its folder,
-    /// processes and shelf in the rail. Labelled `Commands` since R15-IA.
-    Workspace,
-    Trace,
-    /// WHAT IS GOING ON UNDERNEATH — the facts the log already held and nothing
-    /// drew; `ui/debug/mod.rs` lists them and says why they were unread.
-    Debug,
-    Settings,
+    /// WHERE TURNS ARE SENT, and what this browser is holding. Named `Setup`
+    /// rather than `Settings` because it is the address of a model server and
+    /// not a page of preferences; the appearance controls live here too.
+    Setup,
     DesignSystem,
 }
 
-/// The nav list, in order. SEVEN since Debug. `DesignSystem` is not among them,
-/// and neither is the shared space (R5-22): a destination byte-identical to a tile the
-/// Dashboard already renders is a duplicate, not navigation.
-pub(crate) const NAV: [View; 7] = [
-    View::Dashboard,
-    View::Chat,
-    View::Agents,
-    View::Workspace,
-    View::Trace,
-    // After the trace: the last of the "what happened" views, and where to go
-    // when the trace does not explain what you just watched.
-    View::Debug,
-    View::Settings,
-];
+/// The nav list, in order. THREE. ADE-DESIGN.md §6 E5 asserts this number, and
+/// it is asserted rather than stated because the count is the whole claim: a map
+/// a person can hold is the difference between this round and the eight before.
+pub(crate) const NAV: [View; 3] = [View::Work, View::Agents, View::Setup];
 
 impl View {
-    /// The id fragment `view-chat`, and the region it routes to, `chat-view`.
+    /// The id fragment `view-work`, and the region it routes to, `work-view`.
     pub(crate) fn slug(self) -> &'static str {
         match self {
-            View::Dashboard => "dashboard",
-            View::Chat => "chat",
+            View::Work => "work",
             View::Agents => "agents",
-            // Nav, eyebrow and centre card all read `Commands` (R15-IA, held
-            // by R17-IA above); "workspace" means one thing — the folder.
-            View::Workspace => "commands",
-            View::Trace => "trace",
-            View::Debug => "debug",
-            View::Settings => "settings",
+            View::Setup => "setup",
             View::DesignSystem => "design-system",
         }
     }
 
-    /// The slug back to the view (F13). Unknown means the Dashboard. The name
-    /// this view shipped under still resolves: a link already sent must not
-    /// land on the Dashboard because the label changed, and `slug()` writes the
-    /// canonical spelling back, so the address bar corrects itself.
+    /// The slug back to the view (F13). Unknown means Work, which is where the
+    /// application opens.
     ///
-    /// …AND IT SAYS THAT IT DID (31-walk F4). This is the ONE place that knows
-    /// a slug named no view, and it used to swallow that: `misroute::note` is
-    /// what the header then reads.
+    /// EVERY NAME THIS PRODUCT HAS EVER SHIPPED RESOLVES. The four views Work
+    /// absorbed are listed by hand rather than folded into the fallback,
+    /// because a redirect and a misroute are different events: `#/trace` is a
+    /// link that used to work and now lands on the surface that holds the
+    /// trace, while `#/wharrgarbl` named nothing and the header says so
+    /// (`misroute::note`, 31-walk F4).
     pub(crate) fn from_slug(slug: &str) -> Option<View> {
-        if slug == "workspace" {
-            return Some(View::Workspace);
+        if matches!(slug, "dashboard" | "chat" | "trace" | "debug" | "commands" | "workspace") {
+            return Some(View::Work);
+        }
+        if slug == "settings" {
+            return Some(View::Setup);
         }
         let found =
             NAV.iter().chain([View::DesignSystem].iter()).copied().find(|v| v.slug() == slug);
@@ -119,49 +105,65 @@ impl View {
     /// Also the destination's heading: "Trace" landed on "Tools" (F6).
     pub(crate) fn label(self) -> &'static str {
         match self {
-            View::Dashboard => "Dashboard",
-            View::Chat => "Chat",
+            View::Work => "Work",
             View::Agents => "Agents",
-            View::Workspace => "Commands",
-            View::Trace => "Tool trace",
-            View::Debug => "Debug",
-            View::Settings => "Settings",
+            View::Setup => "Setup",
             View::DesignSystem => "Design system",
         }
     }
 
     /// Whether the rail has anything to say here (VIEWS.md §5). Elsewhere the
-    /// switch is NOT RENDERED (R2-12) rather than rendered disabled. COMMANDS
-    /// ONLY (R15-IA): the Chat rail carried the board and the trace, each the
-    /// subject of a view of its own.
+    /// switch is NOT RENDERED (R2-12) rather than rendered disabled. WORK ONLY:
+    /// the folder is the receipt of what the run on this screen just did, and
+    /// nowhere else is about a run.
     pub(crate) fn rail(self) -> bool {
-        matches!(self, View::Workspace)
+        matches!(self, View::Work)
     }
 
-    /// Whether this view is about ONE agent (R5-6). Agents and Settings are
-    /// about the fleet and the browser, so they get no picker, not an inert one.
+    /// Whether this view is about ONE agent (R5-6). Agents and Setup are about
+    /// the fleet and the browser, so they get no picker, not an inert one.
     pub(crate) fn scoped(self) -> bool {
-        matches!(self, View::Dashboard | View::Chat | View::Workspace | View::Trace | View::Debug)
+        matches!(self, View::Work)
     }
 
     /// WHAT IS IN THE RAIL HERE (R8-7). It said `Side panel · main` — a region
-    /// named after itself. This names the CONTENTS, never the geometry; one
-    /// rail, one noun, since `rail()` narrowed to Commands (R15-IA).
-    ///
-    /// The switch this feeds appears on this view only, which round 17 read as
-    /// a control coming and going at random. KEPT (R17-P1-9): the alternative
-    /// was measured — a permanent `Hide workspace files` with
-    /// `aria-expanded="true"` over a 0x0 `#rail` (R12-6), a dead control.
+    /// named after itself. This names the CONTENTS, never the geometry.
     pub(crate) fn rail_noun(self) -> &'static str {
         "folder"
     }
 
-    /// What the strip re-points HERE (R4-10): one name for two jobs told a
-    /// screen-reader user the wrong thing on one of them.
-    pub(crate) fn picker(self) -> (&'static str, &'static str) {
-        match self {
-            View::Dashboard => ("task-field", "Which agent runs the task"),
-            _ => ("content", "Which agent this view is about"),
+    // `picker()` IS GONE. It named the region the agent strip re-pointed and
+    // the sentence a screen reader heard for it (R4-10); the strip was deleted
+    // with this round, because the run absorbed Chat and the thread list is
+    // the picker on the one agent-scoped view there is (R19-IA). A method with
+    // no caller is a claim the product no longer makes.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::View;
+
+    /// ADE-DESIGN.md §6 E5. The count IS the claim — F8's diagnosis is that
+    /// seven equal entries, two of them instruments for the person building the
+    /// product, is a map nobody can hold. A gate that cannot fail on the number
+    /// would let the next round add an eighth back one view at a time (I17).
+    #[test]
+    fn the_map_is_three_destinations() {
+        assert_eq!(super::NAV.len(), 3, "the nav grew back: {:?}", super::NAV.map(View::label));
+    }
+
+    /// …AND EVERY URL THE PRODUCT HAS EVER SHIPPED STILL LANDS SOMEWHERE REAL.
+    /// Six of these named a destination that no longer exists; a link already
+    /// sent must not land on a misroute banner because the architecture changed.
+    #[test]
+    fn the_names_the_run_absorbed_still_resolve() {
+        for old in ["dashboard", "chat", "trace", "debug", "commands", "workspace"] {
+            assert!(
+                matches!(View::from_slug(old), Some(View::Work)),
+                "`#/{old}` no longer reaches the run it was folded into"
+            );
         }
+        assert!(matches!(View::from_slug("settings"), Some(View::Setup)));
+        assert!(View::from_slug("wharrgarbl").is_none(), "a name nobody shipped resolved");
     }
 }

@@ -70,7 +70,7 @@ pub fn ask_author(here: bool) -> Element {
         div { class: "row",
             Button {
                 variant: "secondary",
-                onclick: move |_| crate::shell::route::show(View::Chat, "author"),
+                onclick: move |_| crate::shell::route::show(View::Work, "author"),
                 "Ask author to write one"
             }
         }

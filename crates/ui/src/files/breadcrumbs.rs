@@ -78,7 +78,7 @@ pub(crate) fn DesignCrumb(view: Signal<View>) -> Element {
                 variant: "ghost",
                 onclick: move |_| {
                     let mut view = view;
-                    view.set(View::Settings);
+                    view.set(View::Setup);
                 },
                 "← Settings"
             }

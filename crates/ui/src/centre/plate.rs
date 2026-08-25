@@ -21,6 +21,14 @@
 //! plate is a heading: it takes `--tr-display`, it wraps, and it is allowed to
 //! be shorter than its rule, because a four-letter word IS shorter than a
 //! column and pretending otherwise is what broke it.
+//!
+//! IT IS AN `<h1>` SINCE THE ADE ROUND, and it was an `<h2>` before for a
+//! reason that has expired: the page's one `<h1>` was the Dashboard nameplate
+//! `core::builtins` renders, and a subject plate a level below it was correct
+//! while that existed. The Dashboard is gone (`centre/work.rs`) and so is the
+//! nameplate, so this is the page's top heading and saying `<h2>` would leave
+//! the document with no `<h1>` at all — a heading outline starting at level 2,
+//! which is a defect a screen reader hits before anything else on the screen.
 
 use dioxus::prelude::*;
 
@@ -29,7 +37,7 @@ use dioxus::prelude::*;
 pub(crate) fn SubjectPlate(word: String) -> Element {
     rsx! {
         div { class: "masthead",
-            h2 { class: "plate", "{word}" }
+            h1 { class: "plate", "{word}" }
         }
     }
 }

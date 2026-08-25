@@ -118,7 +118,7 @@ pub(crate) fn no_task(who: &str, board: &str) -> Element {
         p { class: "note", "{said}" }
         Button {
             variant: "secondary",
-            onclick: move |_| crate::shell::route::show(crate::shell::views::View::Chat, &to),
+            onclick: move |_| crate::shell::route::show(crate::shell::views::View::Work, &to),
             "Open {who}'s chat"
         }
     }

@@ -91,8 +91,8 @@ mod tests {
     /// Dashboard AND the page has something to say about it, naming both.
     #[test]
     fn a_slug_that_names_no_view_lands_on_the_dashboard_and_says_so() {
-        let where_to = View::from_slug("tools").unwrap_or(View::Dashboard);
-        assert!(where_to == View::Dashboard);
+        let where_to = View::from_slug("tools").unwrap_or(View::Work);
+        assert!(where_to == View::Work);
         let said = super::said().expect("an unknown slug is recorded");
         assert!(said.contains("tools"), "the typed name is not in it: {said}");
         assert!(said.contains("Dashboard"), "where it landed is not in it: {said}");

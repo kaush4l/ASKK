@@ -91,7 +91,7 @@ pub(crate) fn nothing_shared(_who: &str, view: Signal<View>) -> Element {
                 variant: "secondary",
                 onclick: move |_| {
                     let mut view = view;
-                    view.set(View::Chat);
+                    view.set(View::Work);
                     // `spawn_forever`, not `spawn`: the route change UNMOUNTS
                     // this pane, and a task owned by a dropped scope is
                     // cancelled with it — so the plain spawn routed correctly

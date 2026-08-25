@@ -7,52 +7,63 @@ use std::rc::Rc;
 use adapters_web::WebApp;
 use dioxus::prelude::*;
 
-use crate::board::roster;
 use crate::chat::thread;
-use crate::settings::{self, endpoint_copy, linux_engine};
 use crate::centre::plate;
 use crate::shell::views::View;
-use crate::shell::{agent_switcher, skin, theme};
-use crate::{authoring, debug, terminal, trace};
+use crate::{debug, terminal, trace};
 
 /// THE STAGE'S HEAD — one band above whatever is routed: the KICKER names the
-/// view (R5-misc) at `--t-caption`, then the SUBJECT PLATE (`plate.rs`), then
-/// the agent switcher where the route has one. There is exactly one display
-/// register in this product and it is a ruled plate naming the SCREEN'S
-/// SUBJECT: the product on the Dashboard, where `core::builtins` owns the
-/// `<h1>` inside the routed panel, and the SELECTED AGENT everywhere else —
-/// never the view's own name, which says nothing on a screen whose subject is
-/// a conversation (UPLIFT F2). `<h2>` there, not `<h1>`:
-/// `core/tests/skeleton.rs:118` pins `GET /` at one.
+/// view (R5-misc) at `--t-caption`, then the SUBJECT PLATE (`plate.rs`) on the
+/// view that has a subject.
+///
+/// THERE IS EXACTLY ONE DISPLAY REGISTER IN THIS PRODUCT and since the ADE
+/// round it is here and only here. It used to be the `<h1>` nameplate
+/// `core::builtins` renders inside the Dashboard — the product's own name at
+/// 136px, at the top of the first screen, which is the single largest reason
+/// that screen held no work (UPLIFT F8). The Dashboard is gone and so is the
+/// nameplate; the identity is the wordmark in the header, where it costs 18px.
+/// The plate names the SCREEN'S SUBJECT, which is the selected agent.
+///
+/// AND NO AGENT SWITCHER, ON ANY VIEW. It rendered on the views that were about
+/// one agent and not on Chat, because there the thread list IS the picker
+/// (R19-IA: a view has one control for its own subject). The run absorbed Chat,
+/// so the thread list is on the only agent-scoped view there is, so the strip
+/// has no view left to appear on. `shell/agent_switcher.rs` is deleted with this
+/// change rather than kept behind a condition that is now always false — which
+/// is what the mechanical rename of the views left, and it took the plate with
+/// it: `here != View::Dashboard` and `here != View::Chat` both became
+/// `here != View::Work`, so the plate disappeared from the one view that has a
+/// subject and the strip became unreachable. Two live controls lost to a
+/// sed, silently, behind a green compile.
 #[component]
-pub(crate) fn StageHead(
-    here: View,
-    loaded: Signal<Vec<String>>,
-    authored: Signal<Vec<String>>,
-    selected: Signal<String>,
-) -> Element {
-    let (controls, label) = here.picker();
-    // The class the MARKUP states, not a `:has()` on the routed panel: that
-    // selector flaked one run in five against the probe's own routing.
-    let kicker = if here == View::Dashboard { "view-eyebrow kicker" } else { "view-eyebrow" };
+pub(crate) fn StageHead(here: View, selected: Signal<String>) -> Element {
+    // EVERY VIEW HAS A PLATE, and it names that view's own subject: the AGENT
+    // on the run, and the view itself on the two that are not about one.
+    //
+    // It was the run's alone for one build and the gate caught it in 52 of 78
+    // configurations: with `scoped()` narrowed to `Work`, Agents and Setup
+    // carried no display type at all and RAMPRANGE fell to 2.00:1 — below the
+    // 6:1 floor, and the same arithmetic UPLIFT F2 recorded as the
+    // cheap-imitation signature on the two routes a person spends time in. The
+    // floor did not move; the pages got a subject.
+    //
+    // THE KICKER IS ONLY WHERE IT SAYS SOMETHING DIFFERENT. On the run it reads
+    // `Work` over the agent's name, which are two facts. On Agents it would
+    // read `Agents` over `Agents`, which is a label above its own echo.
+    let word = match here.scoped() {
+        true => selected.read().clone(),
+        false => here.label().to_string(),
+    };
     rsx! {
         div { class: "stage-head",
-            p { class: "{kicker}", "{here.label()}" }
-            if here != View::Dashboard {
-                // One word, spanned to its box; `plate.rs` says why by `<svg>`.
-                plate::SubjectPlate { word: selected.read().clone() }
+            // The class the MARKUP states, not a `:has()` on the routed panel:
+            // that selector flaked one run in five against the probe's routing.
+            if here.scoped() {
+                p { class: "view-eyebrow kicker", "{here.label()}" }
             }
-            // …AND NOT ON CHAT (R15-IA): the thread list IS the picker there.
-            // …AND NOT ON THE DASHBOARD (lap 2's mobile critic, measured at
-            // 390x844): the head sits above the routed panel and the Dashboard's
-            // `<h1>` is INSIDE it, so a switcher here read kicker -> TAB BAND ->
-            // nameplate, y=371 / 394 / 462 — navigation cutting between an eyebrow
-            // and the product's one nameplate. `dashboard.rs` renders it under the
-            // nameplate now, above the agent-scoped panels it switches, so all
-            // three routes read kicker -> subject -> switcher.
-            if here.scoped() && here != View::Chat && here != View::Dashboard {
-                agent_switcher::AgentTabs { loaded, authored, selected, controls, label }
-            }
+            // NOT spanned — `plate.rs` says why, at length, and it cost a
+            // shipped regression to learn.
+            plate::SubjectPlate { word }
         }
     }
 }
@@ -78,7 +89,7 @@ pub(crate) fn ChatView(
             class: "view-panel chat-view",
             id: "chat-view",
             aria_label: "Chat",
-            hidden: here != View::Chat,
+            hidden: here != View::Work,
             thread::ThreadList {
                 web, endpoint_set, tick, tokens, roster, loaded, selected, view,
             }
@@ -86,37 +97,12 @@ pub(crate) fn ChatView(
     }
 }
 
-/// THE AGENTS FIRST (R2-17): the view named "Agents" opened on a task launcher.
-/// The roster is its subject, a DECK of reading columns (R7-6b, `roster.rs`).
-///
-/// …AND THE EDITOR, WITH NOTHING BESIDE IT (R15-IA): a second `Run a task` card
-/// here put the editor 2168px down a page whose job is writing an agent.
+/// THE SHELL THE TOOL CALLS RAN IN — a region of the run now, not a
+/// destination called Commands (ADE-DESIGN.md §3). Renamed from `WorkspaceView`
+/// with it: the view it was named after no longer exists, and a component
+/// named for a deleted route is the kind of stale noun this round is about.
 #[component]
-pub(crate) fn AgentsView(
-    web: Signal<Option<Rc<WebApp>>>,
-    tick: Signal<u32>,
-    loaded: Signal<Vec<String>>,
-    authored: Signal<Vec<String>>,
-    agents: Signal<String>,
-    selected: Signal<String>,
-) -> Element {
-    // Presses of `Write a new agent`: the roster's link and the editor it names
-    // are two panels, and "new" has to mean the same thing in both (R17-P1-7).
-    let blank = use_signal(|| 0u32);
-    rsx! {
-        section {
-            class: "view-panel agents-view",
-            id: "agents-view",
-            aria_label: "Agents",
-            {roster::agent_panel(agents, selected, blank)}
-            authoring::AgentEditor { web, tick, loaded, authored, agent: selected, blank }
-        }
-    }
-}
-
-/// The TERMINAL is the primary column here (F10).
-#[component]
-pub(crate) fn WorkspaceView(
+pub(crate) fn ShellPanel(
     web: Signal<Option<Rc<WebApp>>>,
     tick: Signal<u32>,
     selected: Signal<String>,
@@ -170,31 +156,6 @@ pub(crate) fn DebugView(
             id: "debug-view",
             aria_label: "Debug",
             debug::Debug { web, tick, agent: selected }
-        }
-    }
-}
-
-/// …and NOTHING about the component gallery (R3-11): a maintainer's specimen
-/// sheet shipped as the last line of the product's Settings. It stays reachable
-/// at `#/design-system`, MOUNTED ONLY ON ITS OWN ROUTE (R4-9).
-#[component]
-pub(crate) fn SettingsView(
-    web: Signal<Option<Rc<WebApp>>>,
-    endpoint_set: Signal<bool>,
-    tick: Signal<u32>,
-) -> Element {
-    rsx! {
-        section {
-            class: "view-panel settings-view",
-            id: "settings-view",
-            aria_label: "Settings",
-            settings::Settings { web, endpoint_set, tick }
-            endpoint_copy::search::SearchEndpoint { web, tick }
-            skin::Appearance {} // out of the header (R2-14)
-            theme::Themes {} // the four directions (ADE-DESIGN.md §4)
-            // WHAT Linux the agent runs in, and what it does to your files. It
-            // was a picker; there is one engine now, so it states the trade.
-            linux_engine::LinuxEngine {}
         }
     }
 }

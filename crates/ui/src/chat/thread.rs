@@ -100,7 +100,7 @@ pub fn ThreadList(
     // turn in flight), and a summary nobody can see is not worth a request.
     use_effect(move || {
         let _ = tick();
-        if view() != View::Chat {
+        if view() != View::Work {
             return;
         }
         let Some(app) = web.read().clone() else { return };

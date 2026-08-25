@@ -60,11 +60,12 @@ fails=0
 # case, and the one where the one-screen promise had to be given up.
 for size in 320x256 320x780 360x780 390x844 768x1024 1100x900 1280x900 1440x900 1920x1080; do
   for skin in machine plain; do
-    # THREE routes, because the shell mounts one view at a time and the
-    # Dashboard is one of them (R3-20/R3-21 put the primary input and the agent
-    # picker on it). It used to be measured only as furniture standing under
-    # the chat route, which is a page nobody is ever served.
-    for route in dash chat deck; do
+    # THREE routes, and since the ADE round that is the WHOLE MAP: `work`,
+    # `agents`, `setup` (ADE-DESIGN.md §3). It is a coincidence worth naming
+    # that the count did not change — the three used to be `dash`, `chat` and
+    # `deck`, which were three of SEVEN destinations, and are now three of
+    # three. `work` mounts five regions at once, because a turn is one event.
+    for route in work agents setup; do
       url="file://$PWD/$OUT/index.html?skin=$skin&route=$route"
       dom=$("$SHELL_BIN" --headless --disable-gpu --no-sandbox $EXTRA \
         --window-size="${size/x/,}" --virtual-time-budget=1500 --dump-dom "$url" 2>/dev/null)
@@ -91,7 +92,7 @@ done
 # defect this repo has already shipped twice.
 for size in 390x844 1440x900; do
   for theme in halo console gallery atelier; do
-    for route in dash chat deck; do
+    for route in work agents setup; do
       url="file://$PWD/$OUT/index.html?skin=plain&theme=$theme&route=$route"
       dom=$("$SHELL_BIN" --headless --disable-gpu --no-sandbox $EXTRA \
         --window-size="${size/x/,}" --virtual-time-budget=1500 --dump-dom "$url" 2>/dev/null)

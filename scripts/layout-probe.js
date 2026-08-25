@@ -29,35 +29,55 @@
   // above the conversation, so the chat view computed to zero height and its
   // panel spilled onto the rail. A fixture that models a state the app cannot
   // reach reports failures the app does not have, and hides the ones it does.
-  var deck = document.getElementById("deck-panel");
+  // ROUTE EXACTLY THE WAY THE SHELL DOES — which since the ADE round means
+  // THREE destinations, and the run mounting FIVE regions at once
+  // (`centre/mod.rs`, ADE-DESIGN.md §3). Chat, the tool trace, the shell and
+  // the debug panel are no longer views: they are regions of `work`, so
+  // `?route=work` shows the launcher, the conversation, the trace and the
+  // terminal together, because that is the page a person is served.
+  //
+  // The old route names still work here for the same reason `View::from_slug`
+  // still resolves them: `dash`, `chat` and `deck` are in every screenshot
+  // filename and every note this repo has written, and a probe that stopped
+  // answering to them would silently measure nothing.
+  var work = document.getElementById("work-view");
   var chat = document.getElementById("chat-view");
-  var dash = document.getElementById("dashboard-view");
-  var route = q.get("route") || (q.get("deck") === "1" ? "deck" : "chat");
-  var routed = route === "deck";
-  deck.hidden = route !== "deck";
-  chat.hidden = route !== "chat";
-  dash.hidden = route !== "dash";
-  var region = route === "deck" ? deck : route === "dash" ? dash : chat;
+  var trace = document.getElementById("trace-view");
+  var agentsView = document.getElementById("agents-view");
+  var setup = document.getElementById("setup-view");
+  var asked = q.get("route") || (q.get("deck") === "1" ? "deck" : "work");
+  var route = asked === "dash" || asked === "chat" ? "work"
+            : asked === "deck" ? "agents" : asked;
+  if (["work", "agents", "setup"].indexOf(route) < 0) route = "work";
+  var onWork = route === "work";
+  work.hidden = !onWork;
+  chat.hidden = !onWork;
+  trace.hidden = !onWork;
+  agentsView.hidden = route !== "agents";
+  setup.hidden = route !== "setup";
+  var routed = route === "agents";
+  var region = onWork ? work : route === "agents" ? agentsView : setup;
 
   // THE KICKER NAMES THE ROUTE, because the shell's does (`StageHead` renders
-  // `View::label`) and this fixture hardcoded "Dashboard" on all three. That
-  // was invisible while it was an 11px label everywhere; it is the line above
-  // a 68-136px plate now, and a fixture naming the wrong route measures the
-  // wrong width. `Commands` is the deck route's name in the shipped nav.
-  // The `kicker` CLASS is the Dashboard's, exactly as `panels.rs` writes it —
-  // a class the markup STATES, never a `:has()` on the routed panel.
+  // `View::label`). `kicker` is the class `panels.rs` writes on the run's own
+  // head — a class the markup STATES, never a `:has()` on the routed panel.
   var eyebrow = document.querySelector(".view-eyebrow");
   if (eyebrow) {
-    eyebrow.textContent =
-      route === "deck" ? "Commands" : route === "chat" ? "Chat" : "Dashboard";
-    eyebrow.className = route === "dash" ? "view-eyebrow kicker" : "view-eyebrow";
+    eyebrow.textContent = onWork ? "Work" : route === "agents" ? "Agents" : "Setup";
+    eyebrow.className = onWork ? "view-eyebrow kicker" : "view-eyebrow";
   }
-  // …AND THE PLATE NAMES THE AGENT, in `.stage-head` and SECOND, exactly where
-  // `panels.rs::StageHead` puts it. It is the Dashboard that does NOT get one
-  // there: `dashboard.rs` renders the `<h1>` nameplate inside the routed panel,
-  // so the head's plate is hidden on that route the way the head's sentence is.
   var stagePlate = document.getElementById("stage-plate");
-  if (stagePlate) stagePlate.hidden = route === "dash";
+  // EVERY ROUTE HAS A PLATE, naming its own subject — the agent on the run,
+  // the view itself on the two that are not about one (`panels.rs::StageHead`).
+  // It was the run's alone for one build and 52 of 78 configurations failed
+  // RAMPRANGE at 2.00:1 for it. The kicker rides only where it says something
+  // the plate does not.
+  if (stagePlate) {
+    stagePlate.hidden = false;
+    var word = stagePlate.querySelector(".plate");
+    if (word) word.textContent = onWork ? "main" : route === "agents" ? "Agents" : "Setup";
+  }
+  if (eyebrow) eyebrow.hidden = !onWork;
   // …AND THE WORD IS A TEXT NODE, because the subject plate is type and not a
   // span. It carried an inline `<svg><text textLength>` for one round and the
   // four-letter name `main` came out 6.87x over-tracked at 1920; the mechanism
@@ -81,23 +101,16 @@
     b.setAttribute("aria-selected", on ? "true" : "false");
     b.setAttribute("tabindex", on ? "0" : "-1");
   });
-  // …AND THE AGENT STRIP IS NOT ON CHAT (R19-IA, docs/THREADS.md §7): the
-  // thread list is the picker there, so the strip is chrome this route no
-  // longer has — leaving it standing would model 60px the app does not spend.
-  // …AND ON THE DASHBOARD IT IS NOT IN THE HEAD AT ALL: `dashboard.rs` renders
-  // it INSIDE the routed panel, under the nameplate and above the agent-scoped
-  // panels, because the head is pinned above `#dashboard-view` and this route's
-  // `<h1>` is inside it — in the head the band cut between the kicker and the
-  // nameplate (y=371 / 394 / 462 at 390x844). MOVED, not copied: two
-  // `.agent-tabs` in one document would break `tab-{name}`'s uniqueness.
+  // …AND THE AGENT STRIP IS GONE FROM THE PRODUCT, so it is gone from here.
+  // It appeared on the views that were about one agent and not on Chat, where
+  // the thread list is the picker (R19-IA). The run absorbed Chat, the run is
+  // the only agent-scoped view there is, so the strip had no view left to stand
+  // on and `crates/ui/src/shell/agent_switcher.rs` was deleted with the round.
+  // REMOVED, not hidden: a fixture carrying chrome the app cannot render
+  // measures height nobody is charged, which is the same defect in the other
+  // direction as the masthead this file used to stand above every route.
   var strip = document.getElementById("agent-strip");
-  if (strip) {
-    strip.hidden = route === "chat";
-    if (route === "dash") {
-      var tiles = document.getElementById("fleet-tiles");
-      if (tiles && tiles.parentNode) tiles.parentNode.insertBefore(strip, tiles.nextSibling);
-    }
-  }
+  if (strip) strip.remove();
   // ONE BANNER, NOT TWO (31-walk F4). `statusbar.rs` hushes the misrouted-
   // address row while a turn has failed — at 320x780 the chrome already stands
   // at 484px against a floor of 260 — so the fixture shows the address notice
@@ -105,18 +118,19 @@
   var misroute = document.getElementById("misroute-banner");
   var failure = document.querySelector(".banner.problem");
   if (misroute && failure) {
-    misroute.hidden = route !== "dash";
-    failure.hidden = route === "dash";
+    misroute.hidden = !onWork;
+    failure.hidden = onWork;
   }
-  // …AND THE DASHBOARD HAS NO RAIL, WHICH THIS FIXTURE GAVE IT (28).
-  // `views.rs::rail()` is Workspace alone, so every dash measurement here was
-  // ~370px NARROWER than the shipped page — narrower than the 66rem container
-  // query the launcher/board split keyed off, which is why the gate could not
-  // reach the state that shipped a one-column board at 1440. A fixture
-  // narrower than the page cannot see a rule that fires when it is wide.
+  // …AND THE RAIL IS ON THE RUN AND NOWHERE ELSE. `views.rs::rail()` is `Work`
+  // alone: the folder is the receipt of what the run on this screen just did,
+  // and Agents and Setup are about the roster and the browser. This is the same
+  // rule the file carried before the round with its subject changed — it used
+  // to strip the rail from `dash` because the Dashboard had none, and the
+  // Dashboard is what became the run.
+  //
   // REMOVED, not hidden: a switch for a region the app does not render is a
   // fold nobody can perform, and `fold-probe.js` guards on it existing.
-  if (route === "dash") {
+  if (!onWork) {
     var sw = document.querySelector('.panel-toggle[aria-controls="rail"]');
     if (sw) sw.remove();
     var railRegion = document.getElementById("rail");

@@ -85,7 +85,7 @@ pub(crate) fn Recovery(
                     variant: "secondary",
                     onclick: move |_| {
                         let mut view = view;
-                        view.set(View::Chat);
+                        view.set(View::Work);
                     },
                     "Read the conversation"
                 }
@@ -128,7 +128,7 @@ pub(crate) fn Recovery(
                         variant: "secondary",
                         onclick: move |_| {
                             let mut view = view;
-                            view.set(View::Settings);
+                            view.set(View::Setup);
                         },
                         "Open Settings"
                     }
@@ -165,7 +165,7 @@ pub(crate) fn nothing_said(who: &str, ready: bool, view: Signal<View>) -> Elemen
                 variant: "secondary",
                 onclick: move |_| {
                     let mut view = view;
-                    view.set(View::Settings);
+                    view.set(View::Setup);
                     // Routing UNMOUNTS this pane, so the focus that follows
                     // belongs to no scope (see `space/mod.rs`).
                     spawn_forever(async move {

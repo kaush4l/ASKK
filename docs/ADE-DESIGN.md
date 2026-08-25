@@ -112,3 +112,34 @@ Measured with `scripts/measure-app.sh` on the real build, at 390x844 and
 
 An unexecuted claim is not a verified claim (I17), so each row above becomes an
 assertion in the probe before the round can close.
+
+
+---
+
+## 7. F9 — THE CHOSEN DIRECTION'S PHONE CLAIM DOES NOT REPRODUCE
+
+A fleet of eight agents researched the genre and built three independent
+ground-up directions in isolated worktrees; a judge scored them and picked A
+("the work is the product": no home page, one surface per agent, the goal you
+typed set in the display face where the product's name used to be). The
+direction is right and this round adopts it.
+
+Its phone measurement is not. The judge scored A over B partly on B's composer
+sitting 198px below the fold at 390 during a run, and reported A's at y=709.
+Measured here, on A's own `proto/first-screen.html`, headless, same viewport:
+
+| viewport | composer top | fold | verdict |
+|---|---:|---:|---|
+| 1440 x 900 | 739 | 900 | inside, as claimed |
+| 390 x 844 | **958** | 844 | **114px BELOW the fold** |
+
+So the axis A won on is an axis A also fails, by a smaller margin than B and in
+the same direction. This is not a reason to change the pick — the structural
+argument stands on its own and the desktop frame is real — but it is a reason
+not to inherit the prototype's phone layout, and it is why E1, E3 and E7 in §6
+are assertions the probe executes rather than numbers a document reports.
+
+The rule this round works under, stated once: **a claim from anywhere — an
+agent, a judge, an earlier round, this document — is re-measured on the running
+page before anything is built on it.** The previous round shipped a nameplate at
+6.87x behind eleven true measurements of the wrong quantity.

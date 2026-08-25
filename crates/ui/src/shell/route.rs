@@ -51,7 +51,7 @@ fn parts() -> (String, Option<String>) {
 /// Where the address bar says we are. Anything unrecognised is the Dashboard,
 /// which is where the page lands anyway.
 pub(crate) fn current() -> View {
-    View::from_slug(&parts().0).unwrap_or(View::Dashboard)
+    View::from_slug(&parts().0).unwrap_or(View::Work)
 }
 
 /// …and who it says the view is about. `None` is "it did not say".
@@ -85,7 +85,7 @@ pub(crate) fn show(view: View, agent: &str) {
     // the first press left the app. This used to return early to avoid pushing
     // an entry a person then has to press Back twice through; `replaceState`
     // writes the same address WITHOUT an entry, which is what a landing is.
-    let bare = at.is_empty() && view == View::Dashboard && agent == DEFAULT_AGENT;
+    let bare = at.is_empty() && view == View::Work && agent == DEFAULT_AGENT;
     if bare {
         if let Ok(history) = w.history() {
             let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&format!("#/{want}")));
@@ -129,7 +129,7 @@ pub(crate) fn land(view: View) {
                 el.set_scroll_top(0);
             }
         }
-        if view == View::Chat {
+        if view == View::Work {
             // WHOSE newest turn: the hash names the focused thread, and this
             // file is where that name already lives (THREADS.md §3).
             newest_turn(&agent().unwrap_or_else(|| DEFAULT_AGENT.to_string()));

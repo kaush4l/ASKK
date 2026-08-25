@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "skipLibCheck": true,
+    "types": ["bun"],
+    "paths": {
+      "@harness/kernel": ["./packages/kernel/src/index.js"],
+      "@harness/kernel/*": ["./packages/kernel/src/*"],
+      "@harness/context": ["./packages/context/src/index.js"],
+      "@harness/agent": ["./packages/agent/src/index.js"],
+      "@harness/core": ["./packages/core/src/index.js"],
+      "@harness/adapters-web": ["./packages/adapters-web/src/index.js"],
+      "@harness/adapters-test": ["./packages/adapters-test/src/index.js"]
+    }
+  },
+  "include": ["packages/**/*.js", "scripts-js/*.js"],
+  "exclude": ["node_modules", "apps/web/.next", "apps/web/out"]
+}
