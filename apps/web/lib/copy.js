@@ -1,11 +1,10 @@
 /**
- * THE INTERFACE'S OWN SENTENCES, and there are two of them.
+ * THE INTERFACE'S OWN SENTENCE, and there is one of it: the second of boot
+ * before the core exists to have worded anything.
  *
- * Everything a person reads on this page is the core's word (I5). These two
- * cannot be: they are about a core that has not started, so there is nothing on
- * the other side of the seam to have worded them. Naming them here rather than
- * once per screen is what stopped three screens saying three things about the
- * same second of boot.
+ * Everything else a person reads on this page is the core's word (I5). This one
+ * cannot be, so it is named here rather than typed once per screen — three
+ * screens wait on the same second of boot and they say the same thing about it.
  */
 
 /** Before the log has been read. Not "Loading": it says WHAT is being read. */

@@ -44,24 +44,14 @@ function Live({ session }) {
     <div className={s.stack}>
       {catalogue.view === 'settings' ? (
         <Settings
-          data={shaped(catalogue.data)}
+          data={/** @type {any} */ (catalogue.data) /* the seam types every `data` as an open record; each component declares the shape its view carries */}
           onSelect={pick}
           onSaveKey={(apiKey) => void saveKey(String(catalogue.data.selected ?? ''), apiKey)
-            .then((problem) => setRefused(problem ?? session.act(post('/settings', {}))))}
+            .then((problem) => setRefused(problem ?? session.act(post('/settings', { entry: String(catalogue.data.selected ?? '') }))))}
         />
       ) : <View view={catalogue.view} data={catalogue.data} />}
       <View view={health.view} data={health.data} />
       {refused ? <View view="problem" data={refused} /> : null}
     </div>
   )
-}
-
-/**
- * THE ONE NARROWING, and the reason is the registry's: the seam types `data` as
- * an open record and each component declares the shape ITS view carries.
- * @param {Record<string, unknown>} data
- * @returns {any} the written reason is the paragraph above, not the signature.
- */
-function shaped(data) {
-  return data
 }

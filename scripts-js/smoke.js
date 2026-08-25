@@ -82,6 +82,7 @@ const REGION_FAILED = `JSON.stringify({
   failures: [...document.querySelectorAll('#region [data-view=problem][data-placement=region]')]
     .filter((n) => !n.closest('[data-specimen]'))
     .map((n) => n.dataset.kind),
+  booting: /Reading this browser/.test(document.querySelector('#region').innerText),
   text: document.body.innerText.slice(0, 200),
 })`
 
@@ -236,6 +237,7 @@ try {
     const [landed] = readBack(await run([BROWSE, 'chain'], walk(slug)))
     const at = `/${slug}`
     if (!landed || !landed.region) failures.push(`${at} rendered no region at all`)
+    else if (landed.booting) failures.push(`${at} never read the log — it is still on the booting sentence after ${ANSWER_MS}ms`)
     else if (landed.failures.length) failures.push(`${at} replaced its content with a failure: ${landed.failures.join(', ')}`)
     else if (landed.text.trim() === '') failures.push(`${at} came up with an empty region and said nothing about why`)
   }

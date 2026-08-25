@@ -1,7 +1,9 @@
+import { isBusy } from '@harness/kernel'
+
 import { Badge } from '@/components/ui/badge'
 import { Composer } from '@/components/ui/composer'
 import { Empty } from '@/components/ui/empty'
-import { IN_FLIGHT, Inspector } from '@/components/ui/inspector'
+import { Inspector } from '@/components/ui/inspector'
 import { Markdown } from '@/components/ui/markdown'
 import { Panel } from '@/components/ui/panel'
 import s from './views.module.css'
@@ -64,12 +66,12 @@ export function Chat({ data, onSend }) {
           </div>
         )}
         {/* THE ONE PIECE OF MOTION IN THE PRODUCT, ON THE ONE FACT THE SEAM
-            ACTUALLY SENDS. `waitingStatus` is the core's machine field; whether
-            that state is work still in flight is the same question the tool
-            inspector asks, from the same list, so the two cannot drift. A turn
-            the reload abandoned reports `stopped` and is deliberately still. */}
+            ACTUALLY SENDS. `waitingStatus` is the core's machine field, and
+            whether it means mid-turn is the kernel's own `isBusy` — one
+            definition, so nothing here can disagree with the board. A turn the
+            reload abandoned reports `stopped` and is deliberately still. */}
         {data.waitingLabel ? (
-          <p className={s.wait} data-flying={String(IN_FLIGHT.includes(data.waitingStatus))}>
+          <p className={s.wait} data-flying={String(isBusy(/** @type {import('@harness/kernel').Status} */ (data.waitingStatus)))}>
             <Badge status={data.waitingStatus} label={data.waitingLabel} />
           </p>
         ) : null}

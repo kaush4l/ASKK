@@ -62,6 +62,9 @@ test('a turn in flight shimmers, and one nothing is driving does not', () => {
     }))
   expect(drawn('thinking', 'Working — this turn is running')).toContain('data-flying="true"')
   expect(drawn('stopped', 'That turn is not running any more')).toContain('data-flying="false"')
+  // `waiting` is mid-turn to the kernel, and this is the state a local list got
+  // wrong: a driven turn held on another agent sat still while the board said busy.
+  expect(drawn('waiting', 'Working — waiting on another agent')).toContain('data-flying="true"')
   // Nothing waiting draws no marker at all, rather than a still one.
   expect(drawn('idle', '')).not.toContain('data-flying')
 })

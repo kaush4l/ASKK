@@ -16,13 +16,13 @@ import s from './ui.module.css'
  */
 
 /**
- * WORK THAT HAS NOT COME BACK YET. Layout, not a fact: the core says which
- * state a thing is in, and this decides how much room it takes and whether it
- * shimmers. Exported because the transcript's own wait is the same question
- * asked of a turn rather than of a call, and two lists would drift.
+ * A CALL THAT HAS NOT COME BACK YET. Layout, not a fact: the core says which
+ * state a call is in, and this decides how much room it takes and whether it
+ * shimmers. It is the CALL vocabulary only — `pending` is not a `Status`, and a
+ * turn's own wait is answered by the kernel's `isBusy`, not by this list.
  * @type {ReadonlyArray<string>}
  */
-export const IN_FLIGHT = ['pending', 'calling', 'thinking']
+const IN_FLIGHT = ['pending', 'calling']
 
 /**
  * THE WORK BETWEEN THE TURNS, IN FOUR STATES — pending, running, complete,
