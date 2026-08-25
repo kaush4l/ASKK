@@ -20,20 +20,37 @@ parts the rewrite exposes as wrong.
 | LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
 | RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md`, 360 lines | ✅ landed |
 | — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
-| A · PAPER | `packages/context` | 1/7 — shapes: parts, sections, documents, slots | 🔄 round 1 |
-| B · LOOP | `packages/agent` | 1/8 — state, effects, the phase vocabulary | 🔄 round 1 |
-| C · SPINE | `packages/core`, `packages/adapters-web` | 1/9 — registry and the one dispatch point | 🔄 round 1 |
-| D · FACE | `apps/web` | 1/7 — the shell, four destinations, the token layer | 🔄 round 1 |
+| A · PAPER | `packages/context` | 1/7 ✅ shapes · 2/7 🔄 the budget is derived from the model, never declared |
+| B · LOOP | `packages/agent` | 1/8 ✅ state, effects, stages · 2/8 🔄 step, and turn identity (I21) |
+| C · SPINE | `packages/core`, `packages/adapters-web` | 1/9 ✅ registry and the one seam · 2/9 🔄 the segment log and bounded boot (I20) |
+| D · FACE | `apps/web` | 1/7 ✅ shell, four destinations, tokens · 2/7 🔄 one component per view |
 
 ## What exists
 
 ```
-packages/kernel/src/   ids · status · errors · event · seam · capability · manifest · ports
-scripts-js/check-size.js   I12, executable: files <= 200 lines, functions <= 40
-jsconfig.json              checkJs strict over every package — vanilla JS, checked types
+packages/kernel/src/        ids · status · errors · event · seam · capability · manifest · ports
+packages/context/src/       types · slot · state
+packages/agent/src/         state · effect · stages · shape
+packages/core/src/          app · registry · dispatch · ctx · errors
+packages/adapters-test/src/ every port, doubled, on the host
+apps/web/                   the shell: four destinations, the token layer, the router
+scripts-js/                 the gate, executable: size · purity · view-model · CORS · publish
 ```
 
-Gate: `bun run gate` = `tsc --checkJs` + `bun test packages` + the I12 size check.
+**The gate.** `bun run gate` — and every line of it runs:
+
+| Check | What it executes |
+|---|---|
+| `typecheck` | `tsc --checkJs` under `strict`, over the packages AND `apps/web` (I19) |
+| `test` | 78 host tests, no DOM, no network, no clock (I3, I7) |
+| `size` | every file ≤ 200 lines, every function ≤ 40 (I12) |
+| `purity` | the five host-testable packages reach for no browser global (I3) |
+| `viewmodel` | the interface words nothing itself, and never sets inner HTML (I5) |
+
+Beside it, not in it: `bun scripts-js/check-cors.js` probes the search endpoints
+from the real origin, because a third party being down must not block a deploy
+of unrelated work. `bun run typecheck:pkg <name>` checks one package, so a lane
+can tell its own error from a neighbour's half-saved file.
 
 ## Rulings so far
 
