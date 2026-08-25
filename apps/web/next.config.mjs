@@ -17,16 +17,16 @@ export default {
   // GitHub Pages has no rewrite rules, so every route must be a real directory
   // with an index.html in it.
   trailingSlash: true,
-  // OFF, AND MEASURED, NOT PREFERRED. With `reactStrictMode: true` this build
-  // never flushes a PASSIVE effect: reduced to one page with one client
-  // component holding a `useLayoutEffect` and a `useEffect`, the layout effect
-  // ran and the passive one did not — in the static export, in headless AND in
-  // a real headed Chromium, with no console error, no warning and no rejection.
-  // Every effect in this application is passive, so with it on the page renders
-  // its pre-boot sentence forever and nothing anywhere says why. Turning it off
-  // is the symptom's cure and not the disease's; the reproduction is in
-  // STATUS.md so the next person starts where this one stopped.
-  reactStrictMode: false,
+  // ON, AND MEASURED ON. It was turned off for a round on a reproduction that
+  // was not measuring this build: the export was served through a `Bun.serve`
+  // `dir` route, which answered the page 200 and every chunk under it 404 —
+  // named exactly as the HTML asked for them, sitting on the disk. A page whose
+  // chunks all 404 renders its exported HTML, hydrates nothing and runs no
+  // effect, which is indistinguishable from the symptom that was being chased.
+  // Served file-by-file off the disk, this build flushes passive effects with
+  // strict mode on: `scripts-js/smoke.js` opens the artifact, types into it and
+  // reads the answer back, on every publish.
+  reactStrictMode: true,
   // No server, therefore no image optimizer. Unoptimized is the honest setting;
   // the alternative is a loader pointing at a service we do not run.
   images: { unoptimized: true },

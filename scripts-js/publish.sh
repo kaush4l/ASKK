@@ -51,6 +51,13 @@ if [ -n "$BASE" ]; then
   grep -q "$BASE/_next/" "$DIR/index.html" || fail "index.html does not reference $BASE/_next — the base path did not apply"
 fi
 
+# THE ONE GATE THAT OPENS THE PAGE. Everything above this checks the artifact's
+# shape; this drives it in a browser and fails unless a person could type into
+# it. A page that renders and does nothing passed every other check in this file
+# for three rounds (I17). It rebuilds the export itself, because the thing it
+# must drive is the thing that is about to be pushed.
+HARNESS_BASE_PATH="$BASE" bun scripts-js/smoke.js || fail "the built page does not work in a browser"
+
 COUNT=$(find "$DIR" -type f | wc -l | tr -d ' ')
 echo "built $COUNT files into $DIR (base path '$BASE')"
 

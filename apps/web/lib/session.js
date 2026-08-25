@@ -22,6 +22,8 @@
 
 import { HarnessError, isProblem, post } from '@harness/kernel'
 
+import { growthGate } from './growth.js'
+
 /** @typedef {import('@harness/kernel').Request} Request */
 /** @typedef {import('@harness/kernel').Response} Response */
 /** @typedef {import('@/components/views/problem').ProblemData} ProblemData */
@@ -77,12 +79,13 @@ function ready({ seam, run, subscribe }) {
   let version = 0
   /** @type {Set<() => void>} */
   const watchers = new Set()
-  subscribe(() => {
+  const gate = growthGate(() => {
     version += 1
-    for (const watcher of watchers) watcher()
+    for (const watcher of [...watchers]) watcher()
   })
+  subscribe(gate.announced)
   return {
-    read: (request) => seam(request),
+    read: gate.reading(seam),
     send: sender(seam, run),
     subscribe: (fn) => {
       watchers.add(fn)

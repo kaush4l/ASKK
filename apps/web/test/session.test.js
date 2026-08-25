@@ -152,3 +152,45 @@ test('a failure that is not a typed one is still a sentence and a repair', async
   expect(said).toContain('could not start its core')
   expect(said).toContain('undefined is not a function')
 })
+
+/**
+ * A READ THAT FAILED DOES NOT WAKE EVERY PANE THAT READ IT.
+ *
+ * This is the defect that killed the page for three rounds, executed: a build
+ * that does not serve a route answers 404, `handle` records the failure, the
+ * log grows, `subscribe` fires, every pane re-reads, and the 404 records
+ * again. In a browser that is a microtask that never ends and a renderer Chrome
+ * kills with no console error. The core below is the same shape: it appends and
+ * notifies on any failure, exactly as `dispatch.js` does.
+ */
+test('a projection that answered 404 does not announce itself as a change', async () => {
+  /** @type {Set<() => void>} */
+  const watchers = new Set()
+  let appended = 0
+  const seam = (/** @type {import('@harness/kernel').Request} */ request) => {
+    const answered = problem(404, 'Nothing here answers that.', { kind: 'no_route', id: request.path })
+    appended += 1
+    for (const watcher of [...watchers]) watcher()
+    return answered
+  }
+  const session = await openSession('/', wiring({
+    seam, run: async () => {}, subscribe: (fn) => { watchers.add(fn); return () => watchers.delete(fn) },
+  }))
+
+  let woken = 0
+  session.subscribe(() => { woken += 1 })
+  const before = session.version()
+  expect(session.read(get('/')).status).toBe(404)
+
+  // The fact WAS written — this guard does not stop the core recording it — and
+  // the interface was not told to read it again, which is the whole of the fix.
+  expect(appended).toBe(1)
+  expect(woken).toBe(0)
+  expect(session.version()).toBe(before)
+
+  // …AND THE NEXT REAL GROWTH STILL ARRIVES. One swallowed announcement is one,
+  // not a subscription that has been quietly turned off.
+  for (const watcher of [...watchers]) watcher()
+  expect(woken).toBe(1)
+  expect(session.version()).toBe(before + 1)
+})

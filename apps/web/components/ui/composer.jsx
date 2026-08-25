@@ -14,7 +14,10 @@ import s from './meter.module.css'
  *   file words for itself — the terminal pane already carries the same field
  *   for the same reason, and one product says one thing about being unwired.
  * @property {ReadonlyArray<{key: string, value: string}>} sentWith
- * @property {import('./ring').CostData} cost
+ * @property {import('./ring').CostData|null} cost what this turn will spend, or
+ *   null where the core does not project it. NULL AND NOT AN EMPTY RING: a ring
+ *   with no arcs and no label is a cost of nothing, stated, and this product has
+ *   shipped that lie once already (STATUS.md, the strip of em dashes).
  */
 
 /**
@@ -54,11 +57,13 @@ export function Composer({ data, onSend }) {
           placeholder={data.placeholder} disabled={Boolean(refusedLabel)}
         />
       </label>
-      <div className={s.envelope}>
-        <Facts facts={data.sentWith} />
-      </div>
+      {data.sentWith.length ? (
+        <div className={s.envelope}>
+          <Facts facts={data.sentWith} />
+        </div>
+      ) : null}
       <div className={s.send}>
-        <Ring cost={data.cost} />
+        {data.cost ? <Ring cost={data.cost} /> : null}
         <button type="submit" className={s.sendButton} disabled={Boolean(refusedLabel)}>
           {data.sendLabel}
         </button>

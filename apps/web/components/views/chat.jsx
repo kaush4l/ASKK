@@ -10,7 +10,10 @@ import s from './views.module.css'
  * @typedef {object} Said one turn somebody took.
  * @property {string} id       stable across polls, so the VDOM can key the row
  * @property {'said'} row
- * @property {'user'|'assistant'|'note'|'error'} kind
+ * @property {string} kind  what the row IS, stamped as a data attribute. Open
+ *   rather than a union because the core's vocabulary is the core's: it words
+ *   `tool` and `attachment` rows too, and a union here would make a row this
+ *   pane can draw perfectly well into a type error in the lane that sends it.
  * @property {string} speaker  WHO, in words, and '' only on a failure — naming
  *   an agent as the speaker of "the endpoint could not be reached" attributes
  *   the failure to it (DESIGN.md §8, Message).

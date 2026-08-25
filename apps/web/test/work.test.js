@@ -7,9 +7,11 @@ import { STATUSES, ok, problem } from '@harness/kernel'
 import { Glyph, GLYPH_STATES } from '../components/ui/glyph.jsx'
 import { NEEDS_YOU } from '../components/views/dashboard.jsx'
 import { Work } from '../components/work/work.jsx'
-import { renderable } from '../components/work/live-work.jsx'
+import { drawable } from '../lib/chat.js'
+import { drawable as rosterDrawable } from '../lib/roster.js'
 import { chat } from '../fixtures/transcript.js'
 import { dashboard } from '../fixtures/run.js'
+import { screen } from './doubles.js'
 
 const work = renderToStaticMarkup(createElement(Work, { roster: ok('dashboard', dashboard), transcript: ok('chat', chat) }))
 
@@ -103,25 +105,73 @@ test('a roster that could not be projected does not take the transcript with it'
 })
 
 /**
- * THE DISAGREEMENT IS ON THE SCREEN AND NOT A WHITE PAGE. The core projects a
- * transcript this interface cannot draw (`live-work.jsx`, `renderable`), and
- * the branch that says so is executed here — because the day the shapes agree,
- * this test failing is the signal that the bridge can go.
+ * THE CORE'S TRANSCRIPT REACHES THE SCREEN, AND IT REACHES IT VERBATIM.
+ *
+ * `GET /chat` answers with `messages` whose `said` is a plain string; this pane
+ * draws `rows` of typed blocks. `lib/chat.js` lifts one into the other, and
+ * what is asserted here is that the lift CARRIES THE CHARACTERS and invents no
+ * structure: one row in, one row out, the same text, no heading recovered from
+ * a line that starts with a hash.
  */
-test('a transcript in a shape this interface cannot draw becomes a stated failure', () => {
-  const theirs = ok('chat', { agent: 'main', messages: [{ id: 'e1', kind: 'user', speaker: 'You', said: 'hello' }] })
-  const said = renderable(theirs)
-  expect(said.view).toBe('problem')
-  expect(said.data.kind).toBe('projection_mismatch')
+test('a transcript the core worded is drawn, and nothing is parsed out of it', () => {
+  const theirs = ok('chat', {
+    agent: 'main',
+    messages: [{ id: 'e1', kind: 'user', speaker: 'You', said: '# not a heading' }],
+  })
+  const drawn = drawable(theirs)
+  expect(drawn.view).toBe('chat')
+  const rows = /** @type {ReadonlyArray<import('../components/views/chat').Said>} */ (drawn.data.rows)
+  expect(rows).toHaveLength(1)
+  expect(rows[0]?.blocks).toEqual([{ kind: 'paragraph', spans: [{ kind: 'text', text: '# not a heading' }] }])
+  expect(screen(drawn)).toContain('# not a heading')
+  // …and the pane it produced really does put a box on the screen, which is
+  // the whole of what a person needs to say the next thing.
+  expect(screen(drawn)).toContain('<textarea')
+})
 
-  // …AND A TRANSCRIPT WITH THE ROWS BUT NOT THE COMPOSER IS THE SAME FAILURE.
-  // `Chat` hands `data.composer` straight to `Composer`, which reads a field off
-  // it, so this shape is a TypeError during render — a blank document, since
-  // nothing in this app is a boundary — and it is the likeliest intermediate of
-  // the reconciliation this bridge is waiting on.
-  const half = renderable(ok('chat', { ...chat, composer: undefined }))
+/**
+ * A TRANSCRIPT IN NEITHER SHAPE IS A STATED FAILURE AND NOT A WHITE PAGE. The
+ * likeliest intermediate of the reconciliation is a half-migrated projection,
+ * and `Chat` hands `data.composer` straight to `Composer`, which reads a field
+ * off it — a TypeError during render, and nothing in this app is a boundary.
+ */
+test('a transcript in neither shape becomes a stated failure', () => {
+  const neither = drawable(ok('chat', { agent: 'main' }))
+  expect(neither.view).toBe('problem')
+  expect(neither.data.kind).toBe('projection_mismatch')
+
+  const half = drawable(ok('chat', { ...chat, composer: undefined }))
   expect(half.data.kind).toBe('projection_mismatch')
 
+  // A transcript already in this pane's shape is handed back UNTOUCHED, so the
+  // day the core sends blocks the bridge is a pass-through and can go.
   const ours = ok('chat', { ...chat })
-  expect(renderable(ours)).toBe(ours)
+  expect(drawable(ours)).toBe(ours)
+})
+
+/**
+ * THE SCREEN SURVIVES THE PROJECTIONS THE CORE ACTUALLY SENDS, AND THIS IS THE
+ * TEST FOR THE DEFECT THAT KILLED THE PAGE.
+ *
+ * `GET /` answers `dashboard` with a FLAT `rows` list; this screen draws groups.
+ * The band read `data.groups.find(...)` off it, threw a TypeError mid-render,
+ * and Next's default boundary replaced the whole application with "This page
+ * couldn't load" — no message, no console, nothing. The transcript below it had
+ * projected perfectly well.
+ */
+test('the core’s own dashboard and chat shapes render a working screen, not a blank one', () => {
+  const roster = ok('dashboard', { tiles: { tiles: [] }, rows: [{ id: 'main', name: 'main' }], runningLabel: 'Nothing is running' })
+  const transcript = ok('chat', {
+    agent: 'main', stageLabel: 'main · ready', emptyNote: 'Nothing has been said to main yet.',
+    waitingLabel: '', waitingStatus: 'idle',
+    messages: [{ id: 'e1', kind: 'user', speaker: 'You', said: 'does the endpoint answer?' }],
+  })
+  const html = renderToStaticMarkup(createElement(Work, {
+    roster: rosterDrawable(roster), transcript: drawable(transcript),
+  }))
+  // The fleet says why it cannot be drawn…
+  expect(html).toContain('The core projected the fleet in a shape this screen cannot draw.')
+  // …and the part a person came for is on the screen anyway.
+  expect(html).toContain('does the endpoint answer?')
+  expect(html).toContain('<textarea')
 })

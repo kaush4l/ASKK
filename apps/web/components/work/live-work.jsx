@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 
-import { get, problem } from '@harness/kernel'
+import { get } from '@harness/kernel'
 
+import { drawable as chatDrawable } from '@/lib/chat'
+import { drawable as rosterDrawable } from '@/lib/roster'
 import { Empty } from '@/components/ui/empty'
 import { View } from '@/components/views'
 import { useAgent } from '@/components/shell/use-agent'
@@ -49,45 +51,11 @@ function Live({ session, agent }) {
   return (
     <>
       <Work
-        roster={roster}
-        transcript={renderable(transcript)}
+        roster={rosterDrawable(roster)}
+        transcript={chatDrawable(transcript)}
         onSend={(text) => void session.send(agent, text).then(setRefused)}
       />
       {refused ? <View view="problem" data={refused} /> : null}
     </>
   )
-}
-
-/**
- * THE TWO LANES DISAGREE ABOUT ONE PROJECTION, AND THE SCREEN SAYS SO RATHER
- * THAN GOING WHITE.
- *
- * `packages/core/src/chat.js` projects `messages`, each row a `said` STRING,
- * and no composer. This interface renders `rows` of TYPED BLOCKS and a
- * composer, because a reply a model wrote is parsed into a block tree and
- * rendered as elements — which is what makes markup injection structurally
- * impossible rather than sanitized (docs/RULINGS.md, ruling 6). Neither lane
- * may edit the other's files, so the disagreement is filed for the lead and the
- * page states it in the one failure shape until it is ruled on.
- *
- * DELETE THIS the moment the two shapes agree. It is the only thing in this
- * file with an expiry date, and the guard covers BOTH halves of what is drawn:
- * a projection carrying `rows` and no `composer` reaches `Composer`, which
- * reads a field off it and throws mid-render — and there is no boundary in this
- * app, so that is a blank document. Both halves fail together, so the day the
- * shapes agree the whole bridge can go at once.
- * Exported for `test/work.test.js` alone: a bridge nothing executes is a bridge
- * that is silently already broken when it is finally deleted.
- * @param {import('@harness/kernel').Response} response
- * @returns {import('@harness/kernel').Response}
- */
-export function renderable(response) {
-  const drawable = Array.isArray(response.data.rows)
-    && typeof response.data.composer === 'object' && response.data.composer !== null
-  if (response.view !== 'chat' || drawable) return response
-  return problem(500, 'The core projected this agent’s transcript in a shape this interface cannot draw.', {
-    id: 'chat', kind: 'projection_mismatch',
-    detail: 'GET /chat answered without both of the things this transcript draws — `rows` of typed blocks and a `composer`. The core projects `messages` of plain strings, and no message could be drawn from those without inventing its structure.',
-    repair: 'Nothing you can do from this page — the two halves are being reconciled. The log is intact and nothing has been lost.',
-  })
 }

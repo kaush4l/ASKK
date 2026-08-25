@@ -43,7 +43,10 @@ test('a part is its own share long and starts where the parts before it ended', 
  * `ring.jsx` and trusted (I16).
  */
 test('the parts of a window never sum past the whole of it', () => {
-  for (const cost of [chat.composer.cost, NEARLY_FULL]) {
+  // The fixture's cost is not optional — a healthy transcript states what the
+  // turn will spend — so an absent one is this test failing, not skipping.
+  expect(chat.composer.cost).not.toBeNull()
+  for (const cost of [chat.composer.cost ?? NEARLY_FULL, NEARLY_FULL]) {
     const sum = cost.parts.reduce((n, part) => n + part.fraction, 0)
     expect(sum).toBeLessThanOrEqual(1)
     expect(sum).toBeGreaterThan(0)
