@@ -80,6 +80,16 @@ debug view. A failure that returns an empty projection instead of this is a bug.
 - Invent a view name. A `view` the table above does not list cannot be produced,
   so a component for it is a component for a state that cannot happen.
 
+## A route is a PANE; a destination is a SCREEN
+
+The table above lists twenty-five seam routes across eleven panes. The interface
+does **not** have eleven destinations, and it never did: the last design round
+folded them into four screens that COMPOSE panes — Work, Agents, Setup, and the
+design system. A pane is a projection the core can produce; a destination is a
+place a person goes. Keeping the two words apart is what stops "add a pane" from
+meaning "add a tab", which is how the predecessor grew seven destinations and
+then had to spend a round deleting three of them.
+
 ## Where the interface lives, in the address bar
 
 The predecessor put every view in the location HASH, because a Wasm bundle
@@ -87,19 +97,12 @@ served from one URL had no other option. A static export does have another
 option, and it is better: **one real directory per view**, so a reload serves
 the page it is on, a link is a link, and browser Back works without a listener.
 
-| View | URL |
-|---|---|
-| dashboard | `/` |
-| chat | `/chat/` |
-| board | `/board/` |
-| agents | `/agents/` |
-| files | `/files/` |
-| terminal | `/terminal/` |
-| space | `/space/` |
-| tools | `/tools/` |
-| processes | `/processes/` |
-| debug | `/debug/` |
-| settings | `/settings/` |
+| Destination | URL | Composes |
+|---|---|---|
+| Work | `/` | chat, board, files, terminal, trace, processes, space, debug |
+| Agents | `/agents/` | agents, tools |
+| Setup | `/setup/` | settings, status |
+| Design system | `/design-system/` | every component, every state |
 
 **Which agent** a view is about rides in the query string — `?agent=scout` —
 and NOT in the path. A path segment would need `generateStaticParams`, and the
