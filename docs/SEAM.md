@@ -142,3 +142,35 @@ export async function saveEndpoint(entry, patch) {}
 **whether** a key is set, never the key. `POST /settings` carries every setting
 EXCEPT the key. This is the only exception to I4 in the tree, it exists because
 of I6, and it is written down here so it stays the only one.
+
+## The composition root — frozen
+
+The interface does not build a port. It asks for an application and gets one:
+
+```js
+/**
+ * Build the running application for THIS browser. Assembles the real ports,
+ * replays the log, installs the modules, loads the agent files and stage
+ * briefs — and STATES what this build can actually offer, so a capability
+ * nobody implemented is simply not granted rather than optimistically assumed.
+ * @param {{basePath?: string, agent?: string}} [opts]
+ * @returns {Promise<App>}
+ */
+export async function bootBrowser(opts) {}
+
+/** @typedef {(request: Request) => Response} Seam */
+
+/**
+ * The interface's only door. Holds the App, calls `handle`, and runs the driver
+ * for anything the request queued — so a component never awaits a model call
+ * and never touches state.
+ * @param {App} app
+ * @returns {{seam: Seam, run: () => Promise<void>, subscribe: (fn: () => void) => () => void}}
+ */
+export function attach(app) {}
+```
+
+`subscribe` fires when the log has grown, and that is the ONLY signal the
+interface gets that something happened. There is no store, no context provider
+holding domain state, and no second path: a component re-reads its projection
+through `seam` and renders it.
