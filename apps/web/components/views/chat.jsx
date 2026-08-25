@@ -1,62 +1,75 @@
 import { Badge } from '@/components/ui/badge'
+import { Composer } from '@/components/ui/composer'
 import { Empty } from '@/components/ui/empty'
+import { Inspector } from '@/components/ui/inspector'
+import { Markdown } from '@/components/ui/markdown'
 import { Panel } from '@/components/ui/panel'
 import s from './views.module.css'
 
 /**
- * @typedef {object} Said
+ * @typedef {object} Said one turn somebody took.
  * @property {string} id       stable across polls, so the VDOM can key the row
- * @property {'user'|'assistant'|'tool'|'pending'|'error'} kind
- * @property {string} speaker  WHO, in words. Every row is labelled: the one row
- *                             that was not — the page's own compaction note —
- *                             read as an unattributed aside in a column where
- *                             everything else says who is talking.
- * @property {string} said
+ * @property {'said'} row
+ * @property {'user'|'assistant'|'note'|'error'} kind
+ * @property {string} speaker  WHO, in words, and '' only on a failure — naming
+ *   an agent as the speaker of "the endpoint could not be reached" attributes
+ *   the failure to it (DESIGN.md §8, Message).
+ * @property {ReadonlyArray<import('@/components/ui/markdown').Block>} blocks
  */
 
 /**
  * @typedef {object} ChatData
  * @property {string} agent
  * @property {string} stageLabel    which loop this turn is running, and how far in
- * @property {ReadonlyArray<Said>} messages
+ * @property {ReadonlyArray<Said | import('@/components/ui/inspector').CallData>} rows
  * @property {string} emptyNote
  * @property {string} waitingLabel  what the turn is waiting on, '' when nothing is
  * @property {string} waitingStatus the machine field behind that wait
+ * @property {import('@/components/ui/composer').ComposerData} composer
  */
 
 /**
- * ONE AGENT'S TRANSCRIPT, ITS STAGE, AND WHAT IT IS WAITING ON (`GET /chat`).
+ * ONE AGENT'S TRANSCRIPT: A PERSON'S TURN, AN AGENT'S TURN, AND BETWEEN THEM
+ * THE WORK (`GET /chat`).
  *
- * Five classes, THREE treatments — speech, machinery, failure — and the
- * grouping is done in the stylesheet's selector rather than here, because
- * deciding that `tool` and `pending` look alike is a derivation and the
- * interface may not make one (I5). Five consecutive rows once carried five
- * different boxes and a reader had to learn five things to read one column.
+ * The work is not a message and this is the increment that stopped pretending
+ * it was. A tool call used to be a fifth kind of speech bubble carrying a line
+ * of arguments as prose; it is a four-state inspector now, one line while it
+ * runs and open when it has something to read (`ui/inspector.jsx`).
  *
- * The composer is not here. It is the one control that starts a turn and it
- * arrives with the seam wired; a text box that cannot send is a control that
- * lies about what pressing it does.
- *
- * `said` is a text child, so JSX escapes it. That is the whole reason markdown
- * is parsed into typed nodes in `packages/context` — a model cannot inject
- * markup into the page it is talking to, structurally rather than by sanitizer.
+ * A reply is a TREE, not a string. `blocks` are typed nodes the core parsed,
+ * and `ui/markdown.jsx` turns each one into an element — which is why a model
+ * cannot inject markup into the page it is talking to, structurally rather than
+ * by sanitizer (STATUS.md, ruling 6).
  *
  * @param {{data: ChatData}} props
  */
 export function Chat({ data }) {
   return (
-    <Panel caption={data.stageLabel}>
-      {data.messages.length === 0 ? <Empty note={data.emptyNote} /> : (
-        <div className={s.stack}>
-          {data.messages.map((row) => (
-            <div key={row.id} className={s.msg} data-kind={row.kind}>
-              <span className={s.speaker}>{row.speaker}</span>
-              <p className={s.said}>{row.said}</p>
-            </div>
-          ))}
-        </div>
-      )}
-      {data.waitingLabel ? <Badge status={data.waitingStatus} label={data.waitingLabel} /> : null}
-    </Panel>
+    <div className={s.stack}>
+      <Panel caption={data.stageLabel}>
+        {data.rows.length === 0 ? <Empty note={data.emptyNote} /> : (
+          <div className={s.stack}>
+            {data.rows.map((row) => (
+              row.row === 'call'
+                ? <Inspector key={row.id} data={row} />
+                : <Said key={row.id} said={row} />
+            ))}
+          </div>
+        )}
+        {data.waitingLabel ? <Badge status={data.waitingStatus} label={data.waitingLabel} /> : null}
+      </Panel>
+      <Composer data={data.composer} />
+    </div>
+  )
+}
+
+/** @param {{said: Said}} props */
+function Said({ said }) {
+  return (
+    <div className={s.msg} data-row={said.row} data-kind={said.kind}>
+      {said.speaker ? <span className={s.speaker}>{said.speaker}</span> : null}
+      <Markdown blocks={said.blocks} />
+    </div>
   )
 }

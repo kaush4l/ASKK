@@ -1,4 +1,5 @@
 import * as run from './run'
+import { chat } from './transcript'
 import * as shape from './shape'
 import * as workspace from './workspace'
 
@@ -22,11 +23,18 @@ import * as workspace from './workspace'
  * @type {Readonly<Record<string, ReadonlyArray<unknown>>>}
  */
 export const EMPTY = Object.freeze({
-  dashboard: [{ ...run.dashboard, roster: [], tiles: { ...run.tiles, tiles: [] } }],
+  // `runningLabel` is overridden and not emptied, because it is the one string
+  // on the dashboard that is a SENTENCE about the list rather than an item in
+  // it: carried over unchanged it would name four agents on a screen that has
+  // just said none are loaded.
+  dashboard: [{
+    ...run.dashboard, groups: [], tiles: { ...run.tiles, tiles: [] },
+    runningLabel: 'Nothing is running, because no agent is loaded.',
+  }],
   tiles: [{ ...run.tiles, tiles: [] }],
   // A transcript with nothing in it is also waiting on nothing: leaving the
   // badge would draw a turn that is not running.
-  chat: [{ ...run.chat, messages: [], waitingLabel: '', waitingStatus: '' }],
+  chat: [{ ...chat, rows: [], waitingLabel: '', waitingStatus: '' }],
   agents: [{ ...shape.agents, entries: [], problems: [] }],
   board: [{ ...run.board, rows: [] }],
   tools: [{ ...shape.tools, tools: [] }],

@@ -1,4 +1,5 @@
 import * as run from './run'
+import { chat } from './transcript'
 import * as shape from './shape'
 import * as workspace from './workspace'
 
@@ -22,7 +23,7 @@ export const FIXTURES = Object.freeze({
   dashboard: run.dashboard,
   tiles: run.tiles,
   status: shape.status,
-  chat: run.chat,
+  chat,
   agents: shape.agents,
   board: run.board,
   tools: shape.tools,

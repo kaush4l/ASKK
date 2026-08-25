@@ -4,7 +4,7 @@
  *
  * DETERMINISTIC. The same state and the same budget produce a byte-identical
  * document — no clock, no randomness, no model call, and the untrusted
- * envelope's nonce is derived from the payload for exactly that reason. A
+ * envelope's nonce is derived from the section ids for exactly that reason. A
  * golden test asserts it rather than the doc comment claiming it.
  *
  * There is no second constructor. `validate` is not exported from this
@@ -15,9 +15,10 @@
 
 import { estimateParts } from './estimate.js'
 import { effectiveParts } from './fit.js'
+import { degrade, total } from './ladder.js'
 import { nonceFor, wrapUntrusted } from './envelope.js'
-import { nextFidelity, FIDELITIES } from './types.js'
-import { validate, mentions } from './law.js'
+import { FIDELITIES } from './types.js'
+import { validate, mentionsIn } from './law.js'
 import { withholdOversized, BINARY_SHARE } from './withhold.js'
 
 /** @typedef {import('./types.js').Budget} Budget */
@@ -26,13 +27,7 @@ import { withholdOversized, BINARY_SHARE } from './withhold.js'
 /** @typedef {import('./types.js').CompactionStep} CompactionStep */
 /** @typedef {import('./state.js').State} State */
 /** @typedef {import('./state.js').SectionSource} SectionSource */
-/**
- * One section, mid-assembly. `parts` is carried rather than recomputed at the
- * end because the budget was spent against THESE bytes: recomputing them
- * later, when the allowance has moved, would let `budgetHint` describe a
- * document nobody assembled.
- * @typedef {{source: SectionSource, fidelity: Fidelity, tokens: number, parts: Part[]}} Fitted
- */
+/** @typedef {import('./ladder.js').Fitted} Fitted */
 /** @typedef {import('./types.js').Part} Part */
 
 /**
@@ -43,9 +38,7 @@ import { withholdOversized, BINARY_SHARE } from './withhold.js'
  * @throws {HarnessError} by law name — `no_head`, `elided_but_named`, …
  */
 export function assemble(state, budget) {
-  /** @type {import('@harness/kernel').SectionId[]} */
-  const withheld = []
-  const work = gather(state, budget, withheld)
+  const { work, withheld } = gather(state, budget)
   const steps = degrade(work, budget)
   const doc = {
     stage: state.stage,
@@ -69,16 +62,20 @@ export function assemble(state, budget) {
  * tie-broken on `priority`: that is the budget rank, and letting a budget
  * number reorder the prompt is the category error the slot type ended.
  * @param {State} state @param {Budget} budget
- * @param {import('@harness/kernel').SectionId[]} withheld
- * @returns {Fitted[]}
+ * @returns {{work: Fitted[], withheld: import('@harness/kernel').SectionId[]}}
  */
-function gather(state, budget, withheld) {
+function gather(state, budget) {
   const ceiling = Math.floor(budget.maxTokens / BINARY_SHARE)
   const nonce = nonceFor(state.sources.map((s) => s.section.id).join('|'))
   const ordered = [...state.sources].sort((a, b) => a.section.slot - b.section.slot)
   const referenced = referencedIn(ordered)
-  return ordered.map((raw) => {
-    const source = envelop(withholdOversized(raw, ceiling, withheld), nonce)
+  /** @type {import('@harness/kernel').SectionId[]} */
+  const withheld = []
+  /** @type {Fitted[]} */
+  const work = ordered.map((raw) => {
+    const held = withholdOversized(raw, ceiling)
+    if (held.withheld) withheld.push(raw.section.id)
+    const source = envelop(held.source, nonce)
     const empty = source.section.parts.length === 0
     const named = referenced.has(source.section.id)
     const floor = startingFloor(source.section.floor, empty, named)
@@ -87,6 +84,7 @@ function gather(state, budget, withheld) {
     const scoped = { ...source, section: { ...source.section, floor } }
     return { source: scoped, fidelity, parts, tokens: estimateParts(parts).tokens }
   })
+  return { work, withheld }
 }
 
 /**
@@ -110,12 +108,24 @@ function startingFloor(declared, empty, named) {
   return FIDELITIES.indexOf(declared) > FIDELITIES.indexOf('pointer') ? 'pointer' : declared
 }
 
+/**
+ * Whether one source names a block ANYWHERE it can end up rendering. The
+ * summary counts: at `summarized` fidelity it is what the model reads, so a
+ * curated summary backticking another id protects that id exactly as the body
+ * would. Scanning only the body is how a legitimate state reached the law as a
+ * crash.
+ * @param {SectionSource} s @param {string} id
+ */
+function names(s, id) {
+  return mentionsIn(s.section.intent, [...s.section.parts, ...(s.summary ?? [])], id)
+}
+
 /** Sections some other section's prose sends the model to read. @param {SectionSource[]} sources */
 function referencedIn(sources) {
   /** @type {Set<string>} */
   const named = new Set()
   for (const target of sources) {
-    if (sources.some((s) => s.section.id !== target.section.id && mentions(s.section, target.section.id))) {
+    if (sources.some((s) => s.section.id !== target.section.id && names(s, target.section.id))) {
       named.add(target.section.id)
     }
   }
@@ -129,61 +139,4 @@ function envelop(src, nonce) {
     section: { ...src.section, parts: wrapUntrusted(src.section.parts, nonce) },
     summary: src.summary === null ? null : wrapUntrusted(src.summary, nonce),
   }
-}
-
-/**
- * While the paper is over budget, step the highest priority number not yet at
- * its floor down ONE level and recompute its cost against what is left for it
- * — the allowance is continuous, so a transcript drops the turns it has to
- * rather than collapsing to a fixed number of characters.
- *
- * Stops when everything sits at its floor. The honest overshoot is then in
- * the report rather than forced away by a cut nobody recorded.
- * @param {Fitted[]} work @param {Budget} budget
- * @returns {CompactionStep[]}
- */
-function degrade(work, budget) {
-  /** @type {CompactionStep[]} */
-  const steps = []
-  while (total(work) > budget.maxTokens) {
-    const at = nextVictim(work)
-    if (at === null) return steps
-    const w = /** @type {Fitted} */ (work[at])
-    const from = w.fidelity
-    const to = nextFidelity(from)
-    if (to === null) return steps
-    w.fidelity = to
-    w.parts = effectiveParts(w.source, to, allowanceFor(work, budget, w.tokens))
-    w.tokens = estimateParts(w.parts).tokens
-    steps.push({ section: w.source.section.id, from, to })
-  }
-  return steps
-}
-
-/**
- * What is left for one section once every other section has been paid for.
- * Never negative: at zero the primitives keep their minimum — the newest turn,
- * two characters — which is what makes an impossible budget produce a small
- * document rather than an empty one.
- * @param {Fitted[]} work @param {Budget} budget @param {number} mine
- */
-function allowanceFor(work, budget, mine) {
-  return Math.max(0, budget.maxTokens - (total(work) - mine))
-}
-
-/** The lowest-ranked section still above its floor; ties go to the later one. @param {Fitted[]} work */
-function nextVictim(work) {
-  let at = null
-  for (let i = 0; i < work.length; i += 1) {
-    const w = /** @type {Fitted} */ (work[i])
-    if (FIDELITIES.indexOf(w.fidelity) >= FIDELITIES.indexOf(w.source.section.floor)) continue
-    const best = at === null ? null : /** @type {Fitted} */ (work[at])
-    if (best === null || w.source.section.priority >= best.source.section.priority) at = i
-  }
-  return at
-}
-
-/** @param {Fitted[]} work */
-function total(work) {
-  return work.reduce((sum, w) => sum + w.tokens, 0)
 }

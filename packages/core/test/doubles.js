@@ -110,3 +110,56 @@ export function testApp(clock, available = [...CAPABILITIES]) {
   const log = freshLog(memorySegments(), { clock, reducers: [historyReducer] })
   return createApp(testPorts({ clock }), available, { log })
 }
+
+/**
+ * THE DEADLINE, UNDER A TEST'S CONTROL. Time is injected (I7), and a deadline
+ * that fires on a real timer is a deadline no test can execute (I17): the hang
+ * this is here to end is a promise that never settles, and racing it against a
+ * real 120 seconds is not a test anybody runs.
+ *
+ * `wait` never resolves on its own. `fire` resolves every wait outstanding,
+ * which is the test SAYING the deadline passed. `auto` is the other half: a
+ * test about the RETRY has to let the backoff elapse, and one about the
+ * DEADLINE has to hold it open — one double, told which.
+ * @param {{auto?: boolean}} [opts]
+ */
+export function manualTimer(opts = {}) {
+  /** @type {Array<() => void>} */
+  let waiting = []
+  return {
+    /** @param {number} _ms @param {AbortSignal} [_signal] @returns {Promise<void>} */
+    wait: (_ms, _signal) => new Promise((resolve) => {
+      if (opts.auto) setTimeout(resolve, 0)
+      else waiting.push(() => resolve())
+    }),
+    pending: () => waiting.length,
+    fire() {
+      const due = waiting
+      waiting = []
+      for (const resolve of due) resolve()
+    },
+  }
+}
+
+/**
+ * A tool that RECORDS WHEN IT RAN, so a test can assert two calls OVERLAPPED
+ * rather than assert on a wall clock — which measures the machine the suite is
+ * running on and not the driver. `ticks` is how many turns of the microtask
+ * queue it takes to answer, so a test can make the SECOND call finish first and
+ * still demand the results land in the order the model wrote them.
+ * @param {string} answer @param {string[]} into @param {number} ticks
+ * @returns {import('@harness/core').ToolRun}
+ */
+export function watchedTool(answer, into, ticks) {
+  return async (args) => {
+    into.push(`start ${answer}`)
+    for (let i = 0; i < ticks; i++) await Promise.resolve()
+    into.push(`end ${answer}`)
+    return { ok: true, output: `${answer} saw ${args}` }
+  }
+}
+
+/** A tool that never answers. The hang every deadline exists for. @returns {import('@harness/core').ToolRun} */
+export function silentTool() {
+  return () => new Promise(() => {})
+}

@@ -38,15 +38,21 @@
 }
 .tileValue { font-size: var(--t-subhead); line-height: var(--lh-subhead); font-weight: var(--w-strong); color: var(--ink); }
 
-/* ---- Message: FIVE CLASSES, THREE TREATMENTS (DESIGN.md §8). Speech is
-   filled and yours carries the accent edge; machinery has no fill, a dotted
-   edge and the SAME SIZE as speech; failure is a 2px danger edge. The grouping
-   is done here, in the selector, because deciding it in JavaScript would be the
-   interface deriving a treatment from a kind (I5). */
+/* ---- Message: FOUR CLASSES, THREE TREATMENTS (DESIGN.md §8). Speech is
+   filled and yours carries the accent edge; the page's own note has no fill, a
+   dotted edge and the SAME SIZE as speech; failure is a 2px danger edge. The
+   grouping is done here, in the selector, because deciding it in JavaScript
+   would be the interface deriving a treatment from a kind (I5).
+
+   §8 lists five, and `tool` and `pending` were two of them. A tool call is not
+   something anybody SAID, and rendering it as a fifth kind of speech is what
+   made a running call take a paragraph to report that it had no answer yet: it
+   is the inspector now (`ui/inspector.jsx`), and the machinery treatment here
+   belongs to the harness's own notes alone. */
 .msg { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3); border-radius: var(--r-sm); }
 .msg[data-kind='user'], .msg[data-kind='assistant'] { background: var(--surface-2); }
 .msg[data-kind='user'] { border-left: 3px solid var(--accent); }
-.msg[data-kind='tool'], .msg[data-kind='pending'] { border: 1px dashed var(--hairline); color: var(--ink-2); }
+.msg[data-kind='note'] { border: 1px dashed var(--hairline); color: var(--ink-2); }
 .msg[data-kind='error'] { border: 2px solid var(--danger); color: var(--danger); }
 .speaker { font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2); font-weight: var(--w-medium); }
 .said { white-space: pre-wrap; overflow-wrap: anywhere; }

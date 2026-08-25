@@ -24,3 +24,8 @@
   font-size: var(--t-caption); line-height: var(--lh-caption);
   letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
 }
+
+/* A component specimen is a ROW of states where they are small enough to be
+   compared side by side, and a COLUMN where each one is a line of its own. */
+.strip { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); align-items: center; }
+.stack { display: flex; flex-direction: column; gap: var(--s-2); }

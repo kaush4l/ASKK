@@ -30,15 +30,10 @@
 .toned[data-status='closed'] { --tone: var(--ink-3); }
 .panel.toned { border-left: 3px solid var(--tone); }
 
-/* ---- Badge / StatusDot: dot AND label, never dot alone. */
+/* ---- Badge: MARK AND LABEL, never a mark alone. The mark is `.glyph` below. */
 .badge {
   display: inline-flex; align-items: baseline; gap: var(--s-2);
   font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2);
-}
-.dot {
-  flex: none; align-self: center;
-  inline-size: 0.5rem; block-size: 0.5rem;
-  border-radius: var(--r-full); background: var(--tone);
 }
 
 /* ---- EmptyState: one sentence, no glyph, and never a bare "No data". */
@@ -53,3 +48,87 @@
   letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
 }
 .fact dd { margin: 0; font-size: var(--t-label); line-height: var(--lh-label); color: var(--machine); }
+
+/* ---- the status mark. SHAPE carries liveness and COLOUR carries state, so a
+   greyscale screenshot and a colourblind reader both still separate a failed
+   agent from an idle one (`glyph.jsx`). It replaces the dot the Badge used to
+   draw: one mark, and it is the more informative one. */
+.glyph { flex: none; align-self: center; inline-size: 0.875rem; block-size: 0.875rem; color: var(--tone); }
+
+/* ---- a reply, rendered from the typed nodes the core sends. Nothing here
+   styles a tag this product's own renderer cannot produce (`markdown.jsx`). */
+.prose { display: flex; flex-direction: column; gap: var(--s-3); }
+.bullets { margin: 0; padding-inline-start: var(--s-5); display: flex; flex-direction: column; gap: var(--s-1); }
+.quote {
+  margin: 0; padding-inline-start: var(--s-3);
+  border-inline-start: 3px solid var(--hairline); color: var(--ink-2);
+}
+.code {
+  margin: 0; padding: var(--s-3); overflow-x: auto;
+  background: var(--surface-3); border-radius: var(--r-sm); color: var(--machine);
+  font-size: var(--t-label); line-height: var(--lh-label);
+}
+.codeLang {
+  display: block; margin-block-end: var(--s-2);
+  font-family: var(--font); font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
+}
+
+/* ---- the tool call, in four states. Machinery: no fill, a dashed edge and the
+   status tone on the left, which is the same treatment the transcript gives a
+   `tool` row (DESIGN.md §8, Message — three treatments, not five). */
+.call {
+  composes: toned;
+  border: 1px dashed var(--hairline);
+  border-inline-start: 3px solid var(--tone);
+  border-radius: var(--r-sm);
+  padding: var(--s-1) var(--s-3);
+  color: var(--ink-2);
+  background-repeat: no-repeat;
+}
+.callHead {
+  display: flex; align-items: center; gap: var(--s-3);
+  min-block-size: 2.75rem; min-inline-size: 0; cursor: pointer;
+  list-style: none;
+}
+.callHead::-webkit-details-marker { display: none; }
+/* The chevron is LAST, so the row's one line ends where the press is. It exists
+   only where there is something to open. */
+details.call .callHead::after {
+  content: ''; flex: none; margin-inline-start: auto;
+  border-inline-start: 5px solid var(--ink-3);
+  border-block: 4px solid transparent;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.call[open] .callHead::after { transform: rotate(90deg); }
+.callName { flex: none; color: var(--machine); }
+.callArgs {
+  flex: 1 1 auto; min-inline-size: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: var(--t-label); color: var(--ink-3);
+}
+.callResult {
+  margin: 0 0 var(--s-2); padding-block-start: var(--s-2);
+  border-block-start: 1px solid var(--divider);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  color: var(--machine); font-size: var(--t-label); line-height: var(--lh-label);
+}
+
+/* THE ONE KEYFRAME IN THE PRODUCT (DESIGN.md §7). It is declared HERE, beside
+   the rule that runs it, because a CSS module rewrites the animation names it
+   references — declared in a global sheet and referenced from a module, this
+   compiled to a name nothing defined and the row shimmered not at all.
+
+   A single sweep along a row whose work is in flight:
+   a single sweep along a row whose work is in flight. It is an idle loop bound
+   to a fact the core sent, not decoration, which is what earns it its exemption
+   from the 380ms cap — and `prefers-reduced-motion` stops it in `base.css`. */
+.call[data-flying='true'] {
+  background-image: linear-gradient(100deg, transparent 34%, var(--surface-3) 50%, transparent 66%);
+  background-size: 240% 100%;
+  animation: harness-sweep 2s linear infinite;
+}
+@keyframes harness-sweep {
+  from { background-position: -140% 0; }
+  to { background-position: 240% 0; }
+}

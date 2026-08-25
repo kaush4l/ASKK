@@ -22,7 +22,9 @@ export const NOT_REAL_YET = 'true'
 export const REGIONS = {
   '': {
     heading: 'The run, and the whole of it',
-    note: 'The transcript you type into, the loop’s walk, every tool call with its arguments and output, the shell, and what the turn left on disk — in one scroller, without moving.',
+    // ONE LINE, because this one stands between a person and the transcript.
+    // The predecessor's lede was 170 words and moved the fold down 93 pixels.
+    note: 'Every agent, reply and number below is invented — nothing on this screen has been read from the log yet.',
   },
   agents: {
     heading: 'What agents exist, and the surface for writing another',

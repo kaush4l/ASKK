@@ -3,6 +3,7 @@ import { Fragment } from 'react'
 import { Shell } from '@/components/shell/shell'
 import { VIEWS, View } from '@/components/views'
 import { EMPTY, FIXTURES } from '@/fixtures'
+import { COMPONENTS } from './specimens'
 import s from './gallery.module.css'
 
 /**
@@ -40,6 +41,13 @@ export default function Page() {
             ))}
           </Fragment>
         ))}
+        {/* AND THE PARTS THE VIEWS ARE BUILT FROM, IN EVERY STATE. A view's
+            fixture is one realistic projection, so it shows each component in
+            the one state that projection happens to carry; these are the rest
+            of them (`specimens.jsx`). */}
+        {COMPONENTS.map((component) => (
+          <Specimen key={component.name} name={component.name}>{component.node}</Specimen>
+        ))}
         {/* THE STRUCTURAL REFUSAL, AS A SPECIMEN. A name the route table does
             not list cannot be produced; this is what the page does if one ever
             is, and it is here so that behaviour is something a critic can look
@@ -56,10 +64,11 @@ export default function Page() {
  * against the attribute and not against `:root` alone — the same mechanism the
  * boot script uses, exercised twice on one page.
  *
- * @param {{name: string, data: unknown, view?: string}} props `view` is the
- *   name to RENDER when it differs from the name to SHOW.
+ * @param {{name: string, data?: unknown, view?: string, children?: React.ReactNode}} props
+ *   `view` is the name to RENDER when it differs from the name to SHOW;
+ *   `children` is a specimen that is a COMPONENT rather than a whole view.
  */
-function Specimen({ name, data, view }) {
+function Specimen({ name, data, view, children }) {
   return (
     <section className={s.specimen} aria-label={name}>
       <h3 className={s.name}>{name}</h3>
@@ -67,7 +76,7 @@ function Specimen({ name, data, view }) {
         {['light', 'dark'].map((room) => (
           <div key={room} className={s.room} data-theme={room}>
             <span className={s.roomName}>{room}</span>
-            <View view={view ?? name} data={data} />
+            {children ?? <View view={view ?? name} data={data} />}
           </div>
         ))}
       </div>

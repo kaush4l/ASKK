@@ -7,6 +7,7 @@
 import { THEME_BOOT } from '@/components/shell/theme-boot'
 import './globals.css'
 import '../styles/base.css'
+import '../styles/motion.css'
 
 export const metadata = {
   title: 'HARNESS',

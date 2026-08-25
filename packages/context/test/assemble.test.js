@@ -127,3 +127,72 @@ describe('an invalid document is unconstructible', () => {
       .toBe('interleaved_stability')
   })
 })
+
+describe('a summary is prose too, and it protects what it names', () => {
+  /** A block small enough to elide, and cheap enough that nothing else needs to. */
+  const memory = comp({
+    id: 'memory', slot: SLOT.MEMORY, stability: 'static', priority: 9, floor: 'elided',
+    render: () => text('the plan lives in plan.md. '.repeat(4)),
+  })
+  const chat = comp({
+    id: 'history', slot: SLOT.HISTORY, stability: 'dynamic', priority: 8, floor: 'summarized',
+    cacheable: false,
+    render: () => [
+      { type: /** @type {const} */ ('text'), text: `user: ${'what is the plan? '.repeat(40)}` },
+      { type: /** @type {const} */ ('text'), text: 'assistant: I will read plan.md' },
+    ],
+  })
+  /** @type {import('@harness/context').State} */
+  const curated = {
+    stage: 'work',
+    sources: [
+      source(soul), source(memory),
+      source(chat, [{ type: 'text', text: 'earlier we agreed; see `memory`' }]),
+      source(contract),
+    ],
+  }
+
+  test('the summary is what the model reads at `summarized`, and it names memory', () => {
+    const doc = assemble(curated, { maxTokens: 60 })
+    expect(at(doc, 'history').fidelity).toBe('summarized')
+    expect(at(doc, 'history').parts).toContainEqual({ type: 'text', text: 'earlier we agreed; see `memory`' })
+  })
+
+  test('a block only the SUMMARY backticks stops at pointer — it is never elided, and never a crash', () => {
+    for (const maxTokens of [15, 30, 60, 200]) {
+      const doc = assemble(curated, { maxTokens })
+      expect(at(doc, 'memory').floor).toBe('pointer')
+      expect(at(doc, 'memory').fidelity).not.toBe('elided')
+    }
+  })
+})
+
+describe('a step that does not shrink the paper is not a compaction (I8)', () => {
+  const wall = comp({
+    id: 'operating_rules', slot: SLOT.OPERATING_RULES, stability: 'static', priority: 0, floor: 'full',
+    render: () => text('never guess at a tool result. '.repeat(200)),
+  })
+  /** Two characters: every rung below `full` costs MORE than the body itself. */
+  const tiny = comp({
+    id: 'memory', slot: SLOT.MEMORY, stability: 'static', priority: 9, render: () => text('ok'),
+  })
+  /** @type {import('@harness/context').State} */
+  const stubborn = {
+    stage: 'work',
+    sources: [source(soul), source(wall), source(tiny), source(contract)],
+  }
+
+  test('every section a receipt names really is smaller than it was unbudgeted', () => {
+    const squeezed = assemble(stubborn, { maxTokens: 10 })
+    const whole = assemble(stubborn, UNLIMITED_BUDGET)
+    for (const step of squeezed.report.steps) {
+      expect(at(squeezed, step.section).budgetHint).toBeLessThan(at(whole, step.section).budgetHint)
+    }
+  })
+
+  test('no receipt is written for a section the ladder could not shrink', () => {
+    const doc = assemble(stubborn, { maxTokens: 10 })
+    expect(doc.report.steps.map((s) => s.section)).not.toContain('memory')
+    expect(at(doc, 'memory').parts).toStrictEqual([{ type: 'text', text: 'ok' }])
+  })
+})

@@ -1,6 +1,13 @@
 import { expect, test } from 'bun:test'
 
-const css = await Bun.file(new URL('../app/globals.css', import.meta.url)).text()
+/* COMMENTS BLANKED FIRST, LENGTHS KEPT. This file's own subject is spelled in
+   the prose above the rule that declares it — `[data-theme="dark"]` appears in
+   the paragraph explaining why the selector is written that way — so a search
+   over the raw text found the sentence and read the rule after it by luck. A
+   test that passes by adjacency is a test that starts failing when somebody
+   moves a comment. */
+const css = (await Bun.file(new URL('../app/globals.css', import.meta.url)).text())
+  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
 const layout = await Bun.file(new URL('../app/layout.jsx', import.meta.url)).text()
 
 /** The declarations of the rule whose selector list contains `needle`. */

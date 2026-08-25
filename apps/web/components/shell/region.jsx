@@ -7,8 +7,13 @@ import s from './shell.module.css'
  * It takes its heading, its note and the seam views it will compose as explicit
  * props from `lib/placeholder.js`, and it stamps `data-placeholder` on the
  * element so a probe — and a reader — can tell at a glance that no fact on this
- * screen came from the log. Increment 3 replaces the props with `response.data`
- * and deletes the stamp; nothing else about this component changes.
+ * screen came from the log.
+ *
+ * THE NOTE IS ONE LINE ON A SCREEN THAT HAS CONTENT. It survives on Work now
+ * that Work renders something, because what it says there is that none of it
+ * was read from the log — but it says it in a sentence and not in the 403-pixel
+ * paragraph the editorial round measured between a person and the product
+ * (DESIGN.md §1).
  *
  * The panes are listed rather than summarised because they are the contract:
  * a destination COMPOSES panes, and naming them is what stops "add a pane" from

@@ -55,8 +55,14 @@
 /* ---- the three columns. The rail is ABSENT where it has nothing to say, never
    rendered disabled: a switch for a region that is not on the page is a dead
    control reporting a state it does not have. */
+/* `minmax(0, 1fr)` AND NOT `1fr`, AT EVERY WIDTH. A grid column sized `auto`
+   or `1fr` is floored at its content's MIN-CONTENT width, so one long shell
+   line inside the transcript widened the whole column past the viewport and the
+   page scrolled sideways at 390 — DESIGN.md §10, item 6. The wide breakpoint
+   below always said `minmax(0, 1fr)`; the single-column default did not, which
+   is why only the phone was broken. */
 .frame {
-  display: grid; gap: var(--s-5);
+  display: grid; gap: var(--s-5); grid-template-columns: minmax(0, 1fr);
   max-width: var(--frame); margin: 0 auto;
   padding: 0 var(--gutter) var(--s-8);
 }

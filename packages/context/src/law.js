@@ -114,6 +114,17 @@ function named(doc) {
  * @param {Section} s @param {string} id
  */
 export function mentions(s, id) {
-  const body = [s.intent, ...s.parts.map((p) => (p.type === 'text' ? p.text : ''))].join('\n')
+  return mentionsIn(s.intent, s.parts, id)
+}
+
+/**
+ * The same question asked of parts a section MIGHT render — its summary as
+ * well as its body. One definition, because a summary that names a block is
+ * as much an instruction to read it as the body would be, and two spellings
+ * of "names" is how `assemble` came to protect one and then judge the other.
+ * @param {string} intent @param {import('./types.js').Part[]} parts @param {string} id
+ */
+export function mentionsIn(intent, parts, id) {
+  const body = [intent, ...parts.map((p) => (p.type === 'text' ? p.text : ''))].join('\n')
   return body.includes(`## ${id}`) || body.includes(`\`${id}\``)
 }

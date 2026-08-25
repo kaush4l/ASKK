@@ -11,7 +11,7 @@
  * @module
  */
 
-export { STABILITIES, FIDELITIES, TRUSTS, nextFidelity, UNLIMITED_BUDGET } from './types.js'
+export { STABILITIES, FIDELITIES, nextFidelity, UNLIMITED_BUDGET } from './types.js'
 export { SLOT, isHead, isTail, isSystemSlot } from './slot.js'
 export { text, keyOf, sectionOf } from './component.js'
 export { assemble } from './assemble.js'

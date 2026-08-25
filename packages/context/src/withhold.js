@@ -31,17 +31,15 @@ export const BINARY_SHARE = 4
 /**
  * @param {SectionSource} src
  * @param {number} ceiling
- * @param {import('@harness/kernel').SectionId[]} withheld collects the names
- * @returns {SectionSource} the same source when nothing was over the ceiling
+ * @returns {{source: SectionSource, withheld: boolean}} the same source, unchanged, when nothing was over the ceiling
  */
-export function withholdOversized(src, ceiling, withheld) {
+export function withholdOversized(src, ceiling) {
   const parts = src.section.parts.map((p) => swap(p, ceiling))
   const summary = src.summary === null ? null : src.summary.map((p) => swap(p, ceiling))
   const hit = parts.some((p, i) => p !== src.section.parts[i]) ||
     (summary !== null && summary.some((p, i) => p !== (src.summary ?? [])[i]))
-  if (!hit) return src
-  withheld.push(src.section.id)
-  return { section: { ...src.section, parts }, summary }
+  if (!hit) return { source: src, withheld: false }
+  return { source: { section: { ...src.section, parts }, summary }, withheld: true }
 }
 
 /**

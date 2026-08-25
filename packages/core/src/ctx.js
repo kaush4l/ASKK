@@ -21,6 +21,8 @@
 
 import { effectiveGrant, grants } from '@harness/kernel'
 
+import { driving } from './drive.js'
+
 /** @typedef {import('@harness/kernel').CapabilityGrant} CapabilityGrant */
 /** @typedef {import('@harness/kernel').Fact} Fact */
 /** @typedef {import('@harness/kernel').Manifest} Manifest */
@@ -33,8 +35,24 @@ import { effectiveGrant, grants } from '@harness/kernel'
  *   clock: Timestamp|null,
  *   emit: ((fact: Fact) => void)|null,
  *   project: (name: string) => unknown,
+ *   me: string,
+ *   driving: (agent: string) => boolean,
+ *   durable: boolean,
+ *   bootedAt: number,
  * }} Ctx
  */
+
+/**
+ * RECORD A FACT AND HAND IT TO THE LOOP. Both, together: a fact the log holds
+ * that the loop never sees is a message a person watches land and an agent
+ * never answers — the seam is synchronous by construction, so the QUEUE is how
+ * a press becomes work the driver picks up after `handle` has returned.
+ * @param {App} app @param {Fact} fact
+ */
+function queue(app, fact) {
+  const event = app.log.append(fact, app.ports.clock.now())
+  app.pending.push({ at: event.at, turnId: null, fact })
+}
 
 /**
  * Build the context for ONE invocation. Never stored: a grant is a fact about
@@ -51,10 +69,22 @@ export function contextFor(app, manifest) {
     // The module never sees the timestamp it is stamped with, granted `clock`
     // or not: the LOG stamps a fact, because a fact whose time its author
     // chose is a fact a person cannot trust.
-    emit: grants(grant, 'emit') ? (fact) => void app.log.append(fact, app.ports.clock.now()) : null,
+    emit: grants(grant, 'emit') ? (fact) => queue(app, fact) : null,
     // Ungated, unlike `emit`: reading a projection is what answering a GET IS,
     // and a capability that every module must hold to do its job is a line of
     // configuration rather than a boundary.
     project: (name) => app.log.read(name),
+    // WHOSE LOOP THIS PROCESS RUNS. A handler that guessed it would answer
+    // `/chat` with no agent header for whichever agent it liked.
+    me: app.me,
+    // Live state a RELOAD DOES NOT HAVE, which is exactly why it is here: the
+    // shape of the log survives a refresh and the fetch behind it does not, so
+    // "a turn is open" and "a turn is running" are two different questions.
+    driving: (agent) => driving(app, agent),
+    // Whether anything written to the workspace survives a refresh, asked of
+    // the port rather than assumed — `durable()` returning `true` on behalf of
+    // an adapter that returned `false` is the defect this build refuses.
+    durable: app.ports.workspace.durable(),
+    bootedAt: app.bootedAt,
   }
 }

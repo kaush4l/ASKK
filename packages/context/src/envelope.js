@@ -28,7 +28,11 @@ const ESCAPED = '<<&lt;'
 
 /**
  * The delimiter for one assembly, derived from what it will delimit.
- * @param {string} seed everything untrusted in this document, concatenated
+ * @param {string} seed the section ids of this document, joined — NOT the
+ * payload. Deriving from the payload would still be deterministic; deriving
+ * from the ids keeps the nonce stable while a page's content changes, and it
+ * is the escape, not the secrecy of the nonce, that makes the marker
+ * unforgeable.
  */
 export function nonceFor(seed) {
   return fnv1a(seed).slice(0, 12)

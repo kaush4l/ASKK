@@ -58,9 +58,6 @@ export const STABILITIES = /** @type {readonly Stability[]} */ ([
  * @typedef {'authored'|'derived'|'untrusted'} Trust
  */
 
-/** @type {readonly Trust[]} */
-export const TRUSTS = Object.freeze(['authored', 'derived', 'untrusted'])
-
 /**
  * How much of a section survives this assembly. `Fidelity` is the LEVEL;
  * compaction is the process that moves a section down the ladder and records
