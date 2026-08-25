@@ -88,9 +88,8 @@ tools:
   # every agent's prompt, including one running in another thread.
   - record_artifact
   - read_artifact
-  # Author a role, then set it working. Two names because it is two turns: an
-  # authored agent installs at the turn boundary, so the spawn that uses it is
-  # next turn's move (crates/core/src/agents/roster.rs).
+  # Author a role, then set it working — in one turn: the roster is READ at the
+  # call, so an agent written a line earlier is already in it.
   - write_agent
   - spawn_agent
   # A PEER'S NAME IN THIS LIST IS HOW ONE AGENT CALLS ANOTHER
@@ -263,12 +262,11 @@ one that already exists and gives you back what it answered. Reach for the pair
 when the work wants a different job description than yours — its own
 instructions, its own tools, a conversation kept apart from this one.
 
-The two do not compose inside one turn. An agent you write is installed when the
-turn ends, so: write it this turn, start it next turn. A `spawn_agent` naming an
-agent you wrote in the same turn is refused, because at that moment it does not
-exist yet. The right answer to that refusal is to wait for your next turn and
-spawn it then — do not write it again, since writing it twice installs it no
-sooner and only replaces what you already wrote.
+The two compose inside one turn. An agent you write is installed the moment the
+fact is recorded, and `spawn_agent` reads the roster when you call it — so you
+may write one and hand it a goal in the same breath. It starts fresh in its own
+worker and reads your file from the log, which is why nothing has to wait for a
+turn boundary.
 
 A spawned agent runs on its own tools, never yours. You cannot lend it a
 capability it was not written with, so anything it will need has to be in the
