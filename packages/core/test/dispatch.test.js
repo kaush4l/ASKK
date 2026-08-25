@@ -1,8 +1,9 @@
 import { expect, test, describe } from 'bun:test'
 import { Glob } from 'bun'
-import { CAPABILITIES, ok, problem } from '@harness/kernel'
-import { testPorts, fakeClock } from '@harness/adapters-test'
-import { createApp, install, handle, ModuleError } from '@harness/core'
+import { ok, problem } from '@harness/kernel'
+import { fakeClock } from '@harness/adapters-test'
+import { install, handle, ModuleError } from '@harness/core'
+import { testApp, history, ofType } from './doubles.js'
 
 /** @typedef {import('@harness/kernel').Manifest} Manifest */
 
@@ -42,7 +43,7 @@ function echo(view) {
 
 /** @param {Array<[string, Array<{method: string, path: string}>, import('@harness/kernel').CapabilityId[]?]>} mods */
 function appWith(...mods) {
-  const app = createApp(testPorts({ clock: fakeClock({ start: 1000, step: 0 }) }), [...CAPABILITIES])
+  const app = testApp(fakeClock({ start: 1000, step: 0 }))
   for (const [id, routes, caps] of mods) install(app, manifest(id, routes, caps), echo(id))
   return app
 }
@@ -50,7 +51,7 @@ function appWith(...mods) {
 describe('the registry', () => {
   test('installing a manifest appends module_installed, naming id and version', () => {
     const app = appWith(['chat', [{ method: 'GET', path: '/chat' }]])
-    expect([...app.log].map((e) => e.fact)).toEqual([
+    expect(history(app).map((e) => e.fact)).toEqual([
       { type: 'module_installed', module: 'chat', version: '1' },
     ])
   })
@@ -69,7 +70,7 @@ describe('the registry', () => {
     expect(thrown.message).toContain('GET /chat')
     expect(thrown.message).toContain('chat')
     expect(app.registry.get('impostor')).toBe(null)
-    expect(app.log.ofType('module_installed')).toHaveLength(1)
+    expect(ofType(app, 'module_installed')).toHaveLength(1)
   })
 
   test('a module cannot join a live id — a version replaces, it does not stack', () => {
@@ -117,10 +118,10 @@ describe('dispatch', () => {
   test('a failure and a write are facts; a successful GET is not', () => {
     const app = appWith(['chat', [{ method: 'GET', path: '/chat' }, { method: 'POST', path: '/chat' }]])
     handle(app, { method: 'GET', path: '/chat', headers: {}, body: {} })
-    expect(app.log.ofType('request_handled')).toHaveLength(0)
+    expect(ofType(app, 'request_handled')).toHaveLength(0)
     handle(app, { method: 'POST', path: '/chat', headers: {}, body: {} })
     handle(app, { method: 'GET', path: '/nowhere', headers: {}, body: {} })
-    expect(app.log.ofType('request_handled').map((e) => e.fact)).toEqual([
+    expect(ofType(app, 'request_handled').map((e) => e.fact)).toEqual([
       { type: 'request_handled', path: '/chat', status: 200 },
       { type: 'request_handled', path: '/nowhere', status: 404 },
     ])
@@ -128,7 +129,7 @@ describe('dispatch', () => {
 
   test('no file outside dispatch.js calls a module handler', async () => {
     const callers = []
-    for await (const file of new Glob('*.js').scan({ cwd: SRC })) {
+    for await (const file of new Glob('**/*.js').scan({ cwd: SRC })) {
       if (file !== 'dispatch.js' && (await Bun.file(SRC + file).text()).includes('.handler(')) callers.push(file)
     }
     expect(callers).toEqual([])
@@ -136,6 +137,18 @@ describe('dispatch', () => {
 })
 
 describe('the context a handler is handed', () => {
+  test('a handler reads history as a projection, and asking for one nobody registered says so', () => {
+    const app = testApp(fakeClock({ start: 1000, step: 0 }))
+    install(app, manifest('seer', [{ method: 'GET', path: '/seer' }, { method: 'GET', path: '/blind' }]),
+      (/** @type {any} */ req, /** @type {any} */ ctx) =>
+        ok('seer', { seen: /** @type {any[]} */ (ctx.project(req.path === '/seer' ? 'history' : 'nothing')).length }))
+    expect(handle(app, { method: 'GET', path: '/seer', headers: {}, body: {} }).data.seen).toBe(1)
+    const blind = handle(app, { method: 'GET', path: '/blind', headers: {}, body: {} })
+    expect(blind.status).toBe(500)
+    expect(blind.data.kind).toBe('unknown_projection')
+    expect(blind.data.detail).toContain('history')
+  })
+
   test('a module granted nothing cannot read the clock, and one granted it reads the injected one', () => {
     const app = appWith(
       ['blind', [{ method: 'GET', path: '/blind' }]],
@@ -148,7 +161,7 @@ describe('the context a handler is handed', () => {
   })
 
   test('a grant is narrowed to what this build offers, never to what was asked', () => {
-    const app = createApp(testPorts(), ['clock'])
+    const app = testApp(fakeClock(), ['clock'])
     install(app, manifest('greedy', [{ method: 'GET', path: '/g' }], ['clock', 'workspace']), echo('greedy'))
     expect(handle(app, { method: 'GET', path: '/g', headers: {}, body: {} }).data.granted).toEqual(['clock'])
   })
@@ -156,7 +169,7 @@ describe('the context a handler is handed', () => {
   test('emit is absent without the grant, and appends to the log with it', () => {
     /** @type {any} */
     let seen = null
-    const app = createApp(testPorts({ clock: fakeClock({ start: 7, step: 0 }) }), [...CAPABILITIES])
+    const app = testApp(fakeClock({ start: 7, step: 0 }))
     const speak = (/** @type {any} */ _req, /** @type {any} */ ctx) => {
       seen = ctx.emit
       ctx.emit?.({ type: 'agent_status', agent: 'main', status: 'idle', detail: '' })
@@ -165,10 +178,10 @@ describe('the context a handler is handed', () => {
     install(app, manifest('mute', [{ method: 'GET', path: '/mute' }]), speak)
     handle(app, { method: 'GET', path: '/mute', headers: {}, body: {} })
     expect(seen).toBe(null)
-    expect(app.log.ofType('agent_status')).toHaveLength(0)
+    expect(ofType(app, 'agent_status')).toHaveLength(0)
 
     install(app, manifest('loud', [{ method: 'GET', path: '/loud' }], ['emit']), speak)
     handle(app, { method: 'GET', path: '/loud', headers: {}, body: {} })
-    expect(app.log.ofType('agent_status')[0]).toMatchObject({ at: 7, fact: { agent: 'main' } })
+    expect(ofType(app, 'agent_status')[0]).toMatchObject({ at: 7, fact: { agent: 'main' } })
   })
 })

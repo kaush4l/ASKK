@@ -13,9 +13,9 @@
  * NO HANDLER RECEIVES THE EVENT ARRAY (RULINGS, attack 2). Handing over
  * `log.events` would have been a second authority on history — `push` and
  * `splice` are writes the append-only log itself refuses to offer, and a
- * `readonly` JSDoc annotation cannot stop either. History arrives here as a
- * memoised projection folded by a registered reducer, when the increment that
- * registers one lands.
+ * `readonly` JSDoc annotation cannot stop either. History arrives as `project`,
+ * a read of a registered reducer's folded state: the fold ran once, at append,
+ * and there is no array here to walk even if a handler wanted to (I20).
  * @module
  */
 
@@ -32,6 +32,7 @@ import { effectiveGrant, grants } from '@harness/kernel'
  *   grant: CapabilityGrant,
  *   clock: Timestamp|null,
  *   emit: ((fact: Fact) => void)|null,
+ *   project: (name: string) => unknown,
  * }} Ctx
  */
 
@@ -51,5 +52,9 @@ export function contextFor(app, manifest) {
     // or not: the LOG stamps a fact, because a fact whose time its author
     // chose is a fact a person cannot trust.
     emit: grants(grant, 'emit') ? (fact) => void app.log.append(fact, app.ports.clock.now()) : null,
+    // Ungated, unlike `emit`: reading a projection is what answering a GET IS,
+    // and a capability that every module must hold to do its job is a line of
+    // configuration rather than a boundary.
+    project: (name) => app.log.read(name),
   }
 }

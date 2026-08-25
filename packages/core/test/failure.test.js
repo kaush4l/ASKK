@@ -1,7 +1,7 @@
 import { expect, test, describe } from 'bun:test'
-import { CAPABILITIES } from '@harness/kernel'
-import { testPorts, fakeClock } from '@harness/adapters-test'
-import { createApp, install, handle, ModuleError } from '@harness/core'
+import { fakeClock } from '@harness/adapters-test'
+import { install, handle, ModuleError } from '@harness/core'
+import { testApp, history, ofType } from './doubles.js'
 
 /** @typedef {import('@harness/kernel').Manifest} Manifest */
 
@@ -21,7 +21,7 @@ function manifest(id) {
 describe('a handler that throws', () => {
   /** @param {unknown} err @returns {import('@harness/core').App} */
   function appThatThrows(err) {
-    const app = createApp(testPorts({ clock: fakeClock({ start: 5, step: 0 }) }), [...CAPABILITIES])
+    const app = testApp(fakeClock({ start: 5, step: 0 }))
     install(app, manifest('chat'), () => {
       throw err
     })
@@ -38,7 +38,7 @@ describe('a handler that throws', () => {
     expect(res.data.detail).toContain('the roster row has no id')
     expect(res.data.detail).toContain('row 4')
     expect(res.data.repair).not.toBe('')
-    expect(app.log.ofType('request_handled').map((e) => e.fact)).toEqual([
+    expect(ofType(app, 'request_handled').map((e) => e.fact)).toEqual([
       { type: 'request_handled', path: '/chat', status: 500 },
     ])
   })
@@ -51,6 +51,6 @@ describe('a handler that throws', () => {
     expect(res.data.kind).toBe('handler_crashed')
     expect(res.data.message).toBe('The chat module failed while answering GET /chat.')
     expect(res.data.detail).toBe('cannot read properties of undefined')
-    expect(app.log.ofType('request_handled')).toHaveLength(1)
+    expect(ofType(app, 'request_handled')).toHaveLength(1)
   })
 })

@@ -16,27 +16,31 @@
  * @module
  */
 
-import { EventLog } from '@harness/kernel'
-
 import { Registry } from './registry.js'
 
 /** @typedef {import('@harness/kernel').CapabilityId} CapabilityId */
 /** @typedef {import('@harness/kernel').Manifest} Manifest */
 /** @typedef {import('@harness/kernel').Ports} Ports */
 /** @typedef {import('./registry.js').Handler} Handler */
+/** @typedef {import('./log/index.js').Log} Log */
 
-/** @typedef {{registry: Registry, log: EventLog, ports: Ports, available: CapabilityId[]}} App */
+/** @typedef {{registry: Registry, log: Log, ports: Ports, available: CapabilityId[]}} App */
 
 /**
+ * The log is PASSED IN and never defaulted, for the same reason `available` is:
+ * a log built here would be one this process invented, with no store behind it
+ * and no history in front of it, and every fact it recorded would evaporate on
+ * refresh while the interface showed them landing. `freshLog` and `bootLog` in
+ * `./log/` are the two honest ways to obtain one.
  * @param {Ports} ports
  * @param {CapabilityId[]} available what THIS build can actually offer a module
- * @param {{log?: EventLog}} [opts] `log` is a replayed history
+ * @param {{log: Log}} opts
  * @returns {App}
  */
-export function createApp(ports, available, opts = {}) {
+export function createApp(ports, available, opts) {
   return {
     registry: new Registry(),
-    log: opts.log ?? new EventLog(),
+    log: opts.log,
     ports,
     available,
   }
