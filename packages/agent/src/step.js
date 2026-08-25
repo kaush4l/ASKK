@@ -172,7 +172,7 @@ function settle(state, before, at) {
 function onEmpty(state, incoming, finish) {
   const signature = emptySignature(state.model, finish)
   const attempts = state.attempts + 1
-  if (state.lastEmpty === signature || attempts > MAX_ATTEMPTS) return endTurn(state, STALLED)
+  if (state.lastEmpty === signature || attempts >= MAX_ATTEMPTS) return endTurn(state, STALLED)
   return nextCall({ ...state, lastEmpty: signature }, incoming.at, attempts)
 }
 
@@ -194,6 +194,6 @@ function onEffectFailed(state, incoming, failure) {
     return onToolResult(state, incoming, { tool: '', ok: false, output: failure.reason })
   }
   const attempts = state.attempts + 1
-  if (attempts > MAX_ATTEMPTS) return endTurn(state, `${FAILED}: ${failure.reason}`)
+  if (attempts >= MAX_ATTEMPTS) return endTurn(state, `${FAILED}: ${failure.reason}`)
   return nextCall(state, incoming.at, attempts)
 }

@@ -3,6 +3,14 @@
  * lives in this package — the loop DESCRIBES effects and `core`'s driver runs
  * them (I3, I7).
  *
+ * Increment 6 of eight: one prompt vocabulary and one retry ceiling — every
+ * block the loop sends is now `@harness/context`'s, because this package's
+ * second copy of the words had already drifted from it and still taught the
+ * retired text-call protocol; three model calls per turn rather than four,
+ * because `MAX_ATTEMPTS` counts calls and the comparison read it as retries;
+ * and delegation as two messages, so a sub-agent is the same loop in its own
+ * Worker and records its own ending rather than having one inferred for it.
+ *
  * Increment 5 of eight: what the loop hands the model and what comes back — the
  * paper derived per call from this agent's state and this stage's grant, the
  * faculties that arrive in one piece (their tools AND their block), a failed
@@ -43,7 +51,8 @@ export {
   ANSWER, ROUTE, ROUTES, STAGES_OF, STRATEGY_SCHEMA, WHY, labelled, routeChosen, routeOf, voteIn,
 } from './strategy.js'
 export { step } from './step.js'
-export { askFor, askModel, granted, paperFor, stageNow } from './ask.js'
+export { askFor, askModel, stageNow } from './ask.js'
+export { granted, paperFor } from './fill.js'
 export { ARTIFACTS, FACULTIES, MEMORY, SPACE, facultyBlocks, facultyOf, facultyTools } from './faculty/index.js'
 export { EFFECT_FAILED, MAX_ATTEMPTS, backoffMs, emptySignature, failureIn, isEmptyCompletion } from './retry.js'
 export { CHECKPOINT_VERSION, checkpoint, resume } from './checkpoint.js'
@@ -58,6 +67,9 @@ export {
 } from './ending.js'
 export { STOP_REQUESTED, STOPPED, isStopRequest } from './stop.js'
 export { STEERED, carried } from './steer.js'
+export { ERRAND_PROTOCOL, beginMessage, endedMessage, readMessage } from './errand/protocol.js'
+export { agentsOver } from './errand/caller.js'
+export { errandBegun, errandHeard } from './errand/callee.js'
 
 /** @typedef {import('./state.js').AgentState} AgentState */
 /** @typedef {import('./state.js').Goal} Goal */
@@ -86,3 +98,9 @@ export { STEERED, carried } from './steer.js'
 /** @typedef {import('./turn.js').ToolCall} ToolCall */
 /** @typedef {import('./turn.js').FinishReason} FinishReason */
 /** @typedef {import('./turn.js').Awaiting} Awaiting */
+/** @typedef {import('./errand/protocol.js').ErrandMessage} ErrandMessage */
+/** @typedef {import('./errand/protocol.js').Begin} Begin */
+/** @typedef {import('./errand/protocol.js').Ended} Ended */
+/** @typedef {import('./errand/caller.js').Channel} Channel */
+/** @typedef {import('./errand/caller.js').Workers} Workers */
+/** @typedef {import('./errand/callee.js').Errand} Errand */

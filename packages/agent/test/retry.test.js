@@ -59,15 +59,22 @@ describe('a failed effect is a fact the reducer folds, and the retry is its deci
     expect(backoffMs(2)).toBeGreaterThan(backoffMs(1))
   })
 
-  test('past the ceiling the turn ends QUOTING what the driver read, and asks for nothing more', () => {
+  test('a dead endpoint costs THREE model calls in one turn, counting the first, and then ends', () => {
     let state = asking()
-    for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
-      state = step(state, failed({ effect: 'CallModel', reason: 'connection refused' }, 't-1')).state
+    // `asking()` already made call one. Every failure after it either asks
+    // again or ends, so the calls this loop counts are the ones counted here.
+    let calls = 1
+    let ended = ''
+    for (let i = 0; i < 10 && ended === ''; i += 1) {
+      const stepped = step(state, failed({ effect: 'CallModel', reason: 'connection refused' }, 't-1'))
+      state = stepped.state
+      if (stepped.effects.some((e) => e.type === 'CallModel')) calls += 1
+      else ended = ending(stepped.effects)
     }
-    const last = step(state, failed({ effect: 'CallModel', reason: 'connection refused' }, 't-1'))
-    expect(last.effects.some((e) => e.type === 'CallModel')).toBe(false)
-    expect(ending(last.effects)).toBe('failed: connection refused')
-    expect(last.state.turnId).toBe('')
+    expect(calls).toBe(MAX_ATTEMPTS)
+    expect(calls).toBe(3)
+    expect(ended).toBe('failed: connection refused')
+    expect(state.turnId).toBe('')
   })
 
   test('a failed TOOL drains the round it belongs to, and the model reads why on its next line', () => {
@@ -110,16 +117,21 @@ describe('two zero-output completions from the same model and signal stop the re
     expect(other.effects.some((e) => e.type === 'CallModel')).toBe(true)
   })
 
-  test('a ROTATING signal never repeats the signature, and the retry ceiling ends the turn anyway', () => {
+  test('a ROTATING signal never repeats the signature, and the SAME ceiling of three ends the turn', () => {
+    // Empty completions and failed effects count on one field, so a provider
+    // that returns nothing under a different signal every time is worth the
+    // same three calls as one that refuses the connection outright.
     const one = step(asking(), replied('', 'stop'))
-    const two = step(one.state, replied('', 'length'))
-    const three = step(two.state, replied('', 'content_filter'))
-    expect(three.effects.some((e) => e.type === 'CallModel')).toBe(true)
-    expect(three.state.attempts).toBe(3)
+    expect(one.effects.some((e) => e.type === 'CallModel')).toBe(true)
+    expect(one.state.attempts).toBe(1)
 
-    const four = step(three.state, replied('', 'refusal'))
-    expect(four.effects.some((e) => e.type === 'CallModel')).toBe(false)
-    expect(ending(four.effects)).toBe(STALLED)
+    const two = step(one.state, replied('', 'length'))
+    expect(two.effects.some((e) => e.type === 'CallModel')).toBe(true)
+    expect(two.state.attempts).toBe(2)
+
+    const three = step(two.state, replied('', 'content_filter'))
+    expect(three.effects.some((e) => e.type === 'CallModel')).toBe(false)
+    expect(ending(three.effects)).toBe(STALLED)
     expect(MAX_ATTEMPTS).toBe(3)
   })
 

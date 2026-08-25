@@ -45,6 +45,9 @@ import { checkField, shapeOf } from './shape.js'
 
 /**
  * @typedef {object} AgentState
+ * @property {string} name  how this agent is addressed — the `identity` block's own words, and the name a peer delegates to. On the state because a running agent that cannot say what it is called is one the person cannot address either.
+ * @property {string} description  its one-line role, as its file declares it; the second half of `identity`
+ * @property {string[]} conversation  the window, oldest first, one already-tagged line per turn — what the `history` block renders. It is the thing `compactAt` counts and `keepRecent` spares, and until it was here the assembled prompt carried NO conversation at all: the paper's sources were the only channel and nothing in this build ever wrote one.
  * @property {string} model  this agent's `model:` key — a CATALOGUE key, never a URL; empty means the catalogue's default
  * @property {number | null} temperature  its `temperature:` key, null where the file named none
  * @property {string | null} task  what is being attempted; null is idle
@@ -101,12 +104,14 @@ export const DEFAULT_PASSES = 1
  *
  * NO ARGUMENTS. A seeded paper was a parameter every caller passed the same
  * value for; the code that would have a real one to give does not exist yet,
- * and when it does it adopts one through a named door in `paper.js` (B5)
- * rather than through an optional argument here.
+ * and when it does it adopts one through `ask.js`, which
+ * derives the whole paper per call, rather than through an optional argument
+ * here.
  * @returns {AgentState}
  */
 export function newAgentState() {
   return {
+    name: '', description: '', conversation: [],
     model: '', temperature: null, task: null, turnId: '', awaiting: null, toolbox: [],
     calling: NATIVE, batch: [], observations: [], toolRounds: 0, maxRounds: DEFAULT_MAX_ROUNDS,
     steered: false, stopping: false,

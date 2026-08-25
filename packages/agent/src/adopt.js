@@ -43,6 +43,7 @@ export function adoptSpec(state, spec, env) {
   /** @type {AgentState} */
   const adopted = {
     ...state,
+    name: spec.name, description: spec.description,
     model: spec.model,
     prompt: spec.prompt,
     // THE CARD IS ADOPTED WITH THE MODEL NAME, from the catalogue the host

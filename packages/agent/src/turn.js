@@ -65,7 +65,7 @@ export const FINISH_REASONS = /** @type {const} */ ([
  * WHAT THE DRIVER HANDS THE REDUCER: one fact, the turn it was produced under,
  * and — for a model reply — the signal it ended on.
  *
- * The turn rides the ENVELOPE rather than the fact because `Fact` is the
+ * The turn rides the envelope rather than the fact because `Fact` is the
  * kernel's closed vocabulary and this lane does not own it. **Filed as a
  * cross-lane request:** `model_replied` and `tool_invoked` need a `turnId`, and
  * `model_replied` needs its `finish`, or a REPLAY cannot reproduce the drops

@@ -30,7 +30,7 @@ export const EFFECT_FAILED = 'core.effect_failed'
 /**
  * @typedef {{effect: 'CallModel' | 'InvokeTool', reason: string}} Failure
  *
- * WHICH CALL FAILED IS THE ENVELOPE'S `callId` and is not repeated here. A tool
+ * WHICH CALL FAILED IS THE envelope's `callId` and is not repeated here. A tool
  * failure and a tool result answer the same outstanding call, and the reducer
  * checks that call the same way for both; a second spelling in the payload
  * would be a second thing to keep in step, and the two would differ once.
@@ -63,14 +63,21 @@ export function awaitedBy(failure) {
 }
 
 /**
- * HOW MANY TIMES ONE TURN ASKS AGAIN before it ends saying the provider failed.
- * Three: a transient 502 and a rate limit both clear inside two, and a fourth
- * attempt against something structurally broken only delays the sentence the
- * person needs to read.
+ * HOW MANY MODEL CALLS ONE TURN IS WORTH, counting the first: the call, then
+ * two more after it fails. A transient 502 and a rate limit both clear inside
+ * two, and a fourth attempt against something structurally broken only delays
+ * the sentence the person needs to read.
+ *
+ * IT IS THE COUNT AND NOT THE RETRIES, and the code read it the other way —
+ * `attempts > MAX_ATTEMPTS` made the fourth call this sentence exists to
+ * refuse. The comment was right and the comparison moved; `step.js` now stops
+ * at `attempts >= MAX_ATTEMPTS`, which is three calls for a dead endpoint
+ * rather than four. Both empty-completion and failed-effect arms count on the
+ * same field, so one turn is three calls whichever way it is failing.
  */
 export const MAX_ATTEMPTS = 3
 
-/** Doubling from half a second, so the third attempt lands two seconds after the second rather than immediately behind it. @param {number} attempt  how many have already failed @returns {number} */
+/** Doubling from half a second: the second call waits 500ms and the third a full second, so a rate limit has a gap to clear in rather than being asked again from behind. @param {number} attempt  how many have already failed @returns {number} */
 export function backoffMs(attempt) {
   return 500 * 2 ** Math.max(0, attempt - 1)
 }

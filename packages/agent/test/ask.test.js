@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'bun:test'
-import { SLOT } from '@harness/context'
+import { SESSION_STARTED, SLOT } from '@harness/context'
 import {
   ENDED, NO_TOOLS, SKILL_TOOLS, arg, askFor, askModel, endedWhy, granted, newAgentState,
   paperFor, resolveStage, step, tool,
@@ -84,14 +84,26 @@ describe('the paper is derived per call, so turn N+1 carries nothing of turn N',
     expect(body(sections(first, stage('work')), 'observations')).toBe('Result read_file: ok')
     const second = { ...first, observations: [], task: 'something else' }
     const list = sections(second, stage('work'))
-    expect(list.find((s) => s.id === 'observations')?.parts).toEqual([])
+    expect(body(list, 'observations')).not.toContain('read_file')
     expect(body(list, 'task')).toBe('something else')
   })
 
   test('paperFor upserts onto what the paper already holds and appends what it never held', () => {
-    const held = { section: { ...sections(working(), stage('work'))[0], id: 'history', slot: SLOT.HISTORY, parts: [{ type: 'text', text: 'person: hello' }] }, summary: null }
-    const sources = paperFor({ ...working(), paper: { sources: [held] } }, { stage: stage('work'), card: CARD, at: AT })
-    expect(sources.map((s) => s.section.id)).toEqual(['history', 'soul', 'affordances', 'task', 'observations', 'directive', 'response_contract'])
+    const stale = { section: { ...sections(working(), stage('work'))[0], id: 'environment', slot: SLOT.ENVIRONMENT, parts: [{ type: 'text', text: 'Tuesday.' }] }, summary: null }
+    const sources = paperFor({ ...working(), paper: { sources: [stale] } }, { stage: stage('work'), card: CARD, at: AT })
+    expect(sources.map((s) => s.section.id)).toEqual([
+      'environment', 'soul', 'identity', 'operating_rules', 'goal', 'affordances',
+      'task', 'history', 'observations', 'directive', 'response_contract',
+    ])
+  })
+
+  test('a block the LOOP writes is written over whatever the paper held under that id', () => {
+    const held = { section: { ...sections(working(), stage('work'))[0], id: 'history', slot: SLOT.HISTORY, parts: [{ type: 'text', text: 'person: from an older turn' }] }, summary: null }
+    const state = { ...working(), conversation: ['person: hello', 'main: hi'], paper: { sources: [held] } }
+    const sources = paperFor(state, { stage: stage('work'), card: CARD, at: AT })
+    const history = sources.filter((source) => source.section.id === 'history')
+    expect(history).toHaveLength(1)
+    expect(history[0]?.section.parts.map((p) => p.type === 'text' ? p.text : '')).toEqual(['person: hello', 'main: hi'])
   })
 })
 
@@ -137,3 +149,33 @@ function payload(effects) {
   if (found?.type !== 'Emit' || found.fact.type !== 'custom') throw new Error('nothing ended')
   return found.fact.payload
 }
+
+describe('every block in a sent prompt is `@harness/context`\'s vocabulary', () => {
+  test("the retired text-call protocol is not in the bytes the model receives", () => {
+    const list = sections(working(), stage('work'))
+    const whole = list.map((section) => body(list, section.id)).join('\n')
+    expect(whole).not.toContain('separated by commas')
+    expect(whole).not.toContain('lines beginning `Result:`')
+    expect(whole).not.toContain('exactly as the `## affordances` block shows them')
+    expect(body(list, 'affordances')).toContain('AVAILABLE TOOLS')
+  })
+
+  test('who the agent is, what it is for, and what it has said all reach the prompt', () => {
+    const state = {
+      ...working(),
+      name: 'scout', description: 'Finds the failing test.',
+      conversation: ['person: which test is red?'],
+      standing: { goal: { outcome: 'the suite is green', check: 'bun test', doneWhen: 'no test fails' }, checking: false, met: null },
+    }
+    const list = sections(state, stage('work'))
+    expect(body(list, 'identity')).toBe('Name: scout. Finds the failing test.')
+    expect(body(list, 'goal')).toContain('OUTCOME — the suite is green')
+    expect(body(list, 'goal')).not.toContain('bun test')
+    expect(body(list, 'operating_rules')).toContain('Never claim an action succeeded without an observation')
+    expect(body(list, 'history')).toBe('person: which test is red?')
+  })
+
+  test('an agent that has said nothing carries the same opening line a fresh window does', () => {
+    expect(body(sections(working(), stage('work')), 'history')).toBe(SESSION_STARTED)
+  })
+})

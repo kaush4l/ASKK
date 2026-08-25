@@ -19,89 +19,30 @@
  *
  * WHERE THE IDENTITY COMES FROM. The soul is written HERE, from `state.prompt`,
  * on every call — it is not seeded once and left standing, because the prompt a
- * person edits mid-run must reach the next call and not the one after it. What
- * this file does not write is the conversation: the exchanges are the paper's
- * own, carried across turns, and `paperFor` reads them without touching them.
+ * person edits mid-run must reach the next call and not the one after it.
+ *
+ * WHICH BLOCKS THE CALL CARRIES IS `fill.js`, and every one of them is
+ * `@harness/context`'s. The loop fills a block in; it does not word one.
  * @module
  */
 
 import { MODEL_ENDPOINT } from '@harness/kernel'
-import { adapterFor, assemble, budgetFor, sectionOf } from '@harness/context'
+import { adapterFor, assemble, budgetFor } from '@harness/context'
 import { callModel } from './effect.js'
 import { endTurn } from './ending.js'
-import { facultyBlocks } from './faculty/index.js'
-import { affordances, contract, directive, observations, sensed, soul, taskBlock } from './paper.js'
+import { paperFor } from './fill.js'
 import { backoffMs } from './retry.js'
-import { grant, resolveStage } from './stages.js'
+import { resolveStage } from './stages.js'
 import { usages } from './toolbox.js'
 
 /** @typedef {import('@harness/context').ModelCard} ModelCard */
-/** @typedef {import('@harness/context').SectionSource} SectionSource */
-/** @typedef {import('@harness/context').Component} Component */
 /** @typedef {import('@harness/kernel').Timestamp} Timestamp */
 /** @typedef {import('./effect.js').Effect} Effect */
 /** @typedef {import('./stages.js').Stage} Stage */
 /** @typedef {import('./state.js').AgentState} AgentState */
-/** @typedef {import('./tools.js').Tool} Tool */
 
 /** What one call is assembled against: the stage it is taken in, the card that derives its budget, and the backoff a retry carries. @typedef {{stage: Stage, card: ModelCard, at: Timestamp, afterMs?: number}} Asking */
-
-/**
- * THE TOOLBOX THIS CALL ACTUALLY HAS — this agent's own, narrowed by the
- * stage's allowlist, and the only source of what the model is told it can call.
- * A stage scoped to `none` yields an empty array, which is why a stage that may
- * not act cannot even NAME a tool: the affordances block is built from this.
- * @param {AgentState} state @param {Stage} stage @returns {Tool[]}
- */
-export function granted(state, stage) {
-  return grant(stage.toolAllowlist, state.toolbox)
-}
-
-/**
- * THE PAPER FOR THIS TURN, derived. Whatever the paper already carries, with
- * the components this call owns written over it by id.
- *
- * Upsert and not append: a block the paper has never held is added, which is
- * what opens the prompt to a faculty that was declared in a file rather than
- * compiled in. Ordering is structural — `assemble` sorts by slot and nothing
- * else — so a source's position here never reaches the model.
- * @param {AgentState} state @param {Asking} of @returns {SectionSource[]}
- */
-export function paperFor(state, of) {
-  const held = /** @type {SectionSource[]} */ ([...state.paper.sources])
-  const rebuilt = components(state, of)
-  for (const component of rebuilt) {
-    const source = { section: sectionOf(component, of.at), summary: null }
-    const at = held.findIndex((s) => s.section.id === source.section.id)
-    if (at === -1) held.push(source)
-    else held[at] = source
-  }
-  return held
-}
-
-/**
- * THE BLOCKS THIS CALL OWNS, in prompt order. Order here is documentation and
- * not mechanism, because assembly sorts by slot; they are listed in the order
- * the model reads them anyway, so nobody has to consult the slot table to
- * picture the result.
- *
- * A block belonging to a CAPABILITY is not listed here and adding one does not
- * mean editing this function: the agent file names a faculty, the faculty
- * declares its block, and a host's most recent parts render into it.
- * @param {AgentState} state @param {Asking} of @returns {Component[]}
- */
-function components(state, of) {
-  const tools = granted(state, of.stage)
-  return [
-    soul(state.prompt),
-    affordances(usages(tools)),
-    ...facultyBlocks(state.faculties).map((block) => sensed(block, state.senses[block.id] ?? [])),
-    taskBlock(state.task),
-    observations(state.observations),
-    directive(of.stage.brief),
-    contract({ hasTools: tools.length > 0, schema: of.stage.responseSchema }),
-  ]
-}
+/** @typedef {import('@harness/context').SectionSource} SectionSource */
 
 /**
  * ASSEMBLE THE PAPER AND ASK THE MODEL.

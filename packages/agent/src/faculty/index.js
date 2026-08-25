@@ -23,6 +23,8 @@ import { spaceFaculty, SPACE } from './space.js'
 
 /** @typedef {import('@harness/context').Stability} Stability */
 /** @typedef {import('@harness/kernel').SectionId} SectionId */
+/** @typedef {import('@harness/context').Component} Component */
+/** @typedef {import('@harness/context').Part} Part */
 /** @typedef {import('../tools.js').Tool} Tool */
 
 /** The block a faculty contributes: where it sits, what it is called, and the one sentence saying why it is in the prompt. Its PARTS are not here — a host writes those into `AgentState.senses` under `id`, and `ask.js` renders whatever it last left. @typedef {{id: SectionId, slot: number, intent: string, stability: Stability}} Block */
@@ -74,4 +76,27 @@ export function facultyBlocks(declared) {
     const held = facultyOf(name)
     return held ? [held.block] : []
   })
+}
+
+/**
+ * ONE FACULTY'S BLOCK, FILLED IN FROM WHAT A HOST LAST WROTE FOR IT.
+ *
+ * The declaration says where it goes and why; the parts are
+ * `AgentState.senses[id]`, which is the slot where an impure host leaves fresh
+ * data for a pure component. No parts is a faculty that has nothing to say
+ * YET, and it elides — a different thing from a faculty this agent does not
+ * have, which has no block at all.
+ *
+ * It is the ONE component this package still constructs. Every other block in
+ * the prompt is `@harness/context`'s, and this one is not because a faculty
+ * declares its own block in the same row that declares its tools: what is
+ * rendered here is not a wording, it is whatever the host wrote.
+ * @param {Block} block @param {readonly unknown[]} parts @returns {Component}
+ */
+export function sensed(block, parts) {
+  return {
+    ...block,
+    cacheable: false,
+    render: () => /** @type {Part[]} */ ([...parts]),
+  }
 }
