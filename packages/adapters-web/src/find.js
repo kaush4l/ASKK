@@ -32,7 +32,7 @@ const OURS = '.harness'
  * act on.
  * @param {string} name @param {string} text
  */
-export function asked(name, text) {
+function asked(name, text) {
   if (name !== '' && text !== '') return `files named ${name} with a line containing '${text}'`
   if (name !== '') return `files named ${name}`
   return `files with a line containing '${text}'`
@@ -124,6 +124,11 @@ export async function runFind(workspace, args) {
     : (await Promise.all(paths.map((path) => hit(workspace, path, text)))).filter((one) => one !== null)
   const question = asked(name, text)
   if (hits.length === 0) return { ok: true, output: `Nothing in this folder matches: ${question}.` }
-  const capped = hits.length >= CAP ? ` (capped at ${CAP} — narrow the search)` : ''
-  return { ok: true, output: `${hits.length} match(es) for ${question}${capped}:\n${hits.join('\n')}` }
+  // THE CAP IS HELD WHERE THE SENTENCE IS COMPOSED. `walk` stops between
+  // entries, so one recursive call returns a whole sub-directory at once and
+  // the array crosses CAP inside a single step — announcing a cap the answer
+  // did not keep, and spending twice the window it promised.
+  const shown = hits.slice(0, CAP)
+  const capped = hits.length > CAP ? ` (capped at ${CAP} — narrow the search)` : ''
+  return { ok: true, output: `${shown.length} match(es) for ${question}${capped}:\n${shown.join('\n')}` }
 }

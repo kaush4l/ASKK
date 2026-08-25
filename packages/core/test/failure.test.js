@@ -2,6 +2,7 @@ import { expect, test, describe } from 'bun:test'
 import { fakeClock } from '@harness/adapters-test'
 import { install, handle, ModuleError, REFUSALS_KEPT } from '@harness/core'
 import { testApp, history, ofType } from './doubles.js'
+import { harness } from './harness.js'
 
 /** @typedef {import('@harness/kernel').Manifest} Manifest */
 
@@ -59,7 +60,9 @@ describe('a handler that throws', () => {
 
 describe('a request the seam would not answer', () => {
   test('a failed read grows the log by NOTHING, however many times it is polled', () => {
-    const app = testApp(fakeClock({ start: 5, step: 0 }))
+    // The whole build, because the second half of the claim is that the debug
+    // MODULE still says it — a bare App has no route to ask.
+    const { app } = harness()
     const before = app.log.length
     for (let i = 0; i < REFUSALS_KEPT + 10; i++) handle(app, { method: 'GET', path: '/nowhere', headers: {}, body: {} })
     expect(app.log.length).toBe(before)
@@ -67,5 +70,20 @@ describe('a request the seam would not answer', () => {
     // so a page left polling a wrong address does not grow memory either.
     expect(app.refusals).toHaveLength(REFUSALS_KEPT)
     expect(app.refusals[0]).toMatchObject({ method: 'GET', path: '/nowhere', status: 404, kind: 'no_route' })
+    // AND IT IS SAID THROUGH THE SEAM, not read off the array: the pane is
+    // handed the sentence already worded (I5), which is the whole reason a
+    // failure that grew the log by nothing is not lost.
+    const data = handle(app, { method: 'GET', path: '/debug', headers: {}, body: {} }).data
+    const rows = /** @type {Array<Record<string, unknown>>} */ (data.refusals)
+    expect(String(rows[0]?.summary)).toContain('GET /nowhere')
+    expect(String(rows[0]?.statusLabel)).toContain('404')
+    expect(String(data.refusalsLabel)).toContain('50 requests')
+    // AND THE ID IS THE REQUEST'S, NOT THE ROW'S. Refuse once more and the row
+    // that was newest keeps the id it had — an id read off a position in a ring
+    // that shifts renames every row on every refusal.
+    const was = String(rows[0]?.id)
+    handle(app, { method: 'GET', path: '/elsewhere', headers: {}, body: {} })
+    const after = /** @type {Array<Record<string, unknown>>} */ (handle(app, { method: 'GET', path: '/debug', headers: {}, body: {} }).data.refusals)
+    expect(String(after[1]?.id)).toBe(was)
   })
 })

@@ -50,7 +50,7 @@ function count(text, find) {
 }
 
 /** Which line the occurrence starts on, counting from one — the number a model can act on, and the only part of a successful edit worth saying. @param {string} text @param {string} find */
-export function lineOf(text, find) {
+function lineOf(text, find) {
   const at = text.indexOf(find)
   return at < 0 ? 1 : text.slice(0, at).split('\n').length
 }
@@ -62,7 +62,7 @@ export function lineOf(text, find) {
  * the destruction this tool replaces.
  * @param {string} path @param {string} find @param {string} why
  */
-export function refusal(path, find, why) {
+function refusal(path, find, why) {
   return `nothing was edited and ${path} is unchanged: ${why}. You asked to replace:\n${quoted(find)}\n${SHAPE}`
 }
 

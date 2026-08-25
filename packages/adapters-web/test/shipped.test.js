@@ -14,11 +14,13 @@
  */
 import { describe, expect, test } from 'bun:test'
 import { CAPABILITIES } from '@harness/kernel'
-import { FACULTIES, adoptSpec, facultyTools, newAgentState, parseAgentFile } from '@harness/agent'
+import { FACULTIES, facultyTools, parseAgentFile } from '@harness/agent'
 import { bootFresh } from '@harness/core'
 import { fakeClock, testPorts } from '@harness/adapters-test'
 
 import { CATALOGUE } from '../src/toolset.js'
+import { adopted } from '../src/boot.js'
+import { makeEndpoint } from '../src/endpoint.js'
 import { memorySegments } from './doubles.js'
 
 const AGENT_FILE = new URL('../../../apps/web/public/agents/main/agent.md', import.meta.url).pathname
@@ -28,18 +30,19 @@ async function shipped() {
   const text = await Bun.file(AGENT_FILE).text()
   const read = parseAgentFile('agents/main/agent.md', text)
   if (!('spec' in read)) throw new Error(`the shipped agent file did not parse: ${JSON.stringify(read)}`)
-  const adopted = adoptSpec(newAgentState(), read.spec, {
-    catalogue: CATALOGUE,
-    offered: [...CAPABILITIES],
-    peers: [read.spec],
-  })
+  // Through `adopted` and not `adoptSpec`: the roster the pane reads is
+  // assembled there, and a test that skipped it would prove the toolbox while
+  // the sentence about what did NOT resolve stayed prose.
+  const shelf = { specs: [read.spec], refusals: [], paths: { main: 'agents/main/agent.md' } }
+  const taken = adopted(shelf, 'main', [...CAPABILITIES], makeEndpoint())
   const app = bootFresh({
     ports: testPorts({ clock: fakeClock(), script: [] }),
     available: [...CAPABILITIES],
     segments: memorySegments(),
-    agent: adopted.state,
+    agent: taken.agent,
+    roster: taken.roster,
   })
-  return { spec: read.spec, app, unresolved: adopted.unresolved }
+  return { spec: read.spec, app }
 }
 
 describe('the catalogue the allowlist picks from', () => {
@@ -57,14 +60,17 @@ describe('the catalogue the allowlist picks from', () => {
 
 describe('the agent this page talks to', () => {
   test('is adopted from the shipped file, and every name it declares is granted or REPORTED', async () => {
-    const { spec, app, unresolved } = await shipped()
+    const { spec, app } = await shipped()
     expect(spec.name).toBe('main')
     const named = app.agent.toolbox.map((t) => t.name)
-    // A name this build has no descriptor for is not silently dropped — the
-    // agents pane renders `unresolved`, which is the only reason a person ever
-    // finds out. Nothing may fall between the two lists.
-    for (const want of spec.tools) expect(named.includes(want) || unresolved.includes(want)).toBe(true)
-    expect(unresolved.length).toBeGreaterThan(0)
+    const said = app.roster.refusals.map((r) => r.message).join(' ')
+    // A name this build has no descriptor for is not silently dropped — it is a
+    // roster refusal, which is the only reason a person ever finds out. Nothing
+    // may fall between the two lists, and the sentence is EXECUTED here rather
+    // than believed: `spawn_agent` is one of the names the shipped file asks for
+    // and this build has no answer to.
+    for (const want of spec.tools) expect(named.includes(want) || said.includes(want)).toBe(true)
+    expect(said).toContain('spawn_agent')
     // And nothing is granted that the file did not name, bar the shelf's door.
     for (const got of named) expect(got === 'read_result' || spec.tools.includes(got)).toBe(true)
   })

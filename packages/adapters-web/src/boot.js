@@ -97,11 +97,12 @@ async function authored(basePath, me, available, endpoint) {
   const roster = await fetchRoster(basePath)
   const briefed = await fetchBriefs(basePath)
   const skilled = await fetchSkills(basePath)
+  const mine = adopted(roster, me, available, endpoint)
   return {
-    agent: adopted(roster, me, available, endpoint),
+    agent: mine.agent,
     briefs: briefed.briefs,
     skills: skilled.skills,
-    roster: { ...roster, refusals: [...roster.refusals, ...briefed.refusals, ...skilled.refusals] },
+    roster: { ...mine.roster, refusals: [...mine.roster.refusals, ...briefed.refusals, ...skilled.refusals] },
   }
 }
 
@@ -144,20 +145,33 @@ function addressBook(endpoint) {
 }
 
 /**
- * THE ENTRY AGENT, BUILT FROM ITS OWN FILE. A state adopted from no file is the
- * defect this replaces: the predecessor hardcoded `main`, so an agent file a
- * person edited changed the prompt and nothing else. `undefined` when the file
- * did not load — `createApp` then starts a blank agent, and the roster pane says
- * by name which file was missing rather than the page looking merely empty.
+ * THE ENTRY AGENT, BUILT FROM ITS OWN FILE, AND THE ROSTER THAT SAYS WHAT ITS
+ * FILE ASKED FOR IN VAIN. A state adopted from no file is the defect this
+ * replaces: the predecessor hardcoded `main`, so an agent file a person edited
+ * changed the prompt and nothing else. `agent` is `undefined` when the file did
+ * not load — `createApp` then starts a blank agent, and the roster pane says by
+ * name which file was missing rather than the page looking merely empty.
+ *
+ * A NAME NOTHING ANSWERS TO BECOMES A REFUSAL AND NOT A DROPPED ARRAY: an
+ * unresolved name reaches no toolbox, so `/tools` cannot show it, and the seven
+ * the shipped file names were absent with nobody told (I15, I16).
  * @param {import('@harness/core').Roster} roster @param {string} me
  * @param {import('@harness/kernel').CapabilityId[]} available
  * @param {ReturnType<typeof makeEndpoint>} endpoint
+ * @returns {{agent: import('@harness/agent').AgentState|undefined, roster: import('@harness/core').Roster}}
  */
-function adopted(roster, me, available, endpoint) {
+export function adopted(roster, me, available, endpoint) {
   const spec = roster.specs.find((s) => s.name === me)
-  if (!spec) return undefined
+  if (!spec) return { agent: undefined, roster }
   const env = { catalogue: CATALOGUE, offered: available, peers: roster.specs, card: endpoint.card(spec.model) }
-  return adoptSpec(newAgentState(), spec, env).state
+  const { state, unresolved } = adoptSpec(newAgentState(), spec, env)
+  if (unresolved.length === 0) return { agent: state, roster }
+  const refusal = {
+    path: roster.paths[me] ?? `agents/${me}/agent.md`,
+    key: 'tools',
+    message: `${me}/agent.md names ${unresolved.join(', ')}, and nothing in this build answers to ${unresolved.length === 1 ? 'that name' : 'those names'} — a call would come back refused.`,
+  }
+  return { agent: state, roster: { ...roster, refusals: [...roster.refusals, refusal] } }
 }
 
 /**

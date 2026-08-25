@@ -62,8 +62,8 @@ export function debug(_request, ctx) {
  * @param {Ctx} ctx @returns {Array<Record<string, unknown>>}
  */
 function refused(ctx) {
-  return [...ctx.refusals].reverse().map((one, i) => ({
-    id: `r${ctx.refusals.length - i}`,
+  return [...ctx.refusals].reverse().map((one) => ({
+    id: `r${one.seq}`,
     status: 'failed',
     statusLabel: `${one.status} ${one.kind}`.trim(),
     summary: `${one.method} ${one.path} — ${one.message}`,

@@ -109,6 +109,10 @@ describe('the health line', () => {
     const data = handle(app, get('/panels/status')).data
     expect(data.status).toBe('failed')
     expect(String(data.headline)).toContain('quota exceeded')
+    // OUTRANKED IS NOT DELETED. The headline is the store's, so nothing was
+    // promoted out of the notes — and the test build's in-memory workspace is
+    // still said, in the one case a person most needs to hear it.
+    expect(String(data.detail)).toContain('lost on refresh')
   })
 })
 

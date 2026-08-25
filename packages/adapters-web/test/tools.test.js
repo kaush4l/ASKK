@@ -3,39 +3,13 @@ import { CAPABILITIES } from '@harness/kernel'
 import { fakeClock, testPorts } from '@harness/adapters-test'
 import { SPACE, available, facultyTools, loadAgents, spaceNamed, toolboxFor } from '@harness/agent'
 import { bootFresh, parseSkill } from '@harness/core'
-import { memorySegments } from './doubles.js'
+import { fakeWorkspace, memorySegments } from './doubles.js'
 import { CATALOGUE, toolRunners } from '../src/toolset.js'
 import { replaced } from '../src/edit.js'
 import { matches } from '../src/find.js'
 
 /** The tools `apps/web/public/agents/main/agent.md` names, read off that file rather than copied. */
 const AGENT_FILE = `${import.meta.dir}/../../../apps/web/public/agents/main/agent.md`
-
-/** A workspace held in a Map — enough to run the four file tools against, and no OPFS. @param {Record<string, string>} files */
-function fakeWorkspace(files) {
-  /** @param {string} at */
-  const under = (at) => Object.keys(files).filter((p) => (at === '.' ? !p.includes('/') : p.startsWith(`${at}/`) && !p.slice(at.length + 1).includes('/')))
-  return {
-    exec: async () => ({ code: 1, stdout: '', stderr: 'no shell here', truncated: false, ms: 0 }),
-    read: async (/** @type {string} */ path) => {
-      const text = files[path]
-      if (text === undefined) throw new Error(`no file at ${path}`)
-      return { text, truncated: false, lines: text.split('\n').length }
-    },
-    write: async (/** @type {string} */ path, /** @type {string} */ text) => void (files[path] = text),
-    list: async (/** @type {string} */ at) => {
-      const dirs = new Set(Object.keys(files)
-        .filter((p) => (at === '.' ? p.includes('/') : p.startsWith(`${at}/`) && p.slice(at.length + 1).includes('/')))
-        .map((p) => (at === '.' ? p : p.slice(at.length + 1)).split('/')[0] ?? ''))
-      return [
-        ...[...dirs].map((name) => ({ name, dir: true, size: 0 })),
-        ...under(at).map((p) => ({ name: p.slice(at === '.' ? 0 : at.length + 1), dir: false, size: (files[p] ?? '').length })),
-      ]
-    },
-    interrupt: () => 'nothing to interrupt',
-    durable: () => false,
-  }
-}
 
 /** One build with a real tool table over a fake workspace. @param {Record<string, string>} [files] */
 function build(files = {}) {
@@ -184,6 +158,19 @@ describe('find_files, without a shell to run find in', () => {
     const app = build({ 'src/deep/a.md': 'x', '.harness/proc/1': 'x' })
     expect((await call(app, 'find_files', { name: '*' })).output).toContain('src/deep/a.md')
     expect((await call(app, 'find_files', { name: '*' })).output).not.toContain('.harness')
+  })
+
+  test('the cap it announces is the cap it keeps, even when a folder carries it past in one step', async () => {
+    // ACROSS TWO FOLDERS on purpose: `walk` checks the count between entries, so
+    // a sub-directory arrives whole and the array crosses the cap in one push.
+    /** @type {Record<string, string>} */
+    const files = {}
+    for (let i = 0; i < 40; i++) files[`one/a${i}.md`] = files[`two/b${i}.md`] = 'x'
+    const ran = await call(build(files), 'find_files', { name: '*.md' })
+    const [headline = '', ...lines] = ran.output.split('\n')
+    expect(headline).toContain('capped at 60')
+    expect(lines).toHaveLength(60)
+    expect(headline.startsWith(`${lines.length} match(es)`)).toBe(true)
   })
 
   test('a search with no subject is refused rather than answered with the whole workspace', async () => {

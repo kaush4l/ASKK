@@ -79,14 +79,17 @@ import { Registry } from './registry.js'
  * ONE REQUEST THAT WAS REFUSED, as the debug view reads it. It is NOT a fact:
  * a read that failed changed nothing, and appending for it grew the log that
  * every pane is subscribed to, which woke every pane, which read again.
- * @typedef {{at: number, method: string, path: string, status: number, kind: string, message: string}} Refused
+ * `seq` is minted where the refusal is, and never recomputed: an id derived
+ * from POSITION in a ring that shifts names a different request after every
+ * new refusal, and a list keyed on it reconciles one row over another.
+ * @typedef {{seq: number, at: number, method: string, path: string, status: number, kind: string, message: string}} Refused
  */
 
 /**
  * @typedef {{
  *   registry: Registry, log: Log, ports: Ports, available: CapabilityId[],
  *   agent: AgentState, me: string, tools: Record<string, ToolRun>,
- *   pending: Incoming[], bootedAt: number, refusals: Refused[],
+ *   pending: Incoming[], bootedAt: number, refusals: Refused[], refusalSeq: number,
  *   errands: Set<string>, chores: Effect[], roster: Roster, settings: SettingsFace,
  * }} App
  */
@@ -126,6 +129,9 @@ export function createApp(ports, available, opts) {
     // must say what it would not answer (I16) without growing the thing the
     // panes watch, so this is beside the log rather than in it.
     refusals: [],
+    // The number the next refusal is stamped with. It only ever climbs, so a
+    // row keeps the id it was given for as long as the ring holds it.
+    refusalSeq: 0,
     // WORK A PERSON'S PRESS PRODUCED. A terminal command and a file write have
     // no reply behind them and no turn to belong to, so they cannot ride the
     // fact queue — `step` would drop them. The driver drains this first.

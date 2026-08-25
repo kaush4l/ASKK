@@ -29,7 +29,7 @@ import { answered, nameArg } from './runner.js'
 /** @typedef {{name: string, description: string, body: string}} Skill */
 
 /** I15, in the words the tool says when there is nothing to say. Never an empty list dressed as a result. */
-export const NO_SKILLS = 'No skills are installed in this browser.'
+const NO_SKILLS = 'No skills are installed in this browser.'
 
 /** The descriptors. Both say plainly that they run nothing, because a model that thinks `read_skill` might act will not spend a round on it. */
 export const SKILL_DESCRIPTORS = [
@@ -98,7 +98,7 @@ export function skillTools(skills) {
 }
 
 /** The catalogue: one line per skill, cheap enough to hold always. @param {readonly Skill[]} skills */
-export function catalogue(skills) {
+function catalogue(skills) {
   if (skills.length === 0) return NO_SKILLS
   const lines = skills.map((s) => `${s.name}: ${s.description}`).join('\n')
   return `INSTALLED SKILLS\n\n${lines}\n\nRead one with read_skill({"name": "<skill>"}) when it applies to what you are doing, then follow it.`
@@ -110,7 +110,7 @@ export function catalogue(skills) {
  * with a result it can read.
  * @param {readonly Skill[]} skills @param {string} asked
  */
-export function instruction(skills, asked) {
+function instruction(skills, asked) {
   if (asked === '') return { ok: false, output: 'read_skill needs a name. Call it as read_skill({"name": "<skill>"}).' }
   const found = skills.find((s) => s.name === asked)
   if (found) return { ok: true, output: `SKILL ${found.name} — ${found.description}\n\n${found.body}` }

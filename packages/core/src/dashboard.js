@@ -160,9 +160,11 @@ function health(ctx) {
     headline: failing
       ? `Storage has failed ${plural(activity.storeFailures, 'time')} — the most recent was ${activity.lastStoreFailure}.`
       : notes[0] ?? 'Everything this build offers is working.',
-    detail: notes.length <= 1
-      ? 'Read off the log and the capability list this build started with.'
-      : notes.slice(1).join(' '),
+    // WHEN STORAGE IS FAILING, THE HEADLINE IS THE STORE'S AND NO NOTE WAS
+    // PROMOTED — so none may be skipped either, or the sentence that this
+    // workspace is in memory disappears in the one case it matters most.
+    detail: (failing ? notes : notes.slice(1)).join(' ')
+      || 'Read off the log and the capability list this build started with.',
   }
 }
 

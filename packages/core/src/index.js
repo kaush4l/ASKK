@@ -36,9 +36,9 @@ export { settings, settingsManifest } from './settings.js'
 export { space, spaceManifest } from './space.js'
 export { TERMINAL, terminal, terminalManifest } from './terminal.js'
 export { tools, toolsManifest } from './tools.js'
-export { LOCAL_TOOLS, localTools } from './locals.js'
-export { NO_SKILLS, SKILL_DESCRIPTORS, catalogue, instruction, parseSkill, skillTools } from './skills.js'
-export { answered, nameArg } from './runner.js'
+export { LOCAL_TOOLS } from './locals.js'
+export { SKILL_DESCRIPTORS, parseSkill } from './skills.js'
+export { answered } from './runner.js'
 
 /** @typedef {import('./app.js').App} App */
 /** @typedef {import('./ctx.js').Ctx} Ctx */

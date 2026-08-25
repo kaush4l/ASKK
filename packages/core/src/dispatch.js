@@ -68,7 +68,9 @@ export function handle(app, request) {
  * @param {App} app @param {Request} request @param {Response} response
  */
 function note(app, request, response) {
+  app.refusalSeq += 1
   app.refusals.push({
+    seq: app.refusalSeq,
     at: app.ports.clock.now(),
     method: request.method,
     path: request.path,

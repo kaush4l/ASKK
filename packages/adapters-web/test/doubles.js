@@ -71,3 +71,30 @@ function sseStream(/** @type {string[]} */ frames) {
     },
   })
 }
+
+/** A workspace held in a Map — enough to run the four file tools against, and no OPFS. @param {Record<string, string>} files */
+export function fakeWorkspace(files) {
+  /** @param {string} at */
+  const under = (at) => Object.keys(files).filter((p) => (at === '.' ? !p.includes('/') : p.startsWith(`${at}/`) && !p.slice(at.length + 1).includes('/')))
+  return {
+    exec: async () => ({ code: 1, stdout: '', stderr: 'no shell here', truncated: false, ms: 0 }),
+    read: async (/** @type {string} */ path) => {
+      const text = files[path]
+      if (text === undefined) throw new Error(`no file at ${path}`)
+      return { text, truncated: false, lines: text.split('\n').length }
+    },
+    write: async (/** @type {string} */ path, /** @type {string} */ text) => void (files[path] = text),
+    list: async (/** @type {string} */ at) => {
+      const dirs = new Set(Object.keys(files)
+        .filter((p) => (at === '.' ? p.includes('/') : p.startsWith(`${at}/`) && p.slice(at.length + 1).includes('/')))
+        .map((p) => (at === '.' ? p : p.slice(at.length + 1)).split('/')[0] ?? ''))
+      return [
+        ...[...dirs].map((name) => ({ name, dir: true, size: 0 })),
+        ...under(at).map((p) => ({ name: p.slice(at === '.' ? 0 : at.length + 1), dir: false, size: (files[p] ?? '').length })),
+      ]
+    },
+    interrupt: () => 'nothing to interrupt',
+    durable: () => false,
+  }
+}
+
