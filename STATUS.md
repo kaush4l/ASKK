@@ -20,10 +20,10 @@ parts the rewrite exposes as wrong.
 | LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
 | RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md`, 360 lines | ✅ landed |
 | — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
-| A · PAPER | `packages/context` | 5 ✅ 14 blocks, 48 request-body goldens · 6 🔄 the goldens become the real bytes |
-| B · LOOP | `packages/agent` | 5 ✅ the paper per call, faculties, retry, resume · 6 🔄 one prompt vocabulary, and Workers |
-| C · SPINE | `packages/core`, `packages/adapters-web` | 5 ✅ every route, search, attachments, spill · 6 🔄 the dashboard, and the tools the agent file names |
-| D · FACE | `apps/web` | 5 ✅ **the page comes up**, and a smoke gate proves it · 6 🔄 the screen a person would choose to use |
+| A · PAPER | `packages/context` | 6 ✅ one vocabulary, real goldens, a measured cache head · 7 🔄 the wire, every modality |
+| B · LOOP | `packages/agent` | 6 ✅ one prompt vocabulary, Workers, the retry ceiling · 7 🔄 the stages walk, and the critic gates |
+| C · SPINE | `packages/core`, `packages/adapters-web` | 6 ✅ the dashboard, seven tools that run · 7 🔄 delegation, composed |
+| D · FACE | `apps/web` | 6 ✅ every destination wired, the bridge deleted · 7 🔄 the contrast ratchet, and motion |
 
 ## What exists
 
@@ -125,6 +125,18 @@ can tell its own error from a neighbour's half-saved file.
   serialise `content` as `""` and never `null`.
 - **Dependencies below the UI stay at zero.** Refused by name: zod, Tailwind,
   framer-motion, charting, marked + dompurify, any public CORS proxy.
+
+## Still Rust, and why it is still here
+
+`crates/` still holds the 67,476-line Rust tree. It is NOT dead weight kept out
+of sentiment: `docs/PORT-MAP.md` is a 144-row work order whose every row cites a
+Rust file, and roughly half of them are unported. Deleting the source of the work
+order while the work is unfinished destroys the plan and preserves nothing that
+the `pre-rewrite-js` tag does not already hold.
+
+**It goes when the port map does** — when every row is either landed or recorded
+as refused, `crates/` and the Rust-era documents move out in one commit and the
+tag is the only copy. Not before, and not one file at a time.
 
 ## SHIPPED — 2026-08-25
 
