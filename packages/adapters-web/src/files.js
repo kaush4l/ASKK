@@ -16,10 +16,12 @@
 
 import { StoreError } from '@harness/kernel'
 import { BRIEF_KEYS, briefPath, loadAgents, loadBriefs } from '@harness/agent'
+import { parseSkill } from '@harness/core'
 
 import { fetchText } from './assets.js'
 
 /** @typedef {import('@harness/core').Roster} Roster */
+/** @typedef {import('@harness/core').Skill} Skill */
 
 /**
  * Every shipped agent, read through the manifest.
@@ -29,7 +31,7 @@ import { fetchText } from './assets.js'
 export async function fetchRoster(basePath) {
   const manifest = await fetchText(basePath, 'agents/index.json')
   if (manifest instanceof StoreError) return oneRefusal('agents/index.json', manifest.message)
-  const names = namesIn(manifest.text)
+  const names = listIn(manifest.text, 'agents')
   if (typeof names === 'string') return oneRefusal('agents/index.json', names)
   /** @type {Array<{path: string, text: string}>} */
   const files = []
@@ -68,17 +70,49 @@ export async function fetchBriefs(basePath) {
   return { briefs: read.briefs, refusals }
 }
 
-/** @param {string} raw @returns {string[]|string} */
-function namesIn(raw) {
+/**
+ * Every installed skill, through the same manifest convention the agents use —
+ * `skills/index.json` IS the listing, because a static host cannot list a
+ * directory. A file that will not parse costs that one skill and never the
+ * rest, and the refusal names it: a skill silently missing is an agent told to
+ * check its house rules against nothing.
+ * @param {string} basePath
+ * @returns {Promise<{skills: Skill[], refusals: import('@harness/agent').Refusal[]}>}
+ */
+export async function fetchSkills(basePath) {
+  const manifest = await fetchText(basePath, 'skills/index.json')
+  if (manifest instanceof StoreError) return { skills: [], refusals: [{ path: 'skills/index.json', key: '', message: manifest.message }] }
+  const names = listIn(manifest.text, 'skills')
+  if (typeof names === 'string') return { skills: [], refusals: [{ path: 'skills/index.json', key: '', message: names }] }
+  /** @type {Skill[]} */
+  const skills = []
+  /** @type {import('@harness/agent').Refusal[]} */
+  const refusals = []
+  for (const name of names) {
+    const path = `skills/${name}/skill.md`
+    const file = await fetchText(basePath, path)
+    if (file instanceof StoreError) {
+      refusals.push({ path, key: 'name', message: `${path} is named in skills/index.json and did not arrive: ${file.message}` })
+      continue
+    }
+    const read = parseSkill(name, file.text)
+    if ('problem' in read) refusals.push({ path, key: 'description', message: read.problem })
+    else skills.push(read)
+  }
+  return { skills, refusals }
+}
+
+/** The named array out of a manifest, or the sentence saying why there isn't one. @param {string} raw @param {string} key @returns {string[]|string} */
+function listIn(raw, key) {
   /** @type {unknown} */
   let said
   try {
     said = JSON.parse(raw)
   } catch {
-    return 'agents/index.json is not readable JSON, so this build has no roster'
+    return `${key}/index.json is not readable JSON, so this build has no ${key}`
   }
-  const names = /** @type {{agents?: unknown}} */ (said ?? {}).agents
-  if (!Array.isArray(names)) return 'agents/index.json has no `agents` array, so nothing names which folders to fetch'
+  const names = /** @type {Record<string, unknown>} */ (said ?? {})[key]
+  if (!Array.isArray(names)) return `${key}/index.json has no \`${key}\` array, so nothing names which folders to fetch`
   return names.filter((n) => typeof n === 'string')
 }
 

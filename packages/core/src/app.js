@@ -76,10 +76,17 @@ import { Registry } from './registry.js'
  */
 
 /**
+ * ONE REQUEST THAT WAS REFUSED, as the debug view reads it. It is NOT a fact:
+ * a read that failed changed nothing, and appending for it grew the log that
+ * every pane is subscribed to, which woke every pane, which read again.
+ * @typedef {{at: number, method: string, path: string, status: number, kind: string, message: string}} Refused
+ */
+
+/**
  * @typedef {{
  *   registry: Registry, log: Log, ports: Ports, available: CapabilityId[],
  *   agent: AgentState, me: string, tools: Record<string, ToolRun>,
- *   pending: Incoming[], bootedAt: number,
+ *   pending: Incoming[], bootedAt: number, refusals: Refused[],
  *   errands: Set<string>, chores: Effect[], roster: Roster, settings: SettingsFace,
  * }} App
  */
@@ -115,6 +122,10 @@ export function createApp(ports, available, opts) {
     // taken off before the await. Without it the pane told the person their
     // page had been reloaded for the whole duration of the call.
     errands: new Set(),
+    // EVERY REQUEST THIS PAGE LOAD REFUSED, bounded and in memory. The seam
+    // must say what it would not answer (I16) without growing the thing the
+    // panes watch, so this is beside the log rather than in it.
+    refusals: [],
     // WORK A PERSON'S PRESS PRODUCED. A terminal command and a file write have
     // no reply behind them and no turn to belong to, so they cannot ride the
     // fact queue — `step` would drop them. The driver drains this first.

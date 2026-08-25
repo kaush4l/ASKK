@@ -31,6 +31,8 @@ import { bootLog, freshLog } from './log/index.js'
 import { processes, processesManifest } from './processes.js'
 import { projections } from './reducers.js'
 import { ARTIFACT_TOOLS, artifactTools } from './shelf.js'
+import { localTools } from './locals.js'
+import { skillTools } from './skills.js'
 import { settings, settingsManifest } from './settings.js'
 import { space, spaceManifest } from './space.js'
 import { terminal, terminalManifest } from './terminal.js'
@@ -68,6 +70,7 @@ const MODULES = [
  *   roster?: import('./app.js').Roster,
  *   briefs?: Record<string, string>,
  *   settings?: import('./app.js').SettingsFace,
+ *   skills?: readonly import('./skills.js').Skill[],
  * }} Assembly
  */
 
@@ -80,7 +83,7 @@ const MODULES = [
 export async function boot(parts) {
   const me = parts.me ?? ENTRY_AGENT
   const log = await bootLog(parts.segments, { clock: parts.ports.clock, reducers: projections(me), stream: me })
-  return installed(createApp(parts.ports, parts.available, assembled(parts, log, me)))
+  return installed(createApp(parts.ports, parts.available, assembled(parts, log, me)), parts)
 }
 
 /**
@@ -93,7 +96,7 @@ export async function boot(parts) {
 export function bootFresh(parts) {
   const me = parts.me ?? ENTRY_AGENT
   const log = freshLog(parts.segments, { clock: parts.ports.clock, reducers: projections(me), stream: me })
-  return installed(createApp(parts.ports, parts.available, assembled(parts, log, me)))
+  return installed(createApp(parts.ports, parts.available, assembled(parts, log, me)), parts)
 }
 
 /**
@@ -158,8 +161,16 @@ function withAuthored(shipped, log) {
   return { specs: [...byName.values()], refusals: [...shipped.refusals, ...read.refusals], paths }
 }
 
-/** @param {App} app @returns {App} */
-function installed(app) {
+/**
+ * The modules on the registry, and the runners that need the APP ITSELF behind
+ * them. `localTools` closes over the App because the roster it reads changes
+ * during a session — an agent authored in this browser installs at the turn
+ * boundary — and a snapshot taken here would report a fleet one write out of
+ * date. A composition root's own runner still wins: it named the tool last.
+ * @param {App} app @param {Assembly} parts @returns {App}
+ */
+function installed(app, parts) {
   for (const module of MODULES) install(app, module.manifest, module.handler)
+  app.tools = { ...localTools(app), ...skillTools(parts.skills ?? []), ...app.tools }
   return app
 }

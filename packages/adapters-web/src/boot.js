@@ -18,7 +18,7 @@ import { adoptSpec, newAgentState } from '@harness/agent'
 import { boot } from '@harness/core'
 
 import { noAgents, noWorkspace } from './absent.js'
-import { fetchRoster, fetchBriefs } from './files.js'
+import { fetchRoster, fetchBriefs, fetchSkills } from './files.js'
 import { CATALOGUE, toolRunners } from './toolset.js'
 import { SEARCH_HOSTS } from './search.js'
 import { settingsFace } from './face.js'
@@ -63,17 +63,13 @@ export async function bootBrowser(opts = {}) {
   const net = addressBook(endpoint)
   useBroker({ endpoint, kv, key: PROFILE_KEY, net })
   const { ports, available } = await realPorts(db, endpoint, net)
-  const roster = await fetchRoster(basePath)
-  const briefed = await fetchBriefs(basePath)
   const app = await boot({
     ports,
     available,
     segments: idbSegments(db),
     me,
     tools: toolRunners(ports, { keyFor: endpoint.apiKeyFor }),
-    agent: adopted(roster, me, available, endpoint),
-    briefs: briefed.briefs,
-    roster: { ...roster, refusals: [...roster.refusals, ...briefed.refusals] },
+    ...await authored(basePath, me, available, endpoint),
     settings: settingsFace(endpoint, net, {
       persist: (json) => kv.put(PROFILE_KEY, json),
       onFailure: (message) => storeFailed(built, PROFILE_KEY, message, ports.clock.now()),
@@ -82,6 +78,31 @@ export async function bootBrowser(opts = {}) {
   built = app
   if (catalogue instanceof StoreError) storeFailed(app, catalogue.key, catalogue.message, ports.clock.now())
   return app
+}
+
+/**
+ * EVERYTHING THIS BUILD READ OFF DISK: the agent files, the stage briefs and
+ * the skills. All three are FETCHED and not compiled in, because a person may
+ * author one in this browser and because a file edited and redeployed must
+ * reach a running page on a refresh rather than on a rebuild.
+ *
+ * A skill that would not load is a refusal beside the agent files, because it
+ * is the same failure — the manifest named a folder and the folder did not
+ * answer — and the roster pane is where a person meets both.
+ * @param {string} basePath @param {string} me
+ * @param {import('@harness/kernel').CapabilityId[]} available
+ * @param {ReturnType<typeof makeEndpoint>} endpoint
+ */
+async function authored(basePath, me, available, endpoint) {
+  const roster = await fetchRoster(basePath)
+  const briefed = await fetchBriefs(basePath)
+  const skilled = await fetchSkills(basePath)
+  return {
+    agent: adopted(roster, me, available, endpoint),
+    briefs: briefed.briefs,
+    skills: skilled.skills,
+    roster: { ...roster, refusals: [...roster.refusals, ...briefed.refusals, ...skilled.refusals] },
+  }
 }
 
 /**

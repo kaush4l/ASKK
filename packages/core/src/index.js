@@ -9,7 +9,7 @@
 export { createApp, install } from './app.js'
 export { Registry } from './registry.js'
 export { contextFor } from './ctx.js'
-export { handle } from './dispatch.js'
+export { handle, REFUSALS_KEPT } from './dispatch.js'
 export { ModuleError, LogError } from './errors.js'
 export { freshLog, bootLog } from './log/index.js'
 export { SEGMENT_SIZE, SNAPSHOT_EVERY, SNAPSHOTS_KEPT, segStream, snapStream, quarantineStream } from './log/index.js'
@@ -36,6 +36,9 @@ export { settings, settingsManifest } from './settings.js'
 export { space, spaceManifest } from './space.js'
 export { TERMINAL, terminal, terminalManifest } from './terminal.js'
 export { tools, toolsManifest } from './tools.js'
+export { LOCAL_TOOLS, localTools } from './locals.js'
+export { NO_SKILLS, SKILL_DESCRIPTORS, catalogue, instruction, parseSkill, skillTools } from './skills.js'
+export { answered, nameArg } from './runner.js'
 
 /** @typedef {import('./app.js').App} App */
 /** @typedef {import('./ctx.js').Ctx} Ctx */
@@ -49,6 +52,7 @@ export { tools, toolsManifest } from './tools.js'
 /** @typedef {import('./log/index.js').SegmentStore} SegmentStore */
 /** @typedef {import('./log/index.js').Quarantined} Quarantined */
 /** @typedef {import('./app.js').Incoming} Incoming */
+/** @typedef {import('./app.js').Refused} Refused */
 /** @typedef {import('./app.js').ToolRun} ToolRun */
 /** @typedef {import('./boot.js').Assembly} Assembly */
 /** @typedef {import('./deadline.js').Driving} Driving */
@@ -62,3 +66,4 @@ export { tools, toolsManifest } from './tools.js'
 /** @typedef {import('./shelf.js').Kept} Kept */
 /** @typedef {import('./panels.js').Activity} Activity */
 /** @typedef {import('./panels.js').Traced} Traced */
+/** @typedef {import('./skills.js').Skill} Skill */

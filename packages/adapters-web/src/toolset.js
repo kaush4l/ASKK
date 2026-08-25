@@ -15,8 +15,10 @@
  */
 
 import { arg, tool } from '@harness/agent'
-import { ARTIFACT_TOOLS } from '@harness/core'
+import { ARTIFACT_TOOLS, LOCAL_TOOLS, SKILL_DESCRIPTORS, answered } from '@harness/core'
 
+import { runEdit } from './edit.js'
+import { runFind } from './find.js'
 import { searchTool } from './search.js'
 
 /** @typedef {import('@harness/kernel').Ports} Ports */
@@ -53,12 +55,37 @@ export const CATALOGUE = /** @type {Tool[]} */ ([
     needs: 'workspace',
   }),
   tool({
+    name: 'edit_file',
+    description: 'change one part of a file in place: name the exact text to find and the text to put there. It refuses unless that text is in the file exactly once',
+    args: [
+      arg('path', 'string', 'the file to change'),
+      arg('find', 'string', 'the exact text to replace, whitespace included'),
+      arg('replace', 'string', 'what to put in its place'),
+    ],
+    mutates: true,
+    needs: 'workspace',
+  }),
+  tool({
+    name: 'find_files',
+    description: 'find files in the workspace by name, by a line they contain, or by both',
+    args: [
+      arg('name', 'string', 'a name pattern, where * stands for any run of characters', { required: false }),
+      arg('text', 'string', 'text one of the file\'s lines must contain', { required: false }),
+      arg('path', 'string', 'the folder to search under; the whole workspace when absent', { required: false }),
+    ],
+    needs: 'workspace',
+  }),
+  tool({
     name: 'list_files',
     description: 'list one folder of the workspace',
     args: [arg('path', 'string', 'the folder to list', { required: false })],
     needs: 'workspace',
   }),
   ...ARTIFACT_TOOLS,
+  // Core's own three and its two skill tools: the descriptor belongs beside the
+  // runner, and both of those live there because the App holds what they read.
+  ...LOCAL_TOOLS,
+  ...SKILL_DESCRIPTORS,
 ])
 
 /**
@@ -88,6 +115,8 @@ export function toolRunners(ports, broker) {
       await ports.workspace.write(path, String(args.contents ?? ''))
       return { ok: true, output: `wrote ${path}` }
     }),
+    edit_file: answered('edit_file', (args) => runEdit(ports.workspace, args)),
+    find_files: answered('find_files', (args) => runFind(ports.workspace, args)),
     list_files: answered('list_files', async (args) => {
       const at = String(args.path ?? '.')
       const entries = await ports.workspace.list(at)
@@ -96,31 +125,5 @@ export function toolRunners(ports, broker) {
       // listing failed" opened nothing and re-listed everything.
       return { ok: true, output: entries.map((e) => `${e.name}${e.dir ? '/' : ''}`).join('\n') }
     }),
-  }
-}
-
-/**
- * One runner, with its arguments read and its failures said. The JSON parse
- * lives here so no runner repeats it, and a call whose arguments will not parse
- * is a RESULT the model can act on rather than a throw it never sees.
- * @param {string} name
- * @param {(args: Record<string, unknown>, opts: {signal: AbortSignal}) => Promise<{ok: boolean, output: string}>} run
- * @returns {ToolRun}
- */
-function answered(name, run) {
-  return async (raw, opts) => {
-    /** @type {unknown} */
-    let said
-    try {
-      said = JSON.parse(raw === '' ? '{}' : raw)
-    } catch {
-      return { ok: false, output: `${name} needs JSON arguments, and "${raw.slice(0, 80)}" is not JSON.` }
-    }
-    if (!said || typeof said !== 'object') return { ok: false, output: `${name} needs a JSON object of arguments.` }
-    try {
-      return await run(/** @type {Record<string, unknown>} */ (said), opts)
-    } catch (cause) {
-      return { ok: false, output: cause instanceof Error ? cause.message : String(cause) }
-    }
   }
 }

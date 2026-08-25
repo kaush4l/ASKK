@@ -36,6 +36,7 @@ import { driving } from './drive.js'
 
 /**
  * @typedef {{
+ *   refusals: readonly import('./app.js').Refused[],
  *   grant: CapabilityGrant,
  *   clock: Timestamp|null,
  *   emit: ((fact: Fact) => void)|null,
@@ -125,6 +126,10 @@ function reads(app) {
     tools: Object.keys(app.tools),
     roster: app.roster,
     settings: app.settings,
+    // WHAT THE SEAM WOULD NOT ANSWER. Not a projection, because a failed read
+    // changed nothing and so recorded nothing (`dispatch.js`) — the debug view
+    // is where a person meets it, and this is the only way it gets there.
+    refusals: app.refusals,
   }
 }
 

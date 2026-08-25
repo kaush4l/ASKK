@@ -115,15 +115,18 @@ describe('dispatch', () => {
     }))
   })
 
-  test('a failure and a write are facts; a successful GET is not', () => {
+  test('a write is a fact; a GET is not, and a GET THAT FAILED is not either', () => {
     const app = appWith(['chat', [{ method: 'GET', path: '/chat' }, { method: 'POST', path: '/chat' }]])
     handle(app, { method: 'GET', path: '/chat', headers: {}, body: {} })
     expect(ofType(app, 'request_handled')).toHaveLength(0)
     handle(app, { method: 'POST', path: '/chat', headers: {}, body: {} })
     handle(app, { method: 'GET', path: '/nowhere', headers: {}, body: {} })
+    // THE 404 IS NOT IN HERE. Growth is the only signal the interface gets that
+    // something happened, so a failed read that appended woke every pane, and
+    // every pane read again — a wrong address spun the page for as long as it
+    // was wrong.
     expect(ofType(app, 'request_handled').map((e) => e.fact)).toEqual([
       { type: 'request_handled', path: '/chat', status: 200 },
-      { type: 'request_handled', path: '/nowhere', status: 404 },
     ])
   })
 

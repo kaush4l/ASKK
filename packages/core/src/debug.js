@@ -43,12 +43,31 @@ export function debug(_request, ctx) {
   const activity = /** @type {Activity} */ (ctx.project(ACTIVITY))
   return ok('debug', {
     groups: grouped(traced),
+    refusals: refused(ctx),
+    refusalsLabel: ctx.refusals.length === 0
+      ? 'Nothing has been refused since this page loaded.'
+      : `${plural(ctx.refusals.length, 'request')} refused since this page loaded.`,
     factsLabel: reach(traced.length),
     countsLabel: `${plural(activity.modelCalls, 'model call')} and ${plural(activity.toolCalls, 'tool call')}, ${plural(activity.toolFailures, 'failure')} among them.`,
     storeLabel: activity.storeFailures === 0
       ? 'Storage has not failed in this session.'
       : `Storage failed ${plural(activity.storeFailures, 'time')}; the last was ${activity.lastStoreFailure}.`,
   })
+}
+
+/**
+ * EVERY REFUSED REQUEST, ALREADY WORDED, NEWEST FIRST. A failed read is not a
+ * fact — recording one grew the log the panes are subscribed to, so a wrong
+ * address spun the page (`dispatch.js`) — and this is the one place it surfaces.
+ * @param {Ctx} ctx @returns {Array<Record<string, unknown>>}
+ */
+function refused(ctx) {
+  return [...ctx.refusals].reverse().map((one, i) => ({
+    id: `r${ctx.refusals.length - i}`,
+    status: 'failed',
+    statusLabel: `${one.status} ${one.kind}`.trim(),
+    summary: `${one.method} ${one.path} — ${one.message}`,
+  }))
 }
 
 /**

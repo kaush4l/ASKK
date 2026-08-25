@@ -79,7 +79,9 @@ describe('a turn that ended without an answer', () => {
     ends(app, ENDED, ANSWERED, 1)
     const tiles = /** @type {Array<Record<string, unknown>>} */ (handle(app, get('/tiles')).data.tiles)
     const unanswered = tiles.find((t) => t.id === 'unanswered')
-    expect(unanswered?.value).toBe(1)
+    // The value arrives WORDED, because the pane places facts and words none of
+    // them (I5) — the tile carries the sentence, not a number and a formatter.
+    expect(unanswered?.value).toBe('1 turn')
     expect(unanswered?.note).toBe('1 turn ended without an answer.')
   })
 

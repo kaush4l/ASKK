@@ -40,12 +40,19 @@ export function handle(app, request) {
         repair: 'Check the address, or install a module that serves it.',
       })
 
-  // A request that CHANGED something, or failed, is a fact. A successful GET is
-  // not: it is somebody looking at a projection, and recording that records
-  // that someone looked. Measured in the predecessor — four panes polling
-  // between 400ms and 2s appended thousands of these an hour, each one
-  // persisted, so the log grew without anything happening.
-  if (request.method !== 'GET' || response.status >= 400) {
+  // ONLY A REQUEST THAT CHANGED SOMETHING IS A FACT. A GET is somebody looking
+  // at a projection, and recording that records that someone looked. Measured
+  // in the predecessor — four panes polling between 400ms and 2s appended
+  // thousands of these an hour, each one persisted, so the log grew without
+  // anything happening.
+  //
+  // A GET THAT FAILED IS THE SAME GET. It changed nothing, and appending for it
+  // was worse than appending for the success: growth is what wakes every pane
+  // subscribed to the log, each pane re-reads, and a 404 a pane polls spins the
+  // page for as long as the address is wrong. The failure is not lost — `note`
+  // below puts it where a person looks for it, which is the debug view.
+  if (response.status >= 400) note(app, request, response)
+  if (request.method !== 'GET') {
     app.log.append(
       { type: 'request_handled', path: request.path, status: response.status },
       app.ports.clock.now(),
@@ -53,6 +60,27 @@ export function handle(app, request) {
   }
   return response
 }
+
+/**
+ * A FAILED REQUEST, KEPT WHERE IT CAN BE READ AND NOWHERE THE PANES WATCH.
+ * Bounded for the same reason the trace is (I20) and newest last, so the debug
+ * view can render the tail of it without a fold and without a store.
+ * @param {App} app @param {Request} request @param {Response} response
+ */
+function note(app, request, response) {
+  app.refusals.push({
+    at: app.ports.clock.now(),
+    method: request.method,
+    path: request.path,
+    status: response.status,
+    kind: String(response.data.kind ?? ''),
+    message: String(response.data.message ?? ''),
+  })
+  if (app.refusals.length > REFUSALS_KEPT) app.refusals.splice(0, app.refusals.length - REFUSALS_KEPT)
+}
+
+/** How many failed requests the debug view can reach back through. A person debugging reads the last few; the rest is noise a browser would still be holding. */
+export const REFUSALS_KEPT = 50
 
 /**
  * Run one handler and GUARANTEE a projection. The Rust handler returned a
