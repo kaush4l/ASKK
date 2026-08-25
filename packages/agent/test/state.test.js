@@ -1,10 +1,21 @@
 import { expect, test, describe } from 'bun:test'
 import { StoreError } from '@harness/kernel'
-import { newAgentState, serializeAgentState, restoreAgentState } from '@harness/agent'
+import { newAgentState, serializeAgentState, restoreAgentState, step } from '@harness/agent'
 
 /** A stored record with one field edited, so a test says what it changed and nothing else. */
 function stored(/** @type {Record<string, unknown>} */ edits) {
   return JSON.stringify({ ...newAgentState(), ...edits })
+}
+
+/** A COMPLETE stored tool: every member the loop reads, because a half-written one is what these tests are about. */
+const EXEC = {
+  name: 'exec', description: 'Run a command.', mutates: false, evidence: true,
+  args: [{ name: 'command', type: 'string', required: true, description: 'the command' }],
+}
+
+const WRITE = {
+  name: 'write_file', description: 'Write a file.', mutates: true, evidence: false,
+  args: [{ name: 'path', type: 'string', required: true, description: 'the path' }],
 }
 
 describe('agent state', () => {
@@ -99,18 +110,57 @@ describe('agent state', () => {
 
   test('a list is checked through its elements — the loop reads a tool by name and would find none', () => {
     expect(() => restoreAgentState(stored({ toolbox: [1, 2, 3] }))).toThrow(/"toolbox\[0\]" as number/)
-    expect(() => restoreAgentState(stored({ toolbox: [{ name: 'exec' }, { rank: 2 }] })))
+    expect(() => restoreAgentState(stored({ toolbox: [EXEC, { rank: 2 }] })))
       .toThrow(/"toolbox\[1\]\.name" as undefined/)
     expect(() => restoreAgentState(stored({ stages: ['plan', 3] }))).toThrow(/"stages\[1\]" as number/)
     expect(() => restoreAgentState(stored({ senses: { space: 'not-an-array' } })))
       .toThrow(/"senses\.space" as string/)
   })
 
+  test('a tool with no argument schema is refused at its args, because usage() would state "<undefined>" to the model', () => {
+    const { args: _none, ...schemaless } = EXEC
+    expect(() => restoreAgentState(stored({ toolbox: [schemaless] })))
+      .toThrow('This agent state holds "toolbox[0].args" as undefined, and this build reads it as array.')
+    const typeless = { ...EXEC, args: [{ name: 'command', required: true, description: 'the command' }] }
+    expect(() => restoreAgentState(stored({ toolbox: [typeless] })))
+      .toThrow(/"toolbox\[0\]\.args\[0\]\.type" as undefined/)
+    try {
+      restoreAgentState(stored({ toolbox: [schemaless] }))
+    } catch (err) {
+      expect(err).toBeInstanceOf(StoreError)
+      expect(/** @type {StoreError} */ (err).key).toBe('toolbox[0].args')
+    }
+  })
+
+  // The loud half and the silent half of the same hole: a name is missing and
+  // nothing works, a `mutates` is missing and the fold reads it as `false`.
+  test('a tool that does not declare its mutation is refused, so no restored write leaves green standing', () => {
+    const { mutates: _undeclared, ...silent } = WRITE
+    expect(() => restoreAgentState(stored({ toolbox: [silent] })))
+      .toThrow(/"toolbox\[0\]\.mutates" as undefined/)
+
+    const live = restoreAgentState(stored({ toolbox: [WRITE], green: true }))
+    const at = 1_700_000_000_000
+    const turnId = 'turn-1'
+    const asked = step(live, { at, turnId, fact: { type: 'user_message', text: 'fix it', agent: 'main', from: 'person' } })
+    const wrote = step(asked.state, {
+      at, turnId,
+      fact: { type: 'model_replied', agent: 'main', text: '', reasoning: '' },
+      reply: { calls: [{ id: 'c1', tool: 'write_file', args: '{"path":"a.md"}' }], finish: 'tool_calls' },
+    })
+    const landed = step(wrote.state, {
+      at, turnId, callId: 'c1',
+      fact: { type: 'tool_invoked', agent: 'main', tool: 'write_file', args: '{"path":"a.md"}', ok: true, output: 'written' },
+    })
+    expect(landed.state.green).toBe(false)
+    expect(landed.state.mutated).toBe(true)
+  })
+
   test('a filled compound still loads, so the depth check refuses shapes and not content', () => {
     const live = restoreAgentState(stored({
       standing: { goal: { outcome: 'ship', check: 'bun run gate', doneWhen: 'green' }, checking: true, met: null },
       space: { name: 'work', facts: [['a', 'b']], notes: ['n'] },
-      toolbox: [{ name: 'exec' }],
+      toolbox: [EXEC],
       senses: { space: [{ text: 'a' }] },
     }))
     expect(live.standing.goal.doneWhen).toBe('green')

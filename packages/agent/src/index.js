@@ -7,6 +7,13 @@
  * the sentences it refuses a call with, native provider calls correlated by id
  * end to end, and the declared fallback for a model with no call API. The spec
  * reader and the paper follow.
+ *
+ * `step` is the only writer of an AgentState, so the sibling functions that
+ * RETURN one — `land`, `openBatch`, `idle`, `endTurn`, `boundary` — are not
+ * named here. They stay exported from their own modules for the loop and its
+ * tests; advertising them to the rest of the build would hand a caller exactly
+ * the out-of-band write the reducer exists to make impossible, which is how the
+ * Rust cleared `agent.task` from two files that were not the loop.
  * @module
  */
 
@@ -20,13 +27,13 @@ export { step } from './step.js'
 export { arg, tool, readArgs, usage } from './tools.js'
 export { NOTHING_RAN, check, named, usages } from './toolbox.js'
 export { NATIVE, SCANNED, scanCalls, swallowedClose } from './calls.js'
-export { CALL_REFUSED, complete, land, lines, openBatch, saysNothing } from './round.js'
-export { FINISH_REASONS, DROPPED, expects, refusal, dropped, idle } from './turn.js'
+export { CALL_REFUSED } from './round.js'
+export { FINISH_REASONS, DROPPED, dropped } from './turn.js'
 export {
   ENDED, ANSWERED, MALFORMED, ROUND_CEILING, TRUNCATED, REFUSED, FAILED, NO_CALLS, RESPOND,
-  endingFor, endTurn, endedWhy, endedRounds,
+  endingFor, endedWhy, endedRounds,
 } from './ending.js'
-export { STOP_REQUESTED, STOPPED, isStopRequest, boundary } from './stop.js'
+export { STOP_REQUESTED, STOPPED, isStopRequest } from './stop.js'
 export { STEERED, carried } from './steer.js'
 
 /** @typedef {import('./state.js').AgentState} AgentState */

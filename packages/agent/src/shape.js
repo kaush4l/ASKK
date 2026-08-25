@@ -102,25 +102,44 @@ function checkEvery(path, value, want) {
  * Lists of records, and the members of each this build reads. A tool with no
  * name cannot be granted or refused; a batch entry with no id cannot have a
  * result filed against it, which is the one thing a batch is for.
+ *
+ * A tool's two declared properties are in here because their ABSENCE is silent
+ * where a missing name is loud: `mutates` folded as `undefined` is `false`, so
+ * a restored `write_file` would stop clearing the turn's evidence and green
+ * would survive the edit it is offered for — `verify::is_mutating` back in
+ * through the restore door. `args` is checked through for the same reason one
+ * level down: a `ToolArg` with no `type` makes `usage()` state
+ * `"path": "<undefined>"` to the model.
+ *
+ * A key holding a dot is the table for a member of the record above it.
  * @type {Record<string, Record<string, string[]>>}
  */
 const RECORDS = {
-  toolbox: { name: ['string'] },
+  toolbox: { name: ['string'], description: ['string'], args: ['array'], mutates: ['boolean'], evidence: ['boolean'] },
+  'toolbox.args': { name: ['string'], type: ['string'], required: ['boolean'], description: ['string'] },
   batch: { id: ['string'], tool: ['string'], done: ['boolean'] },
 }
 
-/** @param {string} path @param {unknown} value @returns {Mismatch | null} */
-function checkRecords(path, value) {
+/** @param {string} path where the mismatch is reported @param {unknown} value @param {string} table which RECORDS entry describes the elements @returns {Mismatch | null} */
+function checkRecords(path, value, table = path) {
   const list = /** @type {unknown[]} */ (value)
   for (const [index, item] of list.entries()) {
     const at = `${path}[${index}]`
-    const bad = fits(at, item, ['object'])
+    const bad = fits(at, item, ['object']) ?? checkRecordMembers(at, table, item)
     if (bad) return bad
-    const held = /** @type {Record<string, unknown>} */ (item)
-    for (const [member, want] of Object.entries(RECORDS[path] ?? {})) {
-      const badMember = fits(`${at}.${member}`, Object.hasOwn(held, member) ? held[member] : undefined, want)
-      if (badMember) return badMember
-    }
+  }
+  return null
+}
+
+/** @param {string} at @param {string} table @param {unknown} item @returns {Mismatch | null} */
+function checkRecordMembers(at, table, item) {
+  const held = /** @type {Record<string, unknown>} */ (item)
+  for (const [member, want] of Object.entries(RECORDS[table] ?? {})) {
+    const value = Object.hasOwn(held, member) ? held[member] : undefined
+    const inner = `${table}.${member}`
+    const bad = fits(`${at}.${member}`, value, want)
+      ?? (Object.hasOwn(RECORDS, inner) ? checkRecords(`${at}.${member}`, value, inner) : null)
+    if (bad) return bad
   }
   return null
 }
