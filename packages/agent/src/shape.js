@@ -28,7 +28,7 @@ export function shapeOf(/** @type {unknown} */ value) {
  * `null` and a `task` of `'summarise this'` are the same field.
  * @type {Record<string, string>}
  */
-const NULLABLE = { task: 'string', temperature: 'number', reviewed: 'boolean', space: 'object' }
+const NULLABLE = { task: 'string', temperature: 'number', reviewed: 'boolean', space: 'object', awaiting: 'string' }
 
 /**
  * The compound fields, by path. A member absent from a stored compound is a
@@ -43,7 +43,7 @@ const MEMBERS = {
 }
 
 /** Lists whose elements are all one shape. @type {Record<string, string>} */
-const ELEMENTS = { stages: 'string', declared: 'string', faculties: 'string' }
+const ELEMENTS = { stages: 'string', declared: 'string', faculties: 'string', observations: 'string' }
 
 /** @param {string} key @param {unknown} value @param {readonly string[]} want @returns {Mismatch | null} */
 function fits(key, value, want) {

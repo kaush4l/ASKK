@@ -13,12 +13,15 @@
  * reader — a counter that could only ever hold zero. They were the residue of
  * the phase machine the stage machine replaced. `phase` went with them: it had
  * no assignment outside the constructor and the table it indexed had one row
- * (see `phase.js`).
+ * (see `stages.js`).
  * @module
  */
 
 import { StoreError } from '@harness/kernel'
 import { checkField, shapeOf } from './shape.js'
+
+/** @typedef {import('@harness/kernel').TurnId} TurnId */
+/** @typedef {import('./turn.js').Awaiting} Awaiting */
 
 /** The agent's paper — `packages/context`'s assembly input; A-PAPER owns its shape. @typedef {{sources: unknown[]}} Paper */
 
@@ -40,8 +43,11 @@ import { checkField, shapeOf } from './shape.js'
  * @property {string} model  this agent's `model:` key — a CATALOGUE key, never a URL; empty means the catalogue's default
  * @property {number | null} temperature  its `temperature:` key, null where the file named none
  * @property {string | null} task  what is being attempted; null is idle
+ * @property {TurnId} turnId  WHICH attempt it is, or '' when idle. Every effect is stamped with it and the reducer drops any fact that names another (I21) — the predecessor had no such name, which is how a result from an abandoned turn billed a fresh model call.
+ * @property {Awaiting} awaiting  what this turn has outstanding: the model, the tools, or nothing. Explicit because "nothing is outstanding" and "one tool is outstanding" were both `pending_tools == 0`, and a result arriving against nothing awaited must be an anomaly rather than a new request.
  * @property {Array<{name: string}>} toolbox  what THIS agent may call, resolved from its `tools:` list. In state and not in the phase table because it is the agent's property; the phase only says whether this phase may act. (The descriptor is `tools.js`'s, B7; the loop needs only the name.)
- * @property {number} pendingTools  results still outstanding from the batch the model just wrote. The model sees none until this reaches zero — that is what makes one LINE of calls one observation.
+ * @property {number} pendingTools  results still outstanding from the batch the model just wrote. The model sees none until this reaches zero — that is what makes one LINE of calls one observation. Never clamped: a result with nothing outstanding is refused by `turn.refusal`, and the `saturating_sub` that used to round the impossible count up to zero is what hid the abandoned-turn defect.
+ * @property {string[]} observations  this round's results, in arrival order. An ARRAY, because the Rust upserted a one-line component by id and three calls on one line therefore produced three overwrites the model saw one of. Replaced when the next round of calls is written.
  * @property {number} toolRounds  how many times this turn has gone round the tool loop; a looping model terminates on this counter, never on prose
  * @property {number} maxRounds  the ceiling that counter terminates on. Per-agent because the right number is a property of the WORK: a summarizer calling two tools and a coding agent editing nine files cannot share one constant, and the constant this replaced was four.
  * @property {boolean} steered  a sentence typed into a running turn, not yet answered. A FLAG and not a queue: the sentence is already in the history, and this only records that nothing has replied to it.
@@ -91,8 +97,8 @@ export const DEFAULT_PASSES = 1
  */
 export function newAgentState() {
   return {
-    model: '', temperature: null, task: null, toolbox: [],
-    pendingTools: 0, toolRounds: 0, maxRounds: DEFAULT_MAX_ROUNDS,
+    model: '', temperature: null, task: null, turnId: '', awaiting: null, toolbox: [],
+    pendingTools: 0, observations: [], toolRounds: 0, maxRounds: DEFAULT_MAX_ROUNDS,
     steered: false, stopping: false,
     compactAt: DEFAULT_COMPACT_AT, keepRecent: DEFAULT_KEEP_RECENT,
     compacting: false, compactions: 0,

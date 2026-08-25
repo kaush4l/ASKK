@@ -1,0 +1,128 @@
+/**
+ * HOW A TURN ENDED, AS A FACT (R17-P0-2) — and, since this rewrite, ON A
+ * SIGNAL.
+ *
+ * A turn used to end by clearing `task`, and every surface then read that hole
+ * as success: a run that abandoned a six-part task reported `main finished` with
+ * a `Read the reply` button pointing at the model's own malformed tool call. So
+ * an ending is a RECORD with a reason, and the card, the row and the
+ * conversation are folds of it.
+ *
+ * WHAT CHANGED IN THE PORT. The Rust decided the reason by ABSENCE — no call
+ * could be read out of the text, therefore the model answered — which made a
+ * truncated reply, a refusal and a real answer one outcome, and left
+ * `reply::malformed_call` guessing at the difference from the shape of the
+ * prose. The provider says which of them it was, in one field, and
+ * [`endingFor`] is that field read. `malformed_call` is not ported: it patched
+ * a missing protocol, and the protocol is here now.
+ *
+ * FIVE NAMES, DOWN FROM EIGHT. `pass ceiling`, `goal unmet`, `critic faulted`,
+ * `unchecked` and `brief missing` each rest on a fold this loop does not yet
+ * compute (passes, the standing goal, the critic's verdict, the verify gate,
+ * the stage brief). They arrive with the fold that earns them; naming an ending
+ * nothing can reach would be a vocabulary describing a machine that is not here.
+ * @module
+ */
+
+import { emit } from './effect.js'
+import { idle } from './turn.js'
+
+/** @typedef {import('./effect.js').Effect} Effect */
+/** @typedef {import('./state.js').AgentState} AgentState */
+/** @typedef {import('./turn.js').FinishReason} FinishReason */
+
+/** The one ending fact. Payload: `{why, rounds, turnId}`. */
+export const ENDED = 'core.ended'
+
+/** The model answered. The turn's cheap exit, and the only ending after which there is a reply to read. */
+export const ANSWERED = 'answered'
+
+/** The turn used every round of tool calls its agent file allows. */
+export const ROUND_CEILING = 'round ceiling'
+
+/** The reply hit the output ceiling mid-sentence. Its own name because the act is to raise the ceiling or narrow the question, not to read the answer. */
+export const TRUNCATED = 'truncated'
+
+/** The model declined to answer. Not a failure of this build, and a person is owed the distinction. */
+export const REFUSED = 'refused'
+
+/** The provider failed the completion. The one ending that says nothing about the work. */
+export const FAILED = 'failed'
+
+/**
+ * The provider said it was calling tools and named none. A contradiction rather
+ * than an answer: acting on it as prose is how the predecessor turned every
+ * malformed call into `main finished`.
+ */
+export const NO_CALLS = 'no calls'
+
+/**
+ * THE ENDING SPELLED AS A TOOL, for a model with no native call API. Everything
+ * such a model "says" is a call, so the answer is one too, and the turn ends
+ * because the model SAID to end it rather than because no call could be read
+ * out of its prose (Agent Zero's `response` tool, whose handler sets
+ * `break_loop`). A model with native calls never needs it and never sees it.
+ */
+export const RESPOND = 'respond'
+
+/** @type {Record<FinishReason, string>} */
+const BY_FINISH = {
+  stop: ANSWERED,
+  tool_calls: NO_CALLS,
+  length: TRUNCATED,
+  refusal: REFUSED,
+  error: FAILED,
+}
+
+/**
+ * Which ending a call-less reply earned, from the signal the provider sent.
+ * Total over the closed set, so a reply cannot end in a way nothing named.
+ * @param {FinishReason} finish @returns {string}
+ */
+export function endingFor(finish) {
+  return BY_FINISH[finish]
+}
+
+/**
+ * END THE TURN, AND SAY WHY. Every arm that ends one comes through here, so
+ * what an ending CLEARS is written once and the reason is never optional.
+ *
+ * `stopping` clears with the rest: a stop ends one turn, not the next.
+ * @param {AgentState} state @param {string} why @returns {{state: AgentState, effects: Effect[]}}
+ */
+export function endTurn(state, why) {
+  const effect = emit({
+    type: 'custom',
+    kind: ENDED,
+    payload: { why, rounds: state.toolRounds, turnId: state.turnId },
+  })
+  return { state: idle(state), effects: [effect] }
+}
+
+/** Whether an effect is one of these records rather than work. `stop.boundary` asks: a turn that ended on its own is not a turn you cut off. @param {Effect} effect */
+export function isEnding(effect) {
+  return effect.type === 'Emit' && effect.fact.type === 'custom' && effect.fact.kind === ENDED
+}
+
+/**
+ * Why the turn ended, out of the payload. An unreadable record says nothing
+ * rather than guessing a reason — which is what every log written before this
+ * fact existed reads as.
+ * @param {unknown} payload @returns {string}
+ */
+export function endedWhy(payload) {
+  const why = read(payload, 'why')
+  return typeof why === 'string' ? why : ''
+}
+
+/** How many rounds of tool calls it had completed when it ended. @param {unknown} payload @returns {number} */
+export function endedRounds(payload) {
+  const rounds = read(payload, 'rounds')
+  return typeof rounds === 'number' ? rounds : 0
+}
+
+/** @param {unknown} payload @param {string} key @returns {unknown} */
+function read(payload, key) {
+  if (typeof payload !== 'object' || payload === null) return undefined
+  return /** @type {Record<string, unknown>} */ (payload)[key]
+}

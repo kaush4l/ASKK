@@ -26,7 +26,7 @@
 /** @typedef {import('@harness/kernel').ToolId} ToolId */
 /** @typedef {import('@harness/kernel').Fact} Fact */
 
-/** The turn an effect was queued under. A plain string; `core`'s driver mints them (I7 — never here). @typedef {string} TurnId */
+/** @typedef {import('@harness/kernel').TurnId} TurnId */
 
 /**
  * The assembled paper, opaque here. `packages/context` owns its shape and
