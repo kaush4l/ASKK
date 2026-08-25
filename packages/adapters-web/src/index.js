@@ -6,7 +6,13 @@
  * @module
  */
 
-export { bootBrowser, offered, PROFILE_KEY } from './boot.js'
+// `bootBrowser` IS THE PAGE'S BOOT, and the name is the one docs/SEAM.md froze.
+// `boot.js`'s own export of that name takes its delegation as an argument and
+// is what a Worker calls; this alias is the page's, with one Worker per agent
+// supplied. The two are one module apart on purpose — see `page.js` for the
+// cycle that separation avoids.
+export { bootPage as bootBrowser } from './page.js'
+export { offered, PROFILE_KEY } from './boot.js'
 export { attach } from './attach.js'
 export { saveEndpoint, saveSearchEndpoint, readEndpoints, resetEndpoints, useBroker } from './settings.js'
 export { makeEndpoint } from './endpoint.js'

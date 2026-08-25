@@ -27,7 +27,7 @@ import { DelegateError } from '@harness/kernel'
 import { endedMessage, readMessage } from '@harness/agent'
 import { errandTurn } from '@harness/core'
 
-import { bootBrowser } from './boot.js'
+import { bootBrowser } from './boot.js'  // the context-neutral one: a sub-agent starts no Worker
 import { browserTimer } from './ports.js'
 
 /** @typedef {import('@harness/core').App} App */

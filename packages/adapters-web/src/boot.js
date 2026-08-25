@@ -13,11 +13,9 @@
  */
 
 import { CAPABILITIES, ENTRY_AGENT, SEARCH_ENDPOINT, StoreError } from '@harness/kernel'
-import { agentsOver } from '@harness/agent'
 import { boot } from '@harness/core'
 
 import { authored, rosterNames } from './adopt.js'
-import { browserWorkers, canDelegate, startWorker } from './workers.js'
 import { noAgents, noWorkspace } from './absent.js'
 import { toolRunners } from './toolset.js'
 import { SEARCH_HOSTS } from './search.js'
@@ -31,6 +29,22 @@ import { openWorkspace } from './opfs.js'
 import { idbSegments } from './segments.js'
 import { useBroker } from './settings.js'
 
+/**
+ * HOW THIS CONTEXT DELEGATES, INJECTED — and the injection is what keeps the
+ * module graph acyclic. `workers.js` names `./agent-entry.js` in a `new URL`,
+ * and that module boots an application: if the composition root reached
+ * `workers.js` directly, the Worker's own graph would contain the spawner that
+ * names it. `next build` did not fail on that cycle, it HUNG — measured going
+ * from ten seconds to over six minutes with no output, which is the worst way
+ * for a cycle to announce itself. `null` is a context that cannot delegate, and
+ * a sub-agent is one BY CONSTRUCTION rather than by a list somebody maintains.
+ * @typedef {(what: {me: string, basePath: string, roster: () => string[]})
+ *   => Promise<import('@harness/kernel').AgentPort|null>} Delegation
+ */
+
+/** The delegation a context has when nobody gave it one. */
+const noDelegation = async () => null
+
 /** @typedef {import('@harness/kernel').CapabilityId} CapabilityId */
 /** @typedef {import('@harness/core').App} App */
 
@@ -43,7 +57,18 @@ export const PROFILE_KEY = 'config/keys/model'
 
 /**
  * Build the running application for THIS browser.
- * @param {{basePath?: string, agent?: string}} [opts]
+ *
+ * `delegates` IS WHY A SUB-AGENT DOES NOT CALL THIS, and the reason is a
+ * bundler's rather than a designer's — though the design agrees. `workers.js`
+ * names `./agent-entry.js` in a `new URL`, and that module booted the page's
+ * own composition root, which imports `workers.js`: a cycle the graph could not
+ * close. `next build` did not fail on it, it HUNG — measured going from ten
+ * seconds to over six minutes with no output, which is the worst way for a
+ * cycle to announce itself. So the Worker entry composes the ports it needs
+ * (`workerPorts`, below) and never reaches this function, and a sub-agent in
+ * this build cannot delegate further — which was already true and is now true
+ * BY CONSTRUCTION rather than by a capability list somebody has to maintain.
+ * @param {{basePath?: string, agent?: string, delegation?: Delegation}} [opts]
  * @returns {Promise<App>}
  */
 export async function bootBrowser(opts = {}) {
@@ -62,11 +87,8 @@ export async function bootBrowser(opts = {}) {
   if (stored !== null) endpoint.loadProfile(stored)
   const net = addressBook(endpoint)
   useBroker({ endpoint, kv, key: PROFILE_KEY, net })
-  const { ports, available } = await realPorts(db, endpoint, net, {
-    me,
-    roster: () => rosterNames(built),
-    spawn: (agent) => startWorker(agent, basePath),
-  })
+  const agents = await (opts.delegation ?? noDelegation)({ me, basePath, roster: () => rosterNames(built) })
+  const { ports, available } = await realPorts(db, endpoint, net, agents)
   const app = await boot({
     ports,
     available,
@@ -92,25 +114,22 @@ export async function bootBrowser(opts = {}) {
  * answered.
  * @param {IDBDatabase} db @param {ReturnType<typeof makeEndpoint>} endpoint
  * @param {ReturnType<typeof addressBook>} net
- * @param {Parameters<typeof browserWorkers>[0]} delegation
+ * @param {import('@harness/kernel').AgentPort|null} agents the delegation this
+ *   context was given, or `null` where it has none
  */
-async function realPorts(db, endpoint, net, delegation) {
+async function realPorts(db, endpoint, net, agents) {
   const workspace = await openWorkspace()
-  // ONE WORKER PER AGENT, WHERE A WORKER CAN BE STARTED AT ALL. Where one
-  // cannot, the honest refusal stays: an empty roster and a delegation that
-  // names what is missing beats a port that hangs on a message nobody reads.
-  const workers = canDelegate() ? browserWorkers(delegation) : null
   const ports = {
     clock: browserClock(),
     rng: browserRng(),
     store: idbStore(db),
     model: fetchModel(endpoint),
     net: net.port,
-    agents: workers ? agentsOver(workers) : noAgents(),
+    agents: agents ?? noAgents(),
     workspace: workspace ?? noWorkspace(),
     spaces: idbKv(await openDb(SPACES_DB)),
   }
-  return { ports, available: offered(workspace !== null, workers !== null) }
+  return { ports, available: offered(workspace !== null, agents !== null) }
 }
 
 /**
