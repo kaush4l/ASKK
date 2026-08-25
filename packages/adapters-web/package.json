@@ -11,5 +11,8 @@
   "dependencies": {
     "@harness/kernel": "workspace:*",
     "@harness/core": "workspace:*"
+  },
+  "scripts": {
+    "checks:browser": "bun test/browser/serve.js"
   }
 }
