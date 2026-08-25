@@ -34,7 +34,7 @@ describe('the document is JSON', () => {
   test('a document with every part kind survives stringify/parse unchanged', () => {
     /** @type {Document} */
     const doc = {
-      phase: 'work',
+      stage: 'work',
       sections: [
         section('soul', SLOT.SOUL),
         section('space', SLOT.SPACE, {
@@ -59,7 +59,7 @@ describe('the document is JSON', () => {
 
   test('toStrictEqual is the matcher this file needs — toEqual cannot see the drift', () => {
     /** @type {Document} */
-    const doc = { phase: 'work', sections: [section('soul', SLOT.SOUL)], report: {
+    const doc = { stage: 'work', sections: [section('soul', SLOT.SOUL)], report: {
       budget: { maxTokens: 4096 }, spent: 300, steps: [], withheld: [],
     } }
     // The cast is the point: `spent: undefined` is exactly what the types forbid,

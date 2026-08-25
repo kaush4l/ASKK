@@ -109,6 +109,21 @@ Gate: `bun run gate` = `tsc --checkJs` + `bun test packages` + the I12 size chec
 - **Dependencies below the UI stay at zero.** Refused by name: zod, Tailwind,
   framer-motion, charting, marked + dompurify, any public CORS proxy.
 
+## Cross-lane rulings — round 1
+
+Every request the four lanes filed, ruled once, by the lead.
+
+| Request | Ruling |
+|---|---|
+| A: a lane cannot tell its own type error from a neighbour's half-saved file | **Granted.** `bun run typecheck:pkg <name>` checks one package. The whole-workspace check stays the gate — three lanes importing a fourth's broken export is exactly what a gate is for — but a signal a lane does not trust is a signal it stops running. |
+| A: no package declares its `@harness/*` dependencies | **Granted.** Every package now declares them. Bun resolved them either way; a package that imports what it does not declare is lying about the dependency graph, and the layering the pure core depends on is read off that graph. |
+| B: `phase.js` cannot pass a done-when that greps for the word | **Granted, and done.** The file is `stages.js`. The word survives only where it names what was retired and why — a rename that erases the reason is how the same machine gets rebuilt in two years. |
+| B: `TurnId` is a local alias in one lane | **Granted.** It is in `kernel/ids.js` beside `AgentId`. Two packages touch it — the loop stamps effects, the spine mints one per message — and an id spelled twice is an id that will differ once. |
+| — | **Not asked for, ruled anyway:** `PhaseId` is gone from the kernel and `StageId` replaces it; `phase_entered` is `stage_entered` and carries its `turnId`. Leaving a retired machine's vocabulary in the shared dictionary is how it comes back. |
+| C: `createApp` now requires the capability list | **Upheld.** A build states what it offers or does not start. This is the same defect as `durable()` defaulting to `true`. |
+| D: 76 type errors in `apps/web` were invisible to the gate | **Granted.** `@types/react`, `@types/react-dom` and a CSS-module declaration are installed, and `apps/web` is now in both halves of the gate — its typecheck and its tests. The 76 became one real error, which is fixed. |
+| D: the ground colour is written three more times in `themeColor` | **Ruled, for round 2.** Not a JS palette module: a meta tag cannot read a custom property, so one of the two spellings is unavoidable. What is avoidable is that they can DISAGREE — lane D adds a test that parses `globals.css` and asserts the literals match (I16). |
+
 ## Open questions
 
 - Which of the nine ports survive (the `ports` critique decides).

@@ -32,6 +32,7 @@ export const viewport = {
  * does not resolve is a type that reads as checked and is not.
  * @param {{children: unknown}} props
  */
+/** @param {{children: React.ReactNode}} props */
 export default function RootLayout({ children }) {
   return (
     // `suppressHydrationWarning` because the script below stamps `data-theme`

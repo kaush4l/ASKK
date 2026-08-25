@@ -5,7 +5,7 @@
  * @module
  */
 
-export { MODEL_ENDPOINT, SEARCH_ENDPOINT, ENTRY_AGENT, PHASES } from './ids.js'
+export { MODEL_ENDPOINT, SEARCH_ENDPOINT, ENTRY_AGENT, STAGES } from './ids.js'
 export { STATUSES, isBusy, statusSentence } from './status.js'
 export {
   HarnessError, StoreError, ModelError, NetError,
@@ -21,9 +21,10 @@ export { matchesRoute, readManifest } from './manifest.js'
 /** @typedef {import('./ids.js').ToolId} ToolId */
 /** @typedef {import('./ids.js').SectionId} SectionId */
 /** @typedef {import('./ids.js').EndpointName} EndpointName */
+/** @typedef {import('./ids.js').TurnId} TurnId */
 /** @typedef {import('./ids.js').EventId} EventId */
 /** @typedef {import('./ids.js').Timestamp} Timestamp */
-/** @typedef {import('./ids.js').PhaseId} PhaseId */
+/** @typedef {import('./ids.js').StageId} StageId */
 /** @typedef {import('./status.js').Status} Status */
 /** @typedef {import('./event.js').Fact} Fact */
 /** @typedef {import('./event.js').Event} Event */

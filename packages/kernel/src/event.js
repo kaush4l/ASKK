@@ -21,7 +21,7 @@
 
 /** @typedef {import('./ids.js').EventId} EventId */
 /** @typedef {import('./ids.js').Timestamp} Timestamp */
-/** @typedef {import('./ids.js').PhaseId} PhaseId */
+/** @typedef {import('./ids.js').StageId} StageId */
 /** @typedef {import('./status.js').Status} Status */
 
 /** Current envelope version. Bump ONLY with a migration in `core/log`. */
@@ -33,7 +33,7 @@ export const EVENT_VERSION = 1
  *   | {type: 'user_message', text: string, agent: string, from: string}
  *   | {type: 'module_installed', module: string, version: string}
  *   | {type: 'module_removed', module: string, version: string}
- *   | {type: 'phase_entered', agent: string, phase: PhaseId}
+ *   | {type: 'stage_entered', agent: string, stage: StageId, turnId: string}
  *   | {type: 'model_called', agent: string, documentHash: string, spentTokens: number, evicted: string[]}
  *   | {type: 'model_replied', agent: string, text: string, reasoning: string}
  *   | {type: 'tool_invoked', agent: string, tool: string, args: string, ok: boolean, output: string}
@@ -48,7 +48,7 @@ export const EVENT_VERSION = 1
 /** Every fact type, so a reader can refuse an unknown one by name. */
 export const FACT_TYPES = /** @type {const} */ ([
   'request_handled', 'user_message', 'module_installed', 'module_removed',
-  'phase_entered', 'model_called', 'model_replied', 'tool_invoked',
+  'stage_entered', 'model_called', 'model_replied', 'tool_invoked',
   'agent_status', 'store_failed', 'custom',
 ])
 

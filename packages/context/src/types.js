@@ -13,7 +13,7 @@
 import { HarnessError } from '@harness/kernel'
 
 /** @typedef {import('@harness/kernel').ModuleId} ModuleId */
-/** @typedef {import('@harness/kernel').PhaseId} PhaseId */
+/** @typedef {import('@harness/kernel').StageId} StageId */
 /** @typedef {import('@harness/kernel').SectionId} SectionId */
 /** @typedef {import('@harness/kernel').Timestamp} Timestamp */
 /** @typedef {import('@harness/kernel/ids.js').Version} Version */
@@ -153,5 +153,5 @@ export const UNLIMITED_BUDGET = Object.freeze({ maxTokens: Number.MAX_SAFE_INTEG
  * The assembled paper: sections in slot order plus what the budget did. This
  * is what `render` consumes, what the goldens snapshot, and what the event log
  * hashes into `model_called.documentHash`.
- * @typedef {{phase: PhaseId, sections: Section[], report: CompactionReport}} Document
+ * @typedef {{stage: StageId, sections: Section[], report: CompactionReport}} Document
  */

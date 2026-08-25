@@ -39,3 +39,4 @@ node_modules/
 apps/web/out/
 .deploy/
 *.tsbuildinfo
+.tsconfig.pkg.json

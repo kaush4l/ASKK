@@ -13,7 +13,7 @@ export {
   DEFAULT_MAX_ROUNDS, DEFAULT_COMPACT_AT, DEFAULT_KEEP_RECENT, DEFAULT_PASSES,
 } from './state.js'
 export { EFFECT_TYPES, callModel, invokeTool, emit, delegate } from './effect.js'
-export { NO_TOOLS, ALL_TOOLS, onlyTools, grant, RESPONSE_CONTRACTS, WORK, WORK_BUDGET } from './phase.js'
+export { NO_TOOLS, ALL_TOOLS, onlyTools, grant, RESPONSE_CONTRACTS, WORK, WORK_BUDGET } from './stages.js'
 
 /** @typedef {import('./state.js').AgentState} AgentState */
 /** @typedef {import('./state.js').Goal} Goal */
@@ -24,6 +24,6 @@ export { NO_TOOLS, ALL_TOOLS, onlyTools, grant, RESPONSE_CONTRACTS, WORK, WORK_B
 /** @typedef {import('./effect.js').TurnId} TurnId */
 /** @typedef {import('./effect.js').Document} Document */
 /** @typedef {import('./effect.js').ProviderFormat} ProviderFormat */
-/** @typedef {import('./phase.js').ToolScope} ToolScope */
-/** @typedef {import('./phase.js').ResponseContract} ResponseContract */
-/** @typedef {import('./phase.js').Budget} Budget */
+/** @typedef {import('./stages.js').ToolScope} ToolScope */
+/** @typedef {import('./stages.js').ResponseContract} ResponseContract */
+/** @typedef {import('./stages.js').Budget} Budget */

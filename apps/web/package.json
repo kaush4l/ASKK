@@ -16,5 +16,9 @@
     "@harness/kernel": "workspace:*",
     "@harness/core": "workspace:*",
     "@harness/adapters-web": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5"
   }
 }
