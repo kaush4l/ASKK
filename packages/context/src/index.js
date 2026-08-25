@@ -11,6 +11,10 @@
 
 export { STABILITIES, FIDELITIES, nextFidelity, UNLIMITED_BUDGET } from './types.js'
 export { SLOT, isHead, isTail } from './slot.js'
+export { modelCard, modelCards } from './card.js'
+export { budgetFor, budgetSentence } from './budget.js'
+export { estimatePart, estimateParts } from './estimate.js'
+export { imageSize, imageTokens, UNKNOWN_IMAGE_TOKENS } from './image.js'
 
 /** @typedef {import('./types.js').Part} Part */
 /** @typedef {import('./types.js').Stability} Stability */
@@ -23,3 +27,8 @@ export { SLOT, isHead, isTail } from './slot.js'
 /** @typedef {import('./types.js').Document} Document */
 /** @typedef {import('./state.js').SectionSource} SectionSource */
 /** @typedef {import('./state.js').State} State */
+/** @typedef {import('./card.js').ModelCard} ModelCard */
+/** @typedef {import('./card.js').CatalogueEntry} CatalogueEntry */
+/** @typedef {import('./budget.js').DerivedBudget} DerivedBudget */
+/** @typedef {import('./budget.js').Turn} Turn */
+/** @typedef {import('./estimate.js').Estimate} Estimate */
