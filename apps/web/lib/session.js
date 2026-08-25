@@ -20,29 +20,30 @@
  * typing into a box that did nothing.
  */
 
-import { HarnessError, post } from '@harness/kernel'
+import { HarnessError, isProblem, post } from '@harness/kernel'
 
 /** @typedef {import('@harness/kernel').Request} Request */
 /** @typedef {import('@harness/kernel').Response} Response */
 /** @typedef {import('@/components/views/problem').ProblemData} ProblemData */
-/** @typedef {(request: Request) => Response} Seam */
 
 /**
  * @typedef {object} Session
- * @property {'ready'|'failed'} state
  * @property {(request: Request) => Response} read
- * @property {(agent: string, text: string) => Promise<void>} send
+ * @property {(agent: string, text: string) => Promise<ProblemData|null>} send
+ *   what the seam REFUSED, or null when the turn was accepted
  * @property {(fn: () => void) => () => void} subscribe
  * @property {() => number} version
  * @property {ProblemData|null} problem what went wrong, when nothing came up
  */
 
 /**
- * THE COMPOSITION ROOT, AS docs/SEAM.md FROZE IT. `@harness/adapters-web`
- * exports exactly this pair; the type is written out here rather than imported
- * so a test can hand over a boot that fails, which is the branch a person meets
- * in a private window.
- * @typedef {{bootBrowser: (opts?: {basePath?: string}) => Promise<unknown>, attach: (app: never) => {seam: Seam, run: () => Promise<void>, subscribe: (fn: () => void) => () => void}}} Wiring
+ * THE COMPOSITION ROOT, AS docs/SEAM.md FROZE IT — and the pair is taken FROM
+ * the module that exports it rather than spelled out again here, so a fourth
+ * member or a `seam` that turned async fails this file instead of the browser
+ * (I19). It is a type-position import: `tsc` erases it and no bundler ever sees
+ * it, so the browser-only package is still loaded in the browser and nowhere
+ * else. A test hands over its own object; the structure is what is checked.
+ * @typedef {Pick<typeof import('@harness/adapters-web'), 'bootBrowser'|'attach'>} Wiring
  */
 
 /**
@@ -61,10 +62,13 @@ export async function openSession(basePath, wiring) {
     // every static import at build time, where there is no IndexedDB and no
     // origin to be served from; this runs from an effect and nowhere else.
     const pair = wiring ?? (await import('@harness/adapters-web'))
-    const app = /** @type {never} */ (await pair.bootBrowser({ basePath }))
+    const app = await pair.bootBrowser({ basePath })
     return ready(pair.attach(app))
   } catch (failure) {
-    return { state: 'failed', read: unreachable, send: unreachable, subscribe: noSubscribe, version: zero, problem: problemFor(failure) }
+    return {
+      read: unreachable, send: unreachable, problem: problemFor(failure),
+      subscribe: () => () => {}, version: () => 0,
+    }
   }
 }
 
@@ -78,21 +82,67 @@ function ready({ seam, run, subscribe }) {
     for (const watcher of watchers) watcher()
   })
   return {
-    state: 'ready',
     read: (request) => seam(request),
-    // The message crosses as a fact and the ANSWER to this request is the
-    // transcript with it already in it. Nothing is kept from that answer: the
-    // append moved the counter, so every reader re-reads for itself.
-    send: async (agent, text) => {
-      seam(post('/chat', { message: text }, { 'x-agent': agent }))
-      await run()
-    },
+    send: sender(seam, run),
     subscribe: (fn) => {
       watchers.add(fn)
       return () => watchers.delete(fn)
     },
     version: () => version,
     problem: null,
+  }
+}
+
+/**
+ * ONE MESSAGE ACROSS THE SEAM, AND WHAT CAME BACK.
+ *
+ * The message crosses as a fact and the ANSWER is the transcript with it
+ * already in it, so nothing is kept from an acceptance: the append moved the
+ * counter and every reader re-reads for itself.
+ *
+ * A REFUSAL IS THE ONE THING THAT COMES BACK. `POST /chat` answers with the
+ * failure projection for an empty message and for a build never granted the
+ * right to record facts, and `run` rejects when the turn cannot be run at all.
+ * Dropping either is a dead switch with a proof of life attached: the draft is
+ * cleared, `handle` appends `request_handled` so every reader re-renders, and
+ * the screen comes back identical with nothing said about what it refused.
+ * @param {(request: Request) => Response} seam
+ * @param {() => Promise<void>} run
+ * @returns {Session['send']}
+ */
+function sender(seam, run) {
+  return async (agent, text) => {
+    const answered = seam(post('/chat', { message: text }, { 'x-agent': agent }))
+    // The failure projection's `data` IS this shape — `problem()` builds those
+    // five strings and nothing else (packages/kernel/src/seam.js) — and the seam
+    // types every `data` as an open record, so it is narrowed once, here.
+    if (isProblem(answered)) return /** @type {ProblemData} */ (answered.data)
+    try {
+      await run()
+    } catch (failure) {
+      return turnFailure(failure)
+    }
+    return null
+  }
+}
+
+/**
+ * A TURN THAT STOPPED, in the same failure shape as everything else. `run`
+ * rejects only where no retry repairs anything: a store failure is recorded as
+ * a fact and the turn carries on (`packages/core/src/log/persist.js`), so what
+ * reaches here is a build assembled wrong, and the repair says so rather than
+ * inviting a person to press send until it works.
+ * @param {unknown} failure
+ * @returns {ProblemData}
+ */
+function turnFailure(failure) {
+  const typed = failure instanceof HarnessError
+  return {
+    id: 'chat',
+    kind: typed ? failure.kind : 'turn_failed',
+    message: typed ? failure.message : 'This turn stopped before it could be run, so nothing was said back.',
+    detail: typed ? failure.detail : String(failure),
+    repair: 'Saying it again will stop the same way. Everything written before this turn is still in the log; the debug view has the failure itself.',
   }
 }
 
@@ -122,14 +172,6 @@ function problemFor(failure) {
 /** @returns {never} */
 function unreachable() {
   throw new HarnessError('no_session', 'This page asked a core that never started for a projection.', {
-    detail: 'A failed session has no seam. Read `state` before reading a projection.',
+    detail: 'A failed session has no seam. Read `problem` before reading a projection.',
   })
-}
-
-function noSubscribe() {
-  return () => {}
-}
-
-function zero() {
-  return 0
 }

@@ -1,11 +1,9 @@
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'bun:test'
 
 import { StoreError, get, ok, problem } from '@harness/kernel'
 
-import { View } from '../components/views/index.jsx'
 import { openSession } from '../lib/session.js'
+import { screen, wiring } from './doubles.js'
 
 /** One block of text, the shape `ui/markdown.jsx` renders. */
 function para(/** @type {string} */ text) {
@@ -13,12 +11,10 @@ function para(/** @type {string} */ text) {
 }
 
 /**
- * A CORE, IN MEMORY, BEHIND THE FROZEN PAIR (docs/SEAM.md). It is not
- * `@harness/adapters-web` — that package has no `src` yet, which is why
- * `lib/wiring.js` exists — and it is not a mock of the interface either: it
- * records a fact, projects what the log holds, and notifies. Those three are
- * the whole contract the interface is written against, so a session driven by
- * this one is exercised through exactly the door the real one will open.
+ * A CORE, IN MEMORY, BEHIND THE FROZEN PAIR (`test/doubles.js`). It is not a
+ * mock of the interface: it records a fact, projects what the log holds, and
+ * notifies, and those three are the whole contract the interface is written
+ * against.
  *
  * `log` is passed in so two sessions can share one, which is what a reload is.
  * @param {Array<Record<string, unknown>>} log
@@ -47,10 +43,7 @@ function core(log) {
     queued = ''
     notify()
   }
-  return {
-    bootBrowser: async () => ({}),
-    attach: () => ({ seam, run, subscribe: (/** @type {() => void} */ fn) => { watchers.add(fn); return () => watchers.delete(fn) } }),
-  }
+  return wiring({ seam, run, subscribe: (fn) => { watchers.add(fn); return () => watchers.delete(fn) } })
 }
 
 /** @param {Array<Record<string, unknown>>} rows @param {string} queued */
@@ -64,11 +57,6 @@ function transcript(rows, queued) {
   }
 }
 
-/** What one call to `read` puts on the screen, through the same registry the product uses. */
-function screen(/** @type {import('@harness/kernel').Response} */ response) {
-  return renderToStaticMarkup(createElement(View, { view: response.view, data: response.data }))
-}
-
 /**
  * THE IN-FLIGHT ROW IS A PROJECTED FACT AND NOT COMPONENT STATE.
  *
@@ -80,7 +68,7 @@ function screen(/** @type {import('@harness/kernel').Response} */ response) {
  */
 test('a sent message is in the next projection, and in one nobody was holding', async () => {
   const session = await openSession('', core([]))
-  expect(session.state).toBe('ready')
+  expect(session.problem).toBeNull()
   const settled = session.send('main', 'Does Firecrawl still answer without a key?')
 
   expect(screen(session.read(get('/chat')))).toContain('Does Firecrawl still answer without a key?')
@@ -142,7 +130,6 @@ test('a boot that throws becomes the one failure projection, with a repair in it
     bootBrowser: async () => { throw refused },
     attach: () => { throw new Error('nothing to attach to') },
   })
-  expect(session.state).toBe('failed')
   expect(session.problem?.kind).toBe('unavailable')
   const said = screen({ status: 500, view: 'problem', data: { ...session.problem } })
   expect(said).toContain('would not open the store')

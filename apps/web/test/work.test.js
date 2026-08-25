@@ -114,6 +114,14 @@ test('a transcript in a shape this interface cannot draw becomes a stated failur
   expect(said.view).toBe('problem')
   expect(said.data.kind).toBe('projection_mismatch')
 
+  // …AND A TRANSCRIPT WITH THE ROWS BUT NOT THE COMPOSER IS THE SAME FAILURE.
+  // `Chat` hands `data.composer` straight to `Composer`, which reads a field off
+  // it, so this shape is a TypeError during render — a blank document, since
+  // nothing in this app is a boundary — and it is the likeliest intermediate of
+  // the reconciliation this bridge is waiting on.
+  const half = renderable(ok('chat', { ...chat, composer: undefined }))
+  expect(half.data.kind).toBe('projection_mismatch')
+
   const ours = ok('chat', { ...chat })
   expect(renderable(ours)).toBe(ours)
 })
