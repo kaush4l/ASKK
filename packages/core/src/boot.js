@@ -32,6 +32,7 @@ import { processes, processesManifest } from './processes.js'
 import { projections } from './reducers.js'
 import { ARTIFACT_TOOLS, artifactTools } from './shelf.js'
 import { localTools } from './locals.js'
+import { rosterTools } from './roster.js'
 import { skillTools } from './skills.js'
 import { settings, settingsManifest } from './settings.js'
 import { space, spaceManifest } from './space.js'
@@ -67,6 +68,7 @@ const MODULES = [
  *   me?: string,
  *   tools?: Record<string, ToolRun>,
  *   agent?: import('@harness/agent').AgentState,
+ *   adopt?: (roster: import('./app.js').Roster) => {agent: import('@harness/agent').AgentState|undefined, roster: import('./app.js').Roster},
  *   roster?: import('./app.js').Roster,
  *   briefs?: Record<string, string>,
  *   settings?: import('./app.js').SettingsFace,
@@ -114,7 +116,14 @@ export function bootFresh(parts) {
  */
 function assembled(parts, log, me) {
   const shipped = parts.roster ?? { specs: [], refusals: [], paths: {} }
-  const state = parts.agent
+  const known = withAuthored(shipped, log)
+  // AN AGENT AUTHORED IN THIS BROWSER CAN BE THE ONE THIS PROCESS RUNS. A
+  // composition root adopts from the roster it read off disk, and an authored
+  // file is in the LOG — which nothing outside this function has read yet. So
+  // adoption is handed IN rather than done before the call, and a Worker
+  // started for an agent a model wrote a moment ago boots with that agent's
+  // prompt instead of blank.
+  const mine = parts.adopt ? parts.adopt(known) : { agent: parts.agent, roster: known }
   return {
     log,
     me,
@@ -124,8 +133,8 @@ function assembled(parts, log, me) {
     // way back, and a receipt naming a handle nothing answers is worse than a
     // long result. A composition root may still override it by name.
     tools: { ...artifactTools(parts.ports), ...parts.tools },
-    agent: state ? withShelfDoor(state, parts.briefs) : state,
-    roster: withAuthored(shipped, log),
+    agent: mine.agent ? withShelfDoor(mine.agent, parts.briefs) : mine.agent,
+    roster: mine.roster,
     settings: parts.settings,
   }
 }
@@ -171,6 +180,6 @@ function withAuthored(shipped, log) {
  */
 function installed(app, parts) {
   for (const module of MODULES) install(app, module.manifest, module.handler)
-  app.tools = { ...localTools(app), ...skillTools(parts.skills ?? []), ...app.tools }
+  app.tools = { ...localTools(app), ...rosterTools(app), ...skillTools(parts.skills ?? []), ...app.tools }
   return app
 }

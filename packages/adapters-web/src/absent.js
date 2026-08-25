@@ -12,10 +12,11 @@
 import { DelegateError, WorkspaceError } from '@harness/kernel'
 
 /**
- * Delegation, ABSENT AND SAYING SO. One Worker per agent is the next
- * increment; until it exists an empty roster is the honest answer and a
- * delegation names what is missing rather than hanging on a message nobody
- * will read.
+ * Delegation, ABSENT AND SAYING SO — for a context that cannot start a Worker
+ * at all. The real port is `workers.js`; this is what a build gets where
+ * `Worker` is undefined, and it is reached whenever `agents` is not on the
+ * offered list. An empty roster and a refusal that names what is missing beat a
+ * port hanging on a message nobody will read.
  * @returns {import('@harness/kernel').AgentPort}
  */
 export function noAgents() {
@@ -23,7 +24,7 @@ export function noAgents() {
     roster: () => [],
     async delegate(agent) {
       throw new DelegateError('unknown_agent', `There is no agent called "${agent}" here.`, {
-        detail: 'this build runs one agent: delegation needs a Worker per agent and none is started yet',
+        detail: 'delegation is one Worker per agent, and this context cannot start one',
       })
     },
   }

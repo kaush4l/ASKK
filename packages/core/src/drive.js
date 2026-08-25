@@ -142,11 +142,12 @@ function told(app) {
  * with a clock that could not tick. This is state THIS PROCESS holds and a
  * reload does not, which is the whole point.
  *
- * ANOTHER AGENT'S ERRAND IS DRIVEN FROM HERE TOO, until its Worker exists. The
- * queue alone cannot say so: the message that started the errand is taken off
- * before the await, so `pending` reads false for exactly the call it is meant
- * to cover, and the pane spent the whole delegation announcing a reload that
- * had not happened. `app.errands` is that call, held for its duration.
+ * ANOTHER AGENT'S ERRAND IS AWAITED FROM HERE, even though its turn runs in
+ * that agent's own Worker. The queue alone cannot say so: the message that
+ * started the errand is taken off before the await, so `pending` reads false
+ * for exactly the call it is meant to cover, and the pane spent the whole
+ * delegation announcing a reload that had not happened. `app.errands` is that
+ * call, held for its duration.
  */
 export function driving(/** @type {App} */ app, /** @type {string} */ who) {
   if (who !== app.me) return app.errands.has(who) || app.pending.some((p) => factAgent(p.fact) === who)

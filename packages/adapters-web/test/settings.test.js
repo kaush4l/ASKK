@@ -64,9 +64,10 @@ test('a reset forgets the keys and takes the search destination off the list', a
   expect(JSON.parse(kv.map.get(PROFILE_KEY) ?? '{}').keys).toEqual({})
 })
 
-test('this build states what it offers: no delegation, and files only where the browser has them', () => {
-  expect(offered(true)).not.toContain('agents')
-  expect(offered(true)).toContain('workspace')
-  expect(offered(false)).not.toContain('workspace')
-  expect(offered(true)).toContain('model')
+test('this build states what it offers: delegation only where a Worker can start, files only where the browser has them', () => {
+  expect(offered(true, false)).not.toContain('agents')
+  expect(offered(true, true)).toContain('workspace')
+  expect(offered(false, true)).not.toContain('workspace')
+  expect(offered(true, true)).toContain('model')
+  expect(offered(true, true)).toContain('agents')
 })

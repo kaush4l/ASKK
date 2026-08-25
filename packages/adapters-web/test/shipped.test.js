@@ -19,7 +19,7 @@ import { bootFresh } from '@harness/core'
 import { fakeClock, testPorts } from '@harness/adapters-test'
 
 import { CATALOGUE } from '../src/toolset.js'
-import { adopted } from '../src/boot.js'
+import { adopted } from '../src/adopt.js'
 import { makeEndpoint } from '../src/endpoint.js'
 import { memorySegments } from './doubles.js'
 
@@ -66,11 +66,14 @@ describe('the agent this page talks to', () => {
     const said = app.roster.refusals.map((r) => r.message).join(' ')
     // A name this build has no descriptor for is not silently dropped — it is a
     // roster refusal, which is the only reason a person ever finds out. Nothing
-    // may fall between the two lists, and the sentence is EXECUTED here rather
-    // than believed: `spawn_agent` is one of the names the shipped file asks for
-    // and this build has no answer to.
+    // may fall between the two lists, and BOTH branches are executed: the shelf
+    // above holds `main` alone, so the peer it names is the reported half.
     for (const want of spec.tools) expect(named.includes(want) || said.includes(want)).toBe(true)
-    expect(said).toContain('spawn_agent')
+    expect(said).toContain('critic')
+    // …and the two the roster acts through are granted rather than reported.
+    // They were the last names this file asked for that nothing answered to.
+    expect(named).toContain('write_agent')
+    expect(named).toContain('spawn_agent')
     // And nothing is granted that the file did not name, bar the shelf's door.
     for (const got of named) expect(got === 'read_result' || spec.tools.includes(got)).toBe(true)
   })

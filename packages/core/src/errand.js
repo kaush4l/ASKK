@@ -28,8 +28,8 @@ export function addressedElsewhere(app, fact) {
 /**
  * RUN THE ERRAND AND RECORD WHAT CAME BACK. The deadline is this loop's own
  * (I21): the queue is drained sequentially, so a delegation with no deadline
- * wedges every turn behind it as well as itself, and the callee's Worker is not
- * yet a thing anything can check.
+ * wedges every turn behind it as well as itself — and the callee's Worker is
+ * the other side of a `postMessage`, which nothing here can question.
  *
  * APPENDED AND NOT QUEUED. The answer belongs to that agent's conversation, and
  * pumping it here would hand this agent's reducer a reply to a call it never

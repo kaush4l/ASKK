@@ -15,7 +15,7 @@
  */
 
 import { arg, tool } from '@harness/agent'
-import { ARTIFACT_TOOLS, LOCAL_TOOLS, SKILL_DESCRIPTORS, answered } from '@harness/core'
+import { ARTIFACT_TOOLS, LOCAL_TOOLS, ROSTER_TOOLS, SKILL_DESCRIPTORS, answered } from '@harness/core'
 
 import { runEdit } from './edit.js'
 import { runFind } from './find.js'
@@ -82,9 +82,11 @@ export const CATALOGUE = /** @type {Tool[]} */ ([
     needs: 'workspace',
   }),
   ...ARTIFACT_TOOLS,
-  // Core's own three and its two skill tools: the descriptor belongs beside the
-  // runner, and both of those live there because the App holds what they read.
+  // Core's own: the three that read this page, the two that act on the roster
+  // and the two skill tools. The descriptor belongs beside the runner, and all
+  // of those live there because the App holds what they read and write.
   ...LOCAL_TOOLS,
+  ...ROSTER_TOOLS,
   ...SKILL_DESCRIPTORS,
 ])
 

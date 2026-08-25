@@ -187,6 +187,46 @@ function script() {
   ])
 }
 
+/**
+ * A DELEGATION, END TO END, IN THE BUILT ARTIFACT.
+ *
+ * `?agent=critic` addresses the second shipped agent, so the message crosses
+ * the seam as an errand rather than as this page's own turn: the composition
+ * root starts a Worker for `critic`, that Worker boots the same build under
+ * that name, runs a turn against the model port and posts its ending home.
+ *
+ * WITH NO MODEL SERVER ON THE MACHINE the sub-agent's turn ends `failed`, and
+ * that is the assertion — a failure carried back from a Worker is the whole
+ * path working, and it is a DIFFERENT sentence from the one a build with no
+ * delegation produces. `NO_WORKER` below is that other sentence: seeing it
+ * means the port fell back to the honest refusal and no Worker ever started.
+ */
+const NO_WORKER = 'There is no agent called'
+
+/** The last row's text, whatever kind it is — the sentence the errand brought back. */
+const LAST_SAID = `(() => {
+  const rows = [...document.querySelectorAll('[data-row=said]')]
+  return rows.length ? rows[rows.length - 1].innerText : ''
+})()`
+
+const DELEGATED = `JSON.stringify({
+  answered: ${ANSWERED},
+  said: ${LAST_SAID}.slice(0, 300),
+})`
+
+/** Send one message to another agent and read back what came home. */
+function delegate() {
+  return JSON.stringify([
+    ['goto', `http://localhost:${PORT}${BASE}/?agent=critic`],
+    ['wait', 'textarea'],
+    ['js', `window.__before = ${KINDS}.length`],
+    ['fill', 'textarea', 'smoke: check this claim'],
+    ['click', 'button[type=submit]'],
+    ['js', POLL],
+    ['js', DELEGATED],
+  ])
+}
+
 /** One destination, opened cold, asked whether its own content is a failure. */
 function walk(/** @type {string} */ slug) {
   return JSON.stringify([
@@ -233,6 +273,10 @@ try {
   if (reloaded.textareas < 1) failures.push('the composer did not survive a reload: no textarea on the second load')
   if (!reloaded.transcript) failures.push('the transcript did not survive a reload — the facts never reached storage')
 
+  const [errand] = readBack(await run([BROWSE, 'chain'], delegate()))
+  if (!errand || !errand.answered) failures.push(`a message addressed to critic brought nothing back within ${ANSWER_MS}ms — no Worker answered`)
+  else if (errand.said.includes(NO_WORKER)) failures.push(`delegation fell back to the refusal: no Worker was started (${errand.said})`)
+
   for (const slug of DESTINATIONS) {
     const [landed] = readBack(await run([BROWSE, 'chain'], walk(slug)))
     const at = `/${slug}`
@@ -255,4 +299,4 @@ if (failures.length) {
   for (const line of failures) console.error('  ' + line)
   process.exit(1)
 }
-console.log(`smoke ok — the export boots, a message reaches the transcript and survives a reload, what the model port answered reaches it too, and all ${DESTINATIONS.length} destinations render their own content rather than a failure`)
+console.log(`smoke ok — the export boots, a message reaches the transcript and survives a reload, what the model port answered reaches it too, a delegation to another agent runs in its own Worker and comes home, and all ${DESTINATIONS.length} destinations render their own content rather than a failure`)

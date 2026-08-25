@@ -37,6 +37,8 @@ export { space, spaceManifest } from './space.js'
 export { TERMINAL, terminal, terminalManifest } from './terminal.js'
 export { tools, toolsManifest } from './tools.js'
 export { LOCAL_TOOLS } from './locals.js'
+export { ROSTER_TOOLS } from './roster.js'
+export { NO_ENDING, errandTurn } from './callee.js'
 export { SKILL_DESCRIPTORS, parseSkill } from './skills.js'
 export { answered } from './runner.js'
 

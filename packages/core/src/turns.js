@@ -57,10 +57,11 @@ export function turnsReducer(me) {
         started.openTurnId = event.turnId
         return state
       }
-      // AN ERRAND ENDS WITHOUT AN ENDING. A message addressed to another agent
-      // is run by `runErrand`, which has no turn to end — the callee's own loop
-      // would record one and it does not run in this process yet — so the only
-      // thing the log says is `agent_status: idle` under that agent's name.
+      // AN ERRAND ENDS WITHOUT AN ENDING *HERE*. A message addressed to another
+      // agent is run by `runErrand`, which has no turn to end: the callee's own
+      // loop records one, in its own Worker and its own log, which this process
+      // never reads — so the only thing THIS log says is `agent_status: idle`
+      // under that agent's name.
       // Without this the callee's bucket kept an `openedAt` until the tab shut
       // and its board card read "running" beside its own finished answer.
       if (fact.type === 'agent_status' && fact.status === 'idle' && fact.agent !== me) return quiet(state, fact.agent)

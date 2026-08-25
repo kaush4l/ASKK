@@ -29,16 +29,20 @@ const CARD = {
  * One build: scripted model, a tool table, and a deadline the test fires. The
  * agent's TOOLBOX is the descriptors it may call and `tools` is what runs them
  * — both are handed in here because the spec reader has not landed.
+ * `me` and `segments` are handed in by the errand suite and nowhere else: a
+ * sub-agent is the same build under a different NAME, and its conversation
+ * surviving a reload is two boots over ONE store.
  * @param {{script?: Scripts, tools?: Record<string, import('@harness/core').ToolRun>,
- *   agents?: Parameters<typeof fakeAgents>[0], auto?: boolean}} [parts]
+ *   agents?: Parameters<typeof fakeAgents>[0], auto?: boolean, me?: string,
+ *   segments?: ReturnType<typeof memorySegments>}} [parts]
  */
 export function harness(parts = {}) {
   const clock = fakeClock({ start: 1_000, step: 1 })
   const ports = testPorts({ clock, script: parts.script ?? [], agents: fakeAgents(parts.agents ?? {}) })
-  const segments = memorySegments()
+  const segments = parts.segments ?? memorySegments()
   const toolbox = Object.keys(parts.tools ?? {}).map((name) => tool({ name, description: `the ${name} tool` }))
   const agent = { ...newAgentState(), toolbox, card: CARD }
-  const app = bootFresh({ ports, available: [...CAPABILITIES], segments, tools: parts.tools ?? {}, agent })
+  const app = bootFresh({ ports, available: [...CAPABILITIES], segments, tools: parts.tools ?? {}, agent, me: parts.me })
   return { app, ports, segments, clock, timer: manualTimer({ auto: parts.auto }) }
 }
 

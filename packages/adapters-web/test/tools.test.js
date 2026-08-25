@@ -52,16 +52,15 @@ describe('every tool the shipped agent file names', () => {
     // still owed. Anything appearing here that is not in `OWED` is a name the
     // shipped file grants and this build silently cannot answer.
     //
-    // THE LIST SHRANK BY FIVE ON 2026-08-25 and the file shrank with it: the
-    // lead struck `observe` and the four process tools from
-    // `apps/web/public/agents/main/agent.md`, because they need a runner — a
-    // place that keeps a command alive between turns — and this build's
-    // workspace is OPFS, which stores files and runs nothing. A model told a
-    // capability exists does not treat it as uncertain; it plans with it.
-    // The two that remain are the roster's, not the toolbox's: `write_agent`
-    // and `spawn_agent` need one Worker per agent, which `packages/agent` now
-    // has and the composition root does not yet build.
-    const OWED = ['write_agent', 'spawn_agent']
+    // THE LIST IS EMPTY, and it took two strikings to get there. The lead
+    // struck `observe` and the four process tools from
+    // `apps/web/public/agents/main/agent.md`, because they need a place that
+    // keeps a command alive between turns and this build's workspace is OPFS,
+    // which stores files and runs nothing. `write_agent` and `spawn_agent` were
+    // the last two: they needed one Worker per agent, and the composition root
+    // now starts one. An empty list is the claim — anything appearing here is a
+    // name the shipped file grants and this build silently cannot answer.
+    const OWED = /** @type {string[]} */ ([])
     const app = build()
     const read = loadAgents([{ path: 'agents/main/agent.md', text: await Bun.file(AGENT_FILE).text() }])
     const spec = read.specs[0]

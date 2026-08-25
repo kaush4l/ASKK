@@ -35,10 +35,10 @@ describe('two conversations on one page', () => {
     const turns = /** @type {Record<string, {openedAt: number, openTurnId: string, ended: number}>} */ (app.log.read(TURNS))
     expect(turns.scout?.openedAt).toBe(0)
     expect(turns.scout?.openTurnId).toBe('')
-    // scout's `ended` stays 0 and that is the honest count: no ending FACT was
-    // ever written for an errand, because the callee's own loop is what writes
-    // one and it does not run in this process. What must not happen is main's
-    // count going up for a turn main did not take.
+    // scout's `ended` stays 0 and that is the honest count: no ending FACT is
+    // ever written HERE for an errand — the callee's own loop writes one, in
+    // its own Worker and its own log. What must not happen is main's count
+    // going up for a turn main did not take.
     expect(turns.scout?.ended).toBe(0)
     expect(turns.main?.ended).toBe(1)
   })
