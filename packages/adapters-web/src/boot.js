@@ -13,10 +13,11 @@
  * @module
  */
 
-import { CAPABILITIES, DelegateError, ENTRY_AGENT, SEARCH_ENDPOINT, StoreError, WorkspaceError } from '@harness/kernel'
+import { CAPABILITIES, ENTRY_AGENT, SEARCH_ENDPOINT, StoreError } from '@harness/kernel'
 import { adoptSpec, newAgentState } from '@harness/agent'
 import { boot } from '@harness/core'
 
+import { noAgents, noWorkspace } from './absent.js'
 import { fetchRoster, fetchBriefs } from './files.js'
 import { CATALOGUE, toolRunners } from './toolset.js'
 import { SEARCH_HOSTS } from './search.js'
@@ -48,6 +49,10 @@ export const PROFILE_KEY = 'config/keys/model'
 export async function bootBrowser(opts = {}) {
   const basePath = opts.basePath ?? './'
   const me = opts.agent ?? ENTRY_AGENT
+  // The settings face is built as an argument to `boot`, and its failures are
+  // appended to the log `boot` returns. Nothing can fail before that line runs.
+  /** @type {App|null} */
+  let built = null
   const db = await openDb(DB)
   const kv = idbKv(db)
   const endpoint = makeEndpoint()
@@ -57,6 +62,38 @@ export async function bootBrowser(opts = {}) {
   if (stored !== null) endpoint.loadProfile(stored)
   const net = addressBook(endpoint)
   useBroker({ endpoint, kv, key: PROFILE_KEY, net })
+  const { ports, available } = await realPorts(db, endpoint, net)
+  const roster = await fetchRoster(basePath)
+  const briefed = await fetchBriefs(basePath)
+  const app = await boot({
+    ports,
+    available,
+    segments: idbSegments(db),
+    me,
+    tools: toolRunners(ports, { keyFor: endpoint.apiKeyFor }),
+    agent: adopted(roster, me, available, endpoint),
+    briefs: briefed.briefs,
+    roster: { ...roster, refusals: [...roster.refusals, ...briefed.refusals] },
+    settings: settingsFace(endpoint, net, {
+      persist: (json) => kv.put(PROFILE_KEY, json),
+      onFailure: (message) => storeFailed(built, PROFILE_KEY, message, ports.clock.now()),
+    }),
+  })
+  built = app
+  if (catalogue instanceof StoreError) storeFailed(app, catalogue.key, catalogue.message, ports.clock.now())
+  return app
+}
+
+/**
+ * EVERY PORT THIS BROWSER ACTUALLY HAS, and the capability list that follows
+ * FROM them rather than beside them. The two are returned together because the
+ * one thing that must never drift apart is what a port can do and what the
+ * build claims it can (I6): `workspace` is granted here only where OPFS
+ * answered.
+ * @param {IDBDatabase} db @param {ReturnType<typeof makeEndpoint>} endpoint
+ * @param {ReturnType<typeof addressBook>} net
+ */
+async function realPorts(db, endpoint, net) {
   const workspace = await openWorkspace()
   const ports = {
     clock: browserClock(),
@@ -68,22 +105,7 @@ export async function bootBrowser(opts = {}) {
     workspace: workspace ?? noWorkspace(),
     spaces: idbKv(await openDb(SPACES_DB)),
   }
-  const available = offered(workspace !== null)
-  const roster = await fetchRoster(basePath)
-  const briefed = await fetchBriefs(basePath)
-  const app = await boot({
-    ports,
-    available,
-    segments: idbSegments(db),
-    me,
-    tools: toolRunners(ports, { keyFor: endpoint.apiKeyFor }),
-    agent: adopted(roster, me, available),
-    briefs: briefed.briefs,
-    roster: { ...roster, refusals: [...roster.refusals, ...briefed.refusals] },
-    settings: settingsFace(endpoint, net, { persist: (json) => kv.put(PROFILE_KEY, json) }),
-  })
-  if (catalogue instanceof StoreError) noCatalogue(app, catalogue, ports.clock.now())
-  return app
+  return { ports, available: offered(workspace !== null) }
 }
 
 /**
@@ -108,22 +130,26 @@ function addressBook(endpoint) {
  * by name which file was missing rather than the page looking merely empty.
  * @param {import('@harness/core').Roster} roster @param {string} me
  * @param {import('@harness/kernel').CapabilityId[]} available
+ * @param {ReturnType<typeof makeEndpoint>} endpoint
  */
-function adopted(roster, me, available) {
+function adopted(roster, me, available, endpoint) {
   const spec = roster.specs.find((s) => s.name === me)
   if (!spec) return undefined
-  return adoptSpec(newAgentState(), spec, { catalogue: CATALOGUE, offered: available, peers: roster.specs }).state
+  const env = { catalogue: CATALOGUE, offered: available, peers: roster.specs, card: endpoint.card(spec.model) }
+  return adoptSpec(newAgentState(), spec, env).state
 }
 
 /**
- * SAY THAT THIS DEPLOY SHIPPED NO CATALOGUE, as a fact and not as a silence.
+ * SAY THAT A WRITE DID NOT LAND, as a fact and not as a silence — the deploy
+ * that shipped no catalogue, and the profile save a full IndexedDB refused.
  * Without it the only sentence anyone ever sees is the model port's either/or —
  * "no catalogue, or the entry is not in it" — which names neither the address
- * nor the status, and boot succeeds either way (I16).
- * @param {App} app @param {StoreError} failure @param {number} at
+ * nor the status, and boot succeeds either way (I16). The Setup pane's status
+ * line already renders `store_failed`; this is what puts one there.
+ * @param {App|null} app @param {string} key @param {string} message @param {number} at
  */
-function noCatalogue(app, failure, at) {
-  app.log.append({ type: 'store_failed', key: failure.key, message: failure.message }, at)
+function storeFailed(app, key, message, at) {
+  app?.log.append({ type: 'store_failed', key, message }, at)
 }
 
 /**
@@ -135,51 +161,4 @@ function noCatalogue(app, failure, at) {
 export function offered(files) {
   const withheld = files ? ['agents'] : ['agents', 'workspace']
   return CAPABILITIES.filter((id) => !withheld.includes(id))
-}
-
-/**
- * Delegation, ABSENT AND SAYING SO. One Worker per agent is the next
- * increment; until it exists an empty roster is the honest answer and a
- * delegation names what is missing rather than hanging on a message nobody
- * will read.
- * @returns {import('@harness/kernel').AgentPort}
- */
-function noAgents() {
-  return {
-    roster: () => [],
-    async delegate(agent) {
-      throw new DelegateError('unknown_agent', `There is no agent called "${agent}" here.`, {
-        detail: 'this build runs one agent: delegation needs a Worker per agent and none is started yet',
-      })
-    },
-  }
-}
-
-/**
- * The workspace a browser without OPFS has: none, stated. `durable()` is FALSE
- * here and true in the real one, and that difference is the whole of the empty
- * folder note — "nothing has been written here" and "a reload emptied this" are
- * different sentences and only the log plus this flag can tell them apart.
- * @returns {import('@harness/kernel').WorkspacePort}
- */
-function noWorkspace() {
-  const missing = () => new WorkspaceError('unavailable', 'This browser has no file storage this build can use.', {
-    detail: 'the Origin Private File System is absent here, so nothing written would survive the tab',
-  })
-  return {
-    durable: () => false,
-    interrupt: () => 'There is nothing running to interrupt.',
-    async exec() {
-      throw missing()
-    },
-    async read() {
-      throw missing()
-    },
-    async write() {
-      throw missing()
-    },
-    async list() {
-      throw missing()
-    },
-  }
 }

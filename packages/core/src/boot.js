@@ -30,7 +30,7 @@ import { files, filesManifest } from './files.js'
 import { bootLog, freshLog } from './log/index.js'
 import { processes, processesManifest } from './processes.js'
 import { projections } from './reducers.js'
-import { artifactTools } from './shelf.js'
+import { ARTIFACT_TOOLS, artifactTools } from './shelf.js'
 import { settings, settingsManifest } from './settings.js'
 import { space, spaceManifest } from './space.js'
 import { terminal, terminalManifest } from './terminal.js'
@@ -115,16 +115,32 @@ function assembled(parts, log, me) {
   return {
     log,
     me,
-    // THE DOOR OUT OF THE SHELF IS ALWAYS OPEN. `read_artifact` is core's
+    // THE DOOR OUT OF THE SHELF IS ALWAYS OPEN. `read_result` is core's
     // because the thing that shelved the bytes has to be the thing that can
     // produce them again — a build could otherwise ship the spill without the
     // way back, and a receipt naming a handle nothing answers is worse than a
     // long result. A composition root may still override it by name.
     tools: { ...artifactTools(parts.ports), ...parts.tools },
-    agent: state && parts.briefs ? { ...state, briefs: parts.briefs } : state,
+    agent: state ? withShelfDoor(state, parts.briefs) : state,
     roster: withAuthored(shipped, log),
     settings: parts.settings,
   }
+}
+
+/**
+ * BOTH HALVES OF THAT DOOR, OPEN TOGETHER. The runner above is installed
+ * whatever the agent file said, so the DESCRIPTOR has to be installed too —
+ * otherwise a `tools:` list, which is the whole allowlist, can shut a door the
+ * receipt has already promised the model, and what it may call and what it is
+ * told it may call stop being the same set (I13). The shipped `main` does
+ * exactly that today, which is why this is code and not a paragraph (I17).
+ * @param {import('@harness/agent').AgentState} state @param {Record<string,string>} [briefs]
+ * @returns {import('@harness/agent').AgentState}
+ */
+function withShelfDoor(state, briefs) {
+  const named = new Set(state.toolbox.map((t) => t.name))
+  const toolbox = [...state.toolbox, ...ARTIFACT_TOOLS.filter((t) => !named.has(t.name))]
+  return briefs ? { ...state, briefs, toolbox } : { ...state, toolbox }
 }
 
 /** @param {import('./app.js').Roster} shipped @param {import('./log/index.js').Log} log */

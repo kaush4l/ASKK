@@ -63,7 +63,7 @@ export const CATALOGUE = /** @type {Tool[]} */ ([
 
 /**
  * The runners, wired to the ports this browser gave us.
- * `read_artifact` is NOT here: it is core's, installed by `boot`, because the
+ * `read_result` is NOT here: it is core's, installed by `boot`, because the
  * thing that shelved the bytes owns the way back to them.
  * @param {Ports} ports
  * @param {{keyFor: (entry: string) => string}} broker where a BYOK search key comes from, attached downstream of every grant (I6)

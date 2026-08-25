@@ -37,6 +37,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@harness/agent": "workspace:*",
+        "@harness/context": "workspace:*",
         "@harness/core": "workspace:*",
         "@harness/kernel": "workspace:*",
       },

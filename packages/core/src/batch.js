@@ -63,7 +63,7 @@ async function spilled(app, effect, ran, at, answered) {
     ]
   } catch (cause) {
     // THE SHELF FAILED, AND NOTHING PRETENDS OTHERWISE. Handing back the
-    // receipt anyway would name a handle `read_artifact` cannot answer, and the
+    // receipt anyway would name a handle `read_result` cannot answer, and the
     // model would spend a round discovering that. The excerpt is the same one;
     // only the promise of the rest is withdrawn.
     const excerpt = receipt(handle, effect.tool, ran.output).split('\n').slice(3).join('\n')

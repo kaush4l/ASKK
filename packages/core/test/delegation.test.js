@@ -5,7 +5,7 @@
  */
 import { expect, test, describe } from 'bun:test'
 import { get, post, withHeader } from '@harness/kernel'
-import { drive, handle } from '@harness/core'
+import { TURNS, drive, handle } from '@harness/core'
 import { harness, rows, until } from './harness.js'
 
 describe('two conversations on one page', () => {
@@ -28,6 +28,19 @@ describe('two conversations on one page', () => {
     // scout's turn stayed open beside its own answer and the pane told the
     // person their page had been reloaded — for ever, not for a moment.
     expect(handle(app, withHeader(get('/chat'), 'x-agent', 'scout')).data.waitingLabel).toBe('')
+    // The bucket itself, and not only the sentence: the ending closed the turn
+    // scout OPENED, found by the turn id it carries. Closing `me` unaddressed
+    // left scout holding an `openedAt` for the life of the tab while main's
+    // count went up for a turn main never took.
+    const turns = /** @type {Record<string, {openedAt: number, openTurnId: string, ended: number}>} */ (app.log.read(TURNS))
+    expect(turns.scout?.openedAt).toBe(0)
+    expect(turns.scout?.openTurnId).toBe('')
+    // scout's `ended` stays 0 and that is the honest count: no ending FACT was
+    // ever written for an errand, because the callee's own loop is what writes
+    // one and it does not run in this process. What must not happen is main's
+    // count going up for a turn main did not take.
+    expect(turns.scout?.ended).toBe(0)
+    expect(turns.main?.ended).toBe(1)
   })
 
   test('a delegation the roster cannot answer says so IN THAT AGENT\'S TRANSCRIPT', async () => {

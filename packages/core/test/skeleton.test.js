@@ -96,6 +96,11 @@ describe('a failure is a fact the loop can read', () => {
         { fail: new ModelError('unauthorized', 'the endpoint refused the key') },
         { fail: new ModelError('unauthorized', 'the endpoint refused the key') },
         { fail: new ModelError('unauthorized', 'the endpoint refused the key') },
+        { fail: new ModelError('unauthorized', 'the endpoint refused the key') },
+        // NEVER REACHED, and that is the assertion. A ceiling nothing stops at
+        // is not a ceiling, so the script holds an answer past it and the test
+        // proves the turn ended without ever asking for it.
+        { text: 'the fifth call would have worked' },
       ],
     })
     handle(app, post('/chat', { message: 'ask it' }))
@@ -105,7 +110,7 @@ describe('a failure is a fact the loop can read', () => {
     expect(notes[0]?.said).toContain('the endpoint refused the key')
     expect(notes.some((r) => r.said.includes('failed'))).toBe(true)
     expect(app.agent.turnId).toBe('') // and not left awaiting a model that is not coming
-    expect(/** @type {any} */ (app.ports.model).remaining()).toBe(0) // three attempts, bounded
+    expect(/** @type {any} */ (app.ports.model).remaining()).toBe(1) // bounded: it stopped one short of the reply
 
   })
 })

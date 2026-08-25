@@ -107,8 +107,12 @@ describe('the panes read the projections and not each other', () => {
   test('the tools pane says a named tool with no runner is NOT resolved', () => {
     const { app } = build()
     const rows = /** @type {Array<Record<string, unknown>>} */ (handle(app, get('/tools')).data.rows)
-    expect(rows.map((r) => r.name)).toEqual(['note'])
+    // `read_result` is beside the agent's own: the shelf's door is granted by
+    // `boot` whatever the file allowed, because the RUNNER is installed the
+    // same way and told-and-callable have to be the same set (I13).
+    expect(rows.map((r) => r.name)).toEqual(['note', 'read_result'])
     expect(rows[0]?.resolves).toBe(true)
+    expect(rows[1]?.resolves).toBe(true)
     expect(String(rows[0]?.usage)).toContain('note({})')
   })
 

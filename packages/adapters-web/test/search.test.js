@@ -57,8 +57,25 @@ describe('the shipped ladder', () => {
 
     expect(answer.ok).toBe(true)
     expect(answer.output).toContain('firecrawl: answered 503')
-    expect(answer.output).toContain("wikipedia's answer instead")
+    expect(answer.output).toContain("wikipedia-title's answer instead")
     expect(answer.output).toContain('An agent acts.')
+  })
+
+  test('the wikipedia rung is a TITLE lookup, so a real question falls straight past it', async () => {
+    // The REST summary endpoint 404s anything that is not an article title, and
+    // the ladder's promise is only honest if that is the rung's stated job. The
+    // encyclopedia answers "Agent"; it does not answer a question.
+    const wired = net({
+      firecrawl: { status: 503, body: '' },
+      wikipedia: { status: 404, body: '{"title":"Not found"}' },
+      hn: { status: 200, body: JSON.stringify({ hits: [{ title: 'OPFS durability', url: 'https://news', story_text: 'it depends' }] }) },
+    })
+    const run = searchTool({ net: wired.port, ...NO_KEY })
+    const answer = await run('{"query":"how does OPFS durability work"}', signal)
+
+    expect(answer.output).toContain('wikipedia-title: answered 404')
+    expect(answer.output).toContain("hn's answer instead")
+    expect(wired.asked.map((a) => a.endpoint)).toEqual(['firecrawl', 'wikipedia', 'hn'])
   })
 
   test('a query nothing answers names every rung that was tried and what each said', async () => {
@@ -71,8 +88,14 @@ describe('the shipped ladder', () => {
     expect(wired.asked).toHaveLength(LADDER.length)
   })
 
-  test('a key promotes Tavily to the first rung, and the key never leaves this file', async () => {
-    const wired = net({ tavily: { status: 200, body: JSON.stringify({ results: [{ title: 'T', url: 'https://t', content: 'c' }] }) } })
+  test('a key promotes Tavily to the first rung, and rides on that request and no other', async () => {
+    // TAVILY REFUSES ON PURPOSE. A test where the first rung answers proves
+    // nothing about "no other" — the loop returns before a second request
+    // exists. This one makes four more requests and checks every one of them.
+    const wired = net({
+      tavily: { status: 503, body: '' },
+      firecrawl: { status: 200, body: FIRECRAWL },
+    })
     const run = searchTool({ net: wired.port, keyFor: (entry) => (entry === TAVILY.name ? 'tvly-secret' : '') })
     const answer = await run('{"query":"anything"}', signal)
 
@@ -80,6 +103,8 @@ describe('the shipped ladder', () => {
     expect(wired.asked[0]?.endpoint).toBe('tavily')
     // ATTACHED DOWNSTREAM OF THE GRANT, on that one request and no other.
     expect(wired.asked[0]?.headers.authorization).toBe('Bearer tvly-secret')
+    expect(wired.asked.length).toBeGreaterThan(1)
+    expect(wired.asked.slice(1).every((a) => a.headers.authorization === undefined)).toBe(true)
   })
 
   test('a call with no query is a result the model can act on, not a thrown error', async () => {

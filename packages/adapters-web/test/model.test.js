@@ -3,15 +3,19 @@ import { expect, test } from 'bun:test'
 import { CAPABILITIES, MODEL_ENDPOINT, post } from '@harness/kernel'
 import { fakeClock, fakeRng, memoryKv, memoryStore, fakeAgents, fakeWorkspace, fakeNet } from '@harness/adapters-test'
 import { bootFresh, drive, handle } from '@harness/core'
+import { newAgentState } from '@harness/agent'
 import { fetchModel, makeEndpoint } from '@harness/adapters-web'
 
 import { memorySegments, scriptedFetch } from './doubles.js'
 
 const FILE = JSON.stringify({
   default: 'local',
+  // `context_tokens` IS REQUIRED, here as on disk: `endpoint.card` refuses an
+  // entry without one by name, and a fixture that left it out would be testing
+  // a catalogue the product will not accept.
   models: {
-    local: { model: 'gemma-4', base_url: 'http://127.0.0.1:8873/v1' },
-    openrouter: { model: 'openai/gpt-4o-mini', base_url: 'https://openrouter.ai/api/v1' },
+    local: { model: 'gemma-4', base_url: 'http://127.0.0.1:8873/v1', context_tokens: 128000 },
+    openrouter: { model: 'openai/gpt-4o-mini', base_url: 'https://openrouter.ai/api/v1', context_tokens: 128000 },
   },
 })
 
@@ -80,6 +84,17 @@ test('resolves answers honestly, and null where no catalogue was read', () => {
   expect(fetchModel(makeEndpoint()).resolves('local')).toBe(null)
 })
 
+test('the card is read from the catalogue, and an entry with no window is refused BY NAME', () => {
+  const { endpoint } = broker([])
+  expect(endpoint.card('local')?.contextTokens).toBe(128000)
+  expect(endpoint.card('nothing-configured')?.name).toBe('local') // the default entry serves an unlisted model id
+  expect(makeEndpoint().card('local')).toBe(null) // no catalogue read: null, never a hopeful default
+
+  const windowless = makeEndpoint()
+  windowless.setCatalogue(JSON.stringify({ default: 'bare', models: { bare: { base_url: 'http://x/v1' } } }))
+  expect(() => windowless.card('bare')).toThrow(/"bare"/)
+})
+
 test('a key is set, used, and appears in no fact the log ever persisted', async () => {
   const SECRET = 'sk-must-never-be-written-down'
   const { endpoint, wire, port } = broker([{ json: { choices: [{ message: { content: 'hello' }, finish_reason: 'stop' }] } }])
@@ -99,6 +114,7 @@ test('a key is set, used, and appears in no fact the log ever persisted', async 
     },
     available: [...CAPABILITIES],
     segments,
+    agent: { ...newAgentState(), model: 'local', card: endpoint.card('local') },
   })
   handle(app, post('/chat', { message: 'say hello' }))
   await drive(app, { timer: { wait: async () => {} } })

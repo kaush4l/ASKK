@@ -79,7 +79,7 @@ import { Registry } from './registry.js'
  * @typedef {{
  *   registry: Registry, log: Log, ports: Ports, available: CapabilityId[],
  *   agent: AgentState, me: string, tools: Record<string, ToolRun>,
- *   pending: Incoming[], bootedAt: number, quiet: Record<string, number>,
+ *   pending: Incoming[], bootedAt: number,
  *   errands: Set<string>, chores: Effect[], roster: Roster, settings: SettingsFace,
  * }} App
  */
@@ -121,10 +121,6 @@ export function createApp(ports, available, opts) {
     chores: [],
     roster: opts.roster ?? { specs: [], refusals: [], paths: {} },
     settings: opts.settings ?? null,
-    // Consecutive silent completions, per model. A model that answers with
-    // nothing twice running is not worth a third attempt, and the driver stops
-    // retrying it rather than paying to learn the same thing again.
-    quiet: {},
   }
 }
 

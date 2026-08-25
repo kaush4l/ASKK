@@ -7,7 +7,15 @@
  * chunk of it, and into the next document — and the person paid for three of
  * those. Here it crosses once: the bytes go to the blob store under a handle,
  * the fact carries a RECEIPT, and the model reads what it needs back through
- * `read_artifact`. The model never sees the bytes it did not ask for.
+ * `read_result`. The model never sees the bytes it did not ask for.
+ *
+ * THE NAME IS `read_result` AND NOT `read_artifact`. The artifacts faculty
+ * already ships a `read_artifact` over the SPACE SHELF, addressed by name and
+ * offset in bytes; this one is addressed by handle and offset in characters,
+ * and the two were both in the assembled catalogue with core's winning the
+ * first-name-match lookup. A model told the faculty's contract was being run
+ * against this one's — which is the exact drift I13 forbids. What this reads
+ * back is a tool RESULT that was too long to say, so it is named that.
  *
  * THE RECEIPT SHOWS BOTH ENDS. Head-only truncation is banned in this build
  * because it kept the greeting and lost the message (RULINGS); for a tool result
@@ -85,7 +93,7 @@ export function receipt(handle, tool, output) {
   const lines = output.split('\n').length
   return [
     `${tool} produced ${output.length} characters over ${lines} lines, which is too much to put in this conversation.`,
-    `It is kept whole as artifact ${handle}. Read any part of it with read_artifact({"handle": "${handle}", "offset": 0, "limit": 4000}).`,
+    `It is kept whole as artifact ${handle}. Read any part of it with read_result({"handle": "${handle}", "offset": 0, "limit": 4000}).`,
     '',
     `--- first ${EXCERPT} characters ---`,
     output.slice(0, EXCERPT),
@@ -106,19 +114,19 @@ export function summarise(/** @type {string} */ tool, /** @type {string} */ outp
  * can produce them again, or a build could ship the spill without the door out
  * of it.
  * The return type NAMES the tool rather than being a bag, so a caller reaching
- * for `read_artifact` gets a function and not a `possibly undefined` — the map
+ * for `read_result` gets a function and not a `possibly undefined` — the map
  * shape belongs at the App, which merges several of these.
- * @param {Ports} ports @returns {{read_artifact: ToolRun}}
+ * @param {Ports} ports @returns {{read_result: ToolRun}}
  */
 export function artifactTools(ports) {
   return {
-    read_artifact: async (args) => {
+    read_result: async (args) => {
       /** @type {{handle?: unknown, offset?: unknown, limit?: unknown}} */
       let asked = {}
       try {
         asked = JSON.parse(args)
       } catch {
-        return { ok: false, output: 'read_artifact needs JSON arguments, and that was not JSON.' }
+        return { ok: false, output: 'read_result needs JSON arguments, and that was not JSON.' }
       }
       return await sliceOf(ports, String(asked.handle ?? ''), Number(asked.offset ?? 0), Number(asked.limit ?? 4000))
     },
@@ -127,7 +135,7 @@ export function artifactTools(ports) {
 
 /** @param {Ports} ports @param {string} handle @param {number} offset @param {number} limit */
 async function sliceOf(ports, handle, offset, limit) {
-  if (handle === '') return { ok: false, output: 'read_artifact needs a handle — the one the receipt named.' }
+  if (handle === '') return { ok: false, output: 'read_result needs a handle — the one the receipt named.' }
   const bytes = await ports.store.blob.read(artifactPath(handle))
   if (bytes === null) {
     throw new StoreError('unavailable', `There is no artifact called "${handle}" here.`, {
@@ -147,7 +155,7 @@ async function sliceOf(ports, handle, offset, limit) {
 /** The descriptors, so a model that may read artifacts is TOLD how. */
 export const ARTIFACT_TOOLS = [
   tool({
-    name: 'read_artifact',
+    name: 'read_result',
     description: 'read part of a result that was too long to be quoted in full',
     args: [
       arg('handle', 'string', 'the handle the receipt named'),

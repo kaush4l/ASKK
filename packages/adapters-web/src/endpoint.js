@@ -15,6 +15,7 @@
  */
 
 import { NO_CATALOGUE, layer, names, readCatalogue, resolve } from './catalogue.js'
+import { modelCard } from '@harness/context'
 import { record } from './profile.js'
 
 /** @typedef {import('./catalogue.js').Catalogue} Catalogue */
@@ -73,6 +74,8 @@ function chosen(state) {
      * @param {string} asked @returns {Entry|null}
      */
     resolve: (asked) => resolve(catalogueOf(state), state.selected.trim() === '' ? asked : state.selected.trim()),
+    /** The card the paper is assembled against, for whatever `resolve` answers. */
+    card: (/** @type {string} */ asked) => cardOf(state, asked),
     /**
      * ONE NAMED ENTRY, with the pick ignored. Settings lists every entry while
      * one of them is selected, and resolving through `resolve` there would
@@ -81,6 +84,22 @@ function chosen(state) {
      */
     entry: (name) => resolve(catalogueOf(state), name),
   }
+}
+
+/**
+ * THE CARD, READ FROM THE RAW DOCUMENT and not from `Entry`. `Entry` is the
+ * wire shape — address, protocol, which key — and the context window a budget
+ * is derived from lives only in the file, so resolving first and carding second
+ * would refuse every entry for having no window. `null` where nothing resolves,
+ * which is the sentence the first call already has.
+ * @param {State} state @param {string} asked
+ * @returns {import('@harness/context').ModelCard|null}
+ */
+function cardOf(state, asked) {
+  const cat = catalogueOf(state)
+  const entry = resolve(cat, state.selected.trim() === '' ? asked : state.selected.trim())
+  const doc = entry ? cat.models[entry.name] : undefined
+  return entry && doc ? modelCard(entry.name, { ...doc, model: entry.model }) : null
 }
 
 /** @param {State} state */

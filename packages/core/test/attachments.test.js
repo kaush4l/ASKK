@@ -19,11 +19,11 @@ const PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQD
 
 const DROP = JSON.stringify([{ name: 'pixel.png', mediaType: 'image/png', dataBase64: PIXEL }])
 
-/** @param {{acceptsImages?: boolean, card?: boolean, workspace?: boolean}} [world] */
+/** @param {{acceptsImages?: boolean, workspace?: boolean}} [world] */
 function build(world = {}) {
   const clock = fakeClock({ start: 1_000, step: 1 })
   const ports = testPorts({ clock, script: [] })
-  const card = world.card === false ? null : {
+  const card = {
     name: 'sonnet', model: 'claude', kind: 'anthropic', contextTokens: 200_000,
     maxOutputTokens: null, acceptsImages: world.acceptsImages ?? true, reasons: false,
   }
@@ -56,6 +56,32 @@ describe('an image dropped on the composer', () => {
     expect(app.chores).toHaveLength(1)
     expect(app.chores[0]).toMatchObject({ type: 'InvokeTool', tool: 'write_file' })
     expect(String(/** @type {{args: string}} */ (app.chores[0]).args)).toContain('attachments/pixel.png')
+  })
+
+  test('what lands on disk is the base64, and the note a person reads says so', () => {
+    const app = build()
+    const sent = handle(app, post('/chat', { message: 'keep this', attachments: DROP }))
+    // The read-back path is not built yet, so this is the fact the next
+    // increment gets to write against: the chore carries the ENCODING, not the
+    // decoded bytes, and the sentence names the difference.
+    const wrote = JSON.parse(String(/** @type {{args: string}} */ (app.chores[0]).args))
+    expect(wrote.path).toBe('attachments/pixel.png')
+    expect(wrote.contents).toBe(PIXEL)
+    expect(String(sent.data.attachedLabel)).toContain('kept base64-encoded at attachments/pixel.png')
+  })
+
+  test('an agent with no card at all attaches the image rather than refusing it', () => {
+    // The production case until the host resolves one: `refusedBy` answers ''
+    // for a null card on purpose, because the turn is already about to end
+    // saying the model key resolved to nothing and a second sentence about
+    // images would bury it.
+    const app = bootFresh({
+      ports: testPorts({ clock: fakeClock({ start: 1_000, step: 1 }), script: [] }),
+      available: [...CAPABILITIES],
+      segments: memorySegments(),
+      agent: { ...newAgentState(), card: null },
+    })
+    expect(handle(app, post('/chat', { message: 'what is this?', attachments: DROP })).status).toBe(200)
   })
 
   test('the attachment is recorded BEFORE the message, so the turn it starts can see it', () => {

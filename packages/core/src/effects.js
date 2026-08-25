@@ -9,35 +9,26 @@
  * that stopped answering left `pending_tools` above zero for the life of the
  * tab, with the composer disabled and a clock that could not tick.
  *
- * A PORT FAILURE IS A TYPED FACT THE REDUCER SEES. The Rust's catch-all arm
+ * A PORT FAILURE IS ONE TYPED FACT THE REDUCER SEES. The Rust's catch-all arm
  * turned every one of them into a card nothing folded, so the loop could not
  * decide anything about a failure — a refusal, a rate limit and a dead endpoint
- * were one shrug. Here a failed model call is recorded as `core.effect_failed`
- * AND ends the turn with the provider's own `error` signal, which `ending.js`
- * already names FAILED.
+ * were one shrug. Here a failed model call is `core.effect_failed` and nothing
+ * else: `step`'s own ceiling asks again and then ends the turn QUOTING the
+ * driver, which is what `ending.js` names FAILED.
  * @module
  */
 
 import { HarnessError } from '@harness/kernel'
+import { EFFECT_FAILED } from '@harness/agent'
 
 import { callTool, runDelegate } from './batch.js'
 import { LATE, lateAfter, within } from './deadline.js'
-import { backoffMs } from './log/persist.js'
 
 /** @typedef {import('@harness/agent').Effect} Effect */
 /** @typedef {import('@harness/kernel').Fact} Fact */
 /** @typedef {import('./app.js').App} App */
 /** @typedef {import('./app.js').Incoming} Incoming */
 /** @typedef {import('./deadline.js').Driving} Driving */
-
-/** A port call that would not come back, as a fact a reducer can see. */
-export const EFFECT_FAILED = 'core.effect_failed'
-
-/** How many times a failed model call is tried again before the turn is told. */
-const RETRIES = 2
-
-/** Two silences in a row from one model is not worth a third. */
-const QUIET_CEILING = 2
 
 /**
  * Run one effect and return the facts it produced, in written order.
@@ -52,24 +43,27 @@ export async function runEffect(app, effect, opts) {
 }
 
 /**
- * ASK THE MODEL, RETRYING WHAT IS WORTH RETRYING. The backoff is the log's, so
- * two things that wait on a substrate that has gone away wait the same way.
+ * ASK THE MODEL, ONCE, AFTER THE WAIT THE LOOP ASKED FOR.
+ *
+ * THERE IS ONE RETRY POLICY AND IT IS THE LOOP'S. `step` counts the attempts,
+ * decides whether another is worth making, and says how long to wait first
+ * (`afterMs`) — it is pure and holds no clock, so this is the only place that
+ * waits. The driver used to run a second retry loop with a ceiling of its own:
+ * one dead endpoint then cost twelve calls rather than the three
+ * `MAX_ATTEMPTS` declares, and neither number was written where anybody
+ * counting them would look.
  * @param {App} app @param {Effect & {type: 'CallModel'}} effect @param {Driving} opts
  * @returns {Promise<Incoming[]>}
  */
 async function callModel(app, effect, opts) {
+  if (effect.afterMs > 0) await opts.timer.wait(effect.afterMs)
   // `context.buildRequest` (lane A) is this body's author and this is its one
   // call site; until it lands the paper crosses whole, which the scripted port
   // reads and the real adapter will not.
   const body = { model: effect.model, temperature: effect.temperature, document: effect.document }
-  for (let attempt = 0; ; attempt++) {
-    const outcome = await attemptCall(app, effect, body, opts)
-    if (!(outcome instanceof Error)) return outcome
-    if (attempt >= RETRIES || (app.quiet[effect.model] ?? 0) >= QUIET_CEILING) {
-      return failed(app, effect.turnId, `The model did not answer: ${outcome.message}`, outcome)
-    }
-    await opts.timer.wait(backoffMs(attempt + 1))
-  }
+  const outcome = await attemptCall(app, effect, body, opts)
+  if (!(outcome instanceof Error)) return outcome
+  return failed(app, effect.turnId, `The model did not answer: ${outcome.message}`, outcome)
 }
 
 /**
@@ -83,7 +77,6 @@ async function attemptCall(app, effect, body, opts) {
   try {
     const reply = await within(opts, (signal) => app.ports.model.call(effect.endpoint, body, { signal }))
     if (reply === LATE) return new Error(`it did not answer within ${lateAfter(opts)} seconds`)
-    app.quiet[effect.model] = quiet(reply) ? (app.quiet[effect.model] ?? 0) + 1 : 0
     return spoken(app, effect, reply, at)
   } catch (cause) {
     return cause instanceof Error ? cause : new Error(String(cause))
@@ -123,30 +116,25 @@ function spoken(app, effect, reply, at) {
   return facts
 }
 
-/** A completion that said nothing and asked for nothing. */
-function quiet(/** @type {import('@harness/kernel').ModelReply} */ reply) {
-  return reply.text.trim() === '' && reply.calls.length === 0
-}
-
 /**
- * The failure, TWICE: once as the typed record a reducer can see, and once as
- * the ending the loop needs — a provider that failed the completion is
- * `ending.js`'s FAILED, and a turn that is never told stays awaiting a model
- * that is not coming.
+ * THE FAILURE, ONCE. It used to be recorded twice — the typed fact, and an
+ * empty `model_replied` meant to carry the provider's `error` signal into
+ * `endingFor`. It never got there: an empty completion is intercepted by the
+ * stall guard before the finish signal is read, so one dead endpoint counted as
+ * two retries, cost twice the calls, and ended the turn saying "empty
+ * completions" about a key the endpoint had refused. `step` already retries a
+ * model failure and already ends the turn quoting it; the second fact only
+ * disagreed with the first.
  * @param {App} app @param {string} turnId @param {string} message @param {Error} cause
  * @returns {Incoming[]}
  */
 function failed(app, turnId, message, cause) {
-  const at = app.ports.clock.now()
   const kind = cause instanceof HarnessError ? cause.kind : 'unknown'
-  return [
-    { at, turnId, fact: { type: 'custom', kind: EFFECT_FAILED, payload: { message, kind, turnId } } },
-    {
-      at,
-      turnId,
-      fact: { type: 'model_replied', agent: app.me, text: '', reasoning: '', finish: 'stop' },
-      reply: { calls: [], finish: 'error' },
-    },
-  ]
+  // `{effect, reason}` IS THE CONTRACT `retry.js` READS. This payload used to
+  // be `{message, kind}`, which `failureIn` answers `null` to — so every model
+  // failure this driver recorded was invisible to the loop that exists to
+  // decide about one, and only the second fact below it moved the turn at all.
+  const payload = { effect: 'CallModel', reason: message, kind, turnId }
+  return [{ at: app.ports.clock.now(), turnId, fact: { type: 'custom', kind: EFFECT_FAILED, payload } }]
 }
 

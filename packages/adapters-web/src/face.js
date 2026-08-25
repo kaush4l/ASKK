@@ -12,11 +12,11 @@
  * setting the page lies about, so the in-memory layer changes before `handle`
  * returns and the write to storage follows behind it.
  *
- * A WRITE THAT FAILS IS CURRENTLY SILENT, and that is a gap rather than a
- * design: this object holds no log, so it cannot append the `store_failed` fact
- * the Setup pane's status line already renders. The setting still takes effect
- * for this page load; what is lost is the person learning it will not survive a
- * refresh. Filed for a ruling — it needs either the log here or an effect out.
+ * A WRITE THAT FAILS IS SAID. The store arrives as a pair — the write and what
+ * to do when it rejects — because `void promise` does not merely lose the
+ * failure, it raises an unhandled rejection in the page and records nothing.
+ * The setting still takes effect for this page load either way; what the
+ * failure hand-back buys is the person learning it will not survive a refresh.
  * @module
  */
 
@@ -28,7 +28,7 @@ import { SEARCH_ENDPOINT } from '@harness/kernel'
 /**
  * @param {Endpoint} endpoint
  * @param {{allow: (name: string, baseUrl: string) => void}} net
- * @param {{persist: (json: string) => Promise<void>}} [store] where the profile is written; absent in a test that only reads
+ * @param {{persist: (json: string) => Promise<void>, onFailure: (message: string) => void}} [store] where the profile is written, and who is told when it will not go; absent in a test that only reads
  * @returns {NonNullable<SettingsFace>}
  */
 export function settingsFace(endpoint, net, store) {
@@ -53,7 +53,10 @@ export function settingsFace(endpoint, net, store) {
         // capability off has to be as available as turning it on (I10).
         net.allow(SEARCH_ENDPOINT, endpoint.search())
       }
-      void store?.persist(endpoint.profileJson())
+      // The KEY is the caller's, not this object's: it holds no log and knows
+      // no storage layout, and naming one here would be a second authority on
+      // where the profile lives.
+      store?.persist(endpoint.profileJson()).catch((e) => store.onFailure(String(e?.message ?? e)))
     },
   }
 }

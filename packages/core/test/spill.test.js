@@ -80,13 +80,13 @@ describe('a tool result too big to say', () => {
     expect(/** @type {unknown[]} */ (handle(app, get('/space')).data.rows)).toHaveLength(0)
   })
 
-  test('read_artifact hands back the slice that was asked for, and says what is left', async () => {
+  test('read_result hands back the slice that was asked for, and says what is left', async () => {
     const { app, timer } = build(HUGE)
     handle(app, post('/terminal', { command: 'ls -R' }))
     await drive(app, { timer })
     const shelf = /** @type {Array<Record<string, unknown>>} */ (handle(app, get('/space')).data.rows)
 
-    const read = artifactTools(app.ports).read_artifact
+    const read = artifactTools(app.ports).read_result
     const slice = await read(JSON.stringify({ handle: shelf[0]?.handle, offset: 100, limit: 50 }), { signal: new AbortController().signal })
     expect(slice.ok).toBe(true)
     expect(slice.output.startsWith(HUGE.slice(100, 150))).toBe(true)
@@ -95,7 +95,7 @@ describe('a tool result too big to say', () => {
 
   test('a handle nothing was ever kept under is a named failure, not an empty string', async () => {
     const { app } = build(HUGE)
-    const read = artifactTools(app.ports).read_artifact
+    const read = artifactTools(app.ports).read_result
     const answer = await read('{"handle":"deadbeef"}', { signal: new AbortController().signal }).catch((/** @type {Error} */ e) => e)
     expect(answer).toBeInstanceOf(Error)
     expect(String(answer)).toContain('deadbeef')
@@ -114,6 +114,6 @@ describe('a tool result too big to say', () => {
     expect(observed).toContain('the store is full')
     // NO HANDLE IS OFFERED, because none would answer — the model must not
     // spend a round discovering that.
-    expect(observed).not.toContain('read_artifact({')
+    expect(observed).not.toContain('read_result({')
   })
 })

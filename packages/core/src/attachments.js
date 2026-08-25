@@ -8,6 +8,14 @@
  * (I4). The alternative was a `keepAttachment()` beside `saveEndpoint`, and one
  * documented exception to the seam is the most this tree gets.
  *
+ * WHAT IS KEPT IS BASE64 TEXT, AND THE NOTE SAYS SO. `write_file` takes a
+ * string, so `attachments/pixel.png` holds the base64 and not the PNG's bytes —
+ * anyone opening it in the Files pane, and the read-back path nobody has built
+ * yet, gets the encoding. Decoding here would need a byte door into the
+ * workspace that does not exist in this build, so the honest move is to name
+ * the encoding in the sentence a person reads rather than to let them find out
+ * by opening the file.
+ *
  * A TEXT-ONLY CARD IS TOLD, NOT DISCOVERED. `acceptsImages` is on the resolved
  * card, so an image aimed at a model that cannot read one is refused HERE, by
  * name, rather than becoming a 400 in the middle of the turn it was meant to
@@ -94,7 +102,7 @@ export function attach(ctx, part) {
   return {
     fact: { type: 'custom', kind: ATTACHED, payload: { ...part, path } },
     note: ctx.chore
-      ? `${part.name} attached, and kept at ${path}.`
+      ? `${part.name} attached, and kept base64-encoded at ${path}.`
       : `${part.name} attached to this turn only — this build has nowhere to keep it, so a refresh loses it.`,
   }
 }

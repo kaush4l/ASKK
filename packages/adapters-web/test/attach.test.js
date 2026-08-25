@@ -1,11 +1,23 @@
 import { expect, test } from 'bun:test'
 
 import { CAPABILITIES, get, post } from '@harness/kernel'
+import { newAgentState } from '@harness/agent'
 import { fakeClock, testPorts } from '@harness/adapters-test'
 import { bootFresh } from '@harness/core'
 import { attach } from '@harness/adapters-web'
 
 import { memorySegments } from './doubles.js'
+
+/**
+ * THE CARD THE PAPER IS ASSEMBLED AGAINST. Not optional decoration: an agent
+ * with no card ends every turn before it reaches the model, which is exactly
+ * the defect `bootBrowser` now fills in from the catalogue.
+ * @type {import('@harness/context').ModelCard}
+ */
+const CARD = {
+  name: 'local', model: 'gemma-4', kind: 'openai', contextTokens: 128_000,
+  maxOutputTokens: null, acceptsImages: false, reasons: false,
+}
 
 function built() {
   const segments = memorySegments()
@@ -13,6 +25,7 @@ function built() {
     ports: testPorts({ clock: fakeClock(), script: [{ text: 'hello back' }] }),
     available: [...CAPABILITIES],
     segments,
+    agent: { ...newAgentState(), card: CARD },
   })
   return { app, segments, ...attach(app) }
 }

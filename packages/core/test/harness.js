@@ -13,6 +13,19 @@ import { memorySegments, manualTimer } from './doubles.js'
 /** @typedef {import('@harness/core').Row} Row */
 
 /**
+ * THE CARD EVERY BUILD IS ASSEMBLED AGAINST. It is here and not per-test
+ * because the budget is derived from the window and nothing in these tests is
+ * about the window — but it is not OPTIONAL either: an agent with no card ends
+ * every turn before the model call, which is the production defect these tests
+ * exist downstream of.
+ * @type {import('@harness/context').ModelCard}
+ */
+const CARD = {
+  name: 'scripted', model: 'scripted', kind: 'openai', contextTokens: 128_000,
+  maxOutputTokens: null, acceptsImages: false, reasons: false,
+}
+
+/**
  * One build: scripted model, a tool table, and a deadline the test fires. The
  * agent's TOOLBOX is the descriptors it may call and `tools` is what runs them
  * — both are handed in here because the spec reader has not landed.
@@ -24,7 +37,7 @@ export function harness(parts = {}) {
   const ports = testPorts({ clock, script: parts.script ?? [], agents: fakeAgents(parts.agents ?? {}) })
   const segments = memorySegments()
   const toolbox = Object.keys(parts.tools ?? {}).map((name) => tool({ name, description: `the ${name} tool` }))
-  const agent = { ...newAgentState(), toolbox }
+  const agent = { ...newAgentState(), toolbox, card: CARD }
   const app = bootFresh({ ports, available: [...CAPABILITIES], segments, tools: parts.tools ?? {}, agent })
   return { app, ports, segments, clock, timer: manualTimer({ auto: parts.auto }) }
 }

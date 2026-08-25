@@ -12,17 +12,27 @@
  *
  * IT IS A LADDER AND NOT A CHOICE. A third party being down must not mean a
  * person's agent cannot look anything up, so a general search that fails falls
- * through to the vertical sources — encyclopedia, forum, papers — each of which
- * answers a different KIND of question and none of which needs a key. The
- * answer says WHICH RUNG replied, because "no results" and "the general index
- * was down and here is what the encyclopedia said" are different facts (I16).
+ * through to the vertical sources — forum, papers — each of which answers a
+ * different KIND of question and none of which needs a key. The answer says
+ * WHICH RUNG replied, because "no results" and "the general index was down and
+ * here is what the forum said" are different facts (I16).
+ *
+ * ONE RUNG IS NOT A SEARCH AND IS NAMED FOR IT. `wikipedia-title` is the REST
+ * summary endpoint, which is an EXACT TITLE lookup: it answers "Agent" and
+ * 404s "how does OPFS durability work". The action API that would search is
+ * measured to emit no `access-control-allow-origin` at all, so there is no
+ * keyless encyclopedia SEARCH this build can call from a page. It is kept
+ * because a title lookup that hits is a very good answer, and it is named for
+ * what it is so the ladder does not advertise a search it cannot do.
  * @module
  */
 
 import { NetError } from '@harness/kernel'
 
+import { crossrefHits, firecrawlHits, hnHits, openAlexHits, tavilyHits, wikipediaHits } from './hits.js'
+
 /** @typedef {import('@harness/kernel').NetPort} NetPort */
-/** @typedef {{title: string, url: string, snippet: string}} Hit */
+/** @typedef {import('./hits.js').Hit} Hit */
 /** @typedef {{name: string, endpoint: string, request: (q: string) => import('@harness/kernel').BrokeredRequest, parse: (body: string) => Hit[]}} Rung */
 
 /** Where each rung lives. The allowlist `bootBrowser` installs is built from exactly this. */
@@ -41,37 +51,34 @@ export const LADDER = /** @type {Rung[]} */ ([
     name: 'firecrawl',
     endpoint: 'firecrawl',
     request: (q) => ({ method: 'POST', path: '/v2/search', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: q, limit: 8 }) }),
-    parse: (body) => webOf(body).map((r) => hit(r.title, r.url, r.description)),
+    parse: firecrawlHits,
   },
   {
-    name: 'wikipedia',
+    name: 'wikipedia-title',
     endpoint: 'wikipedia',
     // THE REST API AND NOT `w/api.php`. The action API emits no
-    // `access-control-allow-origin` at all, measured; the REST one does.
+    // `access-control-allow-origin` at all, measured; the REST one does — and
+    // the REST one takes a TITLE, which is why this rung is named for that.
     request: (q) => ({ method: 'GET', path: `/api/rest_v1/page/summary/${encodeURIComponent(q.replace(/\s+/g, '_'))}` }),
-    parse: (body) => {
-      const said = read(body)
-      const title = str(said.title)
-      return title === '' ? [] : [hit(title, str(deep(said, ['content_urls', 'desktop', 'page'])), str(said.extract))]
-    },
+    parse: wikipediaHits,
   },
   {
     name: 'hn',
     endpoint: 'hn',
     request: (q) => ({ method: 'GET', path: `/api/v1/search?query=${encodeURIComponent(q)}&hitsPerPage=8` }),
-    parse: (body) => list(read(body).hits).map((h) => hit(str(h.title) || str(h.story_title), str(h.url) || `https://news.ycombinator.com/item?id=${str(h.objectID)}`, str(h.story_text))),
+    parse: hnHits,
   },
   {
     name: 'openalex',
     endpoint: 'openalex',
     request: (q) => ({ method: 'GET', path: `/works?search=${encodeURIComponent(q)}&per-page=6` }),
-    parse: (body) => list(read(body).results).map((w) => hit(str(w.display_name), str(w.doi) || str(w.id), `${str(w.publication_year)} · ${str(deep(w, ['primary_location', 'source', 'display_name']))}`)),
+    parse: openAlexHits,
   },
   {
     name: 'crossref',
     endpoint: 'crossref',
     request: (q) => ({ method: 'GET', path: `/works?query=${encodeURIComponent(q)}&rows=6` }),
-    parse: (body) => list(deep(read(body), ['message', 'items'])).map((w) => hit(list(w.title).map(String)[0] ?? '', str(w.URL), str(w.publisher))),
+    parse: crossrefHits,
   },
 ])
 
@@ -86,7 +93,7 @@ export const TAVILY = {
   name: 'tavily',
   endpoint: 'tavily',
   request: (q) => ({ method: 'POST', path: '/search', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: q, max_results: 8 }) }),
-  parse: (body) => list(read(body).results).map((r) => hit(str(r.title), str(r.url), str(r.content))),
+  parse: tavilyHits,
 }
 
 /**
@@ -131,49 +138,6 @@ function rendered(source, query, hits, refused) {
   const preface = refused.length === 0 ? '' : `${refused.join('; ')} — so this is ${source}'s answer instead.\n`
   const lines = hits.map((h, i) => `${i + 1}. ${h.title}${h.url === '' ? '' : ` — ${h.url}`}${h.snippet === '' ? '' : `\n   ${h.snippet}`}`)
   return `${preface}${source} answered "${query}" with ${hits.length === 1 ? '1 result' : `${hits.length} results`}:\n${lines.join('\n')}`
-}
-
-/** @param {string} title @param {string} url @param {string} snippet @returns {Hit} */
-function hit(title, url, snippet) {
-  return { title: title.trim(), url: url.trim(), snippet: snippet.replace(/\s+/g, ' ').trim().slice(0, 300) }
-}
-
-/** Firecrawl v2 nests its web results one level down, and answered `{data: []}` before it did. */
-function webOf(/** @type {string} */ body) {
-  const data = read(body).data
-  const web = Array.isArray(data) ? data : deep(data, ['web'])
-  return list(web)
-}
-
-/**
- * A third party's JSON body, parsed. `any` with the reason: five vendors' shapes
- * cross this line and each field is read through `str`/`list`/`deep`, which is
- * where the narrowing actually happens — typing the parse as `unknown` would put
- * a cast on every one of the twenty reads above and check nothing more.
- * @param {string} body @returns {Record<string, any>}
- */
-function read(body) {
-  try {
-    const value = JSON.parse(body)
-    return value && typeof value === 'object' ? value : {}
-  } catch {
-    return {}
-  }
-}
-
-/** One nested field, or undefined. `any` for the same reason `read` gives. @param {unknown} value @param {string[]} path @returns {any} */
-function deep(value, path) {
-  return path.reduce((held, key) => (held && typeof held === 'object' ? /** @type {Record<string, unknown>} */ (held)[key] : undefined), value)
-}
-
-/** A vendor's array of objects, junk entries dropped. `any` for the same reason `read` gives. @param {unknown} value @returns {Array<Record<string, any>>} */
-function list(value) {
-  return Array.isArray(value) ? value.filter((v) => v && typeof v === 'object') : []
-}
-
-/** @param {unknown} value */
-function str(value) {
-  return typeof value === 'string' ? value : typeof value === 'number' ? String(value) : ''
 }
 
 /** The query out of the call the model wrote. */

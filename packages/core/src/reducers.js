@@ -20,7 +20,7 @@ import { factAgent } from '@harness/kernel'
 import { DROPPED, ENDED, STOPPED } from '@harness/agent'
 
 import { ATTACHED } from './attachments.js'
-import { EFFECT_FAILED } from './effects.js'
+import { EFFECT_FAILED } from '@harness/agent'
 import { authoredReducer } from './agents.js'
 import { activityReducer, traceReducer } from './panels.js'
 import { endingOf, text, turnsReducer } from './turns.js'
@@ -156,7 +156,7 @@ function noted(id, kind, payload) {
   if (kind === DROPPED) {
     return note(id, 'error', `A ${text(payload, 'fact')} arrived that this turn could not use: ${text(payload, 'why')}.`)
   }
-  if (kind === EFFECT_FAILED) return note(id, 'error', text(payload, 'message'))
+  if (kind === EFFECT_FAILED) return note(id, 'error', text(payload, 'reason'))
   // AN ATTACHMENT IS A ROW A PERSON SENT, not a note the machine wrote about
   // the turn — so it is spoken by `You`, above the message it came with.
   if (kind === ATTACHED) return { id, kind: 'attachment', speaker: 'You', said: text(payload, 'name') }
