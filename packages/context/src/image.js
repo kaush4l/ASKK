@@ -31,13 +31,6 @@ const MAX_SQUARE = 2048
 const SHORT_SIDE = 768
 
 /**
- * What an image whose header we could not read is charged: four tiles, the
- * cost of a ~1024×1024 image. Stated rather than guessed at zero — an unknown
- * that costs nothing is an unknown that overruns the window.
- */
-export const UNKNOWN_IMAGE_TOKENS = BASE_TOKENS + TILE_TOKENS * 4
-
-/**
  * How far into the payload a size is looked for. A JPEG can carry a large EXIF
  * thumbnail ahead of its frame header, and decoding a whole 200 KB attachment
  * to learn two numbers is the cost this file exists to avoid.
@@ -131,6 +124,15 @@ export function openaiImageTokens(width, height) {
 }
 
 /**
+ * What an image whose header we could not read is charged under the OpenAI
+ * rule: what a ~1024x1024 image costs, DERIVED rather than restated, so the
+ * sentence stays true if a downscale constant moves. Stated rather than
+ * guessed at zero — an unknown that costs nothing is an unknown that overruns
+ * the window.
+ */
+export const UNKNOWN_IMAGE_TOKENS = openaiImageTokens(1024, 1024)
+
+/**
  * Anthropic bills by AREA, after its own downscale to a 1568px longest side.
  * There are no tiles and no base charge, which is why the tile rule cannot be
  * made to approximate it by tuning a constant.
@@ -169,7 +171,7 @@ export function geminiImageTokens(width, height) {
  * @type {Record<'openai'|'anthropic'|'gemini', ImageRule>}
  */
 export const IMAGE_RULES = Object.freeze({
-  openai: { provider: 'openai', tokens: openaiImageTokens, unknown: UNKNOWN_IMAGE_TOKENS },
+  openai: { provider: 'openai', tokens: openaiImageTokens, unknown: openaiImageTokens(1024, 1024) },
   anthropic: { provider: 'anthropic', tokens: anthropicImageTokens, unknown: anthropicImageTokens(1024, 1024) },
   gemini: { provider: 'gemini', tokens: geminiImageTokens, unknown: geminiImageTokens(1024, 1024) },
 })

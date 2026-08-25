@@ -65,6 +65,15 @@ describe('every adapter says the same things about the same document', () => {
       expect(wire).toContain('consult_oracle')
       expect(JSON.stringify(adapter.buildRequest(DOC, card(adapter), []))).not.toContain('consult_oracle')
     })
+
+    test(`${adapter.provider}: a streaming call says so IN THE BODY, whatever the URL does with it`, () => {
+      const streaming = JSON.stringify(adapter.buildRequest(DOC, card(adapter), [], { stream: true }))
+      // Gemini streams by a different path, not a body field. The flag is
+      // carried anyway so the port has something to lift; dropping it is how a
+      // caller asks for a stream and is answered with one whole reply.
+      expect(streaming).toContain('"stream":true')
+      expect(JSON.stringify(adapter.buildRequest(DOC, card(adapter), []))).toContain('"stream":false')
+    })
   }
 })
 

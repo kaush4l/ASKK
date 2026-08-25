@@ -78,15 +78,3 @@ describe('the other modalities are charged on their own basis', () => {
   })
 })
 
-describe('a part list keeps its arithmetic', () => {
-  test('the total is the sum, and each part still carries its own basis', async () => {
-    const dataBase64 = await payload('noise-512.png')
-    const { tokens, parts } = estimateParts([
-      { type: 'text', text: 'x'.repeat(400) },
-      { type: 'image', mediaType: 'image/png', dataBase64 },
-    ])
-    expect(parts.map((p) => p.tokens)).toEqual([100, 255])
-    expect(tokens).toBe(355)
-    expect(parts.map((p) => p.basis)).toEqual(['characters/4', '512x512, billed by the openai rule'])
-  })
-})

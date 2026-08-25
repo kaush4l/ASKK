@@ -64,6 +64,20 @@ describe('a provider that folds cache hits into its prompt total has them taken 
     expect(totalTokens(usage)).toBe(170)
   })
 
+  test('…and a cache WRITE is disjoint too, so it is billed as the fresh input it is', () => {
+    const usage = some(adapterFor('anthropic').parseResponse({
+      content: [{ type: 'text', text: 'primed' }], stop_reason: 'end_turn',
+      usage: { input_tokens: 5, output_tokens: 10, cache_creation_input_tokens: 100000, cache_read_input_tokens: 0 },
+    }).usage)
+
+    expect(totalTokens(usage)).toBe(100015)
+    // 15 is what dropping the creation bucket reports: a priming turn that
+    // wrote 100k tokens, metered as though it had said almost nothing.
+    expect(totalTokens(usage)).not.toBe(15)
+    // A write is not "already paid for", so it is not in the cached term.
+    expect(usage.cachedInputTokens).toBe(0)
+  })
+
   test('a provider that reported nothing is null and never a zero — a meter can say "unreported"', () => {
     expect(adapterFor('openai').parseResponse({ choices: [{ message: { content: 'hi' } }] }).usage).toBeNull()
     const partial = some(adapterFor('anthropic').parseResponse({

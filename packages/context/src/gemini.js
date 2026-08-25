@@ -48,9 +48,10 @@ export const geminiAdapter = {
 }
 
 /**
- * The `:generateContent` body. The model id is in the URL on this API, so it
- * is carried here as `model` for the port to place — a body that dropped it
- * would make the request unaddressable from the bytes alone.
+ * The `:generateContent` body. The model id and the stream flag are both
+ * URL-level on this API (`:generateContent` vs `:streamGenerateContent`); they
+ * are carried in the body for the port to lift out, because a body that
+ * dropped them would make the request unaddressable from the bytes alone.
  * @param {import('./types.js').Document} doc
  * @param {import('./card.js').ModelCard} card
  * @param {ToolSpec[]} tools
@@ -62,6 +63,7 @@ function buildRequest(doc, card, tools, opts = {}) {
   /** @type {Record<string, unknown>} */
   const body = {
     model: card.model,
+    stream: opts.stream === true,
     systemInstruction: { parts: (system?.content ?? []).map(partJson) },
     contents: [
       ...(opts.replay ?? []).flatMap(replayContents),

@@ -137,18 +137,25 @@ function callsOf(content) {
 }
 
 /**
- * The accounting block. Anthropic's cache fields are DISJOINT from
+ * The accounting block. BOTH of Anthropic's cache fields are DISJOINT from
  * `input_tokens` — nothing is subtracted back out here, unlike the OpenAI
- * shape — and it reports no reasoning count at all, which is `null` and not a
- * zero: a meter must be able to say "unreported".
+ * shape — so a cache WRITE is counted nowhere unless it is folded in, and a
+ * priming turn that put 100k tokens into the cache would otherwise report the
+ * five it was not able to reuse. It is folded into the input term and not into
+ * `cachedInputTokens`, because this package's word for cached is "already paid
+ * for" and a write is what pays.
+ *
+ * It reports no reasoning count at all, which is `null` and not a zero: a
+ * meter must be able to say "unreported".
  * @param {unknown} usage @returns {import('./provider.js').ProviderUsage|null}
  */
 function usageOf(usage) {
   const input = count(at(usage, 'input_tokens'))
   const output = count(at(usage, 'output_tokens'))
+  const created = count(at(usage, 'cache_creation_input_tokens'))
   if (input === null && output === null) return null
   return {
-    inputTokens: input ?? 0,
+    inputTokens: (input ?? 0) + (created ?? 0),
     outputTokens: output ?? 0,
     cachedInputTokens: count(at(usage, 'cache_read_input_tokens')),
     reasoningTokens: null,

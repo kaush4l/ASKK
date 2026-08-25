@@ -157,11 +157,17 @@ export const UNLIMITED_BUDGET = Object.freeze({ maxTokens: Number.MAX_SAFE_INTEG
  * `withheld` is a PART-level fact and is kept out of `steps` on purpose: a
  * section that lost a blob has not changed fidelity, and saying it had would
  * be a false receipt (I8).
+ *
+ * `imageRule` names the provider arithmetic `spent` was counted under, because
+ * the three rules disagree by up to 3x on the same photograph: a number
+ * without it is a receipt nobody can check, and a paper billed by the wrong
+ * rule looks identical to one billed by the right one.
  * @typedef {{
  *   budget: Budget,
  *   spent: number,
  *   steps: CompactionStep[],
  *   withheld: SectionId[],
+ *   imageRule: string,
  * }} CompactionReport
  */
 

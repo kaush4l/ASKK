@@ -85,15 +85,18 @@ function render(sections, card, report) {
 /**
  * Whether this model can hear a non-text part.
  *
- * AUDIO IS ALWAYS WITHHELD, and that is a stated absence rather than an
- * oversight: no catalogue entry can say it accepts sound, so nothing may claim
- * one does. A `accepts_audio` field in `models.json` is what would change this
- * answer, and until an entry carries one the model is told in words that a
- * sound was held back.
+ * AUDIO AND FILES ARE ALWAYS WITHHELD, and that is a stated absence rather
+ * than an oversight: no catalogue entry can say it accepts sound or documents,
+ * so nothing may claim one does — `acceptsImages` answers vision and vision is
+ * not document intake, so reading it as permission to send a PDF is this layer
+ * claiming a capability nothing declared. An `accepts_audio` or `accepts_files`
+ * field in `models.json` is what would change this answer, and until an entry
+ * carries one the model is told in words that a sound or a document was held
+ * back.
  * @param {Part} part @param {ModelCard} card
  */
 function audible(part, card) {
-  return (part.type === 'image' || part.type === 'file') && card.acceptsImages
+  return part.type === 'image' && card.acceptsImages
 }
 
 /** What the model reads in place of a part it cannot hear: typed, named, present. @param {Part} part */
@@ -107,7 +110,9 @@ function withheldLine(part) {
  * What the budget took out of this document, emitted immediately BEFORE the
  * tail and never after it. It is not a section: a ladder-derived string
  * rendered as a section would be a part of the document the ladder is deciding
- * about, which is a loop rather than a component.
+ * about, which is a loop rather than a component. It also names the image rule
+ * the spend was counted under, because a compaction the model is asked to
+ * accept should say by whose arithmetic it was necessary.
  * @param {CompactionReport} report
  */
 function compactionNotice(report) {
@@ -115,6 +120,7 @@ function compactionNotice(report) {
   const lines = [
     '## compaction_notice',
     '(what was compacted out of this document; ask to restore)',
+    `- counted under the ${report.imageRule} image rule`,
     ...report.steps.map((d) => `- ${d.section}: ${d.from} -> ${d.to}`),
     ...report.withheld.map((id) => `- ${id}: a binary part was withheld`),
   ]

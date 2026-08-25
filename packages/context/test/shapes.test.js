@@ -53,6 +53,7 @@ describe('the document is JSON', () => {
         spent: 300,
         steps: [{ section: 'response_contract', from: 'full', to: 'summarized' }],
         withheld: ['space'],
+        imageRule: 'anthropic',
       },
     }
     expect(JSON.parse(JSON.stringify(doc))).toStrictEqual(doc)
@@ -61,7 +62,7 @@ describe('the document is JSON', () => {
   test('toStrictEqual is the matcher this file needs — toEqual cannot see the drift', () => {
     /** @type {Document} */
     const doc = { stage: 'work', sections: [section('soul', SLOT.SOUL)], report: {
-      budget: { maxTokens: 4096 }, spent: 300, steps: [], withheld: [],
+      budget: { maxTokens: 4096 }, spent: 300, steps: [], withheld: [], imageRule: 'openai (default)',
     } }
     // The cast is the point: `spent: undefined` is exactly what the types forbid,
     // and a test cannot show the guard biting without building the forbidden value.

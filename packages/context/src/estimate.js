@@ -7,10 +7,13 @@
  * `bytes/4` over base64 is the arithmetic that made image parts
  * unrepresentable in practice (`docs/RULINGS.md` Attack 4, point 4).
  *
- * `basis` travels with every number because this is an ESTIMATE and the person
- * reading a compaction report needs to know which of these numbers is close
- * and which one is a bound. It is never a tokenizer: a tokenizer per provider
- * is megabytes of vocabulary in a page that must stay static and offline.
+ * `basis` travels with one part's number because this is an ESTIMATE and the
+ * caller weighing it needs to know which numbers are close and which are
+ * bounds; the fact a whole paper's reader needs — WHICH provider's image
+ * arithmetic billed it — travels instead in `CompactionReport.imageRule`,
+ * where it is on the wire rather than in this comment. It is never a
+ * tokenizer: a tokenizer per provider is megabytes of vocabulary in a page
+ * that must stay static and offline.
  * @module
  */
 
@@ -91,13 +94,14 @@ export function estimatePart(part, images = DEFAULT_RULE) {
 }
 
 /**
- * What a part list costs, with the per-part arithmetic kept. The total is the
- * only number the budget reads; the breakdown is what makes it checkable.
+ * What a part list costs. The total is the only number here anything reads —
+ * the per-part breakdown this used to return beside it had no caller, and a
+ * returned value nobody reads is a claim nobody checks. One part's basis is
+ * still available from `estimatePart`.
  * @param {Part[]} parts
  * @param {ImageRule} [images]
- * @returns {{tokens: number, parts: Estimate[]}}
+ * @returns {{tokens: number}}
  */
 export function estimateParts(parts, images) {
-  const each = parts.map((p) => estimatePart(p, images))
-  return { tokens: each.reduce((sum, e) => sum + e.tokens, 0), parts: each }
+  return { tokens: parts.reduce((sum, p) => sum + estimatePart(p, images).tokens, 0) }
 }

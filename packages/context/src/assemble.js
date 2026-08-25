@@ -57,7 +57,7 @@ export function assemble(state, budget, images) {
       budgetHint: tokens,
       parts,
     })),
-    report: { budget, spent: total(work), steps, withheld },
+    report: { budget, spent: total(work), steps, withheld, imageRule: images?.provider ?? 'openai (default)' },
   }
   validate(doc)
   return doc

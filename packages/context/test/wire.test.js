@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'bun:test'
-import { assemble, messagesOf, UNLIMITED_BUDGET, SLOT, sectionOf, text } from '@harness/context'
+import { assemble, messagesOf, UNLIMITED_BUDGET, SLOT, sectionOf, text, IMAGE_RULES } from '@harness/context'
 import { comp, source, state, soul, contract } from './paper.js'
 
 /** @typedef {import('@harness/context').ModelCard} ModelCard */
@@ -70,6 +70,17 @@ describe('what the model cannot hear, it is TOLD about', () => {
     const heard = assemble({ stage: 'work', sources: [soul, sound, contract].map((c) => source(c)) }, UNLIMITED_BUDGET)
     expect(whole(messagesOf(heard, card({ acceptsImages: true })))).toContain('audio (audio/webm) withheld')
   })
+
+  test('so is a file — vision is not document intake, and no entry declares one', () => {
+    const doc = comp({
+      id: 'observations', slot: SLOT.OBSERVATIONS, stability: 'dynamic', priority: 8,
+      render: () => [{ type: 'file', name: 'notes.md', mediaType: 'text/markdown', dataBase64: 'IyBo' }],
+    })
+    const read = assemble({ stage: 'work', sources: [soul, doc, contract].map((c) => source(c)) }, UNLIMITED_BUDGET)
+    const seen = messagesOf(read, card({ acceptsImages: true }))
+    expect(whole(seen)).toContain("[file 'notes.md' (text/markdown) withheld: this model does not accept it]")
+    expect(seen.flatMap((m) => m.content.map((p) => p.type))).not.toContain('file')
+  })
 })
 
 describe('the compaction notice sits before the tail and never after it', () => {
@@ -85,6 +96,12 @@ describe('the compaction notice sits before the tail and never after it', () => 
   test('and the response contract still reads last, which is the law it used to lose to', () => {
     const user = said(messagesOf(doc, card())[1])
     expect(user.indexOf('## compaction_notice')).toBeLessThan(user.indexOf('## response_contract'))
+  })
+
+  test('it names the image rule the spend was counted under, because three rules disagree by 3x', () => {
+    const anthropic = assemble(state(), { maxTokens: 80 }, IMAGE_RULES.anthropic)
+    expect(whole(messagesOf(anthropic, card()))).toContain('counted under the anthropic image rule')
+    expect(whole(messagesOf(doc, card()))).toContain('counted under the openai (default) image rule')
   })
 
   test('a document the budget did not bite carries no notice at all', () => {
