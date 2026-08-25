@@ -17,12 +17,13 @@ parts the rewrite exposes as wrong.
 
 | Lane | Owns | Increment | State |
 |---|---|---|---|
-| LEAD | workspace shell, `packages/kernel`, gates, this page | kernel vocabulary | ✅ landed |
-| RESEARCH | rival harnesses, Bun 1.4, Next latest, 6 architecture attacks | ruling document | 🔄 running |
-| A · PAPER | `packages/context` | — | ⬜ not started |
-| B · LOOP | `packages/agent` | — | ⬜ not started |
-| C · SPINE | `packages/core`, `packages/adapters-*` | — | ⬜ not started |
-| D · FACE | `apps/web` | — | ⬜ not started |
+| LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
+| RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md` | 🔄 synthesizing |
+| — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
+| A · PAPER | `packages/context` | 1/7 — shapes: parts, sections, documents, slots | 🔄 round 1 |
+| B · LOOP | `packages/agent` | 1/8 — state, effects, the phase vocabulary | 🔄 round 1 |
+| C · SPINE | `packages/core`, `packages/adapters-web` | 1/9 — registry and the one dispatch point | 🔄 round 1 |
+| D · FACE | `apps/web` | 1/7 — the shell, four destinations, the token layer | 🔄 round 1 |
 
 ## What exists
 
