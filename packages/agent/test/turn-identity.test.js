@@ -126,6 +126,22 @@ describe('the stop', () => {
     expect(halted.effects.some((e) => e.type === 'CallModel')).toBe(false)
   })
 
+  test('a Stop pending does not swallow the anomaly record the same step produced', () => {
+    const asked = step(newAgentState(), said('do the thing', 'turn-1'))
+    const stopping = step(asked.state, stopPressed)
+    /** @type {Incoming} */
+    const blind = { at: AT, turnId: 'turn-1', fact: { type: 'model_replied', agent: 'main', text: 'hello', reasoning: '' } }
+
+    const refused = step(stopping.state, blind)
+    expect(emitted(refused.effects, DROPPED)).toBe(true)
+    // The reply started no work, so there was nothing to cut off: reporting this
+    // as a stop is the log blaming a person for a turn that died of a signal-less
+    // reply. The press stays armed for the next thing that does ask for work.
+    expect(emitted(refused.effects, STOPPED)).toBe(false)
+    expect(refused.state.stopping).toBe(true)
+    expect(refused.state.turnId).toBe('turn-1')
+  })
+
   test('Stop pressed on an idle agent takes nothing: there is no next turn to cut off', () => {
     const { state } = step(newAgentState(), stopPressed)
     expect(state.stopping).toBe(false)

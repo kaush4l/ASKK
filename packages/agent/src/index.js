@@ -19,10 +19,10 @@ export { step } from './step.js'
 export { FINISH_REASONS, DROPPED, expects, refusal, dropped, idle } from './turn.js'
 export {
   ENDED, ANSWERED, ROUND_CEILING, TRUNCATED, REFUSED, FAILED, NO_CALLS, RESPOND,
-  endingFor, endTurn, isEnding, endedWhy, endedRounds,
+  endingFor, endTurn, endedWhy, endedRounds,
 } from './ending.js'
 export { STOP_REQUESTED, STOPPED, isStopRequest, boundary } from './stop.js'
-export { STEERED, carried, isSteer } from './steer.js'
+export { STEERED, carried } from './steer.js'
 
 /** @typedef {import('./state.js').AgentState} AgentState */
 /** @typedef {import('./state.js').Goal} Goal */

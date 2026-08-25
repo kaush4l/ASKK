@@ -25,7 +25,7 @@
  */
 
 import { emit } from './effect.js'
-import { idle } from './turn.js'
+import { FINISH_REASONS, idle } from './turn.js'
 
 /** @typedef {import('./effect.js').Effect} Effect */
 /** @typedef {import('./state.js').AgentState} AgentState */
@@ -76,11 +76,22 @@ const BY_FINISH = {
 
 /**
  * Which ending a call-less reply earned, from the signal the provider sent.
- * Total over the closed set, so a reply cannot end in a way nothing named.
- * @param {FinishReason} finish @returns {string}
+ *
+ * THE SIGNAL IS A STRING FROM ANOTHER PACKAGE, and `FinishReason` is erased
+ * before it gets here: OpenAI sends `content_filter`, Anthropic's whole set
+ * (`end_turn`, `max_tokens`, `stop_sequence`, `tool_use`) matches no name
+ * below. Indexing blind returned `undefined`, `JSON.stringify` then dropped the
+ * `why` key from the ending record, and the turn ended with the log unable to
+ * say why — the exact hole this file exists to close (I16). So the signal is
+ * checked against the closed set and an unknown one is QUOTED BACK: a person
+ * reading the ending sees the word the provider actually sent, which is the
+ * only thing that tells them what to add.
+ * @param {string} finish @returns {string}
  */
 export function endingFor(finish) {
-  return BY_FINISH[finish]
+  const known = FINISH_REASONS.find((name) => name === finish)
+  if (!known) return `unknown finish signal "${finish}"`
+  return BY_FINISH[known]
 }
 
 /**
@@ -97,11 +108,6 @@ export function endTurn(state, why) {
     payload: { why, rounds: state.toolRounds, turnId: state.turnId },
   })
   return { state: idle(state), effects: [effect] }
-}
-
-/** Whether an effect is one of these records rather than work. `stop.boundary` asks: a turn that ended on its own is not a turn you cut off. @param {Effect} effect */
-export function isEnding(effect) {
-  return effect.type === 'Emit' && effect.fact.type === 'custom' && effect.fact.kind === ENDED
 }
 
 /**

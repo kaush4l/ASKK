@@ -28,8 +28,3 @@ export const STEERED = 'core.steered'
 export function carried() {
   return emit({ type: 'custom', kind: STEERED, payload: null })
 }
-
-/** Whether an effect is that record. @param {Effect} effect */
-export function isSteer(effect) {
-  return effect.type === 'Emit' && effect.fact.type === 'custom' && effect.fact.kind === STEERED
-}

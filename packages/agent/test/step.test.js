@@ -91,6 +91,15 @@ describe('a turn ending on a signal, never on silence', () => {
     }
   })
 
+  test('a signal no build here names is quoted back, so the ending can still say why', () => {
+    // The cast IS the test: `content_filter` is a live OpenAI finish_reason that
+    // `FinishReason` cannot describe, and it crosses the package boundary anyway.
+    const filtered = replied('turn-1', /** @type {FinishReason} */ (/** @type {unknown} */ ('content_filter')))
+    const { state, effects } = step(asked(), filtered)
+    expect(state.turnId).toBe('')
+    expect(endedWhy(payloadOf(effects, ENDED))).toBe('unknown finish signal "content_filter"')
+  })
+
   test('a model with no native call API ends its turn by CALLING respond', () => {
     const call = { id: 'c1', tool: RESPOND, args: '{"text":"there are four files"}' }
     const { state, effects } = step(asked(), replied('turn-1', 'tool_calls', [call]))

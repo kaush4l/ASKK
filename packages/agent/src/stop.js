@@ -19,8 +19,6 @@
  */
 
 import { emit } from './effect.js'
-import { isEnding } from './ending.js'
-import { isSteer } from './steer.js'
 import { idle } from './turn.js'
 
 /** @typedef {import('@harness/kernel').Fact} Fact */
@@ -44,8 +42,11 @@ export function isStopRequest(fact) {
  *
  * AN ENDING IS NOT NEW WORK, and neither is a steer or a dropped-fact record:
  * an unfiltered check would read a turn that answered on its own as one you cut
- * off, and would report a completed run as stopped. The exemption is by fact
- * kind and not by position, so it holds however many arms end a turn.
+ * off, and would report a completed run as stopped. The exemption is by EFFECT
+ * VARIANT and not by fact kind, so no record has to be remembered here to be
+ * spared — the enumeration missed `agent.dropped`, and a signal-less reply
+ * arriving on a stopped turn therefore threw its anomaly record away (I21) and
+ * blamed the person for an ending they did not cause.
  * @param {AgentState} state @param {Effect[]} effects @returns {{state: AgentState, effects: Effect[]}}
  */
 export function boundary(state, effects) {
@@ -54,9 +55,9 @@ export function boundary(state, effects) {
   return halted(state)
 }
 
-/** A record says what happened; work asks for something to happen. @param {Effect} effect */
+/** A record says what happened; work asks for something to happen — and `Emit` is the only variant that says rather than asks (`effect.js`), so this cannot miss a record kind the way naming them one by one did. @param {Effect} effect */
 function isRecord(effect) {
-  return isEnding(effect) || isSteer(effect)
+  return effect.type === 'Emit'
 }
 
 /**
