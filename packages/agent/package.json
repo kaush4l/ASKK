@@ -11,5 +11,8 @@
   "dependencies": {
     "@harness/kernel": "workspace:*",
     "@harness/context": "workspace:*"
+  },
+  "devDependencies": {
+    "@harness/adapters-test": "workspace:*"
   }
 }

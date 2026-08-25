@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'bun:test'
-import { DROPPED, ENDED, STOPPED, STOP_REQUESTED, newAgentState, step } from '@harness/agent'
+import { DROPPED, ENDED, STOPPED, STOP_REQUESTED, arg, newAgentState, step, tool } from '@harness/agent'
 
 /** @typedef {import('@harness/agent').AgentState} AgentState */
 /** @typedef {import('@harness/agent').Incoming} Incoming */
@@ -17,20 +17,25 @@ const replied = (turnId, calls) => ({
   reply: { calls, finish: /** @type {const} */ ('tool_calls') },
 })
 
-/** @param {string} turnId @returns {Incoming} */
-const ran = (turnId) => ({
-  at: AT, turnId,
+/** @param {string} turnId @param {string} [callId] @returns {Incoming} */
+const ran = (turnId, callId = 'c1') => ({
+  at: AT, turnId, callId,
   fact: { type: 'tool_invoked', agent: 'main', tool: 'exec', args: '{}', ok: true, output: 'done' },
 })
 
 const CALL = { id: 'c1', tool: 'exec', args: '{"command":"ls"}' }
+
+const EXEC = tool({ name: 'exec', description: 'Run a command.', args: [arg('command', 'string', 'the command')], evidence: true })
+
+/** A fresh agent that may actually call the tool these fixtures call. */
+const equipped = () => ({ ...newAgentState(), toolbox: [EXEC] })
 
 /** @type {Incoming} */
 const stopPressed = { at: AT, turnId: null, fact: { type: 'custom', kind: STOP_REQUESTED, payload: null } }
 
 /** An agent inside `turn-1`, with one tool result outstanding. */
 function working() {
-  const asked = step(newAgentState(), said('do the thing', 'turn-1'))
+  const asked = step(equipped(), said('do the thing', 'turn-1'))
   return step(asked.state, replied('turn-1', [CALL])).state
 }
 
@@ -83,18 +88,29 @@ describe('I21 — a fact answers the turn it was queued under, or it answers not
   })
 
   test('a result arriving with nothing outstanding is an anomaly, not a fresh request', () => {
-    const idle = step(newAgentState(), ran('turn-1'))
+    const idle = step(equipped(), ran('turn-1'))
     expect(idle.effects).toHaveLength(1)
     expect(emitted(idle.effects, DROPPED)).toBe(true)
-    expect(idle.state.pendingTools).toBe(0)
+    expect(idle.state.batch).toEqual([])
   })
 
-  test('a duplicate result cannot drive the counter below zero — it is refused by name', () => {
-    const first = step(working(), ran('turn-1'))
-    expect(first.state.pendingTools).toBe(0)
+  test('a duplicate result is refused BY ITS OWN ID: the call it names already has an answer', () => {
+    // Two calls, so the round is still open when the second copy of the first
+    // one lands — otherwise the turn is already awaiting the model and this
+    // would be refused a step earlier, for a different reason.
+    const asked = step(equipped(), said('do the thing', 'turn-1'))
+    const pair = step(asked.state, replied('turn-1', [CALL, { ...CALL, id: 'c2' }]))
+    const first = step(pair.state, ran('turn-1'))
     const duplicate = step(first.state, ran('turn-1'))
     expect(emitted(duplicate.effects, DROPPED)).toBe(true)
-    expect(duplicate.state.pendingTools).toBe(0)
+    expect(whyDropped(duplicate.effects)).toBe('the call c1 already has its result')
+    expect(duplicate.state).toEqual(first.state)
+  })
+
+  test('a result naming a call this turn never made answers nothing, however plausible its tool', () => {
+    const stray = step(working(), ran('turn-1', 'c9'))
+    expect(emitted(stray.effects, DROPPED)).toBe(true)
+    expect(whyDropped(stray.effects)).toBe('no call with id c9 is outstanding')
   })
 
   test('a model reply arriving while TOOLS are outstanding is refused: the turn awaits results, not prose', () => {
@@ -104,7 +120,7 @@ describe('I21 — a fact answers the turn it was queued under, or it answers not
   })
 
   test('every effect a live turn produces is stamped with that turn', () => {
-    const asked = step(newAgentState(), said('do the thing', 'turn-1'))
+    const asked = step(equipped(), said('do the thing', 'turn-1'))
     const acting = step(asked.state, replied('turn-1', [CALL, { ...CALL, id: 'c2' }]))
     for (const effect of [...asked.effects, ...acting.effects]) {
       if (effect.type === 'Emit') continue
@@ -127,23 +143,21 @@ describe('the stop', () => {
   })
 
   test('a Stop pending does not swallow the anomaly record the same step produced', () => {
-    const asked = step(newAgentState(), said('do the thing', 'turn-1'))
+    const asked = step(equipped(), said('do the thing', 'turn-1'))
     const stopping = step(asked.state, stopPressed)
     /** @type {Incoming} */
     const blind = { at: AT, turnId: 'turn-1', fact: { type: 'model_replied', agent: 'main', text: 'hello', reasoning: '' } }
 
-    const refused = step(stopping.state, blind)
-    expect(emitted(refused.effects, DROPPED)).toBe(true)
-    // The reply started no work, so there was nothing to cut off: reporting this
-    // as a stop is the log blaming a person for a turn that died of a signal-less
-    // reply. The press stays armed for the next thing that does ask for work.
-    expect(emitted(refused.effects, STOPPED)).toBe(false)
-    expect(refused.state.stopping).toBe(true)
-    expect(refused.state.turnId).toBe('turn-1')
+    // A signal-less reply now ENDS the turn as malformed rather than being
+    // dropped, and an ending is not work — so the press still has nothing to cut
+    // off and must not report itself as the cause.
+    const broken = step(stopping.state, blind)
+    expect(emitted(broken.effects, ENDED)).toBe(true)
+    expect(emitted(broken.effects, STOPPED)).toBe(false)
   })
 
   test('Stop pressed on an idle agent takes nothing: there is no next turn to cut off', () => {
-    const { state } = step(newAgentState(), stopPressed)
+    const { state } = step(equipped(), stopPressed)
     expect(state.stopping).toBe(false)
   })
 })
@@ -153,8 +167,8 @@ describe('the reducer is the only writer, and it does no I/O', () => {
     const before = deepFreeze(working())
     const after = step(before, ran('turn-1'))
     expect(after.state).not.toBe(before)
-    expect(after.state.pendingTools).toBe(0)
-    expect(before.pendingTools).toBe(1)
+    expect(after.state.batch.every((call) => call.done)).toBe(true)
+    expect(before.batch.every((call) => !call.done)).toBe(true)
     expect(after.state.observations).not.toBe(before.observations)
   })
 
@@ -165,7 +179,7 @@ describe('the reducer is the only writer, and it does no I/O', () => {
     Math.random = forbid('the dice')
     globalThis.fetch = /** @type {typeof fetch} */ (/** @type {unknown} */ (forbid('the network')))
     try {
-      const asked = step(newAgentState(), said('do the thing', 'turn-1'))
+      const asked = step(equipped(), said('do the thing', 'turn-1'))
       const acting = step(asked.state, replied('turn-1', [CALL]))
       expect(step(acting.state, ran('turn-1')).effects).toHaveLength(1)
     } finally {

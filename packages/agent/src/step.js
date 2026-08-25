@@ -17,8 +17,10 @@
  */
 
 import { MODEL_ENDPOINT } from '@harness/kernel'
-import { callModel, invokeTool } from './effect.js'
-import { ANSWERED, ROUND_CEILING, RESPOND, endTurn, endingFor } from './ending.js'
+import { NATIVE, scanCalls } from './calls.js'
+import { callModel } from './effect.js'
+import { ANSWERED, MALFORMED, ROUND_CEILING, RESPOND, endTurn, endingFor } from './ending.js'
+import { complete, land, lines, openBatch } from './round.js'
 import { boundary, isStopRequest } from './stop.js'
 import { carried } from './steer.js'
 import { dropped, refusal } from './turn.js'
@@ -28,6 +30,7 @@ import { dropped, refusal } from './turn.js'
 /** @typedef {import('./state.js').AgentState} AgentState */
 /** @typedef {import('./turn.js').Incoming} Incoming */
 /** @typedef {import('./turn.js').Reply} Reply */
+/** @typedef {import('./turn.js').ToolCall} ToolCall */
 
 /** A state and the effects it wants run — what every transition returns. @typedef {{state: AgentState, effects: Effect[]}} Stepped */
 
@@ -57,7 +60,7 @@ function advance(state, incoming) {
   if (fact.type === 'user_message' && state.turnId !== '') return onSteer(state)
   if (fact.type === 'user_message') return onTask(state, fact.text, incoming)
   if (fact.type === 'model_replied') return onReply(state, incoming)
-  if (fact.type === 'tool_invoked') return onToolResult(state, fact)
+  if (fact.type === 'tool_invoked') return onToolResult(state, incoming, fact)
   // Facts observed but not acted on: quiescence, not effects.
   return { state, effects: [] }
 }
@@ -91,7 +94,7 @@ function onTask(state, text, incoming) {
   const turn = {
     ...state,
     task: text, turnId: incoming.turnId, awaiting: 'model',
-    pendingTools: 0, toolRounds: 0, observations: [], steered: false, stopping: false,
+    batch: [], toolRounds: 0, observations: [], steered: false, stopping: false,
   }
   return { state: turn, effects: [nextCall(turn)] }
 }
@@ -100,9 +103,10 @@ function onTask(state, text, incoming) {
  * ONE REPLY, READ AS A SIGNAL. Calls are work; no calls is an ending, and WHICH
  * ending is the provider's `finish` — never the shape of the prose.
  *
- * A reply with no signal at all is refused rather than guessed at: "no call in
- * this text" meaning "the model answered" is the defect this whole rewrite of
- * the arm exists to remove.
+ * A REPLY WITH NO SIGNAL AT ALL IS MALFORMED, AND MALFORMED IS AN ENDING. It
+ * was a dropped fact, which left the turn awaiting a model that had already
+ * answered; the ruling is that waiting on a deadline for something already
+ * known to be broken spends the person's time to learn nothing.
  *
  * CALLS BEAT THE SIGNAL where a provider sends both `stop` and a call — the
  * model asked for work, and the signal only decides how a call-less reply
@@ -111,51 +115,61 @@ function onTask(state, text, incoming) {
  */
 function onReply(state, incoming) {
   const reply = incoming.reply
-  if (!reply) {
-    return { state, effects: [dropped(state, incoming, 'the reply carried no ending signal, and a turn ends on a signal and never on silence')] }
-  }
-  if (reply.calls.length === 0) return endTurn(state, endingFor(reply.finish))
-  if (reply.calls.some((call) => call.tool === RESPOND)) return endTurn(state, ANSWERED)
-  /** @type {AgentState} */
-  const acting = { ...state, awaiting: 'tools', pendingTools: reply.calls.length, observations: [] }
-  return { state: acting, effects: reply.calls.map((call) => invokeTool(state.turnId, call.tool, call.args)) }
+  if (!reply) return endTurn(state, MALFORMED)
+  const calls = asked(state, incoming, reply)
+  if (calls.length === 0) return endTurn(state, endingFor(reply.finish))
+  if (calls.some((call) => call.tool === RESPOND)) return endTurn(state, ANSWERED)
+  const opened = openBatch(state, calls)
+  // Every call refused is a round already over: nothing was invoked, so no
+  // result will arrive to close it, and the model is asked again NOW with the
+  // refusals in front of it. That is the one extra round a malformed call costs.
+  return complete(opened.state) ? settle(opened.state, opened.effects) : opened
 }
 
 /**
- * ONE TOOL RESULT, APPENDED. The batch is not done until the last one lands,
- * and only then does the model see them — that is what makes one LINE of calls
- * one observation.
- *
- * `observations` IS AN ARRAY. The Rust built a one-line `Observations`
- * component per result and upserted it by id, so three calls on one line
- * produced three overwrites and the model saw the last one. Each result is
- * appended in arrival order, and the round that follows starts a new list.
- * @param {AgentState} state @param {{tool: string, ok: boolean, output: string}} result @returns {Stepped}
+ * WHAT THE MODEL ASKED FOR, read the way THIS model's card says its calls
+ * arrive — never guessed from the text. A native reply carries them parsed by
+ * the port; a scanned one is read out of the reply's own words by the declared
+ * fallback (`calls.js`), which is the only place that scanner is reachable
+ * from.
+ * @param {AgentState} state @param {Incoming} incoming @param {Reply} reply @returns {readonly ToolCall[]}
  */
-function onToolResult(state, result) {
-  /** @type {AgentState} */
-  const seen = {
-    ...state,
-    observations: [...state.observations, resultLine(result)],
-    pendingTools: state.pendingTools - 1,
+function asked(state, incoming, reply) {
+  if (state.calling === NATIVE) return reply.calls
+  const said = incoming.fact.type === 'model_replied' ? incoming.fact.text : ''
+  return scanCalls(said, state.turnId)
+}
+
+/**
+ * ONE TOOL RESULT, FILED AGAINST THE CALL IT ANSWERS. The round is not done
+ * until every call has one, and only then does the model see them — that is
+ * what makes one round of calls one observation.
+ * @param {AgentState} state @param {Incoming} incoming @param {{tool: string, ok: boolean, output: string}} result @returns {Stepped}
+ */
+function onToolResult(state, incoming, result) {
+  const seen = land(state, incoming.callId ?? '', result.ok, result.output)
+  return complete(seen) ? settle(seen, []) : { state: seen, effects: [] }
+}
+
+/**
+ * THE ROUND IS OVER: the results become the observations the next call carries,
+ * in the order the model WROTE the calls, and the counter that terminates a
+ * looping model ticks once.
+ *
+ * `before` is whatever the round already produced — the records of the calls
+ * this build refused — and it is carried rather than replaced, because a
+ * refusal nobody can read in the log is a round nobody can account for.
+ * @param {AgentState} state @param {Effect[]} before @returns {Stepped}
+ */
+function settle(state, before) {
+  const round = { ...state, observations: lines(state), toolRounds: state.toolRounds + 1 }
+  if (round.toolRounds >= round.maxRounds) {
+    const ended = endTurn(round, ROUND_CEILING)
+    return { state: ended.state, effects: [...before, ...ended.effects] }
   }
-  if (seen.pendingTools > 0) return { state: seen, effects: [] }
-  const round = { ...seen, toolRounds: seen.toolRounds + 1 } // a round is COMPLETE when its last result lands
-  if (round.toolRounds >= round.maxRounds) return endTurn(round, ROUND_CEILING)
   /** @type {AgentState} */
   const asking = { ...round, awaiting: 'model', steered: false }
-  return { state: asking, effects: [nextCall(asking)] }
-}
-
-/**
- * One result as the model reads it. FAILURE IS IN THE LINE: the Rust rendered
- * `tool: output` for both outcomes and carried `ok` no further, so a model
- * could tell a failed call from a successful one only by reading the prose the
- * failure happened to contain (I16).
- * @param {{tool: string, ok: boolean, output: string}} result @returns {string}
- */
-function resultLine(result) {
-  return result.ok ? `${result.tool}: ${result.output}` : `${result.tool} failed: ${result.output}`
+  return { state: asking, effects: [...before, nextCall(asking)] }
 }
 
 /**

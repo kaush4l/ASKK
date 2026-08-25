@@ -57,6 +57,19 @@ export const FAILED = 'failed'
 export const NO_CALLS = 'no calls'
 
 /**
+ * THE REPLY CARRIED NO ENDING SIGNAL — no calls to run and no `finish` to read
+ * — and a reply that says neither is BROKEN rather than pending.
+ *
+ * It used to be recorded as a dropped fact, which left `awaiting: 'model'` set
+ * and the turn waiting for a second reply that answers a call already made. A
+ * deadline would have ended it eventually; waiting on a deadline for something
+ * already known to be broken spends the person's time to learn nothing, so
+ * malformed is an ENDING. The record says which turn and how many rounds it had
+ * behind it, like every other ending.
+ */
+export const MALFORMED = 'malformed reply'
+
+/**
  * THE ENDING SPELLED AS A TOOL, for a model with no native call API. Everything
  * such a model "says" is a call, so the answer is one too, and the turn ends
  * because the model SAID to end it rather than because no call could be read

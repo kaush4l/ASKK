@@ -46,7 +46,7 @@
  * @typedef {(
  *   | {type: 'CallModel', turnId: TurnId, document: Document, format: ProviderFormat,
  *      endpoint: EndpointName, model: string, temperature: number | null, speaker: string}
- *   | {type: 'InvokeTool', turnId: TurnId, tool: ToolId, args: string}
+ *   | {type: 'InvokeTool', turnId: TurnId, callId: string, tool: ToolId, args: string}
  *   | {type: 'Emit', fact: Fact}
  *   | {type: 'Delegate', turnId: TurnId, agent: string, goal: string, batch: number}
  * )} Effect
@@ -86,10 +86,14 @@ export function callModel(call) {
  * Run one tool through its granted capability. `args` is the JSON TEXT the
  * model wrote, not a parsed object: a refusal quotes it back verbatim so the
  * model can see what it actually sent, and parsing here would lose that.
- * @param {TurnId} turnId @param {ToolId} tool @param {string} args @returns {Effect}
+ *
+ * `callId` IS THE PROVIDER'S OWN. It rides out with the invocation and comes
+ * back on the result, which is how a round of three calls to one tool is
+ * correlated by lookup instead of by name or by arrival order (`round.js`).
+ * @param {TurnId} turnId @param {string} callId @param {ToolId} tool @param {string} args @returns {Effect}
  */
-export function invokeTool(turnId, tool, args) {
-  return { type: 'InvokeTool', turnId, tool, args }
+export function invokeTool(turnId, callId, tool, args) {
+  return { type: 'InvokeTool', turnId, callId, tool, args }
 }
 
 /** Record a fact (I8) beyond what the driver already logs. @param {Fact} fact @returns {Effect} */

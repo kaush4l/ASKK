@@ -3,9 +3,10 @@
  * lives in this package — the loop DESCRIBES effects and `core`'s driver runs
  * them (I3, I7).
  *
- * Increment 2 of eight: the state, the effect vocabulary, the stage's tool
- * grant, and the reducer — one fact in, a new state and the effects it wants
- * out. The spec reader, the tools and the paper follow.
+ * Increment 3 of eight: tool descriptors with a real schema, the toolbox and
+ * the sentences it refuses a call with, native provider calls correlated by id
+ * end to end, and the declared fallback for a model with no call API. The spec
+ * reader and the paper follow.
  * @module
  */
 
@@ -16,9 +17,13 @@ export {
 export { EFFECT_TYPES, callModel, invokeTool, emit, delegate } from './effect.js'
 export { NO_TOOLS, ALL_TOOLS, onlyTools, grant, RESPONSE_CONTRACTS, WORK, WORK_BUDGET } from './stages.js'
 export { step } from './step.js'
+export { arg, tool, readArgs, usage } from './tools.js'
+export { NOTHING_RAN, check, named, usages } from './toolbox.js'
+export { NATIVE, SCANNED, scanCalls, swallowedClose } from './calls.js'
+export { CALL_REFUSED, complete, land, lines, openBatch, saysNothing } from './round.js'
 export { FINISH_REASONS, DROPPED, expects, refusal, dropped, idle } from './turn.js'
 export {
-  ENDED, ANSWERED, ROUND_CEILING, TRUNCATED, REFUSED, FAILED, NO_CALLS, RESPOND,
+  ENDED, ANSWERED, MALFORMED, ROUND_CEILING, TRUNCATED, REFUSED, FAILED, NO_CALLS, RESPOND,
   endingFor, endTurn, endedWhy, endedRounds,
 } from './ending.js'
 export { STOP_REQUESTED, STOPPED, isStopRequest, boundary } from './stop.js'
@@ -32,6 +37,10 @@ export { STEERED, carried } from './steer.js'
 /** @typedef {import('./effect.js').Effect} Effect */
 /** @typedef {import('./effect.js').Document} Document */
 /** @typedef {import('./effect.js').ProviderFormat} ProviderFormat */
+/** @typedef {import('./tools.js').Tool} Tool */
+/** @typedef {import('./tools.js').ToolArg} ToolArg */
+/** @typedef {import('./calls.js').CallStyle} CallStyle */
+/** @typedef {import('./round.js').Asked} Asked */
 /** @typedef {import('./stages.js').ToolScope} ToolScope */
 /** @typedef {import('./stages.js').ResponseContract} ResponseContract */
 /** @typedef {import('./stages.js').Budget} Budget */

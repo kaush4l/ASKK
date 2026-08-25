@@ -63,7 +63,12 @@ export const FINISH_REASONS = /** @type {const} */ (['stop', 'tool_calls', 'leng
  * this file makes live — a fact whose turn is unknown on the way back through
  * the log is a fact the reducer must guess about, which is exactly what I18
  * forbids.
- * @typedef {{at: Timestamp, turnId: TurnId | null, fact: Fact, reply?: Reply}} Incoming
+ * `callId` is the other half of the same argument, one level down: a tool
+ * result answers ONE call and the kernel's `tool_invoked` has no id field, so
+ * the driver names the call it ran. Without it, three results from one round
+ * could only be matched by tool name or by arrival order, and both are wrong
+ * exactly when the round is interesting.
+ * @typedef {{at: Timestamp, turnId: TurnId | null, callId?: string, fact: Fact, reply?: Reply}} Incoming
  */
 
 /** The record of a fact the reducer refused to act on. Its payload says which turn, what was awaited, and why. */
@@ -84,9 +89,10 @@ export function expects(fact) {
 
 /**
  * Why this fact cannot be acted on, in one sentence, or `''` where it can.
- * Four refusals, and the fourth is the clamp's replacement: a result landing
- * with no outstanding call would have driven `pending_tools` negative, so it is
- * named here instead of being rounded up to zero.
+ * The last two are the clamp's replacement, and they are a LOOKUP: a result
+ * naming no live call would have driven `pending_tools` negative, and a second
+ * result for a call already answered would have driven the count down twice for
+ * one question. `saturating_sub` turned both into a plausible zero.
  * @param {AgentState} state @param {Incoming} incoming @returns {string}
  */
 export function refusal(state, incoming) {
@@ -95,8 +101,10 @@ export function refusal(state, incoming) {
   if (state.turnId === '') return 'no turn is running'
   if (incoming.turnId !== state.turnId) return `it belongs to turn ${incoming.turnId ?? '(none)'}, and ${state.turnId} is the one running`
   if (state.awaiting !== want) return `this turn awaits ${state.awaiting ?? 'nothing'}, not ${want}`
-  if (want === 'tools' && state.pendingTools === 0) return 'no tool result is outstanding'
-  return ''
+  if (want !== 'tools') return ''
+  const asked = state.batch.find((call) => call.id === incoming.callId)
+  if (!asked) return `no call with id ${incoming.callId ?? '(none)'} is outstanding`
+  return asked.done ? `the call ${asked.id} already has its result` : ''
 }
 
 /**
@@ -111,7 +119,7 @@ export function idle(state) {
   return {
     ...state,
     task: null, turnId: '', awaiting: null,
-    pendingTools: 0, toolRounds: 0, observations: [],
+    batch: [], toolRounds: 0, observations: [],
     steered: false, stopping: false,
   }
 }
@@ -129,6 +137,7 @@ export function dropped(state, incoming, why) {
     payload: {
       fact: incoming.fact.type,
       turnId: incoming.turnId,
+      callId: incoming.callId ?? '',
       running: state.turnId,
       awaiting: state.awaiting,
       why,

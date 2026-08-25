@@ -1,7 +1,7 @@
 import { expect, test, describe } from 'bun:test'
 import {
-  ANSWERED, ENDED, NO_CALLS, REFUSED, ROUND_CEILING, RESPOND, STEERED, TRUNCATED,
-  endedRounds, endedWhy, newAgentState, step,
+  ANSWERED, ENDED, MALFORMED, NO_CALLS, REFUSED, ROUND_CEILING, RESPOND, STEERED, TRUNCATED,
+  arg, endedRounds, endedWhy, newAgentState, step, tool,
 } from '@harness/agent'
 
 /** @typedef {import('@harness/agent').AgentState} AgentState */
@@ -21,15 +21,20 @@ const replied = (turnId, finish, calls = []) => ({
   reply: { calls, finish },
 })
 
-/** @param {string} turnId @param {string} tool @param {boolean} ok @param {string} output @returns {Incoming} */
-const ran = (turnId, tool, ok, output) => ({
-  at: AT, turnId,
+/** @param {string} turnId @param {string} callId @param {string} tool @param {boolean} ok @param {string} output @returns {Incoming} */
+const ran = (turnId, callId, tool, ok, output) => ({
+  at: AT, turnId, callId,
   fact: { type: 'tool_invoked', agent: 'main', tool, args: '{}', ok, output },
 })
 
+const BOX = [
+  tool({ name: 'read_file', description: 'Read a file.', args: [arg('path', 'string', 'the path')] }),
+  tool({ name: 'exec', description: 'Run a command.', args: [arg('command', 'string', 'the command')], evidence: true }),
+]
+
 /** The state of an agent mid-turn, one model call outstanding under `turn-1`. */
 function asked() {
-  const { state } = step(newAgentState(), said('what is in this folder?', 'turn-1'))
+  const { state } = step({ ...newAgentState(), toolbox: BOX }, said('what is in this folder?', 'turn-1'))
   return state
 }
 
@@ -108,11 +113,16 @@ describe('a turn ending on a signal, never on silence', () => {
     expect(endedWhy(payloadOf(effects, ENDED))).toBe(ANSWERED)
   })
 
-  test('a reply carrying no signal at all is refused rather than read as an answer', () => {
+  test('a reply carrying no signal at all ENDS the turn as malformed — a broken reply is not a wait', () => {
     const blind = { at: AT, turnId: 'turn-1', fact: /** @type {const} */ ({ type: 'model_replied', agent: 'main', text: 'hello', reasoning: '' }) }
     const { state, effects } = step(asked(), blind)
-    expect(state.turnId).toBe('turn-1')
-    expect(String(recordOf(effects, 'agent.dropped').why)).toContain('never on silence')
+    // It used to be dropped, which left `awaiting: 'model'` set on a turn whose
+    // model had already answered: nothing else was coming, and only a deadline
+    // could have ended it.
+    expect(state.turnId).toBe('')
+    expect(state.awaiting).toBe(null)
+    expect(endedWhy(payloadOf(effects, ENDED))).toBe(MALFORMED)
+    expect(effects.some((e) => e.type === 'CallModel')).toBe(false)
   })
 })
 
@@ -125,12 +135,12 @@ describe('a round of tool calls', () => {
   test('three calls on one line produce three invocations and three observation lines', () => {
     const written = step(asked(), replied('turn-1', 'tool_calls', three))
     expect(written.effects.map((e) => e.type)).toEqual(['InvokeTool', 'InvokeTool', 'InvokeTool'])
-    expect(written.state.pendingTools).toBe(3)
+    expect(written.state.batch.map((call) => call.id)).toEqual(['c1', 'c2', 'c3'])
 
-    const first = step(written.state, ran('turn-1', 'read_file', true, '# A'))
+    const first = step(written.state, ran('turn-1', 'c1', 'read_file', true, '# A'))
     expect(first.effects).toEqual([])
-    const second = step(first.state, ran('turn-1', 'read_file', true, '# B'))
-    const third = step(second.state, ran('turn-1', 'exec', false, 'ls: not found'))
+    const second = step(first.state, ran('turn-1', 'c2', 'read_file', true, '# B'))
+    const third = step(second.state, ran('turn-1', 'c3', 'exec', false, 'ls: not found'))
 
     expect(third.state.observations).toEqual(['read_file: # A', 'read_file: # B', 'exec failed: ls: not found'])
     expect(third.state.toolRounds).toBe(1)
@@ -140,7 +150,7 @@ describe('a round of tool calls', () => {
 
   test('the next round replaces the observations rather than growing them', () => {
     const first = step(asked(), replied('turn-1', 'tool_calls', [readA]))
-    const done = step(first.state, ran('turn-1', 'read_file', true, '# A'))
+    const done = step(first.state, ran('turn-1', 'c1', 'read_file', true, '# A'))
     expect(done.state.observations).toEqual(['read_file: # A'])
     const again = step(done.state, replied('turn-1', 'tool_calls', [readB]))
     expect(again.state.observations).toEqual([])
@@ -149,7 +159,7 @@ describe('a round of tool calls', () => {
   test('the ceiling ends the turn as a named ending, not as an answer', () => {
     const ceiling = { ...asked(), maxRounds: 1 }
     const written = step(ceiling, replied('turn-1', 'tool_calls', [listing]))
-    const { state, effects } = step(written.state, ran('turn-1', 'exec', true, 'a.md b.md'))
+    const { state, effects } = step(written.state, ran('turn-1', 'c3', 'exec', true, 'a.md b.md'))
     expect(state.turnId).toBe('')
     expect(endedWhy(payloadOf(effects, ENDED))).toBe(ROUND_CEILING)
     expect(endedRounds(payloadOf(effects, ENDED))).toBe(1)

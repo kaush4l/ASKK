@@ -70,7 +70,7 @@ function checkInside(key, value) {
   if (Object.hasOwn(MEMBERS, key)) return checkMembers(key, value)
   const element = Object.hasOwn(ELEMENTS, key) ? ELEMENTS[key] : undefined
   if (element) return checkEvery(key, value, [element])
-  if (key === 'toolbox') return checkToolbox(value)
+  if (Object.hasOwn(RECORDS, key)) return checkRecords(key, value)
   if (key === 'senses') return checkSenses(value)
   return null
 }
@@ -98,16 +98,29 @@ function checkEvery(path, value, want) {
   return null
 }
 
-/** The loop reads only the name; a descriptor missing one is a tool it cannot grant or refuse. @param {unknown} value @returns {Mismatch | null} */
-function checkToolbox(value) {
+/**
+ * Lists of records, and the members of each this build reads. A tool with no
+ * name cannot be granted or refused; a batch entry with no id cannot have a
+ * result filed against it, which is the one thing a batch is for.
+ * @type {Record<string, Record<string, string[]>>}
+ */
+const RECORDS = {
+  toolbox: { name: ['string'] },
+  batch: { id: ['string'], tool: ['string'], done: ['boolean'] },
+}
+
+/** @param {string} path @param {unknown} value @returns {Mismatch | null} */
+function checkRecords(path, value) {
   const list = /** @type {unknown[]} */ (value)
   for (const [index, item] of list.entries()) {
-    const bad = fits(`toolbox[${index}]`, item, ['object'])
+    const at = `${path}[${index}]`
+    const bad = fits(at, item, ['object'])
     if (bad) return bad
     const held = /** @type {Record<string, unknown>} */ (item)
-    const name = Object.hasOwn(held, 'name') ? held.name : undefined
-    const badName = fits(`toolbox[${index}].name`, name, ['string'])
-    if (badName) return badName
+    for (const [member, want] of Object.entries(RECORDS[path] ?? {})) {
+      const badMember = fits(`${at}.${member}`, Object.hasOwn(held, member) ? held[member] : undefined, want)
+      if (badMember) return badMember
+    }
   }
   return null
 }

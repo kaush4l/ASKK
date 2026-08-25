@@ -13,7 +13,7 @@ describe('effects', () => {
       temperature: 0.2,
       speaker: 'summarizer',
     }),
-    invokeTool('t-1', 'exec', '{"command":"ls"}'),
+    invokeTool('t-1', 'call-1', 'exec', '{"command":"ls"}'),
     emit({ type: 'custom', kind: 'stop_requested', payload: null }),
     delegate('t-1', 'scout', 'find the failing test', 1),
   ]
@@ -36,7 +36,7 @@ describe('effects', () => {
         format: { target: 'openai', vision: false, audio: false },
         endpoint: 'model',
       }),
-      invokeTool('turn-A', 'exec', '{"command":"ls"}'),
+      invokeTool('turn-A', 'call-1', 'exec', '{"command":"ls"}'),
       delegate('turn-A', 'scout', 'find the failing test', 0),
     ]
     for (const effect of queued) {
