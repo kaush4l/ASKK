@@ -6,31 +6,29 @@
  * effects it wants run; it cannot do I/O, so every claim about the loop is a
  * claim about a returned array and tests on the host (I3, I7). The predecessor
  * had this shape too and then broke it from outside — two sites cleared
- * `agent.task` without going through a transition, which is exactly how a
- * result could arrive against a turn the reducer still believed was running.
- * There is one door. An out-of-band mutation of the snapshot handed in throws.
+ * `agent.task` without going through a transition, which is how a result could
+ * arrive against a turn the reducer still believed was running. One door.
  *
  * THE ORDER OF THE THREE THINGS THIS DOES. Refuse what does not belong to the
- * live turn (I21) — then act — then, on the way out, honour a pressed Stop at
- * the single boundary every arm returns through.
+ * live turn (I21) — then act — then honour a pressed Stop at the single
+ * boundary every arm returns through.
  * @module
  */
 
-import { MODEL_ENDPOINT } from '@harness/kernel'
-import { NATIVE, scanCalls } from './calls.js'
-import { callModel } from './effect.js'
-import { ANSWERED, MALFORMED, ROUND_CEILING, RESPOND, endTurn, endingFor } from './ending.js'
+import { nextCall } from './ask.js'
+import { callsIn } from './calls.js'
+import { ANSWERED, FAILED, MALFORMED, ROUND_CEILING, RESPOND, STALLED, endTurn, endingFor } from './ending.js'
 import { complete, land, lines, openBatch } from './round.js'
+import { MAX_ATTEMPTS, emptySignature, failureIn, isEmptyCompletion } from './retry.js'
 import { boundary, isStopRequest } from './stop.js'
 import { carried } from './steer.js'
 import { dropped, refusal } from './turn.js'
 
 /** @typedef {import('@harness/kernel').Timestamp} Timestamp */
 /** @typedef {import('./effect.js').Effect} Effect */
+/** @typedef {import('./retry.js').Failure} Failure */
 /** @typedef {import('./state.js').AgentState} AgentState */
 /** @typedef {import('./turn.js').Incoming} Incoming */
-/** @typedef {import('./turn.js').Reply} Reply */
-/** @typedef {import('./turn.js').ToolCall} ToolCall */
 
 /** A state and the effects it wants run — what every transition returns. @typedef {{state: AgentState, effects: Effect[]}} Stepped */
 
@@ -61,6 +59,8 @@ function advance(state, incoming) {
   if (fact.type === 'user_message') return onTask(state, fact.text, incoming)
   if (fact.type === 'model_replied') return onReply(state, incoming)
   if (fact.type === 'tool_invoked') return onToolResult(state, incoming, fact)
+  const failed = failureIn(fact)
+  if (failed) return onEffectFailed(state, incoming, failed)
   // Facts observed but not acted on: quiescence, not effects.
   return { state, effects: [] }
 }
@@ -96,7 +96,7 @@ function onTask(state, text, incoming) {
     task: text, turnId: incoming.turnId, awaiting: 'model',
     batch: [], toolRounds: 0, observations: [], steered: false, stopping: false,
   }
-  return { state: turn, effects: [nextCall(turn)] }
+  return nextCall(turn, incoming.at)
 }
 
 /**
@@ -116,28 +116,16 @@ function onTask(state, text, incoming) {
 function onReply(state, incoming) {
   const reply = incoming.reply
   if (!reply) return endTurn(state, MALFORMED)
-  const calls = asked(state, incoming, reply)
+  const calls = callsIn(state, incoming, reply)
+  const said = incoming.fact.type === 'model_replied' ? incoming.fact.text : ''
+  if (isEmptyCompletion(said, calls.length)) return onEmpty(state, incoming, reply.finish)
   if (calls.length === 0) return endTurn(state, endingFor(reply.finish))
   if (calls.some((call) => call.tool === RESPOND)) return endTurn(state, ANSWERED)
   const opened = openBatch(state, calls)
   // Every call refused is a round already over: nothing was invoked, so no
   // result will arrive to close it, and the model is asked again NOW with the
   // refusals in front of it. That is the one extra round a malformed call costs.
-  return complete(opened.state) ? settle(opened.state, opened.effects) : opened
-}
-
-/**
- * WHAT THE MODEL ASKED FOR, read the way THIS model's card says its calls
- * arrive — never guessed from the text. A native reply carries them parsed by
- * the port; a scanned one is read out of the reply's own words by the declared
- * fallback (`calls.js`), which is the only place that scanner is reachable
- * from.
- * @param {AgentState} state @param {Incoming} incoming @param {Reply} reply @returns {readonly ToolCall[]}
- */
-function asked(state, incoming, reply) {
-  if (state.calling === NATIVE) return reply.calls
-  const said = incoming.fact.type === 'model_replied' ? incoming.fact.text : ''
-  return scanCalls(said, state.turnId)
+  return complete(opened.state) ? settle(opened.state, opened.effects, incoming.at) : opened
 }
 
 /**
@@ -148,7 +136,7 @@ function asked(state, incoming, reply) {
  */
 function onToolResult(state, incoming, result) {
   const seen = land(state, incoming.callId ?? '', result.ok, result.output)
-  return complete(seen) ? settle(seen, []) : { state: seen, effects: [] }
+  return complete(seen) ? settle(seen, [], incoming.at) : { state: seen, effects: [] }
 }
 
 /**
@@ -159,9 +147,9 @@ function onToolResult(state, incoming, result) {
  * `before` is whatever the round already produced — the records of the calls
  * this build refused — and it is carried rather than replaced, because a
  * refusal nobody can read in the log is a round nobody can account for.
- * @param {AgentState} state @param {Effect[]} before @returns {Stepped}
+ * @param {AgentState} state @param {Effect[]} before @param {Timestamp} at @returns {Stepped}
  */
-function settle(state, before) {
+function settle(state, before, at) {
   const round = { ...state, observations: lines(state), toolRounds: state.toolRounds + 1 }
   if (round.toolRounds >= round.maxRounds) {
     const ended = endTurn(round, ROUND_CEILING)
@@ -169,27 +157,41 @@ function settle(state, before) {
   }
   /** @type {AgentState} */
   const asking = { ...round, awaiting: 'model', steered: false }
-  return { state: asking, effects: [...before, nextCall(asking)] }
+  const next = nextCall(asking, at)
+  return { state: next.state, effects: [...before, ...next.effects] }
 }
 
 /**
- * ASK THE MODEL. The Document rides the effect, because nothing reaches a model
- * except as an assembled Document (I13).
- *
- * THE ASSEMBLY IS NOT HERE YET and this says so rather than pretending: the
- * paper's sources cross as the document's sections verbatim. `assemble` (lane
- * A) puts the budget, the degrade ladder and the affordances between them, and
- * `ask.js` (B11) is the seam that will hold both — this is the one call site it
- * replaces, not a second door beside it.
- * @param {AgentState} state @returns {Effect}
+ * A ZERO-OUTPUT COMPLETION, ONCE: ask again. TWICE from the same model and the
+ * same signal: end the turn — the model is answering deterministically and the
+ * answer is nothing (`retry.js`). The signature is written onto the state
+ * BEFORE the retry goes out, which is what makes the second one recognisable.
+ * @param {AgentState} state @param {Incoming} incoming @param {string} finish @returns {Stepped}
  */
-function nextCall(state) {
-  return callModel({
-    turnId: state.turnId,
-    document: { sections: state.paper.sources },
-    format: { target: 'openai', vision: false, audio: false },
-    endpoint: MODEL_ENDPOINT,
-    model: state.model,
-    temperature: state.temperature,
-  })
+function onEmpty(state, incoming, finish) {
+  const signature = emptySignature(state.model, finish)
+  if (state.lastEmpty === signature) return endTurn(state, STALLED)
+  return nextCall({ ...state, lastEmpty: signature }, incoming.at, state.attempts + 1)
+}
+
+/**
+ * AN EFFECT THIS TURN QUEUED COULD NOT BE RUN, and the two halves fail
+ * differently on purpose.
+ *
+ * A TOOL FAILURE IS A TOOL RESULT: it lands against the call it answers, so the
+ * round drains and the model reads what went wrong. The alternative is a batch
+ * that never completes and a turn waiting for a result nobody will send.
+ *
+ * A MODEL FAILURE IS RETRIED, WITH A WAIT, UNTIL IT IS NOT. Past the ceiling
+ * the turn ends QUOTING what the driver read: a failure that ends with no words
+ * is the hole `retry.js` exists to close.
+ * @param {AgentState} state @param {Incoming} incoming @param {Failure} failure @returns {Stepped}
+ */
+function onEffectFailed(state, incoming, failure) {
+  if (failure.effect === 'InvokeTool') {
+    return onToolResult(state, incoming, { tool: '', ok: false, output: failure.reason })
+  }
+  const attempts = state.attempts + 1
+  if (attempts > MAX_ATTEMPTS) return endTurn(state, `${FAILED}: ${failure.reason}`)
+  return nextCall(state, incoming.at, attempts)
 }

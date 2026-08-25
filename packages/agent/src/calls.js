@@ -131,3 +131,20 @@ function skipSpace(text, from) {
   while (i < text.length && /\s/.test(text[i] ?? '')) i += 1
   return i
 }
+
+/**
+ * WHAT THE MODEL ASKED FOR, read the way THIS model's card says its calls
+ * arrive — never guessed from the text. A native reply carries them already
+ * parsed by the port; a scanned one is read out of the reply's own words by the
+ * declared fallback above, and this is the only place that scanner is reachable
+ * from.
+ * @param {import('./state.js').AgentState} state
+ * @param {import('./turn.js').Incoming} incoming
+ * @param {import('./turn.js').Reply} reply
+ * @returns {readonly import('./turn.js').ToolCall[]}
+ */
+export function callsIn(state, incoming, reply) {
+  if (state.calling === NATIVE) return reply.calls
+  const said = incoming.fact.type === 'model_replied' ? incoming.fact.text : ''
+  return scanCalls(said, state.turnId)
+}

@@ -3,6 +3,7 @@ import {
   ANSWERED, ENDED, MALFORMED, NO_CALLS, REFUSED, ROUND_CEILING, RESPOND, STEERED, TRUNCATED,
   arg, endedRounds, endedWhy, newAgentState, step, tool,
 } from '@harness/agent'
+import { CARD } from './card.js'
 
 /** @typedef {import('@harness/agent').AgentState} AgentState */
 /** @typedef {import('@harness/agent').Incoming} Incoming */
@@ -34,7 +35,7 @@ const BOX = [
 
 /** The state of an agent mid-turn, one model call outstanding under `turn-1`. */
 function asked() {
-  const { state } = step({ ...newAgentState(), toolbox: BOX }, said('what is in this folder?', 'turn-1'))
+  const { state } = step({ ...newAgentState(), toolbox: BOX, card: CARD }, said('what is in this folder?', 'turn-1'))
   return state
 }
 
@@ -52,7 +53,7 @@ function recordOf(effects, kind) {
 
 describe('a turn starting', () => {
   test('a message starts the turn it was minted for, and asks the model under that turn', () => {
-    const { state, effects } = step(newAgentState(), said('what is in this folder?', 'turn-1'))
+    const { state, effects } = step({ ...newAgentState(), card: CARD }, said('what is in this folder?', 'turn-1'))
     expect(state.turnId).toBe('turn-1')
     expect(state.task).toBe('what is in this folder?')
     expect(state.awaiting).toBe('model')
@@ -61,7 +62,7 @@ describe('a turn starting', () => {
   })
 
   test('a message with no turn minted for it is dropped, not answered with an invented id (I7)', () => {
-    const { state, effects } = step(newAgentState(), said('go', null))
+    const { state, effects } = step({ ...newAgentState(), card: CARD }, said('go', null))
     expect(state.turnId).toBe('')
     expect(effects.every((e) => e.type === 'Emit')).toBe(true)
     expect(recordOf(effects, 'agent.dropped').why).toBe('it arrived with no turn to run it under')

@@ -61,6 +61,7 @@ describe('effects', () => {
       model: '',
       temperature: null,
       speaker: '',
+      afterMs: 0,
     })
   })
 })

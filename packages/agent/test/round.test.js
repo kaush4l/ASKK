@@ -1,5 +1,6 @@
 import { expect, test, describe } from 'bun:test'
 import { CALL_REFUSED, arg, newAgentState, step, tool } from '@harness/agent'
+import { CARD } from './card.js'
 
 /** @typedef {import('@harness/agent').AgentState} AgentState */
 /** @typedef {import('@harness/agent').Incoming} Incoming */
@@ -28,7 +29,7 @@ const ran = (callId, tool, output, ok = true) => ({
 
 /** An agent with a real toolbox, one model call outstanding under `turn-1`. */
 function asked() {
-  return step({ ...newAgentState(), toolbox: BOX }, {
+  return step({ ...newAgentState(), toolbox: BOX, card: CARD }, {
     at: AT, turnId: 'turn-1', fact: { type: 'user_message', text: 'read both and list', agent: 'main', from: 'person' },
   }).state
 }

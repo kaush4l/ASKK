@@ -16,6 +16,11 @@
  * [`endingFor`] is that field read. `malformed_call` is not ported: it patched
  * a missing protocol, and the protocol is here now.
  *
+ * SEVEN NAMES NOW. `stalled` and `interrupted` join the five because the folds
+ * that earn them exist: the empty-completion guard in `retry.js`, and the boot
+ * that reads a checkpoint. The rest — `pass ceiling`, `goal unmet`, `critic
+ * faulted`, `unchecked` — still rest on folds this loop does not compute.
+ *
  * FIVE NAMES, DOWN FROM EIGHT. `pass ceiling`, `goal unmet`, `critic faulted`,
  * `unchecked` and `brief missing` each rest on a fold this loop does not yet
  * compute (passes, the standing goal, the critic's verdict, the verify gate,
@@ -68,6 +73,23 @@ export const NO_CALLS = 'no calls'
  * behind it, like every other ending.
  */
 export const MALFORMED = 'malformed reply'
+
+/**
+ * TWO CONSECUTIVE ZERO-OUTPUT COMPLETIONS from the same model and the same
+ * finish signal. The model is answering deterministically and the answer is
+ * nothing, so asking a third time spends the person's money to receive the same
+ * silence. Its own name, because the repair is to change the request or the
+ * model and never to wait.
+ */
+export const STALLED = 'empty completions'
+
+/**
+ * A RELOAD LANDED IN THE MIDDLE OF THIS TURN and the work outstanding could
+ * have changed something, so it was not re-issued. The one ending nothing in
+ * the loop decided: it is what a boot says instead of leaving a turn in limbo
+ * (`checkpoint.js`).
+ */
+export const INTERRUPTED = 'interrupted'
 
 /**
  * THE ENDING SPELLED AS A TOOL, for a model with no native call API. Everything

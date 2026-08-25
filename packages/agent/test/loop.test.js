@@ -1,6 +1,7 @@
 import { expect, test, describe } from 'bun:test'
 import { scriptedModel } from '@harness/adapters-test'
 import { ANSWERED, ENDED, arg, endedRounds, endedWhy, newAgentState, step, tool } from '@harness/agent'
+import { CARD } from './card.js'
 
 /** @typedef {import('@harness/agent').AgentState} AgentState */
 /** @typedef {import('@harness/agent').Incoming} Incoming */
@@ -82,7 +83,7 @@ describe('a malformed call costs one extra round, not the run', () => {
       { calls: [{ id: 'c2', tool: 'exec', args: '{"command":"ls -1"}' }] },
       { text: 'The folder holds a.md and b.md.' },
     ])
-    const { state, recorded } = await drive({ ...newAgentState(), toolbox: BOX }, 'what is in this folder?', model, (_tool, args) => {
+    const { state, recorded } = await drive({ ...newAgentState(), toolbox: BOX, card: CARD }, 'what is in this folder?', model, (_tool, args) => {
       ran.push(args)
       return { ok: true, output: 'a.md\nb.md' }
     }, ['tool_calls', 'tool_calls', 'stop'])
@@ -107,7 +108,7 @@ describe('a malformed call costs one extra round, not the run', () => {
       { calls: [{ id: 'c1', tool: 'exec', args: '{"command":"ls -1"}' }] },
       { text: 'The folder holds a.md and b.md.' },
     ])
-    const { recorded } = await drive({ ...newAgentState(), toolbox: BOX }, 'what is in this folder?', model, () => ({ ok: true, output: 'a.md' }), ['tool_calls', 'stop'])
+    const { recorded } = await drive({ ...newAgentState(), toolbox: BOX, card: CARD }, 'what is in this folder?', model, () => ({ ok: true, output: 'a.md' }), ['tool_calls', 'stop'])
     expect(model.calls).toHaveLength(2)
     expect(endedRounds(payloadOf(recorded, ENDED))).toBe(1)
   })

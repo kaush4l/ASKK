@@ -45,7 +45,8 @@
 /**
  * @typedef {(
  *   | {type: 'CallModel', turnId: TurnId, document: Document, format: ProviderFormat,
- *      endpoint: EndpointName, model: string, temperature: number | null, speaker: string}
+ *      endpoint: EndpointName, model: string, temperature: number | null, speaker: string,
+ *      afterMs: number}
  *   | {type: 'InvokeTool', turnId: TurnId, callId: string, tool: ToolId, args: string}
  *   | {type: 'Emit', fact: Fact}
  *   | {type: 'Delegate', turnId: TurnId, agent: string, goal: string, batch: number}
@@ -65,8 +66,12 @@ export const EFFECT_TYPES = /** @type {const} */ (['CallModel', 'InvokeTool', 'E
  * will belong to — empty is the process's own agent — because compaction is a
  * turn taken by the summarizer, and its words must never land as this agent's
  * answer.
+ * `afterMs` IS THE BACKOFF, AND IT IS A NUMBER AND NOT A SLEEP. A retry after a
+ * failed completion must not go out immediately, and `step` holds no clock
+ * (I7) — so the loop says how long to wait and the driver waits. Zero is the
+ * ordinary call, which is every call that is not a retry.
  * @param {{turnId: TurnId, document: Document, format: ProviderFormat, endpoint: EndpointName,
- *          model?: string, temperature?: number | null, speaker?: string}} call
+ *          model?: string, temperature?: number | null, speaker?: string, afterMs?: number}} call
  * @returns {Effect}
  */
 export function callModel(call) {
@@ -79,6 +84,7 @@ export function callModel(call) {
     model: call.model ?? '',
     temperature: call.temperature ?? null,
     speaker: call.speaker ?? '',
+    afterMs: call.afterMs ?? 0,
   }
 }
 

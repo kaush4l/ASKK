@@ -22,6 +22,7 @@ import { NATIVE } from './calls.js'
 import { checkField, shapeOf } from './shape.js'
 
 /** @typedef {import('@harness/kernel').TurnId} TurnId */
+/** @typedef {import('@harness/context').ModelCard} ModelCard */
 /** @typedef {import('./calls.js').CallStyle} CallStyle */
 /** @typedef {import('./round.js').Asked} Asked */
 /** @typedef {import('./tools.js').Tool} Tool */
@@ -78,6 +79,10 @@ import { checkField, shapeOf } from './shape.js'
  * @property {Record<string, unknown[]>} senses  BLOCK ID -> the parts a host wrote for it, most recently. The slot where an impure host leaves fresh data for a pure component to render. Parts and not strings so a screenshot needs no second mechanism.
  * @property {Record<string, string>} briefs  what each stage is TOLD, loaded from `public/stages/`. Here and not in the spec because a brief is a property of the STAGE, whose meaning belongs to the machine.
  * @property {Paper} paper  the assembly inputs, refreshed before each step. Inside the state so one snapshot restores the whole thinking context.
+ * @property {string} prompt  this agent's file's own markdown body — the words the soul block is written in. On the state and not fetched per call: the paper is derived every turn and the agent's own words are an input to it, not a lookup.
+ * @property {ModelCard | null} card  what this agent's `model:` key resolved to in the catalogue — the window every budget is derived from. Null is a file naming a model this build has no entry for, and the turn ends saying so rather than assembling against a number somebody invented.
+ * @property {number} attempts  how many times THIS turn's model call has failed and been asked again. Turn-scoped: a provider that failed twice yesterday says nothing about the call going out now.
+ * @property {string} lastEmpty  the `model|finish` pair of the previous zero-output completion, '' when the last reply carried something. Two identical ones in a row stop the retry — a model answering deterministically will answer the same nothing again.
  */
 
 /** Sixty-four, not four: four rounds cannot finish real work — read, build, read the errors, edit, build is already five — and the ceiling exists to stop a model LOOPING, not to stop an agent working. */
@@ -113,6 +118,7 @@ export function newAgentState() {
     critic: '', reviewed: null,
     standing: { goal: { outcome: '', check: '', doneWhen: '' }, checking: false, met: null },
     space: null, faculties: [], senses: {}, briefs: {}, paper: { sources: [] },
+    prompt: '', card: null, attempts: 0, lastEmpty: '',
   }
 }
 

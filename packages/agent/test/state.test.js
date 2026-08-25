@@ -1,6 +1,7 @@
 import { expect, test, describe } from 'bun:test'
 import { StoreError } from '@harness/kernel'
 import { newAgentState, serializeAgentState, restoreAgentState, step } from '@harness/agent'
+import { CARD } from './card.js'
 
 /** A stored record with one field edited, so a test says what it changed and nothing else. */
 function stored(/** @type {Record<string, unknown>} */ edits) {
@@ -139,7 +140,7 @@ describe('agent state', () => {
     expect(() => restoreAgentState(stored({ toolbox: [silent] })))
       .toThrow(/"toolbox\[0\]\.mutates" as undefined/)
 
-    const live = restoreAgentState(stored({ toolbox: [WRITE], green: true }))
+    const live = restoreAgentState(stored({ toolbox: [WRITE], green: true, card: CARD }))
     const at = 1_700_000_000_000
     const turnId = 'turn-1'
     const asked = step(live, { at, turnId, fact: { type: 'user_message', text: 'fix it', agent: 'main', from: 'person' } })

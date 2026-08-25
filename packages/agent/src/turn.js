@@ -21,6 +21,7 @@
  */
 
 import { emit } from './effect.js'
+import { awaitedBy, failureIn } from './retry.js'
 
 /** @typedef {import('@harness/kernel').Fact} Fact */
 /** @typedef {import('@harness/kernel').Timestamp} Timestamp */
@@ -92,7 +93,11 @@ export const DROPPED = 'agent.dropped'
 export function expects(fact) {
   if (fact.type === 'model_replied') return 'model'
   if (fact.type === 'tool_invoked') return 'tools'
-  return null
+  // A FAILED EFFECT ANSWERS THE SAME QUESTION THE EFFECT WOULD HAVE. Without
+  // this line a failure carries no turn check at all, and a model call that
+  // failed under an abandoned turn would retry under the live one.
+  const failure = failureIn(fact)
+  return failure ? awaitedBy(failure) : null
 }
 
 /**
@@ -129,6 +134,7 @@ export function idle(state) {
     task: null, turnId: '', awaiting: null,
     batch: [], toolRounds: 0, observations: [],
     steered: false, stopping: false,
+    attempts: 0, lastEmpty: '',
   }
 }
 

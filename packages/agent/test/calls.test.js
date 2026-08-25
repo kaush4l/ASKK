@@ -1,5 +1,6 @@
 import { expect, test, describe } from 'bun:test'
 import { ANSWERED, ENDED, NATIVE, SCANNED, arg, endedWhy, newAgentState, scanCalls, step, swallowedClose, tool } from '@harness/agent'
+import { CARD } from './card.js'
 
 /** @typedef {import('@harness/agent').Incoming} Incoming */
 /** @typedef {import('@harness/agent').Effect} Effect */
@@ -13,7 +14,7 @@ const BOX = [
 
 /** @param {import('@harness/agent').CallStyle} calling */
 function asked(calling) {
-  return step({ ...newAgentState(), toolbox: BOX, calling }, {
+  return step({ ...newAgentState(), toolbox: BOX, calling, card: CARD }, {
     at: AT, turnId: 'turn-1', fact: { type: 'user_message', text: 'what time is it', agent: 'main', from: 'person' },
   }).state
 }

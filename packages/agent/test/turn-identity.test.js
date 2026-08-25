@@ -1,5 +1,6 @@
 import { expect, test, describe } from 'bun:test'
 import { DROPPED, ENDED, STOPPED, STOP_REQUESTED, arg, newAgentState, step, tool } from '@harness/agent'
+import { CARD } from './card.js'
 
 /** @typedef {import('@harness/agent').AgentState} AgentState */
 /** @typedef {import('@harness/agent').Incoming} Incoming */
@@ -12,9 +13,8 @@ const said = (text, turnId) => ({ at: AT, turnId, fact: { type: 'user_message', 
 
 /** @param {string} turnId @param {Array<{id: string, tool: string, args: string}>} calls @returns {Incoming} */
 const replied = (turnId, calls) => ({
-  at: AT, turnId,
-  fact: { type: 'model_replied', agent: 'main', text: '', reasoning: '', finish: 'stop' },
-  reply: { calls, finish: /** @type {const} */ ('tool_calls') },
+  at: AT, turnId, reply: { calls, finish: /** @type {const} */ ('tool_calls') },
+  fact: { type: 'model_replied', agent: 'main', text: 'here you go', reasoning: '', finish: 'stop' },
 })
 
 /** @param {string} turnId @param {string} [callId] @returns {Incoming} */
@@ -28,7 +28,7 @@ const CALL = { id: 'c1', tool: 'exec', args: '{"command":"ls"}' }
 const EXEC = tool({ name: 'exec', description: 'Run a command.', args: [arg('command', 'string', 'the command')], evidence: true })
 
 /** A fresh agent that may actually call the tool these fixtures call. */
-const equipped = () => ({ ...newAgentState(), toolbox: [EXEC] })
+const equipped = () => ({ ...newAgentState(), toolbox: [EXEC], card: CARD })
 
 /** @type {Incoming} */
 const stopPressed = { at: AT, turnId: null, fact: { type: 'custom', kind: STOP_REQUESTED, payload: null } }

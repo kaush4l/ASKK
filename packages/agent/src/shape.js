@@ -28,7 +28,7 @@ export function shapeOf(/** @type {unknown} */ value) {
  * `null` and a `task` of `'summarise this'` are the same field.
  * @type {Record<string, string>}
  */
-const NULLABLE = { task: 'string', temperature: 'number', reviewed: 'boolean', space: 'object', awaiting: 'string' }
+const NULLABLE = { task: 'string', temperature: 'number', reviewed: 'boolean', space: 'object', awaiting: 'string', card: 'object' }
 
 /**
  * The compound fields, by path. A member absent from a stored compound is a

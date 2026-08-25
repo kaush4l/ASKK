@@ -12,6 +12,7 @@
  * @module
  */
 
+import { facultyTools, SPACE } from './faculty/index.js'
 import { roleHolder } from './roster.js'
 import { toolboxFor } from './toolbox.js'
 
@@ -20,27 +21,38 @@ import { toolboxFor } from './toolbox.js'
 /** @typedef {import('./state.js').AgentState} AgentState */
 /** @typedef {import('./state.js').Space} Space */
 /** @typedef {import('./tools.js').Tool} Tool */
-
-/** The faculty a resolved `space:` declares on its own. Naming a space IS the request — the tools and the block come with it, rather than having to be listed too. */
-export const SPACE_FACULTY = 'space'
+/** @typedef {import('@harness/context').ModelCard} ModelCard */
 
 /**
  * @param {AgentState} state a fresh state, from `newAgentState()`
  * @param {AgentSpec} spec
- * @param {{catalogue: readonly Tool[], offered: readonly CapabilityId[] | undefined, peers?: readonly AgentSpec[]}} env
+ * @param {{catalogue: readonly Tool[], offered: readonly CapabilityId[] | undefined, peers?: readonly AgentSpec[], card?: ModelCard | null}} env
  * @returns {{state: AgentState, unresolved: string[], notice: string}}
  */
 export function adoptSpec(state, spec, env) {
   const peers = env.peers ?? []
   const space = spaceNamed(spec.space)
-  const resolved = toolboxFor(spec, env)
+  // THE FACULTIES WIDEN WHAT MAY BE NAMED, and nothing else. Their tools join
+  // the catalogue the allowlist picks from, so a file with a non-empty `tools:`
+  // still picks; a file with none gets every built-in AND every tool its own
+  // faculties brought. Naming a space is what puts `space` in that list, which
+  // is what keeps the old key a way of naming a faculty rather than a second
+  // mechanism beside them.
+  const facultyNames = faculties(spec, space)
+  const resolved = toolboxFor(spec, { ...env, catalogue: [...env.catalogue, ...facultyTools(facultyNames)] })
   /** @type {AgentState} */
   const adopted = {
     ...state,
     model: spec.model,
+    prompt: spec.prompt,
+    // THE CARD IS ADOPTED WITH THE MODEL NAME, from the catalogue the host
+    // read. Every budget is derived from its window, so an agent whose file
+    // names an entry that is not there carries null and says so at its first
+    // call — rather than being asked against a number nobody chose.
+    card: env.card ?? null,
     temperature: spec.temperature,
     space,
-    faculties: faculties(spec, space),
+    faculties: facultyNames,
     toolbox: resolved.toolbox,
     compactAt: spec.compactAt,
     keepRecent: spec.keepRecent,
@@ -72,7 +84,7 @@ export function spaceNamed(name) {
 
 /** Every faculty this file declared, in the order it wrote them. @param {AgentSpec} spec @param {Space | null} space @returns {string[]} */
 function faculties(spec, space) {
-  const named = [...(space ? [SPACE_FACULTY] : []), ...spec.faculties].filter((n) => n !== '')
+  const named = [...(space ? [SPACE] : []), ...spec.faculties].filter((n) => n !== '')
   return [...new Set(named)]
 }
 
