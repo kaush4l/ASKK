@@ -1,10 +1,62 @@
 import { Shell } from '@/components/shell/shell'
+import { VIEWS, View } from '@/components/views'
+import { FIXTURES } from '@/fixtures'
+import s from './gallery.module.css'
 
 /**
  * THE DESIGN SYSTEM, at `/design-system/`. Deliberately not in the nav and not
  * linked from the product: an internal gallery reached by address, carrying a
  * crumb back. It is a real route because the address has to resolve.
+ *
+ * EVERY VIEW THE SEAM CAN RETURN, AGAINST A REALISTIC PROJECTION, IN BOTH
+ * ROOMS. A critic can reject a state here without running an agent, which is
+ * the whole point — the predecessor's gallery was a region toggled by a header
+ * switch, it listed six components that did not exist, and the one artifact
+ * whose job was to catch drift was itself the drift.
+ *
+ * A server component: these render from data alone, so the static export paints
+ * the whole gallery and no script has to run for a critic to read it. The
+ * client half is the `Shell` around it, which reads the address.
  */
 export default function Page() {
-  return <Shell slug="design-system" />
+  const names = Object.keys(VIEWS)
+  return (
+    <Shell slug="design-system">
+      <div className={s.gallery}>
+        {names.map((name) => (
+          <Specimen key={name} name={name} data={FIXTURES[name]} />
+        ))}
+        {/* THE STRUCTURAL REFUSAL, AS A SPECIMEN. A name the route table does
+            not list cannot be produced; this is what the page does if one ever
+            is, and it is here so that behaviour is something a critic can look
+            at rather than something a comment claims. */}
+        <Specimen name="wharrgarbl — a name docs/SEAM.md does not list" data={undefined} view="wharrgarbl" />
+      </div>
+    </Shell>
+  )
+}
+
+/**
+ * One view, in both rooms. `data-theme` is stamped on each box rather than on
+ * the document, which works because `app/globals.css` defines each palette
+ * against the attribute and not against `:root` alone — the same mechanism the
+ * boot script uses, exercised twice on one page.
+ *
+ * @param {{name: string, data: unknown, view?: string}} props `view` is the
+ *   name to RENDER when it differs from the name to SHOW.
+ */
+function Specimen({ name, data, view }) {
+  return (
+    <section className={s.specimen} aria-label={name}>
+      <h3 className={s.name}>{name}</h3>
+      <div className={s.rooms}>
+        {['light', 'dark'].map((room) => (
+          <div key={room} className={s.room} data-theme={room}>
+            <span className={s.roomName}>{room}</span>
+            <View view={view ?? name} data={data} />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 }

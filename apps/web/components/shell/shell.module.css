@@ -101,21 +101,6 @@
   letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
 }
 
-/* ---- a banner is a ROW, never a slot in the strip: in the strip an error
-   evicted the endpoint and the spend, the two facts a failure needs. It may add
-   a row; it may not subtract a fact. */
-.banner {
-  display: flex; flex-direction: column; gap: var(--s-2);
-  max-width: var(--frame); margin: 0 auto var(--s-3);
-  padding: var(--s-3) var(--gutter);
-  background: var(--surface-2);
-  border-block: 1px solid var(--control);
-}
-.banner p { max-width: var(--measure); }
-.bannerHead { font-weight: var(--w-medium); color: var(--ink); }
-.bannerAside { font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2); }
-.address { color: var(--machine); }
-
 /* Nothing in this page is real yet, and it says so where it is not. */
 .unbuilt {
   font-size: var(--t-caption); line-height: var(--lh-caption);

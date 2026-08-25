@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 import { BASE } from '@/lib/base'
 import { land } from '@/lib/destinations'
 import { MISROUTE } from '@/lib/placeholder'
-import { Misroute } from '@/components/shell/misroute'
+import { Problem } from '@/components/views/problem'
 import { Nav } from '@/components/shell/nav'
 import { Masthead } from '@/components/shell/masthead'
 import s from '@/components/shell/shell.module.css'
@@ -45,7 +45,7 @@ export default function NotFound() {
       <header className={s.chrome}>
         <Masthead kicker="No such destination" subject="HARNESS" />
       </header>
-      <Misroute problem={MISROUTE} />
+      <Problem data={MISROUTE} placement="banner" />
       <div className={s.frame}>
         <Nav here={null} search="" />
       </div>

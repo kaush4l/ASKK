@@ -1,0 +1,55 @@
+/* THE COMPONENT LIBRARY'S OWN PAINT (DESIGN.md §8). One implementation each,
+   and nothing here declares a VALUE — every colour, size and duration is a
+   token out of `app/globals.css`. */
+
+/* ---- Surface / Card. The class is `panel`, and there is no title/body pair:
+   the caption eyebrow is an <h2> and the children are the panel. */
+.panel {
+  display: flex; flex-direction: column; gap: var(--s-3);
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-top: var(--rule-hair);
+  padding: var(--s-4);
+}
+.caption {
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase;
+  font-weight: var(--w-strong); color: var(--ink-2);
+}
+
+/* ---- the per-row status channel. COLOUR IS NEVER THE ONLY CHANNEL (§8,
+   Badge): the label beside the dot is the primary one and it comes from the
+   core, so this rule only tints what the words already say. */
+.toned { --tone: var(--control); }
+.toned[data-status='idle'] { --tone: var(--ink-3); }
+.toned[data-status='starting'] { --tone: var(--machine); }
+.toned[data-status='waiting'] { --tone: var(--warning); }
+.toned[data-status='working'] { --tone: var(--accent); }
+.toned[data-status='ok'] { --tone: var(--success); }
+.toned[data-status='failed'] { --tone: var(--danger); }
+.toned[data-status='closed'] { --tone: var(--ink-3); }
+.panel.toned { border-left: 3px solid var(--tone); }
+
+/* ---- Badge / StatusDot: dot AND label, never dot alone. */
+.badge {
+  display: inline-flex; align-items: baseline; gap: var(--s-2);
+  font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2);
+}
+.dot {
+  flex: none; align-self: center;
+  inline-size: 0.5rem; block-size: 0.5rem;
+  border-radius: var(--r-full); background: var(--tone);
+}
+
+/* ---- EmptyState: one sentence, no glyph, and never a bare "No data". */
+.empty { color: var(--ink-2); padding: var(--s-4) 0; }
+
+/* ---- a key and its value ARE a definition list, so a screen reader says
+   "key, value" instead of reading two unrelated paragraphs. */
+.facts { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); margin: 0; }
+.fact { display: contents; }
+.fact dt {
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
+}
+.fact dd { margin: 0; font-size: var(--t-label); line-height: var(--lh-label); color: var(--machine); }

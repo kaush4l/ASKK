@@ -9,7 +9,13 @@
    is the glass material: `--e1-blur` and its family arrive with the surfaces
    that use them, because a token with no reader is a value nobody can check. */
 
-:root {
+/* TWO SELECTORS, ONE BODY. `:root` is the document before anything is stamped;
+   `[data-theme="dark"]` is what the boot script stamps, and it is written here
+   rather than as a second block so a specimen box on `/design-system/` can hold
+   a whole palette without the fifteen declarations existing twice. The rooms on
+   that page ARE this mechanism, exercised twice on one document. */
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
 
   /* ---- the ground. A fixed field, never an image: costs nothing, cannot fail
@@ -148,8 +154,14 @@
    paint, resolving `prefers-color-scheme` itself when nobody chose, and
    re-stamps when the device flips. A `@media (prefers-color-scheme: light)`
    block beside this one would be these fifteen declarations written twice with
-   nothing keeping the two bodies equal. */
-:root[data-theme="light"] {
+   nothing keeping the two bodies equal.
+
+   `--ground` IS ALSO WRITTEN IN `app/layout.jsx`, because a meta tag cannot
+   read a custom property and the browser's own chrome has to match the room.
+   One duplicate spelling is unavoidable; the two DISAGREEING is not, and
+   `test/theme.test.js` reads both values out of this file and asserts the
+   `themeColor` literals are them. */
+[data-theme="light"] {
   color-scheme: light;
   --ground: #f3eefa; --ground-deep: #e4dcf1; --vignette: rgba(26, 15, 43, 0.10);
   --lobe-key: rgba(255, 255, 255, 0.85); --lobe-fill: rgba(201, 164, 255, 0.28);

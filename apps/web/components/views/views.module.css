@@ -1,0 +1,48 @@
+/* ONE PANE'S PAINT, AND ONLY WHAT A PANE ADDS. The panel, the badge, the empty
+   state and the definition list are `components/ui`; this file dresses the
+   shapes that are particular to a projection — a transcript row, a folder
+   entry, a shell run. Nothing here declares a VALUE. */
+
+.stack { display: flex; flex-direction: column; gap: var(--s-4); }
+.rows { display: flex; flex-direction: column; gap: var(--s-3); margin: 0; padding: 0; list-style: none; }
+.row {
+  display: flex; flex-direction: column; gap: var(--s-1);
+  padding: var(--s-3);
+  background: var(--surface-2);
+  border: 1px solid var(--divider);
+  border-left: 3px solid var(--tone);
+  border-radius: var(--r-sm);
+}
+.name { font-weight: var(--w-strong); color: var(--ink); }
+.meta { font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2); }
+.machine { font-family: var(--mono); font-size: var(--t-label); color: var(--machine); overflow-wrap: anywhere; }
+
+/* ---- the tile strip: the fleet at a glance, above the fleet in detail. */
+.tiles { display: flex; flex-wrap: wrap; gap: var(--s-3); margin: 0; padding: 0; list-style: none; }
+.tile {
+  flex: 1 1 10rem; display: flex; flex-direction: column; gap: var(--s-1);
+  padding: var(--s-3); background: var(--surface-2); border: 1px solid var(--divider);
+  border-radius: var(--r-sm);
+}
+.tileLabel {
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
+}
+.tileValue { font-size: var(--t-subhead); line-height: var(--lh-subhead); font-weight: var(--w-strong); color: var(--ink); }
+
+/* ---- Message: FIVE CLASSES, THREE TREATMENTS (DESIGN.md §8). Speech is
+   filled and yours carries the accent edge; machinery has no fill, a dotted
+   edge and the SAME SIZE as speech; failure is a 2px danger edge. The grouping
+   is done here, in the selector, because deciding it in JavaScript would be the
+   interface deriving a treatment from a kind (I5). */
+.msg { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3); border-radius: var(--r-sm); }
+.msg[data-kind='user'], .msg[data-kind='assistant'] { background: var(--surface-2); }
+.msg[data-kind='user'] { border-left: 3px solid var(--accent); }
+.msg[data-kind='tool'], .msg[data-kind='pending'] { border: 1px dashed var(--hairline); color: var(--ink-2); }
+.msg[data-kind='error'] { border: 2px solid var(--danger); color: var(--danger); }
+.speaker { font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2); font-weight: var(--w-medium); }
+.said { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* A shell row is the exception to `pre-wrap` (DESIGN.md §8, Machine output):
+   the columns of `ls -la` ARE the content, so this block scrolls sideways. */
+.shell { margin: 0; overflow-x: auto; color: var(--machine); }

@@ -5,8 +5,8 @@ import { useEffect } from 'react'
 import { ALL, subjectOf } from '@/lib/destinations'
 import { MISROUTE, RAIL, REGIONS, STRIP } from '@/lib/placeholder'
 import { searchFor } from '@/lib/agent'
+import { Problem } from '@/components/views/problem'
 import { Masthead } from './masthead'
-import { Misroute } from './misroute'
 import { Nav } from './nav'
 import { Rail } from './rail'
 import { Region } from './region'
@@ -28,11 +28,12 @@ import s from './shell.module.css'
  * in the browser (I1): there is no server to render against, and the address is
  * a store this page reads rather than a route parameter a server resolved.
  *
- * @param {{slug: string}} props which destination this route IS — declared by the
- *   route file, never inferred, so a page cannot render a destination the table
- *   does not list.
+ * @param {{slug: string, children?: React.ReactNode}} props `slug` is which
+ *   destination this route IS — declared by the route file, never inferred, so
+ *   a page cannot render a destination the table does not list. `children` is
+ *   what fills the region where a destination has something to render.
  */
-export function Shell({ slug }) {
+export function Shell({ slug, children }) {
   const { agent, misrouted } = useAgent()
   useEffect(followDeviceTheme, [])
   const to = ALL.find((d) => d.slug === slug)
@@ -49,10 +50,12 @@ export function Shell({ slug }) {
         <Masthead kicker={to.label} subject={subjectOf(to, agent)} />
         <StatusStrip facts={STRIP} />
       </header>
-      {misrouted ? <Misroute problem={MISROUTE} address={misrouted} /> : null}
+      {misrouted ? <Problem data={MISROUTE} subject={misrouted} placement="banner" /> : null}
       <div className={s.frame} data-rail={String(to.rail)}>
         <Nav here={to.slug} search={search} />
-        <Region id="region" heading={region.heading} note={region.note} panes={to.panes} />
+        <Region id="region" heading={region.heading} note={region.note} panes={to.panes}>
+          {children}
+        </Region>
         {to.rail ? <Rail noun={RAIL.noun} subject={agent} note={RAIL.note} /> : null}
       </div>
     </>
