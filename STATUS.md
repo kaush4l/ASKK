@@ -20,10 +20,10 @@ parts the rewrite exposes as wrong.
 | LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
 | RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md`, 360 lines | ✅ landed |
 | — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
-| A · PAPER | `packages/context` | 1 ✅ shapes · 2 ✅ derived budget · 3 ✅ assembly · 4 🔄 the provider adapters |
-| B · LOOP | `packages/agent` | 1 ✅ state · 2 ✅ turn identity · 3 ✅ correlated tool calls · 4 🔄 the agent file and its stages |
-| C · SPINE | `packages/core`, `packages/adapters-web` | 1 ✅ the seam · 2 ✅ bounded boot · 3 ✅ the walking skeleton · 4 🔄 the browser half |
-| D · FACE | `apps/web` | 1 ✅ the shell · 2 ✅ a component per view · 3 ✅ the Work screen · 4 🔄 the interface stops pretending |
+| A · PAPER | `packages/context` | 4 ✅ provider adapters · 5 🔄 the components and the golden matrix |
+| B · LOOP | `packages/agent` | 4 ✅ the agent file and its stages · 5 🔄 the paper, the faculties, retry |
+| C · SPINE | `packages/core`, `packages/adapters-web` | 4 ✅ the browser half · 5 🔄 the rest of the routes, and search |
+| D · FACE | `apps/web` | 4 ✅ wired to the seam · 5 🔄 **MAKE THE PAGE COME UP** |
 
 ## What exists
 
@@ -125,6 +125,36 @@ can tell its own error from a neighbour's half-saved file.
   serialise `content` as `""` and never `null`.
 - **Dependencies below the UI stay at zero.** Refused by name: zod, Tailwind,
   framer-motion, charting, marked + dompurify, any public CORS proxy.
+
+## The page did not come up, and nothing said why
+
+Built, exported, served, rendered — and stuck on its pre-boot sentence forever,
+with every chunk 200, no console error, no warning and no rejection. Two causes
+found by bisection against the real artifact in a real browser, both landed:
+
+1. **A manual `<head>` in the App Router root layout stops Next's client runtime
+   from starting.** `window.next` was `undefined` while the Turbopack runtime had
+   run. Removing the element put it back and React hydrated.
+2. **`reactStrictMode: true` stops this build flushing any PASSIVE effect.**
+   Reduced to one page with one client component holding a `useLayoutEffect` and
+   a `useEffect`: the layout effect ran, the passive one did not — in the static
+   export, headless and headed alike. Every effect in this application is
+   passive, boot included.
+
+A third is still open and is round 5's whole increment for the FACE lane:
+`useSession`'s effect still does not run in the real tree, while the same two
+effects in a minimal page do.
+
+**Two things learned the hard way, written down so nobody pays twice.** A
+Turbopack build cache will serve you a chunk without your edit in it — `rm -rf
+apps/web/.next apps/web/out` before every rebuild, and grep the chunk for your
+probe before concluding anything from its absence. And `document.title` is not
+a probe channel: React re-applies the metadata title over it. `localStorage` is.
+
+**The gate did not catch any of this**, and that is the deeper finding: 426
+tests, five checks, and a page that renders and does nothing passed all of them
+(I17). A smoke test that drives the built artifact in a browser lands with the
+fix.
 
 ## Cross-lane rulings — round 2
 
