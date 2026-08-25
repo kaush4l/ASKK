@@ -25,12 +25,15 @@
 
 import { isSystemSlot, isTail } from './slot.js'
 import { stablePrefix } from './cache.js'
+import { ruleNamed } from './image.js'
+import { estimatePart } from './estimate.js'
 
 /** @typedef {import('./types.js').Document} Document */
 /** @typedef {import('./types.js').Part} Part */
 /** @typedef {import('./types.js').Section} Section */
 /** @typedef {import('./types.js').CompactionReport} CompactionReport */
 /** @typedef {import('./card.js').ModelCard} ModelCard */
+/** @typedef {import('./image.js').ImageRule} ImageRule */
 
 /**
  * One rendered message. Content is ALWAYS the array form: a provider that
@@ -63,9 +66,10 @@ export function messagesOf(doc, card) {
   const heard = doc.sections.filter((s) => s.fidelity !== 'elided')
   const system = heard.filter((s) => isSystemSlot(s.slot) && !isTail(s.slot))
   const spoken = heard.filter((s) => !isSystemSlot(s.slot) || isTail(s.slot))
+  const images = ruleNamed(doc.report.imageRule)
   return [
-    { role: 'system', ...render(system, card, null) },
-    { role: 'user', ...render(spoken, card, doc.report) },
+    { role: 'system', ...render(system, card, null, images) },
+    { role: 'user', ...render(spoken, card, doc.report, images) },
   ]
 }
 
@@ -80,9 +84,10 @@ export function messagesOf(doc, card) {
  * re-reads the agent's whole character. Flushing at the end of the stable
  * prefix is what makes the head reusable, and `cacheUntil` is where it ended.
  * @param {Section[]} sections @param {ModelCard} card @param {CompactionReport|null} report
+ * @param {ImageRule} [images] the arithmetic the withheld line quotes its cost in
  * @returns {{content: Part[], cacheUntil: number}}
  */
-function render(sections, card, report) {
+function render(sections, card, report, images) {
   const stable = stablePrefix(sections)
   /** @type {Part[]} */
   const out = []
@@ -100,7 +105,7 @@ function render(sections, card, report) {
       else if (audible(p, card)) {
         flush()
         out.push(p)
-      } else text += `${withheldLine(p)}\n`
+      } else text += `${withheldLine(p, images)}\n`
     }
     text += '\n'
     if (i === stable - 1) {
@@ -129,11 +134,24 @@ function audible(part, card) {
   return part.type === 'image' && card.acceptsImages
 }
 
-/** What the model reads in place of a part it cannot hear: typed, named, present. @param {Part} part */
-function withheldLine(part) {
+/**
+ * What the model reads in place of a part it cannot hear: typed, named, priced,
+ * present.
+ *
+ * THE COST IS ON THE LINE because the model is being asked to answer without
+ * something that was here, and "an image was withheld" and "a 1600x1200 image
+ * worth 2560 tokens of this window was withheld" are different facts to reason
+ * from. It is also the number a person needs in order to judge the catalogue
+ * entry, and it is quoted with the rule it was counted under because the three
+ * rules disagree by up to 3x about one photograph.
+ * @param {Part} part @param {ImageRule} [images]
+ */
+function withheldLine(part, images) {
   if (part.type === 'text') return ''
   const what = part.type === 'file' ? `file '${part.name}' (${part.mediaType})` : `${part.type} (${part.mediaType})`
-  return `[${what} withheld: this model does not accept it]`
+  const { tokens, basis } = estimatePart(part, images)
+  const cost = `~${tokens} token${tokens === 1 ? '' : 's'} — ${basis}`
+  return `[${what} withheld: this model does not accept it; it would have cost ${cost}]`
 }
 
 /**

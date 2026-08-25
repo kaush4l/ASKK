@@ -59,3 +59,14 @@ export function list(v) {
 export function str(v) {
   return typeof v === 'string' ? v : ''
 }
+
+/**
+ * One arrived object as a MUTABLE copy, or an empty one. It exists for the
+ * stream folds: a streamed body is built up out of pieces, and building it up
+ * by mutating the pieces that arrived would hand the caller's own frames back
+ * as though they were our reconstruction.
+ * @param {unknown} v @returns {Record<string, unknown>}
+ */
+export function copy(v) {
+  return v && typeof v === 'object' && !Array.isArray(v) ? { .../** @type {Record<string, unknown>} */ (v) } : {}
+}

@@ -17,7 +17,11 @@
  * @module
  */
 
+import { estimateParts } from './estimate.js'
+
 /** @typedef {import('./types.js').Section} Section */
+/** @typedef {import('./wire.js').Message} Message */
+/** @typedef {import('./image.js').ImageRule} ImageRule */
 /** @typedef {import('./provider.js').ProviderUsage} ProviderUsage */
 
 /**
@@ -65,6 +69,15 @@ export function cacheSentence(usage, offer = null) {
   if (offer && !offer.offered) {
     return `The stable head was ${offer.tokens} tokens, below this provider's ${offer.minimum}-token minimum; nothing was offered for caching.`
   }
+  // BEFORE the call there is no usage to report and the decision is still a
+  // fact worth stating — this is the sentence the receipt on a request carries.
+  // Saying "no cache accounting" there would report a silence as a result.
+  if (offer && usage === null) {
+    const how = offer.minimum === null
+      ? 'this provider caches prefixes implicitly, so nothing was stamped'
+      : `at or above this provider's ${offer.minimum}-token minimum, so it was offered for caching`
+    return `The stable head was ${offer.tokens} tokens; ${how}.`
+  }
   const ratio = cacheHitRatio(usage)
   if (ratio === null) return 'This provider reported no cache accounting for the turn.'
   const cached = usage?.cachedInputTokens ?? 0
@@ -107,4 +120,21 @@ export const MIN_CACHEABLE_TOKENS = { anthropic: 4096 }
 export function cacheOffer(provider, tokens) {
   const minimum = MIN_CACHEABLE_TOKENS[provider] ?? null
   return { provider, tokens, minimum, offered: minimum === null || tokens >= minimum }
+}
+
+/**
+ * WHAT WAS DECIDED ABOUT THIS PAPER'S STABLE HEAD, for this provider — the one
+ * arithmetic, so the receipt a person reads is the same decision the body was
+ * built from rather than a second estimate that agrees with it today.
+ *
+ * The head is every message's content up to its own breakpoint. In practice
+ * that is the system message alone (`wire.js` measures why), but the rule is
+ * "every byte the provider is being asked to keep" and spelling it per message
+ * is what keeps it true the day a cacheable block lands lower down.
+ * @param {Message[]} messages @param {string} provider @param {ImageRule} [images]
+ * @returns {CacheOffer}
+ */
+export function offerFor(messages, provider, images) {
+  const head = messages.flatMap((m) => m.content.slice(0, m.cacheUntil + 1))
+  return cacheOffer(provider, estimateParts(head, images).tokens)
 }

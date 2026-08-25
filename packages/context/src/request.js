@@ -23,7 +23,10 @@
 import { adapterFor } from './adapters.js'
 import { assemble } from './assemble.js'
 import { budgetFor } from './budget.js'
+import { offerFor } from './cache.js'
 import { replayable } from './provider.js'
+import { receiptOf } from './receipt.js'
+import { messagesOf } from './wire.js'
 
 /** @typedef {import('./state.js').State} State */
 /** @typedef {import('./card.js').ModelCard} ModelCard */
@@ -31,6 +34,7 @@ import { replayable } from './provider.js'
 /** @typedef {import('./provider.js').Exchange} Exchange */
 /** @typedef {import('./types.js').Document} Document */
 /** @typedef {import('./budget.js').Turn} Turn */
+/** @typedef {import('./receipt.js').Receipt} Receipt */
 
 /**
  * One model call, before it exists.
@@ -51,8 +55,17 @@ import { replayable } from './provider.js'
  * }} Asking
  */
 
-/** What one call is: the bytes, the paper they were written from, and whose protocol they are in. */
-/** @typedef {{provider: string, body: Record<string, unknown>, document: Document}} ModelRequest */
+/**
+ * What one call is: the bytes, the paper they were written from, whose protocol
+ * they are in — and the RECEIPT for the decisions that produced them.
+ *
+ * The receipt is on the request and not left to be recomputed by a logger,
+ * because it is a record of what THIS call decided: which sections the budget
+ * shortened, and whether the stable head was worth offering to this provider's
+ * cache. Recomputed later it is a second opinion about a call that has already
+ * gone out.
+ * @typedef {{provider: string, body: Record<string, unknown>, document: Document, receipt: Receipt}} ModelRequest
+ */
 
 /**
  * @param {Asking} asking
@@ -62,11 +75,18 @@ import { replayable } from './provider.js'
  */
 export function requestFor(asking) {
   const adapter = adapterFor(asking.card.kind)
-  const document = assemble(asking.state, budgetFor(asking.card, asking.turn ?? {}), adapter.images)
+  const budget = budgetFor(asking.card, asking.turn ?? {})
+  const document = assemble(asking.state, budget, adapter.images)
   const body = adapter.buildRequest(document, asking.card, asking.tools ?? [], {
     replay: replayable(asking.replay ?? [], adapter.provider),
     temperature: asking.temperature ?? null,
     stream: asking.stream === true,
   })
-  return { provider: adapter.provider, body, document }
+  // The paper is rendered a SECOND time to price the cacheable head, and that
+  // is deliberate: `messagesOf` is pure and deterministic, so the head this
+  // measures is byte-for-byte the head the adapter just stamped or declined to
+  // stamp. Asking the adapter to hand its decision back would put a receipt
+  // field in the middle of three wire formats to save one pass over sections.
+  const cache = offerFor(messagesOf(document, asking.card), adapter.provider, adapter.images)
+  return { provider: adapter.provider, body, document, receipt: receiptOf(document, budget, cache) }
 }

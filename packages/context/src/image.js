@@ -175,3 +175,18 @@ export const IMAGE_RULES = Object.freeze({
   anthropic: { provider: 'anthropic', tokens: anthropicImageTokens, unknown: anthropicImageTokens(1024, 1024) },
   gemini: { provider: 'gemini', tokens: geminiImageTokens, unknown: geminiImageTokens(1024, 1024) },
 })
+
+/**
+ * The rule a `CompactionReport` NAMES, or `undefined` when it names the
+ * estimator's own default rather than a provider.
+ *
+ * A report is DATA — it is persisted, hashed and crosses a Worker boundary — so
+ * a reader that wants the arithmetic back has a NAME and not the object, and
+ * the honest answer for a name that is not a provider's is absence. `undefined`
+ * is exactly what `estimatePart` takes to mean "state your own default and say
+ * so", which is one fallback in one place instead of two that can disagree.
+ * @param {string} named @returns {ImageRule|undefined}
+ */
+export function ruleNamed(named) {
+  return /** @type {Record<string, ImageRule|undefined>} */ (IMAGE_RULES)[named]
+}

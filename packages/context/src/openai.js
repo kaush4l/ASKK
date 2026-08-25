@@ -22,6 +22,7 @@ import { messagesOf } from './wire.js'
 import { finishFrom, ownReplay } from './provider.js'
 import { at, count, list, readBody, str } from './read.js'
 import { IMAGE_RULES } from './image.js'
+import { foldStream } from './stream/openai.js'
 
 /** @typedef {import('./provider.js').ProviderAdapter} ProviderAdapter */
 /** @typedef {import('./provider.js').ProviderReply} ProviderReply */
@@ -33,12 +34,7 @@ import { IMAGE_RULES } from './image.js'
 const PROVIDER = 'openai'
 
 /** @type {Record<string, import('@harness/kernel/ports.js').FinishReason>} */
-const FINISH = {
-  stop: 'stop',
-  tool_calls: 'tool_calls',
-  length: 'length',
-  content_filter: 'content_filter',
-}
+const FINISH = { stop: 'stop', tool_calls: 'tool_calls', length: 'length', content_filter: 'content_filter' }
 
 /** @type {ProviderAdapter} */
 export const openaiAdapter = {
@@ -46,6 +42,7 @@ export const openaiAdapter = {
   images: IMAGE_RULES.openai,
   buildRequest,
   parseResponse,
+  parseStream: (events) => ({ ...parseResponse(foldStream(events)), raw: events }),
 }
 
 /**
@@ -67,6 +64,11 @@ function buildRequest(doc, card, tools, opts = {}) {
   const body = {
     model: card.model,
     stream: opts.stream === true,
+    // WITHOUT `include_usage` A STREAM CARRIES NO TOKEN COUNTS AT ALL, so the
+    // cost of exactly the calls a person sits and watches would be the ones the
+    // log cannot report. Asked for only when streaming: a server that does not
+    // know the key rejects the whole request rather than ignoring it.
+    ...(opts.stream === true ? { stream_options: { include_usage: true } } : {}),
     messages: [paper[0], ...replayed, paper[1]],
   }
   if (tools.length > 0) {
@@ -105,8 +107,8 @@ function replayMessages(turn, withTools) {
 }
 
 /**
- * A rendered message on the wire. Text-only content collapses to a plain
- * string — the widest local-server compatibility; mixed content uses the array
+ * A rendered message on the wire. Text-only content collapses to a plain string
+ * — the widest local-server compatibility — and mixed content uses the array
  * form. `content` is `''` and never null in both branches.
  * @param {Message|undefined} m @returns {Record<string, unknown>}
  */

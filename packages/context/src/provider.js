@@ -85,7 +85,19 @@ import { ModelError } from '@harness/kernel'
  *   images: ImageRule,
  *   buildRequest: (doc: Document, card: ModelCard, tools: ToolSpec[], opts?: RequestOpts) => Record<string, unknown>,
  *   parseResponse: (body: unknown) => ProviderReply,
+ *   parseStream: (events: unknown[]) => ProviderReply,
  * }} ProviderAdapter
+ */
+
+/**
+ * `parseStream` takes the FRAMES ALREADY PARSED — `data:` lines, `[DONE]` and a
+ * chunk boundary landing mid-UTF-8 belong to whatever carries the bytes — and
+ * every implementation folds them back into the body a buffered call would have
+ * received and hands that to its own `parseResponse`. That is not an
+ * optimisation: it is what makes "a streamed reply and a buffered one are the
+ * same `ProviderReply`" true by construction rather than by a second reader
+ * agreeing with the first. Only `raw` differs, and it is the frames, because
+ * the frames are what actually arrived.
  */
 
 /** @typedef {{replay?: Exchange[], temperature?: number|null, stream?: boolean}} RequestOpts */

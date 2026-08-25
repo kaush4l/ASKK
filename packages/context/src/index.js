@@ -25,13 +25,14 @@ export { SLOT, isHead, isTail, isSystemSlot } from './slot.js'
 export { text, keyOf, sectionOf } from './component.js'
 export { assemble } from './assemble.js'
 export { requestFor } from './request.js'
-export { stablePrefix, cacheHitRatio, cacheSentence, cacheOffer, MIN_CACHEABLE_TOKENS } from './cache.js'
+export { receiptOf } from './receipt.js'
+export { stablePrefix, cacheHitRatio, cacheSentence, cacheOffer, offerFor, MIN_CACHEABLE_TOKENS } from './cache.js'
 export { dropOldest, headAndTail, usePrecomputedSummary, TURN_ROLES, turnRoleOf } from './fit.js'
 export { escape as escapeUntrusted, nonceFor } from './envelope.js'
 export { modelCard, modelCards } from './card.js'
 export { budgetFor, budgetSentence } from './budget.js'
 export { estimatePart, estimateParts } from './estimate.js'
-export { imageSize, openaiImageTokens, anthropicImageTokens, geminiImageTokens, IMAGE_RULES, UNKNOWN_IMAGE_TOKENS } from './image.js'
+export { imageSize, openaiImageTokens, anthropicImageTokens, geminiImageTokens, ruleNamed, IMAGE_RULES, UNKNOWN_IMAGE_TOKENS } from './image.js'
 export { messagesOf } from './wire.js'
 export { ownReplay, replayable, totalTokens, finishFrom } from './provider.js'
 export { adapterFor, ADAPTERS } from './adapters.js'
@@ -64,6 +65,7 @@ export { SUMMARIZE, COMPACT_PROMPT, FOLD_PROMPT, mapSheet, foldSheet } from './s
 /** @typedef {import('./image.js').ImageRule} ImageRule */
 /** @typedef {import('./wire.js').Message} Message */
 /** @typedef {import('./cache.js').CacheOffer} CacheOffer */
+/** @typedef {import('./receipt.js').Receipt} Receipt */
 /** @typedef {import('./request.js').Asking} Asking */
 /** @typedef {import('./request.js').ModelRequest} ModelRequest */
 /** @typedef {import('./provider.js').ProviderAdapter} ProviderAdapter */

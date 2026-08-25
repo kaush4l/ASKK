@@ -20,6 +20,7 @@ import { messagesOf } from './wire.js'
 import { finishFrom, ownReplay } from './provider.js'
 import { at, count, list, readBody, str } from './read.js'
 import { IMAGE_RULES } from './image.js'
+import { foldStream } from './stream/gemini.js'
 
 /** @typedef {import('./provider.js').ProviderAdapter} ProviderAdapter */
 /** @typedef {import('./provider.js').ProviderReply} ProviderReply */
@@ -45,6 +46,7 @@ export const geminiAdapter = {
   images: IMAGE_RULES.gemini,
   buildRequest,
   parseResponse,
+  parseStream: (events) => ({ ...parseResponse(foldStream(events)), raw: events }),
 }
 
 /**

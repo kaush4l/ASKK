@@ -56,7 +56,7 @@ describe('what the model cannot hear, it is TOLD about', () => {
   const doc = assemble({ stage: 'work', sources: [soul, shot, contract].map((c) => source(c)) }, UNLIMITED_BUDGET)
 
   test('a text-only model reads a named placeholder where the image was', () => {
-    expect(whole(messagesOf(doc, card()))).toContain('[image (image/png) withheld: this model does not accept it]')
+    expect(whole(messagesOf(doc, card()))).toContain('[image (image/png) withheld: this model does not accept it; it would have cost ~765 tokens')
   })
 
   test('a vision model gets the part itself, in the position it sat in', () => {
@@ -80,7 +80,7 @@ describe('what the model cannot hear, it is TOLD about', () => {
     })
     const read = assemble({ stage: 'work', sources: [soul, doc, contract].map((c) => source(c)) }, UNLIMITED_BUDGET)
     const seen = messagesOf(read, card({ acceptsImages: true }))
-    expect(whole(seen)).toContain("[file 'notes.md' (text/markdown) withheld: this model does not accept it]")
+    expect(whole(seen)).toContain("[file 'notes.md' (text/markdown) withheld: this model does not accept it; it would have cost ~1 token —")
     expect(seen.flatMap((m) => m.content.map((p) => p.type))).not.toContain('file')
   })
 })

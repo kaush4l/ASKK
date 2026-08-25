@@ -19,8 +19,8 @@ import { messagesOf } from './wire.js'
 import { finishFrom, ownReplay } from './provider.js'
 import { at, count, list, readBody, str } from './read.js'
 import { IMAGE_RULES } from './image.js'
-import { cacheOffer } from './cache.js'
-import { estimateParts } from './estimate.js'
+import { offerFor } from './cache.js'
+import { foldStream } from './stream/anthropic.js'
 
 /** @typedef {import('./provider.js').ProviderAdapter} ProviderAdapter */
 /** @typedef {import('./provider.js').ProviderReply} ProviderReply */
@@ -48,6 +48,7 @@ export const anthropicAdapter = {
   images: IMAGE_RULES.anthropic,
   buildRequest,
   parseResponse,
+  parseStream: (events) => ({ ...parseResponse(foldStream(events)), raw: events }),
 }
 
 /**
@@ -115,10 +116,8 @@ function replayMessages(turn) {
  * @returns {Array<Record<string, unknown>>}
  */
 function systemOf(system) {
-  const content = system?.content ?? []
-  const until = system?.cacheUntil ?? -1
-  const head = estimateParts(content.slice(0, until + 1), IMAGE_RULES.anthropic).tokens
-  return breakpointed(content.map(partJson), cacheOffer(PROVIDER, head).offered ? until : -1)
+  const offered = offerFor(system ? [system] : [], PROVIDER, IMAGE_RULES.anthropic).offered
+  return breakpointed((system?.content ?? []).map(partJson), offered ? (system?.cacheUntil ?? -1) : -1)
 }
 
 /**
