@@ -55,10 +55,18 @@ export function ok(/** @type {string} */ view, /** @type {Record<string, unknown
 
 /**
  * The one failure projection. Every error the seam can return has this shape,
- * so the UI has exactly one error component and cannot miss a case.
+ * so the interface has exactly one error component and cannot miss a case.
+ *
+ * `id` IS WHAT THE FAILURE IS ABOUT — the agent's name, the file's path, the
+ * endpoint that refused — and it is there because failures ARRIVE IN LISTS. The
+ * Agents view renders one row per file that would not load, and keying those
+ * rows on the message was fine until two agents were missing from the manifest:
+ * two 404s, identical prose, and React reconciling one row over the other. Two
+ * occurrences of one KIND is exactly the case, so `kind` cannot be the key.
+ * Empty when the failure IS the whole response and there is nothing to list.
  * @param {number} status
  * @param {string} message one sentence a person can act on
- * @param {{kind?: string, detail?: string, repair?: string}} [extra]
+ * @param {{id?: string, kind?: string, detail?: string, repair?: string}} [extra]
  * @returns {Response}
  */
 export function problem(status, message, extra = {}) {
@@ -66,6 +74,7 @@ export function problem(status, message, extra = {}) {
     status,
     view: 'problem',
     data: {
+      id: extra.id ?? '',
       kind: extra.kind ?? 'unknown',
       message,
       detail: extra.detail ?? '',

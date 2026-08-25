@@ -49,8 +49,20 @@ describe('the seam', () => {
   test('every failure is the one problem projection', () => {
     const res = problem(404, 'no route', { kind: 'unrouted', repair: 'check the address' })
     expect(isProblem(res)).toBe(true)
-    expect(res.data).toEqual({ kind: 'unrouted', message: 'no route', detail: '', repair: 'check the address' })
+    expect(res.data).toStrictEqual({
+      id: '', kind: 'unrouted', message: 'no route', detail: '', repair: 'check the address',
+    })
     expect(isProblem(ok('chat', {}))).toBe(false)
+  })
+
+  test('two failures of one kind are two rows, because id is what they are about', () => {
+    // The case that forced the field: two agents missing from the manifest is
+    // two 404s with identical prose, and a list keyed on either would collapse.
+    const first = problem(404, 'That agent file did not load.', { id: 'scout', kind: 'no_file' })
+    const second = problem(404, 'That agent file did not load.', { id: 'critic', kind: 'no_file' })
+    expect(first.data.message).toBe(second.data.message)
+    expect(first.data.kind).toBe(second.data.kind)
+    expect(first.data.id).not.toBe(second.data.id)
   })
 })
 

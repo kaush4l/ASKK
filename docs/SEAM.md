@@ -65,12 +65,20 @@ Every failure the seam can return has ONE shape, so the interface has one error
 component and cannot miss a case:
 
 ```js
-{ status, view: 'problem', data: { kind, message, detail, repair } }
+{ status, view: 'problem', data: { id, kind, message, detail, repair } }
 ```
 
 `message` is one sentence a person can act on. `repair` is what to do about it,
 empty when there is nothing to do. `detail` is for the person who opens the
 debug view. A failure that returns an empty projection instead of this is a bug.
+
+`id` is **what the failure is about** — the agent's name, the file's path, the
+endpoint that refused — and it exists because failures arrive in LISTS. The
+Agents view renders one row per file that would not load; keying those rows on
+the message was fine until two agents went missing from the manifest, which is
+two 404s with identical prose and one row reconciled over the other. Two
+occurrences of one `kind` is precisely the case, so `kind` cannot be the key.
+Empty means the failure IS the whole response and there is nothing to list.
 
 ## What the FACE lane may not do
 

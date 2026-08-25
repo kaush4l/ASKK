@@ -126,6 +126,19 @@ can tell its own error from a neighbour's half-saved file.
 - **Dependencies below the UI stay at zero.** Refused by name: zod, Tailwind,
   framer-motion, charting, marked + dompurify, any public CORS proxy.
 
+## Cross-lane rulings — round 2
+
+| Request | Ruling |
+|---|---|
+| D: the `problem` projection needs an `id`, or a list of failures reconciles wrongly | **Granted, and done.** Two agents missing from the manifest is two 404s with identical prose; `kind` cannot key them because two occurrences of one kind is exactly the case. `id` is WHAT THE FAILURE IS ABOUT — the agent's name, the file's path — and empty means the failure is the whole response. In `kernel/seam.js` and `docs/SEAM.md`, with the test that would have caught it. |
+| D: the empty note must tell a folder that never held files from one a reload emptied | **Upheld, and it is C's.** The interface renders whichever sentence it is handed and composes neither. Which is true is a fact only the log knows, and `durable()` is the thing that decides it. |
+| A: an image reaching a `sonnet` entry is billed on OpenAI's arithmetic (~3× under) | **Assigned to lane A, in the provider-adapter increment.** The rule belongs beside `buildRequest`, because the adapter is the only thing that knows how this provider counts. Stated in `image.js` today, gated when A4 lands — and it must be gated in A4, not later. |
+| A: `modelCards` is alphabetical; should it be the file's order? | **The file's order.** `models.json` is curated — `local` is first because a person who has a local server should see it first — and sorting silently overrides a decision somebody made. Drop the `.sort()`; make the first refusal deterministic by naming the first entry in file order. |
+| B: a signal-less reply leaves a turn awaiting the model forever | **The loop ends it.** A reply carrying no finish signal is a MALFORMED reply, and malformed is an ending, not a wait. Waiting on a deadline for something already known to be broken spends the person's time to learn nothing. Lane B, next increment. |
+| B: a refused fact never meets a pending Stop | **Correct as-is.** A refused fact starts no work, so there is nothing for a stop to halt. Keep the comment that says so. |
+| C: `log.persist()` can now reject | **Confirmed.** A projection that cannot round-trip JSON is a build assembled wrong, not a runtime condition — no message repairs it and no retry helps. Throwing is right; document it on `flush`'s contract as the stated exception. |
+| C: `packSegment`'s unreachable assertion | **Keep it.** An assertion the type checker needs, on a path construction cannot reach, is narrowing — not ceremony. The alternative is returning `''` silently, which is the defect this project keeps finding. |
+
 ## Cross-lane rulings — round 1
 
 Every request the four lanes filed, ruled once, by the lead.
