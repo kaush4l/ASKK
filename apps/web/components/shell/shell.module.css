@@ -1,0 +1,130 @@
+/* THE FRAME — the parts of the page that are on screen whichever destination is
+   open. Scoped by CSS Modules, so no class here can leak into a pane the later
+   increments write, and nothing in this file declares a VALUE. */
+
+.skip {
+  position: absolute; left: var(--s-3); top: var(--s-3); z-index: 10;
+  padding: var(--s-2) var(--s-3); border-radius: var(--r-md);
+  background: var(--surface-1); color: var(--ink);
+  transform: translateY(-200%);
+}
+.skip:focus-visible { transform: none; }
+
+/* E1 chrome is a container of padded cards, so it pays ONE step: the specified
+   24 would put 56px between the rail's edge and its first word. */
+.chrome {
+  display: flex; flex-direction: column; gap: var(--s-3);
+  max-width: var(--frame); margin: 0 auto;
+  padding: var(--s-5) var(--gutter) var(--s-3);
+}
+
+/* ---- the masthead: the COMMANDING FRONT DOOR. One display register, between
+   two rules, naming the screen's SUBJECT and never a view's own name. */
+.masthead { border-top: var(--rule); border-bottom: var(--rule-hair); padding: var(--s-3) 0 var(--s-4); }
+.kicker {
+  display: block; font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase;
+  font-weight: var(--w-strong); color: var(--ink-2);
+}
+.plate {
+  display: block; font-family: var(--display); font-weight: var(--w-strong);
+  font-size: var(--t-display); line-height: var(--lh-display);
+  letter-spacing: var(--tr-display); color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* ---- the strip of facts. Above 64rem a row of chips on one line, each
+   carrying live state; below it a two-column TABLE, and a table cell is a
+   surface, so it is square there. The radius follows the SHAPE an element has
+   at that width, not its class name. */
+.strip { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); margin: 0; }
+/* `contents` so the label and the value are cells of the STRIP's grid rather
+   than a stack inside a wrapper: below 64rem this really is a two-column table,
+   and a wrapper between the grid and its cells is what turns one into two. */
+.cell { display: contents; }
+.stripLabel {
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
+}
+.stripValue { margin: 0; font-size: var(--t-label); line-height: var(--lh-label); color: var(--machine); }
+@media (min-width: 64rem) {
+  .strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2) var(--s-5); }
+  .cell { display: flex; align-items: baseline; gap: var(--s-2); border-radius: var(--r-full); }
+}
+
+/* ---- the three columns. The rail is ABSENT where it has nothing to say, never
+   rendered disabled: a switch for a region that is not on the page is a dead
+   control reporting a state it does not have. */
+.frame {
+  display: grid; gap: var(--s-5);
+  max-width: var(--frame); margin: 0 auto;
+  padding: 0 var(--gutter) var(--s-8);
+}
+@media (min-width: 1100px) {
+  .frame { grid-template-columns: var(--nav-width) minmax(0, 1fr); align-items: start; }
+  .frame[data-rail='true'] { grid-template-columns: var(--nav-width) minmax(0, 1fr) var(--rail-width); }
+  .nav { position: sticky; top: var(--s-5); }
+}
+
+/* ---- the nav. BUTTONS-as-links carrying aria-current="page": this is
+   navigation, not a tab set. No glyphs — a label is what a person reads. */
+.nav { display: flex; flex-direction: column; gap: var(--s-1); }
+.navItem {
+  display: block; padding: var(--s-2) var(--s-3);
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  color: var(--ink-2); text-decoration: none;
+  font-size: var(--t-label); line-height: var(--lh-label); font-weight: var(--w-medium);
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.navItem:hover { color: var(--ink); border-color: var(--hairline); }
+.navItem[aria-current='page'] { color: var(--ink); border-color: var(--control); background: var(--surface-2); }
+@media (max-width: 1099px) {
+  .nav { flex-direction: row; flex-wrap: wrap; }
+}
+
+/* ---- the QUIET WORKING MIDDLE. Opaque, at full opacity, never on a blur:
+   this is the main way this design stays readable at 2am. */
+.region {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-top: var(--rule-hair);
+  padding: var(--s-5) var(--s-4);
+  box-shadow: var(--lift); 
+}
+@media (min-width: 1024px) { .region { padding: var(--s-5) var(--s-6); } }
+.regionNote { color: var(--ink-2); margin-top: var(--s-3); }
+
+/* ---- the rail: a companion column speaks one step down. */
+.rail { display: flex; flex-direction: column; gap: var(--s-3); }
+.rail h2 { font-size: var(--t-heading); line-height: var(--lh-heading); }
+.railWho {
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
+}
+
+/* ---- a banner is a ROW, never a slot in the strip: in the strip an error
+   evicted the endpoint and the spend, the two facts a failure needs. It may add
+   a row; it may not subtract a fact. */
+.banner {
+  display: flex; flex-direction: column; gap: var(--s-2);
+  max-width: var(--frame); margin: 0 auto var(--s-3);
+  padding: var(--s-3) var(--gutter);
+  background: var(--surface-2);
+  border-block: 1px solid var(--control);
+}
+.banner p { max-width: var(--measure); }
+.bannerHead { font-weight: var(--w-medium); color: var(--ink); }
+.bannerAside { font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2); }
+.address { color: var(--machine); }
+
+/* Nothing in this page is real yet, and it says so where it is not. */
+.unbuilt {
+  font-size: var(--t-caption); line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption); text-transform: uppercase;
+  color: var(--warning); margin-top: var(--s-4);
+}
+.panes { margin: var(--s-3) 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.pane {
+  font-family: var(--mono); font-size: var(--t-label); color: var(--ink-3);
+  border: 1px solid var(--divider); border-radius: var(--r-sm); padding: var(--s-1) var(--s-2);
+}

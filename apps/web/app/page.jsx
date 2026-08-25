@@ -1,13 +1,13 @@
+import { Shell } from '@/components/shell/shell'
+
 /**
- * Scaffold. The FACE lane replaces this with the real shell; it exists so the
- * static export has a route to build and the deploy gate has an index.html to
- * check the base path against.
+ * WORK, at `/`. The run and the whole of it: the transcript, the loop's walk,
+ * every tool call, the shell and the folder, in one scroller.
+ *
+ * The route declares WHICH destination it is rather than the shell inferring it
+ * from the path — a page that names a slug the table does not list throws at
+ * render instead of quietly becoming Work.
  */
 export default function Page() {
-  return (
-    <main style={{ padding: '4rem 1.5rem', maxWidth: '42rem', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2rem', margin: 0 }}>HARNESS</h1>
-      <p style={{ opacity: 0.7 }}>The JavaScript rewrite is being assembled. This page is scaffolding.</p>
-    </main>
-  )
+  return <Shell slug="" />
 }
