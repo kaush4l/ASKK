@@ -21,15 +21,15 @@
 /** The envelope version (I18). A message from a newer build is refused BY NAME rather than read half-way: the two halves are separate bundles and a stale Worker can outlive a deploy. */
 export const ERRAND_PROTOCOL = 1
 
-/** @typedef {{v: number, type: 'begin', errandId: string, goal: string}} Begin */
+/** `from` is the ASKING agent's own name, carried rather than invented: the callee stamps it on the fact that opens its turn, and `core`'s transcript reads that field as "who asked" — a name minted at the far end would name an agent nobody runs. @typedef {{v: number, type: 'begin', errandId: string, goal: string, from: string}} Begin */
 
 /** @typedef {{v: number, type: 'ended', errandId: string, ok: boolean, text: string, why: string}} Ended */
 
 /** @typedef {Begin | Ended} ErrandMessage */
 
-/** @param {string} errandId @param {string} goal @returns {Begin} */
-export function beginMessage(errandId, goal) {
-  return { v: ERRAND_PROTOCOL, type: 'begin', errandId, goal }
+/** @param {string} errandId @param {string} goal @param {string} from  the asking agent's name @returns {Begin} */
+export function beginMessage(errandId, goal, from) {
+  return { v: ERRAND_PROTOCOL, type: 'begin', errandId, goal, from }
 }
 
 /**
@@ -54,7 +54,7 @@ export function readMessage(message) {
   const said = /** @type {Record<string, unknown>} */ (message)
   if (said['v'] !== ERRAND_PROTOCOL) return { unreadable: `this errand speaks protocol ${ERRAND_PROTOCOL} and the message says ${JSON.stringify(said['v'])}` }
   if (typeof said['errandId'] !== 'string' || said['errandId'] === '') return { unreadable: 'an errand message arrived naming no errand' }
-  if (said['type'] === 'begin' && typeof said['goal'] === 'string') return /** @type {Begin} */ (message)
+  if (said['type'] === 'begin' && typeof said['goal'] === 'string' && typeof said['from'] === 'string') return /** @type {Begin} */ (message)
   if (said['type'] === 'ended' && typeof said['text'] === 'string' && typeof said['why'] === 'string' && typeof said['ok'] === 'boolean') {
     return /** @type {Ended} */ (message)
   }

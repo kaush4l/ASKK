@@ -139,4 +139,24 @@ describe('two zero-output completions from the same model and signal stop the re
     const answered = step(asking(), replied('here you go', 'stop'))
     expect(ending(answered.effects)).toBe('answered')
   })
+
+  test('CONSECUTIVE means consecutive: a reply that carried something clears the signature', () => {
+    // One blank earlier in the turn used to make the next blank terminal, with
+    // no retry at all, however much real work had happened in between.
+    const blank = step(asking(), replied('', 'stop'))
+    expect(blank.state.lastEmpty).toBe('local|stop')
+
+    const working = step(blank.state, replied('on it', 'tool_calls', [{ id: 'c1', tool: 'exec', args: '{"command":"ls"}' }]))
+    expect(working.state.lastEmpty).toBe('')
+
+    const landed = step(working.state, {
+      at: AT, turnId: 't-1', callId: 'c1',
+      fact: { type: 'tool_invoked', agent: 'main', tool: 'exec', args: '{"command":"ls"}', onBehalfOf: '', ok: true, output: 'a\nb' },
+    })
+    expect(landed.state.attempts).toBe(0)
+
+    const again = step(landed.state, replied('', 'stop'))
+    expect(again.effects.some((e) => e.type === 'CallModel')).toBe(true)
+    expect(() => ending(again.effects)).toThrow('nothing ended')
+  })
 })

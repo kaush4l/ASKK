@@ -1,97 +1,7 @@
 import { expect, test, describe } from 'bun:test'
-import {
-  ERRAND_PROTOCOL, agentsOver, errandBegun, errandHeard, newAgentState, readMessage, step,
-} from '@harness/agent'
+import { ERRAND_PROTOCOL, arg, readMessage, tool } from '@harness/agent'
 import { DelegateError } from '@harness/kernel'
-import { CARD } from './card.js'
-
-/** @typedef {import('@harness/agent').AgentState} AgentState */
-/** @typedef {import('@harness/agent').Errand} Errand */
-/** @typedef {import('@harness/agent').Incoming} Incoming */
-
-const AT = 1_700_000_000_000
-
-/**
- * ONE SUB-AGENT'S DESK: its own `AgentState`, its own open errand, and the way
- * home. The lead has no path to any of it — the test reads it directly, which
- * is the point: if the port could reach a sub-agent's loop, this is the object
- * it would have to reach through.
- * @typedef {{name: string, state: AgentState, errand: Errand | null, home: (message: unknown) => void, closed: number}} Desk
- */
-
-/** @param {string} name @returns {Desk} */
-function deskFor(name) {
-  return {
-    name,
-    state: { ...newAgentState(), card: CARD, model: 'local', prompt: `You are ${name}.` },
-    errand: null,
-    home: () => { throw new Error(`${name} answered before anyone was listening`) },
-    closed: 0,
-  }
-}
-
-/** One turn of the sub-agent's OWN loop, and the ending it posts home if this fact ended it. @param {Desk} desk @param {Incoming} incoming */
-function ran(desk, incoming) {
-  const stepped = step(desk.state, incoming)
-  desk.state = stepped.state
-  if (!desk.errand) throw new Error(`${desk.name} took a turn with no errand open`)
-  const heard = errandHeard(desk.errand, incoming, stepped.effects)
-  desk.errand = heard.errand
-  if (heard.ended) desk.home(heard.ended)
-}
-
-/** @param {Desk} desk @param {unknown} message */
-function began(desk, message) {
-  const said = readMessage(message)
-  if ('unreadable' in said || said.type !== 'begin') throw new Error(`${desk.name} could not read that`)
-  const begun = errandBegun(said, `${desk.name}-t1`, AT)
-  desk.errand = begun.errand
-  ran(desk, begun.incoming)
-}
-
-/** @param {Desk} desk @param {string} text @param {string} finish @returns {Incoming} */
-const replied = (desk, text, finish) => ({
-  at: AT,
-  turnId: `${desk.name}-t1`,
-  fact: { type: 'model_replied', agent: desk.name, text, reasoning: '', finish },
-  reply: { calls: [], finish: /** @type {import('@harness/agent').FinishReason} */ (finish) },
-})
-
-/** A sub-agent in its own Worker, reachable only through `channel`. @param {string} name */
-function workerFor(name) {
-  const desk = deskFor(name)
-  return {
-    channel: {
-      /** @param {unknown} message */
-      post: (message) => began(desk, message),
-      /** @param {(message: unknown) => void} handler */
-      onMessage: (handler) => { desk.home = handler },
-      close: () => { desk.closed += 1 },
-    },
-    state: () => desk.state,
-    closed: () => desk.closed,
-    /** @param {string} text @param {string} [finish] */
-    answer: (text, finish = 'stop') => ran(desk, replied(desk, text, finish)),
-  }
-}
-
-/** @param {Record<string, ReturnType<typeof workerFor>>} workers */
-function portOver(workers) {
-  /** @type {unknown[]} */
-  const crossed = []
-  const port = agentsOver({
-    names: Object.keys(workers),
-    open: (agent) => {
-      const worker = workers[agent]
-      if (!worker) throw new Error(`no worker for ${agent}`)
-      return {
-        ...worker.channel,
-        onMessage: (handler) => worker.channel.onMessage((message) => { crossed.push(message); handler(message) }),
-      }
-    },
-  })
-  return { port, crossed }
-}
+import { portOver, workerFor } from './worker.js'
 
 describe('a sub-agent is the same loop in its own Worker, reachable only by message', () => {
   test('two errands run at once and the second finishes first: nothing serialises them through the lead', async () => {
@@ -115,6 +25,31 @@ describe('a sub-agent is the same loop in its own Worker, reachable only by mess
     expect(scout.state().attempts).toBe(1)
     scout.answer('test/round.test.js is red')
     expect(await finding).toBe('test/round.test.js is red')
+  })
+
+  test('the goal opens the turn as the fact a PERSON\'s message makes, naming the lead that asked', async () => {
+    const scout = workerFor('scout')
+    const { port } = portOver({ scout })
+    const finding = port.delegate('scout', 'find it')
+    // Not a name minted at this end: `from` is what `core`'s transcript reads
+    // as "who asked", and 'person' there would invent an agent nobody runs.
+    expect(scout.opened()?.fact).toEqual({ type: 'user_message', text: 'find it', agent: '', from: 'main' })
+    scout.answer('found it')
+    await finding
+  })
+
+  test('an ending that arrives after a carrying reply sends the sentence home, not the silence', async () => {
+    const grep = tool({ name: 'grep', description: 'Search.', args: [arg('pattern', 'string', 'what to find')] })
+    const scout = workerFor('scout', { toolbox: [grep], maxRounds: 1 })
+    const { port, crossed } = portOver({ scout })
+    const finding = port.delegate('scout', 'find it')
+    scout.works('checking the test file now', 'grep')
+    // The ceiling ends the turn on a TOOL RESULT, whose fact carries no words.
+    scout.ranTool('grep', 'round.test.js:12')
+    await expect(finding).rejects.toThrow(/its turn ended "round ceiling"/)
+    expect(crossed).toEqual([
+      { v: ERRAND_PROTOCOL, type: 'ended', errandId: 'e-1', ok: false, text: 'checking the test file now', why: 'round ceiling' },
+    ])
   })
 
   test('nothing but the two protocol records crosses: no state, no step, no port', async () => {

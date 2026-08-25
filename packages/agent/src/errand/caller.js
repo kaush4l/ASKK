@@ -29,7 +29,7 @@ import { beginMessage, readMessage } from './protocol.js'
 
 /** One sub-agent, reachable only by message. `close` ends the Worker: an errand that settled has nothing left to say, and one that was abandoned must stop spending the person's tokens. @typedef {{post: (message: ErrandMessage) => void, onMessage: (handler: (message: unknown) => void) => void, close: () => void}} Channel */
 
-/** Where a sub-agent comes from: the names this build can run, and the door that starts one. @typedef {{names: readonly string[], open: (agent: string) => Channel}} Workers */
+/** Where a sub-agent comes from: the lead's own name, the names this build can run, and the door that starts one. `me` travels on every `begin` because the callee must stamp WHO ASKED on the fact opening its turn and has no other way to know. @typedef {{me: string, names: readonly string[], open: (agent: string) => Channel}} Workers */
 
 /**
  * @param {Workers} workers
@@ -46,8 +46,13 @@ export function agentsOver(workers) {
         // another; an empty string would read as an agent that answered nothing.
         return Promise.reject(new DelegateError('unknown', `There is no agent called "${agent}" in this build, so nothing ran that errand.`, { detail: workers.names.join(', ') }))
       }
+      if (opts?.signal?.aborted) {
+        // ALREADY ABORTED FIRES NO EVENT. Opening the channel first would spawn
+        // a Worker that nothing is left to close it.
+        return Promise.reject(new DelegateError('abandoned', `${agent} was stopped before that errand was sent, so no worker was started.`))
+      }
       minted += 1
-      return awaited(workers.open(agent), `e-${minted}`, agent, goal, opts?.signal)
+      return awaited(workers.open(agent), `e-${minted}`, agent, goal, workers.me, opts?.signal)
     },
   }
 }
@@ -60,20 +65,26 @@ export function agentsOver(workers) {
  * — is the driver's deadline to impose (`batch.js` already does), because a
  * timeout here would be a second clock in a second place.
  * @param {Channel} channel @param {string} errandId @param {string} agent
- * @param {string} goal @param {AbortSignal} [signal]
+ * @param {string} goal @param {string} me @param {AbortSignal} [signal]
  * @returns {Promise<string>}
  */
-function awaited(channel, errandId, agent, goal, signal) {
+function awaited(channel, errandId, agent, goal, me, signal) {
   return new Promise((resolve, reject) => {
     const settle = (/** @type {() => void} */ then) => { channel.close(); then() }
     signal?.addEventListener('abort', () => settle(() => reject(new DelegateError('abandoned', `${agent} was stopped before it finished that errand.`))), { once: true })
     channel.onMessage((message) => {
       const said = readMessage(message)
       if ('unreadable' in said) return settle(() => reject(new DelegateError('unreadable', `${agent} sent something this build cannot read: ${said.unreadable}`)))
-      if (said.type !== 'ended' || said.errandId !== errandId) return
+      // A `begin` echoed back is noise; an `ended` naming ANOTHER errand on a
+      // channel carrying exactly one is a Worker confused about what it is
+      // running, and waiting on in silence is the failure nobody can read (I16).
+      if (said.type === 'ended' && said.errandId !== errandId) {
+        return settle(() => reject(new DelegateError('unreadable', `${agent} answered errand ${said.errandId} on the channel carrying ${errandId}.`)))
+      }
+      if (said.type !== 'ended') return
       if (!said.ok) return settle(() => reject(new DelegateError('failed', `${agent} did not answer: its turn ended "${said.why}".`, { detail: said.text })))
       return settle(() => resolve(said.text))
     })
-    channel.post(beginMessage(errandId, goal))
+    channel.post(beginMessage(errandId, goal, me))
   })
 }

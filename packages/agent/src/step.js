@@ -109,8 +109,8 @@ function onTask(state, text, incoming) {
  * known to be broken spends the person's time to learn nothing.
  *
  * CALLS BEAT THE SIGNAL where a provider sends both `stop` and a call — the
- * model asked for work, and the signal only decides how a call-less reply
- * ended.
+ * model asked for work. A reply carrying either CLEARS `lastEmpty`, so `onEmpty`
+ * counts consecutive silences and not every silence this turn has ever seen.
  * @param {AgentState} state @param {Incoming} incoming @returns {Stepped}
  */
 function onReply(state, incoming) {
@@ -121,7 +121,7 @@ function onReply(state, incoming) {
   if (isEmptyCompletion(said, calls.length)) return onEmpty(state, incoming, reply.finish)
   if (calls.length === 0) return endTurn(state, endingFor(reply.finish))
   if (calls.some((call) => call.tool === RESPOND)) return endTurn(state, ANSWERED)
-  const opened = openBatch(state, calls)
+  const opened = openBatch({ ...state, lastEmpty: '' }, calls)
   // Every call refused is a round already over: nothing was invoked, so no
   // result will arrive to close it, and the model is asked again NOW with the
   // refusals in front of it. That is the one extra round a malformed call costs.

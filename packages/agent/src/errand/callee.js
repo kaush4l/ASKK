@@ -40,7 +40,7 @@ import { endedMessage } from './protocol.js'
 export function errandBegun(begin, turnId, at) {
   return {
     errand: { errandId: begin.errandId, said: '' },
-    incoming: { at, turnId, fact: { type: 'user_message', text: begin.goal, agent: '', from: 'person' } },
+    incoming: { at, turnId, fact: { type: 'user_message', text: begin.goal, agent: '', from: begin.from } },
   }
 }
 

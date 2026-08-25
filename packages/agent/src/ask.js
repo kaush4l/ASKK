@@ -1,28 +1,20 @@
 /**
- * ASKING — everything that decides what ONE model call contains: the toolbox
- * this stage grants, the components rebuilt against that grant, the paper
- * assembled under the budget this model's card derives, and the contract
- * demanded back.
+ * ASKING — the one call site, and the three decisions it makes on the way
+ * there: the budget this model's card derives, the image arithmetic its
+ * provider bills by, and the ending a paper that could not be assembled
+ * produces.
  *
- * It is apart from `step.js`, which owns the TRANSITIONS, because these
- * functions have one obligation to each other that no transition shares: WHAT
- * THE MODEL MAY CALL AND WHAT IT IS TOLD IT MAY CALL MUST BE THE SAME SET
- * (I13). One granted toolbox feeds both the affordances block and the response
- * contract, so the two cannot drift — and that is checkable by reading these
- * forty lines together.
+ * It is apart from `step.js`, which owns the TRANSITIONS, because none of those
+ * three is one. WHICH BLOCKS the call carries — and the rule that what the
+ * model may call and what it is TOLD it may call are one granted toolbox (I13)
+ * — is `fill.js`, which states it in its own header.
  *
- * THE PAPER IS DERIVED, NEVER MUTATED IN PLACE. `paperFor` returns a new source
- * list every call; the state's own paper is read and not written. The
- * predecessor upserted into a long-lived `State`, so a block written for turn N
- * was still in the prompt for turn N+1 — which is how `## space` named three
- * tools the running stage had not been granted.
- *
- * WHERE THE IDENTITY COMES FROM. The soul is written HERE, from `state.prompt`,
- * on every call — it is not seeded once and left standing, because the prompt a
- * person edits mid-run must reach the next call and not the one after it.
- *
- * WHICH BLOCKS THE CALL CARRIES IS `fill.js`, and every one of them is
- * `@harness/context`'s. The loop fills a block in; it does not word one.
+ * THE PAPER IS DERIVED, NEVER MUTATED IN PLACE. `paperFor` is called on every
+ * ask and the state's own paper is read, never written — the soul included, so
+ * a prompt a person edits mid-run reaches the next call. The predecessor
+ * upserted into a long-lived `State`, so a block written for turn N was still
+ * in the prompt for turn N+1, which is how `## space` named three tools the
+ * running stage had not been granted.
  * @module
  */
 
@@ -33,7 +25,6 @@ import { endTurn } from './ending.js'
 import { paperFor } from './fill.js'
 import { backoffMs } from './retry.js'
 import { resolveStage } from './stages.js'
-import { usages } from './toolbox.js'
 
 /** @typedef {import('@harness/context').ModelCard} ModelCard */
 /** @typedef {import('@harness/kernel').Timestamp} Timestamp */
@@ -42,7 +33,6 @@ import { usages } from './toolbox.js'
 /** @typedef {import('./state.js').AgentState} AgentState */
 
 /** What one call is assembled against: the stage it is taken in, the card that derives its budget, and the backoff a retry carries. @typedef {{stage: Stage, card: ModelCard, at: Timestamp, afterMs?: number}} Asking */
-/** @typedef {import('@harness/context').SectionSource} SectionSource */
 
 /**
  * ASSEMBLE THE PAPER AND ASK THE MODEL.
