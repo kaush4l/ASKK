@@ -143,28 +143,12 @@
    paper: the identity is the violet, and inverting a control surface into a
    document is how a product becomes two products.
 
-   Declared TWICE on purpose. The media block is the person who never chose;
-   the attribute block is the person who did, and it has to win in both
-   directions, which one query cannot do. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-    --ground: #f3eefa; --ground-deep: #e4dcf1; --vignette: rgba(26, 15, 43, 0.10);
-    --lobe-key: rgba(255, 255, 255, 0.85); --lobe-fill: rgba(201, 164, 255, 0.28);
-    --horizon: rgba(150, 122, 214, 0.20);
-    --ink: #1a1024; --ink-2: #4c4160; --ink-3: #6d6285; --machine: #2c4f6e;
-    --accent: #6432c8; --accent-ink: #ffffff; --success: #12603f;
-    --warning: #6f4a00; --danger: #b3261e;
-    --hairline: rgba(26, 16, 36, 0.16); --hairline-lit: rgba(255, 255, 255, 0.70);
-    --control: #4c4160; --divider: rgba(26, 16, 36, 0.09);
-    --focus-halo: rgba(255, 255, 255, 0.85);
-    --surface-1: #ffffff; --surface-2: #f7f3fc; --surface-3: #efe8f8;
-    --lift: 0 1px 1px rgba(26, 16, 36, 0.06), 0 6px 12px rgba(26, 16, 36, 0.07),
-            0 34px 64px rgba(26, 16, 36, 0.10);
-    --lift-edge: inset 0 1px 0 0 rgba(255, 255, 255, 0.90);
-  }
-}
-
+   ONE SELECTOR, because the choice is always explicit by the time this file is
+   read: `components/shell/theme-boot.js` stamps `data-theme` before the first
+   paint, resolving `prefers-color-scheme` itself when nobody chose, and
+   re-stamps when the device flips. A `@media (prefers-color-scheme: light)`
+   block beside this one would be these fifteen declarations written twice with
+   nothing keeping the two bodies equal. */
 :root[data-theme="light"] {
   color-scheme: light;
   --ground: #f3eefa; --ground-deep: #e4dcf1; --vignette: rgba(26, 15, 43, 0.10);

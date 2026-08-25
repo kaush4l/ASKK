@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect } from 'react'
+
 import { ALL, subjectOf } from '@/lib/destinations'
 import { MISROUTE, RAIL, REGIONS, STRIP } from '@/lib/placeholder'
 import { searchFor } from '@/lib/agent'
@@ -9,6 +11,7 @@ import { Nav } from './nav'
 import { Rail } from './rail'
 import { Region } from './region'
 import { StatusStrip } from './status-strip'
+import { followDeviceTheme } from './theme-boot'
 import { useAgent } from './use-agent'
 import s from './shell.module.css'
 
@@ -31,9 +34,10 @@ import s from './shell.module.css'
  */
 export function Shell({ slug }) {
   const { agent, misrouted } = useAgent()
-  const to = ALL.find((d) => d.slug === slug) ?? ALL[0]
+  useEffect(followDeviceTheme, [])
+  const to = ALL.find((d) => d.slug === slug)
   if (!to) throw new Error(`no destination is registered under the slug "${slug}"`)
-  const region = REGIONS[to.slug] ?? REGIONS['']
+  const region = REGIONS[to.slug]
   if (!region) throw new Error(`no region copy is registered for the destination "${to.slug}"`)
   // The nav's links carry who the screen is about; they do NOT carry the
   // misroute, which is about the address a person has already left.

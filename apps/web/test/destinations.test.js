@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 
-import { ALL, GALLERY, NAV, land, subjectOf } from '../lib/destinations.js'
+import { ALL, GALLERY, NAV, WORK, land, subjectOf } from '../lib/destinations.js'
+import { REGIONS } from '../lib/placeholder.js'
 
 /**
  * THE COUNT IS THE CLAIM. The predecessor's diagnosis was that seven equal
@@ -68,7 +69,16 @@ test('no destination puts its own label in the display register', () => {
   for (const to of ALL) {
     expect(subjectOf(to, 'scout')).not.toBe(to.label)
   }
-  const work = NAV[0]
-  if (!work) throw new Error('the nav lost its first entry')
-  expect(subjectOf(work, 'scout')).toBe('scout')
+  expect(subjectOf(WORK, 'scout')).toBe('scout')
+})
+
+/**
+ * THE THIRD SLUG-KEYED REGISTRY, MADE EXECUTABLE. Nothing in the language ties
+ * `ALL` to `REGIONS` to the slug literals the four route files pass, and the
+ * shell now throws on a destination with no region copy rather than rendering
+ * Work's words under it. This is the check that finds that at `bun test` rather
+ * than on screen.
+ */
+test('every destination has region copy of its own', () => {
+  for (const to of ALL) expect(REGIONS[to.slug]).toBeDefined()
 })

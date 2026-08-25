@@ -96,7 +96,6 @@
 
 /* ---- the rail: a companion column speaks one step down. */
 .rail { display: flex; flex-direction: column; gap: var(--s-3); }
-.rail h2 { font-size: var(--t-heading); line-height: var(--lh-heading); }
 .railWho {
   font-size: var(--t-caption); line-height: var(--lh-caption);
   letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);

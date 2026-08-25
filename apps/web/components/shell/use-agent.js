@@ -1,23 +1,16 @@
 'use client'
 
-import { useCallback, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 
-import { agentFrom, searchWith } from '@/lib/agent'
-
-/** The address changed without a navigation — this file's own writes. */
-const CHANGED = 'harness:agentchange'
+import { agentFrom } from '@/lib/agent'
 
 function subscribe(/** @type {() => void} */ onChange) {
   window.addEventListener('popstate', onChange)
-  window.addEventListener(CHANGED, onChange)
-  return () => {
-    window.removeEventListener('popstate', onChange)
-    window.removeEventListener(CHANGED, onChange)
-  }
+  return () => window.removeEventListener('popstate', onChange)
 }
 
 /**
- * WHO THE SCREEN IS ABOUT, out of the address and back into it.
+ * WHO THE SCREEN IS ABOUT, out of the address.
  *
  * `useSyncExternalStore` and not a `useEffect`, because the address is a store
  * this component does not own and the server snapshot is a different value from
@@ -25,24 +18,19 @@ function subscribe(/** @type {() => void} */ onChange) {
  * address at build time. Saying so is what stops React from hydrating the
  * exported HTML against a query string that only exists in the browser.
  *
- * @returns {{agent: string, search: string, misrouted: string, setAgent: (name: string) => void}}
+ * READ ONLY, and it stays that way until there is a control that writes. The
+ * picker lands in increment 2 and brings the writer with it; a `setAgent`
+ * nothing can call is a path no person walks and a test that reads as coverage
+ * for behaviour the product does not have.
+ *
+ * @returns {{agent: string, search: string, misrouted: string}}
  */
 export function useAgent() {
   const search = useSyncExternalStore(subscribe, () => window.location.search, () => '')
-  const setAgent = useCallback(
-    /** @param {string} name */ (name) => {
-      // PUSH, not replace: choosing another agent is a move, and a person who
-      // presses Back after it is undoing a selection they can see.
-      window.history.pushState(null, '', window.location.pathname + searchWith(window.location.search, name))
-      window.dispatchEvent(new Event(CHANGED))
-    },
-    [],
-  )
   return {
     agent: agentFrom(search),
     search,
     // The address a person was moved OFF, put here by `app/not-found.jsx`.
     misrouted: new URLSearchParams(search).get('misrouted') ?? '',
-    setAgent,
   }
 }

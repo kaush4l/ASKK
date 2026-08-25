@@ -22,7 +22,7 @@
  */
 
 /** @type {Destination} */
-const WORK = {
+export const WORK = {
   slug: '',
   path: '/',
   label: 'Work',
@@ -31,12 +31,28 @@ const WORK = {
   scoped: true,
 }
 
+/** @type {Destination} */
+export const AGENTS = {
+  slug: 'agents',
+  path: '/agents/',
+  label: 'Agents',
+  panes: ['agents', 'tools'],
+  rail: false,
+  scoped: false,
+}
+
+/** @type {Destination} */
+export const SETUP = {
+  slug: 'setup',
+  path: '/setup/',
+  label: 'Setup',
+  panes: ['settings', 'status'],
+  rail: false,
+  scoped: false,
+}
+
 /** @type {Destination[]} The nav list, in order. THREE. */
-export const NAV = [
-  WORK,
-  { slug: 'agents', path: '/agents/', label: 'Agents', panes: ['agents', 'tools'], rail: false, scoped: false },
-  { slug: 'setup', path: '/setup/', label: 'Setup', panes: ['settings', 'status'], rail: false, scoped: false },
-]
+export const NAV = [WORK, AGENTS, SETUP]
 
 /**
  * NOT in the nav and not linked from the product: an internal gallery reached
@@ -71,8 +87,8 @@ const ABSORBED = {
   debug: WORK,
   commands: WORK,
   workspace: WORK,
-  tools: NAV[1] ?? WORK,
-  settings: NAV[2] ?? WORK,
+  tools: AGENTS,
+  settings: SETUP,
 }
 
 /** The first path segment, with the base path and both slashes off. */

@@ -52,18 +52,3 @@ export function searchFor(agent) {
   if (agent === DEFAULT_AGENT) return ''
   return '?' + new URLSearchParams({ [KEY]: agent })
 }
-
-/**
- * The same query string with `agent` set, KEEPING whatever else the address
- * carried. `?misrouted=1` is on the address exactly when a person has just been
- * moved, and dropping it while they change agent would un-say the explanation.
- * @param {string} search
- * @param {string} agent
- */
-export function searchWith(search, agent) {
-  const next = new URLSearchParams(search)
-  if (agent === DEFAULT_AGENT) next.delete(KEY)
-  else next.set(KEY, agent)
-  const query = next.toString()
-  return query ? '?' + query : ''
-}
