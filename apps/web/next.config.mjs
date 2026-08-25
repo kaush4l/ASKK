@@ -25,5 +25,9 @@ export default {
   // directly, so they must be transpiled from the workspace rather than
   // resolved as pre-built dependencies.
   transpilePackages: ['@harness/kernel', '@harness/core', '@harness/adapters-web'],
+  // Next writes its own AGENTS.md/CLAUDE.md next to this file. The project has
+  // its own, and a second one a build step keeps rewriting is a second
+  // authority nobody edited.
+  agentRules: false,
   env: { HARNESS_BASE_PATH: base },
 }

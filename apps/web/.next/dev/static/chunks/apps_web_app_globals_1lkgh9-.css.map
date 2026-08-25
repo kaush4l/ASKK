@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["file:///Users/kaush/Downloads/Dev/ASKK/apps/web/app/globals.css"],"sourcesContent":["/* Scaffold only. The design system lands with the FACE lane and replaces this\n   file wholesale; what is here exists so the export builds and the deploy path\n   can be proven before a single component is written. */\n:root {\n  color-scheme: light dark;\n  --ink: #14161a;\n  --ground: #f7f7f5;\n  --rule: color-mix(in oklab, var(--ink) 12%, transparent);\n}\n@media (prefers-color-scheme: dark) {\n  :root { --ink: #e8e6e1; --ground: #0d0f12; }\n}\n* { box-sizing: border-box; }\nhtml, body { margin: 0; padding: 0; }\nbody {\n  background: var(--ground);\n  color: var(--ink);\n  font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  -webkit-font-smoothing: antialiased;\n}\n"],"names":[],"mappings":"AAGA;;;;;;;;;AAAA;EAAA;;;;;;;;AASA;;;;AACA;;;;;AACA"}}]
+}

@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 10, "column": 0}, "map": {"version":3,"sources":["file:///Users/kaush/Downloads/Dev/ASKK/apps/web/app/page.jsx"],"sourcesContent":["/**\n * Scaffold. The FACE lane replaces this with the real shell; it exists so the\n * static export has a route to build and the deploy gate has an index.html to\n * check the base path against.\n */\nexport default function Page() {\n  return (\n    <main style={{ padding: '4rem 1.5rem', maxWidth: '42rem', margin: '0 auto' }}>\n      <h1 style={{ fontSize: '2rem', margin: 0 }}>HARNESS</h1>\n      <p style={{ opacity: 0.7 }}>The JavaScript rewrite is being assembled. This page is scaffolding.</p>\n    </main>\n  )\n}\n"],"names":["Page","style","padding","maxWidth","margin","fontSize","opacity"],"mappings":"AAAA;;;;CAIC;;;;;;AACc,SAASA;IACtB,qBACE,mTAAC;QAAKC,OAAO;YAAEC,SAAS;YAAeC,UAAU;YAASC,QAAQ;QAAS;;0BACzE,mTAAC;gBAAGH,OAAO;oBAAEI,UAAU;oBAAQD,QAAQ;gBAAE;0BAAG;;;;;;0BAC5C,mTAAC;gBAAEH,OAAO;oBAAEK,SAAS;gBAAI;0BAAG;;;;;;;;;;;;AAGlC"}}]
+}
