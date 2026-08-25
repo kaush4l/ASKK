@@ -10,6 +10,10 @@
  * catch them is what the Rust's split allowed. `adapterFor` picks it from the
  * catalogue entry's `kind`.
  *
+ * The BLOCKS are here too, one file each under `blocks/`. A component is a
+ * value and the loop only fills it in, so the vocabulary the model reads
+ * belongs beside the machine that assembles it rather than a package away.
+ *
  * `validate` is deliberately ABSENT from this barrel: `assemble` is the only
  * constructor of a `Document`, and it judges what it built on the way out, so
  * an invalid one is unconstructible rather than merely discouraged.
@@ -29,6 +33,13 @@ export { imageSize, openaiImageTokens, anthropicImageTokens, geminiImageTokens, 
 export { messagesOf } from './wire.js'
 export { ownReplay, replayable, totalTokens, finishFrom } from './provider.js'
 export { adapterFor, ADAPTERS } from './adapters.js'
+export {
+  soul, DEFAULT_SOUL, identity, operatingRules, goal, affordances, user, memory, space,
+  environment, task, history, SESSION_STARTED, observations, directive,
+  prose, toolEnvelope, shaped, saying, paperOf,
+} from './blocks/index.js'
+export { SUMMARY_HEADING, due, chunksOf, replaceWindow } from './compact.js'
+export { SUMMARIZE, COMPACT_PROMPT, FOLD_PROMPT, mapSheet, foldSheet } from './sheet.js'
 
 /** @typedef {import('./types.js').Part} Part */
 /** @typedef {import('./types.js').Stability} Stability */
@@ -56,3 +67,6 @@ export { adapterFor, ADAPTERS } from './adapters.js'
 /** @typedef {import('./provider.js').Exchange} Exchange */
 /** @typedef {import('./provider.js').ToolSpec} ToolSpec */
 /** @typedef {import('./provider.js').RequestOpts} RequestOpts */
+/** @typedef {import('./blocks/contract.js').Field} Field */
+/** @typedef {import('./blocks/contract.js').ResponseObject} ResponseObject */
+/** @typedef {import('./blocks/space.js').SharedSpace} SharedSpace */

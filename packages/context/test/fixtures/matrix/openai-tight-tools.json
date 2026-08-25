@@ -1,0 +1,73 @@
+{
+  "model": "openai/fixture-1",
+  "stream": false,
+  "messages": [
+    {
+      "role": "system",
+      "content": "## soul\n(Who this agent is; values and voice.)\n## Notes\nYou are the archivist. You keep what matters.\n\n## identity\n(Name, role, presentation.)\nName: archivist. Keeps the group's record straight.\n\n## operating_rules\n(How to behave; the response discipline.)\nDo one thing per turn. Never\n…[62 characters elided from the middle]…\nPrefer asking over guessing.\n\n## goal\n(What this agent is for, and what ends the work.)\nO\n…[73 characters elided from the middle]…\nd\n\n## affordances\n(What exists and how to call it.)\nA\n…[116 characters elided from the middle]…\n.\n\n## user\n(What is durably true of the person this agent works for.)\n-\n…[46 characters elided from the middle]…\nn\n\n## memory\n(What you chose to keep, across every conversation you have had.)\n- the plan lives at plan.md\n\n## space\n(The folder this group shares, what it has settled, what it has posted.)\ns\n…[227 characters elided from the middle]…\nn\n\n## environment\n(Time, locale, device, what is available right now.)\n2\n…[80 characters elided from the middle]…\nn\n\n## task\n(What is being attempted.)\nsummarise the unfinished steps of the plan\n\n"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "type": "function",
+          "function": {
+            "name": "read_file",
+            "arguments": "{\"path\":\"plan.md\"}"
+          }
+        }
+      ],
+      "reasoning_content": "The plan file is the only source; read it before answering."
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "content": "plan.md: 4 steps, 2 unfinished"
+    },
+    {
+      "role": "user",
+      "content": "## history\n(Conversation and prior steps, oldest first; the last line is the newest.)\n[section 'history': 4 part(s) held back to fit the window; ask for them]\n\n## observations\n(Results of the last actions.)\nread_file: plan.md, 4 steps\n\n## compaction_notice\n(what was compacted out of this document; ask to restore)\n- counted under the openai image rule\n- history: full -> summarized\n- history: summarized -> pointer\n- space: full -> summarized\n- environment: full -> summarized\n- user: full -> summarized\n- affordances: full -> summarized\n- goal: full -> summarized\n- operating_rules: full -> summarized\n\n## response_contract\n(The exact shape of the expected reply.)\nEither answer the user in plain prose, or call one or more of the tools you have been given. Do not do both in one reply, and do not describe a call instead of making one. Results come back before your next turn; read them, then answer.\n\n"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "description": "Read one file out of the space.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "record_note",
+        "description": "Keep one line across conversations.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "note"
+          ]
+        }
+      }
+    }
+  ],
+  "temperature": 0.2
+}

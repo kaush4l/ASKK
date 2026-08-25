@@ -1,0 +1,92 @@
+{
+  "openai": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 189,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "summarized",
+        "to": "pointer"
+      }
+    ],
+    "withheld": [],
+    "imageRule": "openai"
+  },
+  "anthropic": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 189,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "summarized",
+        "to": "pointer"
+      }
+    ],
+    "withheld": [],
+    "imageRule": "anthropic"
+  },
+  "gemini": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 189,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "summarized",
+        "to": "pointer"
+      }
+    ],
+    "withheld": [],
+    "imageRule": "gemini"
+  }
+}

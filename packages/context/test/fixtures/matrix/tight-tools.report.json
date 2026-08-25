@@ -1,0 +1,152 @@
+{
+  "openai": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 211,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "environment",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "user",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "affordances",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "goal",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "operating_rules",
+        "from": "full",
+        "to": "summarized"
+      }
+    ],
+    "withheld": [],
+    "imageRule": "openai"
+  },
+  "anthropic": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 211,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "environment",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "user",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "affordances",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "goal",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "operating_rules",
+        "from": "full",
+        "to": "summarized"
+      }
+    ],
+    "withheld": [],
+    "imageRule": "anthropic"
+  },
+  "gemini": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 211,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "environment",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "user",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "affordances",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "goal",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "operating_rules",
+        "from": "full",
+        "to": "summarized"
+      }
+    ],
+    "withheld": [],
+    "imageRule": "gemini"
+  }
+}

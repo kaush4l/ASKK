@@ -1,0 +1,113 @@
+{
+  "openai": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 200,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "page",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "summarized",
+        "to": "pointer"
+      }
+    ],
+    "withheld": [
+      "page"
+    ],
+    "imageRule": "openai"
+  },
+  "anthropic": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 200,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "page",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "summarized",
+        "to": "pointer"
+      }
+    ],
+    "withheld": [
+      "page"
+    ],
+    "imageRule": "anthropic"
+  },
+  "gemini": {
+    "budget": {
+      "maxTokens": 200
+    },
+    "spent": 200,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "page",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "summarized",
+        "to": "pointer"
+      }
+    ],
+    "withheld": [
+      "page"
+    ],
+    "imageRule": "gemini"
+  }
+}

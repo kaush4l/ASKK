@@ -1,0 +1,24 @@
+{
+  "model": "gemini/fixture-1",
+  "stream": false,
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "## soul\n(Who this agent is; values and voice.)\n#\n…[52 characters elided from the middle]…\n.\n\n## identity\n(Name, role, presentation.)\nN\n…[49 characters elided from the middle]…\n.\n\n## operating_rules\n(How to behave; the response discipline.)\nD\n…[116 characters elided from the middle]…\n.\n\n## goal\n(What this agent is for, and what ends the work.)\nO\n…[73 characters elided from the middle]…\nd\n\n## affordances\n(What exists and how to call it.)\nN\n…[48 characters elided from the middle]…\n.\n\n## user\n(What is durably true of the person this agent works for.)\n-\n…[46 characters elided from the middle]…\nn\n\n## memory\n(What you chose to keep, across every conversation you have had.)\n- the plan lives at plan.md\n\n## space\n(The folder this group shares, what it has settled, what it has posted.)\ns\n…[227 characters elided from the middle]…\nn\n\n## environment\n(Time, locale, device, what is available right now.)\n2\n…[48 characters elided from the middle]…\nb\n\n## task\n(What is being attempted.)\nsummarise the unfinished steps of the plan\n\n"
+      }
+    ]
+  },
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "## history\n(Conversation and prior steps, oldest first; the last line is the newest.)\n[section 'history': 4 part(s) held back to fit the window; ask for them]\n\n## observations\n(Results of the last actions.)\nread_file: plan.md, 4 steps\n\n## page\n(What the page in front of this agent currently shows.)\n[\n…[70 characters elided from the middle]…\n]\n\n## compaction_notice\n(what was compacted out of this document; ask to restore)\n- counted under the gemini image rule\n- history: full -> summarized\n- history: summarized -> pointer\n- page: full -> summarized\n- space: full -> summarized\n- environment: full -> summarized\n- user: full -> summarized\n- affordances: full -> summarized\n- goal: full -> summarized\n- operating_rules: full -> summarized\n- identity: full -> summarized\n- soul: full -> summarized\n- page: a binary part was withheld\n\n## response_contract\n(The exact shape of the expected reply.)\nReply in plain prose to the user's message. Be concise.\n\n"
+        }
+      ]
+    }
+  ],
+  "generationConfig": {
+    "temperature": 0.2
+  }
+}

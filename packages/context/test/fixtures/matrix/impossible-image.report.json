@@ -1,0 +1,203 @@
+{
+  "openai": {
+    "budget": {
+      "maxTokens": 24
+    },
+    "spent": 158,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "page",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "environment",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "user",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "affordances",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "goal",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "operating_rules",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "identity",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "soul",
+        "from": "full",
+        "to": "summarized"
+      }
+    ],
+    "withheld": [
+      "page"
+    ],
+    "imageRule": "openai"
+  },
+  "anthropic": {
+    "budget": {
+      "maxTokens": 24
+    },
+    "spent": 158,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "page",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "environment",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "user",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "affordances",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "goal",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "operating_rules",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "identity",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "soul",
+        "from": "full",
+        "to": "summarized"
+      }
+    ],
+    "withheld": [
+      "page"
+    ],
+    "imageRule": "anthropic"
+  },
+  "gemini": {
+    "budget": {
+      "maxTokens": 24
+    },
+    "spent": 158,
+    "steps": [
+      {
+        "section": "history",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "history",
+        "from": "summarized",
+        "to": "pointer"
+      },
+      {
+        "section": "page",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "space",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "environment",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "user",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "affordances",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "goal",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "operating_rules",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "identity",
+        "from": "full",
+        "to": "summarized"
+      },
+      {
+        "section": "soul",
+        "from": "full",
+        "to": "summarized"
+      }
+    ],
+    "withheld": [
+      "page"
+    ],
+    "imageRule": "gemini"
+  }
+}
