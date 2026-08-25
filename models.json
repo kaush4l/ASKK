@@ -1,5 +1,5 @@
 {
-  "comment": "The model catalogue, keyed by NAME — not a provider table. Nearly every server speaks the OpenAI protocol and differs only in its base_url, so a new server is a new entry here rather than a code change. An agent's `model:` key selects an entry; a key that is not listed is taken as a model id served by the default entry's endpoint. Edit this file, redeploy, reload — no rebuild. Your own edits in Settings are stored in this browser and layered on top of whatever this file says. One entry is NOT in this file and cannot be: `on-device`, the model built into the browser itself, is added at boot only where this browser actually offers one (Chrome's Prompt API) — see crates/adapters_web/src/ondevice.rs. Each entry's `note` is shown in Settings beside the picker.",
+  "comment": "The model catalogue, keyed by NAME — not a provider table. Nearly every server speaks the OpenAI protocol and differs only in its base_url, so a new server is a new entry here rather than a code change. An agent's `model:` key selects an entry; a key that is not listed is taken as a model id served by the default entry's endpoint. Edit this file, redeploy, reload — no rebuild. Your own edits in Settings are stored in this browser and layered on top of whatever this file says. One entry is NOT in this file and cannot be: `on-device`, the model built into the browser itself, is added at boot only where this browser actually offers one (Chrome's Prompt API) — see crates/adapters_web/src/ondevice.rs. Each entry's `note` is shown in Settings beside the picker. EVERY ENTRY MUST CARRY context_tokens: it is the model's context window, and it is REQUIRED because the budget a prompt is assembled against is DERIVED from it and never declared. The Rust build had one constant, 8192, for every model on earth, and on the one turn that mattered it elided the block the agent had just been told to read. An entry with no window is a configuration error at install, not a default.",
   "default": "local",
   "models": {
     "local": {
@@ -7,27 +7,31 @@
       "base_url": "http://127.0.0.1:8873/v1",
       "api": "completions",
       "api_key_env": "OMLX_API_KEY",
-      "note": "The local omlx server. Reachable from a page served from localhost, where nothing stands between the page and it. From a page served from the web this is Local Network Access: Chrome 142+ asks permission first and the call goes through only if it is granted; Safari has never allowed a page on the web to call a local address and does not ask, so there this entry cannot work at all. A denied prompt fails exactly as a closed port does. A delegated sub-agent runs in a Worker, which never has the user activation a prompt requires, so it cannot answer one even after the page has."
+      "note": "The local omlx server. Reachable from a page served from localhost, where nothing stands between the page and it. From a page served from the web this is Local Network Access: Chrome 142+ asks permission first and the call goes through only if it is granted; Safari has never allowed a page on the web to call a local address and does not ask, so there this entry cannot work at all. A denied prompt fails exactly as a closed port does. A delegated sub-agent runs in a Worker, which never has the user activation a prompt requires, so it cannot answer one even after the page has.",
+      "context_tokens": 128000
     },
     "openai": {
       "model": "gpt-5",
       "base_url": "https://api.openai.com/v1",
       "api": "completions",
-      "api_key_env": "OPENAI_API_KEY"
+      "api_key_env": "OPENAI_API_KEY",
+      "context_tokens": 400000
     },
     "openrouter": {
       "model": "openai/gpt-4o-mini",
       "base_url": "https://openrouter.ai/api/v1",
       "api": "completions",
       "api_key_env": "OPENROUTER_API_KEY",
-      "note": "Live-probed browser-callable from this origin (RESEARCH.md, provider CORS). Bring a scoped, credit-limited key."
+      "note": "Live-probed browser-callable from this origin (RESEARCH.md, provider CORS). Bring a scoped, credit-limited key.",
+      "context_tokens": 128000
     },
     "sonnet": {
       "kind": "anthropic",
       "model": "claude-sonnet-5",
       "base_url": "https://api.anthropic.com/v1",
       "api_key_env": "ANTHROPIC_API_KEY",
-      "note": "Carried from the Python catalogue for parity. `kind: anthropic` is the Messages wire protocol, which this build does not speak yet — selecting it refuses in words rather than sending the wrong bytes."
+      "note": "Carried from the Python catalogue for parity. `kind: anthropic` is the Messages wire protocol, which this build does not speak yet — selecting it refuses in words rather than sending the wrong bytes.",
+      "context_tokens": 200000
     }
   }
 }

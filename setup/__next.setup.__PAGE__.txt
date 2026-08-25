@@ -1,0 +1,25 @@
+1:"$Sreact.fragment"
+2:I[56983,["/ASKK/_next/static/chunks/38e4zt40i5vx0.js","/ASKK/_next/static/chunks/2xk4priyyzav5.js"],"Shell"]
+3:I[80166,["/ASKK/_next/static/chunks/38e4zt40i5vx0.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+8:I[80166,["/ASKK/_next/static/chunks/38e4zt40i5vx0.js"],"ViewportBoundary"]
+9:I[80166,["/ASKK/_next/static/chunks/38e4zt40i5vx0.js"],"MetadataBoundary"]
+b:I[47323,["/ASKK/_next/static/chunks/38e4zt40i5vx0.js"],"default"]
+c:I[4126,["/ASKK/_next/static/chunks/38e4zt40i5vx0.js"],"default"]
+f:I[35953,["/ASKK/_next/static/chunks/38e4zt40i5vx0.js","/ASKK/_next/static/chunks/0wkaf71h_2r6t.js"],"default"]
+10:I[43063,["/ASKK/_next/static/chunks/38e4zt40i5vx0.js","/ASKK/_next/static/chunks/0vxltkr_82o1e.js"],"default"]
+:HL["/ASKK/_next/static/chunks/31m188jvqtmlk.css","style"]
+:HL["/ASKK/_next/static/chunks/40xwy4hdr4t-i.css","style"]
+7:X
+e:X
+e:C
+0:{"buildId":"crWR3sknOLnIUzYf7ghq_","data":[{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"slug":"setup"}],[["$","link","0",{"rel":"stylesheet","href":"/ASKK/_next/static/chunks/31m188jvqtmlk.css","precedence":"next"}],["$","script","script-0",{"src":"/ASKK/_next/static/chunks/2xk4priyyzav5.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":"$@6","staleTime":"$7","varyParams":null},{"rsc":["$","$1","h",{"children":[null,["$","$L8",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1, viewport-fit=cover"}],["$","meta","2",{"name":"theme-color","content":"#f3eefa","media":"(prefers-color-scheme: light)"}],["$","meta","3",{"name":"theme-color","content":"#0b0611","media":"(prefers-color-scheme: dark)"}]]}],["$","div",null,{"hidden":true,"children":["$","$L9",null,{"children":["$","$4",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"HARNESS"}],["$","meta","1",{"name":"description","content":"A personal agent harness that runs entirely in your browser."}]]}]}]}],null]}],"isPartial":"$@a","staleTime":"$7","varyParams":null},{"rsc":["$","$1","c",{"children":[null,["$","$Lb",null,{"parallelRouterKey":"children","template":["$","$Lc",null,{}]}]]}],"isPartial":"$@d","staleTime":"$7","varyParams":"$e"},{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/ASKK/_next/static/chunks/40xwy4hdr4t-i.css","precedence":"next"}],["$","script","script-0",{"src":"/ASKK/_next/static/chunks/38e4zt40i5vx0.js","async":true}]],["$","html",null,{"lang":"en","suppressHydrationWarning":true,"children":[["$","script",null,{"children":"(function(){var t;try{t=localStorage.getItem(\"harness.theme\")}catch(e){}if([\"light\",\"dark\"].indexOf(t)<0)t=matchMedia(\"(prefers-color-scheme: dark)\").matches?\"dark\":\"light\";document.documentElement.setAttribute(\"data-theme\",t)})()"}],["$","body",null,{"children":["$","$Lb",null,{"parallelRouterKey":"children","error":"$f","errorStyles":[["$","link","0",{"rel":"stylesheet","href":"/ASKK/_next/static/chunks/31m188jvqtmlk.css","precedence":"next"}]],"errorScripts":[["$","script","script-0",{"src":"/ASKK/_next/static/chunks/0wkaf71h_2r6t.js","async":true}]],"template":["$","$Lc",null,{}],"notFound":[["$","$L10",null,{}],[["$","link","0",{"rel":"stylesheet","href":"/ASKK/_next/static/chunks/31m188jvqtmlk.css","precedence":"next"}]]]}]}]]}]]}],"isPartial":"$@11","staleTime":"$7","varyParams":null}],"isUpgradeableISRFallback":false,"a":"$@12","rootVaryParams":null,"needsRuntimeRequest":"$@13"}
+5:null
+7:300
+13:true
+7:C
+12:0
+a:"$undefined"
+d:"$undefined"
+11:"$undefined"
+6:"$undefined"
