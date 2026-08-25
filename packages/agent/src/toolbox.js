@@ -17,11 +17,94 @@
  * @module
  */
 
+import { CAPABILITY_SENTENCE } from '@harness/kernel'
 import { swallowedClose } from './calls.js'
-import { readArgs, usage } from './tools.js'
+import { arg, available, readArgs, tool, usage } from './tools.js'
 
+/** @typedef {import('@harness/kernel').CapabilityId} CapabilityId */
 /** @typedef {import('./tools.js').Tool} Tool */
 /** @typedef {import('./turn.js').ToolCall} ToolCall */
+/** @typedef {import('./spec.js').AgentSpec} AgentSpec */
+
+/** What one agent's file resolved to. `withheld` and `unresolved` are two different failures and neither is silent: one is a capability this build does not have, the other is a name nothing here answers to. @typedef {{toolbox: Tool[], withheld: Tool[], unresolved: string[], notice: string}} Resolved */
+
+/**
+ * WHAT THIS AGENT MAY ACTUALLY CALL, from its file and this build's
+ * capabilities. Three rules, and each one was a defect first.
+ *
+ * `engine: base` IS THE EMPTY TOOLBOX. The card said "answers in one reply,
+ * without calling tools" while nothing enforced it, so the one shipped `base`
+ * agent was the most capable file in the tree.
+ *
+ * A NON-EMPTY `tools:` LIST IS THE WHOLE ALLOWLIST, so the catalogue is what
+ * makes a tool available to NAME rather than a set appended after the filter.
+ * Appended, `tools: [read_file, list_files]` would silently also grant `exec`,
+ * and a read-only agent would be unrepresentable.
+ *
+ * A NAME THAT IS NEITHER is reported, never refused: it may be a peer agent
+ * that is not written yet, and refusing here would make "write the caller, then
+ * write the sub-agent" impossible while "write them in the other order" was
+ * fine — a rule about typing order enforced as if it were about capability.
+ * @param {AgentSpec} spec
+ * @param {{catalogue: readonly Tool[], offered: readonly CapabilityId[] | undefined, peers?: readonly AgentSpec[]}} env
+ * @returns {Resolved}
+ */
+export function toolboxFor(spec, env) {
+  if (spec.engine === 'base') return { toolbox: [], withheld: [], unresolved: [], notice: '' }
+  const wanted = spec.tools.length === 0
+    ? env.catalogue.map((t) => t.name)
+    : spec.tools
+  /** @type {Resolved} */
+  const out = { toolbox: [], withheld: [], unresolved: [], notice: '' }
+  for (const name of wanted) {
+    const held = named(env.catalogue, name)
+    const peer = (env.peers ?? []).find((p) => p.name === name && p.name !== spec.name)
+    if (held) (available(held, env.offered) ? out.toolbox : out.withheld).push(held)
+    else if (peer) out.toolbox.push(peerTool(peer))
+    else out.unresolved.push(name)
+  }
+  return { ...out, notice: absence(out.withheld) }
+}
+
+/**
+ * A PEER AGENT AS AN ORDINARY TOOL (I9): the model is never told which of its
+ * tools is another agent, because the distinction would be noise in the prompt
+ * and everything is invoked identically. Its own file's `description` is the
+ * line the caller reads, which is why a peer's description is worth writing.
+ * @param {AgentSpec} peer @returns {Tool}
+ */
+export function peerTool(peer) {
+  return tool({
+    name: peer.name,
+    description: peer.description,
+    args: [arg('query', 'string', 'the whole task, in one string — it cannot see your conversation')],
+  })
+}
+
+/**
+ * THE CAPABILITY THAT IS ABSENT, IN WORDS (I16). A model told nothing about a
+ * constraint does not treat it as unknown; it treats it as absent from the
+ * problem and plans as though the tool were there but broken. So a withheld
+ * tool is not merely hidden — the prompt SAYS which capability this build does
+ * not have and which calls went with it.
+ *
+ * Grouped by capability and in catalogue order, so two identical builds word
+ * this identically (I14).
+ * @param {readonly Tool[]} withheld @returns {string}
+ */
+function absence(withheld) {
+  /** @type {Map<string, string[]>} */
+  const by = new Map()
+  for (const t of withheld) {
+    if (t.needs === '') continue
+    by.set(t.needs, [...(by.get(t.needs) ?? []), t.name])
+  }
+  return [...by].map(([cap, names]) => {
+    const sentence = CAPABILITY_SENTENCE[/** @type {CapabilityId} */ (cap)]
+    const verb = names.length === 1 ? 'is' : 'are'
+    return `This build cannot ${sentence}, so ${names.join(', ')} ${verb} not available to you here.`
+  }).join(' ')
+}
 
 /** The opening of the swallowed-terminator refusal. A const because the trace folds a person's copy of it behind a disclosure and recognises it by this prefix; two spellings would be two stories. */
 export const NOTHING_RAN = 'Nothing ran: an argument ends with'

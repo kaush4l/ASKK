@@ -1,11 +1,12 @@
 import { expect, test, describe } from 'bun:test'
-import { NOTHING_RAN, arg, check, grant, onlyTools, NO_TOOLS, readArgs, tool, usage, usages } from '@harness/agent'
+import { NOTHING_RAN, arg, available, check, grant, onlyTools, NO_TOOLS, readArgs, tool, toolboxFor, unwritten, usage, usages } from '@harness/agent'
 
 const WRITE = tool({
   name: 'write_file',
   description: 'Write a file in the space.',
   args: [arg('path', 'string', 'where to write it'), arg('text', 'string', 'the whole contents'), arg('mode', 'number', 'the file mode', { required: false })],
   mutates: true,
+  needs: 'workspace',
 })
 
 const EXEC = tool({
@@ -13,6 +14,7 @@ const EXEC = tool({
   description: 'Run a command.',
   args: [arg('command', 'string', 'the command')],
   evidence: true,
+  needs: 'workspace',
 })
 
 const BOX = [WRITE, EXEC]
@@ -106,5 +108,48 @@ describe('the toolbox refuses a call, in words the model can act on', () => {
 
   test('a well-formed call comes back with its tool and its values, and nothing else has to be looked up', () => {
     expect(check(BOX, call('exec', '{"command":"ls -1"}'))).toEqual({ tool: EXEC, values: { command: 'ls -1' } })
+  })
+})
+
+describe('a tool the environment cannot run is not advertised, and the absence is STATED', () => {
+  const SEARCH = tool({ name: 'web_search', description: 'Search the web.', args: [arg('query', 'string', 'what to look for')], needs: 'net' })
+  const NOW = tool({ name: 'now', description: 'The time here.' })
+  const CATALOGUE = [NOW, EXEC, WRITE, SEARCH]
+  /** @param {string[]} tools @param {import('@harness/kernel').CapabilityId[] | undefined} offered */
+  const resolve = (tools, offered) => toolboxFor({ ...unwritten('You work.'), name: 'main', tools }, { catalogue: CATALOGUE, offered })
+
+  test('availability is a declared capability, and it fails SAFE — a build that never said what it has offers nothing', () => {
+    expect(available(NOW, [])).toBe(true)
+    expect(available(SEARCH, ['net'])).toBe(true)
+    expect(available(SEARCH, ['workspace'])).toBe(false)
+    expect(available(SEARCH, undefined)).toBe(false)
+  })
+
+  test('a withheld tool is in NEITHER the toolbox nor the prompt: the model is never offered what cannot run', () => {
+    const { toolbox, withheld } = resolve(['now', 'exec', 'web_search'], ['net'])
+    expect(toolbox.map((t) => t.name)).toEqual(['now', 'web_search'])
+    expect(withheld.map((t) => t.name)).toEqual(['exec'])
+    expect(usages(toolbox).some((line) => line.startsWith('exec('))).toBe(false)
+  })
+
+  test('…and the prompt SAYS which capability is absent, because silence reads as absence and a model plans from it (I16)', () => {
+    const { notice } = resolve(['now', 'exec', 'write_file'], [])
+    expect(notice).toBe('This build cannot run commands in the workspace, so exec, write_file are not available to you here.')
+    expect(resolve(['now'], []).notice).toBe('')
+  })
+
+  test('an empty tools: list is every built-in THIS BUILD CAN RUN, never the whole catalogue', () => {
+    const { toolbox, notice } = resolve([], ['workspace'])
+    expect(toolbox.map((t) => t.name)).toEqual(['now', 'exec', 'write_file'])
+    expect(notice).toContain('web_search')
+  })
+
+  test('engine: base is the empty toolbox, enforced here rather than promised in the card', () => {
+    const base = toolboxFor({ ...unwritten(''), name: 'critic', engine: 'base' }, { catalogue: CATALOGUE, offered: ['net', 'workspace'] })
+    expect(base).toEqual({ toolbox: [], withheld: [], unresolved: [], notice: '' })
+  })
+
+  test('a name nothing here answers to is REPORTED and not refused — it may be a peer written next turn', () => {
+    expect(resolve(['now', 'nope_tool'], ['net']).unresolved).toEqual(['nope_tool'])
   })
 })

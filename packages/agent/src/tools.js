@@ -23,9 +23,11 @@
  * @module
  */
 
+import { CAPABILITIES } from '@harness/kernel'
 import { shapeOf } from './shape.js'
 
 /** @typedef {import('@harness/kernel').ToolId} ToolId */
+/** @typedef {import('@harness/kernel').CapabilityId} CapabilityId */
 
 /** What a value must be. The three JSON scalars a tool argument is ever written as; a shape beyond them is a tool that wants a document, and that is a `string`. @typedef {'string' | 'number' | 'boolean'} ArgType */
 
@@ -38,6 +40,7 @@ import { shapeOf } from './shape.js'
  * @property {ToolArg[]} args  its schema, in the order the usage line states them
  * @property {boolean} mutates  it CHANGED something when it succeeds. Read by the turn's evidence fold: a successful mutation clears whatever was green, so anything still green at the end postdates the edit it is offered for.
  * @property {boolean} evidence  its output is something the verify stage may CITE. `exec` is one; `read_file` is not, because reading a file you just wrote proves the write and not the work.
+ * @property {CapabilityId | ''} needs  the ONE capability the environment must offer for this tool to run at all; '' is a tool that needs nothing but this browser. Declared beside the tool, so a build that cannot run commands does not advertise `exec` and then refuse it.
  */
 
 /**
@@ -55,7 +58,7 @@ export function arg(name, type, description, opts = {}) {
  * A tool. Both declared properties default to FALSE, which is the safe half of
  * each: a tool nobody said changes anything is not counted as an edit, and one
  * nobody said is evidence cannot be cited as proof.
- * @param {{name: ToolId, description: string, args?: ToolArg[], mutates?: boolean, evidence?: boolean}} spec
+ * @param {{name: ToolId, description: string, args?: ToolArg[], mutates?: boolean, evidence?: boolean, needs?: CapabilityId}} spec
  * @returns {Tool}
  */
 export function tool(spec) {
@@ -65,7 +68,31 @@ export function tool(spec) {
     args: [...(spec.args ?? [])],
     mutates: spec.mutates ?? false,
     evidence: spec.evidence ?? false,
+    needs: spec.needs ?? '',
   })
+}
+
+/**
+ * WHETHER THIS BUILD CAN ACTUALLY RUN IT, and it fails SAFE — to unavailable.
+ *
+ * Three ways to be unavailable and only one to be available. `offered` is
+ * absent: a build that never stated what it has says nothing about what it can
+ * do, and the honest reading of nothing is nothing. The capability is not one
+ * this kernel knows: a tool declaring `needs: 'telepathy'` is a tool nobody
+ * gated. And the ordinary case, the capability is simply not on offer.
+ *
+ * `durable() -> true` is why the default runs this way round. A descriptor that
+ * answered optimistically and had to be overridden is how a card told a person
+ * their endpoint switch had taken when it had not.
+ * @param {Tool} tool
+ * @param {readonly CapabilityId[] | undefined} offered what this build grants; undefined is a build that never said
+ * @returns {boolean}
+ */
+export function available(tool, offered) {
+  if (tool.needs === '') return true
+  if (offered === undefined) return false
+  if (!(/** @type {readonly string[]} */ (CAPABILITIES)).includes(tool.needs)) return false
+  return offered.includes(tool.needs)
 }
 
 /**

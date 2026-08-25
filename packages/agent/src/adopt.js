@@ -1,0 +1,96 @@
+/**
+ * ADOPTING AN AGENT FILE: one `AgentSpec` written onto one `AgentState` —
+ * which model it calls, what it may call, the loop it walks, and who reviews
+ * it. `spec.js` reads the bytes; this decides what they mean to a live agent.
+ *
+ * IT IS EXPORTED AND `step` IS STILL THE ONLY WRITER OF A RUNNING TURN. This
+ * builds an agent from a file BEFORE any turn exists — it touches no field a
+ * turn counts (`task`, `turnId`, `awaiting`, `batch`) and returns a new state
+ * rather than editing one, so there is no path by which it can rewrite an agent
+ * mid-turn. Nothing about `main` is hardcoded on this path, which is what makes
+ * the `public/agents/` loader real rather than decorative.
+ * @module
+ */
+
+import { roleHolder } from './roster.js'
+import { toolboxFor } from './toolbox.js'
+
+/** @typedef {import('@harness/kernel').CapabilityId} CapabilityId */
+/** @typedef {import('./spec.js').AgentSpec} AgentSpec */
+/** @typedef {import('./state.js').AgentState} AgentState */
+/** @typedef {import('./state.js').Space} Space */
+/** @typedef {import('./tools.js').Tool} Tool */
+
+/** The faculty a resolved `space:` declares on its own. Naming a space IS the request — the tools and the block come with it, rather than having to be listed too. */
+export const SPACE_FACULTY = 'space'
+
+/**
+ * @param {AgentState} state a fresh state, from `newAgentState()`
+ * @param {AgentSpec} spec
+ * @param {{catalogue: readonly Tool[], offered: readonly CapabilityId[] | undefined, peers?: readonly AgentSpec[]}} env
+ * @returns {{state: AgentState, unresolved: string[], notice: string}}
+ */
+export function adoptSpec(state, spec, env) {
+  const peers = env.peers ?? []
+  const space = spaceNamed(spec.space)
+  const resolved = toolboxFor(spec, env)
+  /** @type {AgentState} */
+  const adopted = {
+    ...state,
+    model: spec.model,
+    temperature: spec.temperature,
+    space,
+    faculties: faculties(spec, space),
+    toolbox: resolved.toolbox,
+    compactAt: spec.compactAt,
+    keepRecent: spec.keepRecent,
+    maxRounds: spec.maxRounds,
+    // THE LOOP THIS AGENT RUNS, from its own file and nowhere else — twice,
+    // because the strategy stage REWRITES `stages` mid-turn and `declared` is
+    // what the next turn is reset to. Without the copy, a greeting after a
+    // project would still be planning.
+    declared: [...spec.stages],
+    stages: [...spec.stages],
+    passes: spec.passes,
+    critic: criticAmong(spec, peers),
+  }
+  return { state: adopted, unresolved: resolved.unresolved, notice: resolved.notice }
+}
+
+/** WHAT EVERY STAGE IS TOLD, onto the state that will walk them. Deliberately not folded into `adoptSpec`: briefs are not a property of the spec, and the same set goes onto every agent in the process, which is what makes `verify` mean one thing. @param {AgentState} state @param {Record<string, string>} briefs @returns {AgentState} */
+export function adoptBriefs(state, briefs) {
+  return { ...state, briefs: { ...briefs } }
+}
+
+/**
+ * The space this file named, or null. A name that could walk out of `spaces/`
+ * attaches NOTHING rather than being sanitised into something adjacent: a space
+ * silently renamed is two agents believing they share a folder they do not.
+ * @param {string} name @returns {Space | null}
+ */
+export function spaceNamed(name) {
+  const trimmed = name.trim()
+  return trimmed !== '' && /^[A-Za-z0-9_-]+$/.test(trimmed)
+    ? { name: trimmed, facts: [], notes: [] }
+    : null
+}
+
+/** Every faculty this file declared, in the order it wrote them. @param {AgentSpec} spec @param {Space | null} space @returns {string[]} */
+function faculties(spec, space) {
+  const named = [...(space ? [SPACE_FACULTY] : []), ...spec.faculties].filter((n) => n !== '')
+  return [...new Set(named)]
+}
+
+/**
+ * WHO REVIEWS THIS AGENT'S WORK, by the job a file declares and not by the name
+ * `critic`: a hardcoded name means renaming the folder silently unhooks the
+ * machinery. It is recorded even where this agent cannot CALL the critic — the
+ * field only decides whether a tool result is read as a verdict, and a result
+ * can only arrive from a tool the allowlist already granted. An agent that is
+ * itself the critic gets '': nothing here reviews itself.
+ * @param {AgentSpec} spec @param {readonly AgentSpec[]} peers @returns {string}
+ */
+function criticAmong(spec, peers) {
+  const holder = roleHolder(peers, 'critic')
+  return holder && holder.name !== spec.name ? holder.name : ''
+}
