@@ -25,12 +25,13 @@ import { HarnessError } from '@harness/kernel'
  */
 export class ModuleError extends HarnessError {}
 
-/** @typedef {'unknown_projection'} LogErrorKind */
+/** @typedef {'unknown_projection'|'unserialisable_projection'|'empty_segment'} LogErrorKind */
 
 /**
  * What the log refuses — and it is never the DATA. An unreadable record is
  * quarantined and boot completes (I20); a failed write leaves the queue intact
- * and is recorded as a `store_failed` fact. The one kind here is a build
- * assembled wrong: a view asking for a projection nobody registered.
+ * and is recorded as a `store_failed` fact. Every kind here is a build
+ * assembled wrong: a view asking for a projection nobody registered, a reducer
+ * whose state cannot be written as JSON, and a record packed from no facts.
  */
 export class LogError extends HarnessError {}

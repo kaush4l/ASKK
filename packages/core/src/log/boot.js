@@ -74,7 +74,9 @@ function pickSnapshot(reducers, records) {
 /**
  * Fold every segment from `from` onward, skipping facts the snapshot already
  * covers. `nextSeq` comes from the HEADER and not from the facts that parsed,
- * so a quarantined line cannot renumber the history behind it.
+ * so a quarantined line cannot renumber the history behind it — and `expected`
+ * walks the same headers so a record that never came back is named rather than
+ * folded over in silence.
  * @param {Array<{index: number, text: string}>} records
  * @param {import('./reducers.js').Projections} projections
  * @param {number} from the first seq not already folded into the snapshot
@@ -83,9 +85,13 @@ function replay(records, projections, from) {
   /** @type {Quarantined[]} */
   const quarantined = []
   let nextSeq = from
+  let expected = from
   for (const record of records) {
     const { header, events, damage } = readSegment(record.text)
     for (const d of damage) quarantined.push({ segment: record.index, ...d })
+    const firstSeq = header ? header.firstSeq : record.index * SEGMENT_SIZE
+    if (firstSeq > expected) quarantined.push(gap(record.index, expected, firstSeq))
+    expected = header ? header.lastSeq + 1 : (record.index + 1) * SEGMENT_SIZE
     for (const event of events) if (event.seq >= from) projections.apply(event)
     if (header) nextSeq = Math.max(nextSeq, header.lastSeq + 1)
     for (const event of events) nextSeq = Math.max(nextSeq, event.seq + 1)
@@ -101,6 +107,20 @@ function replay(records, projections, from) {
     return { projections, nextSeq: (head.index + 1) * SEGMENT_SIZE, tail: [], quarantined }
   }
   return { projections, nextSeq, tail: residentTail(head.text), quarantined }
+}
+
+/**
+ * A WHOLE RECORD THAT IS GONE — the one damage no line of a surviving record
+ * can show. `length` keeps coming back from the headers, so it stays right
+ * while the fold behind it goes short, and the log would report both numbers
+ * and neither disagreement. This is `header.firstSeq`'s reader: the field is
+ * the check, and a gap reaches the quarantine record by the path damage already
+ * takes (I16).
+ * @returns {Quarantined}
+ */
+function gap(/** @type {number} */ index, /** @type {number} */ expected, /** @type {number} */ firstSeq) {
+  const reason = `facts ${expected}..${firstSeq - 1} are missing: this record starts at ${firstSeq} and the record before it ended at ${expected - 1}`
+  return { segment: index, line: -1, reason, raw: '' }
 }
 
 /**

@@ -1,7 +1,7 @@
 import { expect, test, describe } from 'bun:test'
 import { StoreError } from '@harness/kernel'
 import { fakeClock } from '@harness/adapters-test'
-import { freshLog, bootLog, segStream, snapStream, SEGMENT_SIZE } from '@harness/core'
+import { freshLog, bootLog, segStream, snapStream, SEGMENT_SIZE, SNAPSHOT_EVERY } from '@harness/core'
 import { memorySegments, historyReducer, countsReducer } from './doubles.js'
 
 /** @param {import('@harness/core').Log} log @param {number} n @param {number} [from] */
@@ -133,5 +133,30 @@ describe('booting', () => {
     // transactions: it is still two range reads.
     expect(store.txns() - before).toBe(2)
     expect(store.read() - readBefore).toBeGreaterThan(readWithSnapshot)
+  })
+
+  test('a projection that cannot be written as JSON fails AT THE SNAPSHOT, naming the reducer', async () => {
+    const store = memorySegments()
+    const clock = fakeClock()
+    // A Set restores from JSON as `{}`, and `snapshotMatches` would accept it
+    // because the version agrees — so the boot that survives it renders a
+    // projection that is wrong. It has to be refused where it is written.
+    const seen = {
+      name: 'seen',
+      version: 1,
+      init: () => /** @type {Set<string>} */ (new Set()),
+      fold: (/** @type {Set<string>} */ state, /** @type {import('@harness/kernel').Event} */ e) => state.add(e.fact.type),
+    }
+    const log = freshLog(store, { clock, reducers: [seen] })
+    for (let i = 0; i < SNAPSHOT_EVERY - 1; i++) {
+      say(log, SEGMENT_SIZE, i * SEGMENT_SIZE)
+      await log.persist()
+    }
+    say(log, SEGMENT_SIZE, (SNAPSHOT_EVERY - 1) * SEGMENT_SIZE)
+
+    await expect(log.persist()).rejects.toThrow('the seen projection cannot be persisted')
+    // The FACTS are durable either way — it is the shortcut that was refused.
+    expect(store.indices(segStream('main'))).toHaveLength(SNAPSHOT_EVERY)
+    expect(store.indices(snapStream('main'))).toEqual([])
   })
 })

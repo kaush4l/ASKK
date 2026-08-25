@@ -18,7 +18,7 @@ import { EVENT_VERSION } from '@harness/kernel'
 import { flush } from './persist.js'
 import { restore } from './boot.js'
 import { createProjections } from './reducers.js'
-import { segStream } from './segments.js'
+import { segStream, snapStream } from './segments.js'
 
 /** @typedef {import('@harness/kernel').ClockPort} ClockPort */
 /** @typedef {import('@harness/kernel').Event} Event */
@@ -31,13 +31,15 @@ import { segStream } from './segments.js'
 /**
  * Everything one log is, in one object so `persist` and `boot` can work on it
  * without the log handing out its own internals. `retryAt` and `attempts` are
- * the backoff; `snapshotAt` is the seq the newest kept snapshot was taken at.
+ * the backoff; `snapshotAt` is the seq the newest kept snapshot was taken at,
+ * and `snapshotAttempts` counts the run of snapshot writes that have failed,
+ * which `attempts` cannot: it is cleared before the snapshot is even tried.
  * @typedef {{
  *   store: SegmentStore, clock: ClockPort, stream: string,
  *   projections: import('./reducers.js').Projections,
  *   nextSeq: number, tail: Event[], pending: Event[],
  *   snapshots: number[], snapshotAt: number, quarantined: Quarantined[],
- *   attempts: number, retryAt: number,
+ *   attempts: number, retryAt: number, snapshotAttempts: number,
  * }} LogState
  */
 
@@ -104,14 +106,26 @@ function createLog(state) {
  */
 async function persistOnce(state) {
   const flushed = await flush(state)
-  if (flushed.failure && state.attempts === 1) {
-    appendTo(state, {
-      type: 'store_failed',
-      key: `${segStream(state.stream)}/${flushed.failure.key}`,
-      message: flushed.failure.message,
-    }, state.clock.now())
+  const key = flushed.failure ? firstOfRun(state, flushed.failure) : null
+  if (flushed.failure && key !== null) {
+    appendTo(state, { type: 'store_failed', key, message: flushed.failure.message }, state.clock.now())
   }
   return flushed
+}
+
+/**
+ * The key to record this failure under, or null if the same run of failures has
+ * already been told. Two counters and not one, because a snapshot fails on a
+ * path where the segment counter is already back at zero — and the key says
+ * WHICH of the two, so `snap/main/4096` and `seg/main/8` never read alike.
+ * @param {LogState} state
+ * @param {import('@harness/kernel').StoreError} failure
+ * @returns {string|null}
+ */
+function firstOfRun(state, failure) {
+  if (state.attempts === 1) return `${segStream(state.stream)}/${failure.key}`
+  if (state.snapshotAttempts === 1) return `${snapStream(state.stream)}/${failure.key}`
+  return null
 }
 
 /**
@@ -137,6 +151,7 @@ export function freshLog(store, opts) {
     quarantined: [],
     attempts: 0,
     retryAt: 0,
+    snapshotAttempts: 0,
   })
 }
 
@@ -164,5 +179,6 @@ export async function bootLog(store, opts) {
     quarantined: restored.quarantined,
     attempts: 0,
     retryAt: 0,
+    snapshotAttempts: 0,
   })
 }

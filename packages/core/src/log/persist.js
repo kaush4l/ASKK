@@ -14,6 +14,7 @@
 
 import { StoreError } from '@harness/kernel'
 
+import { serialiseSnapshot } from './reducers.js'
 import { packSegment, readSegment, segStream, segmentIndexOf, snapStream, SEGMENT_SIZE } from './segments.js'
 
 /** @typedef {import('./log.js').LogState} LogState */
@@ -44,7 +45,9 @@ export function backoffMs(/** @type {number} */ attempts) {
 /**
  * Write everything queued. Returns what happened rather than throwing: the
  * caller records a `store_failed` fact and the turn carries on, because losing
- * the log must not cost the conversation.
+ * the log must not cost the conversation. The one thing that still comes out as
+ * a throw is a build assembled wrong — a projection that cannot be persisted —
+ * because no retry and no message to the person can repair that.
  * @param {LogState} state
  * @returns {Promise<Flushed>}
  */
@@ -56,8 +59,13 @@ export async function flush(state) {
   let written = 0
   for (const index of segmentsDue(state)) {
     const events = state.tail.filter((e) => segmentIndexOf(e.seq) === index)
+    // The record is built BEFORE the write, so `packSegment`'s own assertion
+    // can never be caught by the clause below and re-told as "the store refused
+    // record N" — a sentence about a store that was never asked.
+    if (events.length === 0) continue
+    const record = packSegment(events)
     try {
-      await state.store.put(segStream(state.stream), index, packSegment(events))
+      await state.store.put(segStream(state.stream), index, record)
     } catch (cause) {
       state.attempts += 1
       state.retryAt = state.clock.now() + backoffMs(state.attempts)
@@ -69,7 +77,8 @@ export async function flush(state) {
   state.attempts = 0
   state.retryAt = 0
   state.tail = state.tail.filter((e) => segmentIndexOf(e.seq) === segmentIndexOf(state.nextSeq))
-  return { written, pending: 0, deferred: false, failure: await afterWrite(state) }
+  const failure = await afterWrite(state)
+  return { written, pending: state.pending.length, deferred: false, failure }
 }
 
 /** The segment indices this batch touches, oldest first. */
@@ -81,6 +90,11 @@ function segmentsDue(/** @type {LogState} */ state) {
  * Take a snapshot if enough segments have gone by, and prune the ones it makes
  * redundant. A snapshot is an OPTIMISATION, so a failure to write one is
  * reported and never blocks the facts that are already durable.
+ *
+ * `snapshotAttempts` is the snapshot's OWN run-counter because `flush` clears
+ * `attempts` the line before this runs: a snapshot store that refuses forever
+ * would otherwise never reach the `state.attempts === 1` test, and a log that
+ * silently stops snapshotting quietly gives up the record bound I20 is about.
  * @param {LogState} state
  * @returns {Promise<StoreError|null>}
  */
@@ -88,11 +102,14 @@ async function afterWrite(state) {
   const behind = segmentIndexOf(state.nextSeq) - segmentIndexOf(state.snapshotAt)
   if (behind < SNAPSHOT_EVERY) return null
   const seq = state.projections.seq
+  const body = serialiseSnapshot(state.projections.snapshot())
   try {
-    await state.store.put(snapStream(state.stream), seq, JSON.stringify(state.projections.snapshot()))
+    await state.store.put(snapStream(state.stream), seq, body)
   } catch (cause) {
+    state.snapshotAttempts += 1
     return asStoreError(cause, seq)
   }
+  state.snapshotAttempts = 0
   state.snapshots.push(seq)
   state.snapshotAt = seq
   while (state.snapshots.length > SNAPSHOTS_KEPT) {

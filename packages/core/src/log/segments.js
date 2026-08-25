@@ -21,6 +21,8 @@
 
 import { EVENT_VERSION, isKnownFact } from '@harness/kernel'
 
+import { LogError } from '../errors.js'
+
 /** @typedef {import('@harness/kernel').Event} Event */
 
 /** Facts per record. Segments too small are transactions; too large are memory. */
@@ -56,13 +58,21 @@ export function segmentIndexOf(/** @type {number} */ seq) {
 /** @typedef {{line: number, reason: string, raw: string}} Damage */
 
 /**
- * @param {Event[]} events non-empty, in seq order, all from one segment
+ * @param {Event[]} events non-empty, in seq order, all from one segment. `flush`
+ *   checks the emptiness before it calls, so the refusal below is an assertion
+ *   about this build and never a thing that happens to a person's log — and it
+ *   is typed, because a `RangeError` reaching a caller told that persisting
+ *   does not throw is a contract broken by an internal check.
  * @returns {string}
  */
 export function packSegment(events) {
   const first = events[0]
   const last = events[events.length - 1]
-  if (!first || !last) throw new RangeError('a segment record cannot be empty')
+  if (!first || !last) {
+    throw new LogError('empty_segment', 'a segment record cannot be empty', {
+      detail: 'the index came from a pending fact, so the tail must hold that fact too',
+    })
+  }
   /** @type {SegmentHeader} */
   const header = { firstSeq: first.seq, lastSeq: last.seq, count: events.length }
   return [JSON.stringify(header), ...events.map((e) => JSON.stringify(e))].join('\n')

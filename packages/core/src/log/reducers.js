@@ -23,6 +23,10 @@ import { LogError } from '../errors.js'
  * One projection. `any` for the state, with the reason: this registry holds
  * reducers over DIFFERENT state types at once and JavaScript has no way to say
  * "some type" — each reducer's own definition site stays honestly typed.
+ *
+ * State is persisted as JSON — it must round-trip, and `snapshot()` hands out a
+ * SHALLOW copy that is serialised immediately, so a fold may mutate its own
+ * state but nothing may hold the copy.
  * @typedef {{name: string, version: number, init: () => any, fold: (state: any, event: Event) => any}} Reducer
  */
 
@@ -69,6 +73,51 @@ export function createProjections(reducers, restored = null) {
       return { seq, reducerVersions: versionsOf(reducers), state: { ...state } }
     },
   }
+}
+
+/**
+ * The snapshot as the bytes that will be stored. A projection holding a `Set`,
+ * a `Map` or a `Date` does not survive `JSON.parse`: the `Set` restores as
+ * `{}`, the `Date` as a string, `snapshotMatches` accepts either because the
+ * VERSIONS agree, and a pane then renders a projection that is wrong with
+ * nothing anywhere saying so. Refuse it at the write, naming the reducer,
+ * rather than at whichever boot happens to trip over it first.
+ *
+ * The check reads `this[key]` and not `value`, because `JSON.stringify` calls
+ * `toJSON` before the replacer — a `Date` reaches the replacer already
+ * disguised as the string that will not come back as a `Date`.
+ * @param {Snapshot} snapshot
+ * @returns {string}
+ */
+export function serialiseSnapshot(snapshot) {
+  let owner = ''
+  return JSON.stringify(snapshot, /** @this {Record<string, unknown>} */ function (key, value) {
+    if (this === snapshot.state) owner = key
+    const raw = this[key]
+    if (!isJsonish(raw)) {
+      throw new LogError('unserialisable_projection', `the ${owner} projection cannot be persisted`, {
+        detail: `${owner}${this === snapshot.state ? '' : `.${key}`} is ${describe(raw)}, which does not survive JSON`,
+      })
+    }
+    return value
+  })
+}
+
+/** What JSON carries back unchanged. Anything else restores as something else. */
+function isJsonish(/** @type {unknown} */ raw) {
+  if (raw === null || Array.isArray(raw)) return true
+  const type = typeof raw
+  if (type === 'string' || type === 'number' || type === 'boolean') return true
+  if (type !== 'object') return false
+  const proto = Object.getPrototypeOf(raw)
+  return proto === Object.prototype || proto === null
+}
+
+/** The value's kind, for the person reading the refusal. */
+function describe(/** @type {unknown} */ raw) {
+  if (raw === undefined) return 'undefined'
+  const name = Object.getPrototypeOf(raw)?.constructor?.name
+  return typeof name === 'string' ? `a ${name}` : typeof raw
 }
 
 /** @param {Reducer[]} reducers @returns {Record<string, number>} */

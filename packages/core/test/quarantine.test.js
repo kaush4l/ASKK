@@ -7,7 +7,7 @@
 import { expect, test, describe } from 'bun:test'
 import { StoreError } from '@harness/kernel'
 import { fakeClock } from '@harness/adapters-test'
-import { freshLog, bootLog, segStream, quarantineStream, SEGMENT_SIZE } from '@harness/core'
+import { freshLog, bootLog, segStream, snapStream, quarantineStream, SEGMENT_SIZE, SNAPSHOT_EVERY, SNAPSHOTS_KEPT } from '@harness/core'
 import { memorySegments, historyReducer, countsReducer } from './doubles.js'
 
 /** @param {import('@harness/core').Log} log @param {number} n */
@@ -15,6 +15,15 @@ function say(log, n) {
   for (let i = 0; i < n; i++) {
     log.append({ type: 'user_message', text: `m${i}`, agent: 'main', from: 'person' }, 1000 + i)
   }
+}
+
+/** Only the failures, so a sixteen-segment test does not fold sixteen thousand facts into an array. */
+const failuresReducer = {
+  name: 'failures',
+  version: 1,
+  init: () => /** @type {import('@harness/kernel').Fact[]} */ ([]),
+  fold: (/** @type {import('@harness/kernel').Fact[]} */ state, /** @type {import('@harness/kernel').Event} */ e) =>
+    e.fact.type === 'store_failed' ? [...state, e.fact] : state,
 }
 
 /** Overwrite a segment record that is known to exist, so a typo cannot pass as damage. */
@@ -95,6 +104,30 @@ describe('quarantine', () => {
     expect(back.read('counts')).toEqual({ user_message: 4 })
     expect(back.length).toBe(SEGMENT_SIZE + 4)
   })
+
+  test('a record that never came back is a NAMED GAP, not a short history reported as a healthy one', async () => {
+    const store = memorySegments()
+    const clock = fakeClock({ start: 99, step: 0 })
+    const log = freshLog(store, { clock, reducers: [countsReducer] })
+    say(log, SEGMENT_SIZE * 3)
+    await log.persist()
+    expect(store.indices(segStream('main'))).toEqual([0, 1, 2])
+    await store.delete(segStream('main'), 1)
+
+    const back = await bootLog(store, { clock, reducers: [countsReducer] })
+    // The two numbers that used to disagree in silence: `length` still comes
+    // from the surviving headers, the fold is 512 facts short of it, and it is
+    // the quarantine that says so.
+    expect(back.length).toBe(SEGMENT_SIZE * 3)
+    expect(back.read('counts')).toEqual({ user_message: SEGMENT_SIZE * 2 })
+    expect(back.quarantined).toHaveLength(1)
+    expect(back.quarantined[0]).toMatchObject({ segment: 2, line: -1 })
+    expect(back.quarantined[0]?.reason).toBe(
+      'facts 512..1023 are missing: this record starts at 1024 and the record before it ended at 511',
+    )
+    const [held] = await store.range(quarantineStream('main'))
+    expect(JSON.parse(String(held?.text))).toMatchObject({ segment: 2, damage: [{ line: -1 }] })
+  })
 })
 
 describe('a failure that is told', () => {
@@ -114,5 +147,28 @@ describe('a failure that is told', () => {
     expect(told).toHaveLength(1)
     expect(told[0].fact.key).toBe('seg/main/0')
     expect(told[0].fact.message).toContain('out of room')
+  })
+
+  test('a snapshot the store refuses FOREVER is told once, and boot then costs more records than I20 promises', async () => {
+    const store = memorySegments({ fail: (stream) => (stream.startsWith('snap/') ? new StoreError('quota', 'no room for a snapshot') : null) })
+    const clock = fakeClock({ start: 5000, step: 0 })
+    const log = freshLog(store, { clock, reducers: [failuresReducer] })
+    for (let i = 0; i < SNAPSHOT_EVERY * 2; i++) {
+      say(log, SEGMENT_SIZE)
+      await log.persist()
+    }
+
+    const told = /** @type {any[]} */ (log.read('failures'))
+    expect(told).toHaveLength(1)
+    expect(String(told[0].key)).toMatch(/^snap\/main\/\d+$/)
+    expect(store.indices(snapStream('main'))).toEqual([])
+
+    // I20's record bound is CONDITIONAL on snapshots landing: with none on
+    // disk, boot reads every segment, and that number grows with every segment
+    // the product ever adds.
+    const before = store.read()
+    const back = await bootLog(store, { clock, reducers: [failuresReducer] })
+    expect(store.read() - before).toBeGreaterThan(SNAPSHOT_EVERY + SNAPSHOTS_KEPT + 1)
+    expect(back.length).toBe(log.length)
   })
 })
