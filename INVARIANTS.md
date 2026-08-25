@@ -1,157 +1,110 @@
 # INVARIANTS
 
-Hard invariants. Reference by ID in every module spec. Source: `docs/PROMPT.md` §12.
+Hard invariants. Reference by ID in every module spec. A violation is a bug,
+not a preference.
 
-- **I1 Static.** Builds to static assets; no server runtime required to function.
-- **I2 Local.** All user data lives in browser storage; outbound traffic only to configured endpoints.
-  **One exception, and it is a user's own key press:** pressing *Dictate* in the composer hands
-  microphone audio to the browser's speech service, which in Chrome is Google's. Nobody configured
-  that endpoint and nobody can point it elsewhere. It is opt-in per press, it is off until pressed,
-  and the control says so on screen beside itself — see the I5 exception below for why it is here
-  at all, and `docs/ALIGNMENT.md` §7.2 for the port that removes it.
-- **I3 Pure core.** Core crates test on the host with no browser, no Wasm, no network.
-- **I4 One seam.** All UI interaction goes through `handle(Request) -> Response`.
-- **I5 Dumb frontend.** No application logic in JS. A behavior needing JS needs a reason in writing.
+**This file was rewritten for the JavaScript build on 2026-08-25.** The Rust
+tree's version is reachable at tag `pre-rewrite-js`. Every change from it is
+recorded at the bottom under *What changed and why*, because an invariant that
+is quietly relaxed is worse than one that was never written.
 
-  **The reason, in writing — voice (increment 19).** Two browser APIs are used and no others:
-  `SpeechRecognition`, to put dictated words in the composer's draft, and `speechSynthesis`, to read
-  an answer aloud on request. Both are called from Rust through `web-sys`; the only JavaScript is
-  one line in `web/index.html` aliasing Chrome's `webkitSpeechRecognition` onto the standard name,
-  which is a spelling, not a behaviour.
+---
 
-  *Why it is confined to `crates/ui`.* Voice touches neither the agent loop nor the seam. Dictation
-  writes the same draft typing writes and stops there — the person still presses Send. Speaking
-  reads text the core already rendered. No `Request`, no `Response`, no event kind, no tool: I4
-  stands and the pure core still tests on the host with no browser (I3). The code lives in
-  `crates/ui/src/composer/voice.rs` and its one child, reachable from nothing else in the tree.
+- **I1 Static.** The product builds to static assets. No server runtime is
+  required for it to function, and no feature may be added that needs one.
 
-  *What it must never grow into.* No always-on listening, no wake word, no auto-send, no reading a
-  reply nobody asked to hear, no voice in the agent's own toolset, and nothing that makes a turn
-  depend on a microphone. The moment voice wants to be a capability the agent can *use* rather than
-  a way a person types, it stops being an I5 exception and becomes a port.
+- **I2 Local.** All user data lives in browser storage. Outbound traffic goes
+  only to endpoints the person configured.
+  *One exception, and it is a key press:* pressing **Dictate** hands microphone
+  audio to the browser's speech service. Nobody configured that endpoint and
+  nobody can point it elsewhere. It is off until pressed, opt-in per press, and
+  the control says so on screen beside itself.
 
-  *The upgrade path.* `ModelPort` roles for transcription and speech, so voice is BYO-endpoint like
-  every other model call and the exception above disappears with the API it excuses
-  (`docs/ALIGNMENT.md` §7.2). Not built here; recorded there.
-- **I6 Capability-gated, default deny.** Modules receive nothing they were not granted; secrets never
-  enter a module's environment.
-- **I7 Deterministic core.** `step()` is pure; time, randomness, IDs, and network are injected.
-- **I8 Observable.** Every transition emits an event; every view is a projection of the log.
-- **I9 Uniform modules.** Built-in and forged modules are indistinguishable to the system.
-- **I10 Reversible.** Every installation, migration, and improvement can be undone.
-- **I11 Updatable.** Any release is reachable by refresh, with migrations, without data loss.
+- **I3 Pure core.** Every package except `adapters-web` and `apps/web` runs and
+  tests on the host with `bun test` — no browser, no DOM, no network. The gate
+  executes this: a package that imports a browser global fails it.
+
+- **I4 One seam.** All UI interaction goes through `handle(request) -> response`.
+  There is no second door, and no component may reach into state directly.
+
+- **I5 Dumb frontend.** A `Response` carries a NAMED TYPED PROJECTION. The UI
+  renders `data`; it may not compute it. A view that needs a number the core did
+  not send is a core bug. Presentation belongs to the UI, and every fact in it
+  belongs to the core — a component that derives a status, sorts a transcript,
+  or counts anything has taken work that the log is the authority on.
+
+- **I6 Capability-gated, default deny.** A module receives nothing it was not
+  granted, and the grant is the intersection of what it asked for with what this
+  build offers. Secrets never enter a module's environment: no capability
+  carries a credential, and the brokered ports attach them downstream of every
+  grant.
+
+- **I7 Deterministic core.** `step()` is pure. Time, randomness, ids, and
+  network are injected. A test that reads a real clock or draws real random
+  bytes has failed this before it has run.
+
+- **I8 Observable.** Every transition emits a fact. Every view is a projection
+  of the log. State that is not a fold of facts is state that will disagree with
+  the history a person is reading.
+
+- **I9 Uniform modules.** Built-in and authored modules are indistinguishable to
+  the system. No manifest field records origin — that absence is the invariant.
+
+- **I10 Reversible.** Every installation, migration, and improvement can be
+  undone.
+
+- **I11 Updatable.** Any release is reachable by refresh, with migrations, with
+  no data loss.
+
 - **I12 Small.** Files ≤ 200 lines. Functions ≤ 40 lines. Enforced by
-  `scripts/check-size.py` over `crates/*/src` (files; `--functions` reports the
-  function rule, not yet gated) and by `scripts/check-selectors.py` over `web/`.
-  Integration tests under `crates/*/tests` are out of scope, as they have been
-  since G4.
-- **I13 Sectioned context.** Nothing reaches a model except as an assembled Document. No ad-hoc string
-  building anywhere in the codebase.
-- **I14 Pure assembly.** `assemble` is deterministic and golden-tested; declared-static sections render
-  byte-identically.
-- **I15 Degradable.** Every capability may be absent; the environment advertises only what is actually
-  available and never breaks when a substrate is missing.
-- **I16 Stated truth (PROVISIONAL — the owner may strike it).** A truth the system holds and
-  does not state is a defect, whether or not anything is wrong underneath it.
+  `scripts-js/check-size.js` over `packages/` and `apps/`, in the gate.
 
-  It is the converse of `docs/CRITIQUE-04.md`'s through-line, and the pair is the whole idea:
-  *an assertion that a capability resolves is not an assertion that its description is true*,
-  **and** a truth never asserted is not a safe default — it is a lie of omission that the
-  model then reasons from. A model told nothing about a constraint does not treat it as
-  unknown; it treats it as absent, and plans accordingly.
+- **I13 Sectioned context.** Nothing reaches a model except as an assembled
+  Document. No ad-hoc string building anywhere in the codebase.
 
-  Five instances were open when this was written, and they differ in depth rather than kind:
-  prose describing a computer we do not ship (T20), a block true of the agent and false of the
-  turn (T25), four true things about the workspace the agent is never told (T48), a
-  verification ceiling nobody stated (T50), and a freeze exemption whose precondition can
-  vanish silently (T52). Every one of them ships green. That is the point: **no test in this
-  tree asserted PROSE against the MACHINE**, so the class was unfalsifiable and accumulated
-  without one red gate.
+- **I14 Pure assembly.** Assembly is deterministic and golden-tested. Components
+  declared static render byte-identically across runs.
 
-  *What it demands.* Where the system holds a fact in a form a machine can read, the prose
-  shown to a model or a person must be checkable against it, and checked. Where it holds a
-  fact only in prose — a comment, a doc, a Dockerfile — that is the defect to fix first: a
-  truth no test can reach is a truth that will drift. `image/Dockerfile:25-40` is the worked
-  example. It carries a complete, correct, carefully argued inventory of every binary the
-  guest has, and it is a COMMENT, so neither the model nor the suite can read it.
+- **I15 Degradable.** Every capability may be absent. The environment advertises
+  only what is actually available and never breaks when a substrate is missing.
+  A port that cannot stream simply never calls `onDelta`.
 
-  *What it does not demand.* Not that everything true be said — a prompt is a budget, and
-  saying everything is its own failure. It demands that what IS said be true, and that a fact
-  the system depends on the reader knowing be said at all.
+- **I16 Stated truth.** A truth the system holds and does not state is a defect,
+  whether or not anything is wrong underneath it. Where the system holds a fact
+  in a form a machine can read, the prose shown to a model or a person must be
+  checkable against it, and checked. Where it holds a fact only in prose — a
+  comment, a doc — that is the defect to fix first: a truth no test can reach is
+  a truth that will drift.
 
-  *The boundary, as a worked example — the law needs one or it will be misread.* This does NOT
-  say "delete every sentence about a capability we lack". `crates/core/src/files/permitted.rs`
-  carries a live `durable == true` arm reading *"What is written there survives a reload."* It
-  is unreachable in this build, because this guest does not persist and the owner has ruled
-  that permanently. **It stays.** `WorkspacePort::durable()` is a PORT CONTRACT, not a
-  constant: the ruling is that THIS GUEST does not persist, not that no workspace port ever
-  could. Deleting the true branch of a correctly-gated conditional would encode a product
-  ruling into a port abstraction, and the next engine would rediscover it by being surprised.
-  **A string gated on a fact is what this invariant asks for; a string gated on nothing is what
-  it forbids.** The test is not whether a sentence could be false — it is whether anything
-  checks before saying it.
+- **I17 Executable gate.** A claim the gate cannot execute is not a verified
+  claim. `bun run gate` is the whole standard, and every sentence in it either
+  runs or is deleted.
 
-  *The honest limit, recorded with the law.* Checking prose against a DECLARATION is not
-  checking the declaration against REALITY. `crates/agent/src/environment.rs` says what the
-  guest contains; only the image can settle whether that is so, and confirming it needs a
-  build this project has deliberately frozen. So this invariant closes the gap between what we
-  say and what we have written down, and leaves open the gap between what we have written down
-  and what we ship. Naming that second gap is part of obeying the first.
-- **I17 Executable claims (PROVISIONAL — the owner may strike it).** A claim the gate cannot
-  execute is not a verified claim.
+- **I18 Versioned facts.** Every persisted fact carries an envelope version.
+  A reader that cannot understand a record says which record and why; it never
+  drops it and never guesses. Adding a field is additive by construction — the
+  payload is a nested object, so it cannot collide with the envelope.
 
-  This is I16 one level up, and the pair is the whole idea. I16 says a truth the system holds
-  and does not state is a defect. I17 says the converse: **a claim the system states and
-  cannot check is a defect too**, whether or not anything is wrong underneath it. The project
-  wrote the first law in the honesty round and never wrote the second, and the cost was
-  measured on 2026-08-21: `grep -rn wasm_bindgen_test crates` returned **0**, so every
-  mechanism behind the owner's three headline goals — parallel agents, agents talking across
-  threads, an environment that does real work — lived only in `crates/adapters_web`, which the
-  gate merely `cargo check`s. 581 tests were green over the half that cannot fail in the ways
-  that matter.
+- **I19 Typed at the boundary.** Every module is checked by `tsc --checkJs`
+  under `strict`. `any` is a defect with a written reason or it is a bug. The
+  source that runs is the source that ships: no package below the UI has a
+  build step.
 
-  *The worked example, because the law needs one — and EVERY CITATION BELOW IS PINNED TO
-  `de10ca8`, the commit before the round that fixed it.* Read them with `git show de10ca8:<path>`.
-  This is not pedantry: the first draft of this invariant cited these paths in the present tense,
-  and by the time it was written every one of them had already been repaired in the same working
-  tree. A reader sent to the evidence found the fix and not the defect, which destroys the record
-  at the moment it becomes law — I16's own failure mode, committed inside I17. **A law's evidence
-  must name the state it was true of.** The bar-raiser of that round caught it; it is written
-  here so the next law is drafted this way from the start.
+---
 
-  At `de10ca8`, `crates/core/tests/delegation.rs:180-201` carried a doc comment saying "both
-  sub-agents receive their goals before either result comes back, which is what 'at the same
-  time' means", and asserted an ORDER that a fully serial `for … .await` loop produces
-  identically — because the host double resolved synchronously (`crates/adapters_test/src/lib.rs:27-29`,
-  `crates/adapters_test/src/agents.rs:46-63` at that commit), so `join_all` at
-  `crates/core/src/batch.rs:139` drove delegation 1 to completion before delegation 2 existed.
-  The comment asserted the opposite of what the test measured, on the owner's headline
-  capability, and it shipped green. **A test that would pass under the broken implementation
-  proves nothing**, and that is not a weak test — it is an unverified claim wearing a test's
-  clothes. Beside it, `crates/adapters_web/src/workers/spawn/reply.rs:138` at `de10ca8` was a
-  one-slot resolver that hung a turn forever, sitting in the untested half while the tested half
-  certified the capability it breaks.
+## What changed and why
 
-  *What it demands.* Three things, in order. A capability asserted in prose, in a prompt, or in
-  a test is verified only when some command in the gate can turn RED on it. Every negative or
-  concurrency assertion carries a POSITIVE CONTROL that was actually run — break the thing,
-  watch the exit code go 101, put it back — and the control is recorded, not implied. And where
-  no command can settle a claim, the absence is written down explicitly as **unpinnable**,
-  with the machine fact that does not exist named, rather than left to look guarded. T50 is the
-  model: the verification ceiling has no machine fact, says so in the pinnability table, and is
-  deliberately not given a weak test that would pin prose to prose.
+| ID | Rust build | JavaScript build | Why |
+|---|---|---|---|
+| I3 | "no browser, no Wasm, no network" | same, plus the gate executes it | The claim was prose; now a package importing `window` fails the gate. |
+| I5 | "No application logic in JS" | "The UI renders `data`; it may not compute it" | The old wording was about a language. The real rule is about a direction, and it is now stricter: the core owes the UI every fact it renders. |
+| I5 | HTML fragments cross the seam | Named typed projections cross the seam | Shipping markup out of a state machine puts the design system inside the core and makes every visual change a core change. |
+| I12 | files ≤ 200, functions ≤ 40 (function half not gated) | both halves gated | An ungated half of a standard is not a standard (I17). |
+| I18 | — | new | The predecessor's closed enum bricked a browser on any field added without a serde default. It is a migration hazard that structure can remove, so structure removes it. |
+| I19 | — | new | Rust's type system was load-bearing. Dropping it without replacing it would be the rewrite's one unforced error. |
+| — | I2's voice exception | unchanged | Still true, still opt-in, still stated on screen. |
 
-  *What it does not demand — the boundary, or this becomes vandalism.* It does NOT demand that
-  every claim be executable. Most of this tree's best writing is argument, history and ruling,
-  and none of that is testable; deleting it would destroy the record I16 exists to protect. It
-  does NOT demand a test per sentence, and it does NOT license removing a claim because no test
-  reaches it. **It demands that an unexecutable claim be LABELLED as one.** An honest
-  "unpinnable, and here is the machine fact that would settle it" satisfies this invariant
-  completely. A confident sentence with no check behind it and no admission that there is none
-  is the only thing it forbids.
+## What was retired
 
-  *The honest limit, recorded with the law.* A gate step that exists is not a gate step that
-  runs — there is no CI in this repository (`docs/STATUS.md`), so every command here is only as
-  good as someone remembering it. I17 raises the ceiling on what CAN be checked; it cannot make
-  anyone check. That gap is an owner decision and is named here so it is not mistaken for
-  covered.
+Nothing. Every Rust-era invariant survives in some form; two were sharpened and
+two were added.

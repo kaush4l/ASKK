@@ -2,14 +2,18 @@
   "name": "harness",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "test": "bun test packages",
     "typecheck": "bunx tsc -p jsconfig.json",
-    "gate": "bun run typecheck && bun test packages && bun run size",
+    "gate": "bun run typecheck && bun test packages && bun run size && bun run purity",
     "size": "bun run scripts-js/check-size.js",
     "dev": "cd apps/web && bun run dev",
-    "build": "cd apps/web && bun run build"
+    "build": "cd apps/web && bun run build",
+    "purity": "bun run scripts-js/check-purity.js"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",

@@ -22,6 +22,7 @@ fail() { echo "GATE FAIL: $*" >&2; exit 1; }
 bun run typecheck || fail "types do not check"
 bun test packages || fail "the pure core does not pass on the host (I3)"
 bun scripts-js/check-size.js || fail "I12: a file or a function is over its limit"
+bun scripts-js/check-purity.js || fail "I3: a pure package reaches for something the host does not have"
 
 # ---- build ------------------------------------------------------------------
 rm -rf "$DIR"
