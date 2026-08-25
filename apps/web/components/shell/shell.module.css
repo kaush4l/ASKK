@@ -56,8 +56,11 @@
 /* ---- the nav. BUTTONS-as-links carrying aria-current="page": this is
    navigation, not a tab set. No glyphs — a label is what a person reads. */
 .nav { display: flex; flex-direction: column; gap: var(--s-1); }
+/* Every target clears 44x44 (DESIGN.md §10, item 8). A nav entry at a label's
+   size with two padding steps measured 36px, which is the whole of this rule. */
 .navItem {
-  display: block; padding: var(--s-2) var(--s-3);
+  display: flex; align-items: center; min-block-size: 2.75rem;
+  padding: var(--s-2) var(--s-3);
   border: 1px solid transparent; border-radius: var(--r-sm);
   color: var(--ink-2); text-decoration: none;
   font-size: var(--t-label); line-height: var(--lh-label); font-weight: var(--w-medium);
@@ -71,15 +74,20 @@
 
 /* ---- the QUIET WORKING MIDDLE. Opaque, at full opacity, never on a blur:
    this is the main way this design stays readable at 2am. */
+/* THE GROUND OF THE MIDDLE, and the panels on it are one step up. It is the
+   bottom of the ladder rather than the top, which is the correction this
+   increment makes: a panel that fills its region and matches its fill is a
+   panel a reader has to hunt for the edge of (DESIGN.md §1). */
 .region {
+  display: flex; flex-direction: column; gap: var(--s-4);
   background: var(--surface-1);
   border: 1px solid var(--hairline);
   border-top: var(--rule-hair);
   padding: var(--s-5) var(--s-4);
-  box-shadow: var(--lift); 
+  box-shadow: var(--lift);
 }
 @media (min-width: 1024px) { .region { padding: var(--s-5) var(--s-6); } }
-.regionNote { color: var(--ink-2); margin-top: var(--s-3); }
+.regionNote { color: var(--ink-2); }
 
 /* ---- the rail: a companion column speaks one step down. */
 .rail { display: flex; flex-direction: column; gap: var(--s-3); }
@@ -88,14 +96,6 @@
   letter-spacing: var(--tr-caption); text-transform: uppercase; color: var(--ink-3);
 }
 
-/* Nothing in this page is real yet, and it says so where it is not. */
-.unbuilt {
-  font-size: var(--t-caption); line-height: var(--lh-caption);
-  letter-spacing: var(--tr-caption); text-transform: uppercase;
-  color: var(--warning); margin-top: var(--s-4);
-}
-.panes { margin: var(--s-3) 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--s-2); }
-.pane {
-  font-family: var(--mono); font-size: var(--t-label); color: var(--ink-3);
-  border: 1px solid var(--divider); border-radius: var(--r-sm); padding: var(--s-1) var(--s-2);
-}
+/* The rail is a column of panes, and it scrolls with the page: a companion that
+   scrolls on its own is two scrollbars for one screen. */
+.rail > * { min-inline-size: 0; }

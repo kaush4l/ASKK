@@ -1,44 +1,28 @@
 import s from './shell.module.css'
 
 /**
- * THE REGION A DESTINATION FILLS, and right now nothing fills it.
+ * THE REGION A DESTINATION FILLS — the QUIET WORKING MIDDLE (DESIGN.md §1).
  *
- * It takes its heading, its note and the seam views it will compose as explicit
- * props from the destination table, and it stamps NOTHING on the element any
- * more: `data-placeholder` was how a probe found a screen whose facts were
- * invented, and Work's facts are the seam's now.
+ * Opaque, at full opacity, never over a blur, and one step below the panels
+ * standing on it so a reader can tell in one second which surface is on top.
  *
- * THE NOTE IS ONE LINE ON A SCREEN THAT HAS CONTENT — a sentence, and not the
- * 403-pixel paragraph the editorial round measured between a person and the
- * product (DESIGN.md §1).
+ * IT TAKES CHILDREN AND NOTHING ELSE OPTIONAL, and that is this increment: the
+ * fallback that listed a destination's panes and admitted `Not wired to the
+ * seam yet` is deleted, because every destination is wired. A placeholder that
+ * outlives the thing it was standing in for is how a product ships a screen
+ * nobody looked at.
  *
- * The panes are listed rather than summarised because they are the contract:
- * a destination COMPOSES panes, and naming them is what stops "add a pane" from
- * quietly meaning "add a tab".
+ * THE NOTE IS ONE LINE — a sentence, not the 403-pixel paragraph the editorial
+ * round measured between a person and the product (DESIGN.md §1).
  *
- * A destination that HAS something to render passes it as children. Everything
- * else still gets the panes and the admission, because a screen that says
- * nothing about being unbuilt is a screen that looks broken — and the admission
- * is now true of Agents and Setup alone, which is the point of it.
- *
- * @param {{id: string, heading: string, note: string, panes: string[],
- *          children?: React.ReactNode}} props
+ * @param {{id: string, heading: string, note: string, children: React.ReactNode}} props
  */
-export function Region({ id, heading, note, panes, children }) {
+export function Region({ id, heading, note, children }) {
   return (
     <main id={id} className={s.region} aria-labelledby={`${id}-heading`}>
       <h2 id={`${id}-heading`}>{heading}</h2>
       <p className={s.regionNote}>{note}</p>
-      {children ?? (
-        <>
-          <ul className={s.panes}>
-            {panes.map((pane) => (
-              <li key={pane} className={s.pane}>{pane}</li>
-            ))}
-          </ul>
-          <p className={s.unbuilt}>Not wired to the seam yet</p>
-        </>
-      )}
+      {children}
     </main>
   )
 }

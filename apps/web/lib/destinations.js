@@ -21,7 +21,6 @@
  *                             editorial round measured the predecessor's lede at
  *                             170 words and 403 pixels between a person and the
  *                             product (DESIGN.md §1)
- * @property {string[]} panes  the seam views this screen composes, from docs/SEAM.md
  * @property {boolean} rail    whether the instruments column has anything to say here
  * @property {boolean} scoped  whether this screen is about ONE agent (?agent=)
  */
@@ -33,7 +32,6 @@ export const WORK = {
   label: 'Work',
   heading: 'The run, and the whole of it',
   note: 'Which agent needs you, the transcript you type into, and the fleet under both.',
-  panes: ['chat', 'board', 'files', 'terminal', 'trace', 'processes', 'space', 'debug'],
   rail: true,
   scoped: true,
 }
@@ -45,7 +43,6 @@ export const AGENTS = {
   label: 'Agents',
   heading: 'What agents exist, and the surface for writing another',
   note: 'Every agent, the file it was read from, the model it calls, and what failed to load. You edit what an agent IS here, and Work shows you the effect.',
-  panes: ['agents', 'tools'],
   rail: false,
   scoped: false,
 }
@@ -56,8 +53,9 @@ export const SETUP = {
   path: '/setup/',
   label: 'Setup',
   heading: 'Where turns are sent, and what this browser holds',
-  note: 'The endpoint catalogue and what each entry resolves to, the one-line health of this build, and the appearance of the page.',
-  panes: ['settings', 'status'],
+  // NOT "and the appearance of the page": there is no such control, and a note
+  // that lists one is the screen asserting a thing it does not have (I16).
+  note: 'The endpoint catalogue, what each entry resolves to, whether a key is set for it, and the one-line health of this build.',
   rail: false,
   scoped: false,
 }
@@ -76,7 +74,6 @@ export const GALLERY = {
   label: 'Design system',
   heading: 'Every component, every variant, every state',
   note: 'The internal gallery, over the real ground. It is reached by address and is deliberately not linked from the product. Every number, agent and endpoint below is a fixture; nothing here was read from a log.',
-  panes: [],
   rail: false,
   scoped: false,
 }

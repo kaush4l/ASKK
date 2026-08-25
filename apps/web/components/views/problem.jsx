@@ -28,7 +28,10 @@ import s from './problem.module.css'
  *
  * Two placements, one implementation. `banner` is a row over a screen that is
  * otherwise fine — a redirect note, a save that failed — and `region` is the
- * failure standing in for the content it replaced.
+ * failure standing in for the content it replaced. BOTH ARE STAMPED ON THE
+ * ELEMENT, because the smoke gate's claim is that no destination replaces its
+ * content with a failure, and a banner is not that: `scripts-js/smoke.js` reads
+ * `[data-view=problem]` inside `#region` and a class name is not a contract.
  *
  * The prop is `data` and not `problem` because EVERY view component in this
  * tree takes the projection its view carries under that one name, so wiring the
@@ -38,7 +41,13 @@ import s from './problem.module.css'
  */
 export function Problem({ data, subject = '', placement = 'region' }) {
   return (
-    <div className={`${s.problem} ${s[placement]}`} role="status" data-kind={data.kind}>
+    <div
+      className={`${s.problem} ${s[placement]}`}
+      role="status"
+      data-view="problem"
+      data-placement={placement}
+      data-kind={data.kind}
+    >
       <p className={s.head}>{data.message}</p>
       {subject ? <p className={s.aside}><code className={s.subject}>{subject}</code></p> : null}
       <p className={s.aside}>{data.detail}</p>

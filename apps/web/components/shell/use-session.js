@@ -9,6 +9,19 @@ import { openSession } from '@/lib/session'
 /** @typedef {import('@harness/kernel').Request} Request */
 
 /**
+ * ONE APPLICATION PER DOCUMENT, AND THE PROMISE IS WHAT MAKES IT ONE.
+ *
+ * `openSession` opens this browser's storage and replays its log, so two of
+ * them is two applications appending to one store and disagreeing about what is
+ * in it. It used to be called from the effect directly, which was one boot only
+ * because exactly one component called the hook — Strict mode's double mount
+ * already made two, and this increment puts a second pane on the Work screen.
+ * Memoised here rather than in `lib/session.js` so a test still opens its own.
+ * @type {Promise<Session>|null}
+ */
+let opening = null
+
+/**
  * THE APPLICATION, ONCE PER DOCUMENT.
  *
  * `null` while it is coming up, and it is a THIRD state rather than a failure
@@ -16,20 +29,21 @@ import { openSession } from '@/lib/session'
  * boot has asserted something it does not know, which is the defect the strip
  * of em-dashes was removed for.
  *
- * The effect is the only place boot can happen — `openSession` reaches for the
- * browser and the static export has no browser — and it is why this hook exists
- * at all rather than a module-level promise.
+ * The effect is the only place boot can start — `openSession` reaches for the
+ * browser and the static export has no browser.
  * @returns {Session|null}
  */
 export function useSession() {
   const [session, setSession] = useState(/** @type {Session|null} */ (null))
   useEffect(() => {
     let live = true
-    void openSession(BASE + '/').then((opened) => {
+    opening ??= openSession(BASE + '/')
+    void opening.then((opened) => {
       if (live) setSession(opened)
     })
-    // Strict mode mounts twice; the second boot wins and the first is dropped
-    // rather than left to set state into an unmounted tree.
+    // A component that unmounts before boot returns drops the hand-back rather
+    // than setting state into a tree that is gone; the boot itself carries on,
+    // because it is the document's and not this component's.
     return () => { live = false }
   }, [])
   return session

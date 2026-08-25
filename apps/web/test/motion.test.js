@@ -1,4 +1,9 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'bun:test'
+
+import { Chat } from '../components/views/chat.jsx'
+import { chat } from '../fixtures/transcript.js'
 
 const motion = await Bun.file(new URL('../styles/motion.css', import.meta.url)).text()
 const ui = await Bun.file(new URL('../components/ui/ui.module.css', import.meta.url)).text()
@@ -38,4 +43,25 @@ test('reduced motion turns the transition off where it lives', () => {
   const guard = /@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/.exec(motion)
   expect(guard?.[1]).toContain('::view-transition-group(*)')
   expect(guard?.[1]).toContain('animation: none !important')
+})
+
+/**
+ * …AND THE MOTION IS ON THE PRODUCT, NOT ONLY IN THE GALLERY.
+ *
+ * For two increments the only thing wearing `data-flying` was a tool-call row,
+ * and `GET /chat` projects no such row — it projects `messages`, which
+ * `lib/chat.js` lifts to speech. So the product's one animation ran on exactly
+ * one page: `/design-system/`. The transcript's own wait wears it now, and the
+ * two states below are both ones the core really sends (`transcript.js`): a
+ * turn being driven, and a turn a reload left with nothing driving it.
+ */
+test('a turn in flight shimmers, and one nothing is driving does not', () => {
+  const drawn = (/** @type {string} */ status, /** @type {string} */ label) =>
+    renderToStaticMarkup(createElement(Chat, {
+      data: { ...chat, rows: [], waitingStatus: status, waitingLabel: label },
+    }))
+  expect(drawn('thinking', 'Working — this turn is running')).toContain('data-flying="true"')
+  expect(drawn('stopped', 'That turn is not running any more')).toContain('data-flying="false"')
+  // Nothing waiting draws no marker at all, rather than a still one.
+  expect(drawn('idle', '')).not.toContain('data-flying')
 })

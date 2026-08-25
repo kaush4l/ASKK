@@ -8,7 +8,6 @@ import { Glyph, GLYPH_STATES } from '../components/ui/glyph.jsx'
 import { NEEDS_YOU } from '../components/views/dashboard.jsx'
 import { Work } from '../components/work/work.jsx'
 import { drawable } from '../lib/chat.js'
-import { drawable as rosterDrawable } from '../lib/roster.js'
 import { chat } from '../fixtures/transcript.js'
 import { dashboard } from '../fixtures/run.js'
 import { screen } from './doubles.js'
@@ -150,28 +149,41 @@ test('a transcript in neither shape becomes a stated failure', () => {
 })
 
 /**
- * THE SCREEN SURVIVES THE PROJECTIONS THE CORE ACTUALLY SENDS, AND THIS IS THE
- * TEST FOR THE DEFECT THAT KILLED THE PAGE.
+ * THE SCREEN RENDERS THE SHAPE THE CORE ACTUALLY SENDS — written out by hand,
+ * in `packages/core/src/dashboard.js`'s own field names, rather than taken from
+ * the fixture, so this fails if either side drifts.
  *
- * `GET /` answers `dashboard` with a FLAT `rows` list; this screen draws groups.
- * The band read `data.groups.find(...)` off it, threw a TypeError mid-render,
- * and Next's default boundary replaced the whole application with "This page
- * couldn't load" — no message, no console, nothing. The transcript below it had
- * projected perfectly well.
+ * IT IS ALSO THE EPITAPH FOR `lib/roster.js`. For two increments `GET /`
+ * answered with a FLAT `rows` list while this screen drew groups, and the band
+ * read `data.groups.find(...)` off it, threw mid-render, and Next's default
+ * boundary replaced the whole application with "This page couldn't load" — no
+ * message, no console, nothing. A bridge stated that instead. The core groups
+ * by state now, so the bridge is deleted and the sentence it held is
+ * unreachable rather than guarded.
  */
-test('the core’s own dashboard and chat shapes render a working screen, not a blank one', () => {
-  const roster = ok('dashboard', { tiles: { tiles: [] }, rows: [{ id: 'main', name: 'main' }], runningLabel: 'Nothing is running' })
+test('the core’s own grouped dashboard renders the band, the glance and the fleet', () => {
+  const roster = ok('dashboard', {
+    tiles: { emptyNote: 'Nothing has happened on this page yet.', tiles: [{ id: 'agents', label: 'Agents', value: '2 agent files', note: 'Loaded in this browser.' }] },
+    groups: [
+      { id: 'waiting', label: 'Needs you — 1 agent', rows: [{ name: 'critic', status: 'waiting', statusLabel: 'Waiting on you', detail: 'Asked a question.' }] },
+      { id: 'resting', label: 'Not running — 1 agent', rows: [{ name: 'main', status: 'idle', statusLabel: 'Idle', detail: 'No turn has ended here yet.' }] },
+    ],
+    rosterEmptyNote: 'No agents are loaded.',
+    runningLabel: 'Nothing is running.',
+  })
   const transcript = ok('chat', {
     agent: 'main', stageLabel: 'main · ready', emptyNote: 'Nothing has been said to main yet.',
     waitingLabel: '', waitingStatus: 'idle',
     messages: [{ id: 'e1', kind: 'user', speaker: 'You', said: 'does the endpoint answer?' }],
   })
-  const html = renderToStaticMarkup(createElement(Work, {
-    roster: rosterDrawable(roster), transcript: drawable(transcript),
-  }))
-  // The fleet says why it cannot be drawn…
-  expect(html).toContain('The core projected the fleet in a shape this screen cannot draw.')
-  // …and the part a person came for is on the screen anyway.
+  const html = renderToStaticMarkup(createElement(Work, { roster, transcript: drawable(transcript) }))
+  expect(html).toContain('Needs you — 1 agent')
+  expect(html).toContain('2 agent files')
+  expect(html).toContain('Not running — 1 agent')
   expect(html).toContain('does the endpoint answer?')
   expect(html).toContain('<textarea')
+  // The band is the SLOT and not a filter over the list: the waiting group is
+  // rendered once, at the top, and never again among the rest of the fleet.
+  expect(html.split('Needs you — 1 agent')).toHaveLength(2)
+  expect(html.indexOf('Needs you — 1 agent')).toBeLessThan(html.indexOf('does the endpoint answer?'))
 })

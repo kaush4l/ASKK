@@ -5,13 +5,18 @@ import s from './views.module.css'
 
 /**
  * @typedef {object} ToolRow
+ * @property {string} id
  * @property {string} name
- * @property {string} capabilityLabel  which capability it needs, in words
- * @property {string} status           `ok` when it resolves, `failed` when it does not
- * @property {string} resolvesLabel    what it resolves TO, or why it does not
+ * @property {string} usage          the signature AND what it does, exactly as
+ *   the model is shown it. It is the one string this pane renders about what a
+ *   tool IS, because `description` is its tail: rendering both put the same
+ *   sentence twice on a screen already 21 tools long.
+ * @property {string} needsLabel     which capability it needs, in words
+ * @property {boolean} resolves      whether this build has something behind it
+ * @property {string} resolvesLabel  what it resolves to, or why it does not
  */
 
-/** @typedef {{tools: ReadonlyArray<ToolRow>, emptyNote: string}} ToolsData */
+/** @typedef {{rows: ReadonlyArray<ToolRow>, emptyNote: string, resolvedLabel: string}} ToolsData */
 
 /**
  * EVERY TOOL, ITS CAPABILITY, AND WHETHER IT RESOLVES (`GET /tools`).
@@ -27,18 +32,24 @@ import s from './views.module.css'
  */
 export function Tools({ data }) {
   return (
-    <Panel caption="What an agent can actually do here">
-      {data.tools.length === 0 ? <Empty note={data.emptyNote} /> : (
+    <Panel caption="What this agent can actually do here">
+      {data.rows.length === 0 ? <Empty note={data.emptyNote} /> : (
         <ul className={s.rows}>
-          {data.tools.map((tool) => (
-            <li key={tool.name} className={s.row} data-status={tool.status}>
+          {data.rows.map((tool) => (
+            // THE TONE IS CHOSEN HERE FROM A BOOLEAN THE CORE SENT, and the
+            // words beside it are the core's. `resolves` is the fact; `ok` and
+            // `failed` are this palette's names for the two sides of it, and
+            // mapping them here is the same act as choosing a border colour.
+            <li key={tool.id} className={s.row} data-status={tool.resolves ? 'ok' : 'failed'}>
               <span className={s.name}>{tool.name}</span>
-              <Badge status={tool.status} label={tool.resolvesLabel} />
-              <span className={s.meta}>{tool.capabilityLabel}</span>
+              <Badge status={tool.resolves ? 'ok' : 'failed'} label={tool.resolvesLabel} />
+              <span className={s.machine}>{tool.usage}</span>
+              <span className={s.meta}>{tool.needsLabel}</span>
             </li>
           ))}
         </ul>
       )}
+      {data.resolvedLabel ? <p className={s.meta}>{data.resolvedLabel}</p> : null}
     </Panel>
   )
 }

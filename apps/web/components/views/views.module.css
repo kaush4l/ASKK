@@ -16,11 +16,17 @@
   composes: toned from '../ui/ui.module.css';
   display: flex; flex-direction: column; gap: var(--s-1);
   padding: var(--s-3);
-  background: var(--surface-2);
+  background: var(--surface-3);
   border: 1px solid var(--divider);
   border-left: 3px solid var(--tone);
   border-radius: var(--r-sm);
 }
+
+/* One row's press, and it is the row's NAME: pressing the thing you are reading
+   is one target rather than a label beside a control that repeats it. */
+.pick { composes: press from '../ui/ui.module.css'; align-self: start; }
+/* The turn's own wait, and it shimmers while the work is in flight. */
+.wait { composes: flying from '../ui/ui.module.css'; max-width: none; padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); }
 .name { font-weight: var(--w-strong); color: var(--ink); }
 .meta { font-size: var(--t-label); line-height: var(--lh-label); color: var(--ink-2); }
 .machine { font-family: var(--mono); font-size: var(--t-label); color: var(--machine); overflow-wrap: anywhere; }
@@ -29,7 +35,7 @@
 .tiles { display: flex; flex-wrap: wrap; gap: var(--s-3); margin: 0; padding: 0; list-style: none; }
 .tile {
   flex: 1 1 10rem; display: flex; flex-direction: column; gap: var(--s-1);
-  padding: var(--s-3); background: var(--surface-2); border: 1px solid var(--divider);
+  padding: var(--s-3); background: var(--surface-3); border: 1px solid var(--divider);
   border-radius: var(--r-sm);
 }
 .tileLabel {
@@ -50,7 +56,7 @@
    is the inspector now (`ui/inspector.jsx`), and the machinery treatment here
    belongs to the harness's own notes alone. */
 .msg { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3); border-radius: var(--r-sm); }
-.msg[data-kind='user'], .msg[data-kind='assistant'] { background: var(--surface-2); }
+.msg[data-kind='user'], .msg[data-kind='assistant'] { background: var(--surface-3); }
 .msg[data-kind='user'] { border-left: 3px solid var(--accent); }
 .msg[data-kind='note'] { border: 1px dashed var(--hairline); color: var(--ink-2); }
 .msg[data-kind='error'] { border: 2px solid var(--danger); color: var(--danger); }

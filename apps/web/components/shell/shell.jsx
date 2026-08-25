@@ -56,7 +56,7 @@ export function Shell({ slug, children }) {
       {misrouted ? <Problem data={MISROUTE} subject={misrouted} placement="banner" /> : null}
       <div className={s.frame} data-rail={String(to.rail)}>
         <Nav here={to.slug} search={search} />
-        <Region id="region" heading={to.heading} note={to.note} panes={to.panes}>
+        <Region id="region" heading={to.heading} note={to.note}>
           {children}
         </Region>
         {to.rail ? <Rail subject={agent} /> : null}

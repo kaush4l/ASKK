@@ -35,10 +35,15 @@ export const EMPTY = Object.freeze({
   // A transcript with nothing in it is also waiting on nothing: leaving the
   // badge would draw a turn that is not running.
   chat: [{ ...chat, rows: [], waitingLabel: '', waitingStatus: '' }],
-  agents: [{ ...shape.agents, entries: [], problems: [] }],
+  agents: [{ ...shape.agents, rows: [], refusals: [] }],
   board: [{ ...run.board, rows: [] }],
-  tools: [{ ...shape.tools, tools: [] }],
-  settings: [{ ...shape.settings, entries: [] }],
+  // `resolvedLabel` is emptied and not carried: '0 of 0 resolve' is a sentence
+  // about a list that does not exist, and the core sends '' for exactly that.
+  tools: [{ ...shape.tools, rows: [], resolvedLabel: '' }],
+  // Nothing picked as well as nothing listed: an entry in force with no
+  // catalogue under it is not a state the broker can be in, and the credential
+  // door's refusal is the one branch that only this state renders.
+  settings: [{ ...shape.settings, entries: [], selected: '' }],
   space: [{ ...workspace.space, facts: [], notes: [] }],
   files: [
     { ...workspace.files, entries: [], open: null },

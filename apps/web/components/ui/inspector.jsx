@@ -15,9 +15,14 @@ import s from './ui.module.css'
  * @property {string} resultLabel  what came back, '' while nothing has
  */
 
-/** The two states with nothing to open yet. Layout, not a fact: the core says
- *  which state this is, and this decides how much room it takes. */
-const IN_FLIGHT = ['pending', 'calling']
+/**
+ * WORK THAT HAS NOT COME BACK YET. Layout, not a fact: the core says which
+ * state a thing is in, and this decides how much room it takes and whether it
+ * shimmers. Exported because the transcript's own wait is the same question
+ * asked of a turn rather than of a call, and two lists would drift.
+ * @type {ReadonlyArray<string>}
+ */
+export const IN_FLIGHT = ['pending', 'calling', 'thinking']
 
 /**
  * THE WORK BETWEEN THE TURNS, IN FOUR STATES — pending, running, complete,
@@ -47,13 +52,13 @@ export function Inspector({ data }) {
   const flying = IN_FLIGHT.includes(data.status)
   if (!data.resultLabel) {
     return (
-      <div className={`${s.call} ${s.callHead}`} data-row={data.row} data-status={data.status} data-flying={String(flying)}>
+      <div className={`${s.call} ${s.callHead} ${s.flying}`} data-row={data.row} data-status={data.status} data-flying={String(flying)}>
         {summary}
       </div>
     )
   }
   return (
-    <details className={s.call} data-row={data.row} data-status={data.status} data-flying={String(flying)} open={!flying}>
+    <details className={`${s.call} ${s.flying}`} data-row={data.row} data-status={data.status} data-flying={String(flying)} open={!flying}>
       <summary className={s.callHead}>{summary}</summary>
       <pre className={s.callResult}>{data.resultLabel}</pre>
     </details>

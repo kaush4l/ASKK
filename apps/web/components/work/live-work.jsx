@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { get } from '@harness/kernel'
 
 import { drawable as chatDrawable } from '@/lib/chat'
-import { drawable as rosterDrawable } from '@/lib/roster'
+import { BOOTING } from '@/lib/copy'
 import { Empty } from '@/components/ui/empty'
 import { View } from '@/components/views'
 import { useAgent } from '@/components/shell/use-agent'
@@ -15,8 +15,10 @@ import { Work } from './work'
 /** @typedef {import('@/components/views/problem').ProblemData} ProblemData */
 
 /**
- * THE WORK SCREEN, OVER THE REAL SEAM — and this is the increment where the
- * fixtures stopped reaching a page a person can open.
+ * THE WORK SCREEN, OVER THE REAL SEAM — and the fleet under it is the core's
+ * own grouping now. `lib/roster.js` stood here for two increments saying the
+ * projection could not be drawn; `GET /` groups by state, so the sentence it
+ * held is unreachable rather than guarded, and the file is gone.
  *
  * Three states, and none of them asserts anything it does not know. Coming up
  * says so. A boot that did not come up says WHAT went wrong and what to do,
@@ -27,7 +29,7 @@ import { Work } from './work'
 export function LiveWork() {
   const session = useSession()
   const { agent } = useAgent()
-  if (!session) return <Empty note="Reading this browser’s log…" />
+  if (!session) return <Empty note={BOOTING} />
   if (session.problem) return <View view="problem" data={session.problem} />
   return <Live session={session} agent={agent} />
 }
@@ -51,7 +53,7 @@ function Live({ session, agent }) {
   return (
     <>
       <Work
-        roster={rosterDrawable(roster)}
+        roster={roster}
         transcript={chatDrawable(transcript)}
         onSend={(text) => void session.send(agent, text).then(setRefused)}
       />

@@ -6,6 +6,7 @@
 .composer {
   display: flex; flex-direction: column; gap: var(--s-3);
   background: var(--surface-2);
+  border-radius: var(--r-sm);
   border: 1px solid var(--hairline);
   border-block-start: var(--rule-hair);
   padding: var(--s-4);
@@ -25,6 +26,9 @@
   border: 1px solid var(--control); border-radius: var(--r-md);
   padding: var(--s-3); resize: vertical; min-block-size: 5.5rem;
 }
+/* A key is one line, and it never grows one: the same box, at a control's
+   height, so the credential door reads as a field and not as a message. */
+input.prompt { resize: none; min-block-size: 2.75rem; }
 .prompt:disabled { color: var(--ink-3); -webkit-text-fill-color: var(--ink-3); opacity: 1; }
 
 /* BAND TWO — what it will be sent with. Ruled off, because the envelope is a

@@ -74,7 +74,12 @@ function Specimen({ name, data, view, children }) {
       <h3 className={s.name}>{name}</h3>
       <div className={s.rooms}>
         {['light', 'dark'].map((room) => (
-          <div key={room} className={s.room} data-theme={room}>
+          // `data-specimen` is for the smoke gate and not for a stylesheet:
+          // two of the specimens on this page ARE failures — the seam's 404 and
+          // a view name the route table does not list — and a probe asking
+          // "did this destination replace its content with a failure" would
+          // otherwise be answered yes by the gallery doing its job.
+          <div key={room} className={s.room} data-theme={room} data-specimen="true">
             <span className={s.roomName}>{room}</span>
             {children ?? <View view={view ?? name} data={data} />}
           </div>

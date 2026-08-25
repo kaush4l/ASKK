@@ -12,6 +12,12 @@
  * rounds lived. With no model server on the machine what comes back is the
  * port's refusal, and a refusal on the screen is the return leg working.
  *
+ * FOUR DESTINATIONS AND A RELOAD were added the increment the screens were
+ * finished, because those are the two things a person does first: they look at
+ * every page once, and they refresh. Neither was checked by anything, and both
+ * are states this product has shipped broken — a destination that admitted it
+ * was unwired, and a transcript that came back empty.
+ *
  * IT SERVES FILES ITSELF, PER REQUEST, AND THAT IS LOAD-BEARING. A `Bun.serve`
  * `dir` route was measured answering the page 200 and every chunk under it 404
  * — the files were on disk and named exactly as the HTML asked for them — and a
@@ -33,6 +39,9 @@ const OUT = ROOT + 'apps/web/out'
 const SAID = 'smoke: say something'
 const ANSWER_MS = Number(process.env.HARNESS_SMOKE_ANSWER_MS ?? 8000)
 
+/** Every destination a person can go to (docs/SEAM.md, the address table). */
+const DESTINATIONS = ['', 'agents/', 'setup/', 'design-system/']
+
 /** The transcript's rows as their KINDS, newest last (`components/views/chat.jsx`
  *  stamps `data-row`/`data-kind` on every one). */
 const KINDS = `[...document.querySelectorAll('[data-row=said]')].map((n) => n.dataset.kind)`
@@ -53,6 +62,76 @@ const REPORT = `JSON.stringify({
   transcript: document.body.innerText.includes(${JSON.stringify(SAID)}),
   models: performance.getEntriesByType('resource').some((r) => r.name.endsWith('models.json')),
   answered: ${ANSWERED},
+})`
+
+/**
+ * WHETHER A DESTINATION REPLACED ITS CONTENT WITH A FAILURE.
+ *
+ * Read off `[data-view=problem]` inside `#region`, which is the destination's
+ * own content — a BANNER is a row over a screen that is otherwise fine (a
+ * redirect note, a refused save) and is deliberately not counted, and neither
+ * is a companion pane in the rail, which sits outside the region on purpose:
+ * a build with no workspace is a build a person can still talk to.
+ *
+ * The kind is reported and not just the count, because "this destination is
+ * broken" and "it is broken like THIS" are two different mornings.
+ */
+const REGION_FAILED = `JSON.stringify({
+  at: location.pathname,
+  region: Boolean(document.querySelector('#region')),
+  failures: [...document.querySelectorAll('#region [data-view=problem][data-placement=region]')]
+    .filter((n) => !n.closest('[data-specimen]'))
+    .map((n) => n.dataset.kind),
+  text: document.body.innerText.slice(0, 200),
+})`
+
+/**
+ * A SCREEN IS READY WHEN THE CORE HAS FILLED IT, and the region's own heading
+ * does not count: it is in the exported HTML, so `innerText.length > 0` is true
+ * before a single line of the log has been read. What is waited for is the
+ * BOOTING sentence being gone — that string is `apps/web/lib/copy.js`'s and it
+ * is the one thing on the page that means "the log has not been read yet".
+ */
+const SETTLED = `new Promise((done) => {
+  const deadline = Date.now() + ${ANSWER_MS}
+  const look = () => {
+    const region = document.querySelector('#region')
+    const filled = region && !/Reading this browser/.test(region.innerText)
+    return filled || Date.now() > deadline ? done(1) : setTimeout(look, 100)
+  }
+  look()
+})`
+
+/**
+ * WAIT FOR THE TURN TO BE OVER, NOT FOR THE ANSWER TO APPEAR.
+ *
+ * The two are not the same moment and the difference is measurable: the facts
+ * reach the DOM while `drive` is still running and are written to storage after
+ * it returns (`packages/adapters-web/src/attach.js`), so a reload fired the
+ * instant an answer is on screen loses the whole turn — this gate failed
+ * exactly that way, which is a real finding and is filed for the SPINE lane.
+ * What is modelled here is a person who reads the answer and THEN refreshes:
+ * the transcript stops growing, and a beat later the page is reloaded.
+ */
+const QUIET = `new Promise((done) => {
+  const deadline = Date.now() + ${ANSWER_MS}
+  let was = -1
+  let still = 0
+  const look = () => {
+    const now = ${KINDS}.length
+    still = now === was ? still + 1 : 0
+    was = now
+    return still >= 10 || Date.now() > deadline ? done(1) : setTimeout(look, 100)
+  }
+  look()
+})`
+
+/** …and on the reload, ready means the sentence this run sent is back on screen. */
+const RESTORED = `new Promise((done) => {
+  const deadline = Date.now() + ${ANSWER_MS}
+  const look = () => (document.body.innerText.includes(${JSON.stringify(SAID)}) || Date.now() > deadline
+    ? done(1) : setTimeout(look, 100))
+  look()
 })`
 
 /** Wait for the answer, to a bound, then report whatever is true. A fixed sleep
@@ -95,14 +174,33 @@ function script() {
     ['click', 'button[type=submit]'],
     ['js', POLL],
     ['js', REPORT],
+    ['js', QUIET],
+    // …AND THE MESSAGE IS STILL THERE AFTER A RELOAD. The transcript is a fold
+    // of a log in IndexedDB, so a reload that comes back empty means the facts
+    // never reached storage — which is the first thing a person does and the
+    // last thing this gate used to check.
+    ['goto', url],
+    ['wait', 'textarea'],
+    ['js', RESTORED],
+    ['js', REPORT],
   ])
 }
 
-/** The last `[js]` line of a chain's output, parsed. */
+/** One destination, opened cold, asked whether its own content is a failure. */
+function walk(/** @type {string} */ slug) {
+  return JSON.stringify([
+    ['goto', `http://localhost:${PORT}${BASE}/${slug}`],
+    ['wait', '#region'],
+    ['js', SETTLED],
+    ['js', REGION_FAILED],
+  ])
+}
+
+/** Every `[js]` line of a chain's output that carries an object, parsed. */
 function readBack(/** @type {string} */ output) {
-  const line = output.split('\n').filter((l) => l.startsWith('[js] {')).pop()
-  if (!line) throw new Error(`the driver never reported:\n${output}`)
-  return JSON.parse(line.slice('[js] '.length))
+  const lines = output.split('\n').filter((l) => l.startsWith('[js] {'))
+  if (lines.length === 0) throw new Error(`the driver never reported:\n${output}`)
+  return lines.map((line) => JSON.parse(line.slice('[js] '.length)))
 }
 
 if (!(await Bun.file(BROWSE).exists())) {
@@ -125,11 +223,22 @@ async function serve(/** @type {Request} */ request) {
 /** @type {string[]} */
 const failures = []
 try {
-  const seen = readBack(await run([BROWSE, 'chain'], script()))
+  const [seen, reloaded] = readBack(await run([BROWSE, 'chain'], script()))
+  if (!seen || !reloaded) throw new Error('the driver reported fewer times than the chain asked it to')
   if (seen.textareas < 1) failures.push('the composer never reached the screen: no textarea after boot')
   if (!seen.models) failures.push('models.json was never fetched, so the core never booted')
   if (!seen.transcript) failures.push('a sent message did not reach the transcript without a reload')
   if (!seen.answered) failures.push(`nothing came back: the model port's refusal never reached the transcript within ${ANSWER_MS}ms`)
+  if (reloaded.textareas < 1) failures.push('the composer did not survive a reload: no textarea on the second load')
+  if (!reloaded.transcript) failures.push('the transcript did not survive a reload — the facts never reached storage')
+
+  for (const slug of DESTINATIONS) {
+    const [landed] = readBack(await run([BROWSE, 'chain'], walk(slug)))
+    const at = `/${slug}`
+    if (!landed || !landed.region) failures.push(`${at} rendered no region at all`)
+    else if (landed.failures.length) failures.push(`${at} replaced its content with a failure: ${landed.failures.join(', ')}`)
+    else if (landed.text.trim() === '') failures.push(`${at} came up with an empty region and said nothing about why`)
+  }
 } catch (failure) {
   // The driver's own timeout IS the assertion failing: `wait textarea` gives up
   // when the composer never arrives, which is the whole defect being gated.
@@ -144,4 +253,4 @@ if (failures.length) {
   for (const line of failures) console.error('  ' + line)
   process.exit(1)
 }
-console.log('smoke ok — the export boots, the composer is on screen, a message reaches the transcript, and what the model port answered reaches it too')
+console.log(`smoke ok — the export boots, a message reaches the transcript and survives a reload, what the model port answered reaches it too, and all ${DESTINATIONS.length} destinations render their own content rather than a failure`)

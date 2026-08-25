@@ -33,6 +33,9 @@ import { growthGate } from './growth.js'
  * @property {(request: Request) => Response} read
  * @property {(agent: string, text: string) => Promise<ProblemData|null>} send
  *   what the seam REFUSED, or null when the turn was accepted
+ * @property {(request: Request) => ProblemData|null} act one request that
+ *   RECORDS something, and what the seam refused. Nothing is kept from an
+ *   acceptance: the append moved the counter and every reader re-reads.
  * @property {(fn: () => void) => () => void} subscribe
  * @property {() => number} version
  * @property {ProblemData|null} problem what went wrong, when nothing came up
@@ -68,7 +71,7 @@ export async function openSession(basePath, wiring) {
     return ready(pair.attach(app))
   } catch (failure) {
     return {
-      read: unreachable, send: unreachable, problem: problemFor(failure),
+      read: unreachable, send: unreachable, act: unreachable, problem: problemFor(failure),
       subscribe: () => () => {}, version: () => 0,
     }
   }
@@ -84,9 +87,11 @@ function ready({ seam, run, subscribe }) {
     for (const watcher of [...watchers]) watcher()
   })
   subscribe(gate.announced)
+  const read = gate.reading(seam)
   return {
-    read: gate.reading(seam),
+    read,
     send: sender(seam, run),
+    act: (request) => refusal(read(request)),
     subscribe: (fn) => {
       watchers.add(fn)
       return () => watchers.delete(fn)
@@ -116,10 +121,8 @@ function ready({ seam, run, subscribe }) {
 function sender(seam, run) {
   return async (agent, text) => {
     const answered = seam(post('/chat', { message: text }, { 'x-agent': agent }))
-    // The failure projection's `data` IS this shape — `problem()` builds those
-    // five strings and nothing else (packages/kernel/src/seam.js) — and the seam
-    // types every `data` as an open record, so it is narrowed once, here.
-    if (isProblem(answered)) return /** @type {ProblemData} */ (answered.data)
+    const refused = refusal(answered)
+    if (refused) return refused
     try {
       await run()
     } catch (failure) {
@@ -127,6 +130,16 @@ function sender(seam, run) {
     }
     return null
   }
+}
+
+/**
+ * The failure projection's `data` IS `ProblemData` — `problem()` builds those
+ * five strings and nothing else (packages/kernel/src/seam.js) — and the seam
+ * types every `data` as an open record, so it is narrowed once, here.
+ * @param {Response} answered @returns {ProblemData|null}
+ */
+function refusal(answered) {
+  return isProblem(answered) ? /** @type {ProblemData} */ (answered.data) : null
 }
 
 /**
