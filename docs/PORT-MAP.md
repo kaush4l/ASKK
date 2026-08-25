@@ -377,11 +377,15 @@ export function parseReply(replyText) {}
 
 /**
  * THE SEAM (I4). Every UI interaction goes through this and nothing else.
+ * SYNCHRONOUS, and that is the design: a request either projects what the log
+ * already holds, or RECORDS a fact and returns the projection that fact
+ * produced. Work that takes time is queued as an effect and run by the driver,
+ * so the interface can never hang on a model call.
  * @param {App} app
  * @param {Request} req
- * @returns {Promise<Response>}
+ * @returns {Response}
  */
-export async function handle(app, req) {}
+export function handle(app, req) {}
 
 /**
  * @param {Ports} ports
@@ -390,21 +394,11 @@ export async function handle(app, req) {}
 export async function boot(ports) {}
 
 /**
- * Every view projection has this shape. `body` is DATA, never HTML.
- * @typedef {{status: number, body: object, headers?: object}} Response
+ * Every projection has this shape: a NAMED view and its data.
+ * @typedef {{status: number, view: string, data: Record<string,unknown>}} Response
  */
 
-/** The 23 routes D-FACE may call, by module. FROZEN LIST. */
-export const ROUTES = [
-  'GET /', 'GET /panels/status',
-  'GET /chat', 'POST /chat', 'POST /chat/stop', 'POST /chat/halt', 'POST /chat/clear',
-  'GET /agents', 'POST /agents', 'GET /agents/file', 'POST /agents/delete',
-  'GET /board', 'GET /tiles',
-  'GET /files', 'POST /files',
-  'GET /terminal', 'POST /terminal', 'POST /terminal/stop',
-  'GET /processes', 'POST /processes',
-  'GET /space', 'GET /tools', 'GET /debug',
-];
+/** The routes the interface may call. THE FROZEN LIST IS docs/SEAM.md. */
 ```
 
 ```js

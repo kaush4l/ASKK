@@ -113,3 +113,24 @@ survives a reload. Absent means the entry agent.
 `trailingSlash: true` is set for exactly this reason: GitHub Pages has no
 rewrite rules, so every route must be a real directory with an `index.html` in
 it or a reload 404s.
+
+## The one thing that does NOT go through the seam, and why
+
+**Saving a credential.** `handle` records a `request_handled` fact for every
+request, and the request's body rides into the projection the interface then
+renders. A key must never be in either. So the credential broker has its own
+door in `adapters-web`:
+
+```js
+/**
+ * @param {string} entry     which catalogue entry — never the URL
+ * @param {{baseUrl?: string, model?: string, apiKey?: string}} patch
+ * @returns {Promise<void>}
+ */
+export async function saveEndpoint(entry, patch) {}
+```
+
+`GET /settings` still projects the catalogue through the seam, and it projects
+**whether** a key is set, never the key. `POST /settings` carries every setting
+EXCEPT the key. This is the only exception to I4 in the tree, it exists because
+of I6, and it is written down here so it stays the only one.
