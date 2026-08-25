@@ -1,24 +1,31 @@
-# HARNESS (working name — ADR-001)
+# HARNESS
 
-A hosted, browser-only environment that an agent lives inside and can extend.
-Rust core compiled to WebAssembly. htmx frontend. Self-authored modules. No install, ever.
+A personal agent harness that runs entirely in your browser. No server, no
+account, no data leaving the machine except the model calls you configure.
 
-The metaphor: **a person carrying a phone.** The phone has no task — it has a screen, storage,
-a network, a clock, apps, and a coherent story about what it can do. HARNESS is the phone.
-The agent is the person.
+**Being rewritten.** The Rust → WebAssembly build is at tag `pre-rewrite-js`.
+This tree is the JavaScript one: vanilla JavaScript on Bun 1.4, type-checked by
+`tsc --checkJs`, with a Next.js static export for the interface.
 
-## Documents
+```
+packages/kernel         the vocabulary — ids, facts, the seam, ports
+packages/context        the Context Document: what a model is allowed to be told
+packages/agent          the pure agent loop — step(state, fact) -> [state, effects]
+packages/core           the app: registry, one dispatch point, the log, projections
+packages/adapters-web   the browser halves — IndexedDB, fetch, Workers
+packages/adapters-test  host doubles for every port
+apps/web                the interface
+```
 
-- `docs/PROMPT.md` — the master prompt: goals, architecture, gates, invariants. Read first.
-- `INVARIANTS.md` — hard invariants I1–I15.
-- `RESEARCH.md`, `GLOSSARY.md`, `DOMAIN.md`, `ARCHITECTURE.md` — gate artifacts (G0–G2).
-- `DECISIONS/` — ADRs. `MODULES/` — module specs.
-- `docs/prior-art/three-layer.md` — the predecessor review that shaped this project.
-- `docs/research/` — G0 research findings.
-- `spikes/` — G0 running-code spikes (throwaway probes; the real workspace is `crates/`, G3+).
+## Working on it
 
-## History
+```
+bun install
+bun run gate     # types, host tests, size limits, purity — the whole standard
+bun run dev      # the interface, against your own model endpoint
+```
 
-This repository previously hosted ASKK (a container2wasm browser VM experiment). Its full
-history is preserved — the Rust agent core lives at tag `pre-rewrite-rust`, the c2w project
-at commit `80564a2`. The deployed ASKK page on `gh-pages` is untouched.
+Read in this order: [`STATUS.md`](STATUS.md) for where things stand,
+[`INVARIANTS.md`](INVARIANTS.md) for what is law, [`docs/TEAMS.md`](docs/TEAMS.md)
+for how the work is divided, and [`docs/RULINGS.md`](docs/RULINGS.md) for the
+architecture of record.
