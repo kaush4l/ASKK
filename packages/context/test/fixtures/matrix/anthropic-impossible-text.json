@@ -5,10 +5,7 @@
   "system": [
     {
       "type": "text",
-      "text": "## soul\n(Who this agent is; values and voice.)\n#\n…[52 characters elided from the middle]…\n.\n\n## identity\n(Name, role, presentation.)\nN\n…[49 characters elided from the middle]…\n.\n\n## operating_rules\n(How to behave; the response discipline.)\nD\n…[116 characters elided from the middle]…\n.\n\n## goal\n(What this agent is for, and what ends the work.)\nO\n…[73 characters elided from the middle]…\nd\n\n## affordances\n(What exists and how to call it.)\nN\n…[48 characters elided from the middle]…\n.\n\n## memory\n(What you chose to keep, across every conversation you have had.)\n- the plan lives at plan.md\n\n## space\n(The folder this group shares, what it has settled, what it has posted.)\ns\n…[227 characters elided from the middle]…\nn\n\n",
-      "cache_control": {
-        "type": "ephemeral"
-      }
+      "text": "## soul\n(Who this agent is; values and voice.)\n#\n…[52 characters elided from the middle]…\n.\n\n## identity\n(Name, role, presentation.)\nN\n…[49 characters elided from the middle]…\n.\n\n## operating_rules\n(How to behave; the response discipline.)\nD\n…[116 characters elided from the middle]…\n.\n\n## goal\n(What this agent is for, and what ends the work.)\nO\n…[73 characters elided from the middle]…\nd\n\n## affordances\n(What exists and how to call it.)\nN\n…[48 characters elided from the middle]…\n.\n\n## memory\n(What you chose to keep, across every conversation you have had.)\n- the plan lives at plan.md\n\n## space\n(The folder this group shares, what it has settled, what it has posted.)\ns\n…[227 characters elided from the middle]…\nn\n\n"
     },
     {
       "type": "text",

@@ -14,6 +14,13 @@ import { blocksFor, cardFor, replayFor, TOOLS, AT, cell } from './matrix.js'
  * was false: the loop carried a second vocabulary of its own and the goldens
  * pinned bytes nothing sent. So the second claim is executed by reading that
  * package's source, which is the only instrument this lane has for it.
+ *
+ * IT IS STILL FALSE, AND THE LAST DESCRIBE IS WHERE THAT IS EXECUTED RATHER
+ * THAN CONFESSED. Nothing outside this package calls `requestFor`; the loop
+ * composes the paper by hand and posts the Document whole. Saying so only in a
+ * comment is the drift I16 names, so the state is pinned as an assertion that
+ * FAILS the moment it changes — which is the moment the prose around it has to
+ * be rewritten.
  */
 
 /** @param {string} provider @param {string} kind */
@@ -94,7 +101,7 @@ describe("a history that changed provider mid-session keeps its words and loses 
   })
 })
 
-describe('the goldens are the bytes the product sends', () => {
+describe('the goldens are the bytes this package produces, and what still stands between them and the wire', () => {
   test('the golden on disk is what the entry point produced', async () => {
     const path = new URL('./fixtures/matrix/anthropic-tight-tools.json', import.meta.url).pathname
     expect(await Bun.file(path).text()).toBe(`${JSON.stringify(cell('anthropic', 'tight', 'tools').body, null, 2)}\n`)
@@ -106,6 +113,26 @@ describe('the goldens are the bytes the product sends', () => {
     for await (const file of new Glob('**/*.js').scan({ cwd: dir })) {
       expect(await Bun.file(`${dir}${file}`).text()).not.toMatch(owned)
     }
+  })
+
+  test('nothing outside this package calls the entry point yet — the pin on a pending request', async () => {
+    const dirs = ['../../agent/src/', '../../core/src/'].map((d) => new URL(d, import.meta.url).pathname)
+    /** @type {string[]} */
+    const composers = []
+    let entryPoint = 0
+    for (const dir of dirs) {
+      for await (const file of new Glob('**/*.js').scan({ cwd: dir })) {
+        const src = await Bun.file(`${dir}${file}`).text()
+        if (/\brequestFor\s*\(/.test(src)) entryPoint += 1
+        if (/\badapterFor\s*\(|\bbuildRequest\s*\(|body\s*=\s*\{[^}]*\bdocument:/.test(src)) composers.push(file)
+      }
+    }
+    // Both halves are the same fact from two sides, so a partial migration
+    // cannot leave this green: the day `requestFor` appears, or the day the
+    // hand-built composition disappears, the comments naming this as pending
+    // are wrong and this test says so before a reader believes them.
+    expect(entryPoint).toBe(0)
+    expect(composers.sort()).toStrictEqual(['ask.js', 'effects.js'])
   })
 
   test('the retired text call protocol reaches no model — read off the bytes, not the source', async () => {

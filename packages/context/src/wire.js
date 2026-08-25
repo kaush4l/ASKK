@@ -41,6 +41,14 @@ import { stablePrefix } from './cache.js'
  * whose API takes an explicit breakpoint stamps that block; one whose provider
  * caches prefixes implicitly needs no field and gets the same guarantee from
  * the same boundary, which is why the split is here and not in three adapters.
+ *
+ * IN PRACTICE ONLY THE SYSTEM MESSAGE EVER CARRIES ONE, and that is measured
+ * rather than assumed: `history`, `observations` and `directive` are all
+ * `cacheable: false`, so the spoken message always OPENS with a dated section
+ * and its `cacheUntil` is -1 in all 36 cells of the matrix. The field stays on
+ * both because the boundary is one rule and not two, and `wire.test.js` pins
+ * the -1 — the day a cacheable block lands at HISTORY the claim breaks loudly
+ * instead of a breakpoint being dropped in silence.
  * @typedef {{role: 'system'|'user'|'assistant', content: Part[], cacheUntil: number}} Message
  */
 
@@ -80,25 +88,27 @@ function render(sections, card, report) {
   const out = []
   let text = ''
   let cacheUntil = -1
+  const flush = () => {
+    if (text) out.push({ type: 'text', text })
+    text = ''
+  }
   sections.forEach((s, i) => {
     if (report && isTail(s.slot)) text += compactionNotice(report)
     text += `## ${s.id}\n(${s.intent})\n`
     for (const p of s.parts) {
       if (p.type === 'text') text += `${p.text}\n`
       else if (audible(p, card)) {
-        if (text) out.push({ type: 'text', text })
-        text = ''
+        flush()
         out.push(p)
       } else text += `${withheldLine(p)}\n`
     }
     text += '\n'
     if (i === stable - 1) {
-      if (text) out.push({ type: 'text', text })
-      text = ''
+      flush()
       cacheUntil = out.length - 1
     }
   })
-  if (text) out.push({ type: 'text', text })
+  flush()
   return { content: out, cacheUntil }
 }
 

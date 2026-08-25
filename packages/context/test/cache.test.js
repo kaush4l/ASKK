@@ -1,7 +1,8 @@
 import { expect, test, describe } from 'bun:test'
 import {
   requestFor, messagesOf, assemble, budgetFor, paperOf, modelCard, adapterFor,
-  stablePrefix, cacheHitRatio, cacheSentence,
+  stablePrefix, cacheHitRatio, cacheSentence, cacheOffer, MIN_CACHEABLE_TOKENS,
+  estimateParts, IMAGE_RULES, soul,
 } from '@harness/context'
 import { PROVIDERS, blocksFor, cardFor, AT } from './matrix.js'
 
@@ -12,7 +13,10 @@ import { PROVIDERS, blocksFor, cardFor, AT } from './matrix.js'
  * (`docs/RULINGS.md` Attack 4, item 7). These tests are that claim's execution:
  * the boundary is where the stability classes say it is, the bytes before it do
  * not move when the volatile tail does, and the one API that takes an explicit
- * breakpoint receives one.
+ * breakpoint receives one — WHEN the head is long enough for that provider to
+ * keep it. At this build's sizes it is not, which is the second unmeasured
+ * claim this file had to stop making: a stamp under the minimum is declined in
+ * silence and reads back as a 0% hit rate.
  */
 
 /** The same paper, with one volatile block carrying different words. @param {string} clock */
@@ -64,19 +68,47 @@ describe('the cacheable prefix is a boundary, not a hope', () => {
   }
 })
 
-describe('the breakpoint reaches the one API that takes one', () => {
-  test('anthropic stamps cache_control on the last block of the prefix, and on nothing else', () => {
-    const system = /** @type {Array<Record<string, unknown>>} */ (bodyAt('anthropic', 'now')['system'])
+/** The stable head of the system message, as the adapter measures it. @param {string} kind */
+function headTokens(kind) {
+  const card = cardFor('anthropic', kind)
+  const doc = assemble(paperOf('work', blocksFor(kind), AT), budgetFor(card), IMAGE_RULES.anthropic)
+  const [system] = messagesOf(doc, card)
+  const content = system?.content ?? []
+  return estimateParts(content.slice(0, (system?.cacheUntil ?? -1) + 1), IMAGE_RULES.anthropic).tokens
+}
+
+/** A paper whose stable head is deliberately over the floor. @param {number} chars */
+function bigHeaded(chars) {
+  const blocks = blocksFor('text').map((b) => (b.id === 'soul' ? soul('x'.repeat(chars)) : b))
+  return requestFor({
+    state: paperOf('work', /** @type {import('@harness/context').Component[]} */ (blocks), AT),
+    card: { ...cardFor('anthropic', 'text'), contextTokens: 400_000 },
+  }).body
+}
+
+describe('the breakpoint is withheld below the minimum this provider will cache', () => {
+  test('the boundary exists in the paper, and the head is still too small to be kept', () => {
+    const floor = MIN_CACHEABLE_TOKENS['anthropic'] ?? 0
+    expect(floor).toBeGreaterThan(0)
+    for (const kind of /** @type {const} */ (['text', 'tools'])) {
+      const tokens = headTokens(kind)
+      expect(tokens).toBeGreaterThan(0)
+      expect(tokens).toBeLessThan(floor)
+      expect(cacheOffer('anthropic', tokens).offered).toBe(false)
+    }
+  })
+
+  test('so no golden-sized paper carries cache_control at all', () => {
+    expect(JSON.stringify(bodyAt('anthropic', 'now'))).not.toContain('cache_control')
+  })
+
+  test('a head over the floor DOES carry one, on the last block of the prefix and nowhere else', () => {
+    const system = /** @type {Array<Record<string, unknown>>} */ (bigHeaded(4 * (MIN_CACHEABLE_TOKENS['anthropic'] ?? 0))['system'])
     const stamped = system.map((b, i) => (b['cache_control'] ? i : -1)).filter((i) => i >= 0)
     expect(stamped).toStrictEqual([0])
     expect(system.length).toBeGreaterThan(1)
-    expect(String(system[0]?.['text'])).toContain('## space')
-    expect(String(system[1]?.['text'])).toContain('## environment')
-  })
-
-  test('the stamped prefix is what the model reads first, so it opens with the soul', () => {
-    const system = /** @type {Array<Record<string, unknown>>} */ (bodyAt('anthropic', 'now')['system'])
     expect(String(system[0]?.['text']).startsWith('## soul')).toBe(true)
+    expect(String(system[1]?.['text'])).toContain('## environment')
   })
 
   test('the two providers that cache implicitly are sent no breakpoint field', () => {
@@ -100,6 +132,18 @@ describe('what the provider said the cache was worth', () => {
     expect(cacheHitRatio({ ...usage, cachedInputTokens: 0 })).toBe(0)
     expect(cacheSentence({ ...usage, cachedInputTokens: null })).toContain('no cache accounting')
     expect(cacheSentence(null)).toContain('no cache accounting')
+  })
+
+  test('and a head too short to offer is a THIRD fact, not a 0% hit rate', () => {
+    const missed = cacheSentence({ ...usage, cachedInputTokens: 0 })
+    const below = cacheSentence({ ...usage, cachedInputTokens: 0 }, cacheOffer('anthropic', headTokens('tools')))
+    expect(missed).toContain("0% of the input was served from the provider's cache")
+    expect(below).toBe(
+      `The stable head was ${headTokens('tools')} tokens, below this provider's ` +
+      `${MIN_CACHEABLE_TOKENS['anthropic']}-token minimum; nothing was offered for caching.`)
+    expect(below).not.toBe(missed)
+    // A head that IS offered falls through to what the provider actually said.
+    expect(cacheSentence(usage, cacheOffer('anthropic', 99_999))).toBe(cacheSentence(usage))
   })
 
   test("anthropic's reply is read into that shape, cache write folded into what was paid", () => {

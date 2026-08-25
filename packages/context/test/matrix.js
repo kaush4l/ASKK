@@ -181,10 +181,10 @@ export function replayFor(provider, kind) {
 /**
  * One cell of the matrix: the document, and the body a provider would receive.
  *
- * THROUGH `requestFor`, the package's one entry point and therefore the one
- * the loop calls. A golden recorded through a composition the test file
- * assembled for itself pins bytes the test agrees with; this pins bytes the
- * product sends.
+ * THROUGH `requestFor`, this package's one entry point — and NOT yet the one
+ * the loop calls; `request.test.js` executes who calls it and pins the answer.
+ * A golden built through a composition the test invented would pin bytes the
+ * test agrees with; this pins the bytes the package produces.
  * @param {string} provider @param {string} budget @param {string} kind
  */
 export function cell(provider, budget, kind) {

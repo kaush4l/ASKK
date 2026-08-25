@@ -19,6 +19,8 @@ import { messagesOf } from './wire.js'
 import { finishFrom, ownReplay } from './provider.js'
 import { at, count, list, readBody, str } from './read.js'
 import { IMAGE_RULES } from './image.js'
+import { cacheOffer } from './cache.js'
+import { estimateParts } from './estimate.js'
 
 /** @typedef {import('./provider.js').ProviderAdapter} ProviderAdapter */
 /** @typedef {import('./provider.js').ProviderReply} ProviderReply */
@@ -64,7 +66,7 @@ function buildRequest(doc, card, tools, opts = {}) {
     model: card.model,
     stream: opts.stream === true,
     max_tokens: card.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
-    system: breakpointed((system?.content ?? []).map(partJson), system?.cacheUntil ?? -1),
+    system: systemOf(system),
     messages: [...(opts.replay ?? []).flatMap(replayMessages), { role: 'user', content: (user?.content ?? []).map(partJson) }],
   }
   if (tools.length > 0) {
@@ -95,21 +97,36 @@ function replayMessages(turn) {
 }
 
 /**
- * THE CACHE BREAKPOINT, STAMPED. This is the only API of the three that takes
- * one explicitly: a block carrying `cache_control` tells Anthropic to keep
- * everything up to and including it and to re-read only what follows.
+ * THE CACHE BREAKPOINT, STAMPED — OR WITHHELD, AND THE FLOOR IS WHY.
  *
- * It goes on the LAST block of the byte-stable prefix and nowhere else, which
- * `wire.js` computed. One breakpoint and not four: each is a separate cache
- * entry with its own write cost, and stamping every stable block would pay to
- * store four prefixes of one prompt. The claim this stamp finally makes
- * executable is `Stability`'s — the Rust asserted the breakpoints were applied
- * "when the body is written" and `grep -rn cache_control crates/context` was
- * empty (`docs/RULINGS.md` Attack 4, item 7).
- * @param {Array<Record<string, unknown>>} blocks @param {number} until
+ * This is the only API of the three that takes a breakpoint explicitly: a
+ * block carrying `cache_control` tells Anthropic to keep everything up to and
+ * including it and to re-read only what follows. It goes on the LAST block of
+ * the byte-stable prefix and nowhere else, which `wire.js` computed — one
+ * breakpoint and not four, since each is a separate cache entry with its own
+ * write cost.
+ *
+ * IT IS WITHHELD BELOW `MIN_CACHEABLE_TOKENS`: a stamp under the minimum is
+ * declined in silence and reports back as a 0% hit rate, which would be a
+ * second unmeasured claim inside the file that exists to end the first
+ * (`docs/RULINGS.md` Attack 4, item 7). At this build's sizes nothing is
+ * stamped at all, and `cacheSentence` says that in words.
+ * @param {import('./wire.js').Message|undefined} system
+ * @returns {Array<Record<string, unknown>>}
+ */
+function systemOf(system) {
+  const content = system?.content ?? []
+  const until = system?.cacheUntil ?? -1
+  const head = estimateParts(content.slice(0, until + 1), IMAGE_RULES.anthropic).tokens
+  return breakpointed(content.map(partJson), cacheOffer(PROVIDER, head).offered ? until : -1)
+}
+
+/**
+ * `until < 0` is the only reachable refusal: the caller maps the same content
+ * the index was computed over. @param {Array<Record<string, unknown>>} blocks @param {number} until
  */
 function breakpointed(blocks, until) {
-  if (until < 0 || until >= blocks.length) return blocks
+  if (until < 0) return blocks
   return blocks.map((b, i) => (i === until ? { ...b, cache_control: { type: 'ephemeral' } } : b))
 }
 

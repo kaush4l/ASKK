@@ -1,6 +1,8 @@
 import { expect, test, describe } from 'bun:test'
 import { assemble, messagesOf, UNLIMITED_BUDGET, SLOT, sectionOf, text, IMAGE_RULES } from '@harness/context'
 import { comp, source, state, soul, contract } from './paper.js'
+import { blocksFor, cardFor, AT } from './matrix.js'
+import { paperOf, budgetFor } from '@harness/context'
 
 /** @typedef {import('@harness/context').ModelCard} ModelCard */
 /** @typedef {import('@harness/context').Message} Message */
@@ -125,4 +127,21 @@ test('a section is framed by its own id and intent, which is how a model finds i
   const s = sectionOf(comp({ id: 'goal', slot: SLOT.GOAL, stability: 'static', priority: 1, render: () => text('ship it') }), 7)
   const doc = assemble({ stage: 'work', sources: [source(soul), { section: s, summary: null }, source(contract)] }, UNLIMITED_BUDGET)
   expect(whole(messagesOf(doc, card()))).toContain('## goal\n(what goal answers)\nship it\n')
+})
+
+describe('only the system message ever carries a breakpoint', () => {
+  test('the spoken message opens with a dated section, so its cacheUntil is -1', () => {
+    // The typedef promises per-message semantics; this is the fact behind it.
+    // `history`, `observations` and `directive` are all `cacheable: false`, so
+    // the transcript's first section is dated and there is no head to keep. If
+    // a cacheable block ever lands at HISTORY, this breaks loudly rather than
+    // the adapter dropping a breakpoint nobody was looking for.
+    for (const kind of /** @type {const} */ (['text', 'tools', 'image', 'thinking'])) {
+      const of = cardFor('anthropic', kind)
+      const doc = assemble(paperOf('work', blocksFor(kind), AT), budgetFor(of), IMAGE_RULES.anthropic)
+      const [system, user] = messagesOf(doc, of)
+      expect(system?.cacheUntil).toBeGreaterThanOrEqual(0)
+      expect(user?.cacheUntil).toBe(-1)
+    }
+  })
 })
