@@ -57,6 +57,20 @@ Gate: `bun run gate` = `tsc --checkJs` + `bun test packages` + the I12 size chec
    `ModelReply` separates `reasoning` from `text` so a reasoning model's scratch
    is never fed back as history.
 
+6. **Bun's batteries are BUILD-TIME, and that is measured.** `Bun.markdown`
+   (`.html`/`.ansi`/`.react`), `Bun.YAML`, `Bun.TOML`, `HTMLRewriter` and
+   `Bun.SQL` all exist in Bun 1.4 — and `bun build --target=browser` emits
+   `Bun.markdown.html(...)` **verbatim**, so none of them exists in the page.
+   Measured, not assumed. Therefore:
+   - Markdown a person reads is parsed by ours into a TYPED BLOCK TREE in
+     `packages/context`, and the UI renders that tree to React elements. No
+     HTML string, no `dangerouslySetInnerHTML`, so a model cannot inject markup
+     into the page it is talking to — the safety is structural, not a sanitizer.
+   - Agent files are parsed by ours too, because a person may author one in the
+     browser and a build-time parse cannot see it.
+   - Bun's own batteries are used where they belong: the gate, the scripts, and
+     anything that runs before the page ships.
+
 ## Open questions
 
 - Which of the nine ports survive (the `ports` critique decides).
