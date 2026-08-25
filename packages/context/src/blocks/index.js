@@ -19,9 +19,8 @@
  * a component is already a plain object with a `render` function, so `memory`
  * and `space` are ordinary blocks that take their content as an argument, and
  * the generic wrapper has nothing left to do here. It is still live in
- * `packages/agent/src/paper.js`, which is what fills those two today. `artifacts` has no
- * filler in this build at all and is therefore not here; `SLOT.USER` is the
- * same case — a slot kept numbered, with nothing in this build that writes the
+ * `packages/agent/src/faculty/`, which is what fills those two today.
+ * `SLOT.USER` is the same case — a slot kept numbered, with nothing in this build that writes the
  * person's settled facts, and a block with no filler is a block nobody can
  * construct.
  * @module

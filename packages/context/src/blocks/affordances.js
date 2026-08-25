@@ -15,15 +15,13 @@
  * inside it — and a paragraph telling the model to write calls into its answer
  * teaches it to defeat the mechanism that replaced it.
  *
- * THE PROTOCOL IS NOT RETIRED FROM THE BUILD. `packages/agent/src/paper.js`
- * holds a second wording of this same vocabulary, and its `HOW_TO_CALL` and
- * `ENVELOPE` constants still teach the text protocol verbatim. `ask.js` — the
- * only site in this build that assembles a prompt for a model — imports from
- * that file and not from here, so those are the bytes a model actually
- * receives and this folder's goldens pin bytes nothing sends. Neither the
- * comment above nor the test that greps this block for `separated by commas`
- * is evidence that the prompt on the wire is clean. Filed as a cross-lane
- * request in `STATUS.md`; only lane B can close it.
+ * THE PROTOCOL IS NOW RETIRED FROM THE BUILD, and it took a second lane to do
+ * it. A duplicate wording of this block lived in `packages/agent/src/paper.js`
+ * with a `HOW_TO_CALL` paragraph teaching the text protocol verbatim, and the
+ * loop imported that file rather than this one — so the comment above was true
+ * about this block and false about the prompt. The loop now imports this
+ * vocabulary and that file is gone; `grep -rn 'separated by commas' packages`
+ * returns nothing, and the golden matrix pins the bytes that are actually sent.
  *
  * The listing itself stays. A schema list on the wire says what a tool ACCEPTS;
  * this says what the agent HAS, in the order its toolbox resolved them, which

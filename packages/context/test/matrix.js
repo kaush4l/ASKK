@@ -11,14 +11,13 @@
  */
 
 import {
-  UNLIMITED_BUDGET, modelCard, assemble, adapterFor, paperOf,
+  modelCard, requestFor, paperOf,
   soul, identity, operatingRules, goal, affordances, memory, space,
   environment, task, history, observations, directive, prose, toolEnvelope, shaped,
   SLOT,
 } from '@harness/context'
 
 /** @typedef {import('@harness/context').Component} Component */
-/** @typedef {import('@harness/context').Budget} Budget */
 
 /** A fixed moment: every golden must be reproducible, and a clock is not. */
 export const AT = 1_750_000_000_000
@@ -27,15 +26,20 @@ export const PROVIDERS = /** @type {const} */ (['openai', 'anthropic', 'gemini']
 export const KINDS = /** @type {const} */ (['text', 'image', 'tools', 'thinking'])
 
 /**
- * The three budgets, and the middle one is the whole point: `unbudgeted` shows
+ * The three windows, and the middle one is the whole point: `unbudgeted` shows
  * the paper whole, `impossible` shows what survives when nothing fits, and
  * `tight` is the one that actually bites and has to choose.
- * @type {Record<string, Budget>}
+ *
+ * WINDOWS AND NOT BUDGETS, since the goldens run through `requestFor` and the
+ * budget is derived from the card there. A matrix that handed `assemble` a
+ * budget nobody could have derived would test an arithmetic the product does
+ * not use. These leave 188,976 / 200 / 24 tokens for the paper.
+ * @type {Record<string, number>}
  */
-export const BUDGETS = {
-  unbudgeted: UNLIMITED_BUDGET,
-  tight: { maxTokens: 200 },
-  impossible: { maxTokens: 24 },
+export const WINDOWS = {
+  unbudgeted: 200_000,
+  tight: 584,
+  impossible: 408,
 }
 
 /**
@@ -176,12 +180,20 @@ export function replayFor(provider, kind) {
 
 /**
  * One cell of the matrix: the document, and the body a provider would receive.
+ *
+ * THROUGH `requestFor`, the package's one entry point and therefore the one
+ * the loop calls. A golden recorded through a composition the test file
+ * assembled for itself pins bytes the test agrees with; this pins bytes the
+ * product sends.
  * @param {string} provider @param {string} budget @param {string} kind
  */
 export function cell(provider, budget, kind) {
-  const adapter = adapterFor(provider)
-  const card = cardFor(provider, kind)
-  const doc = assemble(paperOf('work', blocksFor(kind), AT), BUDGETS[budget] ?? UNLIMITED_BUDGET, adapter.images)
-  const tools = kind === 'tools' || kind === 'thinking' ? TOOLS : []
-  return { doc, body: adapter.buildRequest(doc, card, tools, { replay: replayFor(provider, kind), temperature: 0.2 }) }
+  const { document, body } = requestFor({
+    state: paperOf('work', blocksFor(kind), AT),
+    card: { ...cardFor(provider, kind), contextTokens: WINDOWS[budget] ?? WINDOWS['unbudgeted'] ?? 0 },
+    tools: kind === 'tools' || kind === 'thinking' ? TOOLS : [],
+    replay: replayFor(provider, kind),
+    temperature: 0.2,
+  })
+  return { doc: document, body }
 }

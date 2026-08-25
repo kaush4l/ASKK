@@ -1,6 +1,6 @@
 import { expect, test, describe } from 'bun:test'
 import { Glob } from 'bun'
-import { PROVIDERS, KINDS, BUDGETS, cell, cardFor, blocksFor, AT } from './matrix.js'
+import { PROVIDERS, KINDS, WINDOWS, cell, cardFor, blocksFor, AT } from './matrix.js'
 import { assemble, adapterFor, paperOf, UNLIMITED_BUDGET } from '@harness/context'
 
 /**
@@ -17,7 +17,7 @@ import { assemble, adapterFor, paperOf, UNLIMITED_BUDGET } from '@harness/contex
  * proves the code agrees with itself.
  */
 const DIR = new URL('./fixtures/matrix/', import.meta.url).pathname
-const BUDGET_NAMES = Object.keys(BUDGETS)
+const BUDGET_NAMES = Object.keys(WINDOWS)
 
 /** @param {string} name @param {unknown} value */
 async function golden(name, value) {

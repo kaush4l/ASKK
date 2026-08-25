@@ -24,6 +24,7 @@
  */
 
 import { isSystemSlot, isTail } from './slot.js'
+import { stablePrefix } from './cache.js'
 
 /** @typedef {import('./types.js').Document} Document */
 /** @typedef {import('./types.js').Part} Part */
@@ -34,7 +35,13 @@ import { isSystemSlot, isTail } from './slot.js'
 /**
  * One rendered message. Content is ALWAYS the array form: a provider that
  * wants a bare string is one adapter's collapse, not this layer's decision.
- * @typedef {{role: 'system'|'user'|'assistant', content: Part[]}} Message
+ *
+ * `cacheUntil` is the index of the LAST content block that is byte-identical
+ * to the same message on the next turn, or -1 when nothing here is. An adapter
+ * whose API takes an explicit breakpoint stamps that block; one whose provider
+ * caches prefixes implicitly needs no field and gets the same guarantee from
+ * the same boundary, which is why the split is here and not in three adapters.
+ * @typedef {{role: 'system'|'user'|'assistant', content: Part[], cacheUntil: number}} Message
  */
 
 /**
@@ -49,8 +56,8 @@ export function messagesOf(doc, card) {
   const system = heard.filter((s) => isSystemSlot(s.slot) && !isTail(s.slot))
   const spoken = heard.filter((s) => !isSystemSlot(s.slot) || isTail(s.slot))
   return [
-    { role: 'system', content: render(system, card, null) },
-    { role: 'user', content: render(spoken, card, doc.report) },
+    { role: 'system', ...render(system, card, null) },
+    { role: 'user', ...render(spoken, card, doc.report) },
   ]
 }
 
@@ -58,14 +65,22 @@ export function messagesOf(doc, card) {
  * Sections as content blocks: prose joins one running text, a part this model
  * can hear becomes its own block AT THAT POSITION, and one it cannot becomes a
  * named placeholder — never a silent drop (I15).
+ *
+ * The one forced block boundary is the cache breakpoint. Prose would otherwise
+ * run from the soul straight through the clock into one string, and a single
+ * string is all-or-nothing to a cache: one changed timestamp at the end of it
+ * re-reads the agent's whole character. Flushing at the end of the stable
+ * prefix is what makes the head reusable, and `cacheUntil` is where it ended.
  * @param {Section[]} sections @param {ModelCard} card @param {CompactionReport|null} report
- * @returns {Part[]}
+ * @returns {{content: Part[], cacheUntil: number}}
  */
 function render(sections, card, report) {
+  const stable = stablePrefix(sections)
   /** @type {Part[]} */
   const out = []
   let text = ''
-  for (const s of sections) {
+  let cacheUntil = -1
+  sections.forEach((s, i) => {
     if (report && isTail(s.slot)) text += compactionNotice(report)
     text += `## ${s.id}\n(${s.intent})\n`
     for (const p of s.parts) {
@@ -77,9 +92,14 @@ function render(sections, card, report) {
       } else text += `${withheldLine(p)}\n`
     }
     text += '\n'
-  }
+    if (i === stable - 1) {
+      if (text) out.push({ type: 'text', text })
+      text = ''
+      cacheUntil = out.length - 1
+    }
+  })
   if (text) out.push({ type: 'text', text })
-  return out
+  return { content: out, cacheUntil }
 }
 
 /**

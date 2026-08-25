@@ -86,11 +86,36 @@ describe('an absent faculty and an empty one are different facts', () => {
   })
 
   test('a faculty that IS there and has nothing to report says so', () => {
-    expect(at([observations()], 'observations')?.parts).toStrictEqual([{ type: 'text', text: 'No actions taken yet.' }])
-    expect(at([task()], 'task')?.parts).toStrictEqual([{ type: 'text', text: 'Idle; awaiting a task.' }])
+    expect(at([observations()], 'observations')?.parts).toStrictEqual([
+      { type: 'text', text: 'No tool results have come back yet this turn.' },
+    ])
     expect(at([affordances()], 'affordances')?.parts[0]).toStrictEqual({
       type: 'text', text: 'No tools are installed; answer from what you know.',
     })
+  })
+
+  test('and it scopes the absence to the turn, because that is what the array holds', () => {
+    // "No actions taken yet." was false on the first call of every turn after
+    // the first: the actions were in `## history` two blocks below it (I16).
+    const said = at([observations()], 'observations')?.parts[0]
+    expect(said?.type === 'text' ? said.text : '').toContain('this turn')
+  })
+
+  test('nothing to attempt is NO task block — the one moment it could say "idle" it would be lying', () => {
+    // A paper is only ever assembled to make a call, so an agent rendering this
+    // block is by construction not idle: the request is in `## history`.
+    expect(at([task()], 'task')?.fidelity).toBe('elided')
+    expect(at([task('  ')], 'task')?.fidelity).toBe('elided')
+    expect(at([task('file the plan')], 'task')?.parts).toStrictEqual([{ type: 'text', text: 'file the plan' }])
+  })
+
+  test('a cleared agent file is the house default, not a paper with no head', () => {
+    // `isHead` refuses a paper with neither soul nor identity, so an empty body
+    // that elided would stop the agent taking a turn at all.
+    const bodyOf = (/** @type {string|undefined} */ p) => body(soul(p))
+    expect(bodyOf('')).toBe(bodyOf(undefined))
+    expect(bodyOf('   \n  ')).toBe(bodyOf(undefined))
+    expect(bodyOf('')).toContain('You are HARNESS')
   })
 
   test('a fresh window holds the marker entry and not an empty list', () => {

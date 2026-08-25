@@ -1,7 +1,20 @@
 {
   "openai": {
     "budget": {
-      "maxTokens": 200
+      "maxTokens": 200,
+      "window": 584,
+      "subtractions": [
+        {
+          "name": "reply",
+          "tokens": 256,
+          "why": "an eighth of the 584-token window, clamped to 256..4096"
+        },
+        {
+          "name": "estimator reserve",
+          "tokens": 128,
+          "why": "5% of the window: the estimate is arithmetic, not a tokenizer"
+        }
+      ]
     },
     "spent": 211,
     "steps": [
@@ -46,7 +59,20 @@
   },
   "anthropic": {
     "budget": {
-      "maxTokens": 200
+      "maxTokens": 200,
+      "window": 584,
+      "subtractions": [
+        {
+          "name": "reply",
+          "tokens": 256,
+          "why": "an eighth of the 584-token window, clamped to 256..4096"
+        },
+        {
+          "name": "estimator reserve",
+          "tokens": 128,
+          "why": "5% of the window: the estimate is arithmetic, not a tokenizer"
+        }
+      ]
     },
     "spent": 211,
     "steps": [
@@ -91,7 +117,20 @@
   },
   "gemini": {
     "budget": {
-      "maxTokens": 200
+      "maxTokens": 200,
+      "window": 584,
+      "subtractions": [
+        {
+          "name": "reply",
+          "tokens": 256,
+          "why": "an eighth of the 584-token window, clamped to 256..4096"
+        },
+        {
+          "name": "estimator reserve",
+          "tokens": 128,
+          "why": "5% of the window: the estimate is arithmetic, not a tokenizer"
+        }
+      ]
     },
     "spent": 211,
     "steps": [

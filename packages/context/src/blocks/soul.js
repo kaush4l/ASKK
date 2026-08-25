@@ -5,6 +5,16 @@
  * place an agent's character is written down, which is why this block takes a
  * string rather than a set of fields — the moment it took fields, half the
  * character would live in a schema and half in prose.
+ *
+ * AN EMPTY FILE IS THE HOUSE DEFAULT, NOT AN EMPTY BLOCK, and the reason is
+ * structural rather than editorial. `isHead` requires a soul or an identity to
+ * survive assembly; a blank body renders no parts, elides, and takes a paper
+ * with no identity block down with `no_head` — so an agent whose file a person
+ * has just cleared cannot take a turn. The other wording of this block, in the
+ * loop's own file, rendered whatever it was handed and pushed that hazard onto
+ * every call site: the loop was written to say `soul(prompt.trim() || undefined)`
+ * to dodge it. A default that only fires on `undefined` is a default that does
+ * not fire on the case that occurs.
  * @module
  */
 
@@ -24,6 +34,7 @@ export const DEFAULT_SOUL =
  * @returns {Component}
  */
 export function soul(body = DEFAULT_SOUL) {
+  const written = body.trim() === '' ? DEFAULT_SOUL : body
   return {
     id: 'soul',
     slot: SLOT.SOUL,
@@ -31,7 +42,7 @@ export function soul(body = DEFAULT_SOUL) {
     stability: 'static',
     priority: 0,
     floor: 'summarized',
-    render: () => text(nested(body.trim())),
+    render: () => text(nested(written.trim())),
   }
 }
 

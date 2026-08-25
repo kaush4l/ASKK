@@ -24,6 +24,8 @@ export { STABILITIES, FIDELITIES, nextFidelity, UNLIMITED_BUDGET } from './types
 export { SLOT, isHead, isTail, isSystemSlot } from './slot.js'
 export { text, keyOf, sectionOf } from './component.js'
 export { assemble } from './assemble.js'
+export { requestFor } from './request.js'
+export { stablePrefix, cacheHitRatio, cacheSentence } from './cache.js'
 export { dropOldest, headAndTail, usePrecomputedSummary, TURN_ROLES, turnRoleOf } from './fit.js'
 export { escape as escapeUntrusted, nonceFor } from './envelope.js'
 export { modelCard, modelCards } from './card.js'
@@ -61,6 +63,8 @@ export { SUMMARIZE, COMPACT_PROMPT, FOLD_PROMPT, mapSheet, foldSheet } from './s
 /** @typedef {import('./estimate.js').Estimate} Estimate */
 /** @typedef {import('./image.js').ImageRule} ImageRule */
 /** @typedef {import('./wire.js').Message} Message */
+/** @typedef {import('./request.js').Asking} Asking */
+/** @typedef {import('./request.js').ModelRequest} ModelRequest */
 /** @typedef {import('./provider.js').ProviderAdapter} ProviderAdapter */
 /** @typedef {import('./provider.js').ProviderReply} ProviderReply */
 /** @typedef {import('./provider.js').ProviderUsage} ProviderUsage */

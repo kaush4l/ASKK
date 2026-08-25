@@ -64,7 +64,7 @@ function buildRequest(doc, card, tools, opts = {}) {
     model: card.model,
     stream: opts.stream === true,
     max_tokens: card.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
-    system: (system?.content ?? []).map(partJson),
+    system: breakpointed((system?.content ?? []).map(partJson), system?.cacheUntil ?? -1),
     messages: [...(opts.replay ?? []).flatMap(replayMessages), { role: 'user', content: (user?.content ?? []).map(partJson) }],
   }
   if (tools.length > 0) {
@@ -92,6 +92,25 @@ function replayMessages(turn) {
   const messages = [{ role: 'assistant', content }]
   if (results.length > 0) messages.push({ role: 'user', content: results })
   return messages
+}
+
+/**
+ * THE CACHE BREAKPOINT, STAMPED. This is the only API of the three that takes
+ * one explicitly: a block carrying `cache_control` tells Anthropic to keep
+ * everything up to and including it and to re-read only what follows.
+ *
+ * It goes on the LAST block of the byte-stable prefix and nowhere else, which
+ * `wire.js` computed. One breakpoint and not four: each is a separate cache
+ * entry with its own write cost, and stamping every stable block would pay to
+ * store four prefixes of one prompt. The claim this stamp finally makes
+ * executable is `Stability`'s — the Rust asserted the breakpoints were applied
+ * "when the body is written" and `grep -rn cache_control crates/context` was
+ * empty (`docs/RULINGS.md` Attack 4, item 7).
+ * @param {Array<Record<string, unknown>>} blocks @param {number} until
+ */
+function breakpointed(blocks, until) {
+  if (until < 0 || until >= blocks.length) return blocks
+  return blocks.map((b, i) => (i === until ? { ...b, cache_control: { type: 'ephemeral' } } : b))
 }
 
 /** One neutral part as an Anthropic content block. @param {Part} p */

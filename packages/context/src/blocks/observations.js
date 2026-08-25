@@ -18,11 +18,19 @@ import { SLOT } from '../slot.js'
 /** @typedef {import('../component.js').Component} Component */
 
 /**
- * An agent that has done nothing is told so. "Nothing here" and "this block
- * was dropped" are different facts and a model cannot tell them apart from an
- * absence, so the first one is stated.
+ * An agent whose last round returned nothing is told so. "Nothing here" and
+ * "this block was dropped" are different facts and a model cannot tell them
+ * apart from an absence, so the first one is stated. The loop's own wording of
+ * this block stated nothing at all and let the block elide, which is the case
+ * the paragraph above is named after.
+ *
+ * IT SAYS "THIS TURN" BECAUSE THE ARRAY MEANS THIS TURN. `AgentState.observations`
+ * is the current round's results and is emptied when a turn begins, so the
+ * sentence this block used to carry — "No actions taken yet." — was false on
+ * the first call of every turn after the first: actions had been taken, they
+ * were in `## history`, and the paper contradicted itself two blocks apart (I16).
  */
-const NONE = 'No actions taken yet.'
+const NONE = 'No tool results have come back yet this turn.'
 
 /**
  * @param {string[]} [lines]

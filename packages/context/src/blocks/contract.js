@@ -69,10 +69,13 @@ export function prose() {
  * correlated by id, and prose describing a text protocol would teach the model
  * to bypass the one that works.
  *
- * The protocol is not retired from the build. `packages/agent/src/paper.js`
- * still emits it from its own `ENVELOPE` constant, and `ask.js` — the only
- * prompt assembly a model sees — imports that file rather than this one. See
- * the note in `affordances.js` and the cross-lane request in `STATUS.md`.
+ * The second wording that did still teach it — the loop's own `ENVELOPE`
+ * constant — is gone, and the loop pairs these three functions at its call
+ * site: the envelope is offered only where the stage's grant actually holds a
+ * tool, because telling a model it may call tools and then showing it none is
+ * an invitation to invent one. That pairing is the loop's to make, not this
+ * file's: which tools a stage granted is a fact about the grant, and a block
+ * cannot see one.
  */
 export function toolEnvelope() {
   return saying(
