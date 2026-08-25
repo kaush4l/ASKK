@@ -1,3 +1,0 @@
-module.exports=[54438,a=>{"use strict";var b=a.i(93696);a.s(["default",0,function({children:a}){return(0,b.jsx)("html",{lang:"en",children:(0,b.jsx)("body",{children:a})})},"metadata",0,{title:"HARNESS",description:"A personal agent harness that runs entirely in your browser."},"viewport",0,{width:"device-width",initialScale:1,viewportFit:"cover",themeColor:[{media:"(prefers-color-scheme: light)",color:"#f7f7f5"},{media:"(prefers-color-scheme: dark)",color:"#0d0f12"}]}])},685,function(a){a.n(a.i(54438))}];
-
-//# sourceMappingURL=apps_web_app_layout_jsx_12lzdaf._.js.map

@@ -32,3 +32,10 @@ docs/bin/
 docs/wasm/
 .gstack/
 __pycache__/
+
+# --- the JavaScript tree ---
+node_modules/
+.next/
+apps/web/out/
+.deploy/
+*.tsbuildinfo
