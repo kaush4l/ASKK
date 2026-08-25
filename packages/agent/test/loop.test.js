@@ -60,7 +60,7 @@ async function said(model, call, state, finish) {
   const reply = await model.call(call.endpoint, { document: call.document, observations: state.observations })
   return {
     at: AT, turnId: call.turnId,
-    fact: { type: 'model_replied', agent: 'main', text: reply.text, reasoning: reply.reasoning },
+    fact: { type: 'model_replied', agent: 'main', text: reply.text, reasoning: reply.reasoning, finish: 'stop' },
     reply: { calls: reply.calls, finish },
   }
 }
@@ -69,7 +69,7 @@ async function said(model, call, state, finish) {
 function did(invoke, result) {
   return {
     at: AT, turnId: invoke.turnId, callId: invoke.callId,
-    fact: { type: 'tool_invoked', agent: 'main', tool: invoke.tool, args: invoke.args, ...result },
+    fact: { type: 'tool_invoked', agent: 'main', tool: invoke.tool, args: invoke.args, ...result, onBehalfOf: '' },
   }
 }
 

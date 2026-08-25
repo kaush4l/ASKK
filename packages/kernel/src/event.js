@@ -9,6 +9,25 @@
  *   2. `fact` is a NESTED object, so envelope metadata can never collide with
  *      a payload key, and a new payload key is additive by construction.
  *
+ * `turnId` IS ON THE ENVELOPE, NOT IN THE FACT, and that placement is the
+ * point. Turn identity is metadata about WHEN a fact happened, exactly like
+ * `seq` and `at` — so the one append door stamps it and no constructor has to
+ * remember. Putting it in the payload would have meant every fact literal in
+ * every test carrying a field the appender already knows, and the ones that
+ * forgot would be the ones a replay could not reproduce. I21 needs it
+ * PERSISTED, because a replay that cannot see which turn a fact belonged to
+ * cannot reproduce the drops the reducer makes live; `''` means the fact
+ * belongs to no turn, which is true of every system fact.
+ *
+ * TWO PAYLOAD FIELDS THAT ARE NOT DECORATION. `finish` is the provider's own
+ * reason for stopping, carried rather than inferred — a call-less reply that
+ * is really a truncation, a refusal or a content filter must not replay as an
+ * answer, which is what inferring it from `calls.length` made them all do.
+ * `onBehalfOf` is WHOSE ERRAND a tool call was: a delegated call is recorded
+ * against the agent that RAN it and names the agent that ASKED, so a lead's
+ * transcript and a sub-agent's are both right without either hand-stamping the
+ * other's rows.
+ *
  * ELEVEN TYPES, NOT TWELVE. The Rust vocabulary had `ModuleDeactivated` and
  * `ModuleReactivated`, and a measurement of the tree found ZERO construction
  * sites and ZERO readers for either — a closed vocabulary carrying two words
@@ -35,15 +54,15 @@ export const EVENT_VERSION = 1
  *   | {type: 'module_removed', module: string, version: string}
  *   | {type: 'stage_entered', agent: string, stage: StageId, turnId: string}
  *   | {type: 'model_called', agent: string, documentHash: string, spentTokens: number, evicted: string[]}
- *   | {type: 'model_replied', agent: string, text: string, reasoning: string}
- *   | {type: 'tool_invoked', agent: string, tool: string, args: string, ok: boolean, output: string}
+ *   | {type: 'model_replied', agent: string, text: string, reasoning: string, finish: string}
+ *   | {type: 'tool_invoked', agent: string, tool: string, args: string, ok: boolean, output: string, onBehalfOf: string}
  *   | {type: 'agent_status', agent: string, status: Status, detail: string}
  *   | {type: 'store_failed', key: string, message: string}
  *   | {type: 'custom', kind: string, payload: unknown}
  * )} Fact
  */
 
-/** @typedef {{id: EventId, seq: number, at: Timestamp, v: number, fact: Fact}} Event */
+/** @typedef {{id: EventId, seq: number, at: Timestamp, turnId: string, v: number, fact: Fact}} Event */
 
 /** Every fact type, so a reader can refuse an unknown one by name. */
 export const FACT_TYPES = /** @type {const} */ ([
@@ -90,12 +109,13 @@ export class EventLog {
    * view a trustworthy projection.
    * @param {Fact} fact
    * @param {Timestamp} at injected (I7)
+   * @param {string} [turnId] which turn this fact belongs to; '' for none
    * @returns {Event}
    */
-  append(fact, at) {
+  append(fact, at, turnId = '') {
     const seq = this.events.length
     /** @type {Event} */
-    const event = { id: seq, seq, at, v: EVENT_VERSION, fact }
+    const event = { id: seq, seq, at, turnId, v: EVENT_VERSION, fact }
     this.events.push(event)
     return event
   }

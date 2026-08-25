@@ -13,14 +13,14 @@ const said = (text, turnId) => ({ at: AT, turnId, fact: { type: 'user_message', 
 /** @param {string} turnId @param {Array<{id: string, tool: string, args: string}>} calls @returns {Incoming} */
 const replied = (turnId, calls) => ({
   at: AT, turnId,
-  fact: { type: 'model_replied', agent: 'main', text: '', reasoning: '' },
+  fact: { type: 'model_replied', agent: 'main', text: '', reasoning: '', finish: 'stop' },
   reply: { calls, finish: /** @type {const} */ ('tool_calls') },
 })
 
 /** @param {string} turnId @param {string} [callId] @returns {Incoming} */
 const ran = (turnId, callId = 'c1') => ({
   at: AT, turnId, callId,
-  fact: { type: 'tool_invoked', agent: 'main', tool: 'exec', args: '{}', ok: true, output: 'done' },
+  fact: { type: 'tool_invoked', agent: 'main', tool: 'exec', args: '{}', onBehalfOf: '', ok: true, output: 'done' },
 })
 
 const CALL = { id: 'c1', tool: 'exec', args: '{"command":"ls"}' }
@@ -146,7 +146,7 @@ describe('the stop', () => {
     const asked = step(equipped(), said('do the thing', 'turn-1'))
     const stopping = step(asked.state, stopPressed)
     /** @type {Incoming} */
-    const blind = { at: AT, turnId: 'turn-1', fact: { type: 'model_replied', agent: 'main', text: 'hello', reasoning: '' } }
+    const blind = { at: AT, turnId: 'turn-1', fact: { type: 'model_replied', agent: 'main', text: 'hello', reasoning: '', finish: 'stop' } }
 
     // A signal-less reply now ENDS the turn as malformed rather than being
     // dropped, and an ending is not work — so the press still has nothing to cut

@@ -21,7 +21,7 @@ function asked(calling) {
 /** A reply whose calls are in the PROSE, which is all a model without a tool API can do. @param {string} text @returns {Incoming} */
 const wrote = (text) => ({
   at: AT, turnId: 'turn-1',
-  fact: { type: 'model_replied', agent: 'main', text, reasoning: '' },
+  fact: { type: 'model_replied', agent: 'main', text, reasoning: '', finish: 'stop' },
   reply: { calls: [], finish: 'stop' },
 })
 

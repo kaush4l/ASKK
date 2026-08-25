@@ -37,11 +37,19 @@ import { emit } from './effect.js'
  * for any prose, so "no call in this text" read as "the model answered", and a
  * truncated reply, a refusal and a real answer were one outcome. That is why a
  * hand-rolled `malformed_call` heuristic existed, and it is not ported.
- * @typedef {'stop' | 'tool_calls' | 'length' | 'refusal' | 'error'} FinishReason
+ *
+ * THE VOCABULARY IS THE KERNEL'S, not this package's. It was spelled here as
+ * well until the port gained `ModelReply.finish`, and the two spellings had
+ * already diverged by two words — `content_filter` and `unknown`, both of which
+ * a real provider sends and neither of which this list could name. A signal the
+ * loop cannot name is a turn that ends without a reason.
+ * @typedef {import('@harness/kernel').FinishReason} FinishReason
  */
 
 /** @type {readonly FinishReason[]} */
-export const FINISH_REASONS = /** @type {const} */ (['stop', 'tool_calls', 'length', 'refusal', 'error'])
+export const FINISH_REASONS = /** @type {const} */ ([
+  'stop', 'tool_calls', 'length', 'content_filter', 'refusal', 'error', 'unknown',
+])
 
 /** One native tool call, already parsed by the model port — `id` is the provider's, and it is what a result correlates by. @typedef {{id: string, tool: ToolId, args: string}} ToolCall */
 

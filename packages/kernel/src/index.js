@@ -41,6 +41,7 @@ export { matchesRoute, readManifest } from './manifest.js'
 /** @typedef {import('./ports.js').StorePort} StorePort */
 /** @typedef {import('./ports.js').ModelPort} ModelPort */
 /** @typedef {import('./ports.js').ModelReply} ModelReply */
+/** @typedef {import('./ports.js').FinishReason} FinishReason */
 /** @typedef {import('./ports.js').Usage} Usage */
 /** @typedef {import('./ports.js').NetPort} NetPort */
 /** @typedef {import('./ports.js').BrokeredRequest} BrokeredRequest */

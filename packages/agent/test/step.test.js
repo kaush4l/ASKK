@@ -17,14 +17,14 @@ const said = (text, turnId) => ({ at: AT, turnId, fact: { type: 'user_message', 
 /** @param {string} turnId @param {FinishReason} finish @param {Array<{id: string, tool: string, args: string}>} calls @returns {Incoming} */
 const replied = (turnId, finish, calls = []) => ({
   at: AT, turnId,
-  fact: { type: 'model_replied', agent: 'main', text: 'whatever the model said', reasoning: '' },
+  fact: { type: 'model_replied', agent: 'main', text: 'whatever the model said', reasoning: '', finish: 'stop' },
   reply: { calls, finish },
 })
 
 /** @param {string} turnId @param {string} callId @param {string} tool @param {boolean} ok @param {string} output @returns {Incoming} */
 const ran = (turnId, callId, tool, ok, output) => ({
   at: AT, turnId, callId,
-  fact: { type: 'tool_invoked', agent: 'main', tool, args: '{}', ok, output },
+  fact: { type: 'tool_invoked', agent: 'main', tool, args: '{}', onBehalfOf: '', ok, output },
 })
 
 const BOX = [
@@ -99,10 +99,15 @@ describe('a turn ending on a signal, never on silence', () => {
   test('a signal no build here names is quoted back, so the ending can still say why', () => {
     // The cast IS the test: `content_filter` is a live OpenAI finish_reason that
     // `FinishReason` cannot describe, and it crosses the package boundary anyway.
-    const filtered = replied('turn-1', /** @type {FinishReason} */ (/** @type {unknown} */ ('content_filter')))
-    const { state, effects } = step(asked(), filtered)
+    // `end_turn` is Anthropic's, and the kernel's vocabulary is OpenAI-shaped:
+    // a real signal, from a real provider, that no name in this build matches.
+    // `content_filter` used to stand here and no longer can — it was added to
+    // the vocabulary the day the port started reporting the provider's own
+    // reason, which is the outcome this test wanted and not the one it asserts.
+    const foreign = replied('turn-1', /** @type {FinishReason} */ (/** @type {unknown} */ ('end_turn')))
+    const { state, effects } = step(asked(), foreign)
     expect(state.turnId).toBe('')
-    expect(endedWhy(payloadOf(effects, ENDED))).toBe('unknown finish signal "content_filter"')
+    expect(endedWhy(payloadOf(effects, ENDED))).toBe('unknown finish signal "end_turn"')
   })
 
   test('a model with no native call API ends its turn by CALLING respond', () => {
@@ -114,7 +119,7 @@ describe('a turn ending on a signal, never on silence', () => {
   })
 
   test('a reply carrying no signal at all ENDS the turn as malformed — a broken reply is not a wait', () => {
-    const blind = { at: AT, turnId: 'turn-1', fact: /** @type {const} */ ({ type: 'model_replied', agent: 'main', text: 'hello', reasoning: '' }) }
+    const blind = { at: AT, turnId: 'turn-1', fact: /** @type {const} */ ({ type: 'model_replied', agent: 'main', text: 'hello', reasoning: '', finish: 'stop' }) }
     const { state, effects } = step(asked(), blind)
     // It used to be dropped, which left `awaiting: 'model'` set on a turn whose
     // model had already answered: nothing else was coming, and only a deadline

@@ -145,12 +145,12 @@ describe('agent state', () => {
     const asked = step(live, { at, turnId, fact: { type: 'user_message', text: 'fix it', agent: 'main', from: 'person' } })
     const wrote = step(asked.state, {
       at, turnId,
-      fact: { type: 'model_replied', agent: 'main', text: '', reasoning: '' },
+      fact: { type: 'model_replied', agent: 'main', text: '', reasoning: '', finish: 'stop' },
       reply: { calls: [{ id: 'c1', tool: 'write_file', args: '{"path":"a.md"}' }], finish: 'tool_calls' },
     })
     const landed = step(wrote.state, {
       at, turnId, callId: 'c1',
-      fact: { type: 'tool_invoked', agent: 'main', tool: 'write_file', args: '{"path":"a.md"}', ok: true, output: 'written' },
+      fact: { type: 'tool_invoked', agent: 'main', tool: 'write_file', args: '{"path":"a.md"}', onBehalfOf: '', ok: true, output: 'written' },
     })
     expect(landed.state.green).toBe(false)
     expect(landed.state.mutated).toBe(true)

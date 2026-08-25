@@ -49,7 +49,7 @@ function result(what) {
     at: what.at,
     turnId: what.turnId,
     callId: what.callId,
-    fact: { type: 'tool_invoked', agent: '', tool: what.tool, args: what.args, ok: what.ok, output: what.output },
+    fact: { type: 'tool_invoked', agent: '', tool: what.tool, args: what.args, ok: what.ok, output: what.output, onBehalfOf: '' },
   }
 }
 
@@ -71,7 +71,7 @@ export async function runDelegate(app, effect, opts) {
     const answer = await within(opts, (signal) => app.ports.agents.delegate(effect.agent, effect.goal, { signal }))
     if (answer === LATE) return [result({ ...call, ok: false, output: `${effect.agent} did not answer within ${lateAfter(opts)} seconds` })]
     return [
-      { at, turnId: null, fact: { type: 'model_replied', agent: effect.agent, text: answer, reasoning: '' } },
+      { at, turnId: null, fact: { type: 'model_replied', agent: effect.agent, text: answer, reasoning: '', finish: 'stop' } },
       result({ ...call, ok: true, output: answer }),
     ]
   } catch (cause) {

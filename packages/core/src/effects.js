@@ -111,15 +111,14 @@ function spoken(app, effect, reply, at) {
   facts.push({
     at,
     turnId: effect.turnId,
-    fact: { type: 'model_replied', agent: speaker, text: reply.text, reasoning: reply.reasoning },
-    // INFERRED, NOT REPORTED — and `step` only reads it when there are no
-    // calls, so every call-less reply ends ANSWERED whatever really happened.
-    // A truncation, a refusal and a content filter are one outcome again, which
-    // is what `ending.js` exists to have ended. Filed as a cross-lane request
-    // beside `turn.js`'s: `ModelReply` has no `finish`, and the port is the one
-    // layer that reads the provider's. Delete this comment and the inference
-    // together on the day it lands.
-    reply: { calls: reply.calls, finish: reply.calls.length > 0 ? 'tool_calls' : 'stop' },
+    fact: { type: 'model_replied', agent: speaker, text: reply.text, reasoning: reply.reasoning, finish: reply.finish },
+    // REPORTED, NOT INFERRED. This line used to read
+    // `reply.calls.length > 0 ? 'tool_calls' : 'stop'`, which made a
+    // truncation, a refusal and a content filter into one outcome — a
+    // completed answer — and that is precisely what `ending.js` was written to
+    // end. `ModelReply.finish` now carries the provider's own reason, because
+    // the port is the one layer that reads the wire.
+    reply: { calls: reply.calls, finish: reply.finish },
   })
   return facts
 }
@@ -145,7 +144,7 @@ function failed(app, turnId, message, cause) {
     {
       at,
       turnId,
-      fact: { type: 'model_replied', agent: app.me, text: '', reasoning: '' },
+      fact: { type: 'model_replied', agent: app.me, text: '', reasoning: '', finish: 'stop' },
       reply: { calls: [], finish: 'error' },
     },
   ]

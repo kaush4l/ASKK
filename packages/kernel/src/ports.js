@@ -50,10 +50,23 @@
  * fed back as history (it is this turn's scratch, not the conversation).
  * `calls` are provider-native tool calls, already parsed — the port is the only
  * layer that knows the provider's wire shape.
+ * `finish` is WHY THE PROVIDER STOPPED, and it is on the port because the port
+ * is the one layer that sees the wire. Without it a call-less reply has to be
+ * GUESSED at, and every guess reads the same: a completed answer. A truncation
+ * at the output ceiling, a refusal, a content filter and a finished sentence
+ * become one outcome — which is the exact failure the loop's ending vocabulary
+ * exists to prevent. `'unknown'` is a legal value and it is not a synonym for
+ * `'stop'`: a provider that does not say gets a turn that ends NAMING the
+ * string it could not read, rather than one that claims to have been answered.
+ * @typedef {'stop'|'tool_calls'|'length'|'content_filter'|'refusal'|'error'|'unknown'} FinishReason
+ */
+
+/**
  * @typedef {{
  *   text: string,
  *   reasoning: string,
  *   calls: Array<{id: string, tool: string, args: string}>,
+ *   finish: FinishReason,
  *   usage: Usage|null,
  *   raw: unknown,
  * }} ModelReply

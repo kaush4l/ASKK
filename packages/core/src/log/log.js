@@ -52,11 +52,12 @@ import { segStream, snapStream } from './segments.js'
  * @param {LogState} state
  * @param {Fact} fact
  * @param {Timestamp} at injected (I7)
+ * @param {string} [turnId] which turn this fact belongs to; '' for none
  * @returns {Event}
  */
-function appendTo(state, fact, at) {
+function appendTo(state, fact, at, turnId = '') {
   /** @type {Event} */
-  const event = { id: state.nextSeq, seq: state.nextSeq, at, v: EVENT_VERSION, fact }
+  const event = { id: state.nextSeq, seq: state.nextSeq, at, turnId, v: EVENT_VERSION, fact }
   state.nextSeq += 1
   state.tail.push(event)
   state.pending.push(event)

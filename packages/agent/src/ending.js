@@ -83,8 +83,13 @@ const BY_FINISH = {
   stop: ANSWERED,
   tool_calls: NO_CALLS,
   length: TRUNCATED,
+  content_filter: REFUSED,
   refusal: REFUSED,
   error: FAILED,
+  // A PROVIDER THAT DID NOT SAY. Not a synonym for `stop`: the reply may be
+  // complete, truncated or refused and nothing on the wire distinguishes them,
+  // so the turn ends saying it does not know rather than claiming an answer.
+  unknown: 'the provider did not say why it stopped',
 }
 
 /**

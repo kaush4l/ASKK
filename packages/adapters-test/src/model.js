@@ -15,6 +15,7 @@ import { ModelError } from '@harness/kernel'
  * @typedef {{
  *   text?: string, reasoning?: string,
  *   calls?: Array<{id?: string, tool: string, args: string}>,
+ *   finish?: import('@harness/kernel').FinishReason,
  *   fail?: ModelError, usage?: import('@harness/kernel').Usage,
  * }} Scripted
  */
@@ -34,7 +35,8 @@ export function scriptedModel(script, opts = {}) {
     resolves(asked) {
       return { endpoint: 'scripted', model: asked || 'scripted-model' }
     },
-    async call(_endpoint, body, callOpts) {
+    async call(endpoint, body, callOpts) {
+      void endpoint // the script answers whoever asks; the endpoint is the real port's business
       calls.push(body)
       opts.onCall?.(body)
       const turn = script[next++]
@@ -47,6 +49,7 @@ export function scriptedModel(script, opts = {}) {
       return {
         text,
         reasoning,
+        finish: turn.finish ?? ((turn.calls ?? []).length > 0 ? 'tool_calls' : 'stop'),
         calls: (turn.calls ?? []).map((c, i) => ({ id: c.id ?? `call-${next}-${i}`, tool: c.tool, args: c.args })),
         usage: turn.usage ?? null,
         raw: turn,

@@ -16,14 +16,14 @@ const BOX = [
 /** @param {Array<{id: string, tool: string, args: string}>} calls @returns {Incoming} */
 const replied = (calls) => ({
   at: AT, turnId: 'turn-1',
-  fact: { type: 'model_replied', agent: 'main', text: '', reasoning: '' },
+  fact: { type: 'model_replied', agent: 'main', text: '', reasoning: '', finish: 'stop' },
   reply: { calls, finish: 'tool_calls' },
 })
 
 /** @param {string} callId @param {string} tool @param {string} output @param {boolean} [ok] @returns {Incoming} */
 const ran = (callId, tool, output, ok = true) => ({
   at: AT, turnId: 'turn-1', callId,
-  fact: { type: 'tool_invoked', agent: 'main', tool, args: '{}', ok, output },
+  fact: { type: 'tool_invoked', agent: 'main', tool, args: '{}', onBehalfOf: '', ok, output },
 })
 
 /** An agent with a real toolbox, one model call outstanding under `turn-1`. */

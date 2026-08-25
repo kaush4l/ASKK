@@ -76,6 +76,21 @@ lane lead for a re-plan** — the third attempt is not more of the same attempt.
 - **Do not port dead code.** If the Rust has no construction site or no caller,
   it does not get a JavaScript file. Say so in the report instead.
 
+## When the shared gate is red on somebody else's file
+
+Four lanes commit to one branch, so a neighbour's half-saved file can hold
+`bun run gate` red while your own work is finished and correct.
+
+**A lane lands when its own scope is green.** That means: `bun run typecheck:pkg
+<yours>` clean, `bun test packages` green (the whole suite — your change must not
+break a neighbour), `purity` and `viewmodel` ok, and every file you touched
+inside 200/40. Say in your report which shared-gate failures were not yours and
+name the file, so the claim is checkable.
+
+**The lead verifies the shared gate at the end of every round**, and a round is
+not closed until it is green. What a lane must never do is weaken a check, edit a
+neighbour's file to get past it, or report `gateGreen: true` when it is not.
+
 ## Cross-lane requests
 
 Filed in `STATUS.md`. The lead rules on them; a lane never resolves its own.

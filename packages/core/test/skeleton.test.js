@@ -115,7 +115,7 @@ describe('what an empty folder means', () => {
     const { app, ports, segments, clock } = harness()
     expect(String(handle(app, get('/files')).data.emptyNote)).toContain('still asking for the folder')
 
-    app.log.append({ type: 'tool_invoked', agent: '', tool: 'write_file', args: '{"path":"notes.md"}', ok: true, output: 'written' }, clock.now())
+    app.log.append({ type: 'tool_invoked', agent: '', tool: 'write_file', args: '{"path":"notes.md"}', onBehalfOf: '', ok: true, output: 'written' }, clock.now())
     await app.log.persist()
 
     // A NEW PAGE LOAD over the same store: the write is now behind `bootedAt`,
@@ -129,7 +129,7 @@ describe('what an empty folder means', () => {
 
   test('a listing that ran and found nothing says that, and never claims a loss', async () => {
     const { app, clock } = harness()
-    app.log.append({ type: 'tool_invoked', agent: '', tool: 'list_files', args: '{"path":"."}', ok: true, output: '' }, clock.now())
+    app.log.append({ type: 'tool_invoked', agent: '', tool: 'list_files', args: '{"path":"."}', onBehalfOf: '', ok: true, output: '' }, clock.now())
     expect(handle(app, get('/files')).data.emptyNote).toBe('Nothing was in the folder when this listing ran.')
   })
 })

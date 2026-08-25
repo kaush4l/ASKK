@@ -9,14 +9,14 @@ describe('the log', () => {
   test('assigns seq, id and the envelope version at append', () => {
     const log = new EventLog()
     log.append({ type: 'user_message', text: 'a', agent: 'main', from: '' }, 10)
-    const second = log.append({ type: 'model_replied', agent: 'main', text: 'b', reasoning: '' }, 11)
+    const second = log.append({ type: 'model_replied', agent: 'main', text: 'b', reasoning: '', finish: 'stop' }, 11, 't-1')
     expect(log.length).toBe(2)
-    expect(second).toEqual({ id: 1, seq: 1, at: 11, v: EVENT_VERSION, fact: second.fact })
+    expect(second).toEqual({ id: 1, seq: 1, at: 11, turnId: 't-1', v: EVENT_VERSION, fact: second.fact })
   })
 
   test('iterates in order and slices from a seq a projection already saw', () => {
     const log = new EventLog()
-    for (const text of ['a', 'b', 'c']) log.append({ type: 'model_replied', agent: 'm', text, reasoning: '' }, 1)
+    for (const text of ['a', 'b', 'c']) log.append({ type: 'model_replied', agent: 'm', text, reasoning: '', finish: 'stop' }, 1)
     expect([...log].map((e) => e.fact.type)).toEqual(['model_replied', 'model_replied', 'model_replied'])
     expect(log.since(2)).toHaveLength(1)
   })
