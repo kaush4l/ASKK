@@ -78,6 +78,11 @@ function moved(/** @type {Conversation} */ held, /** @type {Fact} */ fact) {
   if (fact.type === 'agent_status') {
     held.status = fact.status
     held.detail = fact.detail
+    // AN IDLE STATUS IS AN ENDING. The ENDED and STOPPED facts below are
+    // `custom` ones, and a `custom` fact carries no agent name — so no ending a
+    // delegated agent produces can ever land in that agent's bucket, and its
+    // conversation stayed open beside a delivered answer.
+    if (fact.status === 'idle') held.open = false
   }
   if (fact.type === 'custom' && (fact.kind === ENDED || fact.kind === STOPPED)) held.open = false
 }

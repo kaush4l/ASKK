@@ -112,6 +112,13 @@ function spoken(app, effect, reply, at) {
     at,
     turnId: effect.turnId,
     fact: { type: 'model_replied', agent: speaker, text: reply.text, reasoning: reply.reasoning },
+    // INFERRED, NOT REPORTED — and `step` only reads it when there are no
+    // calls, so every call-less reply ends ANSWERED whatever really happened.
+    // A truncation, a refusal and a content filter are one outcome again, which
+    // is what `ending.js` exists to have ended. Filed as a cross-lane request
+    // beside `turn.js`'s: `ModelReply` has no `finish`, and the port is the one
+    // layer that reads the provider's. Delete this comment and the inference
+    // together on the day it lands.
     reply: { calls: reply.calls, finish: reply.calls.length > 0 ? 'tool_calls' : 'stop' },
   })
   return facts

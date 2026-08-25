@@ -20,8 +20,9 @@
 import { factAgent } from '@harness/kernel'
 import { step } from '@harness/agent'
 
-import { CONVERSATION } from './reducers.js'
 import { runEffect } from './effects.js'
+import { addressedElsewhere, runErrand } from './errand.js'
+import { CONVERSATION } from './reducers.js'
 
 /** @typedef {import('@harness/agent').Effect} Effect */
 /** @typedef {import('./app.js').App} App */
@@ -37,35 +38,16 @@ export async function drive(app, opts) {
   while (app.pending.length > 0) {
     const next = app.pending.shift()
     if (!next) break
-    if (await ranElsewhere(app, next)) continue
+    if (addressedElsewhere(app, next.fact)) {
+      await runErrand(app, next, opts)
+      continue
+    }
     const taken = step(app.agent, stamp(app, next))
     app.agent = taken.state
     await runEffects(app, taken.effects, opts)
     told(app)
   }
 }
-
-/**
- * WHOSE MESSAGE IS THIS. A message addressed to another agent never enters this
- * loop: its turn runs on that agent's own Worker and is recorded under its own
- * name, so two conversations on one page cannot cross. Pumping it here would
- * put someone else's words into this agent's paper.
- * @param {App} app @param {Incoming} incoming @returns {Promise<boolean>}
- */
-async function ranElsewhere(app, incoming) {
-  const fact = incoming.fact
-  if (fact.type !== 'user_message' || fact.agent === '' || fact.agent === app.me) return false
-  const answered = await runEffect(app, { type: 'Delegate', turnId: '', agent: fact.agent, goal: fact.text, batch: 0 }, { timer: NEVER })
-  // APPENDED AND NOT QUEUED. The answer belongs to that agent's conversation,
-  // and pumping it here would hand this agent's reducer a reply to a call it
-  // never made — which `turn.refusal` correctly drops, leaving an anomaly
-  // record in the wrong transcript blaming the wrong turn.
-  for (const back of answered) if (back.fact.type === 'model_replied') app.log.append(back.fact, back.at)
-  return true
-}
-
-/** A timer for a call this loop is not waiting on — the callee's own deadline is. */
-const NEVER = { wait: () => new Promise(() => {}) }
 
 /**
  * The turn this fact belongs to. A person's utterance MINTS one; everything
@@ -153,10 +135,15 @@ function told(app) {
  * last thing said was a person's — is not the answer: a reload replays that
  * shape with no fetch behind it, and the pane then sat disabled on "thinking…"
  * with a clock that could not tick. This is state THIS PROCESS holds and a
- * reload does not, which is the whole point. Another agent's turn runs on its
- * own Worker, so this process is never the one driving it.
+ * reload does not, which is the whole point.
+ *
+ * ANOTHER AGENT'S ERRAND IS DRIVEN FROM HERE TOO, until its Worker exists. The
+ * queue alone cannot say so: the message that started the errand is taken off
+ * before the await, so `pending` reads false for exactly the call it is meant
+ * to cover, and the pane spent the whole delegation announcing a reload that
+ * had not happened. `app.errands` is that call, held for its duration.
  */
 export function driving(/** @type {App} */ app, /** @type {string} */ who) {
-  if (who !== app.me) return app.pending.some((p) => factAgent(p.fact) === who)
+  if (who !== app.me) return app.errands.has(who) || app.pending.some((p) => factAgent(p.fact) === who)
   return app.agent.turnId !== '' || app.pending.length > 0
 }

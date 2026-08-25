@@ -1,0 +1,42 @@
+/**
+ * ONE BUILD, ASSEMBLED THE WAY A TEST NEEDS IT, in one place: the skeleton and
+ * the delegation tests read the same product and must not each invent their own
+ * — two harnesses is two definitions of what "the build" is.
+ */
+import { CAPABILITIES, get, withHeader } from '@harness/kernel'
+import { newAgentState, tool } from '@harness/agent'
+import { fakeAgents, fakeClock, testPorts } from '@harness/adapters-test'
+import { bootFresh, handle } from '@harness/core'
+import { memorySegments, manualTimer } from './doubles.js'
+
+/** One scripted turn, read off the door it arrives through — the barrel exports `testPorts` and not the type. @typedef {NonNullable<Parameters<typeof testPorts>[0]>['script']} Scripts */
+/** @typedef {import('@harness/core').Row} Row */
+
+/**
+ * One build: scripted model, a tool table, and a deadline the test fires. The
+ * agent's TOOLBOX is the descriptors it may call and `tools` is what runs them
+ * — both are handed in here because the spec reader has not landed.
+ * @param {{script?: Scripts, tools?: Record<string, import('@harness/core').ToolRun>,
+ *   agents?: Parameters<typeof fakeAgents>[0], auto?: boolean}} [parts]
+ */
+export function harness(parts = {}) {
+  const clock = fakeClock({ start: 1_000, step: 1 })
+  const ports = testPorts({ clock, script: parts.script ?? [], agents: fakeAgents(parts.agents ?? {}) })
+  const segments = memorySegments()
+  const toolbox = Object.keys(parts.tools ?? {}).map((name) => tool({ name, description: `the ${name} tool` }))
+  const agent = { ...newAgentState(), toolbox }
+  const app = bootFresh({ ports, available: [...CAPABILITIES], segments, tools: parts.tools ?? {}, agent })
+  return { app, ports, segments, clock, timer: manualTimer({ auto: parts.auto }) }
+}
+
+/** @param {import('@harness/core').App} app @param {string} [who] @returns {Row[]} */
+export function rows(app, who) {
+  const req = who ? withHeader(get('/chat'), 'x-agent', who) : get('/chat')
+  return /** @type {Row[]} */ (handle(app, req).data.messages)
+}
+
+/** Turn the event loop over until `ready` — how a test fires a deadline the driver has reached. */
+export async function until(/** @type {() => boolean} */ ready) {
+  for (let i = 0; i < 100 && !ready(); i++) await new Promise((r) => setTimeout(r, 0))
+  if (!ready()) throw new Error('the driver never reached the point this test waited for')
+}

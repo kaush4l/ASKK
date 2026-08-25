@@ -159,7 +159,16 @@ export function watchedTool(answer, into, ticks) {
   }
 }
 
-/** A tool that never answers. The hang every deadline exists for. @returns {import('@harness/core').ToolRun} */
-export function silentTool() {
-  return () => new Promise(() => {})
+/**
+ * A tool that never answers — the hang every deadline exists for — and says
+ * when it was REACHED. `fire()` drains every wait outstanding, so a test that
+ * fires as soon as one exists may be firing the MODEL's deadline instead of
+ * this one; the flag is how a test names the call it meant.
+ * @param {() => void} [onCall] @returns {import('@harness/core').ToolRun}
+ */
+export function silentTool(onCall) {
+  return () => {
+    onCall?.()
+    return new Promise(() => {})
+  }
 }

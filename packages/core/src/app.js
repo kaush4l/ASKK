@@ -52,6 +52,7 @@ import { Registry } from './registry.js'
  *   registry: Registry, log: Log, ports: Ports, available: CapabilityId[],
  *   agent: AgentState, me: string, tools: Record<string, ToolRun>,
  *   pending: Incoming[], bootedAt: number, quiet: Record<string, number>,
+ *   errands: Set<string>,
  * }} App
  */
 
@@ -80,6 +81,12 @@ export function createApp(ports, available, opts) {
     // in this session from one a reload took, and the only reason `folder.js`
     // can make that claim at all.
     bootedAt: opts.log.length,
+    // WHO THIS PROCESS IS WAITING ON RIGHT NOW, by agent name. A delegation in
+    // flight is state the LOG cannot hold — it has produced no fact yet — and
+    // the pending queue cannot either, because the message that started it was
+    // taken off before the await. Without it the pane told the person their
+    // page had been reloaded for the whole duration of the call.
+    errands: new Set(),
     // Consecutive silent completions, per model. A model that answers with
     // nothing twice running is not worth a third attempt, and the driver stops
     // retrying it rather than paying to learn the same thing again.

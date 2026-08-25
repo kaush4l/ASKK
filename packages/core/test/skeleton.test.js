@@ -5,45 +5,12 @@
  */
 import { expect, test, describe } from 'bun:test'
 import { Glob } from 'bun'
-import { CAPABILITIES, ModelError, get, post, withHeader } from '@harness/kernel'
-import { newAgentState, tool } from '@harness/agent'
-import { fakeAgents, fakeClock, testPorts } from '@harness/adapters-test'
-import { boot, bootFresh, drive, handle } from '@harness/core'
-import { memorySegments, manualTimer, silentTool, watchedTool } from './doubles.js'
-
-/** One scripted turn, read off the door it arrives through — the barrel exports `testPorts` and not the type. @typedef {NonNullable<Parameters<typeof testPorts>[0]>['script']} Scripts */
-/** @typedef {import('@harness/core').Row} Row */
+import { CAPABILITIES, ModelError, get, post } from '@harness/kernel'
+import { boot, drive, handle } from '@harness/core'
+import { memorySegments, silentTool, watchedTool } from './doubles.js'
+import { harness, rows, until } from './harness.js'
 
 const SRC = new URL('../src/', import.meta.url).pathname
-
-/**
- * One build: scripted model, a tool table, and a deadline the test fires. The
- * agent's TOOLBOX is the descriptors it may call and `tools` is what runs them
- * — both are handed in here because the spec reader has not landed.
- * @param {{script?: Scripts, tools?: Record<string, import('@harness/core').ToolRun>,
- *   agents?: Record<string, string>, auto?: boolean}} [parts]
- */
-function harness(parts = {}) {
-  const clock = fakeClock({ start: 1_000, step: 1 })
-  const ports = testPorts({ clock, script: parts.script ?? [], agents: fakeAgents(parts.agents ?? {}) })
-  const segments = memorySegments()
-  const toolbox = Object.keys(parts.tools ?? {}).map((name) => tool({ name, description: `the ${name} tool` }))
-  const agent = { ...newAgentState(), toolbox }
-  const app = bootFresh({ ports, available: [...CAPABILITIES], segments, tools: parts.tools ?? {}, agent })
-  return { app, ports, segments, clock, timer: manualTimer({ auto: parts.auto }) }
-}
-
-/** @param {import('@harness/core').App} app @param {string} [who] @returns {Row[]} */
-function rows(app, who) {
-  const req = who ? withHeader(get('/chat'), 'x-agent', who) : get('/chat')
-  return /** @type {Row[]} */ (handle(app, req).data.messages)
-}
-
-/** Turn the event loop over until `ready` — how a test fires a deadline the driver has reached. */
-async function until(/** @type {() => boolean} */ ready) {
-  for (let i = 0; i < 100 && !ready(); i++) await new Promise((r) => setTimeout(r, 0))
-  if (!ready()) throw new Error('the driver never reached the point this test waited for')
-}
 
 describe('a message becomes an answer', () => {
   test('user message → step → effect → port → fact → projection, and the transcript holds the reply', async () => {
@@ -102,13 +69,14 @@ describe('one line of tool calls', () => {
   })
 
   test('a tool that never answers is ended by its deadline, and the turn finishes', async () => {
+    let reached = false
     const { app, timer } = harness({
       script: [{ calls: [{ tool: 'wedged', args: '{}' }] }, { text: 'carried on without it' }],
-      tools: { wedged: silentTool() },
+      tools: { wedged: silentTool(() => { reached = true }) },
     })
     handle(app, post('/chat', { message: 'call the wedged one' }))
     const running = drive(app, { timer, deadlineMs: 5_000 })
-    await until(() => timer.pending() > 0)
+    await until(() => reached && timer.pending() > 0)
     timer.fire()
     await running
 
@@ -139,25 +107,6 @@ describe('a failure is a fact the loop can read', () => {
     expect(app.agent.turnId).toBe('') // and not left awaiting a model that is not coming
     expect(/** @type {any} */ (app.ports.model).remaining()).toBe(0) // three attempts, bounded
 
-  })
-})
-
-describe('two conversations on one page', () => {
-  test("a second agent's turn never appears in the first agent's transcript", async () => {
-    const { app, timer } = harness({
-      script: [{ text: "main's own answer" }],
-      agents: { scout: 'scout looked and found three results' },
-    })
-    handle(app, post('/chat', { message: 'main, hello' }))
-    handle(app, withHeader(post('/chat', { message: 'scout, go and look' }), 'x-agent', 'scout'))
-    await drive(app, { timer })
-
-    const mine = rows(app).map((r) => r.said)
-    expect(mine).toEqual(['main, hello', "main's own answer"])
-    expect(rows(app, 'scout').map((r) => [r.kind, r.said])).toEqual([
-      ['user', 'scout, go and look'],
-      ['assistant', 'scout looked and found three results'],
-    ])
   })
 })
 
