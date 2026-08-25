@@ -37,9 +37,16 @@ import { HarnessError } from '@harness/kernel'
  * one we do not send, because the cost of not sending an image is a weaker
  * answer and the cost of sending one to a text model is a 400 in the middle of
  * a turn.
+ *
+ * `kind` is the WIRE PROTOCOL, and it is the entry's own word: `models.json`
+ * writes `"kind": "anthropic"` and writes nothing at all for the OpenAI
+ * protocol, because nearly every server speaks it. `adapterFor` reads this and
+ * refuses a kind nobody implements by name, so a typo is a message at install
+ * and never the wrong bytes on the wire.
  * @typedef {{
  *   name: string,
  *   model: string,
+ *   kind: string,
  *   contextTokens: number,
  *   maxOutputTokens: number|null,
  *   acceptsImages: boolean,
@@ -88,9 +95,11 @@ export function modelCard(name, entry) {
     )
   }
   const model = typeof entry['model'] === 'string' ? entry['model'].trim() : ''
+  const kind = typeof entry['kind'] === 'string' ? entry['kind'].trim() : ''
   return {
     name,
     model: model || name,
+    kind: kind || 'openai',
     contextTokens,
     maxOutputTokens: number(entry, 'max_output_tokens') ?? number(entry, 'maxOutputTokens'),
     acceptsImages: flag(entry, 'accepts_images') || flag(entry, 'acceptsImages'),
@@ -104,9 +113,12 @@ export function modelCard(name, entry) {
  * message at the moment a person can still fix it, rather than into a prompt
  * that quietly loses a section eight turns later.
  *
- * The keys are sorted, so the FIRST refusal is the same entry whatever order
- * `JSON.parse` hands the map back in. A caller building a picker from this map
- * is looking at alphabetical order, not at the order models.json authored.
+ * THE FILE'S ORDER SURVIVES, and it used to be sorted. `models.json` is
+ * curated — `local` is written first because a person running a local server
+ * should be offered it first — and sorting silently overrode a decision
+ * somebody made, in a map a picker is built from. `JSON.parse` preserves the
+ * order of the keys in the document, so the first refusal is the first entry
+ * in the FILE, which is a place a person can look at.
  *
  * @param {unknown} doc the parsed contents of models.json
  * @returns {Record<string, ModelCard>}
@@ -117,7 +129,7 @@ export function modelCards(doc) {
   )
   /** @type {Record<string, ModelCard>} */
   const cards = {}
-  for (const name of Object.keys(models).sort()) {
+  for (const name of Object.keys(models)) {
     const entry = models[name]
     if (!entry || typeof entry !== 'object') {
       throw new HarnessError('malformed_catalogue_entry', `the model catalogue entry "${name}" is not an object`, {

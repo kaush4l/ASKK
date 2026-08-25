@@ -14,11 +14,13 @@
  */
 
 /**
- * OpenAI's published high-detail arithmetic: a base charge plus a charge per
- * 512px tile. It is ONE provider's rule applied to every card in the catalogue.
- * Anthropic bills roughly w*h/750, which this understates by ~3x — a 1600x1200
- * JPEG is ~2560 tokens there against the 765 counted here — so a per-card rule
- * is owed before an image part is sent to a `kind: anthropic` entry.
+ * ONE PROVIDER'S ARITHMETIC IS NOT EVERY PROVIDER'S. OpenAI charges a base
+ * plus a charge per 512px tile; Anthropic charges about w*h/750, which the
+ * tile rule understates by ~3x — a 1600x1200 JPEG is ~2560 tokens there
+ * against the 765 counted here. Billing an Anthropic entry on OpenAI's rule
+ * is how a window overruns in the middle of a turn, so each rule is named
+ * below and the adapter for a provider is what selects between them.
+ * @typedef {{provider: string, tokens: (width: number, height: number) => number, unknown: number}} ImageRule
  */
 const BASE_TOKENS = 85
 const TILE_TOKENS = 170
@@ -111,13 +113,13 @@ export function imageSize(dataBase64) {
 }
 
 /**
- * The provider's downscale, then the tile count. Both steps are the published
- * rule and not an approximation of it: fit inside a 2048 square, then shrink
- * until the shorter side is 768, then count 512px tiles.
+ * OpenAI's downscale, then its tile count. Both steps are the published rule
+ * and not an approximation of it: fit inside a 2048 square, then shrink until
+ * the shorter side is 768, then count 512px tiles.
  * @param {number} width
  * @param {number} height
  */
-export function imageTokens(width, height) {
+export function openaiImageTokens(width, height) {
   let [w, h] = [width, height]
   const fit = Math.min(1, MAX_SQUARE / Math.max(w, h))
   w = Math.round(w * fit)
@@ -127,3 +129,47 @@ export function imageTokens(width, height) {
   h = Math.round(h * short)
   return BASE_TOKENS + TILE_TOKENS * Math.ceil(w / TILE) * Math.ceil(h / TILE)
 }
+
+/**
+ * Anthropic bills by AREA, after its own downscale to a 1568px longest side.
+ * There are no tiles and no base charge, which is why the tile rule cannot be
+ * made to approximate it by tuning a constant.
+ * @param {number} width @param {number} height
+ */
+export function anthropicImageTokens(width, height) {
+  const fit = Math.min(1, ANTHROPIC_MAX_SIDE / Math.max(width, height))
+  return Math.ceil((Math.round(width * fit) * Math.round(height * fit)) / ANTHROPIC_PIXELS_PER_TOKEN)
+}
+
+/** Anthropic's published downscale and its area divisor. */
+const ANTHROPIC_MAX_SIDE = 1568
+const ANTHROPIC_PIXELS_PER_TOKEN = 750
+
+/** Gemini's flat charge for anything inside one crop, and the crop it tiles by. */
+const GEMINI_TILE_TOKENS = 258
+const GEMINI_SMALL = 384
+const GEMINI_TILE = 768
+
+/**
+ * Gemini charges a FLAT 258 for an image that fits inside 384px both ways, and
+ * 258 per 768px crop for anything larger. Flat-then-tiled, so it is neither of
+ * the other two rules at either end of the size range.
+ * @param {number} width @param {number} height
+ */
+export function geminiImageTokens(width, height) {
+  if (width <= GEMINI_SMALL && height <= GEMINI_SMALL) return GEMINI_TILE_TOKENS
+  const crops = Math.ceil(width / GEMINI_TILE) * Math.ceil(height / GEMINI_TILE)
+  return GEMINI_TILE_TOKENS * crops
+}
+
+/**
+ * The rules, by the provider that bills them. `unknown` is what an image whose
+ * header would not decode costs under each: a ~1024x1024 image by that
+ * provider's own arithmetic, stated rather than guessed at zero.
+ * @type {Record<'openai'|'anthropic'|'gemini', ImageRule>}
+ */
+export const IMAGE_RULES = Object.freeze({
+  openai: { provider: 'openai', tokens: openaiImageTokens, unknown: UNKNOWN_IMAGE_TOKENS },
+  anthropic: { provider: 'anthropic', tokens: anthropicImageTokens, unknown: anthropicImageTokens(1024, 1024) },
+  gemini: { provider: 'gemini', tokens: geminiImageTokens, unknown: geminiImageTokens(1024, 1024) },
+})

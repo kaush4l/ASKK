@@ -7,7 +7,7 @@ import { HarnessError } from '@harness/kernel'
 /** @param {Partial<ModelCard>} [over] @returns {ModelCard} */
 function card(over = {}) {
   return {
-    name: 'local', model: 'gemma-4-12B', contextTokens: 4096,
+    name: 'local', model: 'gemma-4-12B', kind: 'openai', contextTokens: 4096,
     maxOutputTokens: null, acceptsImages: false, reasons: false, ...over,
   }
 }

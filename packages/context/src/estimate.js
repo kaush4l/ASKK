@@ -14,9 +14,20 @@
  * @module
  */
 
-import { imageSize, imageTokens, UNKNOWN_IMAGE_TOKENS } from './image.js'
+import { imageSize, IMAGE_RULES } from './image.js'
 
 /** @typedef {import('./types.js').Part} Part */
+/** @typedef {import('./image.js').ImageRule} ImageRule */
+
+/**
+ * The rule an estimate uses when the caller states no provider. It is
+ * OpenAI's, and that is the catalogue's own default rather than a preference:
+ * `models.json` keys entries by NAME and treats an entry with no `kind` as the
+ * OpenAI protocol, so this is the same fallback spelled in one more place.
+ * A caller that knows the provider passes its adapter's rule and this is not
+ * consulted.
+ */
+const DEFAULT_RULE = IMAGE_RULES.openai
 
 /** One part's cost and the reason to believe it. */
 /** @typedef {{tokens: number, basis: string}} Estimate */
@@ -52,16 +63,17 @@ function decodedBytes(/** @type {string} */ base64) {
  * a byte count charges a Japanese sentence three times over, and the models
  * this addresses tokenize codepoints.
  * @param {Part} part
+ * @param {ImageRule} [images] how THIS provider bills an image; see `DEFAULT_RULE`
  * @returns {Estimate}
  */
-export function estimatePart(part) {
+export function estimatePart(part, images = DEFAULT_RULE) {
   switch (part.type) {
     case 'text':
       return { tokens: Math.max(FLOOR, Math.ceil(part.text.length / CHARS_PER_TOKEN)), basis: 'characters/4' }
     case 'image': {
       const size = imageSize(part.dataBase64)
-      if (!size) return { tokens: UNKNOWN_IMAGE_TOKENS, basis: `${part.mediaType} header unreadable; charged as four tiles (OpenAI high-detail rule)` }
-      return { tokens: imageTokens(size.width, size.height), basis: `${size.width}x${size.height}, billed as 512px tiles (OpenAI high-detail rule)` }
+      if (!size) return { tokens: images.unknown, basis: `${part.mediaType} header unreadable; charged as a ~1024x1024 image by the ${images.provider} rule` }
+      return { tokens: images.tokens(size.width, size.height), basis: `${size.width}x${size.height}, billed by the ${images.provider} rule` }
     }
     case 'audio': {
       const seconds = Math.ceil(decodedBytes(part.dataBase64) / AUDIO_BYTES_PER_SECOND)
@@ -82,9 +94,10 @@ export function estimatePart(part) {
  * What a part list costs, with the per-part arithmetic kept. The total is the
  * only number the budget reads; the breakdown is what makes it checkable.
  * @param {Part[]} parts
+ * @param {ImageRule} [images]
  * @returns {{tokens: number, parts: Estimate[]}}
  */
-export function estimateParts(parts) {
-  const each = parts.map(estimatePart)
+export function estimateParts(parts, images) {
+  const each = parts.map((p) => estimatePart(p, images))
   return { tokens: each.reduce((sum, e) => sum + e.tokens, 0), parts: each }
 }

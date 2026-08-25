@@ -1,0 +1,122 @@
+/**
+ * Stage two: how a provider HEARS the paper — still provider-neutral, because
+ * every provider hears the same shape and spells it differently. The spelling
+ * is each adapter's; the shape is here, once, so three adapters cannot
+ * disagree about what the model was told.
+ *
+ * TWO MESSAGES, AND THE SPLIT IS THE TRUST BOUNDARY. The Rust put the whole
+ * paper in ONE system message, which handed a fetched page and another agent's
+ * words to the model in the role it reads as its own standing instructions.
+ * `slot.js:isSystemSlot` already named the fix and left it to this layer: the
+ * standing instructions are the system message, and everything from HISTORY
+ * onward — the transcript, the observations, this turn's directive, and the
+ * response contract pinned behind them — is the user message.
+ *
+ * THE RESPONSE CONTRACT STAYS LAST, which is the law `render.rs` had to fight
+ * a compaction notice for. Here it is not a fight: the notice goes immediately
+ * before the tail inside the user message, and the tail is still the last
+ * thing read.
+ *
+ * The Rust also appended a fixed "Proceed as the response_contract instructs."
+ * because a system-only prompt is illegal on most endpoints. There is always a
+ * user message now — the tail is in it — so that line is gone rather than
+ * ported. @module
+ */
+
+import { isSystemSlot, isTail } from './slot.js'
+
+/** @typedef {import('./types.js').Document} Document */
+/** @typedef {import('./types.js').Part} Part */
+/** @typedef {import('./types.js').Section} Section */
+/** @typedef {import('./types.js').CompactionReport} CompactionReport */
+/** @typedef {import('./card.js').ModelCard} ModelCard */
+
+/**
+ * One rendered message. Content is ALWAYS the array form: a provider that
+ * wants a bare string is one adapter's collapse, not this layer's decision.
+ * @typedef {{role: 'system'|'user'|'assistant', content: Part[]}} Message
+ */
+
+/**
+ * The paper as messages. Deterministic like `assemble`, and the same document
+ * renders the same messages whatever the adapter does with them afterwards.
+ * @param {Document} doc
+ * @param {ModelCard} card
+ * @returns {Message[]}
+ */
+export function messagesOf(doc, card) {
+  const heard = doc.sections.filter((s) => s.fidelity !== 'elided')
+  const system = heard.filter((s) => isSystemSlot(s.slot) && !isTail(s.slot))
+  const spoken = heard.filter((s) => !isSystemSlot(s.slot) || isTail(s.slot))
+  return [
+    { role: 'system', content: render(system, card, null) },
+    { role: 'user', content: render(spoken, card, doc.report) },
+  ]
+}
+
+/**
+ * Sections as content blocks: prose joins one running text, a part this model
+ * can hear becomes its own block AT THAT POSITION, and one it cannot becomes a
+ * named placeholder — never a silent drop (I15).
+ * @param {Section[]} sections @param {ModelCard} card @param {CompactionReport|null} report
+ * @returns {Part[]}
+ */
+function render(sections, card, report) {
+  /** @type {Part[]} */
+  const out = []
+  let text = ''
+  for (const s of sections) {
+    if (report && isTail(s.slot)) text += compactionNotice(report)
+    text += `## ${s.id}\n(${s.intent})\n`
+    for (const p of s.parts) {
+      if (p.type === 'text') text += `${p.text}\n`
+      else if (audible(p, card)) {
+        if (text) out.push({ type: 'text', text })
+        text = ''
+        out.push(p)
+      } else text += `${withheldLine(p)}\n`
+    }
+    text += '\n'
+  }
+  if (text) out.push({ type: 'text', text })
+  return out
+}
+
+/**
+ * Whether this model can hear a non-text part.
+ *
+ * AUDIO IS ALWAYS WITHHELD, and that is a stated absence rather than an
+ * oversight: no catalogue entry can say it accepts sound, so nothing may claim
+ * one does. A `accepts_audio` field in `models.json` is what would change this
+ * answer, and until an entry carries one the model is told in words that a
+ * sound was held back.
+ * @param {Part} part @param {ModelCard} card
+ */
+function audible(part, card) {
+  return (part.type === 'image' || part.type === 'file') && card.acceptsImages
+}
+
+/** What the model reads in place of a part it cannot hear: typed, named, present. @param {Part} part */
+function withheldLine(part) {
+  if (part.type === 'text') return ''
+  const what = part.type === 'file' ? `file '${part.name}' (${part.mediaType})` : `${part.type} (${part.mediaType})`
+  return `[${what} withheld: this model does not accept it]`
+}
+
+/**
+ * What the budget took out of this document, emitted immediately BEFORE the
+ * tail and never after it. It is not a section: a ladder-derived string
+ * rendered as a section would be a part of the document the ladder is deciding
+ * about, which is a loop rather than a component.
+ * @param {CompactionReport} report
+ */
+function compactionNotice(report) {
+  if (report.steps.length === 0 && report.withheld.length === 0) return ''
+  const lines = [
+    '## compaction_notice',
+    '(what was compacted out of this document; ask to restore)',
+    ...report.steps.map((d) => `- ${d.section}: ${d.from} -> ${d.to}`),
+    ...report.withheld.map((id) => `- ${id}: a binary part was withheld`),
+  ]
+  return `${lines.join('\n')}\n\n`
+}

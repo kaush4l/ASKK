@@ -7,9 +7,13 @@
  * envelope is that missing distinction, made structural: a marker the payload
  * CANNOT contain, because the one sequence it is built from is escaped inside.
  *
- * The nonce is DERIVED from the payload, never drawn from randomness: assembly
- * must be byte-identical for the same state (I14), and a random delimiter
- * would make every golden different from the last one. That is why the escape
+ * The nonce is DERIVED — from the document's SECTION IDS, not from the payload
+ * (`nonceFor`'s own parameter says so, and this sentence used to say the
+ * opposite) — and never drawn from randomness: assembly must be byte-identical
+ * for the same state (I14), and a random delimiter would make every golden
+ * different from the last one. Deriving it from the ids also keeps one
+ * document's marker stable while a fetched page's content changes underneath
+ * it, which is what makes the marker readable across a turn. That is why the escape
  * carries the whole security argument and the nonce is only a second lock —
  * an attacker who knows this file can compute the nonce, and still cannot
  * write it, because writing `<<<` is what the escape prevents.

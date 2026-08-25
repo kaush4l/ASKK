@@ -14,6 +14,7 @@ import { nextFidelity, FIDELITIES } from './types.js'
 /** @typedef {import('./types.js').Budget} Budget */
 /** @typedef {import('./types.js').Fidelity} Fidelity */
 /** @typedef {import('./types.js').Part} Part */
+/** @typedef {import('./image.js').ImageRule} ImageRule */
 /** @typedef {import('./types.js').CompactionStep} CompactionStep */
 /** @typedef {import('./state.js').SectionSource} SectionSource */
 /**
@@ -32,10 +33,10 @@ import { nextFidelity, FIDELITIES } from './types.js'
  *
  * Stops when everything sits at its floor. The honest overshoot is then in
  * the report rather than forced away by a cut nobody recorded.
- * @param {Fitted[]} work @param {Budget} budget
+ * @param {Fitted[]} work @param {Budget} budget @param {ImageRule} [images]
  * @returns {CompactionStep[]}
  */
-export function degrade(work, budget) {
+export function degrade(work, budget, images) {
   /** @type {CompactionStep[]} */
   const steps = []
   /** @type {Set<number>} */
@@ -47,8 +48,8 @@ export function degrade(work, budget) {
     const from = w.fidelity
     const to = nextFidelity(from)
     if (to === null) return steps
-    const parts = effectiveParts(w.source, to, allowanceFor(work, budget, w.tokens))
-    const next = estimateParts(parts).tokens
+    const parts = effectiveParts(w.source, to, allowanceFor(work, budget, w.tokens), images)
+    const next = estimateParts(parts, images).tokens
     // A ladder step that does not reduce is not a compaction, and recording it
     // as one tells the engineer the budget did work it did not do. A short body
     // costs more as a pointer than it did whole.

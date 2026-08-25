@@ -18,6 +18,7 @@
 import { estimatePart } from './estimate.js'
 
 /** @typedef {import('./types.js').Part} Part */
+/** @typedef {import('./image.js').ImageRule} ImageRule */
 /** @typedef {import('./state.js').SectionSource} SectionSource */
 
 /**
@@ -31,11 +32,12 @@ export const BINARY_SHARE = 4
 /**
  * @param {SectionSource} src
  * @param {number} ceiling
+ * @param {ImageRule} [images]
  * @returns {{source: SectionSource, withheld: boolean}} the same source, unchanged, when nothing was over the ceiling
  */
-export function withholdOversized(src, ceiling) {
-  const parts = src.section.parts.map((p) => swap(p, ceiling))
-  const summary = src.summary === null ? null : src.summary.map((p) => swap(p, ceiling))
+export function withholdOversized(src, ceiling, images) {
+  const parts = src.section.parts.map((p) => swap(p, ceiling, images))
+  const summary = src.summary === null ? null : src.summary.map((p) => swap(p, ceiling, images))
   const hit = parts.some((p, i) => p !== src.section.parts[i]) ||
     (summary !== null && summary.some((p, i) => p !== (src.summary ?? [])[i]))
   if (!hit) return { source: src, withheld: false }
@@ -46,12 +48,12 @@ export function withholdOversized(src, ceiling) {
  * The part, or its placeholder. Text is returned untouched: a long paragraph
  * is what the ladder is for, and swapping it here would be head truncation
  * under another name.
- * @param {Part} part @param {number} ceiling
+ * @param {Part} part @param {number} ceiling @param {ImageRule} [images]
  * @returns {Part}
  */
-function swap(part, ceiling) {
+function swap(part, ceiling, images) {
   if (part.type === 'text') return part
-  const { tokens } = estimatePart(part)
+  const { tokens } = estimatePart(part, images)
   if (tokens <= ceiling) return part
   const what = part.type === 'file' ? `file '${part.name}' (${part.mediaType})` : `${part.type} (${part.mediaType})`
   return { type: 'text', text: `[${what} withheld: ~${tokens} tokens over the ${ceiling}-token part ceiling]` }

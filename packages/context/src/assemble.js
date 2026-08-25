@@ -29,17 +29,26 @@ import { withholdOversized, BINARY_SHARE } from './withhold.js'
 /** @typedef {import('./state.js').SectionSource} SectionSource */
 /** @typedef {import('./ladder.js').Fitted} Fitted */
 /** @typedef {import('./types.js').Part} Part */
+/** @typedef {import('./image.js').ImageRule} ImageRule */
 
 /**
  * Build the paper for one call.
+ *
+ * `images` is the PROVIDER's image arithmetic, and it is the one thing here
+ * that a provider decides: a photograph billed by OpenAI's tiles costs about a
+ * third of what the same photograph costs an Anthropic entry, so a paper
+ * assembled under the wrong rule fits a window it will not fit. The adapter
+ * for the target carries it (`adapterFor(card.kind).images`); omitted, the
+ * estimator states its own default and says why.
  * @param {State} state
  * @param {Budget} budget
+ * @param {ImageRule} [images]
  * @returns {Document}
  * @throws {HarnessError} by law name — `no_head`, `elided_but_named`, …
  */
-export function assemble(state, budget) {
-  const { work, withheld } = gather(state, budget)
-  const steps = degrade(work, budget)
+export function assemble(state, budget, images) {
+  const { work, withheld } = gather(state, budget, images)
+  const steps = degrade(work, budget, images)
   const doc = {
     stage: state.stage,
     sections: work.map(({ source, fidelity, tokens, parts }) => ({
@@ -61,10 +70,10 @@ export function assemble(state, budget) {
  * sharing a slot keep the order they were supplied in. Deliberately not
  * tie-broken on `priority`: that is the budget rank, and letting a budget
  * number reorder the prompt is the category error the slot type ended.
- * @param {State} state @param {Budget} budget
+ * @param {State} state @param {Budget} budget @param {ImageRule} [images]
  * @returns {{work: Fitted[], withheld: import('@harness/kernel').SectionId[]}}
  */
-function gather(state, budget) {
+function gather(state, budget, images) {
   const ceiling = Math.floor(budget.maxTokens / BINARY_SHARE)
   const nonce = nonceFor(state.sources.map((s) => s.section.id).join('|'))
   const ordered = [...state.sources].sort((a, b) => a.section.slot - b.section.slot)
@@ -73,16 +82,16 @@ function gather(state, budget) {
   const withheld = []
   /** @type {Fitted[]} */
   const work = ordered.map((raw) => {
-    const held = withholdOversized(raw, ceiling)
+    const held = withholdOversized(raw, ceiling, images)
     if (held.withheld) withheld.push(raw.section.id)
     const source = envelop(held.source, nonce)
     const empty = source.section.parts.length === 0
     const named = referenced.has(source.section.id)
     const floor = startingFloor(source.section.floor, empty, named)
     const fidelity = empty ? (named ? 'pointer' : 'elided') : 'full'
-    const parts = effectiveParts(source, fidelity, budget.maxTokens)
+    const parts = effectiveParts(source, fidelity, budget.maxTokens, images)
     const scoped = { ...source, section: { ...source.section, floor } }
-    return { source: scoped, fidelity, parts, tokens: estimateParts(parts).tokens }
+    return { source: scoped, fidelity, parts, tokens: estimateParts(parts, images).tokens }
   })
   return { work, withheld }
 }

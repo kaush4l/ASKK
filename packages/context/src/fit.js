@@ -22,6 +22,7 @@
 import { estimateParts, CHARS_PER_TOKEN } from './estimate.js'
 
 /** @typedef {import('./types.js').Part} Part */
+/** @typedef {import('./image.js').ImageRule} ImageRule */
 /** @typedef {import('./types.js').Fidelity} Fidelity */
 /** @typedef {import('./state.js').SectionSource} SectionSource */
 
@@ -72,14 +73,15 @@ function turnsOf(parts) {
  * being answered would be answering nothing.
  * @param {Part[]} parts
  * @param {number} allowance
+ * @param {ImageRule} [images]
  * @returns {Part[]}
  */
-export function dropOldest(parts, allowance) {
+export function dropOldest(parts, allowance, images) {
   const turns = turnsOf(parts)
-  let spent = estimateParts(parts).tokens
+  let spent = estimateParts(parts, images).tokens
   let start = 0
   while (start < turns.length - 1 && spent > allowance) {
-    spent -= estimateParts(turns[start] ?? []).tokens
+    spent -= estimateParts(turns[start] ?? [], images).tokens
     start += 1
   }
   const kept = turns.slice(start).flat()
@@ -135,16 +137,17 @@ export function usePrecomputedSummary(source) {
  * @param {SectionSource} source
  * @param {Fidelity} fidelity
  * @param {number} allowance
+ * @param {ImageRule} [images]
  * @returns {Part[]}
  */
-export function effectiveParts(source, fidelity, allowance) {
+export function effectiveParts(source, fidelity, allowance, images) {
   const parts = source.section.parts
   switch (fidelity) {
     case 'full':
       return parts
     case 'summarized':
       return usePrecomputedSummary(source) ??
-        (parts.some((p) => turnRoleOf(p) !== null) ? dropOldest(parts, allowance) : headAndTail(parts, allowance))
+        (parts.some((p) => turnRoleOf(p) !== null) ? dropOldest(parts, allowance, images) : headAndTail(parts, allowance))
     case 'pointer':
       return [{ type: 'text', text: pointerText(source) }]
     case 'elided':

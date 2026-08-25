@@ -5,6 +5,11 @@
  * hears it — collapsing them is the known failure mode, because provider
  * quirks then leak into the decision about what the model is told.
  *
+ * Stage two is a PROVIDER ADAPTER — one object per provider that both writes
+ * the request and reads the reply, because the two disagreeing with nothing to
+ * catch them is what the Rust's split allowed. `adapterFor` picks it from the
+ * catalogue entry's `kind`.
+ *
  * `validate` is deliberately ABSENT from this barrel: `assemble` is the only
  * constructor of a `Document`, and it judges what it built on the way out, so
  * an invalid one is unconstructible rather than merely discouraged.
@@ -20,7 +25,10 @@ export { escape as escapeUntrusted, nonceFor } from './envelope.js'
 export { modelCard, modelCards } from './card.js'
 export { budgetFor, budgetSentence } from './budget.js'
 export { estimatePart, estimateParts } from './estimate.js'
-export { imageSize, imageTokens, UNKNOWN_IMAGE_TOKENS } from './image.js'
+export { imageSize, openaiImageTokens, anthropicImageTokens, geminiImageTokens, IMAGE_RULES, UNKNOWN_IMAGE_TOKENS } from './image.js'
+export { messagesOf } from './wire.js'
+export { ownReplay, replayable, totalTokens, finishFrom } from './provider.js'
+export { adapterFor, ADAPTERS } from './adapters.js'
 
 /** @typedef {import('./types.js').Part} Part */
 /** @typedef {import('./types.js').Stability} Stability */
@@ -40,3 +48,11 @@ export { imageSize, imageTokens, UNKNOWN_IMAGE_TOKENS } from './image.js'
 /** @typedef {import('./budget.js').DerivedBudget} DerivedBudget */
 /** @typedef {import('./budget.js').Turn} Turn */
 /** @typedef {import('./estimate.js').Estimate} Estimate */
+/** @typedef {import('./image.js').ImageRule} ImageRule */
+/** @typedef {import('./wire.js').Message} Message */
+/** @typedef {import('./provider.js').ProviderAdapter} ProviderAdapter */
+/** @typedef {import('./provider.js').ProviderReply} ProviderReply */
+/** @typedef {import('./provider.js').ProviderUsage} ProviderUsage */
+/** @typedef {import('./provider.js').Exchange} Exchange */
+/** @typedef {import('./provider.js').ToolSpec} ToolSpec */
+/** @typedef {import('./provider.js').RequestOpts} RequestOpts */
