@@ -15,7 +15,9 @@
     "build": "cd apps/web && bun run build",
     "purity": "bun run scripts-js/check-purity.js",
     "viewmodel": "bun run scripts-js/check-viewmodel.js",
-    "typecheck:pkg": "bun run scripts-js/typecheck-pkg.js"
+    "typecheck:pkg": "bun run scripts-js/typecheck-pkg.js",
+    "contrast": "bun run scripts-js/check-contrast.js",
+    "smoke": "bun run scripts-js/smoke.js"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",

@@ -57,6 +57,11 @@ fi
 # for three rounds (I17). It rebuilds the export itself, because the thing it
 # must drive is the thing that is about to be pushed.
 HARNESS_BASE_PATH="$BASE" bun scripts-js/smoke.js || fail "the built page does not work in a browser"
+# The design system carries measured ratios and a critic's reject list, and
+# neither was executable until this. It reuses the build above rather than
+# making its own, and it is NOT in `bun run gate`: the gate must run for a
+# contributor who does not have gstack's browser on their machine.
+HARNESS_BASE_PATH="$BASE" HARNESS_CONTRAST_BUILT=1 bun scripts-js/check-contrast.js || fail "the built page fails its own contrast floor"
 
 COUNT=$(find "$DIR" -type f | wc -l | tr -d ' ')
 echo "built $COUNT files into $DIR (base path '$BASE')"

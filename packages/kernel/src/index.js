@@ -9,7 +9,7 @@ export { MODEL_ENDPOINT, SEARCH_ENDPOINT, ENTRY_AGENT, STAGES } from './ids.js'
 export { STATUSES, isBusy, statusSentence } from './status.js'
 export {
   HarnessError, StoreError, ModelError, NetError,
-  DelegateError, WorkspaceError, CapabilityError, isLoopback,
+  DelegateError, WorkspaceError, isLoopback,
 } from './errors.js'
 export { EVENT_VERSION, FACT_TYPES, EventLog, isKnownFact, factAgent } from './event.js'
 export { get, post, withHeader, addressee, ok, problem, isProblem } from './seam.js'

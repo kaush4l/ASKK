@@ -75,14 +75,6 @@ export class WorkspaceError extends HarnessError {
   }
 }
 
-/** @typedef {'denied'|'unknown'} CapabilityErrorKind */
-export class CapabilityError extends HarnessError {
-  /** @param {CapabilityErrorKind} kind @param {string} message @param {{cause?: unknown, detail?: string}} [opts] */
-  constructor(kind, message, opts = {}) {
-    super(kind, message, opts)
-  }
-}
-
 /**
  * Whether an endpoint looks like LOOPBACK — the one distinction worth drawing,
  * because "your local model is not running" and "the internet is gone" have
