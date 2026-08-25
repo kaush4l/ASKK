@@ -146,6 +146,16 @@ and what the model port answered comes back to the transcript without a reload â
 all four asserted by `scripts-js/smoke.js`, which drives the real artifact in a
 real browser and which `publish.sh` runs before it touches git.
 
+**What is true of the live page, measured, not described.** It boots over
+IndexedDB, takes a message, runs the loop, delegates to another agent in its own
+Worker and gets the answer home, survives a reload with the transcript intact,
+renders all four destinations, and refuses honestly what it cannot do â€” a local
+model endpoint is unreachable from a public origin and it says exactly that.
+`bun run smoke` asserts every clause of that sentence. `bun run contrast`
+measured 2,248 things across two rooms and four destinations: worst text 4.54:1
+against a 4.5 floor, worst control edge 3.94:1 against 3, both ratcheted in
+`scripts-js/contrast-floor.json` so they can only go up.
+
 **A deploy prerequisite, stated because it is one.** `smoke.js` drives gstack's
 `browse` binary at `~/.claude/skills/gstack/browse/dist/browse`, overridable with
 `HARNESS_BROWSE`. It is not vendored, and when it is absent the gate FAILS rather
