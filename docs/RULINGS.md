@@ -179,7 +179,18 @@ Second-strongest: the turn **ends by absence**. `parse_reply` returns `Tools(vec
 - **Widen the address space, keep the broker.** `crates/kernel/src/ids.rs:46-47` defines exactly two endpoint names ever. The I6 property that matters is "no module gets raw `fetch`" — enforced by `check-purity.js`'s `fetch()` rule — not "only two destinations exist." Per-origin allowlist, default deny, one prompt per new origin.
 - **Ship search that works on arrival.** Firecrawl keyless is verified: preflight 204 with `access-control-allow-origin: *`, POST 200 with no Authorization header, ~1,000 free credits/month at 2 credits per search ([launch](https://www.firecrawl.dev/blog/firecrawl-keyless-launch)). Fall back to Wikipedia/Wikimedia, HN Algolia, OpenAlex and Crossref — all verified keyless with CORS. BYOK upgrade to Tavily or keyed Firecrawl, both of which return preflights explicitly allowing the `authorization` header.
 - **Delete two dead assumptions from our plans, with the measurement that killed them.** Public SearXNG: of 76 healthy instances, 60 returned 429 and only **2** emit any `access-control-allow-origin` (both rate-limited). `r.jina.ai`: hard 401, *"blocked from performing anonymous queries due to bad network reputation (AS7922)"* — a consumer residential ISP, i.e. exactly where a browser agent lives. Both were load-bearing in project memory and both are false.
-- **Keep a `scripts-js/check-cors.js` probe in the gate.** Every wrong answer here is invisible from documentation and obvious from one curl: Exa's docs imply CORS but its preflight has no `allow-origin`; Brave's docs show fetch examples but `OPTIONS` returns 405. I17 applied to a third party.
+- **RE-MEASURED BY THE LEAD, 2026-08-25**, with `scripts-js/check-cors.js` from
+  `https://kaush4l.github.io`. Nine of ten candidates answer a preflight from
+  our real origin: Firecrawl search AND scrape keyless (204, `allow-origin: *`,
+  no Authorization header), Wikipedia REST, HN Algolia, OpenAlex, Crossref,
+  Tavily with `authorization` allowed, OpenRouter, and `r.jina.ai` — whose CORS
+  layer is fine and whose 401 is IP gating, which is a different refusal and has
+  a different repair. The one that does not is the Wikimedia `w/api.php`
+  endpoint, which emits no `allow-origin` at all: use the REST API, not the
+  action API. Re-run the probe whenever the search story changes; it is not in
+  `bun run gate`, because a third party being down must not block a deploy of
+  unrelated work.
+- **Keep a `scripts-js/check-cors.js` probe beside the gate.** Every wrong answer here is invisible from documentation and obvious from one curl: Exa's docs imply CORS but its preflight has no `allow-origin`; Brave's docs show fetch examples but `OPTIONS` returns 405. I17 applied to a third party.
 
 ### Attack 7 — Reasoning passback is provider-conditional, and getting it wrong is a 400 (research, no lens)
 Not covered by any critique lens, and it will brick sessions.
