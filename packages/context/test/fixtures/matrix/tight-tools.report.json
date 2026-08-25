@@ -26,22 +26,12 @@
         "to": "summarized"
       },
       {
-        "section": "user",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
         "section": "affordances",
         "from": "full",
         "to": "summarized"
       },
       {
         "section": "goal",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
-        "section": "operating_rules",
         "from": "full",
         "to": "summarized"
       }
@@ -76,22 +66,12 @@
         "to": "summarized"
       },
       {
-        "section": "user",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
         "section": "affordances",
         "from": "full",
         "to": "summarized"
       },
       {
         "section": "goal",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
-        "section": "operating_rules",
         "from": "full",
         "to": "summarized"
       }
@@ -126,22 +106,12 @@
         "to": "summarized"
       },
       {
-        "section": "user",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
         "section": "affordances",
         "from": "full",
         "to": "summarized"
       },
       {
         "section": "goal",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
-        "section": "operating_rules",
         "from": "full",
         "to": "summarized"
       }

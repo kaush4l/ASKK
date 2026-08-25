@@ -3,7 +3,7 @@
     "budget": {
       "maxTokens": 24
     },
-    "spent": 158,
+    "spent": 147,
     "steps": [
       {
         "section": "history",
@@ -27,11 +27,6 @@
       },
       {
         "section": "environment",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
-        "section": "user",
         "from": "full",
         "to": "summarized"
       },
@@ -70,7 +65,7 @@
     "budget": {
       "maxTokens": 24
     },
-    "spent": 158,
+    "spent": 147,
     "steps": [
       {
         "section": "history",
@@ -94,11 +89,6 @@
       },
       {
         "section": "environment",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
-        "section": "user",
         "from": "full",
         "to": "summarized"
       },
@@ -137,7 +127,7 @@
     "budget": {
       "maxTokens": 24
     },
-    "spent": 158,
+    "spent": 147,
     "steps": [
       {
         "section": "history",
@@ -161,11 +151,6 @@
       },
       {
         "section": "environment",
-        "from": "full",
-        "to": "summarized"
-      },
-      {
-        "section": "user",
         "from": "full",
         "to": "summarized"
       },

@@ -34,10 +34,13 @@ import { SLOT } from '../slot.js'
 /** @typedef {{about: string, fields: Field[]}} ResponseObject */
 
 /**
+ * The contract block itself. Exported because the compaction sheet needs to say
+ * something that is not a reply to anyone (`sheet.js`), and a second name that
+ * only forwards to this one is two names for one function.
  * @param {string} instructions
  * @returns {Component}
  */
-function contract(instructions) {
+export function saying(instructions) {
   return {
     id: 'response_contract',
     slot: SLOT.RESPONSE,
@@ -51,7 +54,7 @@ function contract(instructions) {
 
 /** Answer the person, in words. The cheap exit, and the common case. */
 export function prose() {
-  return contract("Reply in plain prose to the user's message. Be concise.")
+  return saying("Reply in plain prose to the user's message. Be concise.")
 }
 
 /**
@@ -59,15 +62,20 @@ export function prose() {
  * description of two options, because a model given a menu picks and a model
  * given a rule follows it.
  *
- * IT NO LONGER TEACHES A SYNTAX. The Rust wording told the model to write
- * calls as text "exactly as the `## affordances` block shows them" and to read
- * results back off lines beginning `Result:`. Both halves of that protocol are
- * retired: calls go out as the provider's own tool schemas and results come
- * back correlated by id, so prose describing a text protocol would teach the
- * model to bypass the one that works.
+ * IT TEACHES NO SYNTAX. The Rust wording told the model to write calls as text
+ * "exactly as the `## affordances` block shows them" and to read results back
+ * off lines beginning `Result:`. This wording drops both halves, because calls
+ * are meant to go out as the provider's own tool schemas and come back
+ * correlated by id, and prose describing a text protocol would teach the model
+ * to bypass the one that works.
+ *
+ * The protocol is not retired from the build. `packages/agent/src/paper.js`
+ * still emits it from its own `ENVELOPE` constant, and `ask.js` — the only
+ * prompt assembly a model sees — imports that file rather than this one. See
+ * the note in `affordances.js` and the cross-lane request in `STATUS.md`.
  */
 export function toolEnvelope() {
-  return contract(
+  return saying(
     'Either answer the user in plain prose, or call one or more of the tools you have ' +
       'been given. Do not do both in one reply, and do not describe a call instead of ' +
       'making one. Results come back before your next turn; read them, then answer.',
@@ -83,17 +91,8 @@ export function toolEnvelope() {
  */
 export function shaped(object) {
   const body = object.fields.map((f) => `${f.name}: ${f.about}`).join('\n')
-  return contract(
+  return saying(
     `${object.about}\n\nReply with exactly these lines, each starting with its word, and ` +
       `write nothing else — no preamble, no explanation after them:\n\n${body}`,
   )
-}
-
-/**
- * Whatever a caller needs to say instead. The compaction sheet uses it: its
- * output is notes rather than a reply to anyone.
- * @param {string} instructions
- */
-export function saying(instructions) {
-  return contract(instructions)
 }

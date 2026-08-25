@@ -34,7 +34,7 @@ export { messagesOf } from './wire.js'
 export { ownReplay, replayable, totalTokens, finishFrom } from './provider.js'
 export { adapterFor, ADAPTERS } from './adapters.js'
 export {
-  soul, DEFAULT_SOUL, identity, operatingRules, goal, affordances, user, memory, space,
+  soul, DEFAULT_SOUL, identity, operatingRules, goal, affordances, memory, space,
   environment, task, history, SESSION_STARTED, observations, directive,
   prose, toolEnvelope, shaped, saying, paperOf,
 } from './blocks/index.js'

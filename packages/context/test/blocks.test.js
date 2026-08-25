@@ -1,7 +1,7 @@
 import { expect, test, describe } from 'bun:test'
 import {
   assemble, paperOf, UNLIMITED_BUDGET, SLOT, sectionOf,
-  soul, identity, operatingRules, goal, affordances, user, memory, space,
+  soul, identity, operatingRules, goal, affordances, memory, space,
   environment, task, history, observations, directive, prose, toolEnvelope, SESSION_STARTED,
 } from '@harness/context'
 
@@ -10,7 +10,7 @@ function everyBlock() {
   return [
     soul(), identity('archivist', 'Keeps the record.'), operatingRules(),
     goal('the record is straight', 'nothing is unfiled'), affordances(['read_file(path): read one file']),
-    user(['prefers short answers']), memory(['the plan lives at plan.md']),
+    memory(['the plan lives at plan.md']),
     space({ name: 'atelier', path: '/spaces/atelier', durable: true }, ['observe']),
     environment('2025-06-15 14:26 UTC', 'a Linux you can run commands in'),
     task('file the plan'), history(['user: file it', 'assistant: filing']),
@@ -28,7 +28,7 @@ describe('the whole vocabulary, assembled', () => {
 
   test('every block renders, in slot order, soul first and the contract last', () => {
     expect(doc.sections.map((s) => s.id)).toStrictEqual([
-      'soul', 'identity', 'operating_rules', 'goal', 'affordances', 'user', 'memory',
+      'soul', 'identity', 'operating_rules', 'goal', 'affordances', 'memory',
       'space', 'environment', 'task', 'history', 'observations', 'directive', 'response_contract',
     ])
     expect(doc.sections.map((s) => s.slot)).toStrictEqual([...doc.sections.map((s) => s.slot)].sort((a, b) => a - b))
@@ -80,7 +80,7 @@ describe('an absent faculty and an empty one are different facts', () => {
     assemble(paperOf('work', [soul(), ...blocks, prose()], 7), UNLIMITED_BUDGET).sections.find((s) => s.id === id)
 
   test('a faculty nobody filled has no heading at all', () => {
-    for (const c of [memory(), goal(), directive(), user(), space()]) {
+    for (const c of [memory(), goal(), directive(), space()]) {
       expect(at([c], c.id)?.fidelity).toBe('elided')
     }
   })

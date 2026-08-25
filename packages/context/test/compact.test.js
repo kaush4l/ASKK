@@ -91,7 +91,7 @@ describe('the window is never replaced by a summary that gains nothing', () => {
   const entries = longWindow(10)
 
   test('an empty summary leaves the conversation exactly as it was, and says why', () => {
-    const out = replaceWindow(entries, '   ', 2)
+    const out = replaceWindow(entries, '   ', entries.slice(0, 8))
     expect(out.replaced).toBe(false)
     expect(out.entries).toStrictEqual(entries)
     expect(out.why).toContain('returned nothing')
@@ -99,14 +99,14 @@ describe('the window is never replaced by a summary that gains nothing', () => {
 
   test('a summary no smaller than what it replaces is refused, and says why', () => {
     const bloated = entries.slice(0, 8).join(' ') + ' and more besides'
-    const out = replaceWindow(entries, bloated, 2)
+    const out = replaceWindow(entries, bloated, entries.slice(0, 8))
     expect(out.replaced).toBe(false)
     expect(out.entries).toStrictEqual(entries)
     expect(out.why).toContain('compacts nothing')
   })
 
   test('a real summary replaces the older stretch and keeps the newest turns', () => {
-    const out = replaceWindow(entries, 'The user asked about the plan; two steps remain.', 2)
+    const out = replaceWindow(entries, 'The user asked about the plan; two steps remain.', entries.slice(0, 8))
     expect(out.replaced).toBe(true)
     expect(out.entries.length).toBe(3)
     expect(out.entries[0]).toContain(SUMMARY_HEADING)
@@ -115,7 +115,26 @@ describe('the window is never replaced by a summary that gains nothing', () => {
   })
 
   test('the summary carries a role tag, so the window it rejoins is still a transcript', () => {
-    const out = replaceWindow(entries, 'notes', 2)
+    const out = replaceWindow(entries, 'notes', entries.slice(0, 8))
     expect(out.entries[0]?.startsWith('system: ')).toBe(true)
+  })
+
+  test('a turn that arrived while the calls were in flight is kept, not deleted with the stretch', () => {
+    const live = [...entries]
+    const summarised = (chunksOf(live, 2, 10_000)?.chunks ?? []).flat()
+    live.push('user: one more thing before you answer')
+    const out = replaceWindow(live, 'The user asked about the plan.', summarised)
+    expect(out.replaced).toBe(true)
+    expect(out.entries.slice(1)).toStrictEqual(live.slice(summarised.length))
+    expect(out.entries).toContain('user: one more thing before you answer')
+  })
+
+  test('a window whose head moved under the summariser is refused, and says why', () => {
+    const summarised = (chunksOf(entries, 2, 10_000)?.chunks ?? []).flat()
+    const moved = ['system: Summary of the conversation so far:\nearlier notes', ...entries.slice(4)]
+    const out = replaceWindow(moved, 'The user asked about the plan.', summarised)
+    expect(out.replaced).toBe(false)
+    expect(out.entries).toStrictEqual(moved)
+    expect(out.why).toContain('changed while it was being summarised')
   })
 })

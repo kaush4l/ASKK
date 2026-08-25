@@ -16,10 +16,14 @@
  * THE GENERIC BLOCK DID NOT COME ACROSS. The Rust had `Sensed` — a `Block`
  * declaration plus parts a host wrote — because a trait object was the only
  * way to render many differently-shaped blocks through one type. In JavaScript
- * a component is already a plain object with a `render` function, so `memory`,
- * `space` and `user` are ordinary blocks that take their content as an
- * argument, and the generic wrapper has nothing left to do. `artifacts` has no
- * filler in this build at all and is therefore not here.
+ * a component is already a plain object with a `render` function, so `memory`
+ * and `space` are ordinary blocks that take their content as an argument, and
+ * the generic wrapper has nothing left to do here. It is still live in
+ * `packages/agent/src/paper.js`, which is what fills those two today. `artifacts` has no
+ * filler in this build at all and is therefore not here; `SLOT.USER` is the
+ * same case — a slot kept numbered, with nothing in this build that writes the
+ * person's settled facts, and a block with no filler is a block nobody can
+ * construct.
  * @module
  */
 
@@ -30,7 +34,6 @@ export { identity } from './identity.js'
 export { operatingRules } from './operating-rules.js'
 export { goal } from './goal.js'
 export { affordances } from './affordances.js'
-export { user } from './user.js'
 export { memory } from './memory.js'
 export { space } from './space.js'
 export { environment } from './environment.js'

@@ -5,15 +5,25 @@
  * hold behaviour, a component is a value, and the only thing the prompt ever
  * needed from a tool was the one line describing what it is for.
  *
- * WHAT DID NOT COME ACROSS, AND IT IS THE BIGGEST DELETION IN THIS FOLDER.
+ * WHAT THIS BLOCK DOES NOT CARRY — AND WHAT STILL DOES, TODAY.
  * The Rust block ended with a paragraph teaching a hand-rolled call protocol —
  * write the calls as text, comma-separated for parallel, one per line for
  * sequential, results come back labelled. That protocol had a matching
  * hand-rolled scraper on the way back, and it corrupted a file in production
- * (`docs/RULINGS.md` §1 row 3). Tool calls are now the provider's own, carried
- * as schemas beside the paper rather than as prose inside it, so a paragraph
- * telling the model to write calls into its answer would teach it to defeat
- * the mechanism that replaced it.
+ * (`docs/RULINGS.md` §1 row 3). This block omits it, because tool calls are
+ * meant to be the provider's own — schemas beside the paper rather than prose
+ * inside it — and a paragraph telling the model to write calls into its answer
+ * teaches it to defeat the mechanism that replaced it.
+ *
+ * THE PROTOCOL IS NOT RETIRED FROM THE BUILD. `packages/agent/src/paper.js`
+ * holds a second wording of this same vocabulary, and its `HOW_TO_CALL` and
+ * `ENVELOPE` constants still teach the text protocol verbatim. `ask.js` — the
+ * only site in this build that assembles a prompt for a model — imports from
+ * that file and not from here, so those are the bytes a model actually
+ * receives and this folder's goldens pin bytes nothing sends. Neither the
+ * comment above nor the test that greps this block for `separated by commas`
+ * is evidence that the prompt on the wire is clean. Filed as a cross-lane
+ * request in `STATUS.md`; only lane B can close it.
  *
  * The listing itself stays. A schema list on the wire says what a tool ACCEPTS;
  * this says what the agent HAS, in the order its toolbox resolved them, which

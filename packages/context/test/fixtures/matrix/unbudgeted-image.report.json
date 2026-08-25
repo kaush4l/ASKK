@@ -3,7 +3,7 @@
     "budget": {
       "maxTokens": 9007199254740991
     },
-    "spent": 1016,
+    "spent": 1004,
     "steps": [],
     "withheld": [],
     "imageRule": "openai"
@@ -12,7 +12,7 @@
     "budget": {
       "maxTokens": 9007199254740991
     },
-    "spent": 2710,
+    "spent": 2698,
     "steps": [],
     "withheld": [],
     "imageRule": "anthropic"
@@ -21,7 +21,7 @@
     "budget": {
       "maxTokens": 9007199254740991
     },
-    "spent": 1799,
+    "spent": 1787,
     "steps": [],
     "withheld": [],
     "imageRule": "gemini"

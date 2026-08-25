@@ -18,10 +18,12 @@
  *    chunks that each fit whole entries inside the allowance, each summarised
  *    on its own (the map), and the summaries summarised together (the reduce).
  *    Nothing is ever cut mid-entry, which is the same ban `fit.js` enforces.
- * 3. **The window is replaced only by a summary that is non-empty AND smaller
- *    than what it replaces.** A summariser that returned nothing, or returned
- *    more than it read, has not compacted anything, and swapping the
- *    conversation for it loses the conversation for no gain.
+ * 3. **The window is replaced only by a summary that is non-empty, smaller
+ *    than what it replaces, and still standing in front of the same stretch.**
+ *    A summariser that returned nothing, or returned more than it read, has not
+ *    compacted anything, and swapping the conversation for it loses the
+ *    conversation for no gain — as does replacing a stretch that grew a turn
+ *    while the calls were in flight.
  *
  * This file is the ARITHMETIC — when to compact, where the chunk boundaries
  * fall, and whether an answer is allowed to replace the window. The paper each
@@ -67,7 +69,7 @@ export function chunksOf(entries, keep, allowance) {
   for (const entry of older) {
     const cost = estimateParts([{ type: 'text', text: entry }]).tokens
     const open = chunks[chunks.length - 1]
-    if (open === undefined || (spent + cost > allowance && open.length > 0)) {
+    if (open === undefined || spent + cost > allowance) {
       chunks.push([entry])
       spent = cost
     } else {
@@ -78,23 +80,38 @@ export function chunksOf(entries, keep, allowance) {
   return { chunks, kept: entries.slice(entries.length - keep) }
 }
 
+/** The stretch the summariser read must still be the head of the window, entry for entry. */
+function stillTheHead(/** @type {string[]} */ entries, /** @type {string[]} */ summarised) {
+  return summarised.length <= entries.length && summarised.every((entry, i) => entries[i] === entry)
+}
+
 /**
  * The window after compaction, or the window unchanged and the reason why.
  *
- * `replaced` is never true on a summary that is empty or no smaller than the
- * stretch it stands in for. Both refusals leave the conversation exactly as it
- * was, and both SAY so: a compaction that silently did nothing is how a window
- * grows past its budget with a green log behind it.
- * @param {string[]} entries @param {string} summary @param {number} keep
+ * `summarised` is `chunks.flat()` from the `chunksOf` call the summary was
+ * produced against, and it is an ARGUMENT rather than a split recomputed here:
+ * the map and the reduce are awaited network calls, so a turn can be appended
+ * to the window while they are in flight, and a re-derived split would then
+ * delete an entry no summariser ever read. Anything that arrived during the
+ * calls is kept.
+ *
+ * `replaced` is never true on a summary that is empty, no smaller than the
+ * stretch it stands in for, or written against a window that has since moved.
+ * All three refusals leave the conversation exactly as it was, and all three
+ * SAY so: a compaction that silently did nothing is how a window grows past
+ * its budget with a green log behind it.
+ * @param {string[]} entries @param {string} summary @param {string[]} summarised
  * @returns {{entries: string[], replaced: boolean, why: string}}
  */
-export function replaceWindow(entries, summary, keep) {
-  const notes = summary.trim()
-  if (entries.length <= keep) {
-    return { entries, replaced: false, why: `nothing is older than the ${keep} entries kept` }
+export function replaceWindow(entries, summary, summarised) {
+  if (summarised.length === 0) {
+    return { entries, replaced: false, why: 'nothing was summarised, so the history stands' }
   }
-  const replaced = entries.slice(0, entries.length - keep)
-  const was = replaced.join('\n\n').length
+  if (!stillTheHead(entries, summarised)) {
+    return { entries, replaced: false, why: 'the window changed while it was being summarised, so the history stands' }
+  }
+  const notes = summary.trim()
+  const was = summarised.join('\n\n').length
   if (notes.length === 0) {
     return { entries, replaced: false, why: 'the summariser returned nothing, so the history stands' }
   }
@@ -107,8 +124,8 @@ export function replaceWindow(entries, summary, keep) {
     }
   }
   return {
-    entries: [line, ...entries.slice(entries.length - keep)],
+    entries: [line, ...entries.slice(summarised.length)],
     replaced: true,
-    why: `${replaced.length} entries and ${was} characters became ${line.length}`,
+    why: `${summarised.length} entries and ${was} characters became ${line.length}`,
   }
 }

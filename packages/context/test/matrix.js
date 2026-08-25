@@ -12,7 +12,7 @@
 
 import {
   UNLIMITED_BUDGET, modelCard, assemble, adapterFor, paperOf,
-  soul, identity, operatingRules, goal, affordances, user, memory, space,
+  soul, identity, operatingRules, goal, affordances, memory, space,
   environment, task, history, observations, directive, prose, toolEnvelope, shaped,
   SLOT,
 } from '@harness/context'
@@ -108,7 +108,6 @@ export function blocksFor(kind) {
     operatingRules(),
     goal('the plan is understood', 'every unfinished step is named'),
     affordances(tools ? TOOLS.map((t) => `${t.name}(...): ${t.description}`) : []),
-    user(['prefers short answers', 'works in Europe/London']),
     memory(['the plan lives at plan.md']),
     space({ name: 'atelier', path: '/spaces/atelier', durable: true, facts: [['owner', 'kaush']], notes: ['plan.md rewritten'] }, ['find_files']),
     environment('2025-06-15 14:26 UTC, Europe/London, a browser tab', tools ? 'a Linux you can run commands in' : ''),
