@@ -17,8 +17,9 @@
 
 import { nextCall } from './ask.js'
 import { callsIn } from './calls.js'
-import { ANSWERED, FAILED, MALFORMED, ROUND_CEILING, RESPOND, STALLED, endTurn, endingFor } from './ending.js'
-import { complete, land, lines, openBatch } from './round.js'
+import { ANSWERED, FAILED, MALFORMED, RESPOND, STALLED, endTurn, endingFor } from './ending.js'
+import { endingNow, openTurn, walkOn } from './walk.js'
+import { complete, land, openBatch, settle } from './round.js'
 import { MAX_ATTEMPTS, emptySignature, failureIn, isEmptyCompletion } from './retry.js'
 import { boundary, isStopRequest } from './stop.js'
 import { carried } from './steer.js'
@@ -78,8 +79,8 @@ function onSteer(state) {
 }
 
 /**
- * A user utterance starts the turn. Everything a turn counts is reset,
- * `stopping` included — a stop ends one turn, not the next.
+ * A user utterance starts the turn, on the stage list its file declares
+ * (`walk.js`).
  *
  * A MESSAGE WITH NO TURN ID IS AN ANOMALY, not an occasion to mint one: ids are
  * injected (I7), the spine mints one per accepted message, and a turn that
@@ -90,13 +91,7 @@ function onTask(state, text, incoming) {
   if (!incoming.turnId) {
     return { state, effects: [dropped(state, incoming, 'it arrived with no turn to run it under')] }
   }
-  /** @type {AgentState} */
-  const turn = {
-    ...state,
-    task: text, turnId: incoming.turnId, awaiting: 'model',
-    batch: [], toolRounds: 0, observations: [], steered: false, stopping: false,
-  }
-  return nextCall(turn, incoming.at)
+  return openTurn(state, text, incoming)
 }
 
 /**
@@ -119,13 +114,28 @@ function onReply(state, incoming) {
   const calls = callsIn(state, incoming, reply)
   const said = incoming.fact.type === 'model_replied' ? incoming.fact.text : ''
   if (isEmptyCompletion(said, calls.length)) return onEmpty(state, incoming, reply.finish)
-  if (calls.length === 0) return endTurn(state, endingFor(reply.finish))
-  if (calls.some((call) => call.tool === RESPOND)) return endTurn(state, ANSWERED)
+  if (calls.length === 0) return closing(state, said, incoming.at, endingFor(reply.finish))
+  if (calls.some((call) => call.tool === RESPOND)) return closing(state, said, incoming.at, ANSWERED)
   const opened = openBatch({ ...state, lastEmpty: '' }, calls)
   // Every call refused is a round already over: nothing was invoked, so no
   // result will arrive to close it, and the model is asked again NOW with the
   // refusals in front of it. That is the one extra round a malformed call costs.
   return complete(opened.state) ? settle(opened.state, opened.effects, incoming.at) : opened
+}
+
+/**
+ * A REPLY THAT WANTED TO END THE TURN, WHICH IS NOT THE SAME AS A TURN THAT
+ * ENDS. A stage that is not the last one hands its prose to the next stage
+ * instead, and only a walk with nowhere left to go reaches an ending — the one
+ * it earned rather than the one the finish signal alone implies.
+ *
+ * Behind `why !== ANSWERED`, inside `endingNow`: a truncated or refused reply
+ * is not a stage that finished, so it never advances the cursor.
+ * @param {AgentState} state @param {string} said @param {Timestamp} at @param {string} why @returns {Stepped}
+ */
+function closing(state, said, at, why) {
+  if (why !== ANSWERED) return endTurn(state, why)
+  return walkOn(state, said, at) ?? endTurn(state, endingNow(state, ANSWERED))
 }
 
 /**
@@ -137,28 +147,6 @@ function onReply(state, incoming) {
 function onToolResult(state, incoming, result) {
   const seen = land(state, incoming.callId ?? '', result.ok, result.output)
   return complete(seen) ? settle(seen, [], incoming.at) : { state: seen, effects: [] }
-}
-
-/**
- * THE ROUND IS OVER: the results become the observations the next call carries,
- * in the order the model WROTE the calls, and the counter that terminates a
- * looping model ticks once.
- *
- * `before` is whatever the round already produced — the records of the calls
- * this build refused — and it is carried rather than replaced, because a
- * refusal nobody can read in the log is a round nobody can account for.
- * @param {AgentState} state @param {Effect[]} before @param {Timestamp} at @returns {Stepped}
- */
-function settle(state, before, at) {
-  const round = { ...state, observations: lines(state), toolRounds: state.toolRounds + 1 }
-  if (round.toolRounds >= round.maxRounds) {
-    const ended = endTurn(round, ROUND_CEILING)
-    return { state: ended.state, effects: [...before, ...ended.effects] }
-  }
-  /** @type {AgentState} */
-  const asking = { ...round, awaiting: 'model', steered: false }
-  const next = nextCall(asking, at)
-  return { state: next.state, effects: [...before, ...next.effects] }
 }
 
 /**

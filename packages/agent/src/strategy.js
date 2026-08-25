@@ -34,6 +34,9 @@
  */
 export const ANSWER = 'answer'
 
+/** The stage that votes. Named because two files read the cursor for it — `walk.js` to know the reply rewrites the list, and `stages.js` to refuse it a tool — and a stage name spelled twice is a stage name that will differ once. */
+export const STRATEGY = 'strategy'
+
 /** @typedef {'answer' | 'react' | 'project'} Route */
 
 /** @type {readonly Route[]} */

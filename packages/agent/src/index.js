@@ -48,7 +48,7 @@ export { parseAgentFile, unwritten } from './spec.js'
 export { loadAgents, roleHolder } from './roster.js'
 export { adoptSpec, spaceNamed } from './adopt.js'
 export {
-  ANSWER, ROUTE, ROUTES, STAGES_OF, STRATEGY_SCHEMA, WHY, labelled, routeChosen, routeOf, voteIn,
+  ANSWER, ROUTE, ROUTES, STRATEGY, STAGES_OF, STRATEGY_SCHEMA, WHY, labelled, routeChosen, routeOf, voteIn,
 } from './strategy.js'
 export { step } from './step.js'
 export { askFor, askModel, stageNow } from './ask.js'
@@ -60,10 +60,13 @@ export { arg, available, tool, readArgs, usage } from './tools.js'
 export { NOTHING_RAN, check, named, peerTool, toolboxFor, usages } from './toolbox.js'
 export { NATIVE, SCANNED, callsIn, scanCalls, swallowedClose } from './calls.js'
 export { CALL_REFUSED } from './round.js'
+export { CRITIC_FAULTED, FAULT, PASS, passed } from './critic.js'
+export { PASS_CEILING, PASS_SPENT, again, exhausted, passOf } from './passes.js'
+export { endingNow, openTurn, stageIn, walkOn } from './walk.js'
 export { FINISH_REASONS, DROPPED, dropped } from './turn.js'
 export {
   ENDED, ANSWERED, MALFORMED, ROUND_CEILING, TRUNCATED, REFUSED, FAILED, NO_CALLS, RESPOND,
-  INTERRUPTED, STALLED, endingFor, endedWhy, endedRounds,
+  INTERRUPTED, STALLED, UNCHECKED, endingFor, endedWhy, endedRounds,
 } from './ending.js'
 export { STOP_REQUESTED, STOPPED, isStopRequest } from './stop.js'
 export { STEERED, carried } from './steer.js'

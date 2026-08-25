@@ -23,11 +23,16 @@
  * contract could not read; `empty completions` is the zero-output guard in
  * `retry.js`; `interrupted` is the boot that reads a checkpoint.
  *
- * WHAT IS STILL OWED. `pass ceiling`, `goal unmet`, `critic faulted` and
- * `unchecked` each rest on a fold this loop does not compute — passes, the
- * standing goal, the critic's verdict, the verify gate. They arrive with the
- * fold that earns them; naming an ending nothing can reach would be a
- * vocabulary describing a machine that is not here.
+ * TWO MORE ARE DECLARED BESIDE THE FOLDS THAT EARN THEM, because that is where
+ * they can be read against something: `pass ceiling` in `passes.js`, `critic
+ * faulted` in `critic.js`. `walk.js`'s `endingNow` is where they outrank
+ * `answered`.
+ *
+ * WHAT IS STILL OWED. `goal unmet` rests on a fold this loop does not compute:
+ * a declared goal's exit code. So does the verify NUDGE — the extra round that
+ * holds a prose answer over an unrun edit and asks again. [`UNCHECKED`] is the
+ * word without the nudge, which is the honest half: the turn says what was not
+ * checked rather than pretending to have checked it.
  * @module
  */
 
@@ -84,6 +89,18 @@ export const MALFORMED = 'malformed reply'
  * model and never to wait.
  */
 export const STALLED = 'empty completions'
+
+/**
+ * THIS TURN CHANGED SOMETHING AND NOTHING RAN AFTER IT. Not a failure and not a
+ * refusal — the work may be perfect — but a person told `answered` over an
+ * unrun edit has been told the system checked something it did not.
+ *
+ * IT ALSO CLOSES THE ONE WAY PAST THE CRITIC. A write makes a verdict stale
+ * (`round.js`), so a turn faulted and then edited holds `reviewed: null` and
+ * would otherwise end `answered` — having been reviewed, told no, and changed
+ * the thing afterwards.
+ */
+export const UNCHECKED = 'unchecked'
 
 /**
  * A RELOAD LANDED IN THE MIDDLE OF THIS TURN and the work outstanding could
