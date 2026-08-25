@@ -23,6 +23,7 @@ bun run typecheck || fail "types do not check"
 bun test packages || fail "the pure core does not pass on the host (I3)"
 bun scripts-js/check-size.js || fail "I12: a file or a function is over its limit"
 bun scripts-js/check-purity.js || fail "I3: a pure package reaches for something the host does not have"
+bun scripts-js/check-viewmodel.js || fail "I5: the interface computed something the core owes it"
 
 # ---- build ------------------------------------------------------------------
 rm -rf "$DIR"
@@ -30,7 +31,7 @@ rm -rf "$DIR"
 
 # ---- gates on the artifact --------------------------------------------------
 [ -f "$DIR/index.html" ] || fail "no index.html in $DIR"
-[ -f "$DIR/.nojekyll" ] || touch "$DIR/.nojekyll"
+[ -f "$DIR/.nojekyll" ] || fail "no .nojekyll — the gh-pages BRANCH runs Jekyll, and every _next/ path 404s silently"
 
 # Agents and stage briefs are FETCHED AT RUNTIME. Without them the page boots
 # with no agent at all, and it does so silently — so the manifest is checked
