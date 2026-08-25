@@ -37,6 +37,15 @@ test('the pane is told WHETHER a key is set and is never handed one', async () =
   expect(JSON.stringify(read)).not.toContain('sk-router')
 })
 
+test('saving a key into an entry repoints every agent at it', async () => {
+  const { endpoint } = broker()
+  expect(endpoint.resolve('local')?.name).toBe('local')
+  await saveEndpoint('openrouter', { apiKey: 'sk-router' })
+  // `local` is what an agent file asks for by name, and openrouter answers it.
+  expect(endpoint.resolve('local')?.name).toBe('openrouter')
+  expect(readEndpoints().selected).toBe('openrouter')
+})
+
 test('saving the search endpoint is what puts anything on the network allowlist', async () => {
   const { net } = broker()
   expect(net.where(SEARCH_ENDPOINT)).toBe('')

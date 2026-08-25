@@ -73,11 +73,15 @@ function wakeOnGrowth(app) {
     })
   }
   const append = app.log.append
-  app.log.append = (fact, at) => {
-    const event = append(fact, at)
+  // FORWARD WHATEVER IT WAS GIVEN. A wrapper installed at the composition root
+  // must not narrow the door it wraps: `append` takes a `turnId` third, I21
+  // needs that turn PERSISTED, and a browser silently dropping it would be
+  // invisible to every host test — none of them go through `attach`.
+  app.log.append = /** @type {typeof app.log.append} */ ((...args) => {
+    const event = append(...args)
     announce()
     return event
-  }
+  })
   return {
     subscribe: (/** @type {() => void} */ fn) => {
       listeners.add(fn)

@@ -35,7 +35,7 @@ test('the catalogue entry\'s model id is stamped over the symbolic name the core
 
 test('the credential is attached HERE, and only the credential saved for THAT entry', async () => {
   const { endpoint, wire, port } = broker([{ json: {} }, { json: {} }])
-  endpoint.set('openrouter', { apiKey: 'sk-router' })
+  endpoint.selectAndSave('openrouter', { apiKey: 'sk-router' })
   endpoint.select('')
   await port.call(MODEL_ENDPOINT, { model: 'local' })
   expect(wire.sent[0]?.headers['authorization']).toBeUndefined()
@@ -83,7 +83,7 @@ test('resolves answers honestly, and null where no catalogue was read', () => {
 test('a key is set, used, and appears in no fact the log ever persisted', async () => {
   const SECRET = 'sk-must-never-be-written-down'
   const { endpoint, wire, port } = broker([{ json: { choices: [{ message: { content: 'hello' }, finish_reason: 'stop' }] } }])
-  endpoint.set('local', { apiKey: SECRET })
+  endpoint.selectAndSave('local', { apiKey: SECRET })
   const segments = memorySegments()
   const clock = fakeClock()
   const app = bootFresh({

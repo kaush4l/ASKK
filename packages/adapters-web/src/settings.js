@@ -39,16 +39,27 @@ export function useBroker(built) {
 }
 
 /**
- * Point the catalogue entry somewhere and persist it. An absent `apiKey` KEEPS
- * the stored one — the field is write-only, so a blank save must not wipe a
- * secret the form never held — and `''` clears it.
+ * Point the catalogue entry somewhere and persist it.
+ *
+ * SAVING INTO AN ENTRY ALSO MAKES IT THE ENTRY IN FORCE, and the pick outranks
+ * every agent file's `model:` key — so a key saved into `openrouter` sends
+ * every agent's every call, and that credential, to openrouter until somebody
+ * picks something else. The name stays `saveEndpoint` because `docs/SEAM.md`
+ * froze it; the second half is stated here and executed by a test rather than
+ * left for a reader to find in `selectAndSave` (I16).
+ *
+ * An absent `apiKey` KEEPS the stored one — the field is write-only, so a blank
+ * save must not wipe a secret the form never held — and `''` clears it. A
+ * `baseUrl` or `model` equal to what `models.json` says UNDOES that entry's
+ * override rather than pinning today's file forever (I10); a patch that carries
+ * neither leaves both alone.
  * @param {string} entry which catalogue entry — never a URL
  * @param {Patch} patch
  * @returns {Promise<void>}
  */
 export async function saveEndpoint(entry, patch) {
   const held = required()
-  held.endpoint.set(entry, patch)
+  held.endpoint.selectAndSave(entry, patch)
   await held.kv.put(held.key, held.endpoint.profileJson())
 }
 

@@ -13,10 +13,10 @@
  * @module
  */
 
-import { CAPABILITIES, DelegateError, ENTRY_AGENT, SEARCH_ENDPOINT, WorkspaceError } from '@harness/kernel'
+import { CAPABILITIES, DelegateError, ENTRY_AGENT, SEARCH_ENDPOINT, StoreError, WorkspaceError } from '@harness/kernel'
 import { boot } from '@harness/core'
 
-import { fetchModels } from './assets.js'
+import { fetchText } from './assets.js'
 import { makeEndpoint } from './endpoint.js'
 import { idbKv, idbStore, openDb } from './idb.js'
 import { fetchModel } from './model.js'
@@ -46,8 +46,8 @@ export async function bootBrowser(opts = {}) {
   const db = await openDb(DB)
   const kv = idbKv(db)
   const endpoint = makeEndpoint()
-  const catalogue = await fetchModels(basePath)
-  if (catalogue !== null) endpoint.setCatalogue(catalogue)
+  const catalogue = await fetchText(basePath, 'models.json')
+  if (!(catalogue instanceof StoreError)) endpoint.setCatalogue(catalogue.text)
   const stored = await kv.get(PROFILE_KEY)
   if (stored !== null) endpoint.loadProfile(stored)
   const net = brokeredNet()
@@ -64,7 +64,20 @@ export async function bootBrowser(opts = {}) {
     workspace: workspace ?? noWorkspace(),
     spaces: idbKv(await openDb(SPACES_DB)),
   }
-  return await boot({ ports, available: offered(workspace !== null), segments: idbSegments(db), me })
+  const app = await boot({ ports, available: offered(workspace !== null), segments: idbSegments(db), me })
+  if (catalogue instanceof StoreError) noCatalogue(app, catalogue, ports.clock.now())
+  return app
+}
+
+/**
+ * SAY THAT THIS DEPLOY SHIPPED NO CATALOGUE, as a fact and not as a silence.
+ * Without it the only sentence anyone ever sees is the model port's either/or —
+ * "no catalogue, or the entry is not in it" — which names neither the address
+ * nor the status, and boot succeeds either way (I16).
+ * @param {App} app @param {StoreError} failure @param {number} at
+ */
+function noCatalogue(app, failure, at) {
+  app.log.append({ type: 'store_failed', key: failure.key, message: failure.message }, at)
 }
 
 /**

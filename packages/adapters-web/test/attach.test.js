@@ -64,3 +64,23 @@ test('a second run while one is in flight joins it instead of starting a second 
   expect(run()).toBe(first)
   await first
 })
+
+test('the wake wrapper forwards every argument it was handed (I21)', () => {
+  /** @type {unknown[][]} */
+  const seen = []
+  // A LOG THAT TAKES ANYTHING, so what is measured is the wrapper and not what
+  // today's `append` happens to accept. A turn dropped here would be dropped in
+  // a browser and nowhere else, which no host test would ever see.
+  const log = {
+    length: 0,
+    append: (/** @type {unknown[]} */ ...args) => {
+      seen.push(args)
+      log.length += 1
+      return { turnId: args[2] }
+    },
+  }
+  attach(/** @type {import('@harness/core').App} */ (/** @type {unknown} */ ({ log })))
+  const wrapped = log.append
+  expect(wrapped({ type: 'agent_status' }, 7, 't-1')).toEqual({ turnId: 't-1' })
+  expect(seen).toEqual([[{ type: 'agent_status' }, 7, 't-1']])
+})

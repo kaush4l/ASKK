@@ -1,9 +1,13 @@
 /**
  * WHAT `bun test` CANNOT REACH. IndexedDB and OPFS do not exist on the host, so
- * the claims about them are executed in a real browser instead — by a page a
- * script serves and drives (`serve.js`, and the command in `README.md`). Every
- * other claim in this package is a host test; these five are the ones that are
- * not, and they are executed rather than asserted in prose (I17).
+ * the claims about them are executed in a real browser instead — by a page
+ * `serve.js` serves and drives, run with
+ * `bun --cwd packages/adapters-web run checks:browser`.
+ *
+ * THESE FIVE ARE NOT IN `bun run gate` AND A HUMAN RUNS THEM. The gate is the
+ * whole standard for everything it can execute (I17), and it has no browser; a
+ * green gate therefore says nothing about the five claims below, which is why
+ * the command is named here rather than left to a commit message.
  */
 
 import { get, post } from '@harness/kernel'

@@ -16,7 +16,7 @@ export { browserClock, browserRng, browserTimer, brokeredNet } from './ports.js'
 export { openDb, idbKv, idbBlob, idbStore, prefixRange } from './idb.js'
 export { idbSegments } from './segments.js'
 export { openWorkspace, opfsWorkspace } from './opfs.js'
-export { fetchText, fetchModels } from './assets.js'
+export { fetchText } from './assets.js'
 export { providerError, providerMessage, callFailed, globalFetch } from './wire.js'
 export { frames, foldFrame, accumulate, streamed, completion } from './stream.js'
 

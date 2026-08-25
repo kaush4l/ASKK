@@ -91,8 +91,14 @@ function secrets(state) {
     hasKey: (/** @type {string} */ entry) => (state.keys[entry] ?? '') !== '',
     /** Which entries hold a key — the fact Settings may render. Never the key. */
     keyed: () => Object.fromEntries(names(catalogueOf(state)).map((name) => [name, (state.keys[name] ?? '') !== ''])),
-    /** @param {string} entry @param {Patch} patch */
-    set: (entry, patch) => {
+    /**
+     * SAVE INTO AN ENTRY, AND MAKE THAT ENTRY THE ONE IN FORCE. The name says
+     * both halves because the second half is not a detail: the pick outranks
+     * every agent file's `model:` key, so saving a credential into `openrouter`
+     * repoints every agent's every call at openrouter (I16).
+     * @param {string} entry @param {Patch} patch
+     */
+    selectAndSave: (entry, patch) => {
       if (entry.trim() !== '') state.selected = entry.trim()
       const name = currentOf(state)
       state.keys = withKey(state.keys, name, patch.apiKey)
@@ -115,37 +121,48 @@ function withKey(keys, name, apiKey) {
 }
 
 /**
- * What of this Save is actually an OVERRIDE. A field equal to what the file
- * says is agreement, not an override, and storing it pins this browser to
- * today's `models.json` forever — the fields are pre-filled from the entry, so
- * without this every Save pinned every field.
- * @param {Entry|null} shipped @param {Patch} patch @returns {Record<string, string>}
+ * THE VERDICT THIS SAVE REACHES ON EACH FIELD IT ACTUALLY CARRIES. Three
+ * answers and not two: absent means untouched, a value equal to what the file
+ * says (or a blanked box) means CLEAR, and anything else is an override. The
+ * clear answer is the one that has to exist — the boxes are pre-filled from the
+ * entry, so typing the shipped URL back in IS the person's undo, and a verdict
+ * that only listed survivors left them no way to reach it (I10).
+ * @param {Entry|null} shipped @param {Patch} patch @returns {Verdict}
  */
 function kept(shipped, patch) {
   /** @type {Record<string, string>} */
-  const fields = {}
-  const differs = (/** @type {string|undefined} */ typed, /** @type {string} */ own) => {
-    const value = (typed ?? '').trim().replace(/\/+$/, '')
-    return value !== '' && value !== own.replace(/\/+$/, '') ? value : null
+  const set = {}
+  /** @type {string[]} */
+  const clear = []
+  const decide = (/** @type {string} */ key, /** @type {string|undefined} */ typed, /** @type {string} */ own) => {
+    if (typed === undefined) return
+    const value = typed.trim().replace(/\/+$/, '')
+    if (value === '' || value === own.replace(/\/+$/, '')) clear.push(key)
+    else set[key] = value
   }
-  const url = differs(patch.baseUrl, shipped?.baseUrl ?? '')
-  if (url) fields['base_url'] = url
-  const model = differs(patch.model, shipped?.model ?? '')
-  if (model) fields['model'] = model
-  return fields
+  decide('base_url', patch.baseUrl, shipped?.baseUrl ?? '')
+  decide('model', patch.model, shipped?.model ?? '')
+  return { set, clear }
 }
+
+/** What one Save does to one entry's override slot: what it pins, what it undoes. */
+/** @typedef {{set: Record<string, string>, clear: string[]}} Verdict */
 
 /**
- * Write — or CLEAR — one entry's override slot, leaving every other entry's
- * alone. Clearing on an empty patch is what makes a later `models.json` edit
- * reach a browser that once pressed Save.
+ * Apply that verdict to one entry's override slot, leaving every other entry's
+ * alone — and leaving THIS entry's untouched fields alone too, because
+ * `saveEndpoint` freezes all three fields as optional and a key-only save must
+ * not erase a URL nobody typed at. The slot goes away only once nothing is left
+ * in it, which is what makes a later `models.json` edit reach a browser that
+ * once pressed Save.
  * @param {Record<string, Record<string, string>>} overrides
- * @param {string} name @param {Record<string, string>} fields
+ * @param {string} name @param {Verdict} verdict
  */
-function pinned(overrides, name, fields) {
+function pinned(overrides, name, verdict) {
+  const slot = { ...(overrides[name] ?? {}), ...verdict.set }
+  for (const key of verdict.clear) delete slot[key]
   const next = { ...overrides }
-  if (Object.keys(fields).length === 0) delete next[name]
-  else next[name] = { ...(next[name] ?? {}), ...fields }
+  if (Object.keys(slot).length === 0) delete next[name]
+  else next[name] = slot
   return next
 }
-
