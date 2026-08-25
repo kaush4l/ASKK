@@ -53,18 +53,25 @@ describe('a turn a reload landed in the middle of is resumed or ended, and never
     expect(back.state.awaiting).toBe('tools')
   })
 
-  test('a MUTATING tool in flight ends the turn saying it was interrupted, rather than writing twice', () => {
+  test('a MUTATING tool in flight ends the turn NAMING the call, so a person knows what to go and check', () => {
     const { state, effects } = invoking('write_file', 'c1')
     const back = resume(checkpoint(state, effects))
     expect(back.state.turnId).toBe('')
     expect(back.state.awaiting).toBeNull()
-    expect(ending(back.effects)).toBe(INTERRUPTED)
+    expect(ending(back.effects)).toBe(`${INTERRUPTED}: a write_file call was in flight and may already have run`)
   })
 
-  test('a turn that was running with NOTHING recorded in flight ends: no effect will ever answer it', () => {
+  test('a turn that was running with NOTHING recorded in flight ends saying the record lost its effects', () => {
     const { state } = asking()
     const back = resume(checkpoint(state, []))
-    expect(ending(back.effects)).toBe(INTERRUPTED)
+    expect(ending(back.effects)).toBe(`${INTERRUPTED}: nothing was recorded in flight, so no effect will answer this turn`)
+  })
+
+  test('the two interruptions do not read the same: one sends a person to their files, the other to the log', () => {
+    const mutating = invoking('write_file', 'c1')
+    const wrote = resume(checkpoint(mutating.state, mutating.effects))
+    const lost = resume(checkpoint(asking().state, []))
+    expect(ending(wrote.effects)).not.toBe(ending(lost.effects))
   })
 
   test('an idle agent resumes as itself, with nothing outstanding and no ending', () => {

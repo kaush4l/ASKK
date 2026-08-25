@@ -164,14 +164,16 @@ function settle(state, before, at) {
 /**
  * A ZERO-OUTPUT COMPLETION, ONCE: ask again. TWICE from the same model and the
  * same signal: end the turn — the model is answering deterministically and the
- * answer is nothing (`retry.js`). The signature is written onto the state
- * BEFORE the retry goes out, which is what makes the second one recognisable.
+ * answer is nothing (`retry.js`). THE RETRY CEILING BINDS HERE TOO: a provider
+ * returning nothing under a ROTATING finish signal never repeats a signature,
+ * so that guard alone would let one turn ask forever, doubling `backoffMs`.
  * @param {AgentState} state @param {Incoming} incoming @param {string} finish @returns {Stepped}
  */
 function onEmpty(state, incoming, finish) {
   const signature = emptySignature(state.model, finish)
-  if (state.lastEmpty === signature) return endTurn(state, STALLED)
-  return nextCall({ ...state, lastEmpty: signature }, incoming.at, state.attempts + 1)
+  const attempts = state.attempts + 1
+  if (state.lastEmpty === signature || attempts > MAX_ATTEMPTS) return endTurn(state, STALLED)
+  return nextCall({ ...state, lastEmpty: signature }, incoming.at, attempts)
 }
 
 /**

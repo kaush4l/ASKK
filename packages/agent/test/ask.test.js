@@ -95,6 +95,26 @@ describe('the paper is derived per call, so turn N+1 carries nothing of turn N',
   })
 })
 
+describe("the paper is fitted under the CARD's provider arithmetic, not OpenAI's", () => {
+  /** @param {string} kind @returns {string} */
+  function ruleUnder(kind) {
+    const effect = askModel({ ...working(), card: { ...CARD, kind } }, { stage: stage('work'), card: { ...CARD, kind }, at: AT })
+    if (effect.type !== 'CallModel') throw new Error('no model call')
+    return /** @type {{report: {imageRule: string}}} */ (/** @type {unknown} */ (effect.document)).report.imageRule
+  }
+
+  test('the same paper under an anthropic card and an openai card names two different rules', () => {
+    expect(ruleUnder('anthropic')).not.toBe(ruleUnder('openai'))
+    expect(ruleUnder('anthropic')).toBe('anthropic')
+    expect(ruleUnder('openai')).toBe('openai')
+  })
+
+  test("a card naming a provider nobody implements ends the turn rather than billing it OpenAI's tiles", () => {
+    const asked = askFor({ ...working(), card: { ...CARD, kind: 'cohere' } }, AT)
+    expect('problem' in asked && asked.problem).toContain('cohere')
+  })
+})
+
 describe('a call that cannot be assembled ENDS the turn, and says which refusal it was', () => {
   test('an agent whose model is not in the catalogue is not asked against a window nobody chose', () => {
     const state = { ...working(), card: null, model: 'gpt-9' }

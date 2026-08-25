@@ -16,16 +16,18 @@
  * [`endingFor`] is that field read. `malformed_call` is not ported: it patched
  * a missing protocol, and the protocol is here now.
  *
- * SEVEN NAMES NOW. `stalled` and `interrupted` join the five because the folds
- * that earn them exist: the empty-completion guard in `retry.js`, and the boot
- * that reads a checkpoint. The rest — `pass ceiling`, `goal unmet`, `critic
- * faulted`, `unchecked` — still rest on folds this loop does not compute.
+ * EVERY NAME BELOW IS REACHED BY A FOLD IN THIS PACKAGE. `answered`,
+ * `truncated`, `refused` and `no calls` are the provider's finish signal read;
+ * `round ceiling` is the tool-round guard in `step.js`; `failed` is a driver's
+ * effect failure past the retry ceiling; `malformed reply` is a reply the
+ * contract could not read; `empty completions` is the zero-output guard in
+ * `retry.js`; `interrupted` is the boot that reads a checkpoint.
  *
- * FIVE NAMES, DOWN FROM EIGHT. `pass ceiling`, `goal unmet`, `critic faulted`,
- * `unchecked` and `brief missing` each rest on a fold this loop does not yet
- * compute (passes, the standing goal, the critic's verdict, the verify gate,
- * the stage brief). They arrive with the fold that earns them; naming an ending
- * nothing can reach would be a vocabulary describing a machine that is not here.
+ * WHAT IS STILL OWED. `pass ceiling`, `goal unmet`, `critic faulted` and
+ * `unchecked` each rest on a fold this loop does not compute — passes, the
+ * standing goal, the critic's verdict, the verify gate. They arrive with the
+ * fold that earns them; naming an ending nothing can reach would be a
+ * vocabulary describing a machine that is not here.
  * @module
  */
 

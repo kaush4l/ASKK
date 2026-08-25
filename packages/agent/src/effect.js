@@ -36,17 +36,9 @@
  */
 
 /**
- * How this provider hears the paper — the argument `context.render` takes.
- * It rides the effect because the endpoint and the paper meet in exactly one
- * place, and that place is the only one that can choose a notation (I13).
- * @typedef {{target: 'openai' | 'prose' | 'fragments', vision: boolean, audio: boolean}} ProviderFormat
- */
-
-/**
  * @typedef {(
- *   | {type: 'CallModel', turnId: TurnId, document: Document, format: ProviderFormat,
- *      endpoint: EndpointName, model: string, temperature: number | null, speaker: string,
- *      afterMs: number}
+ *   | {type: 'CallModel', turnId: TurnId, document: Document, endpoint: EndpointName,
+ *      model: string, temperature: number | null, speaker: string, afterMs: number}
  *   | {type: 'InvokeTool', turnId: TurnId, callId: string, tool: ToolId, args: string}
  *   | {type: 'Emit', fact: Fact}
  *   | {type: 'Delegate', turnId: TurnId, agent: string, goal: string, batch: number}
@@ -70,7 +62,7 @@ export const EFFECT_TYPES = /** @type {const} */ (['CallModel', 'InvokeTool', 'E
  * failed completion must not go out immediately, and `step` holds no clock
  * (I7) — so the loop says how long to wait and the driver waits. Zero is the
  * ordinary call, which is every call that is not a retry.
- * @param {{turnId: TurnId, document: Document, format: ProviderFormat, endpoint: EndpointName,
+ * @param {{turnId: TurnId, document: Document, endpoint: EndpointName,
  *          model?: string, temperature?: number | null, speaker?: string, afterMs?: number}} call
  * @returns {Effect}
  */
@@ -79,7 +71,6 @@ export function callModel(call) {
     type: 'CallModel',
     turnId: call.turnId,
     document: call.document,
-    format: call.format,
     endpoint: call.endpoint,
     model: call.model ?? '',
     temperature: call.temperature ?? null,

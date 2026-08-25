@@ -17,15 +17,16 @@
  * was still in the prompt for turn N+1 — which is how `## space` named three
  * tools the running stage had not been granted.
  *
- * WHAT THIS DOES NOT WRITE. The stable head — the soul, the identity, the
- * conversation — is the paper's own, seeded when the agent was adopted. A paper
- * carrying none is refused BY NAME (`no_head`), and that refusal is correct: an
- * agent that is nobody must not be asked anything.
+ * WHERE THE IDENTITY COMES FROM. The soul is written HERE, from `state.prompt`,
+ * on every call — it is not seeded once and left standing, because the prompt a
+ * person edits mid-run must reach the next call and not the one after it. What
+ * this file does not write is the conversation: the exchanges are the paper's
+ * own, carried across turns, and `paperFor` reads them without touching them.
  * @module
  */
 
 import { MODEL_ENDPOINT } from '@harness/kernel'
-import { assemble, budgetFor, sectionOf } from '@harness/context'
+import { adapterFor, assemble, budgetFor, sectionOf } from '@harness/context'
 import { callModel } from './effect.js'
 import { endTurn } from './ending.js'
 import { facultyBlocks } from './faculty/index.js'
@@ -110,13 +111,13 @@ function components(state, of) {
  * the estimator's slack come out of it. One constant for every model is how
  * 8192 survived a measurement that said 4174 tokens did not fit in 4096.
  *
- * The endpoint and the paper meet in exactly one place, so this is the only
- * place that can choose the notation the paper is written in (I13). `vision` is
- * the CARD's word: an undeclared modality is one we do not send, because the
- * cost of not sending an image is a weaker answer and the cost of sending one
- * to a text model is a 400 in the middle of a turn.
+ * THE IMAGE ARITHMETIC IS THE CARD'S PROVIDER, NOT OPENAI'S. Anthropic bills a
+ * photograph at about w*h/750 and the tile rule understates that by ~3x, so a
+ * paper fitted under the wrong rule fits a window it will not fit — and the
+ * receipt then names a provider that was never asked. `adapterFor(card.kind)`
+ * is the same table `assemble` names in its own doc comment.
  * @param {AgentState} state @param {Asking} of @returns {Effect}
- * @throws {HarnessError} by law name — `no_head`, `elided_but_named`, `window_too_small`
+ * @throws {HarnessError} by law name — `elided_but_named`, `window_too_small`, `unknown_provider`
  */
 export function askModel(state, of) {
   const document = assemble(
@@ -126,11 +127,11 @@ export function askModel(state, of) {
     // is not this lane's to do.
     { stage: /** @type {import('@harness/kernel').StageId} */ (of.stage.name), sources: paperFor(state, of) },
     budgetFor(of.card),
+    adapterFor(of.card.kind).images,
   )
   return callModel({
     turnId: state.turnId,
     document,
-    format: { target: 'openai', vision: of.card.acceptsImages, audio: false },
     endpoint: MODEL_ENDPOINT,
     model: state.model,
     temperature: state.temperature,
@@ -160,10 +161,10 @@ export function stageNow(state) {
 /**
  * THE NEXT MODEL CALL, OR THE SENTENCE SAYING WHY THERE ISN'T ONE.
  *
- * ASSEMBLY THROWS BY LAW NAME AND THIS TURNS IT INTO AN ENDING. A paper with no
- * head, a section elided while another names it, a window too small for its own
- * reply — each is a real, nameable state of THIS agent, and a turn that cannot
- * be assembled must end saying which law refused it. Letting it throw past the
+ * ASSEMBLY THROWS BY LAW NAME AND THIS TURNS IT INTO AN ENDING. A section elided
+ * while another names it, a window too small for its own reply, a card naming a
+ * provider nobody implements — each is a real, nameable state of THIS agent,
+ * and a turn that cannot be assembled must end saying which law refused it. Letting it throw past the
  * reducer would take the whole page down over one agent's paper.
  * @param {AgentState} state @param {Timestamp} at @param {number} [afterMs]  the backoff a retry carries
  * @returns {{effect: Effect} | {problem: string}}

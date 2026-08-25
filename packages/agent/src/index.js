@@ -66,7 +66,6 @@ export { STEERED, carried } from './steer.js'
 /** @typedef {import('./state.js').Paper} Paper */
 /** @typedef {import('./effect.js').Effect} Effect */
 /** @typedef {import('./effect.js').Document} Document */
-/** @typedef {import('./effect.js').ProviderFormat} ProviderFormat */
 /** @typedef {import('./tools.js').Tool} Tool */
 /** @typedef {import('./tools.js').ToolArg} ToolArg */
 /** @typedef {import('./calls.js').CallStyle} CallStyle */

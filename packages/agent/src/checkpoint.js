@@ -54,11 +54,20 @@ export function resume(text) {
   const record = readRecord(text)
   const state = restoreAgentState(record.state)
   if (state.turnId === '') return { state, effects: [] }
+  // The two arms are one branch and two different truths, and the ending has to
+  // say which: the first sends a person to look at their filesystem, the second
+  // says the checkpoint lost the effect that would have answered this turn.
   const unsafe = record.inFlight.find((effect) => !reissuable(state, effect))
-  if (unsafe || record.inFlight.length === 0) {
-    return endTurn(state, INTERRUPTED)
+  if (unsafe) return endTurn(state, `${INTERRUPTED}: a ${toolNameOf(unsafe)} call was in flight and may already have run`)
+  if (record.inFlight.length === 0) {
+    return endTurn(state, `${INTERRUPTED}: nothing was recorded in flight, so no effect will answer this turn`)
   }
   return { state, effects: [...record.inFlight] }
+}
+
+/** What to call an effect the resume would not re-issue. Only a tool call can be one; the type is the honest name for anything else. @param {Effect} effect @returns {string} */
+function toolNameOf(effect) {
+  return effect.type === 'InvokeTool' ? effect.tool : effect.type
 }
 
 /**

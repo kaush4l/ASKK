@@ -7,7 +7,6 @@ describe('effects', () => {
     callModel({
       turnId: 't-1',
       document: { sections: [] },
-      format: { target: 'openai', vision: false, audio: false },
       endpoint: 'model',
       model: 'local-small',
       temperature: 0.2,
@@ -33,7 +32,6 @@ describe('effects', () => {
       callModel({
         turnId: 'turn-A',
         document: { sections: [] },
-        format: { target: 'openai', vision: false, audio: false },
         endpoint: 'model',
       }),
       invokeTool('turn-A', 'call-1', 'exec', '{"command":"ls"}'),
@@ -49,14 +47,12 @@ describe('effects', () => {
     const call = callModel({
       turnId: 't-1',
       document: { sections: [] },
-      format: { target: 'openai', vision: false, audio: false },
       endpoint: 'model',
     })
     expect(call).toEqual({
       type: 'CallModel',
       turnId: 't-1',
       document: { sections: [] },
-      format: { target: 'openai', vision: false, audio: false },
       endpoint: 'model',
       model: '',
       temperature: null,

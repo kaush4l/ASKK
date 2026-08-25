@@ -110,6 +110,19 @@ describe('two zero-output completions from the same model and signal stop the re
     expect(other.effects.some((e) => e.type === 'CallModel')).toBe(true)
   })
 
+  test('a ROTATING signal never repeats the signature, and the retry ceiling ends the turn anyway', () => {
+    const one = step(asking(), replied('', 'stop'))
+    const two = step(one.state, replied('', 'length'))
+    const three = step(two.state, replied('', 'content_filter'))
+    expect(three.effects.some((e) => e.type === 'CallModel')).toBe(true)
+    expect(three.state.attempts).toBe(3)
+
+    const four = step(three.state, replied('', 'refusal'))
+    expect(four.effects.some((e) => e.type === 'CallModel')).toBe(false)
+    expect(ending(four.effects)).toBe(STALLED)
+    expect(MAX_ATTEMPTS).toBe(3)
+  })
+
   test('a reply that SAID something is an answer and never a stall, however it finished', () => {
     const answered = step(asking(), replied('here you go', 'stop'))
     expect(ending(answered.effects)).toBe('answered')
