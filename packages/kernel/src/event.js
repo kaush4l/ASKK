@@ -8,6 +8,14 @@
  *   1. `Event.v` — the envelope version, stamped at append, read at replay.
  *   2. `fact` is a NESTED object, so envelope metadata can never collide with
  *      a payload key, and a new payload key is additive by construction.
+ *
+ * ELEVEN TYPES, NOT TWELVE. The Rust vocabulary had `ModuleDeactivated` and
+ * `ModuleReactivated`, and a measurement of the tree found ZERO construction
+ * sites and ZERO readers for either — a closed vocabulary carrying two words
+ * nothing could say and nothing could hear. One survives as `module_removed`,
+ * because I10 requires an installation be undoable and something must record
+ * that it was; the pair that modelled a deactivate/reactivate cycle nobody
+ * built does not.
  * @module
  */
 
@@ -24,7 +32,7 @@ export const EVENT_VERSION = 1
  *   | {type: 'request_handled', path: string, status: number}
  *   | {type: 'user_message', text: string, agent: string, from: string}
  *   | {type: 'module_installed', module: string, version: string}
- *   | {type: 'module_deactivated', module: string, version: string}
+ *   | {type: 'module_removed', module: string, version: string}
  *   | {type: 'phase_entered', agent: string, phase: PhaseId}
  *   | {type: 'model_called', agent: string, documentHash: string, spentTokens: number, evicted: string[]}
  *   | {type: 'model_replied', agent: string, text: string, reasoning: string}
@@ -39,7 +47,7 @@ export const EVENT_VERSION = 1
 
 /** Every fact type, so a reader can refuse an unknown one by name. */
 export const FACT_TYPES = /** @type {const} */ ([
-  'request_handled', 'user_message', 'module_installed', 'module_deactivated',
+  'request_handled', 'user_message', 'module_installed', 'module_removed',
   'phase_entered', 'model_called', 'model_replied', 'tool_invoked',
   'agent_status', 'store_failed', 'custom',
 ])

@@ -42,7 +42,7 @@ however many conversations it projects.
 | GET | `/agents` | `agents` | every agent, its file, its model, what failed to load | — |
 | POST | `/agents` | `agents` | the roster after an install | `module_installed` |
 | POST | `/agents/file` | `agents` | the roster after a file was written here | `custom:agent_authored` |
-| GET | `/agents/delete` | `agents` | the roster without it | `custom:agent_deleted` |
+| GET | `/agents/delete` | `agents` | the roster without it | `module_removed` |
 | GET | `/board` | `board` | every agent's status, route, stage walk, lap | — |
 | GET | `/tools` | `tools` | every tool, its capability, whether it resolves | — |
 | GET | `/space` | `space` | the shared space's contents | — |
