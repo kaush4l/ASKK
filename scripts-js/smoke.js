@@ -6,7 +6,11 @@
  * the export built, every chunk answered 200, the shell painted, and the
  * application behind it never started. Nothing in the gate opened it. So this
  * builds the real export, serves it under the real base path, drives it in a
- * real browser, and fails unless a person could type into it.
+ * real browser, and fails unless a person could type into it AND SOMETHING CAME
+ * BACK. The outbound half alone proves boot, record and re-render, and says
+ * nothing about the return leg — which is where every defect of the last three
+ * rounds lived. With no model server on the machine what comes back is the
+ * port's refusal, and a refusal on the screen is the return leg working.
  *
  * IT SERVES FILES ITSELF, PER REQUEST, AND THAT IS LOAD-BEARING. A `Bun.serve`
  * `dir` route was measured answering the page 200 and every chunk under it 404
@@ -27,12 +31,37 @@ const PORT = Number(process.env.HARNESS_SMOKE_PORT ?? 4318)
 const BROWSE = process.env.HARNESS_BROWSE ?? `${process.env.HOME}/.claude/skills/gstack/browse/dist/browse`
 const OUT = ROOT + 'apps/web/out'
 const SAID = 'smoke: say something'
+const ANSWER_MS = Number(process.env.HARNESS_SMOKE_ANSWER_MS ?? 8000)
+
+/** The transcript's rows as their KINDS, newest last (`components/views/chat.jsx`
+ *  stamps `data-row`/`data-kind` on every one). */
+const KINDS = `[...document.querySelectorAll('[data-row=said]')].map((n) => n.dataset.kind)`
+
+/**
+ * THE RETURN LEG: something arrived after the message this run typed, and it is
+ * not that message. Measured against the count taken BEFORE the send, because
+ * the log outlives the browser profile — a run that sent nothing would find a
+ * previous run's sentence still on the screen and call it an answer. What comes
+ * back on a machine with no model server is the port's refusal, which is the
+ * point: a refusal on the screen is the whole return leg working.
+ */
+const ANSWERED = `(() => { const k = ${KINDS}; return k.length > window.__before + 1 && k[k.length - 1] !== 'user' })()`
 
 /** What the page must be able to tell us about itself, from inside itself. */
 const REPORT = `JSON.stringify({
   textareas: document.querySelectorAll('textarea').length,
   transcript: document.body.innerText.includes(${JSON.stringify(SAID)}),
   models: performance.getEntriesByType('resource').some((r) => r.name.endsWith('models.json')),
+  answered: ${ANSWERED},
+})`
+
+/** Wait for the answer, to a bound, then report whatever is true. A fixed sleep
+ *  cannot tell an answer that never came from one that was slow, and those are
+ *  two different defects — this fails the slow one AS slow. */
+const POLL = `new Promise((done) => {
+  const deadline = Date.now() + ${ANSWER_MS}
+  const look = () => (${ANSWERED} || Date.now() > deadline ? done(1) : setTimeout(look, 100))
+  look()
 })`
 
 /** Run one command and hand back its output, or throw with what it printed. */
@@ -51,18 +80,20 @@ async function build() {
 }
 
 /**
- * DRIVE IT LIKE A PERSON: open it, wait for the box, type, send, read back.
- * `wait` is what makes this a real assertion — it fails the gate by TIMING OUT
- * when the composer never arrives, which is exactly the defect being gated.
+ * DRIVE IT LIKE A PERSON: open it, wait for the box, mark where the transcript
+ * stood, type, send, wait for the answer, read back. `wait` is what makes this
+ * a real assertion — it fails the gate by TIMING OUT when the composer never
+ * arrives, which is exactly the defect being gated.
  */
 function script() {
   const url = `http://localhost:${PORT}${BASE}/`
   return JSON.stringify([
     ['goto', url],
     ['wait', 'textarea'],
+    ['js', `window.__before = ${KINDS}.length`],
     ['fill', 'textarea', SAID],
     ['click', 'button[type=submit]'],
-    ['js', 'new Promise((r) => setTimeout(() => r(1), 3000))'],
+    ['js', POLL],
     ['js', REPORT],
   ])
 }
@@ -98,6 +129,7 @@ try {
   if (seen.textareas < 1) failures.push('the composer never reached the screen: no textarea after boot')
   if (!seen.models) failures.push('models.json was never fetched, so the core never booted')
   if (!seen.transcript) failures.push('a sent message did not reach the transcript without a reload')
+  if (!seen.answered) failures.push(`nothing came back: the model port's refusal never reached the transcript within ${ANSWER_MS}ms`)
 } catch (failure) {
   // The driver's own timeout IS the assertion failing: `wait textarea` gives up
   // when the composer never arrives, which is the whole defect being gated.
@@ -112,4 +144,4 @@ if (failures.length) {
   for (const line of failures) console.error('  ' + line)
   process.exit(1)
 }
-console.log('smoke ok — the export boots, the composer is on screen, and a message reaches the transcript')
+console.log('smoke ok — the export boots, the composer is on screen, a message reaches the transcript, and what the model port answered reaches it too')

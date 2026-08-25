@@ -22,37 +22,55 @@
  * error. That is how this defect presented for three rounds.
  *
  * The STATUS is the discriminator, because it is the same condition `handle`
- * appends under and it is known synchronously. The announcement may arrive
- * inside the read or one microtask after it, and both are handled — nothing
- * here depends on the order two queued callbacks happen to take.
+ * appends under and it is known synchronously. WHAT IS COUNTED, NOT FLAGGED:
+ * one render pass reads once PER PANE, so N failing reads owe N swallowed
+ * announcements, and a boolean lets the N+1th through — which wakes every pane,
+ * which reads again. Counting is the whole difference between this holding for
+ * one pane and holding for a screen made of panes.
+ *
+ * WHAT IS GUARANTEED: a failing read swallows exactly one announcement,
+ * whenever it arrives — inside the read or in a later microtask — and an
+ * announcement owed but never delivered is RELEASED AT THE END OF THE TICK.
+ * That bound is not decoration. The moment the core stops recording a failed
+ * GET (filed for the lead), nothing arrives to consume what a 404 armed, and an
+ * unbounded arming would eat the next genuine append instead: the reply would
+ * sit in the log with the screen still showing the question. The cost of the
+ * bound is one stale pane, and only for a real change that lands inside the
+ * same tick as a failing read.
  *
  * THE REAL FIX IS A ROUTE THAT DOES NOT WRITE WHEN IT IS READ, and it is the
- * core's: this cannot tell a fact the driver appended during the read from the
- * one the read caused, so a genuine change landing in that window leaves a pane
- * stale until the next one. Filed for the lead in STATUS.md.
+ * core's. Filed for the lead in STATUS.md.
  * @param {() => void} bump what to do when the log grew for a REAL reason
  */
 export function growthGate(bump) {
   let reading = false
-  let swallowed = false
-  let expected = false
+  let seen = 0
+  let owed = 0
+  const owe = () => {
+    owed += 1
+    if (owed === 1) setTimeout(() => { owed = 0 }, 0)
+  }
   return {
     announced: () => {
-      if (reading) return void (swallowed = true)
-      if (expected) return void (expected = false)
+      if (reading) return void (seen += 1)
+      if (owed > 0) return void (owed -= 1)
       bump()
     },
     /** @param {(request: Request) => Response} seam @returns {(request: Request) => Response} */
     reading: (seam) => (request) => {
       reading = true
-      swallowed = false
+      seen = 0
       const answered = seam(request)
       reading = false
-      // Exactly one announcement belongs to this read, and only when it failed.
-      if (answered.status >= 400 && !swallowed) expected = true
-      if (answered.status < 400 && swallowed) bump()
+      // One announcement belongs to this read, and only when it failed: take it
+      // if it already came, otherwise wait for it. Anything else that fired
+      // during the read is somebody's real append and still owes a bump.
+      if (answered.status >= 400) {
+        if (seen === 0) owe()
+        else seen -= 1
+      }
+      if (seen > 0) bump()
       return answered
     },
   }
 }
-
