@@ -20,10 +20,10 @@ parts the rewrite exposes as wrong.
 | LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
 | RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md`, 360 lines | ✅ landed |
 | — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
-| A · PAPER | `packages/context` | 1 ✅ shapes · 2 ✅ the budget is derived · 3 🔄 assembly, and a budget that bites from the right end |
-| B · LOOP | `packages/agent` | 1 ✅ state and effects · 2 ✅ step, and turn identity · 3 🔄 tool calls that correlate |
-| C · SPINE | `packages/core`, `packages/adapters-web` | 1 ✅ the one seam · 2 ✅ segments and bounded boot · 3 🔄 the walking skeleton |
-| D · FACE | `apps/web` | 1 ✅ the shell · 2 ✅ one component per view · 3 🔄 the Work screen, made worth looking at |
+| A · PAPER | `packages/context` | 1 ✅ shapes · 2 ✅ derived budget · 3 ✅ assembly · 4 🔄 the provider adapters |
+| B · LOOP | `packages/agent` | 1 ✅ state · 2 ✅ turn identity · 3 ✅ correlated tool calls · 4 🔄 the agent file and its stages |
+| C · SPINE | `packages/core`, `packages/adapters-web` | 1 ✅ the seam · 2 ✅ bounded boot · 3 ✅ the walking skeleton · 4 🔄 the browser half |
+| D · FACE | `apps/web` | 1 ✅ the shell · 2 ✅ a component per view · 3 ✅ the Work screen · 4 🔄 the interface stops pretending |
 
 ## What exists
 
