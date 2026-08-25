@@ -76,6 +76,20 @@ lane lead for a re-plan** — the third attempt is not more of the same attempt.
 - **Do not port dead code.** If the Rust has no construction site or no caller,
   it does not get a JavaScript file. Say so in the report instead.
 
+## One working tree, and what it costs
+
+Four lanes commit to one branch in one working tree. Measured across six rounds,
+that costs exactly two things and they are worth knowing:
+
+- **A neighbour's half-saved file reds your gate.** The rule below is the answer.
+- **`git stash` is unsafe here.** A lane used it once to separate its own errors
+  from a neighbour's and said afterwards it would not do so again. It is right:
+  a stash takes the other three lanes' in-flight work with it. Never stash, never
+  `git checkout` a file you do not own, and never `git clean`.
+
+A per-lane worktree removes both. It is not built, and until it is, the rule
+above is the whole discipline.
+
 ## When the shared gate is red on somebody else's file
 
 Four lanes commit to one branch, so a neighbour's half-saved file can hold

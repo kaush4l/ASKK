@@ -20,10 +20,10 @@ parts the rewrite exposes as wrong.
 | LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
 | RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md`, 360 lines | ✅ landed |
 | — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
-| A · PAPER | `packages/context` | 4 ✅ provider adapters · 5 🔄 the components and the golden matrix |
-| B · LOOP | `packages/agent` | 4 ✅ the agent file and its stages · 5 🔄 the paper, the faculties, retry |
-| C · SPINE | `packages/core`, `packages/adapters-web` | 4 ✅ the browser half · 5 🔄 the rest of the routes, and search |
-| D · FACE | `apps/web` | 4 ✅ wired to the seam · 5 🔄 **MAKE THE PAGE COME UP** |
+| A · PAPER | `packages/context` | 5 ✅ 14 blocks, 48 request-body goldens · 6 🔄 the goldens become the real bytes |
+| B · LOOP | `packages/agent` | 5 ✅ the paper per call, faculties, retry, resume · 6 🔄 one prompt vocabulary, and Workers |
+| C · SPINE | `packages/core`, `packages/adapters-web` | 5 ✅ every route, search, attachments, spill · 6 🔄 the dashboard, and the tools the agent file names |
+| D · FACE | `apps/web` | 5 ✅ **the page comes up**, and a smoke gate proves it · 6 🔄 the screen a person would choose to use |
 
 ## What exists
 
@@ -125,6 +125,21 @@ can tell its own error from a neighbour's half-saved file.
   serialise `content` as `""` and never `null`.
 - **Dependencies below the UI stay at zero.** Refused by name: zod, Tailwind,
   framer-motion, charting, marked + dompurify, any public CORS proxy.
+
+## SHIPPED — 2026-08-25
+
+`https://kaush4l.github.io/ASKK/` serves the JavaScript build. The static export
+boots in a browser, the composer is on screen, a typed message crosses the seam,
+and what the model port answered comes back to the transcript without a reload —
+all four asserted by `scripts-js/smoke.js`, which drives the real artifact in a
+real browser and which `publish.sh` runs before it touches git.
+
+**A deploy prerequisite, stated because it is one.** `smoke.js` drives gstack's
+`browse` binary at `~/.claude/skills/gstack/browse/dist/browse`, overridable with
+`HARNESS_BROWSE`. It is not vendored, and when it is absent the gate FAILS rather
+than skipping — a gate that quietly does not run is the defect it exists for.
+`bun run gate` does not require it, so a contributor without gstack can still
+work; `scripts-js/publish.sh` does.
 
 ## The page did not come up, and nothing said why
 
