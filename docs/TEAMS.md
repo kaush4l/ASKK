@@ -1,71 +1,81 @@
-# TEAMS — the gauntlet loop
+# TEAMS — how the four lanes run
 
-> The lead holds the goal and does not write code. A team is four roles and one
-> increment. Nothing lands that has not survived the gauntlet.
+> The lead agent owns this file, `STATUS.md`, `packages/kernel`, the gates, and
+> the deploy. Everything else belongs to a lane.
 
-## The law this file serves
+## The four lanes
 
-Simplicity is the architecture. Every other property (legibility, testability,
-swappability) is downstream of it. The measures, not the adjectives:
+| Lane | Name | Owns, exclusively | Never touches |
+|---|---|---|---|
+| A | **PAPER** | `packages/context/**` | anything else |
+| B | **LOOP** | `packages/agent/**` | `packages/context` (imports it, never edits it) |
+| C | **SPINE** | `packages/core/**`, `packages/adapters-web/**` | `packages/agent`, `packages/context` |
+| D | **FACE** | `apps/web/**` | every `packages/**` (imports, never edits) |
 
-- A file ≤ 200 lines. A function ≤ 40. A dependency carries a one-line reason.
-- **Deleting beats adding.** An increment that removes a mechanism and keeps the
-  capability outranks one that adds a mechanism.
-- **No speculative generality.** A type with zero construction sites is a defect,
-  not a foundation. (`crates/script` was 155 lines of `todo!()` in the shipping
-  graph for one unconstructed error variant.)
-- **I17: a claim the gate cannot execute is not a verified claim.** The gate is
-  six checks (`docs/STATUS.md`); one of them deploys.
-- **I16: a truth the system holds and does not state is a defect.**
-- One seam: `handle(Request) -> Response`. Everything reaching the LLM is a
-  component (`docs/ARCH-COMPONENTS.md`). Adding one is a declaration.
+**File ownership is the whole conflict story.** Two lanes never edit one file.
+Disjoint files is not enough on its own — a lane that needs a change in another
+lane's package files a REQUEST in `STATUS.md` under *Cross-lane requests* and
+keeps going against the contract that was frozen, rather than reaching across.
 
-## The four roles
+## The increment protocol
 
-| Role | Owns | Forbidden |
-|---|---|---|
-| **researcher** | Read-only survey. Returns `file:line` facts and MEASUREMENTS, never opinions. Every number is a command someone else can re-run. | Writing files. Proposing fixes. |
-| **planner** | Turns the survey into ONE increment: scope, the files it owns, and falsifiable acceptance criteria. Names what it is NOT doing. | Writing product code. Widening scope past one increment. |
-| **coder** | Implements exactly the planned increment. Runs the six-check gate. Stops. | Landing anything outside its file list. Shipping a green claim it did not execute. |
-| **bar-raiser** | Attacks its own team's work, hostile and specific. Rules GO or NO-GO with evidence. A NO-GO must name the command that shows the defect. | Politeness. Ruling on prose alone. |
+A lane does one increment per turn. An increment is:
 
-## The gauntlet (one increment)
+1. **Read the lifecycle first.** Before writing a line, read the Rust source it
+   replaces AND everything that calls it. A faithful translation reproduces the
+   BEHAVIOUR and the reasons, not the shape. Where the Rust shape was a
+   consequence of Rust — a trait to get dynamic dispatch, a newtype to get a
+   distinct type, a module to get a privacy boundary — the JavaScript is
+   allowed and expected to be simpler. Where the shape was a consequence of the
+   PROBLEM, it survives.
+2. **Write the code.** Files ≤ 200 lines, functions ≤ 40, `strict` types, typed
+   errors, every dependency justified in one line.
+3. **Write the test that executes the claim.** Not a test that asserts the code
+   does what it does — a test that would FAIL if the behaviour regressed. Host
+   only: `bun test`, no browser.
+4. **Run the gate.** `bun run gate`. Green or the increment is not done.
+5. **Bar-raiser.** See below. A NO-GO returns to step 2, not to step 1.
+6. **Commit.** One commit per increment, message in the house style: what
+   changed, and the reason a reader could not have guessed.
+7. **Report one row** for `STATUS.md`.
 
-```
-researcher  -> measurements       (no fixes)
-planner     -> charter            (scope + acceptance + file ownership)
-bar-raiser  -> attack the CHARTER  (before a line is written)
-coder       -> implement + 6-check gate
-bar-raiser  -> attack the RESULT   (GO / NO-GO with a reproducing command)
-lead        -> rule, then ship
-```
+## The bar-raiser
 
-A NO-GO returns to the coder with the reproducing command. Two NO-GOs on the
-same increment returns to the planner: the charter was wrong, not the code.
+Every increment is reviewed by an agent that did not write it, against these
+questions and no others:
 
-## AAA output standard (every role, every artifact)
+- **Can a person read this in one pass?** Name the function that cannot be, and
+  say what it is doing that hides its shape.
+- **How many things must be held in mind at once to change this safely?** If the
+  answer is more than three, name them.
+- **Is anything here ceremony?** A wrapper that only forwards, a type with one
+  construction site, an abstraction with one implementation, a config nobody
+  reads. Name it and propose the deletion.
+- **Does a test EXECUTE each claim, or only assert it?** Name the claim that is
+  prose (I16, I17).
+- **Is any truth held and not stated?** A constraint the model or the person is
+  never told, a limit nobody surfaces, a failure that returns empty instead of
+  saying what went wrong.
+- **Would this file be at home beside `packages/kernel/src/event.js`?** Same
+  comment density, same directness, same refusal to explain the obvious.
 
-1. **Every claim carries its evidence inline** — `path:line`, or the command and
-   its output. A claim with no command behind it is deleted, not softened.
-2. **Positive control on every new test** (T59 rule): state in the commit message
-   the one-line revert that makes the new test go RED. A test that stays green
-   under the broken version measures nothing.
-3. **Name what you did NOT do and why.** Silent narrowing is the defect; stated
-   narrowing is a decision.
-4. **Numbers, not adjectives.** "Faster" is a defect; "26.7s → 3.16s" is work.
-5. **Write for a reader who was not here.** Prose discipline is not verification —
-   it is the half a reviewer cannot audit, so it never substitutes for a gate.
+The bar-raiser returns **GO** or **NO-GO with the specific change**. Vague
+disapproval is not a NO-GO. **Two NO-GOs on the same increment returns it to the
+lane lead for a re-plan** — the third attempt is not more of the same attempt.
 
-## File ownership
+## The rules that outrank convenience
 
-Teams run in parallel ONLY over disjoint file sets. Each charter lists the files
-it owns; a coder that needs a file it does not own stops and reports to the lead.
-(Measured 2026-08-22: overlapping ownership produced empty-file overwrites and a
-silent alphabetical-order hijack.)
+- **The gate is the standard** (I17). If a claim cannot be executed, either make
+  it executable or delete it.
+- **No speculative generality.** No option nobody selects, no port with one
+  adapter that will never have two, no event nobody folds.
+- **Typed errors, always.** A failure that returns `null` or an empty string is
+  a failure a person will debug at 2am with nothing to read.
+- **Say what is missing.** A capability this build does not have must SAY so
+  when it is reached for. Silence reads as absence, and a model plans from it.
+- **Do not port dead code.** If the Rust has no construction site or no caller,
+  it does not get a JavaScript file. Say so in the report instead.
 
-## Reporting
+## Cross-lane requests
 
-Each team reports to the lead at three points: charter written, gate green,
-bar-raiser ruled. A team that cannot report a measurement reports the blocker
-instead. The lead steers on divergence; a team never blocks waiting for the lead
-except on secrets, network allowlists, or destructive storage (§17).
+Filed in `STATUS.md`. The lead rules on them; a lane never resolves its own.
