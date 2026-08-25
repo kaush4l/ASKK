@@ -27,9 +27,10 @@ export const tiles = {
 /**
  * @type {import('@/components/views/dashboard').DashboardData}
  *
- * FOUR GROUPS, AND THE ONE THAT NEEDS A PERSON IS FIRST BY CONSTRUCTION rather
- * than by arriving first: `Dashboard` gives the `waiting` group its own slot at
- * the top of the screen, so this array's order is not what puts it there. Six
+ * FOUR GROUPS, AND THE ONE THAT NEEDS A PERSON IS LAST HERE AND FIRST ON THE
+ * SCREEN: `Dashboard` gives the `waiting` group its own slot at the top, so it
+ * is the slot and not this array's order that puts it there — the fixture ends
+ * with it precisely so an in-order render could not fake the same result. Six
  * statuses appear between the six rows, which is every state this product draws
  * a shape for (`ui/glyph.jsx`) — the roster is where they are all visible at
  * once, and where a greyscale screenshot is judged.
@@ -40,11 +41,6 @@ export const dashboard = {
   rosterEmptyNote:
     'No agents are loaded. public/agents/index.json is the manifest — an agent folder that is not listed there is never fetched.',
   groups: [
-    {
-      id: 'waiting',
-      label: 'Needs you — 1 agent',
-      rows: [{ name: 'critic', status: 'waiting', statusLabel: 'Waiting on you', detail: 'Asked whether to keep the old wording.' }],
-    },
     {
       id: 'live',
       label: 'Working — 2 agents',
@@ -65,6 +61,11 @@ export const dashboard = {
         { name: 'scout', status: 'idle', statusLabel: 'Idle', detail: 'Last answered 6 minutes ago.' },
         { name: 'compactor', status: 'closed', statusLabel: 'Stopped — you ended its run', detail: 'Ran for 4 minutes.' },
       ],
+    },
+    {
+      id: 'waiting',
+      label: 'Needs you — 1 agent',
+      rows: [{ name: 'critic', status: 'waiting', statusLabel: 'Waiting on you', detail: 'Asked whether to keep the old wording.' }],
     },
   ],
 }

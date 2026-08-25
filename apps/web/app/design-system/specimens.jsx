@@ -26,8 +26,11 @@ const CALLS = ['pending', 'working', 'ok', 'failed'].map((status, i) => ({
     'No access-control-allow-origin on the response, so this page never saw the body.'][i] ?? '',
 }))
 
-/** A window that is nearly spent — the state the ring exists to make visible. */
-const NEARLY_FULL = {
+/** A window that is nearly spent — the state the ring exists to make visible.
+ *  Exported because `test/composer.test.js` lays its four arcs out and checks
+ *  they are laid end to end; a second copy of it there would be a second
+ *  fixture free to drift from the one a critic actually looks at. */
+export const NEARLY_FULL = {
   label: '119,540 of 128,000 tokens',
   headroomLabel: '8,460 tokens before the oldest turn is dropped from the window.',
   parts: [

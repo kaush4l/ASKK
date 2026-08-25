@@ -1,7 +1,17 @@
 import { Facts } from './facts'
 import s from './meter.module.css'
 
-/** @typedef {{id: string, key: string, value: string, fraction: number}} CostPart */
+/**
+ * @typedef {object} CostPart one line of the breakdown, and one arc.
+ * @property {string} id
+ * @property {string} key
+ * @property {string} value
+ * @property {number} fraction this part's share OF THE WHOLE WINDOW, not of the
+ *   spend. The parts may not sum past 1: they are laid end to end around a
+ *   circle of circumference 100, so a sum over 1 wraps the ring a second time
+ *   and paints an over-full window as a nearly-empty one. `test/composer.test.js`
+ *   executes that bound over the fixtures rather than trusting this sentence.
+ */
 
 /**
  * @typedef {object} CostData what this turn will cost, before it is sent.

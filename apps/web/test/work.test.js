@@ -30,8 +30,9 @@ test('the group that needs a person is above the transcript, and the fleet is be
   expect(at(needsYou?.label ?? '')).toBeGreaterThan(-1)
   expect(at(needsYou?.label ?? '')).toBeLessThan(at(chat.composer.promptLabel))
   expect(at(chat.composer.promptLabel)).toBeLessThan(at('At a glance'))
-  // …and the group really is late in the projection, so the slot is what did it.
-  expect(dashboard.groups.indexOf(/** @type {never} */ (needsYou))).toBe(0)
+  // …and the group really is LAST in the projection, so the slot is what did
+  // it: an in-order map over `groups` would put this label after every other.
+  expect(dashboard.groups.indexOf(/** @type {never} */ (needsYou))).toBe(dashboard.groups.length - 1)
 })
 
 /**

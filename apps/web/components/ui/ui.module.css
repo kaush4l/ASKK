@@ -119,8 +119,7 @@ details.call .callHead::after {
    references — declared in a global sheet and referenced from a module, this
    compiled to a name nothing defined and the row shimmered not at all.
 
-   A single sweep along a row whose work is in flight:
-   a single sweep along a row whose work is in flight. It is an idle loop bound
+   A single sweep along a row whose work is in flight. It is an idle loop bound
    to a fact the core sent, not decoration, which is what earns it its exemption
    from the 380ms cap — and `prefers-reduced-motion` stops it in `base.css`. */
 .call[data-flying='true'] {

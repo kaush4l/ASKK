@@ -36,9 +36,10 @@ const SHAPES = Object.freeze({
   ok: { d: 'M3.6 8.4l3 3 5.8-6.8', filled: false },
 })
 
-/** The states this product draws a shape for. `test/glyph.test.js` asserts no
- *  two of them are the same outline, and that every status any projection
- *  carries is one of them. */
+/** The states this product draws a shape for. `test/work.test.js` asserts no
+ *  two of them are the same outline, and that every status the dashboard
+ *  fixture carries is one of them. Not every projection: `chat.waitingStatus`
+ *  reaches `Badge` by another road and no test holds it against this list. */
 export const GLYPH_STATES = Object.freeze(Object.keys(SHAPES))
 
 /**
