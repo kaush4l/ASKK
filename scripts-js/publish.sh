@@ -25,7 +25,7 @@ bun scripts-js/check-size.js || fail "I12: a file or a function is over its limi
 
 # ---- build ------------------------------------------------------------------
 rm -rf "$DIR"
-HARNESS_BASE_PATH="$BASE" bun --filter @harness/web run build || fail "the static export did not build"
+( cd apps/web && HARNESS_BASE_PATH="$BASE" bun run build ) || fail "the static export did not build"
 
 # ---- gates on the artifact --------------------------------------------------
 [ -f "$DIR/index.html" ] || fail "no index.html in $DIR"

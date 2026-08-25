@@ -1,0 +1,1 @@
+Now check the work instead of describing it. Run the command the brief named under CHECK and read what it prints. Quote the line that shows the outcome, whichever way it went. If nothing can be run here, say in one sentence what is unchecked and why. Claim nothing you have not read back.
