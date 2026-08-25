@@ -1,7 +1,7 @@
 import { expect, test, describe } from 'bun:test'
 import {
-  ALL_TOOLS, NO_TOOLS, STAGES_OF, adoptSpec, arg, grant, loadAgents, loadBriefs, newAgentState,
-  parseAgentFile, resolveStage, roleHolder, routeOf, tool, usages,
+  ALL_TOOLS, FAULT, NO_TOOLS, PASS, STAGES_OF, adoptSpec, arg, grant, loadAgents, loadBriefs,
+  newAgentState, parseAgentFile, resolveStage, roleHolder, routeOf, tool, usages,
 } from '@harness/agent'
 
 /** The two files this product actually ships, and the five briefs they walk. Read from disk, not fixtured: a spec reader that passes against a fixture somebody wrote for it has proved nothing about the file the page fetches. */
@@ -63,6 +63,14 @@ describe('the two shipped agent files', () => {
     const asTool = toolbox.find((t) => t.name === 'critic')
     expect(asTool?.description).toBe(critic.description)
     expect(asTool?.args.map((a) => a.name)).toEqual(['query'])
+  })
+
+  test('the two words the loop reads are the two words the file asks for', () => {
+    // `passed` tests for PASS alone, so the file and this module agreeing on the
+    // vocabulary is the whole of what makes a FAULT reply a fault rather than an
+    // unrecognised one. Renaming either word in the file breaks HERE, not in production.
+    expect(critic.prompt).toContain(`\`${PASS}\``)
+    expect(critic.prompt).toContain(`\`${FAULT}\``)
   })
 
   test('critic ships engine: base, and that is the empty toolbox — enforced, not described', () => {

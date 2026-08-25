@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'bun:test'
-import { ANSWERED, CRITIC_FAULTED, ENDED, PASS_CEILING, PASS_SPENT, UNCHECKED, endedWhy } from '@harness/agent'
+import { ANSWERED, CRITIC_FAULTED, ENDED, PASS_CEILING, PASS_SPENT, ROUND_CEILING, UNCHECKED, endedWhy } from '@harness/agent'
 import { VOTE, agent, body, drive, payloadOf, walked } from './drive.js'
 
 /** @typedef {import('./drive.js').Said} Said */
@@ -52,6 +52,23 @@ describe('a lap is earned mechanically, and the budget is what stops it', () => 
     const { facts } = looping(2, [EXEC, { text: 'One.' }, EXEC, { text: 'Two.' }])
     expect(walked(facts)).toEqual(['strategy', 'work', 'work'])
     expect(endedWhy(payloadOf(facts, ENDED))).toBe(PASS_CEILING)
+  })
+
+  test('the lap re-enters work, not the plan the turn opened with', () => {
+    const { facts } = drive({ ...agent(), passes: 2 }, 'build the thing', [
+      VOTE('project'),
+      { text: 'The plan.' }, EXEC, { text: 'Worked.' }, { text: 'Verified.' }, { text: 'PASS' },
+      EXEC, { text: 'Worked again.' }, { text: 'Verified again.' }, { text: 'PASS' },
+    ])
+    expect(walked(facts)).toEqual(['strategy', 'plan', 'work', 'verify', 'critique', 'work', 'verify', 'critique'])
+  })
+
+  test('the round budget spans the laps: two one-round laps hit a ceiling of two', () => {
+    const { facts } = drive({ ...agent(), passes: 3, maxRounds: 2 }, 'keep at it', [
+      VOTE('react'), EXEC, { text: 'One.' }, EXEC, { text: 'Two.' },
+    ])
+    expect(walked(facts)).toEqual(['strategy', 'work', 'work'])
+    expect(endedWhy(payloadOf(facts, ENDED))).toBe(ROUND_CEILING)
   })
 })
 

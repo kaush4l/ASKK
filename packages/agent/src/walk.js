@@ -28,6 +28,7 @@ import { CRITIC_FAULTED } from './critic.js'
 import { emit } from './effect.js'
 import { ANSWERED, UNCHECKED, endTurn } from './ending.js'
 import { PASS_CEILING, again, exhausted } from './passes.js'
+import { stageIn } from './stages.js'
 import { STAGES_OF, STRATEGY, routeChosen, routeOf } from './strategy.js'
 
 /** @typedef {import('@harness/kernel').StageId} StageId */
@@ -99,11 +100,6 @@ export function endingNow(state, why) {
   if (state.reviewed === false) return CRITIC_FAULTED
   if (state.mutated && !state.green) return UNCHECKED
   return ANSWERED
-}
-
-/** The stage the cursor is on. A turn walking no list is the bare react loop — every agent written before the key existed — and it takes `work`, which is briefed by the person's own message. @param {AgentState} state @returns {string} */
-export function stageIn(state) {
-  return state.stages[state.stage] ?? 'work'
 }
 
 /**

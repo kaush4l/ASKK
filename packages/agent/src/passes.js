@@ -79,10 +79,3 @@ export function exhausted(state) {
 function spent(state) {
   return emit({ type: 'custom', kind: PASS_SPENT, payload: { pass: state.pass + 1, of: state.passes } })
 }
-
-/** Which lap of how many one `PASS_SPENT` fact names. An unreadable record reads as no lap at all, like every other payload in this package. @param {unknown} payload @returns {{pass: number, of: number}} */
-export function passOf(payload) {
-  const record = typeof payload === 'object' && payload !== null ? /** @type {Record<string, unknown>} */ (payload) : {}
-  const read = (/** @type {string} */ key) => (typeof record[key] === 'number' ? record[key] : 0)
-  return { pass: read('pass'), of: read('of') }
-}

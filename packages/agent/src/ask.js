@@ -24,7 +24,7 @@ import { callModel } from './effect.js'
 import { endTurn } from './ending.js'
 import { paperFor } from './fill.js'
 import { backoffMs } from './retry.js'
-import { resolveStage } from './stages.js'
+import { resolveStage, stageIn } from './stages.js'
 
 /** @typedef {import('@harness/context').ModelCard} ModelCard */
 /** @typedef {import('@harness/kernel').Timestamp} Timestamp */
@@ -71,17 +71,17 @@ export function askModel(state, of) {
 }
 
 /**
- * WHICH STAGE THIS CALL IS TAKEN IN. A turn walking no stage list is the bare
- * react loop — every agent written before the key existed — and it takes
- * `work`, which is briefed by the person's own message and carries no brief of
- * its own. The cursor past the end of the list is the same case.
+ * WHICH STAGE THIS CALL IS TAKEN IN, resolved to its brief and its grant. The
+ * cursor read is `stageIn`'s and not spelled again here: the log stamps the
+ * stage from that same function, and a second copy is how the fact and the
+ * paper come to name two different stages for one moment.
  *
  * A BRIEFED STAGE WHOSE FILE NEVER LOADED REFUSES. A stage entered with no
  * instruction writes nothing while looking exactly like one that ran.
  * @param {AgentState} state @returns {{stage: Stage} | {problem: string}}
  */
 export function stageNow(state) {
-  const name = state.stages[state.stage] ?? 'work'
+  const name = stageIn(state)
   const resolved = resolveStage(/** @type {import('./strategy.js').StageName} */ (name), {
     briefs: state.briefs,
     hasSpace: state.space !== null,

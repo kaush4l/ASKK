@@ -41,7 +41,7 @@ export {
 export { EFFECT_TYPES, callModel, invokeTool, emit, delegate } from './effect.js'
 export {
   NO_TOOLS, ALL_TOOLS, onlyTools, grant, WORK_BUDGET,
-  BRIEF_KEYS, DURABLE, SKILL_TOOLS, actsIn, briefPath, loadBriefs, resolveStage,
+  BRIEF_KEYS, DURABLE, SKILL_TOOLS, actsIn, briefPath, loadBriefs, resolveStage, stageIn,
 } from './stages.js'
 export { ENGINES, ROLES, readFrontmatter, unquote } from './frontmatter.js'
 export { parseAgentFile, unwritten } from './spec.js'
@@ -61,8 +61,8 @@ export { NOTHING_RAN, check, named, peerTool, toolboxFor, usages } from './toolb
 export { NATIVE, SCANNED, callsIn, scanCalls, swallowedClose } from './calls.js'
 export { CALL_REFUSED } from './round.js'
 export { CRITIC_FAULTED, FAULT, PASS, passed } from './critic.js'
-export { PASS_CEILING, PASS_SPENT, again, exhausted, passOf } from './passes.js'
-export { endingNow, openTurn, stageIn, walkOn } from './walk.js'
+export { PASS_CEILING, PASS_SPENT, again, exhausted } from './passes.js'
+export { endingNow, openTurn, walkOn } from './walk.js'
 export { FINISH_REASONS, DROPPED, dropped } from './turn.js'
 export {
   ENDED, ANSWERED, MALFORMED, ROUND_CEILING, TRUNCATED, REFUSED, FAILED, NO_CALLS, RESPOND,

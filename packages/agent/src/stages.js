@@ -26,6 +26,24 @@ import { ANSWER, STRATEGY_SCHEMA } from './strategy.js'
 /** @typedef {import('@harness/kernel').ToolId} ToolId */
 /** @typedef {import('./strategy.js').StageName} StageName */
 /** @typedef {import('./frontmatter.js').Refusal} Refusal */
+/** @typedef {import('./state.js').AgentState} AgentState */
+
+/**
+ * THE STAGE THE CURSOR IS ON. Past the end of the list — or a list that is
+ * empty — is the bare react loop, briefed by the person's own message.
+ *
+ * ONE SPELLING, BELOW BOTH READERS. Two callers ask this about the same moment:
+ * `walk.js` stamps `stage_entered` from it and `ask.js` resolves the brief from
+ * it. Spelled twice it would differ once, and the log would name one stage while
+ * the model was told another. It cannot live in `walk.js` — that imports
+ * `ask.js` — and it does not fit beside its two fields in `state.js` without
+ * pushing that file past I12; here is the module those fields INDEX.
+ * @param {AgentState} state @returns {string}
+ */
+export function stageIn(state) {
+  return state.stages[state.stage] ?? 'work'
+}
+
 
 /**
  * Which of an agent's tools a stage exposes. `none` is structural, not a
