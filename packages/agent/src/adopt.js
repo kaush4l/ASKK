@@ -57,11 +57,6 @@ export function adoptSpec(state, spec, env) {
   return { state: adopted, unresolved: resolved.unresolved, notice: resolved.notice }
 }
 
-/** WHAT EVERY STAGE IS TOLD, onto the state that will walk them. Deliberately not folded into `adoptSpec`: briefs are not a property of the spec, and the same set goes onto every agent in the process, which is what makes `verify` mean one thing. @param {AgentState} state @param {Record<string, string>} briefs @returns {AgentState} */
-export function adoptBriefs(state, briefs) {
-  return { ...state, briefs: { ...briefs } }
-}
-
 /**
  * The space this file named, or null. A name that could walk out of `spaces/`
  * attaches NOTHING rather than being sanitised into something adjacent: a space

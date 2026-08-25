@@ -75,7 +75,11 @@ export function readFrontmatter(path, block) {
       continue
     }
     const at = line.indexOf(':')
-    if (at < 0) { open = ''; continue }
+    // The one shape this reader cannot read at all, and the only line that used
+    // to be dropped in silence — `exec` on its own, or a shell command a person
+    // pasted a line early, would leave the file parsing clean while carrying an
+    // instruction nothing here ever reads.
+    if (at < 0) return refuse(path, '', `${path} holds the line "${line}", which is neither a "key: value" nor a "- item" under an open key, so nothing in this build reads it.`)
     const set = setField(path, values, line.slice(0, at).trim(), unquote(line.slice(at + 1)))
     if ('refusal' in set) return set
     open = set.open
@@ -88,6 +92,12 @@ function setField(path, values, key, value) {
   const slot = Object.hasOwn(FIELDS, key) ? FIELDS[key] : undefined
   if (!slot) {
     return refuse(path, key, `${path} declares "${key}:", and no agent file key is called that — the keys are: ${Object.keys(FIELDS).join(', ')}.`)
+  }
+  // Last-wins is a silent choice made on the author's behalf. The `- item`
+  // lines below an open key are exempt by construction: they go through
+  // `push`, which appends, which is what a list under a key means.
+  if (Object.hasOwn(values, slot.field)) {
+    return refuse(path, key, `${path} declares "${key}:" twice, and only its author knows which was meant.`)
   }
   if (slot.kind === 'list') {
     const inline = value.startsWith('[') && value.endsWith(']')
@@ -105,10 +115,15 @@ function setField(path, values, key, value) {
 /** @param {string} path @param {string} key @param {string} value @param {Slot} slot @returns {{value: unknown} | {refusal: Refusal}} */
 function scalar(path, key, value, slot) {
   if (slot.kind === 'text') return { value }
+  // A KEY WRITTEN WITH NOTHING AFTER IT IS A KEY NOBODY DECIDED. `whole` caught
+  // it and `Number('')` did not, so `temperature:` alone ran an agent fully
+  // deterministic at 0 — the default nobody chose, arrived at by arithmetic.
+  // `role:` is the one blank that means something: a file holding no job.
+  if (value === '' && key !== 'role') {
+    return refuse(path, key, `${path} holds "${key}:" with nothing after it, and a value that parses to nothing would run as a default nobody chose.`)
+  }
   if (slot.kind === 'closed') {
-    // An empty `role:` is a file that holds no job — the ordinary case, and
-    // the one blank a closed key accepts.
-    if (value === '' && key === 'role') return { value: '' }
+    if (value === '') return { value: '' }
     const legal = slot.legal ?? []
     return legal.includes(value)
       ? { value }

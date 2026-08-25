@@ -138,6 +138,17 @@ describe('a tool the environment cannot run is not advertised, and the absence i
     expect(resolve(['now'], []).notice).toBe('')
   })
 
+  test('a capability this kernel has no sentence for is worded by its own NAME, never interpolated as undefined', () => {
+    // `available()` gates on `CAPABILITIES` and lets this tool through to the
+    // withheld set; the sentence the MODEL reads has to survive that path.
+    const psychic = tool({ name: 'telepathy', description: 'Read the room.', needs: /** @type {import('@harness/kernel').CapabilityId} */ ('esp') })
+    const { notice } = toolboxFor(
+      { ...unwritten('You work.'), name: 'main', tools: ['telepathy'] },
+      { catalogue: [psychic], offered: ['net'] },
+    )
+    expect(notice).toBe('This build does not offer "esp", so telepathy is not available to you here.')
+  })
+
   test('an empty tools: list is every built-in THIS BUILD CAN RUN, never the whole catalogue', () => {
     const { toolbox, notice } = resolve([], ['workspace'])
     expect(toolbox.map((t) => t.name)).toEqual(['now', 'exec', 'write_file'])

@@ -38,6 +38,17 @@ describe('the YAML subset, written by us because a person may author a file in t
   test('an empty tools: list is a choice somebody wrote — every built-in — and stays empty on the spec', () => {
     expect(specOf('name: a\ntools: []').tools).toEqual([])
   })
+
+  test('a line that is neither is REFUSED, not dropped: "exec" alone parses clean while nothing reads it', () => {
+    const refusal = refusalOf('name: a\nexec\nrm -rf /')
+    expect(refusal.key).toBe('')
+    expect(refusal.message).toContain('"exec"')
+  })
+
+  test('a key written twice is refused: last-wins is a choice made on the author behalf', () => {
+    expect(refusalOf('name: a\nmodel: x\nmodel: y').key).toBe('model')
+    expect(specOf('name: a\ntools:\n  - now\n  - exec').tools).toEqual(['now', 'exec'])
+  })
 })
 
 describe('a file this build cannot read is refused BY KEY AND BY PATH, never defaulted', () => {
@@ -63,6 +74,12 @@ describe('a file this build cannot read is refused BY KEY AND BY PATH, never def
   test('a number that is not one is refused, not silently defaulted', () => {
     expect(refusalOf('name: a\ncompact_at: lots').message).toContain('a whole number')
     expect(specOf('name: a').compactAt).toBe(75)
+  })
+
+  test('a key with nothing after it is refused — temperature: alone used to parse to 0 and run fully deterministic', () => {
+    expect(refusalOf('name: a\ntemperature:').key).toBe('temperature')
+    expect(refusalOf('name: a\ntemperature:').message).toContain('nothing after it')
+    expect(specOf('name: a').temperature).toBe(null)
   })
 
   test('a tools: line of the wrong shape is refused, because dropping it would grant EVERY built-in', () => {
@@ -92,6 +109,16 @@ describe('two keys that each parse and together mean nothing', () => {
   test('a stages: list that can never act is refused; [strategy] is not, because the vote picks a list that does', () => {
     expect(refusalOf('name: a\nstages: [plan, critique]').message).toContain('needs work')
     expect(specOf('name: a\nstages: [strategy]').stages).toEqual(['strategy'])
+  })
+
+  test('a ceiling of zero rounds is refused: it parses clean and can never call a tool', () => {
+    expect(refusalOf('name: a\nmax_rounds: 0').key).toBe('max_rounds')
+    expect(specOf('name: a\nmax_rounds: 1').maxRounds).toBe(1)
+  })
+
+  test('zero passes is refused too: it never walks the stage list it counts laps of', () => {
+    expect(refusalOf('name: a\nstages: [work]\npasses: 0').key).toBe('passes')
+    expect(specOf('name: a\ncompact_at: 0').compactAt).toBe(0)
   })
 
   test('passes: with no list to lap is refused: it would parse clean and do nothing', () => {

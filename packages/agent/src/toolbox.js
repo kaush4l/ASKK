@@ -90,6 +90,13 @@ export function peerTool(peer) {
  *
  * Grouped by capability and in catalogue order, so two identical builds word
  * this identically (I14).
+ *
+ * A CAPABILITY THIS KERNEL HAS NO SENTENCE FOR IS WORDED BY ITS OWN NAME.
+ * `available()` treats a tool needing a capability outside `CAPABILITIES` as
+ * unavailable rather than as a build error, so that tool reaches here — and
+ * reading the missing sentence gave the model `This build cannot undefined`.
+ * The sentence is worse prose than a curated one and it is still true, which is
+ * the whole difference between a degraded reading and a broken one (I16).
  * @param {readonly Tool[]} withheld @returns {string}
  */
 function absence(withheld) {
@@ -102,7 +109,8 @@ function absence(withheld) {
   return [...by].map(([cap, names]) => {
     const sentence = CAPABILITY_SENTENCE[/** @type {CapabilityId} */ (cap)]
     const verb = names.length === 1 ? 'is' : 'are'
-    return `This build cannot ${sentence}, so ${names.join(', ')} ${verb} not available to you here.`
+    const lack = sentence === undefined ? `does not offer "${cap}"` : `cannot ${sentence}`
+    return `This build ${lack}, so ${names.join(', ')} ${verb} not available to you here.`
   }).join(' ')
 }
 

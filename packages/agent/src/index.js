@@ -26,13 +26,13 @@ export {
 } from './state.js'
 export { EFFECT_TYPES, callModel, invokeTool, emit, delegate } from './effect.js'
 export {
-  NO_TOOLS, ALL_TOOLS, onlyTools, grant, RESPONSE_CONTRACTS, WORK_BUDGET,
+  NO_TOOLS, ALL_TOOLS, onlyTools, grant, WORK_BUDGET,
   BRIEF_KEYS, DURABLE, SKILL_TOOLS, actsIn, briefPath, loadBriefs, resolveStage,
 } from './stages.js'
 export { ENGINES, ROLES, readFrontmatter, unquote } from './frontmatter.js'
 export { parseAgentFile, unwritten } from './spec.js'
 export { loadAgents, roleHolder } from './roster.js'
-export { adoptSpec, adoptBriefs, spaceNamed, SPACE_FACULTY } from './adopt.js'
+export { adoptSpec, spaceNamed, SPACE_FACULTY } from './adopt.js'
 export {
   ANSWER, ROUTE, ROUTES, STAGES_OF, STRATEGY_SCHEMA, WHY, labelled, routeChosen, routeOf, voteIn,
 } from './strategy.js'
@@ -68,7 +68,6 @@ export { STEERED, carried } from './steer.js'
 /** @typedef {import('./strategy.js').Route} Route */
 /** @typedef {import('./strategy.js').StageName} StageName */
 /** @typedef {import('./toolbox.js').Resolved} Resolved */
-/** @typedef {import('./stages.js').ResponseContract} ResponseContract */
 /** @typedef {import('./step.js').Stepped} Stepped */
 /** @typedef {import('./turn.js').Incoming} Incoming */
 /** @typedef {import('./turn.js').Reply} Reply */

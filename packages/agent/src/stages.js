@@ -60,15 +60,6 @@ export function grant(scope, tools) {
 }
 
 /**
- * The exact reply shape demanded back — parsed, never trusted. TWO, DOWN FROM
- * FOUR: `PlanSteps` and `Verdict` had zero construction sites between them.
- * @typedef {'tool_envelope' | 'answer'} ResponseContract
- */
-
-/** @type {readonly ResponseContract[]} */
-export const RESPONSE_CONTRACTS = /** @type {const} */ (['tool_envelope', 'answer'])
-
-/**
  * WHAT ONE WORKING TURN'S PAPER MAY COST. **PROVISIONAL.** Measured 2026-08-23:
  * the shipped `main` wanted 4174 tokens before a conversation existed against a
  * budget of 4096, so the ladder elided `## observations` on every turn — while

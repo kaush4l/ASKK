@@ -101,6 +101,15 @@ function contradiction(path, spec) {
   if (spec.stages.length > 0 && !spec.stages.some(acts)) {
     return refuse(path, 'stages', `${path} declares a "stages:" list that can never act — it needs work, the stage that acts, or strategy, which chooses a list that does.`)
   }
+  if (spec.maxRounds === 0) {
+    // `compact_at: 0` is meaningfully zero — never compact. These two are not:
+    // a ceiling of zero rounds is an agent that can never call a tool, and a
+    // file that wrote the line meant a number it could work under.
+    return refuse(path, 'max_rounds', `${path} sets "max_rounds: 0", and a ceiling of zero rounds is an agent that can never call a tool — write the number of tool rounds one turn may take, or drop the line.`)
+  }
+  if (spec.passes === 0) {
+    return refuse(path, 'passes', `${path} sets "passes: 0", which counts laps of the "stages:" list, and zero laps never walks it — write the number of laps one turn may take, or drop the line.`)
+  }
   if (spec.passes > 1 && spec.stages.length === 0) {
     return refuse(path, 'passes', `${path} sets "passes: ${spec.passes}", which counts laps of the "stages:" list, and there is no list to lap — add stages: [plan, work, verify], or drop the passes: line.`)
   }
