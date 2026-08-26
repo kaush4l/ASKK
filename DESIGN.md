@@ -56,7 +56,11 @@ context, skills, phase, history, tools, response. Each band carries:
 
 - its slot number (`0`, `10`, `20`…) — the number *is* the order, so show it
 - its component class name
-- the first eight characters of its `key()`
+- **eight characters of its `key()`'s digest** — not of the key. A key is
+  `ClassName:digest`, and the class name is already the band's own column, so
+  the first eight characters of the key would print the same string on every row
+  and teach nothing. The digest is the half that changes when the component
+  changes. The full key goes on the title.
 - whether this render came from the memo or was recomputed
 - the byte count
 

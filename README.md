@@ -28,10 +28,23 @@ skills/   SKILL.md packages the agent can choose to read
 ```
 bun test          the host suite
 bun run types     tsc --checkJs --strict
-bun run gate      everything, in one command
+bun run gate      nine checks, in one command
 bun run dev       the page, live
 bun run build     the static export
 ```
+
+Three more need a build and a browser, so they run in the deploy path rather
+than in the gate:
+
+```
+bun run scripts/check-contrast.js   every rendered pair, both themes, ratcheted
+bun run scripts/smoke.js            drives the built page: does it actually work
+scripts/deploy.sh --dry-run         the gate, the build, both, then nothing
+```
+
+The last two exist because **green tests are not a working page**. This project
+has shipped one that rendered and did nothing while 426 tests passed, and the
+smoke check is the only thing that can see that.
 
 ## Reading order
 
