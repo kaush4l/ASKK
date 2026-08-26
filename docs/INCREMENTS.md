@@ -57,6 +57,18 @@ rounds exhausted, empty-skills-dir skip.
 | 4.4 | `core/schedule.js`, `core/ports/cron-*.js` | `cron.py` whole (R8) | every validation rule and every return string identical; a failed read writes nothing |
 | 4.5 | `core/ports/opfs-fs.js`, `core/ports/bun-fs.js`, `core/inference-cli.js` | R5, R9 | the `claude` kind exists only where a spawner does |
 
+## Wave 4.6 — what the bar-raiser left
+
+Raised in the adversarial pass over waves 3 and 4, each verified with a file and
+line on both sides. Small, real, and none of them blocking.
+
+| Files owned | What | Why it matters |
+|---|---|---|
+| `core/schedule.js`, `core/ports/cron-host.js` | `createCronJob` never creates the directory its log redirect writes into. The Python does `AGENT_DIR.mkdir(parents=True, exist_ok=True)` immediately before writing the line, precisely because the line ends `>> agents/main/cron-<name>.log 2>&1`. `Deps` is `{cron, launch}` and has nowhere to put it | scheduling a job whose output goes nowhere, at the moment nobody is watching, is worse than refusing to schedule it |
+| `core/phases.js`, `core/skills.js`, `core/tools.js` | four warnings are structurally unreachable because no `log` is threaded through: the two skill-skip warnings, the unknown-skill-name warning, and the tool-result-callback failure | these are the diagnostics that say **why a hand-written skill silently vanished from the catalogue**. A warning nobody can turn on is a warning that was deleted |
+| `core/frontmatter.js` | a bare scalar reports `expected 'key: value'` where the Python reports `frontmatter must be a YAML mapping, got str` | not model-facing, but it is a config error a person reads |
+| `core/flows.js`, `core/tools.js` | two header comments point at the wrong file — `flows.js` says the phase prompts are in `phases.js` (they are in `phase-prompts.js`), and `tools.js` still spells `parse_batches` | a comment naming the wrong file costs a reader more than no comment |
+
 ## Wave 5 — the interface
 
 | # | Files owned | Done when |

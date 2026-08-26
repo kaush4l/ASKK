@@ -85,26 +85,43 @@ async function checkTypes() {
 
 // ── 2. host tests ────────────────────────────────────────────────────────
 
+/**
+ * Both invocations, and both must be green.
+ *
+ * `bun test` is the command CLAUDE.md and package.json name, so it is the one
+ * that decides. `--isolate` gives each file a fresh `globalThis`, which is a
+ * stronger check of cross-file leakage — but it also HIDES an import-order
+ * hazard that the plain command exposes, and a gate that passes a suite the
+ * developer's own command fails is worse than no gate at all.
+ */
 async function checkTests() {
-  const { code, out } = await run("bun", ["test", "--isolate"])
-  const summary = out.split("\n").find((line) => / pass\b/.test(line)) ?? ""
-  record("tests", code === 0, summary.trim() || (code === 0 ? "" : out.slice(-1500)))
+  const plain = await run("bun", ["test"])
+  const summary = plain.out.split("\n").find((line) => / pass\b/.test(line)) ?? ""
+  record("tests", plain.code === 0, summary.trim() || (plain.code === 0 ? "" : plain.out.slice(-2000)))
+
+  const isolated = await run("bun", ["test", "--isolate"])
+  const isoSummary = isolated.out.split("\n").find((line) => / pass\b/.test(line)) ?? ""
+  record("tests, isolated", isolated.code === 0, isoSummary.trim() || isolated.out.slice(-2000))
 }
 
 // ── 3. golden parity ─────────────────────────────────────────────────────
 
 function checkGolden() {
   // The oracle is not editable. Anyone who "fixes" a fixture to make a test
-  // pass has deleted the only proof the port reproduces the original.
+  // pass has deleted the only proof the port reproduces the original — and a
+  // size check does not stop that, because swapping "Saturday" for "Thursday"
+  // preserves the length. These are content hashes, verified identical to the
+  // four files in the Python tree.
   const expected = {
-    "react-loop.json": 266,
-    "render-bare.prompt": 2412,
-    "render-full.prompt": 2922,
-    "render-plain-text.prompt": 83,
+    "react-loop.json": "dad3bec80ba2878f53262aa44d78caf0",
+    "render-bare.prompt": "85a6ed70916df610ea9db80c513ce335",
+    "render-full.prompt": "76d49f369b33d058b29f68adbc89cd7b",
+    "render-plain-text.prompt": "5c5f1a0c81b17fdc8dfdac3b7a9a87d1",
   }
-  const wrong = Object.entries(expected).filter(([name, size]) => {
+  const wrong = Object.entries(expected).filter(([name, digest]) => {
     try {
-      return statSync(join(ROOT, "tests/golden", name)).size !== size
+      const bytes = readFileSync(join(ROOT, "tests/golden", name))
+      return new Bun.CryptoHasher("md5").update(bytes).digest("hex") !== digest
     } catch {
       return true
     }

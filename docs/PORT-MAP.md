@@ -195,6 +195,13 @@ shape: either `fn.usageArgs` / `fn.description` properties, or an explicit
 `Function.prototype.toString` is banned — it breaks under any minifier, and this
 project ships minified.
 
+**The fallback, ruled here rather than left to a comment.** A function that
+declares nothing renders as `name({"key": "value"}): ` where the Python renders
+`name(): `. The Python could see there were no parameters and say so; we cannot
+tell "takes nothing" from "did not say". `{}` would be a claim we have not got,
+and the placeholder is an honest unknown. This is a prompt byte, so it is a
+ruling; no fixture covers an undeclared function tool.
+
 Tools take **one object argument**, matching the `name({...})` wire the model
 writes. `parse_batches`, `ARG_ERROR` handling, per-batch `Promise.all`, and the
 `on_results` callback are straight ports — including that the callback may not
@@ -268,6 +275,15 @@ whole architecture rests on, applied to the environment.
 - `random` — nothing in the port needs it yet. Do not add it until something
   does.
 
+**One deliberate exception.** A transport reads `AbortSignal.timeout` straight
+off the global to honour its own `timeout` field. That is an ambient timer and
+Rule 3 would forbid it, but the alternatives are worse: threading a signal
+factory through the ports for one call site is ceremony, and the Python passed
+`timeout` to a client constructor rather than to a seam. It is a transport
+concern, both Bun and every browser have it, and a test that needed to pin it
+would be testing `fetch` rather than the port. Stated once, here, so it is a
+decision rather than a leak the gate happens not to grep for.
+
 ---
 
 ## 3. Surfaces with no browser counterpart
@@ -280,6 +296,9 @@ Kept honest rather than faked:
 | MCP over stdio | the same reason. MCP over HTTP/SSE works and is what the browser build wires; a stdio server needs a host bridge, which this build does not ship. |
 | real `crontab` | a page cannot install a system job. See R8 — the rules port, the backing store does not. |
 | `agents/<name>/tools.py` | a page cannot import and execute a Python module. Agent-owned tools become `agents/<name>/tools.js` ES modules loaded through the fs port. |
+| `STATE`, the module singleton | `State` takes a clock, and the clock comes through the ports (R9), so there is nothing to build one from at import. The registry is handed a `State` instead. This is the only name in the Python's `__all__` with no counterpart, and it is here so the next reader does not go looking. |
+| an absolute `workspace` path | `Space.context()` tells the model where its folder is, and the Python's answer is an absolute path. OPFS has no absolute paths, so the browser's is `spaces/<name>` — relative and rooted at the workspace. **This changes a prompt byte**, and no fixture covers a space, so nothing else will catch it. |
+| a JSON parse offset | the "Could not read the arguments" refusal interpolates the parser's own message. Python's carries `(at character N)`; a JavaScript `SyntaxError` may not. The sentence around it is identical; the offset is best-effort. |
 
 ---
 
