@@ -1,3 +1,0 @@
-:HL["/ASKK/_next/static/chunks/1e-mmzao2iwi6.css","style"]
-:HL["/ASKK/_next/static/chunks/1pjganl9-rkxe.css","style"]
-0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}},"staleTime":300,"buildId":"19ybbvZro_dolr-aF49me"}
