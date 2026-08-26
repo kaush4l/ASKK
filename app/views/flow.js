@@ -7,9 +7,9 @@
  * longest-path layering over the forward edges, with the cycle-closing edges in
  * a return lane, so `verify --retry--> plan` reads as going back. `FLOWS` is
  * the one core import in `app/`: it is declared data, and re-typing the edge
- * table here would be computing it. The session rides on `phase:enter` when the
- * worker sends one; when it does not, this view says so rather than drawing an
- * empty plan that looks like a plan.
+ * table here would be computing it. The session rides on `phase:enter`, replayed
+ * on mount because a turn can only be started from Converse and the ordinary way
+ * here is after one; with none, this says so rather than draw a plan that is not.
  */
 import "./flow.css";
 import { FLOWS } from "../../core/flows.js";
@@ -191,8 +191,8 @@ export function mount(element, runtime) {
     note.dataset.tone = "warn";
     return;
   }
-  const stop = [rt.on("phase:enter", (/** @type {any} */ p) => (enter(p), render())),
-    rt.on("tool:results", (/** @type {any} */ p) => (tally(p), render())),
+  const stop = [rt.on("phase:enter", (/** @type {any} */ p) => (enter(p), render()), { replay: true }),
+    rt.on("tool:results", (/** @type {any} */ p) => (tally(p), render()), { replay: true }),
     rt.on("turn:start", () => (reset(), render()))];
   off = () => stop.forEach((f) => f());
 }

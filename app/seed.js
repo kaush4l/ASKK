@@ -19,14 +19,13 @@
  * tree allows; the alternative was a second copy of every one of these files
  * pasted into a string literal here, and two copies of a prompt drift.
  *
- * One repository file is deliberately **not** here: `agents/main/tools.js`, the
- * four cron tools the main agent names. A `.js` path resolves for `tsc` even
- * with a text attribute, which drags that file into the typecheck program,
- * where it fails — `cronTools()` is called with no deps. It is not this
- * increment's file to fix, and shipping a seed that breaks the gate is worse
- * than shipping one agent whose tools are missing and said to be missing: the
- * registry warns `nothing named … in tools.js or agents/`, and the runtime
- * forwards that warning as an event a person can read.
+ * `agents/main/tools.js` is here too, and it is the one file whose copy on disk
+ * is not the copy that runs. A browser cannot `import()` an OPFS path, so
+ * `app/worker.js` executes the bundled module and this writes the same bytes
+ * down beside it — `core/agentfile-tools.js` will not even ask for a tools
+ * module unless the fs port says the file is there, and a workspace that claims
+ * an agent has four tools should show the source of them. Editing that copy
+ * changes nothing until the page is rebuilt; PORT-MAP §3 says so out loud.
  */
 
 // @ts-expect-error bun resolves this as text; tsc has no loader for `.md`
@@ -42,6 +41,11 @@ import verifier from "../core/agents/verifier/agent.md" with { type: "text" };
 import critic from "../core/agents/critic/agent.md" with { type: "text" };
 // @ts-expect-error bun resolves this as text; tsc has no loader for a `.md`
 import summarizeFile from "../skills/summarize-file/SKILL.md" with { type: "text" };
+// The same reconciliation as models.json, from the other side: `tsc` resolves
+// the `.js` and types this as the module's default export, bun honours the
+// attribute and hands over the source bytes. It needs no suppression — the file
+// has a default export precisely so this import typechecks.
+import mainTools from "../agents/main/tools.js" with { type: "text" };
 
 /** @typedef {import("../core/ports.js").FsPort} FsPort */
 /** @typedef {{ path: string, text: string }} SeedFile */
@@ -58,6 +62,7 @@ import summarizeFile from "../skills/summarize-file/SKILL.md" with { type: "text
  */
 export const SEED = Object.freeze([
   { path: "agents/main/agent.md", text: String(mainAgent) },
+  { path: "agents/main/tools.js", text: String(mainTools) },
   { path: "agents/models.json", text: String(models) },
   { path: "core/agents/summarizer/agent.md", text: String(summarizer) },
   { path: "core/agents/verifier/agent.md", text: String(verifier) },

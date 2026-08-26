@@ -35,13 +35,16 @@ const argv = Bun.argv.slice(2)
 const at = argv.indexOf("--dist")
 const DIST = (at === -1 ? undefined : argv[at + 1]) ?? join(dirname(import.meta.dir), "dist")
 const NONCE = Bun.randomUUIDv7().slice(-8)
-/** The tool the model calls. `agents/main/agent.md` names it, and the built export does not carry
- * `agents/main/tools.js` — `app/seed.js` says why, and says the tools are missing on purpose. So it
- * comes back as a *failed* ToolResult, and that is fine here: what is under test is the whole path
- * from the model's text to something a person can see — parsed, dispatched, turned into a result,
- * reported, rendered. The assertions read the tool's NAME in the result, never the result's text,
- * so the day that seed ships the tools this keeps meaning the same thing. */
+/** The tool the model calls, and the answer only the real thing can give.
+ *
+ * `agents/main/agent.md` names four cron tools and teaches the model to use them. For a while the
+ * page shipped none of them and this came back `Tool not found. Available: none` — a prompt lying
+ * to the model on every turn. So assertion 9 reads the tool's NAME (the whole path from the model's
+ * text to something a person can see: parsed, dispatched, turned into a result, reported, rendered)
+ * and assertion 10 reads the tool's OWN sentence, which nothing but `core/schedule.js` running
+ * against the browser cron adapter can produce. */
 const TOOL = "list_cron_jobs"
+const TOOL_ANSWER = "No scheduled jobs."
 /** The turn that asks for a tool. Nonce-tagged so an earlier turn's text cannot match it. */
 const TOOL_ASK = `tools ${NONCE}`
 /** How long the stub sits on that turn's first reply. The Flow view subscribes at mount and
@@ -49,7 +52,7 @@ const TOOL_ASK = `tools ${NONCE}`
  * has to switch to it after starting a run. */
 const STALL = 3000
 /** Files `app/seed.js` carries in the bundle. Not `agents/models.json`: this run writes that one, so it proves nothing. */
-const SEEDED = ["agents/main/agent.md", "core/agents/summarizer/agent.md", "core/agents/verifier/agent.md", "skills/summarize-file/SKILL.md"]
+const SEEDED = ["agents/main/agent.md", "agents/main/tools.js", "core/agents/summarizer/agent.md", "core/agents/verifier/agent.md", "skills/summarize-file/SKILL.md"]
 
 /** Recorded before the page's own module runs — the only way to see an error thrown during boot. Capture phase, so a 404 on a script counts. */
 const PROBE = `<script>
@@ -226,6 +229,25 @@ async function assertLive(view) {
   const shown = /** @type {string} */ (await view.evaluate(`document.querySelector('#stage .transcript [data-kind="result"] .turn-body')?.textContent ?? ""`))
   check(9, "a tool call runs and its result is visible, in the transcript and on the Flow view",
     seen && tallied, `${tallied ? "tallied" : "NOT tallied on Flow"}; transcript says "${shown.slice(0, 60).replace(/\n/g, " ")}"`)
+  check(10, "the cron tool actually ran, against the browser cron adapter", shown.includes(TOOL_ANSWER),
+    shown.includes("Tool not found") ? "the agent has none of the tools its own prompt teaches" : `transcript says "${shown.slice(0, 60).replace(/\n/g, " ")}"`)
+}
+
+/** The Flow view for a run that is already over.
+ *
+ * Assertion 8 navigates mid-turn, which is fair and stays — but a turn can only be started from
+ * Converse, so the ordinary way to reach Flow is *afterwards*. That path reported "No phase has run
+ * yet" on a page that had just run one. Nothing is stalled here: the turn is awaited to completion,
+ * and only then does this mount the view.
+ * @param {Bun.WebView} view @param {{ calls: number }} tally @returns {Promise<void>} */
+async function assertReplay(view, tally) {
+  await visit(view, "converse")
+  const done = await turn(view, `after ${NONCE}`, `${NONCE}-${tally.calls + 1}`)
+  const note = `document.querySelector("#stage .flow .note")?.textContent ?? ""`
+  await visit(view, "flow")
+  const shown = done && (await until(view, `/Live phase: \\w/.test(${note})`, 8000))
+  check(11, "the Flow view still shows the phase of a run that already finished", shown,
+    done ? /** @type {string} */ (await view.evaluate(note)) || "the Flow view rendered no note at all" : "the turn never completed")
 }
 
 async function main() {
@@ -247,6 +269,7 @@ async function main() {
     if (!(await until(view, "window.__seeded", 10000))) throw new Error("OPFS is not writable in this WebView — check dataStore")
     await view.navigate(`http://127.0.0.1:${origin.port}/`)
     await assertBoot(view, noise, tally, missing)
+    await assertReplay(view, tally)
   } catch (error) {
     check(0, "the smoke run itself completed", false, error instanceof Error ? error.message : String(error))
   } finally {
