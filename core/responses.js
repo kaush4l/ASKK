@@ -12,7 +12,6 @@
  */
 
 import { Component, Slot } from "./component-base.js";
-import { COMPONENTS } from "./component-registry.js";
 import { BaseResponse, DEFAULT_FORMAT } from "./response-base.js";
 import { bareWord } from "./response-parse.js";
 import { ReActResponse } from "./response-react.js";
@@ -180,8 +179,3 @@ export class ResponseContract extends Component {
     return true;
   }
 }
-
-// Registered here, at a known point, rather than by import side effect: the
-// Python did this at the bottom of responses.py and `core/index.js` imports
-// this module explicitly so the order is a decision and not a coincidence.
-COMPONENTS["response"] = ResponseContract;

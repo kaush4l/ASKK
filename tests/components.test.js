@@ -11,6 +11,8 @@ import {
   Soul,
   SystemInstructions,
 } from "../core/components.js";
+import { ResponseContract } from "../core/responses.js";
+import { ToolboxComponent } from "../core/tool-prompt.js";
 
 test("slot values are the prompt order", () => {
   expect([Slot.SOUL, Slot.SYSTEM, Slot.CONTEXT, Slot.SKILLS]).toEqual([0, 10, 20, 30]);
@@ -131,7 +133,11 @@ test("the template is compiled once per class", () => {
   expect(Soul.template()).not.toBe(SystemInstructions.template());
 });
 
-test("the registry names the eight components and getComponent lists the known ones", () => {
+// PORT-MAP F-3: all ten are declared in the registry itself, so this holds
+// whether the registry is imported first or last — importing only
+// component-registry.js, as this file does, is the check that it does not
+// depend on some other module having run.
+test("the registry names all ten components and getComponent lists the known ones", () => {
   expect(Object.keys(COMPONENTS)).toEqual([
     "soul",
     "system",
@@ -141,15 +147,20 @@ test("the registry names the eight components and getComponent lists the known o
     "critique_findings",
     "skill_catalog",
     "loaded_skills",
+    "response",
+    "tools",
   ]);
   expect(getComponent("soul")).toBe(Soul);
   expect(getComponent("critique_findings")).toBe(CritiqueFindings);
+  expect(getComponent("response")).toBe(ResponseContract);
+  expect(getComponent("tools")).toBe(ToolboxComponent);
   expect(() => getComponent("nope")).toThrow(
-    "Unknown component 'nope'. Known: soul, system, context, history, phase, critique_findings, skill_catalog, loaded_skills",
+    "Unknown component 'nope'. Known: soul, system, context, history, phase, critique_findings, " +
+      "skill_catalog, loaded_skills, response, tools",
   );
 });
 
-test("the registry stays open for the tools and response components", () => {
+test("the registry stays open for a component declared elsewhere", () => {
   class Extra extends Component {
     static SLOT = Slot.TOOLS;
     static NAME = "Extra";

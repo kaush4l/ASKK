@@ -1,31 +1,18 @@
 /**
- * The core's single entry point — one explicit import, one populated registry.
+ * The core's single entry point — every name the core offers, in one import.
  *
  * Python's `core/__init__.py` imported every submodule, so by the time anyone
- * held a name from `core` the `COMPONENTS` registry was complete. JavaScript
- * gives no such guarantee: `component-registry.js` declares eight entries and
- * `responses.js` and `tool-prompt.js` each add their own from the bottom of
- * their own file, so whether `COMPONENTS.tools` exists depends on whether
- * anything happened to have imported it yet. PORT-MAP finding F-3 is exactly
- * that hazard — a registry populated by import order is a registry whose
- * contents depend on the shape of an unrelated call graph.
+ * held a name from `core` the `COMPONENTS` registry was complete. This build
+ * does not lean on that: `component-registry.js` declares all ten components
+ * itself, so the registry is whole the moment it is imported, from wherever it
+ * is imported. PORT-MAP finding F-3 — a registry populated by import order is a
+ * registry whose contents depend on the shape of an unrelated call graph — is
+ * fixed at the registry rather than papered over here.
  *
- * So this module imports those three, in that order, on purpose. Import `core`
- * (never a submodule) anywhere the registry has to be whole — `getComponent`,
- * an agent.md `components:` list, the prompt inspector.
- *
- * `__all__` is mirrored, not invented. Names absent here are absent because
- * their module is a later wave (`Agent`, `PHASES`, `Space`, the cron tools,
- * `load_agent`); when those land they are re-exported from here too, and
- * nothing else about this file changes.
+ * `__all__` is mirrored, not invented. Two names in the Python's list have no
+ * counterpart in this tree and never will: `ClaudeCLI` (a subprocess) and
+ * `STATE` (a module-global the browser build hands in as a port instead).
  */
-
-// Order matters, and it is a decision rather than a coincidence:
-// component-registry.js declares the registry, and the two modules that extend
-// it come after.
-import "./component-registry.js";
-import "./responses.js";
-import "./tool-prompt.js";
 
 export { Component, Slot } from "./component-base.js";
 
@@ -79,6 +66,14 @@ export { Critique, Session, Step, StepResult } from "./session.js";
 export { Skill, catalog, loadSkills, loaded, select } from "./skills.js";
 export { AgentState, State, Status } from "./state.js";
 export { FrontmatterError, parseAgentFile } from "./frontmatter.js";
+
+export { Agent } from "./agent.js";
+export { PHASES, Phase } from "./phases.js";
+export { FLOWS, getFlow } from "./flows.js";
+export { SPACES_DIR, Space, getSpace } from "./space.js";
+export { createCronJob, deleteCronJob, listCronJobs, updateCronJob } from "./schedule.js";
+export { agentMetadata, loadAgent, loadTools } from "./agentfile.js";
+export { WorkerAgent, loadAgents } from "./registry.js";
 
 // S9, which the Python had no need of: it owned a filesystem, a clock and
 // threads outright, and this build has to be handed all three.

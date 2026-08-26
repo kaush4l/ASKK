@@ -7,7 +7,6 @@
  */
 
 import { Component, Slot } from "./component-base.js";
-import { COMPONENTS } from "./component-registry.js";
 
 /** TOOLS-slot component: one usage line per tool, plus the batching rules.
  * The template's output is byte-identical to the old engine's `_tools_block` —
@@ -37,5 +36,3 @@ export class ToolboxComponent extends Component {
     return this.usages.length > 0;
   }
 }
-
-COMPONENTS["tools"] = ToolboxComponent;

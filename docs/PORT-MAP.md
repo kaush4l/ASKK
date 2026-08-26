@@ -306,8 +306,10 @@ Kept honest rather than faked:
 
 Fixed by this port, because the fix is in the port: **F-1** (R2), **F-2**
 (`getComponent` is what `baseComponents` calls — the registry is the only
-authority), **F-3** (every component registers in `components.js`; no import
-side effects), **F-4** (R3, `messages` is a getter), **F-6** partly (the tool
+authority), **F-3** (all ten components are declared in `component-registry.js`,
+which imports them; there are no import side effects, and the registry's own
+test proves it by importing nothing else), **F-4** (R3, `messages` is a getter),
+**F-6** partly (the tool
 protocol stays text; the registry in R6 is what would let a native path in),
 **F-9** (R5).
 
