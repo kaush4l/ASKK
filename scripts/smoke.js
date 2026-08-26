@@ -27,13 +27,31 @@
  * which the page then leaves alone because `app/seed.js` never overwrites.
  */
 
-import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
 const argv = Bun.argv.slice(2)
 const at = argv.indexOf("--dist")
 const DIST = (at === -1 ? undefined : argv[at + 1]) ?? join(dirname(import.meta.dir), "dist")
+
+/** The prefix the export's own asset references carry, read out of the built HTML.
+ *
+ * A release builds with `--public-path=/ASKK/`, because that is where the page
+ * actually lives and the paths embedded in the JS have to agree. Serving that
+ * export at the server root answers every asset with a 404 — which is what
+ * happened the first time the deploy path ran this, and it is precisely the
+ * failure the subpath flag exists to prevent. So the base is not configured
+ * twice: it is whatever the HTML says, and a relative build says nothing.
+ * @returns {string} `""` for a relative export, else a `/prefix` with no trailing slash */
+function basePath() {
+  const page = join(DIST, "index.html")
+  if (!existsSync(page)) return ""
+  const ref = readFileSync(page, "utf8").match(/(?:src|href)="(\/[^"]*\/)[^/"]+\.(?:js|css)"/)
+  return ref?.[1] ? ref[1].replace(/\/$/, "") : ""
+}
+
+const BASE = basePath()
 const NONCE = Bun.randomUUIDv7().slice(-8)
 /** The tool the model calls, and the answer only the real thing can give.
  *
@@ -85,11 +103,15 @@ function serveOrigin(missing, tally) {
         return Response.json({ choices: [{ message: { content: text } }], output_text: text })
       }
       if (path === "/smoke-seed") return new Response(seedPage(), { headers: { "content-type": "text/html; charset=utf-8" } })
-      const file = Bun.file(join(DIST, path === "/" ? "index.html" : path))
+      // Strip the export's own prefix before looking on disk: `/ASKK/worker.js`
+      // is `dist/worker.js`. Anything outside the prefix stays as written, so a
+      // genuinely missing file is still recorded as missing rather than hidden.
+      const within = BASE && path.startsWith(`${BASE}/`) ? path.slice(BASE.length) : path
+      const file = Bun.file(join(DIST, within === "/" ? "index.html" : within))
       // A 404 is recorded rather than only answered: "the page asked for
       // worker.js and the build never emitted it" is a defect this has shipped.
       if (!(await file.exists()) && missing.push(path)) return new Response(`no ${path} in the export`, { status: 404 })
-      if (!path.endsWith(".html") && path !== "/") return new Response(file)
+      if (!within.endsWith(".html") && within !== "/") return new Response(file)
       return new Response((await file.text()).replace("<head>", `<head>${PROBE}`), { headers: { "content-type": "text/html; charset=utf-8" } })
     },
   })
@@ -267,7 +289,7 @@ async function main() {
   try {
     await view.navigate(`http://127.0.0.1:${origin.port}/smoke-seed`)
     if (!(await until(view, "window.__seeded", 10000))) throw new Error("OPFS is not writable in this WebView — check dataStore")
-    await view.navigate(`http://127.0.0.1:${origin.port}/`)
+    await view.navigate(`http://127.0.0.1:${origin.port}${BASE}/`)
     await assertBoot(view, noise, tally, missing)
     await assertReplay(view, tally)
   } catch (error) {
