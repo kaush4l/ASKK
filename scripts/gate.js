@@ -150,7 +150,9 @@ function checkSize() {
   const fatFunctions = []
   for (const file of files) {
     const text = readFileSync(file, "utf8")
-    const lines = text.split("\n").length
+    // A trailing newline is not a line. Counting it made two files fail the
+    // limit by exactly one, which is the kind of wrong that gets a rule weakened.
+    const lines = text.replace(/\n$/, "").split("\n").length
     if (lines > MAX_FILE_LINES) tooLong.push(`${relative(ROOT, file)} ${lines}`)
     const longest = longestFunction(text)
     if (longest > MAX_FUNCTION_LINES) fatFunctions.push(`${relative(ROOT, file)} ${longest}`)
@@ -169,7 +171,11 @@ function checkPurity() {
     // The host-only adapters are where the impurity is allowed to live, and
     // naming them here is what keeps that a decision rather than a leak.
     if (name.startsWith("core/ports/") || name.endsWith("-cli.js")) continue
-    const text = readFileSync(file, "utf8")
+    // Comments are stripped first. The word "window" appears in memory.js
+    // describing the rolling summary window, and a purity check that fails on
+    // prose is a check people learn to ignore.
+    const source = readFileSync(file, "utf8")
+    const text = source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " ")).replace(/(^|[^:])\/\/.*/g, "$1")
     for (const [pattern, why] of FORBIDDEN_IN_CORE) {
       const match = text.match(pattern)
       if (!match) continue

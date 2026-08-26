@@ -18,9 +18,9 @@ leave behind. A port that does not reproduce these has not been done.
 |---|---|---|
 | `core/components.py` | `core/components.js` | + `core/template.js` (the mini template renderer) |
 | `core/assembler.py` | `core/assembler.js` | straight port |
-| `core/responses.py` | `core/responses.js` | pydantic field table → declared `FIELDS` array (R1) |
-| `core/tools.py` | `core/tools.js` | dispatch by registry, not by `isinstance` (R6) |
-| `core/inference.py` | `core/inference.js` | SDK + httpx → `fetch` (R4); `ClaudeCLI` → host-only (R5) |
+| `core/responses.py` | `core/responses.js` + `response-base.js` + `response-parse.js` + `response-react.js` | pydantic field table → declared `FIELDS` array (R1) |
+| `core/tools.py` | `core/tools.js` + `core/tool-*.js` | dispatch by registry, not by `isinstance` (R6) |
+| `core/inference.py` | `core/inference.js` + `inference-base.js` + `inference-http.js` | SDK + httpx → `fetch` (R4); `ClaudeCLI` → host-only (R5) |
 | `core/memory.py` | `core/memory.js` | threads+locks → a serialized async write queue (R3) |
 | `core/session.py` | `core/session.js` | straight port |
 | `core/phases.py` | `core/phases.js` + `core/flows.js` | edges become a declared table (R2) |
@@ -208,8 +208,11 @@ both. So `core/frontmatter.js` parses the subset the format actually uses:
 
 - scalars: `key: value`, quoted or bare
 - inline lists: `key: [a, b]`
-- block lists: `key:` then `  - a`
-- nested maps one level deep (for `config:`, the MCP server block)
+- block lists: `key:` then `  - a`, including at the parent key's own indentation
+- nested maps, recursing on indentation — the chrome agent's `config:` block is
+  three levels deep (`config` → `mcpServers` → the server name → its fields), so
+  a fixed depth would have been wrong. The parser recurses, which is both
+  shorter and correct.
 - `#` comments, blank lines, `true`/`false`/numbers
 
 Anything outside the subset is a parse error naming the line. It is not a YAML
