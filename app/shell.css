@@ -1,0 +1,197 @@
+/* The frame — DESIGN §6. base.css owns the reset, the focus ring, the `thin`
+   hairline and the reduced-motion sweep; this file owns the three-column grid,
+   the rail and the in-place failure. Every value names a token.
+
+   Two numbers survive and neither is a design value this file chose: 900px,
+   the collapse point (§6), because a custom property cannot be read inside a
+   media query; and 100dvh, which is the viewport rather than a size.
+
+   tokens.css declares no layout widths, so the two the grid needs are derived
+   from the space scale rather than invented — the rail is four of the largest
+   step, the inspector six. Deriving keeps them on the 4px base without putting
+   a value in a file that is not mine. */
+
+.frame {
+  --w-rail: calc(var(--space-8) * 4);
+  --w-inspector: calc(var(--space-8) * 6);
+  display: grid;
+  grid-template-columns: var(--w-rail) minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+.skip {
+  position: absolute;
+  left: var(--space-3);
+  top: var(--space-3);
+  z-index: 2;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  color: var(--ink);
+  border: thin solid var(--accent);
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+.skip:focus { transform: none; }
+
+/* ── the stage: centre, plus the inspector column when a view brings one ── */
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  min-width: 0;
+}
+
+/* A view that has an inspector says so with the attribute, and the stage
+   becomes the second and third columns. A view with none keeps the full
+   width — an empty gutter would be a column pretending to be furniture. */
+.stage:has(> [data-region="inspector"]) {
+  grid-template-columns: minmax(0, 1fr) var(--w-inspector);
+}
+
+.stage > [data-region="inspector"] {
+  border-left: thin solid var(--line);
+  padding-left: var(--space-5);
+  min-width: 0;
+}
+
+/* ── the rail ────────────────────────────────────────────────────────────── */
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100dvh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-5) 0 var(--space-5) var(--space-5);
+  background: var(--surface);
+  border-right: thin solid var(--line);
+}
+
+.brand {
+  display: grid;
+  gap: var(--space-1);
+  padding-right: var(--space-5);
+}
+.brand-name { font: var(--type-heading); }
+.brand-note {
+  font: var(--type-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--type-micro-tracking);
+  color: var(--ink-2);
+}
+
+.nav ul { display: grid; gap: var(--space-1); }
+.nav a {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-left: var(--space-1) solid var(--line);
+  color: var(--ink-2);
+  text-decoration: none;
+  transition: background var(--motion-control), color var(--motion-control);
+}
+/* Hover and current land on exactly the same pair, on purpose: hovering the
+   row you had already chosen must not restate it in a combination nobody
+   measured. That combination is how this build once made the chosen label
+   unreadable in all six palettes. */
+.nav a:hover,
+.nav a[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.nav a[aria-current="page"] { border-left-color: var(--accent); }
+.dest-note {
+  font: var(--type-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--type-micro-tracking);
+  color: var(--ink-2);
+}
+
+.rail-foot {
+  margin-top: auto;
+  display: grid;
+  gap: var(--space-3);
+  padding-right: var(--space-5);
+}
+.theme {
+  justify-self: start;
+  font: var(--type-small);
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface-2);
+  color: var(--ink);
+  border: thin solid var(--line);
+  transition: border-color var(--motion-control);
+}
+.theme:hover { border-color: var(--accent); }
+
+/* The line is always present so that nothing below it moves when it fills. */
+.status {
+  font: var(--type-small);
+  color: var(--ink-2);
+  min-height: var(--space-5);
+}
+.status[data-tone="fail"] { color: var(--fail); }
+
+/* ── failure, in place ───────────────────────────────────────────────────── */
+.failure {
+  border: thin solid var(--fail);
+  background: var(--surface);
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-3);
+}
+.failure-what { color: var(--ink-2); }
+.failure-text,
+.failure-stack {
+  font: var(--type-mono);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.failure-stack { color: var(--ink-2); }
+
+/* ── one column, and the inspector as a bottom sheet ─────────────────────── */
+@media (max-width: 900px) {
+  .frame { grid-template-columns: minmax(0, 1fr); }
+  .rail {
+    position: static;
+    height: auto;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-4) var(--space-3);
+    border-right: 0;
+    border-bottom: thin solid var(--line);
+  }
+  .nav ul {
+    grid-auto-flow: column;
+    justify-content: start;
+    overflow-x: auto;
+  }
+  .rail-foot {
+    margin-top: 0;
+    padding-right: 0;
+    grid-auto-flow: column;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .stage,
+  .stage:has(> [data-region="inspector"]) {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-4);
+  }
+  /* Anchored to the bottom and capped, so the sheet can never take the screen
+     away from the thing it is annotating. */
+  .stage > [data-region="inspector"] {
+    position: sticky;
+    bottom: 0;
+    max-height: calc(var(--space-8) * 6);
+    overflow: auto;
+    padding: var(--space-4);
+    background: var(--surface);
+    border-left: 0;
+    border-top: thin solid var(--line);
+    transition: max-height var(--motion-band);
+  }
+}

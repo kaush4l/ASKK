@@ -54,6 +54,14 @@ byte-identical and the worker file is never written. So the build passes the
 worker host as a second entrypoint and the `new URL(...)` must match the name it
 lands under. Plan for that in PORT-MAP R3.
 
+**6b. An unresolvable `import()` is a hard build error unless it is lexically
+inside a `try`.** Measured while building the shell: a dynamic import of a module
+that does not exist yet fails the whole static export — but the *same* switch
+with the `try` wrapping it degrades to an optional import the page reports at
+runtime. It has to be the `try` around the `import()`, not a `try` at the caller.
+That is what lets the router ship before its views do, and it is the difference
+between a build that fails and a page that says which view is missing.
+
 **7. Keep workers to the Web-standard subset.** Bun's `Worker` has extensions
 browsers do not have — `"open"`/`"close"` events, `ref`/`unref`, `smol`,
 `preload`, `Bun.isMainThread`. Using any of them breaks the browser. Pass

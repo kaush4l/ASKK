@@ -1,0 +1,188 @@
+/* Flow — the phase graph and the blackboard. Every value names a token from
+   app/tokens.css; there is no literal here but the zeros and the keywords.
+
+   The picture and the tables share one rule: the accent means "this is the
+   thing happening right now" and nothing else may take it (DESIGN §7). The
+   live phase and the edge just taken carry it; a visited phase is dimmed but
+   still present, because a run you cannot retrace is not a run you watched. */
+
+.flow {
+  /* stroke-width takes a length, not the `thin` keyword a border takes, and
+     tokens.css declares no stroke: half the 4px base keeps it on the scale. */
+  --stroke-live: calc(var(--space-1) / 2);
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+  min-width: 0;
+}
+
+.head {
+  display: grid;
+  gap: var(--space-2);
+}
+.head h1 {
+  font: var(--type-display);
+}
+.head .sub {
+  color: var(--ink-2);
+  max-width: calc(var(--space-8) * 12);
+}
+
+/* The one line that says what just happened. It is a live region, so it is
+   never emptied — an empty status announces nothing, and this screen's whole
+   job is to say which of the two interesting moments you are looking at. */
+.note {
+  font: var(--type-small);
+  color: var(--ink-2);
+  border-left: var(--space-1) solid var(--line);
+  padding-left: var(--space-3);
+}
+.note[data-tone="fail"] {
+  color: var(--fail);
+  border-left-color: var(--fail);
+}
+.note[data-tone="warn"] {
+  color: var(--warn);
+  border-left-color: var(--warn);
+}
+
+.body {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* Panels are flat and hairlined, not cards: no radius, no shadow, no tint. */
+.panel {
+  background: var(--surface);
+  border: thin solid var(--line);
+  padding: var(--space-4);
+  min-width: 0;
+  overflow-x: auto;
+}
+.panel > h2 {
+  font: var(--type-small);
+  letter-spacing: var(--type-micro-tracking);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: var(--space-3);
+}
+.panel .empty {
+  color: var(--ink-2);
+}
+.panel pre.empty {
+  font: var(--type-mono);
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+
+.panel table {
+  width: 100%;
+}
+.panel th {
+  font: var(--type-micro);
+  letter-spacing: var(--type-micro-tracking);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 0 var(--space-3) var(--space-2) 0;
+  border-bottom: thin solid var(--line);
+}
+.panel td {
+  font: var(--type-small);
+  color: var(--ink);
+  vertical-align: top;
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  border-bottom: thin solid var(--line);
+}
+.panel tr:last-child td {
+  border-bottom: 0;
+}
+.panel td:first-child {
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.panel td code {
+  font: var(--type-mono);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Tone is never the only signal: every badge also carries its own word. */
+.badge {
+  display: inline-block;
+  font: var(--type-micro);
+  letter-spacing: var(--type-micro-tracking);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  border: thin solid var(--line);
+  padding: var(--space-1) var(--space-2);
+  white-space: nowrap;
+}
+.badge[data-tone="ok"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.badge[data-tone="warn"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.badge[data-tone="fail"] {
+  color: var(--fail);
+  border-color: var(--fail);
+}
+
+/* ── the graph ───────────────────────────────────────────────────────────── */
+.graph {
+  margin: var(--space-4) auto 0;
+  max-width: 100%;
+  height: auto;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--line);
+  transition: stroke var(--motion-control);
+}
+.edge[data-live="yes"] {
+  stroke: var(--accent);
+  stroke-width: var(--stroke-live);
+}
+.arrow path {
+  fill: var(--line);
+  fill: context-stroke; /* so the taken edge's head follows its own stroke */
+}
+
+.edge-label {
+  font: var(--type-micro);
+  letter-spacing: var(--type-micro-tracking);
+  fill: var(--ink-3);
+}
+.edge-label[data-live="yes"] {
+  fill: var(--accent);
+}
+
+.phase rect {
+  fill: var(--surface-2);
+  stroke: var(--line);
+  transition: stroke var(--motion-control), fill var(--motion-control);
+}
+.phase text {
+  font: var(--type-mono);
+  fill: var(--ink-3);
+}
+/* Visited: dimmed but present. Live: the accent, and a heavier edge, so the
+   difference survives a reader who does not see the hue at all. */
+.phase[data-state="visited"] rect {
+  fill: var(--surface);
+}
+.phase[data-state="visited"] text {
+  fill: var(--ink-2);
+}
+.phase[data-state="live"] rect {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: var(--stroke-live);
+}
+.phase[data-state="live"] text {
+  fill: var(--accent);
+}

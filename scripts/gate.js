@@ -218,10 +218,28 @@ async function checkBuild() {
 
 // ── run ──────────────────────────────────────────────────────────────────
 
+/**
+ * DESIGN.md §10's three static checks: no colour literal outside tokens.css, no
+ * font-size off the ramp, every duration zeroed under reduced motion. The fourth
+ * — contrast — measures a real rendered page and needs a build and a browser, so
+ * it runs in the deploy path beside the smoke check rather than here.
+ */
+async function checkDesign() {
+  try {
+    statSync(join(ROOT, "app/tokens.css"))
+  } catch {
+    record("design tokens", true, "skipped — no app/tokens.css yet")
+    return
+  }
+  const { code, out } = await run("bun", ["run", "scripts/check-design.js"])
+  record("design tokens", code === 0, code === 0 ? "" : out.slice(-1500))
+}
+
 console.log("gate\n")
 checkGolden()
 checkSize()
 checkPurity()
+await checkDesign()
 await checkTypes()
 await checkTests()
 await checkBuild()

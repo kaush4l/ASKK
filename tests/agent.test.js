@@ -88,7 +88,7 @@ function ports(files = {}) {
 }
 
 /** An agent with the golden context block pinned onto it.
- * @param {Partial<import("../core/agent-config.js").AgentOptions> & { inference: Inference }} options */
+ * @param {Partial<import("../core/agent-config.js").AgentOptions> & { inference: Inference, observer?: import("../core/agent.js").Observer }} options */
 function agentOf(options) {
   const built = new Agent({ ports: ports(), ...options })
   built.context = () => ({ ...FIXED_CONTEXT })
@@ -263,4 +263,44 @@ test("F-4: messages follows the transcript through a compaction", async () => {
   // The Python's `Agent.messages` was a second name for the pre-compaction list
   // and went on reporting four turns. The same array, still current, is the fix.
   expect(agent.messages).toBe(before)
+})
+
+// ── the observer: the prompt inspector's seam into a turn ────────────────
+
+test("an observer given at construction sees one breakdown per assemble, phase named", async () => {
+  /** @type {any[]} */ const seen = []
+  const agent = agentOf({
+    name: "obs", system: "Sys.", inference: new Scripted(["act: answer\n\nresult: done"]),
+    observer: { assembled: (/** @type {any} */ a) => void seen.push(a) },
+  })
+
+  const answer = await agent.invoke("hello")
+  expect(String(answer.answer)).toBe("done")
+  expect(seen.length).toBe(1)
+
+  const [first] = seen
+  expect(first.phase).toBe("react") // the flow's entry, recorded before the phase ran
+  expect(first.bands.map((/** @type {any} */ b) => b.name)).toEqual([
+    "SystemInstructions", "ContextBlock", "History", "ResponseContract",
+  ])
+  expect(first.bytes).toBeGreaterThan(0)
+  expect(first.hits).toBe(0)
+  expect(first.misses).toBeGreaterThan(0)
+  // Structured clone is the contract: plain data, no class instances, no functions.
+  expect(JSON.parse(JSON.stringify(first))).toEqual(first)
+})
+
+test("an agent built without an observer takes the same path and reports nothing", async () => {
+  const options = { name: "obs", system: "Sys.", inference: new Scripted(["act: answer\n\nresult: done"]) }
+  const silent = agentOf(options)
+  /** @type {any[]} */ const seen = []
+  const watched = agentOf({ ...options, inference: new Scripted(["act: answer\n\nresult: done"]), observer: { assembled: (/** @type {any} */ a) => void seen.push(a) } })
+
+  expect(silent.observer).toBe(null)
+  const quiet = await silent.invoke("hello")
+  const loud = await watched.invoke("hello")
+
+  expect(String(quiet.answer)).toBe(String(loud.answer))
+  expect(silent.messages).toEqual(watched.messages)
+  expect(seen.length).toBe(1)
 })

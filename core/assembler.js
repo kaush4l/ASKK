@@ -53,6 +53,33 @@ function meta(component) {
  */
 export const MEMO_LIMIT = 512;
 
+/**
+ * One component's share of the prompt, and the four facts that make the memo
+ * legible: where it sorted, what it is, which content it hashed to, and how much
+ * of the prompt it is. `memo` is whether *this* render came back from the cache;
+ * `cacheable` is `false` only for CONTEXT, which opts out because a cached clock
+ * is a wrong clock — a band that opted out did not miss the memo, and the two
+ * flags together are what let a reader tell those apart.
+ *
+ * `key` is the whole `Name:digest`, not a prefix: the digest is the half that
+ * moves, and truncating here would leave the reader with neither.
+ *
+ * @typedef {{ slot: number, name: string, key: string, bytes: number, memo: boolean, cacheable: boolean }} Band
+ * @typedef {{ bytes: number, bands: Band[], hits: number, misses: number }} Breakdown
+ */
+
+/** Bytes, not UTF-16 code units — the prompt is measured as the wire carries it. */
+const ENCODER = new TextEncoder();
+
+/** @param {string} text @returns {number} */
+const bytes = (text) => ENCODER.encode(text).length;
+
+/** @param {Component} component @param {string} text @param {boolean} memo @returns {Band} */
+function band(component, text, memo) {
+  const info = meta(component);
+  return { slot: info.SLOT, name: info.NAME, key: component.key(), bytes: bytes(text), memo, cacheable: info.CACHEABLE };
+}
+
 /** The component set cannot form a valid prompt. */
 export class AssemblyError extends Error {
   /** @param {string} message */
@@ -89,13 +116,36 @@ export class PromptAssembler {
    * @returns {string}
    */
   assemble(components) {
+    return this.detail(components).prompt;
+  }
+
+  /**
+   * The same prompt, plus the breakdown of how it was built.
+   *
+   * This is the only place that knows the sort order, the keys and whether each
+   * render came back from the memo, so it is the only place that can say — and
+   * every number here is one it already had. `hits` and `misses` are the
+   * assembler's own running totals since construction, carried whole rather
+   * than recounted; a reader wanting one turn's ratio counts the bands.
+   *
+   * @param {Component[]} components
+   * @returns {{ prompt: string, breakdown: Breakdown }}
+   */
+  detail(components) {
     const active = components
       .filter((c) => c.applies())
       .sort((a, b) => meta(a).SLOT - meta(b).SLOT || a.priority - b.priority);
     this._check(active);
     let prompt = "";
-    for (const component of active) prompt += this._render(component);
-    return prompt;
+    /** @type {Band[]} */
+    const bands = [];
+    for (const component of active) {
+      const before = this.hits;
+      const text = this._render(component);
+      prompt += text;
+      bands.push(band(component, text, this.hits > before));
+    }
+    return { prompt, breakdown: { bytes: bytes(prompt), bands, hits: this.hits, misses: this.misses } };
   }
 
   /**

@@ -175,4 +175,9 @@ A design law that is not executed is a preference.
 - **the ramp** — no `font-size` outside the six declared steps. Grepped.
 - **reduced motion** — every declared duration has a zeroed counterpart.
 
-`bun run gate` runs all four.
+The three static checks are `scripts/check-design.js`, and `bun run gate` runs
+it. Contrast is `scripts/check-contrast.js`: it measures a **real rendered
+page** — every element with text, on all four destinations, in both themes, at
+rest and focused, resolving transparency up the ancestor chain — so it needs a
+build and a browser and runs in the deploy path beside the smoke check. Its
+first measurement was 650 pairs, worst 5.21:1, and that is the seeded ratchet.

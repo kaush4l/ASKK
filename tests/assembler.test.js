@@ -224,3 +224,56 @@ test("the same key means the same bytes, a different key does not", () => {
   expect(new SystemInstructions({ text: "a" }).key()).toBe(new SystemInstructions({ text: "a" }).key());
   expect(new SystemInstructions({ text: "a" }).key()).not.toBe(new SystemInstructions({ text: "b" }).key());
 });
+
+// ── the breakdown the prompt inspector renders ───────────────────────────
+
+/** The set the inspector was designed against: out of order on purpose, with a
+ * CONTEXT block in it, because slot order and the never-cached mark are the two
+ * things the breakdown exists to say.
+ * @returns {import("../core/component-base.js").Component[]} */
+function scattered() {
+  return [
+    new ResponseContract(),
+    new ContextBlock({ facts: { day: "Saturday" } }),
+    new SystemInstructions({ text: "SYS" }),
+    new Soul({ text: "I am here." }),
+  ];
+}
+
+test("the breakdown is one band per surviving component, in slot order", () => {
+  const assembler = new PromptAssembler();
+  const { prompt, breakdown } = assembler.detail([...scattered(), new History({})]);
+
+  // History renders nothing and applies() is false, so it is not a band.
+  expect(breakdown.bands.map((b) => b.slot)).toEqual([Slot.SOUL, Slot.SYSTEM, Slot.CONTEXT, Slot.RESPONSE]);
+  expect(breakdown.bands.map((b) => b.name)).toEqual(["Soul", "SystemInstructions", "ContextBlock", "ResponseContract"]);
+  expect(breakdown.bands.map((b) => b.slot)).toEqual([...breakdown.bands.map((b) => b.slot)].sort((a, b) => a - b));
+
+  // The bands account for the whole prompt and for nothing else.
+  expect(breakdown.bytes).toBe(new TextEncoder().encode(prompt).length);
+  expect(breakdown.bands.reduce((sum, b) => sum + b.bytes, 0)).toBe(breakdown.bytes);
+  for (const b of breakdown.bands) expect(b.key).toMatch(/^[A-Za-z]+:[0-9a-f]{16}$/);
+  expect(assembler.assemble([...scattered()])).toBe(prompt);
+});
+
+test("a second assemble of the same components comes back from the memo, except CONTEXT", () => {
+  const assembler = new PromptAssembler();
+  const first = assembler.detail(scattered()).breakdown;
+  expect(first.bands.every((b) => b.memo === false)).toBe(true);
+  expect(first.hits).toBe(0);
+  expect(first.misses).toBe(3); // ContextBlock never enters the memo at all
+
+  const second = assembler.detail(scattered()).breakdown;
+  const marks = Object.fromEntries(second.bands.map((b) => [b.name, { memo: b.memo, cacheable: b.cacheable }]));
+  expect(marks.Soul).toEqual({ memo: true, cacheable: true });
+  expect(marks.SystemInstructions).toEqual({ memo: true, cacheable: true });
+  expect(marks.ResponseContract).toEqual({ memo: true, cacheable: true });
+  // A cached clock is a wrong clock: it opted out, so it did not miss.
+  expect(marks.ContextBlock).toEqual({ memo: false, cacheable: false });
+
+  // The totals are the assembler's own running counts, carried whole.
+  expect(second.hits).toBe(assembler.hits);
+  expect(second.misses).toBe(assembler.misses);
+  expect(second.hits).toBe(3);
+  expect(second.misses).toBe(3);
+});

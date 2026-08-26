@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HARNESS</title>
+    <!--
+      Deliberately a classic inline script rather than part of main.js: a module
+      script is deferred, so an explicit theme choice would land one frame after
+      the page had already painted in the system theme. It reads one key and
+      writes one attribute, and a private window throwing on localStorage leaves
+      the page on the system theme, which is the correct no-stored-value state.
+      PORTING-GUIDE §1.5: bun build rewrites the <link> and the module <script>
+      and leaves this alone, so it is the one place a pre-paint decision can go.
+    -->
+    <script>
+      try {
+        var t = localStorage.getItem("harness.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) {
+        /* no storage, no stored choice — the system theme stands */
+      }
+    </script>
+    <link rel="stylesheet" href="./tokens.css" />
+    <link rel="stylesheet" href="./base.css" />
+    <link rel="stylesheet" href="./shell.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>HARNESS runs entirely in the page. With JavaScript off there is nothing to run.</noscript>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

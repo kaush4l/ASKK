@@ -14,19 +14,27 @@
  * data in `flows.js` now (PORT-MAP R2), so the driver in `invoke` reads a table
  * rather than trusting eight method bodies to return each other's names.
  *
- * Three neighbours hold what will not fit in 200 lines: the field table and
- * construction, the recipe, and the loop with its repeat guard.
+ * Four neighbours hold what will not fit in 200 lines: the field table and
+ * construction, the recipe, the loop with its repeat guard, and the throwaway
+ * agents a summary and a review go through.
  */
 
 import { AgentConfig } from "./agent-config.js"
+import { consult, summarizerFor } from "./agent-consult.js"
 import { reactLoop } from "./agent-react.js"
 import { baseComponents, collectModalities, contextFacts } from "./agent-recipe.js"
 import { FLOWS, MAX_TRANSITIONS, getFlow, validateFlow } from "./flows.js"
 import { PHASES } from "./phases.js"
-import { BaseResponse, ResponseContract } from "./responses.js"
+import { ResponseContract } from "./responses.js"
 import { Toolbox } from "./tools.js"
 
 /** @typedef {import("./component-base.js").Component} Component */
+/** @typedef {import("./assembler.js").Breakdown} Breakdown */
+
+/** Something that wants to watch a prompt being built and cannot see inside a
+ * turn. The one method takes plain data and returns nothing: an observer that
+ * could answer would be a collaborator, and the turn would start waiting on it.
+ * @typedef {{ assembled(a: Breakdown & { phase: string }): void }} Observer */
 
 // Both shipped flows, checked against the phases that exist, once, at load —
 // this is the only module holding both tables, and a check nothing runs is
@@ -40,6 +48,17 @@ for (const [name, flow] of Object.entries(FLOWS)) validateFlow(flow, DECLARED, n
 
 /** One agent: session, transcript, toolbox, and the phases that drive them. */
 export class Agent extends AgentConfig {
+  /** The observer arrives the way `log` does — handed in at construction,
+   * optional, silence by default. An agent built without one takes the same
+   * path through `turn` and posts nothing; there is no channel out of the core
+   * for it to reach for if it wanted to.
+   * @param {import("./agent-config.js").AgentOptions & { observer?: Observer }} options */
+  constructor(options) {
+    super(options)
+    /** @type {Observer | null} */ this.observer = options.observer ?? null
+    /** the phase now running, named on every breakdown @type {string} */ this.phase = ""
+  }
+
   /** Attach more tools — functions, sub-agents, or Tool objects. @param {...unknown} items */
   addTools(...items) {
     for (const item of items) if (item !== null && item !== undefined) this.tools.push(item)
@@ -80,14 +99,18 @@ export class Agent extends AgentConfig {
    * @param {Component[] | null} [phaseComponents] @param {any} [responseModel]
    * @param {boolean} [tools] @param {boolean} [record] @returns {Promise<any>} */
   async turn(phaseComponents = null, responseModel = null, tools = true, record = true) {
-    await this.transcript.maybeCompact(this.#summarizer())
+    await this.transcript.maybeCompact(summarizerFor(this))
 
     const model = responseModel ?? this.responseModel
-    const prompt = this.assembler.assemble([
+    const { prompt, breakdown } = this.assembler.detail([
       ...this.baseComponents(tools),
       ...(phaseComponents ?? []),
       ResponseContract.of(model, this.responseFormat, this.responseLayer),
     ])
+    // Reported before the model is called, never after: the bands appear, then
+    // the answer arrives against them. A turn that batched the two would show a
+    // prompt only once it no longer mattered.
+    this.observer?.assembled({ phase: this.phase, ...breakdown })
     const raw = await this.inference.infer(prompt, await this.collectModalities())
 
     if (model === null) {
@@ -113,33 +136,9 @@ export class Agent extends AgentConfig {
   }
 
   /** One question to a fresh-context reviewer; the reply as parseable text.
-   *
-   * A structured reply comes back serialized (TOON), so the phase can parse it
-   * into its own response model — the reviewer's verdict survives the trip. No
-   * reviewer configured falls back to this agent's own model, bare: worse than a
-   * real fresh context, far better than skipping review.
    * @param {any} reviewer @param {string} prompt @returns {Promise<string>} */
   async consult(reviewer, prompt) {
-    const target =
-      reviewer ??
-      this.#bare("reviewer", "You are a careful, independent reviewer. Answer in exactly the format asked for.")
-    const result = await target.invoke(prompt)
-    return result instanceof BaseResponse ? result.toString(this.responseFormat) : String(result)
-  }
-
-  /** @returns {any} */
-  #summarizer() {
-    return this.summarizer ?? this.#bare("summarizer", "You summarise transcripts faithfully.")
-  }
-
-  /** A throwaway agent on this one's model: no history, no contract, and
-   * `compactAt: 0`, because the summarizer must never try to summarise itself.
-   * @param {string} suffix @param {string} system @returns {Agent} */
-  #bare(suffix, system) {
-    return new Agent({
-      name: `${this.name}-${suffix}`, inference: this.inference, ports: this.ports, log: this.log,
-      system, responseModel: null, stateless: true, compactAt: 0,
-    })
+    return await consult(this, reviewer, prompt)
   }
 
   /** Store the user turn and run the configured flow to an answer.
@@ -160,6 +159,7 @@ export class Agent extends AgentConfig {
     for (let step = 0; step < MAX_TRANSITIONS; step++) {
       const phase = PHASES[current]
       if (!phase) return this.#stop(`no phase called '${current}'`)
+      this.phase = current
       this.log.info(`${this.name}: phase ${current}`)
       const outcome = await phase.run(this, this.session)
       const next = flow.edges[current]?.[outcome]

@@ -1,0 +1,177 @@
+/* Bench — the configuration surface. Every value names a token from tokens.css.
+
+   The four panels stack rather than hide behind tabs. A tab bar would be a
+   second navigation inside a destination, and DESIGN §3 has exactly four
+   destinations that do not nest; stacking also means a person can read the CORS
+   warning while looking at the schedule, which is the pair most likely to be
+   the answer to "why did nothing happen". */
+
+.head {
+  display: grid;
+  gap: var(--space-2);
+}
+.head h1 {
+  font: var(--type-display);
+}
+.lede {
+  color: var(--ink-2);
+  max-width: calc(var(--space-8) * 12);
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--surface);
+  border: thin solid var(--line);
+}
+.panel h2 {
+  font: var(--type-heading);
+  padding-bottom: var(--space-3);
+  border-bottom: thin solid var(--line);
+}
+.panel h3 {
+  font: var(--type-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--type-micro-tracking);
+  color: var(--ink-2);
+}
+
+.editor {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* The two notes are prose, not decoration: the CORS sentence is the single most
+   likely reason a first run does nothing, and the cache sentence is why an edit
+   can look ignored. They are set at reading width and never truncated. */
+.note {
+  color: var(--ink-2);
+  max-width: calc(var(--space-8) * 12);
+}
+.note-warn {
+  color: var(--warn);
+  border-left: var(--space-1) solid var(--warn);
+  padding-left: var(--space-3);
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.picker-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--type-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--type-micro-tracking);
+  color: var(--ink-2);
+}
+.picker,
+.new {
+  font: var(--type-mono);
+  color: var(--ink);
+  background: var(--surface-2);
+  border: thin solid var(--line);
+  padding: var(--space-1) var(--space-2);
+  max-width: 100%;
+}
+.picker:disabled {
+  color: var(--ink-2);
+}
+/* The hint inside the name box is a word a person reads, so it is measured like
+   every other word rather than left to the user agent's own grey. */
+.new::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+/* A file is bytes, so it is edited in mono and never wrapped: a wrapped line
+   number is a lie about which line the parser refused. */
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+.field-label {
+  font: var(--type-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--type-micro-tracking);
+  color: var(--ink-2);
+}
+.field textarea {
+  width: 100%;
+  padding: var(--space-3);
+  background: var(--surface-2);
+  color: var(--ink);
+  border: thin solid var(--line);
+  resize: vertical;
+  overflow: auto;
+}
+.field textarea:hover {
+  border-color: var(--ink-3);
+}
+
+button.save,
+.picker-label button {
+  padding: var(--space-2) var(--space-4);
+  font: var(--type-small);
+  color: var(--ink);
+  background: var(--surface-2);
+  border: thin solid var(--line);
+  transition: border-color var(--motion-control);
+}
+button.save:hover,
+.picker-label button:hover {
+  border-color: var(--accent);
+}
+
+/* Empty and holding its space, so that a refusal appearing never pushes the
+   textarea out from under the cursor that caused it. */
+.problem {
+  font: var(--type-mono);
+  color: var(--fail);
+  min-height: var(--space-5);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.said {
+  font: var(--type-small);
+  color: var(--ink-2);
+  min-height: var(--space-5);
+}
+.empty {
+  font: var(--type-small);
+  color: var(--ink-3);
+}
+
+/* ── the schedule ─────────────────────────────────────────────────────────── */
+.jobs {
+  display: grid;
+  gap: var(--space-1);
+}
+.job {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 3fr);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border-left: var(--space-1) solid var(--line);
+}
+.job .bytes {
+  font: var(--type-mono);
+  overflow-wrap: anywhere;
+}
+.job .goal {
+  font: var(--type-small);
+  color: var(--ink-2);
+}
+
+/* 900px is DESIGN §6's collapse point, spelled out for the reason shell.css gives:
+   a custom property cannot be read inside a media query. */
+@media (max-width: 900px) {
+  .panel { padding: var(--space-4); }
+  .job { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+}
