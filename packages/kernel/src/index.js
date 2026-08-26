@@ -50,3 +50,8 @@ export { matchesRoute, readManifest } from './manifest.js'
 /** @typedef {import('./ports.js').WorkspacePort} WorkspacePort */
 /** @typedef {import('./ports.js').Execution} Execution */
 /** @typedef {import('./ports.js').Ports} Ports */
+
+export { signal, batch } from './signal.js'
+export { computed, effect } from './derive.js'
+/** @template T @typedef {import('./signal.js').Cell<T>} Cell */
+/** @template T @typedef {import('./signal.js').Signal<T>} Signal */

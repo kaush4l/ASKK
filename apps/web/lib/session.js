@@ -3,11 +3,11 @@
  *
  * `attach` hands back three things (docs/SEAM.md, frozen): a synchronous
  * `seam`, a `run` that drives whatever a request queued, and a `subscribe` that
- * fires when the log has grown. This module adds ONE fact to them — a change
- * counter — and adds it for a mechanical reason: `useSyncExternalStore` needs a
- * snapshot that is `===` to the last one when nothing has changed, and a
- * projection is a fresh object on every call, so the counter is what the hook
- * compares and the projection is read after it moves.
+ * fires when the log has grown. This module turns that bare callback into ONE
+ * SIGNAL, and the value it holds is a count rather than a projection for a
+ * mechanical reason: a projection is a fresh object on every call, so holding
+ * one would say "changed" on every read and never stop. The count is what the
+ * reader compares; the projection is read after it moves.
  *
  * THERE IS NO STORE HERE. No projection is kept, no request is remembered, no
  * reducer runs. A component re-reads through `read` and renders what comes
@@ -20,7 +20,7 @@
  * typing into a box that did nothing.
  */
 
-import { HarnessError, isProblem, post } from '@harness/kernel'
+import { HarnessError, isProblem, post, signal } from '@harness/kernel'
 
 import { growthGate } from './growth.js'
 
@@ -36,8 +36,8 @@ import { growthGate } from './growth.js'
  * @property {(request: Request) => ProblemData|null} act one request that
  *   RECORDS something, and what the seam refused. Nothing is kept from an
  *   acceptance: the append moved the counter and every reader re-reads.
- * @property {(fn: () => void) => () => void} subscribe
- * @property {() => number} version
+ * @property {import('@harness/kernel').Cell<number>} changed how many times the
+ *   log has grown — the one thing every pane in this interface watches
  * @property {ProblemData|null} problem what went wrong, when nothing came up
  */
 
@@ -72,31 +72,24 @@ export async function openSession(basePath, wiring) {
   } catch (failure) {
     return {
       read: unreachable, send: unreachable, act: unreachable, problem: problemFor(failure),
-      subscribe: () => () => {}, version: () => 0,
+      changed: signal(0),
     }
   }
 }
 
 /** @param {ReturnType<Wiring['attach']>} attached @returns {Session} */
 function ready({ seam, run, subscribe }) {
-  let version = 0
-  /** @type {Set<() => void>} */
-  const watchers = new Set()
-  const gate = growthGate(() => {
-    version += 1
-    for (const watcher of [...watchers]) watcher()
-  })
+  const changed = signal(0)
+  // The signal owns the watcher set and the copy-before-walk that goes with it,
+  // which is the whole of what this function used to spell out by hand.
+  const gate = growthGate(() => changed.set(changed.get() + 1))
   subscribe(gate.announced)
   const read = gate.reading(seam)
   return {
     read,
     send: sender(seam, run),
     act: (request) => refusal(read(request)),
-    subscribe: (fn) => {
-      watchers.add(fn)
-      return () => watchers.delete(fn)
-    },
-    version: () => version,
+    changed,
     problem: null,
   }
 }

@@ -91,7 +91,7 @@ test('every append moves the counter the interface is watching', async () => {
   const session = await openSession('', core([]))
   /** @type {number[]} */
   const seen = []
-  const stop = session.subscribe(() => seen.push(session.version()))
+  const stop = session.changed.subscribe(() => seen.push(session.changed.get()))
   await session.send('main', 'Anything.')
   expect(seen).toEqual([1, 2])
   stop()
@@ -178,19 +178,19 @@ test('a projection that answered 404 does not announce itself as a change', asyn
   }))
 
   let woken = 0
-  session.subscribe(() => { woken += 1 })
-  const before = session.version()
+  session.changed.subscribe(() => { woken += 1 })
+  const before = session.changed.get()
   expect(session.read(get('/')).status).toBe(404)
 
   // The fact WAS written — this guard does not stop the core recording it — and
   // the interface was not told to read it again, which is the whole of the fix.
   expect(appended).toBe(1)
   expect(woken).toBe(0)
-  expect(session.version()).toBe(before)
+  expect(session.changed.get()).toBe(before)
 
   // …AND THE NEXT REAL GROWTH STILL ARRIVES. One swallowed announcement is one,
   // not a subscription that has been quietly turned off.
   for (const watcher of [...watchers]) watcher()
   expect(woken).toBe(1)
-  expect(session.version()).toBe(before + 1)
+  expect(session.changed.get()).toBe(before + 1)
 })

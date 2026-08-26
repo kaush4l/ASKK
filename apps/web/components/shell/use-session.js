@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
+import { useSignal } from '@/components/shell/use-signal'
 import { BASE } from '@/lib/base'
 import { openSession } from '@/lib/session'
 
@@ -52,11 +53,11 @@ export function useSession() {
 /**
  * ONE PROJECTION, RE-READ WHENEVER THE LOG HAS GROWN.
  *
- * The counter is what `useSyncExternalStore` compares, not the projection: a
- * projection is a fresh object every call, so returning one as the snapshot
- * would tell React the store changed on every render and never stop. The
- * projection is read AFTER the counter moves, which is the whole subscription
- * model the seam offers (docs/SEAM.md: `subscribe` is the only signal).
+ * `session.changed` is a SIGNAL holding a count, and the count is what is
+ * compared — not the projection, which is a fresh object every call and would
+ * tell React the store changed on every render and never stop. The projection
+ * is read AFTER the count moves, which is the whole subscription model the seam
+ * offers (docs/SEAM.md: `subscribe` is the only signal).
  *
  * Nothing is kept between reads. Navigating away and back re-reads the log, so
  * a turn in flight is still in flight — it was never in this component.
@@ -65,7 +66,7 @@ export function useSession() {
  * @returns {import('@harness/kernel').Response}
  */
 export function useProjection(session, request) {
-  const version = useSyncExternalStore(session.subscribe, session.version, session.version)
+  const version = useSignal(session.changed)
   const address = request.method + ' ' + request.path + ' ' + (request.headers['x-agent'] ?? '')
   // `address` IS the request's identity: the object it arrived in is rebuilt
   // on every render, so it can never be the thing that is compared.
