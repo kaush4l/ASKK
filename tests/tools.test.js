@@ -216,3 +216,46 @@ test("the component is registered under 'tools' and keys by content", async () =
   expect(a.key()).toBe(new ToolboxComponent({ usages: ["x"] }).key());
   expect(a.key()).not.toBe(new ToolboxComponent({ usages: ["y"] }).key());
 });
+
+// ── Python string semantics at the two model-facing call sites ────────────
+// Both were claimed reproduced in docs/FOUND-IN-THE-PYTHON.md and were not.
+// Every expected string below came out of CPython 3.14 in the Python tree.
+
+test("the goal rescue is `str(value or \"\")`, so an empty extra argument is skipped", async () => {
+  const agent = { name: "researcher", description: "does research", invoke: async (/** @type {string} */ g) => `RAN<${g}>` };
+  const sub = Tool.fromAgent(agent);
+  // `??` only guards null and undefined, so every falsy extra argument used to
+  // start a sub-agent instead of being skipped. 0 is not a goal.
+  const refusal = 'no goal given. Call it as researcher({"query": "<the whole task, in one string>"})';
+  for (const args of [{ task: 0 }, { task: false }, { task: "" }, { task: [] }, { task: {} }]) {
+    await expect(sub.fn(args)).rejects.toThrow(refusal);
+  }
+  // and a non-empty one is rendered the way Python renders it
+  expect(await sub.fn({ task: { goal: "x" } })).toBe("RAN<{'goal': 'x'}>");
+  expect(await sub.fn({ query: { goal: "x" } })).toBe("RAN<{'goal': 'x'}>");
+  expect(await sub.fn({ task: [1, 2] })).toBe("RAN<[1, 2]>");
+  expect(await sub.fn({ task: true })).toBe("RAN<True>");
+  expect(await sub.fn({ task: ["it's", 'a "b"'] })).toBe(`RAN<["it's", 'a "b"']>`);
+  // the first non-empty extra wins, in argument order
+  expect(await sub.fn({ a: 0, b: "second" })).toBe("RAN<second>");
+});
+
+test("the no-calls-found message renders a list repr, truncated after it is built", async () => {
+  const box = new Toolbox();
+  expect(await box.invoke(["hello", "there"])).toBe(
+    "Error: No valid tool call found in: ['hello', 'there']",
+  );
+  expect(await box.invoke(["it's", "fine"])).toBe(
+    `Error: No valid tool call found in: ["it's", 'fine']`,
+  );
+  expect(await box.invoke([{ k: "v" }])).toBe("Error: No valid tool call found in: [{'k': 'v'}]");
+  expect(await box.invoke("plain text")).toBe("Error: No valid tool call found in: plain text");
+  for (const empty of [[], 0, null, undefined]) {
+    expect(await box.invoke(empty)).toBe("Error: No valid tool call found in: ");
+  }
+  // Python builds the repr and THEN cuts to 120, so the cut lands inside the
+  // quoted item and the closing bracket never arrives.
+  const long = await box.invoke(["x".repeat(200)]);
+  expect(long).toBe(`Error: No valid tool call found in: ['${"x".repeat(118)}`);
+  expect(long.endsWith("x")).toBe(true);
+});

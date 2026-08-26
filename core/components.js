@@ -3,7 +3,7 @@
  * this module owns: the soul, the system block, the context facts, the
  * transcript, the phase instructions, the unresolved critique findings, the
  * skill catalogue and the loaded skill bodies. The two remaining components ship
- * with the modules that own them (`tools.js`, `responses.js`).
+ * with the modules that own them (`tool-prompt.js`, `responses.js`).
  *
  * What a component *is* — the render/key/applies/SLOT contract, the
  * immutability, the compiled template — lives in `component-base.js`; this file

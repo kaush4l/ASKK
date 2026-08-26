@@ -16,6 +16,8 @@
  * on the next pass. A failing tool must never take the session down with it.
  */
 
+import { pyStrOr } from "./py-str.js";
+
 /** @typedef {{ warn: (message: string) => void }} Log */
 /** @typedef {(args: Record<string, any>) => any} ToolFn */
 
@@ -81,8 +83,8 @@ export class Tool {
     const fn = async (/** @type {Record<string, any>} */ args) => {
       const spare = Object.entries(args ?? {})
         .filter(([k]) => k !== "query")
-        .map(([, v]) => String(v ?? "").trim());
-      const goal = String(args?.query ?? "").trim() || spare.find(Boolean) || "";
+        .map(([, v]) => pyStrOr(v).trim());
+      const goal = pyStrOr(args?.query).trim() || spare.find(Boolean) || "";
       if (!goal) {
         const shape = '{"query": "<the whole task, in one string>"}';
         throw new Error(`no goal given. Call it as ${agent.name}(${shape})`);

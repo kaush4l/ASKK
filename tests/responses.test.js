@@ -204,3 +204,14 @@ test("a custom cue closes the prompt in place of the default", () => {
   expect(contract.render()).toBe("[REPLY]:");
   expect(contract.key()).not.toBe(ResponseContract.of(null).key());
 });
+
+test("a list answer field is Python's repr, so an apostrophe stays well formed", () => {
+  // `['it's broken', 'b']` is not even parseable as a list; Python's repr
+  // switches quote character per item, and findings are what a planner reads.
+  const c = new CritiqueResponse({ findings: ["it's broken", "b"], verdict: "revise" });
+  expect(c.answer).toBe(`["it's broken", 'b']`);
+  expect(new CritiqueResponse({ findings: ['say "hi"'] }).answer).toBe(`['say "hi"']`);
+  expect(new CritiqueResponse({ findings: ["both ' and \""] }).answer).toBe(`['both \\' and "']`);
+  expect(new CritiqueResponse({ findings: ["line\nbreak"] }).answer).toBe("['line\\nbreak']");
+  expect(new CritiqueResponse({ findings: [] }).answer).toBe("[]");
+});

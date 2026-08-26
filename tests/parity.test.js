@@ -2,18 +2,20 @@
  * The oracle. `tests/golden/` holds four files copied byte-for-byte out of the
  * Python tree, and a port that does not reproduce them has not been done.
  *
- * `Agent` is wave 3, so this file does not use it. It assembles the same
- * component list `Agent.base_components` + `Agent.render` assemble — the
- * `DEFAULT_COMPONENTS` order `soul, system, context, loaded_skills, history,
- * tools`, then `ResponseContract.of(...)` — out of the modules that exist, and
- * compares the assembled string to the recording. That is not a weaker check
- * than driving `Agent`: `render()` is that list and nothing else, so a diff
- * here is a diff in a component, and a failure names the module that produced
- * the wrong bytes rather than the caller that asked for them.
+ * These four checks drive the real `Agent`, the way `test_core.py:172-209`
+ * drove it: three configurations through `agent.render()`, and one scripted
+ * react loop through `await agent.invoke(...)`. That is the point of the file.
+ * A stand-in that assembles the same component list by hand goes on passing
+ * after the caller it stands in for has drifted, which is exactly the failure
+ * an oracle exists to catch — so the hand-assembled render below is kept only
+ * as a *locator*, run after the real one, to say which module produced a wrong
+ * byte once the real check has already said that one was produced.
  *
- * The context facts are frozen at the values the recordings were made with. The
- * Python froze them by monkeypatching `Agent.context`; here they are simply
- * passed, because a pure core takes its clock as an argument.
+ * The context facts are pinned onto the instance rather than derived. The
+ * recordings carry `2026-08-16 12:00:00 PDT` beside `day: Saturday` and
+ * 2026-08-16 is a Sunday, so no clock can produce that pair; `test_core.py:99`
+ * replaced `Agent.context` wholesale and `core/agent-recipe.js` kept that seam
+ * on purpose. `docs/FOUND-IN-THE-PYTHON.md` records why.
  *
  * When a byte differs the fixture is not the thing that is wrong. `diff()`
  * below reports the offset, the surrounding bytes and which side is which, so
@@ -22,6 +24,9 @@
 
 import { expect, test } from "bun:test";
 
+import { Agent } from "../core/agent.js";
+import { Inference } from "../core/inference.js";
+import { fixedClock, memoryFs } from "../core/ports/memory-fs.js";
 import {
   ContextBlock,
   PromptAssembler,
@@ -31,6 +36,7 @@ import {
   SystemInstructions,
   Toolbox,
   Transcript,
+  defaultPorts,
   loaded,
   tool,
 } from "../core/index.js";
@@ -60,91 +66,128 @@ function diff(actual, expected) {
 }
 
 // The recordings were made at this instant, in this zone. `%Z` is why the zone
-// is spelled out rather than derived: a Date alone cannot render `PDT`.
+// is spelled out rather than derived: a Date alone cannot render `PDT` — and
+// the weekday is pinned beside it because the recorded pair disagrees with the
+// calendar. Neither string is this file's to correct.
 const FIXED_CONTEXT = { "current time": "2026-08-16 12:00:00 PDT", day: "Saturday" };
 
 const echo = tool("echo", "Echo the text back.", '{"text": "<text>"}', (a) => String(a.text));
 const weather = tool("weather", "Report the weather for a city.", '{"city": "<city>"}', () => "sunny");
 
-/**
- * `Agent.base_components(...)` + the response contract, without `Agent`.
- * @param {{ soul?: string, system?: string,
- *           messages?: ["user" | "assistant", string][],
- *           tools?: unknown[], model?: typeof ReActResponse | null }} spec
- * @returns {string}
- */
-function render(spec) {
-  const transcript = new Transcript({ name: "p" });
-  for (const [role, content] of spec.messages ?? []) transcript.add(role, content);
-  const parts = [
-    new Soul({ text: spec.soul ?? "" }),
-    new SystemInstructions({ text: spec.system ?? "" }),
-    new ContextBlock({ facts: FIXED_CONTEXT }),
-    loaded([]),
-    transcript.component(),
-    Toolbox.of(...(spec.tools ?? [])).component(),
-    ResponseContract.of(spec.model === undefined ? ReActResponse : spec.model, "toon", "[ASSISTANT]:"),
-  ];
-  return new PromptAssembler().assemble(parts);
+/** Answers by prompt marker, so phase order can change without breaking tests —
+ * the good idea in `test_core.py:48-86` worth keeping. Nothing here reaches the
+ * markers: these four cases are all react-flow, so every reply is the last one. */
+class FakeInference extends Inference {
+  constructor() {
+    super({ model: "fake", baseUrl: "http://fake", apiKey: "none" });
+    /** @type {string[]} */ this.calls = [];
+  }
+
+  /** @param {string} prompt @returns {Promise<string>} */
+  async infer(prompt) {
+    if (prompt.includes("You are working step")) {
+      this.calls.push("work");
+      return "act: answer\n\nresult: step finished fine";
+    }
+    this.calls.push("react");
+    return "act: answer\n\nresult: simple answer";
+  }
+}
+
+/** `test_core.py:191` — a model that reads from a script. */
+class Scripted extends FakeInference {
+  /** @param {string[]} replies */
+  constructor(replies) {
+    super();
+    this.replies = replies;
+  }
+
+  /** @returns {Promise<string>} */
+  async infer() {
+    return this.replies.shift() ?? "";
+  }
+}
+
+/** An Agent on a frozen clock with the golden context block pinned onto it.
+ * @param {Partial<import("../core/agent-config.js").AgentOptions> &
+ *         { inference: Inference }} options @returns {Agent} */
+function agentOf(options) {
+  const ports = { ...defaultPorts(), fs: memoryFs({}), clock: fixedClock("2026-08-16T12:00:00-07:00") };
+  const built = new Agent({ ports, ...options });
+  built.context = () => ({ ...FIXED_CONTEXT });
+  return built;
 }
 
 test("render parity: bare", async () => {
   const expected = await golden("render-bare.prompt");
-  const actual = render({ system: "Sys." });
+  const actual = agentOf({ name: "p2", system: "Sys.", inference: new FakeInference() }).render();
   expect(diff(actual, expected)).toBe("");
   expect(actual).toBe(expected);
 });
 
 test("render parity: plain-text", async () => {
   const expected = await golden("render-plain-text.prompt");
-  const actual = render({ system: "Sys.", model: null });
+  const agent = agentOf({ name: "p3", system: "Sys.", inference: new FakeInference(), responseModel: null });
+  const actual = agent.render();
   expect(diff(actual, expected)).toBe("");
   expect(actual).toBe(expected);
 });
 
 test("render parity: full", async () => {
   const expected = await golden("render-full.prompt");
-  const actual = render({
+  const agent = agentOf({
+    name: "p",
     system: "You are helpful.\nBe brief.",
-    messages: [
-      ["user", "hi"],
-      ["assistant", "hello there"],
-    ],
+    inference: new FakeInference(),
     tools: [echo, weather],
+    messages: [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello there" },
+    ],
   });
+  const actual = agent.render();
   expect(diff(actual, expected)).toBe("");
   expect(actual).toBe(expected);
 });
 
 /**
- * The react loop's turns, without the loop.
- *
- * `Agent.react_loop` is wave 3. What it does between the model and the
- * transcript is not: parse the reply, run the calls, write `Result: ` back as a
- * user turn, go round. That is played out here against the recorded script, so
- * the golden's history is pinned to the modules that produce every line of it —
- * `responses` for the answer, `tools` for the observation, `memory` for the
- * turns. Wave 3 replaces this with `Agent.invoke` and must produce the same
- * two values.
+ * `test_core.py:188-209`: the answer `invoke` hands back and the turns the loop
+ * leaves on the transcript, both against the recording. The script is the
+ * Python's, at `test_core.py:197`.
  */
-test("react loop parity: the turns the loop leaves behind", async () => {
+test("react loop parity: the answer and the turns the loop leaves behind", async () => {
   const expected = JSON.parse(await golden("react-loop.json"));
   const script = ['act: tool\n\nresult: echo({"text": "hey"})', "act: answer\n\nresult: done: hey"];
+  const agent = agentOf({ name: "lp", system: "Sys.", inference: new Scripted(script), tools: [echo] });
 
-  const transcript = new Transcript({ name: "lp" });
-  const toolbox = Toolbox.of(echo);
-  transcript.add("user", "please echo hey");
+  const out = await agent.invoke("please echo hey");
 
-  let reply = 0;
-  let parsed = ReActResponse.parse(script[reply++], "toon");
-  transcript.add("assistant", String(parsed.answer).trim());
-  while (!parsed.isAnswer) {
-    const observation = await toolbox.invoke(String(parsed.answer).trim());
-    transcript.add("user", `Result: ${observation}`);
-    parsed = ReActResponse.parse(script[reply++], "toon");
-    transcript.add("assistant", String(parsed.answer).trim());
-  }
+  expect(out.answer).toBe(expected.answer);
+  expect(agent.messages.map((m) => [m.role, m.content])).toEqual(expected.history);
+});
 
-  expect(parsed.answer).toBe(expected.answer);
-  expect(transcript.messages.map((m) => [m.role, m.content])).toEqual(expected.history);
+/**
+ * The locator, and only the locator. `render()` is `baseComponents()` plus the
+ * response contract and nothing else, so assembling that list by hand here and
+ * getting the same bytes says the difference the test above would report lives
+ * in a component rather than in the recipe — and getting *different* bytes says
+ * the recipe is what changed. It proves nothing on its own: it runs after the
+ * real `Agent.render()` check, never instead of it.
+ */
+test("locator: the full prompt is the base recipe and the contract, nothing else", async () => {
+  const transcript = new Transcript({ name: "p" });
+  transcript.add("user", "hi");
+  transcript.add("assistant", "hello there");
+  const assembled = new PromptAssembler().assemble([
+    new Soul({ text: "" }),
+    new SystemInstructions({ text: "You are helpful.\nBe brief." }),
+    new ContextBlock({ facts: FIXED_CONTEXT }),
+    loaded([]),
+    transcript.component(),
+    Toolbox.of(echo, weather).component(),
+    ResponseContract.of(ReActResponse, "toon", "[ASSISTANT]:"),
+  ]);
+  const expected = await golden("render-full.prompt");
+  expect(diff(assembled, expected)).toBe("");
+  expect(assembled).toBe(expected);
 });

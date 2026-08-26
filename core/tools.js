@@ -25,6 +25,7 @@
  */
 
 import { NO_LOG, Tool, ToolResult, reason } from "./tool-call.js";
+import { pyStr, pyStrOr } from "./py-str.js";
 import { ToolboxComponent } from "./tool-prompt.js";
 
 /** @typedef {import("./tool-call.js").Log} Log */
@@ -56,6 +57,15 @@ function readArgs(source) {
   } catch (e) {
     // Kept, not discarded: the call still happens, but as a failure that tells
     // the model what was wrong with what it wrote.
+    //
+    // Python appends `(at character {e.pos})` here and the offset is the
+    // actionable half of the message. JavaScriptCore — Bun's engine and
+    // Safari's — gives no such offset: it is absent from the message, and the
+    // `line`/`column` on the SyntaxError are the *call site of JSON.parse*, not
+    // a position in the JSON (measured: they read 4:36 for two different
+    // failures on two different inputs). Deriving one ourselves would mean a
+    // second JSON scanner that has to name the same character CPython names,
+    // and an offset that disagrees is worse than none. Recorded as D-7.
     return { [ARG_ERROR]: reason(e) };
   }
 }
@@ -110,7 +120,7 @@ export class Toolbox {
    * @param {any} text @returns {Call[][]}
    */
   static parseBatches(text) {
-    const raw = Array.isArray(text) ? text.map((i) => String(i)).join("\n") : text ? String(text) : "";
+    const raw = Array.isArray(text) ? text.map((i) => pyStr(i)).join("\n") : pyStrOr(text);
     /** @type {Call[][]} */
     const batches = [];
     let previousEnd = 0;
@@ -159,7 +169,7 @@ export class Toolbox {
   async invoke(text, onResults = null) {
     const batches = Toolbox.parseBatches(text);
     if (batches.length === 0) {
-      return `Error: No valid tool call found in: ${(text ? String(text) : "").slice(0, 120)}`;
+      return `Error: No valid tool call found in: ${pyStrOr(text).slice(0, 120)}`;
     }
     /** @type {ToolResult[]} */
     const results = [];

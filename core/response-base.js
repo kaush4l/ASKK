@@ -22,6 +22,7 @@
  * for a file that happens to be a faithful port.
  */
 
+import { pyStr } from "./py-str.js";
 import { parseJson, parseToon } from "./response-parse.js";
 
 export const TOON = "toon";
@@ -50,12 +51,6 @@ function accept(field, value) {
   }
   if (typeof value !== "string") throw new TypeError(`${field.name} is a string`);
   return value;
-}
-
-/** Python's `str()` of a field value, which for a list field is its repr.
- * @param {FieldValue} value @returns {string} */
-function pyStr(value) {
-  return Array.isArray(value) ? `[${value.map((v) => `'${v}'`).join(", ")}]` : String(value);
 }
 
 /** Base structured response. Subclasses declare fields; everything else is inherited. */
