@@ -14,27 +14,29 @@
  * data in `flows.js` now (PORT-MAP R2), so the driver in `invoke` reads a table
  * rather than trusting eight method bodies to return each other's names.
  *
- * Four neighbours hold what will not fit in 200 lines: the field table and
- * construction, the recipe, the loop with its repeat guard, and the throwaway
- * agents a summary and a review go through.
+ * Five neighbours hold what will not fit in 200 lines: the field table and
+ * construction, the recipe, the react loop with its repeat guard, the flow
+ * driver that walks the edge table, and the throwaway agents a summary and a
+ * review go through.
  */
 
 import { AgentConfig } from "./agent-config.js"
 import { consult, summarizerFor } from "./agent-consult.js"
+import { runFlow } from "./agent-flow.js"
 import { reactLoop } from "./agent-react.js"
 import { baseComponents, collectModalities, contextFacts } from "./agent-recipe.js"
-import { FLOWS, MAX_TRANSITIONS, getFlow, validateFlow } from "./flows.js"
+import { FLOWS, validateFlow } from "./flows.js"
 import { PHASES } from "./phases.js"
 import { ResponseContract } from "./responses.js"
 import { Toolbox } from "./tools.js"
 
 /** @typedef {import("./component-base.js").Component} Component */
-/** @typedef {import("./assembler.js").Breakdown} Breakdown */
 
-/** Something that wants to watch a prompt being built and cannot see inside a
- * turn. The one method takes plain data and returns nothing: an observer that
- * could answer would be a collaborator, and the turn would start waiting on it.
- * @typedef {{ assembled(a: Breakdown & { phase: string }): void }} Observer */
+/** The observer contract moved to `telemetry.js` when it grew from one method to
+ * three — it belongs beside the observers that implement it. Aliased here
+ * because this is the name callers already import. Type-only: no runtime edge
+ * from the agent to the wire exists, and none may.
+ * @typedef {import("./telemetry.js").Observer} Observer */
 
 // Both shipped flows, checked against the phases that exist, once, at load —
 // this is the only module holding both tables, and a check nothing runs is
@@ -110,7 +112,7 @@ export class Agent extends AgentConfig {
     // Reported before the model is called, never after: the bands appear, then
     // the answer arrives against them. A turn that batched the two would show a
     // prompt only once it no longer mattered.
-    this.observer?.assembled({ phase: this.phase, ...breakdown })
+    this.observer?.assembled?.({ phase: this.phase, ...breakdown })
     const raw = await this.inference.infer(prompt, await this.collectModalities())
 
     if (model === null) {
@@ -142,39 +144,9 @@ export class Agent extends AgentConfig {
   }
 
   /** Store the user turn and run the configured flow to an answer.
-   *
-   * The flow is a declared table: its entry says where to start and
-   * `(phase, outcome)` says what comes next. The react flow's table is one phase
-   * and one terminal edge, so it still reaches `ReActPhase` in a single lookup —
-   * the graph costs it nothing.
    * @param {string} userInput @returns {Promise<any>} */
   async invoke(userInput) {
-    if (this.stateless) this.transcript.clear()
-    this.session.resetFor(userInput)
-    this.transcript.add("user", userInput)
-    this.last = null
-
-    const flow = getFlow(this.flow)
-    let current = flow.entry
-    for (let step = 0; step < MAX_TRANSITIONS; step++) {
-      const phase = PHASES[current]
-      if (!phase) return this.#stop(`no phase called '${current}'`)
-      this.phase = current
-      this.log.info(`${this.name}: phase ${current}`)
-      const outcome = await phase.run(this, this.session)
-      const next = flow.edges[current]?.[outcome]
-      if (next === undefined) return this.#stop(`phase '${current}' returned '${outcome}', no edge for it`)
-      if (next === null) return this.last
-      current = next
-    }
-    return this.#stop(`phase graph exceeded ${MAX_TRANSITIONS} transitions`)
-  }
-
-  /** The run ended on a broken graph, not an answer. Whatever was recorded still
-   * goes back — a partial reply beats none. @param {string} why @returns {any} */
-  #stop(why) {
-    this.log.error(`${this.name}: ${why} — stopping`)
-    return this.last
+    return await runFlow(this, userInput)
   }
 
   /** Release the inference client and anything registered via `onClose`. */

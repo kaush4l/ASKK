@@ -35,6 +35,19 @@ const argv = Bun.argv.slice(2)
 const at = argv.indexOf("--dist")
 const DIST = (at === -1 ? undefined : argv[at + 1]) ?? join(dirname(import.meta.dir), "dist")
 const NONCE = Bun.randomUUIDv7().slice(-8)
+/** The tool the model calls. `agents/main/agent.md` names it, and the built export does not carry
+ * `agents/main/tools.js` — `app/seed.js` says why, and says the tools are missing on purpose. So it
+ * comes back as a *failed* ToolResult, and that is fine here: what is under test is the whole path
+ * from the model's text to something a person can see — parsed, dispatched, turned into a result,
+ * reported, rendered. The assertions read the tool's NAME in the result, never the result's text,
+ * so the day that seed ships the tools this keeps meaning the same thing. */
+const TOOL = "list_cron_jobs"
+/** The turn that asks for a tool. Nonce-tagged so an earlier turn's text cannot match it. */
+const TOOL_ASK = `tools ${NONCE}`
+/** How long the stub sits on that turn's first reply. The Flow view subscribes at mount and
+ * reports only what arrives while it is mounted, so this is the window a person — and this run —
+ * has to switch to it after starting a run. */
+const STALL = 3000
 /** Files `app/seed.js` carries in the bundle. Not `agents/models.json`: this run writes that one, so it proves nothing. */
 const SEEDED = ["agents/main/agent.md", "core/agents/summarizer/agent.md", "core/agents/verifier/agent.md", "skills/summarize-file/SKILL.md"]
 
@@ -64,7 +77,8 @@ function serveOrigin(missing, tally) {
       const path = new URL(request.url).pathname
       if (path === "/v1/chat/completions" || path === "/v1/responses") {
         tally.calls += 1
-        const text = `act: answer\n\nresult: ${NONCE}-${tally.calls}`
+        const body = /** @type {any} */ (await request.json().catch(() => ({})))
+        const text = await modelReply(String(body?.messages?.[0]?.content ?? body?.input ?? ""), tally)
         return Response.json({ choices: [{ message: { content: text } }], output_text: text })
       }
       if (path === "/smoke-seed") return new Response(seedPage(), { headers: { "content-type": "text/html; charset=utf-8" } })
@@ -76,6 +90,20 @@ function serveOrigin(missing, tally) {
       return new Response((await file.text()).replace("<head>", `<head>${PROBE}`), { headers: { "content-type": "text/html; charset=utf-8" } })
     },
   })
+}
+
+/** The stubbed model. It answers plainly, except on the turn whose text contains `TOOL_ASK`:
+ * there it writes a call in the react contract's own shape (`act: tool`, then the call in
+ * `result:`), and answers on the pass after, once the tool's `Result:` line is in the prompt.
+ * Answering by what the prompt contains rather than by a call count is what lets an extra
+ * assemble anywhere in the run not shift every later reply by one.
+ * @param {string} prompt @param {{ calls: number }} tally @returns {Promise<string>} */
+async function modelReply(prompt, tally) {
+  if (prompt.includes(TOOL_ASK) && !prompt.includes(`Result: ${TOOL}`)) {
+    await Bun.sleep(STALL)
+    return `act: tool\n\nresult: ${TOOL}({})`
+  }
+  return `act: answer\n\nresult: ${NONCE}-${tally.calls}`
 }
 
 /** One file into OPFS before anything reads it. Relative `base_url`, so it needs no port. @returns {string} */
@@ -164,6 +192,40 @@ async function assertTurns(view, tally) {
   const memo = again ? Number(await view.evaluate(`document.querySelectorAll('#stage .bands .band[data-mark="memo"]').length`)) : 0
   check(7, "the inspector shows bands, a byte count and a memo hit on turn two",
     first.bands > 0 && first.bytes > 0 && memo > 0, `${first.bands} bands, ${first.bytes} bytes, ${memo} memo hit(s) on turn two`)
+  await assertLive(view)
+}
+
+/** The two events that were declared, listened for, and emitted by nobody.
+ *
+ * Assertion 7's run passed with both of them dead, which is the whole reason
+ * these exist: the same page that proved the inspector works also proved
+ * nothing about the destination whose one job is showing a live phase. Both
+ * read DOM the interface rendered off an event — not a drawn graph, and not a
+ * transcript line the core would have written anyway.
+ *
+ * @param {Bun.WebView} view @returns {Promise<void>} */
+async function assertLive(view) {
+  await visit(view, "converse")
+  if (!(await until(view, `document.querySelector(".composer .send:not([disabled])")`, 60000))) {
+    return check(8, "the Flow view shows a live phase while a run is going", false, "the composer never came back")
+  }
+  await view.click("#turn-input")
+  await view.type(TOOL_ASK)
+  await view.click(".composer .send")
+  // Not awaited on purpose: the point of this destination is watching a run that
+  // has not finished. The stub is sitting on the first reply while we switch.
+  await view.evaluate(`(location.hash = "#/flow", 1)`)
+  const note = `document.querySelector("#stage .flow .note")?.textContent ?? ""`
+  const live = await until(view, `/Live phase: \\w/.test(${note})`, STALL * 8)
+  check(8, "the Flow view shows a live phase while a run is going", live,
+    /** @type {string} */ (await view.evaluate(note)) || "the Flow view rendered no note at all")
+  const rows = `[...document.querySelectorAll("#stage table td code")].map((c) => c.textContent).join(" ")`
+  const tallied = await until(view, `${rows}.includes(${JSON.stringify(TOOL)})`, STALL * 8)
+  await visit(view, "converse")
+  const seen = await until(view, `document.querySelector('#stage .transcript [data-kind="result"]')?.textContent.includes(${JSON.stringify(TOOL)})`, 90000)
+  const shown = /** @type {string} */ (await view.evaluate(`document.querySelector('#stage .transcript [data-kind="result"] .turn-body')?.textContent ?? ""`))
+  check(9, "a tool call runs and its result is visible, in the transcript and on the Flow view",
+    seen && tallied, `${tallied ? "tallied" : "NOT tallied on Flow"}; transcript says "${shown.slice(0, 60).replace(/\n/g, " ")}"`)
 }
 
 async function main() {

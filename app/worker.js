@@ -16,16 +16,17 @@
  */
 
 import { loadAgent } from "../core/agentfile.js"
-import { assemblyObserver } from "../core/telemetry.js"
+import { agentObserver } from "../core/telemetry.js"
 import { serve } from "../core/worker-host.js"
 import { browserPorts } from "./ports-browser.js"
 
 const ports = browserPorts()
 
-/** The prompt inspector's end of the wire. It is built here, on the one side of
- * the seam allowed to know it is in a browser, and handed to the engine below:
- * the core never reaches for `self`. */
-const observer = assemblyObserver(self)
+/** The page's end of the wire — the assembled prompt, every phase entered, and
+ * every batch of tool results. It is built here, on the one side of the seam
+ * allowed to know it is in a browser, and handed to the engine below: the core
+ * never reaches for `self`. */
+const observer = agentObserver(self)
 
 /** Report to the page rather than to a console nobody is looking at: a worker's
  * `console.warn` lands somewhere a user of the built page will never see. */

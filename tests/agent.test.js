@@ -304,3 +304,149 @@ test("an agent built without an observer takes the same path and reports nothing
   expect(silent.messages).toEqual(watched.messages)
   expect(seen.length).toBe(1)
 })
+
+// ── the observer: the phase, and the tool results ────────────────────────
+//
+// Both events were declared on the wire and emitted by nobody. `app/views/flow.js`
+// and `app/views/converse.js` listened for them, and the Flow view — whose one
+// job is showing which phase is live — could never highlight anything. 345 unit
+// tests were green over it, which is why these exist.
+
+/** @param {any[]} seen @returns {import("../core/agent.js").Observer} */
+const watcher = (seen) => ({ entered: (e) => void seen.push(e), results: (r) => void seen.push(r) })
+/** Only the tool batches, so a react-phase entry does not land in the same list.
+ * @param {any[]} seen @returns {import("../core/agent.js").Observer} */
+const toolWatcher = (seen) => ({ results: (r) => void seen.push(r) })
+
+test("the observer is told every phase entry, with the flow and the round cap", async () => {
+  /** @type {any[]} */ const seen = []
+  const agent = agentOf({
+    name: "pe", system: "Sys.", inference: new FakeInference(), flow: "full", maxRounds: 4,
+    observer: watcher(seen),
+  })
+
+  await agent.invoke("do the complex thing")
+
+  expect(seen.map((e) => e.phase)).toEqual(["understand", "select_skills", "plan", "work", "verify", "critique", "respond"])
+  // Every entry carries what the Flow view needs to draw the right graph and to
+  // read the round counter against its cap; neither is derivable on that side.
+  expect(seen.every((e) => e.flow === "full" && e.maxRounds === 4)).toBe(true)
+})
+
+test("the session rides along, as the blackboard stood when the phase was entered", async () => {
+  /** @type {any[]} */ const seen = []
+  const agent = agentOf({
+    name: "bb", system: "Sys.", inference: new FakeInference(), flow: "full",
+    observer: { entered: (e) => void seen.push({ phase: e.phase, plan: e.session.plan.map((s) => s.status) }) },
+  })
+
+  await agent.invoke("do the complex thing")
+
+  const at = (/** @type {string} */ phase) => seen.find((e) => e.phase === phase)
+  expect(at("plan").plan).toEqual([]) // nothing planned yet when plan is entered
+  expect(at("work").plan).toEqual(["pending", "pending"])
+  expect(at("verify").plan).toEqual(["done", "done"]) // work wrote them before verify was entered
+})
+
+test("retry and exhausted stay apart: the arrival is different, not the label", async () => {
+  /** @param {string[]} verdicts @param {number} rounds @returns {Promise<string[]>} */
+  const run = async (verdicts, rounds) => {
+    /** @type {any[]} */ const seen = []
+    const agent = agentOf({
+      name: "rv", system: "Sys.", inference: new FakeInference({ verifyVerdicts: verdicts }),
+      flow: "full", maxRounds: rounds, observer: watcher(seen),
+    })
+    await agent.invoke("do it")
+    return seen.map((e) => e.phase)
+  }
+
+  // verify --retry--> plan: the plan is written again.
+  expect(await run(["fail", "pass"], 3)).toEqual(
+    ["understand", "select_skills", "plan", "work", "verify", "plan", "work", "verify", "critique", "respond"],
+  )
+  // verify --exhausted--> respond: it answers anyway. Same phase, same outcome
+  // word in the log, and a reader can tell them apart because the next arrival
+  // is a different one.
+  expect((await run(["fail"], 0)).slice(-2)).toEqual(["verify", "respond"])
+})
+
+test("the observer is told each batch of tool results as that batch lands", async () => {
+  /** @type {any[]} */ const seen = []
+  const written = 'echo({"text": "one"}), weather({"city": "Paris"})\necho({"text": "two"})'
+  const script = [`act: tool\n\nresult: ${written}`, "act: answer\n\nresult: done"]
+  const agent = agentOf({
+    name: "tr", system: "Sys.", inference: new Scripted(script), tools: [echo, weather], observer: toolWatcher(seen),
+  })
+
+  await agent.invoke("run some tools")
+
+  // Two events, not one: the batches are the schedule the model wrote, and a
+  // caller reacts to the first before the second starts.
+  expect(seen.length).toBe(2)
+  expect(seen.map((r) => r.results.map((/** @type {any} */ x) => x.tool))).toEqual([["echo", "weather"], ["echo"]])
+  // Both carry the whole call text — the key the repeat guard itself counts on.
+  expect(seen.every((r) => r.call === written)).toBe(true)
+  expect(seen[0].results[0]).toMatchObject({ tool: "echo", ok: true, output: "one" })
+})
+
+test("a failed tool arrives as a result with the error on it, never as a throw", async () => {
+  /** @type {any[]} */ const seen = []
+  const agent = agentOf({
+    name: "tf", system: "Sys.", tools: [echo], observer: toolWatcher(seen),
+    inference: new Scripted(['act: tool\n\nresult: nosuchtool({})', "act: answer\n\nresult: done"]),
+  })
+
+  await agent.invoke("call something that is not there")
+
+  expect(seen[0].results[0]).toMatchObject({ tool: "nosuchtool", ok: false, output: "" })
+  expect(seen[0].results[0].error).toContain("Tool not found")
+})
+
+test("an observer with only one of the three methods is not asked for the others", async () => {
+  /** @type {any[]} */ const seen = []
+  const agent = agentOf({
+    name: "one", system: "Sys.", tools: [echo], observer: { results: (r) => void seen.push(r) },
+    inference: new Scripted(['act: tool\n\nresult: echo({"text": "hi"})', "act: answer\n\nresult: done"]),
+  })
+
+  const out = await agent.invoke("echo hi")
+
+  expect(String(out.answer)).toBe("done")
+  expect(seen.length).toBe(1)
+})
+
+test("an agent without an observer runs the full flow and the tools exactly the same", async () => {
+  /** @param {import("../core/agent.js").Observer} [observer] */
+  const run = async (observer) => {
+    const agent = agentOf({
+      name: "sf", system: "Sys.", tools: [echo], flow: "full", observer,
+      inference: new FakeInference(),
+    })
+    const out = await agent.invoke("do the complex thing")
+    return { answer: String(out.answer), messages: agent.messages.map((m) => [m.role, m.content]), round: agent.session.round }
+  }
+  /** @type {any[]} */ const seen = []
+
+  const silent = await run(undefined)
+  const watched = await run(watcher(seen))
+
+  expect(silent).toEqual(watched)
+  expect(seen.length).toBeGreaterThan(0)
+})
+
+test("a react pass is an arrival too — one per turn taken, not one per run", async () => {
+  /** @type {any[]} */ const seen = []
+  const script = ['act: tool\n\nresult: echo({"text": "one"})', 'act: tool\n\nresult: echo({"text": "two"})',
+    "act: answer\n\nresult: done"]
+  const agent = agentOf({
+    name: "rp", system: "Sys.", inference: new Scripted(script), tools: [echo],
+    observer: { entered: (e) => void seen.push(e.phase) },
+  })
+
+  await agent.invoke("echo twice")
+
+  // Three passes at the model, three arrivals: the driver's entry and two
+  // re-entries. One arrival for all three would be the Flow view drawing a
+  // still picture of a run that is still going.
+  expect(seen).toEqual(["react", "react", "react"])
+})
