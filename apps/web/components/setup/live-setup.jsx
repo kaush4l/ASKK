@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 import { get, post } from '@harness/kernel'
 
+import { Appearance } from '@/components/setup/appearance'
 import { Empty } from '@/components/ui/empty'
 import { View } from '@/components/views'
 import { Settings } from '@/components/views/settings'
@@ -29,9 +30,17 @@ import s from '@/components/views/views.module.css'
  */
 export function LiveSetup() {
   const session = useSession()
-  if (!session) return <Empty note={BOOTING} />
-  if (session.problem) return <View view="problem" data={session.problem} />
-  return <Live session={session} />
+  // APPEARANCE IS OUTSIDE THE BOOT GATE, and that is the point of it living in
+  // `localStorage`: it is the one control on this page that works before the
+  // core has come up, and the one that still works when the core cannot.
+  return (
+    <div className={s.stack}>
+      {!session ? <Empty note={BOOTING} />
+        : session.problem ? <View view="problem" data={session.problem} />
+        : <Live session={session} />}
+      <Appearance />
+    </div>
+  )
 }
 
 /** @param {{session: import('@/lib/session').Session}} props */

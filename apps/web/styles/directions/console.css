@@ -1,0 +1,80 @@
+/* CONSOLE — monospace and dense. Rows over room.
+
+   Not a dark version of the lit room: a different room. No light, no blur, no
+   corners. Every selector is prefixed with its own attribute; see `halo.css`
+   for why that rule exists and what executes it. */
+
+:root[data-direction="console"] {
+  color-scheme: dark;
+
+  /* NO LIGHT. The field is one flat colour and the vignette is gone, so every
+     pixel of contrast on the screen belongs to something written there. */
+  --ground: #08090b;
+  --ground-deep: #08090b;
+  --vignette: transparent;
+  --lobe-key: transparent;
+  --lobe-fill: transparent;
+  --horizon: transparent;
+  --ground-field: linear-gradient(180deg, var(--ground), var(--ground-deep));
+
+  /* NEUTRAL INK ON NEUTRAL GROUND, and the colour reserved for state. A console
+     that tints its prose has nothing left to say `failed` with. */
+  --ink: #e6e8ea;
+  --ink-2: #a3a8ad;
+  --ink-3: #878d94;
+  --machine: #7fd1b9;
+
+  --accent: #86e0a8;
+  --accent-ink: #06120b;
+  --success: #86e0a8;
+  --warning: #f0c674;
+  --danger: #ff6b6b;
+
+  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline-lit: rgba(255, 255, 255, 0.18);
+  --control: #b6bbc0;
+  --divider: rgba(255, 255, 255, 0.055);
+  --focus-halo: rgba(8, 9, 11, 0.9);
+
+  --surface-1: #0e1013;
+  --surface-2: #131619;
+  --surface-3: #191d21;
+
+  /* NO MATERIAL. A shadow is a GPU cost paid for an impression; this direction
+     spends it on rows instead, and the fills are opaque so what a browser
+     without the effect draws and what this draws are one picture. */
+  --lift: 0 0 0 0 transparent;
+  --lift-edge: none;
+
+  /* ONE FAMILY, AND IT IS THE MACHINE'S. Column alignment is information in a
+     log, and a proportional face throws it away. */
+  --font: var(--mono);
+  --display: var(--mono);
+  --lh-display: 1.2;
+  --tr-display: 0.04em;
+  --tr-caption: 0.1em;
+  --lh-body: 1.45;
+  --lh-label: 1.35;
+
+  /* TIGHT. Every step down one: the proposition is rows per screen, and the
+     only honest way to buy them is to spend less on air. The GUTTER is the one
+     step that does not tighten — the masthead spans whatever column it is
+     given, so four pixels of page inset buy a wider product name and nothing
+     else. Density is carried by the seven steps above, which are the ones that
+     actually put rows on the screen. */
+  --s-4: 0.625rem;
+  --s-5: 0.875rem;
+  --s-6: 1.25rem;
+  --s-7: 1.75rem;
+  --s-8: 2.5rem;
+  --gutter: var(--s-3);
+
+  /* SQUARE, WITHOUT EXCEPTION. The shipped rule keeps corners for things you
+     press; a console's controls are keys, and keys are rectangles. */
+  --r-sm: 0;
+  --r-md: 0;
+  --r-full: 0;
+  --rule: 1px solid var(--hairline-lit);
+  --rule-hair: 1px solid var(--divider);
+  --measure: 78ch;
+}

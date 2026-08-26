@@ -6,59 +6,28 @@
  * bundle landed. A few lines in the `<head>` were its fix, and they are these —
  * a static export can run them, so it does.
  *
- * It stamps `data-theme` ALWAYS, resolving the device's own
- * `prefers-color-scheme` when nothing readable was stored. That is not a
- * half-truth about a choice nobody made: the attribute says which room is on
- * screen, not who picked it. It is written this way because the alternative was
- * `globals.css` carrying the light palette twice — once under a media query for
- * the person who never chose and once under the attribute for the person who
- * did — two bodies of fifteen declarations that nothing stops from drifting
- * apart, in the file whose first sentence is that every value is declared once.
+ * It stamps BOTH attributes: `data-theme` always, resolving the device's own
+ * `prefers-color-scheme` when nothing readable was stored, and `data-direction`
+ * only where one was chosen. Stamping an always-present room is not a
+ * half-truth about a choice nobody made — the attribute says which room is on
+ * screen, not who picked it — and it is what lets `globals.css` hold the light
+ * palette once rather than once under a media query and once under an
+ * attribute, two bodies of fifteen declarations that nothing keeps equal.
  *
- * A preference about this screen is not app data and never leaves the machine
- * (I2), so it lives in `localStorage` beside the device's other bits and never
- * in the log. The SWITCH and the write belong to Setup, which owns the storage;
- * this only reads what that wrote.
+ * The names and the lists come from `lib/appearance.js` and are not spelled
+ * again here, so a fifth direction is one entry in one array rather than an
+ * array and a string literal that can disagree.
  */
 
-/** The device's own key namespace. One spelling, shared with the switch. */
-export const THEME_KEY = 'harness.theme'
+import { DARK_QUERY, DIRECTIONS, DIRECTION_KEY, ROOMS, ROOM_KEY } from '@/lib/appearance'
 
-/** @type {readonly string[]} The rooms `globals.css` actually answers to. */
-export const THEMES = ['light', 'dark']
-
-/** The query whose answer IS the room, for a person who never chose. */
-export const DARK_QUERY = '(prefers-color-scheme: dark)'
+/** @type {string[]} The slugs a stylesheet answers to; `''` is the shipped page. */
+const SLUGS = DIRECTIONS.map((d) => d.slug).filter(Boolean)
 
 /**
- * Inline, minified by hand, and synchronous on purpose: an async or deferred
+ * Inline, synchronous, and hand-minified on purpose: an async or deferred
  * script paints first and corrects afterwards, which is the flash this exists
- * to remove.
+ * to remove. One `try` around both reads, because a browser that refuses
+ * storage refuses both and the device query is still the right answer.
  */
-export const THEME_BOOT = `(function(){var t;try{t=localStorage.getItem(${JSON.stringify(THEME_KEY)})}catch(e){}if(${JSON.stringify(THEMES)}.indexOf(t)<0)t=matchMedia(${JSON.stringify(DARK_QUERY)}).matches?"dark":"light";document.documentElement.setAttribute("data-theme",t)})()`
-
-/** The stored choice, or `''` when there is none this stylesheet answers to. */
-function chosen() {
-  try {
-    const t = localStorage.getItem(THEME_KEY) ?? ''
-    return THEMES.includes(t) ? t : ''
-  } catch {
-    return ''
-  }
-}
-
-/**
- * A PERSON WHO NEVER CHOSE STILL FOLLOWS THEIR DEVICE. The boot script resolves
- * the query once, at load; this is the only thing that notices the device
- * flipping afterwards, and it is the whole of what the deleted media query was
- * buying. A stored choice outranks the device, so it defers to one.
- * @returns {() => void} stop following
- */
-export function followDeviceTheme() {
-  const q = window.matchMedia(DARK_QUERY)
-  const restamp = () => {
-    if (!chosen()) document.documentElement.setAttribute('data-theme', q.matches ? 'dark' : 'light')
-  }
-  q.addEventListener('change', restamp)
-  return () => q.removeEventListener('change', restamp)
-}
+export const THEME_BOOT = `(function(){var t,d;try{t=localStorage.getItem(${JSON.stringify(ROOM_KEY)});d=localStorage.getItem(${JSON.stringify(DIRECTION_KEY)})}catch(e){}var r=document.documentElement;if(${JSON.stringify(ROOMS)}.indexOf(t)<0)t=matchMedia(${JSON.stringify(DARK_QUERY)}).matches?"dark":"light";r.setAttribute("data-theme",t);if(${JSON.stringify(SLUGS)}.indexOf(d)>-1)r.setAttribute("data-direction",d)})()`

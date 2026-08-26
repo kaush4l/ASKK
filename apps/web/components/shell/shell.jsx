@@ -10,7 +10,7 @@ import { Masthead } from './masthead'
 import { Nav } from './nav'
 import { Rail } from './rail'
 import { Region } from './region'
-import { followDeviceTheme } from './theme-boot'
+import { followAppearance } from '@/lib/appearance'
 import { useAgent } from './use-agent'
 import s from './shell.module.css'
 
@@ -41,7 +41,7 @@ import s from './shell.module.css'
  */
 export function Shell({ slug, children }) {
   const { agent, misrouted } = useAgent()
-  useEffect(followDeviceTheme, [])
+  useEffect(followAppearance, [])
   const to = ALL.find((d) => d.slug === slug)
   if (!to) throw new Error(`no destination is registered under the slug "${slug}"`)
   // The nav's links carry who the screen is about; they do NOT carry the

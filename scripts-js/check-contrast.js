@@ -31,7 +31,22 @@ const PORT = Number(process.env.HARNESS_CONTRAST_PORT ?? 4319)
 const BROWSE = process.env.HARNESS_BROWSE ?? `${process.env.HOME}/.claude/skills/gstack/browse/dist/browse`
 const OUT = ROOT + 'apps/web/out'
 const FLOORS = ROOT + 'scripts-js/contrast-floor.json'
-const ROOMS = ['dark', 'light']
+/**
+ * EVERY PALETTE A PERSON CAN PUT ON THE SCREEN, and there are six because the
+ * four directions are four more palettes and not four decorations. Each of them
+ * declares its own `color-scheme` and its whole colour set, so the room switch
+ * does not apply under one — which is why they are a flat list of six and not a
+ * matrix of two by five. A direction measured only in the room its author
+ * happened to be in is a direction with half a gate.
+ */
+const PALETTES = [
+  { key: 'dark', room: 'dark', direction: '' },
+  { key: 'light', room: 'light', direction: '' },
+  { key: 'halo', room: 'dark', direction: 'halo' },
+  { key: 'console', room: 'dark', direction: 'console' },
+  { key: 'gallery', room: 'light', direction: 'gallery' },
+  { key: 'atelier', room: 'dark', direction: 'atelier' },
+]
 const DESTINATIONS = ['', 'agents/', 'setup/', 'design-system/']
 
 /** @typedef {{r: number, on: string, el: string, fg: string, size: string, says: string}} Sample */
@@ -64,11 +79,13 @@ async function run(/** @type {string[]} */ cmd, /** @type {string} */ stdin = ''
  * so what is measured is the real boot path and not an attribute this script
  * set afterwards.
  */
-function chain(/** @type {string} */ room, /** @type {string} */ slug) {
+function chain(/** @type {{key: string, room: string, direction: string}} */ palette, /** @type {string} */ slug) {
   const url = `http://localhost:${PORT}${BASE}/${slug}`
+  const store = `localStorage.setItem('harness.theme', ${JSON.stringify('$ROOM')});`
+    + ` localStorage.setItem('harness.direction', ${JSON.stringify('$DIR')}); 1`
   return JSON.stringify([
     ['goto', url],
-    ['js', `localStorage.setItem('harness.theme', ${JSON.stringify(room)}); 1`],
+    ['js', store.replace('$ROOM', palette.room).replace('$DIR', palette.direction)],
     ['goto', url],
     ['wait', '#region'],
     ['js', SETTLED],
@@ -135,10 +152,10 @@ function capped(/** @type {string} */ at, /** @type {string} */ kind, /** @type 
 }
 const server = Bun.serve({ port: PORT, fetch: serve })
 try {
-  for (const room of ROOMS) {
+  for (const palette of PALETTES) {
     for (const slug of DESTINATIONS) {
-      const at = `${room} /${slug}`
-      const output = await run([BROWSE, 'chain'], chain(room, slug))
+      const at = `${palette.key} /${slug}`
+      const output = await run([BROWSE, 'chain'], chain(palette, slug))
       if (!filled(output)) failures.push(`${at}: the region never filled inside 8s — nothing measured here is a measurement`)
       const report = readBack(output)
       seen += report.seen
@@ -196,4 +213,4 @@ if (raised.length) {
 const texts = Object.values(measured).map((m) => m.text).filter((t) => t !== null)
 const edges = Object.values(measured).map((m) => m.edge).filter((e) => e !== null)
 const screens = Object.keys(measured).length
-console.log(`contrast ok — ${ROOMS.length} rooms x ${DESTINATIONS.length} destinations, ${seen} things measured; worst text ${Math.min(...texts).toFixed(2)}:1 (floor ${TEXT_MIN}, over ${texts.length} of ${screens} screens) and worst control edge ${Math.min(...edges).toFixed(2)}:1 (floor ${EDGE_MIN}, over the ${edges.length} of ${screens} that draw one)`)
+console.log(`contrast ok — ${PALETTES.length} palettes x ${DESTINATIONS.length} destinations, ${seen} things measured; worst text ${Math.min(...texts).toFixed(2)}:1 (floor ${TEXT_MIN}, over ${texts.length} of ${screens} screens) and worst control edge ${Math.min(...edges).toFixed(2)}:1 (floor ${EDGE_MIN}, over the ${edges.length} of ${screens} that draw one)`)

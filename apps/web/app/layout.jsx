@@ -8,6 +8,15 @@ import { THEME_BOOT } from '@/components/shell/theme-boot'
 import './globals.css'
 import '../styles/base.css'
 import '../styles/motion.css'
+/* THE FOUR DIRECTIONS, AFTER THE ROOM AND ON PURPOSE. Each is written as
+   `:root[data-direction=…]`, which is two selectors where `[data-theme=…]` is
+   one, so a direction outranks the room by specificity and the import order is
+   not what is load-bearing — but a reader should not have to work that out from
+   a specificity table, so they are last as well. */
+import '../styles/directions/halo.css'
+import '../styles/directions/console.css'
+import '../styles/directions/gallery.css'
+import '../styles/directions/atelier.css'
 
 export const metadata = {
   title: 'HARNESS',
