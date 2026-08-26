@@ -1,35 +1,43 @@
 # HARNESS
 
-A personal agent harness that runs entirely in your browser. No server, no
-account, no data leaving the machine except the model calls you configure.
+A personal agent harness that runs entirely in the browser, as a static page.
+Vanilla JavaScript on Bun 1.4. Zero runtime dependencies.
 
-Vanilla JavaScript on Bun 1.4, type-checked by `tsc --checkJs` under `strict`,
-with a Next.js 16 static export for the interface. No package below the UI has
-a build step: the source that runs is the source that ships.
+It is a port of a Python agent core, and it inherits that core's one idea:
 
-**The Rust is gone.** 67,476 lines across 468 files were deleted once the port
-was done and measured; the whole of it is at tag `pre-rewrite-js`, which is the
-only place it now exists.
+> **Define the flow with an abstract base; let the variables passed at
+> construction decide the behaviour.**
 
-```
-packages/kernel         the vocabulary — ids, facts, the seam, ports
-packages/context        the Context Document: what a model is allowed to be told
-packages/agent          the pure agent loop — step(state, fact) -> [state, effects]
-packages/core           the app: registry, one dispatch point, the log, projections
-packages/adapters-web   the browser halves — IndexedDB, fetch, Workers
-packages/adapters-test  host doubles for every port
-apps/web                the interface
-```
+Four places that shape appears — inference, responses, tools, components — and
+what all of it exists to produce is one string. **The strength of this
+application is the prompt it constructs.**
 
-## Working on it
+## Layout
 
 ```
-bun install
-bun run gate     # types, host tests, size limits, purity — the whole standard
-bun run dev      # the interface, against your own model endpoint
+core/     the backend — pure JavaScript, no DOM, tested on the host
+app/      the interface — a static page that renders what core computes
+docs/     PHILOSOPHY · PORT-MAP · PORTING-GUIDE · INCREMENTS
+tests/    the suite, and golden/ — the byte-for-byte oracle
+agents/   agent.md files: who each agent is, what it may call
+skills/   SKILL.md packages the agent can choose to read
 ```
 
-Read in this order: [`STATUS.md`](STATUS.md) for where things stand,
-[`INVARIANTS.md`](INVARIANTS.md) for what is law, [`docs/TEAMS.md`](docs/TEAMS.md)
-for how the work is divided, and [`docs/RULINGS.md`](docs/RULINGS.md) for the
-architecture of record.
+## Commands
+
+```
+bun test          the host suite
+bun run types     tsc --checkJs --strict
+bun run gate      everything, in one command
+bun run dev       the page, live
+bun run build     the static export
+```
+
+## Reading order
+
+1. `docs/PHILOSOPHY.md` — the principle, at its smallest
+2. `core/components.js` — what a prompt part is
+3. `core/assembler.js` — how parts become bytes
+4. `core/responses.js` — the field set as contract
+5. `core/agent.js` — one exchange
+6. `docs/PORT-MAP.md` — every place the port had to decide something

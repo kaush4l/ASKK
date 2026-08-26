@@ -1,7 +1,0 @@
-{
-  "comment": "The skill manifest, in the shape the agent manifest already has: a static host cannot list a directory, so this file IS the listing for public/skills/. Today the skills are compiled into the build (crates/agent/src/skills.rs holds the include list) rather than fetched, because the fetch adapter and the tool executor live in crates outside this increment; crates/agent/tests/skills.rs asserts that this list and that include list name the same skills, so wiring the fetch later cannot silently disagree with the manifest.",
-  "skills": [
-    "agent-file",
-    "tool-calls"
-  ]
-}

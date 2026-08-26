@@ -2,25 +2,15 @@
   "name": "harness",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
   "scripts": {
-    "test": "bun test packages && cd apps/web && bun test test",
-    "typecheck": "bunx tsc -p jsconfig.json && bunx tsc -p apps/web/jsconfig.json",
-    "gate": "bun run typecheck && bun run test && bun run size && bun run purity && bun run viewmodel",
-    "size": "bun run scripts-js/check-size.js",
-    "dev": "cd apps/web && bun run dev",
-    "build": "cd apps/web && bun run build",
-    "purity": "bun run scripts-js/check-purity.js",
-    "viewmodel": "bun run scripts-js/check-viewmodel.js",
-    "typecheck:pkg": "bun run scripts-js/typecheck-pkg.js",
-    "contrast": "bun run scripts-js/check-contrast.js",
-    "smoke": "bun run scripts-js/smoke.js"
+    "test": "bun test",
+    "types": "tsc --noEmit -p jsconfig.json",
+    "gate": "bun run scripts/gate.js",
+    "build": "bun run scripts/build.js",
+    "dev": "bun ./app/index.html"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.0",
-    "typescript": "^7.0.2"
+    "typescript": "^5.9.3",
+    "@types/bun": "latest"
   }
 }

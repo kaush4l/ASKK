@@ -1,0 +1,21 @@
+{
+  "answer": "done: hey",
+  "history": [
+    [
+      "user",
+      "please echo hey"
+    ],
+    [
+      "assistant",
+      "echo({\"text\": \"hey\"})"
+    ],
+    [
+      "user",
+      "Result: echo: hey"
+    ],
+    [
+      "assistant",
+      "done: hey"
+    ]
+  ]
+}
