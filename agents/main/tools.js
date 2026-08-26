@@ -15,7 +15,7 @@
  * data URL (`data:image/png;base64,...`), or an empty string to attach nothing.
  */
 
-import { tool } from "../../core/tools.js"
+import { tool } from "../../core/tool-call.js"
 import { cronTools } from "../../core/schedule.js"
 
 export const TOOLS = cronTools()
