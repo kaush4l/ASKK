@@ -28,9 +28,9 @@
  * run ended forty turns in with no answer. Here every edge is checked before
  * anything runs, and a typo is a load error naming the edge that is wrong.
  *
- * Phase prompt text stays in `phases.js` as module constants (R2): making it
- * configurable is F-1's sixth constraint and is out of scope, because it would
- * change the prompt bytes and the bytes are the oracle.
+ * Phase prompt text stays in `core/phase-prompts.js` as module constants (R2):
+ * making it configurable is F-1's sixth constraint and is out of scope, because
+ * it would change the prompt bytes and the bytes are the oracle.
  */
 
 /**

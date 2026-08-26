@@ -95,7 +95,7 @@ export class AgentConfig {
     this.ports = options.ports ?? defaultPorts()
 
     this.assembler = new PromptAssembler()
-    this.toolbox = Toolbox.of(...this.tools)
+    this.toolbox = Toolbox.withLog(this.log, ...this.tools)
     /** modality providers, run before every inference, never by the model @type {any[]} */
     this.modalities = []
     /** @type {(() => unknown)[]} */ this.closers = []

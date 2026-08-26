@@ -40,6 +40,10 @@ import { catalog, loadSkills, select } from "./skills.js";
  *   consult(reviewer: any, prompt: string): Promise<string>,
  * }} AgentLike */
 
+/** The agent's log, narrowed to the one method `skills.js` takes. Without it that file's
+ * three warnings are unreachable, which is the same as deleted. @param {AgentLike} agent */
+const warnings = (agent) => ({ warn: (/** @type {string} */ m) => agent.log.warning(m) });
+
 /** This phase's own instructions, filled in. @param {string} t @param {Record<string, string | number>} v */
 const say = (t, v) => new PhaseInstructions({ body: fill(t, v) });
 /** A parsed response's list field, as strings. @param {any} parsed @param {string} name @returns {string[]} */
@@ -69,11 +73,11 @@ export class SelectSkillsPhase extends Phase {
   static OUTCOMES = ["done"]; name = "select_skills";
   /** @param {AgentLike} agent @param {Session} session @returns {Promise<string>} */
   async run(agent, session) {
-    const available = await loadSkills(agent.ports.fs, agent.skillsDir);
+    const available = await loadSkills(agent.ports.fs, agent.skillsDir, warnings(agent));
     if (available.length === 0) return "done";
     const asked = [catalog(available), say(SELECT_PROMPT, { goal: session.goal })];
     const parsed = await agent.turn(asked, SkillSelectResponse, false, false);
-    session.skills = select(available, listOf(parsed, "skills"));
+    session.skills = select(available, listOf(parsed, "skills"), warnings(agent));
     const names = session.skills.map((s) => /** @type {{ name: string }} */ (s).name).join(", ");
     if (names) agent.log.info(`${agent.name}: loaded skills: ${names}`);
     return "done";
@@ -192,6 +196,5 @@ export class ReActPhase extends Phase {
 
 /** @type {Record<string, Phase & { run(a: AgentLike, s: Session): Promise<string> }>} */
 export const PHASES = Object.fromEntries(
-  [new UnderstandPhase(), new SelectSkillsPhase(), new PlanPhase(), new WorkPhase(),
-    new VerifyPhase(), new CritiquePhase(), new RespondPhase(), new ReActPhase()].map((p) => [p.name, p]),
+  [new UnderstandPhase(), new SelectSkillsPhase(), new PlanPhase(), new WorkPhase(), new VerifyPhase(), new CritiquePhase(), new RespondPhase(), new ReActPhase()].map((p) => [p.name, p]),
 );

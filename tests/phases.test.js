@@ -69,6 +69,8 @@ test("PHASES holds the eight phases, and flows has an edge for every outcome", (
 function fakeAgent(replies = [], options = {}) {
   /** @type {any[]} */
   const calls = [];
+  /** everything `agent.log.warning` was told, so a test can prove a diagnostic is reachable @type {string[]} */
+  const warnings = [];
   return {
     name: "t",
     maxRounds: options.maxRounds ?? 3,
@@ -76,7 +78,8 @@ function fakeAgent(replies = [], options = {}) {
     verifier: null,
     critic: null,
     ports: { fs: options.fs ?? memoryFs() },
-    log: { info() {}, warning() {} },
+    log: { info() {}, warning: (/** @type {string} */ m) => void warnings.push(m) },
+    warnings,
     calls,
     /** @param {any} components @param {any} model @param {boolean} tools @param {boolean} record */
     async turn(components, model, tools, record) {
@@ -121,6 +124,25 @@ test("select_skills loads only what the model named", async () => {
   const session = new Session();
   expect(await new SelectSkillsPhase().run(agent, session)).toBe("done");
   expect(session.skills.map((s) => /** @type {any} */ (s).name)).toEqual(["two"]);
+});
+
+// Wave 4.6: `loadSkills` and `select` take an optional log and were called without one, so
+// three warnings the Python emits by default (`skills.py:154,182,197`) could not be reached
+// from here at all. These are what tell a user why a hand-written skill vanished.
+test("select_skills puts the skill loader's three warnings on the agent's log", async () => {
+  const fs = memoryFs();
+  await fs.write("skills/good/SKILL.md", "---\nname: good\ndescription: fine\n---\nbody\n");
+  await fs.write("skills/lonely/notes.md", "no SKILL.md here");
+  await fs.write("skills/nameless/SKILL.md", "---\ndescription: no name\n---\nbody\n");
+  const agent = fakeAgent(["skills: [good, nonesuch]"], { fs });
+
+  expect(await new SelectSkillsPhase().run(agent, new Session())).toBe("done");
+
+  expect(agent.warnings).toEqual([
+    "Skipping skill folder skills/lonely: no SKILL.md inside",
+    "Skipping skill skills/nameless/SKILL.md: frontmatter needs 'name' and 'description'",
+    "Dropping unknown skill name(s): nonesuch",
+  ]);
 });
 
 test("an empty plan is a planner failure, and the findings it answered are spent", async () => {

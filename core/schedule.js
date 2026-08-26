@@ -16,18 +16,19 @@
  * written at all. Rewriting a file we could not see is how other people's jobs
  * disappear.
  *
- * The crontab binary is not in here (PORT-MAP R8): the rules port, the backing
- * store does not. `ports.cron` is `readLines`/`writeLines`; the real adapters —
- * `crontab` on the host, a `schedule.json` plus a ticker in the page — arrive
- * in 4.5. `core/ports/cron-memory.js` is what the tests run on, which is what
+ * The crontab binary is not in here (PORT-MAP R8): the rules port, the backing store
+ * does not. `ports.cron` is `readLines`/`writeLines`, and the adapters are
+ * `core/ports/cron-host.js` (the real `crontab`), `cron-browser.js` (a `schedule.json`
+ * and a ticker), and `cron-memory.js`, which is what the tests run on — which is what
  * the Python's `AGENT_CRONTAB` variable existed for.
  */
 
 import { reason, tool } from "./tool-call.js"
 
 /** @typedef {import("./ports.js").CronPort} CronPort */
+/** @typedef {import("./ports.js").FsPort} FsPort */
 /** @typedef {(name: string, goal: string) => string} Launch  builds one line's command */
-/** @typedef {{ cron: CronPort, launch: Launch }} Deps */
+/** @typedef {{ cron: CronPort, launch: Launch, fs: FsPort }} Deps */
 /** @typedef {{ name: string, schedule: string, command: string, goal: string }} Job */
 
 export const MARKER = "# agent-cron:"
@@ -43,6 +44,9 @@ const ENTRY_POINT = "main.py"
 // engine parses back into turns, and this is a program's stdout.
 const AGENT_DIR = "agents/main"
 
+/** Where a job's output lands, workspace-relative: the redirect's target, and the one path both launch builders spell. @param {string} name @returns {string} */
+const logPath = (name) => `${AGENT_DIR}/cron-${name}.log`
+
 // Pulls the goal back out of a line we wrote: it is the argument after the entry
 // point and before the redirect. We generate these, so the shape is known.
 const GOAL_PATTERN = new RegExp(`${ENTRY_POINT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+(.+?)\\s+>>`)
@@ -53,10 +57,9 @@ export function shellQuote(value) {
   return text !== "" && /^[A-Za-z0-9@%+=:,./_-]+$/.test(text) ? text : `'${text.split("'").join(`'"'"'`)}'`
 }
 
-/** The first shell word of `text`, null on unbalanced quotes. Enough of
- * `shlex.split` to read back a line we wrote: our own quoting never emits a
- * bare backslash, so nothing here interprets one.
- * @param {string} text @returns {string | null} */
+/** The first shell word of `text`, null on unbalanced quotes. Enough of `shlex.split` to
+ * read back a line we wrote: our own quoting never emits a bare backslash, so nothing
+ * here interprets one. @param {string} text @returns {string | null} */
 function firstWord(text) {
   let word = "", quote = "", started = false
   for (const c of text) {
@@ -91,7 +94,7 @@ export function managed(line) {
 /** The line a store with no shell writes: a page has no working directory and no PATH,
  * so it claims neither. @type {Launch} */
 export function defaultLaunch(name, goal) {
-  return `${ENTRY_POINT} ${shellQuote(goal)} >> ${shellQuote(`${AGENT_DIR}/cron-${name}.log`)} 2>&1`
+  return `${ENTRY_POINT} ${shellQuote(goal)} >> ${shellQuote(logPath(name))} 2>&1`
 }
 
 /** The host's launch line: wake the agent on `goal` and record what it said.
@@ -101,18 +104,16 @@ export function defaultLaunch(name, goal) {
  * for the MCP servers, above all) fails at the moment nobody is watching. That
  * is why it lives in the *host* builder: the browser adapter has no shell to
  * lose a PATH to. The environment is an argument; the core may not read one.
- * @param {{ project: string, executable: string, path?: string, pathSeparator?: string }} env
- * @returns {Launch} */
+ * @param {{ project: string, executable: string, path?: string, pathSeparator?: string }} env @returns {Launch} */
 export function hostLaunchLine(env) {
   const separator = env.pathSeparator ?? ":"
   const seen = [...new Set((env.path ?? "").split(separator).filter(Boolean))]
   const head = `cd ${shellQuote(env.project)} && PATH=${shellQuote(seen.join(separator))} ${shellQuote(env.executable)}`
-  const log = (/** @type {string} */ name) => shellQuote(`${env.project}/${AGENT_DIR}/cron-${name}.log`)
+  const log = (/** @type {string} */ name) => shellQuote(`${env.project}/${logPath(name)}`)
   return (name, goal) => `${head} ${ENTRY_POINT} ${shellQuote(goal)} >> ${log(name)} 2>&1`
 }
 
-/** Empty when this is safe to put in the file, otherwise why it is not. @param {string} name
- * @param {string} schedule @param {string} goal @returns {string} */
+/** Empty when this is safe to put in the file, otherwise why it is not. @param {string} name @param {string} schedule @param {string} goal @returns {string} */
 export function reasonNotToWrite(name, schedule, goal) {
   if (!NAME_PATTERN.test(name || "")) return "name must be letters, digits, dashes or underscores"
   for (const [label, value] of [["schedule", schedule], ["goal", goal]]) {
@@ -123,12 +124,8 @@ export function reasonNotToWrite(name, schedule, goal) {
   }
   const fields = String(schedule).split(/\s+/).filter(Boolean)
   const first = fields[0] ?? ""
-  if (first.startsWith("@") && (!SHORTCUTS.includes(first) || fields.length > 1)) {
-    return `'${first}' is not a cron shortcut; use one of: ${[...SHORTCUTS].sort().join(", ")}`
-  }
-  if (!first.startsWith("@") && fields.length !== 5) {
-    return `schedule needs 5 fields — minute hour day month weekday — but got ${fields.length}`
-  }
+  if (first.startsWith("@") && (!SHORTCUTS.includes(first) || fields.length > 1)) return `'${first}' is not a cron shortcut; use one of: ${[...SHORTCUTS].sort().join(", ")}`
+  if (!first.startsWith("@") && fields.length !== 5) return `schedule needs 5 fields — minute hour day month weekday — but got ${fields.length}`
   return ""
 }
 
@@ -148,6 +145,11 @@ export async function createCronJob(d, name, schedule, goal) {
   try {
     const lines = await d.cron.readLines()
     if (lines.some((line) => managed(line)?.name === name)) return `A job named '${name}' already exists. Use update_cron_job to change it.`
+    // The line ends `>> agents/main/cron-<name>.log 2>&1`, and a redirect into a directory that
+    // does not exist fails at the moment nobody is watching. Appending nothing makes the file and
+    // its parents. Here rather than in the cron adapter, because this is the only place that knows
+    // where the redirect points, and `writeLines` also runs for update and for delete.
+    await d.fs.append(logPath(name), "")
     await d.cron.writeLines([...lines, `${schedule} ${d.launch(name, goal)} ${MARKER}${name}`])
   } catch (e) { return `Could not schedule '${name}': ${reason(e)}` }
   return `Scheduled '${name}': ${schedule} — the agent will run on '${goal}'.`
@@ -185,9 +187,8 @@ export async function deleteCronJob(d, name) {
   return `Removed '${name}'.`
 }
 
-/** The four tools, in the model's vocabulary: the names stay the Python's snake_case
- * because agent.md files list them by name, and the descriptions are its docstrings.
- * @param {Deps} d @returns {ReturnType<typeof tool>[]} */
+/** The four tools, in the model's vocabulary: the names stay the Python's snake_case because
+ * agent.md files list them by name, and the descriptions are its docstrings. @param {Deps} d @returns {ReturnType<typeof tool>[]} */
 export function cronTools(d) {
   const args = '{"name": "<name>", "schedule": "<schedule>", "goal": "<goal>"}'
   return [

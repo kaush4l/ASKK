@@ -101,6 +101,24 @@ const golden = (name) => Bun.file(new URL(name, GOLDEN)).text()
 const echo = tool("echo", "Echo the text back.", '{"text": "<text>"}', (a) => String(a.text))
 const weather = tool("weather", "Report the weather for a city.", '{"city": "<city>"}', () => "sunny")
 
+// Wave 4.6: the toolbox was built with NO_LOG and nothing replaced it, so its one
+// warning could not be reached from a real agent at all. This is that wiring.
+test("the agent's own log is the toolbox's log, and addTools keeps it", async () => {
+  /** @type {string[]} */ const said = []
+  const agent = agentOf({
+    name: "l", inference: new FakeInference(), tools: [echo],
+    log: { warning: (m) => said.push(m), info() {}, error() {} },
+  })
+  await agent.toolbox.invoke('echo({"text": "hi"})', () => {
+    throw new Error("boom")
+  })
+  agent.addTools(weather)
+  await agent.toolbox.invoke('weather({"city": "x"})', () => {
+    throw new Error("boom again")
+  })
+  expect(said).toEqual(["tool result callback failed: boom", "tool result callback failed: boom again"])
+})
+
 // ── render parity ────────────────────────────────────────────────────────
 
 test("render parity: full", async () => {

@@ -21,20 +21,14 @@
 /** Malformed frontmatter. Thrown, not returned: an agent file is config, and a bad one cannot run. */
 export class FrontmatterError extends Error {
   /** @param {string} message */
-  constructor(message) {
-    super(message);
-    this.name = "FrontmatterError";
-  }
+  constructor(message) { super(message); this.name = "FrontmatterError"; }
 }
 
-/** Split agent file text into (metadata, system message). Throws on missing or
- * malformed frontmatter — a silently empty config would only surface later as a
- * confusing bad model call.
- * @param {string} text @param {string} [source]
- * @returns {{ metadata: Record<string, YamlValue>, body: string }} */
+/** Split agent file text into (metadata, system message). Throws on missing or malformed
+ * frontmatter — a silently empty config would only surface later as a confusing bad model call.
+ * @param {string} text @param {string} [source] @returns {{ metadata: Record<string, YamlValue>, body: string }} */
 export function parseAgentFile(text, source = "<string>") {
-  const missing = "missing YAML frontmatter (file must start with '---')";
-  if (!text.startsWith("---")) throw new FrontmatterError(`${source}: ${missing}`);
+  if (!text.startsWith("---")) throw new FrontmatterError(`${source}: missing YAML frontmatter (file must start with '---')`);
   const rest = text.slice(3);
   const fence = rest.indexOf("\n---");
   if (fence === -1) throw new FrontmatterError(`${source}: unterminated YAML frontmatter (no closing '---')`);
@@ -45,15 +39,15 @@ export function parseAgentFile(text, source = "<string>") {
 function parseYaml(src, source) {
   const items = scan(src, source);
   if (items.length === 0) return {};
-  if (isDash(items[0].text)) throw new FrontmatterError(`${source}: frontmatter must be a YAML mapping, got list`);
   const cursor = { items, i: 0, source };
+  const bare = bareValue(cursor, items[0]);
+  if (bare) throw new FrontmatterError(`${source}: frontmatter must be a YAML mapping, got ${bare}`);
   const map = parseMap(cursor, items[0].indent);
   if (cursor.i < items.length) throw fail(cursor, items[cursor.i].n, "expected 'key: value'");
   return map;
 }
 
-/** Blank lines and whole-line comments never reach the parser, so every line it sees must mean something.
- * @param {string} src @param {string} source @returns {Line[]} */
+/** Blank lines and whole-line comments never reach the parser, so every line it sees must mean something. @param {string} src @param {string} source @returns {Line[]} */
 function scan(src, source) {
   const out = /** @type {Line[]} */ ([]);
   const raw = src.split("\n");
@@ -65,6 +59,17 @@ function scan(src, source) {
     out.push({ n: i + 1, indent: line.length - line.trimStart().length, text });
   }
   return out;
+}
+
+/** The YAML type name of frontmatter that is a value rather than a mapping — `- a` is a list,
+ * `hello` a string, `false` a boolean, `~` null — because a person reads this, and the Python
+ * named the type too. Refusing the falsy ones at all is D-3. "" for a key line, which is the
+ * ordinary parse's to take from here. @param {Cursor} c @param {Line} it @returns {string} */
+function bareValue(c, it) {
+  if (isDash(it.text)) return "list";
+  if (it.text.indexOf(": ") > 0 || (it.text.length > 1 && it.text.endsWith(":"))) return "";
+  const value = parseScalar(c, it.n, it.text);
+  return Array.isArray(value) ? "list" : value === null ? "null" : typeof value;
 }
 
 /** @param {Cursor} c @param {number} indent @returns {Record<string, YamlValue>} */
@@ -81,8 +86,7 @@ function parseMap(c, indent) {
   return map;
 }
 
-/** The value of a `key:` with nothing after it: whatever is indented under it, or null.
- * @param {Cursor} c @param {number} indent @returns {YamlValue} */
+/** The value of a `key:` with nothing after it: whatever is indented under it, or null. @param {Cursor} c @param {number} indent @returns {YamlValue} */
 function parseNested(c, indent) {
   const next = c.i < c.items.length ? c.items[c.i] : null;
   if (!next || next.indent < indent) return null;
@@ -175,12 +179,9 @@ function readQuoted(c, n, s) {
 const ESCAPES = /** @type {Record<string, string>} */ ({ n: "\n", t: "\t", r: "\r", "0": "\0", '"': '"', "\\": "\\", "/": "/" });
 
 /** @param {Cursor} c @param {number} n @param {string | undefined} ch @returns {never} */
-function bad(c, n, ch) {
-  throw fail(c, n, `unsupported escape '\\${ch ?? ""}'`);
-}
+function bad(c, n, ch) { throw fail(c, n, `unsupported escape '\\${ch ?? ""}'`); }
 
-/** YAML 1.2 core schema: `yes`, `no`, `on`, `off` are strings, and only these spellings are not.
- * @param {string} s @returns {YamlValue} */
+/** YAML 1.2 core schema: `yes`, `no`, `on`, `off` are strings, and only these spellings are not. @param {string} s @returns {YamlValue} */
 function coerce(s) {
   if (s === "" || s === "~" || s === "null" || s === "Null" || s === "NULL") return null;
   if (s === "true" || s === "True" || s === "TRUE") return true;
@@ -189,8 +190,7 @@ function coerce(s) {
   return s;
 }
 
-/** A `#` opens a comment only at the start or after a space — `a#b` is the string it looks like.
- * @param {string} s @returns {string} */
+/** A `#` opens a comment only at the start or after a space — `a#b` is the string it looks like. @param {string} s @returns {string} */
 const uncomment = (s) => (s.search(/(^|\s)#/) === -1 ? s : s.slice(0, s.search(/(^|\s)#/)));
 
 /** @param {string} text @returns {boolean} */

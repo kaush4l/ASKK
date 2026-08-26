@@ -158,6 +158,20 @@ test("invoke never throws, even when the callback does", async () => {
   expect(out).toBe("echo: hi");
 });
 
+// Wave 4.6: the toolbox was always built with NO_LOG and nothing replaced it, so the
+// warning above (`tools.py:288` on the module logger, visible by default) was unreachable.
+test("a callback that throws is announced on the log the Agent supplies", async () => {
+  /** @type {string[]} */ const said = [];
+  const box = Toolbox.withLog({ warning: (m) => said.push(m) }, echo);
+  const out = await box.invoke('echo({"text": "hi"})', () => {
+    throw new Error("callback exploded");
+  });
+  expect(out).toBe("echo: hi");
+  expect(said).toEqual(["tool result callback failed: callback exploded"]);
+  // and the tools still arrive the way `of` builds them
+  expect(box.names).toEqual(Toolbox.of(echo).names);
+});
+
 test("no call at all is an observation, not an exception", async () => {
   expect(await Toolbox.of(echo).invoke("just prose")).toBe(
     "Error: No valid tool call found in: just prose",

@@ -90,10 +90,17 @@ export class Toolbox {
     return new Toolbox(tools);
   }
 
-  /** @returns {string[]} */
-  get names() {
-    return this.tools.map((t) => t.name);
+  /** Build with the log this toolbox's own warnings go to. Takes the *agent's* log —
+   * `warning`, not `warn` — and narrows it here, so a caller need not know this file's
+   * `Log` is the one-method half of it. Without one the `#notify` warning below is
+   * unreachable, and a warning nobody can reach is a warning that was deleted.
+   * @param {{ warning: (m: string) => void }} log @param {...any} items @returns {Toolbox} */
+  static withLog(log, ...items) {
+    return new Toolbox(Toolbox.of(...items).tools, { warn: (m) => log.warning(m) });
   }
+
+  /** @returns {string[]} */
+  get names() { return this.tools.map((t) => t.name); }
 
   /** @param {string} name @returns {Tool | null} */
   get(name) {
@@ -101,14 +108,10 @@ export class Toolbox {
   }
 
   /** Python's `__bool__`: an empty toolbox contributes nothing. @returns {boolean} */
-  get any() {
-    return this.tools.length > 0;
-  }
+  get any() { return this.tools.length > 0; }
 
   /** The toolbox as a prompt component — the TOOLS block. @returns {ToolboxComponent} */
-  component() {
-    return new ToolboxComponent({ usages: this.tools.map((t) => t.usage()) });
-  }
+  component() { return new ToolboxComponent({ usages: this.tools.map((t) => t.usage()) }); }
 
   /**
    * Group every `name({...})` in model text into batches to run in order.
@@ -162,9 +165,7 @@ export class Toolbox {
    * Within a batch the calls all go out at once and the batch is done when the
    * last one lands; `onResults` is handed that batch's results there and then,
    * so a caller can react to them before the next batch starts. Never throws.
-   * @param {any} text
-   * @param {((results: ToolResult[]) => unknown) | null} [onResults]
-   * @returns {Promise<string>}
+   * @param {any} text @param {((results: ToolResult[]) => unknown) | null} [onResults] @returns {Promise<string>}
    */
   async invoke(text, onResults = null) {
     const batches = Toolbox.parseBatches(text);

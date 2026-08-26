@@ -110,6 +110,26 @@ test("frontmatter that is a list, not a mapping, is refused", () => {
   );
 });
 
+// Wave 4.6: the Python named the type it got (`utils.py:86-87`); this said only
+// "expected 'key: value'", which tells a person nothing about what they wrote.
+test("frontmatter that is a bare scalar names the type, as the Python did", () => {
+  /** @param {string} yaml @returns {() => unknown} */
+  const parse = (yaml) => () => parseAgentFile(`---\n${yaml}\n---\nbody`, "s.md");
+  const got = (/** @type {string} */ kind) => `s.md: frontmatter must be a YAML mapping, got ${kind}`;
+  expect(parse("just a line")).toThrow(got("string"));
+  expect(parse("'quoted'")).toThrow(got("string"));
+  expect(parse("''")).toThrow(got("string"));
+  expect(parse("12")).toThrow(got("number"));
+  expect(parse("0")).toThrow(got("number"));
+  expect(parse("false")).toThrow(got("boolean"));
+  expect(parse("[a, b]")).toThrow(got("list"));
+  // `yaml.safe_load(...) or {}` swallowed the falsy ones into an empty mapping; refusing them
+  // is D-3, and naming what they were is the half of that D-3 had not written down
+  expect(parse("~")).toThrow(got("null"));
+  // a key line still reaches the ordinary parse, so its own message stays reachable
+  expect(parse("a: 1\njust a line")).toThrow("s.md:3: expected 'key: value'");
+});
+
 test("empty frontmatter is an empty mapping, as yaml.safe_load(...) or {} was", () => {
   expect(parseAgentFile("---\n---\nbody").metadata).toEqual({});
   expect(parseAgentFile("---\n# only a comment\n---\nbody").metadata).toEqual({});
@@ -122,7 +142,7 @@ test("anything outside the subset is a parse error naming the line", () => {
   expect(parse("a: 1\n  b: 2")).toThrow("s.md:3: unexpected indentation");
   expect(parse("a: {x: 1}")).toThrow("s.md:2: a flow mapping or block scalar is outside this subset");
   expect(parse("a: |\n  text")).toThrow("s.md:2: a flow mapping or block scalar is outside this subset");
-  expect(parse("just a line")).toThrow("s.md:2: expected 'key: value'");
+  expect(parse("a: 1\njust a line")).toThrow("s.md:3: expected 'key: value'");
   expect(parse('a: "unclosed')).toThrow("s.md:2: unterminated quoted string");
   expect(parse("a: [1, 2")).toThrow("s.md:2: unterminated inline list");
   expect(parse("a: [[1], 2]")).toThrow("s.md:2: a nested flow collection is outside this subset");

@@ -43,7 +43,7 @@ export class Agent extends AgentConfig {
   /** Attach more tools — functions, sub-agents, or Tool objects. @param {...unknown} items */
   addTools(...items) {
     for (const item of items) if (item !== null && item !== undefined) this.tools.push(item)
-    this.toolbox = Toolbox.of(...this.tools)
+    this.toolbox = Toolbox.withLog(this.log, ...this.tools)
   }
 
   /** Modality providers — run before every inference, never by the model. @param {...unknown} items */

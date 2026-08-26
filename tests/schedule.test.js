@@ -14,13 +14,15 @@ import {
   updateCronJob,
 } from "../core/schedule.js"
 import { memoryCron } from "../core/ports/cron-memory.js"
+import { memoryFs } from "../core/ports/memory-fs.js"
 
 const FOREIGN = ["# somebody else's crontab", "0 3 * * * /usr/bin/backup.sh", "@daily /opt/rotate"]
 
 /** @param {string[]} [lines] @param {any} [fault] */
 function deps(lines = [], fault = undefined) {
   const cron = memoryCron({ lines, fault })
-  return { d: { cron, launch: defaultLaunch }, cron }
+  const fs = memoryFs({ files: {} })
+  return { d: { cron, launch: defaultLaunch, fs }, cron, fs }
 }
 
 // ── the rules ────────────────────────────────────────────────────────────
@@ -221,4 +223,38 @@ test("the tools keep the Python's names, arguments and descriptions", async () =
     "Scheduled 'build': @daily — the agent will run on 'check the build'.",
   )
   expect(await tools[0]({})).toBe("build: @daily — check the build")
+})
+
+// Wave 4.6: the Python does `AGENT_DIR.mkdir(parents=True, exist_ok=True)` immediately
+// before writing the line, because the line ends in a redirect and a redirect into a
+// directory that is not there fails where nobody is watching.
+test("creating makes the directory the log redirect writes into", async () => {
+  const { d, fs } = deps()
+  expect(await fs.exists("agents/main")).toBe(false)
+  await createCronJob(d, "build", "@daily", "check the build")
+  expect(await fs.read("agents/main/cron-build.log")).toBe("")
+  expect(defaultLaunch("build", "check the build")).toContain("agents/main/cron-build.log")
+})
+
+test("an existing log is not truncated by scheduling a second job", async () => {
+  const { d, cron } = deps()
+  const fs = memoryFs({ files: { "agents/main/cron-build.log": "yesterday's run\n" } })
+  const own = { cron, launch: defaultLaunch, fs }
+  await createCronJob(own, "build", "@daily", "check the build")
+  expect(await fs.read("agents/main/cron-build.log")).toBe("yesterday's run\n")
+  expect(await createCronJob(d, "tidy", "@daily", "tidy up")).toBe(
+    "Scheduled 'tidy': @daily — the agent will run on 'tidy up'.",
+  )
+})
+
+test("a directory that cannot be made is a refusal, and nothing is scheduled", async () => {
+  const { d, cron } = deps()
+  const fs = memoryFs({ files: {} })
+  fs.append = async () => {
+    throw new Error("read-only workspace")
+  }
+  expect(await createCronJob({ cron, launch: defaultLaunch, fs }, "build", "@daily", "go")).toBe(
+    "Could not schedule 'build': read-only workspace",
+  )
+  expect(cron.lines).toEqual([])
 })
