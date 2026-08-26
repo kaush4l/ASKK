@@ -58,8 +58,20 @@
   border: 1px solid var(--control); border-radius: var(--r-md);
   transition: background var(--dur-fast) var(--ease);
 }
-.press:hover:not(:disabled) { background: var(--surface-3); }
-.press[aria-pressed='true'] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* THE HOVER MUST NOT REACH THE CHOSEN ONE, and it did — for six palettes and
+   every room, until `check-contrast.js` put a pointer on a selected endpoint
+   row. `:hover:not(:disabled)` is three simple selectors and the fill below is
+   two, so hovering the row you have already chosen replaced its accent ground
+   with `--surface-3` and left `--accent-ink` on it: 1.13:1 under Console,
+   1.9:1 under the shipped page. The ink and the ground are declared as a PAIR
+   in every palette and are only ever safe together, so the rule is that
+   nothing may paint one without the other. */
+.press:hover:not(:disabled):not([aria-pressed='true']):not([aria-checked='true']) { background: var(--surface-3); }
+/* CHOSEN IS CHOSEN, whichever word the control uses for it. `aria-pressed` is a
+   toggle and `aria-checked` is one of a set; they mean different things to a
+   screen reader and exactly the same thing to the eye, so they paint alike. */
+.press[aria-pressed='true'],
+.press[aria-checked='true'] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .press:disabled { color: var(--ink-3); border-color: var(--hairline); }
 
 /* ---- a key and its value ARE a definition list, so a screen reader says

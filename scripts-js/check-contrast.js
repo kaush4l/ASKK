@@ -52,14 +52,25 @@ const DESTINATIONS = ['', 'agents/', 'setup/', 'design-system/']
 /** @typedef {{r: number, on: string, el: string, fg: string, size: string, says: string}} Sample */
 /** @typedef {{text: Sample[], edges: Sample[], seen: number, bad: {text: number, edges: number}}} Report */
 
-/** The screen is not ready until the core has filled it — `smoke.js`'s wait,
- *  for the same reason: the booting sentence is in the exported HTML. */
+/**
+ * The screen is not ready until the core has filled it — `smoke.js`'s wait, for
+ * the same reason: the booting sentence is in the exported HTML.
+ *
+ * …AND THEN IT IS STILL NOT READY FOR HALF A SECOND, which cost a false
+ * failure to learn. A control's fill is a 120ms transition, and the selected
+ * endpoint row only becomes selected when the `/settings` projection arrives —
+ * so a probe that ran the instant the region filled caught that row's
+ * background at about 5% of the way in and reported 1.25:1 against a backdrop
+ * that was five parts accent to ninety-five parts surface. It was not wrong
+ * about the pixels; it was measuring a frame nobody looks at. `--dur-slow` is
+ * 380ms, so 450 is past the end of every transition this product declares.
+ */
 const SETTLED = `new Promise((done) => {
   const deadline = Date.now() + 8000
   const look = () => {
     const region = document.querySelector('#region')
     const filled = region && !/Reading this browser/.test(region.innerText)
-    if (filled) return done(1)
+    if (filled) return setTimeout(() => done(1), 450)
     return Date.now() > deadline ? done(0) : setTimeout(look, 100)
   }
   look()
