@@ -1,3 +1,0 @@
-First, turn the request into a brief and write nothing else. Before you write it, call `list_skills`. If any of them is instruction for the kind of work this is, `read_skill` it — its body is written for exactly this and will be better than what you would improvise. Skip the call entirely if the work is plainly outside everything listed.
-
-Then write five lines, each starting with its word: OUTCOME — what will be true when this is done. PATHS — the files, folders or commands involved, as far as they can be named. CHECK — the one command whose output would show it worked. DONE WHEN — the observable that ends the work. ASSUMED — what had to be filled in because the request did not say.

@@ -19,7 +19,8 @@ parts the rewrite exposes as wrong.
 |---|---|---|---|
 | LEAD | workspace shell, `packages/kernel`, gates, the seam, this page | kernel · gates · seam freeze · deploy proven | ✅ landed |
 | RESEARCH | 8 sweeps, 6 architecture attacks, one ruling | `docs/RULINGS.md`, 360 lines | ✅ landed |
-| — | the component inventory | `docs/PORT-MAP.md`, 144 rows, 31 increments | ✅ landed |
+| — | the component inventory | `docs/PORT-MAP.md` — CLOSED, and `crates/` deleted | ✅ landed |
+| LEAD | signals, the four directions, the Rust deletion | 8 · a reactive primitive, six palettes, zero `.rs` | ✅ landed |
 | A · PAPER | `packages/context` | 7 ✅ every modality on the wire, streamed == buffered, the receipts have readers |
 | B · LOOP | `packages/agent` | 7 ✅ the stages walk, the critic gates, the lap re-enters `work` |
 | C · SPINE | `packages/core`, `packages/adapters-web` | 7 ✅ delegation composed: one real Worker per agent, its own conversation |
@@ -126,17 +127,46 @@ can tell its own error from a neighbour's half-saved file.
 - **Dependencies below the UI stay at zero.** Refused by name: zod, Tailwind,
   framer-motion, charting, marked + dompurify, any public CORS proxy.
 
-## Still Rust, and why it is still here
+## The Rust is gone — 2026-08-25
 
-`crates/` still holds the 67,476-line Rust tree. It is NOT dead weight kept out
-of sentiment: `docs/PORT-MAP.md` is a 144-row work order whose every row cites a
-Rust file, and roughly half of them are unported. Deleting the source of the work
-order while the work is unfinished destroys the plan and preserves nothing that
-the `pre-rewrite-js` tag does not already hold.
+The previous version of this section said `crates/` stayed because
+`docs/PORT-MAP.md` was a live work order citing every file in it, and that
+deleting the source of the plan while the work was unfinished destroyed the plan
+and preserved nothing the `pre-rewrite-js` tag did not already hold. It also
+said what would end that: **every row either landed or recorded as refused,
+then out in one commit.** That is what this is.
 
-**It goes when the port map does** — when every row is either landed or recorded
-as refused, `crates/` and the Rust-era documents move out in one commit and the
-tag is the only copy. Not before, and not one file at a time.
+**Deleted, tracked:** `crates/` (468 files, 67,476 lines), `Cargo.toml`,
+`Trunk.toml`, `.cargo/`, `spikes/` (four Rust spike crates), `web/` (the Wasm
+page's own HTML and its seventeen stylesheets), `scripts/` (twenty-one Python
+and Node probes, all replaced by `scripts-js/`), `public/` (a byte-identical
+duplicate of `apps/web/public/`), `publish.sh`, `serve.py`, `image/` (the
+container2wasm Dockerfile), `MODULES/` (one document per Rust crate),
+`DECISIONS/` (52 ADRs for two systems that no longer exist), and the eleven
+root and twenty-two `docs/` files that described them. `git ls-files '*.rs'`
+answers zero.
+
+**Kept, and each for a reason:** `DESIGN.md` (design law, cited 26 times from
+the JS tree), `docs/SEAM.md` (frozen, 32 citations), `docs/RULINGS.md` (19),
+`docs/TEAMS.md`, `docs/PORT-MAP.md` (closed, with a banner saying so),
+`docs/research/` and `reference/` (the sweeps of Hermes, Agent Zero, the
+DeepSeek harness and the rest — research about other people's systems, which
+this port's deletion has nothing to say about).
+
+**Four rows were refused rather than landed, and it is one fact.** This build's
+`WorkspacePort` is OPFS: it stores files and runs nothing, because the only
+Linux that ever ran in this page was a 47 MB emulator whose own `durable()`
+returned false. So C20's exec half, C21, C22 and C23 have no runner, C67 is
+refused on the record, and `apps/web/public/agents/main/agent.md` does not name
+the tools they would have provided —
+`packages/adapters-web/test/tools.test.js` executes that, and the list of names
+the shipped file owes the model is empty.
+
+**What the deletion left on disk, untracked:** `target/`, `dist/`, `docs/bin/`
+and `docs/wasm/` — the Rust build, the Trunk output, and the toolchain shelf and
+guest image of the deleted emulator. `.gitignore` lists them with that sentence
+beside it. They are large, they are in no history, and removing a gigabyte from
+somebody's disk is theirs to do.
 
 ## SHIPPED — 2026-08-25
 

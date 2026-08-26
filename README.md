@@ -3,9 +3,13 @@
 A personal agent harness that runs entirely in your browser. No server, no
 account, no data leaving the machine except the model calls you configure.
 
-**Being rewritten.** The Rust → WebAssembly build is at tag `pre-rewrite-js`.
-This tree is the JavaScript one: vanilla JavaScript on Bun 1.4, type-checked by
-`tsc --checkJs`, with a Next.js static export for the interface.
+Vanilla JavaScript on Bun 1.4, type-checked by `tsc --checkJs` under `strict`,
+with a Next.js 16 static export for the interface. No package below the UI has
+a build step: the source that runs is the source that ships.
+
+**The Rust is gone.** 67,476 lines across 468 files were deleted once the port
+was done and measured; the whole of it is at tag `pre-rewrite-js`, which is the
+only place it now exists.
 
 ```
 packages/kernel         the vocabulary — ids, facts, the seam, ports

@@ -1,23 +1,10 @@
-# Rust
-target/
-Cargo.lock
-
-# trunk / wasm-pack output
-dist/
-# ...but NOT the container2wasm boot glue, which only ever looked like build
-# output. `dist/` matches at ANY depth, so this line silently swallowed
-# web/c2w/dist/ too, and `runcontainer.js`, `stack-worker.js` and
-# `worker-util.js` lived on ONE machine's disk while `publish.sh:56` gated on
-# them and every deploy this project ever shipped copied them into gh-pages. A
-# fresh clone could not pass gate check 6 (measured 2026-08-23:
-# "GATE FAIL: Linux engine asset missing: dist/c2w/dist/runcontainer.js").
-# They are upstream vendored files — `extras/runcontainerjs/dist`, checked in
-# upstream (docs/IMAGE-RECIPE.md:277-278) — the exact siblings of
-# web/c2w/vendor/, which was tracked all along. Negating the DIRECTORY is what
-# works: git cannot re-include a file whose parent directory is excluded.
-!web/c2w/dist/
-pkg/
+# The JavaScript tree — everything here is produced by a command in package.json.
 node_modules/
+.next/
+apps/web/out/
+.deploy/
+*.tsbuildinfo
+.tsconfig.pkg.json
 
 # OS
 .DS_Store
@@ -26,17 +13,17 @@ node_modules/
 .claude/settings.local.json
 .claude/worktrees/
 
-# Legacy ASKK build artifacts kept on disk (recoverable only from gh-pages / slow rebuild)
+# WHAT THE DELETED TREES LEFT ON THIS DISK. Nothing in the repository refers to
+# any of it any more: `target/` and `dist/` were the Rust and Trunk builds,
+# `docs/bin/` and `docs/wasm/` were the container2wasm shelf and its guest image
+# — a 47 MB Linux emulator this build refuses on the record (docs/RULINGS.md).
+# They are listed rather than removed because they are large, they are not in
+# any history, and deleting a gigabyte off somebody's disk is theirs to do.
+target/
+dist/
 out/
+pkg/
 docs/bin/
 docs/wasm/
 .gstack/
 __pycache__/
-
-# --- the JavaScript tree ---
-node_modules/
-.next/
-apps/web/out/
-.deploy/
-*.tsbuildinfo
-.tsconfig.pkg.json

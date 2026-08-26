@@ -1,4 +1,38 @@
-# PORT-MAP — Rust → JavaScript component inventory
+# PORT-MAP — CLOSED
+
+> **The tree this file inventories no longer exists.** `crates/` — 468 files,
+> 67,476 lines — was deleted on 2026-08-25 once the port was done and measured.
+> The whole of it is at tag `pre-rewrite-js`, which is the only place it now is,
+> and every `crates/...` path below is a path into that tag.
+>
+> **What this file is now.** Not a work order: a record of what the Rust was,
+> what each part became, and — in "Files that should NOT be ported" at the
+> bottom — the only section still making a live claim, which is why four
+> surfaces have no JS counterpart and never will.
+>
+> **Two honest corrections to the table below, both measured.**
+>
+> 1. The `target JS file` column is where a lane was ASKED to put something, not
+>    where it is. Of the 161 rows, 50 targets exist at exactly the named path;
+>    the rest landed under names the lane chose while building — the block
+>    vocabulary is one directory rather than fourteen files, the view
+>    projections are `packages/core/src/<view>.js` rather than
+>    `views/<view>/routes.js`, and the phase machine's row (B6) has no target at
+>    all because the thing was retired. Read the tree, not this column.
+>
+> 2. **Four rows were REFUSED, not landed, and the reason is one fact.** This
+>    build's `WorkspacePort` is OPFS, which stores files and runs nothing: there
+>    is no Linux in the page, because the only one was a 47 MB emulator whose
+>    own `durable()` returned false (docs/RULINGS.md). So C20's exec half, C21
+>    (a gesture translated into a command), C22 (long-running processes) and C23
+>    (asking the machine what it is) have no runner behind them, C67 (the
+>    emulator itself) is refused on the record, and the shipped
+>    `apps/web/public/agents/main/agent.md` does not name the tools they would
+>    have provided. `packages/adapters-web/test/tools.test.js` executes that:
+>    every tool the shipped agent file names resolves to a descriptor with a
+>    runner behind it, and the list of names owed to the model is empty.
+
+---
 
 Work order for the rewrite. Every `lines` is `wc -l` of the named Rust file(s) on `main`
 at 2026-08-25. Lanes: `A-PAPER` = `packages/context`, `B-LOOP` = `packages/agent`,
