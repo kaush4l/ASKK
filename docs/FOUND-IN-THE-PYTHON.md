@@ -67,5 +67,27 @@ find this reads the reason instead of rediscovering it.
   the bytes. Browser attachments arrive as data URLs and never take that path
   today, but anything that lets a user drop a file into OPFS needs a
   `readBytes` on the port first.
-- **P-10, in the page.** The Bench edits `models.json`; the catalogue cache
-  never notices.
+
+  It stays open on purpose. There is no feature that puts a binary into OPFS,
+  so adding the method now would mean four adapters implementing a call with no
+  caller — speculative generality, which this tree's own standards forbid. It
+  is written down here so that the day that feature is proposed, the port comes
+  first rather than a `read` that quietly mangles bytes.
+
+## Closed after the port shipped
+
+- **P-10.** The Bench edits `models.json` and every `agent.md`, and a worker
+  reads both exactly once, when it boots — so a save changed nothing until the
+  page was reloaded. The Bench now carries `Rebuild agents`, which closes every
+  worker and loads them again from what is on disk.
+
+  No cache-dropping seam was added to `core/inference.js` to do it. A worker is
+  its own realm, so a new one starts with a fresh module instance and an empty
+  memo; a `forgetModels` would have been a seam with exactly one caller. It
+  costs the transcript, which lives in the engine being closed, and the control
+  says so before it does it rather than after.
+
+  `scripts/smoke.js` assertions 12 and 13 prove it, and 12 is written so that a
+  `restart` which reported success without closing anything fails it — the
+  transcript would still be there. Measured, by neutering the method and
+  watching both go red.

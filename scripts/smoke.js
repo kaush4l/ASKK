@@ -272,6 +272,34 @@ async function assertReplay(view, tally) {
     done ? /** @type {string} */ (await view.evaluate(note)) || "the Flow view rendered no note at all" : "the turn never completed")
 }
 
+/** The Bench's one non-writing control.
+ *
+ * A worker reads `models.json` and every `agent.md` once, when it boots, so a saved edit means
+ * nothing until a new worker exists (P-10). `Rebuild agents` is that new worker.
+ *
+ * The control saying "Rebuilt 4 agents" is not evidence of one: a `restart` that returned the
+ * names without closing anything would print the same sentence, and a turn would still work
+ * because the old workers never died. What only a real rebuild produces is the *loss* — the
+ * transcript lives in the engine that was closed — so this reads the transcript for the answer
+ * the previous assertions put there, and requires it to be gone.
+ * @param {Bun.WebView} view @param {{ calls: number }} tally @returns {Promise<void>} */
+async function assertRebuild(view, tally) {
+  const before = `${NONCE}-${tally.calls}`
+  await visit(view, "bench")
+  const said = `document.querySelector("#stage .head .said")?.textContent ?? ""`
+  await view.evaluate(`(document.querySelector("#stage .head button.save").click(), 1)`)
+  const rebuilt = await until(view, `/Rebuilt [1-9]\\d* agent/.test(${said})`, 60000)
+  await visit(view, "converse")
+  const transcript = `document.querySelector(".transcript")?.textContent ?? ""`
+  const gone = rebuilt && (await until(view, `!${transcript}.includes(${JSON.stringify(before)})`, 8000))
+  check(12, "the Bench rebuilds every agent — new workers, so the old transcript is gone with them", gone,
+    rebuilt ? (gone ? /** @type {string} */ (await view.evaluate(said)) : `the transcript still holds ${before}, so nothing was closed`)
+      : "the control never reported a rebuild")
+  const answered = gone && (await turn(view, `after rebuild ${NONCE}`, `${NONCE}-${tally.calls + 1}`))
+  check(13, "a turn still completes after the rebuild — the workers really came back", answered,
+    gone ? "" : "no rebuild was proven, so this could not be tried")
+}
+
 async function main() {
   if (!existsSync(join(DIST, "index.html"))) {
     console.log(`FAIL 0. a built export exists at ${DIST} — run \`bun run build\` first`)
@@ -292,6 +320,7 @@ async function main() {
     await view.navigate(`http://127.0.0.1:${origin.port}${BASE}/`)
     await assertBoot(view, noise, tally, missing)
     await assertReplay(view, tally)
+    await assertRebuild(view, tally)
   } catch (error) {
     check(0, "the smoke run itself completed", false, error instanceof Error ? error.message : String(error))
   } finally {

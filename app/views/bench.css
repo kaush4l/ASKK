@@ -175,3 +175,12 @@ button.save:hover,
   .panel { padding: var(--space-4); }
   .job { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
 }
+
+/* A rebuild in flight. The button is the only control here that does work
+   rather than writing a file, so it must read as unavailable while it runs —
+   colour alone would not say it, and `disabled` alone would not show it. */
+button.save:disabled {
+  color: var(--ink-3);
+  border-color: var(--line);
+  cursor: default;
+}

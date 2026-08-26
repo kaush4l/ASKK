@@ -20,6 +20,7 @@
 // <link> at build time, which is the only way a view that main.js loads with a
 // dynamic import can bring its own CSS without editing app/index.html.
 import "./roster.css"
+import { el } from "../dom.js"
 import { parseAgentFile } from "../../core/frontmatter.js"
 import { AGENTS_DIR, BUILTIN_DIR, CRITIC_AGENT, SUMMARIZER_AGENT, VERIFIER_AGENT } from "../../core/registry.js"
 
@@ -37,14 +38,6 @@ const STATUSES = [
 ]
 /** The three the registry attaches to everyone but themselves — nobody's tool. */
 const REVIEWERS = [SUMMARIZER_AGENT, VERIFIER_AGENT, CRITIC_AGENT]
-
-/** @param {string} tag @param {Record<string, string>} [attrs] @param {(Node | string)[]} [kids] @returns {HTMLElement} */
-function el(tag, attrs = {}, kids = []) {
-  const node = document.createElement(tag)
-  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value)
-  node.append(...kids)
-  return node
-}
 
 /** The clock the state table's `since` was written by; the host's would drift against a
  * page whose ports carry a different one. @returns {number} */

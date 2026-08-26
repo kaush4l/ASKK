@@ -13,6 +13,7 @@
  */
 
 import "./converse.css";
+import { el } from "../dom.js";
 import { createInspector } from "./inspector.js";
 
 /**
@@ -31,14 +32,6 @@ const RESULT = "Result: ";
 let off = [];
 /** @type {Activity | null} */
 let running = null;
-
-/** @param {string} tag @param {Record<string, string>} [attrs] @param {(Node|string)[]} [kids] @returns {HTMLElement} */
-function el(tag, attrs = {}, kids = []) {
-  const node = document.createElement(tag);
-  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
-  node.append(...kids);
-  return node;
-}
 
 /** One turn, verbatim — `Result: ` stays on the front of an observation because
  * that prefix is in the prompt, and this view's claim is that it shows the prompt.

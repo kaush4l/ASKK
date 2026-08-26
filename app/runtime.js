@@ -20,48 +20,17 @@ import { Slot } from "../core/component-base.js";
 import { loadAgents, MAIN_AGENT } from "../core/registry.js";
 import { goalOf } from "../core/schedule.js";
 import { State, Status } from "../core/state.js";
-import { TELEMETRY } from "../core/telemetry.js";
+import { RETAINED, TELEMETRY, WORKER_EVENTS } from "./arrivals.js";
 import { why } from "../core/worker-host.js";
 import { browserPorts, workerUrl } from "./ports-browser.js";
 import { seed } from "./seed.js";
 
 export { Slot, Status };
+export { TELEMETRY, WORKER_EVENTS } from "./arrivals.js";
 
 /** @typedef {import("./ports-browser.js").BrowserPorts} BrowserPorts */
 /** @typedef {import("../core/registry.js").WorkerAgent} WorkerAgent */
 /** @typedef {(payload: any) => void} Listener */
-
-/** The message type a worker uses to report what only it can see, declared in
- * `core/telemetry.js` beside the observers that write it so both ends name it once.
- * `AgentWorker` correlates replies by `id` and drops a message it does not
- * recognise, so an extra type on the same port disturbs nothing. The worker
- * entry posts `{ type: TELEMETRY, event, payload }`, and only the three events
- * below are forwarded: a worker may report what it saw, never announce a turn
- * that this side is the one to know about. */
-export { TELEMETRY };
-
-/** @type {readonly string[]} */ export const WORKER_EVENTS = Object.freeze(["phase:enter", "prompt:assembled", "tool:results"]);
-
-/** `prompt:assembled` — one entry per component that survived `applies()`, in
- * the order the assembler joined them. `memo` is whether this render came back
- * from the cache; `cacheable` is `false` for CONTEXT, which opts out because a
- * cached clock is a wrong clock. `hits` and `misses` are the assembler's own
- * running totals, carried whole rather than recounted.
- * @typedef {{ slot: number, name: string, key: string, bytes: number, memo: boolean, cacheable: boolean }} Band
- * @typedef {{ agent: string, phase: string, bytes: number, bands: Band[], hits: number, misses: number }} Assembled */
-
-/** How much of a run is kept for a view that mounts after it, and why a replay
- * is asked for rather than given.
- *
- * A run is bounded by `turn:start`, and each one drops what the last one left.
- * Retaining since boot is a leak; the transcript already holds the conversation,
- * so what is kept is only what the *worker* reported — the part this thread
- * cannot recompute. Past the cap the oldest goes, which costs a late mount the
- * opening phases of a loop no bounded run reaches. And the replay is opt-in
- * because `converse.js` subscribes to these same events to narrate a run *as it
- * happens*: replaying into it would leave a finished turn showing a mid-run
- * activity line in place of its answer. */
-const RETAINED = 200;
 
 /** Notify on every write to the state table. `State` has no observer of its
  * own, so its two writers are wrapped here, on the instance this runtime owns:
@@ -163,6 +132,26 @@ export class Runtime {
     await this._main?.close(this.log());
     this._main = null;
     this.status = "cold";
+  }
+
+  /** Tear every worker down and build them again from what is on disk now.
+   *
+   * The Bench writes `models.json` and `agent.md` into OPFS, but a worker reads
+   * both exactly once — when it boots — and `core/inference.js` memoises the
+   * catalogue per filesystem on top of that. Nothing short of a new worker sees
+   * an edit, which is why the Bench used to end every save by telling you to
+   * reload the page (P-10). This is that reload, without the page: a worker is
+   * its own realm, so a fresh one starts with a fresh module instance and an
+   * empty memo, and no cache-dropping seam has to exist in the core for it.
+   *
+   * It costs the transcript, because the transcript lives in the engine that is
+   * being closed. That is the same price a page reload charged; the difference
+   * is that this one is asked for out loud.
+   * @returns {Promise<string[]>} the agent names that came back up */
+  async restart() {
+    await this.close();
+    this.emit("runtime:restart", {});
+    return this.start();
   }
 
   /** Forward the three events only the worker can see. @param {WorkerAgent} agent @returns {void} */

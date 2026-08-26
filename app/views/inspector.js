@@ -20,6 +20,7 @@
  */
 
 import "./inspector.css";
+import { el } from "../dom.js";
 
 /**
  * `text` is optional because the event's declared payload does not carry it —
@@ -30,19 +31,6 @@ import "./inspector.css";
  */
 
 const NUMBER = new Intl.NumberFormat();
-
-/**
- * @param {string} tag
- * @param {Record<string, string>} [attrs]
- * @param {(Node | string)[]} [kids]
- * @returns {HTMLElement}
- */
-function el(tag, attrs = {}, kids = []) {
-  const node = document.createElement(tag);
-  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
-  node.append(...kids);
-  return node;
-}
 
 /**
  * `key()` is `ClassName:digest`, and the class name is already the band's own

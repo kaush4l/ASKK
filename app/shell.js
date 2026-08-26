@@ -12,6 +12,8 @@
  * optional attribute back.
  */
 
+import { el } from "./dom.js";
+
 /** @typedef {"system"|"light"|"dark"} ThemeMode */
 /** @typedef {{ id: string, label: string, note: string }} Destination */
 
@@ -25,19 +27,6 @@ export const DESTINATIONS = [
   { id: "roster", label: "Roster", note: "agents · status" },
   { id: "bench", label: "Bench", note: "models · skills · space" },
 ];
-
-/**
- * @param {string} tag
- * @param {Record<string, string>} [attrs]
- * @param {(Node | string)[]} [kids]
- * @returns {HTMLElement}
- */
-function el(tag, attrs = {}, kids = []) {
-  const node = document.createElement(tag);
-  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
-  node.append(...kids);
-  return node;
-}
 
 /** @returns {ThemeMode} the stored choice, or `system` when there is none. */
 function readTheme() {

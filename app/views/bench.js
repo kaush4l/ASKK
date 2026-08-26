@@ -13,27 +13,19 @@
 // <link> at build time, which is the only way a view that main.js loads with a
 // dynamic import can bring its own CSS without editing app/index.html.
 import "./bench.css"
+import { el } from "../dom.js"
 import { parseAgentFile } from "../../core/frontmatter.js"
 import { MODELS_FILE } from "../../core/inference.js"
 import { AGENTS_DIR, BUILTIN_DIR } from "../../core/registry.js"
-import { managed } from "../../core/schedule.js"
 import { SKILLS_DIR, SKILL_FILE } from "../../core/skills.js"
+import { MISSED, schedulePanel } from "./schedule.js"
 
 /** @typedef {import("../../core/ports.js").FsPort} FsPort */
 /** @typedef {{ id: string, label: string, note: string, extra?: string, split: boolean, paths: (fs: FsPort) => Promise<string[]>, add?: (name: string) => { path: string, text: string } }} Panel */
 /** @typedef {{ path: string, select: HTMLSelectElement, problem: HTMLElement, said: HTMLElement, areas: HTMLTextAreaElement[] }} Ui */
 
 const CORS = "A browser can only reach a model server that sends CORS headers. Most local servers — llama.cpp, LM Studio, vLLM, omlx — do not until you start them with cross-origin access turned on, and the request is refused before it ever reaches your model: the page gets a network error with no body. If you point base_url at your own server and nothing happens, check that first."
-const CACHED = "Saving rewrites the file. It does not re-point an agent that is already running: every worker reads this catalogue once, when it boots, and core/inference.js offers no way to drop that cache (P-10). Reload the page to build the agents against what you just saved."
-const ONLY_OPEN = "These jobs run only while this page is open. There is no background service — close the tab and nothing fires. A job whose time passed while the page was shut is reported as missed and never replayed: eleven runs delivered at once would do the wrong work eleven hours late."
-
-/** @param {string} tag @param {Record<string, string>} [attrs] @param {(Node | string)[]} [kids] @returns {HTMLElement} */
-function el(tag, attrs = {}, kids = []) {
-  const node = document.createElement(tag)
-  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value)
-  node.append(...kids)
-  return node
-}
+const CACHED = "Saving rewrites the file. It does not re-point an agent that is already running: every worker reads this catalogue once, when it boots, and memoises it on top of that. Rebuild agents, at the top of this screen, is what makes a saved edit take."
 
 /** Every `<dir>/<name>/<file>` under these directories. @param {FsPort} fs @param {string[]} dirs @param {string} file @returns {Promise<string[]>} */
 async function folders(fs, dirs, file) {
@@ -53,7 +45,7 @@ async function skillPaths(fs) {
 /** @type {Panel[]} */
 export const PANELS = [
   { id: "agents", label: "Agents", split: true, paths: (fs) => folders(fs, [AGENTS_DIR, BUILTIN_DIR], "agent.md"),
-    note: "The frontmatter and the body are parsed separately, so they are edited separately: above is the configuration, below is the system instructions the model reads. Saving writes the file; the worker booted from the old text, so reload the page to rebuild that agent." },
+    note: "The frontmatter and the body are parsed separately, so they are edited separately: above is the configuration, below is the system instructions the model reads. Saving writes the file; the worker booted from the old text, so use Rebuild agents at the top of this screen to build it again from what is now on disk." },
   { id: "models", label: "Models", split: false, paths: async () => [MODELS_FILE], note: CORS, extra: CACHED },
   { id: "skills", label: "Skills", split: true, paths: skillPaths,
     note: "A skill is a SKILL.md with a name and a description in its frontmatter. The description is what the model reads when it decides whether to load the skill, so write it as when to use this rather than as what this is.",
@@ -100,7 +92,7 @@ async function saveFrom(ui, panel, fs) {
   ui.problem.textContent = refusal ? `Not saved — ${refusal}` : ""
   if (refusal) return
   await fs.write(ui.path, text)
-  ui.said.textContent = `Saved ${ui.path}. Agents already running keep what they booted with; reload the page to rebuild them.`
+  ui.said.textContent = `Saved ${ui.path}. Agents already running keep what they booted with; Rebuild agents builds them again.`
 }
 /** One editable kind of file: a picker, the boxes, the refusal, and Save.
  * @param {Panel} panel @param {FsPort} fs @returns {{ element: HTMLElement, refresh: (want?: string) => Promise<void> }} */
@@ -145,31 +137,28 @@ function adder(panel, fs, refresh, problem) {
   return el("label", { class: "picker-label" }, ["New", input, button])
 }
 
-/** What the runtime reported missed. The cron adapter reports it once, at boot, and nothing
- * retains it, so this view listens rather than asks. @type {{ name: string, runs: number, since: string }[]} */
-const MISSED = []
-/** @param {string[]} cells @returns {HTMLElement} */
-const job = (cells) => el("div", { class: "job" }, cells.map((cell, i) => el("span", { class: i < 2 ? "bytes" : "goal" }, [cell])))
-/** The schedule, read through the same cron port the agent's tools write to. @param {any} runtime @returns {{ element: HTMLElement, refresh: () => Promise<void> }} */
-function schedulePanel(runtime) {
-  const running = el("div", { class: "jobs" })
-  const missed = el("div", { class: "jobs" })
-  const element = el("div", { class: "editor" }, [el("p", { class: "note note-warn" }, [ONLY_OPEN]),
-    el("h3", {}, ["Scheduled"]), running, el("h3", {}, ["Missed"]), missed])
-  const refresh = async () => {
-    /** @type {string[]} */ let lines = []
-    try { lines = await runtime.ports.cron.readLines() } catch (error) {
-      running.replaceChildren(el("p", { class: "problem" }, [`Could not read the schedule: ${error instanceof Error ? error.message : String(error)}`]))
-      return
+/** Rebuild every agent from what is on disk now — the one action on this screen
+ * that is not a file write, and the only thing that makes a saved edit take
+ * without a page reload. It says what it costs before it costs it: the
+ * transcript belongs to the engine being closed, and closing it ends it.
+ * @param {any} runtime @returns {HTMLElement} */
+function rebuild(runtime) {
+  const said = el("p", { class: "said", role: "status", "aria-live": "polite" })
+  const button = /** @type {HTMLButtonElement} */ (el("button", { type: "button", class: "save" }, ["Rebuild agents"]))
+  button.addEventListener("click", () => void (async () => {
+    button.disabled = true
+    said.textContent = "Rebuilding — this ends the current transcript."
+    try {
+      const names = await runtime.restart()
+      said.textContent = `Rebuilt ${names.length} agent(s) from the workspace: ${names.join(", ")}.`
+    } catch (error) {
+      said.textContent = `Not rebuilt — ${error instanceof Error ? error.message : String(error)}. The old agents are gone; reload the page.`
     }
-    const found = lines.map(managed).filter((one) => one !== null)
-    running.replaceChildren(...(found.length ? found.map((one) => job([one.name, one.schedule, one.goal || one.command]))
-      : [el("p", { class: "empty" }, ["Nothing is scheduled. The agent writes its own jobs with create_cron_job."])]))
-    missed.replaceChildren(...(MISSED.length ? MISSED.map((one) => job([one.name, `${one.runs} run(s)`, `first due ${one.since}`]))
-      : [el("p", { class: "empty" }, ["Nothing has been reported missed since this page opened."])]))
-  }
-  return { element, refresh }
+    button.disabled = false
+  })())
+  return el("div", { class: "bar" }, [button, said])
 }
+
 /** @type {(() => void)[]} */
 let off = []
 /** @param {HTMLElement} host @param {unknown} runtimeIn @returns {Promise<void>} */
@@ -181,7 +170,8 @@ export async function mount(host, runtimeIn) {
   const section = (/** @type {string} */ label, /** @type {HTMLElement} */ body) => el("section", { class: "panel" }, [el("h2", {}, [label]), body])
   host.replaceChildren(
     el("header", { class: "head" }, [el("h1", {}, ["Bench"]),
-      el("p", { class: "lede" }, ["Every one of these is a file in the workspace, read by the next worker that boots. Nothing is written until it parses."])]),
+      el("p", { class: "lede" }, ["Every one of these is a file in the workspace, read by the next worker that boots. Nothing is written until it parses."]),
+      rebuild(runtime)]),
     ...PANELS.map((panel, i) => section(panel.label, editors[i].element)), section("Schedule", schedule.element),
   )
   off.push(runtime.on("error", (/** @type {any} */ event) => {
