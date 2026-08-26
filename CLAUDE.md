@@ -14,6 +14,10 @@ JavaScript on Bun 1.4**, type-checked by `tsc --checkJs` under `strict`, with a
 **Next.js 16 static export** for the interface. The Rust → WebAssembly build it
 replaces was deleted on 2026-08-25 and exists only at tag `pre-rewrite-js`;
 there is no `crates/`, no `Cargo.toml` and no second language in this tree.
+**Every `crates/...` or `web/...` path still written in a comment or a document
+is a path into that tag** — kept where it says WHY a decision was made, because
+"the Rust did this and it was wrong" is the reason and deleting it leaves the
+correction looking arbitrary.
 
 ## Operating facts
 

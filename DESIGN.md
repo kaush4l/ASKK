@@ -1,5 +1,20 @@
 # DESIGN.md — ASKK, liquid glass
 
+> **The tree this document was written against is gone.** `crates/` and `web/`
+> were deleted on 2026-08-25 and exist only at tag `pre-rewrite-js`; every path
+> below into either of them is a path into that tag, and the sections that
+> inventory the Rust UI's component call sites are history rather than a survey
+> of this build. **What is still law is everything about the DESIGN**: the
+> palette, the type ramp, the space scale, the reject list, and §1's ruling that
+> the front door commands and the working middle stays quiet. That part is
+> cited from 26 files in the JavaScript tree, which is why this document
+> outlived the one it describes.
+>
+> The values now live in `apps/web/app/globals.css` — the only file allowed to
+> declare one — and the four directions in `apps/web/styles/directions/` are the
+> only files allowed to re-point one. `apps/web/test/direction.test.js` and
+> `scripts-js/check-contrast.js` are what execute the claims below that can be.
+
 The source of truth. Every token lands here before it lands in code. An agent
 that needs a value not in this file stops and proposes it; it does not invent
 one locally.
