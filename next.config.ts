@@ -13,7 +13,6 @@ export const basePath = process.env.ASKK_BASE_PATH ?? '/ASKK';
 const nextConfig: NextConfig = {
   output: 'export',
   basePath,
-  assetPrefix: basePath,
   trailingSlash: true,
   images: { unoptimized: true },
   // OFF, deliberately: with a static export this operator has previously

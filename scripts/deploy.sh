@@ -58,7 +58,8 @@ bun run build || fail "the export did not build"
 grep -rl "_next/static" out/index.html >/dev/null || fail "out/index.html references no build output"
 
 step "4/5  browser check, at the subpath"
-bun scripts/serve-subpath.ts out &
+LOG="$(mktemp)"
+bun scripts/serve-subpath.ts out >"$LOG" 2>&1 &
 SERVER=$!
 cleanup_server() { kill "$SERVER" 2>/dev/null || true; }
 trap cleanup_server EXIT
@@ -66,8 +67,17 @@ sleep 1
 # Bun exits on EADDRINUSE, and a server already on that port is somebody else's
 # out/ from an earlier run. Answered by a stale export, this check passes and
 # means nothing — which it did, once, on the way to writing this line.
-kill -0 "$SERVER" 2>/dev/null || fail "the server did not stay up — port ${PORT} is likely taken, and whatever is on it is not this build. Its own output above says which"
-bun scripts/verify-export.ts "http://localhost:${PORT}/ASKK/" || fail "the built export is not a working page at the subpath"
+if ! kill -0 "$SERVER" 2>/dev/null; then
+  cat "$LOG"
+  fail "the server did not stay up — port ${PORT} is likely taken, or it refused this export. Its own output above says which"
+fi
+cat "$LOG"
+# The URL is the server's, not a fourth copy of the subpath. The server derives
+# it from the prefix the build recorded in out/index.html, so a build made at a
+# different basePath cannot be checked at this one.
+URL="$(sed -n 's|^serving .* at \(http://[^ ]*\)$|\1|p' "$LOG")"
+[ -n "$URL" ] || fail "the server did not announce a URL — nothing to check"
+bun scripts/verify-export.ts "$URL" || fail "the built export is not a working page at $URL"
 cleanup_server
 trap - EXIT
 
