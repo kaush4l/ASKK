@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { isConfigured, stubPorts } from '@/core/ports'
+import { stubPorts } from '@/core/ports'
 
 /**
  * A stub that quietly does nothing is the worst artifact this project can
@@ -34,22 +34,5 @@ describe('stubPorts', () => {
       ['store.appendEvent', () => ports.store.appendEvent('s1', 0, { kind: 'x', data: null, at: 0 })],
     ]
     for (const [name, call] of calls) expect(call).toThrow(`no ${name} port configured`)
-  })
-})
-
-describe('isConfigured', () => {
-  test('is false for a stub, which truthiness cannot tell you', () => {
-    const ports = stubPorts()
-    expect(Boolean(ports.store)).toBe(true)
-    expect(isConfigured(ports.store)).toBe(false)
-    expect(isConfigured(ports.fetch)).toBe(false)
-    expect(isConfigured(ports.clock)).toBe(false)
-    expect(isConfigured(ports.newId)).toBe(false)
-  })
-
-  test('is true for a wired port and false for an absent one', () => {
-    expect(isConfigured(() => 'id-1')).toBe(true)
-    expect(isConfigured(undefined)).toBe(false)
-    expect(isConfigured(null)).toBe(false)
   })
 })

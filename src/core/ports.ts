@@ -82,33 +82,22 @@ export interface Ports {
   newId: NewIdPort
 }
 
-/** Marks a member of {@link stubPorts} so a capability check can be honest. */
-const NOT_CONFIGURED = Symbol.for('askk.ports.notConfigured')
-
 /**
- * Is this port member a real one, rather than a stub that will throw?
- *
- * Presence is not enough, and that is the whole reason this function exists:
- * `if (ports.store)` is **true** for a stub, so the old tree registered a
- * capability on it and the capability then died at the call site.
+ * REMOVED at the wave-1 retro: `isConfigured`, its `NOT_CONFIGURED` symbol and
+ * the `mark()` that applied it. They had zero callers outside their own test,
+ * which is §8.6's most-repeated defect in this project shipped once more. It
+ * returns with the first capability check that needs it — wave 3 — and when it
+ * does, note that `docs/scratch/SALVAGE.md` item 4 is right about *why*:
+ * `if (ports.store)` is **true** for a stub, so presence is not configuration
+ * and a capability registered on truthiness dies at the call site.
  */
-export function isConfigured(member: unknown): boolean {
-  if (member === undefined || member === null) return false
-  return (member as Record<symbol, unknown>)[NOT_CONFIGURED] !== true
-}
-
-/** Hide the marker from enumeration, so a stub still looks like the thing it stands in for. */
-function mark<T extends object>(value: T): T {
-  Object.defineProperty(value, NOT_CONFIGURED, { value: true })
-  return value
-}
 
 /** A function that reports the missing port instead of quietly doing nothing. */
 function missing<F>(name: string): F {
   const stub = (): never => {
     throw new Error(`no ${name} port configured`)
   }
-  return mark(stub) as unknown as F
+  return stub as unknown as F
 }
 
 /**
@@ -118,15 +107,15 @@ function missing<F>(name: string): F {
  */
 export function stubPorts(): Ports {
   return {
-    clock: mark({ now: missing<ClockPort['now']>('clock.now'), zone: missing<ClockPort['zone']>('clock.zone') }),
+    clock: { now: missing<ClockPort['now']>('clock.now'), zone: missing<ClockPort['zone']>('clock.zone') },
     fetch: missing<FetchPort>('fetch'),
-    store: mark({
+    store: {
       putSession: missing<StorePort['putSession']>('store.putSession'),
       readSession: missing<StorePort['readSession']>('store.readSession'),
       appendMessage: missing<StorePort['appendMessage']>('store.appendMessage'),
       readMessages: missing<StorePort['readMessages']>('store.readMessages'),
       appendEvent: missing<StorePort['appendEvent']>('store.appendEvent'),
-    }),
+    },
     newId: missing<NewIdPort>('newId'),
   }
 }

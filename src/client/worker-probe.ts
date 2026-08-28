@@ -27,6 +27,12 @@ export interface WorkerProbe {
   heldByFirst: boolean
   /** The second worker was granted the same lock while the first still held it. Must be false. */
   secondGrantedWhileHeld: boolean
+  /**
+   * The lock this run actually contended for. Reported because it is generated
+   * per run: a failure message naming a fixed lock sends whoever reads it
+   * grepping for a string that is in no source file.
+   */
+  lockName: string
 }
 
 /** How long any single worker reply gets before the run is called broken rather than slow. */
@@ -39,15 +45,22 @@ function spawn(): Worker {
 /** One request, one reply, matched by id so two in flight cannot answer each other. */
 function call(worker: Worker, id: number, op: string, name?: string): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(
-      () => reject(new Error(`the worker did not answer \`${op}\` in ${REPLY_BUDGET_MS / 1000}s`)),
-      REPLY_BUDGET_MS,
-    )
+    // Both exits detach the listener. The timeout path used not to, so a late
+    // reply still ran a handler against a settled promise — harmless only
+    // because `runWorkerProbe` terminates the worker, and this shape is the one
+    // `client/worker-client.ts` is going to be written from at 3.1.
+    const done = (): void => {
+      window.clearTimeout(timer)
+      worker.removeEventListener('message', onMessage)
+    }
+    const timer = window.setTimeout(() => {
+      done()
+      reject(new Error(`the worker did not answer \`${op}\` in ${REPLY_BUDGET_MS / 1000}s`))
+    }, REPLY_BUDGET_MS)
     const onMessage = (event: MessageEvent): void => {
       const data = event.data as { id: number; result: unknown }
       if (data.id !== id) return
-      window.clearTimeout(timer)
-      worker.removeEventListener('message', onMessage)
+      done()
       resolve(data.result)
     }
     worker.addEventListener('message', onMessage)
@@ -66,7 +79,7 @@ export async function runWorkerProbe(): Promise<WorkerProbe> {
   try {
     const facts = (await call(first, 1, 'facts')) as Omit<
       WorkerProbe,
-      'freeGrant' | 'heldByFirst' | 'secondGrantedWhileHeld'
+      'freeGrant' | 'heldByFirst' | 'secondGrantedWhileHeld' | 'lockName'
     >
     const name = lockName()
     const freeGrant = (await call(second, 2, 'try', `${name}.free`)) as boolean
@@ -75,7 +88,7 @@ export async function runWorkerProbe(): Promise<WorkerProbe> {
     // held for every line below it.
     const heldByFirst = (await call(first, 3, 'hold', name)) as boolean
     const secondGrantedWhileHeld = (await call(second, 4, 'try', name)) as boolean
-    return { ...facts, freeGrant, heldByFirst, secondGrantedWhileHeld }
+    return { ...facts, freeGrant, heldByFirst, secondGrantedWhileHeld, lockName: name }
   } finally {
     first.terminate()
     second.terminate()

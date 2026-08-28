@@ -24,6 +24,7 @@
  */
 import { PROBE_SENTINEL } from '../src/engine/probe.worker';
 import { PROBE_ATTRIBUTE } from '../src/app/page';
+import { requireServerCanFail } from './server-can-fail';
 
 const target = process.argv[2];
 if (!target) {
@@ -53,22 +54,6 @@ async function until(view: Bun.WebView, expression: string, budgetMs: number): P
   return false;
 }
 
-/**
- * §8.4's control, and it runs before anything else. A local fixture server that
- * answers 200 to a missing path has already shipped here once, and under one of
- * those every status assertion below is meaningless. If the server cannot fail,
- * this run aborts saying so rather than passing.
- */
-async function serverCanFail(url: string): Promise<string | null> {
-  const missing = new URL(`askk-control-${Date.now()}.woff2`, url).href;
-  const res = await fetch(missing, { cache: 'reload' }).catch(() => null);
-  if (!res) return `the control request to ${missing} got no response — the server is not up`;
-  if (res.status !== 404) {
-    return `control: ${missing} returned ${res.status}, not 404 — this server cannot report a missing file, so nothing below it means anything`;
-  }
-  return null;
-}
-
 /** The four commitments, each as one sentence naming what it protects. */
 function assertions(probe: Record<string, unknown>): string[] {
   const failures: string[] = [];
@@ -92,7 +77,10 @@ function assertions(probe: Record<string, unknown>): string[] {
     'navigator.locks is absent in the worker — §7.3 has no election and §11\'s worse fallback is back on the table',
   );
   expect(probe.freeGrant === true, '{ifAvailable:true} did NOT grant a lock nobody holds — the first tab can never become the writer (§7.3)');
-  expect(probe.heldByFirst === true, 'the first worker was not granted askk.writer with {ifAvailable:true} (§7.3)');
+  // The lock name comes from the probe because it is generated per run: a
+  // message naming a fixed `askk.writer` sends a reader grepping for a string
+  // that appears in no source file.
+  expect(probe.heldByFirst === true, `the first worker was not granted ${String(probe.lockName)} with {ifAvailable:true} (§7.3)`);
   expect(
     probe.secondGrantedWhileHeld === false,
     'THE ELECTION IS BROKEN: a second {ifAvailable:true} request was GRANTED while the first callback was still pending. Two tabs are two writers on one database, and §7.3\'s never-settling hold is not being held',
@@ -100,13 +88,7 @@ function assertions(probe: Record<string, unknown>): string[] {
   return failures;
 }
 
-const control = await serverCanFail(target);
-if (control) {
-  console.log(`\nABORT ${target}`);
-  console.log(`  - ${control}`);
-  process.exit(1);
-}
-console.log('  control: a known-missing path returns 404 — this server can report failure');
+await requireServerCanFail(target);
 
 const view = new Bun.WebView({
   headless: true,

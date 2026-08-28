@@ -20,6 +20,15 @@
  *
  * `total` counts `src/**` and `scripts/**`. Relocating source out of those two
  * directories to move the number is a violation, not a refactor (§8.3).
+ *
+ * **What a line is.** §8.3 says non-blank source lines, and this counted
+ * `split('\n').length`, which is every blank line plus one phantom line per file
+ * for the trailing newline — the same off-by-one `docs/scratch/SALVAGE.md`
+ * records the previous tree hitting, rediscovered because the lesson lived in a
+ * document instead of in a check. It reported 1401 for a tree of 1231. The
+ * command that reproduces the number by hand is printed with it, because a
+ * figure nobody can check with `wc` gets argued with rather than acted on, and
+ * this one becomes a ratchet at the end of wave 2.
  */
 
 import ts from 'typescript'
@@ -81,6 +90,11 @@ function longFunctions(path: string, text: string): Violation[] {
   return found
 }
 
+/** §8.3's unit: a line with something on it. Matches `grep -c '[^[:space:]]'`. */
+function nonBlankLines(text: string): number {
+  return text.split('\n').filter((line) => line.trim() !== '').length
+}
+
 const root = process.cwd()
 const violations: Violation[] = []
 let total = 0
@@ -96,7 +110,7 @@ for (const dir of SIZE_ROOTS) {
   }
   for (const file of files) {
     const text = readFileSync(file, 'utf8')
-    const lines = text.split('\n').length
+    const lines = nonBlankLines(text)
     total += lines
     if (lines > max.lines) max = { file: relative(root, file), lines }
     if (lines > FILE_ADVISORY) advisories.push(`${relative(root, file)} is ${lines} lines`)
@@ -105,7 +119,14 @@ for (const dir of SIZE_ROOTS) {
   console.log(`size: ${dir} — ${files.length} file(s) scanned`)
 }
 
-console.log(`size: total ${total} lines across ${SIZE_ROOTS.join(' + ')}`)
+// The reproduction command, not a description of one. §8.3 also promises a
+// delta against `scripts/checks/lines.json`; that file does not exist and this
+// check writes nothing, so it claims no delta rather than inventing one.
+console.log(`size: total ${total} non-blank lines across ${SIZE_ROOTS.join(' + ')}`)
+console.log(
+  `size: reproduce with  find ${SIZE_ROOTS.join(' ')} \\( -name '*.ts' -o -name '*.tsx' \\) | xargs grep -ch '[^[:space:]]' | paste -sd+ - | bc`,
+)
+console.log('size: no delta reported — scripts/checks/lines.json does not exist and nothing writes it (§8.3 is being restated)')
 console.log(`size: max ${max.lines} lines — ${max.file}  (ratchet NOT armed; it arms at the end of wave 2, §8.3)`)
 for (const advisory of advisories) console.log(`size: advisory — ${advisory}`)
 

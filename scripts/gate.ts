@@ -27,7 +27,7 @@
  * you can run without a server.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
@@ -89,15 +89,58 @@ function tree(dir: string, prefix = ''): string[] {
 }
 
 /**
+ * `bun run build` opens with `rm -rf .next out`, and nothing else in the tree
+ * owns those directories. Two overlapping runs — a gate beside `next dev`, or
+ * beside a background `deploy.sh` — are reproducible as one of them dying on
+ * `ENOENT: .next/server/pages-manifest.json` and reporting `gate RED — export`.
+ * A gate that goes red for a reason that is not the code is a gate that gets
+ * ignored, so the build is serialised behind a directory nobody else creates.
+ */
+// Under `.tmp/`, which .gitignore already covers: a lock left behind by a
+// killed run must not make the working tree dirty and stop the next deploy.
+const BUILD_LOCK = '.tmp/build.lock'
+/** Long enough for a cold Next build on this machine, short enough that a killed run is not a wall. */
+const LOCK_STALE_MS = 15 * 60_000
+
+/** Takes the build lock, waiting for whoever holds it, and reports what it is waiting on. */
+async function takeBuildLock(): Promise<() => void> {
+  let announced = false
+  mkdirSync('.tmp', { recursive: true })
+  for (;;) {
+    try {
+      mkdirSync(BUILD_LOCK)
+      return () => rmSync(BUILD_LOCK, { recursive: true, force: true })
+    } catch {
+      const age = Date.now() - statSync(BUILD_LOCK).mtimeMs
+      if (age > LOCK_STALE_MS) {
+        console.log(`   the build lock is ${Math.round(age / 60_000)}m old — its holder is gone, taking it over`)
+        rmSync(BUILD_LOCK, { recursive: true, force: true })
+        continue
+      }
+      if (!announced) {
+        console.log(`   another build holds ${BUILD_LOCK} — waiting, rather than racing it into a red that is not the code`)
+        announced = true
+      }
+      await Bun.sleep(1000)
+    }
+  }
+}
+
+/**
  * §8's one assertion that lives in the gate rather than in `checks/`: the
  * export builds, and what it built is a folder of files with nothing in it that
  * expects a server to be running.
  */
 async function exportIsStatic(): Promise<boolean> {
-  const build = Bun.spawn(['bun', 'run', 'build'], { stdout: 'inherit', stderr: 'inherit' })
-  if ((await build.exited) !== 0) {
-    console.error('   the export did not build')
-    return false
+  const release = await takeBuildLock()
+  try {
+    const build = Bun.spawn(['bun', 'run', 'build'], { stdout: 'inherit', stderr: 'inherit' })
+    if ((await build.exited) !== 0) {
+      console.error('   the export did not build')
+      return false
+    }
+  } finally {
+    release()
   }
   if (!existsSync('out/index.html')) {
     console.error('   out/index.html does not exist — the build produced no static export at all')

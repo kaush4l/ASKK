@@ -28,6 +28,7 @@
  * outcomes with separate sentences, and neither is a fixed cadence race.
  */
 import { PAGE_MARK } from '../src/app/page';
+import { requireServerCanFail } from './server-can-fail';
 
 const target = process.argv[2];
 if (!target) {
@@ -74,6 +75,11 @@ async function requestedUrls(view: Bun.WebView): Promise<string[]> {
   const doc = (await view.evaluate('location.href')) as string;
   return [doc, ...resources];
 }
+
+// §8.4's control, before anything is navigated to. Under a server that answers
+// 200 to everything, the status loop below passes on a broken export — which is
+// exactly what this file was reproduced doing.
+await requireServerCanFail(target);
 
 const view = new Bun.WebView({
   headless: true,
