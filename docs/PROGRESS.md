@@ -3,6 +3,12 @@
 > Owned by the **junior**. One entry per increment, appended, never rewritten.
 > An entry without a reproducible proof is not an entry — write
 > `Proof: NOT PROVIDED` and say so out loud rather than inventing one.
+>
+> **Ringmaster's rule, set 2026-08-28 at the retro that found this file three
+> increments behind the code:** an increment's PROGRESS entry is written in
+> the same commit as the increment, or the increment is not done. Not a
+> separate pass, not caught up later. This file falling behind is what that
+> retro was about.
 
 Entry shape:
 
@@ -165,3 +171,227 @@ Entry shape:
      acceptable is a ringmaster call, not mine.
 - Open: the deploy.sh no-op branch (untested), and the scripts/** line
   overrun (declared, unjudged).
+
+## 0.1 — Recon: three passes over two prior trees and ten outside harnesses — 2026-08-28
+- Files: `docs/scratch/SALVAGE.md`, `docs/scratch/LESSONS.md`,
+  `docs/scratch/MEASURED.md`, `docs/scratch/REFERENCES.md`. No commit hash
+  recorded against this increment anywhere I can find — it predates the first
+  commit in `git log` that names an increment number, and this entry itself
+  is the first record of it existing as "0.1." Written from the documents as
+  they stand today, after `MEASURED.md` and `LESSONS.md` were both since
+  amended in place by later work (see 1.5 below).
+- Proof (reading the four documents, not running anything — recon has nothing
+  to execute):
+  - `SALVAGE.md` inventories the old JS tree: ~1,400 lines to copy near-verbatim
+    (the prompt/response/phase pillars), a fixed list of files to copy as text
+    and never edit (four `agent.md` bodies, `tests/golden/*`), fifteen ideas
+    ranked, seven things cut with a named reason each, and a "SERVERLESS
+    OVERTURN" section that reverses its own earlier verdict once the
+    zero-backend constraint is applied — the file catches its own
+    contradiction rather than shipping it.
+  - `LESSONS.md` compares ASKK against a second prior tree ("powerhouse") and
+    names nine located defects, each converted to a rule (e.g. "never branch
+    on `typeof window`", "no defensive `x.y ? x.y() : fallback` on our own
+    code"). One of its own claims — defect 1, the realm-duplicated singleton —
+    is itself overturned in the file by `MEASURED.md` M3: the guard was read
+    from source and never checked against the built bundle, and the built
+    bundle does not contain it.
+  - `MEASURED.md` is the one document with executable content: five numbered
+    facts (M1–M5) each taken from a scratch probe run in another directory,
+    each with the actual emitted JS or console output pasted in, not
+    paraphrased. M5 is the one this recon later had to correct — see 1.5.
+  - `REFERENCES.md` studies ten outside agent harnesses and ranks ten mechanics
+    worth stealing, with a "deliberately NOT stolen" section naming two
+    specific reasons (Devika's isolation code is literally 0 bytes;
+    smolagents' AST interpreter is not a security boundary by its own docs).
+- Ringmaster: NOT PROVIDED — no ringmaster ruling on 0.1 itself is recorded
+  anywhere in this tree; 0.3's entry above records a ringmaster GO on the
+  *architecture* these four documents fed, not on the recon pass itself.
+- Open: this entry is being written three increments after the fact, which is
+  the exact defect the rule at the top of this file now exists to stop. The
+  one thing recon could not have known at the time it was written: `MEASURED`
+  M5 was wrong about what it had proven, and the correction (11dc9ea) landed
+  inside 1.5, not here — recorded there, not edited into this file's account
+  of what 0.1 actually produced.
+
+## 1.5 — The measured facts became standing assertions, and one of them was wrong — 2026-08-28
+- Files: `src/engine/probe.worker.ts`, `src/client/worker-probe.ts`,
+  `scripts/verify-worker.ts`, `src/app/page.tsx`. Commit `cf08c69`, corrected
+  in place by `11dc9ea` (`docs/scratch/MEASURED.md` only — no code changed
+  between the two commits; the second commit is the correction of what the
+  first commit's own measurement meant, not a new implementation).
+- Proof:
+  - `bun run gate` — GREEN, 6 checks, reported below under 1.6/2.1 together
+    with the tree-wide run.
+  - Built clean (`rm -rf .next out && bun run build`), served with
+    `bun scripts/serve-subpath.ts out`, ran
+    `bun scripts/verify-worker.ts http://localhost:4599/ASKK/` myself:
+    ```
+    control: a known-missing path returns 404 — this server can report failure
+    probe: {"sentinel":"ASKK_WORKER_ALIVE","hasIDB":true,"hasLS":false,"hasLocks":true,"freeGrant":true,"heldByFirst":true,"secondGrantedWhileHeld":false}
+    PASS ... the writer lock refuses a second holder while the first is pending
+    ```
+  - **Reproduced the watched-red claim myself, not cited it.** Edited
+    `src/engine/probe.worker.ts`'s `hold()` to the wrong-but-obvious
+    implementation the commit describes — `resolve(true); return
+    Promise.resolve()` in place of `resolve(true); return new
+    Promise<never>(() => {})` — rebuilt, re-served, re-ran the same command:
+    ```
+    probe: {..."secondGrantedWhileHeld":true}
+    FAIL http://localhost:4599/ASKK/
+      - THE ELECTION IS BROKEN: a second {ifAvailable:true} request was GRANTED
+        while the first callback was still pending.
+    ```
+    Restored `probe.worker.ts` from a copy taken before the edit;
+    `git diff --stat src/engine/probe.worker.ts` shows no diff against HEAD
+    afterward — the working tree is clean of my edit. This is the correction
+    to my own wave-1 error: I had cited M5 in an earlier report as proof the
+    election worked. It measured the API, not the mechanism. The commit
+    message says exactly this ("a probe that does not implement the mechanism
+    does not test the mechanism") and I now have watched both sides of it
+    myself rather than trusting the sentence.
+- Ringmaster: NOT PROVIDED for this increment specifically. `11dc9ea`'s own
+  message stands as the self-correction; no separate ringmaster ruling on
+  1.5 is recorded in this tree.
+- Open: `scripts/verify-worker.ts` is not yet wired into `bun run gate` —
+  it runs only from `scripts/deploy.sh`'s browser step (added at 1.6). It is
+  also not yet run against the deployed site as of this entry — see 1.6's
+  Open note on deploy staleness.
+
+## 1.6 — The gate: six checks, and it says out loud what it does not run — 2026-08-28
+- Files: `scripts/gate.ts`, `scripts/checks/gate-coverage.ts`,
+  `scripts/checks/size.ts`, `package.json`, `scripts/deploy.sh`. Commit
+  `c5a61c3`.
+- Proof: ran `bun run gate` myself just now. Real output:
+  ```
+  types — ok (tsc --noEmit, 0.5s)
+  tests — 7 pass, 0 fail, 17 expect() calls, ok
+  purity — src/core, 1 file scanned, ok
+  size — src 5 files, scripts 7 files, total 1325 lines, max 214
+         (scripts/checks/purity.ts; ratchet not armed until end of wave 2)
+  gate-coverage — 3 checks on disk, 3 named by gate.ts, ok
+  export — rm -rf .next out && next build, 19 files in out/, ok
+  gate: 6 checks ran, 0 failed — GREEN
+  ```
+  The gate itself names seven checks not yet written (`realm.ts`,
+  `layers.ts`, `protocol.ts`, `orphans.ts`, `bundle.ts`, `design.ts`,
+  `smoke.ts`) and states which wave each arrives in, rather than staying
+  silent about coverage it does not have.
+- Ringmaster: NOT PROVIDED — no separate ringmaster ruling on 1.6 is recorded
+  in this tree.
+- Open: the deploy-time browser step (`verify-worker.ts` + `verify-export.ts`
+  inside `deploy.sh`) has not actually been exercised against a real deploy
+  since this commit — the deployed site (see below) is three commits stale,
+  so neither browser check in the gate's own commit message has been proven
+  against production, only against a local server. `scripts/verify-export.ts`
+  is mid-edit uncommitted in the working tree as I write this (a coder is
+  adding the §8.4 control assertion the retro named missing); I did not touch
+  it and its current state is not part of this proof.
+
+## 2.1 — The core has one door to the environment, and a check that watches it — 2026-08-28
+- Files: `src/core/ports.ts`, `scripts/checks/purity.ts`,
+  `tests/ports.test.ts`. Commit `f3e35de`. Amended by `4b6f5ca` (no code — a
+  declaration-collision ruling written into `docs/ARCHITECTURE.md` and
+  `docs/PLAN.md`: storage shapes stay in `core`, wire shapes stay in
+  `protocol`, `engine/wire.ts` maps between them; 2.1 closed at "+260
+  declared, +347 actual").
+- Proof: `bun run gate`'s `purity` check passed against `src/core` as shown
+  above (1 file scanned, ok). `tests/ports.test.ts` is 38 lines and its 7
+  cases are inside the 7 `tests — pass` count the gate printed. I did not
+  independently watch purity go red on the five planted violations the commit
+  message names (`fetch(`, `Date.now()`, `new Date()`, `Math.random()`,
+  `node:fs`) — the commit message states it was done, but the planted
+  violations are not preserved anywhere in this tree for me to re-trigger,
+  and reconstructing five deliberately-wrong files myself to verify a
+  three-increment-old claim was not judged worth the cost given the working
+  tree already has `src/core/ports.ts` mid-edit for a different reason (an
+  in-progress coder change removing `isConfigured`, uncommitted, not part of
+  this proof).
+- Ringmaster: NOT PROVIDED for 2.1 in isolation — `4b6f5ca`'s message records
+  "PLAN: 2.1 DONE" as the coder's own closing note, not a ringmaster ruling
+  distinct from that.
+- Open: `scripts/checks/purity.ts` shipped at 2.1 with `bun run purity` as its
+  only caller and was not wired into `bun run gate` until 1.6, one commit
+  later — "a check nobody runs" (this project's most-repeated defect,
+  `LESSONS.md` defect 7 in spirit) landed and stood for one commit before the
+  coder's own next commit caught it. `checks/gate-coverage.ts` now makes that
+  gap structurally visible, but it did not stop this specific instance from
+  landing first.
+
+## Retro findings, recorded because the record itself was the finding — 2026-08-28
+- **The deployed artifact is stale as I write this.** `git fetch origin
+  gh-pages && git log --oneline origin/gh-pages -3` → `ebaea59 Deploy
+  4faa4d2` is still the tip — the 1.4-era build. `curl -s
+  https://kaush4l.github.io/ASKK/` → 200, contains `ASKK_PAGE_ALIVE`, but
+  `grep -c data-worker-probe` on the fetched body → `0`. The 1.5/1.6/2.1 work
+  above has never been deployed; every proof above that says "local server"
+  says so because that is the only place it could be checked. A coder is
+  working now (`src/core/ports.ts`, `tests/ports.test.ts`,
+  `scripts/verify-export.ts` all show uncommitted changes at the moment of
+  this entry) but nothing had landed as of this reading.
+- **`verify-export.ts` had no control assertion.** Confirmed by the
+  uncommitted diff on disk right now, which is adding one — this is being
+  fixed as this entry is written, not yet proven green.
+- **Cumulative budget, measured as of this entry** (working tree, `git
+  ls-files`, including the uncommitted in-flight edit to `src/core/ports.ts`):
+  `src/**/*.{ts,tsx}` → 360 lines (5 files). `scripts/**/*.ts` → 985 lines (7
+  files); `scripts/deploy.sh` → 126 lines; scripts total (ts+sh) → 1111 lines
+  (8 files). `tests/**/*.ts` → 38 lines (1 file). Grand total src+scripts+tests
+  → 1509 lines. `bun run gate`'s own `size` check reports a narrower number
+  by its own method (excludes `.sh`, and possibly other exclusions I did not
+  trace) — 1325 lines across src+scripts, 12 files. Both numbers are recorded
+  because they disagree and I could not account for the full gap; see
+  UNCLEAR below. Not judging whether either number is acceptable against the
+  declared +800 — that is the ringmaster's call, already made per this
+  increment's framing.
+
+## 2.2 — The inference contract, and a fake honest enough to drive a turn — 2026-08-28
+- Files: `src/core/inference/base.ts` (new, 91 lines / 81 non-blank),
+  `src/core/inference/scripted.ts` (new, 84 lines / 78 non-blank),
+  `tests/inference.test.ts` (new, 5 cases). Written by the coder; this entry
+  lands in the same commit as the code, per the retro rule in this file's
+  header.
+- Proof: `bun run gate` → **`gate GREEN`, 6 checks ran, 0 failed** (types,
+  tests, purity, size, gate-coverage, export). Within it: `10 pass / 0 fail /
+  24 expect() calls` across 2 files; `purity: src/core — 3 file(s) scanned,
+  ok`; `size: total 1455 non-blank lines across src + scripts`, `max 195 lines
+  — scripts/checks/purity.ts` (ratchet still unarmed, it arms at the end of
+  wave 2). PLAN's acceptance — *a scripted fake drives a full turn in a host
+  test* — is `tests/inference.test.ts`'s `runTurn`, which reads the session,
+  appends the user message, records `describeRequest` as an event, streams the
+  reply through `onDelta`, and appends the assistant message; the store
+  allocates both `seq`s (1, 2) and the assertion is on those numbers. The
+  transport is constructed with `stubPorts().fetch`, so a network call would
+  fail the suite with `no fetch port configured` rather than pass quietly.
+- Watched red: the streaming assertion was proven, not trusted. Replacing
+  `for (const chunk of reply.chunks)` with
+  `for (const chunk of [reply.chunks.join("")])` in `scripted.ts` turned
+  **2 of 10 tests red** — `expect(received).toBeGreaterThan(expected) /
+  Expected: > 1 / Received: 1`, and the abort case, which can no longer
+  interrupt a one-chunk stream. Restored, `10 pass / 0 fail`. Recorded because
+  of what stayed *green* under the break: `deltas.join('') === text` passed
+  with one chunk, which is exactly why the chunk **count** is a separate
+  assertion and not folded into the concatenation one.
+- Ringmaster: not yet ruled.
+- Open:
+  - **`inferenceFor(kind, config, fetchPort)` (ARCHITECTURE.md §5.2) was NOT
+    implemented**, deliberately. It is `core/inference/catalog.ts` in §4 and it
+    would be a factory with one entry until 2.3 lands the second concrete —
+    "no knob with one caller". It belongs to 2.3.
+  - **`RequestRecord` is declared in `core/inference/base.ts`, not imported
+    from `protocol/shapes.ts`** where §4 also names it. That is §7.4's ruling
+    applied — core owns its vocabulary, protocol declares its own, `engine/
+    wire.ts` maps between them — and it is the second instance of the
+    collision 2.1 found with `MessageRecord`. Flagged rather than resolved,
+    because resolving it is 3.2's job and `SHAPE_PAIRS` will need this pair.
+  - **`RequestRecord` has no `headers` field**, so the Context surface cannot
+    render the Authorization header. That is on purpose (§7.2's `hasKey`
+    reasoning: the key must not reach the render realm) but it means "the
+    literal request body that left the tab" is literal about the *body* and
+    silent about the headers. If 6.4 needs a redacted header list, it is an
+    architect decision, not a coder one.
+  - `src/core/ports.ts`'s header comment still reads "Four members, each with
+    a caller." As of this increment `FetchPort` has one — `Inference`'s
+    constructor — and the other three still do not. Left alone: it is the one
+    untrue sentence the retro found that no check can catch, and rewriting it
+    is the architect's.
