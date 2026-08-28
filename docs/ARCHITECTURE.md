@@ -96,9 +96,19 @@ per-directory allowlist in §3.4. `ports.fetch(url)` is a member expression on a
 local binding and is not a free identifier; `"self-contained"` is inside a
 string and is never scanned.
 
-Three constructs are additionally banned in `src/core/**` by pattern, because
-they are ambient behaviour reached through an allowed identifier:
-`new Date(` with no arguments, `Date.now(`, and `Math.random(`.
+Three constructs are additionally banned in `src/core/**` because they are
+ambient behaviour reached through an *allowed* identifier: a zero-argument
+`new Date()`, `Date.now()`, and `Math.random()`.
+
+**These are matched on the token stream, not as source substrings** — same as
+everything else in this check. Stating them as patterns would have reintroduced
+the string-literal false positive one size smaller, which is the defect that made
+the previous revision's `self` ban unsatisfiable. *(Critic :99, accepted;
+measured latent rather than live — the tree's one hit is `new Date(at)`, which
+takes an argument and is permitted.)* The rules are therefore: a `NewExpression`
+on `Date` with zero arguments; a `CallExpression` on the member path `Date.now`;
+a `CallExpression` on the member path `Math.random`. `new Date(value)` with an
+argument is pure — it converts, it does not read a clock — and is allowed.
 
 The purity rule buys three concrete things and they are the reason it stays:
 (1) the core runs under `bun test` on the host with no browser at all; (2) a
@@ -230,6 +240,7 @@ enforces a **per-directory allowlist of permitted free globals**:
 | `src/core/**` | *(nothing)* | every ambient global |
 | `src/adapters/browser/**` | `fetch` `crypto` `Intl` `indexedDB` `navigator` `URL` | `window` `document` `localStorage` |
 | `src/adapters/test/**` | *(nothing)* | every ambient global |
+| `src/protocol/**` | *(nothing)* | every ambient global — it is imported by both realms, so anything ambient in it is ambient in both |
 | `src/engine/**` | `self` `fetch` `crypto` `indexedDB` `navigator` `URL` `postMessage` `AbortController` | `window` `document` `localStorage` |
 | `src/client/**` | `window` `document` `localStorage` `Worker` `URL` `navigator` | `indexedDB` `self` `importScripts` |
 | `src/ui/**`, `src/app/**` | `window` `document` `localStorage` `URL` `navigator` `requestAnimationFrame` | `indexedDB` `self` `importScripts` `Worker` |
@@ -349,7 +360,9 @@ protocol/messages.ts            ToEngine and FromEngine unions, the type-string 
                                 and REPLY_OF: the one map pairing a request with its reply
 protocol/shapes.ts              the plain-data shapes that cross: MessageRecord, PromptBreakdown,
                                 ToolResultRecord, PhaseRecord, TurnSummary, ConfigRecord,
-                                ProbeOutcome, RequestRecord, ToolDeclaration
+                                ProbeOutcome, RequestRecord, ToolDeclaration,
+                                EventRecord and Trace (what `trace/read:ok` and
+                                `session/opened.lastTrace` carry — critic :334)
 ```
 
 ### `src/engine/` — worker realm, every file `// REALM: worker`
@@ -600,6 +613,17 @@ file does not name is not present, and nothing re-registers behind it.
 arguments survive: commas on one line run together, a newline means "after
 everything above".
 
+**The per-turn total is explicitly NOT bounded, and that is a stated gap.**
+*(Critic :547.)* The cap is per `ToolResult`; a batch of ten tools adds up to
+80KB to the transcript in one turn, permanently, with compaction cut. I am not
+inventing a per-turn budget to close it, because a second cap needs a policy for
+what to drop when it is hit — oldest result, largest result, whole batch — and
+that policy has no caller until a real agent has run real batches. What exists
+instead is the observation that makes it visible: DESIGN §4.4's Context surface
+renders the literal request body with a byte count per message and a total, so
+transcript growth is on screen rather than discovered at a context-limit error.
+The bound arrives with compaction, or with a measured turn that needs it.
+
 Only `Tool.fromFunction` exists at first. `fromAgent` and `fromMcp` arrive with
 their second and third callers or never.
 
@@ -774,8 +798,17 @@ what the Door's *Loading* state prints instead of a spinner.
 
 `turn/steer` exists because DESIGN §4.2's Streaming state keeps the composer
 live so the operator can steer mid-flight. *(Critic :536 major, accepted.)*
-Steer text is appended to the live session as an interjection the next phase
-reads; it does not restart the turn.
+Steer text is appended to the live session as an interjection; it does not
+restart the turn.
+
+**Its reader is named, and it is not a phase.** `core/agent/react.ts` drains the
+interjection at the top of each loop iteration and renders it as a `you` row on
+the tape. Phases moved to 4.5, so "the next phase reads it" — what the previous
+revision said — would have left `turn/steer` with a handler and no consumer
+between 3.2 and 4.5, satisfied by protocol rule 3 appending to a field nobody
+reads. That is LESSONS defect 6 with a check green over it. *(Critic :746,
+accepted.)* `turn/steer` lands with the react loop's own increment, and if the
+loop cannot drain it there, the message does not ship until it can.
 
 ### 6.3 Worker → main (`FromEngine`)
 
@@ -837,7 +870,20 @@ wire's constraint and the wire never has to know the core's classes.
 
 ### 6.6 Enforcement
 
-`scripts/checks/protocol.ts`:
+`scripts/checks/protocol.ts`. **How the members are enumerated is the
+load-bearing step and it is named here, because every rule below depends on
+it:** the check runs a **TypeScript AST pass over the `ToEngine` and `FromEngine`
+union declarations** and reads each member's `type` literal off the declared
+type. It does **not** grep string literals out of `messages.ts`.
+
+That distinction is the whole difference between a check and a tautology. If the
+members were grepped from the same file `REPLY_OF` lives in, rule 1 would
+compare the file to itself and pass no matter what either contained. *(Critic
+:825, accepted — and this is the condition on which my no-codegen refusal in
+§10.4 stands or falls: a hand-written `REPLY_OF` is equivalent to a generated one
+**only** while the members it is checked against come from the type
+declarations. Grep the literals and the refusal becomes indefensible.)*
+
 1. `REPLY_OF`'s keys are exactly `ToEngine`'s members; its values are all in
    `FromEngine`.
 2. Every `ToEngine` member appears as a `case` in `engine/host.ts` whose body is
@@ -911,10 +957,49 @@ Two tabs are two workers writing one database. *(Critic :148, accepted.)*
 `{ ifAvailable: true }` **before** opening the database. If the lock is not
 granted, the worker emits `fatal { reason: 'another-tab' }` and opens nothing;
 MAIN renders "this agent is open in another tab" with the tab it should return
-to. The lock is held for the worker's lifetime and released when the tab closes,
-so the second tab works after the first is closed — no stale-lease cleanup, no
-heartbeat, no reconciliation. For a one-person tool this is the correct trade:
-a hard, legible refusal beats a merge protocol nobody will read.
+to. For a one-person tool this is the correct trade: a hard, legible refusal
+beats a merge protocol nobody will read.
+
+**How the lock is held, stated as a mechanism because it is not the obvious
+one.** `navigator.locks.request(name, options, callback)` **releases the lock
+when the callback's returned promise settles** — not when the tab closes. An
+implementer who writes the obvious thing:
+
+```ts
+await navigator.locks.request('askk.writer', { ifAvailable: true }, async (lock) => {
+  if (!lock) return report('another-tab')
+  await openDatabase()            // WRONG: the lock releases here
+})
+```
+
+releases the lock the instant the database is open, and the second tab is then
+granted it and writes. The election must instead hold a promise that **never
+resolves for the worker's life**:
+
+```ts
+navigator.locks.request('askk.writer', { ifAvailable: true }, (lock) => {
+  if (lock === null) { report('another-tab'); return Promise.resolve() }
+  ready(); return new Promise<never>(() => {})   // held until the tab is destroyed
+})
+```
+
+The lock is then released by the browser when the worker's realm is torn down,
+which is the behaviour §7.3 wants: no stale-lease cleanup, no heartbeat, no
+reconciliation, and the second tab works as soon as the first is closed.
+
+> **A correction to my own reading of MEASURED M5.** I cited the probe as
+> evidence the election works. It is not: the probe's callback *returned*, so
+> the lock released, which is precisely why its subsequent `{ifAvailable:true}`
+> request was granted. M5 proves the three **API behaviours** are present in a
+> classic worker under the subpath export — that is all it proves, and it is
+> what §7.3 needs from it. It does not prove the election, because the probe
+> did not implement the election. *(Critic, accepted; this would have shipped a
+> broken election with a measurement cited in its defence, which is worse than
+> shipping it with none.)*
+
+PLAN 1.5 therefore asserts the never-resolving hold specifically: a second
+`{ifAvailable:true}` request made **while the first callback is still pending**
+must receive `null`.
 
 `engine/db.ts` additionally handles the two IndexedDB events that exist for this:
 `onblocked` (another connection is holding an old version open) emits
@@ -966,10 +1051,10 @@ plain words.
 | The §2 import matrix holds, `import type` distinguished from value imports, no cycles | `checks/layers.ts` |
 | `src/protocol/**` has no behaviour and no mutable state | `checks/protocol.ts` rule 4 |
 | Request/reply pairing; every `ToEngine` handled; every `FromEngine` emitted **and** consumed into client state | `checks/protocol.ts` rules 1–3 |
-| Core and engine never reach a main-thread chunk | `checks/bundle.ts` — see below |
+| Core and engine never reach the main realm | **`checks/layers.ts`** on the `ui ↮ core` / `client ↮ core` edges is the primary; `checks/bundle.ts` corroborates against the built artifact (§8.1) |
 | No exported symbol without an importer outside its own file | `checks/orphans.ts` — allowlist below |
 | No function longer than 40 lines | `checks/size.ts` |
-| The largest file only ever gets smaller | `checks/size.ts` ratchet — see below |
+| The largest file only ever gets smaller | `checks/size.ts` ratchet, **seeded at the end of wave 2** — see §8.3 |
 | **`stubPorts()` throws the named message for every member** | `tests/ports.test.ts` — four members, four assertions on the literal string `no <name> port configured` |
 | Golden prompts reproduce byte for byte, and the fixtures themselves have not drifted | `tests/golden/` + an md5 assertion per fixture |
 | The static export builds and contains no server code | `scripts/gate.ts`: `bun run build`, then assert `out/` has no server bundle |
@@ -1013,9 +1098,51 @@ chunks/pages/_app-*.js  chunks/pages/_error-*.js  chunks/polyfills-*.js  chunks/
   `PromptBreakdown.build`, which crosses the wire and is rendered by DESIGN
   §4.3's band stack footer. It cannot be shaken because it is used, and it
   cannot be renamed because it is a string literal.
+- **`WORKER_MARK` lives in `engine/entry.worker.ts` and nowhere else.** It is
+  orphan-allowlisted (§8.2), which makes its home load-bearing: put it in
+  `protocol/` — the natural place for a shared constant — and **both** realms
+  contain it, so "two candidates" trips on every correct build forever. The main
+  side never compares against it; `client/worker-client.ts` treats `ready` as
+  the handshake and does not inspect a mark. *(Critic :1002, accepted.)*
 
-The assertion: the set of scanned files containing `CORE_MARK` must be exactly
-the singleton set containing the file that holds `WORKER_MARK`.
+**The assertion, restated twice — because the first version was both too narrow
+and too brittle.**
+
+*Too narrow:* `CORE_MARK` proves `PromptAssembler` reached a chunk, not that
+**core** did. A leak importing anything else — `Slot`, `TOOL_OUTPUT_CAP`,
+`parseBatches` — shakes the assembler away and the check goes green with core
+sitting in `chunks/app/page-*.js`. This is not hypothetical: **DESIGN §4.3
+requires every band to show its slot number, so
+`import { Slot } from '@/core/prompt/slots'` in `ui/prompt/BandStack.tsx` is the
+single most likely leak in this tree — and one mark cannot see it.** *(Critic,
+accepted.)*
+
+*Too brittle:* "exactly the singleton set" fails on a **correct** build.
+webpack's `splitChunks` applies to worker compilations too, so a core module
+shared between the worker entry and a vendor chunk legitimately puts `CORE_MARK`
+in two files. A check that fails on a correct build gets weakened in wave 3, and
+that is how checks die. *(Critic, accepted.)*
+
+So:
+
+1. **`checks/layers.ts` is the primary and it is authoritative.** The `ui ↮ core`
+   and `client ↮ core` edges are proved from the **import graph of the source**,
+   where every import is visible whatever the bundler later does with it. A leak
+   is caught here, by name, at the offending file and line.
+2. **`checks/bundle.ts` is a corroborator, not the primary.** Its job is to
+   catch the case the source graph cannot see — a transitive path through a
+   dependency, or a bundler behaviour that contradicts the graph. Its assertion
+   is now **reachability, not identity**: `CORE_MARK` must appear in **no file
+   reachable from the main entry**, computed from the build manifest's entry →
+   chunk mapping rather than from a set comparison. Files reachable only from
+   the worker entry are not scanned for it, so `splitChunks` cannot fail the
+   check.
+
+Stated plainly, because a check whose declared job exceeds its reach is the
+false-green class this whole document is written against: **the bundle check
+alone does not prove core stayed out of the page.** It proves one specific
+symbol did. `checks/layers.ts` is what proves the rule; `checks/bundle.ts` is
+what proves the build did not quietly disagree with the source.
 
 ### 8.2 `checks/orphans.ts` and its allowlist
 
@@ -1041,8 +1168,19 @@ The replacement:
 - **The 40-line function rule is kept unchanged.** It did its job and its failure
   mode is extraction, which is the thing we wanted.
 - **`max` — the largest single file's line count — is a ratchet that only goes
-  down.** It is recorded in `scripts/checks/lines.json`. It **arms at increment
-  1.6**, seeded from the tree as it stands at that moment.
+  down.** It is recorded in `scripts/checks/lines.json`. `checks/size.ts` ships
+  at 1.6 and **reports** `max` from then on, but the ratchet **arms at the end of
+  wave 2**, seeded from a tree that contains real modules.
+
+  *Seeding it at 1.6 would have reintroduced, for `max`, the exact defect I had
+  just diagnosed for `total`.* Wave 1 is ~500 lines of scaffold, so the seed
+  would be whatever the largest gate or smoke file accidentally is — and every
+  later increment (2.6 at +520, 3.4 at +420, 6.3 at +560) would then either
+  contort under an accident or raise the ratchet on arrival, which is a ratchet
+  that ratchets nothing. *(Critic :1018, accepted. Diagnosing a defect and then
+  committing it one paragraph later is worth recording as its own kind of
+  mistake: the fix for `total` was reasoned about in isolation instead of being
+  applied to every number in the section.)*
 - **`max` can be satisfied by sharding, and I am striking the claim that it
   cannot.** *(Ringmaster condition 7, accepted — splitting a 300-line file into
   two 150s lowers `max` by 150 and that is exactly the relocation the old rule

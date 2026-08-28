@@ -29,7 +29,7 @@ Concretely that means three commitments:
 
 - **The prompt is visible.** The one thing this system does that most harnesses
   never expose is show the operator the literal bytes the model receives.
-  That is two first-class destinations (§5.3 Prompt, §5.4 Context), not a debug
+  That is two first-class surfaces (§4.3 Prompt, §4.4 Context), not a debug
   drawer behind a developer flag.
 - **A turn is a sequence of observable events, not a message.** Model text,
   tool calls, tool returns, retries, token cost — each is a row on the same
@@ -194,7 +194,7 @@ Seven steps. There are no others, and nothing is below 11px.
 
 | Token | Size / line-height | Family | Weight | Use |
 |---|---|---|---|---|
-| `--t-display` | 40px / 44px | bytes | 600, `-0.02em` | front door masthead, once, one route |
+| `--t-display` | 40px / 44px | bytes | 600, `-0.02em` | front door masthead, once, on the Door only |
 | `--t-title` | 24px / 30px | chrome | 600 | destination title, once per surface |
 | `--t-head` | 16px / 22px | chrome | 600 | panel heads |
 | `--t-body` | 14px / 21px | chrome | 400 | prose, labels, controls |

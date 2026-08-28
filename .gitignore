@@ -31,8 +31,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 .tmp/
-tmp/
-scratch/
+/tmp/
+# anchored: a bare `scratch/` also matched docs/scratch/
+/scratch/
 
 # --- tool caches ---
 .gstack/
@@ -48,5 +49,7 @@ wasm/build/
 *.tar
 *.img
 
-# --- team scratch (agent working notes, not the record) ---
-docs/scratch/
+# NOTE: docs/scratch/ is deliberately TRACKED. It began as working notes and
+# became part of the record — docs/ARCHITECTURE.md cites MEASURED.md as the
+# evidence its realm map rests on. A record that cites an unpublished file is
+# a broken citation for anyone who clones this.
