@@ -19,9 +19,16 @@
  * 2. The basePath was read from `next.config.ts`, whose value comes from an
  *    environment variable read *in this process* — so a build made at one
  *    prefix was happily served at another, every asset 404ing in the real
- *    world and 200 here. The prefix is now read out of the export's own asset
- *    references, which is the only copy that cannot drift from the build, and
- *    the server refuses to start when the two disagree.
+ *    world and 200 here.
+ *
+ * Hence the rule this file now runs on, stated in full because it is exactly
+ * the kind of thing only a reader of both files together would otherwise work
+ * out: **the prefix exists in two copies, and only the built HTML is trusted.**
+ * `next.config.ts` says what a build would use; `out/index.html`'s own
+ * `/ASKK/_next/...` references are what a build did use, and that is the copy
+ * the routing below is built on. The config value is imported to be *compared*
+ * with it, nothing more, and a disagreement stops the server rather than being
+ * reconciled — a server more forgiving than production is worse than no server.
  */
 import { basePath as configured } from '../next.config';
 
@@ -35,7 +42,8 @@ if (!indexHtml) {
   process.exit(1);
 }
 
-/** The prefix the export's own `_next` references carry: the basePath the build recorded. */
+/** The prefix the export's own `_next` references carry: the basePath the build
+ * recorded, and the only one this file routes on. `configured` is the cross-check. */
 const built = indexHtml.match(/(?:src|href)="(\/[^"]*?)\/_next\//)?.[1] ?? '';
 if (built !== configured) {
   console.error(

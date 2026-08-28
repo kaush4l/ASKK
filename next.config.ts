@@ -6,7 +6,16 @@ import type { NextConfig } from 'next';
  * subpath is the default in every mode, dev included: the failure mode cannot
  * hide until deploy if it is present from the first `bun run dev`.
  *
- * `scripts/serve-subpath.ts` reads this same value rather than repeating it.
+ * **This value is the intent, not the record.** It is read from the environment
+ * of whichever process imports this module, so it says what a build *would*
+ * use, never what a build already did. The prefix a build actually recorded is
+ * in its own output — the `/ASKK/_next/...` references in `out/index.html`.
+ *
+ * Two copies therefore exist and they must agree. `scripts/serve-subpath.ts`
+ * trusts the built HTML, imports this value only to cross-check it, and
+ * refuses to start when the two disagree — because serving one build's files
+ * under another's prefix answers 200 to every path the real host 404s.
+ * Changing this value means rebuilding; nothing rewrites a path afterwards.
  */
 export const basePath = process.env.ASKK_BASE_PATH ?? '/ASKK';
 
