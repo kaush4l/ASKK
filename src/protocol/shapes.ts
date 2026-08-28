@@ -47,3 +47,25 @@ export type ProbeResult = {
   elapsedMs: number
   detail: string
 }
+
+/**
+ * Where the model is, as the page knows it.
+ *
+ * **This crosses on `turn/start`, and §6.2 does not list it there.** It is on
+ * the message because at 3.3 there is nowhere else for it to be: the config
+ * store is `engine/stores/config.ts` `[3.4]`, and §6.6's `configured === true`
+ * precondition is a read of that store. A resident that invented a default
+ * endpoint would be answering with a server nobody named. When 3.4 lands, the
+ * endpoint is read from the store by the worker and this field goes with the
+ * increment that makes `configured` computable — `PLAN.md`'s 3.3 obligation
+ * already names that pairing for `boot.seedBaseUrl` and `ready.configured`.
+ *
+ * `apiKey` crosses **outward only**. §7.2's rule is that a key never comes back
+ * to the render realm, not that the realm may not send one; the main realm
+ * cannot fetch, so a key the user typed has no other route to the socket.
+ */
+export type Endpoint = {
+  baseUrl: string
+  apiKey?: string
+  model: string
+}

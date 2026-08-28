@@ -390,12 +390,18 @@ engine/stores/messages.ts       [3.4] append(sessionId, record) -> seq. THE seq 
 engine/stores/events.ts         [3.4] turn events, capped by turnOrdinal range delete
 engine/stores/config.ts         [3.4] endpoints, keys, the active pointer
 engine/stores/agents.ts         [4.1] agent.md overrides
-engine/boot.ts                  [3.1] election, db open with a reporting deadline, first-run seeding,
+engine/boot.ts                  [3.4] election, db open with a reporting deadline, first-run seeding,
                                 orphan-turn reconciliation
 engine/probe.ts                 [3.2] the Door's endpoint probe: refused vs CORS vs http vs timeout
-engine/turns.ts                 [3.1] the turn queue: one live turn, abort, steer, orphan closing
+engine/turns.ts                 [3.3] THE RESIDENT: owns the Agent, the transcript, the live
+                                AbortController and the one-turn queue, for the life of the worker
+                                realm. Turns are its subroutines.
 engine/build-agent.ts           [4.1] config record + agent.md text -> a constructed Agent
-engine/observer.ts              [3.3] serialises core Observer callbacks onto the wire (live objects)
+engine/observer.ts              [4.2] serialises core Observer callbacks onto the wire (live objects).
+                                Was [3.3] and did not ship: exactly one core event has a wire message
+                                today, and a file mapping one event to one message is a layer that
+                                only forwards. It earns a file with turn/phase, turn/retry and
+                                turn/tool, which need a loop that comes round twice.
 engine/wire.ts                  [3.2] maps core storage records to protocol wire shapes, and exports
                                 SHAPE_PAIRS — the declared pairing checks/protocol.ts rule 5 reads
 engine/tools/index.ts           [4.3] the static table of tools this build ships, bound to ports
@@ -481,7 +487,9 @@ scripts/checks/layers.ts        [3.2] the §2 import matrix, computed from real 
 scripts/checks/protocol.ts      [3.2] request/reply pairing, handler and sender coverage, protocol purity
 scripts/checks/orphans.ts       [1.7] every export has an importer (allowlist in §8)
 scripts/checks/size.ts          function <= 40 lines; the max-lines ratchet
-scripts/checks/bundle.ts        [3.1] core reaches the worker chunk and no other (§8)
+scripts/checks/bundle.ts        [3.3] core reaches the worker chunk and no chunk the page loads (§8.1).
+                                Was [3.1]: before the resident imported core it asserted a symbol's
+                                absence from every file, and passed for the wrong reason.
 scripts/checks/lines.json       [2.6] the ratchet state; 2.6 arms max and writes it first
 scripts/checks/design.ts        [6.1] DESIGN's static rules, as NAMED sub-checks, each with
                                 its own failure message: tokens, ramp, motion, front-door
@@ -503,6 +511,9 @@ scripts/verify-export.ts        ARTIFACT: takes a URL. Does the shipped page loa
 scripts/smoke.ts                [3.3] BEHAVIOUR: takes a URL. Does the machine work — boot, a turn,
                                 a streamed token, a reload. Runs verify-export first and
                                 stops if it fails. Cannot exist before 3.3.
+                                Ships at 3.3 without the reload: nothing survives one until 3.4.
+                                It serves its own OpenAI-compatible model, which holds its second
+                                token back until the page has rendered the first.
 scripts/deploy.sh               build with basePath, publish out/ to gh-pages
 scripts/checks/docs.ts          [1.7] the documents refer to things that exist and agree about
                                 status (§8.7)

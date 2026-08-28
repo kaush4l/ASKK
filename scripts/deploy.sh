@@ -88,6 +88,11 @@ bun scripts/verify-export.ts "$URL" || fail "the built export is not a working p
 # architecture is drawn on still behaves the way it was measured behaving —
 # including the one property of the single-writer election that can ship broken.
 bun scripts/verify-worker.ts "$URL" || fail "the worker realm is not what the architecture assumes at $URL"
+# The third question: can a person say something and watch it come back. It
+# serves its own OpenAI-compatible model on its own port, so it runs here and
+# NOT against $SITE below — the deployed host has no model endpoint and never
+# will, because the model is always the user's own.
+bun scripts/smoke.ts "$URL" || fail "a turn does not stream through the worker at $URL"
 cleanup_server
 trap - EXIT
 

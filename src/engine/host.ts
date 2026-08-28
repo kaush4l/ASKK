@@ -23,10 +23,19 @@
  * `tests/protocol.test.ts` drive the real switch — the real election excepted,
  * since `navigator.locks` is a browser fact and `scripts/verify-worker.ts` is
  * where that one is asserted.
+ *
+ * **`turn/start` is served here with one of §6.6's three preconditions.**
+ * §6.6 requires `ready`, a session opened in this worker, and
+ * `configured === true`. Only the first exists at 3.3: sessions and the config
+ * store are both 3.4, so the endpoint arrives on the message
+ * (`protocol/shapes.ts`) and the turn is not tied to a session. The two missing
+ * preconditions become refusals in the increment that can compute them, and
+ * `PROGRESS.md` 3.3 records it rather than leaving §6.6 quietly half-applied.
  */
 
 import { elect } from '@/engine/lease'
 import { probe } from '@/engine/probe'
+import { Resident } from '@/engine/turns'
 import type { FromEngine, Request } from '@/protocol/messages'
 
 /**
@@ -61,11 +70,13 @@ export interface Scope {
  */
 interface HostState {
   elected: boolean
+  /** The resident (`RESIDENT.md` §2.2), one per served scope, for that scope's whole life. */
+  resident: Resident
 }
 
 /** Wire every inbound message to its handler. Called once, by `entry.worker.ts`. */
 export function serve(scope: Scope): void {
-  const state: HostState = { elected: false }
+  const state: HostState = { elected: false, resident: new Resident((message) => scope.postMessage(message)) }
   scope.onmessage = (event: MessageEvent) => {
     void dispatch(scope, state, event.data as Request)
   }
@@ -73,14 +84,18 @@ export function serve(scope: Scope): void {
 
 async function dispatch(scope: Scope, state: HostState, request: Request): Promise<void> {
   try {
-    scope.postMessage(await answer(state, request))
+    // `null` is one handler saying it has already replied for itself. Only the
+    // resident does: it opens a stream on the same wire, and it is the only
+    // thing that can order its own reply against the events that follow it.
+    const reply = await answer(state, request)
+    if (reply !== null) scope.postMessage(reply)
   } catch (error) {
     scope.postMessage({ type: 'failed', id: request.id, message: error instanceof Error ? error.message : String(error) })
   }
 }
 
 /** One case per `ToEngine` member, behind §6.6's two expressible ordering failures. */
-async function answer(state: HostState, request: Request): Promise<FromEngine> {
+async function answer(state: HostState, request: Request): Promise<FromEngine | null> {
   if (request.type !== 'boot' && !state.elected) {
     return refuse(request.id, `${request.type} arrived before boot — §6.6 orders the election first, and this worker has not held it`)
   }
@@ -90,6 +105,14 @@ async function answer(state: HostState, request: Request): Promise<FromEngine> {
       return await boot(state, request.id)
     case 'config/probe':
       return { type: 'config/probed', id: request.id, result: await probe(request.baseUrl, request.apiKey) }
+    case 'turn/start':
+      state.resident.start(request.id, request.text, request.endpoint)
+      return null
+    case 'turn/abort':
+      if (!state.resident.abort(request.turnId)) {
+        return refuse(request.id, `no turn ${request.turnId} is running — §6.6 answers a stale turn id by name, never with silence`)
+      }
+      return { type: 'turn/abort:ok', id: request.id, turnId: request.turnId }
   }
 }
 

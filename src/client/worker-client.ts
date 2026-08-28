@@ -103,11 +103,18 @@ function send(message: ToEngine): Promise<FromEngine> {
   })
 }
 
-/** One message off the wire: settle whoever asked for it, then tell everyone. */
+/**
+ * One message off the wire: settle whoever asked for it, then tell everyone.
+ *
+ * §6's opening rule, as a branch: **requests carry an `id` and get exactly one
+ * reply; events carry none and are never awaited.** A `turn/delta` has no
+ * waiter to find, and looking one up by `undefined` would settle whichever
+ * request happened to be in flight with somebody else's message.
+ */
 function receive(message: FromEngine): void {
   if (message.type === 'fatal') {
     rejectAll(message.message)
-  } else {
+  } else if ('id' in message) {
     const waiter = pending.get(message.id)
     pending.delete(message.id)
     if (message.type === 'failed') waiter?.fail(new Error(message.message))

@@ -26,14 +26,39 @@ export type BootState =
   | { kind: 'ready'; mark: string; schemaVersion: number }
   | { kind: 'fatal'; reason: string; message: string }
 
-/** Everything the page knows. Four messages' worth, today. */
+/**
+ * The turn, as the page renders it: what has arrived, how much of it, and how
+ * it ended.
+ *
+ * **`text` is the concatenation of the deltas and nothing else.** It is not the
+ * `answer` from `turn/done`, and the difference is the whole increment: if the
+ * page showed the answer it would render once, at the end, and a stream that
+ * had collapsed into buffer-then-chop would look identical. `deltas` is here
+ * for the same reason — one chunk and forty chunks must be distinguishable from
+ * outside, or no check can tell streaming from arriving.
+ *
+ * `status` carries §6.3's three distinct terminals. `aborted` is not `failed`:
+ * one of them is the operator's decision.
+ */
+export interface TurnView {
+  turnId: string
+  status: 'streaming' | 'stopping' | 'done' | 'aborted' | 'failed'
+  text: string
+  deltas: number
+  /** The answer, the failure's own sentence, or empty while it streams. */
+  detail: string
+  ms: number
+}
+
+/** Everything the page knows. Eleven messages' worth, today. */
 export interface EngineView {
   boot: BootState
   probe: ProbeResult | null
   failure: string | null
+  turn: TurnView | null
 }
 
-let view: EngineView = { boot: { kind: 'starting' }, probe: null, failure: null }
+let view: EngineView = { boot: { kind: 'starting' }, probe: null, failure: null, turn: null }
 const watchers = new Set<() => void>()
 let connected = false
 
@@ -75,9 +100,48 @@ export function receive(message: FromEngine): void {
     case 'config/probed':
       view = { ...view, probe: message.result, failure: null }
       break
+    case 'turn/started':
+      view = { ...view, turn: { turnId: message.turnId, status: 'streaming', text: '', deltas: 0, detail: '', ms: 0 } }
+      break
+    case 'turn/delta':
+      view = { ...view, turn: grown(view.turn, message.turnId, message.text) }
+      break
+    case 'turn/abort:ok':
+      view = { ...view, turn: ended(view.turn, message.turnId, 'stopping', '', 0) }
+      break
+    case 'turn/aborted':
+      view = { ...view, turn: ended(view.turn, message.turnId, 'aborted', '', message.ms) }
+      break
+    case 'turn/done':
+      view = { ...view, turn: ended(view.turn, message.turnId, 'done', message.answer, message.ms) }
+      break
+    case 'turn/failed':
+      view = { ...view, turn: ended(view.turn, message.turnId, 'failed', message.message, 0) }
+      break
     case 'failed':
       view = { ...view, failure: message.message }
       break
   }
   for (const notify of watchers) notify()
+}
+
+/**
+ * One more partial. The text grows by exactly what arrived and the count grows
+ * by one — the count is what makes "it streamed" and "it arrived" different
+ * facts to anything reading this from outside.
+ *
+ * An event for a turn this page is not showing is dropped rather than merged.
+ * There is one live turn per realm (§7.5), so the only way to see one is a
+ * message that outlived its turn, and appending it would put one turn's words
+ * inside another's.
+ */
+function grown(turn: TurnView | null, turnId: string, text: string): TurnView | null {
+  if (turn === null || turn.turnId !== turnId) return turn
+  return { ...turn, text: turn.text + text, deltas: turn.deltas + 1 }
+}
+
+/** How it ended, keeping every delta that arrived on the way there. */
+function ended(turn: TurnView | null, turnId: string, status: TurnView['status'], detail: string, ms: number): TurnView | null {
+  if (turn === null || turn.turnId !== turnId) return turn
+  return { ...turn, status, detail: detail === '' ? turn.detail : detail, ms: ms === 0 ? turn.ms : ms }
 }

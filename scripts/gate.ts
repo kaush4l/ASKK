@@ -21,10 +21,10 @@
  *    A number that should only go up, in a document a human reads, is the
  *    second line of defence when someone deletes the first (§8.6).
  *
- * What is deliberately NOT here: the browser checks. `verify-export.ts` and
- * `verify-worker.ts` need a build and a real engine, take a URL rather than a
- * directory, and run in `deploy.sh` (§8.4). `bun run gate` must stay something
- * you can run without a server.
+ * What is deliberately NOT here: the browser checks. `verify-export.ts`,
+ * `verify-worker.ts` and `smoke.ts` need a build and a real engine, take a URL
+ * rather than a directory, and run in `deploy.sh` (§8.4). `bun run gate` must
+ * stay something you can run without a server.
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
@@ -55,14 +55,15 @@ const CHECKS: readonly Check[] = [
   { name: 'design', why: "DESIGN.md's static rules, one named sub-check each (§10.2 ruling 3)", run: ['bun', 'scripts/checks/design.ts'] },
   { name: 'gate-coverage', why: 'every check that exists is a check this gate runs (§8.6)', run: ['bun', 'scripts/checks/gate-coverage.ts'] },
   { name: 'export', why: 'the static export builds and contains no server code', run: exportIsStatic },
+  // After `export`, and only after it: this one reads out/ and .next/, which
+  // the check above is what produces. Ordered by a dependency, not by taste.
+  { name: 'bundle', why: 'core reached the worker chunk and no chunk the page loads (§8.1) — corroboration, not proof', run: ['bun', 'scripts/checks/bundle.ts'] },
 ]
 
 /** Named in ARCHITECTURE.md §8 and not yet written. Printed, never counted. */
 const SCHEDULED: readonly { name: string; when: string }[] = [
   { name: 'checks/layers.ts', when: 'there are layers to check — wave 2 onward' },
   { name: 'checks/orphans.ts', when: 'there are exports worth orphaning — wave 2 onward' },
-  { name: 'checks/bundle.ts', when: 'core reaches the worker chunk, which is 3.3 — WORKER_MARK landed at 3.1, CORE_MARK at 2.6' },
-  { name: 'scripts/smoke.ts', when: 'a turn can stream — increment 3.3 (deploy path, not the gate)' },
 ]
 
 const bold = (text: string): string => `[1m${text}[0m`
