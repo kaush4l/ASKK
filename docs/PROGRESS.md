@@ -543,3 +543,78 @@ Entry shape:
   - `docs/PLAN.md`'s 2.3 row still reads `TODO` although 2.3 shipped at
     `a455a0c`, and §4's `core/agent/*` entries are tagged `[2.4]` and now exist.
     Both are the architect's files.
+
+## 2.5 — Structured response: the field table is the contract — 2026-08-28
+- Files: `src/core/response/{base,parse,responses}.ts`, `tests/responses.test.ts`, `tests/golden/react-loop.json`
+- Proof: `bun run gate` → **6 checks ran, 0 failed · gate GREEN**; `bun test` →
+  `60 pass, 0 fail, Ran 60 tests across 6 files`; `purity: src/core — 13 file(s)
+  scanned · ok`; `size: max 235 lines — src/core/response/base.ts`.
+- Proof, the bytes: the prompt text is not asserted to be the Python port's, it
+  is **measured against it**. `git worktree add /tmp/pw pre-workbench` and a
+  script importing `/tmp/pw/core/responses.js` beside `@/core/response/responses`
+  printed `IDENTICAL — 7 classes, FIELDS + both instructions + formatNotes +
+  answerField` — every `description`, both rendered instruction blocks per
+  class, `FORMAT_NOTES` and every answer field, compared string by string. The
+  worktree was removed afterwards; the script is not kept, because it can only
+  run where the old tree is checked out and a check that cannot run is not a
+  check (§8.6). What survives in the suite are `toContain` assertions on the
+  load-bearing lines, watched red below.
+- Proof, the oracle: `tests/golden/react-loop.json` is restored from the tag and
+  **verified, not assumed** —
+  `git show pre-workbench:tests/golden/react-loop.json | md5` and
+  `md5 -q tests/golden/react-loop.json` both print
+  `dad3bec80ba2878f53262aa44d78caf0`, and `git hash-object` of the restored file
+  is `490442ad674bd26b658240d79a8f10109872ff9d`, which is the blob
+  `git ls-tree pre-workbench` names. The md5 is asserted in the suite, so
+  editing the fixture is red.
+- The twenty-six tests were watched red, by mutating `src/` and running
+  `bun test tests/responses.test.ts`:
+  1. *Try only the requested format* — 2 of 26 red.
+  2. *Throw instead of dropping the reply into the answer field* — 4 of 26 red.
+     This is the "never throws" property, and it is asserted over thirteen
+     malformed shapes × two formats × all seven classes.
+  3. *Resolve an unknown enum to the permissive value* (`simple`, `pass`) —
+     1 of 26 red. `normalize` fails toward the careful branch.
+  4. *Delete the act-rescue* — 2 of 26 red. `act: echo({...})` with an empty
+     `result` is what small local models actually write.
+  5. *Change one prompt byte* — an em dash to a hyphen in the JSON
+     instructions — 1 of 26 red.
+  6. *Edit one byte of the golden fixture* (`done: hey` → `done: HEY`) —
+     2 of 26 red: the md5 assertion and the loop parity.
+  7. *Let a list field accept a bare string* — 1 of 26 red. Pydantic's refusal
+     to coerce is why an unparseable reply to `CritiqueResponse` comes back
+     empty rather than as one long finding.
+- Ringmaster: not yet ruled
+- Open:
+  - **`ReActResponse` satisfies 2.4's `ReplyModel` with no adapter**, which is
+    the whole reason that seam was declared as two functions. The golden test
+    hands the class straight to `new Agent({ model: ReActResponse })` and drives
+    the real loop to the recorded answer and the recorded four turns.
+  - **`answerOf` is new API on the base**, not in §5.4's signature list. It is
+    the give-up the repeat guard synthesises, expressed once instead of at the
+    call site: the old tree wrote `new model({[model.answerField()]: text})`
+    inside the loop, which puts the field table in the loop's hands. A list
+    answer field takes the text as its single item, because `accept` refuses a
+    bare string for a list and a give-up that raised would defeat itself.
+    Architect's call whether §5.4 should name it.
+  - **`isAnswer` is on the base, returning `true`.** The Python had it as a free
+    function reading `getattr(parsed, "is_answer", True)`; as a property it is
+    the same rule, expressed where the type system can see it, and it is what
+    makes every response class usable as a `ReplyModel`.
+  - **Python's `str()` came across as fifteen lines inside `base.ts`, not as a
+    `py-str` module.** Only one caller is left in this tree — a list answer
+    field rendered with Python's `repr` per item, quote character switching so
+    an apostrophe in a finding stays well formed. The other two callers named in
+    the old `py-str.js` header are in `tools.js`, which is 4.2's.
+  - **`ResponseContract` is not here.** It is the RESPONSE-slot component and §4
+    puts it in `core/prompt/components.ts` at 2.6, along with the per-class
+    memo of the rendered instructions that the old tree kept beside it.
+  - **`ResponseClass<T>` names the statics it needs instead of intersecting
+    `typeof BaseResponse`**, which is abstract and therefore not constructible
+    — `new this(...)` is TS2511 otherwise.
+  - **The other three goldens are still only at the tag.**
+    `render-{bare,full,plain-text}.prompt` are prompt-assembly fixtures with no
+    reader before 2.6, and 2.0 is the increment that lands `tests/golden/`
+    whole with an md5 per fixture. `react-loop.json` came in early because 2.5
+    has a use for it today; 2.0's job is now the other three and generalising
+    the assertion this file inlines.
