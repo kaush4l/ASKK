@@ -22,6 +22,7 @@ import { Agent } from '@/core/agent/agent'
 import { react } from '@/core/agent/react'
 import { ScriptedInference } from '@/core/inference/scripted'
 import type { InferenceConfig } from '@/core/inference/base'
+import { CORE_MARK } from '@/core/prompt/slots'
 import { stubPorts } from '@/core/ports'
 
 /**
@@ -298,7 +299,12 @@ describe('the oracle', () => {
       ports: { ...stubPorts(), newId: () => 'turn-1' },
       // The prompt is 2.6's; what this proves is the reply path, so the seam
       // renders something stable and nothing here pretends to be a prompt.
-      prompt: (session) => `PROMPT ${session.query}`,
+      // The real assembler is fitted at `core/agent/build.ts` and driven by
+      // `tests/turn.test.ts`, which is where the bytes are the subject.
+      prompt: (session) => ({
+        prompt: `PROMPT ${session.query}`,
+        breakdown: { bytes: 0, bands: [], hits: 0, misses: 0, build: CORE_MARK },
+      }),
       model: ReActResponse,
       tools: async () => 'echo: hey',
     })

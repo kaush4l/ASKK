@@ -57,7 +57,7 @@ const USAGES = ['echo({"text": "<text>"}): Echo the text back.', 'weather({"city
 function render(recipe: Recipe, messages: readonly { role: 'user' | 'assistant'; content: string }[] = []): string {
   const transcript = new Transcript(messages)
   const session = new Session({ id: 'turn-1', query: 'q', transcript })
-  return promptFor(recipe)(session)
+  return promptFor(recipe)(session).prompt
 }
 
 describe('the oracle', () => {

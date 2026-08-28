@@ -20,6 +20,7 @@
  * wholesale for the same reason.
  */
 
+import type { RenderPrompt } from '@/core/agent/agent'
 import type { Session } from '@/core/agent/session'
 import type { Transcript } from '@/core/agent/transcript'
 import { PromptAssembler } from '@/core/prompt/assembler'
@@ -50,13 +51,27 @@ export interface Recipe {
 }
 
 /**
- * A transcript as prompt lines. `[USER]: hi`, uppercased role, bare content.
+ * The label a line the harness wrote renders under, instead of the role's own.
+ *
+ * These are prompt bytes: the model reads them, and they were chosen once, here.
+ * A line written by the harness under the `user` role — the repeat guard's
+ * give-up is the only one today — must not come back to the model as something
+ * a person said, and must not come back as something the model itself said
+ * either. It is labelled for what it is. `AGENT.md` §0.1 E4.
+ */
+export const HARNESS_LABEL = 'HARNESS'
+
+/**
+ * A transcript as prompt lines. `[USER]: hi`, uppercased role, bare content —
+ * except for a line the harness wrote, which is labelled `[HARNESS]`.
  *
  * Here rather than on `Transcript` because this is text the model reads, and
  * there may be only one place that writes it.
  */
 export function historyLines(transcript: Transcript): string[] {
-  return transcript.messages.map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
+  return transcript.messages.map(
+    (m) => `[${m.origin === 'harness' ? HARNESS_LABEL : m.role.toUpperCase()}]: ${m.content}`,
+  )
 }
 
 /**
@@ -80,7 +95,10 @@ export function baseComponents(recipe: Recipe, transcript: Transcript): Componen
  * The assembler is a parameter and outlives the call on purpose: the memo is
  * the whole reason the head of the prompt stays byte-stable turn after turn,
  * and one built per render would hit it never.
+ *
+ * `detail` and not `assemble`: the seam carries the breakdown as well as the
+ * bytes, because the assembler computes it either way (`AGENT.md` §3.5).
  */
-export function promptFor(recipe: Recipe, assembler: PromptAssembler = new PromptAssembler()): (session: Session) => string {
-  return (session) => assembler.assemble(baseComponents(recipe, session.transcript))
+export function promptFor(recipe: Recipe, assembler: PromptAssembler = new PromptAssembler()): RenderPrompt {
+  return (session: Session) => assembler.detail(baseComponents(recipe, session.transcript))
 }

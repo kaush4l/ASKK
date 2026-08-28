@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { Agent, PLAIN_TEXT } from '@/core/agent/agent'
-import type { ReplyModel } from '@/core/agent/agent'
+import type { Assembled, ReplyModel } from '@/core/agent/agent'
 import type { Session } from '@/core/agent/session'
 import { NO_TOOLS, OUTCOMES, TERMINAL, outcomeOf, react } from '@/core/agent/react'
 import { ScriptedInference } from '@/core/inference/scripted'
 import type { InferenceRequest, InferenceResult, OnDelta } from '@/core/inference/base'
 import type { InferenceConfig } from '@/core/inference/base'
+import { CORE_MARK } from '@/core/prompt/slots'
 import { stubPorts } from '@/core/ports'
 import type { Ports } from '@/core/ports'
 import type { AssembledEvent, DeltaEvent, DoneEvent, Observer, RetryEvent } from '@/core/observer'
@@ -85,8 +86,17 @@ function logging(log: string[]): Observer {
   }
 }
 
-/** The prompt seam. It renders the session, so a prompt built once would show. */
-const prompt = (session: Session): string => `${session.query}|${session.transcript.length}`
+/**
+ * The prompt seam. It renders the session, so a prompt built once would show.
+ *
+ * The double still has to return an `Assembled` — the seam widened at 2.8 —
+ * and its breakdown is empty because no assembler ran. The real one is fitted
+ * in `core/agent/build.ts` and driven by `tests/turn.test.ts`.
+ */
+const prompt = (session: Session): Assembled => ({
+  prompt: `${session.query}|${session.transcript.length}`,
+  breakdown: { bytes: 0, bands: [], hits: 0, misses: 0, build: CORE_MARK },
+})
 
 describe('the react loop', () => {
   test('runs to the declared terminal and leaves the turns behind', async () => {

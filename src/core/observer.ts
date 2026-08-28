@@ -18,15 +18,21 @@
  * event is born.
  */
 
+import type { Breakdown } from '@/core/prompt/assembler'
+
 /** The prompt that is about to go out, reported before it does. */
 export interface AssembledEvent {
   turnId: string
   phase: string
-  /**
-   * The whole prompt as one string. 2.6 replaces this with the assembler's
-   * `PromptBreakdown`, which is the same fact with its bands still separate.
-   */
+  /** The whole prompt as one string — the bytes the transport is about to be handed. */
   prompt: string
+  /**
+   * The same fact with its bands still separate: where each component sorted,
+   * what it hashed to, its byte share, and whether it came back from the memo.
+   * The assembler computed all of it every turn and the event discarded it
+   * (`AGENT.md` §3.5); it is carried from 2.8 on, and 3.2 maps it onto the wire.
+   */
+  breakdown: Breakdown
 }
 
 /** Arrival at a phase — every pass of the loop, not only the first. */

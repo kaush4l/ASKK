@@ -755,3 +755,105 @@ Entry shape:
   - **No `@font-face` and no `src/ui/fonts/`.** DESIGN §3.4's woff2 subsets arrive with the shell at 6.2; the family tokens resolve to their fallback stacks meanwhile, which is a real render and not an inert one. The absolute-url and CDN halves of the `fonts` rule are already armed.
   - **`design.ts` is 506 lines and `size.ts` prints its advisory.** It is the largest file in the tree and it does not fail — but the `max` ratchet arms at the end of wave 2 (§8.3), and it will arm against this file. Named here so that is a decision someone makes rather than a surprise mid-ratchet.
   - **UNENFORCED, printed by the check itself on every run**, so coverage is not inferred from silence: DESIGN §9.2's four (five named states per surface; that a model-facing render remembered `data-bytes`; the identity test; hierarchy and copy quality), plus the seven rendered rules that belong to `scripts/browser/{contrast,geometry,coldopen,frontdoor}.ts` and are deliberately not in `bun run gate` (§10.2 ruling 3).
+
+## 2.8 — One turn, joined: the first check whose subject is a relationship — 2026-08-28
+- Files: `src/core/agent/build.ts` (new — the composition root), `tests/turn.test.ts`
+  (new), `src/core/agent/{agent,session,react,transcript}.ts`,
+  `src/core/observer.ts`, `src/core/prompt/recipe.ts`, `docs/scratch/FLOW.md`
+  (struck, see below). **Beyond the increment's declared files, and reported
+  rather than quietly done:** `tests/{agent-react,prompt,responses}.test.ts`,
+  one mechanical line each — see "Open".
+- Proof: `bun run gate` → **7 checks ran, 0 failed · gate GREEN**
+  (`types ok`, `tests 96 pass / 0 fail / 443 expect() calls across 8 files`,
+  `purity ok`, `size: total 4033 non-blank lines across src + scripts` ·
+  `size: max 506 lines — scripts/checks/design.ts (ratchet NOT armed)`,
+  `design: 8 sub-check(s), 0 failed, 2 pending`, `gate-coverage ok`,
+  `export: out/ holds 19 file(s)`). The count is **7 and not 6** because 6.1's
+  `checks/design.ts` landed in the same tree while this increment ran.
+- **What this proves, exactly.** `promptFor → Agent.turn → Inference` for **one
+  path**, in one process, **with a fake transport (`ScriptedInference`) and a
+  handed-in context**. Assertion (a) compares the prompt string the *transport
+  received* — `ScriptedInference.received[0].prompt`, the far end — against
+  `tests/golden/render-full.prompt`, which is the difference between proving a
+  part and proving a path.
+- **What it does not prove.** core ↔ page and agent ↔ worker are **untouched
+  and still unjoined**: `grep -rn "core/" src/app src/client src/ui` still
+  returns nothing, `StorePort` still has zero callers, `idb` still has zero
+  importers. No byte has ever gone to a real endpoint through this path. Those
+  are 3.1/3.3's and 2.9 is what will keep score.
+- The clock trap is untouched and still asserted in both halves: the goldens
+  pin `2026-08-16 12:00:00 PDT` beside `day: Saturday`, that date is a
+  **Sunday**, and `tests/turn.test.ts` hands the context in fixed for the same
+  reason `tests/prompt.test.ts` does. No clock can derive the pair.
+- **The goldens were NOT regenerated, and that is the finding.** PLAN 2.8 says
+  they are "deliberately regenerated in the same commit" because of the E4
+  marker. They did not need to be: no fixture contains a harness-written entry,
+  so `historyLines()`'s new branch changes no recorded byte, and all three md5s
+  still hold (`85a6ed…`, `76d49f…`, `5c5f1a…`). Regenerating would have been a
+  no-op that spent the oracle's authority for nothing.
+- Nine planted breaks, each watched red against `bun test tests/turn.test.ts`
+  (10 tests, 35 expect() calls) and reverted:
+  1. *`buildAgent`'s prompt replaced by the one-line double* — **3 red**. This
+     is the causal one: the golden is what makes a double detectable.
+  2. *the give-up no longer passes `'harness'`* — 3 red.
+  3. *`historyLines` ignores `origin`* — 2 red.
+  4. *`infer` called with two arguments again* (the severed seam restored) — 1 red.
+  5. *`Agent.open` drops the signal on the way to the `Session`* — 1 red.
+  6. *`assembled` posted after `infer` resolves* — 1 red.
+  7. *`AssembledEvent` carrying an empty breakdown* — 1 red.
+  8. *`replyModel` always returning `PLAIN_TEXT`* — **7 red**.
+  9. *the recipe's `usages` dropped from the prompt* — 2 red.
+- Ringmaster: not yet ruled
+- Open:
+  - **Three test files outside the declared ownership were edited, one line
+    each, and none of them optionally.** Widening `RenderPrompt` to return
+    `{ prompt, breakdown }` is what 2.8 mandates, and it breaks every existing
+    prompt double at compile time: `tests/agent-react.test.ts:89`,
+    `tests/responses.test.ts:301`, and `tests/prompt.test.ts`'s `render()`
+    helper (`promptFor(recipe)(session)` → `.prompt`). The edits are mechanical,
+    assert nothing new and delete nothing; `tests/prompt.test.ts`'s
+    Sunday/Saturday property is untouched. PLAN's 2.8 file list does not name
+    them and should have.
+  - **`AGENT.md` §0.1 E4 is wrong about the tree, and the test says so.** E4
+    states that the repeat guard's third tier "synthesises a give-up answer …
+    and `Agent.turn` writes it into the transcript as an `assistant` message".
+    It does not: `callTools` returns `agent.model.answerOf(...)` straight to the
+    caller and it never passes through `turn`, which `FLOW.md` §5 measured
+    independently ("the give-up never passes through `turn`"). So the harness
+    never speaks **in the model's voice** at all. What it does do is write
+    `Result: Stopping — …` into the conversation **under the `user` role**, and
+    that is the entry now marked `origin: 'harness'` — which is what PLAN 2.8's
+    acceptance actually says ("the give-up path sets `origin: 'harness'`"). The
+    increment is implemented against PLAN; §0.1 E4's sentence needs the
+    architect.
+  - **The scold and every tool observation are equally harness-written and are
+    NOT marked.** `react.ts` writes `Result: <observation>` and the "You already
+    made this exact call N time(s)…" scolding into the transcript under the
+    `user` role too. Marking them was outside 2.8's stated scope (which names
+    the give-up path only), so the prompt now renders `[HARNESS]:` for one line
+    and `[USER]:` for its siblings. That inconsistency is real and is the
+    architect's call, not the coder's.
+  - **`Origin = 'model' | 'harness'` is the design's union and its `'model'`
+    member is a misnomer** for a `user`-role message: no model wrote `[USER]:
+    hi` either. What the field really distinguishes is *the role's own party*
+    from *the harness*. Implemented as designed; named here rather than renamed.
+  - **The marker's bytes were chosen here, once:** a harness entry renders as
+    `[HARNESS]: <content>` instead of `[USER]:`/`[ASSISTANT]:`, via
+    `HARNESS_LABEL` in `core/prompt/recipe.ts`. They are prompt bytes with no
+    prior source to copy from; nothing may paraphrase them afterwards.
+  - **`AssembledEvent` kept its `prompt` string and gained `breakdown`.**
+    `AGENT.md` §3.5 reads "carries it"; dropping the string would leave the
+    event unable to show *what* was assembled, which is the only reason it fires
+    before inference. Both are asserted equal to what the transport received.
+  - **`buildAgent` still has exactly one caller and it is a test** — the shape
+    FLOW indicted. Its second caller is `engine/build-agent.ts` at 4.1 and its
+    2.9 allowlist entry expires at the **end of wave 4**.
+  - **`checks/reach.ts` was deliberately not written** — that is 2.9, seeded
+    from this post-join tree.
+  - **A concurrent increment shares this working tree.** 6.1 wrote
+    `src/ui/tokens.css`, `scripts/checks/design.ts` and `scripts/gate.ts` while
+    this increment ran, and this increment's planted-break harness restored
+    `src/` and `tests/` wholesale nine times. Nothing appears lost — the gate is
+    green and 6.1's files are present — but the two increments raced on one
+    directory and only luck decides that. Disjoint files is not disjoint
+    worktrees.

@@ -10,6 +10,34 @@
 
 ---
 
+## STRUCK BY 2.8 — read this before any sentence below
+
+**Increment 2.8 landed the join this document was written to measure the
+absence of.** The rest of the file is the pre-join tree and is left standing
+because it is the evidence the join rests on — but the findings below are now
+**historical**, and every `file:line` in `src/core/agent/*` and
+`src/core/prompt/recipe.ts` has moved. It is not re-measured here: a
+re-measurement is its own pass, and half a re-stamp is worse than a strike.
+
+| Struck | Was | Is, after 2.8 |
+|---|---|---|
+| §0 · "`new Agent(` appears in `src/` **zero** times" | only a doc comment | `src/core/agent/build.ts` constructs one, and it is the only place in `src/` that does |
+| §0 · "`promptFor` has exactly one caller, `tests/prompt.test.ts:60`" | one test caller | `build.ts` (value import) and `tests/turn.test.ts` |
+| §0 · "the assembler and the agent have never run in the same process" | true, and the most load-bearing fact here | `tests/turn.test.ts` runs a turn through `buildAgent`, and asserts the prompt **the transport received** against `tests/golden/render-full.prompt` |
+| §0 / §4 · "`ReActResponse` is never used as an `Agent.model`" | the `BaseResponse` → `ReplyModel` adapter was structural and unexercised | `buildAgent` fits it from `Recipe.model`; `tests/turn.test.ts` (c) crosses it in both directions |
+| §3 · "Cancellation — threaded to the transport, threaded from nowhere"; "`Agent.turn` calls `infer` with **two** arguments" | severed one level above where it was built | `AgentOptions.signal` → `Session.signal` → `infer`'s third argument. Watched red twice: two-argument `infer`, and `open()` dropping the signal |
+| §6 · "give-up notice … `react.ts:102`" | an unmarked `user` message | the same line, written with `origin: 'harness'`, rendered by `historyLines()` as `[HARNESS]: …` |
+| §2 · the assembler chain ending in `assemble()` | the `Breakdown` was computed every turn and discarded | `RenderPrompt` returns `{ prompt, breakdown }` and `AssembledEvent` carries both |
+
+**Still true, and still the reason nothing here should be read as "the join is
+done":** `grep -rn "core/" src/app src/client src/ui` returns nothing — no part
+of the core is reachable from the page. `StorePort` has zero callers. `idb` has
+zero importers. Nothing survives a reload. 2.8 joined **one path, in one
+process, with a fake transport and a handed-in clock**; core ↔ page and
+agent ↔ worker are untouched and are 3.1/3.3's.
+
+---
+
 ## 0. The headline, before the detail
 
 **There is no UI end of this chain.** The only route,

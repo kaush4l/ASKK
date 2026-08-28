@@ -99,7 +99,15 @@ async function callTools(agent: Agent, session: Session, parsed: Reply): Promise
 
   if (seen > agent.repeatLimit) {
     agent.observer.retry?.({ turnId: session.id, call, seen, gaveUp: true })
-    session.transcript.add('user', `Result: Stopping — ${call} was tried ${seen} times without progress.`)
+    // Marked `harness`: these words go into the conversation under the `user`
+    // role and no user typed them, and the next prompt renders the transcript
+    // back to the model. `historyLines()` is what keeps them from arriving as
+    // somebody else's — `AGENT.md` §0.1 E4, `transcript.ts`.
+    session.transcript.add(
+      'user',
+      `Result: Stopping — ${call} was tried ${seen} times without progress.`,
+      'harness',
+    )
     return agent.model.answerOf(`I could not complete this. ${call} failed every time I tried it.`)
   }
 

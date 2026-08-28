@@ -10,13 +10,13 @@
  * call back into the agent; that cycle was made by the file layout and is not
  * ported.
  *
- * Two collaborators are **seams and not implementations**, because the things
- * that fill them do not exist yet:
+ * Two collaborators are **seams and not implementations**:
  *
- * - `prompt` renders the session as the string that goes to the model. The
- *   assembler is 2.6. Nothing here invents prompt bytes.
+ * - `prompt` renders the session as the string that goes to the model. Nothing
+ *   here invents prompt bytes. `core/agent/build.ts` is the one place the real
+ *   assembler is fitted to it (2.8); before that the seam had only doubles.
  * - `tools` runs the calls the model wrote and returns what the model reads
- *   next. The toolbox is 4.2.
+ *   next. The toolbox is 4.2 and still has none.
  *
  * Both are declared here so the loop can be finished and exercised now, and
  * neither has a plausible-looking stand-in, which is how an increment ends up
@@ -24,6 +24,7 @@
  */
 
 import type { Inference } from '@/core/inference/base'
+import type { Breakdown } from '@/core/prompt/assembler'
 import { Session } from '@/core/agent/session'
 import { Transcript } from '@/core/agent/transcript'
 import type { Message } from '@/core/agent/transcript'
@@ -60,8 +61,24 @@ export const PLAIN_TEXT: ReplyModel = {
   answerOf: (text) => ({ isAnswer: true, answer: text }),
 }
 
-/** The prompt seam. 2.6's assembler is what fills it. */
-export type RenderPrompt = (session: Session) => string
+/**
+ * What the prompt seam produces: the bytes that go to the model, and the
+ * account of how they were built.
+ *
+ * The breakdown is not extra work — `PromptAssembler.detail()` computes every
+ * band, both memo counters and the bundle sentinel on every turn and the old
+ * seam threw them away (`AGENT.md` §3.5). Returning them costs nothing and is
+ * what `AssembledEvent` carries to the Prompt surface. The alternative — a
+ * second, cheaper assemble path — would put two code paths through the one
+ * function whose byte-exactness is the oracle.
+ */
+export interface Assembled {
+  prompt: string
+  breakdown: Breakdown
+}
+
+/** The prompt seam. `promptFor` (2.6's recipe) is what fills it; `build.ts` is where they meet. */
+export type RenderPrompt = (session: Session) => Assembled
 
 /** The tool seam. 4.2's `Toolbox.invoke` is what fills it; the string is what the model reads next. */
 export type ToolRunner = (call: string) => Promise<string>
@@ -74,6 +91,8 @@ export interface AgentOptions {
   model?: ReplyModel
   tools?: ToolRunner
   observer?: Observer
+  /** Reaches into a call already in flight. Threaded to `infer` through the session. */
+  signal?: AbortSignal
   /** Identical calls allowed before the guard gives up on one. The Python's default. */
   repeatLimit?: number
   messages?: readonly Message[]
@@ -88,6 +107,7 @@ export class Agent {
   readonly observer: Observer
   readonly repeatLimit: number
   readonly tools: ToolRunner | null
+  readonly signal: AbortSignal | null
   readonly #prompt: RenderPrompt
 
   constructor(options: AgentOptions) {
@@ -99,12 +119,13 @@ export class Agent {
     this.observer = options.observer ?? SILENT
     this.repeatLimit = options.repeatLimit ?? 3
     this.tools = options.tools ?? null
+    this.signal = options.signal ?? null
     this.#prompt = options.prompt
   }
 
   /** Open a run. The id comes through the port, so a test can pin it. */
   open(query: string): Session {
-    return new Session({ id: this.ports.newId(), query, transcript: this.transcript })
+    return new Session({ id: this.ports.newId(), query, transcript: this.transcript, signal: this.signal })
   }
 
   /**
@@ -114,11 +135,17 @@ export class Agent {
    * contract, not an implementation detail — see `observer.ts`.
    */
   async turn(session: Session): Promise<Reply> {
-    const prompt = this.#prompt(session)
-    this.observer.assembled?.({ turnId: session.id, phase: session.phase, prompt })
-    const result = await this.inference.infer({ prompt }, (text) => {
-      this.observer.delta?.({ turnId: session.id, text })
-    })
+    const { prompt, breakdown } = this.#prompt(session)
+    this.observer.assembled?.({ turnId: session.id, phase: session.phase, prompt, breakdown })
+    const result = await this.inference.infer(
+      { prompt },
+      (text) => {
+        this.observer.delta?.({ turnId: session.id, text })
+      },
+      // The third argument is the whole of the cancellation seam: the
+      // transports have honoured it since 2.3 and nothing could pass one.
+      session.signal ?? undefined,
+    )
     const parsed = this.model.parse(result.text)
     // The answer field holds the reply — or the tool calls. Bare, line breaks
     // intact: prefixing it would teach the model to copy the prefix.

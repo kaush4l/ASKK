@@ -19,6 +19,13 @@ export class Session {
   readonly query: string
   /** The conversation, which is older than this run and will outlive it. */
   readonly transcript: Transcript
+  /**
+   * The caller's way to reach into a call already in flight. `null` when the
+   * run cannot be cancelled at all, which is a real configuration and not a
+   * missing feature — `ScriptedInference` and `OpenAiInference` both honour a
+   * signal, and before this field no caller could supply one.
+   */
+  readonly signal: AbortSignal | null
 
   /** Where the run is now. One name until 4.5 gives it a graph to move around. */
   phase = ''
@@ -35,9 +42,10 @@ export class Session {
    */
   readonly seen = new Map<string, number>()
 
-  constructor(data: { id: string; query: string; transcript: Transcript }) {
+  constructor(data: { id: string; query: string; transcript: Transcript; signal?: AbortSignal | null }) {
     this.id = data.id
     this.query = data.query
     this.transcript = data.transcript
+    this.signal = data.signal ?? null
   }
 }
