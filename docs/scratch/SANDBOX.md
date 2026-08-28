@@ -577,3 +577,299 @@ Everything was run from a scratch directory; nothing was added to the repo.
   measurement was taken under the architecture's real constraint.
 - Byte counts: `wc -c` on downloaded files; wire cost via
   `curl -w '%{size_download}' -H 'Accept-Encoding: br, gzip'`.
+
+---
+
+# ADDENDUM — 2026-08-28, later the same day: c2w builds, boots, and is 108x slow
+
+> The owner overruled the recommendation above and ordered container2wasm
+> pursued. Everything under §1 stands as the record of what was true before
+> that decision; nothing in it has been edited. This section is a second
+> measurement, and it changes three of §1's conclusions.
+>
+> Same rules: **MEASURED** is quoted output from this machine, *Guess:* marks a
+> guess, and READ is someone else's claim.
+
+## The headline, before the detail
+
+**There is an artifact and it boots in a browser.**
+
+```
+$ wc -c /Users/kaush/Downloads/Dev/c2w-work/build/out/alpine.wasm
+109375445
+
+$ shasum -a 256 alpine.wasm
+7cf869c6847b0e55341f80a890cb38f839ade19961c723ed107d6eb1f9c8bb1d  alpine.wasm
+
+$ gzip -9 -c alpine.wasm | wc -c
+40577518
+```
+
+**109,375,445 bytes.** Built in **17m37s**, reproducibly, from
+`scripts/wasm/build.sh` in this repository. It runs real Alpine 3.21.7 on a real
+Linux 6.1 x86_64 kernel in Chrome with **no COOP/COEP and no
+SharedArrayBuffer** — and it executes emulated x86 at roughly **1/108th** the
+speed of the same binary on the same machine.
+
+## 0. What changed about the machine, because it is the whole story of §1.4
+
+§1.4 recorded a build that had not finished at 7m31s. The cause was not the
+build:
+
+```
+before:  colima VM  2 CPUs, 1.914 GiB RAM     (stock)
+after:   colima VM 10 CPUs, 23.42 GiB RAM     (colima stop; colima start --cpu 10 --memory 24)
+host:    16 CPUs, 137438953472 bytes RAM      (sysctl hw.ncpu hw.memsize)
+```
+
+The host had **16 cores and 128 GB** the entire time and the Docker VM was
+using 2 and 1.9. `c2w` hardcodes `--platform=linux/amd64` (`cmd/c2w/main.go`,
+the `build` function), so on Apple silicon *every stage of the build* — the
+kernel, grub, Bochs, two cargo builds — runs under the VM's x86_64 binfmt. On
+2 vCPUs that is what "did not finish" looks like. It was never a c2w defect and
+it was never an unfixable one.
+
+## 1. Blocker 1 (moved org) — solved, and solved better than `--build-arg`
+
+`--build-arg SOURCE_REPO=...` works but leaves the build cloning a moving
+target. `c2w --assets <dir>` passes `--build-context assets=<dir>`, which
+**replaces the `assets` stage entirely**, so the build never clones
+container2wasm at all. `scripts/wasm/build.sh` clones it once at a pinned sha
+and hands it over.
+
+The Homebrew binary is not usable and does not need to be: the CLI is a Go
+program in the same tree.
+
+```
+=== vendoring container2wasm @ 6ed3d98882a2b22eafc1334f574c364a5b2b8c47
+=== building c2w from source
+c2w version <unknown>
+```
+
+(`<unknown>` because the version is injected by `make`, not `go build`. Cosmetic.)
+
+## 2. Blocker 2 (`ftp.gnu.org`) — solved, and the fix is safer than the original
+
+The build now fetches grub from `mirrors.kernel.org` **and checks the sha256**,
+which the original never did from anywhere:
+
+```
+RUN wget -O grub-2.06.tar.gz https://mirrors.kernel.org/gnu/grub/grub-2.06.tar.gz \
+ && echo "23b64b4c741569f9426ed2e3d0e6780796fca081bee4c99f62aa3f53ae803f5f  grub-2.06.tar.gz" | sha256sum -c -
+```
+
+A substituted origin is only honest if the bytes are proven identical. That is
+the whole argument for content pinning in one line.
+
+## 3. Blocker 3 (time) — 17m37s, on a warm cache
+
+```
+real	17m36.947s
+```
+
+Read that with two caveats:
+
+- **52 of the ~120 build steps reported `CACHED`.** The earlier attempts left
+  busybox, runc, tini and the base images in the buildkit cache. A genuinely
+  cold build is longer and I did not measure how much longer.
+- It is 10 vCPUs of x86 emulation. On the original 2 it was unbounded.
+
+## 4. Blocker 4 (twenty unpinned origins) — the honest answer
+
+§1 said this is the one patience does not fix. That is still true, but the
+claim was too broad and the shape of it is different than it looked.
+
+**What was overstated:** several of those origins were *already* sha-pinned by
+upstream (`Bochs`, `qemu-wasm`, `tinyemu-c2w`, `wizer`, `libffi`). And the
+twenty-origin count is the *whole* Dockerfile; a `--target-arch=amd64` build
+executes about **fourteen** of them and never touches the riscv, aarch64, QEMU
+or emscripten paths.
+
+**What is now pinned** — `scripts/wasm/PINS.env` and the seds in `build.sh`:
+four base images by manifest digest, eight git sources by commit sha, four
+tarballs by sha256. The script **refuses to build** if any patch failed to
+apply, because a no-op `sed` that leaves the original Dockerfile intact is
+exactly the "reports success for work it did not do" defect this project guards
+against:
+
+```
+grep -q "$SHA256_BUSYBOX" "$DF"  || { echo "PATCH FAILED: busybox"; exit 1; }
+if grep -q "ftp.gnu.org" "$DF"; then echo "PATCH FAILED: ftp.gnu.org survived"; exit 1; fi
+```
+
+**What is still not pinned, and cannot be without more work:** nine
+`apt-get install` lines against the live Ubuntu and Debian archives,
+`proxy.golang.org`, `crates.io`, and registry availability. Full list with
+consequences in `scripts/wasm/README-UNPINNED.md`.
+
+**The sentence that matters:** a content pin turns *silently different* into
+*loudly absent*. It does not make the build survive an origin disappearing.
+Two of the pinned repositories are still `ktock/*` — the same account that
+moved `container2wasm` out from under this build once, and a commit sha does
+not survive a repository being deleted. **This build works today because
+sixteen servers are up today.** Making it genuinely reproducible means
+vendoring roughly a gigabyte of bytes into this tree, and that trade has not
+been made.
+
+## 5. It boots — in the browser, with no cross-origin isolation
+
+`scripts/wasm/serve-probe.ts` serves with **no** COOP/COEP headers;
+`scripts/wasm/boot-probe/` instantiates the guest in a module Worker, passes
+the command as argv, and captures stdout. Driven by headless Chrome:
+
+```
+crossOriginIsolated = false
+SharedArrayBuffer   = false
+wasm bytes = 109375445
+fetch ms = 32
+compile ms = 23
+stubbed ENOTSUP: sock_accept
+instantiate ms = 7
+GUEST STDOUT: "NAME=\"Alpine Linux\"\r\nID=alpine\r\nVERSION_ID=3.21.7\r\n..."
+first guest output at ms = 672
+EXIT exit with exit code 0 at 803 ms
+```
+
+```
+GUEST STDOUT: "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n"
+first guest output at ms = 712
+EXIT exit with exit code 0 at 838 ms
+```
+
+Three things in that output are load-bearing:
+
+1. **`SharedArrayBuffer = false` and it still works.** This is the disqualifying
+   question from §5 and c2w passes it. The *upstream demo* needs SAB twice —
+   `xterm-pty`'s `TtyClient` blocks the worker on `Atomics.wait` for interactive
+   stdin, and the networking stack passes frames through a `SharedArrayBuffer`
+   (`examples/wasi-browser/htdocs/stack.js`). Neither is needed to boot the
+   guest and run a command. **The artifact does not require cross-origin
+   isolation; interactive stdin and networking do.**
+2. **~700 ms to first output is not a Linux boot.** `OPTIMIZATION_MODE=wizer`
+   pre-initialises the emulator, so the kernel boot happened at *build* time —
+   which is why the guest's `uname` reports the build timestamp. What is
+   measured here is resuming a snapshot, not booting.
+3. **`stubbed ENOTSUP: sock_accept`.** The guest imports a WASI socket call the
+   browser shim does not define. The probe fills missing imports with a
+   function returning errno 58 **and prints their names**. It would have been
+   one line to stub them silently and one line more to return 0; that is
+   `LESSONS.md` defect 3 exactly, and the reason the probe announces it.
+
+`compile ms = 23` for 109 MB is V8 compiling lazily, not compiling 109 MB. The
+cost appears at run time.
+
+**Not measured:** peak memory. `browse memory` reports the page's JS heap
+(1.3 MB) and per-process CPU but no per-process RSS, so the wasm memory
+footprint of a 109 MB module with a 128 MiB guest is **unknown to me**. It is
+the number a real device budget would need.
+
+**Not measured:** whether it works from a GitHub Pages *subpath*. Every URL in
+the probe is relative, so it should, but "should" is not a measurement.
+
+### wasmtime cannot run this artifact at all
+
+The obvious host-side check fails, and not in the guest:
+
+```
+$ wasmtime alpine.wasm uname -a
+thread '<unnamed>' panicked at cranelift-codegen .../inst_builder.rs:688:78:
+called `Result::unwrap()` on an `Err` value: MemFlagsSetOverflow
+```
+
+wasmtime 48.0.1 panics in Cranelift while compiling the module. The browser
+compiles and runs the same bytes. Every runtime figure below is therefore
+V8's, and c2w's own README's `wasmtime out.wasm uname -a` does not work here.
+
+## 6. The speed, which is the finding that matters
+
+Same work, same input, three places. `busybox sha256sum` over zeros; the guest
+hashes were checked against the host and are **identical**, so the guest really
+did the work:
+
+| where | workload | wall | per MiB |
+|---|---|---:|---:|
+| Chrome, Bochs-in-wasm, x86 guest | 32 MiB | 14.04 s | 0.4388 s |
+| Chrome, Bochs-in-wasm, x86 guest | 128 MiB | 55.17 s | 0.4310 s |
+| colima, x86 binfmt, **same busybox** | 1 GiB | 4.09 s | 0.00399 s |
+| colima, arm64 alpine, native | 1 GiB | 2.99 s | 0.00292 s |
+
+(Guest times have the 0.67 s resume subtracted. Container rows have a measured
+0.15 s startup subtracted. The two guest rows agree to 2%, so the cost is
+linear and not a fixed overhead being amortised.)
+
+```
+guest 32 MiB  -> 83ee47245398adee79bd9c0a8bc57b821e92aba10f5f9ade8a5d1fae4d8c4302
+host  32 MiB  -> 83ee47245398adee79bd9c0a8bc57b821e92aba10f5f9ade8a5d1fae4d8c4302
+guest 128 MiB -> 254bcc3fc4f27172636df4bf32de9f107f620d559b20d760197e452b97453917
+host  128 MiB -> 254bcc3fc4f27172636df4bf32de9f107f620d559b20d760197e452b97453917
+```
+
+**Emulator : same-binary-under-host-binfmt = 108 : 1.**
+**Emulator : native arm64 = 148 : 1.**
+
+## 7. The three prior figures, confirmed or refuted
+
+| prior claim | verdict |
+|---|---|
+| bare Alpine wasm ≈ **42.7 MB** | **Refuted for this configuration.** 109,375,445 bytes uncompressed. *Guess: the old figure may have been gzipped — `gzip -9` gives 40,577,518, which is within 5% of 42.7 MB — or built with `--external-bundle`, which moves the image out of the wasm. I did not build either variant, so this is a guess about someone else's number, not a measurement.* |
+| Alpine as OCI layout ≈ **3.7 MB** | **Not tested.** That is a figure about a container image, not a wasm artifact, and nothing in this build produces it. |
+| emulator:guest ≈ **11.6 : 1** | **Refuted, badly.** Measured 108:1 against the fairest denominator available and 148:1 against native. Whatever produced 11.6:1 was not this configuration — *Guess: a JIT-based emulator (QEMU) rather than Bochs, which is an interpreter.* |
+
+## 8. Three silent zeros hit while measuring this, all worth keeping
+
+Every one of these produced a plausible-looking number for work that never
+happened. They are the same defect as a sandbox returning exit 0.
+
+1. **`git ls-remote <repo> refs/tags/v6.1` returns the tag *object* sha**, not
+   the commit. The first build failed after ~8 minutes on
+   `test "$(git -C linux rev-parse HEAD)" = "7614896..."`. The assertion was
+   right and the pin was wrong. Peel with `refs/tags/v6.1^{}`. Annotated tags
+   (linux, runc) peel; lightweight ones (tini, wasi-vfs) do not.
+2. **macOS `dd bs=1m` errors**, and the first host baseline was
+   `dd if=/dev/zero bs=1m count=32 2>/dev/null | shasum -a 256`. `2>/dev/null`
+   ate the error, `shasum` hashed *nothing*, and it returned
+   `e3b0c44298fc...` — the sha256 of the empty string — in 0.015 s. A number
+   that looked like a result and was zero work. Caught only because
+   `e3b0c442` is recognisable.
+3. **busybox `date +%s%N` has no nanoseconds.** An in-guest timer built on it
+   printed `0 ms` for both native and emulated runs. A perfect score, measuring
+   nothing.
+
+## 9. What a second person has to do
+
+```
+colima stop && colima start --cpu 10 --memory 24     # 2 vCPUs will not finish
+bash scripts/wasm/build.sh alpine:3.21 ~/.cache/askk-wasm
+cp ~/.cache/askk-wasm/out/alpine.wasm scripts/wasm/boot-probe/guest.wasm
+bun scripts/wasm/serve-probe.ts                       # no COOP/COEP, port 4611
+# then open http://localhost:4611/?cmd=uname%20-a  (or ?argv=sh,-c,<command>)
+```
+
+Requirements: Docker with buildx, Go (to build `c2w` from the pinned tree), and
+patience. `scripts/wasm/PINS.env` holds every pin;
+`scripts/wasm/README-UNPINNED.md` holds everything that is not pinned and what
+happens when it goes. The 109 MB artifact is **not** committed —
+`scripts/wasm/boot-probe/.gitignore` keeps it out.
+
+## 10. What this does to §1's open questions
+
+- **"WHAT WOULD CHANGE THIS" item 1** asked for a completed build, measured in
+  bytes, booting in a browser in under ~5 s. **Half satisfied.** It builds, it
+  boots in 0.8 s, and it costs 109 MB (40.6 MB gzipped) on the wire. Whether
+  40 MB is acceptable against the cold-open test is a NORTH-STAR question, not
+  a measurement one. It was not verified at a Pages subpath.
+- **Item 2** asked for the build chain to be pinned. **Partly satisfied and
+  honestly bounded.** Sixteen origins are content-pinned; `apt`, the Go proxy,
+  crates.io and registry availability are not, and pinning is not vendoring.
+- **Item 6** asked whether the 11.6:1 ratio is wrong. **It is wrong, in the
+  direction that hurts.** 108:1 is not "slow"; a `cargo build` that takes a
+  minute natively takes most of two hours. Anything an agent would plausibly
+  run in a sandbox — install a package, compile, run a test suite — is out of
+  reach, and that is a property of Bochs being an interpreter, not of this
+  machine.
+- **§5's disqualifying question** — does it need SharedArrayBuffer — is
+  answered **no**, which is the one thing that would have killed it outright
+  and does not.
+
+The measurement is done and the numbers are on the table. What they are worth
+against NORTH-STAR is the ringmaster's call, not this file's.
