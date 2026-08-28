@@ -137,8 +137,30 @@ Zero console errors. All three behaviours the election needs are present:
    one that matters: it is how a second tab learns it is not the writer without
    blocking forever.
 
-→ The single-writer election is viable as designed. §11's worse fallback is not
-needed. PLAN 1.5 should still assert this so a browser regression is caught.
+> **CORRECTED 2026-08-28 — this measurement does NOT prove the election.**
+> The probe's callback *returned*, so its lock released the moment
+> `postMessage` resolved — which is precisely why the follow-up
+> `{ifAvailable:true}` was granted. `navigator.locks.request` releases when the
+> callback's promise **settles**, not when the tab closes. So the reading
+> `"correctly-null-when-held"` above was produced by a *nested* request inside a
+> still-running callback, and the top-level `ifAvailable:true` succeeding is
+> consistent with an election that does not hold at all.
+>
+> What M5 actually proves: the three **API behaviours** exist in a classic
+> worker under a subpath export. What it does not prove: that a writer election
+> built on them holds a lock for a worker's lifetime. Citing it in the design's
+> defence was wrong, and the design it defended was in fact broken — §7.3 now
+> requires the callback to `return new Promise<never>(() => {})`.
+>
+> **The general lesson, which is the reason this correction stays in the file
+> rather than being edited away: a probe that does not implement the mechanism
+> does not test the mechanism.** It tests the API the mechanism is made of, and
+> those are not the same claim.
+>
+> Increment 1.5 now asserts the real property — a second `{ifAvailable:true}`
+> issued *while the first callback is still pending* must receive `null` — and
+> it was watched failing against a deliberately wrong implementation before it
+> was trusted. See `scripts/verify-worker.ts`.
 
 **Note the realm subtlety:** this worked in a *classic* worker (M2 — webpack
 drops `type:'module'`). `navigator` is present there; `localStorage` is not.
