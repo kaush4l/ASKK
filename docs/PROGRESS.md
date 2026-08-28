@@ -618,3 +618,105 @@ Entry shape:
     whole with an md5 per fixture. `react-loop.json` came in early because 2.5
     has a use for it today; 2.0's job is now the other three and generalising
     the assertion this file inlines.
+
+## 2.6 — Prompt assembly: a sorted bag of immutable components — 2026-08-28
+- Files: `src/core/prompt/{slots,template,component,components,assembler,recipe}.ts`,
+  `tests/prompt.test.ts`, `tests/golden/render-{bare,full,plain-text}.prompt`
+- Proof: `bun run gate` → **6 checks ran, 0 failed · gate GREEN**; `bun test` →
+  `86 pass, 0 fail, 408 expect() calls, Ran 86 tests across 7 files`;
+  `bun run types` clean; `purity: src/core — 19 file(s) scanned · ok`;
+  `size: total 3329 non-blank lines across src + scripts`,
+  `size: max 235 lines — src/core/response/base.ts`.
+- Proof, the oracle: the three prompt fixtures are restored from the tag and
+  **verified, not assumed**. `md5 -q` and `git hash-object` of each restored
+  file against `git show pre-workbench:<path> | md5` and
+  `git ls-tree pre-workbench tests/golden/`:
+
+  | fixture | md5 | blob |
+  |---|---|---|
+  | `render-bare.prompt` | `85a6ed70916df610ea9db80c513ce335` | `4ed7ba66dee13cabd33827851b7a59c91f516e2c` |
+  | `render-full.prompt` | `76d49f369b33d058b29f68adbc89cd7b` | `37e0b61a0d34a43a2ad8e661059a9df159cfdd57` |
+  | `render-plain-text.prompt` | `5c5f1a0c81b17fdc8dfdac3b7a9a87d1` | `4113ae1a52197b702bfbc936401d8f288f87eee4` |
+
+  All three md5s are asserted in the suite, so editing a fixture is red — watched.
+- Proof, the bytes: measured against the old tree, not asserted about it.
+  `git worktree add <tmp> pre-workbench` and a script importing
+  `<tmp>/core/{components,tool-prompt,responses,assembler,component-base}.js`
+  beside `@/core/prompt/*` printed **9/9 identical, byte for byte** over every
+  component's rendered output (Soul, SystemInstructions, ContextBlock including
+  its multi-line-value rule, History, ToolboxComponent, and ResponseContract in
+  react/toon, react/json and no-model form), and `identical` for the `Slot`
+  table, `MEMO_LIMIT` and all three `AssemblyError` sentences. The worktree was
+  removed; the script is not kept, because it can only run where the old tree is
+  checked out and a check that cannot run is not a check (§8.6). The three
+  goldens are what survives in the suite.
+- **The date trap is asserted, not just commented.** All three fixtures carry
+  `current time: 2026-08-16 12:00:00 PDT` beside `day: Saturday`, and
+  `Intl.DateTimeFormat` calls that instant a **Sunday** — the suite asserts both
+  halves, so the next reader meets the contradiction as a passing test rather
+  than as a bug to "fix". It is why `Recipe.context` is a function and not a
+  clock.
+- Eighteen assertions were watched red, by mutating `src/` (and once
+  `tests/golden/`) and running `bun test tests/prompt.test.ts`. 26 tests total:
+  1. *One prompt byte* — `## AVAILABLE TOOLS` → `## TOOLS` — 1 red.
+  2. *One fixture byte* — `Sys.` → `Sys!` in `render-bare.prompt` — 2 red: the
+     md5 and the parity.
+  3. *`Slot.RESPONSE` 99 → 45* — 4 red, including two of the three goldens.
+  4. *Invariant 1 deleted* (exactly one RESPONSE) — 2 red.
+  5. *Invariant 2 deleted* (an agent must be someone) — 1 red.
+  6. *Invariant 3 deleted* (RESPONSE sorts last) — 1 red.
+  7. *`applies()` ignored* — 5 red. An elided component is elided from the
+     prompt **and** from the breakdown.
+  8. *Memo disabled* — 2 red.
+  9. *`ContextBlock.CACHEABLE` → true* — 1 red. The memo assertions are causal:
+     a counter on an overridden `render()` says the work was **skipped**, not
+     that a flag was set.
+  10. *`History.key()` separator NUL → space* — 1 red. `["a b","c"]` and
+      `["a","b c"]` collide without it.
+  11. *`key()` reading the instance's own property order instead of `FIELDS`* —
+      1 red.
+  12. *`NAME` read off `constructor.name`* — 2 red.
+  13. *`utf8Bytes` counting UTF-16 code units* — 1 red.
+  14. *`detail()` no longer carrying `CORE_MARK`* — 1 red.
+  15. *The Sunday assertion aimed at Saturday* — 1 red.
+  16. *Transcript lines losing their `[ROLE]` prefix* — 1 red.
+- Ringmaster: not yet ruled
+- Open:
+  - **The `max` ratchet is NOT armed and `scripts/checks/lines.json` does not
+    exist.** PLAN 2.6 names it, and it lives in `scripts/`, which was outside
+    this increment's file ownership. `size.ts` still prints
+    `no delta reported — scripts/checks/lines.json does not exist and nothing
+    writes it` and `max 235 lines … (ratchet NOT armed)`. It needs one more
+    increment, or an ownership grant, and it must be seeded **after** this work
+    landed — which is now true.
+  - **`ClockPort` still has no caller**, against `ports.ts`'s own comment that it
+    arrives at 2.6. Rendering `2026-08-16 12:00:00 PDT` and `Saturday` from a
+    `Date` and an IANA zone needs `Intl`, and §2.1 bans `Intl` from
+    `src/core/**` by name because `resolvedOptions()` reads the host. So the
+    derivation has no pure home: it belongs to `adapters/browser/clock.ts` (3.1)
+    and `adapters/test/clock.ts`, and `Recipe.context` takes the answer. This is
+    also the seam the oracle needs — the Python's test replaced `Agent.context`
+    wholesale for the same reason. `adapters/test/clock.ts` is tagged `[2.6]` in
+    §4 and was not built: `src/adapters/` was not in this increment's files.
+  - **`{% for %}` is not in `template.ts`**, although §4 describes the renderer
+    as `{{ }} / {% if %} / {% for %}`. Every component that used it —
+    `CritiqueFindings`, `SkillCatalog`, `LoadedSkills` — has no data source in
+    this tree, so the tag would have been a code path with no caller. It refuses
+    at compile time naming the tag, so re-adding it is a load error rather than
+    a silently wrong prompt. Architect's call.
+  - **Four components §4 names are absent**: `PhaseInstructions`,
+    `CritiqueFindings`, `SkillCatalog`, `LoadedSkills`. Phases are 4.5 and
+    skills have no increment; a component with no producer is a block that can
+    only render empty.
+  - **No `component-registry.js` equivalent.** The old tree's name → class table
+    existed to serve an `agent.md` `components:` list, which is 4.1.
+    `recipe.ts` names the six components directly.
+  - **`promptFor` has no production caller yet.** `engine/build-agent.ts` (4.1)
+    is what wires a recipe to an `Agent`; the suite drives the real
+    `RenderPrompt` seam through a real `Session` and `Transcript`.
+  - **`Breakdown` is declared in `core/prompt/assembler.ts`, not in
+    `protocol/shapes.ts`**, which §4 tags `[3.2]` for `PromptBreakdown`. Core
+    may not import protocol, and the wire shape is 3.2's to declare and map.
+  - **`CORE_MARK` is `askk/core@prompt-assembler`**, returned as
+    `Breakdown.build`. Named here because `checks/bundle.ts` (3.1) is what reads
+    it and the value was this increment's to pick.
