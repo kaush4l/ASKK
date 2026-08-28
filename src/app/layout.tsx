@@ -1,17 +1,18 @@
-import type { ReactNode } from 'react';
+import type { Metadata } from 'next'
+import './globals.css'
 
-// No manual <head>: hand-written head tags in an App Router layout have
-// previously stopped Next's client runtime dead (docs/scratch/LESSONS.md).
-// Everything that would go there goes through `metadata`.
-export const metadata = {
+// No hand-written <head> here. Writing one stops Next injecting its own client
+// runtime, and the page then renders once and does nothing for ever after —
+// with no error anywhere. Metadata goes through this export instead.
+export const metadata: Metadata = {
   title: 'ASKK',
-  description: 'A personal agent harness that runs entirely in the browser.',
-};
+  description: 'A personal agent that runs in the browser.',
+}
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>{children}</body>
     </html>
-  );
+  )
 }

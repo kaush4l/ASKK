@@ -1,55 +1,24 @@
-# --- build output (regenerable) ---
+# build output (regenerable)
 node_modules/
 .next/
 out/
-dist/
-build/
 *.tsbuildinfo
 
-# --- bun / package manager ---
-.bun/
-.npm/
-
-# --- local env & secrets (NEVER publish) ---
+# local env & secrets (NEVER publish)
 .env
 .env.*
 !.env.example
 *.key
 *.pem
-secrets.json
 
-# --- os / editor noise ---
+# os / editor noise
 .DS_Store
-Thumbs.db
 *.swp
-*~
 .idea/
-.vscode/*
-!.vscode/extensions.json
+.vscode/
 
-# --- logs & temp ---
-*.log
-npm-debug.log*
-.tmp/
-/tmp/
-# anchored: a bare `scratch/` also matched docs/scratch/
-/scratch/
-
-# --- tool caches ---
+# tool caches
 .gstack/
 .cache/
+.tmp/
 coverage/
-playwright-report/
-test-results/
-
-# --- large regenerable artifacts ---
-# container2wasm build products: built by scripts, not committed
-wasm/build/
-*.wasm.gz
-*.tar
-*.img
-
-# NOTE: docs/scratch/ is deliberately TRACKED. It began as working notes and
-# became part of the record — docs/ARCHITECTURE.md cites MEASURED.md as the
-# evidence its realm map rests on. A record that cites an unpublished file is
-# a broken citation for anyone who clones this.
