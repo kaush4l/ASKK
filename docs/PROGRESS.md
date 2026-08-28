@@ -720,3 +720,16 @@ Entry shape:
   - **`CORE_MARK` is `askk/core@prompt-assembler`**, returned as
     `Breakdown.build`. Named here because `checks/bundle.ts` (3.1) is what reads
     it and the value was this increment's to pick.
+
+## AGENT.md — the agent anatomy doc, and the measured finding that no part of it has run joined — 2026-08-28
+- Files: `docs/AGENT.md` (new, 1403 lines), `docs/scratch/FLOW.md` (new, cited as the oracle for every present-tense claim in AGENT.md)
+- Proof: `test -f docs/AGENT.md` exits 0. `grep -c 'UNJOINED' docs/AGENT.md` → 7. `grep -c 'UNENFORCED' docs/AGENT.md` → 9. `grep -n 'PhaseInstructions\|PromptBreakdown' docs/AGENT.md` returns only the two lines that cite FLOW and correct ARCHITECTURE.md, not present-tense claims. Cross-checked against real source: `src/core/agent/agent.ts` confirms `RenderPrompt = (session) => string` (no third arg for cancellation, `infer` called with two args at line 119); `src/core/prompt/recipe.ts:84` confirms `promptFor`'s only caller is `tests/prompt.test.ts:60`; `grep -rn "new Agent("` on `src/` returns only a doc comment; `src/core/inference/catalog.ts`/`src/core/prompt/components.ts` confirm the two followed recipes (provider, prompt component) name real files in the right shape. All checked and true.
+- Ringmaster: GO WITH CONDITIONS
+- Open:
+  - This is a design/finding document, not a coded increment — it has no `bun run gate` run of its own and none is claimed. Its own acceptance section is grep-only; I ran each grep and all pass.
+  - **Recipes 1 (new tool) and 6/7 could not be verified against real files** — `src/core/tools/`, `src/engine/tools/`, `public/seed/agents/main/agent.md`, `src/protocol/`, `src/ui/shell/surfaces.ts` do not exist yet (all scheduled wave 3–4). Recipes 2, 3 and 4 (response field, prompt component, model provider) do check out against the files they name today.
+  - **`public/seed/agents/main/agent.md`** (anatomy row 1's path) does not exist anywhere in the real tree; only sibling worktrees under `.claude/worktrees/*` hold an `agent.md`, and every one of them is at `public/agents/main/agent.md` — no `seed/` segment. Whether that is drift or a path this document is proposing ahead of 4.1 is not stated in the document itself.
+  - **The "2.7" increment number is reused, not new**, and the document never says so: `PLAN.md` line 141/192 already records "2.7 moved to 3.4" from increment 0.3, freeing that slot. AGENT.md's §3.3 "2.7, one turn, joined" lands in the same freed slot, which is consistent, but a reader who has not read `PLAN.md`'s own numbering history would read AGENT.md's `2.7` as a fresh proposal colliding with a used number, not a deliberate reuse of a vacated one.
+  - AGENT.md §3.3 explicitly declines to edit `PLAN.md` — the "2.7" increment is a recommendation, not yet adopted. Until `PLAN.md` is edited, nothing forces the join to happen next; that dependency is stated by the document itself, not a gap I found.
+  - UNCLEAR: why AGENT.md is a fifth document at all (the file itself names this as RISK 3, unresolved) — `CLAUDE.md`.
+  - UNCLEAR: whether `checks/docs.ts`'s `§N.M` resolver already knows to parse this file's own `[7.1]`/`[proposed]` tag style, since the file says at FILES that `checks/docs.ts [1.7]` "must add this file to its resolver" as still-open work — `scripts/checks/docs.ts`.

@@ -59,6 +59,28 @@ expensive disagreement available. No wave-1 increment starts before it.
 
 | 1.7 | The documents join the gate | `checks/docs.ts` runs inside `bun run gate` and is watched red on each of its **seven** rules (`ARCHITECTURE.md` §8.7). **every §4 file-map entry that does not exist yet is tagged with the increment that creates it** — that tagging pass is the bulk of this increment's work; every file under `src/` and `scripts/` is named in §4; every §4 entry and every untagged §5 contract resolves against PROGRESS; every recorded increment's entry carries the gate's check count; every `§N.M` resolves; every `scripts/**` path cited in `docs/` exists or is scheduled; every PROGRESS entry citing a verdict has a `docs/rulings/` file | see wave budget |
 
+| 1.8 | A measurement knows when its subject moved | `scripts/checks/stale.ts` runs inside `bun run gate`. For each file under `docs/scratch/` declaring a `MEASURED AT: <sha>` / `SUBJECTS: <globs>` header, it runs `git log --oneline <sha>..HEAD -- <globs>` and **fails on non-empty output**, naming the file, its sha and the commits that moved its subject. Watched red by touching one file under `src/core/` and committing — `FLOW.md` goes red naming that commit — and watched green by re-running the file's declared `REPRODUCE` line and re-stamping the sha. `SALVAGE.md` and `LESSONS.md` declare no header and are **not** subjects: they are lessons, and a lesson does not expire when a file moves | see wave budget |
+
+**1.8 is new, and it exists because this round's rulings all rest on
+`docs/scratch/`.** Every §3 ruling in `docs/AGENT.md` rests on `FLOW.md`; every
+realm ruling rests on `MEASURED.md`. A cold comprehension pass put the obvious
+question to that and nobody had an answer: **nothing re-verifies a measurement
+after the tree it measured moves.** `FLOW.md` is precise and cited to
+`file:line`, which is exactly what makes it dangerous — the moment `promptFor`
+gains a second caller it becomes confidently wrong, sourced and specific and
+stale. That is "rulings rot in the present tense" one level up. `AGENT.md` §11
+is the design.
+
+**1.8 comes after 1.7** (it reads `docs/` and git the way `docs.ts` does, and
+should reuse its helpers), and it is **deliberately not folded into 1.7**: one
+check, one subject. `checks/docs.ts` asks whether documents agree with each
+other and with `PROGRESS.md`; `stale.ts` asks whether a document still agrees
+with the **tree**. Merging them would give one check two subjects.
+
+**Wave 1 has now reopened twice**, and that is recorded rather than smoothed
+over: 1.7 for a gate that could not see documents, 1.8 for a gate that cannot
+see a document aging. Wave numbers here are ordering, not chronology.
+
 **1.7 reopens wave 1 for one increment**, because the gate 1.6 built was
 incomplete in a way that eleven increments of documents then demonstrated: six
 documented facts that were not facts, in 3,741 lines of docs against 360 lines
@@ -135,6 +157,8 @@ Everything environmental arrives through an explicit port.
 | 2.4 | The react loop — the smallest cycle that terminates | The loop runs, emits every lifecycle event, and ends on a **declared terminal**. No `FLOWS`, no driver, no `MAX_TRANSITIONS` — those are 4.5 | +300 |
 | 2.5 | Structured response — parse the model's reply into typed parts | Golden cases parse exactly; a malformed reply degrades, never throws | +340 |
 | 2.6 | Prompt assembly — components, ordering, the identity file | The rendered prompt is **byte-identical to `tests/golden/render-*.prompt`** and printable for inspection. **And the `max` ratchet arms here:** 2.6 writes `scripts/checks/lines.json` seeded from a tree that contains real modules, after which `size.ts` reports a delta and `max` may only go down. Shell counts (`ARCHITECTURE.md` §8.3) | +520 |
+| 2.8 | **One turn, joined** — the single place `promptFor` meets `new Agent` | `tests/turn.test.ts` builds a real `Agent` through `buildAgent`, with the real `PromptAssembler`, the real components, a real `ReActResponse` as `model` and `ScriptedInference` holding a recorded reply, and runs one turn end to end. **(a)** The prompt string **the transport received** is byte-identical to `tests/golden/render-*.prompt` — the transport's input, not the assembler's output. **(b)** `assembled` fires before the first `delta`. **(c)** The parsed reply's `isAnswer` is the expected value, crossing the `BaseResponse` → `ReplyModel` seam. **(d)** A signal aborted mid-stream ends the turn as `inference aborted` — impossible to write before this increment. **(e)** A turn driven to the repeat guard's third tier produces a transcript entry with `origin: 'harness'`, and `historyLines()` renders it behind its marker. No prompt double anywhere in the file. `docs/scratch/FLOW.md` is **re-stamped or its invalidated claims struck, in the same commit** | see wave budget |
+| 2.9 | The reachability check, seeded from the **joined** tree | `scripts/checks/reach.ts` runs inside `bun run gate` and fails when a module under `src/**` is on no **value** import path from `src/app/layout.tsx`, `src/app/page.tsx` or a `*.worker.ts` under `src/engine/`, naming the file and the roots it searched. **Type-only imports and type-only specifiers are skipped** — `tsc` erases them and the emitted chunk contains none of them. A non-literal `import()` is a hard failure. Two allowlists of `{subject, reason, expiresAt}`, over modules and over `package.json` dependencies, **checked in both directions**: unreached-and-unlisted fails, and a listed entry whose wave has closed in `PROGRESS.md` while the subject is still unreached also fails. Watched red three ways: delete `build.ts`'s import of `promptFor`; set an entry's `expiresAt` to a closed wave; **turn one real `import` into `import type`** | see wave budget |
 
 **2.6 arms the `max` ratchet** and writes `scripts/checks/lines.json` — **seeded
 after 2.6's own work has landed**, not at its start. 2.6 is the last increment
@@ -189,6 +213,66 @@ break it, which is 2.5, not 2.6.
 **2.4 lost the flow table.** It moved to 4.5, where the second flow earns it —
 see `ARCHITECTURE.md` §5.6 and §10.3.
 
+**2.8 and 2.9 are new, and they skip 2.7 on purpose.** `docs/AGENT.md` §3.2
+measured — `file:line`, in `docs/scratch/FLOW.md` — that **no two parts of this
+system have ever run together**: `promptFor` has one caller and it is a test,
+`new Agent(` appears in `src/` **zero** times, nothing under `src/app`,
+`src/client` or `src/ui` reaches `src/core` at all, and `Agent.turn` calls
+`infer` with two arguments so the cancellation seam is severed one level above
+where it was built. Every part is green because **every check in this gate has a
+file as its subject and none has a relationship.** No increment in this file was
+assigned the job of joining them; 4.1 was the plausible home and its acceptance
+never said so.
+
+**The number 2.7 was not reused, and this is the record of why.** This file
+states at two places that *"2.7 moved to 3.4"* back at increment 0.3. Reusing a
+vacated number would put **two different 2.7s in the record**, and the record is
+the only channel between agents — `PROGRESS.md` entries, `[N.M]` tags in four
+documents and `checks/docs.ts`'s resolver all key on it. A cold comprehension
+pass caught the collision before it was written; it is cheaper to skip a number
+than to disambiguate one forever.
+
+**Why two increments and not one.** 2.8 is the join; 2.9 is the check that
+keeps it joined. They split because **2.9's allowlist is only honest when seeded
+from the post-join tree** — run against today's tree it would list nineteen
+files whose unreachability 2.8 is about to repair, and an allowlist written
+around a defect being fixed in the next commit is a formality on arrival. They
+also split because reverting a check must not revert a join.
+
+**2.8 and 2.9 precede every wave 4 and wave 5 increment.** Each of those adds
+only more unjoined parts and the join's cost compounds — 4.2 adds a `Toolbox`
+whose `invoke` fills a seam nothing calls, 4.5 adds a driver over a loop that
+has never run against a real prompt, 5.x adds a sandbox below an agent that has
+never executed. **Wave 6 is NOT blocked**: this file rules it parallel from 1.4
+onward, 6.1 and 6.2 import nothing under `src/core/**`, and 6.3 and 6.4 are
+already gated by their own acceptances ("a person follows a full turn", "the
+literal request body that left the tab"), which is the right mechanism and needs
+no ordering rule.
+
+**2.8 files (exact ownership).** Creates `src/core/agent/build.ts` and
+`tests/turn.test.ts`. Edits `src/core/agent/agent.ts` (the `AbortSignal` field
+threaded `AgentOptions → Session → turn → infer`; `RenderPrompt` returns the
+`Breakdown`; `AssembledEvent` carries it; `TranscriptEntry.origin` and the
+marker in `historyLines()`), `src/core/agent/react.ts` (the give-up path sets
+`origin: 'harness'`), and `tests/golden/render-*.prompt` **deliberately
+regenerated in the same commit**, with the reason in `PROGRESS.md`. Edits
+`docs/scratch/FLOW.md` (re-stamp or strike). Touches nothing under `src/engine`,
+`src/client`, `src/ui` or `src/app`.
+
+**2.9 files.** Creates `scripts/checks/reach.ts`. Edits `scripts/gate.ts` (the
+standing rule: a check joins the gate in the same commit). Touches no file under
+`src/`. **Depends on 1.7** for the PROGRESS-reading helper; if 1.7 has not
+landed, 2.9 reads `PROGRESS.md` itself and 1.7 deduplicates.
+
+**The `idb` ruling now lives in 2.9, not in prose.** `idb@8.0.3` is a declared
+runtime dependency with **zero importers** — an unreachable module with a
+different file extension. It gets the only entry in 2.9's dependency allowlist,
+reason *"caller is `engine/db.ts` at 3.4"*, **expiring at the end of wave 3**.
+Expiries are waves or dates and never increment numbers, because this very
+paragraph is an insertion into the numbering and a deadline that can be
+renumbered is not a deadline. When wave 3 closes with `idb` still unimported,
+the gate is red and the dependency is deleted and re-added with its caller.
+
 **2.7 moved to 3.4.** Persistence in wave 2 would mean building IndexedDB access
 in the main realm and migrating it into the worker in wave 3 — the exact
 migration this architecture exists to prevent. Wave 2 persists through
@@ -203,7 +287,7 @@ because the port seam already exists at 2.1.
 |---|--------|-----------|-------|
 | 3.1 | Engine hosted in a Web Worker | The main thread stays responsive during a long turn — **measured**, not assumed. The single-writer election refuses a second tab with `fatal{reason:'another-tab'}` rather than corrupting the store. **`src/client/worker-probe.ts` and `src/engine/probe.worker.ts` no longer exist** — 179 lines of wave-1 scaffold that ran on every production page load, replaced by the real worker, with `verify-worker.ts` re-pointed at it | +320 |
 | 3.2 | The worker message protocol, typed both ways | `checks/protocol.ts` proves `REPLY_OF` total against both unions, every `ToEngine` has a non-empty handler, and every `FromEngine` is emitted **and** written into client state; `src/protocol/**` holds no behaviour | +380 |
-| 3.3 | Streaming across the worker boundary | Tokens render as they arrive, through the worker, **in the built export served at a subpath** | +180 |
+| 3.3 | Streaming across the worker boundary | Tokens render as they arrive, through the worker, **in the built export served at a subpath**. **Not satisfiable until 2.8 has landed** — before the join there is nothing to stream | +180 |
 | 3.4 | Transcript + persistence, worker-owned (was 2.7) | Reload the page mid-session and the history is intact. The store allocates every `seq`; a tab closed mid-stream reopens as a turn **labelled interrupted**, never as a spinner that never resolves | +420 |
 
 ---
@@ -281,6 +365,69 @@ else. See `ARCHITECTURE.md` §10.2 ruling 5.
 
 ---
 
+## Wave 7 — Voice
+
+The owner asked for speech twice. `docs/AGENT.md` §8 designs it in full — the
+registry law, the placement ruling, streaming in both directions, barge-in, and
+the five failures a developer actually hits — and an earlier draft of that
+document left it off **both** the schedule and its own list of things known to
+be unscheduled. That is the same defect as a ruling nobody schedules, so it is
+scheduled here.
+
+**Both increments need `2.8` (a turn exists) and `6.3` (a composer and a tape
+exist) in front of them.** Both live in **`src/client/speech/`, main realm** —
+`core/ports.ts` gains **no** member. STT produces text before a turn and TTS
+consumes text after one; neither is a prompt contribution and neither is read by
+the model, and the naive `SpeechPort`-in-core design is invalidated by MEASURED
+M2 besides: the worker is **classic**, and every honest local speech runtime is
+ESM.
+
+| # | Intent | Acceptance | Lines |
+|---|--------|-----------|-------|
+| 7.1 | **Voice out** — the answer is spoken, and the sentence boundaries are right | `ttsFor('system')` over `speechSynthesis` is the default and a second engine is registered beside it, so the abstract base is **earned on day one** rather than assumed. `sttFor`/`ttsFor` both raise the literal sentence `Unknown <thing> '<name>'. Known: a, b`, asserted by a host test per registry. `segment(buffer)` is a **pure** function — no DOM, no audio — and its host test covers terminal punctuation, the character ceiling, the carried remainder, the end-of-stream flush, and a delta arriving for a turn id it is not speaking for. A browser check on the built export at a subpath hears the tape's answer spoken. A browser with no `speechSynthesis` renders a real state — *this browser has no system voice* — never a control that does nothing | see wave budget |
+| 7.2 | **Voice in** — the microphone writes into the composer | **Gated: does not start until `docs/scratch/MEASURED.md` carries the latency row below.** Then: local STT only; `SpeechRecognition` **does not ship** in any form. Partial transcripts are composer draft state and never reach the `messages` store; only the final transcript is handed to the existing `submitTurn(text)`. A browser check on the built export records every network request and asserts **zero requests to any model host before the microphone control is pressed** — the load-bearing check, because a bundle claim read out of a config file is one of the two things CLAUDE.md names as learned the hard way. `checks/bundle.ts` gains the weak static half; the transitive byte total of the scripts `out/index.html` references may only go down. Denied permission renders **denied**; weights unreachable renders *voice needs one online download; text works offline now* | see wave budget |
+
+**7.2's gate is a measurement, and it is the reason this increment might be
+cut.** `scripts/deploy.sh:33` publishes to **`gh-pages`**. A static host sets no
+headers and `ARCHITECTURE.md` §9 rules COOP/COEP out — *"they arrive with a real
+WASM runtime or not at all"*. So `crossOriginIsolated` is **false**,
+`SharedArrayBuffer` is **unavailable**, and ONNX Runtime Web runs
+**single-threaded WASM** on the one URL this project is judged on. There is no
+escape hatch: buying threads means buying a server, which `NORTH-STAR.md`
+forbids in its first sentence.
+
+**The required row:** the chosen model, single-threaded WASM, no
+`crossOriginIsolated`, a four-second utterance, on the slowest device the owner
+actually uses, wall-clock from `stop()` to final transcript, measured three
+times. **The owner sets the acceptable threshold before seeing the number.** A
+200 MB download is an inconvenience with a progress bar; six seconds to
+transcribe four seconds of speech is a feature nobody uses, and an earlier draft
+rated quality *"good, and pinnable"* while never naming this number at all.
+**If the measurement lands above the threshold, 7.2 is CUT and the reason is
+recorded here.**
+
+**And 7.2 is the "real WASM runtime" `ARCHITECTURE.md` §9 said would reopen the
+COOP/COEP question.** It reopens it and the answer is still no. That is worth
+writing down once so it is not reopened a third time.
+
+**Wave 7 is where the fifth dependency question is settled.** `docs/AGENT.md`
+§2.2 rules four dependencies **on the cold-open path**, and §8.3 rules that
+"least dependencies" is measured as **bytes on the cold-open path, not a count
+in `package.json`**. The STT runtime is a fifth package that a user who never
+presses the microphone never downloads, and 7.2's network recording is the
+measurement that makes that a fact rather than a claim. Multimodality, by
+contrast, adds **no** dependency at all — about twenty hand-written lines of
+base64.
+
+**Multimodality is NOT wave 7 and is NOT scheduled.** `docs/AGENT.md` §4 is a
+design; every tag in it reads `[UNSCHEDULED]` rather than a wave number, on
+purpose, so no tag resolves to a speech increment. It needs `ARCHITECTURE.md`
+§9's attachments row moved and §3.4's `src/engine/**` purity allowlist extended
+with `btoa` and `ArrayBuffer` before it can be an increment at all, and it comes
+after 4.3 and 6.4 whenever it comes.
+
+---
+
 ## The line budget — per wave, reported per increment
 
 **Per-increment budgets were tried for eleven increments and are abandoned.**
@@ -313,9 +460,13 @@ as the record of why per-increment was abandoned. Exceeding a wave budget is a
 ringmaster conversation. Relocating source out of `src/` or `scripts/` to move
 the number is a violation, not a refactor.
 
-**Wave budgets.** Wave 2: **+2,000** (2.0–2.6, plus 1.7). Wave 3: **+1,400**.
-Wave 4: **+1,600**. Wave 6: **+2,200**. Wave 5 declares nothing — it is a
-measurement, not a build. These are estimates by the same method that ran 84%
+**Wave budgets.** Wave 2: **+2,000** (2.0–2.6, plus 1.7). **The join adds
++400** (2.8 **+250**, 2.9 **+150**) and **1.8 adds +90**, carried as a separate
+line rather than folded into wave 2's figure, because they were scheduled after
+that figure was argued and hiding a new commitment inside an old estimate is how
+a budget stops meaning anything. Wave 3: **+1,400**. Wave 4: **+1,600**. Wave 6:
+**+2,200**. Wave 7: **+600** (7.1 **+380**, 7.2 **+220** if it survives its
+gate). Wave 5 declares nothing — it is a measurement, not a build. These are estimates by the same method that ran 84%
 over, so they are stated as *the number a wave should be argued against*, not as
 a number anyone should expect to hit.
 
@@ -331,6 +482,10 @@ trips on them. Each names the increment that clears it.
 | `docs/scratch/REFERENCES.md` — wave-0 recon, input to wave 4 | 4.3 |
 | `src/client/worker-probe.ts` + `src/engine/probe.worker.ts` — 179 lines of wave-1 scaffold on every page load | 3.1 |
 | `isConfigured` returns with its first real caller | 3.x, with the inference catalogue |
+| `docs/scratch/FLOW.md` describes a pre-join tree; half its findings become historical the moment the join lands | 2.8, in the same commit — re-stamped or struck, never left standing |
+| `idb@8.0.3` has zero importers | 3.4 gives it one; 2.9's allowlist entry expires at the end of wave 3 and deletes it if not |
+| `docs/AGENT.md` is not in `checks/docs.ts`'s `§N.M` resolver or its cross-reference set | 1.7 |
+| `ARCHITECTURE.md` §3.4's `src/engine/**` allowlist lacks `btoa` and `ArrayBuffer`, which the parts design needs | The unscheduled multimodality increment, in its own commit |
 
 ---
 

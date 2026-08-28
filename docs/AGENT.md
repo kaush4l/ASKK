@@ -46,10 +46,26 @@ The tree already asserts this in code, harder than most:
   **that same table wrote the instructions asking for it.** One declaration is
   both halves of the contract.
 
-If the thesis is true, then composition is not a style preference. It is the
-domain model: the message is a **sorted bag of parts**, each of which knows how
-to write itself down and how to vanish when it has nothing to say. That is
-exactly `core/prompt/` as shipped at 2.6.
+If the thesis is true, then the message is a **sorted bag of parts**, each of
+which knows how to write itself down and how to vanish when it has nothing to
+say. That is exactly `core/prompt/` as shipped at 2.6.
+
+**And here is the honest weight of that.** An earlier draft of this sentence
+read *"composition is not a style preference, it is the domain model."* That
+claims more than §3 demonstrates. Read the whole file for decisions that turn on
+the thesis and **there is exactly one**: §1.1 observation 2 — there is no
+`UserQuery` component, because the user's message is not privileged in a bag of
+parts. Everywhere else the thesis **corroborates** a reason that was already
+decisive on its own: `parts()` is one method because a visitor is double
+dispatch nobody bought; `accepts` is on the config row because the kind
+catalogue describes a wire protocol; the flow is a table because objects that
+know their successors cannot be validated as a graph.
+
+> **Ruling: "an agent is a message" is never sufficient grounds for a
+> decision.** It is a lens that makes a tree of independently-argued decisions
+> legible as one shape. Any later proposal that cites it must also carry the
+> reason that would stand if the thesis were deleted. A thesis that can justify
+> anything has stopped being load-bearing and started being a slogan.
 
 ### 0.1 The five places the thesis does not hold
 
@@ -93,9 +109,20 @@ already answering in*, and `Agent.turn` writes it into the transcript as an
 behaviour — a loop that ends without a reply is worse — but it sits one step
 from `LESSONS.md` defect 3, and it is the sharpest exception in the file.
 **Mitigation that exists:** DESIGN §4.2 has a `retry` row kind, so the tape can
-show it. **UNENFORCED:** nothing distinguishes a synthesised assistant message
-from a real one *in the transcript itself*, which is what the next prompt
-renders. See §7.
+show it. **The gap that mattered:** nothing distinguished a synthesised
+assistant message from a real one *in the transcript itself*, which is what the
+next prompt renders back — so the model reasons over a sentence it did not
+write, which is `LESSONS.md` defect 3 in its purest form.
+
+> **This is no longer an UNENFORCED item. It is scheduled, in `2.8`.** A
+> transcript entry gains one field, `origin: 'model' | 'harness'`, defaulting to
+> `'model'`; `historyLines()` renders a `'harness'` entry behind a verbatim
+> marker so the next prompt cannot present it as the model's own words. The
+> marker is model-facing product copy: written once, verbatim, and the golden
+> fixture is regenerated deliberately in the same commit (§6 recipe 2's rule).
+> It is one field and one branch, it lands at the seam 2.8 is opening anyway,
+> and it is the cheapest possible answer to the sharpest exception in this
+> file.
 
 **E5 — `src/engine/` is not covered by the thesis at all.** The single-writer
 election, the `seq` allocator, orphan-turn reconciliation, the boot deadline:
@@ -116,9 +143,22 @@ wrong clock.
 Read the last column first if you are in a hurry: **five rows are the minimum**
 and everything else is an agent being good rather than an agent existing.
 
+> **On row 1's path:** `public/seed/agents/main/agent.md` `[4.1]` is
+> `ARCHITECTURE.md` §4's own entry, verbatim and with the same tag. A reader who
+> greps for it in the tree finds nothing, and in sibling worktrees finds
+> `public/agents/main/agent.md` **without** the `seed/` segment — that is stale
+> scaffold, not the record. `ARCHITECTURE.md` owns paths; this file follows it.
+
+> **This table is reference, not memorisation material.** A cold reader recalled
+> ten of eleven rows, which is one past what anyone should be asked to hold, and
+> the fix is not to cut a row — every row is a thing an agent needs. The five
+> rows marked ● in the last column are the set worth carrying in your head; the
+> rest are looked up. Stated so that a later reader does not read their own
+> failure to recall row 11 as a failure of the table.
+
 | # | Part | What it is | Where it lives | Authored by | Read when | Slot | If missing | Min? |
 |---|---|---|---|---|---|---|---|---|
-| 1 | **Identity** | The words that say who it is, read verbatim | `public/seed/agents/main/agent.md`, overridden in the `agents` store `[4.1]` | **Human** | Every render (memoised on `key()`) | 0 `SOUL` | Assembler **raises** unless a SYSTEM exists — an agent must be someone | ● one of 1/2 |
+| 1 | **Identity** | The words that say who it is, read verbatim | `public/seed/agents/main/agent.md` `[4.1]` — **`public/` does not exist yet**; overridden in the `agents` store `[3.4]` | **Human** | Every render (memoised on `key()`) | 0 `SOUL` | Assembler **raises** unless a SYSTEM exists — an agent must be someone | ● one of 1/2 |
 | 2 | **System instructions** | Standing policy, distinct from personality | same file, its own section `[4.1]` | **Human** | Every render (memoised) | 10 `SYSTEM` | Component `applies()` false; block vanishes | ● one of 1/2 |
 | 3 | **Environment snapshot** | The facts that are true *right now* — date, day, zone | Derived in `adapters/browser/clock.ts` `[3.1]`, passed as `Recipe.context()` | **Machine**, per turn | Every render, **never cached** | 20 `CONTEXT` | Block vanishes; the model has no clock and will invent one | ○ |
 | 4 | **User input** | What the person just said | `turn/start` → `messages` store → `Transcript` | **Human**, per turn | Rendered as the last history line | 50 `HISTORY` | There is no turn | ● |
@@ -198,18 +238,29 @@ architecture*, not of an agent turn. They are chosen and they are measured
 |---|---|---|---|
 | `react` + `react-dom` | The tape is a live list re-rendered from a streamed mirror; `useSyncExternalStore` is the exact binding for `client/store.ts` | We hand-write DOM reconciliation for eight row kinds streaming at token rate, and DESIGN's five-states-per-primitive rule survives it | **Keep.** The alternative is a worse React. |
 | `next` | `output: 'export'`, basePath rewriting for assets, and the **measured** webpack worker emission (M1/M2) | A bundler emits a classic worker chunk with subpath-correct URLs, plus one route's worth of HTML | **Keep, with an exit condition.** This is the largest dependency buying the least per byte — we use one route and no server feature. But removing it **expires M1, M2 and M3 simultaneously** and takes §3.2 and §8.1 with them. It goes only in an increment whose first act is re-running the probe. |
-| `idb` | Promise-shaped IndexedDB *with correct transaction lifetime* | We hand-roll ~80 lines of promise wrapping and never once `await` a non-IDB promise inside a `readwrite` transaction | **Keep — but see below.** The line is thin and the payload is not: the `seq` allocator's atomicity (§5.1, critic :317) is exactly the property a hand-rolled wrapper loses first, and this tree has already paid for that defect class once. |
+| `idb` | Promise-shaped IndexedDB *with correct transaction lifetime* | We hand-roll ~80 lines of promise wrapping and never once `await` a non-IDB promise inside a `readwrite` transaction | **Keep, allowlisted with an expiry (below).** The line is thin and the payload is not: the `seq` allocator's atomicity is exactly the property a hand-rolled wrapper loses first, and this tree has already paid for that defect class once. |
 
-> **`idb@8.0.3` currently has ZERO importers** (FLOW; `StorePort` has zero
-> callers and its only mention is a comment). The tree ships a declared runtime
-> dependency nobody imports, while the owner's directive is *least
-> dependencies*. **Ruling: it stays, and the ruling is conditional and dated.**
-> Its caller is `engine/db.ts` at PLAN 3.4, one wave away, and removing a
-> dependency in order to re-add it in three increments is churn. **But it is
-> exactly the §3.2 defect wearing a `package.json` hat** — a declared thing with
-> no consumer — and if 3.4 slips past wave 4, it is deleted and re-added with
-> its caller. Recorded so that "we always meant to use it" is not available as
-> an argument later.
+> **`idb@8.0.3` has ZERO importers** (FLOW, as of the commit in its header;
+> `StorePort` has zero callers and its only mention is a comment). **A declared
+> dependency with no importers is an unreachable module with a different file
+> extension** — it is the §3.2 defect wearing a `package.json` hat.
+>
+> An earlier draft ruled on this in prose — *"it stays, and the ruling is
+> conditional and dated; if 3.4 slips past wave 4 it is deleted"*. **That was
+> the same defect it was written to indict:** a conditional nobody executes is
+> a comment. So the ruling now lives in the mechanism.
+>
+> **Ruling: `idb` stays, and it stays inside `scripts/checks/reach.ts` `[2.9]`,
+> not inside this paragraph.** That check gains a **second allowlist, over
+> `package.json` dependencies**: a declared runtime dependency whose name
+> appears as an import specifier nowhere in the reachable graph fails, unless it
+> holds a `{ name, reason, expiresAt }` entry. `idb`'s entry reads *"caller is
+> `engine/db.ts` at 3.4"* and **expires at the end of wave 3** — a wave, not an
+> increment number, because §3.3 has just demonstrated that increment numbers
+> get inserted into. When wave 3 closes with `idb` still unimported, the gate is
+> red, and the dependency is deleted and re-added with its caller. The extension
+> is nearly free: reach.ts already builds the specifier set, and the only new
+> work is reading `dependencies` and comparing two sets.
 
 ### 2.3 (c) The seven that look mandatory and are not
 
@@ -221,11 +272,32 @@ architecture*, not of an agent turn. They are chosen and they are measured
 | An SSE client library | Already hand-rolled in `core/inference/openai.ts`, ~40 lines, frame-by-frame to `[DONE]` | Done. Zero. |
 | A UUID library | `crypto.randomUUID` behind `NewIdPort` | Zero |
 | A state manager | `client/store.ts` is one switch over a closed union, subscribed via `useSyncExternalStore` | Zero, and the switch is what `checks/protocol.ts` proves total |
-| A base64 codec / image library (§4) | `Blob.arrayBuffer()` in the main realm, `btoa` or a hand-written `Uint8Array` pass in the worker. **The worker is classic (M2) — a dynamic `import()` of a codec is not available anyway** | ~20 lines, statically bundled |
+| A base64 codec / image library (§4) | `Blob.arrayBuffer()` in the main realm, `btoa` or a hand-written `Uint8Array` pass in the worker. **The worker is classic (M2) — a dynamic `import()` of a codec is not available anyway.** Costs an allowlist edit, named in §4.3 rather than left to be discovered | ~20 lines, statically bundled |
 
-**Ruling on the floor: four dependencies, and the number does not change for
-multimodality.** If a proposal adds a fifth, the increment that adds it names
-which row of §2.3 it just refuted.
+**Ruling on the floor: four dependencies on the cold-open path, and the number
+does not change for multimodality.** If a proposal adds a fifth, the increment
+that adds it takes one of the two doors below.
+
+> **Reconciled with §8.3, because one document may not rule twice on one
+> question.** §8.3 requires an ONNX/transformers runtime for local STT, and that
+> is a fifth package. The earlier draft left the two sentences standing side by
+> side, which is a contradiction wearing two section numbers.
+>
+> The reconciliation is to fix **what is counted**. §8.3 already states it —
+> *"least dependencies is measured as bytes on the cold-open path, not as a
+> count in `package.json`"* — and **§2.2's sentence is amended to agree, rather
+> than the other way round**, because a package count is a proxy and bytes on
+> the cold-open path are the thing `NORTH-STAR.md`'s cold-open test actually
+> measures.
+>
+> **The rule with teeth, then, has two doors and a fifth dependency must take
+> one:** either (a) it is **absent from the cold-open path, by measurement** —
+> and the measurement is §8.3's check 3, a browser recording asserting zero
+> requests to any model host before the microphone control is pressed — or (b)
+> it **names the row of §2.3 it refutes**. The STT runtime takes door (a) and
+> its increment's acceptance is that recording. Multimodality takes neither
+> door, which is why §4 adds **no** dependency at all: about twenty hand-written
+> lines of base64 instead of a codec, which is §2.3's last row doing its job.
 
 ---
 
@@ -245,9 +317,9 @@ is about it.
 | 2 | **Context gathering** | `sessionId` → `Transcript` (the messages this session already holds) | W | A store read fails → `turn/failed`, session intact | 3.4 |
 | 3 | **Environment snapshot** | `ClockPort.now()` + `.zone()` → `{ date, day, … }` facts | A → C | Stub port **throws** `no clock port configured` | 2.1 (port) · 3.1 (adapter) |
 | 4 | **Prompt assembly** | agent config + transcript + facts + tool usages → `Component[]` → **one string** and a `Breakdown` (`assembler.ts:63-70`; **not** `PromptBreakdown`, which no file defines — FLOW gap A6) | C | **Raises**, never repairs: not exactly one RESPONSE; no SOUL and no SYSTEM; RESPONSE not last | **2.6 DONE, ✂ UNJOINED** |
-| 4½ | **Resolve parts** *(§4)* | `PartRef[]` + the `blobs` store → `ResolvedPart[]` (bytes) | W | A part whose mime the active config does not `accept` → `turn/failed` naming the model and the setting. **Bytes never enter `core/`** | `[7.1]` proposed |
+| 4½ | **Resolve parts** *(§4)* | `PartRef[]` + the `blobs` store → `ResolvedPart[]` (bytes) | W | A part whose mime the active config does not `accept` → `turn/failed` naming the model and the setting. **Bytes never enter `core/`** | **UNSCHEDULED** — see the closing table |
 | 5 | **Transport** | `{prompt, parts?}` → `describeRequest()` → `RequestRecord` → `fetchPort` | C (+ `FetchPort`) | Non-2xx throws with the first 500 bytes of the body; a 200 with no body throws naming the URL | **2.3 DONE, ✂ UNJOINED** |
-| 6 | **Stream** | `ReadableStream` → SSE frames → `onDelta(chunk)` → `turn/delta` → the tape | C → W → M | The transport honours a signal in three places. **No caller can supply one** (FLOW §3, `agent.ts:119-121`) — a turn in flight today is **uncancellable** | 2.3 DONE, **✂ SEVERED** · 3.3 |
+| 6 | **Stream** | `ReadableStream` → SSE frames → `onDelta(chunk)` → `turn/delta` → the tape | C → W → M | The transport honours a signal in three places. **No caller can supply one** (FLOW §3, `agent.ts:119-121`) — a turn in flight today is **uncancellable** | 2.3 DONE, **✂ SEVERED** · rejoined at **2.8** · 3.3 |
 | 7 | **Parse** | raw reply text → a typed response | C | **Never throws.** Requested format, then the other, then the entire reply lands in the answer field | **2.5 DONE, ✂ UNJOINED** |
 | 8 | **Validate** | parsed values → `normalize()` | C | **Nothing here rejects.** `normalize` fails toward the *careful* branch. See the note below | **2.5 DONE, ✂ UNJOINED** |
 | 9 | **Route** | `Reply.isAnswer` → answer, or tool calls | C | A reply that is neither reads as an answer, because the alternative is a turn that ends with nothing | **2.4 DONE, ✂ UNJOINED** |
@@ -266,7 +338,7 @@ Not every step has one. Saying so is the point of the section.
 | 1 · 12 | Two turns interleave and one overwrites the other's `seq` | The allocator lives **inside** the store's `readwrite` transaction. There is no API that takes a caller-computed `seq`, so the read-modify-write has nowhere to happen |
 | 3 | A cached clock reading, or an ambient one | `ContextBlock.CACHEABLE = false` removes it from the memo; `checks/purity.ts` refuses zero-arg `new Date()`, `Date.now()` and `Math.random()` **on the token stream**, so core cannot read a clock it was not handed |
 | 4 | A prompt with no completion cue, or one that does not end with the contract | The assembler's three invariants **raise**. And `tests/golden/render-*.prompt` pins the bytes, with an md5 on the fixture so the oracle cannot drift |
-| 4½ | Core silently acquires the ability to hold bytes | **Proposed:** remove `ArrayBuffer`, `Blob`, `File`, `FileReader`, `btoa`, `atob` from `checks/purity.ts`'s permitted built-ins for `src/core/**`. One line; makes "core never holds bytes" executable rather than aspirational |
+| 4½ | Core silently acquires the ability to hold bytes | **Already enforced, in value positions.** `checks/purity.ts`'s `ES_GLOBALS` is a closed allowlist of about forty names and `ArrayBuffer`, `Blob`, `File`, `FileReader`, `btoa` and `atob` are **not among them**, so a core file naming any of them fails today. **The hole that is real:** the check does not reach **type positions** — a planted `interface R { data: ArrayBuffer }` in `src/core/` was **not** flagged. That is UNENFORCED and §7.1 item 6 states it |
 | 5 | A `RequestRecord` carrying a raw API key | Redaction happens **at construction** `[6.4]`, so a record holding a key never exists at any instant. Plus a host test asserting the key string appears nowhere in `JSON.stringify(describeRequest(...))` |
 | 5 | A test that quietly reaches the network | `stubPorts().fetch` throws. A fake handed the stub goes red on contact |
 | 6 | **Nothing.** | Deltas are raw model text and no contract governs them (E3). `ARCHITECTURE.md` §11 holds it open; `turn/delta` gains a `channel` field only **after** a human watches a tool-calling turn stream — not before |
@@ -322,16 +394,15 @@ from any file in `src/app`, `src/client` or `src/ui` to any file in `src/core`.
 The chain the reader is asked to follow does not exist as a chain; it exists as
 seven correct pieces of one.
 
-### 3.3 The joining increment — ruled, and it comes first
+### 3.3 The joining increments — ruled, and they come first
 
-**No increment in `PLAN.md` is assigned the job of connecting these parts.**
+**No increment in `PLAN.md` was assigned the job of connecting these parts.**
 FLOW gap F1 says so explicitly: 4.1 builds the agent identity file and
 `engine/build-agent.ts` `[4.1]` is the plausible home, but nothing in 4.1's
 acceptance says so, and 4.1 is three increments away behind two waves.
 
-**Ruling: the join is one increment, it is next, and it comes before every wave
-4, 5 and 6 increment.** The coordinator's steer is accepted, and here is the
-reason it is right rather than merely reasonable:
+**Ruling: the join is scheduled, it is next, and it precedes every wave 4 and
+wave 5 increment.** The reason it is right rather than merely reasonable:
 
 > **Every increment added before the join makes the join bigger, and waves 4 and
 > 5 add nothing but more unjoined parts.** 4.2 adds a `Toolbox` whose `invoke`
@@ -340,11 +411,24 @@ reason it is right rather than merely reasonable:
 > executed. The compounding is not linear: a join of two parts is one
 > assertion; a join of six is a wave.
 
-**The join has two halves, at two places, and conflating them is how it gets
-mis-scheduled.**
+**Wave 6 is NOT blocked, and an earlier draft was wrong to say it was.**
+`PLAN.md` rules that wave 6 runs in parallel with waves 2–5 from 1.4 onward, and
+on ordering this file is subordinate to PLAN. 6.1 (tokens and `checks/design.ts`)
+and 6.2 (primitives and the addressed shell) import nothing under `src/core/**`
+and depend on no core seam; blocking them would have bought nothing and cost the
+one lane that is genuinely parallel. **6.3 and 6.4 are a different matter and
+PLAN already handles it** — their acceptances are *a person follows a full turn*
+and *Context renders the literal request body that left the tab*, and neither is
+satisfiable without a turn. That is dependency by acceptance, which is the right
+mechanism, and it needs no ordering rule here.
 
-**Half one — `2.7`, "one turn, joined." Next, before wave 3.** It is
-core-only and needs no worker.
+**The join is TWO increments, not one, and the split is not cosmetic.**
+
+#### `2.8` — "one turn, joined." Next, before wave 3.
+
+Core-only; needs no worker. One increment because these four changes cannot be
+verified apart from each other — the integration test is the acceptance for the
+signal field, and the signal field is what makes the test writable.
 
 - `src/core/agent/build.ts` — `buildAgent(options): Agent`. One function whose
   entire job is to be **the single place `promptFor` meets `new Agent`**: it
@@ -355,55 +439,126 @@ core-only and needs no worker.
   that turns "uncancellable" into "cancellable", and it is one field.
 - **`RenderPrompt` returns the `Breakdown`, not a bare string** (see §3.5), and
   `AssembledEvent` carries it.
-- `tests/turn.test.ts` — the integration assertion of §3.4.
+- **A synthesised give-up answer is marked in the transcript** (E4): one
+  `origin: 'model' | 'harness'` field on a transcript entry, rendered behind a
+  verbatim marker by `historyLines()`, so the next prompt cannot hand the model
+  its own harness's words back as its own. The golden is regenerated
+  deliberately, in the same commit.
+- `tests/turn.test.ts` — the integration assertion of §3.4 check 2.
 
-**Half two — the page reaches it, and that is PLAN 3.3.** PLAN 3.3's acceptance
-is *"tokens render as they arrive, through the worker, in the built export
-served at a subpath."* **That acceptance is not satisfiable unless 2.7 has
-landed** — there is nothing to stream. 3.3 does not need rewriting; it needs
-2.7 in front of it, and stating that here is the point of this paragraph.
+#### `2.9` — the reachability check, seeded from the joined tree.
 
-**What I am NOT doing:** editing `PLAN.md`. This is a ruling in the architect's
-document that the architect must then land in PLAN as an increment. Until it is
-there, it is a recommendation with a reason, and `PLAN.md` remains what is next.
+**Its own increment, and it must come second.** The check ships with an
+allowlist of every module it cannot reach, and **the only tree from which that
+allowlist is honest is the post-join tree.** Seeded before 2.8, the allowlist
+would contain the entire core — nineteen files whose unreachability 2.8 is
+about to fix — and an allowlist written around a defect that is being repaired
+in the next commit is a formality on arrival. Seeded after, every remaining
+entry is a real, argued exception with an expiry.
 
-**Why `buildAgent` is not itself the defect it fixes.** At 2.7 its only caller
+It is also **independently revertable**, which one combined increment would not
+have been: reverting a check must not revert a join.
+
+#### Half two — the page reaches it, and that is PLAN 3.3.
+
+PLAN 3.3's acceptance is *"tokens render as they arrive, through the worker, in
+the built export served at a subpath."* **That acceptance is not satisfiable
+unless 2.8 has landed** — there is nothing to stream. 3.3 does not need
+rewriting; it needs 2.8 in front of it, and stating that here is the point of
+this paragraph.
+
+**Why `2.8` and `2.9` rather than `2.7`.** `2.7` is taken. `PLAN.md` records at
+two places that *"2.7 moved to 3.4"* back at increment 0.3, so reusing the
+vacated number would put two different 2.7s in one record — and the record is
+the only channel between agents. `PLAN.md` now carries the same note beside the
+new numbers.
+
+**Why `buildAgent` is not itself the defect it fixes.** At 2.8 its only caller
 is a test, which is precisely the shape FLOW just indicted. Two things make it
 different and both must be true or the ruling is wrong: its **second caller is
 named and scheduled** — `engine/build-agent.ts` at 4.1, which becomes the thin
 thing that reads a config record and an `agent.md` and calls this — and it goes
-into §3.4's reachability allowlist **with an expiry increment**, so the gate
-fails if 4.1 ships and the function is still unreachable from a real entry
-point. An allowlisted exception with an expiry is a decision; one without is the
-thing being allowlisted.
+into 2.9's allowlist **with an expiry**. **That expiry is `end of wave 4`, not
+`4.1`.** An earlier draft wrote the increment number, and a critic broke it in
+one line: if 4.1 slips, an expiry keyed to 4.1 never fires, and `buildAgent`
+lives indefinitely with one test caller — the defence firing only when the thing
+it guards against does not happen. A wave boundary cannot slip past itself.
 
-### 3.4 The check that makes an unjoined seam inexpressible
+### 3.4 The two checks, and exactly what each one proves
 
-Two checks. The first is the authority; the second is what proves the first was
-pointed at something real.
+Two checks, and the second is where the weight actually sits. An earlier draft
+had this the other way round and it was wrong.
 
-#### Check 1 — `scripts/checks/reach.ts`, source import-graph reachability
+#### Check 1 — `scripts/checks/reach.ts` `[2.9]`: **no module is orphaned from a build**
 
-> **Every module under `src/**` must be reachable, by static imports, from a
-> declared entry point — or be in an allowlist that names a reason and an
-> expiry increment.**
+> **Every module under `src/**` must contribute a **value** to the bundle
+> reachable, by static imports, from a declared entry point — or hold an
+> allowlist entry naming a reason and an expiry.**
+
+**The title says "orphaned from a build" and not "joined", and the difference is
+the whole of this subsection.** The first draft called this the check that makes
+an unjoined seam inexpressible. It is not, and a critic proved it two ways:
+
+1. **Type-only edges are not edges.** All four inbound imports of
+   `src/core/ports.ts` are `import type` (`agent.ts:32`, `base.ts:16`,
+   `scripted.ts:23`, `catalog.ts:20`). `tsc` erases every one; the emitted chunk
+   contains none of it. A check that counted them would mark a file reachable
+   that is, in the artifact, absent — which is the tree's own measured rule
+   about the distance between source and bundle, applied against itself.
+2. **Reachability is not use.** `buildAgent` could import `ReActResponse` and
+   never pass it, and this check would be entirely satisfied. That is FLOW's
+   recorded defect verbatim.
+
+**So the fix, and the two consequences that must be accepted with it:**
+
+- **Skip `import type` declarations and type-only specifiers** (`importClause.isTypeOnly`,
+  and per-specifier `isTypeOnly`). The TypeScript AST answers both directly;
+  reach.ts already needs the compiler for module resolution.
+- **The first run is redder than it would otherwise have been**, and that is the
+  correct price. `src/core/ports.ts` in particular becomes unreachable **by
+  construction** — it exports types and `stubPorts()`, and if only the types are
+  imported it genuinely contributes nothing to a chunk. It gets an allowlist
+  entry that says exactly that, expiring at **end of wave 3**, when
+  `engine/entry.worker.ts` builds real ports and imports the value.
+
+**What this check therefore proves:** no file in `src/` is dead weight — every
+one is on a value path from `layout.tsx`, `page.tsx` or a worker entry. **What
+it does not prove, stated plainly because §7 previously let it carry weight it
+cannot hold:** that anything imported is *called*; that the values crossing a
+seam are the right values; that a seam has ever executed. Check 2 carries all
+three, and it carries them **for exactly one path** — the one turn it runs.
+Every other seam in this tree remains R0 after 2.9, and that sentence is the
+honest state of the gate.
+
+**Its parts:**
 
 - **Roots**, as one exported constant: `src/app/layout.tsx`, `src/app/page.tsx`,
   and every `*.worker.ts` under `src/engine/`. A root is a file the platform
   loads without anyone importing it, and there are only these.
-- **Edges**: static `import` and `export … from`, resolving `@/*` → `src/*`. Plus
-  `import()` **with a literal specifier**, which §8.3's lazily-fetched speech
-  chunk needs. **A non-literal `import()` is a hard failure**, not an unknown:
-  a computed specifier is unanalysable, this tree has no need for one, and
-  letting it through would put a hole in the check's own authority.
+- **Edges**: value-carrying static `import` and `export … from`, resolving
+  `@/*` → `src/*`. Plus `import()` **with a literal specifier**, which §8.3's
+  lazily-fetched speech chunk needs. **A non-literal `import()` is a hard
+  failure**, not an unknown: a computed specifier is unanalysable, this tree has
+  no need for one, and letting it through would put a hole in the check's own
+  authority.
 - **Failure**: names the unreached file *and the roots it searched from*, so the
   message answers "unreachable from what".
-- **The allowlist is `{ path, reason, expiresAt }`, and it is checked in both
-  directions.** Unreached-and-not-allowlisted fails. **And an allowlist entry
-  whose `expiresAt` increment is DONE in `PROGRESS.md` while the file is still
-  unreachable also fails** — the same PROGRESS-reading mechanism
-  `checks/docs.ts` `[1.7]` already uses. That second direction is what stops the
-  allowlist becoming the place unjoined code goes to live.
+- **Two allowlists, both `{ path | name, reason, expiresAt }`, both checked in
+  both directions.** One over modules, one over `package.json` dependencies
+  (§2.2). Unreached-and-not-allowlisted fails. **And an entry whose `expiresAt`
+  has passed while the subject is still unreached also fails** — that second
+  direction is what stops the allowlist becoming the place unjoined code goes to
+  live.
+- **`expiresAt` is a wave boundary or a date, never an increment number.**
+  §3.3's own numbering is an insertion into the sequence, which is the argument:
+  a number that can be renumbered, deferred or cut cannot be a deadline.
+- **How expiry is evaluated:** the closed wave is read from `PROGRESS.md`, which
+  is the mechanism `checks/docs.ts` `[1.7]` is **designed** to use.
+  `scripts/checks/docs.ts` **does not exist** and 1.7 has not shipped; an
+  earlier draft wrote "already uses", in the document whose thesis is that this
+  tree keeps asserting the present tense about absent files. **2.9 therefore
+  depends on 1.7**, and if 1.7 has not landed, 2.9 reads PROGRESS itself and
+  1.7 deduplicates.
 
 **Source, not bundle, and that is a ruling.** A bundle grep is at best a
 corroborator: folding, inlining, renaming and tree-shaking defeat it, and this
@@ -417,27 +572,31 @@ minifier may rename.
 **Watched red, two ways, both cheap:**
 1. Delete the single import of `promptFor` from `core/agent/build.ts` → the
    check names `src/core/prompt/recipe.ts` unreachable and lists the roots.
-2. Set an allowlist entry's `expiresAt` to an increment already DONE in
-   PROGRESS → the check fails naming the stale entry, with the file still
-   unreachable.
+2. Set an allowlist entry's `expiresAt` to a wave `PROGRESS.md` records as
+   closed → the check fails naming the stale entry, subject still unreached.
+3. Turn a real `import` into `import type` → the file it pointed at goes
+   unreachable. This is the one that proves the type-only fix is live, and it is
+   the cheapest of the three.
 
-**What it would have caught, run today:** `core/prompt/*` (7 files),
-`core/agent/*` (4), `core/response/*` (3), `core/inference/*` (4),
-`core/ports.ts`, `core/observer.ts` — **essentially all of `src/core/`** —
-because no root reaches any of it. That is not a check with a hypothetical
-subject. Its first run is red on nineteen files, and the allowlist it starts
-with is the honest inventory of what 2.7 and 3.3 are for.
+**What it would have caught, run against the pre-join tree:** `core/prompt/*`
+(**6** files), `core/agent/*` (4), `core/response/*` (3), `core/inference/*`
+(4), `core/ports.ts`, `core/observer.ts` — nineteen, essentially all of
+`src/core/` — because no root reaches any of it. *(An earlier draft wrote
+"7 files" for `core/prompt/*`; the directory holds six, and the total of
+nineteen only ever worked at six.)* That number is why 2.9 is seeded after 2.8
+and not before.
 
-#### Check 2 — `tests/turn.test.ts`, one real turn with no doubles
+#### Check 2 — `tests/turn.test.ts` `[2.8]`, one real turn with no doubles
 
-A reachability check proves the wire exists. It cannot prove the wire carries
-the right bytes. So:
+A reachability check proves a wire exists. It cannot prove the wire carries the
+right bytes. **This is the check that closes the unjoined-seam gap, and it
+closes it for one path.**
 
 > **One test constructs a real `Agent` via `buildAgent`, with the real
 > `PromptAssembler`, the real components, a real `ReActResponse` as `model`, and
 > `ScriptedInference` holding a recorded reply — and runs a turn end to end.**
 
-Four assertions, and the first is the one that does the work:
+Five assertions, and the first is the one that does the work:
 
 - **(a)** The prompt string the **transport received** is byte-identical to
   `tests/golden/render-*.prompt`. Not the assembler's output compared to the
@@ -449,17 +608,25 @@ Four assertions, and the first is the one that does the work:
   `isAnswer` — crossing the `BaseResponse` → `ReplyModel` seam FLOW §4 records
   as never crossed.
 - **(d)** A signal aborted mid-stream ends the turn as `inference aborted`.
-  Impossible to write today; possible the moment 2.7's one field lands, which is
+  Impossible to write today; possible the moment 2.8's one field lands, which is
   what makes it the acceptance for that field rather than a hope about it.
-
-**No double at the prompt seam**, and that is assertable rather than promised:
-`grep -c 'prompt: () =>' tests/turn.test.ts` returns `0`. Crude, and it is
-aimed at exactly the shape `tests/agent-react.test.ts:89` already contains.
+- **(e)** A turn driven to the repeat guard's third tier produces a transcript
+  entry with `origin: 'harness'`, and `historyLines()` on the next render
+  carries the marker (E4).
 
 **Watched red:** replace `buildAgent`'s prompt with the one-line double the
 agent tests use → **(a)** goes red, because the double does not produce the
 golden bytes. **The golden is what makes the double detectable**, which is the
 sharpest argument available for why 2.0 landed the oracle first.
+
+*(An earlier draft added a grep — `grep -c 'prompt: () =>' tests/turn.test.ts`
+returns 0 — as a structural guard against a double. **Deleted.** It matches
+nothing: the existing double is a module-level `const` passed by shorthand at
+`tests/agent-react.test.ts:99`, so the pattern returns 0 there too, and in the
+new test the token cannot appear at all because the agent comes from
+`buildAgent(options)`. A check that cannot be watched fail is not a check, and
+one that is green for the wrong reason is worse than none. Assertion (a) is the
+real guard and it needed no help.)*
 
 ### 3.5 The work done every turn for no consumer
 
@@ -468,7 +635,7 @@ sharpest argument available for why 2.0 landed the oracle first.
 are computed on every turn and then discarded, because `AssembledEvent.prompt`
 was supposed to become the breakdown at 2.6 and did not.
 
-**Ruling: a missing wire, not dead weight — and the wire belongs to 2.7.**
+**Ruling: a missing wire, not dead weight — and the wire belongs to 2.8.**
 
 The breakdown has two consumers, one designed and one that already exists and is
 being handed the wrong thing. The designed one is `turn/prompt` carrying it to
@@ -478,7 +645,7 @@ currently carries a string, throwing away the per-component bands that are the
 only reason that surface is worth having.
 
 So: **`RenderPrompt` returns the `Breakdown` and `AssembledEvent` carries it.**
-One change, at the seam 2.7 is opening anyway, and the same seam §4 widens for
+One change, at the seam 2.8 is opening anyway, and the same seam §4 widens for
 parts. Three consumers served by one edit.
 
 **The alternative is rejected:** adding a cheap `assemble()` path that skips the
@@ -500,7 +667,37 @@ argument nobody can settle.)*
 Nothing in `src/` handles a non-text part today, and `ARCHITECTURE.md` §9 lists
 attachments under "deliberately not here" because the only prior implementation
 was **silently broken** (`{data:"", format:""}`). This section is the design
-that would let it back in. It is not scheduled yet; §8 says where it goes.
+that would let it back in. **It is UNSCHEDULED**, and the closing table says so.
+
+### 4.0 The one-row objection, answered — and §4 shrunk by one field
+
+§5.2 rejects a `MODALITIES` table because it would have **one row**, and this
+section then accepts, for that same one row, a `PartRef`, `Component.parts()`,
+`ResolvedPart`, `InferenceRequest.parts`, `ConfigRecord.accepts`, a `blobs`
+store, `engine/parts.ts`, two protocol messages and a flow step 4½. A critic put
+that side by side and asked which rule is real. It is a fair hit and it gets a
+straight answer rather than a waiver.
+
+> **The rule is about tables, and a table is not a path.** A table's whole
+> function is to **dispatch**: given a key, produce a row. A table with one row
+> decides nothing — the branch it replaces was never taken, so it is pure
+> indirection, and that is why `MODALITIES` is refused. A **path** carries a
+> payload from a source to a sink. Its cost is not a function of how many
+> payload *kinds* exist; it is the same code for one mime prefix and for
+> twelve. Delete the second modality from the world entirely and every piece
+> named above is still required to get one image from a file input to an
+> endpoint without bytes entering `src/core/`.
+>
+> The falsifiable form of that claim, so it is not just a distinction drawn
+> conveniently: **name a piece of §4 whose existence is caused by the
+> possibility of a second modality.** There is exactly one — the `kind` union —
+> and §4.5 already refuses it. If a reviewer finds a second, §4 shrinks again.
+
+**And it does shrink, by one field, found while answering this.** `PartRef.id`
+is gone: the store is content-addressed, `sha` **is** the identity, and a second
+identifier is a second thing that can disagree with the first. RISK 5 stands
+amended rather than merely conceded — step 4½ still has one caller, and that is
+the residual cost this answer does not make disappear.
 
 ### 4.1 The thing that breaks
 
@@ -513,9 +710,9 @@ The prompt string stays the whole of what the model reads *as language*. A part
 is **named in the prompt and carried beside it.** Concretely:
 
 ```ts
-// core/prompt/part.ts                                                   [7.1]
+// core/prompt/part.ts                                          [UNSCHEDULED]
 /** A non-text part, by reference. Metadata only — never bytes. */
-interface PartRef { id: string; sha: string; mime: string; name: string; bytes: number }
+interface PartRef { sha: string; mime: string; name: string; bytes: number }
 ```
 
 - `Component` gains **one** optional method, `parts(): readonly PartRef[]`,
@@ -532,10 +729,10 @@ interface PartRef { id: string; sha: string; mime: string; name: string; bytes: 
 The seam widens by exactly one field, at one place:
 
 ```ts
-// core/agent/agent.ts                                                   [7.1]
+// core/agent/agent.ts                                          [UNSCHEDULED]
 type RenderPrompt = (session: Session) => { text: string; parts: readonly PartRef[] }
 
-// core/inference/base.ts                                               [7.1]
+// core/inference/base.ts                                       [UNSCHEDULED]
 interface InferenceRequest { prompt: string; parts?: readonly ResolvedPart[] }
 interface ResolvedPart { mime: string; data: ArrayBuffer }
 ```
@@ -581,7 +778,7 @@ storage system with its own lifecycle.
 ### 4.3 How it reaches the transport without text-only paths paying
 
 Resolution happens in the **worker**, between assembly and transport — step 4½.
-`engine/parts.ts` `[7.1]` turns `PartRef[]` into `ResolvedPart[]` by reading the
+`engine/parts.ts` `[UNSCHEDULED]` turns `PartRef[]` into `ResolvedPart[]` by reading the
 `blobs` store. **`src/core/` therefore never holds a byte it was not handed**,
 and purity is preserved *absolutely* rather than by convention.
 
@@ -596,7 +793,7 @@ parts present          →  content: [ { type: "text", text: "<the prompt string
 
 **The acceptance for "text-only pays nothing" is not an argument, it is a
 diff:** the recorded request-body fixtures from 2.3 must not change by one byte
-when `[7.1]` lands.
+when multimodality lands.
 
 **`describeRequest` elides the payload.** The Context surface must render what
 left the tab without a 500KB base64 string in the DOM. The body it returns
@@ -609,6 +806,18 @@ Base64 is produced in the worker with `btoa` over a `Uint8Array` chunk loop, or
 in the main realm at attach time. **Classic worker (M2): no dynamic `import()`
 of a codec is available**, so anything used here is statically bundled or
 hand-written. It is about twenty lines.
+
+> **That costs a named allowlist edit, and naming it here is the point.**
+> `ARCHITECTURE.md` §3.4 gives `src/engine/**` a **closed** permitted list —
+> `self fetch crypto indexedDB navigator URL postMessage AbortController` — and
+> `btoa`, `atob` and `ArrayBuffer` are not on it, so the first line of this code
+> fails `checks/purity.ts`. **The increment that builds parts adds `btoa` and
+> `ArrayBuffer` to the `src/engine/**` row, in `ARCHITECTURE.md` §3.4 and in
+> `checks/purity.ts`, in its own commit, and says so in `PROGRESS.md`.** Left
+> unwritten, a coder meets a red gate on a rule that looks like a bug and the
+> tempting repair is to weaken the check — which CLAUDE.md forbids by name. The
+> `src/core/**` row is **not** touched: it stays empty, which is what makes
+> "core never holds bytes" enforced rather than promised.
 
 ### 4.4 A model that cannot see images fails **loudly, at assembly, before any byte leaves the tab**
 
@@ -738,13 +947,21 @@ main realm holding a *mirror* and never a truth. *Cost:* every UI read is a
 round trip; if Setup and Tools prove chatty, the pressure to cache config in
 main is the first step back toward duplicated state.
 
-**Elision with a count — "never the content, always the length."**
+**Elision with a count — "never the content, always the length." — PROPOSED.**
 *Problem:* three unrelated places must show that something large or secret
 exists without showing it. *Shape:* replace the payload with a sentence naming
-the count. *Examples:* `TOOL_ELISION` (model-facing, so the model knows content
-was withheld rather than reasoning over a silent truncation), `<redacted, N
-bytes>` in the header record `[6.4]`, `<412144 bytes elided>` in an image body
-(§4.3). *Three independent appearances is what earns it a name.*
+the count. *Would-be examples:* `TOOL_ELISION` (model-facing, so the model knows
+content was withheld rather than reasoning over a silent truncation), `<redacted,
+N bytes>` in the header record, `<412144 bytes elided>` in an image body (§4.3).
+
+> **Filed under ACCEPTED in an earlier draft, on the strength of three
+> appearances, and `grep -c TOOL_ELISION src` returns 0.** All three are
+> unwritten: the tool cap is 4.2, the header redaction is 6.4, and the image
+> elision is unscheduled. §5.1's own rule is *the second implementation earns
+> the interface, and never the other way round*, and the one entry that waived
+> it was the one this catalogue invented. **It becomes ACCEPTED when the second
+> of the three ships**, which is 6.4 on current ordering — and if the two turn
+> out to want different shapes, there was never a pattern here, only a phrase.
 
 ### 5.2 REJECTED, and why
 
@@ -762,7 +979,7 @@ bytes>` in the header record `[6.4]`, `<412144 bytes elided>` in an image body
 | **Barrel files / a `core/index.ts`** | Defeats tree-shaking, and it existed for a Python `__init__.py` problem we do not have. `ARCHITECTURE.md` §9. |
 | **`Capability` interface with `isSupported()`** | For §4.4 this would be an interface with one implementation and one consumer. Capability is a **field on a config row**. |
 | **`Inference` as an async iterator** | `onDelta` already has two implementations. An iterator would be a second spelling of the same thing, and the callback is what the observer path already consumes. |
-| **A `MODALITIES` table** (§6, recipe 5) | It is the right shape and it has **one row**. It is built when the second modality exists, and §6 says so out loud so it is not later mistaken for an oversight. |
+| **A `MODALITIES` table** (§6, recipe 5) | It is the right shape and it has **one row**, and a table with one row dispatches on nothing. Built when the second modality exists; §6 says so out loud so it is not later mistaken for an oversight. **§4.0 answers why this rule refuses a table and not §4's byte path.** |
 | **Compaction, in any shape** | `ARCHITECTURE.md` §9. The prior trigger was *message count*, which was wrong; rebuilding it wrong is worse than not having it. `REFERENCES.md` items 1–3 hold the design for when it is earned. |
 
 ---
@@ -771,6 +988,13 @@ bytes>` in the header record `[6.4]`, `<412144 bytes elided>` in an image body
 
 The payoff. Each recipe is ordered; each ends with the observation that proves
 it. **More than ~4 touch points is a design smell and is named as one.**
+
+> **Every step whose file does not exist yet carries the `[N.M]` that creates
+> it, at the point of use.** A cold reader followed recipe 3 verbatim and it
+> worked; recipe 4 stopped dead at step 4, because `src/adapters/` does not
+> arrive until 3.1 — a fact this document stated correctly somewhere else, which
+> is the same as not stating it. An untagged path in a recipe is a promise that
+> `cd` will succeed.
 
 **1 — A new tool.** *(3 code files + 1 data line.)*
 1. `core/tools/<name>.ts` `[4.2]` — the function, its `ToolMeta` and its usage
@@ -798,21 +1022,26 @@ it. **More than ~4 touch points is a design smell and is named as one.**
    the build minifies), `FIELDS` in declaration order, `TEMPLATE`, and
    `applies()`. Freeze in the constructor.
 2. `core/prompt/recipe.ts` — one entry in `baseComponents()`.
-3. *Prove it:* golden diff. `ui/prompt/BandStack.tsx` needs **no** change — it
-   renders the breakdown, which is data.
+3. *Prove it:* golden diff. `ui/prompt/BandStack.tsx` `[6.4]` needs **no**
+   change — it renders the breakdown, which is data. **Steps 1 and 2 are
+   followable verbatim today; step 3's file is not there yet, and the recipe is
+   complete without it.**
 
 **4 — A new model provider.** *(3 code files + 1 data row.)*
 1. `core/inference/<kind>.ts` — implement `infer` and `describeRequest`. Build
-   the redacted header records **at construction**.
+   the redacted header records **at construction**. *(Exists — 2.3.)*
 2. `core/inference/catalog.ts` — one line in `KINDS`, one branch in
-   `inferenceFor`.
-3. `public/seed/models.json` — one row.
-4. `adapters/test/fetch.ts` — a **recorded** body, including SSE chunks.
+   `inferenceFor`. *(Exists — 2.3.)*
+3. `public/seed/models.json` `[4.1]` — one row. **`public/` does not exist
+   yet.**
+4. `adapters/test/fetch.ts` `[3.1]` — a **recorded** body, including SSE chunks.
+   **`src/adapters/` does not exist yet**, and this is the step the recipe
+   currently stops at.
 5. *Prove it:* >1 delta chunk, and the key string absent from
    `JSON.stringify(describeRequest(...))`.
 
 **5 — A new modality.** *(4 touch points — the limit, and a named smell.)*
-1. `core/prompt/part.ts` — extend the accepted mime prefix.
+1. `core/prompt/part.ts` `[UNSCHEDULED]` — extend the accepted mime prefix.
 2. The transport's content-array mapper (`core/inference/openai.ts`).
 3. `ConfigRecord.accepts` — a new declared value, and the Setup control for it.
 4. The composer's `accept` attribute.
@@ -822,13 +1051,16 @@ inputAccept }` read by all four. **Do not build it for the first modality** — 
 would be a table with one row. Build it in the increment that adds the second,
 and that increment's first commit is the table.
 
-**6 — A new surface.** *(2 files.)* `ui/surfaces/X.tsx`, plus one row in
-`ui/shell/surfaces.ts` carrying id, label, order, component and `?panel=` address.
+**6 — A new surface.** *(2 files.)* `ui/surfaces/X.tsx` `[6.3]`, plus one row in
+`ui/shell/surfaces.ts` `[6.2]` carrying id, label, order, component and `?panel=`
+address. **Neither file exists before wave 6.**
 *Prove it:* the address is honoured **on load**, and `data-panel-ready` is set.
 
-**7 — A new worker message.** *(4 files, and all four are checked.)*
-`protocol/messages.ts` (union + `REPLY_OF`) → `engine/host.ts` (a case) →
-`client/actions.ts` (a sender) → `client/store.ts` (a case). `checks/protocol.ts`
+**7 — A new worker message.** *(4 files, and all four are checked. **None of
+the four exists before wave 3**; the check that enumerates them is 3.2.)*
+`protocol/messages.ts` `[3.2]` (union + `REPLY_OF`) → `engine/host.ts` `[3.1]`
+(a case) → `client/actions.ts` `[3.2]` (a sender) → `client/store.ts` `[3.2]`
+(a case). `checks/protocol.ts` `[3.2]`
 proves the pairing total, every request handled, and every event both emitted
 and written into client state. **Four touch points that a check enumerates is
 not the same smell as four that a human must remember.**
@@ -842,25 +1074,37 @@ Per CLAUDE.md: a claim the gate cannot execute is not a verified claim.
 | Assertion | Checked by |
 |---|---|
 | Core references no ambient global; no ambient clock or randomness | `checks/purity.ts` (tokeniser + allowlist) |
-| **Core never holds bytes** (§4) | **PROPOSED:** remove `ArrayBuffer`, `Blob`, `File`, `FileReader`, `btoa`, `atob` from core's permitted built-ins in `checks/purity.ts`. Until then: **UNENFORCED** |
+| **Core never holds bytes, in value positions** (§4) | `checks/purity.ts` **today**. `ES_GLOBALS` is a closed allowlist and `ArrayBuffer`, `Blob`, `File`, `FileReader`, `btoa`, `atob` are not on it; `src/core` is allowed nothing beyond it. A planted `btoa` in core **fails**, measured |
+| **Core never holds bytes, in type positions** | **UNENFORCED.** A planted `interface R { data: ArrayBuffer }` in `src/core/` was **not** flagged. §7.1 item 5 |
 | The assembled prompt is byte-exact | `tests/golden/render-*.prompt` + an md5 on the fixture |
-| Adding parts costs text-only paths nothing (§4.3) | The 2.3 request-body fixtures must not change by one byte in `[7.1]` |
+| Adding parts costs text-only paths nothing (§4.3) | The 2.3 request-body fixtures must not change by one byte in the increment that adds parts |
 | `describeRequest` never carries a key | Host test: the key string is absent from `JSON.stringify(...)` |
 | `describeRequest` is bounded regardless of part size | **PROPOSED** host test: a 4MB part yields a record under a fixed size |
 | Every `ToEngine` has a sender and a handler; every `FromEngine` is emitted and stored | `checks/protocol.ts` |
 | Realm is positional; `typeof` never asks | `checks/realm.ts` + banners |
-| **Every module under `src/**` is reachable from a real entry point** | **PROPOSED** `scripts/checks/reach.ts` (§3.4), with a `{path, reason, expiresAt}` allowlist checked in both directions. Today: **UNENFORCED, and red on ~19 files if it existed** |
-| **The assembler's output is what the transport actually receives** | **PROPOSED** `tests/turn.test.ts` assertion (a) — the golden compared against the transport's input, not the assembler's output |
+| **No module under `src/**` is orphaned from a build** — every one is on a **value** import path from a real entry point | `scripts/checks/reach.ts` `[2.9]` (§3.4 check 1), type-only edges skipped, two allowlists `{subject, reason, expiresAt}` checked in both directions. Today: **UNENFORCED, and red on nineteen files if it existed** |
+| A declared `package.json` dependency has an importer | Same check, second allowlist (§2.2). `idb` holds the only entry, expiring **end of wave 3** |
+| **The assembler's output is what the transport actually receives** | `tests/turn.test.ts` `[2.8]` assertion (a) — the golden compared against the transport's input, not the assembler's output. **This, and not reach.ts, is what closes the unjoined-seam gap — and it closes it for one path** |
+| A synthesised give-up answer is distinguishable from a real one, **in the transcript** (E4) | `tests/turn.test.ts` `[2.8]` assertion (e), against the `origin` field |
 | Every check runs | `checks/gate-coverage.ts`, plus the printed check count in `PROGRESS.md` |
 | Every file and contract named here exists or is tagged | `checks/docs.ts` §8.7 — **this file must be added to its §N.M resolver** |
 
 ### 7.1 UNENFORCED, stated plainly
 
 0. **Nothing checks that a seam is joined.** The whole of §3.2. Every check in
-   the gate has a *file* as its subject; none has a *relationship*. This is the
-   largest unenforced item in this document and §3.4 is the proposal that closes
-   it. Until then the honest statement is: **86 green tests and 6 green checks
-   do not establish that any two parts of this system have ever run together.**
+   the gate has a *file* as its subject; none has a *relationship*. Today the
+   honest statement is: **86 green tests and 6 green checks do not establish
+   that any two parts of this system have ever run together.**
+
+   **And after 2.8 and 2.9 it is still mostly true, which an earlier draft of
+   this item obscured.** `reach.ts` proves no module is orphaned from a build;
+   it cannot prove an imported value is ever called, and a `buildAgent` that
+   imports `ReActResponse` and never passes it would satisfy it completely —
+   FLOW's recorded defect, verbatim, passing a check written against it. The
+   only thing that proves a seam carries the right bytes is `tests/turn.test.ts`,
+   and it proves it **for the one turn it runs**. Every other seam in the tree
+   stays R0. Naming a second path worth an integration test is a live question
+   and it belongs to the increment that builds the second flow, 4.5.
 1. **Components are frozen.** Nothing asserts a concrete class froze itself at
    the end of its constructor. A mutable field makes `key()` correct and the
    bytes wrong — the memo's one silent failure. *Cheapest fix:* a host test that
@@ -870,16 +1114,33 @@ Per CLAUDE.md: a claim the gate cannot execute is not a verified claim.
    not. *Cheapest fix:* one host test running a full turn with a recording
    observer, asserting the exact callback order including `assembled` before the
    first `delta`.
-3. **A synthesised give-up answer is distinguishable from a real one** (E4).
-   DESIGN gives the tape a `retry` row kind; nothing marks the **transcript
-   message**, which is what the next prompt renders.
+3. ~~**A synthesised give-up answer is distinguishable from a real one**
+   (E4).~~ **Struck from this list: it is scheduled at `2.8`**, as an `origin`
+   field on the transcript entry with assertion (e) of §3.4 check 2 behind it.
+   It was the sharpest exception in the file and the least excusable thing to
+   leave to a human — the harness writing under the `assistant` role, unmarked,
+   is `LESSONS.md` defect 3 in its purest form, because the next prompt renders
+   it back and the model reasons over a sentence it did not write.
 4. **`accepts` reflects what the endpoint can actually do** (§4.4). It is
    operator-declared. There is no probe, and inventing a confident one would be
    the failure mode this file's §3 step 8 note is about.
-5. **Prompt bytes are copied character-for-character** beyond the reach of a
+5. **Core holds no bytes in a *type* position.** `checks/purity.ts` walks the
+   token stream against an identifier allowlist, which reaches value positions
+   only; a planted `interface R { data: ArrayBuffer }` in `src/core/` was **not
+   flagged**, and the probe was run rather than reasoned. *No cheap fix is
+   offered here, and that is deliberate:* a type-position check needs the
+   checker's type resolution, not its tokeniser, and inventing one against a
+   hole with zero current occurrences would be a check written before its
+   problem. **Recorded honestly instead of closed badly**, and it is the reason
+   §4.3's "bytes never enter core" is a convention in the type layer even while
+   it is enforced in the value layer.
+6. **Prompt bytes are copied character-for-character** beyond the reach of a
    golden fixture — tool descriptions, tool error sentences, phase prompt
    bodies. Already `ARCHITECTURE.md` §8.5; restated because §6's recipes 1 and 3
    are exactly where a new uncovered string enters.
+7. **A `docs/scratch/` measurement still describes the tree.** §11 rules on
+   this and names the check; until that check exists, FLOW.md and MEASURED.md
+   are true as of a commit and nothing notices when they stop being.
 
 ---
 
@@ -897,8 +1158,8 @@ returning a fully-constructed thing, with an error that names the known set. A
 speech API should read the same:
 
 ```ts
-sttFor('whisper-tiny')      // client/speech/stt.ts   [proposed]
-ttsFor('system')            // client/speech/tts.ts   [proposed]
+sttFor('whisper-tiny')      // client/speech/stt.ts   [7.2]
+ttsFor('system')            // client/speech/tts.ts   [7.1]
 ```
 
 **Ruling: ONE law, THREE registries. Not one registry, and not three laws.**
@@ -946,14 +1207,41 @@ matter:
    and it is the single most likely way this feature gets built wrong. In the
    **main** realm the page bundle is ESM, `import()` works, and a lazily fetched
    runtime is ordinary.
-3. **Audio bytes then never cross the worker boundary at all.** Not as
-   `ArrayBuffer`, not once. There is no `blobs`-store question, no §4.2 to
-   re-derive, and no per-frame clone through structured clone. The design gets
-   *smaller* by being placed correctly.
+3. **Audio bytes never cross *the engine worker's* boundary.** The absolute
+   version of this sentence — *"never cross a worker boundary, not once"* —
+   stood four lines under reason 2's own admission that these runtimes **spawn
+   workers of their own**, and it was false. They do cross a worker boundary:
+   the runtime's, inside the main realm, by its own arrangement. What is true,
+   and what the reason rests on, is that **no audio byte is ever in a
+   `postMessage` this architecture writes, in a store this architecture owns, or
+   in a `turn/*` event**. So restated exactly: there is no `blobs`-store
+   question, no §4.2 to re-derive, and no per-frame clone through *our*
+   protocol. **The design gets smaller because this architecture acquires no new
+   byte path** — not because bytes stop moving.
 
 So: **speech lives in `src/client/speech/`, main realm, `// REALM: main`.** STT
 calls `actions.submitTurn(text)` — the same function the composer calls. TTS
 subscribes to the store — the same mirror the tape renders from.
+
+> **Ruling, because a critic found the hole and it is a real one: a main-realm
+> dependency's private storage is OUT of scope for the realm rule, and the
+> reason is what makes it survivable.** transformers.js caches model weights in
+> **IndexedDB, from the main realm**, and `ARCHITECTURE.md` §3.3 refuses
+> `indexedDB` to `src/client/**` while `checks/realm.ts` tokenises **our
+> source** — so the dependency evades the check silently and no amount of
+> tightening our tokeniser will see it.
+>
+> The rule is not "no IndexedDB in the tab". It is **"this architecture keeps
+> its mutable state in one realm, and the worker owns it"** (§3.3's title is
+> *who owns what*). A vendored cache of immutable, content-addressed model
+> weights is not this architecture's state: nothing reads it but the library,
+> nothing in it can disagree with the worker's stores, and losing it costs a
+> re-download and nothing else. That is the test, and it is stateable as a rule
+> **a human applies at the moment a dependency is added**: *a dependency may
+> keep private storage in the main realm if that storage holds no fact this
+> architecture also holds*. It is R4, it is checked by the person writing the
+> `package.json` line, and pretending otherwise would be the third false
+> enforcement claim this revision removed.
 
 **The exception this creates, named rather than discovered.** The engine cannot
 *initiate* speech. If a `speak` tool ever exists, the worker would have to ask
@@ -971,7 +1259,38 @@ Two honest options and they are not comparable on a package count:
 | Bytes shipped | zero | tens to hundreds of MB of weights |
 | Offline | **STT: no.** Chrome transports audio to Google. **TTS: yes** — `speechSynthesis` uses OS voices, locally | yes, **after one download** |
 | Quality | platform-dependent | good, and pinnable |
+| **Per-utterance latency, on this deployment, on a phone** | n/a | **UNMEASURED — and it is the number that decides whether local STT is usable at all** |
 | North star | STT fails the airplane test outright | passes, once cached |
+
+> **The deployment constrains the runtime, and this table did not say so.**
+> `scripts/deploy.sh:33` publishes to **`gh-pages`**. A static host sets no
+> headers, and `ARCHITECTURE.md` §9 rules COOP/COEP out — *"they arrive with a
+> real WASM runtime or not at all."* Therefore `crossOriginIsolated` is
+> **false**, `SharedArrayBuffer` is **unavailable**, and ONNX Runtime Web is
+> limited to **single-threaded WASM**. No SIMD-plus-threads path exists on the
+> URL this project is judged on.
+>
+> An earlier draft rated quality *"good, and pinnable"* and named a 200MB
+> download as the worst failure a developer would hit, while never naming
+> single-thread latency. A 200MB download is an inconvenience with a progress
+> bar. **Six seconds to transcribe a four-second utterance is a feature nobody
+> uses**, and it would have been discovered after the increment shipped.
+>
+> **Ruling: `7.2` does not start until `MEASURED.md` carries a row for it.**
+> The row: whisper-tiny (or the chosen model), single-threaded WASM, no
+> `crossOriginIsolated`, a four-second utterance, on the slowest device the
+> owner actually uses, wall-clock from `stop()` to final transcript, measured
+> three times. **The acceptance for that measurement increment is the number,
+> not a verdict** — if it lands above a threshold the owner sets *before*
+> seeing it, `7.2` is cut and the section records why.
+>
+> **And speech is the "real WASM runtime" `ARCHITECTURE.md` §9 was talking
+> about.** That row's own words are that COOP/COEP *"arrive with a real WASM
+> runtime or not at all"*. So `7.2` is the increment that reopens the question —
+> and the answer on `gh-pages` is **still no**, because a static host cannot
+> send the headers, and buying threads would mean buying a server, which
+> `NORTH-STAR.md` forbids in its first sentence. **The measurement is therefore
+> load-bearing precisely because the escape hatch is closed.**
 
 The asymmetry between the two halves of Web Speech is the whole finding and
 collapsing them is how this gets decided wrong:
@@ -1037,7 +1356,7 @@ not say; and `submitTurn` already exists and needs no second entrance.
 `onDelta → speak(chunk)` produces gravel. The fix is a **pure segmenter**:
 
 ```ts
-// client/speech/segment.ts                                       [proposed]
+// client/speech/segment.ts                                            [7.1]
 function segment(buffer: string): { utterances: string[]; remainder: string }
 ```
 
@@ -1058,7 +1377,23 @@ worse than speaking mid-word.
 
 For a plain-text agent the deltas **are** the answer, so streaming costs nothing
 new and the owner's requirement — start speaking before generation finishes — is
-met exactly where voice is actually used. Making it true for structured agents
+met for plain-text agents.
+
+> **Struck: *"met exactly where voice is actually used."*** That was a
+> preference with no measurement behind it, and it is doing load-bearing work in
+> a ruling that gives structured agents no streamed voice at all. **Whether it
+> is true turns on one fact this tree has not yet written down: the seeded
+> `main` agent's `response_model`.** If it is `null` (`PLAIN_TEXT`), the ruling
+> covers the default agent and the sentence was right by luck. If it is
+> `ReActResponse`, the ruling gives the **only shipped agent** no streamed voice
+> and the owner's requirement is unmet on the default path.
+>
+> **`4.1` writes that file and therefore owns the answer**; its `PROGRESS.md`
+> entry states the seeded `response_model` explicitly, and `7.1` reads it rather
+> than assuming. Until then this is **unverified**, marked as such, and not a
+> justification anything may lean on.
+
+Making it true for structured agents
 needs a **prefix-tolerant incremental extractor for the answer field**, which is
 a change to `core/response/parse.ts` and not a small one. It is named as the
 change rather than implied by a design that quietly does not do it.
@@ -1078,7 +1413,7 @@ The user speaks while the voice is playing.
 
 **That last sentence describes a thread that does not exist yet.** The signal is
 honoured by both transports and supplied by nobody (FLOW §3, §3.2 above), so
-barge-in-as-submission is blocked on 2.7's one field like everything else that
+barge-in-as-submission is blocked on 2.8's one field like everything else that
 reaches into a turn.
 
 **The `AbortSignal` in `core/inference/base.ts` is deliberately NOT reused for
@@ -1113,8 +1448,8 @@ Rows 12 and 13 of §1, and they are marked differently on purpose:
 
 | # | Part | What it is | Where it lives | Author | Read when | Slot | If missing | Min? |
 |---|---|---|---|---|---|---|---|---|
-| 12 | **Voice in (STT)** | A microphone that writes text into the composer | `client/speech/stt.ts` `[proposed]`, **main** | Human speaks; machine transcribes | Before a turn exists | **none — never in the prompt** | The composer still takes typing | ○ |
-| 13 | **Voice out (TTS)** | A speaker that reads the answer | `client/speech/tts.ts` `[proposed]`, **main** | Machine | After a turn, or during it for plain-text agents | **none — never in the prompt** | The tape still shows the answer | ○ |
+| 12 | **Voice in (STT)** | A microphone that writes text into the composer | `client/speech/stt.ts` `[7.2]`, **main** | Human speaks; machine transcribes | Before a turn exists | **none — never in the prompt** | The composer still takes typing | ○ |
+| 13 | **Voice out (TTS)** | A speaker that reads the answer | `client/speech/tts.ts` `[7.1]`, **main** | Machine | After a turn, or during it for plain-text agents | **none — never in the prompt** | The tape still shows the answer | ○ |
 
 **This is the anatomy table earning its keep.** The question "is speech part of
 the agent?" was answerable only once every other part had a *slot* column, and
@@ -1147,9 +1482,17 @@ that adds an R4 without a plan to demote it is visibly doing so.
 **And there is a fifth state the tiers did not have a name for until FLOW
 measured it: R0 — a defect no tier applies to, because the code it would occur
 in has never run.** An unjoined seam is not robust or fragile; it is untested in
-the only sense that counts. §3.4's reachability check exists to make R0
-impossible, which is the highest-leverage move available, because every other
-tier assumes the code executes.
+the only sense that counts.
+
+**R0 is not closed by a reachability check, and an earlier draft said it was.**
+§3.4 check 1 removes one *cause* of R0 — a module nobody imports — and leaves
+the condition itself intact, because an imported value that is never called is
+just as unrun. **The only thing that moves a seam out of R0 is executing it**,
+which is §3.4 check 2, and check 2 executes one path. So after `2.8` and `2.9`
+the tree's R0 population drops from *all of it* to *everything the one
+integration turn does not walk*, and that remains the largest untiered surface
+in this project. Every other tier assumes the code executes; R0 is the
+assumption failing, and it fails quietly.
 
 The tier that matters most is R1, and R1 is almost always bought the same way:
 **remove the place where the mistake could happen**, rather than adding a check
@@ -1184,10 +1527,18 @@ constructor and forget to freeze, and that is shorter than the right way.
 Stated because a section defining robustness that exempts itself is the same
 advertising §0.1 refuses.
 
-- **§4's "core never holds bytes" is R4 today and R1 only if the purity
-  allowlist change lands.** The design claims a structural guarantee it does not
-  yet have. The one-line check is named in §7; until it exists, the sentence is
-  a convention.
+- **§4's "core never holds bytes" is R1 in value positions and R4 in type
+  positions.** An earlier draft said the whole property was R4 pending a purity
+  change, in three separate places. **That was wrong, and it was wrong in the
+  most embarrassing direction: the property is already enforced.**
+  `checks/purity.ts` allows `src/core` nothing beyond a closed forty-name
+  built-in list, and `ArrayBuffer` and `btoa` are not on it — a planted probe
+  **failed**, measured. The proposal was to remove six names from a list
+  containing none of them. It is deleted from all three places rather than
+  softened, because a document proposing a no-op as a mitigation is asserting
+  coverage it does not add. **The hole that is real** is the one the probe also
+  found: type positions are unreachable by an identifier allowlist, and §7.1
+  item 5 records it without inventing a check for it.
 - **§8.3's "never in the base bundle" is R3, not R2.** The load-bearing check is
   a browser network recording. A static check would be stronger and I do not
   have an honest one — a chunk can be listed as separate and still be
@@ -1219,7 +1570,7 @@ This section is that test written down. Signatures and prose; no bodies.
 
 > **Read §3.2 first.** Rows 1–4 of the table below do not exist, and rows 5–13
 > exist as parts that have never run in sequence. This is the chain **after
-> 2.7 and 3.3**; it is written in the present tense because it is the design of
+> 2.8 and 3.3**; it is written in the present tense because it is the design of
 > record, and it is the shape the join must produce. Today the reader cannot
 > take this walk, and that is the finding, not a caveat on the finding.
 
@@ -1259,7 +1610,7 @@ mid-flight* — and **today nothing in the tree can.** Five asks, ruled by cost.
 
 | Steer | Cost | Ruling |
 |---|---|---|
-| **Cancel mid-stream** | **Not free — the seam is severed.** ~~designed and scheduled~~ | The transports honour a signal in four places, and **no caller can supply one**: `Agent.turn` calls `infer` with two arguments and neither `Agent`, `Session` nor `react()` has a signal field (FLOW §3). **A turn in flight today is uncancellable.** The change is one field threaded `AgentOptions → Session → turn → infer`, and it is **2.7's** (§3.3), which is also what makes assertion (d) of §3.4 writable. After that: `abortTurn()` → `turn/abort` → the real `AbortController` on the real `fetch` |
+| **Cancel mid-stream** | **Not free — the seam is severed.** ~~designed and scheduled~~ | The transports honour a signal in four places, and **no caller can supply one**: `Agent.turn` calls `infer` with two arguments and neither `Agent`, `Session` nor `react()` has a signal field (FLOW §3). **A turn in flight today is uncancellable.** The change is one field threaded `AgentOptions → Session → turn → infer`, and it is **2.8's** (§3.3), which is also what makes assertion (d) of §3.4 writable. After that: `abortTurn()` → `turn/abort` → the real `AbortController` on the real `fetch` |
 | **Inject a correction while generating** | **Cheap, but the semantics are undesigned** — `steerTurn(text)` is declared in §5.8 and nothing says what the engine does with it | **Ruled here: steer = abort the in-flight inference, append the correction to the transcript as a `user` message, and let the next loop iteration re-assemble.** No mid-prompt injection, no new component, and the correction lands in HISTORY where the model already reads. **And the partial reply is recorded as an aborted assistant message, not deleted** — a tape that drops what was already said is a tape that lies |
 | **Force a tool call** | **Cheap.** One new `ToEngine` request | The harness runs the tool and inserts the `ToolResult` text as the next thing the model reads. **This is not E4** — a tool result is not a model message, so the harness is not speaking in the model's voice |
 | **Replay with one component changed** | **Cheap one way, not the other.** "Re-send this exact prompt" becomes nearly free once §3.5's ruling lands and the `Breakdown` reaches `AssembledEvent` — it is plain data. *(It does not cross today: `protocol/` does not exist, and `PromptBreakdown` is a name no file defines — FLOW gap A6.)* | "Re-send with component X edited" needs `assemble(components, { overrides: Map<key, string> })` — an override map keyed by the existing `key()`, **not** a new component type. It is a knob with one caller until DESIGN §4.3's Prompt surface has an edit box, so **it is built at 6.4 with that box and not before** |
@@ -1273,131 +1624,208 @@ realms.**
 
 ---
 
+## 11. Measurements, and when they stop being true
+
+`docs/scratch/` is tracked on purpose, and this revision leaned on it harder
+than any document before it: **every ruling in §3 rests on `FLOW.md`, and every
+realm ruling rests on `MEASURED.md`.** A cold reader put the obvious question to
+that arrangement and nobody had an answer: **nothing re-verifies a measurement
+after the tree it measured moves.**
+
+`FLOW.md` is precise and cited to `file:line`. The moment `promptFor` gains a
+second caller it becomes **confidently wrong**, in exactly the register that is
+hardest to catch — specific, sourced, and stale. That is *"rulings rot in the
+present tense"* one level up, and it applies to every measurement in that
+directory, including the ones this file spent a section correcting
+`ARCHITECTURE.md` with.
+
+**Ruling: a measurement is true *as of a commit*, it says so in its own header,
+and a check tells you when its subject moved.**
+
+Every file under `docs/scratch/` that asserts a measurement carries, in its
+first ten lines:
+
+```
+MEASURED AT: <full sha>
+SUBJECTS:    src/core/**, package.json          # what the claims are about
+REPRODUCE:   bun test && grep -rn "new Agent(" src
+```
+
+`SALVAGE.md` and `LESSONS.md` declare none of these, because they are not
+measurements — they are lessons, and a lesson does not expire when a file moves.
+**Declaring the header is what makes a file subject to the check**, which keeps
+the check's subject an allowlist rather than a directory.
+
+**`scripts/checks/stale.ts` `[1.8]`, one rule, three lines of git:**
+
+> For each scratch file declaring `MEASURED AT`, run
+> `git log --oneline <sha>..HEAD -- <SUBJECTS>`. **Non-empty output fails**,
+> naming the file, its sha, and the commits that moved its subject underneath
+> it.
+
+- **Watched red, and it is trivially watchable:** touch any file under
+  `src/core/`, commit, run the gate. `FLOW.md` goes red naming the commit.
+- **Green again** by one of exactly two acts, both of which are work someone
+  should have done: **re-run `REPRODUCE` and re-stamp the sha**, or **strike the
+  claims the change invalidated and re-stamp**. There is no third door, and
+  there is deliberately no `--force` flag.
+- **The first thing it does is bite this revision.** `2.8` moves `src/core/`,
+  which is `FLOW.md`'s declared subject, so `2.8`'s commit turns it red — and
+  that is correct, because `2.8` is precisely the increment that makes half of
+  `FLOW.md`'s findings historical. **`2.8` is not done until `FLOW.md` is
+  re-stamped or struck**, and that sentence is worth more than the check.
+- **The cost, named:** a scratch file with a wide `SUBJECTS` glob goes red on
+  almost every commit and the temptation is to widen the sha rather than re-run
+  the measurement. The defence is that re-stamping without re-running is a lie a
+  human types deliberately, which is a different and much rarer failure than a
+  document quietly aging. **It is not free and it is not clever; it is the
+  cheapest honest thing available.**
+
+*(`ARCHITECTURE.md` §8.7's `checks/docs.ts` is a different check with a
+different subject — it asks whether documents agree with each other and with
+PROGRESS. This one asks whether a document still agrees with the **tree**.
+Merging them would give one check two subjects, and §3.4 has just spent a
+subsection on what happens when one check is asked to prove two things.)*
+
+---
+
 ## What this document does not decide
 
 | Open question | Left to |
 |---|---|
-| **Whether `2.7` is adopted as an increment**, and its exact file list. §3.3 rules that it is next and gives its shape; only the architect editing `PLAN.md` can make it real, and this file cannot | The next `PLAN.md` edit. **Everything else in this table is behind it** |
-| Whether `scripts/checks/reach.ts` is a gate check or a deploy check, and what its opening allowlist is | The increment that writes it — proposed as part of `2.7`, so the check and its first red run land together |
-| Whether the eight false present-tense sentences FLOW records in `ARCHITECTURE.md` (gaps A1–A8) are corrected, and the three DONE-but-absent files (B1–B3, including the `max` ratchet PLAN says 2.6 armed) | The architect, in `ARCHITECTURE.md` and `PLAN.md`. **Not this file — it does not own them, and it cites FLOW wherever it would otherwise have relied on one** |
-| **Whether multimodality is built at all**, and in which wave. §4 is a design, not a schedule; `ARCHITECTURE.md` §9 still lists attachments as out and only the architect editing `PLAN.md` may move that | A PLAN increment — proposed as **wave 7**, after `[4.3]` (tools work) and `[6.4]` (Context can render the elision). Nothing before, **and nothing before the join** |
+| ~~Whether `2.7` is adopted as an increment~~ | **Closed.** `PLAN.md` now carries **`2.8` "one turn, joined"** and **`2.9` "reachability"**, with file lists and acceptances. `2.7` was not reused: PLAN records at two places that *"2.7 moved to 3.4"* at increment 0.3, and two 2.7s in one record is a collision in the only channel between agents |
+| ~~Whether `reach.ts` is a gate check~~ | **Closed.** It is a gate check, it is `2.9`, and its allowlist is seeded from the **post-join** tree, which is the only tree from which the allowlist is honest |
+| **Whether `stale.ts` (§11) is worth its noise**, and whether `SUBJECTS` globs stay narrow enough to be survivable | `1.8`, whose acceptance is watching it go red on a real `src/core/` commit and green on a re-stamp. If its first month is all false alarms, it is cut and §11 becomes an R4 obligation |
+| Whether the eight false present-tense sentences FLOW records in `ARCHITECTURE.md` (gaps A1–A8) are corrected, and the three DONE-but-absent files (B1–B3, including the `max` ratchet PLAN says 2.6 armed) | The architect, in `ARCHITECTURE.md`. **Not this file — it does not own them, and it cites FLOW wherever it would otherwise have relied on one** |
+| **Whether multimodality is built at all.** §4 is a design and is **UNSCHEDULED** — every one of its tags reads `[UNSCHEDULED]`, deliberately, so no tag resolves to a wave-7 number that means something else | A future PLAN increment. It also needs `ARCHITECTURE.md` §9's "attachments" row moved and §3.4's `src/engine/**` allowlist extended (§4.3), neither of which this file may do. Nothing before `[4.3]` (tools work) and `[6.4]` (Context can render the elision), **and nothing before the join** |
+| **STT and TTS — scheduled, and here is where.** The owner asked for speech twice; §8 designs it in full and an earlier draft left it off both the schedule and this table, which is the same defect as an unscheduled ruling | **`PLAN.md` wave 7.** `7.1` **voice out** — `speechSynthesis` as the default voice, the segmenter, the registry law; zero bytes, two implementations on day one, so the base is earned. `7.2` **voice in** — local STT, and it is **gated on a `MEASURED.md` latency row taken first** (§8.3), because single-threaded WASM on `gh-pages` is the constraint that decides whether it is usable. Both need `6.3` (a composer and a tape) and `2.8` (a turn) in front of them |
+| **What the seeded `main` agent's `response_model` is** — §8.4's streamed-TTS ruling turns on it and it is currently **unverified** | `4.1`, in its `PROGRESS.md` entry, stated explicitly rather than left to be read out of a seed file |
+| Whether a **second** integration test is worth it, and for which path — §3.4 check 2 proves one turn and leaves every other seam R0 | `4.5`, the increment that builds the second flow and therefore the second path worth asserting |
 | Whether `turn/delta` needs a `channel` field to keep a tool-calling turn readable (E3) | `ARCHITECTURE.md` §11, settled by a human watching PLAN 3.3's smoke run — **observation first, design after** |
 | Whether the repeat guard's ledger keys on the sorted set of call *names* | `[4.2]`, which is the first increment that knows what a call name is. `ARCHITECTURE.md` §9 carries it as a knowing defect |
 | Whether a per-turn tool-output budget exists, and what it drops when hit | The first measured turn that overruns. A second cap needs a drop policy and a drop policy has no caller yet |
-| Compaction, and whether it is an **event** in the log rather than a mutation (`REFERENCES.md` item 1) | After real token accounting. `ARCHITECTURE.md` §11's `usage` question blocks it |
+| Compaction, and whether it is an **event** in the log rather than a mutation | After real token accounting. `ARCHITECTURE.md` §11's `usage` question blocks it |
 | Whether `next` stays (§2.2) | A retro, in an increment whose **first act** is re-running the M1/M2/M3 probes |
-| The `MODALITIES` table (§6 recipe 5) | The increment that adds the second modality, first commit |
-| Whether the tool that ends a turn should be a tool the model calls, rather than a parser deciding what looks like an answer (`REFERENCES.md`: two independent designs converged on it) | A ruling weighed against the response-model approach, no earlier than `[4.5]` |
+| The `MODALITIES` table (§6 recipe 5) | The increment that adds the second modality, first commit. §4.0 argues why this refusal does not also condemn §4 |
+| Whether the tool that ends a turn should be a tool the model calls, rather than a parser deciding what looks like an answer | A ruling weighed against the response-model approach, no earlier than `[4.5]` |
 | Sub-agents, skills, MCP | `ARCHITECTURE.md` §9. Each returns with its second caller or never |
 
 ---
 
-**DECISION (amended after `docs/scratch/FLOW.md`).** The most important thing
-this document says is §3.2: **the parts of this system have never run
-together.** `promptFor` has one caller and it is a test; `new Agent(` appears in
-`src/` zero times; nothing under `src/app`, `src/client` or `src/ui` reaches
-`src/core` at all; and `Agent.turn` calls `infer` with two arguments, so the
-seam for reaching into a turn is severed one level above where it was built.
-Every part is green — 86 tests, 6 checks, byte-exact goldens — because **every
-check in this gate has a file as its subject and none has a relationship.** This
-is the declared-but-never-emitted defect one layer up: not an event with no
-consumer, but a seam with no join, and it is invisible to grep because both
-endpoints exist and both are exercised. The ruling: **`2.7` "one turn, joined"
-is next and precedes every wave 4, 5 and 6 increment**, because each of those
-adds only more unjoined parts and the join's cost compounds; PLAN 3.3's
-acceptance — a streamed token in the built export — is not satisfiable without
-it. The check that makes it inexpressible in future is a **source import-graph
-reachability check** with an allowlist carrying an expiry increment, checked in
-both directions, plus **one integration test asserting that the prompt the
-transport received is byte-identical to the golden** — the transport's input,
-not the assembler's output, which is the whole difference between proving a part
-and proving a path. And `assemble()`'s discarded breakdown is ruled **a missing
-wire, not dead weight**: `RenderPrompt` returns the `Breakdown` and
-`AssembledEvent` carries it, at 2.7, at the same seam §4 widens for parts.
+**DECISION.** The most important thing this document says is §3.2: **the parts of
+this system have never run together** — `promptFor` has one caller and it is a
+test, `new Agent(` appears in `src/` zero times, nothing under `src/app`,
+`src/client` or `src/ui` reaches `src/core`, and `Agent.turn` calls `infer` with
+two arguments, so the seam for reaching into a turn is severed one level above
+where it was built. Every part is green because **every check in this gate has a
+file as its subject and none has a relationship.** The join is therefore
+scheduled as **two** increments, not one: **`2.8` "one turn, joined"** — a
+`buildAgent` seam, an `AbortSignal` field, `RenderPrompt` returning the
+`Breakdown`, an `origin` field that marks a synthesised give-up answer **in the
+transcript** so the next prompt cannot hand the model its own harness's words
+back, and one integration test that compares the **transport's input** to the
+golden — and **`2.9`**, the reachability check, seeded from the **post-join**
+tree, which is the only tree from which its allowlist is honest and the only
+split under which reverting a check does not revert a join. Both precede every
+wave 4 and wave 5 increment, because each of those adds only more unjoined parts
+and the join's cost compounds; **wave 6 is not blocked** — PLAN rules it parallel
+from 1.4 and 6.1/6.2 import no core seam, while 6.3 and 6.4 are already gated by
+their own acceptances, which is the better mechanism. Three enforcement claims
+were deleted rather than softened: the purity proposal for §4 was a no-op
+(`ArrayBuffer` and `btoa` already fail, measured), the anti-double grep matched
+nothing, and `reach.ts` was mis-sold — it proves **no module is orphaned from a
+build**, not that a seam is joined, and with type-only edges correctly skipped it
+would have marked `core/ports.ts` reachable on four erased imports. The trade
+made across this revision: **every claim that could not be executed was demoted
+or deleted, at the cost of a document that now admits it closes one path and
+leaves the rest R0.**
 
-**DECISION (original).** An agent here is one message and one contract: the prompt is a
-sorted bag of immutable components and the reply is read against the same
-`FIELDS` table that asked for it, which makes composition the domain model
-rather than a code-style preference. The thesis is stated with five named
-exceptions — the loop is a table not a message, tool execution is an effect, the
-token stream has no contract, the repeat guard speaks in the model's voice, and
-`src/engine/` is outside the law entirely — because an architecture that cannot
-name its exceptions is advertising. On the owner's "least dependencies": the
-floor for a turn is `fetch` plus an endpoint, the four chosen deps all stay with
-their exit conditions written down, and seven things that look mandatory are
-refused by name. On multimodality: **bytes never become prompt text and never
-enter `src/core/`** — a component declares a `PartRef`, the worker resolves it
-from a content-addressed `blobs` store at a new step between assembly and
-transport, the OpenAI content array is emitted only when a part exists so
-text-only bodies stay byte-identical to the recorded fixtures, and a model that
-cannot see images is refused **at assembly** against an operator-declared
-`accepts` field on the config row — not on the kind catalogue, which describes a
-wire protocol and not a model. The trade I made: one optional method on
-`Component` and one optional field on `InferenceRequest`, paid by every text-only
-path as an empty array, bought instead of a `render(): string | Part[]` union
-that would have made forty files pay for one.
+**FILES.** Edits `/Users/kaush/Downloads/Dev/ASKK/docs/AGENT.md` (owner:
+architect) and `/Users/kaush/Downloads/Dev/ASKK/docs/PLAN.md` (owner: architect).
+No other file created or edited; `ARCHITECTURE.md`, `PROGRESS.md`, `src/` and
+`scripts/` are untouched by design. Raised against files owned elsewhere and
+**not touched here**: `ARCHITECTURE.md` §3.4 must add `btoa` and `ArrayBuffer`
+to the `src/engine/**` row **in the increment that builds parts**, and §9's
+attachments row moves in that same increment (owner: architect, later);
+`scripts/checks/docs.ts` `[1.7]` must add this file to its `§N.M` resolver and
+its cross-reference set (owner: coder, at 1.7).
 
-**FILES.** Creates `/Users/kaush/Downloads/Dev/ASKK/docs/AGENT.md` (owner:
-architect). No other file created or edited. Raises three items against files
-owned elsewhere and **not touched here**: `docs/PLAN.md` must adopt a wave 7 if
-§4 is ever built (owner: architect, later increment);
-`docs/ARCHITECTURE.md` §9's "Attachments / multimodality" row and §4's file map
-would gain `core/prompt/part.ts` and `engine/parts.ts` in that same increment
-(owner: architect); `scripts/checks/docs.ts` `[1.7]` must add this file to its
-`§N.M` resolver and its cross-reference set (owner: coder, at 1.7).
-
-**CONTRACTS.** Proposed, none built:
-`interface PartRef { id; sha; mime; name; bytes }` — a non-text part by
-reference, metadata only.
-`Component.parts(): readonly PartRef[]` — default `[]`; what this component
-carries beside its text.
-`type RenderPrompt = (session: Session) => { text: string; parts: readonly PartRef[] }` —
-the prompt seam, widened by one field.
+**CONTRACTS.** Built at `2.8`:
+`buildAgent(options: BuildOptions): Agent` — the single place `promptFor` meets
+`new Agent`; the only constructor of a real agent outside a test double.
+`AgentOptions.signal?: AbortSignal` — threaded `AgentOptions → Session → turn →
+infer`, turning an uncancellable turn into a cancellable one.
+`type RenderPrompt = (session: Session) => Breakdown` — the prompt seam returns
+the bands it already computes, and `AssembledEvent` carries them.
+`TranscriptEntry.origin: 'model' | 'harness'` — default `'model'`; `'harness'`
+renders behind a verbatim marker in `historyLines()`.
+Built at `2.9`:
+`ROOTS: readonly string[]` and `ALLOW: readonly {subject, reason, expiresAt}[]`,
+exported from `scripts/checks/reach.ts` — the roots it searches from and the two
+allowlists it checks in both directions.
+Built at `1.8`:
+`scripts/checks/stale.ts` — fails when a `docs/scratch/` file's declared
+`SUBJECTS` moved after its declared `MEASURED AT` sha.
+Designed, **UNSCHEDULED**:
+`interface PartRef { sha; mime; name; bytes }` — a non-text part by reference,
+metadata only, content-addressed (an earlier draft carried a redundant `id`).
+`Component.parts(): readonly PartRef[]` — default `[]`.
 `interface ResolvedPart { mime: string; data: ArrayBuffer }` — bytes, produced
 in the worker, never in core.
-`InferenceRequest.parts?: readonly ResolvedPart[]` — absent means the body is
-byte-identical to today's.
-`ConfigRecord.accepts: readonly string[]` — default `['text']`; what the
-operator declares this model can read.
-`blob/put { mime, name, data } → { sha }` and `blob/read { sha } → { mime, data }` —
-the only two messages that carry bytes, in that direction each.
+`ConfigRecord.accepts: readonly string[]` — default `['text']`.
+Scheduled at wave 7: `ttsFor(name)` `[7.1]`, `segment(buffer)` `[7.1]`,
+`sttFor(name)` `[7.2]`.
 
 **ACCEPTANCE.** Verbatim, runnable today:
-`test -f docs/AGENT.md` exits 0.
-`grep -c 'UNJOINED' docs/AGENT.md` returns non-zero — the third state is in the
-flow table, not only in prose.
-`grep -n 'reach.ts' docs/AGENT.md` names both the check and how it is watched red.
-`grep -n 'UNENFORCED' docs/AGENT.md` returns non-zero, and item 0 of §7.1 is the
-unjoined-seam gap.
-`grep -n 'PhaseInstructions\|PromptBreakdown' docs/AGENT.md` returns only lines
-that cite FLOW and correct them — this file relies on neither.
-Every `[N.M]` tag resolves to an increment in `docs/PLAN.md` **or** appears in
-the "does not decide" table as unscheduled; the `[7.1]` and `[proposed]` tags
-are the unscheduled ones and each is named there.
-Human acceptance: a reader who has not read `ARCHITECTURE.md` can name the
-thirteen parts of an agent, the thirteen steps of a turn, one pattern this tree
-refuses, and **why 86 green tests do not prove the system runs.**
+`grep -n 'PROPOSED' docs/AGENT.md` returns exactly two lines — the elision
+pattern's status in §5.1 and the bounded-record host test that belongs to
+unscheduled multimodality. Every other proposal in this file is now a numbered
+increment or an admitted UNENFORCED item; the earlier draft's four proposals
+that named `checks/purity.ts` are gone, because they proposed a no-op.
+`grep -n '2\.7' docs/AGENT.md` returns only the paragraph explaining why `2.8`
+and `2.9` do not reuse the vacated number.
+`grep -n '\[7\.1\]' docs/AGENT.md` returns only speech, and `grep -c
+'UNSCHEDULED' docs/AGENT.md` is non-zero — multimodality's tags resolve to no
+increment number, on purpose.
+`grep -n 'precedes every wave' docs/AGENT.md` names waves 4 and 5 and **not**
+wave 6; the only §3.3 paragraph about wave 6 is the one that un-blocks it.
+`grep -n 'expiresAt' docs/AGENT.md` shows every expiry as a wave boundary or a
+date, and none as an increment number.
+`grep -n 'already uses' docs/AGENT.md` returns only the two lines that quote and
+retract the phrase — there is no present-tense claim left about
+`scripts/checks/docs.ts`, which does not exist.
+`grep -n 'public/seed' docs/ARCHITECTURE.md` returns line 305 with the same
+`[4.1]` tag this file carries, so the path is the architecture's and not this
+file's invention.
+`bun run gate` is untouched and still green; this increment changes no code.
+Human acceptance: a reader who has not read `ARCHITECTURE.md` can name the five
+minimum parts of an agent, the thirteen steps of a turn, one pattern this tree
+refuses, **why 86 green tests do not prove the system runs**, and **which single
+check closes that and for how many paths.**
 
-**RISKS.** (0) **The largest risk is that §3.2 is read and not acted on.** This
-file can rule that the join comes next; only `PLAN.md` can make it next, and
-every increment that lands before it makes it bigger. A ruling in a document
-nobody schedules is the same shape as the defect it describes. (0b) §3.4's
-reachability check is red on ~19 files on its first run, which means its opening
-allowlist is large — and a large allowlist written in a hurry is how a check
-becomes a formality. Its `expiresAt` direction is the only thing standing
-against that, and it is unwritten. (1) §4 designs a feature `ARCHITECTURE.md` §9 currently forbids; if it
-is read as a licence rather than a design, someone builds attachments before
-tools work, which is exactly the ordering that produced `{data:"", format:""}`
-last time — the "does not decide" table is the only thing holding that line and
-it is prose, not a check. (2) `accepts` is operator-declared and will be wrong
-on somebody's endpoint; the failure is a refused attach on a model that would
-have worked, which is the safe direction but is still a wrong answer with no
-probe behind it. (3) This file is a fifth document in a system whose CLAUDE.md
-says the documents are the only channel between agents — a fifth channel is a
-fifth thing that can go stale, and `checks/docs.ts` does not yet know it exists.
-(4) Five named exceptions to a thesis is either honesty or the thesis being too
-weak to be load-bearing; I have argued the former and E1 is the one that would
-overturn it, because if control flow ever needs to be composable the message
-model stops being the whole domain. (5) The `PartRef`/`ResolvedPart` split keeps
-core pure at the cost of a step (4½) that exists in no other flow, and a step
-with one caller is the shape this tree deletes.
+**RISKS.** (1) **`2.9`'s allowlist is still the soft spot.** It is smaller after
+the join than before, but it is written by the same person under the same
+pressure, and its only defence is an expiry keyed to a wave boundary that
+`PROGRESS.md` must record honestly. An allowlist is a place code goes to live
+and no amount of structure changes that; only somebody reading it does. (2)
+**§3.4 check 2 proves one path and this document now says so loudly, which
+invites the reading that one path is enough.** It is not: after `2.8` and `2.9`
+every seam except the one that test walks is still R0, and the next integration
+assertion has no owner before 4.5. (3) **§11's check may be noise.** A scratch
+file with a wide `SUBJECTS` glob goes red on nearly every commit, and a check
+people learn to re-stamp past is worse than no check — 1.8's acceptance is the
+only thing standing between the rule and that outcome, and it is one increment
+of evidence. (4) **`7.2` may be cut by its own measurement**, and §8 is a long
+design for a feature single-threaded WASM on a static host might make unusable;
+the mitigation is that the measurement comes first and costs one afternoon,
+while the design already exists and cost nothing further. (5) **§4.0's
+table-versus-path argument is the one piece of new reasoning in this revision
+that nobody has attacked yet.** If a reviewer names a second piece of §4 caused
+by the *possibility* of a second modality, the argument weakens and §4 shrinks
+again — I have stated that test in the section rather than hoping it is not
+applied. (6) **`accepts` is operator-declared** and will be wrong on somebody's
+endpoint; the failure is a refused attach on a model that would have worked,
+which is the safe direction and still a wrong answer with no probe behind it.
+(7) **This file is a fifth document** in a system whose CLAUDE.md says the
+documents are the only channel — a fifth thing that can go stale, and
+`checks/docs.ts` does not yet know it exists.
