@@ -40,16 +40,8 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 echo "  clean at $(git rev-parse --short HEAD) on $(git rev-parse --abbrev-ref HEAD)"
 
-step "2/5  types"
-# `bun run gate` lands at PLAN 1.6 and takes this slot when it does. Naming the
-# absence out loud, because a deploy that quietly skips a check it believes in
-# is worse than one that has not written it yet.
-if grep -q '"gate"' package.json; then
-  bun run gate || fail "the gate is red. Never weaken a check to pass it."
-else
-  echo "  bun run gate is not in the tree yet (PLAN 1.6) — running the type check alone"
-  bun run types || fail "the type check is red"
-fi
+step "2/5  the gate"
+bun run gate || fail "the gate is red. Never weaken a check to pass it."
 
 step "3/5  static export"
 # `bun run build` removes .next and out first. A stale artifact served in place
@@ -78,6 +70,11 @@ cat "$LOG"
 URL="$(sed -n 's|^serving .* at \(http://[^ ]*\)$|\1|p' "$LOG")"
 [ -n "$URL" ] || fail "the server did not announce a URL — nothing to check"
 bun scripts/verify-export.ts "$URL" || fail "the built export is not a working page at $URL"
+# Two browser checks, two different questions. verify-export asks whether the
+# artifact loads; verify-worker asks whether the worker realm the whole
+# architecture is drawn on still behaves the way it was measured behaving —
+# including the one property of the single-writer election that can ship broken.
+bun scripts/verify-worker.ts "$URL" || fail "the worker realm is not what the architecture assumes at $URL"
 cleanup_server
 trap - EXIT
 
@@ -126,3 +123,4 @@ echo "  $BRANCH moved ${BEFORE:0:7} -> ${LOCAL:0:7}"
 
 printf '\ndeployed — now verify the hosted URL, not this machine:\n'
 printf '  bun scripts/verify-export.ts https://kaush4l.github.io/ASKK/\n'
+printf '  bun scripts/verify-worker.ts https://kaush4l.github.io/ASKK/\n'
