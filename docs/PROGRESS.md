@@ -395,3 +395,92 @@ Entry shape:
     constructor — and the other three still do not. Left alone: it is the one
     untrue sentence the retro found that no check can catch, and rewriting it
     is the architect's.
+
+## 2.3 — The second concrete, streaming from a real endpoint — 2026-08-28
+- Files: `src/core/inference/openai.ts` (new, 241 lines / 226 non-blank),
+  `src/core/inference/catalog.ts` (new, 41 / 37),
+  `tests/inference-http.test.ts` (new, 12 cases against a fake chunked
+  `ReadableStream`), `tests/inference-http-live.test.ts` (new, 2 cases against
+  a real endpoint, skipped when none answers). Written by the coder; this entry
+  lands in the same commit as the code.
+- Proof: `bun run gate` → **`gate GREEN`, 6 checks ran, 0 failed** (types,
+  tests, purity, size, gate-coverage, export). Within it: `24 pass / 0 fail /
+  65 expect() calls` across 4 files; `purity: src/core — 5 file(s) scanned,
+  ok`; `size: total 1725 non-blank lines across src + scripts`, `max 226 lines
+  — src/core/inference/openai.ts` (ratchet still unarmed).
+- **The acceptance was taken against a real endpoint, not a fake.** omlx on
+  `http://127.0.0.1:8873/v1` answered; `tests/inference-http-live.test.ts` runs
+  inside `bun test` and therefore inside the gate, driving
+  `granite-4.2-30b-MLX-8bit` through `OpenAiInference` with the **global
+  `fetch` passed as the `FetchPort`**. Seven `content` deltas arrived, the
+  first and last separated in time, `deltas.join('') === result.text`, and
+  `usage.completionTokens` came back 110 from the server's own
+  `stream_options: {include_usage: true}` frame. On a machine where nothing
+  answers `/models` in 2s the file skips and says so by name; the fake-stream
+  suite is the regression guard that runs everywhere.
+- **Watched red, five ways.** Each break was applied to the shipped file, the
+  suite run, and the file restored:
+  1. *Collapse the stream to one delta* (accumulate, emit once at the end) —
+     `Expected: > 1 / Received: 1`, 4 of 12 red.
+  2. *Buffer the whole body, then chop it into frames* — the exact "fake it"
+     shape. **`more than one delta arrives` stayed GREEN**, 10 of 12 passed,
+     and only `deltas arrive before the stream is finished, not after` caught
+     it, by hanging to its 5000ms timeout. That case's fake refuses to produce
+     its second chunk until the first delta has fired, so a buffering transport
+     deadlocks instead of passing. This is why a chunk **count** is not
+     sufficient evidence of streaming and the timing case exists.
+  3. *Remove the `JSON.parse` guard* — `SyntaxError: JSON Parse error:
+     Unterminated string`, 2 of 12 red; restored, a truncated `data:` frame and
+     a `data: not json at all` frame are dropped and the reply survives.
+  4. *Remove the mid-loop `signal?.aborted` check* — `Received promise that
+     resolved`, 1 of 12 red.
+  5. *Reset the UTF-8 carry between chunks* — `Expected: "héllo 🌊 wörld" /
+     Received: "héllo �� wörld"`, 1 of 12 red. A frame split mid-character
+     across two reads is what that decoder is for.
+  The live `>1` assertion was also watched red for a real reason before it was
+  green: at `max_tokens: 48` the endpoint never left its reasoning phase and
+  flushed the whole accumulated `reasoning_content` as **one** `content` chunk
+  on `finish_reason: length`. Raising the budget to 600 made it seven deltas.
+  A server's truncation behaviour, recorded because it will bite the budget
+  work in 2.6.
+- Line budget: **+260 declared, +618 actual** (382 of it tests). Recorded, not
+  waived. The overrun is three things the increment could not buy separately:
+  a hand-written incremental UTF-8 decoder (`TextDecoder` is an ambient global
+  and §3.4 grants `src/core/**` none), the defensive frame reader, and the
+  timing case in 2 above, which is the only assertion that can tell streaming
+  from buffering. The architect's call, per §8.3.
+- Ringmaster: not yet ruled.
+- Open:
+  - **`Uint8Array` is not in `checks/purity.ts`'s `ES_GLOBALS`**, so
+    `new Uint8Array()` fails purity as a "free global". Typed arrays are
+    ECMAScript built-ins that carry no environment, exactly like `Map` and
+    `JSON` which are on the list. Not worked around and not fixed: the code
+    reads `if (step.value !== undefined)` instead of defaulting, and the reason
+    is a comment at the call site. `checks/purity.ts` is not this increment's
+    file.
+  - **`inferenceFor('scripted', …)` cannot be given a fixture.** §5.2's
+    declared signature is `(kind, config, fetchPort)` and `ScriptedInference`
+    needs a third construction argument. The catalogue passes `[]`, so the
+    fake it returns refuses its first call with `scripted inference has no
+    reply 1 — the fixture holds 0` — loud, and asserted. It is not silent, but
+    it is a catalogue entry that cannot produce a usable transport, and whether
+    `scripted` belongs in the catalogue at all is the architect's call, not a
+    coder's contortion of the declared signature.
+  - **The base needed no change to fit the second concrete.** `infer(req,
+    onDelta?, signal?)` and `describeRequest` were both sufficient as written,
+    which is the two-concrete justification §5.2 claimed, now observed.
+  - **`stopReason` has no honest empty value.** It is `string`, not
+    `string | null`, so a server that names no `finish_reason` gets
+    `end-of-stream` — a fact about the stream rather than a guessed `stop`.
+    Flagged because `usage` was deliberately made nullable for the same reason
+    and `stopReason` was not.
+  - **`reasoning_content` is dropped, not streamed.** The measured endpoint
+    interleaves it; §5.2 says `text` is the model's reply, and reasoning is
+    not the reply. If a Thinking surface ever wants it, that is a base change.
+  - **No retries, and no timeout.** SALVAGE F-7 named retries as one of three
+    things the old transport claimed and lacked; this one does not claim them.
+    §6.5 already forbids the deadline that cannot cancel.
+  - **`docs/PLAN.md`'s 2.3 row still reads `TODO`** and `ARCHITECTURE.md` §4's
+    entries for `core/inference/openai.ts` and `core/inference/catalog.ts` are
+    untagged. Both are the architect's files; this entry is the coder's only
+    edit under `docs/`.
