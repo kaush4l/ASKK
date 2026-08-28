@@ -190,7 +190,31 @@ Linux kernel, runc, grub, and Bochs-to-wasm through `wasi-sdk-19.0`:
 #45 [busybox-amd64-dev 8/13] RUN make CROSS_COMPILE=x86_64-linux-gnu- LDFLAGS=--static -j$(nproc)
 ```
 
-<!--BUILD5-->
+**This build did not produce an artifact within the time budget of this
+increment.** At **7 minutes 31 seconds** elapsed it was still running, with the
+kernel (`make ARCH=x86 CROSS_COMPILE=x86_64-linux-gnu- -j$(nproc)`), busybox
+and Bochs stages all still in flight on the VM's 2 vCPUs, and no
+`out-alpine.wasm` on disk. It had not failed — it simply had not finished, and
+I stopped waiting rather than guess at the end of it. I am therefore recording **no artifact
+size, no boot time and no guest capability for c2w** — not an estimate, and
+not the prior tree's numbers reused as if they were this tree's.
+
+What I can state with evidence:
+
+- **c2w 0.8.4 as installed cannot build anything on this machine.** Two
+  independent blockers, both reproduced, both quoted above.
+- **Neither blocker is a bug in this project's code, and neither is fixable
+  from inside this repo.** One is a stale URL in a Homebrew formula; one is a
+  third-party server being down.
+- **Both were only passable by hand-patching a 1,065-line generated
+  Dockerfile.** A `--build-arg` and a `sed` against an emulator build script is
+  not a foundation an increment can declare "reproducible from a script
+  in-repo," which is exactly what 5.2 requires.
+
+The specific figures this increment was asked to confirm or refute — bare
+Alpine ≈ 42.7 MB, OCI layout ≈ 3.7 MB, emulator:guest ≈ 11.6:1 — are therefore
+**neither confirmed nor refuted here.** They remain the prior tree's numbers.
+They are cited nowhere below as if they were mine.
 
 ## 2. Pyodide 0.28.0 — measured bytes, measured boot, measured limits
 
@@ -220,6 +244,14 @@ PYODIDE first runPython ms  = 10
 PYODIDE version = 3.13.2 (main, Jul  4 2025, 13:41:45) [Clang 21.0.0git ...]
 ```
 
+**Read that 677 ms conservatively.** It was served from `localhost` off an SSD
+to a fresh browser profile: no DNS, no TLS, no CDN, no network latency, and no
+HTTP cache either. It is the floor — the wall-clock cost of instantiating 8.6 MB
+of WebAssembly and unpacking the stdlib, with the 5.04 MiB download taking zero
+time. On a real cold open over the network the download dominates and the true
+figure is larger by however long 5 MiB takes on the user's connection. I did not
+measure that, and it is the number a cold-open budget would actually need.
+
 **Pyodide works with no cross-origin isolation and no SharedArrayBuffer.** That
 is the single most important positive result in this document: it clears the
 constraint that disqualifies WebContainer.
@@ -238,6 +270,28 @@ open_write       -> RETURNED: hi          (in-memory FS only, gone on reload)
 No processes, no fork, no threads, no shell. **Pyodide cannot run a command.**
 It runs Python expressions. If the tool the agent wants is `bash`, Pyodide is
 not a candidate at any price.
+
+### Pyodide cannot be interrupted in this architecture — measured
+
+Pyodide's only mechanism for stopping running Python is `setInterruptBuffer`,
+and it takes a `SharedArrayBuffer`, which requires cross-origin isolation:
+
+```
+SharedArrayBuffer available    = false
+py.setInterruptBuffer exists   = function
+install interrupt buffer       -> CANNOT INSTALL INTERRUPT:
+                                  ReferenceError SharedArrayBuffer is not defined
+```
+
+The method exists and cannot be armed. So **`while True: pass` in Pyodide, on a
+page without COOP/COEP, cannot be stopped** — which is `LESSONS.md` defect 4's
+frozen tab exactly. The only remedy is to run Pyodide inside a Worker and call
+`terminate()`, which is measured below to work instantly — but that destroys
+the interpreter, so every timeout costs a full 5.04 MiB / 677 ms re-boot and
+all in-memory state.
+
+This also means the two options interact: **Pyodide is only safe inside the
+Worker whose isolation is worthless on its own.** Neither is sufficient alone.
 
 ### Two silent-success traps in Pyodide, which this tree must not repeat
 
@@ -274,14 +328,22 @@ MIT licensed (`quickjs-emscripten: The MIT License`). Sizes weighed:
 ### Boot
 
 ```
-QUICKJS import ms = 4      (warm; 392 ms cold from esm.sh)
-QUICKJS init ms   = 5      (253 ms on first, cold run)
-QUICKJS eval ms   = 4
+run 1 (module fetched from esm.sh)    run 2
+QUICKJS import ms = 392               4
+QUICKJS init ms   = 253               5
+QUICKJS eval ms   = 9                 4
 QUICKJS 1+1 = 2
 ```
 
-**A quarter of a megabyte and about ten milliseconds**, against Pyodide's five
-megabytes and 677 ms.
+**Instantiate-and-evaluate is ~10 ms** (run 2). The 392/253 ms in run 1 is the
+network fetch from `esm.sh` plus first compile; vendored into the page as this
+tree requires, only the ~10 ms remains, plus whatever 231 KB costs to download.
+Compare Pyodide: 5.04 MiB and a 677 ms floor.
+
+*Caveat: I did not isolate download from compile in run 1, and both runs used a
+fresh browser profile, so I cannot fully explain run 2's speed. The ~10 ms
+instantiate figure is the one I stand behind; treat 392 ms as an upper bound on
+first load, not a measurement of any one thing.*
 
 ### The isolation is structural, and I attacked it
 
@@ -337,6 +399,33 @@ What a worker *does* give, and gives perfectly, is **termination**:
 `terminate()` killed a spinning loop instantly with the main thread untouched.
 That is a genuine and valuable property — it is just a different one.
 
+## 4b. The composite — QuickJS inside a terminable Worker — measured together
+
+Because this is the only configuration recommended below, it was measured as a
+configuration and not assumed from its parts. A module Worker loads QuickJS,
+arms a 1-second interrupt deadline, and the host arms its own 3-second
+`terminate()` as a second line:
+
+```
+arith          -> OK:2                                    (778 ms, incl. worker+wasm boot)
+globals count  -> OK:"61"                                 (16 ms)
+fetch in guest -> OK:"undefined"                          (12 ms)
+infinite loop  -> ERROR:{"name":"InternalError","message":"interrupted"}   (1010 ms)
+stack bomb     -> WORKER TERMINATED by host after 3001 ms
+main thread alive after all of the above: 673,456 iterations in 50 ms
+```
+
+Two things worth keeping:
+
+- Steady-state cost after the first call is **12–16 ms**; the 778 ms on the
+  first is worker startup plus the WASM fetch and compile.
+- **The stack bomb was not caught by QuickJS's interrupt handler.** Unbounded
+  recursion ran past the 1-second deadline and only the host's `terminate()`
+  stopped it. So the inner guard is *not* sufficient on its own, and the
+  two-layer arrangement is load-bearing rather than belt-and-braces. Anything
+  built here must keep both, and the outer timeout is the one that must never
+  be removed.
+
 (`localStorage` being `undefined` in a worker while `indexedDB` is present is
 also the physics-based realm check `LESSONS.md` demands in place of
 `typeof window`. Confirmed here.)
@@ -387,7 +476,7 @@ at independently, and it is the strongest argument in this document.
 |---|---:|---:|---|---|---|---|---|
 | **c2w / Alpine** | unmeasured (build failed) | unmeasured | yes, full VM | unmeasured | yes | prior tree: yes | yes, but 20-origin build chain |
 | **WebContainer** | unpublished | "ms" (claimed) | yes | n/a | Node only | **no** | **no — boots off stackblitz.com** |
-| **Pyodide** | 5.04 MiB | 677 ms | interpreter, not a boundary | no interrupt measured | **no** | **yes** | yes |
+| **Pyodide** | 5.04 MiB | 677 ms | interpreter, not a boundary | **no — interrupt needs SAB, unavailable**; only `terminate()` | **no** | **yes** | yes |
 | **QuickJS** | **231 KB gz** | **~10 ms** | **yes, measured** | **yes, 501 ms deadline + memory cap** | no | **yes** | yes |
 | **Worker alone** | 0 | ~0 | **no — full fetch/IDB** | **yes, instant** | no | yes | yes |
 | **No sandbox** | 0 | 0 | n/a | n/a | n/a | yes | yes |

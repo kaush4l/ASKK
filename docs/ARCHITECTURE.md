@@ -510,6 +510,17 @@ tests/*.test.ts                 [2.0] host tests, plain `bun test` (never --isol
 
 Signatures and one line of meaning. No bodies.
 
+**Contracts carry increment tags, exactly as §4's file map does, and for the
+same reason.** A signature written here before it is built is a plan; one
+written here after it is built is a record; and a reader cannot tell them apart
+without a marker. So a declaration not yet in the tree is tagged — `[6.4]` — and
+an untagged declaration claims to exist **now, with these members**.
+
+This was added at 2.5 after §5.2 and `src/core/inference/base.ts` were found
+asserting opposite things about the same interface, each internally coherent and
+each authoritative-looking on its own. `checks/docs.ts` rule 7 (§8.7) compares
+every untagged declaration here against the same-named declaration in `src/`.
+
 ### 5.1 The port seam — `core/ports.ts`
 
 ```ts
@@ -577,6 +588,19 @@ catalogue at wave 3 — and not before.
 *(A `FilesPort` is deliberately absent until the first tool that reads a file
 exists. No port without a caller.)*
 
+**Why `StorePort` stays with no caller while `isConfigured` was deleted for
+having none.** The two look like the same case and are not. `isConfigured` was
+**executable code** shaped exactly like a capability gate, and its failure mode
+was a capability registered on truthiness that dies at the call site — it was
+dangerous *because* it invited being called. `StorePort` is a **type**: zero
+runtime cost, zero call sites to get wrong, and it is the contract §5.1 exists
+to state. The line is not "does it have a caller" but **"can its absence of a
+caller hurt anything"** — for a shipped function, yes; for a declared interface
+the seam is built around, no.
+
+Stated because the two rulings are three sections apart and read as
+inconsistent otherwise.
+
 ### 5.2 The inference base — `core/inference/base.ts`
 
 ```ts
@@ -603,11 +627,13 @@ exists on the base because "what left the tab" is a property of the wire
 protocol, not of the agent.
 
 ```ts
-interface RequestRecord { method: string; url: string; headers: HeaderRecord[]; body: unknown }
-interface HeaderRecord { name: string; value: string | null; bytes: number; scheme?: string }
+interface RequestRecord { url: string; method: string | null; body: string }   // built, 2.2
+interface RequestRecord { url: string; method: string | null; body: string
+                          headers: HeaderRecord[] }                            // [6.4]
+interface HeaderRecord { name: string; value: string | null; bytes: number; scheme?: string }  // [6.4]
 ```
 
-**Headers are shown, redacted — ruled at 2.2.** 2.2 omitted them entirely,
+**Headers are shown, redacted — ruled at 2.2, built at 6.4.** 2.2 omitted them entirely,
 reasoning from §7.2 that the `Authorization` value must never reach the render
 realm. That reasoning is right and is preserved. The *consequence* was not:
 Context exists because the prior harness told its model it had done things it
@@ -643,9 +669,23 @@ exists at any point**, rather than existing briefly and being sanitised by a
 step someone can forget. Same reasoning as the `seq` allocator living inside the
 store (§5.1): you cannot omit a step that has no place to happen.
 
-**Checked by a host test, not a static rule** — `tests/inference.test.ts`
-constructs a concrete with a known key and asserts that string does not appear
-anywhere in `JSON.stringify(describeRequest(...))`. A substring assertion over
+**Not built until 6.4, and that is the ruling, not a delay.** `headers` has no
+consumer until `ui/surfaces/Context.tsx` renders it, and §9's standing rule is
+that a declaration with no consumer is deleted rather than kept for later.
+Building the field at 2.3 would have violated the rule this document enforces
+most often, in order to satisfy a ruling about a surface four waves away.
+
+So the code that omits `headers` today is **correct today**. What was wrong was
+this section describing the field in the present tense, and
+`src/core/inference/base.ts` carrying a comment saying there is deliberately no
+such field — two coherent halves, each authoritative-looking, disagreeing. The
+tag fixes the record; the comment in `base.ts` should read "headers arrive at
+6.4 per §5.2" rather than asserting the field is unwanted, and that one-line
+correction belongs to whoever next opens the file.
+
+**Checked by a host test, not a static rule** — when it is built,
+`tests/inference.test.ts` constructs a concrete with a known key and asserts
+that string does not appear anywhere in `JSON.stringify(describeRequest(...))`. A substring assertion over
 the serialised record is total: it catches any future leak path, including one
 through a field nobody thought of. Static analysis cannot see this; the test
 can, and it can be watched red by deleting one line.
@@ -1710,12 +1750,34 @@ entry with the increment that creates it:
 6. **Rulings.** Every PROGRESS entry citing a verdict has a matching file in
    `docs/rulings/`. This is the condition on which that directory survives the
    cut list (§10.5).
+7. **Contracts.** Every **untagged** `interface`/`class` declaration in §5 has a
+   same-named declaration in `src/` with the **same member names**. Tagged
+   declarations are skipped — they are plans, not claims. This is the rule that
+   catches a document and a source file describing one type differently, which
+   rules 1–3 cannot: they compare documents to the *file system*, and a
+   contradiction inside a file is invisible to them.
 
 **What it cannot check, stated plainly because overstating it would reproduce
 the defect.** It checks that documents **refer to things that exist and agree
 with each other about status**. It cannot check that a sentence is *true*.
 
-Of the six found: rules 1–3 catch five. The sixth —
+**The second worked example, and it is sharper than the first.** At 2.5, §5.2
+described `RequestRecord.headers` as a field the surface renders, while
+`src/core/inference/base.ts` carried a comment stating there is deliberately no
+such field. Neither document was internally incoherent. Neither referred to
+anything missing from the file system. **Each looked authoritative on its own**,
+and a reader would have to hold both open to see it — which is exactly what
+happened, two increments after the ruling landed.
+
+That is worse than the retro's six, because those were single documents drifting
+from a checkable world. This was two records of one decision, both maintained,
+disagreeing. It is the same shape as the `FromEngine`/`REPLY_OF` split (§6.1)
+and the storage-vs-wire shapes (§7.4) — **one truth, two declarations** — and
+the answer is the same one both times: not "write it once", which is often
+impossible across a doc/code boundary, but **declare the pairing and check it.**
+Rule 7 is that check.
+
+Of the six found at the retro: rules 1–3 catch five. The sixth —
 `core/ports.ts:10` reading *"Four members, each with a caller"* while none had
 one — is well-formed, refers to nothing external, and **would pass every rule
 above.** It was found by a reader, twice: once at the retro, and again at 2.2,
@@ -1747,6 +1809,29 @@ So the class is wider than it first looked, and both halves have one fix:
 > Nothing recomputed it, so nothing noticed when it stopped being right, and
 > nothing stopped the identical arithmetic error recurring in the tool built to
 > replace the rule the wrong number justified.
+
+**Two results from wave 2 that belong here, because both are about what an
+assertion can and cannot see.**
+
+*A correct-looking event stream can still be wrong, and only a causal assertion
+sees it.* At 2.4, an implementation firing `assembled` one step **late** emitted
+every event, in the right order, with every payload correct. Every
+value-comparing assertion passed. What caught it was asserting a *relationship
+between two facts at one instant* — `inference.received` must still be empty
+when `assembled` lands, because the whole contract of that event is that it
+fires **before** the model is called (SALVAGE idea 10). An event log proves what
+happened; only a causal assertion proves **when**, and "before inference" is the
+entire value of the event.
+
+*The byte-exactness rule was proven rather than trusted, for the first time.* At
+2.5 the port's central claim — *any string the model reads is copied character
+for character* — was checked by checking out `pre-workbench` in a worktree and
+comparing all seven response classes' field descriptions, both rendered
+instruction blocks, `FORMAT_NOTES` and every answer-field string, side by side.
+**Identical.** For eleven increments that rule had been an instruction people
+followed; it is now a result someone produced. §8.5 still lists it as enforced
+only where a golden reaches, and that remains true — but the reach was measured
+rather than assumed.
 
 `size.ts` now prints the shell command that reproduces its number, so any reader
 can recompute it in one paste. That is the cheapest possible version of this
