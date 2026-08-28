@@ -478,9 +478,8 @@ trips on them. Each names the increment that clears it.
 | Debt | Cleared by |
 |---|---|
 | Eleven stale `.claude/worktrees/*` registrations in this repo | 1.7 |
-| `scripts/verify-worker.ts`'s header says "the four facts"; it asserts **seven** | 1.7 |
+| `scripts/verify-worker.ts`'s header said "the four facts" while asserting seven | cleared at 3.1, which rewrote the header against the five it asserts now |
 | `docs/scratch/REFERENCES.md` — wave-0 recon, input to wave 4 | 4.3 |
-| `src/client/worker-probe.ts` + `src/engine/probe.worker.ts` — 179 lines of wave-1 scaffold on every page load | 3.1 |
 | `isConfigured` returns with its first real caller | 3.x, with the inference catalogue |
 | `docs/scratch/FLOW.md` describes a pre-join tree; half its findings become historical the moment the join lands | 2.8, in the same commit — re-stamped or struck, never left standing |
 | `idb@8.0.3` has zero importers | 3.4 gives it one; 2.9's allowlist entry expires at the end of wave 3 and deletes it if not |

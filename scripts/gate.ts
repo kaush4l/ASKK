@@ -49,6 +49,7 @@ const CHECKS: readonly Check[] = [
   { name: 'types', why: 'the tree type-checks under strict', run: ['bun', 'run', 'types'] },
   { name: 'tests', why: 'the host suite passes', run: ['bun', 'test'] },
   { name: 'purity', why: 'the core references no ambient global (§2.1)', run: ['bun', 'scripts/checks/purity.ts'] },
+  { name: 'realm', why: 'the realm map holds: per-directory globals, banners, the typeof ban (§3.5)', run: ['bun', 'scripts/checks/realm.ts'] },
   { name: 'size', why: 'no function over 40 lines; max and total reported (§8.3)', run: ['bun', 'scripts/checks/size.ts'] },
   { name: 'design', why: "DESIGN.md's static rules, one named sub-check each (§10.2 ruling 3)", run: ['bun', 'scripts/checks/design.ts'] },
   { name: 'gate-coverage', why: 'every check that exists is a check this gate runs (§8.6)', run: ['bun', 'scripts/checks/gate-coverage.ts'] },
@@ -57,11 +58,10 @@ const CHECKS: readonly Check[] = [
 
 /** Named in ARCHITECTURE.md §8 and not yet written. Printed, never counted. */
 const SCHEDULED: readonly { name: string; when: string }[] = [
-  { name: 'checks/realm.ts', when: 'the realm map has a worker to check — wave 3' },
   { name: 'checks/layers.ts', when: 'there are layers to check — wave 2 onward' },
   { name: 'checks/protocol.ts', when: 'increment 3.2 writes the protocol' },
   { name: 'checks/orphans.ts', when: 'there are exports worth orphaning — wave 2 onward' },
-  { name: 'checks/bundle.ts', when: 'CORE_MARK and WORKER_MARK exist — waves 2 and 3' },
+  { name: 'checks/bundle.ts', when: 'core reaches the worker chunk, which is 3.3 — WORKER_MARK landed at 3.1, CORE_MARK at 2.6' },
   { name: 'scripts/smoke.ts', when: 'a turn can stream — increment 3.3 (deploy path, not the gate)' },
 ]
 

@@ -17,6 +17,13 @@
  * chain. It cannot produce a false failure. What it misses is a file that
  * declares a local named exactly like the ambient global it reaches for
  * elsewhere — a stranger thing to write than the violation itself.
+ *
+ * **This file owns THE tokeniser.** `checks/realm.ts` imports the pieces below
+ * rather than writing a second one — that was the condition on which 2.1's
+ * +87-line overrun was accepted, and re-implementing here would mean the trade
+ * was never made. Everything the second check needs is exported; everything
+ * that is purity's own rule stays private. The script half runs under
+ * `import.meta.main`, so importing this module runs no check.
  */
 
 import ts from 'typescript'
@@ -24,7 +31,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 /** ECMAScript built-ins that carry no environment with them. */
-const ES_GLOBALS = new Set([
+export const ES_GLOBALS = new Set([
   'Object', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt',
   'Math', 'JSON', 'Date', 'RegExp', 'Map', 'Set', 'WeakMap', 'WeakSet',
   'Promise', 'Proxy', 'Reflect', 'Error', 'TypeError', 'RangeError',
@@ -43,9 +50,9 @@ const PURITY_ROOTS: readonly { dir: string; allow: readonly string[] }[] = [
   { dir: 'src/core', allow: [] },
 ]
 
-interface Violation { file: string; line: number; message: string }
+export interface Violation { file: string; line: number; message: string }
 
-function tsFiles(dir: string): string[] {
+export function tsFiles(dir: string): string[] {
   const out: string[] = []
   if (!existsSync(dir)) return out
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -64,7 +71,7 @@ function addBindingNames(name: ts.BindingName, into: Set<string>): void {
 }
 
 /** Every name the file binds: imports, declarations, parameters, destructurings. */
-function declaredNames(sf: ts.SourceFile): Set<string> {
+export function declaredNames(sf: ts.SourceFile): Set<string> {
   const names = new Set<string>()
   const walk = (node: ts.Node): void => {
     if (ts.isImportClause(node) && node.name) names.add(node.name.text)
@@ -99,10 +106,20 @@ function isSkipped(node: ts.Node): boolean {
     ts.isImportDeclaration(node) || ts.isExportDeclaration(node)
 }
 
-function freeIdentifiers(sf: ts.SourceFile, bound: Set<string>, allow: Set<string>): Violation[] {
+export function freeIdentifiers(sf: ts.SourceFile, bound: Set<string>, allow: Set<string>): Violation[] {
   const found: Violation[] = []
   const visit = (node: ts.Node): void => {
     if (isSkipped(node)) return
+    // A JSX tag is not a value reference unless it is capitalised: `<main>` is
+    // an intrinsic element and `main` is a string in the emitted call, while
+    // `<Shell/>` really is the binding `Shell`. Reading every tag as an
+    // identifier would report every HTML element in the tree as a free global.
+    if (ts.isJsxClosingElement(node) || ts.isJsxOpeningFragment(node) || ts.isJsxClosingFragment(node)) return
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      if (!(ts.isIdentifier(node.tagName) && /^[a-z]/.test(node.tagName.text))) visit(node.tagName)
+      visit(node.attributes)
+      return
+    }
     if (ts.isPropertyAccessExpression(node)) { visit(node.expression); return }
     if (ts.isQualifiedName(node)) { visit(node.left); return }
     if (ts.isIdentifier(node)) {
@@ -116,7 +133,7 @@ function freeIdentifiers(sf: ts.SourceFile, bound: Set<string>, allow: Set<strin
   return found
 }
 
-function at(sf: ts.SourceFile, node: ts.Node, message: string): Violation {
+export function at(sf: ts.SourceFile, node: ts.Node, message: string): Violation {
   const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf))
   return { file: sf.fileName, line: line + 1, message }
 }
@@ -179,10 +196,15 @@ function specifierOf(node: ts.Node): string | null {
   return null
 }
 
-function checkFile(path: string, allow: Set<string>): Violation[] {
+/** One file, parsed. The single place a `SourceFile` is made, so both checks read the same tree. */
+export function parseFile(path: string): ts.SourceFile {
   const text = readFileSync(path, 'utf8')
   const kind = path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-  const sf = ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true, kind)
+  return ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true, kind)
+}
+
+function checkFile(path: string, allow: Set<string>): Violation[] {
+  const sf = parseFile(path)
   const bound = declaredNames(sf)
   return [...imports(sf), ...freeIdentifiers(sf, bound, allow), ...ambientConstructs(sf, bound)]
 }
@@ -203,11 +225,13 @@ function runPurity(root: string): Violation[] {
   return violations.map((v) => ({ ...v, file: relative(root, v.file) || v.file }))
 }
 
-const root = process.cwd()
-const violations = runPurity(root)
-for (const v of violations) console.error(`purity FAIL ${v.file}:${v.line}  ${v.message}`)
-if (violations.length > 0) {
-  console.error(`purity: ${violations.length} violation(s)`)
-  process.exit(1)
+if (import.meta.main) {
+  const root = process.cwd()
+  const violations = runPurity(root)
+  for (const v of violations) console.error(`purity FAIL ${v.file}:${v.line}  ${v.message}`)
+  if (violations.length > 0) {
+    console.error(`purity: ${violations.length} violation(s)`)
+    process.exit(1)
+  }
+  console.log('purity: ok')
 }
-console.log('purity: ok')

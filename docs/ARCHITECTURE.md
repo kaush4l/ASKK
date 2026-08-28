@@ -380,11 +380,10 @@ protocol/shapes.ts              [3.2] the WIRE vocabulary — declared here, nev
 ### `src/engine/` — worker realm, every file `// REALM: worker`
 
 ```
-engine/probe.worker.ts          TEMPORARY. Wave-1 scaffold: the worker whose existence and lock
-                                behaviour verify-worker.ts asserts. DELETED BY 3.1.
-engine/entry.worker.ts          [3.1] THE worker entrypoint. Elects, builds ports, opens db, serves.
+engine/entry.worker.ts          THE worker entrypoint. Elects, builds ports, opens db, serves.
+                                Elects and replies `ready` today; the rest arrives with db at 3.4.
 engine/host.ts                  [3.2] serve(scope): the protocol switch. Every ToEngine type, one case.
-engine/lease.ts                 [3.1] the single-writer election (§7.3) and its failure report
+engine/lease.ts                 the single-writer election (§7.3) and its failure report
 engine/db.ts                    [3.4] the single openDB call, the schema, upgrade, onblocked, versionchange
 engine/stores/sessions.ts       [3.4] session records, including status and nextTurnOrdinal
 engine/stores/messages.ts       [3.4] append(sessionId, record) -> seq. THE seq allocator lives here.
@@ -405,11 +404,11 @@ engine/tools/index.ts           [4.3] the static table of tools this build ships
 ### `src/client/` — main realm, no React, every file `// REALM: main`
 
 ```
-client/worker-probe.ts          TEMPORARY. Wave-1 scaffold: starts probe.worker.ts and reports
-                                what it found, so verify-worker.ts has something to assert.
-                                DELETED BY 3.1 — see the note below this map.
-client/worker-client.ts         [3.1] owns the Worker; request(msg)->Promise; subscribe(fn).
-                                Nothing outside client/ imports it.
+client/worker-client.ts         owns the Worker and the boot handshake. Nothing outside client/
+                                imports it. `request(msg)->Promise` and `subscribe(fn)` arrive at
+                                3.2 with `actions.ts`, their first caller: at 3.1 the only message
+                                that crosses is `boot`, and a seam with no crossing is the defect
+                                §2.8 was written against.
 client/actions.ts               [3.2] THE dispatch surface: one named function per intent
                                 (submitTurn, probeEndpoint, saveConfig, openSession…).
                                 The ONLY place a ToEngine message is constructed.
@@ -455,15 +454,18 @@ one row shape on one spine. There is no separate transcript component and no
 separate trace component; §10.2 ruling 6 records why that is structural rather
 than a naming preference.
 
-**The two probe files are scaffold with a scheduled death.**
-`client/worker-probe.ts` and `engine/probe.worker.ts` are 179 lines that run on
-every production page load and exist only to give `verify-worker.ts` a subject.
-They were correct for wave 1 — the alternative was asserting M1 and M5 against
-nothing — but scaffold that nobody schedules for removal is how a tree acquires
-permanent temporary code. **PLAN 3.1's acceptance names their deletion**, and
-`checks/docs.ts` will fail once 3.1 is `DONE` and either file still exists,
-because this map tags them as ending there. That is the difference between a
-comment saying "temporary" and a temporary file.
+**The two probe files died on schedule, at 3.1.** `client/worker-probe.ts` and
+`engine/probe.worker.ts` were 179 lines that ran on every production page load
+and existed only to give `verify-worker.ts` a subject. They were correct for
+wave 1 — the alternative was asserting M1 and M5 against nothing — but scaffold
+that nobody schedules for removal is how a tree acquires permanent temporary
+code, so this map tagged them as ending at 3.1 and PLAN 3.1's acceptance named
+their deletion. That is the difference between a comment saying "temporary" and
+a temporary file. Their assertions did not die with them: `verify-worker.ts`
+now drives the product — `worker-client.ts` starting the real
+`entry.worker.ts`, electing the real `askk.writer` — and a second **instance of
+the whole page** in a same-origin iframe is what proves the never-settling hold
+holds.
 
 ### `scripts/` and `tests/`
 
@@ -472,7 +474,9 @@ scripts/gate.ts                 runs every static check, one line each, non-zero
 scripts/checks/gate-coverage.ts every scripts/checks/*.ts is invoked by gate.ts (§8.6)
 scripts/checks/purity.ts        core references no ambient global (tokeniser + allowlist).
                                 Owns THE tokeniser; realm.ts imports it rather than re-paying it.
-scripts/checks/realm.ts         [3.1] per-directory global allowlist, banners, the typeof ban
+scripts/checks/realm.ts         per-directory global allowlist, banners, the typeof ban.
+                                Imports purity.ts's tokeniser; a file under src/ that no rule
+                                covers is a failure, not a file scanned by nothing
 scripts/checks/layers.ts        [3.2] the §2 import matrix, computed from real imports; type vs value
 scripts/checks/protocol.ts      [3.2] request/reply pairing, handler and sender coverage, protocol purity
 scripts/checks/orphans.ts       [1.7] every export has an importer (allowlist in §8)
@@ -492,7 +496,7 @@ scripts/server-can-fail.ts      the §8.4 control: requireServerCanFail() proves
                                 path 404s before any status assertion is trusted
 scripts/verify-worker.ts        Asserts M1 and M5 on every deploy: a worker loads and replies from
                                 the built export at a subpath, and the never-settling lock hold
-                                actually holds. Survives 3.1; only its subject changes.
+                                actually holds. Survived 3.1; its subject is now the product.
 scripts/verify-export.ts        ARTIFACT: takes a URL. Does the shipped page load at all —
                                 mark in the DOM, React attached, every request under 400.
                                 No model, no config, no session. Runs from wave 1.

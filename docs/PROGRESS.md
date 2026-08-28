@@ -857,3 +857,104 @@ Entry shape:
     green and 6.1's files are present — but the two increments raced on one
     directory and only luck decides that. Disjoint files is not disjoint
     worktrees.
+
+---
+
+## 3.1 — The engine moved into a Web Worker, and the scaffold that stood in for it is gone — 2026-08-28
+- Files: `src/engine/entry.worker.ts` (new), `src/engine/lease.ts` (new),
+  `src/client/worker-client.ts` (new), `scripts/checks/realm.ts` (new),
+  `src/app/page.tsx`, `scripts/verify-worker.ts` (rewritten against the
+  product), `scripts/checks/purity.ts` (exports its tokeniser; JSX tag names),
+  `scripts/gate.ts`, `docs/ARCHITECTURE.md` §4, `docs/PLAN.md` housekeeping.
+  **Deleted: `src/engine/probe.worker.ts`, `src/client/worker-probe.ts`** —
+  179 lines of wave-1 scaffold that ran on every production page load.
+- Proof: `bun run gate` → **8 checks ran, 0 failed · gate GREEN**
+  (`types ok`, `tests 96 pass / 0 fail`, `purity: src/core — 20 file(s)`,
+  `realm: core 20 · engine 2 · client 1 · ui 0 · app 2 — ok`,
+  `size: total 4244 non-blank lines · max 506 (ratchet NOT armed)`,
+  `design: 8 sub-check(s), 0 failed, 2 pending`, `gate-coverage: 5 on disk,
+  5 named`, `export: out/ holds 19 file(s)`). The count is **8 and not 7**
+  because this increment added `checks/realm.ts`.
+- Acceptance, in the built export served at a subpath —
+  `bun run build && bun scripts/serve-subpath.ts` then
+  `bun scripts/verify-worker.ts http://localhost:4599/ASKK/`:
+  ```
+    control: a known-missing path returns 404 — this server can report failure
+    first instance: {"kind":"ready","mark":"askk/engine@entry.worker","schemaVersion":1}
+    second instance: {"kind":"fatal","reason":"another-tab","message":"this agent is open in another tab, which holds askk.writer. Close it and reload."}
+  ```
+  `bun scripts/verify-export.ts http://localhost:4599/ASKK/` → `7 request(s), 0
+  console error(s)`, and the worker chunk `994.59a1f020edf9149d.js` is one of
+  the seven: the page really starts the worker on load.
+- **Every message this increment declares crosses a real boundary and is
+  asserted on the side that received it.** `boot` (main→worker) and its reply
+  `ready` are asserted from the DOM of the first instance, against
+  `WORKER_MARK` imported from the worker's own source. `fatal
+  {reason:'another-tab'}` (worker→main, unsolicited) is asserted from the DOM
+  of a **second instance of the whole page**, in a same-origin iframe, while
+  the first worker is still inside `lease.ts`'s never-settling callback. There
+  is no declared-and-unsent message and no case in `worker-client.ts`'s
+  `received()` that was not driven to in a browser.
+- Six planted breaks against `verify-worker.ts`, each rebuilt and watched red,
+  each reverted:
+  1. *`lease.ts`'s hold returns `Promise.resolve()` instead of the
+     never-settling promise* — the exact mistake §7.3 spells out. Second
+     instance reported `ready`; **red**, naming "THE ELECTION IS BROKEN". This
+     is the causal one: MEASURED M5 could not have caught it.
+  2. *the worker replies with a different `mark`* — **red**, naming §8.1.
+  3. *the worker chunk removed from `out/` after the build* — **red**; both
+     instances reported `fatal{reason:'internal', message:'worker stopped'}`,
+     which is §6.5's `worker.onerror` path driven for real.
+  4. *the worker replies with `id + 1`* — **red**; the first instance reported
+     `the engine answered boot with {...}`, so §6's one-reply-per-id pairing is
+     live and `received()`'s fallback is not dead code.
+  5. *the worker's `onmessage` does nothing* — **red** after 15s; the boot
+     reporting deadline (§6.5) renders rather than spinning forever.
+  6. *(control)* the unmodified tree — **PASS**.
+- Seven planted breaks against `checks/realm.ts`, each watched red: a
+  `// REALM: worker` banner on a `src/client` file; a missing banner on a
+  `src/engine` file; `indexedDB` named in `src/client`; `typeof window`;
+  `globalThis`; a file under `src/protocol/` that no rule covers; and a real
+  free global **inside JSX** in a `.tsx` file — that last one because the JSX
+  handling added to the tokeniser could have silently stopped it scanning
+  `.tsx` at all, and a check that passes because it looks at nothing is the
+  failure this project has already had once.
+- **What this does not prove, stated plainly.** No turn crosses the worker
+  boundary yet — 3.3 owns that — so **PLAN 3.1's "the main thread stays
+  responsive during a long turn" is NOT proven here**, and no assertion in this
+  commit claims it. See "Open".
+- Ringmaster: not yet ruled
+- Open:
+  - **The responsiveness clause could not be met at 3.1 and was not faked.**
+    At this increment the engine's entire workload is one Web Lock request; a
+    "long turn" needs inference (3.3) or persistence (3.4) across the boundary,
+    and manufacturing a slow path to measure against would have re-created
+    exactly the scaffold this increment deletes. It belongs to 3.3, whose
+    acceptance already runs a streamed turn through the worker in the built
+    export. **Architect's call, not the coder's.**
+  - **`engine/boot.ts`, `engine/turns.ts` and `checks/bundle.ts` are tagged
+    `[3.1]` in ARCHITECTURE §4 and did not ship.** `boot.ts`'s stated content is
+    db-open, seeding and orphan reconciliation — all 3.4. `turns.ts` is a turn
+    queue with no turns — 3.3/3.4. `checks/bundle.ts` asserts `CORE_MARK`
+    reaches the worker chunk and no main chunk, and **nothing under `src/core`
+    is imported by the worker yet**, so the check would today be asserting the
+    absence of a symbol from every file, which passes for the wrong reason.
+    Their tags were left alone rather than moved: retagging the file map is the
+    architect's.
+  - **`verify-worker.ts` asserts five things where it used to assert seven, and
+    the two it dropped are named in its own header.** `hasLS:false` and
+    `hasIDB:true` were platform facts the probe reported for no other reader.
+    `checks/realm.ts` now refuses the identifier `localStorage` under
+    `src/engine/**` statically, and `indexedDB`'s absence becomes a real
+    `fatal{reason:'storage-blocked'}` when `engine/db.ts` opens the database at
+    3.4. MEASURED M1 still records both. The five that remain are stronger than
+    the seven: they run against the product's own election, not a probe's.
+  - **`checks/purity.ts` gained a JSX rule it does not need.** `src/core` has no
+    `.tsx` file, so the change is inert for purity and load-bearing for realm,
+    which is the cost of one shared tokeniser and is the trade PLAN 2.1 named.
+  - **`src/ui` has no `.ts` file yet**, so realm reports `0 file(s) scanned`
+    there. The `scanned 0 files` failure is asserted over `src/` as a whole, so
+    the check cannot be aimed at nothing; per-directory it can still be aimed at
+    an empty one until 6.2.
+  - `WORKER_MARK` has one reader today and it is `verify-worker.ts`.
+    `checks/bundle.ts` is its second, at 3.3.
