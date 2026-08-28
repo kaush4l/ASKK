@@ -300,7 +300,9 @@ public/
 ### `src/core/` — pure, no ambient anything
 
 ```
-core/ports.ts                   the Ports interface, stubPorts(), isConfigured()
+core/ports.ts                   the Ports interface, stubPorts(), isConfigured(), and the
+                                STORAGE record shapes StorePort states itself in —
+                                SessionRecord, NewMessage, MessageRecord, NewEvent (§7.4)
 
 core/prompt/slots.ts            the Slot integer table, and CORE_MARK (§8 bundle sentinel)
 core/prompt/template.ts         the tiny {{ }} / {% if %} / {% for %} renderer, compiled once
@@ -358,11 +360,10 @@ meant one was dead. Critic :220, accepted.)*
 ```
 protocol/messages.ts            ToEngine and FromEngine unions, the type-string constants,
                                 and REPLY_OF: the one map pairing a request with its reply
-protocol/shapes.ts              the plain-data shapes that cross: MessageRecord, PromptBreakdown,
-                                ToolResultRecord, PhaseRecord, TurnSummary, ConfigRecord,
-                                ProbeOutcome, RequestRecord, ToolDeclaration,
-                                EventRecord and Trace (what `trace/read:ok` and
-                                `session/opened.lastTrace` carry — critic :334)
+protocol/shapes.ts              the WIRE vocabulary — declared here, never imported from core
+                                (§7.4): MessageView, SessionView, ConfigView, EventView, Trace,
+                                PromptBreakdown, ToolResultRecord, PhaseRecord, TurnSummary,
+                                ProbeOutcome, RequestRecord, ToolDeclaration
 ```
 
 ### `src/engine/` — worker realm, every file `// REALM: worker`
@@ -382,7 +383,9 @@ engine/boot.ts                  election, db open with a reporting deadline, fir
 engine/probe.ts                 the Door's endpoint probe: refused vs CORS vs http vs timeout
 engine/turns.ts                 the turn queue: one live turn, abort, steer, orphan closing
 engine/build-agent.ts           config record + agent.md text -> a constructed Agent
-engine/observer.ts              serialises core Observer callbacks onto the wire
+engine/observer.ts              serialises core Observer callbacks onto the wire (live objects)
+engine/wire.ts                  maps core storage records to protocol wire shapes, and exports
+                                SHAPE_PAIRS — the declared pairing checks/protocol.ts rule 5 reads
 engine/tools/index.ts           the static table of tools this build ships, bound to ports
 ```
 
@@ -440,7 +443,9 @@ than a naming preference.
 
 ```
 scripts/gate.ts                 runs every static check, one line each, non-zero on any failure
-scripts/checks/purity.ts        core references no ambient global (tokeniser + allowlist)
+scripts/checks/gate-coverage.ts every scripts/checks/*.ts is invoked by gate.ts (§8.6)
+scripts/checks/purity.ts        core references no ambient global (tokeniser + allowlist).
+                                Owns THE tokeniser; realm.ts imports it rather than re-paying it.
 scripts/checks/realm.ts         per-directory global allowlist, banners, the typeof ban
 scripts/checks/layers.ts        the §2 import matrix, computed from real imports; type vs value
 scripts/checks/protocol.ts      request/reply pairing, handler and sender coverage, protocol purity
@@ -887,12 +892,18 @@ DESIGN §4.2's spine `--fail` for something the operator chose, and would make
 ### 6.4 What may cross
 
 Structured-cloneable plain data only: objects, arrays, strings, numbers,
-booleans, `null`, `Date`, `ArrayBuffer`. **Not:** class instances (the prototype
-does not survive; a parsed response arrives as its data), functions, `Error`
-objects (they cross as `{ name, message }`), transferables,
-`SharedArrayBuffer`, DOM nodes. `engine/observer.ts` is the one place that
-flattens live core objects into wire shapes, so the core never has to know the
-wire's constraint and the wire never has to know the core's classes.
+booleans, `null`, `ArrayBuffer`. **Not:** class instances (the prototype does
+not survive; a parsed response arrives as its data), functions, `Error` objects
+(they cross as `{ name, message }`), transferables, `SharedArrayBuffer`, DOM
+nodes, and **not `Date`** — structured clone would carry one, but §7.1 rules
+every timestamp a `number`, so nothing crosses as a `Date` and the permission is
+withdrawn rather than left standing with no user.
+
+Two files do the flattening, both in `engine`, which is the only layer that may
+import `core` and `protocol` at once: `engine/observer.ts` for **live objects**
+(a `Session`, a `ToolResult`), and `engine/wire.ts` for **records** (§7.4). The
+core therefore never learns the wire's constraint and the wire never learns the
+core's classes.
 
 ### 6.5 Errors, and the one rule about deadlines
 
@@ -930,7 +941,7 @@ profile — the worst kind, because a warm profile passes.
 1. `Shell` mounts. `worker-client.ts` constructs the Worker and sends `boot`.
 2. Inside `boot`, in this order and no other: **elect the lease** (§7.3) →
    **open the database** under the reporting deadline (§6.5) → **seed** from
-   `seedBaseUrl` if `meta.seeded` is absent → **reconcile orphan turns** (§7.4).
+   `seedBaseUrl` if `meta.seeded` is absent → **reconcile orphan turns** (§7.5).
    Any step may end the sequence with `fatal`; none of the later steps runs.
 3. The worker replies `ready { schemaVersion, configured, activeSessionId }`.
    `configured` is whether an active endpoint exists — it is what decides
@@ -989,6 +1000,12 @@ declarations. Grep the literals and the refusal becomes indefensible.)*
    protocol holding no mutable state; a keystone with no check violated §8's own
    opening rule. *(Critic :69, accepted.)*
 
+5. Every pair in `engine/wire.ts`'s `SHAPE_PAIRS` holds: each wire field is
+   either a **shared field** with the same name and the same type as on the core
+   record, or a **declared derivation** naming its core source. A wire field
+   that is neither is invented data; a shared field whose type diverged is
+   drift. §7.4 is the ruling this enforces.
+
 A declared-but-never-emitted event is this project's recurring defect, recorded
 three separate times, and this check is the only thing that has ever caught it.
 
@@ -1009,6 +1026,31 @@ worker realm, by the elected writer.
 | `sessions` | `id` | — | `{ id, agent, createdAt, updatedAt, status, runningTurnId, nextSeq, nextTurnOrdinal }` |
 | `messages` | `id` | `bySession` on `[sessionId, seq]` | `{ id, sessionId, seq, role, content, turnId, at }` |
 | `events` | `id` | `byTurn` on `[sessionId, turnOrdinal, seq]` | `{ id, sessionId, turnOrdinal, seq, kind, data, at }` |
+
+**Two field types 2.1 had to guess, now ruled.**
+
+**`at` is `number` — epoch milliseconds, from `ports.clock.now().getTime()`.**
+Not a `Date`, even though the clock port hands one out. Three reasons, in order
+of weight: a golden fixture compares records and a `Date` is lossy through any
+JSON round-trip while a number is not; `at` appears in no index, so the range
+query a `Date` would serve does not exist; and every other value in every record
+is a primitive, so admitting one object would make "these records are plain
+data" a claim with an exception. `createdAt` and `updatedAt` follow it.
+
+> **Consequence, applied rather than left dangling:** §6.4 listed `Date` among
+> the things permitted to cross the worker boundary. With `at` ruled a number,
+> **nothing crosses as a `Date`**, so the permission has no user and is removed.
+> A permitted-but-unused capability is §9's "declaration with no consumer" in
+> the one section where it is most likely to be read as an invitation.
+
+**`role` is a closed union: `'user' | 'assistant' | 'system'`.** Not a bare
+string, for the same reason `ProbeOutcome` and `fatal.reason` are closed: the
+History component renders a per-role prefix and the golden prompts pin those
+prefixes byte for byte, so an unrecognised role does not throw — it renders the
+wrong bytes, or none, and the failure surfaces as a diff in a fixture nobody
+associates with a typo three files away. A fourth role is a ruling, not a
+string. Tool activity is **not** a role: it reaches the tape as `turn/tool`
+events, not as transcript messages.
 
 ### 7.2 What the schema itself enforces
 
@@ -1111,7 +1153,65 @@ held rather than granting twice or blocking. That third one is the whole
 mechanism — it is how the second tab learns it is not the writer without waiting
 forever. PLAN 1.5's probe asserts all three so a browser regression is caught.
 
-### 7.4 One turn at a time, and orphan turns
+### 7.4 Storage records and wire shapes are two vocabularies
+
+`StorePort` cannot state itself without `SessionRecord`, `NewMessage`,
+`MessageRecord` and `NewEvent`, so those live in `core/ports.ts`. §4 also placed
+`MessageRecord` in `protocol/shapes.ts`. Increment 2.1 built the core half,
+found the collision, and flagged it rather than picking one — correctly, because
+both available fixes were bad. **Ruled: they are two vocabularies, and the
+mapping between them is explicit.**
+
+The two rejected options first, because the reasons are the argument:
+
+- **`protocol` imports the shapes from `core`** — rejected. `client → protocol`
+  is a **value** import (it needs `REPLY_OF`), so `protocol → core` makes
+  `client → protocol → core` a runtime path. That is the `client ↮ core`
+  non-edge §8.1 and `checks/bundle.ts` exist to enforce, and it would put core
+  in the main bundle. A type-only import would erase and be *safe*, but it buys
+  one convenience by weakening the keystone rule that `protocol` imports
+  nothing — and §2 rests the entire realm split on that rule.
+- **Two independent declarations of one shape** — rejected. This is the
+  `FromEngine`/`REPLY_OF` defect exactly: one truth, two declarations, each
+  internally consistent, with no check able to see them diverge.
+
+**They are genuinely two things, and this document already proved it twice
+before the question was asked:**
+
+1. §7.2 rules that `config/listed` replaces `apiKey` with `hasKey: boolean`. The
+   storage record holds a secret the wire record must not. That is not a
+   nicety — it is why the key never reaches the render realm.
+2. `SessionRecord` carries `nextSeq` and `nextTurnOrdinal`. Those are allocator
+   internals. A UI that can see a sequence allocator is a UI that can compute a
+   `seq`, which is the lost-update race §5.1 was rewritten to make
+   inexpressible. Sending them would hand back the footgun the port design took
+   away.
+
+So: **`core` owns the storage vocabulary. `protocol` owns the wire vocabulary.
+`protocol` still imports nothing.** The mapping lives in `engine/wire.ts` —
+`engine` is already the only layer permitted to import both, and this is the
+same mechanism §6.4 already assigns to `engine/observer.ts` for live objects,
+applied to records instead of instances.
+
+**The check that catches divergence** — `checks/protocol.ts` rule 5, using the
+same AST pass §6.7 already needs. `engine/wire.ts` exports a `SHAPE_PAIRS` map
+naming each `(CoreRecord, WireShape)` pair, and every field of every wire shape
+must be one of:
+
+- a **shared field** — same name, and the *same type* as on the core record.
+  A type that diverges is a failure.
+- a **declared derivation** — named in `SHAPE_PAIRS` with its core source field,
+  as `hasKey ← apiKey`. An underived field on the wire with no core counterpart
+  is invented data and is a failure.
+
+The asymmetry is deliberate and is the point: a wire shape is a **subset plus
+declared derivations**, never a superset. That is what makes redaction
+(`apiKey`) and withholding (`nextSeq`) expressible while making silent drift and
+fabrication both failures. Where a mapping is the identity today —
+`MessageRecord`, `EventRecord` — the pair is still declared, so the check is
+watching from the first commit rather than from whenever the shapes first differ.
+
+### 7.5 One turn at a time, and orphan turns
 
 - **`turn/start` on a session with `status:'running'` returns `failed`** with
   "a turn is already running on this session". Serialising turns is not a
@@ -1142,6 +1242,8 @@ plain words.
 | The §2 import matrix holds, `import type` distinguished from value imports, no cycles | `checks/layers.ts` |
 | `src/protocol/**` has no behaviour and no mutable state | `checks/protocol.ts` rule 4 |
 | Request/reply pairing; every `ToEngine` handled; every `FromEngine` emitted **and** consumed into client state | `checks/protocol.ts` rules 1–3 |
+| A wire shape never silently diverges from the storage record it mirrors | `checks/protocol.ts` rule 5 over `SHAPE_PAIRS` (§7.4) |
+| **Every check that exists is a check the gate runs** | `checks/gate-coverage.ts` — enumerates `scripts/checks/*.ts` and fails if `gate.ts` does not invoke one of them (§8.6) |
 | Core and engine never reach the main realm | **`checks/layers.ts`** on the `ui ↮ core` / `client ↮ core` edges is the primary; `checks/bundle.ts` corroborates against the built artifact (§8.1) |
 | No exported symbol without an importer outside its own file | `checks/orphans.ts` — allowlist below |
 | No function longer than 40 lines | `checks/size.ts` |
@@ -1376,6 +1478,32 @@ defect class in the unenforced pile while checking file lengths was the wrong
 allocation of the gate's attention.
 
 ---
+
+### 8.6 A check that exists but does not run
+
+2.1 shipped `scripts/checks/purity.ts` and wired `bun run purity`, because
+`scripts/gate.ts` is 1.6 and does not exist yet. That is the right call for an
+increment that would otherwise have shipped an unrunnable check — but it leaves
+a check outside the gate, and **"2.1's product is a check nobody runs" is this
+project's most-repeated defect wearing a new hat.** The `skills` store nobody
+read, the `cacheable` flag nobody read, `EXEC_REACT_STEP` with no caller: same
+shape, and each survived because nothing counted.
+
+Two rules, and the second is what makes the first stick:
+
+1. **An increment that adds a check adds it to `gate.ts` in the same commit.**
+   `bun run <check>` may exist as a convenience; it is never the only caller.
+2. **`checks/gate-coverage.ts` enumerates `scripts/checks/*.ts` and fails if
+   `gate.ts` does not invoke one of them.** A check dropped from the gate — by
+   an edit, a merge, or a rename — is a gate failure naming the orphaned file.
+
+Rule 2 is a check on the checks, and it is deliberately the cheapest thing in
+the tree: a directory listing compared against one file's call sites. The
+expensive version of this lesson has already been paid three times.
+
+`gate.ts` also **prints the count of checks it ran** and that count appears in
+`PROGRESS.md`. A number that should only go up, in a document a human reads, is
+the second line of defence when someone deletes the first.
 
 ## 9. What is deliberately not here
 

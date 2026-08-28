@@ -44,7 +44,7 @@ expensive disagreement available. No wave-1 increment starts before it.
 | 1.3 | Subpath-correct export | `scripts/serve-subpath.ts` serves `out/` under `/ASKK/` and the page loads with **zero** console errors and **zero** 404s — the failure mode that has bricked this project before | +90 | DONE |
 | 1.4 | Deploy path proven | The hosted URL loads and shows the identifying string | +60 declared · **+231 actual** | DONE |
 | 1.5 | Worker emission, as a repo-owned regression guard | A worker started from the **built** export at a subpath replies with its sentinel: zero console errors, no 404 for the worker chunk. Reproducible locally via `scripts/serve-subpath.ts`, not only on the deployed URL. The same probe **asserts** the three Web Lock behaviours §7.3's election rests on: it grants in a worker, `{ifAvailable:true}` grants when free, and — the one the election actually rests on — a second `{ifAvailable:true}` request made **while the first callback is still pending** receives `null`. MEASURED M5 did not prove this: its callback returned, so the lock released (`ARCHITECTURE.md` §7.3) | +70 | TODO |
-| 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. Ships only the wave-1 checks: `checks/size.ts` (**reporting** `max`; the ratchet arms at the end of wave 2), the export/no-server-code assertion, and `scripts/verify-export.ts` wired into the deploy path | +180 | TODO |
+| 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. It invokes **every** check that exists at that moment — `checks/purity.ts` from 2.1 included, whatever order the waves land in — plus `checks/size.ts` (**reporting** `max`; the ratchet arms at the end of wave 2), the export/no-server-code assertion, and `verify-export.ts` in the deploy path. It ships `checks/gate-coverage.ts`, which fails if any `scripts/checks/*.ts` is not invoked, and it **prints the count of checks it ran** | +220 | TODO |
 
 **Wave 1 shipped.** `https://kaush4l.github.io/ASKK/` serves the scaffold: six
 requests, six 200s, zero console errors, React hydrated.
@@ -59,6 +59,14 @@ wrong number rather than the work being wrong. `ARCHITECTURE.md` §8.4 now rules
 on it and on its overlap with `smoke.ts`. Wave 1 total: +421 against +500
 declared, so the wave came in **under** budget with 1.4 over — which is the
 argument for budgeting per wave and only *reporting* per increment.
+
+**1.6 is now blocking for 2.1's product, not just for wave 1.** 2.1 shipped
+`checks/purity.ts` with `bun run purity` as its only caller, because `gate.ts`
+does not exist yet. That was right for 2.1 and is wrong to leave standing: a
+check outside the gate is the defect this project has caught three times in
+other forms. `ARCHITECTURE.md` §8.6 adds the standing rule — an increment that
+adds a check adds it to `gate.ts` in the same commit — and
+`checks/gate-coverage.ts` enforces it by enumerating the directory.
 
 **1.3's "zero 404s" was weaker than it read, and 1.4 is what actually proved
 it.** `serve-subpath.ts` shipped a catch-all 302 that answered every missing
@@ -96,7 +104,7 @@ Everything environmental arrives through an explicit port.
 | # | Intent | Acceptance | Lines | Status |
 |---|--------|-----------|-------|--------|
 | 2.0 | **The oracle lands first** — `tests/golden/` copied byte-for-byte, with an md5 assertion per fixture | Editing one byte of a fixture turns the suite red. The pinned date's weekday is **wrong on purpose** and a test that "fixes" it has broken the oracle | +120 | TODO |
-| 2.1 | Ports seam — the one place the environment enters | `checks/purity.ts` fails on a core file that references any ambient global; **and** `tests/ports.test.ts` proves all four `stubPorts()` members throw the literal `no <name> port configured` | +260 | TODO |
+| 2.1 | Ports seam — the one place the environment enters | `checks/purity.ts` fails on a core file that references any ambient global; **and** `tests/ports.test.ts` proves all four `stubPorts()` members throw the literal `no <name> port configured` | +260 declared · **+347 actual** | DONE |
 | 2.2 | Inference base — the abstract contract, one fake concrete | A scripted fake drives a full turn in a host test | +220 | TODO |
 | 2.3 | Inference real — one HTTP concrete, streaming | Tokens arrive incrementally from a real endpoint; the test asserts **>1 chunk**; `describeRequest` returns the literal body | +260 | TODO |
 | 2.4 | The react loop — the smallest cycle that terminates | The loop runs, emits every lifecycle event, and ends on a **declared terminal**. No `FLOWS`, no driver, no `MAX_TRANSITIONS` — those are 4.5 | +300 | TODO |
@@ -106,6 +114,17 @@ Everything environmental arrives through an explicit port.
 **End of wave 2 arms the `max` ratchet**, seeded from a tree that contains real
 modules rather than scaffold. Recorded here because it is an acceptance nobody
 owns otherwise.
+
+**2.1 overran: +260 declared, +347 actual.** Accepted. The overrun is the
+tokeniser in `checks/purity.ts`, and it is accepted **on a condition that is
+falsifiable**: `checks/realm.ts` must *import* that tokeniser, not write a second
+one. If it re-implements, the trade was never made and the overrun was just an
+overrun — so realm's increment carries that as an acceptance, and
+`ARCHITECTURE.md` §4 names purity.ts as the tokeniser's owner. The check was
+also proven both directions: it named file, line and identifier on a planted
+violation, and stayed green on a file containing the oracle's own
+`self-contained` bytes — which is the false positive §2.1's tokeniser rule was
+written to prevent, now measured rather than argued.
 
 **2.0 is new and it is first.** `ARCHITECTURE.md` §10.1 rules TypeScript, which
 makes every salvaged module a transliteration of 1453 lines of code — and the
