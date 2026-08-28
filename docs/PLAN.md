@@ -119,7 +119,7 @@ Everything environmental arrives through an explicit port.
 |---|--------|-----------|-------|--------|
 | 2.0 | **The oracle lands first** — `tests/golden/` copied byte-for-byte, with an md5 assertion per fixture | Editing one byte of a fixture turns the suite red. The pinned date's weekday is **wrong on purpose** and a test that "fixes" it has broken the oracle | +120 | TODO |
 | 2.1 | Ports seam — the one place the environment enters | `checks/purity.ts` fails on a core file that references any ambient global; **and** `tests/ports.test.ts` proves all four `stubPorts()` members throw the literal `no <name> port configured` | +260 declared · **+347 actual** | DONE |
-| 2.2 | Inference base — the abstract contract, one fake concrete | A scripted fake drives a full turn in a host test | +220 | TODO |
+| 2.2 | Inference base — the abstract contract, one fake concrete | A scripted fake drives a full turn in a host test | +220 declared · **+159 actual** | DONE |
 | 2.3 | Inference real — one HTTP concrete, streaming | Tokens arrive incrementally from a real endpoint; the test asserts **>1 chunk**; `describeRequest` returns the literal body | +260 | TODO |
 | 2.4 | The react loop — the smallest cycle that terminates | The loop runs, emits every lifecycle event, and ends on a **declared terminal**. No `FLOWS`, no driver, no `MAX_TRANSITIONS` — those are 4.5 | +300 | TODO |
 | 2.5 | Structured response — parse the model's reply into typed parts | Golden cases parse exactly; a malformed reply degrades, never throws | +340 | TODO |
@@ -141,6 +141,22 @@ also proven both directions: it named file, line and identifier on a planted
 violation, and stayed green on a file containing the oracle's own
 `self-contained` bytes — which is the false positive §2.1's tokeniser rule was
 written to prevent, now measured rather than argued.
+
+**2.2 is the first increment to come in under budget** — +159 non-blank lines
+under `src/` against +220 declared. Recorded because the line-budget section
+argues per-increment estimates never bound anything; one increment landing under
+does not overturn 800-vs-1,471 across eleven, and noting only the overruns would
+be the same selective reading in the other direction.
+
+**1.7 has NOT shipped.** `scripts/checks/docs.ts` does not exist, `gate.ts` does
+not reference it, and `0071ca7` — the commit sometimes cited as containing it —
+touched three files, all of them under `docs/`. What landed there was the
+*design* of the check (`ARCHITECTURE.md` §8.7), not the check. The status is
+correct as `TODO` and the record is not behind. Noted explicitly because
+"part of it shipped early inside another increment" is a plausible story that
+would have been recorded as fact, and marking 1.7 done would have entered a
+non-existent check into the record — inside the increment whose whole subject is
+documents asserting things that are not so.
 
 **2.0 is new and it is first.** `ARCHITECTURE.md` §10.1 rules TypeScript, which
 makes every salvaged module a transliteration of 1453 lines of code — and the

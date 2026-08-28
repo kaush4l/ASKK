@@ -302,8 +302,8 @@ package.json            scripts: dev build test types gate smoke deploy
                         deps: next react react-dom idb   (four, and no more)
 tsconfig.json           strict, noUncheckedIndexedAccess, paths "@/*" -> "src/*"
 public/
-  seed/agents/main/agent.md    the shipped identity file, fetched at boot, copied into IDB once
-  seed/models.json             the endpoint catalogue seed
+  seed/agents/main/agent.md    [4.1] the shipped identity file, fetched at boot, copied into IDB once
+  seed/models.json             [4.1] the endpoint catalogue seed
 ```
 
 ### `src/core/` — pure, no ambient anything
@@ -313,51 +313,51 @@ core/ports.ts                   the Ports interface, stubPorts(), and the
                                 STORAGE record shapes StorePort states itself in —
                                 SessionRecord, NewMessage, MessageRecord, NewEvent (§7.4)
 
-core/prompt/slots.ts            the Slot integer table, and CORE_MARK (§8 bundle sentinel)
-core/prompt/template.ts         the tiny {{ }} / {% if %} / {% for %} renderer, compiled once
-core/prompt/component.ts        abstract Component: SLOT, FIELDS, NAME, render(), key(), applies()
-core/prompt/components.ts       Soul, SystemInstructions, ContextBlock, History,
+core/prompt/slots.ts            [2.6] the Slot integer table, and CORE_MARK (§8 bundle sentinel)
+core/prompt/template.ts         [2.6] the tiny {{ }} / {% if %} / {% for %} renderer, compiled once
+core/prompt/component.ts        [2.6] abstract Component: SLOT, FIELDS, NAME, render(), key(), applies()
+core/prompt/components.ts       [2.6] Soul, SystemInstructions, ContextBlock, History,
                                 PhaseInstructions, ToolboxComponent, ResponseContract
-core/prompt/assembler.ts        filter -> sort(SLOT,priority) -> 3 invariants -> join; memoised
-core/prompt/recipe.ts           which components exist for a given agent + session
+core/prompt/assembler.ts        [2.6] filter -> sort(SLOT,priority) -> 3 invariants -> join; memoised
+core/prompt/recipe.ts           [2.6] which components exist for a given agent + session
 
-core/response/base.ts           BaseResponse: FIELDS table -> instructions(), toString(), parse()
-core/response/parse.ts          the TOON and JSON scanners; neither throws out of parse()
-core/response/responses.ts      the concrete response classes, their FIELDS and FORMAT_NOTES
+core/response/base.ts           [2.5] BaseResponse: FIELDS table -> instructions(), toString(), parse()
+core/response/parse.ts          [2.5] the TOON and JSON scanners; neither throws out of parse()
+core/response/responses.ts      [2.5] the concrete response classes, their FIELDS and FORMAT_NOTES
 
-core/tools/tool.ts              Tool + ToolResult; call() never throws; output cap + elision
-core/tools/toolbox.ts           the declared set; parseBatches(); invoke()
-core/tools/prompt.ts            the TOOLS block component body
+core/tools/tool.ts              [4.2] Tool + ToolResult; call() never throws; output cap + elision
+core/tools/toolbox.ts           [4.2] the declared set; parseBatches(); invoke()
+core/tools/prompt.ts            [4.2] the TOOLS block component body
 
-core/flow/phases.ts             the Phase classes; each declares OUTCOMES [4.5]
-core/flow/prompts.ts            phase instruction text, verbatim, as module constants [4.5]
-core/flow/flows.ts              FLOWS + validateFlow() + FlowError + MAX_TRANSITIONS [4.5]
+core/flow/phases.ts             [4.5] the Phase classes; each declares OUTCOMES [4.5]
+core/flow/prompts.ts            [4.5] phase instruction text, verbatim, as module constants [4.5]
+core/flow/flows.ts              [4.5] FLOWS + validateFlow() + FlowError + MAX_TRANSITIONS [4.5]
 
 core/inference/base.ts          abstract Inference.infer(req, onDelta?, signal?)
 core/inference/scripted.ts      concrete #1: replays a fixture; drives every host test
-core/inference/openai.ts        concrete #2: /chat/completions, SSE streaming, usage accounting
-core/inference/catalog.ts       kind string -> constructor
+core/inference/openai.ts        [2.3] concrete #2: /chat/completions, SSE streaming, usage accounting
+core/inference/catalog.ts       [2.3] kind string -> constructor
 
-core/agent/config.ts            AgentConfig: the declared fields an agent.md can set
-core/agent/agentfile.ts         frontmatter + body parser for agent.md — runs in the tab
-core/agent/session.ts           the blackboard for one run
-core/agent/transcript.ts        the message list the History component renders
-core/agent/agent.ts             one turn: recipe -> assemble -> infer -> parse -> tools -> repeat
-core/agent/react.ts             the react loop and its three-tier repeat guard
-core/agent/driver.ts            walks the flow edge table [4.5]
-core/observer.ts                Observer: assembled / entered / delta / results / retry / done
+core/agent/config.ts            [4.1] AgentConfig: the declared fields an agent.md can set
+core/agent/agentfile.ts         [4.1] frontmatter + body parser for agent.md — runs in the tab
+core/agent/session.ts           [2.4] the blackboard for one run
+core/agent/transcript.ts        [2.4] the message list the History component renders
+core/agent/agent.ts             [2.4] one turn: recipe -> assemble -> infer -> parse -> tools -> repeat
+core/agent/react.ts             [2.4] the react loop and its three-tier repeat guard
+core/agent/driver.ts            [4.5] walks the flow edge table [4.5]
+core/observer.ts                [2.4] Observer: assembled / entered / delta / results / retry / done
 ```
 
 ### `src/adapters/` — one real environment per port
 
 ```
-adapters/browser/clock.ts       // REALM: worker  Date + Intl resolvedOptions().timeZone
-adapters/browser/fetch.ts       // REALM: worker  the global fetch, narrowed to FetchPort
-adapters/browser/ids.ts         // REALM: worker  crypto.randomUUID
-adapters/browser/store.ts       // REALM: worker  the StorePort over engine/db.ts
-adapters/test/clock.ts          // REALM: host    pinned to the golden date and its zone
-adapters/test/store.ts          // REALM: host    in-memory StorePort; what wave 2 runs against
-adapters/test/fetch.ts          // REALM: host    replays recorded bodies, including SSE chunks
+adapters/browser/clock.ts       [3.1] // REALM: worker  Date + Intl resolvedOptions().timeZone
+adapters/browser/fetch.ts       [3.1] // REALM: worker  the global fetch, narrowed to FetchPort
+adapters/browser/ids.ts         [3.1] // REALM: worker  crypto.randomUUID
+adapters/browser/store.ts       [3.4] // REALM: worker  the StorePort over engine/db.ts
+adapters/test/clock.ts          [2.6] // REALM: host    pinned to the golden date and its zone
+adapters/test/store.ts          [2.4] // REALM: host    in-memory StorePort; what wave 2 runs against
+adapters/test/fetch.ts          [2.3] // REALM: host    replays recorded bodies, including SSE chunks
 ```
 
 *(`adapters/browser/assets.ts` is deleted. `boot` already carries `seedBaseUrl`
@@ -367,9 +367,9 @@ meant one was dead. Critic :220, accepted.)*
 ### `src/protocol/` — the vocabulary, both realms, no behaviour
 
 ```
-protocol/messages.ts            ToEngine and FromEngine unions, the type-string constants,
+protocol/messages.ts            [3.2] ToEngine and FromEngine unions, the type-string constants,
                                 and REPLY_OF: the one map pairing a request with its reply
-protocol/shapes.ts              the WIRE vocabulary — declared here, never imported from core
+protocol/shapes.ts              [3.2] the WIRE vocabulary — declared here, never imported from core
                                 (§7.4): MessageView, SessionView, ConfigView, EventView, Trace,
                                 PromptBreakdown, ToolResultRecord, PhaseRecord, TurnSummary,
                                 ProbeOutcome, RequestRecord, ToolDeclaration
@@ -381,23 +381,23 @@ protocol/shapes.ts              the WIRE vocabulary — declared here, never imp
 engine/probe.worker.ts          TEMPORARY. Wave-1 scaffold: the worker whose existence and lock
                                 behaviour verify-worker.ts asserts. DELETED BY 3.1.
 engine/entry.worker.ts          [3.1] THE worker entrypoint. Elects, builds ports, opens db, serves.
-engine/host.ts                  serve(scope): the protocol switch. Every ToEngine type, one case.
-engine/lease.ts                 the single-writer election (§7.3) and its failure report
-engine/db.ts                    the single openDB call, the schema, upgrade, onblocked, versionchange
-engine/stores/sessions.ts       session records, including status and nextTurnOrdinal
-engine/stores/messages.ts       append(sessionId, record) -> seq. THE seq allocator lives here.
-engine/stores/events.ts         turn events, capped by turnOrdinal range delete
-engine/stores/config.ts         endpoints, keys, the active pointer
-engine/stores/agents.ts         agent.md overrides
-engine/boot.ts                  election, db open with a reporting deadline, first-run seeding,
+engine/host.ts                  [3.2] serve(scope): the protocol switch. Every ToEngine type, one case.
+engine/lease.ts                 [3.1] the single-writer election (§7.3) and its failure report
+engine/db.ts                    [3.4] the single openDB call, the schema, upgrade, onblocked, versionchange
+engine/stores/sessions.ts       [3.4] session records, including status and nextTurnOrdinal
+engine/stores/messages.ts       [3.4] append(sessionId, record) -> seq. THE seq allocator lives here.
+engine/stores/events.ts         [3.4] turn events, capped by turnOrdinal range delete
+engine/stores/config.ts         [3.4] endpoints, keys, the active pointer
+engine/stores/agents.ts         [4.1] agent.md overrides
+engine/boot.ts                  [3.1] election, db open with a reporting deadline, first-run seeding,
                                 orphan-turn reconciliation
-engine/probe.ts                 the Door's endpoint probe: refused vs CORS vs http vs timeout
-engine/turns.ts                 the turn queue: one live turn, abort, steer, orphan closing
-engine/build-agent.ts           config record + agent.md text -> a constructed Agent
-engine/observer.ts              serialises core Observer callbacks onto the wire (live objects)
-engine/wire.ts                  maps core storage records to protocol wire shapes, and exports
+engine/probe.ts                 [3.2] the Door's endpoint probe: refused vs CORS vs http vs timeout
+engine/turns.ts                 [3.1] the turn queue: one live turn, abort, steer, orphan closing
+engine/build-agent.ts           [4.1] config record + agent.md text -> a constructed Agent
+engine/observer.ts              [3.3] serialises core Observer callbacks onto the wire (live objects)
+engine/wire.ts                  [3.2] maps core storage records to protocol wire shapes, and exports
                                 SHAPE_PAIRS — the declared pairing checks/protocol.ts rule 5 reads
-engine/tools/index.ts           the static table of tools this build ships, bound to ports
+engine/tools/index.ts           [4.3] the static table of tools this build ships, bound to ports
 ```
 
 ### `src/client/` — main realm, no React, every file `// REALM: main`
@@ -408,12 +408,12 @@ client/worker-probe.ts          TEMPORARY. Wave-1 scaffold: starts probe.worker.
                                 DELETED BY 3.1 — see the note below this map.
 client/worker-client.ts         [3.1] owns the Worker; request(msg)->Promise; subscribe(fn).
                                 Nothing outside client/ imports it.
-client/actions.ts               THE dispatch surface: one named function per intent
+client/actions.ts               [3.2] THE dispatch surface: one named function per intent
                                 (submitTurn, probeEndpoint, saveConfig, openSession…).
                                 The ONLY place a ToEngine message is constructed.
-client/store.ts                 the render-shaped mirror. One switch over every FromEngine type.
-client/prefs.ts                 localStorage-backed UI preferences
-client/use-store.ts             the React binding (useSyncExternalStore). READ side only.
+client/store.ts                 [3.2] the render-shaped mirror. One switch over every FromEngine type.
+client/prefs.ts                 [6.2] localStorage-backed UI preferences
+client/use-store.ts             [3.2] the React binding (useSyncExternalStore). READ side only.
 ```
 
 ### `src/app/` and `src/ui/` — main realm, render only
@@ -425,26 +425,26 @@ reached by `?panel=<id>` rather than by six route segments — see §10.2 ruling
 ```
 app/layout.tsx                  <html><body> ONLY. No manual <head>. metadata export.
 app/page.tsx                    'use client'. The only route. Mounts Shell.
-app/globals.css                 imports ui/tokens.css and the reset; nothing else
+app/globals.css                 [6.1] imports ui/tokens.css and the reset; nothing else
 
-ui/tokens.css                   DESIGN's sole literal store (§10.2: path moved from app/)
-ui/fonts/*.woff2                self-hosted IBM Plex subsets, imported so the bundler
+ui/tokens.css                   [6.1] DESIGN's sole literal store (§10.2: path moved from app/)
+ui/fonts/*.woff2                [6.1] self-hosted IBM Plex subsets, imported so the bundler
                                 rewrites the URL under basePath (§10.2 ruling 2)
-ui/shell/Shell.tsx              the rail, the content column, and the persistent
+ui/shell/Shell.tsx              [6.2] the rail, the content column, and the persistent
                                 endpoint/model/token line. Resolves the address on first render.
-ui/shell/surfaces.ts            THE registry: id, label, order, component, and `address`
+ui/shell/surfaces.ts            [6.2] THE registry: id, label, order, component, and `address`
                                 (`?panel=<id>`). A surface is one entry. Six today.
-ui/surfaces/Door.tsx            DESIGN 4.1  the cold open — masthead, probe, Connect
-ui/surfaces/Workbench.tsx       DESIGN 4.2  ONE scroll: the tape, composer, live prompt
-ui/surfaces/Prompt.tsx          DESIGN 4.3  how the prompt was built
-ui/surfaces/Context.tsx         DESIGN 4.4  the literal bytes that left the tab
-ui/surfaces/Tools.tsx           DESIGN 4.5  the authoritative declaration, one row per tool
-ui/surfaces/Setup.tsx           DESIGN 4.6  endpoint, key, identity file, storage
-ui/tape/Tape.tsx                the spine; every row hangs off it at --rail-step
-ui/tape/Row.tsx                 one row: step, elapsed, kind label, body. Eight kinds, ONE shape.
-ui/tape/Caret.tsx               the amber block caret and its 1.5s stall blink
-ui/prompt/BandStack.tsx         the slot-ordered band stack, shared by Prompt and Workbench
-ui/primitives/*.tsx             Button, Field, Badge, Disclosure — every state renderable
+ui/surfaces/Door.tsx            [6.5] DESIGN 4.1  the cold open — masthead, probe, Connect
+ui/surfaces/Workbench.tsx       [6.3] DESIGN 4.2  ONE scroll: the tape, composer, live prompt
+ui/surfaces/Prompt.tsx          [6.4] DESIGN 4.3  how the prompt was built
+ui/surfaces/Context.tsx         [6.4] DESIGN 4.4  the literal bytes that left the tab
+ui/surfaces/Tools.tsx           [6.4] DESIGN 4.5  the authoritative declaration, one row per tool
+ui/surfaces/Setup.tsx           [6.5] DESIGN 4.6  endpoint, key, identity file, storage
+ui/tape/Tape.tsx                [6.3] the spine; every row hangs off it at --rail-step
+ui/tape/Row.tsx                 [6.3] one row: step, elapsed, kind label, body. Eight kinds, ONE shape.
+ui/tape/Caret.tsx               [6.3] the amber block caret and its 1.5s stall blink
+ui/prompt/BandStack.tsx         [6.4] the slot-ordered band stack, shared by Prompt and Workbench
+ui/primitives/*.tsx             [6.2] Button, Field, Badge, Disclosure — every state renderable
 ```
 
 `ui/tape/Row.tsx` renders **all eight** DESIGN §4.2 row kinds — `you`,
@@ -470,20 +470,20 @@ scripts/gate.ts                 runs every static check, one line each, non-zero
 scripts/checks/gate-coverage.ts every scripts/checks/*.ts is invoked by gate.ts (§8.6)
 scripts/checks/purity.ts        core references no ambient global (tokeniser + allowlist).
                                 Owns THE tokeniser; realm.ts imports it rather than re-paying it.
-scripts/checks/realm.ts         per-directory global allowlist, banners, the typeof ban
-scripts/checks/layers.ts        the §2 import matrix, computed from real imports; type vs value
-scripts/checks/protocol.ts      request/reply pairing, handler and sender coverage, protocol purity
-scripts/checks/orphans.ts       every export has an importer (allowlist in §8)
+scripts/checks/realm.ts         [3.1] per-directory global allowlist, banners, the typeof ban
+scripts/checks/layers.ts        [3.2] the §2 import matrix, computed from real imports; type vs value
+scripts/checks/protocol.ts      [3.2] request/reply pairing, handler and sender coverage, protocol purity
+scripts/checks/orphans.ts       [1.7] every export has an importer (allowlist in §8)
 scripts/checks/size.ts          function <= 40 lines; the max-lines ratchet
-scripts/checks/bundle.ts        core reaches the worker chunk and no other (§8)
+scripts/checks/bundle.ts        [3.1] core reaches the worker chunk and no other (§8)
 scripts/checks/lines.json       [2.6] the ratchet state; 2.6 arms max and writes it first
-scripts/checks/design.ts        DESIGN's static rules, as NAMED sub-checks, each with
+scripts/checks/design.ts        [6.1] DESIGN's static rules, as NAMED sub-checks, each with
                                 its own failure message: tokens, ramp, motion, front-door
                                 copy. Runs inside `bun run gate`.
-scripts/browser/contrast.ts     DESIGN: rendered contrast + the ratchet         [build + browser]
-scripts/browser/geometry.ts     DESIGN: radius, elevation, one-chroma-at-rest   [build + browser]
-scripts/browser/coldopen.ts     DESIGN: 2 clicks local / 3 BYOK                 [build + browser]
-scripts/browser/frontdoor.ts    DESIGN: expressive layer rendered, zero 404s,
+scripts/browser/contrast.ts     [6.2] DESIGN: rendered contrast + the ratchet         [build + browser]
+scripts/browser/geometry.ts     [6.2] DESIGN: radius, elevation, one-chroma-at-rest   [build + browser]
+scripts/browser/coldopen.ts     [6.5] DESIGN: 2 clicks local / 3 BYOK                 [build + browser]
+scripts/browser/frontdoor.ts    [6.5] DESIGN: expressive layer rendered, zero 404s,
                                 zero cross-origin requests                      [build + browser]
 scripts/serve-subpath.ts        serves out/ under /ASKK/ so the subpath failure is reproducible
 scripts/server-can-fail.ts      the §8.4 control: requireServerCanFail() proves a known-missing
@@ -501,7 +501,7 @@ scripts/deploy.sh               build with basePath, publish out/ to gh-pages
 scripts/checks/docs.ts          [1.7] the documents refer to things that exist and agree about
                                 status (§8.7)
 tests/golden/                   [2.0] the oracle. Not editable. A differing byte is the port being wrong.
-tests/*.test.ts                 host tests, plain `bun test` (never --isolate; it hides failures)
+tests/*.test.ts                 [2.0] host tests, plain `bun test` (never --isolate; it hides failures)
 ```
 
 ---
@@ -554,9 +554,9 @@ Ambient randomness, made explicit, so a test can produce reproducible turn ids.
 interface Ports { clock: ClockPort; fetch: FetchPort; store: StorePort; newId: NewIdPort }
 function stubPorts(): Ports
 ```
-Four members. **None has a caller yet** — as of 2.1 the module's only consumer
-is `tests/ports.test.ts`, and the first real callers arrive with the inference
-concretes at 2.2 and 2.3. The rule "no port without a caller" is a rule about
+Four members, **one of which has a caller.** As of 2.2 `Inference` takes a
+`FetchPort`; `clock`, `store` and `newId` still have none and arrive at 2.6,
+2.4 and 2.4. The rule "no port without a caller" is a rule about
 what may be *added*, and these four were derived from the contracts in §5.2–§5.6
 that the same wave builds; a port seam whose members arrived one wave after the
 code needing them would be a seam built twice. Recorded precisely because
@@ -597,9 +597,58 @@ One prompt string in, the model's whole reply out, with every partial handed to
 `onDelta` as it lands. Conversation history is the caller's job — the assembler
 already put it in the prompt.
 
-`describeRequest` returns the literal body that would be sent, as data. It is
-what DESIGN §4.4's Context surface renders, and it exists on the base because
-"what left the tab" is a property of the wire protocol, not of the agent.
+`describeRequest` returns the literal body **and the redacted headers** that
+would be sent, as data. It is what DESIGN §4.4's Context surface renders, and it
+exists on the base because "what left the tab" is a property of the wire
+protocol, not of the agent.
+
+```ts
+interface RequestRecord { method: string; url: string; headers: HeaderRecord[]; body: unknown }
+interface HeaderRecord { name: string; value: string | null; bytes: number; scheme?: string }
+```
+
+**Headers are shown, redacted — ruled at 2.2.** 2.2 omitted them entirely,
+reasoning from §7.2 that the `Authorization` value must never reach the render
+realm. That reasoning is right and is preserved. The *consequence* was not:
+Context exists because the prior harness told its model it had done things it
+had not (LESSONS defect 3), and **a surface that claims to show what left the
+tab while showing half of what left the tab is a quieter version of the same
+defect.** With no headers at all, an operator facing a mid-stream 401 cannot
+distinguish "no key was sent", "a key was sent and rejected", and "the key went
+in a header this server does not read" — three bugs with three different
+remedies, which is precisely the distinction DESIGN §4.1 already refuses to
+collapse for the probe.
+
+The rule:
+
+- **Every header name is shown, in full, in send order.** A name is not a secret
+  and the *set* of names is the primary diagnostic.
+- **Values are shown only for a declared-safe allowlist** — `content-type`,
+  `accept`, and whatever a transport declares safe. Everything else renders as
+  `<redacted, N bytes>`: never the content, always the length.
+- **An allowlist, not a denylist**, so a header nobody classified fails toward
+  redaction. A denylist leaks the first secret-bearing header someone forgets to
+  add, and the cost of the safe direction is one unhelpful row.
+- **`Authorization` additionally shows its scheme** (`Bearer`) and nothing else.
+  A scheme is protocol, not secret, and "scheme missing" is a real bug that is
+  otherwise invisible.
+
+Byte length is what makes the three failure modes distinguishable — absent (no
+row), present-but-empty (0 bytes), present-and-plausible (N bytes) — and a
+length does not reconstruct a key.
+
+**The redaction happens at construction, not on the way out.** Each concrete
+builds its own `HeaderRecord[]`, so **a `RequestRecord` holding a raw key never
+exists at any point**, rather than existing briefly and being sanitised by a
+step someone can forget. Same reasoning as the `seq` allocator living inside the
+store (§5.1): you cannot omit a step that has no place to happen.
+
+**Checked by a host test, not a static rule** — `tests/inference.test.ts`
+constructs a concrete with a known key and asserts that string does not appear
+anywhere in `JSON.stringify(describeRequest(...))`. A substring assertion over
+the serialised record is total: it catches any future leak path, including one
+through a field nobody thought of. Static analysis cannot see this; the test
+can, and it can be watched red by deleting one line.
 
 **Two deletions, both on ringmaster condition 6, both accepted:**
 - `InferenceRequest.attachments` is gone. No `Attachment` type was ever defined,
@@ -1493,6 +1542,12 @@ The replacement:
   sibling — **writing logic in a language the counter does not count** — which
   is the same evasion one level down, and which was available unnoticed for
   eleven increments.
+- **`tests/**` is deliberately outside the total.** A budget that counts tests
+  prices testing, and the one number nobody should ever be nudged to reduce is
+  the number of assertions. 2.2 added 159 lines of `src/` and **158 of
+  `tests/`**, and that ratio is a thing to be pleased about, not a thing to
+  spend. Stated here before someone discovers the exclusion the way `deploy.sh`
+  was discovered — as a surprise, mid-ratchet.
 - A file over 300 lines prints an advisory with its count. It does not fail.
 
 ### 8.4 The two browser gates, and what bounds them
@@ -1661,9 +1716,11 @@ the defect.** It checks that documents **refer to things that exist and agree
 with each other about status**. It cannot check that a sentence is *true*.
 
 Of the six found: rules 1–3 catch five. The sixth —
-`core/ports.ts:10`'s *"Four members, each with a caller"*, when none had one —
-is well-formed, refers to nothing external, and **would pass every rule above.**
-It was found by a reader. So: five of six mechanically, one only by a human, and
+`core/ports.ts:10` reading *"Four members, each with a caller"* while none had
+one — is well-formed, refers to nothing external, and **would pass every rule
+above.** It was found by a reader, twice: once at the retro, and again at 2.2,
+because the first correction fixed §5.1 and left the comment in the source
+saying it. A false sentence with two homes is corrected twice or not at all. So: five of six mechanically, one only by a human, and
 the human remains the primary. `checks/docs.ts` removes the failures that are
 beneath a reader's attention so the reader's attention is spent on the ones that
 are not.

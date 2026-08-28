@@ -403,6 +403,28 @@ with a byte count per message and a total. What was elided by compaction is
 shown as an explicit elision row with the count of what it replaced, never as a
 silent gap.
 
+**Above the body: the request line and every header, redacted.** Method, URL,
+then one row per header in send order — name always in full, value only for the
+declared-safe set, everything else as `<redacted, N bytes>`, and
+`Authorization` as its scheme plus a byte count. The rule and its reasoning are
+`ARCHITECTURE.md` §5.2; the design consequence is that **this surface answers
+"was a key sent at all" without ever displaying one.**
+
+Headers are here because a surface whose job is proving what left the tab, and
+which shows only the body, is honest about the half it shows and silent about
+the half that produces a 401. A byte count distinguishes the three cases an
+operator actually faces — no header, an empty one, a plausible one — and the
+distinction is the same one §4.1 refuses to collapse for the probe.
+
+**The stated limit of this surface.** It shows the request as the *transport
+describes it*, not as the socket saw it. A header the browser adds after
+`fetch()` is called — `Origin`, `Referer`, `User-Agent`, `Content-Length`,
+anything a service worker injects — does not appear here and **cannot**: the
+page has no access to the final wire form. This surface therefore proves what
+the harness *asked* to be sent. It cannot prove what the network stack sent, and
+saying so here is the difference between a documented blind spot and an
+undocumented one.
+
 **States**
 - *Empty* — `no request has been made from this tab yet`, plus the request
   *shape* that would be sent, so the surface teaches before it has data.

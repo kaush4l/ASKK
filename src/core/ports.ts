@@ -7,7 +7,14 @@
  * compared byte-for-byte against a recorded golden file. `scripts/checks/purity.ts`
  * is what keeps that true; this file is what makes it possible.
  *
- * ARCHITECTURE.md §5.1 is the contract. Four members, each with a caller.
+ * ARCHITECTURE.md §5.1 is the contract. Four members. As of 2.2 exactly ONE has
+ * a caller — `FetchPort`, taken by `Inference` — and `clock`, `store` and
+ * `newId` still have none; they arrive at 2.6, 2.4 and 2.4.
+ *
+ * This sentence read "four members, each with a caller" for two waves while
+ * none of them did. It is the worked example in §8.7 of what `checks/docs.ts`
+ * cannot catch: well-formed, referring to nothing external, and false. Keep it
+ * counted honestly, or delete the count.
  */
 
 /** Right now, and the IANA zone it is expressed in. */
