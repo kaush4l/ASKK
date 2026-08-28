@@ -958,3 +958,129 @@ Entry shape:
     an empty one until 6.2.
   - `WORKER_MARK` has one reader today and it is `verify-worker.ts`.
     `checks/bundle.ts` is its second, at 3.3.
+
+## 3.2 — The worker protocol, typed both ways, and four messages that all actually cross — 2026-08-28
+- Files: `src/protocol/messages.ts` (new — `REPLY_OF`, `UNSOLICITED`, both
+  unions, the cloneability assertion), `src/protocol/shapes.ts` (new — the wire
+  vocabulary, one shape), `src/engine/host.ts` (new — `serve(scope)`, the
+  switch, and `WORKER_MARK`, moved from `entry.worker.ts` to break an import
+  cycle), `src/engine/probe.ts` (new — the endpoint probe), `src/client/store.ts`
+  (new — the mirror), `src/client/actions.ts` (new — the dispatch surface),
+  `src/client/use-store.ts` (new — the React binding),
+  `src/engine/entry.worker.ts` (now four lines: name the scope, serve it),
+  `src/client/worker-client.ts` (gains `request()` and `subscribe()`, their
+  first callers, and the §6.6 handshake), `src/app/page.tsx` (a probe control,
+  so the protocol has a real click behind it), `scripts/checks/protocol.ts`
+  (new), `scripts/gate.ts`, `scripts/checks/realm.ts` (the `src/protocol` RULES
+  entry), `scripts/verify-worker.ts` (two protocol assertions),
+  `tests/protocol.test.ts` (new).
+- Proof: `bun run gate` → **9 checks ran, 0 failed · gate GREEN**
+  (`types ok`, `tests 110 pass / 0 fail across 9 files`, `purity: src/core — 20
+  file(s)`, `realm: core 20 · protocol 2 · engine 4 · client 4 · ui 0 · app 2`,
+  `protocol: 5 rule(s), 0 failed`, `size: total 5062 non-blank lines · max 506
+  (ratchet NOT armed)`, `design: 8 sub-check(s), 0 failed, 2 pending`,
+  `gate-coverage: 6 on disk, 6 named`, `export: out/ holds 19 file(s)`). The
+  count is **9 and not 8** because this increment added `checks/protocol.ts`.
+- Acceptance, in the built export served at a subpath —
+  `bun run build && bun scripts/serve-subpath.ts` then
+  `bun scripts/verify-worker.ts http://localhost:4599/ASKK/`:
+  ```
+    control: a known-missing path returns 404 — this server can report failure
+    first instance: {"kind":"ready","mark":"askk/engine@entry.worker","schemaVersion":1}
+    failed: "models" cannot be parsed as a URL against "not an address/".
+    config/probed: {"outcome":"http","models":[],"elapsedMs":2,"detail":"http://localhost:4599/ASKK/models answered 404 Not Found"}
+    second instance: {"kind":"fatal","reason":"another-tab","message":"this agent is open in another tab, which holds askk.writer. Close it and reload."}
+  ```
+  `bun scripts/verify-export.ts http://localhost:4599/ASKK/` → `7 request(s), 0
+  console error(s)`.
+- **Four messages, and every one of them is emitted, crossed and asserted on the
+  side that received it.** §6.2 and §6.3 table twenty-four; twenty have no
+  sender, no receiver or neither until the database, the stream, the tools or
+  the flow table exists, and a rich union of which two members are ever sent is
+  this project's three-times-recorded defect.
+
+  | message | emitted | received | assertion on the receiving side |
+  |---|---|---|---|
+  | `boot` | `worker-client.start()` | `host.ts` case `boot` | `tests/protocol.test.ts` "boot replies ready…"; and the browser's `first instance:` line |
+  | `config/probe` | `actions.probeEndpoint` | `host.ts` case `config/probe` | four probe outcome tests; and the browser's `config/probed:` line, from a real click |
+  | `ready` | `host.boot()` | `store.ts` case `ready` | "ready becomes the boot state the page renders"; and `data-engine` in the DOM |
+  | `config/probed` | `host.ts` | `store.ts` case `config/probed` | "config/probed becomes the probe the page renders"; and `data-probe` in the DOM |
+  | `failed` | `host.dispatch` catch, and both §6.6 ordering refusals | `store.ts` case `failed` | three host tests; and `data-failure` in the DOM, from a real click on a base URL that is not an address |
+  | `fatal{another-tab}` | `host.boot()` on a lost election | `store.ts` case `fatal` | the browser's `second instance:` line, a second instance of the whole page |
+  | `fatal{internal}` | `worker-client` — §6.5's dead worker, the one `FromEngine` the main side builds | `store.ts` case `fatal` | 3.1's planted breaks 3 and 5, still the standing proof |
+
+- **§6.6's order is enforced where it is expressible, not assumed.**
+  `request()` awaits `ready` internally, so an out-of-order message cannot be
+  sent by this client; the wire is not the client, so `host.ts` refuses anything
+  before `boot` and a second `boot` **by name**, and both refusals are asserted.
+- Twelve planted breaks, each watched red, each reverted:
+  1. a `ToEngine` member with no `REPLY_OF` row — **red**, `pairing` and
+     `handlers`, exit 1.
+  2. `at: Date` added to `ready`'s payload — **red** in `tsc`, at
+     `messages.ts:99`, `Type 'FromEngine' does not satisfy the constraint
+     'Cloneable'`. §6.4 is a compile error, not a runtime `DataCloneError`.
+  3. `host.ts`'s `config/probe` case emptied — **red**, naming the empty case.
+  4. `store.ts`'s `config/probed` case replaced with a `console.log` — **red**,
+     naming the case that does not write `view`. This is the break the previous
+     formulation of rule 3 would have passed.
+  5. `page.tsx` constructing `{ type: 'config/probe' }` — **red**, §5.8 rule 1.
+  6. `export let drift` in `src/protocol/shapes.ts` — **red** twice, the `let`
+     and the missing `as const`.
+  7. an `engine/wire.ts` created while rule 5 is unwritten — **red**, naming
+     §7.4's pairing as now unchecked.
+  8. `ToEngine` renamed so the AST pass reads nothing — **red before any rule
+     runs**: `read 0 ToEngine … every rule below would pass on an empty list`.
+  9. `ready` constructed with a computed type string — **red**, "declared and
+     never emitted".
+  10. the page's Probe button stopped calling `probeEndpoint` — rebuilt and
+      **red** in the browser, both protocol assertions, 20s each.
+  11. the pre-boot guard disabled — **red**, 13 pass / 1 fail.
+  12. `store.ts` mutating the view instead of replacing it — **red**, the
+      snapshot-identity test.
+- Ringmaster: not yet ruled
+- Open:
+  - **`ProbeOutcome` ships four members, not §6.2's five: `cors` is not
+    declared, and `refused` is spelled `unreachable`.** In a browser a refused
+    connection and a CORS block are the same `TypeError`; separating them needs
+    a second `mode:'no-cors'` fetch, and *asserting* the split needs a
+    cross-origin host reachable from both the local server and the deployed
+    https origin, which loopback is not under mixed content. Calling the merged
+    state `refused` would be a label claiming a fact nothing established. The
+    split belongs to 6.5, whose browser check runs locally where
+    `localhost`/`127.0.0.1` is a real cross-origin pair. **Architect's call.**
+  - **Deferred, with the increment that earns each:** `config/list`,
+    `config/set`, `session/open`, `trace/read` and the `log` event → 3.4 (they
+    read or write the store); `agent/get`, `agent/put` → 4.1; `tools/list` →
+    4.3; `turn/start`, `turn/abort` and the ten `turn/*` events → 3.3 and 3.4;
+    `turn/steer` → 4.5, which §6.2 already rules. `ready`'s `configured` and
+    `activeSessionId`, and `boot`'s `seedBaseUrl`, are store reads and defer to
+    3.4. `config/probe`'s `kind` defers to the second wire kind. `FatalReason`
+    ships `another-tab` and `internal`; `storage-blocked` and `schema` arrive
+    with the database.
+  - **§7.4's probation, ruled.** `SHAPE_PAIRS` survives as specified and is
+    **not exercisable at 3.2**: it pairs wire shapes with storage records, and
+    the records arrive at 3.4. Rule 5 therefore reports PENDING and goes **red
+    the moment `engine/wire.ts` exists** (break 7). `engine/wire.ts` was not
+    created — a mapping file with nothing to map is a layer that only forwards.
+  - **`checks/layers.ts` is tagged `[3.2]` in ARCHITECTURE §4 and did not
+    ship.** PLAN 3.2's acceptance names only `checks/protocol.ts`; layers has
+    its own subject (the §2 import matrix) and folding it in would give one
+    increment two subjects — PLAN's own argument for splitting 1.7 from 1.8.
+    Retagging the file map is the architect's.
+  - **§4 and §6 now disagree with the tree in five places, all listed for the
+    architect and none edited here:** `WORKER_MARK` lives in `engine/host.ts`,
+    not `entry.worker.ts`; `protocol/shapes.ts` declares one of its twelve
+    shapes; `engine/wire.ts` and `checks/layers.ts` are unbuilt; `ready` carries
+    `mark` (which §6.2 does not list) and not `configured`/`activeSessionId`
+    (which it does); `config/probed` carries its payload as one `result:
+    ProbeResult` rather than four flat fields.
+  - **`self.setTimeout`, not `setTimeout`, in `engine/probe.ts`.** §3.4's
+    `src/engine/**` allowlist is closed and names no timer function; `self` is
+    on it. Extending an architectural allowlist is not the coder's, so the
+    probe's deadline is spelled through the permitted global. If the architect
+    would rather add `setTimeout`/`clearTimeout` to §3.4, the code gets one
+    character shorter.
+  - **`worker-client.ts` has no `stop()`.** 3.1's `EngineHandle.stop()` had one
+    caller, a `useEffect` cleanup that tore the engine down on every remount.
+    The engine is one per page and outlives any component, so the teardown was
+    deleted rather than kept as a knob nothing should call.

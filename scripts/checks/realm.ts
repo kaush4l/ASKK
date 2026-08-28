@@ -48,6 +48,11 @@ import type { Violation } from './purity'
  */
 const RULES: readonly { dir: string; allow: readonly string[]; banner: string | null }[] = [
   { dir: 'src/core', allow: [], banner: null },
+  // §3.5's row reads *(nothing)* — protocol is imported by BOTH realms, so
+  // anything ambient in it is ambient in both. This entry landed at 3.2 with
+  // the directory's first file: until then `src/protocol` had no rule, and the
+  // rule below about a file no rule covers is what said so, by name.
+  { dir: 'src/protocol', allow: [], banner: null },
   { dir: 'src/engine', allow: ['self', 'fetch', 'crypto', 'indexedDB', 'navigator', 'URL', 'postMessage', 'AbortController'], banner: 'worker' },
   { dir: 'src/client', allow: ['window', 'document', 'localStorage', 'Worker', 'URL', 'navigator'], banner: 'main' },
   { dir: 'src/ui', allow: ['window', 'document', 'localStorage', 'URL', 'navigator', 'requestAnimationFrame'], banner: null },

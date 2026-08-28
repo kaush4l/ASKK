@@ -1,10 +1,19 @@
 // REALM: host
 /**
- * Drives the built export in a real browser and makes FIVE assertions about the
- * engine, across two claims: §3.2 (a worker built from `new URL(...)` still
- * loads and runs under basePath) and §7.3 (the single-writer election). It does
+ * Drives the built export in a real browser and makes SEVEN assertions about
+ * the engine, across three claims: §3.2 (a worker built from `new URL(...)`
+ * still loads and runs under basePath), §7.3 (the single-writer election) and,
+ * from 3.2, §6 (the message protocol crosses a real realm boundary). It does
  * NOT reach §3.2's classic-worker fact or §8.1's bundle partition; no check in
  * this tree asserts either, which is why MEASURED.md keeps M2 and M3 in full.
+ *
+ * **Why the protocol is asserted here and not only in `tests/protocol.test.ts`.**
+ * That suite drives the real switch and the real store, but the messages cross
+ * a function call: structured clone never runs, the worker chunk is never
+ * loaded, and a payload that cannot survive `postMessage` passes every one of
+ * its cases. Green tests are not a working page. Here a person's click goes
+ * through `actions.ts`, `worker-client.ts`, a real `postMessage`, the worker's
+ * switch and back into the store, and the assertion is on what the DOM shows.
  *
  *   bun scripts/verify-worker.ts http://localhost:4599/ASKK/
  *   bun scripts/verify-worker.ts https://kaush4l.github.io/ASKK/
@@ -43,8 +52,14 @@
  * Like `verify-export.ts` it takes a URL and not a directory, so the local
  * export and the deployed site are proved by the same probe (§8.4).
  */
-import { WORKER_MARK } from '../src/engine/entry.worker';
-import { ENGINE_ATTRIBUTE } from '../src/app/page';
+import { WORKER_MARK } from '../src/engine/host';
+import {
+  ENGINE_ATTRIBUTE,
+  FAILURE_ATTRIBUTE,
+  PROBE_ATTRIBUTE,
+  PROBE_BUTTON_ID,
+  PROBE_INPUT_ID,
+} from '../src/app/page';
 import { requireServerCanFail } from './server-can-fail';
 
 const target = process.argv[2];
@@ -84,13 +99,40 @@ function readEngine(document: string): string {
   return `((${document}) && (${document}).querySelector(${selector}) ? (${document}).querySelector(${selector}).getAttribute(${attribute}) : '')`;
 }
 
+/** Reads any attribute this page publishes a piece of the store into. */
+function readAttribute(attribute: string): string {
+  const selector = JSON.stringify(`[${attribute}]`);
+  return `(document.querySelector(${selector}) ? document.querySelector(${selector}).getAttribute(${JSON.stringify(attribute)}) : '')`;
+}
+
+/**
+ * Types a URL into the probe field and clicks. The native value setter plus a
+ * bubbling `input` event is what React's synthetic layer reads; assigning
+ * `.value` alone updates the DOM node and leaves React's state on the old
+ * value, so the click would probe the empty string and this check would assert
+ * against a message it never sent.
+ */
+function clickProbe(url: string): string {
+  return `(() => {
+    const input = document.getElementById(${JSON.stringify(PROBE_INPUT_ID)});
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(url)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById(${JSON.stringify(PROBE_BUTTON_ID)}).click();
+    return true;
+  })()`;
+}
+
+/** How long one probe round trip gets: click, worker, fetch, reply, render. */
+const PROBE_BUDGET_MS = 20_000;
+
 const THIS_DOCUMENT = 'document';
 /** The second instance's document. Same origin, so its DOM is readable from here. */
 const IFRAME_DOCUMENT = "(document.getElementById('askk-second-tab')||{}).contentDocument";
 
 /** What the first instance must report: the engine started and this build's worker is what answered. */
 function firstAssertions(engine: Record<string, unknown>): string[] {
-  const failures: string[] = [];
+const failures: string[] = [];
   if (engine.kind !== 'ready') {
     failures.push(
       `the first instance did not boot: it reports ${JSON.stringify(engine)}. A worker built from new URL(..., import.meta.url) no longer loads and runs under basePath (§3.2), or the election refused the only tab open (§7.3)`,
@@ -140,6 +182,43 @@ async function instance(document: string, budgetMs: number, assertions: (engine:
   return assertions(JSON.parse(raw) as Record<string, unknown>);
 }
 
+/**
+ * The protocol, end to end, twice.
+ *
+ * A base URL that is not an address never reaches the network: `new URL(...)`
+ * throws inside the handler, `engine/host.ts` catches it and replies `failed`
+ * with the URL parser's own words (§6.5). That proves a request crossed, a
+ * handler threw, the worker survived it, and the client wrote the answer down.
+ *
+ * Then a real one. The page's own origin has no `/models`, so the endpoint
+ * answers and the outcome is `http` — which is the point: a reply carrying a
+ * structured payload came back out of the worker and into the DOM.
+ */
+async function protocolAssertions(): Promise<string[]> {
+  const found: string[] = [];
+  await view.evaluate(clickProbe('not an address'));
+  if (!(await until(view, readAttribute(FAILURE_ATTRIBUTE), PROBE_BUDGET_MS))) {
+    found.push(`a probe of a base URL that is not an address published no ${FAILURE_ATTRIBUTE} in ${PROBE_BUDGET_MS / 1000}s — either the request never reached the worker, or \`failed\` never came back, or the store did not write it (§6.5, §6.7 rule 3)`);
+  } else {
+    console.log(`  failed: ${(await view.evaluate(readAttribute(FAILURE_ATTRIBUTE))) as string}`);
+  }
+  await view.evaluate(clickProbe(target as string));
+  if (!(await until(view, readAttribute(PROBE_ATTRIBUTE), PROBE_BUDGET_MS))) {
+    found.push(`a probe of ${target} published no ${PROBE_ATTRIBUTE} in ${PROBE_BUDGET_MS / 1000}s — config/probe went out and config/probed never arrived (§6.2)`);
+    return found;
+  }
+  const raw = (await view.evaluate(readAttribute(PROBE_ATTRIBUTE))) as string;
+  console.log(`  config/probed: ${raw}`);
+  const result = JSON.parse(raw) as { outcome?: string; elapsedMs?: number };
+  if (result.outcome !== 'http') {
+    found.push(`the probe of ${target} reported ${JSON.stringify(result.outcome)}; this page's own origin has no /models, so the endpoint answers and the outcome is http. Any other value means the probe did not reach the network it says it reached`);
+  }
+  if (typeof result.elapsedMs !== 'number') {
+    found.push(`the probe reply carried no numeric elapsedMs — the payload did not survive the realm crossing intact (§6.4)`);
+  }
+  return found;
+}
+
 const failures: string[] = [];
 try {
   await view.navigate(target);
@@ -148,6 +227,7 @@ try {
     failures.push(`the document never loaded in ${READY_BUDGET_MS / 1000}s — this is the browser, not the page`);
   } else {
     failures.push(...(await instance(THIS_DOCUMENT, BOOT_BUDGET_MS, firstAssertions, 'first instance')));
+    failures.push(...(await protocolAssertions()));
     // The first worker is still inside lease.ts's callback for every line
     // below: a second instance of the whole page, same origin, same lock
     // namespace. This is a second tab in everything but the window.
@@ -172,5 +252,5 @@ if (all.length) {
 // having run in it, the WebView keeps the loop alive after `close()` and the
 // process hangs on a PASS — which in the deploy path is a check that never
 // returns rather than a check that passed.
-console.log(`\nPASS ${target} — the engine boots in a worker at the subpath, and a second instance of the page is refused the writer lock while the first still holds it`);
+console.log(`\nPASS ${target} — the engine boots in a worker at the subpath, the protocol round-trips a request, a reply and a failure across the realm boundary, and a second instance of the page is refused the writer lock while the first still holds it`);
 process.exit(0);
