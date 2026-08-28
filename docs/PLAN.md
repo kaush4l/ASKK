@@ -123,11 +123,13 @@ Everything environmental arrives through an explicit port.
 | 2.3 | Inference real — one HTTP concrete, streaming | Tokens arrive incrementally from a real endpoint; the test asserts **>1 chunk**; `describeRequest` returns the literal body | +260 | TODO |
 | 2.4 | The react loop — the smallest cycle that terminates | The loop runs, emits every lifecycle event, and ends on a **declared terminal**. No `FLOWS`, no driver, no `MAX_TRANSITIONS` — those are 4.5 | +300 | TODO |
 | 2.5 | Structured response — parse the model's reply into typed parts | Golden cases parse exactly; a malformed reply degrades, never throws | +340 | TODO |
-| 2.6 | Prompt assembly — components, ordering, the identity file | The rendered prompt is **byte-identical to `tests/golden/render-*.prompt`** and printable for inspection | +520 | TODO |
+| 2.6 | Prompt assembly — components, ordering, the identity file | The rendered prompt is **byte-identical to `tests/golden/render-*.prompt`** and printable for inspection. **And the `max` ratchet arms here:** 2.6 writes `scripts/checks/lines.json` seeded from a tree that contains real modules, after which `size.ts` reports a delta and `max` may only go down. Shell counts (`ARCHITECTURE.md` §8.3) | +520 | TODO |
 
-**End of wave 2 arms the `max` ratchet**, seeded from a tree that contains real
-modules rather than scaffold. Recorded here because it is an acceptance nobody
-owns otherwise.
+**2.6 arms the `max` ratchet** and writes `scripts/checks/lines.json`. This
+previously read "end of wave 2", which is a season and not an owner — a
+deliverable assigned to a date is a deliverable nobody is accountable for, and
+it sat unowned for three increments while the number it arms was quietly
+excluding `deploy.sh`.
 
 **2.1 overran: +260 declared, +347 actual.** Accepted. The overrun is the
 tokeniser in `checks/purity.ts`, and it is accepted **on a condition that is
@@ -278,6 +280,21 @@ Wave 4: **+1,600**. Wave 6: **+2,200**. Wave 5 declares nothing — it is a
 measurement, not a build. These are estimates by the same method that ran 84%
 over, so they are stated as *the number a wave should be argued against*, not as
 a number anyone should expect to hit.
+
+## Housekeeping, scheduled
+
+Small debts that are real, owned, and would otherwise be discovered by whoever
+trips on them. Each names the increment that clears it.
+
+| Debt | Cleared by |
+|---|---|
+| Eleven stale `.claude/worktrees/*` registrations in this repo | 1.7 |
+| `scripts/verify-worker.ts`'s header says "the four facts"; it asserts **seven** | 1.7 |
+| `docs/scratch/REFERENCES.md` — wave-0 recon, input to wave 4 | 4.3 |
+| `src/client/worker-probe.ts` + `src/engine/probe.worker.ts` — 179 lines of wave-1 scaffold on every page load | 3.1 |
+| `isConfigured` returns with its first real caller | 3.x, with the inference catalogue |
+
+---
 
 ## Standing rules
 

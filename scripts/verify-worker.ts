@@ -1,14 +1,19 @@
 // REALM: host
 /**
- * Drives the built export in a real browser and asserts the four facts the
- * realm map, §3.2, §7.3 and §8.1 are all standing on.
+ * Drives the built export in a real browser and makes SEVEN assertions across
+ * the three claims it can reach: §3.2 (a worker built from new URL(...) still
+ * loads and runs under basePath), §3.3/§3.4 (the realm physics — localStorage
+ * absent, indexedDB present), and §7.3 (the writer election, four of the
+ * seven). It does NOT reach §3.2's classic-worker fact or §8.1's bundle
+ * partition; no check in this tree asserts either, which is why MEASURED.md
+ * keeps M2 and M3 in full.
  *
  *   bun scripts/verify-worker.ts http://localhost:4599/ASKK/
  *   bun scripts/verify-worker.ts https://kaush4l.github.io/ASKK/
  *
  * `docs/scratch/MEASURED.md` established these once, in a scratch probe,
  * outside this repository. That is a measurement, not a check: a toolchain
- * upgrade expires all four at the same moment and the tree would carry on
+ * upgrade expires them all at the same moment and the tree would carry on
  * citing a file. This is the standing assertion the measurement became.
  *
  * The one that can genuinely ship broken is the last. MEASURED M5's probe

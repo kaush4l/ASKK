@@ -309,7 +309,7 @@ public/
 ### `src/core/` — pure, no ambient anything
 
 ```
-core/ports.ts                   the Ports interface, stubPorts(), isConfigured(), and the
+core/ports.ts                   the Ports interface, stubPorts(), and the
                                 STORAGE record shapes StorePort states itself in —
                                 SessionRecord, NewMessage, MessageRecord, NewEvent (§7.4)
 
@@ -476,7 +476,7 @@ scripts/checks/protocol.ts      request/reply pairing, handler and sender covera
 scripts/checks/orphans.ts       every export has an importer (allowlist in §8)
 scripts/checks/size.ts          function <= 40 lines; the max-lines ratchet
 scripts/checks/bundle.ts        core reaches the worker chunk and no other (§8)
-scripts/checks/lines.json       [end of wave 2] the ratchet state, written when max arms
+scripts/checks/lines.json       [2.6] the ratchet state; 2.6 arms max and writes it first
 scripts/checks/design.ts        DESIGN's static rules, as NAMED sub-checks, each with
                                 its own failure message: tokens, ramp, motion, front-door
                                 copy. Runs inside `bun run gate`.
@@ -553,7 +553,6 @@ Ambient randomness, made explicit, so a test can produce reproducible turn ids.
 ```ts
 interface Ports { clock: ClockPort; fetch: FetchPort; store: StorePort; newId: NewIdPort }
 function stubPorts(): Ports
-function isConfigured(member: unknown): boolean
 ```
 Four members. **None has a caller yet** — as of 2.1 the module's only consumer
 is `tests/ports.test.ts`, and the first real callers arrive with the inference
@@ -563,9 +562,17 @@ that the same wave builds; a port seam whose members arrived one wave after the
 code needing them would be a seam built twice. Recorded precisely because
 "each with a caller today" is the kind of well-formed false sentence
 `checks/docs.ts` cannot catch (§8.7). `stubPorts()` returns members that
-**throw `no <name> port configured`** rather than silently no-op, and
-`isConfigured` exists because `if (ports.x)` is true for a stub — that check
-registered a capability that died at the call site in the old tree.
+**throw `no <name> port configured`** rather than silently no-op.
+
+**`isConfigured` was removed at the wave-1 retro and returns at wave 3.** The
+old tree paired the loud stubs with a capability check, because `if (ports.x)`
+is **true** for a stub — presence is not configuration, and a capability
+registered on truthiness dies at the call site. That reasoning is still right
+and `SALVAGE.md` item 4 still records it. But shipped here it had zero callers
+outside its own test, which is §8.6's most-repeated defect in this project
+committed once more, in the very increment that built the check for it. It
+comes back with the first capability check that needs it — the inference
+catalogue at wave 3 — and not before.
 
 *(A `FilesPort` is deliberately absent until the first tool that reads a file
 exists. No port without a caller.)*
@@ -1410,8 +1417,10 @@ The replacement:
   mode is extraction, which is the thing we wanted.
 - **`max` — the largest single file's line count — is a ratchet that only goes
   down.** `checks/size.ts` shipped at 1.6 and **reports** `max` today. It writes
-  no state file: `scripts/checks/lines.json` **does not exist yet and is created
-  when the ratchet arms at the end of wave 2**, seeded from a tree that contains
+  no state file: `scripts/checks/lines.json` **does not exist yet. Increment 2.6
+  creates it** — the last increment of wave 2, named so the arming has an owner
+  rather than a season; "end of wave 2" is not an increment and nobody is
+  accountable to a date, seeded from a tree that contains
   real modules. Until then there is nothing to compare against and `max` is a
   printed number, not a check. *(This paragraph previously described the file as
   present and `size.ts` as reporting a delta "since the last recorded value".
@@ -1449,9 +1458,41 @@ The replacement:
   binding is ceremony wearing a check's clothes, which is this section's own
   diagnosis of `total`, unapplied to itself for eleven increments. PLAN's
   line-budget section carries the measured figures.
+- **`total` counts every hand-written file in the counted roots, not every
+  `.ts` file.** `size.ts` shipped counting `.ts`/`.tsx` only, which made
+  `scripts/deploy.sh` — **151 non-blank lines**, against the 1,291 the check
+  reported at the eleven-increment retro — invisible to the number the ratchet
+  is about to be armed on. Ruled: **shell counts.**
+
+  *(Stated as an absolute against a named measurement rather than as a
+  percentage. The denominator moves every increment; a ratio written today is a
+  sentence that quietly stops being true tomorrow, which is §8.7's whole
+  subject and would have been an odd thing to commit inside the ruling that
+  names it.)*
+
+  The deeper fix is not "add `.sh` to the list", it is that `size.ts` was using
+  **one file collection for two jobs**. The 40-line *function* rule needs a
+  TypeScript AST and can only ever see `.ts`/`.tsx`. The line *total* needs no
+  parser at all. Those are two collections and conflating them silently scoped
+  the total to whatever the parser happened to accept.
+
+  So the total's collection is defined by **exclusion, not inclusion**: every
+  file under the counted roots is counted **unless** it is generated. An
+  inclusion list silently drops each new language as it arrives — which is what
+  happened — while an exclusion list fails loudly toward counting too much. The
+  only exclusions are the ratchet's own state files (`lines.json`,
+  `contrast-ratchet.json`); counting those would make the ratchet count itself.
+
+  This matters now rather than later because **the ratchet arms at the end of
+  wave 2, two increments away.** Arming a binding number over a measure that
+  silently excludes a growing file is how a ratchet is wrong at the exact moment
+  it starts to bind.
 - `total` counts `src/**` **and** `scripts/**`. **Relocating source out of those
   two directories to move the number is a violation**, named here so it cannot
-  be discovered as a loophole later. *(Ringmaster condition 7.)*
+  be discovered as a loophole later. *(Ringmaster condition 7.)* So is its
+  sibling — **writing logic in a language the counter does not count** — which
+  is the same evasion one level down, and which was available unnoticed for
+  eleven increments.
 - A file over 300 lines prints an advisory with its count. It does not fail.
 
 ### 8.4 The two browser gates, and what bounds them
@@ -1626,6 +1667,33 @@ It was found by a reader. So: five of six mechanically, one only by a human, and
 the human remains the primary. `checks/docs.ts` removes the failures that are
 beneath a reader's attention so the reader's attention is spent on the ones that
 are not.
+
+**The same root cause, arriving from the opposite direction.** Everything above
+is about a document making a false claim *about the code*. The retro's line
+count showed the reverse: a **true lesson in a document that never became a
+check, so the bug it warned about came back.**
+
+`size.ts` first reported 1,401 lines; the correct figure is **1,291**. The
+difference was blank lines plus a trailing-newline off-by-one — `wc -l` counts
+newline characters, so a file not ending in one is undercounted by exactly one.
+`SALVAGE.md` does not merely fail to warn about this: **it is a victim of it.**
+Its line 78 states "nine files sit at exactly 200 lines" as evidence for
+retiring the 200-line rule; the tree had **ten**, and the count was short by the
+same mechanism. That number went unchallenged for eleven increments and was
+cited in two rulings.
+
+So the class is wider than it first looked, and both halves have one fix:
+
+> **A fact recorded only in prose decays. A fact recomputed by a check does
+> not.** It does not matter whether the prose was right when written — the
+> recorded "nine" was, arguably, right about the count it actually performed.
+> Nothing recomputed it, so nothing noticed when it stopped being right, and
+> nothing stopped the identical arithmetic error recurring in the tool built to
+> replace the rule the wrong number justified.
+
+`size.ts` now prints the shell command that reproduces its number, so any reader
+can recompute it in one paste. That is the cheapest possible version of this
+lesson and it belongs on every check that emits a figure a document will quote.
 
 **Written by increment 1.7**, which reopens wave 1 for one increment because the
 gate 1.6 built was incomplete in a way eleven increments of documents then
@@ -2045,7 +2113,7 @@ boundary that can tell a type import from a value one.
 not edited here). Names `/Users/kaush/Downloads/Dev/ASKK/CLAUDE.md` as in scope
 for PLAN 0.4 (owner: ringmaster). No source file is created or edited.
 
-**CONTRACTS.** §5 — `Ports`/`stubPorts`/`isConfigured` with
+**CONTRACTS.** §5 — `Ports`/`stubPorts` with
 `appendMessage(sessionId, m) -> seq`; `Inference.infer(req, onDelta?, signal?)`
 and `describeRequest`; `Tool.call`/`declaration` and `Toolbox.invoke`, none of
 which throw, with `TOOL_OUTPUT_CAP` and `TOOL_ELISION`;
