@@ -1,0 +1,22 @@
+{
+  "name": "askk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.24",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "idb": "8.0.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
+    "typescript": "^5.9.3"
+  }
+}
