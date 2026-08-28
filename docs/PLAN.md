@@ -498,3 +498,76 @@ trips on them. Each names the increment that clears it.
   what is true, `PLAN.md` is what is next, `PROGRESS.md` is what was proven.
   Nothing is coordinated in anyone's head.
 - **NO-GO returns to the architect, never to the coder.**
+
+---
+
+## Addendum — the resident directive (`docs/RESIDENT.md`)
+
+> An owner directive ruled on in `docs/RESIDENT.md`: *one long-running agent,
+> browser tools, a shared memory space, and a boot-order trace.* Three of the
+> four rulings change **no increment count**; they change what two existing
+> increments own, and they add two gated increments at the end of wave 4.
+> Nothing here edits `src/`, and nothing here starts before 3.2 lands.
+
+### Re-tags, not new work
+
+The resident is the **worker realm**, which already outlives every request. It
+gets a named owner rather than a new layer, so the change is a re-tag of a file
+`ARCHITECTURE.md` §4 already schedules. `PROGRESS.md` 3.1's Open section left
+three tags unresolved and said *"retagging the file map is the architect's"* —
+this is that call.
+
+| File | Was | Is | Why |
+|---|---|---|---|
+| `src/engine/turns.ts` | `[3.1]` *"the turn queue: one live turn, abort, steer, orphan closing"* | **`[3.3]`** *"THE RESIDENT: owns the Agent, the transcript, the live `AbortController` and the one-turn queue, for the life of the worker realm. Turns are its subroutines."* | It is what holds the agent across turns. It cannot exist before a turn crosses the boundary, which is 3.3 |
+| `src/engine/boot.ts` | `[3.1]` | **`[3.4]`** | Its stated content — db open under the reporting deadline, seeding, orphan reconciliation — is all 3.4 |
+| `scripts/checks/bundle.ts` | `[3.1]` | **`[3.3]`** | It asserts `CORE_MARK` reaches the worker chunk and no main chunk. Nothing under `src/core` is imported by the worker until the resident imports it, so before 3.3 the check passes for the wrong reason |
+
+**3.3 additionally owns** the sentence 3.1 could not prove and did not fake:
+*the main thread stays responsive during a long turn*, measured, not assumed.
+
+### Obligations added to existing increments
+
+- **3.2** — closes the gap `RESIDENT.md` §5.1 hop 13 names: `entry.worker.ts:62`
+  calls `void boot(...)` with no error path, so a rejection today produces
+  silence and the page falls through to a 15-second deadline. §6.5's *"a handler
+  that throws is caught in `engine/host.ts`"* becomes true here or it is not
+  true anywhere. **Acceptance: a handler made to throw produces a `failed`
+  reply, watched red before the fix.**
+- **3.3** — `boot`'s payload gains `seedBaseUrl` and `ready`'s gains
+  `configured` and `activeSessionId` **only when 3.4 can compute them**; until
+  then §6.2's rows for those two fields are ahead of the source and
+  `RESIDENT.md` §5.2 records the divergence. **3.4 closes it.**
+- **3.4** — **rules `StorePort`.** It has zero callers, and 3.4 as written gives
+  it none: persistence lands in `engine/stores/*`. `RESIDENT.md` §4.4 rules that
+  `engine/` persists from the observer and **`StorePort` is removed from
+  `Ports`**, leaving three members. 3.4 executes that or records in
+  `PROGRESS.md` why it did not. An interface that survives the increment
+  supposed to give it a caller is `LESSONS.md` defect 6.
+- **4.3** — ships **`fetch_url`** as one of the first real tools. It runs in the
+  worker through `ports.fetch`; it never throws; its outcome is a **closed
+  union modelled on `ProbeOutcome`** so *CORS-blocked* and *connection-refused*
+  never collapse into "could not fetch"; and **its description tells the model
+  the truth about its own reach** — most JSON APIs permit cross-origin reads,
+  most web pages do not. Acceptance: a real turn fetches a same-origin seed file
+  and reads it, and a real turn fetches a cross-origin URL that refuses and the
+  model reads the refusal's own sentence. Reading an arbitrary web page is
+  **not** in scope and never will be without a server.
+
+### New increments — both gated, both CUT if their gate fails
+
+| # | Intent | Gate | Acceptance |
+|---|--------|------|-----------|
+| 4.6 | **The shared board** — the model-facing space the agent, its tools and the user all write to | **4.3 must have produced a real writer.** A board with no writer costs ~22 lines of every prompt forever, which is why `SALVAGE.md` cut it | A **real tool call in a real turn** writes to the board, and the **next prompt renders it**, byte-compared against a regenerated golden. **No slot number is reserved before this increment** — `Slot.SKILLS = 30` is this tree's one stated exception to "no declaration without a consumer" and one is enough. If 4.3 produces no writer, **4.6 is CUT and the reason is recorded here** |
+| 4.7 | **Browser search** | **`docs/scratch/BROWSER-TOOLS.md` must exist and record a browser-run measurement.** Nothing in this tree has ever measured a search endpoint; `REFERENCES.md` has zero hits for `search` or `CORS`. Every remembered keyless endpoint is **UNVERIFIED** | The measurement, before any design: for each candidate URL, a `fetch()` executed **from a page served at the deploy origin** (the built export under `/ASKK/`, per `ARCHITECTURE.md` §8.4) that reads `response.text()` and prints a non-zero length, recorded with the date, the URL, the response headers and the browser version. **`curl -i` showing `Access-Control-Allow-Origin` is necessary and nowhere near sufficient — `curl` does not enforce CORS**, and a `curl` treated as proof is how this claim class became false three times. No tool, no port, no catalogue entry before that file exists. If no candidate passes, **4.7 is CUT** |
+
+Neither increment declares lines. Wave 4's budget is unchanged: both are gated,
+and a budget raised for work that may not happen is a budget that means nothing.
+
+### The trace is a tracked measurement
+
+`docs/RESIDENT.md` §5 carries an `AGENT.md` §11 `MEASURED AT` header with
+`SUBJECTS: src/app/**, src/client/**, src/engine/**, next.config.ts`. **3.2 will
+turn `checks/stale.ts` `[1.8]` red against it, and that is correct** — 3.2 is
+precisely the increment that adds hops 22 onward. It is re-stamped or struck in
+3.2's own commit, exactly as 2.8 did for `FLOW.md`.
