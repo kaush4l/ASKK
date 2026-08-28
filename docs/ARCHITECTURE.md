@@ -1500,7 +1500,12 @@ refusals. Each is considered, not an omission.
    `REPLY_OF` is a hand-written `as const` map and `checks/protocol.ts` proves it
    total against both unions. A generator is a build step, a build step is a
    thing that can be stale, and "one list" is achieved by the check rather than
-   by machinery.
+   by machinery. **This refusal is conditional and the condition is §6.6's
+   opening paragraph:** the members must be read by an AST pass over the union
+   *type declarations*. If they are ever grepped as string literals out of
+   `messages.ts`, rule 1 compares that file to itself, the check becomes a
+   tautology, and this refusal is no longer defensible — at which point the
+   generator is the right answer and I was wrong.
 3. **"Require the handler to touch the client store" — adopted, and I am
    recording that it is still weak.** A case that writes a field nobody reads
    satisfies it. I could not construct a static check that proves a message

@@ -43,14 +43,15 @@ expensive disagreement available. No wave-1 increment starts before it.
 | 1.2 | Static export | `bun run build` emits `out/`, zero server code in it | +20 | TODO |
 | 1.3 | Subpath-correct export | `scripts/serve-subpath.ts` serves `out/` under `/ASKK/` and the page loads with **zero** console errors and **zero** 404s — the failure mode that has bricked this project before | +90 | TODO |
 | 1.4 | Deploy path proven | The hosted URL loads and shows the identifying string | +60 | TODO |
-| 1.5 | Worker emission, as a repo-owned regression guard | A worker started from the **built** export at a subpath replies with its sentinel: zero console errors, no 404 for the worker chunk. Reproducible locally via `scripts/serve-subpath.ts`, not only on the deployed URL. The same probe **asserts** the three Web Lock behaviours §7.3's election rests on: it grants in a worker, `{ifAvailable:true}` grants when free, and it yields `null` when already held (MEASURED M5) | +70 | TODO |
-| 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. Ships only the wave-1 checks: `checks/size.ts` (arming the `max` ratchet), the export/no-server-code assertion, and the smoke harness | +180 | TODO |
+| 1.5 | Worker emission, as a repo-owned regression guard | A worker started from the **built** export at a subpath replies with its sentinel: zero console errors, no 404 for the worker chunk. Reproducible locally via `scripts/serve-subpath.ts`, not only on the deployed URL. The same probe **asserts** the three Web Lock behaviours §7.3's election rests on: it grants in a worker, `{ifAvailable:true}` grants when free, and — the one the election actually rests on — a second `{ifAvailable:true}` request made **while the first callback is still pending** receives `null`. MEASURED M5 did not prove this: its callback returned, so the lock released (`ARCHITECTURE.md` §7.3) | +70 | TODO |
+| 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. Ships only the wave-1 checks: `checks/size.ts` (**reporting** `max`; the ratchet arms at the end of wave 2), the export/no-server-code assertion, and the smoke harness | +180 | TODO |
 
 **1.5 is a guard, not a discovery.** `docs/scratch/MEASURED.md` already settled
 all of it: M1 a worker loads, runs and replies from a static export at a subpath
 with zero console errors; M2 webpack emits it as a **classic** worker
 (`{type: void 0}`); M5 `navigator.locks` grants there and yields `null` when
-held. Nothing in this increment is expected to fail.
+held. Nothing in this increment is expected to fail — **except the lock hold,
+which M5 did not test and which is the one thing here that can ship broken.**
 
 That is exactly why it exists. Four separate architectural commitments —
 §3.2's no-runtime-ESM rule, §7.3's single-writer election, §8.1's bundle check
@@ -79,6 +80,10 @@ Everything environmental arrives through an explicit port.
 | 2.4 | The react loop — the smallest cycle that terminates | The loop runs, emits every lifecycle event, and ends on a **declared terminal**. No `FLOWS`, no driver, no `MAX_TRANSITIONS` — those are 4.5 | +300 | TODO |
 | 2.5 | Structured response — parse the model's reply into typed parts | Golden cases parse exactly; a malformed reply degrades, never throws | +340 | TODO |
 | 2.6 | Prompt assembly — components, ordering, the identity file | The rendered prompt is **byte-identical to `tests/golden/render-*.prompt`** and printable for inspection | +520 | TODO |
+
+**End of wave 2 arms the `max` ratchet**, seeded from a tree that contains real
+modules rather than scaffold. Recorded here because it is an acceptance nobody
+owns otherwise.
 
 **2.0 is new and it is first.** `ARCHITECTURE.md` §10.1 rules TypeScript, which
 makes every salvaged module a transliteration of 1453 lines of code — and the
@@ -146,11 +151,20 @@ build and a real browser and run in the deploy path beside the smoke check.
 
 | # | Intent | Acceptance | Lines | Status |
 |---|--------|-----------|-------|--------|
-| 6.1 | Design law + tokens — theme, type, colour, motion, states | `checks/design.ts` runs in `bun run gate` with a **named sub-check per rule**, each with its own failure message; its scan roots are one exported constant covering `src/ui/**` and `src/app/**` | +240 | TODO |
+| 6.1 | Design law + tokens, **and `DESIGN.md` reconciled with `ARCHITECTURE.md`** | `checks/design.ts` runs in `bun run gate` with a **named sub-check per rule**, each with its own failure message; its scan roots are one exported constant covering `src/ui/**` and `src/app/**`. **And `DESIGN.md` no longer contradicts `ARCHITECTURE.md`:** §4 says six destinations (it says five and specifies six), §9's token check names `src/ui/**` (it names `app/`), and its seven `check-*.js` are restated as `checks/design.ts` + `scripts/browser/*` | +240 | TODO |
 | 6.2 | Primitives and the addressed shell | Every primitive renders all its states in the built export; every `surfaces.ts` entry has a unique `?panel=` address honoured **on load**; `Shell.tsx` sets `data-panel-ready="<id>"` and the browser checks wait on it, never on a delay. Seeds `contrast-ratchet.json` from a real build | +520 | TODO |
 | 6.3 | The Workbench — watch a turn happen, in ONE scroll | A person follows a full turn without a debugger. All eight row kinds hang off one spine; there is no second panel holding the messages | +560 | TODO |
 | 6.4 | The evidence surfaces — Prompt, Context, Tools | Context renders the **literal request body that left the tab** and it is byte-comparable to what the endpoint received; Tools lists every declared tool and nothing else | +440 | TODO |
 | 6.5 | Cold-open journey | A first-time user reaches a streaming token without documentation. `scripts/browser/coldopen.ts` counts **≤ 2 clicks local, ≤ 3 BYOK** against the built export at a subpath | +300 | TODO |
+
+**6.1's second half is not bookkeeping.** Two live documents disagree today and
+the coder reads both: `DESIGN.md` states a destination count that contradicts its
+own section list, points its token check at a directory that will hold no tokens
+(`ARCHITECTURE.md` §10.2 ruling 1 — a check that would pass with every colour
+literal in the tree), and names seven scripts that §10.2 ruling 3 replaced. The
+architect refused to edit another owner's document; that refusal only holds if
+the edit is scheduled, and this is where it is scheduled. `DESIGN.md` is the
+ui-director's to change.
 
 **6.4 is not polish.** It is the instrument for "the harness never tells the
 model something it has not done". The prior tree told its model it had a
@@ -167,7 +181,10 @@ Every increment from 1.1 onward declares a **Lines** figure: its expected net
 addition to `src/**` plus `scripts/**`. `checks/size.ts` reports the real total
 and its delta; **exceeding a declared budget is a ringmaster conversation, not a
 gate failure** (`ARCHITECTURE.md` §8.3). The one ratcheted number is `max`, the
-largest single file, which only goes down and which arms at 1.6.
+largest single file, which only goes down. `checks/size.ts` ships at 1.6 and
+reports it from then on, but the ratchet **arms at the end of wave 2** — seeding
+it from wave 1's ~500 lines of scaffold would pin it to whatever the largest gate
+file accidentally is (`ARCHITECTURE.md` §8.3).
 
 Relocating source out of `src/` or `scripts/` to move the total is a violation,
 not a refactor.
