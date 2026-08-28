@@ -3,8 +3,19 @@
 > The ordered increments. One increment = one coder invocation = one revertable
 > commit. Nothing is coded that is not an increment here.
 >
-> **Status legend:** `TODO` · `IN PROGRESS` · `DONE` (proof recorded in
-> `docs/PROGRESS.md`) · `CUT` (with the reason).
+> **There is no status column, and that is deliberate.** `PROGRESS.md` is the
+> record of what shipped; a Status cell here is a second copy of that fact, and
+> it fell behind three separate times — 1.4, then 1.5/1.6, then 2.3/2.4/2.5 —
+> while PROGRESS was correct every time because the coder wrote its entry in the
+> same commit as the work. Two places to record one fact is the shape ruled
+> against in `ARCHITECTURE.md` §6.1 and §7.4; the answer there was to declare
+> the pairing and check it, and the answer here is cheaper: **delete the second
+> copy.** A defect class removed beats a defect class checked.
+>
+> **What shipped is `PROGRESS.md`. What is next is this file.** An increment
+> with a PROGRESS entry is done; one without is not. `checks/docs.ts` rules 2–3
+> read DONE from PROGRESS, and §4's file-map tags resolve against it.
+> `CUT` increments are struck from this file with the reason recorded inline.
 >
 > Every increment has: an **intent** (one sentence), **files** (exact ownership),
 > and **acceptance** (a falsifiable observation, not "it works"). An increment
@@ -14,12 +25,12 @@
 
 ## Wave 0 — Ground
 
-| # | Intent | Status |
-|---|--------|--------|
-| 0.1 | Recon: read powerhouse, inventory old ASKK, research reference agents | DONE |
-| 0.2 | Team defined (`.claude/agents/*`), `.gitignore` culled, NORTH-STAR written | DONE |
-| 0.3 | Architecture of record drafted and ringmaster-approved | DONE |
-| 0.4 | Old tree deleted whole and tagged; **`CLAUDE.md` rewritten** to match `ARCHITECTURE.md` | DONE |
+| # | Intent |
+|---|--------|
+| 0.1 | Recon: read powerhouse, inventory old ASKK, research reference agents |
+| 0.2 | Team defined (`.claude/agents/*`), `.gitignore` culled, NORTH-STAR written |
+| 0.3 | Architecture of record drafted and ringmaster-approved |
+| 0.4 | Old tree deleted whole and tagged; **`CLAUDE.md` rewritten** to match `ARCHITECTURE.md` |
 
 **0.4 acceptance:** `git tag` shows the recovery tag; the working tree contains
 only the new skeleton; the tag's tree still contains the old files; and
@@ -37,16 +48,16 @@ expensive disagreement available. No wave-1 increment starts before it.
 
 ## Wave 1 — It builds and it ships
 
-| # | Intent | Acceptance | Lines | Status |
-|---|--------|-----------|-------|--------|
-| 1.1 | Barebones Bun + Next app that runs | `bun run dev` serves a page with one identifying string | +80 | DONE |
-| 1.2 | Static export | `bun run build` emits `out/`, zero server code in it | +20 | DONE |
-| 1.3 | Subpath-correct export | `scripts/serve-subpath.ts` serves `out/` under `/ASKK/` and the page loads with **zero** console errors and **zero** 404s — the failure mode that has bricked this project before | +90 | DONE |
-| 1.4 | Deploy path proven | The hosted URL loads and shows the identifying string | +60 declared · **+231 actual** | DONE |
-| 1.5 | Worker emission, as a repo-owned regression guard | A worker started from the **built** export at a subpath replies with its sentinel: zero console errors, no 404 for the worker chunk. Reproducible locally via `scripts/serve-subpath.ts`, not only on the deployed URL. The same probe **asserts** the three Web Lock behaviours §7.3's election rests on: it grants in a worker, `{ifAvailable:true}` grants when free, and — the one the election actually rests on — a second `{ifAvailable:true}` request made **while the first callback is still pending** receives `null`. MEASURED M5 did not prove this: its callback returned, so the lock released (`ARCHITECTURE.md` §7.3) | +70 declared · **+340 actual** | DONE |
-| 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. It invokes **every** check that exists at that moment — `checks/purity.ts` from 2.1 included, whatever order the waves land in — plus `checks/size.ts` (**reporting** `max`; the ratchet arms at the end of wave 2), the export/no-server-code assertion, and `verify-export.ts` in the deploy path. It ships `checks/gate-coverage.ts`, which fails if any `scripts/checks/*.ts` is not invoked, and it **prints the count of checks it ran** | +220 declared · **+320 actual** | DONE |
+| # | Intent | Acceptance | Lines |
+|---|--------|-----------|-------|
+| 1.1 | Barebones Bun + Next app that runs | `bun run dev` serves a page with one identifying string | +80 |
+| 1.2 | Static export | `bun run build` emits `out/`, zero server code in it | +20 |
+| 1.3 | Subpath-correct export | `scripts/serve-subpath.ts` serves `out/` under `/ASKK/` and the page loads with **zero** console errors and **zero** 404s — the failure mode that has bricked this project before | +90 |
+| 1.4 | Deploy path proven | The hosted URL loads and shows the identifying string | +60 declared · **+231 actual** |
+| 1.5 | Worker emission, as a repo-owned regression guard | A worker started from the **built** export at a subpath replies with its sentinel: zero console errors, no 404 for the worker chunk. Reproducible locally via `scripts/serve-subpath.ts`, not only on the deployed URL. The same probe **asserts** the three Web Lock behaviours §7.3's election rests on: it grants in a worker, `{ifAvailable:true}` grants when free, and — the one the election actually rests on — a second `{ifAvailable:true}` request made **while the first callback is still pending** receives `null`. MEASURED M5 did not prove this: its callback returned, so the lock released (`ARCHITECTURE.md` §7.3) | +70 declared · **+340 actual** |
+| 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. It invokes **every** check that exists at that moment — `checks/purity.ts` from 2.1 included, whatever order the waves land in — plus `checks/size.ts` (**reporting** `max`; the ratchet arms at the end of wave 2), the export/no-server-code assertion, and `verify-export.ts` in the deploy path. It ships `checks/gate-coverage.ts`, which fails if any `scripts/checks/*.ts` is not invoked, and it **prints the count of checks it ran** | +220 declared · **+320 actual** |
 
-| 1.7 | The documents join the gate | `checks/docs.ts` runs inside `bun run gate` and is watched red on each of its six rules. **every §4 file-map entry that does not exist yet is tagged with the increment that creates it** — that tagging pass is the bulk of this increment's work; every file under `src/` and `scripts/` is named in §4; every §4 entry exists iff its increment is `DONE`; every `DONE` increment has a PROGRESS entry with the gate's check count; every `§N.M` resolves; every `scripts/**` path cited in `docs/` exists or is scheduled; every PROGRESS entry citing a verdict has a `docs/rulings/` file | see wave budget | TODO |
+| 1.7 | The documents join the gate | `checks/docs.ts` runs inside `bun run gate` and is watched red on each of its **seven** rules (`ARCHITECTURE.md` §8.7). **every §4 file-map entry that does not exist yet is tagged with the increment that creates it** — that tagging pass is the bulk of this increment's work; every file under `src/` and `scripts/` is named in §4; every §4 entry and every untagged §5 contract resolves against PROGRESS; every recorded increment's entry carries the gate's check count; every `§N.M` resolves; every `scripts/**` path cited in `docs/` exists or is scheduled; every PROGRESS entry citing a verdict has a `docs/rulings/` file | see wave budget |
 
 **1.7 reopens wave 1 for one increment**, because the gate 1.6 built was
 incomplete in a way that eleven increments of documents then demonstrated: six
@@ -115,17 +126,22 @@ subject is a check that gets written wrong.
 The core is pure: no DOM, no `fetch`, no clock, no randomness, no `node:*`.
 Everything environmental arrives through an explicit port.
 
-| # | Intent | Acceptance | Lines | Status |
-|---|--------|-----------|-------|--------|
-| 2.0 | **The oracle lands first** — `tests/golden/` copied byte-for-byte, with an md5 assertion per fixture | Editing one byte of a fixture turns the suite red. The pinned date's weekday is **wrong on purpose** and a test that "fixes" it has broken the oracle | +120 | TODO |
-| 2.1 | Ports seam — the one place the environment enters | `checks/purity.ts` fails on a core file that references any ambient global; **and** `tests/ports.test.ts` proves all four `stubPorts()` members throw the literal `no <name> port configured` | +260 declared · **+347 actual** | DONE |
-| 2.2 | Inference base — the abstract contract, one fake concrete | A scripted fake drives a full turn in a host test | +220 declared · **+159 actual** | DONE |
-| 2.3 | Inference real — one HTTP concrete, streaming | Tokens arrive incrementally from a real endpoint; the test asserts **>1 chunk**; `describeRequest` returns the literal body | +260 | TODO |
-| 2.4 | The react loop — the smallest cycle that terminates | The loop runs, emits every lifecycle event, and ends on a **declared terminal**. No `FLOWS`, no driver, no `MAX_TRANSITIONS` — those are 4.5 | +300 | TODO |
-| 2.5 | Structured response — parse the model's reply into typed parts | Golden cases parse exactly; a malformed reply degrades, never throws | +340 | TODO |
-| 2.6 | Prompt assembly — components, ordering, the identity file | The rendered prompt is **byte-identical to `tests/golden/render-*.prompt`** and printable for inspection. **And the `max` ratchet arms here:** 2.6 writes `scripts/checks/lines.json` seeded from a tree that contains real modules, after which `size.ts` reports a delta and `max` may only go down. Shell counts (`ARCHITECTURE.md` §8.3) | +520 | TODO |
+| # | Intent | Acceptance | Lines |
+|---|--------|-----------|-------|
+| 2.0 | **The oracle lands first** — `tests/golden/` copied byte-for-byte, with an md5 assertion per fixture | Editing one byte of a fixture turns the suite red. The pinned date's weekday is **wrong on purpose** and a test that "fixes" it has broken the oracle | +120 |
+| 2.1 | Ports seam — the one place the environment enters | `checks/purity.ts` fails on a core file that references any ambient global; **and** `tests/ports.test.ts` proves all four `stubPorts()` members throw the literal `no <name> port configured` | +260 declared · **+347 actual** |
+| 2.2 | Inference base — the abstract contract, one fake concrete | A scripted fake drives a full turn in a host test | +220 declared · **+159 actual** |
+| 2.3 | Inference real — one HTTP concrete, streaming | Tokens arrive incrementally from a real endpoint; the test asserts **>1 chunk**; `describeRequest` returns the literal body | +260 |
+| 2.4 | The react loop — the smallest cycle that terminates | The loop runs, emits every lifecycle event, and ends on a **declared terminal**. No `FLOWS`, no driver, no `MAX_TRANSITIONS` — those are 4.5 | +300 |
+| 2.5 | Structured response — parse the model's reply into typed parts | Golden cases parse exactly; a malformed reply degrades, never throws | +340 |
+| 2.6 | Prompt assembly — components, ordering, the identity file | The rendered prompt is **byte-identical to `tests/golden/render-*.prompt`** and printable for inspection. **And the `max` ratchet arms here:** 2.6 writes `scripts/checks/lines.json` seeded from a tree that contains real modules, after which `size.ts` reports a delta and `max` may only go down. Shell counts (`ARCHITECTURE.md` §8.3) | +520 |
 
-**2.6 arms the `max` ratchet** and writes `scripts/checks/lines.json`. This
+**2.6 arms the `max` ratchet** and writes `scripts/checks/lines.json` — **seeded
+after 2.6's own work has landed**, not at its start. 2.6 is the last increment
+of wave 2 (2.7 moved to 3.4 back at increment 0.3), so "the end of wave 2" and
+"the end of 2.6" are the same moment; the word *after* is what matters, because
+seeding from a tree still growing is the `max`-from-scaffold mistake in a new
+place. This
 previously read "end of wave 2", which is a season and not an owner — a
 deliverable assigned to a date is a deliverable nobody is accountable for, and
 it sat unowned for three increments while the number it arms was quietly
@@ -142,6 +158,12 @@ violation, and stayed green on a file containing the oracle's own
 `self-contained` bytes — which is the false positive §2.1's tokeniser rule was
 written to prevent, now measured rather than argued.
 
+**Wave 2 measured, at 2.5.** `src/core` is 13 files; `src/` + `scripts/` is
+**2,787** non-blank lines against **+2,000** declared for the wave. 2.3, 2.4 and
+2.5 each ran over. The pattern from wave 1 holds and the ruling stands: the
+estimates are wrong and were never binding, which is why they became a
+per-wave figure to argue against rather than a per-increment gate.
+
 **2.2 is the first increment to come in under budget** — +159 non-blank lines
 under `src/` against +220 declared. Recorded because the line-budget section
 argues per-increment estimates never bound anything; one increment landing under
@@ -152,7 +174,7 @@ be the same selective reading in the other direction.
 not reference it, and `0071ca7` — the commit sometimes cited as containing it —
 touched three files, all of them under `docs/`. What landed there was the
 *design* of the check (`ARCHITECTURE.md` §8.7), not the check. The status is
-correct as `TODO` and the record is not behind. Noted explicitly because
+correct — 1.7 has no PROGRESS entry — and the record is not behind. Noted explicitly because
 "part of it shipped early inside another increment" is a plausible story that
 would have been recorded as fact, and marking 1.7 done would have entered a
 non-existent check into the record — inside the increment whose whole subject is
@@ -177,24 +199,24 @@ because the port seam already exists at 2.1.
 
 ## Wave 3 — Off the main thread
 
-| # | Intent | Acceptance | Lines | Status |
-|---|--------|-----------|-------|--------|
-| 3.1 | Engine hosted in a Web Worker | The main thread stays responsive during a long turn — **measured**, not assumed. The single-writer election refuses a second tab with `fatal{reason:'another-tab'}` rather than corrupting the store. **`src/client/worker-probe.ts` and `src/engine/probe.worker.ts` no longer exist** — 179 lines of wave-1 scaffold that ran on every production page load, replaced by the real worker, with `verify-worker.ts` re-pointed at it | +320 | TODO |
-| 3.2 | The worker message protocol, typed both ways | `checks/protocol.ts` proves `REPLY_OF` total against both unions, every `ToEngine` has a non-empty handler, and every `FromEngine` is emitted **and** written into client state; `src/protocol/**` holds no behaviour | +380 | TODO |
-| 3.3 | Streaming across the worker boundary | Tokens render as they arrive, through the worker, **in the built export served at a subpath** | +180 | TODO |
-| 3.4 | Transcript + persistence, worker-owned (was 2.7) | Reload the page mid-session and the history is intact. The store allocates every `seq`; a tab closed mid-stream reopens as a turn **labelled interrupted**, never as a spinner that never resolves | +420 | TODO |
+| # | Intent | Acceptance | Lines |
+|---|--------|-----------|-------|
+| 3.1 | Engine hosted in a Web Worker | The main thread stays responsive during a long turn — **measured**, not assumed. The single-writer election refuses a second tab with `fatal{reason:'another-tab'}` rather than corrupting the store. **`src/client/worker-probe.ts` and `src/engine/probe.worker.ts` no longer exist** — 179 lines of wave-1 scaffold that ran on every production page load, replaced by the real worker, with `verify-worker.ts` re-pointed at it | +320 |
+| 3.2 | The worker message protocol, typed both ways | `checks/protocol.ts` proves `REPLY_OF` total against both unions, every `ToEngine` has a non-empty handler, and every `FromEngine` is emitted **and** written into client state; `src/protocol/**` holds no behaviour | +380 |
+| 3.3 | Streaming across the worker boundary | Tokens render as they arrive, through the worker, **in the built export served at a subpath** | +180 |
+| 3.4 | Transcript + persistence, worker-owned (was 2.7) | Reload the page mid-session and the history is intact. The store allocates every `seq`; a tab closed mid-stream reopens as a turn **labelled interrupted**, never as a spinner that never resolves | +420 |
 
 ---
 
 ## Wave 4 — Agent, tools, environment
 
-| # | Intent | Acceptance | Lines | Status |
-|---|--------|-----------|-------|--------|
-| 4.1 | Agent identity file — who it is, read verbatim | Editing the identity file visibly changes behaviour with no code change | +260 | TODO |
-| 4.2 | Tool contract — declare, describe, execute, feed back | A tool call round-trips end to end in the page. A tool returning 4MB is capped and the model reads the elision sentence | +340 | TODO |
-| 4.3 | The first real tools — the minimum set that makes it useful | Each tool is exercised by a **real turn**, not a unit test alone. One deliberately slow tool measures whether serialised turns are acceptable. **`docs/scratch/REFERENCES.md` is deleted here** — its recon of loop, prompt and tool mechanics was input to this increment and has no reader after it | +300 | TODO |
-| 4.4 | Tool errors are first-class | A failing tool produces a recoverable turn, never a dead session — and the assertion is on the tool's **own sentence**, not a generic failure | +140 | TODO |
-| 4.5 | The second flow, and the flow table that it earns | Both `react` and `full` complete a turn from the page; a **deliberately mistyped edge fails at load naming the offending edge**, not on turn 40 | +480 | TODO |
+| # | Intent | Acceptance | Lines |
+|---|--------|-----------|-------|
+| 4.1 | Agent identity file — who it is, read verbatim | Editing the identity file visibly changes behaviour with no code change | +260 |
+| 4.2 | Tool contract — declare, describe, execute, feed back | A tool call round-trips end to end in the page. A tool returning 4MB is capped and the model reads the elision sentence | +340 |
+| 4.3 | The first real tools — the minimum set that makes it useful | Each tool is exercised by a **real turn**, not a unit test alone. One deliberately slow tool measures whether serialised turns are acceptable. **`docs/scratch/REFERENCES.md` is deleted here** — its recon of loop, prompt and tool mechanics was input to this increment and has no reader after it | +300 |
+| 4.4 | Tool errors are first-class | A failing tool produces a recoverable turn, never a dead session — and the assertion is on the tool's **own sentence**, not a generic failure | +140 |
+| 4.5 | The second flow, and the flow table that it earns | Both `react` and `full` complete a turn from the page; a **deliberately mistyped edge fails at load naming the offending edge**, not on turn 40 | +480 |
 
 **4.5 is where `core/flow/**` and `core/agent/driver.ts` land.** A validated
 edge table with one flow in it is a table with nothing to decide; the second
@@ -205,12 +227,12 @@ this sits at the end of wave 4 and not in wave 2.
 
 ## Wave 5 — The sandbox
 
-| # | Intent | Acceptance | Status |
-|---|--------|-----------|--------|
-| 5.1 | Decide the isolation substrate on measured evidence | A written comparison with real numbers, ringmaster-approved | TODO |
-| 5.2 | Build the smallest viable Alpine image | Size recorded in bytes; build reproducible from a script in-repo | TODO |
-| 5.3 | Boot it in the page | A command runs in the sandbox from the UI and its output returns | TODO |
-| 5.4 | The agent can use it as a tool | A model-initiated command executes and the result re-enters the loop | TODO |
+| # | Intent | Acceptance |
+|---|--------|-----------|
+| 5.1 | Decide the isolation substrate on measured evidence | A written comparison with real numbers, ringmaster-approved |
+| 5.2 | Build the smallest viable Alpine image | Size recorded in bytes; build reproducible from a script in-repo |
+| 5.3 | Boot it in the page | A command runs in the sandbox from the UI and its output returns |
+| 5.4 | The agent can use it as a tool | A model-initiated command executes and the result re-enters the loop |
 
 ---
 
@@ -222,13 +244,13 @@ addressed by `?panel=<id>` — not six routes (`ARCHITECTURE.md` §10.2 ruling 4
 The four browser-driven checks are **not** part of `bun run gate`; they need a
 build and a real browser and run in the deploy path beside `verify-export.ts`. Like it, they take a **URL, not a directory** (`ARCHITECTURE.md` §8.4).
 
-| # | Intent | Acceptance | Lines | Status |
-|---|--------|-----------|-------|--------|
-| 6.1 | Design law + tokens | `checks/design.ts` runs in `bun run gate` with a **named sub-check per rule**, each with its own failure message; its scan roots are one exported constant covering `src/ui/**` and `src/app/**`. **`DESIGN.md` needs no reconciliation — it was already correct** (see the note below) | +240 | TODO |
-| 6.2 | Primitives and the addressed shell | Every primitive renders all its states in the built export; every `surfaces.ts` entry has a unique `?panel=` address honoured **on load**; `Shell.tsx` sets `data-panel-ready="<id>"` and the browser checks wait on it, never on a delay. Seeds `contrast-ratchet.json` from a real build | +520 | TODO |
-| 6.3 | The Workbench — watch a turn happen, in ONE scroll | A person follows a full turn without a debugger. All eight row kinds hang off one spine; there is no second panel holding the messages | +560 | TODO |
-| 6.4 | The evidence surfaces — Prompt, Context, Tools | Context renders the **literal request body that left the tab** and it is byte-comparable to what the endpoint received; Tools lists every declared tool and nothing else | +440 | TODO |
-| 6.5 | Cold-open journey | A first-time user reaches a streaming token without documentation. `scripts/browser/coldopen.ts` counts **≤ 2 clicks local, ≤ 3 BYOK** against the built export at a subpath | +300 | TODO |
+| # | Intent | Acceptance | Lines |
+|---|--------|-----------|-------|
+| 6.1 | Design law + tokens | `checks/design.ts` runs in `bun run gate` with a **named sub-check per rule**, each with its own failure message; its scan roots are one exported constant covering `src/ui/**` and `src/app/**`. **`DESIGN.md` needs no reconciliation — it was already correct** (see the note below) | +240 |
+| 6.2 | Primitives and the addressed shell | Every primitive renders all its states in the built export; every `surfaces.ts` entry has a unique `?panel=` address honoured **on load**; `Shell.tsx` sets `data-panel-ready="<id>"` and the browser checks wait on it, never on a delay. Seeds `contrast-ratchet.json` from a real build | +520 |
+| 6.3 | The Workbench — watch a turn happen, in ONE scroll | A person follows a full turn without a debugger. All eight row kinds hang off one spine; there is no second panel holding the messages | +560 |
+| 6.4 | The evidence surfaces — Prompt, Context, Tools | Context renders the **literal request body that left the tab** and it is byte-comparable to what the endpoint received; Tools lists every declared tool and nothing else | +440 |
+| 6.5 | Cold-open journey | A first-time user reaches a streaming token without documentation. `scripts/browser/coldopen.ts` counts **≤ 2 clicks local, ≤ 3 BYOK** against the built export at a subpath | +300 |
 
 **6.1's second half was struck: it scheduled the repair of a contradiction that
 never existed.** This paragraph used to assert that `DESIGN.md` stated a
@@ -265,7 +287,7 @@ else. See `ARCHITECTURE.md` §10.2 ruling 5.
 The measured record, `src/**` + `scripts/**`, counted at the retro:
 
 | | Declared | Actual | |
-|---|---|---|---|
+|---|---|---|
 | Wave 1 (1.1–1.6) | +540 | **1,137** | 2.1× |
 | Wave 2 so far (2.1) | +260 | **334** | 1.3× |
 | **Total** | **+800** | **1,471** | **1.84×** |
@@ -286,7 +308,7 @@ never applied to itself.
 
 **What replaces it.** A budget is declared **per wave**, in the wave's heading,
 and `checks/size.ts` **reports** the actual total. Increments no longer carry a
-Lines column for new work; the DONE rows keep their declared-vs-actual figures
+Lines column for new work; the shipped rows keep their declared-vs-actual figures
 as the record of why per-increment was abandoned. Exceeding a wave budget is a
 ringmaster conversation. Relocating source out of `src/` or `scripts/` to move
 the number is a violation, not a refactor.

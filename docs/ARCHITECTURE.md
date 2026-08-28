@@ -321,9 +321,9 @@ core/prompt/components.ts       [2.6] Soul, SystemInstructions, ContextBlock, Hi
 core/prompt/assembler.ts        [2.6] filter -> sort(SLOT,priority) -> 3 invariants -> join; memoised
 core/prompt/recipe.ts           [2.6] which components exist for a given agent + session
 
-core/response/base.ts           [2.5] BaseResponse: FIELDS table -> instructions(), toString(), parse()
-core/response/parse.ts          [2.5] the TOON and JSON scanners; neither throws out of parse()
-core/response/responses.ts      [2.5] the concrete response classes, their FIELDS and FORMAT_NOTES
+core/response/base.ts           BaseResponse: FIELDS table -> instructions(), toString(), parse()
+core/response/parse.ts          the TOON and JSON scanners; neither throws out of parse()
+core/response/responses.ts      the concrete response classes, their FIELDS and FORMAT_NOTES
 
 core/tools/tool.ts              [4.2] Tool + ToolResult; call() never throws; output cap + elision
 core/tools/toolbox.ts           [4.2] the declared set; parseBatches(); invoke()
@@ -335,17 +335,17 @@ core/flow/flows.ts              [4.5] FLOWS + validateFlow() + FlowError + MAX_T
 
 core/inference/base.ts          abstract Inference.infer(req, onDelta?, signal?)
 core/inference/scripted.ts      concrete #1: replays a fixture; drives every host test
-core/inference/openai.ts        [2.3] concrete #2: /chat/completions, SSE streaming, usage accounting
-core/inference/catalog.ts       [2.3] kind string -> constructor
+core/inference/openai.ts        concrete #2: /chat/completions, SSE streaming, usage accounting
+core/inference/catalog.ts       kind string -> constructor
 
 core/agent/config.ts            [4.1] AgentConfig: the declared fields an agent.md can set
 core/agent/agentfile.ts         [4.1] frontmatter + body parser for agent.md — runs in the tab
-core/agent/session.ts           [2.4] the blackboard for one run
-core/agent/transcript.ts        [2.4] the message list the History component renders
-core/agent/agent.ts             [2.4] one turn: recipe -> assemble -> infer -> parse -> tools -> repeat
-core/agent/react.ts             [2.4] the react loop and its three-tier repeat guard
+core/agent/session.ts           the blackboard for one run
+core/agent/transcript.ts        the message list the History component renders
+core/agent/agent.ts             one turn: recipe -> assemble -> infer -> parse -> tools -> repeat
+core/agent/react.ts             the react loop and its three-tier repeat guard
 core/agent/driver.ts            [4.5] walks the flow edge table [4.5]
-core/observer.ts                [2.4] Observer: assembled / entered / delta / results / retry / done
+core/observer.ts                Observer: assembled / entered / delta / results / retry / done
 ```
 
 ### `src/adapters/` — one real environment per port
@@ -356,7 +356,9 @@ adapters/browser/fetch.ts       [3.1] // REALM: worker  the global fetch, narrow
 adapters/browser/ids.ts         [3.1] // REALM: worker  crypto.randomUUID
 adapters/browser/store.ts       [3.4] // REALM: worker  the StorePort over engine/db.ts
 adapters/test/clock.ts          [2.6] // REALM: host    pinned to the golden date and its zone
-adapters/test/store.ts          [2.4] // REALM: host    in-memory StorePort; what wave 2 runs against
+adapters/test/store.ts          [3.4] // REALM: host    in-memory StorePort. Tagged [2.4] until
+                                2.4 shipped and showed StorePort still has no caller: the
+                                transcript is in memory, persistence is worker-owned at 3.4.
 adapters/test/fetch.ts          [2.3] // REALM: host    replays recorded bodies, including SSE chunks
 ```
 
@@ -1386,6 +1388,7 @@ plain words.
 | The §2 import matrix holds, `import type` distinguished from value imports, no cycles | `checks/layers.ts` |
 | `src/protocol/**` has no behaviour and no mutable state | `checks/protocol.ts` rule 4 |
 | Request/reply pairing; every `ToEngine` handled; every `FromEngine` emitted **and** consumed into client state | `checks/protocol.ts` rules 1–3 |
+| An untagged §5 contract matches the declaration in `src/` | `checks/docs.ts` rule 7 (§8.7) |
 | A wire shape never silently diverges from the storage record it mirrors | `checks/protocol.ts` rule 5 over `SHAPE_PAIRS` (§7.4) |
 | **Every check that exists is a check the gate runs** | `checks/gate-coverage.ts` — enumerates `scripts/checks/*.ts` and fails if `gate.ts` does not invoke one of them (§8.6) |
 | Core and engine never reach the main realm | **`checks/layers.ts`** on the `ui ↮ core` / `client ↮ core` edges is the primary; `checks/bundle.ts` corroborates against the built artifact (§8.1) |
@@ -1855,6 +1858,7 @@ in parallel with 2–5.
 | MCP transport / `Tool.fromMcp` | No transport exists in a static page. A named constructor with no transport is a declaration with no consumer. |
 | Sub-agents, a registry, one worker per agent | One agent, one worker. The second agent earns the registry. |
 | Skills (`SKILL.md`, catalog, two-stage disclosure) | A good idea with no consumer in waves 1–4. **Stated exception:** `Slot.SKILLS = 30` stays in the table with no consumer, so that skills returning later does not renumber every slot and invalidate every golden prompt. This is a knowing, named violation of "no declaration without a consumer" — one integer, recorded here so it is not discovered as hypocrisy. *(Critic :673, accepted as a stated exception.)* |
+| A batch-order-independent repeat guard | **Carried as a known defect, deliberately.** `Session.seen` keys on the whole batch string, so `a(), b()` and `b(), a()` are two ledger entries and the guard misses a model alternating between them. SALVAGE records it; 2.4 carried it rather than silently fixing it, which was right — **only 4.2's batch parser can fix it**, because the key must become the sorted set of call *names* and nothing before 4.2 knows what a call name is. Recorded here so it is recognised as a decision, not rediscovered as a bug. 4.2's acceptance closes it. |
 | Compaction | Belongs after real token accounting. The old trigger was **message count**, which was wrong, and rebuilding it wrong is worse than not having it. §5.3's output cap is what keeps a session recoverable meanwhile. |
 | Attachments / multimodality | SALVAGE records the only implementation as silently broken. |
 | A per-request inference timeout | §6.5. Real cancellation is `AbortController`; anything else is decoration. |
