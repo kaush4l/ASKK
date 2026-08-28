@@ -389,10 +389,14 @@ engine/tools/index.ts           the static table of tools this build ships, boun
 ### `src/client/` — main realm, no React, every file `// REALM: main`
 
 ```
-client/worker-client.ts         owns the Worker; request(msg)->Promise; subscribe(fn)
+client/worker-client.ts         owns the Worker; request(msg)->Promise; subscribe(fn).
+                                Nothing outside client/ imports it.
+client/actions.ts               THE dispatch surface: one named function per intent
+                                (submitTurn, probeEndpoint, saveConfig, openSession…).
+                                The ONLY place a ToEngine message is constructed.
 client/store.ts                 the render-shaped mirror. One switch over every FromEngine type.
 client/prefs.ts                 localStorage-backed UI preferences
-client/use-store.ts             the React binding (useSyncExternalStore)
+client/use-store.ts             the React binding (useSyncExternalStore). READ side only.
 ```
 
 ### `src/app/` and `src/ui/` — main realm, render only
@@ -453,7 +457,12 @@ scripts/browser/coldopen.ts     DESIGN: 2 clicks local / 3 BYOK                 
 scripts/browser/frontdoor.ts    DESIGN: expressive layer rendered, zero 404s,
                                 zero cross-origin requests                      [build + browser]
 scripts/serve-subpath.ts        serves out/ under /ASKK/ so the subpath failure is reproducible
-scripts/smoke.ts                drives the built export: boot, turn, streamed token, reload
+scripts/verify-export.ts        ARTIFACT: takes a URL. Does the shipped page load at all —
+                                mark in the DOM, React attached, every request under 400.
+                                No model, no config, no session. Runs from wave 1.
+scripts/smoke.ts                BEHAVIOUR: takes a URL. Does the machine work — boot, a turn,
+                                a streamed token, a reload. Runs verify-export first and
+                                stops if it fails. Cannot exist before 3.3.
 scripts/deploy.sh               build with basePath, publish out/ to gh-pages
 tests/golden/                   the oracle. Not editable. A differing byte is the port being wrong.
 tests/*.test.ts                 host tests, plain `bun test` (never --isolate; it hides failures)
@@ -712,7 +721,47 @@ ends on a declared terminal, with no `FLOWS`, no `driver.ts` and no
 
 §6. It has its own section because it is the seam most likely to rot.
 
-### 5.8 The storage stores — `engine/stores/*`
+### 5.8 The dispatch surface — `client/actions.ts`
+
+The junior's comprehension pass traced a request from the composer to the model
+and back and stopped here: nothing said **what a UI event calls**. Two obvious
+inventions differ materially — a hook that couples dispatch to the store
+subscription, or a direct import that does not — so it is named.
+
+```ts
+function submitTurn(text: string): Promise<void>
+function steerTurn(text: string): Promise<void>
+function abortTurn(): Promise<void>
+function probeEndpoint(baseUrl: string, kind: string, apiKey?: string): Promise<ProbeResult>
+function saveConfig(record: ConfigRecord): Promise<void>
+function openSession(id: string | null): Promise<void>
+function saveAgent(name: string, text: string): Promise<void>
+function loadTrace(turnOrdinal: number): Promise<Trace>
+```
+
+One named function per **intent**, each one building its `ToEngine` message and
+handing it to `worker-client.request()`. Three rules make this a seam rather
+than a passthrough:
+
+1. **The UI never constructs a message and never names a message type.** A
+   component imports `submitTurn`, not `{ type: 'turn/start' }`. This is what
+   keeps DESIGN's surfaces ignorant of the protocol's shape, so a message can be
+   renamed or split without touching a component.
+2. **The UI never touches the `Worker` handle.** `worker-client.ts` is imported
+   by `actions.ts` and `store.ts` and nothing else.
+3. **Dispatch is not a hook.** `actions.ts` is plain async functions, callable
+   from a component handler, from a route effect, or from a test with no DOM.
+   A hook would couple dispatch to React's render lifecycle and to the store
+   subscription — and the Door's on-load `probeEndpoint` fires *before any
+   surface has mounted*, which a hook cannot serve. `use-store.ts` stays the
+   **read** side: subscribe and render. Read and write are two directions and
+   they do not have to be one object.
+
+This also sharpens `checks/protocol.ts`: "every `ToEngine` member is constructed
+in `client/actions.ts`" has a single file as its subject, so a message added to
+the union with no way to send it is a named failure rather than a search.
+
+### 5.9 The storage stores — `engine/stores/*`
 
 Each store module exposes the same four-verb shape:
 
@@ -868,7 +917,49 @@ wire's constraint and the wire never has to know the core's classes.
     the runaway kept running. Real cancellation goes through
     `AbortController` on the real `fetch`, and nowhere else.
 
-### 6.6 Enforcement
+### 6.6 The ordered sequence — what must have happened before each message
+
+Listing the messages did not say when each becomes legal, and the ordering is
+not guessable: `config/probe` fires from the Door *before any session exists*,
+`session/open` must precede `turn/start`, and the lease election happens inside
+`boot`. An implementer who gets it wrong gets a race that only appears on a cold
+profile — the worst kind, because a warm profile passes.
+
+**Boot, in order:**
+
+1. `Shell` mounts. `worker-client.ts` constructs the Worker and sends `boot`.
+2. Inside `boot`, in this order and no other: **elect the lease** (§7.3) →
+   **open the database** under the reporting deadline (§6.5) → **seed** from
+   `seedBaseUrl` if `meta.seeded` is absent → **reconcile orphan turns** (§7.4).
+   Any step may end the sequence with `fatal`; none of the later steps runs.
+3. The worker replies `ready { schemaVersion, configured, activeSessionId }`.
+   `configured` is whether an active endpoint exists — it is what decides
+   whether the Shell opens on Door or Workbench, and it is the whole cold-open
+   branch.
+
+**The handshake is not a rule callers have to remember.** `worker-client.request()`
+**awaits `ready` internally** before sending anything. A `probeEndpoint` fired
+from a mount effect racing the handshake is ordered correctly by construction
+rather than by discipline — which is the only version of this that survives
+someone adding a new surface.
+
+**Preconditions, after `ready`:**
+
+| Message | Requires | Notes |
+|---|---|---|
+| `config/probe` | nothing but `ready` | **No session, no config.** It is the Door's, and it reads nothing from the store — that is what lets the cold open probe before the user has done anything |
+| `config/list`, `config/set` | `ready` | — |
+| `agent/get`, `agent/put`, `tools/list` | `ready` | — |
+| `session/open` | `ready` | `id: null` opens `meta.activeSession`, or creates one |
+| `turn/start` | `ready` **and** a session opened in this worker **and** `configured === true` | Otherwise `failed`, naming which of the three is missing |
+| `turn/steer`, `turn/abort` | a live `turnId` from `turn/started` | A stale `turnId` returns `failed`, never silence |
+| `trace/read` | a session opened in this worker | — |
+
+A precondition failure is always a `failed` reply naming the missing thing. It
+is never a silent no-op, and it is never a queued message waiting for a
+condition that may never arrive.
+
+### 6.7 Enforcement
 
 `scripts/checks/protocol.ts`. **How the members are enumerated is the
 load-bearing step and it is named here, because every rule below depends on
@@ -1058,8 +1149,8 @@ plain words.
 | **`stubPorts()` throws the named message for every member** | `tests/ports.test.ts` — four members, four assertions on the literal string `no <name> port configured` |
 | Golden prompts reproduce byte for byte, and the fixtures themselves have not drifted | `tests/golden/` + an md5 assertion per fixture |
 | The static export builds and contains no server code | `scripts/gate.ts`: `bun run build`, then assert `out/` has no server bundle |
-| The export loads clean from a subpath, and the worker chunk resolves | `scripts/serve-subpath.ts` + `scripts/smoke.ts` — zero console errors, no 404 |
-| A turn renders a streamed token in the **built** export | `scripts/smoke.ts` |
+| The shipped artifact loads: the mark is in the DOM, React attached, every request the page made returned under 400 | `scripts/verify-export.ts <url>` — run against **both** the local `serve-subpath.ts` and the deployed URL (§8.4) |
+| A turn renders a streamed token in the **built** export | `scripts/smoke.ts <url>`, which runs `verify-export` first (§8.4) |
 | DESIGN's static rules — tokens, type ramp, reduced motion, front-door copy | `checks/design.ts`, as **named sub-checks each with its own failure message** (§10.2 ruling 3) |
 | Every surface is reachable by its address before first paint | `checks/design.ts` — every `surfaces.ts` entry's `address` is asserted unique, and `scripts/browser/*` navigate by it (§10.2 ruling 4) |
 | DESIGN's rendered rules — contrast + ratchet, geometry, cold-open click budget, front-door layer, **zero 404s and zero cross-origin requests** | `scripts/browser/{contrast,geometry,coldopen,frontdoor}.ts` — **separately invocable, NOT part of `bun run gate`**; they need a build and a browser and run in the deploy path beside the smoke check |
@@ -1200,7 +1291,68 @@ The replacement:
   be discovered as a loophole later. *(Ringmaster condition 7.)*
 - A file over 300 lines prints an advisory with its count. It does not fail.
 
-### 8.4 UNENFORCED, stated plainly
+### 8.4 The two browser gates, and what bounds them
+
+§8 named one browser gate, `smoke.ts`. Increment 1.4 needed something to gate a
+deploy on and built `scripts/verify-export.ts`, which flagged the overlap and
+refused to resolve it. **Ruling: they are two gates with genuinely different
+jobs, and the split is kept.**
+
+| | `verify-export.ts` | `smoke.ts` |
+|---|---|---|
+| Question | Does the shipped artifact **load**? | Does the machine **work**? |
+| Asserts | the mark is in the DOM; React attached to it; every URL the page requested re-fetches under 400 | boot, a turn, a streamed token, a reload with history intact |
+| Needs | nothing — no model, no key, no config, no session | a session and a reachable endpoint |
+| Available from | **wave 1** | 3.3 at the earliest |
+| Can run against the deployed site | **yes** | no — a deployed static page has no model endpoint |
+
+The last row is why this is not one gate wearing two names. Artifact integrity
+is checkable on the real deployed URL with no secrets; behaviour is not,
+because the thing that makes a turn happen is the operator's own endpoint and
+that is not reachable from a GitHub Pages URL. A single gate would have had to
+drop one of those two properties.
+
+**Two rules keep this from becoming "two gates, one of them unrun" — which is
+the failure the split invites and the reason the overlap was worth ruling on:**
+
+1. **`smoke.ts` runs `verify-export.ts` against the same URL as its first step
+   and stops if it fails.** There is no path to a behavioural pass that skipped
+   the artifact check, and no second copy of the artifact assertions.
+2. **Both take a URL, never a directory.** This is 1.4's design and it is better
+   than what §8 originally specified, so it is adopted as the rule for every
+   browser check in this tree, including wave 6's four: *the local export and
+   the deployed site are proved by the same probe*. A check that runs against
+   localhost plus a different check that runs against production is two checks,
+   and the one that matters is the one nobody wrote.
+
+**What bounds a browser check: the server underneath it.**
+
+`serve-subpath.ts` shipped a catch-all `Response.redirect(basePath + '/', 302)`,
+so **every** out-of-basePath request resolved to the document at 200
+`text/html` — `curl -sL http://localhost:4599/nope.woff2` returns 200 and 4712
+bytes of HTML. A missing asset was unobservable. The 404 that
+`verify-export.ts` exists to catch could not be produced by the server it was
+pointed at.
+
+That is a general property, not one bug: **a browser check's guarantee is capped
+by the fidelity of the server it runs against, and a local server is a fixture
+whose failure modes are chosen by whoever wrote it.** Two consequences, both
+binding:
+
+- **Every browser check's first assertion is a control: a known-missing path
+  must return 404.** If the server cannot fail, no later status assertion in
+  that run means anything, and the check aborts saying so rather than passing.
+  This is "a new assertion is not accepted until someone has watched it go red",
+  applied to the *server* instead of the assertion — and it is what makes the
+  local run trustworthy rather than merely convenient.
+- **Any assertion whose subject is a failure status is authoritative only on the
+  deployed URL.** GitHub Pages returns real 404s and cannot be fooled this way.
+  The local run is the fast feedback loop; the deployed run is the proof. This
+  is the strongest argument for rule 2 above, and it is why wave 6's zero-404
+  front-door assertion is scheduled against a URL rather than a directory —
+  as written against a directory it would have been unbuildable.
+
+### 8.5 UNENFORCED, stated plainly
 
 - **That prompt text is copied character-for-character from its source.**
   Restated honestly *(ringmaster condition 8)*: this is **enforced wherever a
@@ -1304,26 +1456,37 @@ a decision rather than a collision. The governing principle:
 > **DESIGN rules what surfaces exist, what they show, and what they look like.
 > ARCHITECTURE rules where files live and what crosses the wire.**
 
-Six rulings.
+**A convention, adopted after a stale claim in this very section misled the most
+careful reader on the team.** A ruling states **the decision and its reason**.
+It does not describe the state of the other document at the time of ruling —
+"DESIGN currently says X" is a claim with an expiry date, and the other owner
+fixing X is the *expected* outcome, which means the claim is designed to rot.
+Where the state of another document is genuinely part of the record, it is
+written in the **past tense with its resolution attached**, as ruling 1's
+caught-defect note now is.
 
-**1. Tokens live at `src/ui/tokens.css`. DESIGN yielded; taken.** `src/app/` is
-a Next route segment and a stylesheet there is a routing artifact. DESIGN will
-update its four references and its grep target.
+Six rulings. All six were executed by the ui-director; `DESIGN.md` as it stands
+agrees with every one.
+
+**1. Tokens live at `src/ui/tokens.css`.** `src/app/` is a Next route segment and
+a stylesheet there is a routing artifact. *(DESIGN yielded and has since made the
+change: zero `app/tokens.css` references remain in it.)*
 
 > **Recorded as a caught defect, because it is the more valuable half of this
-> exchange.** DESIGN §9's `check-tokens.js` greps `app/`. Once tokens moved to
-> `ui/`, that check would have scanned a directory containing no tokens and
-> **passed with every colour literal in the tree** — LESSONS defect 7, a test
-> that cannot fail, reproduced inside the enforcement section of the document
-> whose whole thesis is that a rule the build cannot execute stops applying.
-> Found by the ui-director in its own work. The general lesson: **moving a file
-> silently re-aims every check that names its directory**, and a path change is
-> therefore a check change. `checks/design.ts` takes its scan roots from one
-> exported constant so there is a single place to be wrong.
+> exchange.** DESIGN's original `check-tokens.js` grepped `app/`. Once tokens
+> moved to `ui/`, that check **would have scanned a directory containing no
+> tokens and passed with every colour literal in the tree** — LESSONS defect 7,
+> a test that cannot fail, reproduced inside the enforcement section of the
+> document whose whole thesis is that a rule the build cannot execute stops
+> applying. Found by the ui-director in its own work, and since fixed by it. The
+> general lesson outlives the instance: **moving a file silently re-aims every
+> check that names its directory**, so a path change is a check change.
+> `checks/design.ts` takes its scan roots from one exported constant, so there is
+> a single place to be wrong.
 
-**2. Fonts live at `src/ui/fonts/`, imported — not `public/fonts/`. I am
-overruling the ui-director's yield, one step further in the same direction, for
-a subpath reason.** A `url()` in a stylesheet served from `public/` resolves
+**2. Fonts live at `src/ui/fonts/`, imported — not `public/fonts/`.** This
+overruled the ui-director's yield, one step further in the same direction, for a
+subpath reason. A `url()` in a stylesheet served from `public/` resolves
 against the emitted CSS path and needs either a hardcoded `/ASKK/` or a relative
 climb whose depth depends on where Next chose to emit the stylesheet. An asset
 imported from `src/` is rewritten by the bundler to
@@ -1339,6 +1502,11 @@ subpath*. That makes any wrong answer to this question visible instead of
 silent, whichever directory wins. The rule all three documents already agree on
 — self-hosted, no CDN, because of the airplane test and because COEP silently
 kills a cross-origin subresource — is untouched.
+
+*(DESIGN adopted this and went past it: it added a `fonts` sub-check asserting
+every `@font-face` `src:` is a bundler-rewritten import rather than a
+`/`-absolute path. That is the better enforcement of the two and it belongs to
+whoever wrote it.)*
 
 **3. All checks are TypeScript under `scripts/`. DESIGN yielded further than I
 asked; taken, with both of its conditions granted.** My first draft let DESIGN's
@@ -1425,14 +1593,22 @@ scroll, one spine, and `ui/tape/Row.tsx` renders all eight row kinds — includi
 `Converse.tsx` and `Trace.tsx` are deleted, and not merely renamed: two files
 rendering into one surface would have been fine, and two surfaces would not.
 
-**Raised, not reconciled:** DESIGN §4 opens "Five destinations" and then
-specifies six (4.1 Door, 4.2 Workbench, 4.3 Prompt, 4.4 Context, 4.5 Tools, 4.6
-Setup); its REPORT names all six and then states "Destinations — **5**". Per the
-ringmaster's flag I have **not** reconciled against the wrong number: this file
-says six, and DESIGN §4 needs a one-word correction from its owner. I am not
-making that edit — DESIGN is the ui-director's document, and silently correcting
-another owner's count is how two documents start disagreeing about what was
-agreed.
+**Raised, then fixed by its owner — the count is six and both documents say so.**
+DESIGN §4 once opened "Five destinations" and then specified six, and its REPORT
+named all six and then stated "Destinations — 5". I declined to correct it here:
+this file said six and named the discrepancy, on the ringmaster's flag, because
+silently editing another owner's count is how two documents start disagreeing
+about what was agreed. The ui-director then fixed it; `DESIGN.md` §4 now reads
+"Six surfaces, one address each."
+
+> **Recorded because the refusal nearly cost more than the edit would have.** The
+> junior read this section cold and reported the count conflict as *live* — it
+> believed a defect existed because my document was still describing it in the
+> present tense, days after the owner had resolved it. The refusal was right and
+> it worked: raising a defect to its owner got a better fix than my edit would
+> have been, and the owner's fix went further than my request. But **a raised
+> defect has two ends, and I only wrote down the first.** That is the reason for
+> the tense convention at the head of this section.
 
 ### 10.3 The PLAN edits
 
@@ -1500,7 +1676,7 @@ refusals. Each is considered, not an omission.
    `REPLY_OF` is a hand-written `as const` map and `checks/protocol.ts` proves it
    total against both unions. A generator is a build step, a build step is a
    thing that can be stale, and "one list" is achieved by the check rather than
-   by machinery. **This refusal is conditional and the condition is §6.6's
+   by machinery. **This refusal is conditional and the condition is §6.7's
    opening paragraph:** the members must be read by an AST pass over the union
    *type declarations*. If they are ever grepped as string literals out of
    `messages.ts`, rule 1 compares that file to itself, the check becomes a

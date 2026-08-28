@@ -42,9 +42,31 @@ expensive disagreement available. No wave-1 increment starts before it.
 | 1.1 | Barebones Bun + Next app that runs | `bun run dev` serves a page with one identifying string | +80 | DONE |
 | 1.2 | Static export | `bun run build` emits `out/`, zero server code in it | +20 | DONE |
 | 1.3 | Subpath-correct export | `scripts/serve-subpath.ts` serves `out/` under `/ASKK/` and the page loads with **zero** console errors and **zero** 404s — the failure mode that has bricked this project before | +90 | DONE |
-| 1.4 | Deploy path proven | The hosted URL loads and shows the identifying string | +60 | TODO |
+| 1.4 | Deploy path proven | The hosted URL loads and shows the identifying string | +60 declared · **+231 actual** | DONE |
 | 1.5 | Worker emission, as a repo-owned regression guard | A worker started from the **built** export at a subpath replies with its sentinel: zero console errors, no 404 for the worker chunk. Reproducible locally via `scripts/serve-subpath.ts`, not only on the deployed URL. The same probe **asserts** the three Web Lock behaviours §7.3's election rests on: it grants in a worker, `{ifAvailable:true}` grants when free, and — the one the election actually rests on — a second `{ifAvailable:true}` request made **while the first callback is still pending** receives `null`. MEASURED M5 did not prove this: its callback returned, so the lock released (`ARCHITECTURE.md` §7.3) | +70 | TODO |
-| 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. Ships only the wave-1 checks: `checks/size.ts` (**reporting** `max`; the ratchet arms at the end of wave 2), the export/no-server-code assertion, and the smoke harness | +180 | TODO |
+| 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. Ships only the wave-1 checks: `checks/size.ts` (**reporting** `max`; the ratchet arms at the end of wave 2), the export/no-server-code assertion, and `scripts/verify-export.ts` wired into the deploy path | +180 | TODO |
+
+**Wave 1 shipped.** `https://kaush4l.github.io/ASKK/` serves the scaffold: six
+requests, six 200s, zero console errors, React hydrated.
+
+**1.4 overran its budget: +60 declared, +231 actual.** Accepted, and recorded
+rather than waived. The overrun is `scripts/verify-export.ts` (113 lines), which
+1.4 needed because its acceptance is *the hosted URL* and a browser check inlined
+in a heredoc cannot be pointed at one. Per `ARCHITECTURE.md` §8.3 that is a
+conversation, and this is it: the increment bought a permanent, URL-addressed
+artifact gate that every later deploy reuses, which is why the budget was the
+wrong number rather than the work being wrong. `ARCHITECTURE.md` §8.4 now rules
+on it and on its overlap with `smoke.ts`. Wave 1 total: +421 against +500
+declared, so the wave came in **under** budget with 1.4 over — which is the
+argument for budgeting per wave and only *reporting* per increment.
+
+**1.3's "zero 404s" was weaker than it read, and 1.4 is what actually proved
+it.** `serve-subpath.ts` shipped a catch-all 302 that answered every missing
+path with the document at 200, so the local server could not produce the failure
+1.3 asserts the absence of. The deployed run in 1.4 is authoritative because
+GitHub Pages returns real 404s. `ARCHITECTURE.md` §8.4 now requires every
+browser check to open with a control — a known-missing path must 404 — so a
+server that cannot fail aborts the run instead of passing it.
 
 **1.5 is a guard, not a discovery.** `docs/scratch/MEASURED.md` already settled
 all of it: M1 a worker loads, runs and replies from a static export at a subpath
@@ -147,7 +169,7 @@ Runs in parallel with waves 2–5 from 1.4 onward. Owned by ui-director and
 ui-builder, gated by `docs/DESIGN.md`. Six surfaces in **one** document,
 addressed by `?panel=<id>` — not six routes (`ARCHITECTURE.md` §10.2 ruling 4).
 The four browser-driven checks are **not** part of `bun run gate`; they need a
-build and a real browser and run in the deploy path beside the smoke check.
+build and a real browser and run in the deploy path beside `verify-export.ts`. Like it, they take a **URL, not a directory** (`ARCHITECTURE.md` §8.4).
 
 | # | Intent | Acceptance | Lines | Status |
 |---|--------|-----------|-------|--------|
