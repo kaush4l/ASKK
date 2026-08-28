@@ -6,20 +6,19 @@
 > a worker constructed with `new Worker(new URL('./x.worker.js', import.meta.url), {type:'module'})`,
 > served under `/ASKK/` and driven headless).
 
+> **Compression, at the eleven-increment retro.** M1 and M5 are now asserted by
+> `scripts/verify-worker.ts` on every deploy, so their bodies are pointers —
+> a standing check is better evidence than a recorded probe. **M2 and M3 are
+> kept in full: no check in this tree asserts either, and both are load-bearing.**
+> M2 is why the engine may not use runtime ESM; M3 is why a realm is never
+> feature-detected. A fact with no check is a fact that must stay written down.
+
 ## M1 — A module worker DOES survive static export at a subpath
 
-Built clean, served at `http://localhost:4599/ASKK/`, driven headless. The
-worker loaded, ran, and replied:
-
-```
-{"echo":"ping","sentinel":"ZZ_WORKER_SENTINEL_ZZ","hasIDB":true,"hasLS":false,"hasWindow":true}
-```
-
-**Zero console errors.** The worker chunk was emitted as its own file
-(`chunks/424.*.js`) and requested successfully under the basePath.
-
-→ The realm map's central premise is **sound**. PLAN increment 1.5 is still
-worth running as a regression guard, but it is no longer an open risk.
+**Superseded by a standing check.** `scripts/verify-worker.ts` asserts this on
+every deploy: a worker loads, runs and replies from the built export served at
+`/ASKK/`, with zero console errors. The one-off measurement is no longer the
+evidence — the check is, and it runs every time rather than once.
 
 ## M2 — webpack DROPS `type: 'module'`
 
@@ -118,51 +117,27 @@ must measure it before designing on it.
 
 ## M5 — `navigator.locks` works in the worker, under static export at a subpath
 
-§7.3's two-tab single-writer election rests on Web Locks being available in a
-dedicated worker. Measured, same probe harness, same `basePath=/ASKK` export:
+**Superseded by a standing check.** `scripts/verify-worker.ts` asserts all three
+behaviours the election needs, including the one this probe did **not** test.
 
-```
-{"hasLocks":true,
- "lockAcquired":true,
- "ifAvailable":true,
- "lockSteal":"correctly-null-when-held"}
-```
+**The correction stays, because the lesson generalises.** This probe was
+originally cited as proof that §7.3's single-writer election works. It is not.
+Its callback *returned*, so the lock released — which is exactly why the
+follow-up `{ifAvailable:true}` was granted. It measured that the **API** is
+present and well-behaved in a classic worker; it did not measure the
+**election**, because it did not implement one. `navigator.locks.request`
+releases when the callback's promise settles, so the election must return a
+promise that never resolves, and `verify-worker.ts` now asserts the case that
+proves it: a second `{ifAvailable:true}` request made *while the first callback
+is still pending* receives `null`.
 
-Zero console errors. All three behaviours the election needs are present:
-
-1. `navigator.locks.request(name, cb)` **grants** in a classic worker.
-2. `{ifAvailable: true}` **grants** when the lock is free.
-3. `{ifAvailable: true}` **yields `null`** when the lock is already held — the
-   callback receives `null` rather than being granted a second time. This is the
-   one that matters: it is how a second tab learns it is not the writer without
-   blocking forever.
-
-> **CORRECTED 2026-08-28 — this measurement does NOT prove the election.**
-> The probe's callback *returned*, so its lock released the moment
-> `postMessage` resolved — which is precisely why the follow-up
-> `{ifAvailable:true}` was granted. `navigator.locks.request` releases when the
-> callback's promise **settles**, not when the tab closes. So the reading
-> `"correctly-null-when-held"` above was produced by a *nested* request inside a
-> still-running callback, and the top-level `ifAvailable:true` succeeding is
-> consistent with an election that does not hold at all.
->
-> What M5 actually proves: the three **API behaviours** exist in a classic
-> worker under a subpath export. What it does not prove: that a writer election
-> built on them holds a lock for a worker's lifetime. Citing it in the design's
-> defence was wrong, and the design it defended was in fact broken — §7.3 now
-> requires the callback to `return new Promise<never>(() => {})`.
->
-> **The general lesson, which is the reason this correction stays in the file
-> rather than being edited away: a probe that does not implement the mechanism
-> does not test the mechanism.** It tests the API the mechanism is made of, and
-> those are not the same claim.
->
-> Increment 1.5 now asserts the real property — a second `{ifAvailable:true}`
-> issued *while the first callback is still pending* must receive `null` — and
-> it was watched failing against a deliberately wrong implementation before it
-> was trusted. See `scripts/verify-worker.ts`.
+> **A measurement proves what it did, not what you hoped it was about.** Citing
+> a probe as evidence for a mechanism it never exercised is how a broken design
+> acquires a defence. This one was caught in review; it would have shipped two
+> tabs writing one database.
 
 **Note the realm subtlety:** this worked in a *classic* worker (M2 — webpack
 drops `type:'module'`). `navigator` is present there; `localStorage` is not.
 Availability is per-API, not per-realm-tier, which is another reason a realm
 cannot be inferred from any single global.
+

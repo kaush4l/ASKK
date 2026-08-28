@@ -286,6 +286,15 @@ plain data, only.
 Every directory, every file, one line each. A coder can build the tree from this
 section alone. Routes and token paths are reconciled with `DESIGN.md` per §10.2.
 
+**This map is a schedule, not a wish, and `checks/docs.ts` holds it to that
+(§8.7).** Each entry that does not exist yet is tagged with the increment that
+creates it — `[3.2]`. The check asserts both directions: **every file under
+`src/` and `scripts/` appears here**, and **an entry's file exists if and only
+if its increment is `DONE` in `PLAN.md`**. An untagged entry is claimed to exist
+now. That is what makes a forward-looking file map checkable instead of
+decorative — the eleven-increment retro found this section missing three files
+that were 166 of `src/`'s 360 lines.
+
 ```
 next.config.ts          output:'export', trailingSlash:true, basePath from env,
                         reactStrictMode:FALSE, images.unoptimized, webpack (NOT turbopack)
@@ -369,7 +378,9 @@ protocol/shapes.ts              the WIRE vocabulary — declared here, never imp
 ### `src/engine/` — worker realm, every file `// REALM: worker`
 
 ```
-engine/entry.worker.ts          THE worker entrypoint. Elects, builds ports, opens db, serves.
+engine/probe.worker.ts          TEMPORARY. Wave-1 scaffold: the worker whose existence and lock
+                                behaviour verify-worker.ts asserts. DELETED BY 3.1.
+engine/entry.worker.ts          [3.1] THE worker entrypoint. Elects, builds ports, opens db, serves.
 engine/host.ts                  serve(scope): the protocol switch. Every ToEngine type, one case.
 engine/lease.ts                 the single-writer election (§7.3) and its failure report
 engine/db.ts                    the single openDB call, the schema, upgrade, onblocked, versionchange
@@ -392,7 +403,10 @@ engine/tools/index.ts           the static table of tools this build ships, boun
 ### `src/client/` — main realm, no React, every file `// REALM: main`
 
 ```
-client/worker-client.ts         owns the Worker; request(msg)->Promise; subscribe(fn).
+client/worker-probe.ts          TEMPORARY. Wave-1 scaffold: starts probe.worker.ts and reports
+                                what it found, so verify-worker.ts has something to assert.
+                                DELETED BY 3.1 — see the note below this map.
+client/worker-client.ts         [3.1] owns the Worker; request(msg)->Promise; subscribe(fn).
                                 Nothing outside client/ imports it.
 client/actions.ts               THE dispatch surface: one named function per intent
                                 (submitTurn, probeEndpoint, saveConfig, openSession…).
@@ -439,6 +453,16 @@ one row shape on one spine. There is no separate transcript component and no
 separate trace component; §10.2 ruling 6 records why that is structural rather
 than a naming preference.
 
+**The two probe files are scaffold with a scheduled death.**
+`client/worker-probe.ts` and `engine/probe.worker.ts` are 179 lines that run on
+every production page load and exist only to give `verify-worker.ts` a subject.
+They were correct for wave 1 — the alternative was asserting M1 and M5 against
+nothing — but scaffold that nobody schedules for removal is how a tree acquires
+permanent temporary code. **PLAN 3.1's acceptance names their deletion**, and
+`checks/docs.ts` will fail once 3.1 is `DONE` and either file still exists,
+because this map tags them as ending there. That is the difference between a
+comment saying "temporary" and a temporary file.
+
 ### `scripts/` and `tests/`
 
 ```
@@ -452,7 +476,7 @@ scripts/checks/protocol.ts      request/reply pairing, handler and sender covera
 scripts/checks/orphans.ts       every export has an importer (allowlist in §8)
 scripts/checks/size.ts          function <= 40 lines; the max-lines ratchet
 scripts/checks/bundle.ts        core reaches the worker chunk and no other (§8)
-scripts/checks/lines.json       the ratchet state
+scripts/checks/lines.json       [end of wave 2] the ratchet state, written when max arms
 scripts/checks/design.ts        DESIGN's static rules, as NAMED sub-checks, each with
                                 its own failure message: tokens, ramp, motion, front-door
                                 copy. Runs inside `bun run gate`.
@@ -462,14 +486,21 @@ scripts/browser/coldopen.ts     DESIGN: 2 clicks local / 3 BYOK                 
 scripts/browser/frontdoor.ts    DESIGN: expressive layer rendered, zero 404s,
                                 zero cross-origin requests                      [build + browser]
 scripts/serve-subpath.ts        serves out/ under /ASKK/ so the subpath failure is reproducible
+scripts/server-can-fail.ts      the §8.4 control: requireServerCanFail() proves a known-missing
+                                path 404s before any status assertion is trusted
+scripts/verify-worker.ts        Asserts M1 and M5 on every deploy: a worker loads and replies from
+                                the built export at a subpath, and the never-settling lock hold
+                                actually holds. Survives 3.1; only its subject changes.
 scripts/verify-export.ts        ARTIFACT: takes a URL. Does the shipped page load at all —
                                 mark in the DOM, React attached, every request under 400.
                                 No model, no config, no session. Runs from wave 1.
-scripts/smoke.ts                BEHAVIOUR: takes a URL. Does the machine work — boot, a turn,
+scripts/smoke.ts                [3.3] BEHAVIOUR: takes a URL. Does the machine work — boot, a turn,
                                 a streamed token, a reload. Runs verify-export first and
                                 stops if it fails. Cannot exist before 3.3.
 scripts/deploy.sh               build with basePath, publish out/ to gh-pages
-tests/golden/                   the oracle. Not editable. A differing byte is the port being wrong.
+scripts/checks/docs.ts          [1.7] the documents refer to things that exist and agree about
+                                status (§8.7)
+tests/golden/                   [2.0] the oracle. Not editable. A differing byte is the port being wrong.
 tests/*.test.ts                 host tests, plain `bun test` (never --isolate; it hides failures)
 ```
 
@@ -524,7 +555,14 @@ interface Ports { clock: ClockPort; fetch: FetchPort; store: StorePort; newId: N
 function stubPorts(): Ports
 function isConfigured(member: unknown): boolean
 ```
-Four members, each with a caller today. `stubPorts()` returns members that
+Four members. **None has a caller yet** — as of 2.1 the module's only consumer
+is `tests/ports.test.ts`, and the first real callers arrive with the inference
+concretes at 2.2 and 2.3. The rule "no port without a caller" is a rule about
+what may be *added*, and these four were derived from the contracts in §5.2–§5.6
+that the same wave builds; a port seam whose members arrived one wave after the
+code needing them would be a seam built twice. Recorded precisely because
+"each with a caller today" is the kind of well-formed false sentence
+`checks/docs.ts` cannot catch (§8.7). `stubPorts()` returns members that
 **throw `no <name> port configured`** rather than silently no-op, and
 `isConfigured` exists because `if (ports.x)` is true for a stub — that check
 registered a capability that died at the call site in the old tree.
@@ -1204,6 +1242,16 @@ must be one of:
   as `hasKey ← apiKey`. An underived field on the wire with no core counterpart
   is invented data and is a failure.
 
+> **On probation until 3.2.** This rules a check over a pairing table for wire
+> shapes that do not exist, in a realm that does not exist, decided at 2.1 —
+> the largest speculative surface in this document, and I am marking it rather
+> than defending it. **3.2's coder decides its fate by building the protocol:**
+> if `SHAPE_PAIRS` survives as specified, it was worth ruling early; if it has
+> to be renegotiated, it was written two waves too soon and the honest record is
+> that the ruling should have been "core owns the shapes, protocol declares its
+> own, decide the check at 3.2." The ruling itself — two vocabularies, mapping
+> in `engine/wire.ts` — is not on probation; only the check's shape is.
+
 The asymmetry is deliberate and is the point: a wire shape is a **subset plus
 declared derivations**, never a superset. That is what makes redaction
 (`apiKey`) and withholding (`nextSeq`) expressible while making silent drift and
@@ -1361,9 +1409,14 @@ The replacement:
 - **The 40-line function rule is kept unchanged.** It did its job and its failure
   mode is extraction, which is the thing we wanted.
 - **`max` — the largest single file's line count — is a ratchet that only goes
-  down.** It is recorded in `scripts/checks/lines.json`. `checks/size.ts` ships
-  at 1.6 and **reports** `max` from then on, but the ratchet **arms at the end of
-  wave 2**, seeded from a tree that contains real modules.
+  down.** `checks/size.ts` shipped at 1.6 and **reports** `max` today. It writes
+  no state file: `scripts/checks/lines.json` **does not exist yet and is created
+  when the ratchet arms at the end of wave 2**, seeded from a tree that contains
+  real modules. Until then there is nothing to compare against and `max` is a
+  printed number, not a check. *(This paragraph previously described the file as
+  present and `size.ts` as reporting a delta "since the last recorded value".
+  Both were false for eleven increments — a citation of an artifact nobody had
+  written.)*
 
   *Seeding it at 1.6 would have reintroduced, for `max`, the exact defect I had
   just diagnosed for `total`.* Wave 1 is ~500 lines of scaffold, so the seed
@@ -1384,10 +1437,18 @@ The replacement:
 - **`total` is not a ratchet.** Claiming it "may only go down" across waves 2–6,
   whose entire purpose is to add source, would mean hand-rewriting the number
   every increment — a logbook wearing a check's clothes. *(Critic :626,
-  accepted.)* Instead `checks/size.ts` **reports** `total` and its delta since
-  the last recorded value, and each increment **declares its line budget in
-  PLAN**; exceeding a declared budget is a ringmaster conversation, not a gate
-  failure.
+  accepted.)* Instead `checks/size.ts` **reports** `total`, and PLAN declares a
+  budget **per wave**. A delta needs a recorded previous value, which needs
+  `lines.json`, which arrives with the ratchet — so until then the report is an
+  absolute number and says so.
+
+  **Per-increment budgets were tried for eleven increments and abandoned.** They
+  ran 84% over in aggregate (800 declared, 1,471 actual across `src/` and
+  `scripts/`) and **never once changed a decision** — every overrun was ruled
+  correct work on a wrong estimate. A number that is always wrong and never
+  binding is ceremony wearing a check's clothes, which is this section's own
+  diagnosis of `total`, unapplied to itself for eleven increments. PLAN's
+  line-budget section carries the measured figures.
 - `total` counts `src/**` **and** `scripts/**`. **Relocating source out of those
   two directories to move the number is a violation**, named here so it cannot
   be discovered as a loophole later. *(Ringmaster condition 7.)*
@@ -1501,9 +1562,75 @@ Rule 2 is a check on the checks, and it is deliberately the cheapest thing in
 the tree: a directory listing compared against one file's call sites. The
 expensive version of this lesson has already been paid three times.
 
-`gate.ts` also **prints the count of checks it ran** and that count appears in
-`PROGRESS.md`. A number that should only go up, in a document a human reads, is
-the second line of defence when someone deletes the first.
+`gate.ts` also **prints the count of checks it ran**, and every `PROGRESS.md`
+entry for a gated increment records that count. A number that should only go up,
+in a document a human reads, is the second line of defence when someone deletes
+the first — and `checks/docs.ts` rule 3 fails a `DONE` increment whose PROGRESS
+entry has no count, so the second line of defence is not itself on the honour
+system. *(Stated here for eleven increments while `grep -rn "checks ran" docs/`
+returned nothing. The claim is now the junior's standing obligation and a
+checked one.)*
+
+### 8.7 A declared-but-never-checked sentence
+
+The eleven-increment retro found **six documented facts that were not facts** in
+3,741 lines of docs, against 360 lines of source: a file map missing three of
+eight source files, a plan wrong about its two most recent increments, a
+PROGRESS missing four of eleven, a `lines.json` cited twice and never written, a
+check count promised to a document it never reached, and a scheduled increment
+whose acceptance was to fix a contradiction that never existed.
+
+The critic named the class, and the name is the useful part:
+
+> **A declared-but-never-checked sentence** — the same defect as a
+> declared-but-never-emitted event, one abstraction layer up.
+
+§8's opening rule — *a claim the gate cannot execute is not a verified claim* —
+had never been applied to the documents that state it. **Ruled: it is now, and
+`checks/docs.ts` runs inside `bun run gate`.** Not beside it: the check is
+static, needs no build and no browser, and the failures it catches are silent by
+construction, which is the exact profile the gate exists for.
+
+**The obstacle, and how it is solved.** A naive version fails on day one: §4
+names about sixty files and thirteen exist, because an architecture of record is
+*supposed* to describe what is not built yet. So the check is not "every path
+exists" — it is **status agreement**, made possible by §4 tagging each unbuilt
+entry with the increment that creates it:
+
+1. **Coverage.** Every file under `src/` and `scripts/` appears in §4's file
+   map. Always checkable, and this rule alone catches three of the six.
+2. **Schedule.** For each §4 entry, the file exists **iff** its increment is
+   `DONE` in PLAN. An untagged entry claims to exist now. This catches
+   `lines.json` (cited as present, unwritten) in one direction and premature
+   files in the other.
+3. **Status.** Every PLAN increment marked `DONE` has a `PROGRESS.md` entry;
+   every PROGRESS entry names a PLAN increment; every `DONE` gated increment's
+   entry records the gate's check count (§8.6).
+4. **Cross-references.** Every `§N.M` resolves to a heading in the document it
+   points at — bare `§N.M` within `ARCHITECTURE.md`, `DESIGN §N.M` into
+   `DESIGN.md`, `ARCHITECTURE.md §N.M` from anywhere.
+5. **Citations.** Every `scripts/**` path named anywhere in `docs/` exists or is
+   scheduled by rule 2.
+6. **Rulings.** Every PROGRESS entry citing a verdict has a matching file in
+   `docs/rulings/`. This is the condition on which that directory survives the
+   cut list (§10.5).
+
+**What it cannot check, stated plainly because overstating it would reproduce
+the defect.** It checks that documents **refer to things that exist and agree
+with each other about status**. It cannot check that a sentence is *true*.
+
+Of the six found: rules 1–3 catch five. The sixth —
+`core/ports.ts:10`'s *"Four members, each with a caller"*, when none had one —
+is well-formed, refers to nothing external, and **would pass every rule above.**
+It was found by a reader. So: five of six mechanically, one only by a human, and
+the human remains the primary. `checks/docs.ts` removes the failures that are
+beneath a reader's attention so the reader's attention is spent on the ones that
+are not.
+
+**Written by increment 1.7**, which reopens wave 1 for one increment because the
+gate 1.6 built was incomplete in a way eleven increments of documents then
+demonstrated. Wave numbers here are ordering, not chronology — 6.x already runs
+in parallel with 2–5.
 
 ## 9. What is deliberately not here
 
@@ -1818,6 +1945,59 @@ refusals. Each is considered, not an omission.
    unit tests alone. Saying so here rather than overstating the check.
 
 ---
+
+### 10.5 The eleven-increment retro: the reconciled cut list
+
+The ringmaster and the critic each produced a cut list. Where they agree I
+executed; where they disagree I ruled, and the reasons are below because two of
+the disagreements are more instructive than the cuts.
+
+| Item | Ruling |
+|---|---|
+| `docs/DESIGN.md` → stub | **REFUSED.** See below. |
+| `docs/rulings/` → delete, fold into PROGRESS | **KEPT, on a condition.** See below. |
+| `docs/scratch/REFERENCES.md` | **KEPT until 4.3**, which deletes it — scheduled, not hoped for. |
+| `MEASURED.md` M1, M5 bodies | **COMPRESSED to pointers.** `verify-worker.ts` asserts both on every deploy. |
+| `MEASURED.md` M2 | **KEPT IN FULL** — see below, this corrects the instruction I was given. |
+| `MEASURED.md` M3 | **KEPT.** The compiler fact. No check asserts it and none can. |
+| The M5 correction | **KEPT.** M5 did not prove the election; the lesson generalises. |
+| Per-increment line budgets | **CUT**, replaced by per-wave. §8.3. |
+| The probe files | **NOT CUT — SCHEDULED.** 3.1's acceptance deletes them. §4. |
+
+**Refused: cutting `DESIGN.md`.** The ringmaster's case was that it "has been
+wrong for eleven increments." It never was. `git show 711a958:docs/DESIGN.md`
+line 253 reads *"Six surfaces, one address each"* in its **first commit**, and
+that commit already names `src/ui/tokens.css` and `checks/design.ts` twelve
+times over. The document was correct from the beginning; **PLAN 6.1 was wrong
+about it**, and the ringmaster read PLAN.
+
+This is the retro's sharpest lesson and it is why the six sentences matter more
+than their word count: **one untrue sentence in a plan of record nearly cost a
+correct 660-line design document.** A false claim about another document does
+not sit still — it gets believed by the next reader with authority to act on it.
+That is the mechanism §10.2's tense convention exists to prevent, and PLAN was
+where it had not been applied. It has been now.
+
+**Kept, on a condition: `docs/rulings/`.** The "one member across ten
+increments" criticism is fair, and the directory exists for a real reason — the
+junior found PROGRESS citing verdicts that lived only in a transcript. The
+condition is **not** "every gated increment gets a file", because most gates are
+"GO, no change" and a file recording that is noise that would kill the
+directory by dilution. It is: **every PROGRESS entry that cites a verdict must
+have a matching file in `docs/rulings/`**, which is `checks/docs.ts` rule 6.
+Verdicts that changed the design get a durable home; verdicts that changed
+nothing do not need one. If that rule ever fails to hold, the directory goes.
+
+**Correcting the instruction on M2.** I was told M1, M2 and M5 are all asserted
+by `verify-worker.ts` and could be compressed to pointers. M1 and M5 are —
+`verify-worker.ts` asserts the worker loads and replies, and asserts all three
+lock behaviours including the never-settling hold. **It does not assert M2.**
+Nothing in the tree checks that webpack drops `type:'module'` and emits a
+classic worker, and M2 is load-bearing: §3.2's no-runtime-ESM rule and
+`engine/tools/index.ts` being a static table both descend from it. Compressing
+it to a pointer would have pointed at a check that does not make the claim —
+which is precisely the defect this retro is about, committed while cleaning it
+up. M2 stays in full, beside M3, as a measured fact no check asserts.
 
 ## 11. Open questions
 
