@@ -484,3 +484,62 @@ Entry shape:
     entries for `core/inference/openai.ts` and `core/inference/catalog.ts` are
     untagged. Both are the architect's files; this entry is the coder's only
     edit under `docs/`.
+
+## 2.4 — The react loop, ending on a declared terminal — 2026-08-28
+- Files: `src/core/observer.ts`, `src/core/agent/{session,transcript,agent,react}.ts`, `tests/agent-react.test.ts`
+- Proof: `bun run gate` → **6 checks ran, 0 failed · gate GREEN**; `bun test` →
+  `34 pass, 0 fail, Ran 34 tests across 5 files`; `purity: src/core — 10 file(s)
+  scanned · ok`; `size: max 226 lines — src/core/inference/openai.ts`.
+  The ten new tests were each watched red for the reason they exist, by mutating
+  `src/` and running `bun test tests/agent-react.test.ts`:
+  1. *Post `assembled` after `infer` returns instead of before* — 2 of 10 red
+     (`every lifecycle event fires, in order` and `assembled reports the prompt
+     that is about to go out`). The second is the causal one: its observer
+     asserts `inference.received` is still empty **at the moment the event
+     fires**, so an implementation that emitted every event with every correct
+     payload, one step late, still goes red. Event counts alone cannot see this.
+  2. *Emit `entered` only on the first arrival* — 1 of 10 red. On a react agent
+     the round is the only thing that moves, so a single `entered` is a live
+     phase view with nothing to show after the first millisecond.
+  3. *Let a repeated call reach the tool runner* — 3 of 10 red. The assertion is
+     on `ran`, the list of calls the runner actually received: tier 2 of the
+     guard is "the tool does **not** run", which a transcript assertion alone
+     would not have caught.
+  4. *Throw at the repeat limit instead of synthesising an answer* — 2 of 10 red.
+     Tier 3 is the property that the loop ends **with a reply**.
+  5. *Drop `onDelta` from the `infer` call* — 2 of 10 red.
+  6. *Build the prompt once and reuse it* — 1 of 10 red; the prompt is rendered
+     again each pass against the transcript as it then stands.
+- Ringmaster: not yet ruled
+- Open:
+  - **No `FLOWS`, no driver, no `MAX_TRANSITIONS`** — 4.5's, per §5.6. What is
+    here is the shape they plug into: `OUTCOMES`, `outcomeOf()` and a `TERMINAL`
+    the loop ends on and nothing else does.
+  - **The prompt and the tools are seams, and neither has a stand-in in `src/`.**
+    `RenderPrompt` is filled by 2.6's assembler and `ToolRunner` by 4.2's
+    toolbox. The doubles are in the test file, where they are obviously doubles.
+    The one place this leaks is `NO_TOOLS` in `react.ts`: a model that calls a
+    tool on an agent with no runner reads `Tool not found. Available: none`,
+    which is `Toolbox.call`'s own sentence minus the `<tool>: ` prefix its
+    `ToolResult` renders — naming the tool means parsing the call, and the
+    parser is 4.2's. The constant moves to the toolbox when the toolbox lands.
+  - **`StorePort` still has no caller**, so §5.1's "arrives at 2.4" is now true
+    of `newId` only. The transcript is in memory: persistence is 3.4 and
+    worker-owned, and a transcript writing through a store in wave 2 is the
+    migration the realm split exists to prevent. `src/adapters/test/store.ts`,
+    which §4 tags `[2.4]`, is therefore not written — it is not this
+    increment's file and it has nothing to serve. Architect's call.
+  - **`Session.seen` keys on the whole batch text**, so `a(), b()` and
+    `b(), a()` are two entries. SALVAGE records it as a known defect; ported as
+    it stands, named at the field, and fixable only by the batch parser at 4.2.
+  - **`Agent.turn` records `parsed.answer.trim()` and nothing else.** A
+    structured reply's other fields (a react `think`) never reach the
+    transcript, which is the Python's behaviour and is what makes the golden
+    history in `tests/golden/react-loop.json` four lines long.
+  - **The observer's `results` fires once per tool step, not per batch.**
+    SALVAGE item 10 wants per batch; a batch is a fact the toolbox knows and
+    2.4 has no toolbox, so the event carries the observation text the model
+    reads next. It gains `ToolResult[]` at 4.2, not a guess now.
+  - `docs/PLAN.md`'s 2.3 row still reads `TODO` although 2.3 shipped at
+    `a455a0c`, and §4's `core/agent/*` entries are tagged `[2.4]` and now exist.
+    Both are the architect's files.
