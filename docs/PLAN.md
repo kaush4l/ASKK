@@ -19,7 +19,7 @@
 | 0.1 | Recon: read powerhouse, inventory old ASKK, research reference agents | DONE |
 | 0.2 | Team defined (`.claude/agents/*`), `.gitignore` culled, NORTH-STAR written | DONE |
 | 0.3 | Architecture of record drafted and ringmaster-approved | DONE |
-| 0.4 | Old tree deleted whole and tagged; **`CLAUDE.md` rewritten** to match `ARCHITECTURE.md` | TODO |
+| 0.4 | Old tree deleted whole and tagged; **`CLAUDE.md` rewritten** to match `ARCHITECTURE.md` | DONE |
 
 **0.4 acceptance:** `git tag` shows the recovery tag; the working tree contains
 only the new skeleton; the tag's tree still contains the old files; and
@@ -39,9 +39,9 @@ expensive disagreement available. No wave-1 increment starts before it.
 
 | # | Intent | Acceptance | Lines | Status |
 |---|--------|-----------|-------|--------|
-| 1.1 | Barebones Bun + Next app that runs | `bun run dev` serves a page with one identifying string | +80 | TODO |
-| 1.2 | Static export | `bun run build` emits `out/`, zero server code in it | +20 | TODO |
-| 1.3 | Subpath-correct export | `scripts/serve-subpath.ts` serves `out/` under `/ASKK/` and the page loads with **zero** console errors and **zero** 404s — the failure mode that has bricked this project before | +90 | TODO |
+| 1.1 | Barebones Bun + Next app that runs | `bun run dev` serves a page with one identifying string | +80 | DONE |
+| 1.2 | Static export | `bun run build` emits `out/`, zero server code in it | +20 | DONE |
+| 1.3 | Subpath-correct export | `scripts/serve-subpath.ts` serves `out/` under `/ASKK/` and the page loads with **zero** console errors and **zero** 404s — the failure mode that has bricked this project before | +90 | DONE |
 | 1.4 | Deploy path proven | The hosted URL loads and shows the identifying string | +60 | TODO |
 | 1.5 | Worker emission, as a repo-owned regression guard | A worker started from the **built** export at a subpath replies with its sentinel: zero console errors, no 404 for the worker chunk. Reproducible locally via `scripts/serve-subpath.ts`, not only on the deployed URL. The same probe **asserts** the three Web Lock behaviours §7.3's election rests on: it grants in a worker, `{ifAvailable:true}` grants when free, and — the one the election actually rests on — a second `{ifAvailable:true}` request made **while the first callback is still pending** receives `null`. MEASURED M5 did not prove this: its callback returned, so the lock released (`ARCHITECTURE.md` §7.3) | +70 | TODO |
 | 1.6 | The gate exists, and it fails | `bun run gate` runs; someone breaks one rule on purpose and it goes red **naming that rule**. Ships only the wave-1 checks: `checks/size.ts` (**reporting** `max`; the ratchet arms at the end of wave 2), the export/no-server-code assertion, and the smoke harness | +180 | TODO |
