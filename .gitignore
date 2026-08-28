@@ -1,5 +1,52 @@
+# --- build output (regenerable) ---
 node_modules/
-dist/
+.next/
 out/
-*.log
+dist/
+build/
+*.tsbuildinfo
+
+# --- bun / package manager ---
+.bun/
+.npm/
+
+# --- local env & secrets (NEVER publish) ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.json
+
+# --- os / editor noise ---
 .DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- logs & temp ---
+*.log
+npm-debug.log*
+.tmp/
+tmp/
+scratch/
+
+# --- tool caches ---
+.gstack/
+.cache/
+coverage/
+playwright-report/
+test-results/
+
+# --- large regenerable artifacts ---
+# container2wasm build products: built by scripts, not committed
+wasm/build/
+*.wasm.gz
+*.tar
+*.img
+
+# --- team scratch (agent working notes, not the record) ---
+docs/scratch/
