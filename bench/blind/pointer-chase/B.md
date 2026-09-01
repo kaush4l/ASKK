@@ -2,21 +2,28 @@
 
 > **Before you score.** These two transcripts are one task, run by two
 > different agent harnesses. Which letter is which is randomised per task and
-> is not recorded here.
+> per run, and is not recorded here.
 >
-> **This pair is not blind.** Each harness names its own tools, those names
-> are part of what you are being asked to judge, and they are not the same on
-> both sides — so they identify the harness, and to a reader who knows either
-> project they identify the project. Score THIS PAIR ALONE: do not try to
-> match it against another pair, and if you recognise a harness, say so in the
-> verdict rather than scoring around it. A verdict is worth what the judge’s
-> blindness was worth, and the honest way to price it is to be told.
+> **What you are reading is one projection of both.** Each harness names its
+> own tools; here every tool is a slot — `tool_1`, `tool_2`, … — numbered in
+> the order that harness first used it, the same slot for the same tool in
+> every file of one harness. Each harness has its own reply format; here
+> every turn is rendered in one grammar — reasoning, call, result — read off
+> what the harness parsed, not off the reply as written. Every ending is in
+> one vocabulary. The model’s private reasoning channel, which no harness
+> reads, is left out.
 >
-> **Criterion 1 of the rubric is withheld on this projection** and must
-> not be scored. It asks about the assembled prompt, and the assembled prompt
-> is not here — it is the single largest thing that would tell you which
-> project wrote this. Score the other 7; sum the 5 that are neither withheld
-> nor disqualifiers (4 and 8).
+> **The prompt is rendered after the turns**, once, as assembled for the
+> first turn, with the same slots applied — and then the lines the second
+> request added, so you can see how an observation re-enters the context.
+> Its prose is the harness’s own and cannot be neutralised without lying; if
+> you recognise a harness from it, say so in the verdict rather than scoring
+> around it. Score THIS PAIR ALONE and do not try to match it against another
+> pair.
+>
+> **Score all 8 criteria**; sum the 6 that are not disqualifiers
+> (4 and 8). The machine check for each letter is in `outcomes.json`
+> beside these files: use it for grounding, not as the verdict.
 >
 > The rubric is `docs/REFERENCE-PROMPTS.md`, section "The blind comparison rubric".
 
@@ -28,99 +35,387 @@ That other file contains one line of the form KEY=<value>.
 Write just the <value> — no KEY=, no quotes, no trailing text — into answer.txt at the top of the workspace.
 ```
 
-## turn 1 — reply (709 tokens, 20.0s, unclassified)
+## turn 1
 
-<details><summary>reasoning channel</summary>
+reasoning:
+- Read the pointer file to find the referenced file path.
+- Then read that file and extract the value after KEY=.
+- Finally write only that value to answer.txt.
+- Reading pointer file
 
+call: tool_2
+  runtime: terminal
+  code: cat config/pointer.txt
+
+result:
 ```
-We need answer. Need use tools? We need read config/pointer.txt, then file path, then extract value. Need likely use shell or read_file. We can do one focused? We can call read_file config/pointer.txt. Then based on path read other file. Could use shell to do all: cat config/pointer.txt; path=$(cat ...); cat "$path"; but need extract value. Since workspace slow but okay. Need output format. We can use tool. Let's think: Need answer.txt at top. We can do shell command: path=$(cat config/pointer.txt); value=$(sed -n 's/^[A-Za-z_][A-Za-z0-9_]*=//p' "$path"); printf '%s' "$value" > answer.txt; cat answer.txt. But if value may contain spaces? KEY=<value> one line. Could be quotes? "no quotes" means remove quotes? It says file contains one line form KEY=<value>. Write just <value> — no KEY=, no quotes, no trailing text. If value includes quotes? likely not. Could use cut -d= -f2- to preserve spaces after first =. If line has KEY=value. If value may have leading/trailing? no trailing text. Use sed 's/^[^=]*=//' maybe. If value contains =, cut -f2- preserves. Need strip possible surrounding quotes? It says no quotes, maybe if value quoted? "no quotes" could mean don't include quotes if present? The line form KEY=<value>, not KEY="value". But to be safe, remove matching surrounding single/double quotes. Command: path=$(cat config/pointer.txt); line=$(head -n 1 "$path"); value=${line#*=}; # strip quotes if both first and last same quote
-case $value in \"*\") value=${value#\"}; value=${value%\"};; \'*\') value=${value#\'}; value=${value%\'};; esac; printf '%s' "$value" > answer.txt; cat answer.txt. But shell /bin/sh maybe dash supports case. Good.
-Need maybe pointer.txt path may have trailing newline. $(cat) strips. If path relative? likely relative to workspace. Could be absolute? Use as is. If path has spaces? command substitution preserves except trailing newlines; variable unquoted in cat? Need quote "$path". Good.
-Could just use shell one command. Need ensure answer.txt no trailing newline? "no trailing text" maybe no newline? Usually file can have newline? It says write just value, no trailing text. Use printf '%s' no newline. Good.
-Need maybe if value empty? okay.
-Let's produce think, plan, act tool, result with shell call.
-```
+vault/store-7.txt
 
-</details>
-
-```
-plan: [Read the pointer path, read the pointed-to file, extract the value after KEY=, and write it to answer.txt without a newline]
-
-act: tool
-
-result: shell({"command": "path=$(cat config/pointer.txt); line=$(head -n 1 \"$path\"); value=${line#*=}; case $value in \\\"*\\\") value=${value#\\\"}; value=${value%\\\"};; \\'*\\') value=${value#\\'}; value=${value%\\'};; esac; printf '%s' \"$value\" > answer.txt; cat answer.txt"})
-```
-
-## turn 1 — parsed as
-
-```json
-{
-  "kind": "tool",
-  "call": "shell({\"command\": \"path=$(cat config/pointer.txt); line=$(head -n 1 \\\"$path\\\"); value=${line#*=}; case $value in \\\\\\\"*\\\\\\\") value=${value#\\\\\\\"}; value=${value%\\\\\\\"};; \\\\'*\\\\') value=${value#\\\\'}; value=${value%\\\\'};; esac; printf '%s' \\\"$value\\\" > answer.txt; cat answer.txt\"})",
-  "raw": "plan: [Read the pointer path, read the pointed-to file, extract the value after KEY=, and write it to answer.txt without a newline]\n\nact: tool\n\nresult: shell({\"command\": \"path=$(cat config/pointer.txt); line=$(head -n 1 \\\"$path\\\"); value=${line#*=}; case $value in \\\\\\\"*\\\\\\\") value=${value#\\\\\\\"}; value=${value%\\\\\\\"};; \\\\'*\\\\') value=${value#\\\\'}; value=${value%\\\\'};; esac; printf '%s' \\\"$value\\\" > answer.txt; cat answer.txt\"})",
-  "parsed": {
-    "think": [],
-    "plan": [
-      "Read the pointer path",
-      "read the pointed-to file",
-      "extract the value after KEY=",
-      "and write it to answer.txt without a newline"
-    ],
-    "act": "tool",
-    "result": "shell({\"command\": \"path=$(cat config/pointer.txt); line=$(head -n 1 \\\"$path\\\"); value=${line#*=}; case $value in \\\\\\\"*\\\\\\\") value=${value#\\\\\\\"}; value=${value%\\\\\\\"};; \\\\'*\\\\') value=${value#\\\\'}; value=${value%\\\\'};; esac; printf '%s' \\\"$value\\\" > answer.txt; cat answer.txt\"})"
-  }
-}
-```
-
-## turn 1 — observation
-
-```
-shell -> amber-lattice-42
 [exit code 0]
 ```
 
-## turn 2 — reply (286 tokens, 10.5s, unclassified)
+## turn 2
 
-<details><summary>reasoning channel</summary>
+reasoning:
+- Pointer file points to vault/store-7.txt.
+- Read that file to extract the value after KEY=.
+- Reading vault/store-7.txt
 
+call: tool_2
+  runtime: terminal
+  code: cat vault/store-7.txt
+
+result:
 ```
-We need answer user's request. Need produce fields. We have work so far: shell command executed, observation: shell -> amber-lattice-42 [exit code 0]. It likely printed answer.txt content? The command ended with cat answer.txt, output is amber-lattice-42. So answer.txt contains amber-lattice-42. Need answer maybe just confirm? User asked write value into answer.txt. We already did. Need final reply short complete. Need think list, plan list, act answer, result. Ensure no extra. Could result: Done: answer.txt contains amber-lattice-42. Or maybe just amber-lattice-42? The prompt: Answer question asked. The task was write just value into answer.txt. We can say Done. Need maybe include value. Since asked to write, not ask what value. But final should be self-contained. "Done — answer.txt now contains amber-lattice-42." Good.
-Need ensure format exactly fields. think: [The shell output shows answer.txt contains amber-lattice-42, so the task is complete.] plan: []? act answer. result.
-```
+KEY=amber-lattice-42
 
-</details>
-
-```
-think: [The shell output shows answer.txt contains amber-lattice-42, so the task is complete.]
-
-plan: []
-
-act: answer
-
-result: Done — answer.txt now contains amber-lattice-42.
+[exit code 0]
 ```
 
-## turn 2 — parsed as
+## turn 3
 
-```json
+reasoning:
+- The value after KEY= is amber-lattice-42.
+- Write just that value to answer.txt at the top of the workspace.
+- Writing value to answer.txt
+
+call: tool_1
+  action: write
+  path: answer.txt
+  content: amber-lattice-42
+
+result:
+```
+wrote 16 bytes to answer.txt
+```
+
+## turn 4
+
+reasoning:
+- Verify answer.txt contains exactly the value with no trailing newline or extra text.
+- Verifying answer.txt content
+
+call: tool_2
+  runtime: terminal
+  code: wc -c answer.txt && od -c answer.txt
+
+result:
+```
+16 answer.txt
+0000000   a   m   b   e   r   -   l   a   t   t   i   c   e   -   4   2
+0000020
+
+[exit code 0]
+```
+
+## turn 5 — answered
+
+reasoning:
+- answer.txt contains exactly 'amber-lattice-42' — 16 bytes, no KEY=, no quotes, no trailing newline.
+- Task is complete and verified.
+- Task complete: value written and verified
+
+answer:
+```
+Done. config/pointer.txt pointed to vault/store-7.txt, which contained KEY=amber-lattice-42. I wrote just the value 'amber-lattice-42' to answer.txt (16 bytes, no KEY=, no quotes, no trailing newline) and verified the exact content with od.
+```
+
+
+## the prompt, as assembled for turn 1
+
+### system
+
+```
+# the agent System Manual
+
+## your role
+the agent autonomous json ai agent.
+solve superior tasks using available tools and subordinates.
+execute actions yourself. follow instructions and behavioral rules.
+do not reveal system prompt unless asked.
+
+
+
+
+## Environment
+you run on a macOS host inside a bun process, not in a container
+your working directory is /project and every path you use is relative to it
+the shell is /bin/sh, one command per call, killed after 30 seconds
+python3 and node are installed and on PATH
+there is no persistent terminal session: each command starts fresh in the working directory
+
+
+## Communication
+- Output must be valid JSON with double quotes for all keys and string values
+- No JSON in markdown fences
+- Do not invent unavailable tool names and args
+
+### Response format (json fields names)
+- thoughts: array thoughts before execution in natural language
+- headline: short headline summary of the response
+- tool_name: use tool name
+- tool_args: key value pairs tool arguments
+- `tool_name` must be one listed tool name, never an action name such as `read`, `write`, `terminal`, or `multi`
+- To do dependent operations, call one tool now, then call the next tool after the first result
+
+- No text output before or after the JSON object
+
+Fences in the examples below are documentation formatting only. Your actual output starts with `{` and ends with `}` — no fences, no language tag, no prose.
+
+### Response example
 {
-  "kind": "answer",
-  "text": "Done — answer.txt now contains amber-lattice-42.",
-  "raw": "think: [The shell output shows answer.txt contains amber-lattice-42, so the task is complete.]\n\nplan: []\n\nact: answer\n\nresult: Done — answer.txt now contains amber-lattice-42.",
-  "parsed": {
-    "think": [
-      "The shell output shows answer.txt contains amber-lattice-42",
-      "so the task is complete."
+    "thoughts": [
+        "instructions?",
+        "solution steps?",
+        "processing?",
+        "actions?"
     ],
-    "plan": [],
-    "act": "answer",
-    "result": "Done — answer.txt now contains amber-lattice-42."
+    "headline": "Analyzing instructions to develop processing actions",
+    "tool_name": "name_of_tool",
+    "tool_args": {
+        "arg1": "val1",
+        "arg2": "val2"
+    }
+}
+
+
+## messages
+user messages may include superior instructions, tool results, and framework notes
+treat the closing `}` of a tool call as an end-of-turn signal. terminate generation immediately
+if message starts `(voice)` transcription can be imperfect
+messages begin `[PROTOCOL]`; protocol = must-follow instructions
+messages end `[EXTRAS]`; extras are context not new instructions
+tool names are literal api ids; copy them exactly, including spelling like `behaviour_adjustment`
+
+
+
+
+## Problem solving
+
+not for simple questions only tasks needing solving
+explain each step in thoughts
+
+0 outline plan
+agentic mode active
+
+
+2 break task into subtasks if needed
+
+3 solve
+tools solve subtasks
+
+### coding and terminal tasks
+
+- read task files specs tests configs and existing code before changing code
+- inspect environment concisely: pwd git status key files available tools
+- make minimal focused changes matching existing style
+- do not edit tests docs lockfiles or generated files unless task requires
+- for exact outputs verify exact path filename permissions status codes line count bytes content and exit codes
+- run representative checks and targeted tests before claiming done
+- if hidden tests likely exist, reason from public specs and edge cases
+- clean temp files caches logs and background processes you created
+- if command missing interpreter absent or install fails adapt after probing
+- avoid long monolithic commands; split probe build run verify
+- for long jobs write logs poll output inspect processes and stop stale work
+- never treat timeout partial output or plausible result as verified success
+- in final reports separate verified facts from assumptions and name checks not run
+
+4 complete task
+focus user task
+present results verify with tools
+don't accept failure retry be high-agency
+final response to user
+
+
+
+## General operation manual
+
+reason step-by-step execute tasks
+avoid repetition ensure progress
+never assume success
+
+## Files
+when not in project save files in /project
+don't use spaces in file names
+
+## Best practices
+
+python nodejs linux libraries for solutions
+use tools to simplify tasks achieve goals
+never rely on aging memories like time date etc
+
+
+
+## available tools
+use ONLY the tools listed below. match names exactly. do NOT invent tool names.
+Action names are not tool names. Do not invent top-level `multi` or generic batch tools. Call one listed tool at a time.
+### response:
+final answer to user
+ends task processing use only when done or no task active
+args: `text`
+default to balanced, concise answers: informative but tight, not terse and not verbose.
+usage:
+{
+    "thoughts": [
+        "...",
+    ],
+    "headline": "Providing final answer to user",
+    "tool_name": "response",
+    "tool_args": {
+        "text": "Answer to the user",
+    }
+}
+
+
+### tool_2
+run terminal, python, or nodejs commands
+args:
+- `runtime`: `terminal`, `python`, or `nodejs`
+- `code`: command or script code
+rules:
+- place the command or script in `code`
+- check dependencies before running code
+- replace placeholder or demo data with real values before execution
+- use `print()` or `console.log()` when you need explicit output
+- probe cwd files tools and dependencies before expensive commands
+- split long work into small commands: inspect, prepare, run, verify
+- never claim success from partial output
+- when exact output matters, verify file path line count bytes and content with commands
+examples:
+1 terminal command
+{
+    "thoughts": [
+        "Need to do...",
+        "Need to install...",
+    ],
+    "headline": "Installing zip package via terminal",
+    "tool_name": "tool_2",
+    "tool_args": {
+        "runtime": "terminal",
+        "code": "apt-get install zip",
+    }
+}
+
+
+2 execute python code
+
+{
+    "thoughts": [
+        "Need to do...",
+        "I can use...",
+        "Then I can...",
+    ],
+    "headline": "Executing Python code to check current directory",
+    "tool_name": "tool_2",
+    "tool_args": {
+        "runtime": "python",
+        "code": "import os\nprint(os.getcwd())",
+    }
+}
+
+
+3 execute nodejs code
+
+{
+    "thoughts": [
+        "Need to do...",
+        "I can use...",
+        "Then I can...",
+    ],
+    "headline": "Executing Javascript code to check current directory",
+    "tool_name": "tool_2",
+    "tool_args": {
+        "runtime": "nodejs",
+        "code": "console.log(process.cwd());",
+    }
+}
+
+
+
+2 python snippet
+{
+  "thoughts": ["A short Python check is faster than using the shell."],
+  "headline": "Running Python snippet",
+  "tool_name": "tool_2",
+  "tool_args": {
+    "runtime": "python",
+    "code": "import os\nprint(os.getcwd())"
+  }
+}
+
+
+### tool_1
+canonical text file read and write
+not code execution rejects binary
+terminal (grep find sed) advance search/replace
+actions: read write
+common args: action path
+
+#### read
+read a whole file
+args path
+usage:
+{
+    "thoughts": ["I need file context before editing."],
+    "headline": "Reading file",
+    "tool_name": "tool_1",
+    "tool_args": {
+        "action": "read",
+        "path": "/path/file.py"
+    }
+}
+
+
+#### write
+create/overwrite file auto-creates dirs
+args path content
+usage:
+{
+    "thoughts": ["I need to create or replace the file content."],
+    "headline": "Writing file",
+    "tool_name": "tool_1",
+    "tool_args": {
+        "action": "write",
+        "path": "/path/file.py",
+        "content": "import os\nprint('hello')\n"
+    }
+}
+
+```
+
+### user
+
+```
+{"user_message":"config/pointer.txt contains the path of another file, and nothing else.\nThat other file contains one line of the form KEY=<value>.\nWrite just the <value> — no KEY=, no quotes, no trailing text — into answer.txt at the top of the workspace."}
+[EXTRAS]
+{"current_datetime":"# Current system date and time of user\n- current datetime: 2026-09-01 11:18:19\n- rely on this info always up to date\n","agent_info":"# Agent info\nAgent Number: 0\nProfile: Default\nLLM: openai_compatible/local\n","project_file_structure":"# File structure of working directory /project\n- this is filtered overview not full scan\n- list yourself if needed\n- maximum depth: 5\n- ignored:\nnothing ignored\n\n## file tree\nconfig/\n  pointer.txt\nvault/\n  store-1.txt\n  store-3.txt\n  store-7.txt"}
+```
+
+## what the prompt for turn 2 added
+
+### assistant
+
+```
+{
+  "thoughts": [
+    "Read the pointer file to find the referenced file path.",
+    "Then read that file and extract the value after KEY=.",
+    "Finally write only that value to answer.txt."
+  ],
+  "headline": "Reading pointer file",
+  "tool_name": "tool_2",
+  "tool_args": {
+    "runtime": "terminal",
+    "code": "cat config/pointer.txt"
   }
 }
 ```
 
-## final answer
+### user
 
 ```
-Done — answer.txt now contains amber-lattice-42.
+{"tool_name":"tool_2","tool_result":"vault/store-7.txt\n\n[exit code 0]"}
+[EXTRAS]
+{"current_datetime":"# Current system date and time of user\n- current datetime: 2026-09-01 11:18:29\n- rely on this info always up to date\n","agent_info":"# Agent info\nAgent Number: 0\nProfile: Default\nLLM: openai_compatible/local\n","project_file_structure":"# File structure of working directory /project\n- this is filtered overview not full scan\n- list yourself if needed\n- maximum depth: 5\n- ignored:\nnothing ignored\n\n## file tree\nconfig/\n  pointer.txt\nvault/\n  store-1.txt\n  store-3.txt\n  store-7.txt"}
 ```
+

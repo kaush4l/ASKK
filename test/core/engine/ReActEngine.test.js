@@ -61,6 +61,47 @@ function engineWith(replies, { toolbox } = {}) {
 /** A model that only ever calls a tool: the runaway this slice exists to stop. */
 const neverAnswers = (n) => Array.from({ length: n }, (_, i) => toolTurn(`echo({"text": "${i}"})`))
 
+/**
+ * The shipped transport, answering from captured HTTP responses.
+ *
+ * `ScriptedInference` replaces the transport, so nothing driven through it can
+ * see what the transport DOES with a reply — and two of the four states a reply
+ * can be in are decided there and never reach the engine as text. Every test
+ * below that names a `Reply` state goes through this instead: the real
+ * `OpenAICompatible` over a `ScriptedFetch`, so what the engine receives is what
+ * the shipped code would hand it for what the endpoint really said.
+ *
+ * A name ending `.sse` is streamed, which is the path the running app actually
+ * takes — `ChatService` always passes an `onDelta`. A plain object is served
+ * as JSON, which is how a WHOLE reply with a chosen contract is put on the wire:
+ * no capture happens to hold a complete `act: answer`, so `whole()` below takes
+ * the captured envelope and puts one in it.
+ */
+let restore = null
+afterEach(() => {
+  restore?.()
+  restore = null
+})
+
+function realTransport(fixtures, { maxTokens = 1135 } = {}) {
+  const fetching = new ScriptedFetch(
+    fixtures.map((name) => {
+      if (typeof name !== 'string') return { json: name }
+      return name.endsWith('.sse') ? { sse: fixture(name) } : { json: JSON.parse(fixture(name)) }
+    }),
+  )
+  restore = fetching.install()
+  const inference = new OpenAICompatible({ baseUrl: 'http://127.0.0.1:8873/v1', maxTokens })
+  return { fetching, engine: new ReActEngine({ system: 'You are careful.', inference }) }
+}
+
+/** `complete.json`'s envelope — `finish_reason: stop`, reasoning routed — carrying `content`. */
+function whole(content) {
+  const body = JSON.parse(fixture('complete.json'))
+  body.choices[0].message.content = content
+  return body
+}
+
 describe('ReActEngine.run', () => {
   test('a tool turn, then an answer — and the observation is in the second prompt', async () => {
     const tool = new EchoTool()
@@ -390,31 +431,6 @@ describe('stopping a run', () => {
  * on the truncated reply and made exactly ONE call.
  */
 describe('a reply that never said what to do', () => {
-  let restore = null
-  afterEach(() => {
-    restore?.()
-    restore = null
-  })
-
-  /**
-   * The shipped transport, answering from captured HTTP responses. A name ending
-   * `.sse` is streamed, which is the path the running app actually takes —
-   * `ChatService` always passes an `onDelta`.
-   */
-  function realTransport(fixtures) {
-    const fetching = new ScriptedFetch(
-      fixtures.map((name) =>
-        name.endsWith('.sse') ? { sse: fixture(name) } : { json: JSON.parse(fixture(name)) },
-      ),
-    )
-    restore = fetching.install()
-    const inference = new OpenAICompatible({
-      baseUrl: 'http://127.0.0.1:8873/v1',
-      maxTokens: 1135,
-    })
-    return { fetching, engine: new ReActEngine({ system: 'You are careful.', inference }) }
-  }
-
   test('the run does not end on it, and the correction reaches the next prompt', async () => {
     // `truncated-mid-contract.json`: finish_reason `length`, `reasoning_content`
     // present and correctly routed, `content` stopping inside `plan:` with no
@@ -497,9 +513,13 @@ describe('a reply that never said what to do', () => {
     // And the hint names no lever, on purpose. Naming "raise max tokens" here
     // is the defect `OpenAICompatible.RAISABLE` exists to stop — this file does
     // not hold `maxTokens` and must not guess at it — and on the other route
-    // nothing was cut at all.
-    expect(outcome.failure.hint).not.toContain('max tokens')
-    expect(outcome.failure.hint).toContain('The notes say whether the endpoint cut each reply off')
+    // nothing was cut at all. Pinned whole rather than by its opening words: an
+    // edit to its second half — "that ceiling is the lever" — survived a
+    // mutation run while the opening was all this test read, and that half is
+    // where the hint had started arguing with the note beside it.
+    expect(outcome.failure.hint).toBe(
+      "The notes say what happened to each reply: cut off at a ceiling the note names, or spent inside the model's reasoning with the transport's own remedy beside it. If they say neither, the model wrote something in act that is neither 'tool' nor 'answer', and sending the same request again will not change that — ask for something narrower, or use a different model.",
+    )
     // Not a scratchpad wearing an answer's clothes.
     expect(outcome.value).toBe(null)
     // The cause sits beside the consequence, on the channel the page renders.
@@ -582,5 +602,304 @@ describe('a reply that never said what to do', () => {
     expect(outcome.value.answer).toBe('done')
     expect(inference.calls).toHaveLength(6)
     expect(tool.received).toEqual(['0', '1'])
+  })
+})
+
+/**
+ * The four states a reply can be in, each driven through the shipped transport,
+ * and what the run does with each. One table, because the defect this block
+ * was written for was a ROW of it being wrong: a reply that ran out of tokens
+ * inside the model's scratchpad ended the run, on the argument that a transport
+ * failure is not worth retrying — and it is not a transport failure.
+ *
+ *   WHOLE     answers, one call
+ *   CUT       handed on; past the decision it answers, before it is sent back
+ *   THINKING  withheld; the turn is sent back with a sentence, and the run goes on
+ *   SPENT     the same
+ *
+ * Measured before the fix: the THINKING and SPENT rows made exactly one call
+ * and returned `ok: false` with `failed on step 1` — eleven of this tree's
+ * fifteen benchmark runs ended that way, against four of the reference arm's.
+ */
+describe('the four states, through the engine', () => {
+  const dump = "We need answer user's request"
+
+  test('WHOLE: answers in one call', async () => {
+    const { fetching, engine } = realTransport([whole(answerTurn('4'))])
+
+    const outcome = await engine.run(history)
+
+    expect(fetching.bodies).toHaveLength(1)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.value.answer).toBe('4')
+    expect(outcome.notes).toEqual([])
+  })
+
+  test('CUT past the decision: answers in one call, and says it was cut', async () => {
+    const { fetching, engine } = realTransport(['truncated-past-think.json'])
+
+    const outcome = await engine.run(history)
+
+    expect(fetching.bodies).toHaveLength(1)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.value.answer.startsWith('1\n2\n3\n')).toBe(true)
+    expect(outcome.notes.join(' ')).toContain('cut off at the 1,135-token limit')
+  })
+
+  test('THINKING: the run takes another turn, and the dump is not in it', async () => {
+    // `truncated-in-think.json`: 965 characters of scratchpad on the answer
+    // channel, no `reasoning_content` at all. The transport withholds it — that
+    // part is right and unchanged — and the loop used to end on the refusal.
+    const { fetching, engine } = realTransport([
+      'truncated-in-think.json',
+      whole(answerTurn('Linux, 6.1')),
+    ])
+
+    const outcome = await engine.run(history)
+
+    // One call is the defect. Two is the fix.
+    expect(fetching.bodies).toHaveLength(2)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.value.answer).toBe('Linux, 6.1')
+    const second = fetching.bodies[1].messages[0].content
+    // The sentence is the whole mechanism: what happened, and what to do
+    // differently. It sits in the scratchpad, the channel the loop already
+    // uses to inform rather than stop. Pinned BYTE FOR BYTE, not by substring:
+    // against the real model, four shorter versions of this sentence — each
+    // of which contains every substring an earlier version of this test read
+    // — recovered 0 of 12 turns where these bytes recovered 10 of 10. The number
+    // in it is the one the model can plan against, read off the inference.
+    expect(second).toContain('# WORK SO FAR')
+    expect(second).toContain(
+      'action: the reply ran out of tokens inside its private reasoning, before it wrote act or result\nobservation: nothing was run and nothing was shown to the user: the whole 1,135-token reply limit went on reasoning. Reply again and reason briefly — decide in a sentence or two, then write act and result. If the task is large, do one small part of it this turn and leave the rest for later turns.',
+    )
+    // And NOT the scratchpad itself. `_dumped`'s argument for withholding it
+    // stands: the text is the model rehearsing tool calls, and it is not put
+    // back in front of the layer that would read them as decisions.
+    expect(second).not.toContain(dump)
+    // The transport's own classification travels, so the user is told WHY the
+    // loop needed a second turn — and the ceiling is named beside it.
+    expect(outcome.notes.join(' ')).toContain('still thinking')
+    expect(outcome.notes.join(' ')).toContain('965')
+    expect(outcome.notes.join(' ')).toContain('currently 1,135')
+    expect(outcome.notes).toContain('answered after 2 steps')
+  })
+
+  test('SPENT: the same turn back, for the opposite accident', async () => {
+    // `spent-in-think.json`: reasoning correctly routed, no `content` key at
+    // all. The scratchpad ate the whole reply without misrouting anything, and
+    // from the loop's seat that is the same fact — nothing to act on.
+    const { fetching, engine } = realTransport(['spent-in-think.json', whole(answerTurn('done'))])
+
+    const outcome = await engine.run(history)
+
+    expect(fetching.bodies).toHaveLength(2)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.value.answer).toBe('done')
+    expect(fetching.bodies[1].messages[0].content).toContain(
+      'ran out of tokens inside its private reasoning',
+    )
+    expect(outcome.notes.join(' ')).toContain('before the model wrote any answer')
+  })
+
+  test('and STREAMED, the dump takes the same branch', async () => {
+    // The app streams whenever anyone is watching, and the two paths through
+    // `OpenAICompatible` classify separately. A fix that held on `invoke` alone
+    // would leave every live run where it was.
+    const { fetching, engine } = realTransport([
+      'truncated-in-think.sse',
+      'truncated-in-think.sse',
+      'truncated-in-think.sse',
+    ])
+
+    const outcome = await engine.run(history, { onDelta: () => {} })
+
+    expect(fetching.bodies[0].stream).toBe(true)
+    expect(fetching.bodies).toHaveLength(2)
+    expect(outcome.ok).toBe(false)
+    expect(fetching.bodies[1].messages[0].content).toContain(
+      'ran out of tokens inside its private reasoning',
+    )
+    expect(fetching.bodies[1].messages[0].content).not.toContain(dump)
+  })
+
+  test('twice in a row ends the run, named, at the ceiling the unsaid reply already has', async () => {
+    const { fetching, engine } = realTransport([
+      'truncated-in-think.json',
+      'spent-in-think.json',
+      'truncated-in-think.json',
+    ])
+
+    const outcome = await engine.run(history)
+
+    // The ceiling, not the script: a third reply was available and unused.
+    expect(fetching.bodies).toHaveLength(2)
+    expect(outcome.ok).toBe(false)
+    // UNAVAILABLE at the END, whatever the transport called each refusal:
+    // this is the run's verdict and it is the same one `unreadable` gives the
+    // other route — nothing in the app is broken, the answer is not available
+    // on these terms.
+    expect(outcome.failure.code).toBe(Reason.UNAVAILABLE)
+    expect(outcome.failure.message).toBe(
+      'react: 2 replies in a row ended without saying whether to use a tool or to answer — the reply ran out of tokens inside its private reasoning, before it wrote act or result',
+    )
+    expect(outcome.value).toBe(null)
+    // Both refusals are in the notes, in the transport's own words, so the
+    // hint's "the notes say" is true of this route as well as the cut one.
+    const notes = outcome.notes.join('\n')
+    expect(notes).toContain('still thinking')
+    expect(notes).toContain('before the model wrote any answer')
+    expect(notes).toContain('Raise max tokens (currently 1,135)')
+    expect(outcome.notes).toContain(
+      'stopped after 2 steps: 2 replies in a row ended before saying what to do, so nothing was run and nothing was shown',
+    )
+  })
+
+  test('an overrun and a cut-before-the-decision are ONE streak, in either order', async () => {
+    // The argument for one streak rather than two, as a measurement: a design
+    // that counted them apart would make three calls here, spending two
+    // corrections on what is the same failure one token apart.
+    for (const order of [
+      ['truncated-in-think.json', 'truncated-mid-contract.json'],
+      ['truncated-mid-contract.json', 'truncated-in-think.json'],
+    ]) {
+      const { fetching, engine } = realTransport([...order, whole(answerTurn('unreached'))])
+
+      const outcome = await engine.run(history)
+
+      expect(fetching.bodies).toHaveLength(2)
+      expect(outcome.ok).toBe(false)
+      expect(outcome.failure.message).toContain('2 replies in a row')
+      restore()
+    }
+  })
+
+  test('the streak resets on a reply that decides, so the correction is spent per streak', async () => {
+    const tool = new EchoTool()
+    const { fetching, engine } = realTransport([
+      'truncated-in-think.json',
+      whole(toolTurn('echo({"text": "0"})')),
+      'spent-in-think.json',
+      whole(answerTurn('done')),
+    ])
+    engine.toolbox = new Toolbox([tool])
+
+    const outcome = await engine.run(history)
+
+    expect(fetching.bodies).toHaveLength(4)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.value.answer).toBe('done')
+    expect(tool.received).toEqual(['0'])
+  })
+
+  test('an overrun on the last turn is not reported as the previous turn', async () => {
+    // The hard stop quotes what the final turn wrote. After an overrun there
+    // is no final turn to quote, and a `last` left over from the tool call
+    // before it would have been quoted as if the model wrote it twice.
+    const tool = new EchoTool()
+    const { fetching, engine } = realTransport([
+      whole(toolTurn('echo({"text": "0"})')),
+      'truncated-in-think.json',
+    ])
+    engine.toolbox = new Toolbox([tool])
+
+    const outcome = await engine.run(history, { budget: { steps: 2 } })
+
+    expect(fetching.bodies).toHaveLength(2)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.failure.message).toBe(
+      'react: the 2-step budget ran out before the agent answered',
+    )
+    const note = outcome.notes.find((line) => line.includes('instead of an answer'))
+    expect(note).toContain('the last turn wrote nothing at all instead of an answer')
+    expect(note).not.toContain('echo(')
+    expect(outcome.value).toBe(null)
+  })
+
+  test('the overrun pass reaches the live view as a step holding nothing', async () => {
+    // `Budget` counts the pass, `onUsage` bills it and `onPrompt` announces
+    // it; a view that hears no STEP for it draws one step fewer than the run
+    // made and keeps the overrun's streamed reasoning on screen under the next
+    // turn's. `parsed: null` is what the loop is holding, not a stand-in.
+    const steps = []
+    const { fetching, engine } = realTransport([
+      'truncated-in-think.json',
+      whole(answerTurn('Linux, 6.1')),
+    ])
+
+    const outcome = await engine.run(history, { onStep: (event) => steps.push(event) })
+
+    expect(outcome.ok).toBe(true)
+    expect(fetching.bodies).toHaveLength(2)
+    expect(steps.map((event) => event.step)).toEqual([1, 2])
+    expect(steps[0].parsed).toBe(null)
+    expect(steps[1].parsed.answer).toBe('Linux, 6.1')
+  })
+
+  test('a stop that lands on the overrun turn carries the reply the run had', async () => {
+    // The overrun nulls `last` so the hard stop cannot quote the previous turn
+    // as this one — and nulled ABOVE the abort check, a stop landing while
+    // the overrun reply was on the wire said "before the model had said
+    // anything" after a run that had made a tool call. A stop landing on a
+    // dead fetch after the same tool turn carries that turn through; this one
+    // must too. The stop is pressed from `onUsage`, which the transport calls
+    // with the body in hand and before it classifies the reply.
+    const tool = new EchoTool()
+    const controller = new AbortController()
+    const { fetching, engine } = realTransport([
+      whole(toolTurn('echo({"text": "0"})')),
+      'truncated-in-think.json',
+    ])
+    engine.toolbox = new Toolbox([tool])
+
+    const outcome = await engine.run(history, {
+      signal: controller.signal,
+      onUsage: ({ step }) => {
+        if (step === 2) controller.abort()
+      },
+    })
+
+    expect(fetching.bodies).toHaveLength(2)
+    expect(outcome.ok).toBe(true)
+    expect(tool.received).toEqual(['0'])
+    expect(outcome.value.isAnswer).toBe(false)
+    expect(outcome.value.answer).toBe('echo({"text": "0"})')
+    expect(outcome.notes).toContain('you stopped this run after 2 step(s)')
+    expect(outcome.notes.join(' ')).not.toContain('before the model had said anything')
+  })
+
+  test('the ending does not argue with the note beside it about the ceiling', async () => {
+    // Above `OpenAICompatible.RAISABLE` the transport's remedy says raising the
+    // limit is not the answer, and the loop pushes that remedy into the notes.
+    // A hint on the same Outcome that said "that ceiling is the lever" was the
+    // one place this file named a lever, in words the note contradicted. The
+    // hint defers to the notes and asserts nothing about the remedy.
+    const { engine } = realTransport(['spent-in-think.json', 'spent-in-think.json'], {
+      maxTokens: 131072,
+    })
+
+    const outcome = await engine.run(history)
+
+    expect(outcome.ok).toBe(false)
+    const notes = outcome.notes.join('\n')
+    expect(notes).toContain('The limit is already 131,072 tokens, so raising it is not the answer')
+    expect(outcome.failure.hint).not.toContain('lever')
+    expect(outcome.failure.hint).not.toContain('max tokens')
+    expect(outcome.failure.hint).toContain('The notes say what happened to each reply')
+    expect(outcome.failure.hint).toContain("with the transport's own remedy beside it")
+  })
+
+  test('a transport that really failed still ends the run on the spot', async () => {
+    // The class of the outcome is what decides, not the fact of a failure. A
+    // dead endpoint is the case the old comment was right about: the next
+    // request WOULD be the same request.
+    const { fetching, engine } = realTransport([])
+
+    const outcome = await engine.run(history)
+
+    expect(fetching.bodies).toHaveLength(1)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.failure.code).toBe(Reason.UNAVAILABLE)
+    expect(outcome.notes).toContain('failed on step 1')
   })
 })

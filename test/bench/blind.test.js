@@ -16,50 +16,122 @@ import {
   BANNED,
   blindTranscript,
   DISCLOSURE,
+  ENDING_LINES,
+  ENDINGS,
+  endingOf,
   findTerms,
+  findTools,
   frame,
+  kindOf,
   letterFor,
+  mapTools,
+  outcomeOf,
   REPLACEMENTS,
-  RESIDUAL,
   RUBRIC,
-  SEPARATION_TERMS,
+  readTurn,
+  renderPrompt,
+  renderTurns,
+  residue,
   scrub,
   separation,
+  slotsFor,
+  toolsOf,
 } from '../../bench/blind.js'
 
 /**
- * The blind set, held to what it now claims: that it is a PROJECTION of the
- * loop, that everything else is structurally absent rather than scrubbed away,
- * and that what it cannot remove it declares.
+ * The blind set, held to what it claims: that it is ONE projection of two
+ * loops — tool identifiers and reply grammar rendered the same way for both
+ * arms, the assembled prompt rendered once under the same mapping, every ending
+ * in one vocabulary — and that the gate exits 1 on anything that names an arm.
  *
- * The panel this file was rewritten for reported nine surviving tool
- * identifiers, both arms recognisable from their opening line, and the key
- * inside the directory a judge is handed. A blind set that quietly leaks is
- * worse than no blind set, because a judge who recognises the harness stops
- * judging the work — and a blind set that LAUNDERS what it cannot remove is
- * worse still, because the lie is then in the artifact.
+ * P4, decided by the lead after two panels were spent on a set the gate
+ * refused: the projection is not the artifact, so a tool name may be rendered
+ * as a slot HERE while nothing in `src/` or either scaffold is renamed. A judge
+ * scores what the loop did with its tools, not what the tools were called.
  */
 
-/** A recorded run in the shape `run.js` writes and `blind.js` reads. */
-function record({ answer = 'the final answer' } = {}) {
+const OURS_PROMPT = [
+  'You are a careful, direct assistant running entirely inside the user’s browser.',
+  '',
+  '# TOOLS',
+  '',
+  '- read_file({"path": string})',
+  '    Read a file from the workspace and return its whole contents.',
+  '- write_file({"path": string, "content": string})',
+  '    Create a file, or replace one entirely.',
+  '- list_files({"path?": string})',
+  '    List what is in a directory of the workspace, with sizes.',
+  '- shell({"command": string})',
+  '    Run a command in the workspace with /bin/sh.',
+  '',
+  '# RESPONSE FORMAT',
+  '',
+  '- think (list): Your private reasoning',
+  "- act: Exactly 'tool' or exactly 'answer'.",
+  '',
+  '# CONVERSATION',
+  '',
+  '[USER]: do a thing',
+  '',
+  'The workspace is /Users/kaush/Downloads/Dev/ASKK/bench/work/probe/ours/1. Every path is relative to it.',
+  '',
+  '# CONTEXT',
+  '',
+  'now: Tuesday, 1 September 2026 at 15:36 (America/New_York)',
+].join('\n')
+
+const AZ_SYSTEM = [
+  '# Agent Zero System Manual',
+  '',
+  '## your role',
+  'agent zero autonomous json ai agent.',
+  '',
+  '## Environment',
+  'your working directory is /Users/kaush/Downloads/Dev/ASKK/bench/work/probe/agent-zero/1 and every path you use is relative to it',
+  'the shell is /bin/sh, one command per call',
+  '',
+  '### Response format (json fields names)',
+  '- thoughts: array thoughts before execution in natural language',
+  '- tool_name: use tool name',
+  '',
+  '## available tools',
+  '',
+  '### response:',
+  'final response to user',
+  '{"tool_name": "response", "tool_args": {"text": "..."}}',
+  '',
+  '### code_execution_tool',
+  'execute code',
+  '{"tool_name": "code_execution_tool", "tool_args": {"runtime": "terminal", "code": "ls"}}',
+  '',
+  '### text_editor',
+  'read or write a file',
+  '',
+  '#### read',
+  '{"tool_name": "text_editor", "tool_args": {"action": "read", "path": "x"}}',
+].join('\n')
+
+/** A recorded run in the shape `run.js` writes, in our arm's action shape. */
+function oursRecord({ answer = 'the final answer', events = null, check = null } = {}) {
   return {
+    task: 'probe',
+    scaffold: 'ours',
+    index: 1,
+    check: check ?? { pass: true, checks: [{ name: 'a thing was done', ok: true }] },
     run: {
       answer,
-      events: [
+      stop: 'answered',
+      turns: 2,
+      tokens: { prompt: 100, completion: 50, total: 150 },
+      events: events ?? [
         { type: 'task', at: 0, text: 'do a thing' },
-        {
-          type: 'request',
-          at: 1,
-          messages: [
-            { role: 'system', content: '# Agent Zero System Manual\nyou live in /a0' },
-            { role: 'user', content: 'You are a careful, direct assistant' },
-          ],
-        },
+        { type: 'request', at: 1, messages: [{ role: 'user', content: OURS_PROMPT }] },
         {
           type: 'reply',
           at: 1,
-          content: '{"tool_name":"code_execution_tool","tool_args":{"runtime":"terminal"}}',
-          reasoning: '',
+          content:
+            'think: [Need to look]\n\nplan: [List, then read]\n\nact: tool\n\nresult: list_files({})\nread_file({"path": "x.py"})',
+          reasoning: 'Need output:\nthink: [...]\nplan: [...]\nact: tool\nresult: list_files({})',
           finish: 'stop',
           state: 'whole',
           notes: [],
@@ -67,132 +139,604 @@ function record({ answer = 'the final answer' } = {}) {
           ms: 1000,
           usage: { completion_tokens: 7 },
         },
-        { type: 'action', at: 1, action: { kind: 'tool', call: 'read_file({"path":"x"})' } },
-        { type: 'observation', at: 1, observation: 'a file', ran: [] },
+        {
+          type: 'action',
+          at: 1,
+          action: {
+            kind: 'tool',
+            call: 'list_files({})\nread_file({"path": "x.py"})',
+            raw: 'think: [Need to look]\n\nplan: [List, then read]\n\nact: tool\n\nresult: list_files({})\nread_file({"path": "x.py"})',
+            parsed: {
+              think: ['Need to look'],
+              plan: ['List', 'then read'],
+              act: 'tool',
+              result: 'list_files({})\nread_file({"path": "x.py"})',
+            },
+          },
+        },
+        {
+          type: 'observation',
+          at: 1,
+          observation: 'list_files -> x.py  12 bytes\nread_file -> print(1)\n',
+          ran: [
+            { name: 'list_files', args: '' },
+            { name: 'read_file', args: '{"path": "x.py"}' },
+          ],
+        },
+        {
+          type: 'request',
+          at: 2,
+          messages: [
+            {
+              role: 'user',
+              content: OURS_PROMPT.replace(
+                '# CONTEXT',
+                '# WORK SO FAR\n\naction: list_files({})\nobservation: list_files -> x.py  12 bytes\n\n# CONTEXT',
+              ),
+            },
+          ],
+        },
+        {
+          type: 'reply',
+          at: 2,
+          content: 'think: []\n\nplan: []\n\nact: answer\n\nresult: the final answer',
+          reasoning: '',
+          finish: 'stop',
+          state: 'whole',
+          notes: [],
+          model: 'a-model',
+          ms: 900,
+          usage: { completion_tokens: 9 },
+        },
+        {
+          type: 'action',
+          at: 2,
+          action: {
+            kind: 'answer',
+            text: 'the final answer',
+            raw: 'think: []\n\nplan: []\n\nact: answer\n\nresult: the final answer',
+            parsed: { think: [], plan: [], act: 'answer', result: 'the final answer' },
+          },
+        },
       ],
     },
   }
 }
 
-describe('the projection: a judge is handed the loop and nothing else', () => {
-  test('the request block — both system prompts — is structurally absent', () => {
-    // The whole leak in one assertion. `5 of 5` files of each arm opened with
-    // its own system prompt's first line, at every turn.
-    const out = blindTranscript(record(), 'collatz', 'A')
-    expect(out).not.toContain('— sent')
-    expect(out).not.toContain('You are a careful, direct assistant')
-    expect(out).not.toContain('System Manual')
-    expect(out).not.toContain('you live in /app')
+/** The same run in the reference arm's action shape. */
+function azRecord({ answer = 'the final answer', events = null } = {}) {
+  const reply1 =
+    '{"thoughts": ["I need to read x.py"], "headline": "Reading x.py", "tool_name": "text_editor", "tool_args": {"action": "read", "path": "x.py"}}'
+  const reply2 =
+    '{"thoughts": ["Done"], "headline": "Answering", "tool_name": "response", "tool_args": {"text": "the final answer"}}'
+  return {
+    task: 'probe',
+    scaffold: 'agent-zero',
+    index: 1,
+    check: { pass: false, checks: [{ name: 'a thing was done', ok: false, detail: 'nope' }] },
+    run: {
+      answer,
+      stop: 'answered',
+      turns: 2,
+      tokens: { prompt: 300, completion: 60, total: 360 },
+      events: events ?? [
+        { type: 'task', at: 0, text: 'do a thing' },
+        {
+          type: 'request',
+          at: 1,
+          messages: [
+            { role: 'system', content: AZ_SYSTEM },
+            { role: 'user', content: '{"user_message":"do a thing"}' },
+          ],
+        },
+        {
+          type: 'reply',
+          at: 1,
+          content: reply1,
+          reasoning: 'Use text_editor to read. Output JSON with tool_name.',
+          finish: 'stop',
+          state: 'whole',
+          notes: [],
+          model: 'a-model',
+          ms: 1000,
+          usage: { completion_tokens: 7 },
+        },
+        {
+          type: 'action',
+          at: 1,
+          action: {
+            kind: 'tool',
+            tool: 'text_editor',
+            args: { action: 'read', path: 'x.py' },
+            raw: reply1,
+          },
+        },
+        {
+          type: 'observation',
+          at: 1,
+          observation: 'print(1)\n',
+          ran: [{ name: 'read_file', args: { path: 'x.py' } }],
+        },
+        {
+          type: 'request',
+          at: 2,
+          messages: [
+            { role: 'system', content: AZ_SYSTEM },
+            { role: 'user', content: '{"user_message":"do a thing"}' },
+            { role: 'assistant', content: reply1 },
+            { role: 'user', content: '{"tool_name":"text_editor","result":"print(1)\\n"}' },
+          ],
+        },
+        {
+          type: 'reply',
+          at: 2,
+          content: reply2,
+          reasoning: '',
+          finish: 'stop',
+          state: 'whole',
+          notes: [],
+          model: 'a-model',
+          ms: 900,
+          usage: { completion_tokens: 9 },
+        },
+        {
+          type: 'action',
+          at: 2,
+          action: {
+            kind: 'answer',
+            tool: 'response',
+            args: { text: 'the final answer' },
+            text: 'the final answer',
+            raw: reply2,
+          },
+        },
+      ],
+    },
+  }
+}
+
+describe('readTurn: the four things both formats carry, read off either shape', () => {
+  test('the reference arm’s envelope — thoughts, headline, tool, args', () => {
+    const turn = readTurn(azRecord().run.events[3].action)
+    expect(turn.reasoning).toEqual(['I need to read x.py', 'Reading x.py'])
+    expect(turn.calls).toEqual([{ tool: 'text_editor', args: { action: 'read', path: 'x.py' } }])
+    expect(turn.answer).toBeNull()
+    expect(turn.malformed).toBeNull()
   })
 
-  test('the header — the label, the verdict, the check list, the departures — never enters', () => {
-    // Structural, not textual. `blind.js` reads the run's JSON and asks `run.js`
-    // for the body; there is nothing to strip because nothing was rendered.
-    // The old version cut the header off a rendered document with
-    // `indexOf('\n## task')`, so a heading added above it would have travelled.
-    const out = blindTranscript(record(), 'collatz', 'A')
-    expect(out.startsWith('# collatz — transcript A')).toBe(true)
-    expect(out).not.toContain('check: PASS')
-    // The heading `renderTranscript` writes over the `cuts` table. It says
-    // "changed, and … deliberately did not" because three of the seventeen rows
-    // are `cut: 'nothing'`, and a heading that called those departures was the
-    // one part of that table which was not true.
-    expect(out).not.toContain('what this scaffold changed')
-    expect(out).not.toContain('run 1')
+  test('our arm’s call lines — think, plan, every call on its own row', () => {
+    const turn = readTurn(oursRecord().run.events[3].action)
+    expect(turn.reasoning).toEqual(['Need to look', 'List', 'then read'])
+    expect(turn.calls).toEqual([
+      { tool: 'list_files', args: {} },
+      { tool: 'read_file', args: { path: 'x.py' } },
+    ])
   })
 
-  test('the turn, the parse and the observation all survive — that is the rubric', () => {
-    const out = blindTranscript(record(), 'collatz', 'A')
-    expect(out).toContain('## task')
-    expect(out).toContain('turn 1 — reply')
-    expect(out).toContain('turn 1 — parsed as')
-    expect(out).toContain('turn 1 — observation')
-    expect(out).toContain('the final answer')
+  test('an answer is an answer in both shapes, with its reasoning kept', () => {
+    const ours = readTurn(oursRecord().run.events[7].action)
+    const az = readTurn(azRecord().run.events[7].action)
+    expect(ours.answer).toBe('the final answer')
+    expect(az.answer).toBe('the final answer')
+    expect(az.reasoning).toEqual(['Done', 'Answering'])
+    expect(ours.calls).toEqual([])
+    expect(az.calls).toEqual([])
+  })
+
+  test('a reply that did not fit the contract is read as such, not as a call', () => {
+    const turn = readTurn({
+      kind: 'malformed',
+      reason: 'misformat',
+      note: 'You have misformatted your message.',
+      raw: '{"thoughts": ["half a',
+    })
+    expect(turn.malformed).toEqual({
+      reason: 'misformat',
+      note: 'You have misformatted your message.',
+    })
+    expect(turn.calls).toEqual([])
+    expect(turn.reasoning).toEqual([])
+  })
+
+  test('a reply cut inside its envelope still yields the thoughts that arrived whole', () => {
+    // `median-bug/agent-zero/1` turn 2 in the recorded set: the model's whole
+    // diagnosis of the bug sits in a reply the token ceiling cut at
+    // `"tool_name": "text_edi`, the harness scored it a misformat, and the
+    // projection rendered `reasoning: (none)` over it. A judge scoring the
+    // loop's reasoning was shown nothing where the record holds the most.
+    const turn = readTurn({
+      kind: 'malformed',
+      reason: 'misformat',
+      note: 'You have misformatted your message.',
+      raw: [
+        '{',
+        '    "thoughts": [',
+        '        "The bug: E.g. [1,2,3,4] returns 3 instead of 2.5.",',
+        '        "Fix: average ordered[middle-1] and ordered[middle].",',
+        '        "I\'ll write the fixed file, then verify: te',
+      ].join('\n'),
+    })
+    // Every string that closed is a thought; the one the ceiling cut is not
+    // guessed at, and a `]` inside a thought does not end the list early.
+    expect(turn.reasoning).toEqual([
+      'The bug: E.g. [1,2,3,4] returns 3 instead of 2.5.',
+      'Fix: average ordered[middle-1] and ordered[middle].',
+    ])
+    expect(turn.malformed?.reason).toBe('misformat')
+    const withHeadline = readTurn({
+      kind: 'malformed',
+      reason: 'misformat',
+      note: '',
+      raw: '{"thoughts": ["a", "b"], "headline": "Writing it", "tool_name": "text_edi',
+    })
+    expect(withHeadline.reasoning).toEqual(['a', 'b', 'Writing it'])
+  })
+
+  test('an argument text that is not JSON is carried as text rather than dropped', () => {
+    const turn = readTurn({ kind: 'tool', call: 'shell(ls -la)', raw: '', parsed: {} })
+    expect(turn.calls).toEqual([{ tool: 'shell', args: 'ls -la' }])
   })
 })
 
-describe('paths go first, and go whole', () => {
+describe('the tool vocabulary is read off the run, per arm', () => {
+  test('listed in the first prompt, in listing order, in both listing shapes', () => {
+    expect(toolsOf(oursRecord())).toEqual(['read_file', 'write_file', 'list_files', 'shell'])
+    expect(toolsOf(azRecord())).toEqual(['code_execution_tool', 'text_editor'])
+  })
+
+  test('a tool used as the ANSWER is not a tool the projection names', () => {
+    // `response` is listed as a tool and rendered by this projection as an
+    // ending. Mapping it would rewrite every English "response" in one arm's
+    // files and make the word's absence a separator in the other's.
+    expect(toolsOf(azRecord())).not.toContain('response')
+  })
+
+  test('a tool used but not listed is still vocabulary', () => {
+    const record = oursRecord()
+    record.run.events[3].action.call = 'search({"q": "x"})'
+    expect(toolsOf(record)).toContain('search')
+  })
+
+  test('slots are assigned in order of first use across the arm’s whole set, then listing order', () => {
+    const first = oursRecord()
+    const second = oursRecord()
+    second.run.events[3].action.call =
+      'shell({"command": "ls"})\nwrite_file({"path": "a", "content": "b"})'
+    const slots = slotsFor([first, second])
+    expect([...slots.entries()]).toEqual([
+      ['list_files', 'tool_1'],
+      ['read_file', 'tool_2'],
+      ['shell', 'tool_3'],
+      ['write_file', 'tool_4'],
+    ])
+    // The same tool gets the same slot in every file of one arm.
+    expect(slotsFor([second, first]).get('list_files')).toBe('tool_3')
+  })
+
+  test('longer names are mapped before the names inside them', () => {
+    const slots = new Map([
+      ['editor', 'tool_1'],
+      ['text_editor', 'tool_2'],
+    ])
+    expect(mapTools('text_editor and editor', slots)).toBe('tool_2 and tool_1')
+  })
+
+  test('mapping is whole-word and case-sensitive, and sees through an escaped newline', () => {
+    const slots = new Map([['read_file', 'tool_1']])
+    expect(mapTools('call read_file now', slots)).toBe('call tool_1 now')
+    expect(mapTools('read_files or my_read_file', slots)).toBe('read_files or my_read_file')
+    expect(mapTools('Read_file', slots)).toBe('Read_file')
+    // The nine leaks of the first panel: a `\b`-bounded rename left every
+    // occurrence preceded by an escaped newline inside a JSON string.
+    expect(mapTools('"result: \\nread_file({})"', slots)).toBe('"result: \\ntool_1({})"')
+  })
+
+  test('the verifier finds what the mapper would have mapped, and nothing else', () => {
+    expect(findTools('call read_file now', ['read_file'], 'f').length).toBe(1)
+    expect(findTools('"\\nread_file({})"', ['read_file'], 'f').length).toBe(1)
+    expect(findTools('read_files', ['read_file'], 'f')).toEqual([])
+    expect(findTools('the response was', ['response'], 'f').length).toBe(1)
+  })
+})
+
+describe('one turn grammar for both arms', () => {
+  test('a turn is reasoning, call, result — and never the reply as written', () => {
+    for (const record of [oursRecord(), azRecord()]) {
+      const out = renderTurns(record)
+      expect(out).toContain('## turn 1')
+      expect(out).toContain('reasoning:')
+      expect(out).toContain('call: ')
+      expect(out).toContain('result:')
+      expect(out).toContain('## turn 2 — answered')
+      expect(out).toContain('the final answer')
+      // The reply grammar is the thing that separated 5 of 5 pairs on sight.
+      expect(out).not.toContain('think:')
+      expect(out).not.toContain('act: ')
+      expect(out).not.toContain('"tool_name"')
+      expect(out).not.toContain('"thoughts"')
+      expect(out).not.toContain('headline')
+      // The private reasoning channel is where the model rehearses its output
+      // format verbatim, and no harness ever reads it.
+      expect(out).not.toContain('reasoning channel')
+      expect(out).not.toContain('Need output:')
+      expect(out).not.toContain('Output JSON')
+    }
+  })
+
+  test('arguments render as key: value, a multi-line value as an indented block', () => {
+    const record = azRecord()
+    record.run.events[3].action = {
+      kind: 'tool',
+      tool: 'text_editor',
+      args: { action: 'write', path: 'x.py', content: 'a\nb\n' },
+      raw: '',
+    }
+    const out = renderTurns(record)
+    expect(out).toContain(
+      'call: text_editor\n  action: write\n  path: x.py\n  content:\n    a\n    b\n',
+    )
+  })
+
+  test('our arm’s several calls in one turn are several call rows', () => {
+    const out = renderTurns(oursRecord())
+    expect(out).toContain('call: list_files\n')
+    expect(out).toContain('call: read_file\n  path: x.py\n')
+  })
+
+  test('a reply that did not fit the contract says so, and shows what the harness said back', () => {
+    const record = azRecord()
+    record.run.events[3].action = {
+      kind: 'malformed',
+      reason: 'misformat',
+      note: 'You have misformatted your message.',
+      raw: '{"thoughts": ["half',
+    }
+    record.run.events[4].observation = 'You have misformatted your message.'
+    const out = renderTurns(record)
+    expect(out).toContain('call: none — the reply did not fit the contract (misformat)')
+    expect(out).toContain('You have misformatted your message.')
+    expect(out).toContain('reasoning:\n- (none)')
+    // The same reply cut one thought later: what closed is rendered.
+    record.run.events[3].action.raw = '{"thoughts": ["The bug is on line 3", "half'
+    expect(renderTurns(record)).toContain('reasoning:\n- The bug is on line 3\n')
+  })
+
+  test('every ending in the vocabulary is one a recorded run can reach', () => {
+    // Derived, not restated: `endingOf` is asked for every stop the driver
+    // records, and `renderTurns` for the one note it writes mid-run. A word in
+    // `ENDINGS` that neither produces is a declared-and-never-emitted ending,
+    // this tree's recurring defect.
+    const refusal = (state) => ({
+      stop: 'transport-refused',
+      events: [{ type: 'transport-refusal', state }],
+    })
+    const stops = [
+      { stop: 'answered', events: [] },
+      refusal('thinking'),
+      refusal('spent'),
+      refusal('whole'),
+      { stop: 'scaffold-stop', events: [] },
+      { stop: 'cap', events: [] },
+      { stop: 'endpoint-error', events: [] },
+    ].map((run) => endingOf(run))
+    const cut = azRecord()
+    cut.run.events[2].state = 'cut'
+    const noted = Object.values(ENDINGS).filter((ending) => renderTurns(cut).includes(ending))
+    expect(new Set([...stops, ...noted])).toEqual(new Set(Object.values(ENDINGS)))
+    // `cut` is the mid-run note and not a stop: a run that was cut went on.
+    expect(stops).not.toContain(ENDINGS.cut)
+    expect(noted).toContain(ENDINGS.cut)
+  })
+
+  test('no sentence this renderer writes beside an ending carries a string the scrub writes', () => {
+    // "harness" is what `scaffold` scrubs to, and an ending sentence carrying
+    // `this harness` sorted three pairs toward the arm that ran out of tokens.
+    // `kindOf` classes a replacement before an ending, so such a sentence
+    // would be fatal to the gate rather than merely wrong; this pins it at
+    // the source.
+    const sentences = [
+      ...Object.values(ENDINGS),
+      ENDING_LINES.refusal(1200),
+      ENDING_LINES.own,
+      ENDING_LINES.cap(12),
+      ENDING_LINES.cut,
+    ]
+    for (const sentence of sentences) {
+      for (const replacement of REPLACEMENTS) expect(sentence).not.toContain(replacement)
+    }
+    expect(kindOf(ENDINGS.scratchpad)).toBe('ending')
+  })
+
+  test('a reply that ran out of tokens in its scratchpad ends the run in those words', () => {
+    for (const state of ['thinking', 'spent']) {
+      const record = oursRecord()
+      record.run.stop = 'transport-refused'
+      record.run.events = [
+        ...record.run.events.slice(0, 2),
+        {
+          type: 'reply',
+          at: 1,
+          content: '',
+          reasoning: '',
+          finish: 'length',
+          state,
+          notes: [],
+          ms: 1,
+          usage: { completion_tokens: 1200 },
+        },
+        {
+          type: 'transport-refusal',
+          at: 1,
+          state,
+          message:
+            'openai-compatible: the reply ran out of tokens while the model was still thinking, so 4,808 characters of its private reasoning arrived on the answer channel',
+          hint: 'Raise max tokens (currently 1,200)',
+        },
+      ]
+      const out = renderTurns(record)
+      expect(out).toContain('## turn 1 — ran out of tokens in its scratchpad')
+      expect(out).toContain('1200 tokens')
+      expect(out).not.toContain('openai-compatible')
+      expect(out).not.toContain('private reasoning')
+      expect(out).not.toContain('Raise max tokens')
+      expect(endingOf(record.run)).toBe('ran out of tokens in its scratchpad')
+    }
+  })
+
+  test('a cut reply is noted in those words and the turn goes on', () => {
+    const record = azRecord()
+    record.run.events[2].state = 'cut'
+    record.run.events[2].notes = [
+      'the reply was cut off at the 1,200-token limit after 416 characters, so it may stop mid-sentence',
+    ]
+    const out = renderTurns(record)
+    expect(out).toContain('> cut mid-reply at the token ceiling; what arrived is read below')
+    expect(out).not.toContain('1,200-token limit')
+    expect(out).toContain('call: text_editor')
+  })
+
+  test('a refusal for any other reason is refused, and the transport’s own words stay out', () => {
+    const record = oursRecord()
+    record.run.stop = 'transport-refused'
+    record.run.events = [
+      ...record.run.events.slice(0, 2),
+      { type: 'reply', at: 1, content: '', state: 'whole', notes: [], ms: 1, usage: {} },
+      {
+        type: 'transport-refusal',
+        at: 1,
+        state: 'whole',
+        message: 'openai-compatible: no content',
+        hint: '',
+      },
+    ]
+    expect(renderTurns(record)).toContain('## turn 1 — refused')
+    expect(renderTurns(record)).not.toContain('no content')
+    expect(endingOf(record.run)).toBe('refused')
+  })
+
+  test('a ceiling — the harness’s own or the rig’s — is stopped at a ceiling', () => {
+    const own = oursRecord()
+    own.run.stop = 'scaffold-stop'
+    own.run.events = [
+      ...own.run.events.slice(0, 5),
+      { type: 'scaffold-stop', at: 1, reason: 'the budget of 600 seconds is spent' },
+    ]
+    expect(renderTurns(own)).toContain('## turn 1 — stopped at a ceiling')
+    expect(renderTurns(own)).toContain('the budget of 600 seconds is spent')
+    expect(endingOf(own.run)).toBe('stopped at a ceiling')
+
+    const rig = oursRecord()
+    rig.run.stop = 'cap'
+    rig.run.events = [...rig.run.events.slice(0, 5), { type: 'turn-cap', at: 12, limit: 12 }]
+    expect(renderTurns(rig)).toContain('## stopped at a ceiling — the rig’s 12-turn cap')
+    expect(endingOf(rig.run)).toBe('stopped at a ceiling')
+  })
+
+  test('an endpoint that served nothing is the endpoint’s failure', () => {
+    const record = oursRecord()
+    record.run.stop = 'endpoint-error'
+    record.run.events = [
+      ...record.run.events.slice(0, 2),
+      { type: 'endpoint-error', at: 1, error: 'fetch failed', hint: '', ms: 3 },
+    ]
+    expect(renderTurns(record)).toContain('## turn 1 — the endpoint failed')
+    expect(endingOf(record.run)).toBe('the endpoint failed')
+  })
+})
+
+describe('the prompt comes back, once, under its own heading', () => {
+  test('every message of the first request, by role, after the loop', () => {
+    const out = renderPrompt(azRecord())
+    expect(out).toContain('## the prompt, as assembled for turn 1')
+    expect(out).toContain('### system')
+    expect(out).toContain('### user')
+    expect(out).toContain('## available tools')
+    const single = renderPrompt(oursRecord())
+    expect(single).toContain('### user')
+    expect(single).not.toContain('### system')
+    expect(single).toContain('# TOOLS')
+  })
+
+  test('and what the second request added, so the re-entry of an observation can be seen', () => {
+    const ours = renderPrompt(oursRecord())
+    expect(ours).toContain('## what the prompt for turn 2 added')
+    expect(ours).toContain('# WORK SO FAR')
+    expect(ours).toContain('observation: list_files -> x.py  12 bytes')
+    const az = renderPrompt(azRecord())
+    expect(az).toContain('### assistant')
+    expect(az).toContain('"result":"print(1)\\n"')
+  })
+
+  test('a run with one request has nothing to add and says so', () => {
+    const record = oursRecord()
+    record.run.events = record.run.events.slice(0, 5)
+    expect(renderPrompt(record)).toContain('(the run made one request)')
+  })
+
+  test('in the emitted file, the prompt carries the same slots and the same scrub as the turns', () => {
+    const slots = slotsFor([azRecord()])
+    const {
+      text: out,
+      turns,
+      prompt,
+    } = blindTranscript(azRecord(), 'probe', 'A', {
+      armIds: ['agent-zero', 'ours'],
+      slots,
+    })
+    expect(out).toBe(frame('probe', 'A', `${turns}\n${prompt}`))
+    expect(out).toContain('### tool_1')
+    expect(out).toContain('"tool_name": "tool_1"')
+    expect(out).not.toContain('code_execution_tool')
+    expect(out).not.toContain('text_editor')
+    expect(out).not.toContain('Agent Zero')
+    expect(out).not.toContain('/Users/')
+    expect(out).toContain('/project')
+    // The turns come before the prompt: the loop is what is judged, the
+    // prompt is what it was judged under.
+    expect(out.indexOf('## turn 1')).toBeLessThan(out.indexOf('## the prompt, as assembled'))
+  })
+})
+
+describe('paths go first, and go whole, to ONE replacement', () => {
   test('a workspace path carrying the harness’s own name leaves nothing behind', () => {
-    // The directory is <repo>/bench/work/<task>/<harness>/<n>, so the harness
-    // name is INSIDE a path. A name-level rule running first would rewrite the
-    // middle and leave the rest.
-    // Pinned as an EQUALITY, not as four absences. Absences pass over a
-    // half-rewritten path, because the name-level rules mop up whatever the
-    // path rule left — measured: with the absolute-path rule deleted this test
-    // stayed green on `not.toContain` assertions alone.
     const line = 'cd /Users/kaush/Downloads/Dev/ASKK/bench/work/collatz/agent-zero/1 && ls'
     expect(scrub(line)).toBe('cd /project && ls')
-    expect(scrub('the file tree of /Users/kaush/Downloads/Dev/ASKK/bench/work/x/ours/1:')).toBe(
-      'the file tree of /project',
+  })
+
+  test('a scratch-harness temp path goes to the same word, so a path cannot name an arm', () => {
+    // `/private/tmp/…` used to become `/workspace` while `/Users/…` became
+    // `/project`, and `/workspace` then sat in one arm's file and no other.
+    expect(scrub('/private/tmp/claude-501/-Users-kaush-Downloads-Dev-ASKK/x/rig/work/a')).toBe(
+      '/project',
     )
+    expect(scrub('-Users-kaush-Downloads-Dev-ASKK')).toBe('-project')
   })
 
-  test('a scratch-harness temp path goes too', () => {
-    const out = scrub('/private/tmp/claude-501/-Users-kaush-Downloads-Dev-ASKK/x/rig/work/a')
-    expect(out).toBe('/workspace')
-  })
-
-  test('the run directory written as a bare relative path goes as well', () => {
-    // What a model writes when it echoes its own workspace back with no
-    // absolute prefix for the rule above to swallow. The harness id is in it.
+  test('the run directory as a bare relative path, with or without the rig’s prefix', () => {
     expect(scrub('I wrote it to bench/work/slugify-module/ours/1/src/x.js')).toBe(
-      'I wrote it to workspace',
+      'I wrote it to /project',
     )
+    // What the model reads back off its own cwd — `no-such-capability/ours/1`
+    // appeared seven times in one run's reasoning. The arm name is inside a
+    // fragment the arm rule would turn into `this harness`, which reached one
+    // arm's file and no other; the fragment goes to the path word instead.
+    expect(
+      scrub('Directory name no-such-capability/ours/1 suggests a test', ['agent-zero', 'ours'], {
+        tasks: ['no-such-capability'],
+      }),
+    ).toBe('Directory name /project suggests a test')
   })
 })
 
 describe('the arms’ own names, read off the run', () => {
-  test('an arm name inside a bare relative path goes', () => {
-    // Measured leak: `no-such-capability/ours/1` appeared six times in one
-    // transcript, inside the model's own reasoning, with no absolute prefix for
-    // the path rules to swallow. A previous review called `ours` "too common a
-    // word to put in BANNED" and left it.
-    const line = 'The workspace name no-such-capability/ours/1 suggests a benchmark'
-    expect(scrub(line, ['agent-zero', 'ours'])).toBe(
-      'The workspace name no-such-capability/this harness/1 suggests a benchmark',
-    )
-  })
-
-  test('nothing is scrubbed when no arm names are supplied', () => {
-    // The set is the directories that actually ran, so an empty set is a
-    // no-op rather than a guess.
+  test('a bare arm name goes, and a prose word containing one is left alone', () => {
+    expect(scrub('ours ran; yourself did not', ['ours'])).toBe('this harness ran; yourself did not')
     expect(scrub('ours/1', [])).toBe('ours/1')
   })
 
-  test('a prose word CONTAINING an arm name is left alone', () => {
-    // `yourself` contains `ours`. The scrub is word-bounded and always was;
-    // this pins it, because the fix below made the verifier agree.
-    expect(scrub('Run the test yourself and make it pass.', ['ours'])).toBe(
-      'Run the test yourself and make it pass.',
-    )
-  })
-
-  test('the rule is built per id, so a third scaffold is covered by existing', () => {
+  test('the rule is built per id, so a third harness is covered by existing', () => {
     expect(armRules(['a', 'b']).length).toBe(2)
     expect(scrub('a and b ran', ['a', 'b'])).toBe('this harness and this harness ran')
-  })
-})
-
-describe('the verifier matches arm names as words and BANNED as substrings', () => {
-  test('a substring scan for an arm name reports the middle of a prose word', () => {
-    // The mismatch that made `ours` look uncheckable: the scrub is
-    // `\b`-anchored, the old verifier was `includes`, so it "found" four leaks
-    // in the task prompt that the scrub had correctly left alone.
-    const line = 'Run the test yourself'
-    expect(findTerms(line, ['ours'], 'f').length).toBe(1)
-    expect(findTerms(line, ['ours'], 'f', { wholeWord: true })).toEqual([])
-  })
-
-  test('but a whole-word scan still catches the real thing', () => {
-    expect(findTerms('no-such-capability/ours/1', ['ours'], 'f', { wholeWord: true }).length).toBe(
-      1,
-    )
-  })
-
-  test('BANNED stays a substring scan, because two of its terms are fragments', () => {
-    // `/a0` and `bench/work` are not words; a boundary check would miss them.
-    expect(findTerms('cd bench/work/x', ['bench/work'], 'f').length).toBe(1)
-    expect(findTerms('the path /a0/tmp', ['/a0'], 'f').length).toBe(1)
   })
 })
 
@@ -207,167 +751,297 @@ describe('names', () => {
   test('our own project name, in either casing', () => {
     expect(scrub('ASKK and askk')).not.toMatch(/askk/i)
   })
-})
-
-describe('what deliberately survives, and why removing it would be worse', () => {
-  test('tool names are NOT renamed — a tool’s name is part of what is judged', () => {
-    // The previous version mapped `code_execution_tool` onto `exec` and
-    // `read_file` onto `read_text` and called the result blind. A judge shown
-    // `exec` cannot see that one harness routes four capabilities through one
-    // tool with an `action` argument while the other offers four flat ones,
-    // which is exactly the design question the rubric asks about.
-    const az = scrub('{"tool_name":"code_execution_tool","tool_args":{"runtime":"terminal"}}')
-    expect(az).toContain('code_execution_tool')
-    expect(scrub('read_file write_file list_files text_editor')).toBe(
-      'read_file write_file list_files text_editor',
-    )
-  })
-
-  test('the response contract, which is the variable under test', () => {
-    // Removing this would leave two transcripts of nothing. A judge who
-    // recognises a contract is recognising a DESIGN, which is the judgement
-    // being asked for.
-    const toon = scrub('think: [a]\n\nplan: [b]\n\nact: tool\n\nresult: list_files({})')
-    expect(toon).toContain('think:')
-    expect(toon).toContain('act: tool')
-    const json = scrub('{"thoughts":["a"],"headline":"h","tool_name":"text_editor"}')
-    expect(json).toContain('"thoughts"')
-    expect(json).toContain('"headline"')
-  })
-})
-
-describe('BANNED fails the run; RESIDUAL is declared and reported', () => {
-  test('BANNED names both projects, the user and the workspace', () => {
-    for (const term of ['agent-zero', 'frdel', 'ASKK', 'kaush', 'bench/work']) {
-      expect(BANNED).toContain(term)
-    }
-  })
 
   test('every banned term is actually removed by the scrub it guards', () => {
-    // The check that would have caught a term added to BANNED with no rule
-    // behind it — a verifier that can never pass.
     for (const term of BANNED) {
       const out = scrub(`prefix ${term} suffix`)
       expect(`${term} -> ${out.includes(term)}`).toBe(`${term} -> false`)
     }
   })
 
-  test('every residual term SURVIVES the scrub, or it is not a residual', () => {
-    // The inverse rule, and the one that keeps this file honest: a term listed
-    // as a declared cost that the scrub quietly removes would make the "NOT
-    // BLIND" report a lie in the other direction.
-    for (const term of RESIDUAL) {
-      const out = scrub(`prefix ${term} suffix`)
-      expect(`${term} -> ${out.includes(term)}`).toBe(`${term} -> true`)
+  test('BANNED names both projects, the user, the workspace and the rig', () => {
+    for (const term of ['agent-zero', 'frdel', 'ASKK', 'kaush', 'bench/work', 'scaffold']) {
+      expect(BANNED).toContain(term)
     }
-  })
-
-  test('the two lists are disjoint', () => {
-    // A term in both would be simultaneously fatal and expected.
-    for (const term of RESIDUAL) expect(BANNED).not.toContain(term)
-  })
-
-  test('a system prompt the MODEL quoted back is declared, not silently kept', () => {
-    // Dropping the request block removes both openings AS SENT. It does not
-    // remove them as speech: `blind/no-such-capability/B.md` carries `You are a
-    // careful, direct assistant` five times, in the reasoning channel and in
-    // the reply, because the model rehearsed its own instructions. The gate
-    // exited 0 over that file and the NOT BLIND report listed only tool names —
-    // one `grep -l` separating that pair, in the artifact whose whole purpose is
-    // that it cannot be separated.
-    const quoted = record()
-    quoted.run.events.push({
-      type: 'reply',
-      at: 2,
-      content: 'Let’s reason from prompt: "You are a careful, direct assistant running…"',
-      reasoning: 'The manual (# System Manual) says otherwise',
-      finish: 'stop',
-      state: 'whole',
-      notes: [],
-      ms: 1,
-      usage: { completion_tokens: 1 },
-    })
-    const out = blindTranscript(quoted, 'collatz', 'A')
-    // Still there — a model's own sentence may not be rewritten…
-    expect(out).toContain('You are a careful, direct assistant')
-    // …so the report is what has to carry it.
-    const found = findTerms(out, RESIDUAL, 'A.md').map((hit) => hit.term)
-    expect(found).toContain('You are a careful, direct assistant')
-    expect(found).toContain('System Manual')
-  })
-
-  test('our transport signs its refusals, and that signature is fatal', () => {
-    // `OpenAICompatible._dumped`'s message opens with the class's own label, and
-    // the refusal block IS the run's ending, so it is rendered. Measured over
-    // `transcripts/`: 12 of one arm's 34 replies are refused and 0 of the
-    // other's 79 — one probe, every pair. The block stays; the signature goes.
-    const refused = record()
-    refused.run.events.push({
-      type: 'transport-refusal',
-      at: 2,
-      state: 'thinking',
-      message:
-        'openai-compatible: the reply ran out of tokens while the model was still thinking, so 3,940 characters of its private reasoning arrived on the answer channel',
-      hint: 'That text is not an answer and was not passed on',
-    })
-    const out = blindTranscript(refused, 'collatz', 'A')
-    expect(out).toContain('the transport refused this reply (thinking)')
-    expect(out).toContain('the transport: the reply ran out of tokens')
-    expect(out).not.toContain('openai-compatible')
-    expect(BANNED).toContain('openai-compatible')
-    expect(findTerms(out, BANNED, 'A.md')).toEqual([])
-  })
-
-  test('the residual report counts what a judge can see', () => {
-    // `blind.js` prints these per file and writes them into the key. The count
-    // is what tells a reader of any verdict what it is worth.
-    const out = blindTranscript(record(), 'collatz', 'A')
-    const found = findTerms(out, RESIDUAL, 'A.md')
-    expect(found.map((hit) => hit.term).sort()).toEqual(['code_execution_tool', 'read_file'])
-    expect(findTerms(out, BANNED, 'A.md')).toEqual([])
   })
 })
 
 describe('A/B assignment', () => {
-  test('deterministic for one task, and not the same order for every task', () => {
+  test('deterministic, never the same order for every task, and — S59 — not one map for every index', () => {
     const tasks = ['collatz', 'median-bug', 'pointer-chase', 'no-such-capability', 'slugify-module']
     for (const task of tasks) {
-      expect(letterFor(task, 0)).toBe(letterFor(task, 0))
-      expect(letterFor(task, 0)).not.toBe(letterFor(task, 1))
+      expect(letterFor(task, '1', 0)).toBe(letterFor(task, '1', 0))
+      expect(letterFor(task, '1', 0)).not.toBe(letterFor(task, '1', 1))
     }
-    // If A were always the same arm the blinding would be decorative.
-    const firsts = new Set(tasks.map((task) => letterFor(task, 0)))
-    expect(firsts.size).toBe(2)
+    expect(new Set(tasks.map((task) => letterFor(task, '1', 0))).size).toBe(2)
+    // Three indices used to share one map, character for character, so a
+    // judge who guessed once had guessed all three.
+    const maps = ['1', '2', '3'].map((index) =>
+      tasks.map((task) => letterFor(task, index, 0)).join(''),
+    )
+    expect(new Set(maps).size).toBe(3)
+    // Indices 1 and 3 in particular: the first fix for S59 was `h * 31 + c`,
+    // whose parity is the parity of the character SUM (31 is odd), and the
+    // codes of '1' and '3' are both odd — so those two indices stayed one map
+    // and only index 2 got its own. The hash is now a standard one, and a
+    // standard's output is pinned by the standard rather than by this file.
+    expect(maps[0]).not.toBe(maps[2])
+  })
+})
+
+/**
+ * S60: `separation` used to drop any term present in both arms anywhere in the
+ * set, so a block present in 11 of one arm's runs and 4 of the other's was
+ * invisible. A separator is anything a grep can sort pairs by; the unit is the
+ * pair, and the count is how many pairs a term sorts one way against the other.
+ */
+describe('separation counts per pair, not set-wide', () => {
+  const file = (arm, task, terms = [], handed = []) => ({
+    arm,
+    task,
+    terms: new Set(terms),
+    handed: new Set(handed),
+  })
+
+  test('a term in both arms set-wide still sorts the pairs where it is one-sided', () => {
+    const split = separation([
+      file('ours', 'a', ['the transport']),
+      file('agent-zero', 'a'),
+      file('ours', 'b', ['the transport']),
+      file('agent-zero', 'b'),
+      file('ours', 'c', ['the transport']),
+      file('agent-zero', 'c', ['the transport']),
+      file('ours', 'd'),
+      file('agent-zero', 'd', ['the transport']),
+    ])
+    expect(split.entries).toEqual([
+      {
+        term: 'the transport',
+        kind: 'replacement',
+        arm: 'ours',
+        sorted: 2,
+        against: 1,
+        tasks: ['a', 'b'],
+      },
+    ])
+    expect(split).toMatchObject({ pairs: 4, separated: 2 })
+  })
+
+  test('a term handed to both arms in a pair’s prompts is vocabulary there, not identity', () => {
+    // `/project` is what both workspace paths scrub to, and both prompts carry
+    // the path. One arm's model echoing its cwd into a command is behaviour.
+    const split = separation([
+      file('ours', 'a', [], ['/project']),
+      file('agent-zero', 'a', ['/project'], ['/project']),
+    ])
+    expect(split.entries).toEqual([])
+    expect(split.separated).toBe(0)
+  })
+
+  test('but a replacement handed to one arm alone is that arm’s name in all but spelling', () => {
+    const split = separation([
+      file('ours', 'a', ['this harness']),
+      file('agent-zero', 'a', [], ['this harness']),
+    ])
+    expect(split.entries).toEqual([
+      {
+        term: 'this harness',
+        kind: 'replacement',
+        arm: 'ours',
+        sorted: 1,
+        against: 0,
+        tasks: ['a'],
+      },
+    ])
+    expect(split.separated).toBe(1)
+  })
+
+  test('a slot beyond the other arm’s count and an ending are reported and not fatal', () => {
+    const split = separation([
+      file('ours', 'a', ['tool_1', 'tool_4', ENDINGS.scratchpad]),
+      file('agent-zero', 'a', ['tool_1']),
+      file('ours', 'b', [ENDINGS.scratchpad]),
+      file('agent-zero', 'b', []),
+    ])
+    expect(split.entries.map((entry) => [entry.term, entry.kind, entry.sorted])).toEqual([
+      [ENDINGS.scratchpad, 'ending', 2],
+      ['tool_4', 'slot', 1],
+    ])
+    expect(split.separated).toBe(0)
+  })
+
+  test('the same term the same number of pairs each way sorts nothing', () => {
+    const split = separation([
+      file('ours', 'a', ['the transport']),
+      file('agent-zero', 'a'),
+      file('ours', 'b'),
+      file('agent-zero', 'b', ['the transport']),
+    ])
+    expect(split.entries).toEqual([])
+  })
+
+  test('every replacement the scrub can write is a replacement to the verdict', () => {
+    for (const replacement of REPLACEMENTS) {
+      const split = separation([file('ours', 'a', [replacement]), file('agent-zero', 'a')])
+      expect(split.entries.map((entry) => entry.kind)).toEqual(['replacement'])
+    }
+  })
+})
+
+describe('one classifier for a scanned term', () => {
+  test('a replacement is a replacement before it is anything else, and a word is a word', () => {
+    for (const replacement of REPLACEMENTS) expect(kindOf(replacement)).toBe('replacement')
+    expect(kindOf('tool_4')).toBe('slot')
+    expect(kindOf(ENDINGS.ceiling)).toBe('ending')
+    // A word of an ending sentence, on its own, as the fresh grep sees it.
+    expect(kindOf('scratchpad')).toBe('ending')
+    // Anything else is the model's, or the prompt's, and is not fatal.
+    expect(kindOf('Verifying')).toBe('word')
+    expect(kindOf('runtime')).toBe('word')
+  })
+})
+
+/**
+ * The fresh grep. Its inventory is printed so a reader of a verdict knows what
+ * a judge could have sorted on, and an inventory that files the strongest
+ * sorter under "prompt prose" is one nobody should trust: `runtime` sorted
+ * 5 of 5 pairs from the TURNS — the reference contract's argument on every call
+ * row — and was counted among the prompt words because the manual mentions it.
+ */
+describe('residue: where a token SORTS, not where it appears', () => {
+  const file = (arm, task, turnsText, promptText = '') => ({ arm, task, turnsText, promptText })
+  const pairs = (turnsOf, promptOf = () => '') =>
+    ['a', 'b', 'c'].flatMap((task) => [
+      file('ours', task, turnsOf('ours', task), promptOf('ours', task)),
+      file('agent-zero', task, turnsOf('agent-zero', task), promptOf('agent-zero', task)),
+    ])
+  const words = (found) => found.map((entry) => entry.word)
+
+  test('a word in one arm’s turns across three pairs is turn residue', () => {
+    const found = residue(pairs((arm) => (arm === 'agent-zero' ? 'Verifying done' : 'done')))
+    expect(found.turns).toEqual([
+      {
+        word: 'Verifying',
+        kind: 'word',
+        arm: 'agent-zero',
+        sorted: 3,
+        against: 0,
+        tasks: ['a', 'b', 'c'],
+      },
+    ])
+    expect(found.prompt).toEqual([])
+  })
+
+  test('a word that sorts by the turns alone is turn residue even when a prompt mentions it', () => {
+    // `runtime` is in the reference manual AND on every reference call row;
+    // the manual is handed to that arm only, so the turns sort every pair.
+    const found = residue(
+      pairs(
+        (arm) => (arm === 'agent-zero' ? '  runtime: terminal' : '  command: terminal'),
+        (arm) =>
+          arm === 'agent-zero' ? 'the runtime field picks a shell' : 'the field picks a shell',
+      ),
+    )
+    expect(found.turns.map((entry) => [entry.word, entry.arm, entry.sorted])).toEqual([
+      ['command', 'ours', 3],
+      ['runtime', 'agent-zero', 3],
+    ])
+    expect(words(found.prompt)).not.toContain('runtime')
+  })
+
+  test('a word only the prompts sort by is prompt residue, counted and not listed by the turns', () => {
+    const found = residue(
+      pairs(
+        () => 'same',
+        (arm) => (arm === 'ours' ? 'careful' : 'manual'),
+      ),
+    )
+    expect(found.prompt.map((entry) => [entry.word, entry.arm]).sort()).toEqual([
+      ['careful', 'ours'],
+      ['manual', 'agent-zero'],
+    ])
+    expect(found.turns).toEqual([])
+  })
+
+  test('a run of punctuation sorts a pair as surely as a word does', () => {
+    // `tool_1 -> …` is our observation frame and `[exit code 0]` is theirs;
+    // a tokeniser that only sees `[A-Za-z_]` words is blind to both.
+    const found = residue(pairs((arm) => (arm === 'ours' ? 'tool_1 -> x' : '[exit code 0]')))
+    expect(words(found.turns)).toContain('->')
+    expect(words(found.turns)).toContain('[')
+  })
+
+  test('a word both arms were handed in a pair’s prompts is vocabulary in that pair', () => {
+    const found = residue(
+      pairs(
+        (arm) => (arm === 'ours' ? '/project' : ''),
+        () => 'cwd /project',
+      ),
+    )
+    expect(found.turns).toEqual([])
+    expect(found.prompt).toEqual([])
+  })
+
+  test('the floor is three pairs, and the count is the rule separation uses', () => {
+    const files = pairs((arm, task) => (arm === 'ours' && task !== 'c' ? 'twice' : ''))
+    expect(residue(files).turns).toEqual([])
+    expect(residue(files, 2).turns.map((entry) => [entry.word, entry.sorted])).toEqual([
+      ['twice', 2],
+    ])
+    const split = separation(
+      files.map((entry) => ({
+        ...entry,
+        terms: new Set(entry.turnsText ? ['twice'] : []),
+        handed: new Set(),
+      })),
+    )
+    expect(split.entries.map((entry) => [entry.term, entry.sorted, entry.against])).toEqual([
+      ['twice', 2, 0],
+    ])
+  })
+})
+
+describe('the outcome a judge is handed beside the transcripts', () => {
+  test('is the machine check and the cost, keyed by nothing that names an arm', () => {
+    const outcome = outcomeOf(azRecord())
+    expect(outcome).toEqual({
+      pass: false,
+      checks: [{ name: 'a thing was done', ok: false }],
+      turns: 2,
+      ending: 'answered',
+      tokens: 360,
+    })
+    expect(JSON.stringify(outcome)).not.toContain('agent-zero')
+    expect(JSON.stringify(outcome)).not.toContain('nope')
   })
 })
 
 describe('the script itself is the gate', () => {
-  /**
-   * Driven as a subprocess, because the exit code IS the claim and no unit test
-   * can see it — and because `main()` is where the arm ids are read off the
-   * directory names and handed to the scrub. Mutating that one argument away
-   * left every other test in this file green.
-   *
-   * No model is asked anything: this runs `bun bench/blind.js` over two
-   * transcripts written here.
-   */
   const HERE = dirname(fileURLToPath(import.meta.url))
   const REPO = resolve(HERE, '..', '..')
 
-  function fixture(text, arms = ['agent-zero', 'ours']) {
+  /** Two arms, both shapes, over one or more tasks, at one or more indices. */
+  function fixture({
+    ours = oursRecord(),
+    az = azRecord(),
+    indices = [1],
+    tasks = ['probe'],
+  } = {}) {
     const root = mkdtempSync(join(tmpdir(), 'askk-blind-'))
-    for (const arm of arms) {
-      mkdirSync(join(root, 'in', 'probe', arm), { recursive: true })
-      writeFileSync(
-        join(root, 'in', 'probe', arm, '1.json'),
-        JSON.stringify({
-          run: {
-            answer: arm === arms[1] ? text : 'nothing to see',
-            events: [{ type: 'task', at: 0, text: 'do a thing' }],
-          },
-        }),
-        'utf8',
-      )
+    for (const task of tasks) {
+      for (const index of indices) {
+        for (const [arm, record] of [
+          ['agent-zero', az],
+          ['ours', ours],
+        ]) {
+          mkdirSync(join(root, 'in', task, arm), { recursive: true })
+          writeFileSync(
+            join(root, 'in', task, arm, `${index}.json`),
+            JSON.stringify({ ...record, task, scaffold: arm, index }),
+            'utf8',
+          )
+        }
+      }
     }
     return root
   }
@@ -393,340 +1067,222 @@ describe('the script itself is the gate', () => {
     return { out, err, code, root }
   }
 
-  test('an arm that prints its own directory name is scrubbed — and the scrub’s own token is then reported', async () => {
-    // The measured leak, end to end: `no-such-capability/ours/1` in the model's
-    // own prose. `main()` reads the arm ids off the transcript directories.
-    //
-    // This test asserted exit 0 and was wrong to. The arm name is gone, but the
-    // string that replaced it reaches only the arm whose name it replaced, so
-    // one file now carries `this harness` and no other does — the leak moved a
-    // spelling to the left and the gate, which scanned two hand-typed lists,
-    // reported nothing. It is a `[replacement]`, distinguished from a
-    // `[declared]` cost because it is this file's defect and is fixable.
-    const root = fixture('I looked in probe/ours/1 and found it')
-    const { code, err, root: at } = await runBlind(root)
-    const written = readdirSync(join(at, 'out', 'probe')).sort()
-    const bodies = written.map((name) => readFileSync(join(at, 'out', 'probe', name), 'utf8'))
-    expect(bodies.join('\n')).toContain('probe/this harness/1')
-    expect(bodies.join('\n')).not.toMatch(/\bours\b/)
-    expect(code).toBe(1)
-    expect(err).toContain('"this harness" [replacement] appears only in ours, in 1 of 1 pair(s)')
-    expect(err).toContain("THIS FILE'S OWN LEAK")
+  const emitted = (at, task = 'probe') =>
+    readdirSync(join(at, 'out', task))
+      .sort()
+      .map((name) => readFileSync(join(at, 'out', task, name), 'utf8'))
+
+  test('two arms in two shapes come out in one grammar with no tool name left, and the gate is green', async () => {
+    const { code, out, root } = await runBlind(fixture())
+    expect(code).toBe(0)
+    expect(out).toContain('blind:')
+    const [a, b] = emitted(root)
+    for (const text of [a, b]) {
+      expect(text).toContain('call: tool_1')
+      expect(text).toContain('## turn 2 — answered')
+      expect(text).toContain('## the prompt, as assembled for turn 1')
+      for (const name of ['read_file', 'list_files', 'text_editor', 'code_execution_tool']) {
+        expect(findTools(text, [name], 'f')).toEqual([])
+      }
+    }
   })
 
-  test('an identifier that survives the scrub exits NON-ZERO and names it', async () => {
-    // The verifier reads the FINAL text, so a substitution that writes the term
-    // back in fails the gate rather than passing it. An arm literally named
-    // `harness` is the reachable case: `armRules` rewrites it to `this
-    // harness`, which still contains the word.
-    //
-    // This is the whole gate claim — that a leak exits non-zero — and no unit
-    // test can see an exit code. Measured separately by deleting the `kaush`
-    // rule from `SCRUBS` and running the script over `bench/transcripts/`:
-    // exit 1, `blind/no-such-capability/A.md:18 "kaush"`. Restored: exit 0.
-    const root = fixture('I looked in probe/harness/1', ['a-harness', 'harness'])
+  test('the file a panel reads is blindTranscript, byte for byte', async () => {
+    const { root } = await runBlind(fixture())
+    const key = JSON.parse(readFileSync(join(root, 'out-key.json'), 'utf8'))
+    const armIds = Object.values(key.map.probe).sort()
+    for (const [letter, arm] of Object.entries(key.map.probe)) {
+      const record = arm === 'ours' ? oursRecord() : azRecord()
+      const slots = new Map(Object.entries(key.slots[arm]))
+      const { text } = blindTranscript(record, 'probe', letter, { armIds, slots, tasks: ['probe'] })
+      expect(readFileSync(join(root, 'out', 'probe', `${letter}.md`), 'utf8')).toBe(text)
+    }
+  })
+
+  test('the directory a panel is handed holds the transcripts and one outcomes.json, and nothing else', async () => {
+    const { root } = await runBlind(fixture())
+    expect(readdirSync(join(root, 'out')).sort()).toEqual(['outcomes.json', 'probe'])
+    expect(readdirSync(join(root, 'out', 'probe')).sort()).toEqual(['A.md', 'B.md'])
+    const outcomes = JSON.parse(readFileSync(join(root, 'out', 'outcomes.json'), 'utf8'))
+    expect(Object.keys(outcomes)).toEqual(['probe'])
+    expect(Object.keys(outcomes.probe)).toEqual(['A', 'B'])
+    const text = JSON.stringify(outcomes)
+    expect(text).not.toContain('ours')
+    expect(text).not.toContain('agent-zero')
+    expect(text).not.toContain('workdir')
+    expect(
+      Object.values(outcomes.probe)
+        .map((o) => o.pass)
+        .sort(),
+    ).toEqual([false, true])
+  })
+
+  test('the key is written OUTSIDE that directory, and decodes it', async () => {
+    const { root } = await runBlind(fixture())
+    const key = JSON.parse(readFileSync(join(root, 'out-key.json'), 'utf8'))
+    expect(Object.values(key.map.probe).sort()).toEqual(['agent-zero', 'ours'])
+    expect(key.slots.ours.list_files).toBe('tool_1')
+    expect(key.slots['agent-zero'].text_editor).toBe('tool_1')
+  })
+
+  test('S59: two indices of one set get two maps, not one map twice', async () => {
+    const tasks = ['probe', 'probe-two', 'probe-three', 'probe-four']
+    const root = fixture({ indices: [1, 2], tasks })
+    const first = JSON.parse(readFileSync(`${(await runBlind(root)).root}/out-key.json`, 'utf8'))
+    const second = JSON.parse(
+      readFileSync(`${(await runBlind(root, ['--index', '2'])).root}/out-key.json`, 'utf8'),
+    )
+    expect(first.index).toBe('1')
+    expect(second.index).toBe('2')
+    expect(Object.keys(first.map).sort()).toEqual([...tasks].sort())
+    expect(first.map).not.toEqual(second.map)
+  })
+
+  test('outcomes.json lists the letters in letter order under every task, whatever the map', async () => {
+    // It listed them in ARM order: the first letter under every task was the
+    // same arm, so the panel directory carried the whole A/B map in its key
+    // order and one recognised prompt unblinded every pair.
+    const tasks = ['probe', 'probe-two', 'probe-three', 'probe-four', 'probe-five']
+    const { root } = await runBlind(fixture({ tasks }))
+    const key = JSON.parse(readFileSync(join(root, 'out-key.json'), 'utf8'))
+    const outcomes = JSON.parse(readFileSync(join(root, 'out', 'outcomes.json'), 'utf8'))
+    // The map must vary across these tasks for the order to be able to leak.
+    expect(new Set(tasks.map((task) => key.map[task].A)).size).toBe(2)
+    for (const task of tasks) expect(Object.keys(outcomes[task])).toEqual(['A', 'B'])
+  })
+
+  test('a tool name of the OTHER arm in a model’s sentence reaches no file: the gate exits 1 and names it', async () => {
+    // The leak the mapper cannot map: an arm's slots cover its own vocabulary,
+    // and a model naming the other harness's tool in prose is the plausible
+    // way a name reaches a file. The verifier scans each arm's files for
+    // BOTH vocabularies. This is the control the whole of P4 rests on.
+    const ours = oursRecord()
+    ours.run.events[3].action.parsed.think = ['I have no text_editor here']
+    const { code, err } = await runBlind(fixture({ ours }))
+    expect(code).toBe(1)
+    expect(err).toContain('identifying string(s) survived the scrub')
+    expect(err).toContain('"text_editor"')
+    expect(err).toMatch(/probe\/[AB]\.md:\d+/)
+
+    const az = azRecord()
+    az.run.events[3].action.raw =
+      '{"thoughts": ["unlike read_file this reads a range"], "headline": "Reading", "tool_name": "text_editor", "tool_args": {"action": "read", "path": "x.py"}}'
+    const mirror = await runBlind(fixture({ az }))
+    expect(mirror.code).toBe(1)
+    expect(mirror.err).toContain('"read_file"')
+  })
+
+  test('an arm’s own directory name in a model’s sentence is scrubbed, and the whole set is still green', async () => {
+    const ours = oursRecord()
+    ours.run.events[3].action.parsed.think = ['The path probe/ours/1 suggests a benchmark']
+    const { code, root } = await runBlind(fixture({ ours }))
+    expect(emitted(root).join('\n')).toContain('The path /project suggests a benchmark')
+    expect(emitted(root).join('\n')).not.toMatch(/\bours\b/)
+    expect(code).toBe(0)
+  })
+
+  test('a replacement string that reaches one arm’s turns and not the other’s exits 1, naming it', async () => {
+    const ours = oursRecord()
+    ours.run.events[3].action.parsed.think = ['as agent-zero would say']
+    const { code, err } = await runBlind(fixture({ ours }))
+    expect(code).toBe(1)
+    expect(err).toContain('NOT BLIND')
+    expect(err).toContain('"the agent" [replacement] sorts 1 of 1 pair(s) toward ours')
+  })
+
+  test('a banned term that survives exits 1 and names the file and line', async () => {
+    // An arm literally named `harness` is the reachable case: `armRules`
+    // rewrites it to `this harness`, which still contains the word.
+    const root = mkdtempSync(join(tmpdir(), 'askk-blind-'))
+    for (const arm of ['a-harness', 'harness']) {
+      mkdirSync(join(root, 'in', 'probe', arm), { recursive: true })
+      writeFileSync(
+        join(root, 'in', 'probe', arm, '1.json'),
+        JSON.stringify({
+          ...oursRecord({ answer: arm === 'harness' ? 'I looked in probe/harness/1' : 'nothing' }),
+          scaffold: arm,
+        }),
+        'utf8',
+      )
+    }
     const { code, err } = await runBlind(root)
     expect(code).toBe(1)
     expect(err).toContain('identifying string(s) survived the scrub')
     expect(err).toContain('"harness"')
-  })
-
-  test('and every emitted file is written anyway, so the leak can be read', async () => {
-    const root = fixture('I looked in probe/harness/1', ['a-harness', 'harness'])
-    const { root: at } = await runBlind(root)
-    expect(readdirSync(join(at, 'out', 'probe')).sort()).toEqual(['A.md', 'B.md'])
+    expect(readdirSync(join(root, 'out', 'probe')).sort()).toEqual(['A.md', 'B.md'])
   })
 
   test('a run index that blinds NOTHING exits non-zero instead of verifying', async () => {
-    // `existsSync(source)` is a bare `return` per file, so `--index 9` used to
-    // write zero files, print "verified: no banned term survives in any emitted
-    // file" and exit 0. That is the direct successor of the bug this script's
-    // `strict` was added for — `--idnex 2` blinding run 1 and saying nothing —
-    // and a gate that passes over zero files is not a gate.
-    const root = fixture('nothing')
-    const { code, err } = await runBlind(root, ['--index', '9'])
+    const { code, err } = await runBlind(fixture(), ['--index', '9'])
     expect(code).toBe(1)
     expect(err).toContain('nothing was blinded, so nothing is verified')
   })
 
-  test('the key is written OUTSIDE the directory a judge is handed', async () => {
-    const root = fixture('nothing')
-    const { at } = { at: (await runBlind(root)).root }
-    expect(existsSync(join(at, 'out-key.json'))).toBe(true)
-    expect(existsSync(join(at, 'out', 'key.json'))).toBe(false)
-    // And it carries the map the judge must not see.
-    const key = JSON.parse(readFileSync(join(at, 'out-key.json'), 'utf8'))
-    expect(Object.values(key.map.probe).sort()).toEqual(['agent-zero', 'ours'])
-  })
-
-  test('and the declared cost is counted into the key, per file', async () => {
-    // The key and the "NOT BLIND" line are the same `tally` call on the same
-    // array, so they cannot disagree — but nothing asserted the key half, and
-    // emptying it left every test green. A reader of a verdict from this set
-    // needs the count to know what the verdict is worth.
-    const root = fixture('I ran read_file\nthen read_file again\nthen list_files')
-    const { root: at, out } = await runBlind(root)
-    const key = JSON.parse(readFileSync(join(at, 'out-key.json'), 'utf8'))
-    const counts = Object.values(key.residual).find((per) => per.read_file)
-    expect(counts).toEqual({ read_file: 2, list_files: 1 })
-    expect(out).toContain('read_file×2')
-    // Counted by LINE, not by occurrence — twice on one line is one hit, because
-    // a hit is a place to look and the leak report names line numbers.
-    const oneLine = fixture('read_file and read_file again')
-    const key2 = JSON.parse(
-      readFileSync(join((await runBlind(oneLine)).root, 'out-key.json'), 'utf8'),
-    )
-    expect(Object.values(key2.residual).find((per) => per.read_file)).toEqual({ read_file: 1 })
-  })
-
-  test('a residual term in ONE arm exits non-zero, naming the term and the arm', async () => {
-    // Row S39, end to end. Before this change the same fixture printed
-    // `NOT BLIND: … 1 of 2 file(s)` and exited 0. No unit test can see an exit
-    // code, and `separation` returning `{terms: []}` unconditionally left every
-    // assertion in the block above green — measured.
-    const root = fixture('I called read_file and then write_file')
-    const { code, err } = await runBlind(root)
-    expect(code).toBe(1)
-    expect(err).toContain('NOT BLIND — 1 of 1 pair(s)')
-    expect(err).toContain('"read_file" [declared] appears only in ours, in 1 of 1 pair(s)')
-  })
-
-  test('the same term in BOTH arms is vocabulary, and the gate goes green', async () => {
-    // The reachable pass. `fixture` gives the text to one arm only, so this
-    // writes the second copy by hand — the point being that the gate is not
-    // stuck red by construction, it is red because of what the arms are called.
-    const root = fixture('I called read_file')
-    writeFileSync(
-      join(root, 'in', 'probe', 'agent-zero', '1.json'),
-      JSON.stringify({
-        run: { answer: 'I called read_file', events: [{ type: 'task', at: 0, text: 'a thing' }] },
-      }),
-      'utf8',
-    )
-    const { code, out } = await runBlind(root)
-    expect(code).toBe(0)
-    expect(out).toContain('blind: no declared term appears in')
-  })
-
-  test('the key records the separation, so a verdict cannot be read without it', async () => {
-    const root = fixture('I called read_file')
-    const { root: at } = await runBlind(root)
-    const key = JSON.parse(readFileSync(join(at, 'out-key.json'), 'utf8'))
-    expect(key.separation).toMatchObject({ pairs: 1, separated: 1 })
-    expect(key.separation.terms).toEqual([
-      { term: 'read_file', kind: 'declared', arm: 'ours', tasks: ['probe'] },
-    ])
-    expect(key.rubric.withheld).toEqual(RUBRIC.withheld)
-  })
-
-  test('and the files are written anyway, each carrying the disclosure', async () => {
-    // A gate that deletes the evidence of its own failure cannot be audited,
-    // and the panel that gets handed this set anyway must still be told.
-    const root = fixture('I called read_file')
-    const { root: at } = await runBlind(root)
-    for (const name of readdirSync(join(at, 'out', 'probe'))) {
-      expect(readFileSync(join(at, 'out', 'probe', name), 'utf8')).toContain(DISCLOSURE)
+  test('the residue inventory is printed: what sorts three or more pairs, and where it lives', async () => {
+    // Three pairs, so the floor is reachable; the reference arm's `runtime`
+    // argument sits on every one of its call rows and in its manual, and the
+    // inventory must file it where it SORTS — the turns — by name.
+    const tasks = ['probe', 'probe-two', 'probe-three']
+    const az = azRecord()
+    az.run.events[3].action = {
+      kind: 'tool',
+      tool: 'code_execution_tool',
+      args: { runtime: 'terminal', code: 'ls' },
+      raw: '',
     }
+    const { out } = await runBlind(fixture({ az, tasks }))
+    expect(out).toMatch(/RESIDUE: \d+ token\(s\) sort three or more of 3 pair\(s\) by the prompt/)
+    expect(out).toMatch(/"runtime" \[word\] in agent-zero's turns, 3 of 3 pair\(s\)/)
   })
 })
-
-/**
- * The gate `docs/LEDGER.md` row S39 was filed for: the script printed
- * `NOT BLIND: 137 line(s) …` and exited 0.
- *
- * The claim under test is not "identifying terms are gone" — they are not, on
- * purpose. It is that a term which NAMES AN ARM is fatal, that the arithmetic
- * saying so is derived from the set rather than typed in, and that the panel is
- * told in the one channel that reaches it.
- */
-describe('separation is what makes a set not blind', () => {
-  const file = (arm, task, ...terms) => ({ arm, task, terms: new Set(terms) })
-
-  test('a term in one arm and no other names that arm, and the pair is separated', () => {
-    const split = separation([
-      file('ours', 'a', 'read_file'),
-      file('agent-zero', 'a'),
-      file('ours', 'b', 'read_file'),
-      file('agent-zero', 'b'),
-    ])
-    expect(split.terms).toEqual([
-      { term: 'read_file', kind: 'declared', arm: 'ours', tasks: ['a', 'b'] },
-    ])
-    expect(split).toMatchObject({ pairs: 2, separated: 2 })
-  })
-
-  test('one pair does NOT reach the green state, and the header said it did', () => {
-    // There is no pair-count floor, deliberately: a gate a smaller run walks
-    // past is row S39 again. Measured over `transcripts/collatz` alone:
-    // `!! NOT BLIND — 1 of 1 pair(s)`, exit 1.
-    const split = separation([file('ours', 'a', 'read_file'), file('agent-zero', 'a')])
-    expect(split).toMatchObject({ pairs: 1, separated: 1 })
-  })
-
-  test('a string the SCRUB wrote separates too, and is reported as this file’s own leak', () => {
-    // The defect the two hand-typed lists could not see. A replacement reaches
-    // only the files whose identifying token it replaced, so a token that named
-    // an arm becomes a replacement that names it — same separating power, new
-    // spelling, invisible to a scan of `RESIDUAL`. Measured on the set in
-    // `blind/` when this landed: `this harness` in one `ours` file and
-    // `/workspace` in one `agent-zero` file, two pairs the verdict was silent
-    // about. The near miss is `openai-compatible` → `the transport`, added
-    // against a leak measured at 5 of 5 pairs.
-    expect(REPLACEMENTS).toContain('this harness')
-    expect(REPLACEMENTS).toContain('the transport')
-    const split = separation([
-      file('ours', 'a', 'this harness'),
-      file('agent-zero', 'a', 'the transport'),
-    ])
-    expect(split.terms).toEqual([
-      { term: 'the transport', kind: 'replacement', arm: 'agent-zero', tasks: ['a'] },
-      { term: 'this harness', kind: 'replacement', arm: 'ours', tasks: ['a'] },
-    ])
-    expect(split.separated).toBe(1)
-  })
-
-  test('a shorter replacement wholly inside a longer one is one leak, not two', () => {
-    // `scaffolds?` scrubs to `harness` and an arm id scrubs to `this harness`;
-    // the scan is a substring scan, so every `harness` in the current set is
-    // inside a `this harness`. Reported separately it read as two independent
-    // leaks over one occurrence, and the verdict's own argument is that its
-    // numbers are what a reader of a panel result acts on.
-    const split = separation([
-      file('ours', 'a', 'harness', 'this harness'),
-      file('agent-zero', 'a'),
-    ])
-    expect(split.terms.map((entry) => entry.term)).toEqual(['this harness'])
-  })
-
-  test('but the same short term somewhere the long one is not still stands alone', () => {
-    // The fold is per file set, not per spelling: `harness` in a pair where
-    // `this harness` never appears is its own leak and must survive.
-    const split = separation([
-      file('ours', 'a', 'harness', 'this harness'),
-      file('agent-zero', 'a'),
-      file('ours', 'b', 'harness'),
-      file('agent-zero', 'b'),
-    ])
-    expect(split.terms.map((entry) => entry.term).sort()).toEqual(['harness', 'this harness'])
-  })
-
-  test('every replacement the scrub can write is in the scanned set', () => {
-    // The rule that keeps the two from drifting: adding a `SCRUBS` row adds a
-    // string to the artifact, and a string in the artifact this gate does not
-    // scan is a leak it cannot report.
-    for (const replacement of REPLACEMENTS) expect(SEPARATION_TERMS).toContain(replacement)
-    for (const term of RESIDUAL) expect(SEPARATION_TERMS).toContain(term)
-  })
-
-  test('a term BOTH arms use separates nothing — it is vocabulary, not identity', () => {
-    // The green state, and the only one reachable without changing what a
-    // harness calls its own tools: two arms that spell a capability the same
-    // way. A gate whose pass is unreachable teaches readers to ignore it.
-    const split = separation([file('ours', 'a', 'read_file'), file('agent-zero', 'a', 'read_file')])
-    expect(split.terms).toEqual([])
-    expect(split.separated).toBe(0)
-  })
-
-  test('a declared term nobody wrote is not a leak', () => {
-    // `System Manual` is in RESIDUAL and appears in zero files of the current
-    // set — the model never quoted that opening back. Counting a cost nobody
-    // paid would make the gate red for a term with no occurrence anywhere.
-    const split = separation([file('ours', 'a'), file('agent-zero', 'a')])
-    expect(split.terms).toEqual([])
-    expect(RESIDUAL).toContain('System Manual')
-  })
-
-  test('the separated count is PAIRS, not terms — five terms over one pair is one pair', () => {
-    // The number a reader of a verdict needs is how many of the panel's
-    // independent judgements were actually independent. Summing terms would
-    // report six where one pair was compromised.
-    const split = separation([
-      file('ours', 'a', 'read_file', 'write_file', 'list_files'),
-      file('agent-zero', 'a', 'text_editor'),
-      file('ours', 'b'),
-      file('agent-zero', 'b'),
-    ])
-    expect(split.terms).toHaveLength(4)
-    expect(split.separated).toBe(1)
-    expect(split.pairs).toBe(2)
-  })
-})
-
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 describe('the disclosure the panel is handed', () => {
-  test('carries no banned and no residual term', () => {
-    // The trap this test was written for: the disclosure is prepended to EVERY
-    // file, so a disclosure naming `read_file` put that term in both arms'
-    // files and turned the gate green over a set nothing had changed. That is
-    // now closed in the code as well — `main` hands `separation` the BODY, not
-    // the framed file, so the preamble cannot make a term universal. The
-    // assertion stays because the two halves it guards are different: a BANNED
-    // term here is a leak in ten files, and a RESIDUAL term here inflates the
-    // declared-residue inventory in every one of them.
+  const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+  test('carries no banned term, no arm name, and no tool name of either recorded arm', () => {
     expect(findTerms(DISCLOSURE, BANNED, 'disclosure')).toEqual([])
-    expect(findTerms(DISCLOSURE, RESIDUAL, 'disclosure')).toEqual([])
-  })
-
-  test('and a term inside it can no longer launder that term in every file', () => {
-    // The structural half. The disclosure says "harness" four times, which is
-    // exactly what `scaffolds?` scrubs to; if `separation` read the framed file
-    // that replacement could never be reported again, in any set, forever.
-    const body = 'a body naming this harness and nothing else'
-    expect(frame('probe', 'A', body)).toContain('harness')
-    expect(findTerms(body, SEPARATION_TERMS, 'body').map((hit) => hit.term)).toContain(
-      'this harness',
-    )
-  })
-
-  test('it names the rubric it hands a judge three criterion numbers of', () => {
-    // A judge reached only through this block had the numbers and no document.
-    // Interpolated, so a moved page moves the citation; and the page really has
-    // that heading, checked against the page rather than against this string.
-    expect(DISCLOSURE).toContain(`\`${RUBRIC.source}\`, section "${RUBRIC.section}"`)
-    expect(readFileSync(join(REPO, RUBRIC.source), 'utf8')).toContain(`## ${RUBRIC.section}`)
-  })
-
-  test('names no arm, so it cannot itself be the label', () => {
-    // Checked with the gate's own whole-word matcher against the arm ids read
-    // off the recorded runs, not against a typed pair: `agent harnesses` is
-    // English and `agent-zero` is a name, and a substring scan cannot tell them
-    // apart. That is the same mistake `findTerms`' `wholeWord` was added for.
     const arms = readdirSync(join(REPO, 'bench', 'transcripts', 'collatz')).sort()
     expect(arms.length).toBeGreaterThan(1)
     expect(findTerms(DISCLOSURE, arms, 'disclosure', { wholeWord: true })).toEqual([])
+    const tools = arms.flatMap((arm) =>
+      toolsOf(
+        JSON.parse(
+          readFileSync(join(REPO, 'bench', 'transcripts', 'collatz', arm, '1.json'), 'utf8'),
+        ),
+      ),
+    )
+    expect(tools.length).toBeGreaterThan(3)
+    expect(findTools(DISCLOSURE, tools, 'disclosure')).toEqual([])
   })
 
-  test('the two counts it gives a judge are DERIVED from the rubric, not typed', () => {
-    // Three numbers typed into a paragraph go stale the first time the rubric
-    // gains a row, silently, in the artifact a panel reads.
-    const scored = RUBRIC.criteria - RUBRIC.withheld.length
-    const summed = scored - RUBRIC.disqualifying.length
-    expect(DISCLOSURE).toContain(`Score the other ${scored}`)
-    expect(DISCLOSURE).toContain(`sum the ${summed} that are neither withheld`)
-    expect(scored).toBe(7)
-    expect(summed).toBe(5)
+  test('tells the judge what the projection did to the tools, the grammar and the prompt', () => {
+    expect(DISCLOSURE).toContain('tool_1')
+    expect(DISCLOSURE).toContain('one grammar')
+    expect(DISCLOSURE).toContain('prompt is rendered after the turns')
+    expect(DISCLOSURE).toContain('outcomes.json')
+  })
+
+  test('names the rubric, and no longer withholds any criterion', () => {
+    expect(RUBRIC.withheld).toEqual([])
+    expect(DISCLOSURE).toContain(`\`${RUBRIC.source}\`, section "${RUBRIC.section}"`)
+    expect(readFileSync(join(REPO, RUBRIC.source), 'utf8')).toContain(`## ${RUBRIC.section}`)
+    expect(DISCLOSURE).toContain('Score all 8')
+    expect(DISCLOSURE).toContain('sum the 6')
+    expect(DISCLOSURE).not.toContain('withheld')
   })
 
   test('it reaches the transcript, above the run and below nothing but the title', () => {
-    const text = blindTranscript(record(), 'probe', 'A')
+    const { text } = blindTranscript(oursRecord(), 'probe', 'A')
+    expect(text.startsWith('# probe — transcript A')).toBe(true)
     expect(text.indexOf(DISCLOSURE)).toBeGreaterThan(-1)
     expect(text.indexOf(DISCLOSURE)).toBeLessThan(text.indexOf('## task'))
+    expect(frame('probe', 'B', 'body')).toContain(DISCLOSURE)
   })
 })
 
 describe('the rubric and the instrument say the same thing', () => {
-  /**
-   * P5: `blind.js` drops the assembled prompt, criterion 1 is about the prompt,
-   * so this tree scored 1 on criterion 1 no matter what it did. The repair is
-   * in the rubric — the argument is in `blind.js`'s header — and a repair that
-   * lives in two files is a repair that comes apart. This reads the page.
-   */
+  const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
   const rubric = () => readFileSync(join(REPO, RUBRIC.source), 'utf8')
-
-  test('the page exists where the instrument says it does', () => {
-    expect(existsSync(join(REPO, RUBRIC.source))).toBe(true)
-  })
 
   test('the page has exactly the number of criteria the instrument counts', () => {
     const rows = [...rubric().matchAll(/^\| (\d) \| \*\*/gm)].map((m) => Number(m[1]))
@@ -739,33 +1295,30 @@ describe('the rubric and the instrument say the same thing', () => {
     )
   })
 
-  test('the page withholds what the instrument withholds, and says not to sum it', () => {
-    for (const at of RUBRIC.withheld) {
-      expect(rubric()).toContain(`criterion ${at} is WITHHELD: not\nscored, and not summed`)
+  /**
+   * The page still says criterion 1 is WITHHELD and that the prompt "does not
+   * come back"; the instrument withholds nothing and renders the prompt. The
+   * page is `docs/REFERENCE-PROMPTS.md`, outside the slice that changed the
+   * instrument, so the disagreement is carried here as a test that is
+   * EXPECTED TO FAIL: the day the page is fixed this test passes, `failing`
+   * turns that pass into a failure, and whoever fixed the page removes the
+   * marker in the same change. The disagreement is in the tree either way.
+   */
+  test.failing('the page withholds exactly what the instrument withholds', () => {
+    for (let at = 1; at <= RUBRIC.criteria; at++) {
+      const says = rubric().includes(`criterion ${at} is WITHHELD`)
+      expect(`criterion ${at} withheld: ${says}`).toBe(
+        `criterion ${at} withheld: ${RUBRIC.withheld.includes(at)}`,
+      )
     }
-    expect(rubric()).toContain('minus any criterion the projection **withheld**')
-  })
-
-  test('and it no longer says the withheld criterion is scored 1', () => {
-    // The sentence that made criterion 1 unanswerable-by-construction rather
-    // than withheld. It survives, narrowed to the TRANSCRIPT, beside a second
-    // rule for the PROJECTION — the two are the same rule read from different
-    // ends, and the test pins both halves because deleting either restores P5.
-    expect(rubric()).toContain('A criterion the **transcript** cannot answer is scored 1')
-    expect(rubric()).toContain('A criterion the **projection** withholds from both arms equally')
-    expect(rubric()).not.toContain('criterion 1 cannot be scored at\nall')
+    expect(rubric()).not.toContain('The prompt does not come back')
   })
 })
 
 /**
- * `docs/LEDGER.md` row S38: `.gitignore` said `bench/blind/<task>/{A,B}.md` "ARE
- * committed" and exempted `bench/transcripts/` and `bench/results.json` from the
- * ignore list on the argument that evidence outside the repository is not
- * evidence — and then `git ls-files bench` returned 0. Not being ignored is not
- * the same as being tracked, and the file stated the confusion as its opposite.
- *
- * The rows are tracked as of `25c8750`. This is what stops them going back:
- * a prose claim in `.gitignore` with nothing that can fail is how it got there.
+ * `docs/LEDGER.md` row S38: `.gitignore` said the blind set "ARE committed" and
+ * `git ls-files bench` returned 0. The rows are tracked as of `25c8750`; this is
+ * what stops them going back.
  */
 describe('the artifact and the evidence are in the repository, not on one machine', () => {
   const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -775,12 +1328,13 @@ describe('the artifact and the evidence are in the repository, not on one machin
       .split('\0')
       .filter(Boolean)
 
-  test('every blinded transcript a panel is handed is tracked', () => {
-    const emitted = readdirSync(join(REPO, 'bench', 'blind'))
-      .flatMap((task) =>
-        readdirSync(join(REPO, 'bench', 'blind', task)).map(
-          (name) => `bench/blind/${task}/${name}`,
-        ),
+  test('every file a panel is handed is tracked', () => {
+    const here = join(REPO, 'bench', 'blind')
+    const emitted = readdirSync(here)
+      .flatMap((entry) =>
+        entry.endsWith('.json')
+          ? [`bench/blind/${entry}`]
+          : readdirSync(join(here, entry)).map((name) => `bench/blind/${entry}/${name}`),
       )
       .sort()
     expect(emitted.length).toBeGreaterThan(0)
@@ -793,29 +1347,19 @@ describe('the artifact and the evidence are in the repository, not on one machin
   })
 
   test('and the key, which decodes them, is NOT', () => {
-    // The one file whose absence from the repository is the point.
     expect(tracked('bench/blind-key.json')).toEqual([])
     expect(existsSync(join(REPO, 'bench', 'blind-key.json'))).toBe(true)
   })
 
   /**
-   * The ten files a panel is handed are TRACKED and GENERATED, and nothing tied
-   * the two together: every other test in this file drives `blind.js` over a
-   * fixture in `tmpdir()`, and the artifact in the repository is whatever the
-   * last process to touch that directory left there — a mutation run, an
-   * `--index 2` run, a run from a branch.
-   *
-   * Observed in this tree: a mutation run left `bench/blind/collatz/A.md`
-   * carrying a disclosure that named all five tool names and both prompt
-   * openings — the laundering the disclosure's own test exists to prevent —
-   * while `blind.js` on disk was clean and the whole suite was green. The gate
-   * cannot see it either: it overwrites each file before it scans it, so it only
-   * ever checks bytes it just wrote, never bytes in the repository.
+   * The files a panel is handed are TRACKED and GENERATED, and nothing tied the
+   * two together: a mutation run once left `bench/blind/collatz/A.md` carrying
+   * a laundering disclosure while `blind.js` on disk was clean and the suite was
+   * green. The gate cannot see it either — it overwrites each file before it
+   * scans it, so it only ever checks bytes it just wrote.
    */
   test('the tracked set is what today’s script emits from the tracked transcripts', async () => {
     const out = join(mkdtempSync(join(tmpdir(), 'askk-regen-')), 'out')
-    // Exit 1 is the expected verdict on this set today; the files are written
-    // anyway, which is what makes them comparable.
     await Bun.spawn(
       [
         'bun',
@@ -829,9 +1373,11 @@ describe('the artifact and the evidence are in the repository, not on one machin
     ).exited
     const here = join(REPO, 'bench', 'blind')
     for (const task of readdirSync(here).sort()) {
+      if (task.endsWith('.json')) {
+        expect(readFileSync(join(out, task), 'utf8')).toBe(readFileSync(join(here, task), 'utf8'))
+        continue
+      }
       for (const name of readdirSync(join(here, task)).sort()) {
-        // The tuple is so a failure names the file instead of printing two 12 KB
-        // blobs at a reader who then has to diff them by eye.
         expect([`${task}/${name}`, readFileSync(join(out, task, name), 'utf8')]).toEqual([
           `${task}/${name}`,
           readFileSync(join(here, task, name), 'utf8'),

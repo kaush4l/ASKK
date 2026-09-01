@@ -13,23 +13,31 @@ is plain classes with no runtime dependencies.
     bun run lint       # biome
     bun run format     # biome, writing fixes
     bun run bench      # this agent against a reference scaffold, same model
-    bun run bench:blind  # the same transcripts, scrubbed — and it exits 1
+    bun run bench:blind  # the same transcripts, projected into one grammar; exits 0 now
 
 `bun run check` is the gate; `docs/GATE.md` says what each of its steps can see
 and what still gets past all five. See `ARCHITECTURE.md` for the layer rules and
 what comes next, and `CAPABILITIES.md` for what this thing can actually do and
 how each answer was measured.
 
-**`bench:blind` is the one command here that is expected to fail, and it should
-stay that way until it can honestly succeed.** It builds the set a panel is
-handed and then judges its own work: on the current transcripts it reports *"NOT
-BLIND — 5 of 5 pair(s) can be sorted into arms by a judge who knows nothing
-about either project"* and exits 1. Re-run by the accountant on 2026-09-01
-against both transcript sets, exit 1 both times. Six terms do the sorting and
-five of them are tool names, which this repository argues may not be renamed.
-So there is no blind result to report, and `docs/LEDGER.md`'s bar — *"a blind
-critic picks ours"* — is **not met**, for a reason that is in the instrument
-rather than in either arm.
+**`bench:blind` exited 1 for two waves and exits 0 now, and what changed is
+the meaning of the word, decided rather than discovered.** It builds the set a
+panel is handed and then judges its own work. For two waves it reported *"NOT
+BLIND — 5 of 5 pair(s) can be sorted into arms"* because five of the six
+sorting terms were tool names, which this repository argues may not be renamed.
+The lead's decision (`docs/LEDGER.md` row P4) was to rename nothing and render
+everything: every tool is a numbered slot, every turn one grammar, every
+ending one vocabulary, and the assembled prompt is in the file so criterion 1
+can be scored. Re-run by the accountant on 2026-09-01 over the run the third
+panel scored: exit 0 at all three indices, and a control with a planted tool
+name exits 1. The prompt's own prose is left as it is, on purpose, and it
+identifies both arms to anyone who has read either project — five of five
+judges said so first. `docs/LEDGER.md`'s bar — *"a blind critic picks ours"* —
+is **not met** on that panel: ours 12, theirs 21, tie 14 over the cells that
+came back, and all eighteen cells of the two tasks where ours dies at the token
+ceiling went the other way. The loop's fix for that ceiling is in `src/`
+and not yet in `bench/driver.js`, which is why those eighteen cells are the
+next brief (rows P9 and S62).
 
 **The trap that used to be in that list is closed, and how it was closed is the
 part worth keeping.** `lint` covers `bench`, and `bun run bench` writes
@@ -66,12 +74,12 @@ The page fetches the `.gz`, sniffs `1f 8b` and inflates it with
 `DecompressionStream`, and that is the path `bun run check` boots on every run.
 A fresh clone therefore HAS a working guest.
 
-**The two sizes above are the working tree's and not any commit's**, and that
-matters more than a stale figure usually would: at `HEAD` the tracked `.gz` is
-still the 40,029,960-byte pre-Python guest, so a clone of `HEAD` fails
-`bun run toolchain` with *"the guest has no python3"*. Verified rather than
-assumed — inflate the blob at `HEAD` and count occurrences of `python3.12`: zero,
-against 703 in the working tree's. `docs/LEDGER.md` row S51.
+**The two sizes above are `HEAD`'s as well as the working tree's** since
+`e59eeba`: inflate the blob at `HEAD` and count occurrences of `python3.12` and
+the answer is 703, the same as on disk, so a clone of `HEAD` passes
+`bun run toolchain`. For one wave it did not — the tracked `.gz` was the
+40,029,960-byte pre-Python guest — and `docs/LEDGER.md` row S51 is that wave's
+record.
 
 `scripts/wasm/build.sh <image>` rebuilds the raw module from pinned sources
 (about 18 minutes, needs Docker and a local registry; `ARCHITECTURE.md` has the
@@ -108,9 +116,11 @@ in real Chrome.
 
 `deploy.js` builds from a commit, so **an untracked file in the working tree is
 invisible to it and the build fails on the import**. Reproduced here:
-`bun scripts/deploy.js --ref $(git stash create)` exits 1 with
-*"Module not found: Can't resolve './PromptPanel.jsx'"*, because `git stash
-create` does not carry untracked files. `git add` before measuring a deploy.
+`bun scripts/deploy.js --ref $(git stash create)` exited 1 with
+*"Module not found: Can't resolve './PromptPanel.jsx'"* while that file was
+untracked, because `git stash create` does not carry untracked files. It is
+tracked now and the message is unchanged for the next untracked file.
+`git add` before measuring a deploy.
 
 Neither is part of `bun run check`; `docs/DEPLOY.md` says why and what each one
 proves. What a first visit costs, measured on both sides of this wave by driving

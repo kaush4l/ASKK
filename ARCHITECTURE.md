@@ -106,16 +106,25 @@ TOON is the only form the contract asks for, because small local models follow
 line-oriented fields far more reliably than they emit valid JSON; JSON is still
 read, as a repair, not as a form an agent file may request.
 
-**It refuses one now, on both routes inside the contract, and the third route is
-the residual.** A reply cut off before it wrote `act:` and a reply whose `act` is
-a word that is neither verb are both `ACT_UNSAID` (`ReActResponse.js:161`); the
-field has no default (`:55` is the comment where the default was), neither ends
-the run, and each carries `unsaidBecause` saying which of the two it was in
-words. The engine echoes the reply back with that sentence, counts the streak
-(`ReActEngine.js:251`) and ends the run only at `UNSAID_CEILING = 2` in a row
-(`:253`), through `unreadable` (`:349`), which names the route and names no
+**It refuses one now, on both routes inside the contract and on the one
+outside it, and the third route inside is the residual.** A reply cut off
+before it wrote `act:` and a reply whose `act` is a word that is neither verb
+are both `ACT_UNSAID` (`ReActResponse.js:161`); the field has no default (`:55`
+is the comment where the default was), neither ends the run, and each response
+carries `unsaidBecause` saying which of the two it was in words. The engine
+echoes the reply back with that sentence, counts the streak
+(`ReActEngine.js:348`) and ends the run only at `UNSAID_CEILING = 2` in a row
+(`:349`), through `unreadable` (`:452`), which names the route and names no
 lever — the ending is a decision with a reason attached rather than an accident
-wearing an answer's clothes.
+wearing an answer's clothes. The route outside the contract is the reply that
+never reached it: one that ran out of tokens inside the model's reasoning. The
+transport refuses it and now says so as `Reason.OVERRUN`
+(`OpenAICompatible.js:331`); the engine reads that (`ReActEngine.js:289`),
+tells the live view the pass ended holding nothing (`:308`), and sends
+`OVERRAN` (`:110`) back
+through the scratchpad on the same streak — a sentence measured to recover the
+next turn 10 of 10 times on the task that overruns, where every shorter
+version of it recovered none.
 
 The third route is unchanged and is stated as a cost rather than repaired: a
 reply in which *neither* parser finds any field still becomes an answer holding
@@ -306,12 +315,13 @@ raw gzip bytes with no `Content-Encoding`, so the sniff is the path that ships
 `git ls-tree HEAD public/sandbox/` lists it as a blob, so the
 neither-tracked-nor-ignored state this section used to describe is closed.
 
-**What replaced it is smaller and sharper: the tracked blob is the OLD guest.**
-At `HEAD` it is 40,029,960 bytes, inflating to 107,054,914 with zero occurrences
-of the string `python3.12`; the working tree's inflates to 143,205,983 with 703.
-So a clone of `HEAD` boots a guest without a language in it and fails
-`bun run toolchain`. Every figure in this section is the working tree's until
-somebody commits 52,602,121 bytes. `docs/LEDGER.md` row S51.
+**For one wave the tracked blob was the OLD guest** — 40,029,960 bytes at
+`HEAD`, inflating to 107,054,914 with zero occurrences of `python3.12`, so a
+clone booted a guest without a language in it and failed `bun run toolchain`.
+`e59eeba` closed that: `git show HEAD:public/sandbox/sandbox.wasm.gz | wc -c`
+is 52,602,121 and the inflated module carries 703 occurrences, the same as the
+working tree's. Every figure in this section is now `HEAD`'s.
+`docs/LEDGER.md` row S51, closed.
 
 **There is a deploy step.** `scripts/deploy.js` builds the directory a static
 host serves, and the whole of its design is that it builds from a CLEAN
@@ -550,7 +560,7 @@ declaring how often its bytes change; a `PromptTemplate` declares the order.
 Rearranging a prompt is editing a list — in code, or in an agent file.
 
     core/prompt/PromptTemplate.js   PromptBlock · Volatility · PromptTemplate
-    core/prompt/tokens.js           estimateTokens · TokenScale
+    core/prompt/tokens.js           estimateTokens
 
 Two published findings decide the default order, and they pull opposite ways:
 
@@ -671,12 +681,14 @@ or a number confidently wrong for whichever model the user chose. Instead:
 - Every reply carries `usage.prompt_tokens` — the exact count, from the only
   tokenizer whose opinion counts. Streamed calls ask for it explicitly with
   `stream_options: {include_usage: true}`.
-- `TokenScale` would learn the ratio between the two, per model, and apply it.
-  It does not, and has never been asked to: `grep -rn "TokenScale" src scripts
-  test bench agents public` returns `src/core/prompt/tokens.js` and
-  `test/core/prompt/tokens.test.js` and nothing else, re-run by the accountant
-  on 2026-09-01 — **the sixth wave that grep has returned the same two files.**
-  The estimate below is uncalibrated because nothing calibrates it.
+- Nothing learns the ratio between the two. A calibrator named `TokenScale`
+  sat in `tokens.js` for six waves with no caller outside its own test, and
+  slice D deleted it rather than thread a scale through `PromptTemplate.render`,
+  `ReActEngine` and `Budget`: `grep -rn "TokenScale" src scripts test bench
+  agents public` → nothing, exit 1, re-run by the accountant on 2026-09-01.
+  The estimate below is uncalibrated and `tokens.js`'s header says why —
+  `Budget` spends `usage.prompt_tokens`, the exact count, so a calibration
+  nothing fed would show as learned.
 
 Measured on this tree, three turns: **865 est / 872 counted**, **1,351 /
 1,373**, **962 / 970** — within 1.6% before any calibration.
@@ -911,14 +923,17 @@ mandatory, not defaulted* — `act` absent or unmatched is `ACT_UNSAID`, the tur
 is retried with the reply echoed back, and the run ends named at a ceiling of
 two; the branch that ended a run by accident is gone and `grep -rn "default:
 ACT_ANSWER" src/` returns only the comment recording it. This was *"the one place
-a reference scaffold beat this one in a measured head-to-head"* and it is the
-only defect this project has had named by a judge that did not know whose code it
-was reading. *Streaming* —
+a reference scaffold beat this one in a measured head-to-head"*, named by a
+judge who was handed a transcript and no stake in it — not a blind one; every
+judge on every panel has said which arm was which. Its successor, *the overrun
+comes back as a turn*, was named the same way by four judges of five and is
+done in `src/` (`ReActEngine.js:289`) and not yet in the rig that scores it
+(`docs/LEDGER.md` row S62). *Streaming* —
 `EventName.DELTA` on the same request id, emitted at `ChatService.js:266`. *Prompt components* — `core/prompt/PromptTemplate.js`.
 *Deploy* — static export to GitHub Pages at `/ASKK` with `.nojekyll`;
 `git log --oneline gh-pages | wc -l` is 93, of which exactly **one**
 (`a1d7a98 Deploy 2ef2c05`) is a commit descended from this architecture's
-skeleton, and it is five commits behind `main`. Verify by polling the build id,
+skeleton, and it is eleven commits behind `main` (`git rev-list --count 2ef2c05..main`, re-run 2026-09-01). Verify by polling the build id,
 never page content: a stale build serves a byte-identical page from disk cache.
 
 **Also done, and written here rather than deleted for the same reason.** *A

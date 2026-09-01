@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { drive } from '../../bench/driver.js'
-import { median, renderBody, resultRow, summarise, tally } from '../../bench/run.js'
+import { median, renderBody, resultRow, summarise, tally, workspaceName } from '../../bench/run.js'
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'support', 'fixtures')
 const capture = (name) => JSON.parse(readFileSync(join(FIXTURES, `${name}.json`), 'utf8'))
@@ -296,6 +296,37 @@ describe('resultRow — the only writer of results.json, driven by a real run', 
     expect(written.transcript).toBe('/t/2.md')
     expect(written.tokens).toEqual({ prompt: 107, completion: 422, total: 529 })
     expect(written.promptSize).toEqual({ messages: 1, chars: 8, systemChars: 0 })
+  })
+})
+
+/**
+ * P7, `docs/LEDGER.md` row S35: the workspace was `bench/work/<task>/<arm>/<n>`,
+ * handed to both arms in the prompt, and on `no-such-capability` our arm read
+ * its own directory name back as an answer key 7, 6 and 10 times across three
+ * runs. Any task whose id names its expected answer is contaminated for
+ * whichever arm reads the path aloud, and the arm name in the same path is the
+ * identity leak `blind.js` had to scrub out of a model's own sentences.
+ */
+describe('the workspace path names neither the task nor the arm', () => {
+  test('a run’s directory is its ordinal, and the function is handed nothing else', () => {
+    // The function takes ONE thing. It used to take the task and the arm too
+    // and read neither, and the test that asserted the name held neither was
+    // asserting `'7'` does not contain `'no-such-capability'`.
+    expect(workspaceName(7)).toBe('7')
+    expect(workspaceName.length).toBe(1)
+  })
+
+  test('main joins the run root to that, and to no task id or arm id', () => {
+    // `run.js` runs as source under bun, not as a bundle, so the file on disk
+    // is the file that runs. The call site is the one place a writer could
+    // re-thread `task.id` into the path without touching `workspaceName`, and
+    // nothing short of a model can drive `main`; this holds the call itself.
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bench', 'run.js'),
+      'utf8',
+    )
+    expect(source).toContain('const workdir = join(runRoot, workspaceName(sequence))')
+    expect(source).not.toMatch(/join\(runRoot,[^\n]*(task|scaffold)\.id/)
   })
 })
 

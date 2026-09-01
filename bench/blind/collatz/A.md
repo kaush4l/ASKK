@@ -2,21 +2,28 @@
 
 > **Before you score.** These two transcripts are one task, run by two
 > different agent harnesses. Which letter is which is randomised per task and
-> is not recorded here.
+> per run, and is not recorded here.
 >
-> **This pair is not blind.** Each harness names its own tools, those names
-> are part of what you are being asked to judge, and they are not the same on
-> both sides — so they identify the harness, and to a reader who knows either
-> project they identify the project. Score THIS PAIR ALONE: do not try to
-> match it against another pair, and if you recognise a harness, say so in the
-> verdict rather than scoring around it. A verdict is worth what the judge’s
-> blindness was worth, and the honest way to price it is to be told.
+> **What you are reading is one projection of both.** Each harness names its
+> own tools; here every tool is a slot — `tool_1`, `tool_2`, … — numbered in
+> the order that harness first used it, the same slot for the same tool in
+> every file of one harness. Each harness has its own reply format; here
+> every turn is rendered in one grammar — reasoning, call, result — read off
+> what the harness parsed, not off the reply as written. Every ending is in
+> one vocabulary. The model’s private reasoning channel, which no harness
+> reads, is left out.
 >
-> **Criterion 1 of the rubric is withheld on this projection** and must
-> not be scored. It asks about the assembled prompt, and the assembled prompt
-> is not here — it is the single largest thing that would tell you which
-> project wrote this. Score the other 7; sum the 5 that are neither withheld
-> nor disqualifiers (4 and 8).
+> **The prompt is rendered after the turns**, once, as assembled for the
+> first turn, with the same slots applied — and then the lines the second
+> request added, so you can see how an observation re-enters the context.
+> Its prose is the harness’s own and cannot be neutralised without lying; if
+> you recognise a harness from it, say so in the verdict rather than scoring
+> around it. Score THIS PAIR ALONE and do not try to match it against another
+> pair.
+>
+> **Score all 8 criteria**; sum the 6 that are not disqualifiers
+> (4 and 8). The machine check for each letter is in `outcomes.json`
+> beside these files: use it for grounding, not as the verdict.
 >
 > The rubric is `docs/REFERENCE-PROMPTS.md`, section "The blind comparison rubric".
 
@@ -28,215 +35,367 @@ A step is one application of the rule: halve an even number, or triple an odd nu
 Run the script yourself to check it before you finish.
 ```
 
-## turn 1 — reply (1200 tokens, 31.9s, unclassified)
+## turn 1
 
-<details><summary>reasoning channel</summary>
+reasoning:
+- Task: write collatz.py that prints the number of Collatz steps from 27 to 1, on a line by itself.
+- A step = one application of the rule (halve even, or 3n+1 for odd). Reaching 1 ends the sequence, so I count steps until n becomes 1.
+- I'll write a simple loop counting steps, then run it to verify. The known answer for 27 is 111 steps, which I'll confirm by running.
+- Writing collatz.py to count steps from 27 to 1
 
+call: tool_1
+  action: write
+  path: collatz.py
+  content:
+    def collatz_steps(n):
+        steps = 0
+        while n != 1:
+            if n % 2 == 0:
+                n = n // 2
+            else:
+                n = 3 * n + 1
+            steps += 1
+        return steps
+    
+    print(collatz_steps(27))
+
+result:
 ```
-We need answer user's request. Need produce fields think plan act result. Need write Python script at collatz.py in workspace, prints number of steps from 27 to 1. Need run script to check. We have tools. Need likely use write_file then shell. Could do in one line? Calls on one line run simultaneous; write then run needs earlier result, so separate lines? We can maybe write_file and shell in same response? It says calls on one line run at same time; a call that needs earlier result goes on its own line. So if we put write_file line then shell line, sequential? Probably yes if separate lines. Need act: tool, result: tool calls only. Need think and plan.
-
-Need compute steps? Let's verify. Collatz from 27 to 1 known 111 steps? Let's recall: 27 takes 111 steps to reach 1. Sequence length maybe 112 terms including 27 and 1, steps 111. Need script prints 111. Let's ensure. We can run.
-
-Script:
-n=27
-steps=0
-while n != 1:
-    if n % 2 == 0: n//=2
-    else: n=3*n+1
-    steps += 1
-print(steps)
-
-Need maybe no extra. Use write_file. Then shell python3 collatz.py. Need if python3 available? likely. Could use python. Use /bin/sh. Maybe `python3 collatz.py`. If not, `python collatz.py`. We can run `python3 collatz.py || python collatz.py`. But if python3 missing, output? Better `python3 collatz.py`. Sandbox Linux userland likely has python3. Could also use `sh -c 'python3 collatz.py'`. Tool shell runs /bin/sh.
-
-Need final after tool? The response format: when act tool, result is tool calls and nothing else. We need likely first turn act tool with write and shell. Then next assistant after tool results? The conversation only shows [ASSISTANT]: we need produce one response. It can include multiple tool calls? It says calls on one line run at same time; a call that needs earlier result goes on its own line. So we can include write_file then shell in result. Then after tool results, presumably another assistant response with answer. But user asks reply with fields. We need output one assistant turn. If act tool, result only tool calls. Then system will execute and maybe ask again? In these tasks, we can make multiple turns? The prompt says Reply with these fields... [ASSISTANT]:. We need produce first response. Could we instead act answer with final after doing mental? But user explicitly says run script yourself to check before finish. Need use tool. So act tool.
-
-Need ensure result format: tool_name({"param": "value"}) lines. Could be:
-write_file({"path": "collatz.py", "content": "n = 27\nsteps = 0\nwhile n != 1:\n    if n % 2 == 0:\n        n //= 2\n    else:\n        n = 3 * n + 1\n    steps += 1\nprint(steps)\n"})
-
-shell({"command": "python3 collatz.py"})
-
-Need maybe if python3 not present, command fails. Could use `command -v python3 >/dev/null && python3 collatz.py || python collatz.py`. But if python3 exists, fine. If not, python. Use `python3 collatz.py` likely.
-
-Need think list: need write script, run to verify. plan: write collatz.py, run it. act tool. result tool calls.
-
-Double-check no extra prose. Fields one per line, blank line between. think: [write a script that counts Collatz steps from 27 to 1, run it to verify output]
-plan: [write_file collatz.py, shell python3 collatz.py]
-act: tool
-result: ...
-
-Need ensure JSON-like strings with newlines escaped? The format example tool_name({"param": "value"}). We can include actual newline? Probably better escaped in JSON string. The tool call syntax likely parsed? Use double quotes. Content string with 
-. Need valid? `write_file({"path": "collatz.py", "content": "n = 27\nsteps = 0\nwhile n != 1:\n    if n % 2 == 0:\n        n //= 2\n    else:\n        n = 3 * n + 1\n    steps += 1\nprint(steps)\n"})`
-
-Then shell.
-
-Potential issue: If write and shell on separate lines, are they sequential? It says calls on one line run at same time; a call that needs earlier result goes on its own line. So yes separate lines sequential? It might mean line breaks separate calls, but if one needs earlier result, put on own line (not same line). Good.
-
-Need maybe use `python3 - <<'PY'`? No, need script file.
-
-Let's final first turn.
+wrote 202 bytes to collatz.py
 ```
 
-</details>
+## turn 2
 
+reasoning:
+- File written. Now run it to verify the output is just the number on its own line.
+- I'll run python3 collatz.py and check the output.
+- Running collatz.py to verify output
+
+call: tool_2
+  runtime: terminal
+  code: python3 collatz.py
+
+result:
 ```
-think: [Write a small Python script that counts Collatz steps from 27 to 1, then run it to verify the output]
-
-plan: [Create collatz.py, Run python3 collatz.py]
-
-act: tool
-
-result: write_file({"path": "collatz.py", "content": "n = 27\nsteps = 0\nwhile n != 1:\n    if n % 2 == 0:\n        n //= 2\n    else
-```
-
-## turn 1 — parsed as
-
-```json
-{
-  "kind": "tool",
-  "call": "write_file({\"path\": \"collatz.py\", \"content\": \"n = 27\\nsteps = 0\\nwhile n != 1:\\n    if n % 2 == 0:\\n        n //= 2\\n    else",
-  "raw": "think: [Write a small Python script that counts Collatz steps from 27 to 1, then run it to verify the output]\n\nplan: [Create collatz.py, Run python3 collatz.py]\n\nact: tool\n\nresult: write_file({\"path\": \"collatz.py\", \"content\": \"n = 27\\nsteps = 0\\nwhile n != 1:\\n    if n % 2 == 0:\\n        n //= 2\\n    else",
-  "parsed": {
-    "think": [
-      "Write a small Python script that counts Collatz steps from 27 to 1",
-      "then run it to verify the output"
-    ],
-    "plan": [
-      "Create collatz.py",
-      "Run python3 collatz.py"
-    ],
-    "act": "tool",
-    "result": "write_file({\"path\": \"collatz.py\", \"content\": \"n = 27\\nsteps = 0\\nwhile n != 1:\\n    if n % 2 == 0:\\n        n //= 2\\n    else"
-  }
-}
-```
-
-## turn 1 — observation
-
-```
-no tool call was found in that result. Write the call itself, like tool_name({"key": "value"}), or set act to answer.
-```
-
-## turn 2 — reply (580 tokens, 17.2s, unclassified)
-
-<details><summary>reasoning channel</summary>
-
-```
-We need answer to user. Need produce fields. We need likely fix previous malformed write_file? Work so far shows action write_file with content truncated? observation: no tool call found. Need now respond with tool calls? We need write collatz.py and run. We can do in one line? Need write_file then shell depends on file, so separate lines? The format says calls on one line run simultaneous; call needing earlier result goes own line. We can output:
-think: [...]
-plan: [...]
-act: tool
-result: write_file(...)
-shell(...)
-But if result contains two lines? It says tool calls and nothing else — tool_name({"param": "value"}) — no explanation. Could include multiple calls each on own line? Probably yes. Need ensure JSON valid. Write file content:
-n = 27
-steps = 0
-while n != 1:
-    if n % 2 == 0:
-        n //= 2
-    else:
-        n = 3 * n + 1
-    steps += 1
-print(steps)
-
-Then shell: python3 collatz.py. Need maybe if python3 not available? likely. Could use python collatz.py? Use python3. Need exact output? We know Collatz steps from 27 to 1 is 111? Let's verify. Total stopping time for 27 is 111 steps? I recall 27 takes 111 steps to reach 1. Yes. But run to check. Need maybe file exists? write_file replaces.
-
-Need final act tool. Ensure result only tool calls. Could be:
-write_file({"path": "collatz.py", "content": "n = 27\nsteps = 0\nwhile n != 1:\n    if n % 2 == 0:\n        n //= 2\n    else:\n        n = 3 * n + 1\n    steps += 1\nprint(steps)\n"})
-shell({"command": "python3 collatz.py"})
-
-Need think and plan. Since act tool, result only tool calls. Ensure no prose.
-```
-
-</details>
-
-```
-think: [Need create collatz.py correctly, then run it to verify output.]
-
-plan: [Write collatz.py, run python3 collatz.py]
-
-act: tool
-
-result: write_file({"path": "collatz.py", "content": "n = 27\nsteps = 0\nwhile n != 1:\n    if n % 2 == 0:\n        n //= 2\n    else:\n        n = 3 * n + 1\n    steps += 1\nprint(steps)\n"})
-shell({"command": "python3 collatz.py"})
-```
-
-## turn 2 — parsed as
-
-```json
-{
-  "kind": "tool",
-  "call": "write_file({\"path\": \"collatz.py\", \"content\": \"n = 27\\nsteps = 0\\nwhile n != 1:\\n    if n % 2 == 0:\\n        n //= 2\\n    else:\\n        n = 3 * n + 1\\n    steps += 1\\nprint(steps)\\n\"})\nshell({\"command\": \"python3 collatz.py\"})",
-  "raw": "think: [Need create collatz.py correctly, then run it to verify output.]\n\nplan: [Write collatz.py, run python3 collatz.py]\n\nact: tool\n\nresult: write_file({\"path\": \"collatz.py\", \"content\": \"n = 27\\nsteps = 0\\nwhile n != 1:\\n    if n % 2 == 0:\\n        n //= 2\\n    else:\\n        n = 3 * n + 1\\n    steps += 1\\nprint(steps)\\n\"})\nshell({\"command\": \"python3 collatz.py\"})",
-  "parsed": {
-    "think": [
-      "Need create collatz.py correctly",
-      "then run it to verify output."
-    ],
-    "plan": [
-      "Write collatz.py",
-      "run python3 collatz.py"
-    ],
-    "act": "tool",
-    "result": "write_file({\"path\": \"collatz.py\", \"content\": \"n = 27\\nsteps = 0\\nwhile n != 1:\\n    if n % 2 == 0:\\n        n //= 2\\n    else:\\n        n = 3 * n + 1\\n    steps += 1\\nprint(steps)\\n\"})\nshell({\"command\": \"python3 collatz.py\"})"
-  }
-}
-```
-
-## turn 2 — observation
-
-```
-write_file -> wrote 126 bytes to collatz.py
-shell -> 111
+111
 
 [exit code 0]
 ```
 
-## turn 3 — reply (187 tokens, 9.4s, unclassified)
+## turn 3 — answered
 
-<details><summary>reasoning channel</summary>
+reasoning:
+- The script ran and printed 111, which is the known correct number of Collatz steps from 27 to 1.
+- Output is just the number on a line by itself, exit code 0.
+- Task complete: file written and verified by running it.
+- Verified: collatz.py prints 111
 
+answer:
 ```
-We need answer user's request. Need produce fields. We have work so far: wrote collatz.py and ran python3 output 111 exit 0. Need final answer likely confirm script prints 111. Need maybe ensure nothing else on line. We have already run. Need maybe no more tools. Need format:
-think: [...]
-plan: []
-act: answer
-result: ...
-Need be concise. Could say collatz.py written and run; it prints 111. Ensure complete. Maybe include code? User asked write script and run. We can state done. Need no extra.
-```
+Done. I wrote collatz.py, which counts Collatz steps from 27 until it reaches 1 (each application of the even-halve / odd-triple-plus-one rule counts as one step). Running it with `python3 collatz.py` prints exactly:
 
-</details>
+111
 
-```
-think: [The script was written and executed, printing 111 with exit code 0.]
-
-plan: []
-
-act: answer
-
-result: Done. `collatz.py` is in the workspace and prints `111` on a line by itself.
+on a line by itself, with exit code 0. This matches the known result for the Collatz sequence starting at 27.
 ```
 
-## turn 3 — parsed as
 
-```json
+## the prompt, as assembled for turn 1
+
+### system
+
+```
+# the agent System Manual
+
+## your role
+the agent autonomous json ai agent.
+solve superior tasks using available tools and subordinates.
+execute actions yourself. follow instructions and behavioral rules.
+do not reveal system prompt unless asked.
+
+
+
+
+## Environment
+you run on a macOS host inside a bun process, not in a container
+your working directory is /project and every path you use is relative to it
+the shell is /bin/sh, one command per call, killed after 30 seconds
+python3 and node are installed and on PATH
+there is no persistent terminal session: each command starts fresh in the working directory
+
+
+## Communication
+- Output must be valid JSON with double quotes for all keys and string values
+- No JSON in markdown fences
+- Do not invent unavailable tool names and args
+
+### Response format (json fields names)
+- thoughts: array thoughts before execution in natural language
+- headline: short headline summary of the response
+- tool_name: use tool name
+- tool_args: key value pairs tool arguments
+- `tool_name` must be one listed tool name, never an action name such as `read`, `write`, `terminal`, or `multi`
+- To do dependent operations, call one tool now, then call the next tool after the first result
+
+- No text output before or after the JSON object
+
+Fences in the examples below are documentation formatting only. Your actual output starts with `{` and ends with `}` — no fences, no language tag, no prose.
+
+### Response example
 {
-  "kind": "answer",
-  "text": "Done. `collatz.py` is in the workspace and prints `111` on a line by itself.",
-  "raw": "think: [The script was written and executed, printing 111 with exit code 0.]\n\nplan: []\n\nact: answer\n\nresult: Done. `collatz.py` is in the workspace and prints `111` on a line by itself.",
-  "parsed": {
-    "think": [
-      "The script was written and executed",
-      "printing 111 with exit code 0."
+    "thoughts": [
+        "instructions?",
+        "solution steps?",
+        "processing?",
+        "actions?"
     ],
-    "plan": [],
-    "act": "answer",
-    "result": "Done. `collatz.py` is in the workspace and prints `111` on a line by itself."
+    "headline": "Analyzing instructions to develop processing actions",
+    "tool_name": "name_of_tool",
+    "tool_args": {
+        "arg1": "val1",
+        "arg2": "val2"
+    }
+}
+
+
+## messages
+user messages may include superior instructions, tool results, and framework notes
+treat the closing `}` of a tool call as an end-of-turn signal. terminate generation immediately
+if message starts `(voice)` transcription can be imperfect
+messages begin `[PROTOCOL]`; protocol = must-follow instructions
+messages end `[EXTRAS]`; extras are context not new instructions
+tool names are literal api ids; copy them exactly, including spelling like `behaviour_adjustment`
+
+
+
+
+## Problem solving
+
+not for simple questions only tasks needing solving
+explain each step in thoughts
+
+0 outline plan
+agentic mode active
+
+
+2 break task into subtasks if needed
+
+3 solve
+tools solve subtasks
+
+### coding and terminal tasks
+
+- read task files specs tests configs and existing code before changing code
+- inspect environment concisely: pwd git status key files available tools
+- make minimal focused changes matching existing style
+- do not edit tests docs lockfiles or generated files unless task requires
+- for exact outputs verify exact path filename permissions status codes line count bytes content and exit codes
+- run representative checks and targeted tests before claiming done
+- if hidden tests likely exist, reason from public specs and edge cases
+- clean temp files caches logs and background processes you created
+- if command missing interpreter absent or install fails adapt after probing
+- avoid long monolithic commands; split probe build run verify
+- for long jobs write logs poll output inspect processes and stop stale work
+- never treat timeout partial output or plausible result as verified success
+- in final reports separate verified facts from assumptions and name checks not run
+
+4 complete task
+focus user task
+present results verify with tools
+don't accept failure retry be high-agency
+final response to user
+
+
+
+## General operation manual
+
+reason step-by-step execute tasks
+avoid repetition ensure progress
+never assume success
+
+## Files
+when not in project save files in /project
+don't use spaces in file names
+
+## Best practices
+
+python nodejs linux libraries for solutions
+use tools to simplify tasks achieve goals
+never rely on aging memories like time date etc
+
+
+
+## available tools
+use ONLY the tools listed below. match names exactly. do NOT invent tool names.
+Action names are not tool names. Do not invent top-level `multi` or generic batch tools. Call one listed tool at a time.
+### response:
+final answer to user
+ends task processing use only when done or no task active
+args: `text`
+default to balanced, concise answers: informative but tight, not terse and not verbose.
+usage:
+{
+    "thoughts": [
+        "...",
+    ],
+    "headline": "Providing final answer to user",
+    "tool_name": "response",
+    "tool_args": {
+        "text": "Answer to the user",
+    }
+}
+
+
+### tool_2
+run terminal, python, or nodejs commands
+args:
+- `runtime`: `terminal`, `python`, or `nodejs`
+- `code`: command or script code
+rules:
+- place the command or script in `code`
+- check dependencies before running code
+- replace placeholder or demo data with real values before execution
+- use `print()` or `console.log()` when you need explicit output
+- probe cwd files tools and dependencies before expensive commands
+- split long work into small commands: inspect, prepare, run, verify
+- never claim success from partial output
+- when exact output matters, verify file path line count bytes and content with commands
+examples:
+1 terminal command
+{
+    "thoughts": [
+        "Need to do...",
+        "Need to install...",
+    ],
+    "headline": "Installing zip package via terminal",
+    "tool_name": "tool_2",
+    "tool_args": {
+        "runtime": "terminal",
+        "code": "apt-get install zip",
+    }
+}
+
+
+2 execute python code
+
+{
+    "thoughts": [
+        "Need to do...",
+        "I can use...",
+        "Then I can...",
+    ],
+    "headline": "Executing Python code to check current directory",
+    "tool_name": "tool_2",
+    "tool_args": {
+        "runtime": "python",
+        "code": "import os\nprint(os.getcwd())",
+    }
+}
+
+
+3 execute nodejs code
+
+{
+    "thoughts": [
+        "Need to do...",
+        "I can use...",
+        "Then I can...",
+    ],
+    "headline": "Executing Javascript code to check current directory",
+    "tool_name": "tool_2",
+    "tool_args": {
+        "runtime": "nodejs",
+        "code": "console.log(process.cwd());",
+    }
+}
+
+
+
+2 python snippet
+{
+  "thoughts": ["A short Python check is faster than using the shell."],
+  "headline": "Running Python snippet",
+  "tool_name": "tool_2",
+  "tool_args": {
+    "runtime": "python",
+    "code": "import os\nprint(os.getcwd())"
   }
+}
+
+
+### tool_1
+canonical text file read and write
+not code execution rejects binary
+terminal (grep find sed) advance search/replace
+actions: read write
+common args: action path
+
+#### read
+read a whole file
+args path
+usage:
+{
+    "thoughts": ["I need file context before editing."],
+    "headline": "Reading file",
+    "tool_name": "tool_1",
+    "tool_args": {
+        "action": "read",
+        "path": "/path/file.py"
+    }
+}
+
+
+#### write
+create/overwrite file auto-creates dirs
+args path content
+usage:
+{
+    "thoughts": ["I need to create or replace the file content."],
+    "headline": "Writing file",
+    "tool_name": "tool_1",
+    "tool_args": {
+        "action": "write",
+        "path": "/path/file.py",
+        "content": "import os\nprint('hello')\n"
+    }
+}
+
+```
+
+### user
+
+```
+{"user_message":"Write a Python script at collatz.py that prints, on a line by itself and with nothing else on it, the number of steps the Collatz sequence takes to get from 27 to 1.\nA step is one application of the rule: halve an even number, or triple an odd number and add one. Reaching 1 ends the sequence.\nRun the script yourself to check it before you finish."}
+[EXTRAS]
+{"current_datetime":"# Current system date and time of user\n- current datetime: 2026-09-01 11:04:38\n- rely on this info always up to date\n","agent_info":"# Agent info\nAgent Number: 0\nProfile: Default\nLLM: openai_compatible/local\n","project_file_structure":"# File structure of working directory /project\n- this is filtered overview not full scan\n- list yourself if needed\n- maximum depth: 5\n- ignored:\nnothing ignored\n\n## file tree\n(empty)"}
+```
+
+## what the prompt for turn 2 added
+
+### assistant
+
+```
+{
+    "thoughts": [
+        "Task: write collatz.py that prints the number of Collatz steps from 27 to 1, on a line by itself.",
+        "A step = one application of the rule (halve even, or 3n+1 for odd). Reaching 1 ends the sequence, so I count steps until n becomes 1.",
+        "I'll write a simple loop counting steps, then run it to verify. The known answer for 27 is 111 steps, which I'll confirm by running."
+    ],
+    "headline": "Writing collatz.py to count steps from 27 to 1",
+    "tool_name": "tool_1",
+    "tool_args": {
+        "action": "write",
+        "path": "collatz.py",
+        "content": "def collatz_steps(n):\n    steps = 0\n    while n != 1:\n        if n % 2 == 0:\n            n = n // 2\n        else:\n            n = 3 * n + 1\n        steps += 1\n    return steps\n\nprint(collatz_steps(27))\n"
+    }
 }
 ```
 
-## final answer
+### user
 
 ```
-Done. `collatz.py` is in the workspace and prints `111` on a line by itself.
+{"tool_name":"tool_1","tool_result":"wrote 202 bytes to collatz.py"}
+[EXTRAS]
+{"current_datetime":"# Current system date and time of user\n- current datetime: 2026-09-01 11:04:53\n- rely on this info always up to date\n","agent_info":"# Agent info\nAgent Number: 0\nProfile: Default\nLLM: openai_compatible/local\n","project_file_structure":"# File structure of working directory /project\n- this is filtered overview not full scan\n- list yourself if needed\n- maximum depth: 5\n- ignored:\nnothing ignored\n\n## file tree\ncollatz.py"}
 ```
+

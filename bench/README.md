@@ -52,6 +52,30 @@ replaces the evidence turns the suite red instead of leaving a reader to find
 that the answer does not match. The re-take is due the moment our agent has a
 filesystem.
 
+## What a judge is handed, and the rule it is built under
+
+**A panel scores a PROJECTION of both loops, not either loop's own artifact.**
+P4 was decided by the lead after two panels were spent on sets the gate
+refused: tool identifiers and reply grammar get a common rendering in the
+projection, and nothing in `src/` or in either scaffold is renamed. The ledger's
+standing argument — that renaming a tool puts the lie in the artifact — is
+about the artifact, and the projection is not the artifact. A judge scores what
+the loop DID with its tools, not what the tools were called.
+
+So `blind.js` renders, per file: the task; per turn the four things both reply
+formats carry — reasoning, call, result — read off the recorded action rather
+than the reply text, with every tool a per-arm slot (`tool_1`, `tool_2`, … in
+order of first use across that arm's whole set); every ending in one
+vocabulary; and then the assembled prompt for turn 1, once, under the same
+slots and the same scrub, plus the lines the turn-2 request added. It drops the
+model's private reasoning channel and the transcript header, and it emits a
+directory a panel can be handed with nothing beside it: `<task>/{A,B}.md` and
+one `outcomes.json` keyed by task and letter, the letters in letter order under
+every task. The full argument, the gate, and
+what it printed over the recorded runs are under "`blind.js` is the gate",
+below. Every number below this line was recorded before that projection
+existed, and none of it was judged through it.
+
 ## Read this before any number below
 
 **If our arm is our real code and their arm is our paraphrase of their code, the
@@ -405,220 +429,295 @@ evidence outside the repository is not evidence.
                                       for a number anyone quotes
     bun bench/run.js --out /tmp/x     transcripts AND results.json elsewhere,
                                       leaving the repository's evidence alone
-    bun run bench:blind               build the set and gate it (exit 1 today, and why)
-    bun bench/blind.js --index 2      blind run 2 instead of run 1
-    bun bench/blind.js --transcripts /tmp/x --out /tmp/x-blind
-                                      blind a run that went somewhere else
+    bun run bench:blind               build the panel directory and gate it
+    bun bench/blind.js --index 2      run 2 instead of run 1, with its own A/B map
+    bun bench/blind.js --transcripts /tmp/x --out /tmp/x-blind --key /tmp/elsewhere.json
+                                      blind a run that went somewhere else, and put
+                                      the key where the panel is not
 
 `run.js` writes `transcripts/<task>/<scaffold>/<n>.md` (and `.json`) plus
 `results.json`, and prints the table. Each transcript carries the scaffold's own
 `cuts` — every departure it makes from what it would really send — so a number
-never travels without them.
+never travels without them. **Its workspace is `work/<n>`, a number** —
+`workspaceName` — and `results.json` carries which run each number was. It was
+`work/<task>/<scaffold>/<n>`, handed to both arms in the prompt, and on
+`no-such-capability` our arm read `no-such-capability/ours/1` back off its own
+cwd and quoted it as an answer key seven, six and ten times across three runs
+(`docs/LEDGER.md` row S35, P7). The thirty runs under `runs/2026-09-01-s53-n3`
+and the thirty under `transcripts/` were recorded under the old path; `blind.js`
+scrubs that fragment out of them, and the next run will not produce it.
 
-`blind.js` writes `blind/<task>/{A,B}.md` and the key to `blind-key.json`,
-which is OUTSIDE `blind/` — a judge is handed `blind/<task>/` and nothing else,
-and a key inside that directory is not a key, it is a label. It used to be
-`blind/key.json`. The key is gitignored; regenerate it with `bun run bench:blind`.
+`blind.js` writes the directory a panel is handed — `blind/<task>/A.md`,
+`blind/<task>/B.md` and `blind/outcomes.json` — and the key to
+`blind-key.json`, which is OUTSIDE it. The panel is handed `blind/` and not its
+parent: the last panel was unblinded by the key sitting beside the set in a run
+directory that was handed over whole, and by the lead's own prompt carrying the
+map. `--key` puts it further away. `bench/blind-key.json` is gitignored;
+regenerate it with `bun run bench:blind`. **That is the only key path
+ignored**: the default `--key` is `<out>-key.json`, so `--out` under a run
+directory puts the key beside the set inside the directory that was handed
+over whole last time, and `runs/2026-09-01-s53-n3/blind{,-2,-3}/` with their
+three keys are tracked at `c00b830` — the projection the gate refused, tool
+names and all. They are to be deleted, not regenerated in place; the panel
+directory for that run is built with `--out` and `--key` pointing elsewhere.
 
-**`blind.js` is the gate on that directory, and it exits non-zero when a leak
-exists.** What a judge sees is a PROJECTION of the run — the task, then per turn
-the model's reply, how the harness parsed it, and what the tools answered, then
-how the run ended and what it finally said. It reads `<n>.json` and asks
-`run.js` `renderBody` for that projection, so the header and the departures block
-are structurally absent rather than stripped. Two things it deliberately does
-NOT do:
+### `blind.js` is the gate, and what it emits is a projection
 
-- **it does not rename tools.** `code_execution_tool`, `text_editor`,
-  `read_file`, `write_file`, `list_files` survive verbatim. An earlier version
-  mapped them onto a neutral vocabulary and called the result blind; a tool's
-  name is part of what is being judged, and a judge shown `exec` cannot see that
-  one harness routes four capabilities through one tool with an `action`
-  argument while the other offers four flat ones. That rename also did not work
-  — it was word-bounded, so every occurrence preceded by an escaped newline
-  inside a JSON string survived it, which is where the last panel's nine leaks
-  came from.
-- **it does not reformat replies.** The response contract is the variable under
-  test.
-- **it does not rewrite a sentence the model wrote.** Dropping the request block
-  removes both system prompts AS SENT, at every turn, in every file. It does not
-  remove them where a model quoted its own instructions back into its reasoning,
-  and one file does exactly that: `blind/no-such-capability/B.md` carries `You
-  are a careful, direct assistant` five times. That text is the model's speech;
-  scrubbing it would put a fabrication in the artifact, which is the trade this
-  script refuses everywhere else. So it is declared instead — and it was NOT,
-  until this slice: the gate exited 0 over that file and the header of `blind.js`
-  claimed dropping the request block was "the whole identity leak", while one
-  `grep -l` separated that pair.
+What a judge sees is ONE rendering of both loops. It reads `<n>.json`, never
+the named markdown, so the header — the arm's label, the verdict, the check
+list, the departures — is structurally absent rather than stripped. Then, per
+file:
 
-Which means **the set is not blind — and as of this slice the exit code says so,
-not just the prose.** `bun bench/blind.js` used to print `NOT BLIND: 137 line(s)
-…` and exit **0**: an instrument built to enforce blindness passing an artifact
-it had just called broken. `docs/LEDGER.md` row S39, and either the exit code or
-the sentence had to give. The exit code gives, because the sentence was true.
+- **the task.**
+- **per turn: `reasoning:`, `call:`, `result:`.** `thoughts` + `headline` and
+  `think` + `plan` are both a reasoning list; one JSON envelope and one call
+  line are both `call: <slot>` with its arguments beneath it, a multi-line
+  argument as an indented block; the observation is `result:`. This is read off
+  the recorded ACTION, not the reply text. **The reply as the model wrote it is
+  not rendered**: the two grammars separated 5 of 5 pairs on sight, and the
+  grammar is in the prompt below for a judge who wants to score it. A reply
+  the token ceiling cut inside its envelope — the harness scores it a
+  misformat — still yields every thought that closed: the one such turn in the
+  recorded set holds the model's whole diagnosis of the bug and rendered
+  `reasoning: (none)` until the reader was made to look.
+- **tool names as slots.** `tool_1`, `tool_2`, … per arm, in order of first use
+  across that arm's whole set, then the listed-but-unused in listing order, so
+  the same tool has the same slot in every file of one arm and a judge can
+  follow a tool across turns without learning its name. The mapping is applied
+  to the whole file — reasoning, observation text, the prompt — as an identifier
+  match that also sees through an escaped newline inside a JSON string, which
+  is where the first panel's nine leaks came from. A tool used only as the
+  ANSWER (`response`) is rendered as an ending rather than mapped: rewriting
+  every English "response" in one arm's files would make the word's absence a
+  separator in the other's.
+- **every ending in one vocabulary** — `ENDINGS`: `answered`, `ran out of
+  tokens in its scratchpad`, `cut mid-reply`, `refused`, `stopped at a
+  ceiling`, `the endpoint failed`. The transport's own refusal text signs itself
+  and names its levers; only the state is rendered.
+- **the prompt, once, after the turns** — P5. Every message of the first
+  request by role, under the same slots and the same scrub, then the lines the
+  turn-2 request added over it, so the way an observation re-enters the context
+  is visible once per file. Criterion 1 is about prompt composition and zero of
+  eight judges across two panels could score it on a projection that dropped
+  the prompt; three marked it withheld and two scored it from the raw
+  transcripts and said that doing so ended their own blindness.
 
-What is fatal is not that identifying terms remain — it is that they
-**separate**. `separation` asks one question of the set rather than of a reader:
-does any scanned term appear in one arm's files and in no other arm's? Measured
-on the set now in `blind/`, and pasted as the program emitted it — the only
-edits are whole lines dropped, marked where they were, and the prose paragraph
-the inventory prints under its own heading:
+Two things it drops, with the argument:
 
-    DECLARED RESIDUE: 137 line(s) carrying one of 7 declared identifying term(s), in 10 of 10 file(s).
-       [… eight files …]
-       /Users/kaush/Downloads/Dev/ASKK/bench/blind/no-such-capability/B.md  read_file×3 You are a careful, direct assistant×5 write_file×5
-       [… one file …]
+- **the private reasoning channel.** No harness ever reads `reasoning_content`;
+  it is where the model rehearses its output format verbatim — `think: [...]
+  plan: [...] act: tool` on one side, `"tool_name"` on the other — and it is
+  where one run read its own workspace path back seven times. The reasoning a
+  judge sees is the reasoning the harness asked for and received.
+- **the header.** The verdict is the answer; handing it to the judge is
+  prompting. What a judge scoring grounding does need — whether the thing the
+  run said it did was done — travels as `outcomes.json`: per task, per LETTER,
+  the machine check's names and booleans, the turn count, the ending in the
+  vocabulary above and the token total. No arm name, no workdir, no detail
+  string — and the letters in LETTER order under every task. They were written
+  in arm order, so the first key under every task was the same arm and the
+  file carried the whole A/B map in the order of its keys.
 
-    verified: no banned term survives in any emitted file
+**The prompt's prose is residue honest stripping cannot remove, and it is
+declared rather than hidden.** A reader who has read either project will
+recognise `# the agent System Manual` or `You are a careful, direct assistant`;
+so will anyone who has read the previous panel's write-up. The disclosure at
+the top of every file says so, asks the judge to score the pair alone, and asks
+one who recognises a harness to say so in the verdict rather than score around
+it. The gate prints how much of it there is — see below — so a verdict can be
+read knowing by how much.
 
-    !! NOT BLIND — 5 of 5 pair(s) can be sorted into arms by a judge who knows nothing about either project:
-       "code_execution_tool" [declared] appears only in agent-zero, in 5 of 5 pair(s)
-       "text_editor" [declared] appears only in agent-zero, in 5 of 5 pair(s)
-       "read_file" [declared] appears only in ours, in 4 of 5 pair(s)
-       "write_file" [declared] appears only in ours, in 4 of 5 pair(s)
-       "list_files" [declared] appears only in ours, in 2 of 5 pair(s)
-       "You are a careful, direct assistant" [declared] appears only in ours, in 1 of 5 pair(s)
-       "/workspace" [replacement] appears only in agent-zero, in 1 of 5 pair(s)
-       "this harness" [replacement] appears only in ours, in 1 of 5 pair(s)
-       [… the two closing paragraphs, one per kind …]
+### What exits 1
 
-    exit 1
+1. a `BANNED` term — the project names, the user's name, absolute paths,
+   `bench/work`, `scaffold`, the transport's class label — surviving anywhere
+   in an emitted file. `test/bench/blind.test.js` holds every banned term to a
+   scrub rule behind it.
+2. an arm's own directory name surviving as a word. The names are read off
+   `transcripts/<task>/`, so a third scaffold is covered the day it is added.
+3. **a tool name of either arm surviving anywhere in an emitted file.** This
+   is the control the whole of P4 rests on: `findTools` scans the emitted
+   bytes with the mapper's own boundary rule, so a name the mapper missed is a
+   name the verifier finds. Each arm's files are scanned for that arm's whole
+   vocabulary plus the other arm's, minus a name this arm's own prompt uses as
+   an ordinary word — `shell` is our tool and the reference manual's "the shell
+   is /bin/sh".
+4. **a string `blind.js` itself wrote — `REPLACEMENTS` — sorting the TURNS of
+   more pairs one way than the other**, unless both arms were handed it in that
+   pair's prompts. A replacement reaches only the files whose identifying token
+   it replaced, so a token that named an arm becomes a replacement that names
+   it. Every path now scrubs to ONE word, `/project`: an earlier version sent
+   temp paths to `/workspace` and home paths to `/project`, and `/workspace`
+   then sat in one arm's file and no other. A bare `<task>/<arm>/<n>` — what a
+   model reads back off its own cwd — goes to the same word before the arm rule
+   can turn it into `<task>/this harness/<n>`, which is what it did.
 
-The block above used to be hand-aligned into columns, with the long term
-ellipsised and one file's terms spread over three lines. The program does none of
-those things. A prettified paraphrase inside a code fence is the wrong shape in a
-tree where three critics once spent a round arguing about a fixture that did not
-exist, so this is the bytes.
+**S60 is closed: separation counts per pair.** The old rule dropped any term
+present in both arms anywhere in the set, so a block present in 11 of one arm's
+runs and 4 of the other's was invisible to it while `grep -l` sorted three
+pairs by it. A separator is anything a grep can sort pairs by; the unit is the
+pair, a term sorts a pair when it is in exactly one arm's turns, and every term
+is reported with how many pairs it sorts each way. There is ONE definition of
+"sorts" — `leaning` — and the gate and the residue inventory both call it; the
+two used to carry their own copy, and the copies disagreed.
 
-The first block is an inventory; the second is the verdict. The unit of the
-inventory is the line, not the occurrence: a term twice on one line is one place
-to look, and the leak report beside it names line numbers. The unit of the
-verdict is the **pair**, because that is the number a reader of a panel's result
-needs — it is how many of five supposedly independent judgements were actually
-independent. A term appearing in both arms' files separates nothing and is
-vocabulary rather than identity; a term appearing nowhere (`System Manual`, which
-no model quoted back) is a cost nobody paid.
+**S59 is closed: the A/B map hashes the task AND the index.** `letterFor`
+hashed the task alone, so `blind-key.json`, `blind-2-key.json` and
+`blind-3-key.json` were one map three times over. The first replacement hash
+was `h * 31 + c`, whose parity is the parity of the character SUM (31 is odd),
+and the codes of `1` and `3` are both odd, so those two indices were still one
+map. It is the first byte of SHA-1 over `<task>/<index>` now — a standard's
+output is pinned by the standard, not by this file — and the test pins that
+the three maps differ.
 
-**`[declared]` and `[replacement]` are two different findings and the verdict
-says which.** A declared term is a cost: a tool's name is part of what is being
-judged and renaming it would put the lie in the artifact. A replacement is a
-string `blind.js` ITSELF WROTE into the transcript, and one that separates is
-this rig's own defect — a replacement only reaches the files whose identifying
-token it replaced, so a token that named an arm becomes a replacement that names
-it. Until this slice `separation` scanned the two hand-typed lists and nothing
-else, so it could not see its own output: `this harness` (what an arm's own
-directory name scrubs to) sat in one `ours` file and `/workspace` in one
-`agent-zero` file, two separated pairs the verdict was silent about while
-reporting six it had been handed by hand. The near miss is the argument for the
-change — `openai-compatible` → `the transport` was added against a leak measured
-at 5 of 5 pairs, and the replacement it writes has identical separating power. It
-reads 0 only because `transcripts/` predates the transport, so the first
-regenerated set would have carried a five-pair separator past a green gate.
+Two kinds of thing sort pairs and are REPORTED, NOT FATAL, because they are
+what happened rather than who:
 
-**Separation is worse than recognition, which is why it is the thing gated on.**
-A judge who has read either project recognises an arm; *any* judge can sort ten
-files into two piles by tool vocabulary, and once the piles are sorted one
-opinion formed on one file propagates to all five pairs.
+- **slots.** `tool_3` in an arm that used three tools and not in an arm that
+  used two. The number of tools is the design under judgment.
+- **endings.** A run that ran out of tokens in its scratchpad did. Our arm did
+  so in 11 of 15 runs against the reference arm's 4 (`docs/LEDGER.md` P8); the
+  ending sorts pairs because the loops behaved differently, and a projection
+  that hid that would be hiding the finding.
 
-**The residue cannot be scrubbed, so the panel is told instead.** Renaming a tool
-replaces a leak with a lie in the artifact, which is the trade this rig refuses
-everywhere. So `blind.js` prepends a `DISCLOSURE` block to every transcript — the
-only channel that certainly reaches a judge, since a key file, a README and a
-line of stdout can all be dropped on the way. It says the pair is not blind, why,
-that the pair is to be scored alone rather than matched against another pair, and
-that a judge who recognises a harness should say so rather than score around it.
-It names no tool and no arm: it is prepended to all ten files, so a residual term
-inside it would appear in every arm's files, stop separating, and **turn this
-gate green by making the leak universal.** Measured, as a mutation on the version that
-scanned the framed file: putting the five tool names into `DISCLOSURE` dropped
-the verdict from 5 of 5 pairs to 1 of 5; putting all seven residual terms in it
-printed `blind: no declared term appears in one arm's files and no other's` and
-exited 0. That laundering is now closed in the code rather than only asserted
-against: `separation` is handed the transcript BODY, not the framed file, so a
-word in the preamble cannot make a term universal — which it had to be, because
-the disclosure says "harness" four times and that is exactly what `scaffolds?`
-scrubs to. `test/bench/blind.test.js` still asserts the block is clean of both
-lists, for the two reasons that remain: a banned term there is a leak in ten
-files, and a residual term there inflates the inventory in every one of them.
+### What it printed over the recorded runs
 
-**The set is DISCLOSED, not blind, and that is the honest name for it.** This
-comparison cannot be blind while the two harnesses name their own tools, and
-calling it blind was the error. The green state is reachable and is not
-pretended away — it arrives when no scanned term appears in one arm's files and
-in no other's, which needs the two harnesses to spell a capability the same way
-and the replacements this rig writes to reach both arms alike. **Reducing the set
-to one pair does not reach it**: `separation` has no pair-count floor,
-deliberately, and `blind.js`'s header said it did until this slice. Measured over
-`transcripts/collatz` alone: `!! NOT BLIND — 1 of 1 pair(s)`, exit 1.
+`bun bench/blind.js --transcripts bench/runs/2026-09-01-s53-n3/transcripts
+--out <dir>`, 2026-09-01, pasted as the program emitted it with only the
+directory prefix cut from the first two lines, then `echo EXIT=$?`:
 
-**Criterion 1 of the rubric is withheld on this projection**, and the disclosure
-says so. It asks about the assembled prompt; the projection drops the assembled
-prompt, so this tree scored 1 on criterion 1 no matter what it did —
-`docs/LEDGER.md` row P5. The prompt does not come back to fix it: it is the
-largest single identity carrier in the record, and criterion 1's own poles are
-textual, so there is no half measure. `docs/REFERENCE-PROMPTS.md` was changed
-instead, to withhold rather than to score 1, and `blind.js`'s `RUBRIC` is the
-other half of that agreement — `test/bench/blind.test.js` reads the rubric page
-and fails if the two stop saying the same thing.
+    wrote 10 transcripts and outcomes.json to <dir> — hand over THAT directory and nothing else
+    key written to <dir>-key.json — outside it, and the judging step must not read it
+    slots for agent-zero: tool_1=text_editor tool_2=code_execution_tool
+    slots for ours: tool_1=list_files tool_2=read_file tool_3=shell tool_4=write_file
+    
+    RESIDUE: 517 token(s) sort three or more of 5 pair(s) by the prompt — its own prose, declared in every file and not listed. 28 token(s) sort three or more pairs from the turns alone:
+       "runtime" [word] in agent-zero's turns, 5 of 5 pair(s)
+       "verified" [word] in agent-zero's turns, 4 of 5 pair(s)
+       "Verifying" [word] in agent-zero's turns, 4 of 5 pair(s)
+       "Writing" [word] in agent-zero's turns, 4 of 5 pair(s)
+       "->" [word] in ours's turns, 3 of 5 pair(s)
+       ")." [word] in agent-zero's turns, 3 of 5 pair(s) (1 the other way)
+       "\\" [word] in agent-zero's turns, 3 of 5 pair(s)
+       "%" [word] in agent-zero's turns, 3 of 5 pair(s)
+       "answered" [ending] in agent-zero's turns, 3 of 5 pair(s)
+       "confirm" [word] in agent-zero's turns, 3 of 5 pair(s) (1 the other way)
+       "echo" [word] in agent-zero's turns, 3 of 5 pair(s) (1 the other way)
+       "ended" [ending] in ours's turns, 3 of 5 pair(s)
+       "First" [word] in agent-zero's turns, 3 of 5 pair(s)
+       "generated" [ending] in ours's turns, 3 of 5 pair(s)
+       "here" [ending] in ours's turns, 3 of 5 pair(s)
+       "Let" [word] in agent-zero's turns, 3 of 5 pair(s)
+       "need" [word] in agent-zero's turns, 3 of 5 pair(s)
+       "none" [ending] in ours's turns, 3 of 5 pair(s)
+       "Now" [word] in agent-zero's turns, 3 of 5 pair(s)
+       "out" [ending] in ours's turns, 3 of 5 pair(s)
+       "ran" [ending] in ours's turns, 3 of 5 pair(s)
+       "reached" [ending] in ours's turns, 3 of 5 pair(s)
+       "scratchpad" [ending] in ours's turns, 3 of 5 pair(s)
+       "Task" [word] in agent-zero's turns, 3 of 5 pair(s)
+       "tokens" [ending] in ours's turns, 3 of 5 pair(s)
+       "Verified" [word] in agent-zero's turns, 3 of 5 pair(s)
+       "verify" [word] in agent-zero's turns, 3 of 5 pair(s) (1 the other way)
+       "wrote" [word] in agent-zero's turns, 3 of 5 pair(s)
+    
+    verified: no banned term, arm name or tool name survives in any emitted file
+       "answered" [ending] sorts 3 of 5 pair(s) toward agent-zero — what happened, not who
+       "ran out of tokens in its scratchpad" [ending] sorts 3 of 5 pair(s) toward ours — what happened, not who
+       "tool_3" [slot] sorts 2 of 5 pair(s) toward ours — what happened, not who
+    blind: no string this file wrote sorts one arm's turns from the other's, across 5 pair(s)
+    EXIT=0
 
-`BANNED` — the project names, the user's name, absolute paths, `bench/work`,
-`scaffold`, and `openai-compatible` — must not survive, and one hit exits 1.
-`RESIDUAL` is the declared list; it never fails the run *on its own*, and is
-fatal exactly where it separates. That transport term is our own class label,
-which opens every refusal message it writes: the refusal block is a run's ending
-so it stays, but the runs in `transcripts/` predate the transport and contain
-none, and once they are regenerated the classifier refuses 12 of one arm's 34
-replies and 0 of the other's 79 — one `grep -l`, every pair, the same one-probe
-separation that made the last panel's verdict worth nothing. It is banned before
-the first regenerated set can carry it to a judge, not after. **The arms' own
-directory names are fatal too, and they are read off the run rather than typed
-in:** `transcripts/<task>/` names the arms that ran, so the set is exact and a
-third scaffold is covered the day it is added. `no-such-capability/ours/1` was
-printed six times inside one model's reasoning, and the previous conclusion —
-that `ours` is "too common a word to put in BANNED" — was a mismatch rather than
-a word problem: the scrub was `\b`-anchored and correctly left `yourself` alone,
-while the verifier was a substring scan and disagreed with it. Both halves are
-fixed and both are pinned. `test/bench/blind.test.js` holds both halves of the
-rule: every banned term must have a scrub rule behind it, and every residual term
-must survive the scrub, or one of the two lists is lying.
+Indices 2 and 3 of the same run: EXIT=0 both, 522 and 518 prompt tokens, 9 and
+15 turn-only, three different A/B maps. The same command over `transcripts/` —
+the superseded run this directory's `blind/` is built from — EXIT=0, 497 prompt
+tokens, 23 turn-only. Before this projection the same recorded set exited 1
+with six terms sorting 5 of 5 pairs, five of them tool names.
+
+**What the residue is made of.** The inventory is the fresh grep, built in:
+every token — a word of `[A-Za-z_][A-Za-z0-9_]{2,}`, case sensitive, or a run
+of punctuation — that sorts three or more pairs one way, minus any token both
+arms were handed in that pair's prompts, **filed by where it SORTS**. It used to
+file any token that appeared in ANY prompt under "prompt prose", and `runtime`
+— 5 of 5 pairs from the turns alone — was inside the count nobody reads.
+
+- **517 tokens reach three pairs only once the prompt is counted**: the
+  reference manual's and our agent file's own prose, the reply-format
+  sections, `# the agent System Manual`, `You are a careful, direct assistant`,
+  and two that are not prose: `shell`, which is our tool's name and the
+  manual's English word for `/bin/sh` (an arm's own prompt makes a name
+  English to that arm, so it is not mapped there), and `LLM: openai_compatible/local`,
+  a provider label in the reference arm's extras block. A judge who can sort by
+  any of them can sort by the prompt, which is declared in every file.
+- **28 tokens sort three or more pairs from the turns alone**, and they are of
+  four kinds. *The contracts' own argument names and observation frames*:
+  `runtime` (`runtime: terminal` on every reference call row, 5 of 5) and
+  `->` (our `tool_1 -> …` observation frame, 3 of 5) — rendered as recorded,
+  because the argument names and the frame are the design under judgment and
+  mapping them would hide what the loop was handed. *This script's own ending
+  sentence*, nine words on the runs that ran out of tokens, and `answered` —
+  the P8 finding wearing its own name. *The reference model's habits under its
+  prompt*: its headlines open `Verifying …` and `Writing …`, its thoughts
+  `Let's …`, `Now …`, `First …`, `confirm …`, `verify` / `verified`. *Fragments
+  of the shell and Python it ran*: `echo`, `%`, `\`, `).`. An independent
+  grep, tokenising on whitespace instead, agrees in kind: 670 tokens at three
+  or more pairs by any presence, 41 by the turns alone, led by `runtime:`,
+  `terminal`, `code:` at 5 of 5 and `[exit` / `0]` at 3 — the reference arm's
+  `[exit code 0]` frame, which the word-only tokeniser could not see.
+
+**The controls.** The one that matters is over the RECORDED set and mutates
+data, not the instrument: a copy of the thirty runs with ` I have no
+text_editor here.` appended to the task text of `collatz/ours/1.json` —
+`!! 1 identifying string(s) survived the scrub: …/collatz/B.md:35 "text_editor"`,
+EXIT=1. The same control lives in `test/bench/blind.test.js` in both
+directions, so it survives the next refactor of the verifier. The rest are
+one-line mutations of the instrument, each run and then restored byte for
+byte with the md5 compared (the value is not quoted here — a hash in prose is
+a confident lie the next time the file is touched):
+
+    the tool-name scan deleted from the gate         test/bench: 1 fail — "a tool name of the OTHER arm … exits 1"
+    the other arm's names dropped from the scan      test/bench: 1 fail — the same test
+    residue() returning nothing                      test/bench: 6 fail
+    residue filed by appearance, not by sorting      test/bench: 2 fail — `runtime` filed as prose
+    outcomes.json written in arm order               test/bench: 3 fail — letter order, the tracked set
+    a cut envelope's thoughts left unread            test/bench: 3 fail
+    separation back to set-wide presence             test/bench: 1 fail — "a term in both arms set-wide still sorts…"
+    letterFor hashing the task alone                 test/bench: 3 fail, both S59 tests among them
+    the private reasoning channel put back           test/bench: "never the reply as written" fails
+    the ending in the transport's own words          test/bench: 2 fail, `openai-compatible` reaches the file
+    `plan` dropped from our arm's reasoning          test/bench: 1 fail
+    run.js joining `<task>/<arm>/<n>` at the call    test/bench/run.test.js: 1 fail
 
 **`bun run check` does not run this gate, and must not.** `transcripts/` is
-written by a run that needs a model for twenty minutes, so `bun bench/blind.js`
-is meaningless without one — and the gate is *legitimately red today*, on the set
-in the repository, which a `check` step cannot be. What `bun run check` runs
-instead is `test/bench/blind.test.js`, which drives this script as a subprocess
-over fixtures and pins every class it has shipped: an arm's own directory name in
-a model's prose, our transport's signature in a refusal block, a term that names
-one arm, and a `DISCLOSURE` that would launder one. Running `bun run bench:blind`
-is the panel's first step and **its exit code is the claim**; today that claim is
-exit 1, and a panel run over this set anyway must publish its `NOT BLIND` block
-beside its verdict.
+written by a run that needs a model for twenty minutes, and a gate over a set
+that is not there is not a gate. What `bun run check` runs instead is
+`test/bench/blind.test.js`, which drives this script as a subprocess over two
+hand-written records — one in each arm's action shape — and pins every class
+above: two shapes into one grammar with no tool name left and exit 0; the
+panel directory holding exactly the transcripts and `outcomes.json`, letters
+in letter order; the emitted file byte-identical to `blindTranscript`; the key
+outside it; two indices giving two maps; an arm name in a model's sentence
+scrubbed and the set still green; the OTHER arm's tool name in a model's
+sentence exiting 1 by file and term; a replacement reaching one arm's turns
+exiting 1 by name; a banned term surviving exiting 1 by file and line. It also
+regenerates `blind/` from `transcripts/` and compares the bytes, because the
+ten files a panel reads are tracked AND generated and a mutation run once left
+a laundering disclosure in them while the suite was green.
 
-**The exit code is a claim, not a refusal, and nothing stops a set being handed
-over.** The ten files are written whether the gate passes or fails — a gate that
-deletes the evidence of its own failure cannot be audited — and they are
-committed, so anyone can open `bench/blind/` without running anything. That is
-why the statement travels *inside* each file rather than only in an exit status:
-the disclosure is the channel that cannot be dropped between this script and a
-judge, because it is part of the thing being judged.
+**The exit code is a claim, not a refusal.** The files are written whether the
+gate passes or fails — a gate that deletes the evidence of its own failure
+cannot be audited — and the disclosure travels inside each file because it is
+the one channel between this script and a judge that cannot be dropped.
 
-(`bench/` *is* tracked, as of `25c8750` — `git ls-files bench` → 101, including
-the ten `blind/<task>/{A,B}.md` a panel reads, the 60 files under `transcripts/`
-and `results.json`; `blind-key.json` is the one file deliberately ignored. This
-paragraph said "`bench/` is not tracked (`git ls-files bench` → 0)" while
-`.gitignore` said the blind set "ARE committed" — `docs/LEDGER.md` row S38, both
-halves now true and pinned by `test/bench/blind.test.js`.)
+(`bench/` *is* tracked — `git ls-files bench` counts the ten `blind/<task>/{A,B}.md`,
+`blind/outcomes.json`, the sixty files under `transcripts/` and `results.json`;
+`blind-key.json` is the one file deliberately ignored. `docs/LEDGER.md` row S38.)
 
-**And the set now in `blind/` is built from `transcripts/`, which is the
-superseded run** — the one produced before the rig used this project's
-transport. It is a valid artifact for judging how each loop reads and acts, and
-it is NOT a source of pass/fail: three of its five `ours` transcripts end on a
-reply the shipped transport refuses, and they read as answers because at the
-time they were treated as answers. Regenerate it after the next full run.
-
-**The panel that ran before this file was rewritten was not blind by any of
-these measures** — 5 of 5 files of each arm opened with that arm's own system
-prompt, nine tool identifiers survived, and the key sat inside the directory. No
-verdict from it about which arm is better is worth anything.
+**And the set in `blind/` is built from `transcripts/`, which is the superseded
+run** — the one produced before the rig used this project's transport. The
+thirty runs a panel should be handed are `runs/2026-09-01-s53-n3/transcripts`,
+which `docs/LEDGER.md` row S61 says are not yet promoted into this directory;
+blinding them is one command, above.
 
 ## What it needs
 
@@ -642,7 +741,7 @@ these — no test here runs python, node or a model.
 | `scaffolds/ours.js` | our real modules, imported from `src/`. |
 | `vendor/agent-zero/` | the seventeen prompt files verbatim, plus two python files nothing runs — the oracle for the parser divergence — all hashed in `PROVENANCE.md`. |
 | `run.js` | runs the matrix, writes transcripts and `results.json`. |
-| `blind.js` | projects the loop out of each transcript, scrubs what can be removed, discloses what cannot, and exits non-zero on a leak **or on a term that names an arm**. Today: exit 1, 5 of 5 pairs. |
+| `blind.js` | renders both arms' loops into one grammar with per-arm tool slots, puts the prompt back once under the same mapping, emits the panel directory and `outcomes.json`, and exits non-zero on a banned term, an arm name, a surviving tool name, or a string it wrote that sorts one arm's turns from the other's. Over the recorded runs: exit 0, with the residue printed. |
 
 Adding a third scaffold is a file in `scaffolds/` and a line in `run.js`.
 Nothing else changes.

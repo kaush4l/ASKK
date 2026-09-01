@@ -26,6 +26,14 @@
  * twice rather than shared so that `core/` and `protocol/` stay independent of
  * each other — either may be imported without dragging the other in — and the
  * Kernel can pass a code straight through with no translation table.
+ *
+ * `OVERRUN` is the one word here the wire does not have, the mirror of the
+ * wire's `NO_HANDLER`: each is read only on its own side of the boundary. A
+ * reply that ran out of tokens inside the model's scratchpad is refused by the
+ * transport, and it is not `UNAVAILABLE` — the endpoint answered, and the next
+ * request need not be the same request — so `ReActEngine` reads this code to
+ * take another turn and, if it must end a run on it, does so through
+ * `unreadable` as `UNAVAILABLE`. Nothing carrying this code reaches the Kernel.
  */
 export const Reason = Object.freeze({
   BAD_REQUEST: 'BAD_REQUEST',
@@ -33,6 +41,7 @@ export const Reason = Object.freeze({
   UNAVAILABLE: 'UNAVAILABLE',
   NOT_IMPLEMENTED: 'NOT_IMPLEMENTED',
   INTERNAL: 'INTERNAL',
+  OVERRUN: 'OVERRUN',
 })
 
 export class Failure {

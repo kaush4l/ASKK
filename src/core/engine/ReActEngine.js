@@ -81,6 +81,36 @@ function until(signal) {
 const UNSAID_CEILING = 2
 
 /**
+ * What the loop tells the model about a reply that never left the scratchpad.
+ *
+ * The transport refuses two of the four states a reply can be in — the
+ * scratchpad dumped onto the answer channel, and the tokens spent before an
+ * answer began — and hands the loop nothing but the refusal. Both are the same
+ * fact from this seat: the whole reply went on reasoning, nothing was decided.
+ * So they get one sentence, and it is written HERE rather than taken off the
+ * refusal, because the refusal's message is for the person reading the notes
+ * (it names a character count and a channel) and this is for the model.
+ *
+ * The streak is shared with the unsaid reply and so is the ceiling, and that
+ * is a decision rather than a shortcut. A reply cut off inside `plan:` and a
+ * reply cut off inside its reasoning are the same failure one token apart —
+ * the model ran out of room before the decision — and a loop that counted them
+ * on two streaks would spend two corrections on it, where `UNSAID_CEILING`'s
+ * whole argument is that the record needed one. The ending's hint already
+ * points at the ceiling for the cut route; the overrun route puts the
+ * transport's own remedy in the notes beside it. A third ending would have to
+ * say something neither of those two says, and it does not.
+ *
+ * The sentence names the limit because it is the one number the model can
+ * plan against, and it asks for less reasoning rather than for a shorter
+ * answer, because an answer was never started. Whether the model obeys was
+ * measured, not assumed — the counts sit beside the observation in `run`,
+ * where the words are.
+ */
+const OVERRAN =
+  'the reply ran out of tokens inside its private reasoning, before it wrote act or result'
+
+/**
  * Think → act → observe, until the agent says it is done or the run runs out.
  *
  * The loop reads one field of the parsed response: `act`. While it says `tool`
@@ -120,6 +150,16 @@ const UNSAID_CEILING = 2
  * the loop sends the turn back once, through the scratchpad, and fails if the
  * next reply does the same. `UNSAID_CEILING` above is the argument for the one.
  *
+ * The same ending has a second door, and for one wave it was walled up. A reply
+ * that ran out of tokens INSIDE its reasoning never reaches the parser — the
+ * transport refuses it, rightly — and the refusal arrived here as a transport
+ * failure, so the run ended on it as if the endpoint had gone away. It had not:
+ * the endpoint reported, correctly, that the model spent its whole reply
+ * thinking. `Reason.OVERRUN` is how the transport now says which of the two it
+ * was, and the loop treats it as one more unsaid reply: same sentence back
+ * through the scratchpad, same streak, same ceiling. `OVERRAN` above is the
+ * argument for sharing them.
+ *
  * And the loop can be stopped from outside. `signal` is the user's, and where
  * it reaches is uneven, which is worth knowing before trusting it: it goes all
  * the way to the transport for the MODEL CALL — see `Engine.step` — so a stop
@@ -139,7 +179,9 @@ export class ReActEngine extends Engine {
    * happens, which is the only way a caller in another realm can see anything
    * before the loop finishes. They are the whole of the live view: the prompt
    * as it was sent, the reply as it arrives, the parsed result of each pass,
-   * and what the pass cost.
+   * and what the pass cost. EVERY pass gets its `onStep`, including the one
+   * whose reply the transport refused — its `parsed` is `null`, because that is
+   * what the loop is holding — so a view counting steps agrees with `Budget`.
    *
    * `budget` is a plain declaration — `{steps, tokens, seconds}` off an agent
    * file — and is turned into a fresh `Budget` here, per run. Passing the
@@ -162,15 +204,17 @@ export class ReActEngine extends Engine {
     const notes = []
     const budget = new Budget(declared)
     let last = null
-    // Replies in a row that said nothing the loop could act on. Reset by any
-    // reply that decides, and named for the streak rather than for the count so
-    // it cannot be read as a total three lines from `last.isUnsaid`.
+    // Replies in a row that said nothing the loop could act on — cut before the
+    // decision, wrong word in `act`, or never out of the scratchpad at all.
+    // Reset by any reply that decides, and named for the streak rather than for
+    // the count so it cannot be read as a total three lines from `last.isUnsaid`.
     let unsaidStreak = 0
 
     // Five exits: the agent answered, the user stopped it, a call to the model
     // failed, the budget ran out and the last word was not taken, or the model
-    // twice in a row never said what it wanted to do. Every one of them is a
-    // decision with a reason behind it, and every one says so.
+    // twice in a row never said what it wanted to do — by any of the three
+    // routes into that. Every one of them is a decision with a reason behind
+    // it, and every one says so.
     while (true) {
       if (signal?.aborted) return this.stopped(last, budget, notes)
 
@@ -236,9 +280,61 @@ export class ReActEngine extends Engine {
       // fetch — must not be reported to the user as a broken endpoint.
       if (signal?.aborted) return this.stopped(last, budget, notes)
 
+      // A reply that never got out of the model's scratchpad. The transport
+      // withheld the text and said so; what it said goes to the notes, in its
+      // own words and with its own remedy, because it is the only thing that
+      // knows the character count, the channel and the ceiling. What the MODEL
+      // is told is `OVERRAN`, and it is told through the same door as the reply
+      // below that reached the contract and stopped short of the decision.
+      if (!taken.ok && taken.failure.code === Reason.OVERRUN) {
+        // Nothing readable came back, so nothing is held: left standing, the
+        // previous turn's reply would be quoted by the hard stop as if this
+        // turn had written it. Below the abort check, not above it, so a stop
+        // that lands on this turn reports the run the way a stop landing on a
+        // dead fetch does — carrying the last reply it had — rather than
+        // "before the model had said anything" after a run that made tool
+        // calls. Nothing awaits between here and the top of the loop, so no
+        // stop can find the null before the next call has been made; a stop
+        // landing on THAT call finds it, and says the model had said nothing
+        // when it had, one overrun ago. Named rather than fixed: the fix is a
+        // second piece of state beside `last`, kept for one sentence of one
+        // note the refusal beside it already explains.
+        last = null
+        // The pass happened — `Budget` counted it, `onUsage` billed it,
+        // `onPrompt` announced it — so the live view is told it ended, holding
+        // nothing. A view that clears the streamed reasoning on STEP would
+        // otherwise leave this turn's scratchpad on screen under the next
+        // turn's, and count one step fewer than the budget did.
+        onStep?.({ step: budget.steps, parsed: null })
+        notes.push(`${taken.failure.message} — ${taken.failure.hint}`)
+        unsaidStreak += 1
+        if (unsaidStreak >= UNSAID_CEILING) return this.unreadable(OVERRAN, budget, notes)
+        // The observation is MEASURED and every word of it is load-bearing.
+        // Against the real endpoint on the task that overruns — median-bug,
+        // 1,200 tokens, thinking on — this sentence recovered the next turn
+        // 10 of 10 times across four seats; the same prompt sent again with no
+        // sentence overran 6 of 6, a neutral "reply again" note of the same
+        // length overran 2 of 2, and four shorter versions of this sentence —
+        // the number cut, the last sentence cut, both cut, a bare "nothing was
+        // run, reply again" — overran 12 of 12. Change a word and re-measure;
+        // the test pins the bytes. The limit is read off the inference rather
+        // than handed in, because every `Inference` has one and `step` fails
+        // without one before a reply can exist. It is named to the MODEL as a
+        // quantity to plan against — not to the user as a lever, which is the
+        // judgement `unreadable` refuses to make and `OpenAICompatible`'s
+        // `_remedies` makes with the measurement behind it.
+        scratchpad.push({
+          action: OVERRAN,
+          observation: `nothing was run and nothing was shown to the user: the whole ${this.inference.maxTokens.toLocaleString('en-US')}-token reply limit went on reasoning. Reply again and reason briefly — decide in a sentence or two, then write act and result. If the task is large, do one small part of it this turn and leave the rest for later turns.`,
+        })
+        continue
+      }
+
       // A transport failure ends the run and keeps its message and hint: it is
       // the most useful thing anyone can be shown, and retrying it here would
-      // only make the user wait longer for the same answer.
+      // only make the user wait longer for the same answer. That sentence was
+      // once written over the overrun too, and it is only true of this branch:
+      // a dead endpoint gets the same request again, an overrun does not.
       if (!taken.ok) return taken.withNote(`failed on step ${at}`)
 
       // A reply that never said what it wanted to do is not a turn, it is a turn
@@ -250,7 +346,8 @@ export class ReActEngine extends Engine {
       // correction to live is a second place for one to go missing.
       if (typeof last !== 'string' && last.isUnsaid) {
         unsaidStreak += 1
-        if (unsaidStreak >= UNSAID_CEILING) return this.unreadable(last, budget, notes)
+        if (unsaidStreak >= UNSAID_CEILING)
+          return this.unreadable(last.unsaidBecause, budget, notes)
         // `act` is left out of the echo on purpose: it now reads `unsaid`, a
         // word the contract does not contain, and quoting it back would teach a
         // fourth verb. Read off the response's own class rather than a name
@@ -329,29 +426,35 @@ export class ReActEngine extends Engine {
    * stop's own comment records that `ChatService` drops it.
    *
    * WHICH way the last reply was unreadable IS this file's to say, and it says
-   * it in the message rather than in a guess in the hint. There are two routes
-   * into this ending and they have opposite remedies: a reply cut off before the
-   * decision, where a ceiling is the lever, and `act: shell` — a complete reply
-   * with a wrong word in it, where no ceiling anywhere is the cause and sending
-   * the same request again produces the same word. `ReActResponse.normalize`
-   * knows which happened and puts it on `unsaidBecause`.
+   * it in the message rather than in a guess in the hint. There are three routes
+   * into this ending and two kinds of cause between them: a reply cut off
+   * before the decision or one that never left its reasoning, where the model
+   * ran out of room, and `act: shell` — a complete reply with a wrong word in
+   * it, where no ceiling anywhere is the cause and sending the same request
+   * again produces the same word. `ReActResponse.normalize` knows the first
+   * from the third and puts it on `unsaidBecause`; the second never reaches it,
+   * and the loop names that one itself, with `OVERRAN`.
    *
    * The hint names NO lever, and that is the correction rather than an omission.
    * An earlier version of it said "raise max tokens for this model" on both
-   * routes. `OpenAICompatible` had already found and closed exactly that defect
-   * one file over — its `RAISABLE` constant exists because the app's own default
-   * is 131,072, so the one number a reader was sent to change was the one number
-   * that could not be the cause — and this file holds neither `maxTokens` nor
-   * that judgement. A second copy of it here is the second spelling of a rule
-   * that then drifts. What this file knows is whether the reply was cut, and the
-   * notes already say so.
+   * routes, and the version after that said "that ceiling is the lever" while
+   * the note beside it — the transport's, pushed by the overrun branch — could
+   * be saying "raising it is not the answer". `OpenAICompatible` had already
+   * found and closed exactly that defect one file over — its `RAISABLE`
+   * constant exists because the app's own default is 131,072, so the one number
+   * a reader was sent to change was the one number that could not be the cause
+   * — and this file holds neither `maxTokens` nor that judgement. A second copy
+   * of it here is the second spelling of a rule that then drifts, and one
+   * Outcome arguing with itself is what it drifted into. What this file knows
+   * is that the notes say what happened to each reply, so the hint sends the
+   * reader there and asserts nothing about the remedy.
    */
-  unreadable(last, budget, notes) {
+  unreadable(because, budget, notes) {
     return Outcome.failed(
       Reason.UNAVAILABLE,
-      `${this.constructor.LABEL}: ${UNSAID_CEILING} replies in a row ended without saying whether to use a tool or to answer — ${last.unsaidBecause}`,
+      `${this.constructor.LABEL}: ${UNSAID_CEILING} replies in a row ended without saying whether to use a tool or to answer — ${because}`,
       {
-        hint: "The notes say whether the endpoint cut each reply off, and at what ceiling; if it did, that ceiling is the lever. If it did not, the model wrote something in act that is neither 'tool' nor 'answer', and sending the same request again will not change that — ask for something narrower, or use a different model.",
+        hint: "The notes say what happened to each reply: cut off at a ceiling the note names, or spent inside the model's reasoning with the transport's own remedy beside it. If they say neither, the model wrote something in act that is neither 'tool' nor 'answer', and sending the same request again will not change that — ask for something narrower, or use a different model.",
         notes: [
           ...notes,
           `stopped after ${budget.steps} steps: ${UNSAID_CEILING} replies in a row ended before saying what to do, so nothing was run and nothing was shown`,

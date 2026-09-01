@@ -10,12 +10,12 @@
  * for a number, or a number that is confidently wrong for whichever model the
  * user actually chose.
  *
- * So: estimate locally, then let the server correct it. Every OpenAI-compatible
+ * So: estimate locally, and spend the server's number where there is one. Every
  * reply carries `usage.prompt_tokens` — the exact count, by the only tokenizer
- * whose opinion counts. `TokenScale` remembers the ratio between what was
- * guessed and what was charged, and applies it to the next estimate. The
- * estimator gets better at the model in front of it and needs no updating when
- * the model changes.
+ * whose opinion counts — and `Budget` counts from that rather than from this.
+ * The estimate is uncalibrated on purpose: a per-model correction factor sat
+ * beside this function for six waves with no caller, and a calibration nothing
+ * feeds is a number the panel would show as learned when it was not.
  */
 
 /**
@@ -43,46 +43,4 @@ export function estimateTokens(text) {
   // Newlines are tokens too, and a structured prompt is mostly newlines.
   tokens += (source.match(/\n/g) ?? []).length
   return tokens
-}
-
-/**
- * The correction factor between this estimator and one model's real tokenizer.
- *
- * Kept per model, because the ratio is a property of the vocabulary. Learned
- * slowly — a single turn is one sample, and jumping the scale to match it would
- * make the panel's numbers jitter for no reason.
- */
-export class TokenScale {
-  constructor(smoothing = 0.3) {
-    this.smoothing = smoothing
-    this._byModel = new Map()
-  }
-
-  /** What to multiply an estimate by for this model. 1 until something is known. */
-  factorFor(model) {
-    return this._byModel.get(model)?.factor ?? 1
-  }
-
-  /** True once a real count has been seen, so the UI can say estimated or measured. */
-  knows(model) {
-    return this._byModel.has(model)
-  }
-
-  /**
-   * Teach it one measurement: what we guessed the whole prompt was, and what
-   * the server said it actually was.
-   */
-  learn(model, estimated, actual) {
-    if (!model || !(estimated > 0) || !(actual > 0)) return this.factorFor(model)
-    const observed = actual / estimated
-    const known = this._byModel.get(model)
-    const factor = known ? known.factor + this.smoothing * (observed - known.factor) : observed
-    this._byModel.set(model, { factor, samples: (known?.samples ?? 0) + 1 })
-    return factor
-  }
-
-  /** An estimate, scaled by what has been learned about this model. */
-  count(text, model = '') {
-    return Math.round(estimateTokens(text) * this.factorFor(model))
-  }
 }

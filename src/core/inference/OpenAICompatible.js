@@ -315,11 +315,20 @@ export class OpenAICompatible extends Inference {
    * There is no honest partial answer to hand back here: what arrived is the
    * model's private working, and every downstream layer would treat it as
    * speech. Failing names the cause, names the lever, and — through
-   * `ReActEngine` — ends the step instead of acting on it.
+   * `ReActEngine` — ends the STEP instead of acting on it.
+   *
+   * The step, not the run, and the code is what says which. This returned
+   * `UNAVAILABLE` for a wave, and the loop ended the run on it the way it ends
+   * on an endpoint that never answered, on a comment saying a retry "would only
+   * make the user wait longer for the same answer". True of a dead endpoint;
+   * false here, where the endpoint answered and the loop can change the next
+   * prompt. `Reason.OVERRUN` is that distinction, and `ReActEngine` reads it to
+   * send the turn back with a sentence — what this file refuses is still
+   * refused, and the text still goes nowhere.
    */
   _dumped(chars) {
     return Outcome.failed(
-      Reason.UNAVAILABLE,
+      Reason.OVERRUN,
       `openai-compatible: the reply ran out of tokens while the model was still thinking, so ${chars.toLocaleString('en-US')} characters of its private reasoning arrived on the answer channel`,
       {
         hint: `That text is not an answer and was not passed on — read as one it would have run tool calls the model was only rehearsing. ${this._remedies()}`,
@@ -342,7 +351,7 @@ export class OpenAICompatible extends Inference {
       ? `, after ${reasoningChars.toLocaleString('en-US')} characters of reasoning on its own channel`
       : ''
     return Outcome.failed(
-      Reason.UNAVAILABLE,
+      Reason.OVERRUN,
       `openai-compatible: the reply ran out of tokens before the model wrote any answer${thought}`,
       {
         hint: `The endpoint answered correctly and there is nothing to show — the whole budget went on thinking. ${this._remedies()}`,

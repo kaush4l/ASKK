@@ -13,7 +13,9 @@
  *
  * Every run gets its own temp directory, seeded with the task's fixtures. No
  * run can see another's files, so the machine check is always looking at the
- * work of exactly one run.
+ * work of exactly one run. The directory is a NUMBER — `workspaceName` — and
+ * `results.json` carries which run it belonged to; see that function for why
+ * it stopped being `<task>/<scaffold>/<n>`.
  */
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -97,6 +99,26 @@ async function loadScaffolds(onlyScaffold) {
   }
   return loaded
 }
+
+/**
+ * The name of one run's workspace under `--workdir`: its ordinal in this
+ * invocation, and nothing else.
+ *
+ * It was `<task>/<scaffold>/<n>`, and both arms are handed the absolute path
+ * in their prompt. `docs/LEDGER.md` row S35: on `no-such-capability` our arm
+ * read `no-such-capability/ours/1` back off its own cwd and quoted it as an
+ * answer key seven, six and ten times across three runs, so any task whose id
+ * names its expected answer was contaminated for whichever arm reads the path
+ * aloud — and the arm name in the same string was the one identity leak
+ * `blind.js` had to scrub out of a model's own sentences (P7). A number tells
+ * the model nothing; `results.json` keeps `workdir` per row, so a reader can
+ * still open the files a run left behind.
+ *
+ * It takes the ordinal and NOTHING ELSE. It took the task and the arm too and
+ * read neither, and a parameter that is passed and ignored is the one a later
+ * writer re-threads into the name without touching the signature.
+ */
+export const workspaceName = (sequence) => String(sequence)
 
 function seedWorkspace(dir, fixtures) {
   rmSync(dir, { recursive: true, force: true })
@@ -464,10 +486,12 @@ async function main() {
     runs: [],
   }
 
+  let sequence = 0
   for (const task of tasks) {
     for (const scaffold of scaffolds) {
       for (let index = 1; index <= repeats; index++) {
-        const workdir = join(runRoot, task.id, scaffold.id, String(index))
+        sequence += 1
+        const workdir = join(runRoot, workspaceName(sequence))
         seedWorkspace(workdir, task.fixtures)
         const tools = makeTools(workdir)
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { estimateTokens, TokenScale } from '../../../src/core/prompt/tokens.js'
+import { estimateTokens } from '../../../src/core/prompt/tokens.js'
 
 /**
  * The estimator makes four claims, and every number the panel shows rests on
@@ -10,11 +10,6 @@ import { estimateTokens, TokenScale } from '../../../src/core/prompt/tokens.js'
  * same number of characters costs far more as JSON than as prose. That is the
  * whole justification for not counting characters, and it is checked here on
  * two strings of exactly equal length rather than restated.
- *
- * `TokenScale` is exercised because its arithmetic is a one-line EMA that is
- * easy to get backwards, and a scale that drifts the wrong way makes every
- * displayed count worse the longer the app runs. Note that it has no call site
- * in the tree yet: this is a test of a unit that is not wired up.
  */
 
 describe('estimateTokens', () => {
@@ -66,65 +61,5 @@ describe('estimateTokens', () => {
     expect(estimateTokens(prose)).toBe(13)
     expect(estimateTokens(json)).toBe(45)
     expect(estimateTokens(json)).toBeGreaterThan(estimateTokens(prose) * 3)
-  })
-})
-
-describe('TokenScale', () => {
-  test('an unmeasured model is scaled by one and says it knows nothing', () => {
-    const scale = new TokenScale()
-
-    expect(scale.factorFor('gemma')).toBe(1)
-    expect(scale.knows('gemma')).toBe(false)
-    expect(scale.count('a b c', 'gemma')).toBe(3)
-  })
-
-  test('the first measurement is taken whole, not smoothed towards one', () => {
-    const scale = new TokenScale()
-
-    expect(scale.learn('gemma', 100, 120)).toBeCloseTo(1.2, 10)
-    expect(scale.knows('gemma')).toBe(true)
-  })
-
-  test('later measurements move the factor by the smoothing fraction only', () => {
-    const scale = new TokenScale(0.3)
-    scale.learn('gemma', 100, 120)
-
-    // 1.2 + 0.3 * (1.4 - 1.2)
-    expect(scale.learn('gemma', 100, 140)).toBeCloseTo(1.26, 10)
-    expect(scale.factorFor('gemma')).toBeCloseTo(1.26, 10)
-  })
-
-  test('the factor is per model, because the ratio is a property of the vocabulary', () => {
-    const scale = new TokenScale()
-    scale.learn('gemma', 100, 120)
-
-    expect(scale.factorFor('qwen')).toBe(1)
-    expect(scale.knows('qwen')).toBe(false)
-  })
-
-  test('a measurement that cannot be a ratio is ignored rather than poisoning the scale', () => {
-    const scale = new TokenScale()
-    scale.learn('gemma', 100, 120)
-
-    for (const bad of [
-      ['gemma', 0, 120],
-      ['gemma', 100, 0],
-      ['gemma', -5, 120],
-      ['', 100, 120],
-    ]) {
-      scale.learn(...bad)
-    }
-
-    expect(scale.factorFor('gemma')).toBeCloseTo(1.2, 10)
-    expect(scale.knows('')).toBe(false)
-  })
-
-  test('count applies the learned factor and rounds to a whole token', () => {
-    const scale = new TokenScale()
-    scale.learn('gemma', 100, 150)
-
-    // 'a b c' estimates 3; 3 * 1.5 = 4.5, rounded to 5.
-    expect(scale.count('a b c', 'gemma')).toBe(5)
-    expect(scale.count('a b c')).toBe(3)
   })
 })

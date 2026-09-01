@@ -183,7 +183,10 @@ describe('invoke', () => {
     // `ok: true` with 965 characters of the model's private working as `value`.
     expect(answered.ok).toBe(false)
     expect(answered.value).toBeNull()
-    expect(answered.failure.code).toBe(Reason.UNAVAILABLE)
+    // OVERRUN, not UNAVAILABLE: the endpoint is fine and the next request is
+    // not the same request. `ReActEngine` reads this code to send the turn
+    // back instead of ending the run on it.
+    expect(answered.failure.code).toBe(Reason.OVERRUN)
     expect(answered.failure.message).toContain('still thinking')
     expect(answered.failure.message).toContain('965')
     expect(answered.failure.hint).toContain('Raise max tokens')
@@ -198,10 +201,23 @@ describe('invoke', () => {
     // reply', hinting 'Check the base URL ends in /v1' — at a correctly
     // configured endpoint that had just answered perfectly.
     expect(answered.ok).toBe(false)
+    expect(answered.failure.code).toBe(Reason.OVERRUN)
     expect(answered.failure.message).toContain('before the model wrote any answer')
     expect(answered.failure.message).toContain('504')
     expect(answered.failure.hint).not.toContain('base URL')
     expect(answered.failure.hint).toContain('Raise max tokens')
+  })
+
+  test('an endpoint that did not answer is UNAVAILABLE, and is not an overrun', async () => {
+    // The two codes are the whole of what `ReActEngine` reads to decide between
+    // another turn and the end of the run, so the boundary between them is
+    // pinned from both sides: a 599 with no body is the endpoint's fault.
+    const { model } = transport([])
+
+    const answered = await model.invoke('hello')
+
+    expect(answered.ok).toBe(false)
+    expect(answered.failure.code).toBe(Reason.UNAVAILABLE)
   })
 
   test('the ceiling is only named where raising it is advice', async () => {

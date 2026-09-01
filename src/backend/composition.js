@@ -186,9 +186,8 @@ export const browserHttp = async ({
  * repositories, so the app still runs and the loss of persistence is a note the
  * user can be shown instead of a failure on their first message.
  */
-export async function buildKernel({
-  db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES]),
-} = {}) {
+export async function buildKernel() {
+  const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
   const opened = await db.open()
   const notes = opened.ok ? [] : [`storage unavailable: ${opened.failure.message}`]
 

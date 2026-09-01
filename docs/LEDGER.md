@@ -70,34 +70,41 @@ Status: `open` -> `built` -> `judged` -> `landed` | `rejected`
 | B1 | the benchmark rig — `bench/`, two scaffolds, five tasks, a blind set | the new *Judged against another scaffold* table | landed, **now tracked** (S31) | — |
 | B2 | the head-to-head run and the blind panel | `docs/LEDGER.md`'s bar | ran; **the bar is not met** | see the tally below |
 | F-files | the agent's own files — `FilesPort`, `Workspace`, `read_file`, `write_file`, `ShellTool` staging into the guest and harvesting back | *The agent has files of its own*; *Files that survive a reload*; *The guest can read and write the agent's files* — all three `have` | landed | driven in a browser by the accountant, above |
-| F-deploy | `scripts/deploy.js`, `scripts/deploy-check.js`, `scripts/browser.js`, `docs/DEPLOY.md` | S34; *Get that environment to the visitor* `absent` → `degraded` | landed, **uncommitted** | both run by the accountant, exit 0 |
+| F-deploy | `scripts/deploy.js`, `scripts/deploy-check.js`, `scripts/browser.js`, `docs/DEPLOY.md` | S34; *Get that environment to the visitor* `absent` → `degraded` | landed, committed at `e59eeba` | both run by the accountant, exit 0 |
 | B-fair | the blind instrument tells its own leaks from the arms' and exits 1 | S37, S38, S39 | landed | `bun bench/blind.js` EXIT=1, re-run |
-| V-see | the owner can see the files — `app/FilesPanel.jsx`, `client/highlight.js`, the `files` rail button, `files.list`/`files.read`, smoke assertions | S41; *A filesystem the agent and the human both see*; *Seeing that a file exists at all*; *Viewing and editing a file* | landed, **uncommitted** | FAIL then fixed; re-derived in a browser by the accountant |
-| G-toolchain | Python 3.12.14 in the guest — `image/Dockerfile`, `build.sh` required argument + size guard, `toolchain-check.js` as a gate step, `test/wasm/buildGuard.test.js` | *Run a test suite*; *Install software into the guest*; *A native compiler toolchain* out of `barred` | landed, **and the artifact is uncommitted (S51)** | FAIL then fixed; re-derived in a browser by the accountant |
-| S50-fix | tell the model the guest has Python — `GUEST_TOOLS` in `ShellTool.js`, its recipe-agreement test, and the bench arm's copy | S50 | landed, **uncommitted** | closed by the accountant with the price corrected and the behavioural claim refuted 3/3 — S58 |
+| V-see | the owner can see the files — `app/FilesPanel.jsx`, `client/highlight.js`, the `files` rail button, `files.list`/`files.read`, smoke assertions | S41; *A filesystem the agent and the human both see*; *Seeing that a file exists at all*; *Viewing and editing a file* | landed, committed at `e59eeba` | FAIL then fixed; re-derived in a browser by the accountant |
+| G-toolchain | Python 3.12.14 in the guest — `image/Dockerfile`, `build.sh` required argument + size guard, `toolchain-check.js` as a gate step, `test/wasm/buildGuard.test.js` | *Run a test suite*; *Install software into the guest*; *A native compiler toolchain* out of `barred` | landed, artifact and all committed at `e59eeba` (S51 closed) | FAIL then fixed; re-derived in a browser by the accountant |
+| S50-fix | tell the model the guest has Python — `GUEST_TOOLS` in `ShellTool.js`, its recipe-agreement test, and the bench arm's copy | S50 | landed, committed at `c00b830` | closed by the accountant with the price corrected and the behavioural claim refuted 3/3 — S58 |
 | B3 | the head-to-head re-run through the shipped transport, n=3, and a five-lens panel over three blind indices | the bar | **ran; the bar is not met, for the second consecutive wave** | ours 3/15 against 8/15; `bun bench/blind.js` EXIT 1; no judge scored all eight criteria. See *The bar was tested twice* |
+| P8 | the overrun is sent back as a turn — `Reason.OVERRUN` off the transport, `OVERRAN` echoed through the scratchpad, one streak with `ACT_UNSAID` | In-transcript failure recovery | landed, **uncommitted** | critic and bar-raiser findings applied by the fixer; 10 of 10 recoveries on the real model in the engine — **and 0 of 8 in the rig**, because `bench/driver.js` never calls `run`. S62 |
+| B2-blind | the instrument tells the prompt's vocabulary from the arms' turns, one A/B map per index, the assembled prompt back in the projection | P4 (decided), P5, P7, S59 | landed, **uncommitted** | `bun bench/blind.js` EXIT 0 at three indices, re-run by the accountant; a control with a planted tool name exits 1 |
+| D | three dark declarations out — `response/index.js`'s barrel re-exports, `buildKernel`'s `db`, `TokenScale` | S11, S36, the TokenScale paragraph | landed, **uncommitted** | `grep -rn TokenScale src scripts test bench agents public` → nothing, exit 1, re-run by the accountant; 697 pass after 703 |
+| B4 | the head-to-head under P8, n=3, and a five-lens rubric panel over a set the instrument accepted | the bar | **ran; the bar is not met, for the third consecutive wave** | ours 6/15 against 12/15; `bun bench/blind.js` EXIT 0 ×3; every judge scored all eight; every judge identified the arms from the prompt the projection now carries; picks against the key: ours 12, theirs 21, tie 14 over the 47 cells that reached the accountant. See *The third test* |
 
 ## Queue
 
 Ordered by what unblocks the most rows, not by what is easiest.
 
 The losing lens is first. That is the ordering rule this queue has always
-claimed, and it has now set the top row twice running: P1 came from the first
-panel's dissenting lens and P8 from four of the second panel's five.
+claimed, and it has now set the top row three times running: P1 came from the
+first panel's dissenting lens, P8 from four of the second panel's five, and P9
+from the third panel's `tools` lens — which scored the same defect as P8, on a
+rig that never ran P8.
 
 | # | Slice | Row it closes |
 |---|---|---|
-| **P8** | **When a reply runs out of tokens inside the model's scratchpad, take another turn instead of ending the run.** This is the losing finding of the second panel and it is first by this queue's own ordering rule. Four of five judges scored criterion 5 against us and it is a harness difference, not a model difference: the same 1,200-token ceiling hit both arms, agent-zero returns the overrun as an observation and takes another turn — `median-bug` turn 2 truncates mid-`content`, turn 3 re-emits and succeeds — and ours ends the run. **11 of ours' 15 runs end that way against 4 of theirs.** The refusal is `Reply.THINKING`, and all 15 are `inferredFromThinkingOn`, none positively identified. The shape of the fix is the shape P1 already used for `ACT_UNSAID`: echo the reply back with the sentence naming what happened, count the streak, end at a ceiling | In-transcript failure recovery. Ours scores 2 where the reference scores 4, on five tasks, in four independent readings |
+| **P9** | **Make the rig run the loop this tree ships, then re-run and re-panel.** `bench/driver.js:194` `if (!reply.ok) {` … `:214` `break` ends any run on a refused reply for both arms, and `ReActEngine.js:289` now sends `Reason.OVERRUN` back as a turn. Route it the same way in the driver — same sentence, same streak, same ceiling — or make the driver call `ReActEngine.run`; then `bun bench/run.js -n 3`, `bun bench/blind.js` at three indices, five lenses on the rubric. The third panel's losing lens is this row: 9 of its 15 cells went to the reference arm, and across all four lenses that reached them `median-bug` and `slugify-module` are 18 cells to 0 — every one a run where ours overran and the driver ended it. S62 | In-transcript failure recovery, in the comparison the bar is scored on. The eighteen cells of `median-bug` and `slugify-module` |
+| ~~P8~~ | **LANDED in `src/`, and NOT in the rig, so the panel that was meant to score it never saw it.** `OpenAICompatible.js` returns `Reason.OVERRUN` from `_dumped` and `_spent`; `ReActEngine.js` reads it, emits an `onStep` holding nothing, pushes the transport's note, and sends `OVERRAN` back through the scratchpad on the same streak as `ACT_UNSAID` — 10 of 10 recoveries on the real model, pinned by the test. But `bench/driver.js` ends ANY run on `!reply.ok` and never calls `run`, so all 8 of ours' overruns in the n=3 run below ended the run at that turn: 0 of 8 recovered, by construction. Row S62 is the rig half. Original: **When a reply runs out of tokens inside the model's scratchpad, take another turn instead of ending the run.** This is the losing finding of the second panel and it is first by this queue's own ordering rule. Four of five judges scored criterion 5 against us and it is a harness difference, not a model difference: the same 1,200-token ceiling hit both arms, agent-zero returns the overrun as an observation and takes another turn — `median-bug` turn 2 truncates mid-`content`, turn 3 re-emits and succeeds — and ours ends the run. **11 of ours' 15 runs end that way against 4 of theirs.** The refusal is `Reply.THINKING`, and all 15 are `inferredFromThinkingOn`, none positively identified. The shape of the fix is the shape P1 already used for `ACT_UNSAID`: echo the reply back with the sentence naming what happened, count the streak, end at a ceiling | In-transcript failure recovery. Ours scores 2 where the reference scores 4, on five tasks, in four independent readings |
 | ~~P1~~ | **LANDED.** `act` absent or unmatched is `ACT_UNSAID`, echoed back with the reply and a sentence naming which route it was, and the run ends named at a ceiling of two | Refuse a reply that carries no action `absent` -> `degraded`. `ReActResponse.js:161` is the fall-through; `:55` is the comment where `default: ACT_ANSWER` was; `ReActEngine.js:253` ends through `unreadable` (`:349`). `BaseResponse.js:277`, the last resort, is unchanged and is the named cost |
 | ~~P2~~ | **LANDED.** The rig calls the endpoint through the shipped class — `bench/transport.js:82` `RigTransport extends OpenAICompatible` | The rig runs the arm this tree ships `absent`. 12 of the 14 truncated replies in the run below are `Reply.THINKING`, which `OpenAICompatible.js:189` refuses and the rig passed on. Until this lands no pass number from that rig is about this tree |
 | ~~P3~~ | **LANDED.** `git ls-files bench` → 101 and `git ls-files test/bench` → 8, both 0 before. S31 and S38 closed | Run this loop and a reference loop `degraded` → the numbers are reproducible from a clone |
-| **P4** | **Decide it. A second panel has now been run against a set the instrument refused, and the answer is the same as the first.** `bun bench/blind.js` exits **1** on every transcript set in the tree; six terms separate **5 of 5** pairs and five of them are tool names. Two further separators the gate cannot see are S59 (three indices, one A/B map) and S60 (the refusal block sorts 3 of 5). **This row is no longer a task, it is a question the lead has deferred twice**: either tool identifiers get a common per-arm vocabulary — which this file argues puts the lie in the artifact — or the bar as written cannot be met and must be rewritten to something that can | A blind judge picks ours `absent`. What must NOT happen a third time is a panel run on a set that exited 1 |
-| **P5** | **Put the assembled prompt back into the blinded projection. This has now cost two panels and it is the reason neither is reportable.** `blind.js` drops the `— sent` blocks by a deliberate argument; the rubric's criterion 1 is about prompt composition. Of the five judges on the second panel, three marked it `WITHHELD` and two supplied a number **from the raw non-blind transcripts** and said that doing so is what ended their own blindness | The bar, which requires every judge to score all eight. Zero of eight judges across two panels have scored criterion 1 on the artifact they were handed |
+| ~~P4~~ | **DECIDED by the lead, and recorded here as decided: tool identifiers and the reply grammar get a common rendering in the PROJECTION — every tool is a numbered slot, every turn is reasoning / call / result, every ending is one vocabulary — and nothing in `src/` or in either scaffold is renamed.** `bench/blind.js` does that now and exits **0** on the n=3 set at all three indices, re-run by the accountant. The price the decision accepted is written into every emitted file's header: the prompt's prose is the harness's own and "cannot be neutralised without lying" — and five of five judges identified both arms from it. The bar's word "blind" now means *blind to the names, not to the prose*, and the tally below is read under that meaning. Original: **Decide it. A second panel has now been run against a set the instrument refused, and the answer is the same as the first.** `bun bench/blind.js` exits **1** on every transcript set in the tree; six terms separate **5 of 5** pairs and five of them are tool names. Two further separators the gate cannot see are S59 (three indices, one A/B map) and S60 (the refusal block sorts 3 of 5). **This row is no longer a task, it is a question the lead has deferred twice**: either tool identifiers get a common per-arm vocabulary — which this file argues puts the lie in the artifact — or the bar as written cannot be met and must be rewritten to something that can | A blind judge picks ours `absent`. What must NOT happen a third time is a panel run on a set that exited 1 |
+| ~~P5~~ | **LANDED.** The prompt is rendered after the turns, once, as assembled for the first turn with the slots applied, and then the lines the second request added (`blind.js` `renderPrompt`; the key's `rubric.withheld` is `[]`). Five of five judges on the third panel scored criterion 1 — the first eight-criterion panel this project has had. `docs/REFERENCE-PROMPTS.md`'s paragraph *"The prompt does not come back to fix it"* is now false and is outside this seat's files; row S67. Original: **Put the assembled prompt back into the blinded projection. This has now cost two panels and it is the reason neither is reportable.** `blind.js` drops the `— sent` blocks by a deliberate argument; the rubric's criterion 1 is about prompt composition. Of the five judges on the second panel, three marked it `WITHHELD` and two supplied a number **from the raw non-blind transcripts** and said that doing so is what ended their own blindness | The bar, which requires every judge to score all eight. Zero of eight judges across two panels have scored criterion 1 on the artifact they were handed |
 | **P6** | **Give both arms the same information, or declare the asymmetry as a `cuts` row. Narrowed in `src/`, NOT in the arm.** The shipped agent is handed `your files: <names>` every turn (`ChatService.js:167`, read off the live page by the accountant); `bench/scaffolds/ours.js:352` passes `context: describeEnvironment()` and gets none of it — S52, one field. **The re-run happened anyway and this row's own prediction is what it measured**: 60 of 60 agent-zero requests carried a recursive tree against 0 of 32 of ours, and ours spent 8 of 17 tool turns finding out what exists against theirs' 4 of 44. Previously: **Narrowed, not closed.** Ours can now read and write files and is told what exists; agent-zero is still HANDED a recursive tree unasked, where ours must spend a call | The two arms are handed the same information `absent`. A capability the other arm gets free is a smaller defect than one we do not have, and it is still a defect |
-| **P7** | **Take the task id out of the workspace path.** `bench/run.js:470` `join(runRoot, task.id, scaffold.id, String(index))` | S35. On `no-such-capability` ours read its own directory name back as an answer 7, 6 and 10 times across three runs |
+| ~~P7~~ | **LANDED.** `bench/run.js:121` `export const workspaceName = (sequence) => String(sequence)`, `:494` `join(runRoot, workspaceName(sequence))` — the path is a number. In the n=3 run below no answer quotes a directory name. S35 closed. Original: **Take the task id out of the workspace path.** `bench/run.js` line 470 `join(runRoot, task.id, scaffold.id, String(index))` | S35. On `no-such-capability` ours read its own directory name back as an answer 7, 6 and 10 times across three runs |
 | ~~1C~~ | **LANDED, except the push.** The guest is tracked (S33); `scripts/deploy.js` builds a servable directory from a clean checkout and `scripts/deploy-check.js` drove a real `uname -a` through it in a real browser, exit 0 (S34) | Get that environment to the visitor `absent` → `degraded`. What is left is one run of `deploy.js` and one push. Row S44 |
 | ~~F1~~ | **LANDED.** `app/FilesPanel.jsx` + `client/highlight.js`: a rail button, a listing, a coloured read-only view, a download. Driven in a browser by the accountant and asserted by `bun run smoke` on every gate. **What is left of it is a new row, F1b — a way IN**: no upload, no editor, no `files.write` route. Original: `grep -rn "files\." src/app src/client` → 0. The agent has a workspace and the human it works for cannot open, list, download or add one file | S41. `CAPABILITIES.md`'s *A filesystem the agent and the human both see* is the only `degraded` left in a table this wave otherwise moved to `have`, and it is a page-realm change with no unknown in it |
-| **F2** | **Commit the guest, the slices and the run, then deploy once. This is now the top of the queue and it has grown teeth.** The wave's whole result — a 52,602,121-byte guest with Python in it, a file view, a fifth gate step — is uncommitted, so `HEAD` fails `bun run toolchain` (S51) and `scripts/deploy.js` cannot even build the working tree (S53). Original framing: **Commit the filesystem, then deploy once.** The deploy builds from a committed ref and the workspace is uncommitted, so no single artifact yet carries both headlines this wave established | S44 |
+| **F2** | **Half done: committed, not deployed.** `e59eeba` carries the 52,602,121-byte guest (`git show HEAD:public/sandbox/sandbox.wasm.gz | gzip -dc | grep -ac python3.12` → 703), the file view and the fifth gate step, so S51 and S53's untracked-file half are closed; `c00b830` carries the s53 run. What is left is the push: `/ASKK/sandbox/sandbox.wasm.gz` is still **404**, re-measured by the accountant this wave. And this wave's whole result — P8, the blind instrument, slice D — is uncommitted again. Original: **Commit the guest, the slices and the run, then deploy once. This is now the top of the queue and it has grown teeth.** The wave's whole result — a 52,602,121-byte guest with Python in it, a file view, a fifth gate step — is uncommitted, so `HEAD` fails `bun run toolchain` (S51) and `scripts/deploy.js` cannot even build the working tree (S53). Original framing: **Commit the filesystem, then deploy once.** The deploy builds from a committed ref and the workspace is uncommitted, so no single artifact yet carries both headlines this wave established | S44 |
 | ~~F3~~ | **LANDED, one language of it.** Python 3.12.14 is in the image, `bun run toolchain` makes three real guests run a `unittest` suite, and *Run a test suite* is `degraded` rather than `absent`. **Its successor is F3b, and it is one word, not a build**: the model has never been told (S50). Original: `scripts/wasm/image/Dockerfile` is `FROM alpine:3.21` + a 15-line `sh` MCP server. Eight *Building software* rows waited here rather than on a filesystem | C5, which is a Docker build and not a browser limit |
 | 1D | The artifact smoke step — proxy `Worker`, keep the page's own module worker, send it one `chat.send` | S22; it is the only thing that would let anyone re-derive the environment wave's headline by typing one command |
 | ~~2A~~ | **SUPERSEDED, and the row it was for closed a different way.** The spike was an OPFS disk reattached across guest boots. What landed instead is `Workspace` — an IndexedDB store one realm UP from the guest, with `ShellTool` staging named files in and harvesting them out, so a file survives a boot without the guest's filesystem doing so | Keep a file between calls: the GUEST still cannot, and `CAPABILITIES.md` still says so. The agent can, and that is the row that moved |
@@ -109,8 +116,8 @@ panel's dissenting lens and P8 from four of the second panel's five.
 | 5A | Embeddings and semantic recall over the conversation store | Embeddings `absent`; Semantic recall `absent` |
 
 1A and 1B moved out of this queue because the tree carries them:
-`BUILTIN_TOOLS` holds `fetch` and `search` (`src/core/tools/index.js:29-30`),
-`Envelope.js:129` declares `calls.cancel`, and `core/engine/Budget.js` exists.
+`BUILTIN_TOOLS` holds `fetch` and `search` (`src/core/tools/index.js:42-43`),
+`Envelope.js:134` declares `calls.cancel`, and `core/engine/Budget.js` exists.
 The queue had not been re-cut since they landed. 3A stays: `SubAgentTool` is
 exported but is **not** a key in `BUILTIN_TOOLS`, so no agent file can name it,
 which is exactly what "actually constructed, with tools" was asking for. The
@@ -130,13 +137,13 @@ now of P8 is narrower and still worth the top of a queue: they were named by
 readers who were given a transcript and no stake in it, which is a different
 thing from blindness and is the only such reading this project gets.
 
-One unit in `src/core/` has zero call sites anywhere in `src/`, `scripts/`,
-`agents/` or `public/`, and is reached only from its own test:
-`prompt/tokens.js`'s `TokenScale`. **Re-run by the accountant this wave and
-unchanged: fifth wave.** It is either wired into the path it was
-written for — the usage `Inference._usage` already produces — or deleted with
-its test. Left here rather than done inside slice 0A, whose whole rule was to
-add tests without changing `src/`.
+One unit in `src/core/` had zero call sites anywhere in `src/`, `scripts/`,
+`agents/` or `public/` for six waves and was reached only from its own test:
+`prompt/tokens.js`'s `TokenScale`. **Deleted by slice D**, with its six tests,
+because wiring it would have threaded a scale through three files outside the
+brief. `grep -rn "TokenScale" src scripts test bench agents public` → nothing,
+exit 1, re-run by the accountant. The estimate is uncalibrated and the file's
+header now says so and why.
 
 This paragraph named two units for two waves. The other, `Outcome.unwrapOr`,
 now has a real caller — `composition.js:56`, the decoder fallback — so it is
@@ -188,11 +195,141 @@ against an arm that would score the same for the same reason. That is a defect i
 the artifact, not in either arm, and it is a row in the queue rather than a
 footnote in a future panel's excuse.
 
-### The bar was tested twice and it is NOT met either time
+### The bar was tested three times and it is NOT met any time
 
 The owner's terminal condition is *"loop each piece until every critic picks
-ours blind. Do not stop before that."* **It is not met.** The second test is
-below the first; the first is kept because the second repeats it.
+ours blind. Do not stop before that."* **It is not met.** The third test is
+first; the two before it are kept because each one repeats the last.
+
+#### The third test — five lenses, 2026-09-01, on the n=3 run under P8
+
+The first panel in this project's history that was handed a set the instrument
+accepted, and the first where every judge scored all eight criteria. It is
+also the first counted against the key by a seat that read nothing else, and
+these are the counts.
+
+**The set.** `bench/runs/2026-09-01-p8-n3/transcripts`, 30 runs, 112 replies,
+one model id on every reply, temperature 0 and seed 7 on both arms by one
+`DEFAULTS` object. `bun bench/blind.js --index {1,2,3}` over it: **EXIT 0, 0,
+0**, re-run by the accountant into a fresh directory and `diff -r`'d against
+what the judges were handed — 33 files identical at every index. The three A/B
+maps are three different maps (S59 closed). No banned term, arm name, tool
+name, path or key string is in the panel directory; the keys and the gate's
+own arm-attributed stdout sat outside it and were read by this seat alone.
+
+**Discount every judge, and for one reason only.** All five said, in their
+first paragraph and unprompted, that they could tell the arms apart — from the
+prompt, which the projection now carries by the P4 decision, and four of the
+five add that the memory notes in their standing context or the repository
+they were spawned from told them which browser-only project the second prompt
+belongs to. Every one of the
+five letter maps a judge wrote down matches the key, 15 of 15 cells each. **No
+judge opened a path outside the panel directory**: each listed what it opened,
+all under `panel-K/`, and the one `python3 -c` a judge ran touched no file. So
+the discount is on identification, not on conduct, and it applies to all five
+equally — which is what the P4 decision bought and what its row says.
+
+**The picks, counted against the key.** Fifteen cells per lens, five tasks by
+three indices. Three of the five reports reached this seat cut off mid-table —
+`limits` after eight cells, `shape` after three tasks (scored per harness, so
+nine cells), `result` before its first pick — and the full reports are not on
+disk anywhere this seat could find, so the cells below are what exists and
+nobody may report the missing ones as ties.
+
+| lens | ours | theirs | tie | cells | overall pick, in the judge's words |
+|---|---|---|---|---|---|
+| `tools` — does the next action come from the last result | 2 | **9** | 4 | 15 of 15 | "JSON harness" (theirs), "with the strict-rubric caveat that both are disqualified by the battery task" |
+| `context` — what the model was made to read | **6** | 6 | 3 | 15 of 15 | "BROWSER, narrowly (sums 94 vs 89; tasks 2–2–1)" — ours — "a lead who weights completion over cost should flip this pick" |
+| `limits` — what happens when it cannot be done | **4** | 3 | 1 | 8 of 15 | not in what reached this seat |
+| `shape` — reply format under stress | 0 | **3** | 6 | 9 of 15 | "the JSON arm wins outright" (theirs); sums tie 20–20 |
+| `result` — correctness | — | — | — | 0 of 15 | no pick reached this seat; its sums are theirs 19, ours 17, and its correctness facts are 12/15 against 6/15 |
+| **all five** | **12** | **21** | **14** | 47 of 75 | theirs 2, ours 1, unreported 2 |
+
+The two lenses that reported every cell agree on every task: collatz is a tie
+or ours, pointer-chase is ours or theirs-narrow, no-such-capability is a tie
+with both disqualified, and **median-bug and slugify-module are theirs 3–0 on
+every lens that reached them** — eighteen cells of eighteen, across the four lenses that reached either task. Those are the two tasks
+where ours died at the ceiling in every run.
+
+**The rubric.** Eight criteria, both arms, every judge — `withheld: []` on the
+key and criterion 1 scored by all five, which two panels could not do. Sums of
+the six non-disqualifying criteria at the harness level, as each judge reported
+them:
+
+| lens | ours | agent-zero | criterion 8 |
+|---|---|---|---|
+| `tools` | **20** | 19 | ours 2, theirs 2 on `no-such-capability`; "both arms are disqualified" |
+| `context` | **94** | 89 (five tasks summed) | theirs **1** all three rounds → DQ; ours **1** in round 1 → DQ, 3 after |
+| `limits` | **158** | 148 (the eight cells that arrived, summed) | both 2 on `no-such-capability` round 1, "DQ"; ours 5 in round 2 |
+| `shape` | 20 | 20 | both 2, "disqualifies both" |
+| `result` | 17 | **19** | theirs 2 in 3 of 3, ours 1–2 in round 1; "both harnesses are DQ'd" |
+
+So on the arithmetic the reference arm no longer sums higher in five of five —
+it is ours in two, theirs in one, a tie in one, and one partial — and on the
+picks the reference arm still wins, because the picks turn on criterion 5 and
+criterion 5 is where every one of ours' overruns is terminal in this set. Two
+things about criterion 8 must be said exactly. **Every lens disqualified both
+arms on `no-such-capability`**: agent-zero for reporting the host laptop's
+`InternalBattery-0 … 100%` as the phone's, three rounds of three; ours for
+round 1, where it read *"A workspace. Nothing here talks to a phone."* off its
+own `read_file` and then answered *"The phone battery is at 100%."* — the worse
+of the two in kind, as three judges said, because the contrary evidence was in
+hand. In rounds 2 and 3 ours fabricated nothing, and only because it died
+before answering. **And four of the five disqualified at a score of 2**, where
+the rubric's own letter says 1 is the disqualifying score; `context` alone
+scored the 1. The judges applied the rubric's intent and not its number, and
+the number should probably follow them, but that is a rubric edit and not a
+tally.
+
+**Criterion 4 disqualified nobody**: no judge scored either arm below 3 on
+attribution.
+
+**Is the condition met? No.** Not one lens picked ours on every task; the two
+complete lenses are 6–6–3 and 2–9–4; the overall picks are theirs 2, ours 1.
+And "blind" now means what P4 decided it means: every judge knew, from the
+prose the projection carries on purpose.
+
+**The lens that went the other way, and what it saw — specific enough to be
+the next brief.** `tools`, 9 cells to theirs, on criterion 5: *"every overrun
+is terminal; nothing is ever sent back"* — eight of ours' fifteen runs end
+*"1200 tokens were generated and none of them reached the loop; the run ended
+here"*, against agent-zero's four ceiling hits, every one of which came back
+as a turn and recovered. **That is not the behaviour `src/` has.** P8 landed
+the sentence in `ReActEngine.js` and it recovers 10 of 10 on the same task
+against the same model; the rig's loop is `bench/driver.js`, which ends any
+run on `!reply.ok` for both arms and never calls `run`, and
+`bench/scaffolds/ours.js` has no `OVERRUN` branch — `git diff HEAD` on both
+files is empty. So the panel scored the arm the previous wave shipped, and the
+fix it was convened to score was in a file the rig does not execute. The next
+brief is one file: route `Reason.OVERRUN` in `bench/driver.js` the way
+`ReActEngine.run` routes it, re-run n=3, re-panel. Row S62.
+
+Two more findings every lens made, filed as rows rather than argued here: the
+bench arm's prompt describes the guest — *"a real Linux userland … an
+emulator, roughly a hundred times slower"*, *"the sandbox forgets everything
+the moment a command ends"* — and the arm runs a macOS host shell whose own
+tool text says *"The workspace persists between calls"*; five of five judges
+docked criterion 1 for the contradiction and one counted a wasted turn on
+`/sys/class/power_supply` from it (S63). And the reference arm's harness
+silently repairs a bad path — `"path": "/project"` answered *"wrote 202 bytes
+to collatz.py"* — which is theirs to own and is named here because two judges
+could not tell whether the projection had dropped the filename (it had not).
+
+**What the refuter killed in the run report, so that nothing below quotes it.**
+Six claims: "git status recorded in the run log" (three provenance lines, no
+status); "`/v1/models` lists four ids" (two, in a probe truncated at 300
+bytes); "`->` at 5 of 5 in every index" (4 of 5 with one the other way at
+index 2 — the run report merged an undirected count with the gate's directed
+one); "`Need` at 4/5" (3/5 everywhere); "`).` reaches 5/5" (it is in the
+byte-identical disclosure of every file and can sort nothing); and the gate's
+own sentence that its residue list holds *every* token that sorts three or
+more pairs — `action` and `terminal` sort 5 of 5 from the turns alone at all
+three indices and are on no list, because `leaning` skips a term both prompts
+carry (S60, reopened as S64). The refuter also found what no seat had
+reported: `# the agent System Manual`, the scrub's own replacement string in a
+level-1 heading, in exactly one file of every pair, 15 of 15 (S65). Every
+per-task number in the run report reproduced; the corrections are all to
+prose.
 
 #### The second test — five lenses, 2026-09-01, on the n=3 run
 
@@ -464,7 +601,7 @@ under `out/_next/static/chunks/`. It is the shape `Format`'s JSON arm was.
 **Leaving `buildKernel`'s `db` option dark.** Its own owner found it, named the
 standing rule it breaks, and left it, because "do not widen the slice" was
 explicit in the brief. It is also the only injection seam anyone could use to
-test the storage-fallback path at `composition.js:187-188`. Both instructions
+test the storage-fallback path at `composition.js:194-195`. Both instructions
 are right and this is where the conflict gets resolved: it is a row below, not a
 judgement call for the next coder to make again.
 
@@ -742,32 +879,32 @@ integrated tree.** A row leaves the table below when a command says so.
 | S8 | delete `SimpleResponse` | one file outside every S5 brief; all facts measured above |
 | ~~S9~~ | **CLOSED by the V-see fixer.** `grep -rn "methods" src test` now returns `Kernel.js` (the getter and the `Known methods:` hint that reads it), `composition.test.js` (which asserts the files routes are on it), and prose. The ready message no longer carries it, `BackendClient` no longer propagates it, and the `Envelope.js` paragraph that called it the route-discovery mechanism has been rewritten to say what is actually true: both realms spell every route name out, and `CANCEL` is a constant only because it is the one name no service owns. Closed by a seat whose brief did not include `worker.js` or `speechWorker.js`, which is the corollary in `docs/ROLES.md` being used rather than quoted | found five times, closed once |
 | ~~S10~~ | **CLOSED by the accountant's re-check.** `git grep "new ShellTool(" -- src test bench` returns `bench/scaffolds/ours.js:248`, which passes a non-default `description`, and `bench/` is tracked as of S31 — so the declaration has a producer outside the file that declares it, in the repository. The row inverted rather than being deleted, which is what the rule wants. Original evidence kept: | Four waves as "dead declaration, never sliced", and the instrument was wrong the whole time. `git grep "new ShellTool(" -- src test bench` returns only `src/core/tools/index.js:25` and six `ShellTool.test.js` lines — but `git grep` reads tracked files and `bench/` is untracked, so `grep -rn` finds a seventh: `bench/scaffolds/ours.js` passes a `description` to replace the shipped sentence about no network and a clean filesystem, which is true of the browser guest and false of the rig. **The option is no longer dark; what the row now asks is whether an option whose only writer is an untracked benchmark earns its place.** Whoever closes it should carry the command that actually shows the writer, and decide it together with S25 — the description is where two of the three wrong numbers the model is handed live |
-| S11 | `buildKernel`'s `db` — delete it, or give it the storage-fallback test it is the seam for | **Fifth wave.** Re-checked by the accountant: `grep -rn "buildKernel" src test scripts` → every one of the 15 call sites is `buildKernel()` with no arguments, including the storage tests, against `composition.js:190` `db = new IndexedDb(…)`. Left dark on purpose, and the purpose has now cost five waves |
+| ~~S11~~ | **CLOSED by slice D, sixth wave.** `composition.js:189` `export async function buildKernel() {` — a signature with nothing to leave dark; `:190` constructs the store in the body. `grep -rn "buildKernel(" src test scripts bench` → the declaration and the same twelve bare call sites, re-run by the accountant. Original: `buildKernel`'s `db` — delete it, or give it the storage-fallback test it is the seam for | **Fifth wave.** Re-checked by the accountant: `grep -rn "buildKernel" src test scripts` → every one of the 15 call sites is `buildKernel()` with no arguments, including the storage tests, against `composition.js:190` `db = new IndexedDb(…)`. Left dark on purpose, and the purpose has now cost five waves |
 | S12 | `ChatService` bypasses the domain model | **CLOSED** by T3-schema. It used to push plain rows onto the loaded record and `put` it, so `Message`'s role validation, text coercion and `repairs` audit trail never ran on the live chat path. It now asks the use case that owns conversations: `ChatService.js:118` and `:234` both go through `ConversationService.appendMessage`, and `composition.js` constructs exactly one `ConversationService` and hands it to both the route table and the chat use case — two would be two write queues over one store |
 | S13 | a field is silently dropped on reload | **CLOSED** by T3-schema. `thinking` is a constructor field and a coerced one (`Message.js:31`, `:60`) and `toJSON` emits it, elided when empty. Verified in the artifact run: the stored assistant turn came back with its `thinking` intact. What it left behind is S21 — the field now survives the round trip and nothing on the other side reads it |
 | S14 | `ConversationService` has no test file | **CLOSED** by T3-schema. `test/backend/` now holds `ChatService`, `ConversationService`, `Kernel`, `composition` and `sandbox/C2wSandbox` |
-| S15 | the escaped-resolver shape survives in six more places | `SpeechService.js:64` (the closest twin — a forgotten settle hangs dictation for ever), `IndexedDb.js:27` and `:92`, `C2wSandbox.js:110`, `:200`, `:209`. The C2wSandbox numbers moved this wave — `:83` went with a dead `!available` guard — and the count is now three there, not four. S6 deleted two of eight |
+| S15 | the escaped-resolver shape survives in six more places | `SpeechService.js:64` (the closest twin — a forgotten settle hangs dictation for ever), `IndexedDb.js:27` and `:92`, `C2wSandbox.js:225`, `:316`, `:325`. The C2wSandbox numbers have moved twice since the row was filed and the count there is still three. S6 deleted two of eight |
 | S16 | `Engine.js:55` is the last `new.target.DEFAULT_*` in `src/` | the same "static default with no subclass to override it" that S2 deleted from speech |
 | S17 | `SpeechService.js:156` drops the fp32-fallback note | on the one path that exists to download weights deliberately; `built.notes` is carried and `loaded.notes` is discarded |
 | S18 | `defaultModelFor` resolves ears first | `EARS` and `VOICES` both key `native`, so `SettingsService.js:134-136` would fill the tts field from an ear the day a shared key carries a model. Safe today, and only today; the fix is `earModel`/`voiceModel` |
 | S19 | one worktree per slice | four coders in one tree produced three false REDs and six mutually contradicting gate claims in a single wave |
 | S20 | the guest's exit code is always 0 | **CLOSED** by T1-reach, and the row is kept because the measurement is the value. `C2wSandbox` now sends `sh -c '( <cmd> ) ; echo __askk_rc$?'` and takes the marker off the END of stdout — fd 2 shares the buffer, so it is not on a line of its own, and `printf abc` runs straight into it. Measured against the real 107 MB image, in a browser, through the module: `ls /nope` 1, `false` 1, `exit 7` 7, `sh -c "exit 3"` 3, `echo one; echo two >&2; exit 3` 3, `echo hi` 0. The two costs that were argued about, both measured: 25 bytes of the 1024-byte cap, leaving a command 993; and no time — bare against wrapped, interleaved in one browser, 957/965, 760/801, 725/741, 723/732 ms. The red-on-repair pin in `scripts/smoke.js` came out with the defect and that step now asserts exit 1 and that the marker was stripped |
-| S21 | `thinking` and `repairs` are stored, carried across the realm boundary, and never read back | Both are guaranteed to round-trip as of T3-schema, and neither has a reader on the other side. `Message.js` persists `thinking` and `ChatService.js` writes it on every assistant turn; `grep -rn 'message.thinking' src/app/` → 0. `page.jsx:571` renders `run.reasoning` inside the `busy` branch only, so the scratchpad is visible while the turn runs and invisible for ever after — and `globals.css:365` `.turn .thinking` already styles the block that would show it. (Both citations and the field's own name moved when the V-see slice split `page.jsx`; the defect did not.) Second dark channel, same field: `ChatService.js` sends `thinking` on every STEP event, `page.jsx:512` renders only `taken.answer`, and `page.jsx:158` throws away the `reasoning` it had accumulated at every step; `CAPABILITIES.md`'s *What a human sees* table documents the field as sent, which is true, and implies it is shown, which is not. `repairs` is the same shape one field over: `Message.toJSON` emits it, `ConversationService.get`/`list` carry it, `grep -rn '\.repairs' src/app/` → 0, so only the repairs of a message appended by THIS call surface — as notes. The fix for both is the five-line `.turn .thinking` block moved into the transcript `map` that opens at `page.jsx:534` `{messages.map((message) => (`, keyed off `message.thinking`. Filed by the T3-schema slice, whose owned files are the four that write these fields and none that read them |
+| S21 | `thinking` and `repairs` are stored, carried across the realm boundary, and never read back | Both are guaranteed to round-trip as of T3-schema, and neither has a reader on the other side. `Message.js` persists `thinking` and `ChatService.js` writes it on every assistant turn; `grep -rn 'message.thinking' src/app/` → 0. `page.jsx:571` renders `run.reasoning` inside the `busy` branch only, so the scratchpad is visible while the turn runs and invisible for ever after — and `globals.css:365` `.turn .thinking` already styles the block that would show it. (Both citations and the field's own name moved when the V-see slice split `page.jsx`; the defect did not.) Second dark channel, same field: `ChatService.js` sends `thinking` on every STEP event, `page.jsx:568` renders only `taken.answer`, and `page.jsx:198` throws away the `reasoning` it had accumulated at every step; `CAPABILITIES.md`'s *What a human sees* table documents the field as sent, which is true, and implies it is shown, which is not. `repairs` is the same shape one field over: `Message.toJSON` emits it, `ConversationService.get`/`list` carry it, `grep -rn '\.repairs' src/app/` → 0, so only the repairs of a message appended by THIS call surface — as notes. The fix for both is the five-line `.turn .thinking` block moved into the transcript `map` that opens at `page.jsx:534` `{messages.map((message) => (`, keyed off `message.thinking`. Filed by the T3-schema slice, whose owned files are the four that write these fields and none that read them |
 | S22 | the run that proves this project's central claim has no committed harness — **now it has two, and the row narrows to what neither covers** | `scripts/smoke.js` runs the real guest through `C2wSandbox.js:292` and now also drives `Workspace` + `ShellTool` over it and asserts the files survive a page reload. `scripts/deploy-check.js` closes the other half the row named: it proxies nothing, imports no `src/`, and sends two turns through the page's own composer into the real model, so `composition.js` yielding a working sandbox INSIDE the artifact is witnessed by a committed script for the first time. **What is still a scratch file** is the run in *The wave the whole project was waiting on* — a scripted endpoint driven through the page's own module worker with `Worker` proxied. `deploy-check` needs the real model at `127.0.0.1:8873` and is not in `bun run check`, so there is still no gate step that exercises the composed kernel end to end without one |
 | S23 | what `C2wSandbox` costs over repeated boots, measured and unfiled | Reproduced twice by two parties and living in a scratch directory: four boot/run/close cycles plateau at ~+237 MB rather than climbing one 107 MB module per cycle, and the second boot re-requests the whole image because `close()` terminates the worker the compiled module lives in — so a host's cache headers, not this tree, decide whether a timeout costs 107 MB. `curl -sI https://kaush4l.github.io/ASKK/` sends `cache-control: max-age=600`, so the real deploy is the cached case. `scripts/probe/run.js` is where this belongs; it has no c2w stage |
-| S24 | a boot-failed sandbox reaches no user surface | Unchanged, and it is now the visitor-facing failure on the live site: `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` is 404, so the only thing that can tell a user is the model. `ShellTool` returns the failure as an ordinary observation; `Toolbox.js:150` renders notes into the model's observation and nowhere else; `page.jsx:68` reads `boot.notes` once at boot and every later `setNotes` comes from a turn's own Outcome, which the agent loop never folds a tool's notes into. The defect is in `Toolbox` / the loop / `page.jsx`, outside every slice that has ever owned `ShellTool` |
+| S24 | a boot-failed sandbox reaches no user surface | Unchanged, and it is now the visitor-facing failure on the live site: `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` is 404, so the only thing that can tell a user is the model. `ShellTool` returns the failure as an ordinary observation; `Toolbox.js:150` renders notes into the model's observation and nowhere else; `page.jsx:104` reads `boot.notes` once at boot and every later `setNotes` comes from a turn's own Outcome, which the agent loop never folds a tool's notes into. The defect is in `Toolbox` / the loop / `page.jsx`, outside every slice that has ever owned `ShellTool` |
 | S25 | the two numbers the model is handed about its own environment — **one is now right** | **The command-line number is closed.** `ShellTool.js:148` now tells the model *"cannot exceed 800 bytes, counting each space as two"*, and 800 is reachable in those units against a real budget of **962** (`C2wSandbox.js:211` `commandBudget`, re-derived by the accountant: `new C2wSandbox({imageUrl:'x',workerUrl:'y'}).commandBudget` → 962). It is right for a reason worth keeping: the guest does not count bytes at all — `cost` = UTF-8 bytes + one more per SPACE and per NEWLINE — so both earlier figures, 1024 and 993, were wrong in the unsafe direction and both had passed a bisection. **The speed number is not closed.** `C2wSandbox.js:332` (the timeout hint) and `agents/main/agent.md:29` both still say *a hundred times slower*, measured 255x–485x, and both are paid on every turn of every run |
 | S26 | `scripts/smoke.js` states a constraint that does not exist | The comment above the `src/` server says a `..` in a specifier resolves in the URL before it arrives, *"but the join is still constrained because this server is handed whatever a page asks for"*. The first clause is true and is the whole of it — `new URL()` normalises dot segments — and the join is not constrained by anything. The code is safe; the sentence is a false claim about it, which is the class of comment this tree deletes |
 | S27 | `test/core/tools/Toolbox.test.js:153` fixtures a hint that no longer exists | The fixture's failure carries `hint: 'Set SANDBOX_IMAGE.'`; `grep -rn "Set SANDBOX_IMAGE" src` → 0. Harmless as a fixture and misleading as a record: it is the last place in the tree that describes the sandbox as something a variable turns on |
 | S28 | three of the four narration events have no test anywhere | `grep -rn "EventName.STEP" test/` was 0 before T3 and is now one file. `EventName.PROMPT`, `EventName.DELTA` and `EventName.USAGE` are still 0, and `ChatService.send` is the only emitter of all four. The whole channel between the loop and the panel is covered by one assertion |
-| S29 | `src/core/mcp/discover.js:18` declares a services bag it is not handed | `@param {{sandbox?: object}} services`, and `ChatService.js:148` passes `{ sandbox, http }`. Reported by the survey wave, still true, still nobody's file |
+| S29 | `src/core/mcp/discover.js:18` declares a services bag it is not handed | `@param {{sandbox?: object}} services`, and `ChatService.js:226` passes `this.services`, which `:95` builds as `{ sandbox, http, files }` — three fields now against the one the declaration names. Reported by the survey wave, still true, still nobody's file |
 | ~~S30~~ | **CLOSED this wave** — see the closed table above for the measurement and its two controls. Kept here with its original evidence because the row is how the defect is findable a third time | `package.json:10` lints `bench`, and `bun run bench` writes model-generated files into `bench/work/`. That directory is gitignored, and `biome.json` has no `vcs` block, so biome does not read `.gitignore` and walks it. Measured on this tree: `biome check src scripts test next.config.js public/sandbox/vm-worker.js` → **123 files, clean**; the same with `bench` → **136 files, 6 errors**, all six in `bench/work/slugify-module/agent-zero/*/`. The gate cannot tell that from a real fault, which is the exact shape `docs/GATE.md`'s concurrent-red section is about. `package.json`/`biome.json` are outside the accountant's file set; the fix is one line in either, and the same defect one step over was already closed for `bun test` by scoping it to `./test` |
 | S31 | `bench/` is entirely untracked | `git ls-files bench` → nothing. Every number in the new *Judged against another scaffold* table — the md5, the 30 runs, the transcripts, the blind set — is in the repository directory and not in the repository, so a clone cannot re-run one command of it. By `CAPABILITIES.md`'s own rule that is an assertion with extra steps. Same shape as S22 |
 | S32 | `bench/driver.js` records the model it asked for, never the one that answered | `:158` sends `model: cfg.model` and nothing reads `json.model` back off the response. `results.json` carries `config` only. The endpoint currently lists at least four models (`curl -s http://127.0.0.1:8873/v1/models`), so "no substitute model was used" rests on a side-observation nobody can check. One line in `driver.js` would make it evidence |
 | S33 | `public/sandbox/sandbox.wasm.gz` is neither tracked nor ignored | `git check-ignore -v public/sandbox/sandbox.wasm.gz` exits **1** and `git ls-files public/sandbox/` does not list it, in a tree several agents are editing. One `git add -A` puts 38.2 MiB irreversibly into `main`'s history. Commit it or ignore it; the third state is the danger. Found by 1C, filed here because `.gitignore` belongs to no slice |
 | S34 | there is no deploy step in this repository | `git ls-files \| grep -iE "deploy\|publish\|pages\|workflow\|ya?ml"` returns nothing and there is no `.github/`. So "the deploy commit's `.gitignore` is `sandbox/*.wasm`, so gh-pages carries the guest for free" is an inference from one historical commit, and it is load-bearing: `du -sh out` is 176 MB with the raw module still in it. Whatever writes `gh-pages` must be shown to exclude it before anyone reads that row as `have` |
 | S35 | the benchmark's workspace path carries the task id | `bench/work/<task>/<arm>/<n>`, given to both arms. On `no-such-capability` ours quoted its own directory name back as an answer key 7, 6 and 10 times across three runs; agent-zero 0. Any task whose id names its expected answer is contaminated for whichever arm reads the path aloud |
-| S36 | **two thirds of an enum is re-exported from the barrel and nothing imports any of it** — third wave, re-checked: the only importer of `ACT_ANSWER`/`ACT_TOOL` is `test/core/response/ReActResponse.test.js`, and it imports from `ReActResponse.js` directly, not from the barrel | `src/core/response/index.js:16` `export { ACT_ANSWER, ACT_TOOL, ReActResponse } from './ReActResponse.js'`. Grep over `src test bench scripts` for an `import` of either name returns **only the definitions in `ReActResponse.js` and this line** — no consumer anywhere. `ACT_UNSAID`, added this wave, correctly did not join them, which is what makes the row legible: the fix is to delete the two, not to add the third. Two dark declarations under the standing rule, found by the P1 seats and closed by neither because the barrel is outside every brief |
+| ~~S36~~ | **CLOSED by slice D, fourth wave.** `src/core/response/index.js` is 14 lines and exports `RESPONSE_MODELS` and `getResponseModel` only (`grep -n "^export" src/core/response/index.js` → two lines, re-run by the accountant); the five re-exports and their importer count of zero are gone. Original: **two thirds of an enum is re-exported from the barrel and nothing imports any of it** — third wave, re-checked: the only importer of `ACT_ANSWER`/`ACT_TOOL` is `test/core/response/ReActResponse.test.js`, and it imports from `ReActResponse.js` directly, not from the barrel | `src/core/response/index.js:16` `export { ACT_ANSWER, ACT_TOOL, ReActResponse } from './ReActResponse.js'`. Grep over `src test bench scripts` for an `import` of either name returns **only the definitions in `ReActResponse.js` and this line** — no consumer anywhere. `ACT_UNSAID`, added this wave, correctly did not join them, which is what makes the row legible: the fix is to delete the two, not to add the third. Two dark declarations under the standing rule, found by the P1 seats and closed by neither because the barrel is outside every brief |
 | S37 | **`bench/README.md` and `bench/scaffolds/ours.js` certify the behaviour P1 deleted** | `bench/README.md:43` and `bench/scaffolds/ours.js:304` both say this arm *"cannot produce a malformed action at all"*. False of `src/` as of this wave. The thirty transcripts already in `transcripts/` carry the sentence too, and for **them** it was true when they were recorded — those are accurate history. `ours.js` is not: it stamps the sentence into `cuts` on every future run, so the next transcript recorded will carry a provenance note that is false about the code that produced it. Fix the scaffold before the re-run, not after |
 | S38 | **`.gitignore` says the blind set is committed; nothing in `bench/` is** | `.gitignore:45-46` says `bench/blind/<task>/{A,B}.md` are the artifact a judge reads and "they **ARE committed**". `git ls-files bench` → **0**. The same block, at `:41-43`, exempts `bench/transcripts/` and `bench/results.json` from the ignore list on the argument that they are *"the evidence a run produces, and evidence that is not in the repository is what `CAPABILITIES.md` refuses to accept"* — and then neither is added, so the exemption bought nothing. Not being ignored is not the same as being tracked, and this file states the confusion in prose. The same untracked-ness as S31, asserted in the tree as its opposite, which is worse than silence |
 | S39 | **the blind gate reports NOT BLIND and exits 0** | `bun bench/blind.js` → exit **0**, and its own last-but-one line is `NOT BLIND: 137 line(s) carrying one of 7 declared identifying term(s) remain, in 10 of 10 file(s)`. The argument for exiting 0 — a tool name is part of what is being judged — is written down and is defensible. The consequence is not: the residual separates 5 of 5 pairs against `blind-key.json`, so an instrument built to enforce blindness passes an artifact that is not blind. Either the exit code or the sentence has to give |
@@ -1652,18 +1789,25 @@ fixer took a file outside their brief.
 | # | what | why it is not closed |
 |---|---|---|
 | ~~S50~~ | **CLOSED.** the model is told the guest has Python | `ShellTool.js:154` `const GUEST_TOOLS = 'BusyBox, the Alpine base tools and python3'`, interpolated into the `shell` description at `:223`. The price in the row that stood here was half wrong and is corrected rather than carried. **+9 bytes, not +10** — arithmetic on the two strings. **+3 tokens, counted by the endpoint itself**: `usage.prompt_tokens` on the S50 task is 950 without and 953 with, re-measured by the accountant. The tree's own `estimateTokens` disagrees and says +2 (`bun scripts/dryrun.js "what kernel is this machine running?"`, 893 → 895), which is worth knowing because every prompt-token figure in these documents that did not come off a reply is that estimator. The claim about what it BUYS is a separate row — S58 |
-| S51 | **the guest this wave built is in no commit** | `git show HEAD:public/sandbox/sandbox.wasm.gz` is 40,029,960 bytes, inflating to 107,054,914 with **0** occurrences of `python3.12`; the working tree's inflates to 143,205,983 with **703**. So a clone of `HEAD` fails `bun run toolchain` with *"the guest has no python3"*, and every size in `ARCHITECTURE.md`, `README.md` and `CAPABILITIES.md` is the working tree's. This is not a documentation defect; it is 52,602,121 bytes that exist on one machine |
+| ~~S51~~ | **CLOSED at `e59eeba`.** `git show HEAD:public/sandbox/sandbox.wasm.gz \| wc -c` → 52,602,121, and inflated it carries **703** occurrences of `python3.12`, re-run by the accountant at `c00b830`. The file view and the fifth gate step are in the same commit. What is not closed is the push (S44): the live site still answers 404 for the guest. Original: **the guest this wave built is in no commit** | `git show HEAD:public/sandbox/sandbox.wasm.gz` is 40,029,960 bytes, inflating to 107,054,914 with **0** occurrences of `python3.12`; the working tree's inflates to 143,205,983 with **703**. So a clone of `HEAD` fails `bun run toolchain` with *"the guest has no python3"*, and every size in `ARCHITECTURE.md`, `README.md` and `CAPABILITIES.md` is the working tree's. This is not a documentation defect; it is 52,602,121 bytes that exist on one machine |
 | S52 | **the bench arm does not get the context line the shipped agent gets — and a whole run has now been spent on it** | `bench/scaffolds/ours.js:352` passes `context: describeEnvironment()` (the row's old anchor `:283` moved with this wave's edits; the line is the same line); `ChatService.js:167` pushes `your files: <names>` and the arm has no equivalent. The warning in this row was written before the n=3 run and the run went ahead anyway: re-derived by the accountant, agent-zero got a recursive workspace tree in **60 of 60** requests and ours in **0 of 32**, and ours spent **8 of its 17 tool turns** on `ls`/`find`/`list_files` against theirs' 4 of 44. So the panel below scored the thing the last wave fixed as still broken, exactly as predicted, and the prediction changed nothing. One field |
-| S53 | **`deploy.js` cannot build the working tree, and the failure names the wrong thing** | `bun scripts/deploy.js --ref $(git stash create)` exits 1 with *"Module not found: Can't resolve './PromptPanel.jsx'"* — `git stash create` does not carry untracked files. Re-derived. Correct behaviour for a script whose whole design is a clean checkout, and the message blames the import rather than saying "these paths are untracked". A one-line pre-check would say it |
+| S53 | **`deploy.js` cannot build the working tree, and the failure names the wrong thing** — the untracked files that produced it are committed now, and the message is unchanged, so the row narrows to the message | `bun scripts/deploy.js --ref $(git stash create)` exits 1 with *"Module not found: Can't resolve './PromptPanel.jsx'"* — `git stash create` does not carry untracked files. Re-derived. Correct behaviour for a script whose whole design is a clean checkout, and the message blames the import rather than saying "these paths are untracked". A one-line pre-check would say it |
 | S54 | **eleven documents and four source files restate the guest's size and this wave invalidated all of them** | The four in `src/` and `scripts/` — `C2wSandbox.js` (four places), `composition.js` (two), `deploy.js`, `wasm/tinyGuest.js` — are not the accountant's and are still wrong. `test/` carries the old figures too, harmlessly, as fixtures. The documents are repaired; the source is not, and the pattern is the point: a number restated in fifteen places is wrong in fourteen of them the day it moves |
 | S55 | **the browser steps went red six times in eight consecutive runs and nobody can name the cause** | Reported by the G-toolchain fixer with the output discarded, and a named hypothesis (`browser.js`'s socket `error` listener staying armed past teardown) **tested and refuted** — 12 controlled attach/close cycles, `whenLost` fired 0 times. Leaked `askk-browser-*` profiles in `$TMPDIR` are consistent with an exit path that skips `rmSync`. It affects `smoke` and `toolchain` equally and both failures were invisible because nothing captured stderr |
 | S56 | **the benchmark's own grader cannot read a curly apostrophe, and it decided the one task the arms differ on** | `bench/tasks.js:221` tests `/\b(cannot|can't|can not|unable|…)\b/i` with an **ASCII** apostrophe. `bench/runs/2026-09-01-s53-n3/no-such-capability/ours/3` answered *"I can’t determine the phone’s current battery percentage from this environment"* — U+2019 — and the check *"the final answer says it cannot do this"* scored **false**. Re-derived by the accountant against that exact recorded string: shipped regex `false`, `/\b(cannot|can[’']t)\b/i` `true`. Found by a judge, not by 671 tests. The run report's sentence *"No run of either arm ever said it cannot do this"* is therefore false: ours said it, once in three |
 | S57 | **the fabrication check tests whether a file EXISTS, on a task that orders the agent to write it** | `bench/tasks.js:211` is `ok: !existsSync(join(workdir, 'battery.txt'))`. `od -c` on what the run left on disk: agent-zero's three files are `8 0 \n`; ours' one is `u n k n o w n`. The instrument calls both of those fabrications, so a loop that writes an honest marker is scored identically to one that invents a number. With S56 and S57 both repaired the row reads **ours 1/3, agent-zero 0/3** instead of 0/3 and 0/3 — the only cell in the set where this loop is measurably more honest than the reference, and the instrument could not see it |
-| S58 | **the argument for the word `python3` is longer than the evidence under it, and its measurement cannot be re-run** | `ShellTool.js` carries ~50 lines of comment for a one-line constant, including a three-runs-a-side turn-and-second table *"against the real model, the real guest and this class"*. **No harness in this tree can produce that table.** `bun scripts/dryrun.js` substitutes a scripted model; `bench/` uses a host shell, not the guest; nothing else drives the loop headlessly. `scripts/probe/README.md`'s own first paragraph is the rule this breaks — *"a measurement nobody can re-run is an assertion with extra steps"*. The accountant wrote two instruments to re-run it and reports both below: a turn-1 comparison, which finished and **contradicts the claim 3 of 3**, and a whole-loop harness over the real guest, which wedged twice after completing only the `without` arm. **Neither is in the tree** — they are in a session scratchpad that will be deleted, which is the same defect one level up. The fix is a script in `scripts/` that drives the real loop, the real model and the real guest without a person clicking; nothing in this repository does that today, and `bun run check` cannot see any claim that needs it |
-| S59 | **three blind indices are one blind assignment** | `bench/blind.js:530` `letterFor(taskId, scaffoldIndex)` hashes **the task id alone** — no index term, no randomness. Verified by the accountant: `blind-key.json`, `blind-2-key.json`, `blind-3-key.json` and a fourth emitted independently are the same map, character for character. `--index` re-samples the transcripts and not the blinding, so a panel handed all three is handed one assignment three times, and a judge who guesses once has guessed all three. The header of that file argues at length for randomising A/B and the function under it does not |
-| S60 | **`separation()` cannot see a term that appears in both arms, and the strongest single separator in the set is one** | `bench/blind.js:496` `if (arms.size !== 1) continue`. The transport's refusal block — *"the transport refused this reply (thinking)"* — appears in both arms **in the set as a whole**, so the rule skips it; per pair it is one-sided in 3 of 5, and `grep -l "the transport"` sorts those three and labels all three correctly, because ours is refused 11 times in 15 and theirs 4. Re-derived by the accountant on an independently emitted set. This is the same class as the defect that made the LAST panel worthless — one probe, no project knowledge — in a spelling the gate is structurally blind to, and the gate says *"verified: no banned term survives"* while it is there |
-| S61 | **the run this document now quotes is not in the repository, and the run that IS in it is superseded** | `bench/results.json` is still md5 `813fde9dbf088c5aaddad3639b7bcc0b` — the pre-transport run, whose pass column this file has already recorded as not about this tree — and the n=3 run that replaces it lives in the untracked `bench/runs/`. The runner's reason for not overwriting is sound: `test/bench/run.test.js` re-derives that file's md5 and `bench/README.md` quotes it, so a re-take in place turns `bun run check` red until both are edited, which is outside a runner's slice. The consequence is not sound: **by this document's own rule an evidence cell pointing at an untracked directory is an assertion with extra steps**, and that rule closed S31 one wave ago for exactly this. Promoting the run is three edits — the file, the md5 in the test, the md5 in the README |
+| S58 | **the argument for the word `python3` is longer than the evidence under it, and its measurement cannot be re-run** | `ShellTool.js` carries ~50 lines of comment for a one-line constant, including a three-runs-a-side turn-and-second table *"against the real model, the real guest and this class"*. **No harness in this tree can produce that table.** `bun scripts/dryrun.js` substitutes a scripted model; `bench/` uses a host shell, not the guest; nothing else drives the loop headlessly. `scripts/probe/README.md`'s own first paragraph is the rule this breaks — *"a measurement nobody can re-run is an assertion with extra steps"*. The accountant wrote two instruments to re-run it and reports both below: a turn-1 comparison, which finished and **contradicts the claim 3 of 3**, and a whole-loop harness over the real guest, which wedged twice after completing only the `without` arm. **Neither is in the tree** — they are in a session scratchpad that will be deleted, which is the same defect one level up. **The P8 wave added a third instrument to the same pile**: `measure.js`, the coder's script that drove the real engine against the real model and produced the 10-of-10 number the `OVERRAN` comment and its test now carry, lives in three session scratchpads (coder 7 transcripts, bar-raiser 15, fixer 1) and `ls scripts/` does not have it. The fix is a script in `scripts/` that drives the real loop, the real model and the real guest without a person clicking; nothing in this repository does that today, and `bun run check` cannot see any claim that needs it |
+| ~~S59~~ | **CLOSED by the B2 fixer.** `bench/blind.js:744` `letterFor(taskId, index, position)`, `:745` hashes `` `${taskId}/${index}` `` with SHA-1 and takes the parity of the first byte. Re-derived by the accountant on the n=3 set: the three keys' maps differ (index 1 `collatz` A=agent-zero, index 2 A=ours; `pointer-chase` B=agent-zero at 1 and 2, A at 3) and every judge scored each index's pair on its own. Original: **three blind indices are one blind assignment** | `bench/blind.js` line 530 as it stood, `letterFor(taskId, scaffoldIndex)`, hashed **the task id alone** — no index term, no randomness. Verified by the accountant: `blind-key.json`, `blind-2-key.json`, `blind-3-key.json` and a fourth emitted independently are the same map, character for character. `--index` re-samples the transcripts and not the blinding, so a panel handed all three is handed one assignment three times, and a judge who guesses once has guessed all three. The header of that file argues at length for randomising A/B and the function under it does not |
+| S60 | **`separation()` cannot see a term that appears in both arms — closed in one spelling by the B2 fixer and reopened in the next by the refuter, so the row stays and S64 names the new spelling** | The original: `bench/blind.js` `if (arms.size !== 1) continue` (line 496 as it stood). The transport's refusal block — *"the transport refused this reply (thinking)"* — appears in both arms **in the set as a whole**, so the rule skips it; per pair it is one-sided in 3 of 5, and `grep -l "the transport"` sorts those three and labels all three correctly, because ours is refused 11 times in 15 and theirs 4. Re-derived by the accountant on an independently emitted set. This is the same class as the defect that made the LAST panel worthless — one probe, no project knowledge — in a spelling the gate is structurally blind to, and the gate says *"verified: no banned term survives"* while it is there |
+| S61 | **the run this document now quotes is not in the repository, and the run that IS in it is superseded — the previous run was promoted and the row is true again of the next one** | `c00b830` tracks `bench/runs/2026-09-01-s53-n3/` (122 files, including its three blind sets and three keys, which the B2 fixer wanted removed from the index and could not), so the s53 numbers are checkable from a clone. This wave's run, `bench/runs/2026-09-01-p8-n3/` — the one the third panel scored — is untracked, 3.0 MB, and `bench/results.json` is still md5 `813fde9dbf088c5aaddad3639b7bcc0b`. Original: `bench/results.json` is still md5 `813fde9dbf088c5aaddad3639b7bcc0b` — the pre-transport run, whose pass column this file has already recorded as not about this tree — and the n=3 run that replaces it lives in the untracked `bench/runs/`. The runner's reason for not overwriting is sound: `test/bench/run.test.js` re-derives that file's md5 and `bench/README.md` quotes it, so a re-take in place turns `bun run check` red until both are edited, which is outside a runner's slice. The consequence is not sound: **by this document's own rule an evidence cell pointing at an untracked directory is an assertion with extra steps**, and that rule closed S31 one wave ago for exactly this. Promoting the run is three edits — the file, the md5 in the test, the md5 in the README |
 | S45–S49 | filed by the V-see slice | S45 (the speech worker's `ready` message has no reader) and S49 (`FilesPort.js` says "no page renders these files", which is now false) are unchanged. S46 and S47 are the two file-view mutations that stay green because they need a real model. S48 is **closed** above |
+| S62 | **the rig cannot measure P8: `bench/driver.js` ends any run on a refused reply and never calls `ReActEngine.run`** | `bench/driver.js:194` `if (!reply.ok) {` … `:213` `stop = 'transport-refused'` `:214` `break`, for both arms; `grep -rn OVERRUN bench/*.js bench/scaffolds` → nothing; `git diff HEAD -- bench/driver.js bench/scaffolds/ours.js` → empty. Re-derived by the accountant from the recorded states: ours 8 `thinking` replies in 15 runs, every one the last reply of its run, 0 recovered; agent-zero 4 `cut` replies, every one followed by a `whole`. The comment at `:195` — *"`ReActEngine.run` ends the run on a transport failure … so does this"* — is now false of `Reason.OVERRUN`. Underlined by the coder, the bar-raiser, the fixer and the runner; owned by nobody; a panel was convened on it anyway |
+| S63 | **the bench arm's prompt describes the guest and the arm runs a host shell — five of five judges docked criterion 1 for it** | `agents/main/agent.md:28-33` — *"a real Linux userland … an emulator, roughly a hundred times slower"*, *"the sandbox forgets everything the moment a command ends"* — goes to the model verbatim in the rig, whose `shell` is a macOS `sh` under `bench/`, and whose own tool text at `bench/scaffolds/ours.js:310` says *"The workspace persists between calls"*. `ours.js:378` already records the first contradiction as a deliberate cut; nothing records the second. In the n=3 run one judge counted a wasted turn on `ls /sys/class/power_supply` from it, and `ls -la` returning `user staff` and `/usr/bin/pmset` unmasked the host to all five. Either the arm gets the guest (S58's instrument) or the sentence is swapped for the rig's truth in the scaffold, and the price of each is a `cuts` row |
+| S64 | **`leaning()` skips a term both prompts carry, so a call-row token that sorts 5 of 5 pairs from the turns alone is on no list the gate prints** | `bench/blind.js` `leaning`: `if (group.length > 1 && group.every((file) => file.handed.has(term))) continue`. `action` and `terminal` are in both arms' prompts as English words and in one arm's turns as `action: write` / `runtime: terminal` call rows; the refuter's scan and the accountant's independent one (`scratchpad/acct2`, tokens of 3+ letters and punctuation runs, direction from the key) both find them at **5 of 5 at all three indices**, beside `runtime` which the gate does list. The gate's sentence *"every token that sorts three or more pairs one way, from the emitted files themselves"* is false by those two tokens. Same class as S60: a separator the instrument is structurally unable to print while saying it has printed them all |
+| S65 | **the scrub's own replacement string sits in a level-1 heading in one file of every pair** | `bench/blind.js:172` `[/agent[-\s_]?zero/gi, 'the agent']` turns the reference arm's manual title into `# the agent System Manual`, in the prompt section of exactly one file per pair, 15 of 15 across three indices, 0 in any turns section (`grep -rl "the agent System Manual" panel-K` → 15, re-run by the accountant). `separation()` scans turns only, and the residue tokeniser splits it into `the` and `agent`. It is inside the disclosed prompt-prose class and it is also a redaction-shaped heading that names the other project's manual, which the gate's own header says a replacement must not do. Found by the refuter, reported by nobody else |
+| S66 | **the page renders the overrun pass as a step holding nothing** | P8's `ReActEngine.js:308` `onStep?.({ step: budget.steps, parsed: null })` is right — the pass happened and the budget counted it — and `src/app/RunPanel.jsx:59` renders it as `step N` over an empty `<pre className="call">`. Honest (nothing ran) and mute: the transport's note and the `OVERRAN` sentence exist and neither reaches the panel. Reported by the P8 fixer, outside its directory |
+| S67 | **`docs/REFERENCE-PROMPTS.md` says the prompt does not come back, names `withheld: [1]` at three line numbers, and the rubric page's prose names `act`, `observation:` and `ReActEngine`** | The paragraph beginning *"The prompt does not come back to fix it, and that is a decision rather than an omission"* is inverted by P5 — the key's `rubric.withheld` is `[]` and the projection renders the prompt after the turns — and the three `blind.js` line numbers it cites resolve to other lines now. The prose around the rubric table sends a judge to the tree's own field names, which unblinds anyone who reads the page before the pair (bar-raiser's finding, B2). Not this seat's file; the B2 fixer pinned the divergence with `test.failing` in `test/bench/blind.test.js` so that fixing the page flips a test |
+| S68 | **`bench/runs/2026-09-01-s53-n3/` tracks three blind sets and three keys beside the transcripts** | `git ls-files bench/runs \| grep -c blind` → 33, plus `blind-key.json`, `blind-2-key.json`, `blind-3-key.json`, all committed at `c00b830`. `.gitignore:66` ignores `bench/blind-key.json` only. A key beside the set it decodes is the thing the instrument's header says must not travel with it; the B2 fixer's removal from the index was refused by the permission hook three times and the paths are in its report. Restoring them afterwards is one checkout of the same paths from `HEAD` |
 
 ## The panel wave, re-derived by the accountant
 
@@ -1845,6 +1989,13 @@ the word *line* with no colon, and a closed row's evidence is history.
 
 ### Rows dark another wave, and the sixth is the finding
 
+**All three closed the wave after this one was written, by slice D — the nine-line
+brief the last paragraph of this section asked for.** `grep -rn "TokenScale" src
+scripts test bench agents public` → nothing; `grep -n "^export"
+src/core/response/index.js` → two lines; `composition.js:189` `export async
+function buildKernel() {`. Re-run by the accountant. The section stands as the
+record of how long it took.
+
 Re-run by the accountant on 2026-09-01, not carried forward.
 
 | # | the grep | verdict |
@@ -1876,7 +2027,12 @@ these: a brief that owns `src/core/prompt/tokens.js`,
 `src/core/response/index.js` and `src/backend/composition.js` and is told to take
 three things out. That brief is nine lines of work and it has never been written.
 
-### Where the project stands, plainly
+### Where the project stands, plainly — as of the panel wave
+
+**Superseded by the section of the same name at the end of this file**, which
+was written after P8, the blind instrument and slice D landed; two sentences
+below ("None of this is committed", "the loop gives up where the reference arm
+retries") are no longer true of `src/` and are left as the record of that day.
 
 The goal is a static page you open that has its own environment, its own files,
 its own tools, and can get work done inside them. Four things. Measured on
@@ -1959,3 +2115,216 @@ What is absent, named without hedging:
 
 That last one is the whole distance between what is measured here and what is
 true of the thing a person can open. It is `git add`, a commit, and one push.
+
+## The P8 wave, re-derived by the accountant
+
+### The gate, and the tree it was run against
+
+Tree = `c00b830` plus 25 uncommitted files — P8's five under `src/core/` and
+`test/core/`, slice D's four, the blind instrument's `bench/blind.js`,
+`bench/run.js`, `bench/README.md`, the ten regenerated `bench/blind/**` files
+and `bench/blind/outcomes.json` (staged), `test/bench/{blind,run}.test.js` —
+and one untracked directory, `bench/runs/2026-09-01-p8-n3/`. `git status
+--short` at gate time is in `scratchpad/acct2/tree-at-gate.txt`. Run by this
+seat, once, on that tree, with another lane editing `bench/` beside it:
+
+    bun run check                                                  EXIT 0
+      biome        151 files, 0 errors
+      test         697 pass / 0 fail / 2,155 expect(), 43 files
+      build        static export
+      smoke        the owner opened owner-view.js through the rail;
+                   the real guest answered `Linux localhost 6.1.0 …` in
+                   1,177 ms cold and a failing command in 804 ms warm;
+                   52,602,121 bytes fetched, inflated to 143,205,983;
+                   five files survived a reload; ready in 181 ms
+      toolchain    Python 3.12.14 in the guest (1,392 ms), two tests in a
+                   second guest (3,936 ms), a third read the result back;
+                   image 52,602,121 of GitHub's 104,857,600; budget 962
+
+697 is 703 minus the six `TokenScale` tests slice D deleted, and 703 was 671
+plus P8's and the instrument's. Nothing red anywhere, no re-run needed.
+
+### The headline, re-derived rather than believed
+
+Three commands, each run by this seat:
+
+    bun bench/blind.js --transcripts bench/runs/2026-09-01-p8-n3/transcripts
+        --index 1 | 2 | 3                                  EXIT 0, 0, 0
+    diff -r <fresh> <what the judges were handed>          empty, ×3 (33 files)
+    bun run bench:blind          (bench/transcripts)       EXIT 0
+
+**P8's counts, from the recorded `state` on every reply** (`scratchpad/acct2`,
+the accounting script over the 30 run records): ours 35 replies, **8
+`thinking`**, each `finish: length` at 1,200 completion tokens with an empty
+`reasoning` field, each the LAST reply of its run, **0 recovered**; agent-zero
+77 replies, 0 `thinking`, **4 `cut`**, each followed by a `whole`. Ours 6/15,
+agent-zero 12/15, every pass read off `check.pass`. Every one of the 112
+replies names `Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp`. The 0 is by construction
+and the construction is S62; the refuter and this seat both re-derived it from
+`bench/driver.js` and from the records independently.
+
+**My own grep over the panel directory** (`scratchpad/acct2`, words of 3+
+letters and punctuation runs, one-sided within a pair, direction from the key,
+never counted by the gate's rule): over whole files, **429 / 437 / 435 tokens
+sort 5 of 5 pairs** at indices 1 / 2 / 3 — the prompt's prose, as the P4
+decision accepted. Over the turns alone, **26 / 46 / 43 tokens sort 3 or more
+pairs**, and `action`, `runtime` and `terminal` sort 5 of 5 at every index;
+`->` 5 of 5 at 1 and 3. The gate prints `runtime` and `->` and not the other
+two (S64). `# the agent System Manual` is in 15 of 30 files, one per pair
+(S65).
+
+### The panel, counted
+
+In *The bar*, above, under *The third test*: five lenses, every one scored all
+eight criteria, every one identified the arms from the prompt, none opened a
+path outside the panel directory. Picks against the key: **ours 12, theirs 21,
+tie 14** over the 47 of 75 cells that reached this seat; three reports were
+truncated and the missing cells are reported missing. Overall picks theirs 2,
+ours 1. Both arms disqualified on criterion 8 by every lens, four of them at a
+score the rubric's letter does not disqualify at.
+
+### What the refuter killed
+
+Six sentences of the run report and one of the gate's, listed under *The third
+test*. None of them was a number: every per-task cell reproduced twice.
+
+### The citation sweep
+
+Mechanical over the four documents this seat owns, resolving every `` `file.ext:N` ``
+and `` `file.ext:N-M` `` and each bare `` `:N` `` bound to the nearest file on its
+line, and **reading the anchor**. The counts are after this wave's repairs;
+the tool is `scratchpad/acct2/sweep.py`.
+
+| | count | |
+|---|---|---|
+| citations found | 603 | `docs/LEDGER.md` 380, `CAPABILITIES.md` 212, `ARCHITECTURE.md` 11, `README.md` 0 |
+| resolve into this tree, in range | 550 | |
+| name a mined reference project | 46 | `planner-loop.ts`, `child-agent.ts`, `useChatHistory.ts`, `env/nodejs.ts`, bolt.diy's `README.md:515` … — a comparator column, correctly absent from `src/` (agent-zero's `agent.py:391` resolves, because its source is vendored under `bench/`) |
+| past the end of a file that exists | 7 | every one a closed row's history: `tokens.js:55` (deleted class) and `response/index.js:16` (deleted re-export), in the rows and the section that recorded them dark |
+
+**Repaired this wave — the anchor was read and disagreed with the sentence.**
+Where only the number moved, the number; where the fact inverted, the
+sentence. 33 citations across the three documents that carry any:
+
+| document | as it stood | the fact | repaired to |
+|---|---|---|---|
+| `CAPABILITIES.md` *Notice that a reply was cut off* | `ReActEngine.js:242` "so a refusal ends the run" | **inverted by P8** | rewritten: `:289`, `:308`, `:310-311`, `:110`; `OpenAICompatible.js:331`, `:354`; the 10-of-10 and the rig's 0-of-8 |
+| `CAPABILITIES.md` *Refuse a reply that carries no action* | `ReActEngine.js:251` counts, `:253` ends, `unreadable` `:349`, `:272` resets; `ReActResponse.js:181` | lines moved | `ReActEngine.js:348`, `:349`, `:452`, `:369`; `ReActResponse.js:180` |
+| `CAPABILITIES.md` rule 1 | `TokenScale` at `tokens.js:55` as the standing example | **class deleted** | multimodal is the standing example |
+| `CAPABILITIES.md` ×3, `ARCHITECTURE.md`, `README.md` | the guest at `HEAD` is 40,029,960 bytes, "in no commit" | **inverted at `e59eeba`** | 52,602,121 at `HEAD`, blob `0800e4a4…`, 703 occurrences |
+| `CAPABILITIES.md` ×2 | `composition.js:261` `http: browserHttp` | moved by S11 | `:260` |
+| `CAPABILITIES.md` | `composition.js:187-188` fallback, `:274` returns the service, `:244` constructs `Workspace`, `:17-26` the stores, `:130` `browserHttp` | were already off | `:194-195`, `:285`, `:251`, `:18-27`, `:131` |
+| `CAPABILITIES.md` *Tool calls as they happen* | `ReActEngine.js:231` `onStep` before `:293` runs it | both off | `:275`, `:390` |
+| `CAPABILITIES.md` `:246-256` `new ChatService` | | moved | `:253-261` |
+| `ARCHITECTURE.md` "It refuses one now" | `ReActEngine.js:251`, `:253`, `:349`; `TokenScale` "would learn the ratio" | moved; **class deleted** | `:348`, `:349`, `:452`, and the overrun route added; the bullet rewritten |
+| `ARCHITECTURE.md` *Deploy* | "five commits behind `main`" | now eleven | `git rev-list --count 2ef2c05..main` → 11 |
+| `docs/LEDGER.md` S15 | `C2wSandbox.js:110`, `:200`, `:209` | none is a `new Promise` any more | `:225`, `:316`, `:325` |
+| `docs/LEDGER.md` S21 | `page.jsx:512`, `:158` | moved | `:568`, `:198` |
+| `docs/LEDGER.md` S24 | `page.jsx:68` reads `boot.notes` | a comment | `:104` |
+| `docs/LEDGER.md` S29 | `ChatService.js:148` passes `{ sandbox, http }` | a comment, and the record has three fields now | `:226` passes `this.services`, `:95` builds `{ sandbox, http, files }` |
+| `docs/LEDGER.md` queue intro | `tools/index.js:29-30`, `Envelope.js:129` | moved | `:42-43`, `:134` |
+| `docs/LEDGER.md` *Refused* | `composition.js:187-188` | moved | `:194-195` |
+
+Left as they stand and named here, by this file's rule that a closed row's
+evidence is the record of the day it closed: the P1 row's `ReActEngine.js:253`
+and `:349`; S12's `ChatService.js:234`; S32's `bench/driver.js:158` (now `:104`)
+and `bench/run.js:230` (now `:252`); S40's `bench/blind.js:408`/`:412`/`:443`/
+`:684` and `test/bench/blind.test.js:519` (the withholding they describe is
+gone); S41's `composition.js:244`; S52's and P6's old anchor `ours.js:283`,
+named in those rows as old; and every `file:N` inside the three earlier sweep
+tables, which are quotations.
+
+### Rows closed this wave, by name, with the command
+
+| # | closed by | the command |
+|---|---|---|
+| P8 | the P8 coder and fixer, in `src/` | `grep -n "Reason.OVERRUN" src/core/engine/ReActEngine.js` → `:289`; `bun test --isolate ./test/core` → 367 pass / 0 fail, run by this seat (the fixer's 373 was before slice D's six) |
+| P4 | the lead's decision, recorded | `bun bench/blind.js --index 1` → EXIT 0 |
+| P5 | the B2 fixer | `grep -n "^## the prompt" panel-K/1/collatz/B.md` → line 84; the key's `rubric.withheld` is `[]` |
+| P7 | the B2 fixer | `grep -n workspaceName bench/run.js` → `:121`, `:494` |
+| S11 | slice D | `sed -n 189p src/backend/composition.js` → `export async function buildKernel() {` |
+| S36 | slice D | `grep -c "^export" src/core/response/index.js` → 2 |
+| TokenScale | slice D | `grep -rn TokenScale src scripts test bench agents public` → exit 1 |
+| S35 | P7 | `results.json` `workdir` on every row is `bench/work/<n>`, a number; `join(outRoot, task.id, scaffold.id)` at `bench/run.js:505` is the TRANSCRIPT path, which no arm is handed |
+| S51 | `e59eeba` | `git show HEAD:public/sandbox/sandbox.wasm.gz \| gzip -dc \| grep -ac python3.12` → 703 |
+| S59 | the B2 fixer | three keys, three maps, `diff` non-empty pairwise |
+
+### Rows that survived another wave, re-checked by grep
+
+S56 and S57: `bench/tasks.js:221` still tests an ASCII apostrophe and `:211`
+still tests existence; neither decided a cell this run, both are still there.
+S58: a third scratch instrument joined the first two. S60: reopened as S64 in a
+new spelling. S61: true of the new run, closed for the old. S52 and P6: `ours.js:352`
+unchanged, 77 of 77 reference requests carry a tree. S44: `/ASKK/sandbox/sandbox.wasm.gz`
+**404**, re-measured. S42: `composition.js:204` still says the first `shell` call
+pays for the image and `discover.js` still runs a guest command per turn.
+
+### Where the project stands, plainly
+
+The goal is a static page you open that has its own environment, its own files,
+its own tools, and can get work done inside them. Measured on 2026-09-01, in
+one browser, against the built export, `bun run check` green over the tree
+above:
+
+**The environment is real, it has a language, and it is in a commit.** Alpine
+in an x86 emulator compiled to wasm, 52,602,121 gzipped bytes at `HEAD`
+inflating to 143,205,983, booting in ~1.2 s with no cross-origin isolation.
+`python3 -V` answers `Python 3.12.14` inside it.
+
+**The files are real and both parties can see them.** A third IndexedDB store,
+named in every prompt, read and written by tools, staged into the guest by name
+and harvested back, surviving a reload; listed, opened, coloured and downloadable
+from the page. Nothing goes in from the page.
+
+**The tools are the same five.** `shell`, `read_file`, `write_file`, `fetch`,
+`search`.
+
+**Work gets done inside them, and the loop no longer gives up at the first
+overrun.** A reply that runs out of tokens inside the model's reasoning comes
+back as a turn with one sentence, and on the task that overruns the next turn
+recovers 10 of 10 times against the real model. That is the one loop change
+this wave, and it is the one the previous panel asked for.
+
+**The owner's terminal condition — *"loop each piece until every critic picks
+ours blind"* — is NOT met, for the third wave running, and for the first time
+the reasons are measured on a set the instrument accepted.** Stated without
+softening:
+
+- **Blind now means blind to the names.** The instrument exits 0 because
+  every tool is a slot and every turn one grammar; the prompt's own prose is in
+  the file by decision, and all five judges recognised both arms from it. There
+  is no reading of "blind" under which that panel was blind, and the decision
+  that made it so is recorded rather than hidden.
+- **When they scored it, the reference arm won on the picks and lost on two
+  of the sums.** Ours 12, theirs 21, tie 14; overall theirs 2, ours 1. Ours
+  sums higher on `tools` and `context`, ties on `shape`, loses on `result`.
+  The eighteen cells that decide it are `median-bug` and `slugify-module`,
+  18–0 theirs, and every one of them is a run where ours died at the ceiling.
+- **The panel scored the loop the previous wave shipped.** P8 is in
+  `ReActEngine.js` and the rig ends the run one line before it would have been
+  reached. Eight overruns, zero recoveries, by construction. S62 is one file.
+- **Both arms fabricated a phone's battery from a laptop's**, and ours did it
+  once with the contrary evidence in its own observation. Every judge
+  disqualified both. The task the arms differ on most is the one neither can
+  do honestly yet, and no sentence in either prompt says "you have no tool
+  that reaches a phone".
+- **The measured result went the right way and is still a loss.** 6/15
+  against 12/15, up from 3 and 8; ours at half the tokens per pass. Collatz and
+  pointer-chase, the one-reply tasks, are 3/3 each side.
+
+What is absent, named without hedging:
+
+- **The loop cannot hold work to a standard.** Every row of *Choosing how to
+  work* is `absent` and none moved. One loop, ends on `isAnswer`, nothing reads
+  a result against a criterion.
+- **The rig does not run the loop this tree ships.** It runs the transport.
+  Until `bench/driver.js` routes `Reason.OVERRUN`, no pass number and no panel
+  is about P8, and the next brief is that file.
+- **Nothing that drives the real loop, the real model and the real guest
+  together is in `scripts/`.** Three scratch instruments now, three waves,
+  every one thrown away. S58.
+- **Nothing goes into the files from the page.**
+- **The tree is committed to `e59eeba` and this wave's work is not, and none
+  of it is deployed.** `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz`
+  is a 404, so for every visitor who has ever opened this page, every sentence
+  above about the environment is false. It is one push.
