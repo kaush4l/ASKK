@@ -41,7 +41,7 @@ class ScriptedChat extends ChatService {
   }
 }
 
-function chatWith(replies) {
+function chatWith(replies, services = {}) {
   const conversations = new MemoryRepository('conversation')
   conversations.rows.set('c1', { id: 'c1', title: 'Chat', messages: [] })
 
@@ -60,8 +60,12 @@ function chatWith(replies) {
     },
   }
   const inference = new ScriptedInference({ replies })
-  const service = new ScriptedChat(inference, conversations, settings, catalogue, {
-    ask: async () => Outcome.ok(''),
+  const service = new ScriptedChat(inference, {
+    conversations,
+    settings,
+    catalogue,
+    pool: { ask: async () => Outcome.ok('') },
+    ...services,
   })
   return { service, conversations, inference }
 }
@@ -188,7 +192,7 @@ describe('ChatService and a run that was stopped', () => {
  * call the real one and read the object it built.
  */
 describe('the inference a turn is given', () => {
-  const service = () => new ChatService(new MemoryRepository('conversation'), null, null, null)
+  const service = () => new ChatService({ conversations: new MemoryRepository('conversation') })
   const bare = AgentSpec.of({ metadata: { name: 'main' }, body: 'be brief', source: 'test' }).value
   const base = { kind: 'openai', model: 'm', baseUrl: 'http://127.0.0.1:8873/v1', apiKey: '' }
 
@@ -217,5 +221,78 @@ describe('the inference a turn is given', () => {
     const built = await service()._inferenceFor(base, bare)
 
     expect(built.value.thinking).toBe(true)
+  })
+})
+
+/**
+ * The capabilities a tool needs arrive in the constructor, like every other
+ * collaborator in this backend.
+ *
+ * `http` used to be written onto `service.services` by `composition.js` after
+ * the object was built — the one seam in the backend that broke the tree's own
+ * port-in-the-constructor rule, and the only backend object that was half built
+ * when its constructor returned. The failure it invites is silent: a tool built
+ * without a port does not throw, it answers `this build cannot make an HTTP
+ * request`, so a caller that forgets the second statement gets an agent that
+ * runs, holds a `fetch` tool, and can never fetch anything.
+ *
+ * These run the real `resolveTools` path — `send` builds the agent, the agent
+ * resolves `fetch` from `this.services`, and the port either answers or does
+ * not. Nothing here reads the `services` record directly, because reading the
+ * record only proves the constructor agrees with itself.
+ */
+describe('the port a tool is given', () => {
+  const webAgent = AgentSpec.of({
+    metadata: { name: 'main', tools: ['fetch'] },
+    body: 'be brief',
+    source: 'test',
+  }).value
+
+  const page = (text) =>
+    Outcome.ok({
+      url: 'https://example.com/',
+      status: 200,
+      contentType: 'text/plain',
+      text,
+      bytes: text.length,
+      truncated: false,
+      stopped: '',
+      blocked: '',
+    })
+
+  test('a port passed to the constructor is the one the fetch tool calls', async () => {
+    const asked = []
+    const http = async (request) => {
+      asked.push(request.url)
+      return page('the guest is alpine')
+    }
+    const { service, inference } = chatWith(
+      [toolTurn('fetch({"url": "https://example.com/"})'), answerTurn('alpine')],
+      { http },
+    )
+    service.catalogue.spec = async () => Outcome.ok(webAgent)
+
+    const sent = await service.send({ id: 'c1', text: 'what is on that page?' })
+
+    expect(sent.ok).toBe(true)
+    // The port was reached, and what it returned was handed back to the model.
+    expect(asked).toEqual(['https://example.com/'])
+    expect(inference.prompts[1]).toContain('the guest is alpine')
+  })
+
+  test('and with no port the same run reaches nothing, which is why it must be passed', async () => {
+    // The shape of the old defect, written down. This is what the agent got on
+    // every turn if the statement after the constructor was ever dropped: a
+    // run that succeeds, a tool that answers, and no request made at all.
+    const { service, inference } = chatWith(
+      [toolTurn('fetch({"url": "https://example.com/"})'), answerTurn('nothing')],
+      {},
+    )
+    service.catalogue.spec = async () => Outcome.ok(webAgent)
+
+    const sent = await service.send({ id: 'c1', text: 'what is on that page?' })
+
+    expect(sent.ok).toBe(true)
+    expect(inference.prompts[1]).toContain('this build cannot make an HTTP request')
   })
 })

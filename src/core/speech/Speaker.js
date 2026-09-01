@@ -28,11 +28,8 @@ export class Speaker {
   /** Whether this voice plays its own audio rather than returning samples. */
   static OWNS_OUTPUT = false
 
-  /** What the user gets if they name no model. Empty where there is nothing to download. */
-  static DEFAULT_MODEL = ''
-
   constructor({ model = '', voice = '', rate = 1, pitch = 1 } = {}) {
-    this.model = model || new.target.DEFAULT_MODEL
+    this.model = model
     this.voice = voice
     this.rate = rate
     this.pitch = pitch

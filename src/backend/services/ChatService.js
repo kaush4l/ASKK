@@ -19,14 +19,17 @@ import { EventName } from '../../protocol/Envelope.js'
  * events on the call happens here, at the edge, where the request id is known.
  */
 export class ChatService {
-  constructor(conversations, settings, catalogue, pool, { sandbox = null } = {}) {
+  // Named, not positional. Four of these six are shapeless objects and this
+  // tree has no type checker, so a transposed pair of arguments is accepted
+  // everywhere and fails three files away as `settings.get is not a function`.
+  constructor({ conversations, settings, catalogue, pool, sandbox = null, http = null } = {}) {
     this.conversations = conversations
     this.settings = settings
     this.catalogue = catalogue
     this.pool = pool
     // What a tool needs to reach the world. Handed to the agent builder, which
     // gives each tool only what that tool asked for.
-    this.services = { sandbox }
+    this.services = { sandbox, http }
     this._inference = null
     this._signature = ''
   }

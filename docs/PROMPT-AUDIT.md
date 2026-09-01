@@ -11,6 +11,17 @@ Everything here was produced by running something. The commands are in the
 sections that use them. Where a number could not be obtained it says
 `not established`, and there are no estimates dressed as measurements.
 
+**Since this audit was written, the code it cites has moved.** The contract was
+cut on the evidence below, and a later wave deleted `soul`, the `identity`
+block, the `Format` enum and the `overrides` bag. Every `BaseResponse.js` and
+`ReActResponse.js` line number in the `contract` section is an anchor into the
+**463-token contract as it stood when it was audited**, and that text exists
+nowhere in the tree now; read it with `git show 41b9e6e:src/core/response/BaseResponse.js`
+rather than by opening the file. The live equivalents are `instructions()` at
+`BaseResponse.js:162`, its header line at `:169` and its example at `:173`. Line
+numbers outside that section have been repointed at the current tree and are
+marked where a claim, not just a number, changed.
+
 ## How the tokens were counted
 
 Three counters, because one counter is an opinion:
@@ -55,6 +66,11 @@ fetch]`.
 | `cue` | static, `tail` | 14 | 6 | 6 | no |
 | **total** | | **4,109** | **1,092** | **1,000** | 1,018 / 914 cacheable |
 | `identity`, `scratchpad` | | 0 | 0 | 0 | empty, so absent entirely |
+
+`identity` no longer exists. It rendered 0 bytes here because nothing ever wrote
+the `soul` it was built from, and nothing ever did on any call before or after —
+so the block and its parameter were deleted rather than wired. The row stays
+because it is what the measurement found; there is no block behind it now.
 
 **Ceremony — everything that is identical no matter what the user asked — is
 1,047 of 1,092 tokens on the first turn. 96%.** The task and the clock are the
@@ -199,7 +215,7 @@ extract, the cell says so rather than borrowing its confidence.
 | **whole first-turn prompt, cl100k** | **1,000** | not established — depends on the selected file set, appended per request (`bolt.diy/app/lib/.server/llm/stream-text.ts:166-173`) | 3,784 + 109 extras template (`assembled/agent-zero.extras.txt`, a floor: `{{file_structure}}` is unexpanded) | not established — repo-dependent | not established — provider-dependent |
 | **response contract, cl100k** | **392** = **42%** of our static prompt (414 with the 22-token reminder) | **2,519** (`artifact_info` 1,753 + `examples` 766) = 36% — but the DSL *is* the tool description, so this is not a like-for-like contract | **284** (`az/agent.system.main.communication.md` minus its include) = **7.5%** | **0**. `grep -inE "response format\|field_name\|reply with\|json object containing\|output only" oswe_prompt.py` → no matches. Native function calling | **~20**. One line: *"plain-JSON fallback only (when native tool calls are unavailable)…"* (`el_planner.ts:32`, `el_prompts.ts:845`) |
 | **how tools are described** | signature + prose + per-parameter prose, rendered from the class (`src/core/tools/Tool.js:37-58`); the model writes the call as text and `Toolbox.parse` (`Toolbox.js:57-102`) reads it back | a DSL — `<boltArtifact>`/`<boltAction type="shell\|file\|start">` taught by numbered rules and two full worked `<examples>` | prose markdown, one file per tool, each ending in a complete JSON usage example (`az/agent.system.tool.*.md`; the nine root files are 2,131 cl100k of the 3,784) | native JSON schema; the prompt spends its words on *when not to* use each tool | native JSON schema generated from the action catalogue, plus `REPLY`/`IGNORE`/`STOP` sentinels |
-| **how an observation re-enters** | a labelled `# WORK SO FAR` block, `action:` / `observation:` pairs (`src/core/engine/Engine.js:121-128`) — nobody's voice | it does not, automatically. A human clicks a button and the terminal output is posted as a **user message** (`bolt.diy/app/components/chat/ChatAlert.tsx`) | as a **user turn**: `hist_add_tool_result` → `hist_add_message(False, …)` where `False` is the `ai` flag (`az_agent.py:785`, `:808`) | on the provider's tool channel, paired by `tool_call_id`. **Not re-verified here** — `grep -n "ToolMessage\|tool_call_id" oswe_server.py` finds nothing in the extract on disk; the claim is `docs/REFERENCE-PROMPTS.md`'s, from `agent/middleware/tool_error_handler.py`, which was not extracted | as **provider text** — the `ACTION_STATE` provider renders results into the next planner prompt |
+| **how an observation re-enters** | a labelled `# WORK SO FAR` block, `action:` / `observation:` pairs (`src/core/engine/Engine.js:110-117`) — nobody's voice | it does not, automatically. A human clicks a button and the terminal output is posted as a **user message** (`bolt.diy/app/components/chat/ChatAlert.tsx`) | as a **user turn**: `hist_add_tool_result` → `hist_add_message(False, …)` where `False` is the `ai` flag (`az_agent.py:785`, `:808`) | on the provider's tool channel, paired by `tool_call_id`. **Not re-verified here** — `grep -n "ToolMessage\|tool_call_id" oswe_server.py` finds nothing in the extract on disk; the claim is `docs/REFERENCE-PROMPTS.md`'s, from `agent/middleware/tool_error_handler.py`, which was not extracted | as **provider text** — the `ACTION_STATE` provider renders results into the next planner prompt |
 | **what ends the loop** | the parsed `act` is not `tool` (`ReActEngine.js:70`). No ceiling, no cancel (`CAPABILITIES.md:180-181`, both `absent`). In practice the terminator is a **parser fallback**: an unreadable reply becomes an answer (`BaseResponse.js:170`) | nothing loops. One assistant turn per user turn; `MAX_RESPONSE_SEGMENTS = 2` (`bolt.diy/app/lib/.server/llm/constants.ts:47`) | the model calls the `response` tool; backstopped by *N* consecutive **unusable** replies, not by a step count (`agent-zero/extensions/python/_functions/agent/Agent/hist_add_warning/end/_90_stop_unusable_response_loop.py`, `prompts/fw.msg_unusable_response_limit.md`) | a turn with no tool call, stated as a rule (`oswe_prompt.py:113`); backstopped by `ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end")` (`oswe_server.py:1800`; the constant's value is in `runtime/constants.py`, not on disk here) | a terminal `REPLY`/`IGNORE`/`STOP` or `completed=true`; backstopped by `maxToolCalls` (16 chat / 32 coding, `eliza2/packages/core/src/runtime/planner-loop.ts:340,358`) and a required-tool miss budget |
 | **cacheable prefix** | **914 cl100k / 953 Qwen of a 1,000-token prompt = 91%**, explicit breakpoint at char 3,852 (`AnthropicCompatible.js:121-129`) — **and below the 1,024-token minimum on every Claude model except the Opus-5 family** | **~0% by construction.** The volatile file context is appended *to the system message*, ahead of the turns (`stream-text.ts:166-173`), so the first differing byte is inside the system message. Bought back by slicing the transcript instead | **high.** `[SystemMessage(system_text), *history_langchain]` where the history list is `protocol + history_output + extras` — the volatile datetime block goes **after** the whole history (`az_agent.py:601-609`). Same conclusion as ours, reached independently | **defends the byte prefix as policy** and sets no explicit breakpoint (`grep -n "cache_control" oswe_prompt.py oswe_server.py` → no matches); a middleware re-sorts parallel tool results into call order so a swapped pair cannot invalidate the tail | **per-provider reuse policy**: `cacheStable: false` / `cacheScope` declared on the provider (`eliza2/plugins/plugin-computeruse/src/providers/scene.ts:38`, `computer-state.ts:29`) |
 
@@ -222,7 +238,7 @@ this document asks is not whether to pay it but whether 414 is the price.
 **Our ordering is the best of the five and the one nobody notices.** bolt.diy
 puts volatile content ahead of the transcript and forfeits the prefix; we and
 agent-zero both put it after, and arrived there separately. The cost of that
-decision is one line in `Engine.blocks` (`Engine.js:129-135`) and it is worth
+decision is one line in `Engine.blocks` (`Engine.js:118-124`) and it is worth
 more than every cut proposed below — which is exactly why the caching finding
 above matters: the ordering is right and the threshold makes it moot.
 
@@ -230,15 +246,24 @@ above matters: the ordering is right and the threshold makes it moot.
 
 ## Where our tokens go and what they buy
 
-### `instructions` — 253 tokens, static, `agents/main/agent.md:16-36`
+### `instructions` — 164 tokens today, 253 as audited, static, `agents/main/agent.md:16-30`
 
 What it buys: the one thing only the author knows. That the page has no server;
 that the sandbox is an emulator ~100× slower than a real machine and should be
-asked one focused question; that the sandbox has no network but `search` and
-`fetch` work outside it; that a CORS refusal is permanent and the model should go
-elsewhere rather than retry. Every one of those is environment context the model
-cannot derive, which `shared/prompt-audit.md`'s keep list #1 protects absolutely:
+asked one focused question. Both are environment context the model cannot
+derive, which `shared/prompt-audit.md`'s keep list #1 protects absolutely:
 *"Context is never cruft."*
+
+This block used to say three more things, and they were cut when this audit's
+own rule was turned on the block itself: *"there is no network"*, *"search and
+then fetch the page that looked right"* and *"do not use it for work you can
+simply do yourself"*. None was a second fact — the tool table restates the first
+two roughly 300 characters below (`ShellTool.js:25`, `SearchTool.js:54`) and the
+third is a special case of the retained line at `agent.md:25`. Measured on the
+two-step dry run: 200 → 164 tokens for this block, 750 → 714 and 804 → 768 for
+the two prompts. The ~100× sentence was deliberately NOT moved into `ShellTool`'s
+description — see `docs/TESTBED.md` thumb 13, and `ShellTool.js:14-17`, which
+says in as many words that where the command runs is not that tool's business.
 
 The two sentences that are not context are the two that would go:
 *"Answer the question that was asked. Prefer a short, complete reply over a long,
@@ -264,7 +289,11 @@ shown"* — which is a **response-format** rule living in the tools block. It is
 7 tokens and it is in the right place semantically (it is where the model is
 looking when it needs it), so this is a note, not a finding.
 
-### `contract` — 463 tokens, static, `BaseResponse.instructions` + `ReActResponse.formatNotes`
+### `contract` — 463 tokens as audited, 243 today, static, `BaseResponse.instructions`
+
+It also called a per-subclass `ReActResponse.formatNotes` hook; that was deleted
+with the cut, and every line number in this section is an anchor into the
+463-token version. See the note at the top of this file.
 
 52% of the prompt as the brief measured it, 42% as it now stands. This is the
 block with a parser behind it, so every rule can be checked against the code that
@@ -370,13 +399,15 @@ Four, and the first is the dangerous one.
    (`last.isAnswer !== false`). Combined with (1), **the loop's only reliable
    terminator is a parse failure.** `CAPABILITIES.md:180` scores "Bound it" as
    `absent`; this is what fills the gap, by accident.
-3. **Either format is accepted.** `parse` tries the requested format and then the
-   other (`BaseResponse.js:160`), with a test proving a fenced JSON reply is read
-   when TOON was asked for (`ReActResponse.test.js:120-128`). The contract says
-   *"Reply with exactly these fields"* in TOON and never mentions that JSON also
-   works. Either the fallback is dead weight or the contract should say so; both
-   are cheaper than the present state, where the model is told a stricter rule
-   than the code enforces.
+3. **Either format is accepted.** `parse` tries TOON and then JSON
+   (`BaseResponse.js:242`), with a test proving a fenced JSON reply is read
+   (`ReActResponse.test.js:120`). The contract says *"Reply with exactly these
+   fields"* in TOON and never mentions that JSON also works. This is now settled
+   in the direction of keeping the fallback and saying nothing: the `Format` enum
+   that let a file ask for the JSON contract was deleted — no run ever chose it —
+   so JSON is a REPAIR the parser performs, not a form the prompt offers. The
+   argument for withholding the permission is in `BaseResponse.parse`'s own
+   comment, and it is reasoning rather than measurement.
 4. **List items may be bullets or numbers.** `_asList:261` strips `- `, `* `,
    `1.` and `1)` from each item. Rule 5 forbids markdown decoration on field
    *names*; nothing says anything about items. Harmless, and it shows the pattern:
@@ -397,7 +428,7 @@ not reach a 1,092-token prompt. Justified independently by
 `shared/prompt-audit.md` keep-list #10, which does. **Keep**, on the second
 reason rather than the first, and fix the comment.
 
-### `cue` — 6 tokens, `[ASSISTANT]:`, `Engine.js:6`
+### `cue` — 6 tokens, `[ASSISTANT]:`, `Engine.js:5`
 
 A text-completion idiom in a chat-completions request. Harmless at 6 tokens. Not
 a finding.
@@ -418,7 +449,7 @@ reasoning is good and the bar is the right bar. **For an agent whose job is
 writing software, several facts clear it and are not there.**
 
 The structural point first, because it decides everything else: `context` is
-rendered **after** `conversation` and `scratchpad` (`Engine.js:129-135`,
+rendered **after** `conversation` and `scratchpad` (`Engine.js:118-124`,
 `PromptTemplate.js:104`). A volatile block in that position costs its own length
 and nothing else — it cannot push the transcript out of a shared prefix, because
 the prefix already ended. bolt.diy makes the opposite choice and appends its file
@@ -501,7 +532,7 @@ Risk: the only demonstrated regression in the whole experiment — deleting this
 Risk: none to cost, and it is the only change here making a correctness claim — today a run that ends this way is indistinguishable from one that finished, `CAPABILITIES.md:180-181` scores the loop `absent` on both bounding and cancelling, and this parse fallback is currently the loop's most reliable terminator.
 
 **7. Put the test-result summary, the working directory and `git diff --stat` in `# CONTEXT`.**
-`src/core/agent/Environment.js:60`, one pair per fact; nothing else moves, because `context` already renders after the transcript (`Engine.js:129-135`, `PromptTemplate.js:104`).
+`src/core/agent/Environment.js:60`, one pair per fact; nothing else moves, because `context` already renders after the transcript (`Engine.js:118-124`, `PromptTemplate.js:103`).
 **+134 tokens/call**, measured on this repository (21 + 16 + 97). A cost, listed because the audit found the block empty.
 Risk: two of the three are volatile and re-sent forever, and a stale test result is worse than no test result — which makes this change entirely dependent on the persistence spike `CAPABILITIES.md` §5 names as next.
 
@@ -634,13 +665,14 @@ p = 0.083 — so the correct claim is the negative one: **across a 3.5× range o
 contract length there is no evidence that a longer contract produces better
 compliance, and the point estimate runs the other way.**
 
-**5. Rule 3 is the one rule with a zero violation rate that should probably
-stay.** It is the only one of the six the parser does not repair
-(`BaseResponse.js:229`, last write wins, earlier content lost silently), so
-deleting it removes the rule *and* the guard at once. Its measured rate is 0/48,
-which is an argument for deleting it; its failure mode is silent data loss, which
-is an argument for a repair before the deletion. Both are stated because the
-evidence points both ways.
+**5. Rule 3 was the one rule with a zero violation rate that should probably
+stay — and that is now settled by writing the repair first.** It was the only
+one of the six the parser did not repair: a repeated field name overwrote, so
+the earlier value vanished with nothing raised anywhere. Its measured rate was
+0/48, an argument for deleting it; its failure mode was silent data loss, an
+argument for a repair before the deletion. The repair was written —
+`BaseResponse.js:391-398` concatenates a repeated field instead of overwriting
+it — and the rule came out of the prompt after it, not before.
 
 **6. The contract does not control the preamble, at any size.** Mean completion
 was 319 / 325 / 286 tokens across the three arms and the worst case was 1,500 —

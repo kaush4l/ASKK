@@ -209,14 +209,14 @@ export async function buildKernel({
   const settingsRepository = make('Settings', STORE_SETTINGS)
   const settings = new SettingsService(settingsRepository)
 
-  const chat = new ChatService(conversations, settings, catalogue, pool, { sandbox })
-
-  // Attached after construction rather than passed in, because ChatService
-  // builds its own `services` record from the argument above and keeps only
-  // `sandbox` from it. Unguarded on purpose: if that record is ever renamed
-  // this throws at boot, where a guard would have skipped it in silence and
-  // left the agent holding two tools that quietly cannot reach anything.
-  chat.services.http = browserHttp
+  const chat = new ChatService({
+    conversations,
+    settings,
+    catalogue,
+    pool,
+    sandbox,
+    http: browserHttp,
+  })
 
   const kernel = new Kernel()
     .register('conversations', new ConversationService(conversations))
@@ -233,5 +233,11 @@ export async function buildKernel({
   // unauthenticated to one third party, and the user is entitled to know which.
   notes.push(`web search sends the query to ${new URL(SEARCH_ENDPOINT).host}; nothing else does`)
 
-  return { kernel, notes, persistent: opened.ok }
+  // The chat service comes back beside the kernel because the ports it was
+  // handed are the one thing this file does that nothing else can witness. A
+  // Kernel route is a bound method, so a caller holding the kernel cannot reach
+  // the object behind it, and deleting the `http` line above left the whole gate
+  // — lint, tests, export, smoke — green while every web tool answered "this
+  // build cannot make an HTTP request" for ever.
+  return { kernel, chat, notes, persistent: opened.ok }
 }

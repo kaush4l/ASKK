@@ -56,9 +56,12 @@ export function resolveTools({ names = [], peers = [], dispatch, services = {} }
 }
 
 /**
+ * No `overrides` bag. It spread last over the engine's arguments, so anything
+ * could reach the engine past this signature — which is how `soul` stayed
+ * arguable for four waves while no caller ever passed it.
+ *
  * @param {{spec: AgentSpec, inference: object, peers?: AgentSpec[],
- *   dispatch?: Function, tools?: object[], context?: Array<[string, string]>,
- *   overrides?: object}} options
+ *   dispatch?: Function, tools?: object[], context?: Array<[string, string]>}} options
  * @returns {Outcome} value is an Engine configured from the agent file
  */
 export function buildAgent({
@@ -70,7 +73,6 @@ export function buildAgent({
   extraTools = [],
   context = [],
   services = {},
-  overrides = {},
 } = {}) {
   const resolved = tools
     ? Outcome.ok(tools)
@@ -85,7 +87,6 @@ export function buildAgent({
     name: spec.name,
     system: spec.system,
     responseModel: getResponseModel(spec.response),
-    responseFormat: spec.format,
     // Tools discovered at runtime — an MCP server's, which cannot be known
     // until the server has been asked — join the ones the file named.
     toolbox: new Toolbox([...resolved.value, ...extraTools]),
@@ -95,7 +96,6 @@ export function buildAgent({
     context,
     template: arranged.template,
     inference,
-    ...overrides,
   })
   return Outcome.ok(built.value, [...resolved.notes, ...arranged.notes, ...built.notes])
 }

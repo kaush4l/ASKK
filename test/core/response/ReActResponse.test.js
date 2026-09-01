@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test'
 import { estimateTokens } from '../../../src/core/prompt/tokens.js'
-import { Format } from '../../../src/core/response/BaseResponse.js'
 import { ACT_ANSWER, ACT_TOOL, ReActResponse } from '../../../src/core/response/ReActResponse.js'
 
 /**
@@ -156,7 +155,7 @@ describe('ReActResponse.parse', () => {
 
 describe('the contract the model is shown', () => {
   test('the instructions name every field, in declaration order, with a real act example', () => {
-    const instructions = ReActResponse.instructions(Format.TOON)
+    const instructions = ReActResponse.instructions()
 
     expect(instructions.startsWith('# RESPONSE FORMAT')).toBe(true)
     expect(instructions).toContain('- think (list):')
@@ -175,7 +174,7 @@ describe('the contract the model is shown', () => {
     // repair it — which is backwards. A repair existing is a reason to spend
     // fewer prompt tokens on the case, not more, and docs/PROMPT-AUDIT.md
     // measured both arms at 0/16 on the mistake the block exists to prevent.
-    const instructions = ReActResponse.instructions(Format.TOON)
+    const instructions = ReActResponse.instructions()
 
     expect(instructions).not.toContain('WRONG (never do this)')
     expect(instructions).not.toContain('echo({"text": "hello"})')
@@ -186,7 +185,7 @@ describe('the contract the model is shown', () => {
     // Each of these was a numbered rule with a measured 0/48 violation rate —
     // including in the arm that never stated it — sitting in front of a repair
     // in `BaseResponse._parseToon` that runs whether the rule is stated or not.
-    const instructions = ReActResponse.instructions(Format.TOON)
+    const instructions = ReActResponse.instructions()
 
     expect(instructions).not.toContain('Rules:')
     expect(instructions).not.toContain('lowercase name')
@@ -199,7 +198,7 @@ describe('the contract the model is shown', () => {
     // produced four bulleted `think:` blocks in sixteen replies — the exact
     // failure it names. Stating it inside the field description, at about six
     // tokens, produced none. Folded, not deleted.
-    const instructions = ReActResponse.instructions(Format.TOON)
+    const instructions = ReActResponse.instructions()
 
     expect(instructions).toContain('- think (list): Your private reasoning')
     expect(instructions).toContain('- plan (list): The concrete next steps')
@@ -216,22 +215,14 @@ describe('the contract the model is shown', () => {
     // It only weighs ReActResponse, which is why the sibling test asserts that
     // `formatNotes` is gone rather than merely unused: a rules block returning
     // through a per-subclass hook would never be weighed here at all.
-    expect(estimateTokens(ReActResponse.instructions(Format.TOON))).toBeLessThan(300)
+    expect(estimateTokens(ReActResponse.instructions())).toBeLessThan(300)
   })
 
   test('the reminder is one line naming the fields and nothing else', () => {
-    const reminder = ReActResponse.reminder(Format.TOON)
+    const reminder = ReActResponse.reminder()
 
     expect(reminder).toBe(
       'Reply with these fields, in this order, one per line: think, plan, act, result.',
     )
-  })
-
-  test('a response round-trips through its own written form', () => {
-    const original = new ReActResponse({ think: ['a', 'b'], plan: [], act: 'answer', result: 'hi' })
-
-    const reparsed = ReActResponse.parse(original.toString(Format.TOON))
-
-    expect(reparsed.toJSON()).toEqual(original.toJSON())
   })
 })

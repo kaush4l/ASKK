@@ -20,8 +20,8 @@ import { concat, loudness, MODEL_SAMPLE_RATE, resample } from './audio.js'
  * transcribing each block independently and concatenating, produces text that
  * never changes and is wrong at every block boundary.
  *
- * Lives in `core/` and is used from both realms. The classes that download
- * weights run in the speech worker; the one that wraps the browser's own
+ * Lives in `core/` and is used from both realms. The class that downloads
+ * weights runs in the speech worker; the one that wraps the browser's own
  * recogniser can only run in the page, and says so with `OWNS_INPUT` rather
  * than by asking where it is. A class knows what API it needs. It does not know,
  * and must not ask, what tier it was loaded into.
@@ -45,9 +45,6 @@ export class Transcriber {
    */
   static OWNS_INPUT = false
 
-  /** What the user gets if they name no model. Empty where there is nothing to download. */
-  static DEFAULT_MODEL = ''
-
   constructor({
     model = '',
     language = 'en',
@@ -66,7 +63,7 @@ export class Transcriber {
     // run every second.
     silence = 0.004,
   } = {}) {
-    this.model = model || new.target.DEFAULT_MODEL
+    this.model = model
     this.language = language
     this.partialEvery = partialEvery
     this.segmentSeconds = segmentSeconds

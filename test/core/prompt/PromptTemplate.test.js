@@ -30,7 +30,7 @@ function sampleBlocks() {
   return [
     // Deliberately out of order: the template decides, not this list.
     block('cue', '[ASSISTANT]:', Volatility.STATIC, { tail: true }),
-    block('identity', 'a careful assistant', Volatility.STATIC, { heading: 'WHO YOU ARE' }),
+    block('contract', 'reply with fields'),
     block('conversation', '[USER]: hello', Volatility.APPEND, { heading: 'CONVERSATION' }),
     block('instructions', 'answer briefly'),
     block('context', 'now: Tuesday', Volatility.VOLATILE, { heading: 'CONTEXT' }),
@@ -46,8 +46,8 @@ describe('PromptTemplate.assemble — the text', () => {
 
     expect(text).toBe(
       [
-        '# WHO YOU ARE\n\na careful assistant',
         'answer briefly',
+        'reply with fields',
         '# CONVERSATION\n\n[USER]: hello',
         '# CONTEXT\n\nnow: Tuesday',
         '[ASSISTANT]:',
@@ -68,15 +68,15 @@ describe('PromptTemplate.assemble — the text', () => {
         '[ASSISTANT]:',
       ].join('\n\n'),
     )
-    // identity was left out of the order, so it is genuinely left out.
-    expect(text).not.toContain('WHO YOU ARE')
+    // contract was left out of the order, so it is genuinely left out.
+    expect(text).not.toContain('reply with fields')
   })
 
   test('a block the caller never supplied is simply absent', () => {
-    const { text, parts } = new PromptTemplate().assemble([block('identity', 'alone')])
+    const { text, parts } = new PromptTemplate().assemble([block('instructions', 'alone')])
 
     expect(text).toBe('alone')
-    expect(parts.map((part) => part.id)).toEqual(['identity'])
+    expect(parts.map((part) => part.id)).toEqual(['instructions'])
   })
 })
 
@@ -100,7 +100,7 @@ describe('PromptTemplate.assemble — the accounting', () => {
   test('the boundary is the last byte of the reusable prefix', () => {
     const { text, boundary, brokenBy } = new PromptTemplate().assemble(sampleBlocks())
 
-    expect(text.slice(0, boundary)).toBe('# WHO YOU ARE\n\na careful assistant\n\nanswer briefly')
+    expect(text.slice(0, boundary)).toBe('answer briefly\n\nreply with fields')
     // The conversation is what ends the prefix — it grows, so its bytes are not
     // known to repeat.
     expect(brokenBy).toBe('conversation')
@@ -120,8 +120,8 @@ describe('PromptTemplate.assemble — the accounting', () => {
     const { parts } = new PromptTemplate().assemble(sampleBlocks())
 
     expect(parts.map((part) => [part.id, part.cached])).toEqual([
-      ['identity', true],
       ['instructions', true],
+      ['contract', true],
       ['conversation', false],
       ['context', false],
       // Static, but after the break: it is re-read on every call, and saying so
@@ -142,7 +142,7 @@ describe('PromptTemplate.assemble — the accounting', () => {
   })
 
   test('an empty assembly is empty rather than a lone newline', () => {
-    const assembled = new PromptTemplate().assemble([block('identity', ''), block('cue', '  ')])
+    const assembled = new PromptTemplate().assemble([block('instructions', ''), block('cue', '  ')])
 
     expect(assembled.text).toBe('')
     expect(assembled.parts).toEqual([])
@@ -194,18 +194,18 @@ describe('PromptTemplate.audit', () => {
 
 describe('PromptTemplate.of', () => {
   test('an unknown id costs that line and nothing else', () => {
-    const { template, notes } = PromptTemplate.of(['identity', 'nonsense', 'cue'], {
+    const { template, notes } = PromptTemplate.of(['instructions', 'nonsense', 'cue'], {
       source: 'agents/main/agent.md',
     })
 
-    expect(template.order).toEqual(['identity', 'cue'])
+    expect(template.order).toEqual(['instructions', 'cue'])
     expect(notes).toContain('agents/main/agent.md: prompt block "nonsense" is not a block; ignored')
   })
 
   test('a repeated id is kept once and reported', () => {
-    const { template, notes } = PromptTemplate.of(['identity', 'identity'])
+    const { template, notes } = PromptTemplate.of(['instructions', 'instructions'])
 
-    expect(template.order).toEqual(['identity'])
+    expect(template.order).toEqual(['instructions'])
     expect(notes.some((note) => note.includes('was listed twice'))).toBe(true)
   })
 
@@ -213,7 +213,7 @@ describe('PromptTemplate.of', () => {
     const { template, notes } = PromptTemplate.of(['instructions', 'cue'])
 
     expect(template.order).toEqual(['instructions', 'cue'])
-    expect(notes.some((note) => note.includes('prompt omits identity, tools, contract'))).toBe(true)
+    expect(notes.some((note) => note.includes('prompt omits tools, contract'))).toBe(true)
   })
 
   test('no list at all is the default arrangement, silently', () => {

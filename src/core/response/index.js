@@ -12,6 +12,6 @@ export function getResponseModel(name) {
   return RESPONSE_MODELS[name] ?? ReActResponse
 }
 
-export { BaseResponse, DEFAULT_FORMAT, Format } from './BaseResponse.js'
+export { BaseResponse } from './BaseResponse.js'
 export { ACT_ANSWER, ACT_TOOL, ReActResponse } from './ReActResponse.js'
 export { SimpleResponse }

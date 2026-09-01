@@ -312,13 +312,14 @@ think: ["The user wants a critique of a JavaScript parsing function against the 
 **Forces changes in `src/core/response/ReActResponse.js` and
 `src/core/response/BaseResponse.js`.**
 
-- `ReActResponse.js:12` — `think`'s description is *"Take as many items as the
-  problem deserves"*. That is an unbounded invitation inside a parsed field, and
-  4096 is where it lands. It needs a bound.
-- `BaseResponse.js:170` — `parse`'s catch-all, `return new this({
+- `ReActResponse.js:33-37` — `think`'s description was *"Take as many items as
+  the problem deserves"*, an unbounded invitation inside a parsed field, and
+  4096 is where it lands. The contract cut replaced that sentence; the field is
+  still unbounded in the sense that matters — nothing counts the items.
+- `BaseResponse.js:264` — `parse`'s catch-all, `return new this({
   [this.answerField()]: text.trim() })`, is what converts a 16 KB reasoning dump
   into `result`. It must be able to say *this did not parse*.
-- `ReActResponse.js:77` — `isAnswer` is `!isToolCall`, so a turn that never
+- `ReActResponse.js:99` — `isAnswer` is `!isToolCall`, so a turn that never
   reached `act` at all ends the run.
 
 `unverified` — the sub-tally "**18/19** compliant on short tasks" (`probe/p2-contract.js`
@@ -343,7 +344,7 @@ think: [The user asks for the sandbox distro version from /etc/os-release. Use a
 line-anchored:
 
 ```js
-// src/core/response/BaseResponse.js:200,207
+// src/core/response/BaseResponse.js:361,368
 static _parseToon(text) {
   …
   const at = line.indexOf(':')

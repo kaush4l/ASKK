@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { BaseResponse, Format } from '../../../src/core/response/BaseResponse.js'
+import { BaseResponse } from '../../../src/core/response/BaseResponse.js'
 import { SimpleResponse } from '../../../src/core/response/SimpleResponse.js'
 
 /**
@@ -102,30 +102,17 @@ describe('the generated example', () => {
     // `verb: <your verb here>` reads as an invitation to write anything. A field
     // whose values are an enum says one of them, generated from the same table
     // the description comes from so the two cannot drift apart.
-    const instructions = Probe.instructions(Format.TOON)
+    const instructions = Probe.instructions()
 
     expect(instructions).toContain('\nverb: go')
     expect(instructions).not.toContain('<your verb here>')
   })
 
   test('a field without one still gets its placeholder, list or scalar', () => {
-    const instructions = Probe.instructions(Format.TOON)
+    const instructions = Probe.instructions()
 
     expect(instructions).toContain('items: [<your first items>, <your second items>]')
     expect(instructions).toContain('note: <your note here>')
-  })
-
-  test('the JSON contract uses the same generator, in JSON shapes', () => {
-    // The JSON branch used to carry its own half-copy of `_exampleValue`, and a
-    // list field came out as a bare string — `"items": "<items>"` — while the
-    // description directly above it said `[a, b]`. The list field is asserted
-    // here because it is the one place the two spellings can disagree.
-    const instructions = Probe.instructions(Format.JSON)
-
-    expect(instructions).toContain('"verb": "go"')
-    expect(instructions).toContain('"note": "<your note here>"')
-    expect(instructions).toContain('"<your first items>"')
-    expect(instructions).not.toContain('"items": "')
   })
 })
 
@@ -169,7 +156,7 @@ describe('what the contract no longer says', () => {
     // rather than merely unused, because the 300-token ratchet below only
     // weighs `ReActResponse` and a rules block re-entering through a sibling
     // would weigh nothing at all.
-    const instructions = SimpleResponse.instructions(Format.TOON)
+    const instructions = SimpleResponse.instructions()
 
     expect(instructions).toContain('- thinking:')
     expect(instructions).toContain('- response:')
@@ -180,7 +167,7 @@ describe('what the contract no longer says', () => {
     // Field order and one-field-per-line are the two things the parser cannot
     // recover from a free-form paragraph, so they stay — in the header, where
     // they cost about eight tokens instead of twenty-nine as numbered rules.
-    const instructions = SimpleResponse.instructions(Format.TOON)
+    const instructions = SimpleResponse.instructions()
 
     expect(instructions).toContain('in this order, one per line as `name: value`')
   })

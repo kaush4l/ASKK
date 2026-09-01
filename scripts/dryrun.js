@@ -174,7 +174,7 @@ const agent = buildAgent({
 heading('ASKK dry run — the real prompt, with a script in place of the model')
 field('task', task)
 field('agent', `${spec.value.source} (${spec.value.name})`)
-field('loop', `${spec.value.engine} · ${spec.value.response} · ${spec.value.format}`)
+field('loop', `${spec.value.engine} · ${spec.value.response}`)
 field('tools', agent.value.toolbox.names.join(', ') || '(none)')
 field('clock', `pinned to ${NOW.toISOString()} in UTC, so two runs differ only where the code does`)
 field('model', `scripted — ${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}, no network`)

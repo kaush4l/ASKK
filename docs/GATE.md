@@ -102,7 +102,7 @@ directly. Row 6 is the same fault one file further out and no test imports
 prove a module behaves; they prove nothing about whether the realm boundary is
 wired.**
 
-ARCHITECTURE.md says the boundary is "enforced by the realm, not by discipline".
+ARCHITECTURE.md:21 says the boundary is "enforced by the realm, not by convention".
 That is still true of the *boundary* — a component genuinely cannot import
 `backend/` and have it work. It was not true of the *gate*: nothing executed a
 realm, so nothing could tell a file that runs there from one that only compiles
@@ -179,6 +179,28 @@ rejected above.
 chunk from a built `out/`; `bun run smoke` rebuilds first, so nothing in the
 source tree reproduces it. It is in the table because it is the one fault that
 reaches the page's own give-up text — see below.
+
+**Two agents cannot run the gate in one working tree, and it fails false-RED
+three different ways.** Four coders shared this tree for one wave, and each of
+them watched a green tree go red under a concurrent slice. All three failures
+are the gate reading a tree that is being written, and none is a fault in the
+source:
+
+    build   ENOENT .next/static/<hash>/_buildManifest.js.tmp
+            — `bun run build` deletes `.next` and `out` before it compiles, so one agent's
+              clean throws away the other's half-written output
+    smoke   smoke: the backend never reached ready (data-live=none), 404 on /ASKK/
+            — the same clean, this time under a Chrome already fetching out/
+    test    330 pass / 1 fail in test/core/speech/index.test.js
+            — the runner imported src/core/speech/ while that slice was
+              rewriting all eight of its files
+
+Every one passed on re-run. That is the cheap direction to fail, and it is still
+a gate that cannot be trusted on a single observation: a real red and a
+concurrent red are indistinguishable from the output. The fix is one worktree
+per slice, not a retry — and until there is one, **"`bun run check` is green" is
+not a claim a coder in a shared tree can own.** Only the run after integration
+settles it.
 
 **Two failures spend the full 15 s ceiling.** Rows 10 and 14 report nothing on
 either console channel, so there is nothing to short-circuit on. Every other

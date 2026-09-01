@@ -45,7 +45,7 @@ Dependencies point inward only. `core/` names nothing outside itself.
 ## The agent kernel — `core/`
 
     core/
-      Entity · Message · Conversation      domain, invariants owned here
+      Message · Conversation               domain, invariants owned here
       inference/   Inference (abstract)    invoke(prompt, mm) -> text · stream(..., onDelta)
                    ├─ OpenAICompatible     /v1/chat/completions — omlx, LM Studio, vLLM, OpenAI
                    ├─ AnthropicCompatible  /v1/messages
@@ -72,10 +72,11 @@ rendering and one exchange; `run` is the only thing a control loop changes. Each
 loop declares the response contract it is written against as
 `DEFAULT_RESPONSE`, and `ReActEngine.observe` is the seam a toolbox fills.
 
-**Parsing never throws away a reply.** It tries the requested format, then the
-other, then keeps the whole text as the answer field. TOON is the default
-because small local models follow line-oriented fields far more reliably than
-they emit valid JSON.
+**Parsing never throws away a reply.** It reads TOON, then a brace run as JSON
+if the TOON pass found no fields, then keeps the whole text as the answer field.
+TOON is the only form the contract asks for, because small local models follow
+line-oriented fields far more reliably than they emit valid JSON; JSON is still
+read, as a repair, not as a form an agent file may request.
 
 ## Agents are files, not code
 
@@ -382,13 +383,14 @@ call. **The resolution is that (2) needs a reminder at the end, not the whole
 rule.** The full contract goes in the cached prefix where it is free; one line
 restating the field names goes last, where it is read.
 
-    identity      static    who this is                                  ─┐
-    instructions  static    the agent file's body, unlabelled              │ reusable
-    tools         static    what it can do — part of what it is           │ prefix
-    contract      static    the full response spec, stated once          ─┘
+    instructions  static    the agent file's body, unlabelled             ─┐
+    tools         static    what it can do — part of what it is           │ reusable
+    contract      static    the full response spec, stated once          ─┘ prefix
     ── breakpoint: everything above is identical on the next call ──
     conversation  append    grows only at its end, so it extends the prefix
+    scratchpad    append    this turn's own actions and observations
     context       volatile  carries a clock; nothing after it is reusable
+    budget        volatile  empty on almost every turn; the hand-over when it is not
     reminder      static    one line restating the contract, for recency
     cue           static    hands the turn over
 
@@ -561,13 +563,10 @@ behaviour you have to guess at.
     core/speech/  Transcriber (abstract)   transcribe(audio) -> text · feed/finish
                   ├─ WebSpeechTranscriber   the browser's own recogniser
                   └─ TransformersTranscriber in-tab wasm, weights from the hub
-                     ├─ WhisperTranscriber   accurate, pads every input to 30 s
-                     └─ MoonshineTranscriber variable length, English only
                   Speaker (abstract)       synthesize(text) -> samples · speak(text)
                   ├─ WebSpeechSpeaker       the operating system's voice
-                  └─ TransformersSpeaker
-                     ├─ SupertonicSpeaker    needs a style vector
-                     └─ VitsSpeaker          one file, one language, no vector
+                  └─ TransformersSpeaker    in-tab wasm, weights from the hub
+                  index.js                 EARS · VOICES — one row per checkpoint
                   audio.js                 resample · concat · loudness · toWav
 
     backend/speechWorker.js          a second backend realm, same envelope
@@ -703,7 +702,7 @@ later audio would be dropped in silence.
 2. **Streaming** — the protocol answers once per request. Streaming tokens needs
    a second message shape (`chunk`) keyed to the same request id, and a
    `_postJson` sibling that reads the SSE body.
-3. **Prompt components** — soul / system / history / contract are assembled by
+3. **Prompt components** — system / history / contract are assembled by
    `Engine.render` in a fixed order. The reference implementation makes each a
    `Component` with a slot, so an agent file can choose the recipe.
 4. **Single-writer election** — `navigator.locks` in the worker, so two open tabs

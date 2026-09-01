@@ -26,8 +26,9 @@ export class BackendClient {
     this._pending = new Map()
     this._listeners = new Map()
     this._seq = 0
-    this._ready = null
-    this._resolveReady = null
+    const { promise, resolve } = Promise.withResolvers()
+    this._ready = promise
+    this._resolveReady = resolve
     this._dead = null
 
     this._worker.addEventListener('message', (event) => this._receive(event.data))
@@ -54,11 +55,6 @@ export class BackendClient {
 
   /** Resolves once the backend has booted, with its methods and any notes. */
   ready() {
-    if (!this._ready) {
-      this._ready = new Promise((resolve) => {
-        this._resolveReady = resolve
-      })
-    }
     return this._ready
   }
 
@@ -71,8 +67,7 @@ export class BackendClient {
       return
     }
     if (data?.type === 'ready') {
-      this.ready()
-      this._resolveReady?.({
+      this._resolveReady({
         ok: true,
         methods: data.methods ?? [],
         notes: data.notes ?? [],
@@ -104,8 +99,7 @@ export class BackendClient {
     }
     this._pending.clear()
     this._listeners.clear()
-    this.ready()
-    this._resolveReady?.({ ok: false, methods: [], notes: [message], persistent: false })
+    this._resolveReady({ ok: false, methods: [], notes: [message], persistent: false })
   }
 
   /** @returns {Promise<{ok: boolean, value: any, error: object|null, notes: string[]}>} */
@@ -139,29 +133,32 @@ export class BackendClient {
     if (this._dead) {
       return { id, done: Promise.resolve({ ok: false, value: null, error: this._dead, notes: [] }) }
     }
-    const done = new Promise((resolve) => {
-      this._pending.set(id, resolve)
-      // Registered per call and dropped when it settles, so a listener cannot
-      // outlive the thing it was watching.
-      if (onEvent) this._listeners.set(id, onEvent)
-      try {
-        this._worker.postMessage(new Request(id, method, params).toJSON())
-      } catch (err) {
-        // Params that cannot be structured-cloned fail here, synchronously.
-        this._pending.delete(id)
-        this._listeners.delete(id)
-        resolve({
-          ok: false,
-          value: null,
-          error: {
-            code: ErrorCode.BAD_REQUEST,
-            message: `could not send ${method}: ${err?.message ?? err}`,
-            hint: '',
-          },
-          notes: [],
-        })
-      }
-    })
+    // Flat, not inside a `new Promise` executor. `call` promises never to
+    // reject, and everything below — the map writes, the Request, the post —
+    // ran inside that executor, so anything that threw outside the inner catch
+    // rejected the very promise `call` hands back.
+    const { promise: done, resolve } = Promise.withResolvers()
+    this._pending.set(id, resolve)
+    // Registered per call and dropped when it settles, so a listener cannot
+    // outlive the thing it was watching.
+    if (onEvent) this._listeners.set(id, onEvent)
+    try {
+      this._worker.postMessage(new Request(id, method, params).toJSON())
+    } catch (err) {
+      // Params that cannot be structured-cloned fail here, synchronously.
+      this._pending.delete(id)
+      this._listeners.delete(id)
+      resolve({
+        ok: false,
+        value: null,
+        error: {
+          code: ErrorCode.BAD_REQUEST,
+          message: `could not send ${method}: ${err?.message ?? err}`,
+          hint: '',
+        },
+        notes: [],
+      })
+    }
     return { id, done }
   }
 

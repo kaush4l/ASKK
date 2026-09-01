@@ -1,4 +1,3 @@
-import { Entity } from './Entity.js'
 import { newId } from './ids.js'
 
 /** Who produced a message. Anything outside this set is repaired, not rejected. */
@@ -10,9 +9,9 @@ export const Role = Object.freeze({
 
 const ROLES = new Set(Object.values(Role))
 
-export class Message extends Entity {
+export class Message {
   constructor({ id = newId(), role, text, createdAt = Date.now(), repairs = [] } = {}) {
-    super(id)
+    this.id = id
 
     // Repaired rather than refused. A malformed message is still evidence of
     // something the user or the model did, and losing it to a constructor
@@ -43,10 +42,11 @@ export class Message extends Entity {
     return new Message(raw ?? {})
   }
 
-  get isEmpty() {
-    return this.text.trim().length === 0
-  }
-
+  /**
+   * The plain, structured-cloneable form written to storage and sent over the
+   * wire. Nothing outside this module ever holds an instance, so this literal
+   * is the schema — changing it changes the record on disk.
+   */
   toJSON() {
     return {
       id: this.id,

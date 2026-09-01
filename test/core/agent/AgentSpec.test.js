@@ -97,9 +97,9 @@ describe('AgentSpec prompt', () => {
     // It was not, for the length of one review: the block rendered correctly and
     // was dropped from every prompt because the template did not list its id,
     // which also meant a file asking for it by name was told it is not a block.
-    const built = spec({ name: 'x', prompt: ['identity', 'budget', 'cue'] })
+    const built = spec({ name: 'x', prompt: ['instructions', 'budget', 'cue'] })
 
-    expect(built.value.prompt).toEqual(['identity', 'budget', 'cue'])
+    expect(built.value.prompt).toEqual(['instructions', 'budget', 'cue'])
   })
 })
 
@@ -137,5 +137,27 @@ describe('AgentSpec thinking', () => {
 
     expect(built.value.thinking).toBe(null)
     expect(built.notes).toContain('agents/x/agent.md: thinking "no" is not true or false; ignored')
+  })
+})
+
+/**
+ * A setting that is deleted has to be RETIRED and not merely gone.
+ *
+ * `format` chose between a TOON contract and a JSON one; no run ever chose the
+ * JSON arm, so the enum went. Left out of `RETIRED`, the deletion would have
+ * manufactured the very defect it removes: `format: json` would land in `raw`,
+ * reach no reader, and leave its author believing they had asked for JSON —
+ * silent, which is what this file's opening rule exists to forbid.
+ */
+describe('AgentSpec format, retired', () => {
+  test('a file still asking for a format is told the setting is gone', () => {
+    const built = spec({ name: 'x', format: 'json' })
+
+    expect(built.notes.some((note) => note.startsWith('agents/x/agent.md: format'))).toBe(true)
+    expect(built.value.format).toBeUndefined()
+  })
+
+  test('a file that never mentioned it is told nothing', () => {
+    expect(spec({ name: 'x' }).notes.some((note) => note.includes('format'))).toBe(false)
   })
 })

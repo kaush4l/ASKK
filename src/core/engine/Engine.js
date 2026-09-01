@@ -1,7 +1,6 @@
 import { Role } from '../Message.js'
 import { Outcome, Reason } from '../Outcome.js'
 import { PromptBlock, PromptTemplate, Volatility } from '../prompt/PromptTemplate.js'
-import { DEFAULT_FORMAT } from '../response/BaseResponse.js'
 
 const DEFAULT_CUE = '[ASSISTANT]:'
 
@@ -30,11 +29,9 @@ export class Engine {
 
   constructor({
     name = 'agent',
-    soul = '',
     system = '',
     inference,
     responseModel,
-    responseFormat = DEFAULT_FORMAT,
     responseCue = DEFAULT_CUE,
     toolbox = null,
     // Facts about right now, as ordered [label, value] pairs. Rendered as one
@@ -51,13 +48,11 @@ export class Engine {
     // flow can reach, and `run` reports them as ordinary failures — visible in
     // the UI, on the same path as every other failure, instead of as a crash.
     this.name = name
-    this.soul = soul
     this.system = system
     this.inference = inference
     // A loop's own contract is the default, but an explicitly passed model wins
     // — including `null`, which means plain text with no contract at all.
     this.responseModel = responseModel === undefined ? new.target.DEFAULT_RESPONSE : responseModel
-    this.responseFormat = responseFormat
     this.responseCue = responseCue
     this.toolbox = toolbox
     this.context = context
@@ -80,12 +75,6 @@ export class Engine {
       .join('\n\n')
 
     return [
-      new PromptBlock({
-        id: 'identity',
-        heading: 'WHO YOU ARE',
-        body: this.soul,
-        volatility: Volatility.STATIC,
-      }),
       // No heading. This block is the agent file's own body — the document
       // itself, headings and all — and labelling a document with a heading that
       // says it is a document adds a level without adding a distinction.
@@ -103,7 +92,7 @@ export class Engine {
       }),
       new PromptBlock({
         id: 'contract',
-        body: this.responseModel?.instructions(this.responseFormat) ?? '',
+        body: this.responseModel?.instructions() ?? '',
         volatility: Volatility.STATIC,
       }),
       new PromptBlock({
@@ -145,7 +134,7 @@ export class Engine {
       }),
       new PromptBlock({
         id: 'reminder',
-        body: this.responseModel?.reminder(this.responseFormat) ?? '',
+        body: this.responseModel?.reminder() ?? '',
         volatility: Volatility.STATIC,
         // Static, and last on purpose — see `PromptBlock.tail`.
         tail: true,
@@ -255,7 +244,7 @@ export class Engine {
     // than an error, so a badly formatted turn still says what the model said.
     const text = replied.value
     if (!this.responseModel) return Outcome.ok(text, replied.notes)
-    return Outcome.ok(this.responseModel.parse(text, this.responseFormat), replied.notes)
+    return Outcome.ok(this.responseModel.parse(text), replied.notes)
   }
 
   /**

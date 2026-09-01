@@ -70,9 +70,9 @@ describe('parseFrontmatter — lists', () => {
   })
 
   test('an inline list splits on top-level commas only', () => {
-    const { data } = parseFrontmatter('prompt: [identity, shell({"a": 1, "b": 2}), cue]')
+    const { data } = parseFrontmatter('prompt: [instructions, shell({"a": 1, "b": 2}), cue]')
 
-    expect(data.prompt).toEqual(['identity', 'shell({"a": 1, "b": 2})', 'cue'])
+    expect(data.prompt).toEqual(['instructions', 'shell({"a": 1, "b": 2})', 'cue'])
   })
 
   test('a block list is the same list written the other way', () => {
@@ -225,5 +225,11 @@ describe('the real agents/main/agent.md', () => {
     expect(typeof server.command).toBe('string')
     expect(Array.isArray(server.include_tools)).toBe(true)
     expect(body).toStartWith('You are a careful, direct assistant')
+    // The survey refused to move this sentence into `ShellTool`'s description
+    // because the slowness is `C2wSandbox`'s property, not the tool's, and
+    // `docs/TESTBED.md` records keeping it here as deliberate. A decision with a
+    // doc paragraph and no executable guard is a decision the next cut deletes
+    // by accident: the whole sandbox paragraph could go with the suite green.
+    expect(body).toContain('a hundred times slower')
   })
 })

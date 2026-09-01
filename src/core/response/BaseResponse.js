@@ -2,9 +2,8 @@
  * Structured responses — a class doubles as its own prompt contract.
  *
  *     BaseResponse
- *     ├─ instructions(fmt)  the field table -> instructions for the model
- *     ├─ toString(fmt)      object          -> TOON or JSON text
- *     └─ parse(raw, fmt)    model reply     -> object
+ *     ├─ instructions()  the field table -> instructions for the model
+ *     └─ parse(raw)      model reply     -> object
  *
  * A subclass declares nothing but its fields:
  *
@@ -12,11 +11,12 @@
  *       static FIELDS = { thinking: { description: '...' }, response: { description: '...' } }
  *     }
  *
- * TOON is the default because it is line-oriented, and small local models
- * follow it far more reliably than they produce valid JSON.
+ * TOON is the one form the contract is written in, because it is line-oriented
+ * and small local models follow it far more reliably than they produce valid
+ * JSON. There was a `Format` enum here with a second, JSON arm; no run ever
+ * chose it, so it went — see `parse`, which still reads a JSON reply, as a
+ * repair rather than as a permitted form.
  */
-export const Format = Object.freeze({ TOON: 'toon', JSON: 'json' })
-export const DEFAULT_FORMAT = Format.TOON
 
 export class BaseResponse {
   /** `{ name: { description, list?, default? } }` — declaration order is prompt order. */
@@ -59,19 +59,12 @@ export class BaseResponse {
   /**
    * A field's example value: a real one where the field is an enum, a
    * placeholder otherwise.
-   *
-   * Format-aware for one reason. A list is `[a, b]` in TOON and `["a", "b"]` in
-   * JSON, and the JSON branch of `instructions` used to carry its own half-copy
-   * of this method that rendered a list field as a bare string — so the example
-   * disagreed with the description one line above it. One generator, two
-   * spellings, and the two cannot drift apart.
    */
-  static _exampleValue(name, fmt = DEFAULT_FORMAT) {
+  static _exampleValue(name) {
     const spec = this.FIELDS[name]
     if (spec.example) return spec.example
     if (!spec.list) return `<your ${name} here>`
-    const items = [`<your first ${name}>`, `<your second ${name}>`]
-    return fmt === Format.JSON ? items : `[${items.join(', ')}]`
+    return `[<your first ${name}>, <your second ${name}>]`
   }
 
   /**
@@ -132,22 +125,20 @@ export class BaseResponse {
    * *folded into the list field descriptions* at about six tokens, which is
    * where the arm that scored best states it.
    *
-   * That fold is written in TOON's spelling, `[a, b]`, and `_fieldDocs` is
-   * shared with the JSON contract where the shape is `["a", "b"]`. The JSON
-   * example carries the real shape; the description is one spelling out of step.
-   * Recorded rather than fixed: `format: json` has no caller anywhere in the
-   * tree and no arm has ever been measured on it, and per-format descriptions
-   * are machinery bought for a path nobody walks.
-   *
    * ── The tension this trades against, stated because it is real ────────────
    *
    * Cutting here shortens the reusable prefix, and Anthropic's prompt cache has
    * a model-dependent minimum below which a prefix silently does not cache:
    * 512 tokens on the Opus 5 family, 1,024 on Sonnet 5 / Opus 4.8 / Sonnet 4.6,
    * 2,048 on Opus 4.7, 4,096 on Opus 4.6 / Haiku 4.5. Our prefix was 922 tokens
-   * and is now 702, so on the 1,024-minimum models it did not cache before this
+   * before the audit and is 649 today — `bun scripts/dryrun.js`, the `reusable
+   * prefix` line — so on the 1,024-minimum models it did not cache before this
    * change either — the cut moves it further from a line it was already the
    * wrong side of, and takes it nowhere near the 512 line it clears.
+   *
+   * The command, not just the figure, because pinning the figure is how it went
+   * wrong twice — it read 922, then 702, while the prefix was 685 and then 649,
+   * and nothing in the suite could notice.
    *
    * We cut anyway, on this reasoning: padding a prompt with tokens that buy no
    * compliance, in order to reach a cache minimum, means paying full price on
@@ -168,27 +159,8 @@ export class BaseResponse {
    * (`Environment.js`), which the audit measured as empty and which would carry
    * facts that change answers — not with rules the model already follows.
    */
-  static instructions(fmt = DEFAULT_FORMAT) {
+  static instructions() {
     const names = this.fieldNames()
-
-    if (fmt === Format.JSON) {
-      const example = JSON.stringify(
-        Object.fromEntries(names.map((n) => [n, this._exampleValue(n, Format.JSON)])),
-        null,
-        2,
-      )
-      return [
-        '# RESPONSE FORMAT',
-        '',
-        'Reply with a single JSON object containing exactly these keys:',
-        '',
-        this._fieldDocs(),
-        '',
-        'Output only the JSON object — no markdown fences, no text around it.',
-        `Example:\n${example}`,
-      ].join('\n')
-    }
-
     const example = names.map((n) => `${n}: ${this._exampleValue(n)}`).join('\n\n')
 
     return [
@@ -212,27 +184,22 @@ export class BaseResponse {
    * It names the fields and says nothing else. Restating the rules here would
    * be a second copy of them, and two copies of a rule is how they drift.
    */
-  static reminder(fmt = DEFAULT_FORMAT) {
+  static reminder() {
     const names = this.fieldNames()
     if (!names.length) return ''
-    return fmt === Format.JSON
-      ? `Reply with one JSON object, keys: ${names.join(', ')}. No other text.`
-      : `Reply with these fields, in this order, one per line: ${names.join(', ')}.`
+    return `Reply with these fields, in this order, one per line: ${names.join(', ')}.`
   }
 
   // ── object -> string ───────────────────────────────────────────────────
 
-  toString(fmt = DEFAULT_FORMAT) {
-    if (fmt === Format.JSON) return JSON.stringify(this.toJSON(), null, 2)
-    return this.constructor
-      .fieldNames()
-      .map((name) => {
-        const value = this[name]
-        return `${name}: ${Array.isArray(value) ? `[${value.join(', ')}]` : value}`
-      })
-      .join('\n\n')
-  }
-
+  /**
+   * The form a response crosses a realm in, and the only one.
+   *
+   * A `toString()` rendering the object back into TOON stood here with no
+   * producer anywhere, read only by a round-trip test that fed it to `parse` —
+   * which reads JSON too, so the test could not have told TOON from anything.
+   * If the debug view wants it, it gets written with its caller.
+   */
   toJSON() {
     return Object.fromEntries(this.constructor.fieldNames().map((n) => [n, this[n]]))
   }
@@ -240,15 +207,15 @@ export class BaseResponse {
   // ── string -> object ───────────────────────────────────────────────────
 
   /**
-   * Parse a model reply. Tries the requested format, then the other, then keeps
-   * the whole reply as the answer — a badly formatted turn still yields a
-   * usable object rather than losing what the model said.
+   * Parse a model reply. Tries TOON, then JSON, then keeps the whole reply as
+   * the answer — a badly formatted turn still yields a usable object rather
+   * than losing what the model said.
    *
    * Three repairs here have no matching rule in the prompt, deliberately, and
    * all three were found by auditing the parser against the contract rather than
    * the other way round:
    *
-   * The cross-format retry is a REPAIR, not a permitted format. The contract
+   * The JSON retry is a REPAIR, not a permitted format. The contract
    * asks for TOON and says nothing about JSON, and it stays that way. The
    * reasoning — and this is REASONING, not a measurement, labelled so nobody
    * quotes it as evidence — is that telling the model both work would invite the
@@ -272,18 +239,28 @@ export class BaseResponse {
    * happened: today an unparseable reply ends a run indistinguishably from a
    * finished one. That belongs in the engine, not in this file.
    */
-  static parse(raw, fmt = DEFAULT_FORMAT) {
+  static parse(raw) {
     const text = typeof raw === 'string' ? raw : String(raw)
-    const order = fmt === Format.JSON ? ['_parseJson', '_parseToon'] : ['_parseToon', '_parseJson']
 
-    for (const parser of order) {
-      try {
-        const data = this[parser](text)
-        if (data && Object.keys(data).length > 0) return new this(data)
-      } catch {
-        // Try the other format before giving up on the reply.
-      }
+    // Written out, rather than looped over `['_parseToon', '_parseJson']` as it
+    // was while a `Format` enum picked one. With the order fixed, the strings
+    // bought nothing and cost the only static checking a tree with no transpile
+    // step has — and a name that resolved to nothing threw INSIDE the try and
+    // was read as "that parser found nothing". Measured: with `_parseToon`
+    // renamed at its definition only, a TOON reply came back with `think` and
+    // `plan` empty and the whole reply in `result`, nothing raised anywhere.
+    // So the try now wraps the one expression that is allowed to throw.
+    const toon = this._parseToon(text)
+    if (Object.keys(toon).length > 0) return new this(toon)
+
+    try {
+      const json = this._parseJson(text)
+      if (Object.keys(json).length > 0) return new this(json)
+    } catch {
+      // A brace run that is not valid JSON. The last resort below keeps the
+      // reply; nothing else in this method may be read as "found nothing".
     }
+
     return new this({ [this.answerField()]: text.trim() })
   }
 

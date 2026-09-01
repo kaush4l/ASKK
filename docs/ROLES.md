@@ -27,6 +27,12 @@ load-bearing, and never emitted. It has shipped in `AgentState::phase`, in
 
 Verdict is PASS or FAIL. Praise is not useful.
 
+**A gate claim names the tree it was run against.** Where slices share one
+working tree, "`bun run check` is green" is not a claim any single seat can own:
+four coders in one tree produced six mutually contradicting pass counts and
+three false REDs from concurrent writes, all in one wave. Report the run and the
+tree state; the run after integration is what settles it. `docs/GATE.md`.
+
 ## Bar raiser
 
 Asks a different question: **is this the standard we want to be held to.**
@@ -50,8 +56,9 @@ name says what the thing is, whether a comment argues for a decision or just
 restates the line under it.
 
 **Design, and composition first.** Inheritance is the default this tree keeps
-reaching for — `git grep -c "extends"` in `src/` is the running count, and
-three-deep chains exist. Composition over inheritance is the standing rule:
+reaching for — `git grep extends src/` is the running count, and it is 19 real
+`extends` today, down from 25; both three-deep chains were deleted in the wave
+that count comes from, so nothing is deeper than two right now. Composition over inheritance is the standing rule:
 an abstract base with exactly one real implementation is an interface pretending
 to be a hierarchy, and a base class that reaches down into subclass behaviour
 is a hierarchy pretending to be a strategy. The tree already has the pattern it
@@ -73,16 +80,29 @@ what it buys. "Consider extracting" is not a verdict.
 ## The standing rules
 
 These are not slogans. Each one is checkable against a diff, and each was
-written because the survey below found the same defect more than once.
+written because the survey in `docs/LEDGER.md` found the same defect more than
+once.
 
 **A declaration ships with its writer, in the same diff.** Any constructor
 parameter, enum value, prompt-block id or `static` default that a change adds
 must have a line, somewhere in that same change, that writes a non-default
 value to it — and `git grep` for the name must return a producer outside the
 file that declares it. If it does not, delete the declaration rather than land
-it dark. This tree has landed dark declarations five times: `AgentState::phase`,
+it dark.
+
+This rule was written when the count stood at five: `AgentState::phase`,
 `## observations`, the redirect-landed URL, `Engine`'s `soul`, and `Format`'s
-JSON arm.
+JSON arm. The wave cut to close those found five more by sweeping rather than
+reading, and three of those are still dark. The running list is
+`docs/LEDGER.md`, "The bar-raiser survey", and it is kept there rather than here
+because a rule that has to be edited every time it is broken stops reading as a
+rule.
+
+The corollary that wave paid for: **a slice owns files, but a defect belongs to
+whoever finds it.** `Envelope.methods` was found independently by two seats and
+closed by neither, because it sat outside every coder's owned file set. A
+declaration nobody may delete is not reported — it is a row, filed the same
+hour, with the grep that found it.
 
 **A subclass ships with behaviour.** A new `extends` is a RAISE unless the
 subclass body holds at least one method that does more than return a literal.

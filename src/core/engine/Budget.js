@@ -196,8 +196,8 @@ export class Budget {
    * The `# BUDGET` block's body: the hand-over, or nothing at all.
    *
    * Empty while there is room, and an empty body is dropped from the prompt
-   * entirely by `PromptTemplate` — the same elision that removes the identity
-   * block from an agent with no soul. A budget that has not run out has nothing
+   * entirely by `PromptTemplate` — the same elision that removes the tool
+   * block from an agent with no tools. A budget that has not run out has nothing
    * to say that an agent could act on, and the measurement in this file's
    * opening comment is what turned that from an opinion into a decision.
    *

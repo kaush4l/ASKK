@@ -1,7 +1,6 @@
 import { DEFAULT_LOOP, ENGINES } from '../engine/index.js'
 import { parseMcpServers } from '../mcp/McpConfig.js'
 import { Outcome } from '../Outcome.js'
-import { DEFAULT_FORMAT, Format } from '../response/BaseResponse.js'
 import { RESPONSE_MODELS } from '../response/index.js'
 
 /**
@@ -23,7 +22,6 @@ export const AGENT_DEFAULTS = Object.freeze({
   description: '',
   engine: DEFAULT_LOOP,
   response: 'react',
-  format: DEFAULT_FORMAT,
   // 128k. An agent that has read anything at all needs room to reason about it,
   // and a low default silently truncates long work instead of failing loudly.
   maxTokens: 131072,
@@ -70,9 +68,9 @@ const ALIASES = {
  */
 const RETIRED = {
   repeat_limit: 'a repeated call is reported to the agent, not counted against it',
+  format:
+    'the contract is written in TOON only; a JSON reply is still read as a repair, not as a form a file may ask for',
 }
-
-const FORMATS = new Set(Object.values(Format))
 
 /**
  * A budget limit, or null with a note saying why not.
@@ -145,14 +143,6 @@ export class AgentSpec {
     if (!RESPONSE_MODELS[response]) {
       notes.push(`${source}: response ${JSON.stringify(response)} is not available; used react`)
       response = 'react'
-    }
-
-    let format = String(raw.format ?? AGENT_DEFAULTS.format).toLowerCase()
-    if (!FORMATS.has(format)) {
-      notes.push(
-        `${source}: format ${JSON.stringify(format)} is not available; used ${DEFAULT_FORMAT}`,
-      )
-      format = DEFAULT_FORMAT
     }
 
     // Only an override is ever written in a file. Everything absent takes the
@@ -259,7 +249,6 @@ export class AgentSpec {
         description: String(raw.description ?? '').trim(),
         engine,
         response,
-        format,
         temperature,
         thinking,
         maxTokens,

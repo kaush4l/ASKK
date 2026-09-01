@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { browserHttp } from '../../src/backend/composition.js'
+import { browserHttp, buildKernel } from '../../src/backend/composition.js'
 import { Blocked } from '../../src/core/tools/HttpPort.js'
 
 /**
@@ -170,5 +170,36 @@ describe('browserHttp', () => {
     expect(probe.mode).toBe('no-cors')
     expect(probe.method).toBe('POST')
     expect(probe.body).toBe('{"query":"zig"}')
+  })
+})
+
+/**
+ * The one statement in this file that nothing could witness.
+ *
+ * `buildKernel` hands the chat service its ports, and deleting the `http` line
+ * was measured to leave the whole gate green — lint, 316 tests, the export and
+ * the browser smoke — while every web tool answered `this build cannot make an
+ * HTTP request` for ever, silently, in every build. Lint cannot see it because
+ * `browserHttp` is exported, so the value is never unused; the suite cannot see
+ * it because a Kernel route is a bound method and a caller holding the kernel
+ * cannot reach the object behind it. So the service comes back beside the
+ * kernel and this reads the ports off it.
+ *
+ * Identity, not shape: `typeof chat.services.http === 'function'` would pass on
+ * any function at all, and the failure being written down is a port that was
+ * never connected rather than one connected to the wrong thing.
+ */
+describe('the ports buildKernel hands the chat service', () => {
+  test('the real HTTP port is the one the chat service holds', async () => {
+    const { chat } = await buildKernel()
+
+    expect(chat.services.http).toBe(browserHttp)
+  })
+
+  test('and the sandbox it built, so a shell tool has something to run in', async () => {
+    const { chat } = await buildKernel()
+
+    expect(chat.services.sandbox).toBeTruthy()
+    expect(typeof chat.services.sandbox.run).toBe('function')
   })
 })
