@@ -603,9 +603,22 @@ transcript.
 - A criterion the transcript cannot answer is scored 1, not skipped. An
   unanswerable question about a run is a fact about the run.
 
-Criteria 3, 4, 5 and 8 are the four this tree currently fails or cannot
-demonstrate: the loop has no legible bound (CAPABILITIES.md, "Bound it:
-`absent`"), observations carry no speaker marker beyond `observation:`, and
+Criteria 4, 5 and 8 are the three this tree currently fails or cannot
+demonstrate: observations carry no speaker marker beyond `observation:`, and
 there is no durable run log to read any of it out of (CAPABILITIES.md, "Traces /
-a run log: `absent`"). That is the point of writing the rubric before the work
-rather than after it.
+a run log: `absent`"). Criterion 3 has moved — the loop has a legible bound now
+(CAPABILITIES.md, "Bound it: `have`"; `core/engine/Budget.js` renders `# BUDGET`
+on the turn that has no room left and the hard stop names the budget that went) —
+and criterion 3 is nonetheless where the first blind panel scored against us, for
+a reason the rubric anticipates and this tree had not: a run that ends because a
+truncated reply took the `act` field's default *looks* answered and is not.
+That is the point of writing the rubric before the work rather than after it.
+
+**And the first panel did not use this rubric.** `docs/LEDGER.md`'s bar says a
+blind critic judges "on the rubric in `docs/REFERENCE-PROMPTS.md`". The panel run
+in the benchmark wave was briefed as five single-question lenses — token
+efficiency, cost against what it bought, reply shape — and three reported. None
+of the three scored a criterion, so nothing below was exercised, criteria 4 and 8
+were never applied as disqualifiers, and the results are not comparable to a
+later run that does use it. Either the bar names the lenses or the panel scores
+the rubric; today they are two different tests wearing one sentence.

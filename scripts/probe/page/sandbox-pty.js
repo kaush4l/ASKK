@@ -2,7 +2,7 @@
 // public/sandbox/vm-worker.js with ONE change: stdin blocks.
 //
 // Everything else — classic worker, importScripts of the vendored UMD shim,
-// fetch + compile of the same 107 MB module, the ENOTSUP stub sweep over
+// fetch + compile of the same raw module, the ENOTSUP stub sweep over
 // unimplemented WASI socket imports — is the tree's own file. What is replaced
 // is `patchStdio`, whose fd_read on fd 0 writes 0 and returns success (EOF),
 // and whose poll_oneoff answers only clock subscriptions.

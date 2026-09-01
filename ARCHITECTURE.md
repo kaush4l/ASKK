@@ -78,6 +78,44 @@ TOON is the only form the contract asks for, because small local models follow
 line-oriented fields far more reliably than they emit valid JSON; JSON is still
 read, as a repair, not as a form an agent file may request.
 
+**It refuses one now, on both routes inside the contract, and the third route is
+the residual.** A reply cut off before it wrote `act:` and a reply whose `act` is
+a word that is neither verb are both `ACT_UNSAID` (`ReActResponse.js:161`); the
+field has no default (`:55` is the comment where the default was), neither ends
+the run, and each carries `unsaidBecause` saying which of the two it was in
+words. The engine echoes the reply back with that sentence, counts the streak
+(`ReActEngine.js:251`) and ends the run only at `UNSAID_CEILING = 2` in a row
+(`:253`), through `unreadable` (`:349`), which names the route and names no
+lever — the ending is a decision with a reason attached rather than an accident
+wearing an answer's clothes.
+
+The third route is unchanged and is stated as a cost rather than repaired: a
+reply in which *neither* parser finds any field still becomes an answer holding
+the whole text (`BaseResponse.js:277`). Measured over the 34 replies recorded in
+`bench/transcripts/`, that branch is taken ten times and every one of the ten is
+`Reply.THINKING`, which the transport refuses before the parser is reached — so
+inside the contract it is unreachable, and the tokens a prompt sentence about it
+would cost on every turn would prevent nothing. The scaffold that beat us here —
+an envelope with a closing brace, where an unterminated fragment is `malformed`
+and the turn is retried — still refuses that one reply where we answer it.
+
+The guard for the worst trigger sits one layer up rather than here, in the
+transport below, and the two are independent: the transport refuses a reply whose
+answer never began, the parser refuses one that began and never said what to do.
+
+**The transport classifies a truncated reply before the parser ever sees it.** A
+thinking model on the OpenAI wire has four states, and `OpenAICompatible._state`
+is the only thing that assigns one: a complete answer; an answer cut off
+mid-sentence, passed on with a note; the scratchpad arriving on the answer
+channel because the tokens ran out inside the think block; and no answer started
+at all. The third is refused outright rather than shown, because that text
+contains the model rehearsing the response format — lines like
+`act: shell({"command": "..."})` written as an example — and the response layer
+reads a rehearsal as a decision. That has happened in this tree. The refusal
+belongs in the transport and nowhere below it: `finish_reason` and
+`reasoning_content` exist only there, and every layer beneath is reasoning about
+a string it has been told is an answer.
+
 ## Agents are files, not code
 
     agents/main/agent.md          edited here
@@ -150,12 +188,15 @@ host that cannot set COOP and COEP headers. That single fact is why this
 substrate was chosen over the alternatives.
 
 **Boot to first output: ~1 s over loopback.** The module is fetched and compiled
-once (~107 MB) and instantiated per command. This is the one number in this file
-that the gate re-derives on every run — `bun run check` prints it, most recently
-*"the real guest answered `Linux localhost 6.1.0 …` in 965ms cold, then a
-failing command in 749ms warm (exit 1)"* — three runs spread 951–1015 ms cold and
-749–764 ms warm. The cold figure is the whole 107 MB
-fetch plus a compile; the warm one is an instance and an Alpine boot.
+once and instantiated per command. This is the one number in this file that the
+gate re-derives on every run — `bun run check` prints it, most recently *"the
+real guest answered `Linux localhost 6.1.0 …` in 930ms cold, then a failing
+command in 674ms warm (exit 1); 40029960 bytes fetched, inflated to 107054914"*
+— three runs spread 925–945 ms cold and 671–692 ms warm. The cold figure is the
+whole 38.2 MiB fetch, the inflate and a compile; the warm one is an instance and
+an Alpine boot. It fetches the compressed module because that is what the deploy
+can carry, and it prints both sizes so a build that shipped the raw module under
+that name fails here rather than reaching a visitor.
 
 Four limits, each measured rather than assumed, and each stated to the model
 rather than hidden:
@@ -197,13 +238,31 @@ it has been run end to end through the built artifact.
 
 It does not work on `https://kaush4l.github.io/ASKK/`, and the reason is not a
 browser one. The file is 107,054,914 bytes, which is 2,197,314 over GitHub's
-100 MiB per-file block, so it is excluded from the repository (`.gitignore:33`)
-and from the deploy (`git show a1d7a98 -- .gitignore`). Measured on the live
-site: the page and `sandbox/vm-worker.js` answer 200 and `sandbox/sandbox.wasm`
-answers **404**, so every `shell` call there fails to boot and the model is told
-so. Git LFS is closed to Pages by Pages' own documentation; compression does not
-help, because the limit is on the file at rest and the edge already gzips
-`application/wasm` for free.
+100 MiB per-file block, so it is excluded from the repository by `.gitignore`'s
+`public/sandbox/*.wasm` rule — named rather than numbered, because that line was
+cited as `.gitignore:33` in three documents and is now a comment — and from the
+deploy (`git show a1d7a98 -- .gitignore`). Measured on the live site: the page
+and `sandbox/vm-worker.js` answer 200 and `sandbox/sandbox.wasm` answers **404**,
+so every `shell` call there fails to boot and the model is told so. Git LFS is
+closed to Pages by Pages' own documentation.
+
+**Compression is the way out, and this file used to say it was not.** The
+sentence that stood here — that compression does not help because the limit is on
+the file at rest — was half an argument: the limit is indeed on the file at rest,
+which is exactly why compressing the file at rest works. `gzip -9` gives
+`public/sandbox/sandbox.wasm.gz` at 40,029,960 bytes, inside the block; it
+inflates to the raw module's own sha256; `vm-worker.js` inflates it with
+`DecompressionStream` after sniffing `1f 8b`; and `bun run smoke` boots the real
+guest from it on every gate run. GitHub Pages serves a `.gz` as raw gzip bytes
+with no `Content-Encoding`, so `fetch` does not pre-inflate it and the sniff
+fires — measured against a Pages site that already serves one, in `docs/GATE.md`.
+
+What is still true is that nobody has walked it. The `.gz` is neither tracked nor
+ignored (`git check-ignore -v public/sandbox/sandbox.wasm.gz` exits 1),
+`/ASKK/sandbox/sandbox.wasm.gz` is a 404 alongside the raw module, and there is
+no deploy step in this repository at all — `git ls-files | grep -iE
+"deploy|publish|pages|workflow|ya?ml"` returns nothing and there is no
+`.github/`.
 
 `SANDBOX_IMAGE=<url> bun run build` compiles a different URL into the bundle for
 a deploy whose host will serve the file. It is an override, not the location, and
@@ -744,9 +803,16 @@ is the failure mode this file is supposed to be immune to. They are written down
 as done, with what to grep, rather than deleted, because a plan that quietly
 loses its own history is how the same thing gets built twice.
 
-**Done.** *Tools* — `core/tools/Toolbox.js` exists and `ReActEngine.js:239`
-runs it. *Streaming* — `EventName.DELTA` on the same request id, emitted at
-`ChatService.js:188`. *Prompt components* — `core/prompt/PromptTemplate.js`.
+**Done.** *Tools* — `core/tools/Toolbox.js` exists and `ReActEngine.js:379`
+runs it (`:376` is the empty-toolbox guard three lines above). *An action is
+mandatory, not defaulted* — `act` absent or unmatched is `ACT_UNSAID`, the turn
+is retried with the reply echoed back, and the run ends named at a ceiling of
+two; the branch that ended a run by accident is gone and `grep -rn "default:
+ACT_ANSWER" src/` returns only the comment recording it. This was *"the one place
+a reference scaffold beat this one in a measured head-to-head"* and it is the
+only defect this project has had named by a judge that did not know whose code it
+was reading. *Streaming* —
+`EventName.DELTA` on the same request id, emitted at `ChatService.js:188`. *Prompt components* — `core/prompt/PromptTemplate.js`.
 *Deploy* — static export to GitHub Pages at `/ASKK` with `.nojekyll`;
 `git log --oneline gh-pages | wc -l` is 93, of which exactly **one**
 (`a1d7a98 Deploy 2ef2c05`) is a commit descended from this architecture's
@@ -756,16 +822,20 @@ never page content: a stale build serves a byte-identical page from disk cache.
 **Open, in the order that unblocks the most:**
 
 1. **Get the guest to the visitor.** The environment works in a browser and is
-   404 on the site this project deploys to. See *It does not reach the deployed
-   page* above; `CAPABILITIES.md` has the measurements and the three parts of the
-   experiment.
-2. **Single-writer election** — `navigator.locks` in the worker, so two open tabs
+   404 on the site this project deploys to. This is no longer a host hunt: the
+   compressed guest is built, gated and under GitHub's block, and it is untracked
+   — one `git add` and a deploy, then a `curl` that answers 200. See *It does not
+   reach the deployed page* above.
+
+3. **Single-writer election** — `navigator.locks` in the worker, so two open tabs
    cannot both drive the same run (`grep -rn "navigator.locks" src` → 0). The
    lock must be held by a promise that never settles, or it releases the moment
    the callback returns.
-3. **A filesystem.** Nothing on the realm diagram holds files. Eleven rows of
+
+4. **A filesystem.** Nothing on the realm diagram holds files. Eleven rows of
    `CAPABILITIES.md`'s *Building software* wait on one box that does not exist,
    and the measured candidate is OPFS in the backend worker.
-4. **Sub-agents that are actually constructed.** `agentWorker.js` is the only
+
+5. **Sub-agents that are actually constructed.** `agentWorker.js` is the only
    realm on the diagram nothing has ever entered: `ChatService.js:142` computes
    `peers` from a roster of one, so the pool is never asked for a thread.

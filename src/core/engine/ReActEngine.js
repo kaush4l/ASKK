@@ -11,12 +11,21 @@ import { Engine } from './Engine.js'
  * reader of that value, `ChatService`, drops it. A note is a channel the page
  * already renders, so the words go there instead of into a field nobody
  * destructures.
+ *
+ * `limit` is the caller's, because the two callers want different lengths and
+ * one implementation with a number in it is better than two implementations. A
+ * note is read by a person scanning a failed run, so 120 characters is a
+ * sentence of it. The correction below is read by the MODEL, as the evidence it
+ * needs to write a better reply, and 120 characters of a truncated scratchpad is
+ * not evidence — measured on the two real captures in `test/support/fixtures/`,
+ * the whole of what the model had written is 168 and 132 characters, so a
+ * hundred-and-twenty-character cap would cut both mid-`plan`.
  */
-function quote(last) {
+function quote(last, limit = 120) {
   const text = last === null ? '' : typeof last === 'string' ? last : String(last.answer ?? '')
   const trimmed = text.trim().replace(/\s+/g, ' ')
   if (!trimmed) return 'nothing at all'
-  return `"${trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed}"`
+  return `"${trimmed.length > limit ? `${trimmed.slice(0, limit - 3)}...` : trimmed}"`
 }
 
 /**
@@ -34,6 +43,42 @@ function until(signal) {
     else signal.addEventListener('abort', () => resolve(''), { once: true })
   })
 }
+
+/**
+ * How many replies in a row may end without saying what to do before the run
+ * does.
+ *
+ * Two, so exactly one correction is spent. The retry is worth taking because it
+ * CHANGES THE PROMPT — the scratchpad gains the reply that failed and a line
+ * saying why — and one correction is what the blind panel's reference scaffold
+ * needed every time it hit this state. Measured over its recorded runs rather
+ * than remembered: `bench/transcripts/<task>/agent-zero/` holds four runs with a
+ * `malformed` action in them — median-bug 1 and 2, slugify-module 1 and 3 —
+ * every one recovered on the very next turn and all four passed, three of the
+ * four after a `finish_reason: length`. Its own limit is FIVE
+ * (`bench/scaffolds/agent-zero.js`, `UNUSABLE_LIMIT`), so two is the tighter
+ * number and nothing in the record needed the other three. A second failure
+ * straight after the correction says the correction did not take, and a third
+ * call would be the third near-identical request to an endpoint measured at
+ * `cached_tokens: 0`.
+ *
+ * Taking that number meant taking its mechanism too, and the first version of
+ * this slice took only the number: agent-zero pushes THE RAW REPLY into history
+ * ahead of its warning (`observe`, same file), and a ReAct scratchpad holds
+ * action/observation pairs, so the previous reply appears nowhere in the retry
+ * prompt unless it is put there. A correction whose whole justification is that
+ * it changes the prompt must change it with something about the failure. So the
+ * push below carries the reply back.
+ *
+ * Counted CONSECUTIVELY rather than over the run. An agent that was corrected,
+ * did real work for five steps and then ran out of room again is not the agent
+ * this ceiling exists to stop, and it gets its one correction back. The cost is
+ * named rather than left to be discovered: an agent alternating unsaid and tool
+ * never reaches this ceiling at all and spends two model calls per productive
+ * step, bounded only by `Budget` — which is the right bound, because that agent
+ * IS making progress and the person paying is the one who set the limit.
+ */
+const UNSAID_CEILING = 2
 
 /**
  * Think → act → observe, until the agent says it is done or the run runs out.
@@ -63,9 +108,17 @@ function until(signal) {
  *      beside it were measured against an arm without them, changed nothing,
  *      and were cut. `Budget`'s own comment carries that measurement.
  *   2. A hard stop behind that, for the agent that was told this was its last
- *      turn and called a tool anyway. It is a safety net and not the mechanism,
+ *      turn and did not answer anyway. It is a safety net and not the mechanism,
  *      and it never truncates silently: the run fails, naming which budget ran
  *      out and quoting what the final turn wrote instead of an answer.
+ *
+ * A THIRD ENDING WAS MISSING ENTIRELY and is the reason this file changed. A
+ * reply that never said whether it wanted a tool or wanted to answer used to end
+ * the run as an answer, because `act` defaulted to one — so a reply cut off at
+ * the token limit before it reached the field handed the user a half-written
+ * scratchpad as the reply. `ReActResponse.normalize` now names that state and
+ * the loop sends the turn back once, through the scratchpad, and fails if the
+ * next reply does the same. `UNSAID_CEILING` above is the argument for the one.
  *
  * And the loop can be stopped from outside. `signal` is the user's, and where
  * it reaches is uneven, which is worth knowing before trusting it: it goes all
@@ -109,15 +162,21 @@ export class ReActEngine extends Engine {
     const notes = []
     const budget = new Budget(declared)
     let last = null
+    // Replies in a row that said nothing the loop could act on. Reset by any
+    // reply that decides, and named for the streak rather than for the count so
+    // it cannot be read as a total three lines from `last.isUnsaid`.
+    let unsaidStreak = 0
 
-    // Four exits: the agent answered, the user stopped it, a call to the model
-    // failed, or the budget ran out and the last word was not taken. Every one
-    // of them is a decision with a reason behind it, and every one says so.
+    // Five exits: the agent answered, the user stopped it, a call to the model
+    // failed, the budget ran out and the last word was not taken, or the model
+    // twice in a row never said what it wanted to do. Every one of them is a
+    // decision with a reason behind it, and every one says so.
     while (true) {
       if (signal?.aborted) return this.stopped(last, budget, notes)
 
-      // The safety net, and reached only one way: the previous turn was told in
-      // its own prompt that it was the last and wrote a tool call regardless.
+      // The safety net, and reached one way: the previous turn was told in its
+      // own prompt that it was the last and did not answer — it wrote a tool
+      // call, or a reply the loop could read no decision from.
       // The tool is not run and the run does not pretend to have an answer —
       // returning the tool call as one is the silent truncation this exists to
       // avoid — but what the model wrote is QUOTED IN THE NOTE rather than only
@@ -134,7 +193,7 @@ export class ReActEngine extends Engine {
             // same class of thing as an endpoint that never replied.
             Reason.UNAVAILABLE,
             `${this.constructor.LABEL}: ${budget.closing} ran out before the agent answered`,
-            'The final turn was told it was the last and called a tool anyway. Raise the budget in the agent file, or ask for something narrower.',
+            'The final turn was told it was the last and still did not answer. Raise the budget in the agent file, or ask for something narrower.',
           ),
           [
             ...notes,
@@ -182,6 +241,36 @@ export class ReActEngine extends Engine {
       // only make the user wait longer for the same answer.
       if (!taken.ok) return taken.withNote(`failed on step ${at}`)
 
+      // A reply that never said what it wanted to do is not a turn, it is a turn
+      // that did not finish, and ending on it was this loop's fail-open. It is
+      // sent back rather than answered on — and the correction goes into the
+      // SCRATCHPAD rather than into a block of its own, because the scratchpad is
+      // the channel this loop already uses to inform instead of stopping, it is
+      // already rendered into the next prompt, and a second place for a
+      // correction to live is a second place for one to go missing.
+      if (typeof last !== 'string' && last.isUnsaid) {
+        unsaidStreak += 1
+        if (unsaidStreak >= UNSAID_CEILING) return this.unreadable(last, budget, notes)
+        // `act` is left out of the echo on purpose: it now reads `unsaid`, a
+        // word the contract does not contain, and quoting it back would teach a
+        // fourth verb. Read off the response's own class rather than a name
+        // spelled here, so a contract with different fields still echoes them.
+        const written = last.constructor
+          .fieldNames()
+          .filter((name) => name !== 'act' && String(last[name] ?? '').trim())
+          .map((name) => `${name}: ${[last[name]].flat().join(', ')}`)
+          .join(' | ')
+        scratchpad.push({
+          action: written
+            ? `${last.unsaidBecause} — it had written ${quote(written, 400)}`
+            : last.unsaidBecause,
+          observation:
+            "nothing was run and nothing was shown to the user. Reply again, and set act to exactly 'tool' or exactly 'answer'. If you were running out of room, keep think and plan short so the reply reaches act.",
+        })
+        continue
+      }
+      unsaidStreak = 0
+
       // A plain-text run has no `act` to read, so the first reply is the answer.
       if (typeof last === 'string' || last.isAnswer !== false) {
         return Outcome.ok(
@@ -221,6 +310,54 @@ export class ReActEngine extends Engine {
       ...notes,
       `you stopped this run after ${budget.steps} step(s)${last ? '' : ', before the model had said anything'}`,
     ])
+  }
+
+  /**
+   * A run that ended because the model twice never said what it wanted to do.
+   *
+   * A failure and not an answer, and that distinction is the whole fix: what the
+   * loop is holding is a half-written scratchpad, and every layer below this one
+   * would render it as speech. UNAVAILABLE for the reason the budget's hard stop
+   * uses it — nothing in this app is broken, the answer is simply not available
+   * on the terms this run was given.
+   *
+   * WHY the model ran out of room is not this file's to say and it does not
+   * guess. The transport classified the reply when it arrived and its note
+   * travelled here with it — "the reply was cut off at the N-token limit after M
+   * characters" — so `notes` already carries the cause beside the consequence,
+   * on the channel the page renders. Nothing is carried on the value: the budget
+   * stop's own comment records that `ChatService` drops it.
+   *
+   * WHICH way the last reply was unreadable IS this file's to say, and it says
+   * it in the message rather than in a guess in the hint. There are two routes
+   * into this ending and they have opposite remedies: a reply cut off before the
+   * decision, where a ceiling is the lever, and `act: shell` — a complete reply
+   * with a wrong word in it, where no ceiling anywhere is the cause and sending
+   * the same request again produces the same word. `ReActResponse.normalize`
+   * knows which happened and puts it on `unsaidBecause`.
+   *
+   * The hint names NO lever, and that is the correction rather than an omission.
+   * An earlier version of it said "raise max tokens for this model" on both
+   * routes. `OpenAICompatible` had already found and closed exactly that defect
+   * one file over — its `RAISABLE` constant exists because the app's own default
+   * is 131,072, so the one number a reader was sent to change was the one number
+   * that could not be the cause — and this file holds neither `maxTokens` nor
+   * that judgement. A second copy of it here is the second spelling of a rule
+   * that then drifts. What this file knows is whether the reply was cut, and the
+   * notes already say so.
+   */
+  unreadable(last, budget, notes) {
+    return Outcome.failed(
+      Reason.UNAVAILABLE,
+      `${this.constructor.LABEL}: ${UNSAID_CEILING} replies in a row ended without saying whether to use a tool or to answer — ${last.unsaidBecause}`,
+      {
+        hint: "The notes say whether the endpoint cut each reply off, and at what ceiling; if it did, that ceiling is the lever. If it did not, the model wrote something in act that is neither 'tool' nor 'answer', and sending the same request again will not change that — ask for something narrower, or use a different model.",
+        notes: [
+          ...notes,
+          `stopped after ${budget.steps} steps: ${UNSAID_CEILING} replies in a row ended before saying what to do, so nothing was run and nothing was shown`,
+        ],
+      },
+    )
   }
 
   /**

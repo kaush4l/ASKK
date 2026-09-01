@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Boot the built artifact in a browser and make three realms answer — the page
- * and its module workers, the classic sandbox worker, and the real 107 MB guest
+ * and its module workers, the classic sandbox worker, and the real guest
  * through the tree's own `C2wSandbox`.
  *
  * The other three steps of the gate cannot see a module that parses, resolves
@@ -101,9 +101,16 @@ const GUEST_URL = `${BASE}/__smoke/guest.wasm`
 const SRC_URL = `${BASE}/__src`
 const SRC = join(import.meta.dir, '..', 'src')
 
-/** Where the export puts what `public/sandbox/` holds, and what the page asks for. */
-const IMAGE_FILE = join(OUT, 'sandbox', 'sandbox.wasm')
-const IMAGE_URL = `${BASE}/sandbox/sandbox.wasm`
+/**
+ * Where the export puts what `public/sandbox/` holds, and what the page asks for.
+ *
+ * The GZIPPED image, because that is the one a repository can carry and
+ * therefore the only one a deploy has. Pointing this at the raw module would
+ * prove the emulator runs and prove nothing about the artifact that ships — and
+ * the raw module is exactly what the live page 404-ed on.
+ */
+const IMAGE_FILE = join(OUT, 'sandbox', 'sandbox.wasm.gz')
+const IMAGE_URL = `${BASE}/sandbox/sandbox.wasm.gz`
 
 open.server = Bun.serve({
   port: 0,
@@ -152,11 +159,31 @@ open.chrome = Bun.spawn(
 
 const portFile = join(open.profile, 'DevToolsActivePort')
 const launched = Date.now()
-while (!existsSync(portFile) && Date.now() - launched < 20000) await Bun.sleep(20)
-if (!existsSync(portFile)) await fail('the browser did not start within 20s')
-const [port, endpoint] = readFileSync(portFile, 'utf8').trim().split('\n')
+// Polled until the file PARSES, not until it exists. Chrome creates this file
+// and then writes it, so a read that wins that race returns an empty string,
+// `port` is `undefined`, and `new WebSocket('ws://127.0.0.1:undefined...')`
+// throws — at the top level of a module, above every catch, so `shutdown` never
+// runs and the browser tree and its profile are orphaned. That is the exact
+// leak the SIGKILL-and-wait above exists to stop, and it was observed once in
+// roughly ten runs: seven Chrome processes still holding their profile 70 s later.
+let port = null
+let endpoint = null
+while (Date.now() - launched < 20000) {
+  const [p, e] = existsSync(portFile) ? readFileSync(portFile, 'utf8').trim().split('\n') : []
+  if (p && e) {
+    port = p
+    endpoint = e
+    break
+  }
+  await Bun.sleep(20)
+}
+if (!port) await fail('the browser did not report a debugger port within 20s')
 
-open.socket = new WebSocket(`ws://127.0.0.1:${port}${endpoint}`)
+try {
+  open.socket = new WebSocket(`ws://127.0.0.1:${port}${endpoint}`)
+} catch (cause) {
+  await fail(`the browser wrote a debugger endpoint this cannot dial: ${cause.message}`)
+}
 await new Promise((resolve) => {
   open.socket.addEventListener('open', resolve)
   // Reported, not rejected. A rejection here reaches the top level of a module
@@ -306,7 +333,7 @@ const sandbox = await evaluate(
 
 if (sandbox !== 'ok') await fail(`the sandbox worker ${sandbox}`, problems)
 
-// --- realm three: the real 107 MB guest, through the tree's own port ---------
+// --- realm three: the real guest, through the tree's own port ---------------
 
 // The whole claim of this project is a static page with its own environment
 // that can get work done inside it. Everything above proves the wiring; only
@@ -325,7 +352,7 @@ if (sandbox !== 'ok') await fail(`the sandbox worker ${sandbox}`, problems)
 //                    see that, because the source was always readable and
 //                    always wrong.
 //   the browser run  proves the module, the classic worker, the WASI shim and
-//                    the 107 MB emulator actually run a command, hand back what
+//                    the emulator actually run a command, hand back what
 //                    it printed, and hand back the status it exited with.
 //
 // The string searched for is the one THIS build was configured with, read from
@@ -333,7 +360,7 @@ if (sandbox !== 'ok') await fail(`the sandbox worker ${sandbox}`, problems)
 // gate red on the one procedure `composition.js` argues for — a
 // `SANDBOX_IMAGE=<url> bun run build` compiled the override into the chunk, the
 // scan could not find the default, and the step blamed a file that was correct.
-const CONFIGURED_IMAGE = config.env.NEXT_PUBLIC_SANDBOX_IMAGE || '/sandbox/sandbox.wasm'
+const CONFIGURED_IMAGE = config.env.NEXT_PUBLIC_SANDBOX_IMAGE || '/sandbox/sandbox.wasm.gz'
 const chunks = join(OUT, '_next', 'static', 'chunks')
 const carriers = readdirSync(chunks)
   .filter((name) => name.endsWith('.js'))
@@ -356,13 +383,14 @@ if (config.env.NEXT_PUBLIC_SANDBOX_IMAGE)
   )
 
 if (!existsSync(IMAGE_FILE)) {
-  // SAID, not skipped silently. The image is gitignored — 107 MB — so a fresh
-  // clone genuinely has none, and failing here would make the gate impossible
-  // to run before `scripts/wasm/build.sh` has ever been run. What is NOT
-  // skipped is the chunk scan above: a build that forgot where its guest lives
-  // is a source fault and fails on any machine.
+  // SAID, not skipped silently. The image is a BUILD OUTPUT — the raw module it
+  // is compressed from is gitignored and the container build that makes both is
+  // not cheap — so a fresh clone genuinely has none, and failing here would make
+  // the gate impossible to run before `scripts/wasm/build.sh` has ever been run.
+  // What is NOT skipped is the chunk scan above: a build that forgot where its
+  // guest lives is a source fault and fails on any machine.
   console.log(
-    `smoke: SKIPPED the real guest — ${IMAGE_FILE} is not there (it is gitignored; build it with scripts/wasm/build.sh). The wiring was still checked: ${carriers.join(', ')} names it.`,
+    `smoke: SKIPPED the real guest — ${IMAGE_FILE} is not there (build it with scripts/wasm/build.sh). The wiring was still checked: ${carriers.join(', ')} names it.`,
   )
 } else {
   // Imported, not reimplemented. `C2wSandbox.js` is plain JavaScript with no
@@ -377,8 +405,8 @@ if (!existsSync(IMAGE_FILE)) {
        })
        const available = box.available
        const at = performance.now()
-       // The first call pays for the whole 107 MB: fetch, compile, instantiate
-       // and boot the guest. The second pays for an instance and a boot only,
+       // The first call pays for the whole image: fetch, inflate, compile,
+       // instantiate and boot. The second pays for an instance and a boot only,
        // which is the number that says what a second command costs.
        const first = await box.run('uname -a')
        const cold = Math.round(performance.now() - at)
@@ -390,8 +418,8 @@ if (!existsSync(IMAGE_FILE)) {
      })()`,
     session,
     true,
-    // The ceiling is the whole 107 MB fetch, compile and two guest boots, not a
-    // protocol round trip. Measured on this machine at ~1.7 s over loopback.
+    // The ceiling is the whole image fetch, inflate, compile and two guest
+    // boots, not a protocol round trip. Measured here at ~1.7 s over loopback.
     120000,
   )
 
@@ -433,9 +461,35 @@ if (!existsSync(IMAGE_FILE)) {
   if (real.failing.value.stdout.includes('__askk_rc'))
     await fail(`the status marker reached the caller: ${said(real.failing.value.stdout)}`, problems)
 
+  // The image was COMPRESSED on the wire and the worker inflated it. Asserted
+  // from the note the sandbox announces once per boot, because that note is the
+  // only place either number is observable, and the two must differ: a gzip
+  // stream does not start with `\0asm`, so a build that shipped the raw module
+  // under this name, or a loader that stopped inflating, fails here rather than
+  // silently sending a visitor the whole uncompressed module. The numbers
+  // themselves are the guest's own, not this file's.
+  //
+  // This asserts a property of THIS SERVER as much as of the artifact. Two sizes
+  // appear only because this file's own server answers the `.gz` with no
+  // `Content-Encoding`; a host that sets it has already inflated the body, the
+  // loader's magic-byte sniff correctly does nothing, and one size is the right
+  // answer there. Do not "fix" the sniff to satisfy this line — the assertion is
+  // narrower than the loader on purpose, and it is narrow because this file owns
+  // the server it is measuring.
+  const sizes = real.first.notes.find((note) => note.startsWith('the sandbox image is'))
+  const transfer = sizes?.match(/is (\d+) bytes, fetched once for this tab as (\d+) compressed/)
+  if (!transfer)
+    await fail(`the guest did not report a compressed transfer: ${said(real.first.notes)}`, [
+      'The image the page loads is gzipped, because the raw module is over',
+      "GitHub's 100 MiB per-file limit and the compressed one is under it.",
+      'See inflated() in public/sandbox/vm-worker.js, and the derived URL',
+      'in src/backend/composition.js.',
+    ])
+
   console.log(
     `smoke: the real guest answered ${said(real.first.value.stdout.trim())} in ${real.cold}ms cold, ` +
-      `then a failing command in ${real.hot}ms warm (exit ${real.failing.value.code})`,
+      `then a failing command in ${real.hot}ms warm (exit ${real.failing.value.code}); ` +
+      `${transfer[2]} bytes fetched, inflated to ${transfer[1]}`,
   )
 }
 

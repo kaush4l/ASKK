@@ -1,0 +1,114 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>guest host probe</title>
+<pre id="out">booting…</pre>
+<script>
+// PROBE 4's page. It isolates itself with the same coi-serviceworker the other
+// probes use and then does exactly one thing: boot the TREE'S OWN
+// public/sandbox/vm-worker.js — served from this origin by the probe host, not
+// copied — against whatever image URL the driver hands it. Nothing about the
+// loader is reimplemented here, because the loader is what is under test.
+const MODE = new URL(location.href).searchParams.get("coep") || "require-corp";
+const out = document.getElementById("out");
+const say = (v) => { out.textContent += "\n" + JSON.stringify(v); };
+
+async function boot() {
+  if (MODE !== "off" && "serviceWorker" in navigator) {
+    await navigator.serviceWorker.register("coi-serviceworker.js?coep=" + MODE, { scope: "./" });
+    await navigator.serviceWorker.ready;
+    const key = "coi_reloads_" + MODE;
+    const n = Number(sessionStorage.getItem(key) || "0");
+    if (!self.crossOriginIsolated && n < 2) {
+      sessionStorage.setItem(key, String(n + 1));
+      location.reload();
+      return;
+    }
+  }
+  window.__READY = true;
+  say({ ready: true, crossOriginIsolated: self.crossOriginIsolated, mode: MODE });
+}
+
+/**
+ * One guest, one command, through the shipped worker.
+ *
+ * The whole cell is what `wasmUrl` is: same origin, one port over with CORP,
+ * one port over without it, one port over with no CORS at all. What comes back
+ * is the worker's own answer, so a `boot-failed` here is the message a visitor
+ * would have been given.
+ */
+window.__runGuest = (wasmUrl, command) => new Promise((resolve) => {
+  const t0 = performance.now();
+  let boot = null;
+  const worker = new Worker("vm-worker.js", { name: "probe-guest" });
+  const done = (answer) => { worker.terminate(); resolve({ ...answer, coi: self.crossOriginIsolated }); };
+  worker.onerror = (e) => done({ ok: false, where: "worker", err: e.message || "no message" });
+  worker.onmessage = (e) => {
+    const d = e.data || {};
+    if (d.type === "booted") {
+      boot = { ms: Math.round(performance.now() - t0), bytes: d.bytes, transferred: d.transferred };
+      say({ booted: boot });
+      worker.postMessage({ type: "run", id: "p", argv: ["sh", "-c", command] });
+      return;
+    }
+    if (d.type === "boot-failed") return done({ ok: false, where: "boot", err: d.message, ms: Math.round(performance.now() - t0) });
+    if (d.type === "result") return done({ ok: d.ok, stdout: d.stdout, code: d.code, trap: d.trap, err: d.message, boot, ms: Math.round(performance.now() - t0) });
+  };
+  worker.postMessage({ type: "boot", wasmUrl });
+  setTimeout(() => done({ ok: false, where: "timeout", err: "no answer in 180s" }), 180000);
+});
+
+/**
+ * Is the realm that does the fetch the isolated one?
+ *
+ * The guest cells below run inside a classic worker, and a page's
+ * `crossOriginIsolated` is not a statement about its workers. Asked of a worker
+ * created exactly the way `C2wSandbox` creates `vm-worker.js`.
+ */
+window.__workerIsolation = () => new Promise((resolve) => {
+  const w = new Worker("classic-isolation.js", { name: "probe-isolation" });
+  w.onmessage = (e) => { w.terminate(); resolve(e.data); };
+  w.onerror = (e) => { w.terminate(); resolve({ err: e.message || "no message" }); };
+  w.postMessage({});
+  setTimeout(() => resolve({ err: "timeout" }), 5000);
+});
+
+/** A plain cross-origin fetch, reported by what arrived rather than by whether it threw. */
+window.__fetchOnly = async (url) => {
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    const bytes = (await res.arrayBuffer()).byteLength;
+    return { arrived: true, status: res.status, type: res.type, bytes, ms: Math.round(performance.now() - t0),
+             corp: res.headers.get("cross-origin-resource-policy") ?? "(absent)",
+             acao: res.headers.get("access-control-allow-origin") ?? "(absent)" };
+  } catch (e) {
+    return { arrived: false, err: String(e), ms: Math.round(performance.now() - t0) };
+  }
+};
+
+/**
+ * Does the image have to arrive in ONE response?
+ *
+ * `vm-worker.js` calls `WebAssembly.compile` on a single ArrayBuffer it has
+ * already assembled with `arrayBuffer()`, so the question is only whether that
+ * buffer may be built from several responses. Answered by building one that
+ * way and hashing it against the whole file the driver hashed on disk.
+ */
+window.__reassemble = async (urls) => {
+  const t0 = performance.now();
+  try {
+    const parts = await Promise.all(urls.map(async (u) => new Uint8Array(await (await fetch(u, { cache: "no-store" })).arrayBuffer())));
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const whole = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) { whole.set(p, at); at += p.length; }
+    const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", whole))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const compiled = await WebAssembly.compile(whole.buffer).then(() => true, (e) => String(e));
+    return { parts: parts.map((p) => p.length), bytes: total, sha256: digest, compiled, ms: Math.round(performance.now() - t0) };
+  } catch (e) {
+    return { err: String(e), ms: Math.round(performance.now() - t0) };
+  }
+};
+
+boot();
+</script>

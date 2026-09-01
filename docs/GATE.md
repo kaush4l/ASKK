@@ -5,10 +5,26 @@ still cannot, because the question came up as a claim that turned out to be half
 wrong, and the only way to settle any of it was to break the tree deliberately
 and watch.
 
-    lint    biome over src, scripts, test, next.config.js, public/sandbox/vm-worker.js
-    test    bun test --isolate, importing modules directly
+    lint    biome over src, scripts, test, bench, next.config.js,
+            public/sandbox/vm-worker.js
+    test    bun test --isolate ./test, importing modules directly
     build   next build, static export
     smoke   scripts/smoke.js — boots out/ in headless Chrome
+
+`check` is `lint && test && smoke`, and `smoke` composes `build`, so the four
+steps above are what runs and the definition lives in `package.json` once.
+
+**Two of those targets collide with the benchmark rig's output, and only one of
+the collisions is fixed.** `bun run bench` writes a throwaway workspace under
+`bench/work/`, seeded from task fixtures and filled by both arms' models. That
+directory is in `.gitignore`, which stops neither tool: `bun test` was scoped to
+`./test` because the rig writes files matching both `test` and `test/` (measured
+with two failing files planted at once: `test` → 2 fail, `test/` → 1 fail,
+`./test` → 0), and `biome check` was **not** scoped, because `biome.json` has no
+`vcs` block and so does not read `.gitignore` either. Measured: without `bench`,
+123 files clean; with `bench` after a benchmark run, 136 files and **6 errors**,
+all six in files a model wrote. **Running the benchmark turns this gate red and
+the gate cannot tell that from a real fault.** `docs/LEDGER.md`, row S30.
 
 Every row in the table below is one exact edit applied to a clean tree, all four
 steps run, then the file restored byte for byte. `pass` means the step went
@@ -144,28 +160,92 @@ guest image is ~100 MB and cannot be a gate's dependency at all — which is not
 the same as saying the gate may never run it, and the third realm is what that
 distinction bought.
 
-- **the real 107 MB guest, through `src/backend/sandbox/C2wSandbox.js`.** Two
+- **the real guest, through `src/backend/sandbox/C2wSandbox.js`.** Two
   waves measured this guest and neither ever ran it through the tree's own port:
   everything known about it came from scratch copies of the host half, and a
   refuter killed both claims for exactly that. This step imports the real module
   — possible only because there is no transpile over `src/`, so the browser gets
-  the file the repository holds — points it at `out/sandbox/sandbox.wasm` and
+  the file the repository holds — points it at `out/sandbox/sandbox.wasm.gz` and
   `out/sandbox/vm-worker.js`, and runs two commands. It asserts
   `available === true`, that `uname -a` answers a line starting `Linux `, and
   that a failing command's diagnostic comes back.
 
+  **The `.gz` is the point, not a detail.** GitHub blocks any file over 100 MiB
+  and the block is on the file at rest, so the uncompressed guest could be in
+  neither the repository nor the Pages branch and
+  `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm` was a 404 while the page
+  beside it answered 200. `gzip -9` is under the limit, GitHub takes it, and
+  `vm-worker.js` inflates it with `DecompressionStream`. Pointing this step
+  at the raw module would prove the emulator runs and prove nothing about the
+  artifact that ships, so it asserts the boot note carries two DIFFERENT sizes:
+  a gzip stream does not begin `\0asm`, so a loader that stopped inflating, or a
+  build that shipped the raw module under this name, fails here rather than
+  sending a visitor the whole uncompressed module.
+
+  **The two sizes live here and nowhere else.** They are a measurement, and a
+  measurement that is copied into a comment becomes a confident lie the next time
+  `scripts/wasm/build.sh` runs. What belongs in a comment is the threshold — over
+  100 MiB raw, under it compressed — because that survives a rebuild. Measured
+  2026-09-01, on the artifact `scripts/wasm/build.sh` produced:
+
+      wc -c public/sandbox/sandbox.wasm          107054914   (102.1 MiB)
+      wc -c public/sandbox/sandbox.wasm.gz        40029960   ( 38.2 MiB)
+      shasum -a 256 public/sandbox/sandbox.wasm  f5d05789…c102a70
+      gzip -dc public/sandbox/sandbox.wasm.gz | shasum -a 256   the same digest
+
+  100 MiB is 104,857,600, so the raw module is 2,197,314 bytes over. The last
+  line matters more than the sizes: the `.gz` inflates to the raw module's own
+  digest, so the compressed artifact is the same guest and not a stale one.
+
+  Two other compressors were priced and neither earns its time. Against
+  `gzip -9`'s 10.5 s (`time gzip -9 -c … > /dev/null`), brotli q11 with a
+  `BROTLI_PARAM_SIZE_HINT` reaches 30,089,508 in 116.1 s and zstd −19 reaches
+  30,617,879 in 15.8 s (both via `node:zlib`, same machine, same day). Both are
+  ~24% smaller, and neither is reachable: the loader sniffs `1f 8b` and runs
+  `DecompressionStream('gzip')`, and a static host that answers a `.br` or `.zst`
+  with `Content-Encoding` would inflate it before `fetch` resolved anyway. The
+  saving is real and it is not worth a second format in the loader.
+
+  **What the real host sends was a hope and is now a measurement.** The loader
+  sniffs the magic bytes instead of switching on the extension, which is correct
+  either way — but only one of the two ways needs the inflate, and which one
+  GitHub Pages picks had never been asked. It can be asked without deploying, on
+  somebody else's Pages site that already serves a `.gz`:
+
+      curl -s -D - -H 'Accept-Encoding: gzip, deflate, br' \
+        https://yanniboi.github.io/game-ci-test/Build/WebGL.wasm.gz
+
+      HTTP/2 200 · server: GitHub.com · content-type: application/gzip
+      content-length: 3289414 · NO content-encoding
+      curl -s -r 0-7 <same url> | xxd  ->  1f8b 0818 7f24 3f61
+
+  Raw gzip bytes, no `Content-Encoding`, body beginning with exactly the `1f 8b`
+  the loader looks for. So on the deploy `fetch` does NOT pre-inflate, the sniff
+  fires and `DecompressionStream` runs — the path the smoke exercises is the path
+  that ships. Measured 2026-09-01.
+
+  **None of which is deployed.** Same day, `curl -s -o /dev/null -w '%{http_code}'`
+  against `https://kaush4l.github.io/ASKK`: `/` 200, `/sandbox/vm-worker.js` 200,
+  `/sandbox/sandbox.wasm` **404**, `/sandbox/sandbox.wasm.gz` **404**. The
+  compressed guest is built and gated and it is not tracked, so every `shell`
+  call on the live page still reaches `boot-failed`. This step proves the
+  artifact works; it cannot prove anyone can reach it, and nothing here should be
+  read as saying the 404 is closed.
+
   It also asserts, from `out/_next/static/chunks/`, that some chunk contains the
-  string `/sandbox/sandbox.wasm`. That is not decoration. Until this slice
+  string `/sandbox/sandbox.wasm.gz` — or, under a `SANDBOX_IMAGE` override, that
+  URL instead. That is not decoration. Until this slice
   `composition.js` read the image URL from an environment variable nothing
   anywhere set, so every build ever made shipped `imageUrl:""` and the string
   `sandbox.wasm` appeared nowhere in `out/_next/` at all. A source-level check
   cannot see that fault, because the source was always readable and always
   wrong; only the artifact says whether the URL survived into it.
 
-  **The image is gitignored, so a fresh clone has none.** The step then SAYS it
+  **The image is a build output, so a clone that has never run
+  `scripts/wasm/build.sh` may have none.** The step then SAYS it
   is skipping and why, in one line on stdout, and the chunk scan still runs — a
   build that forgot where its guest lives is a source fault and fails on any
-  machine, with or without 107 MB on disk. A check that opts out silently is the
+  machine, with or without a guest on disk. A check that opts out silently is the
   thing this file was written against; a check that cannot run at all until
   `scripts/wasm/build.sh` has been run once is a check nobody can adopt.
 
@@ -308,14 +388,22 @@ noise lands on both:
 Re-measured when the real guest was added, same machine, three runs each:
 
     the smoke step, image absent (skipped)   0.71 s
-    the smoke step, image present            2.33 / 2.30 / 2.49 s
+    the smoke step, the raw image            2.33 / 2.30 / 2.49 s
+    the smoke step, the gzipped image        2.41 / 2.58 / 2.38 s
 
-The 1.6 s is the guest and nothing else: 0.94 s for the cold call — the 107 MB
-fetch over loopback, `WebAssembly.compile`, an instance and the Alpine boot —
-and 0.73 s for the second, which pays for everything but the fetch and the
-compile. It is the most expensive thing in the gate, and the only thing in the
-gate that executes the substrate this project's claim rests on. A machine that
-does not want to pay it does not have the file.
+The 1.6 s is the guest and nothing else: 0.94 s for the cold call — the fetch
+over loopback, the inflate, `WebAssembly.compile`, an instance and the Alpine
+boot — and 0.73 s for the second, which pays for everything but the fetch and
+the compile. **Compressing the image cost the gate nothing measurable**: the
+cold call went 1015 / 951 / 965 ms raw to 1011 / 1046 / 1023 ms gzipped, because
+inflating 40 MB buys back most of the 67 MB it no longer moves. Over loopback
+that trade is a wash and the number to keep is the deploy's: 67 MB less down a
+real connection. Measured separately, cross-origin over loopback in
+`scripts/probe/results/2026-09-01T10-13-54-host.md`, the inflate itself is
+~150 ms — a raw cross-origin boot is 51 ms and a gzipped one 199 ms. It is the
+most expensive thing in the gate, and the only thing in the gate that executes
+the substrate this project's claim rests on. A machine that does not want to pay
+it does not have the file.
 
 Booting and running a guest costs nothing measurable: the module is ~300 bytes,
 `WebAssembly.compile` on it is sub-millisecond, and the round trip is one
@@ -332,14 +420,20 @@ every run, so there is no state for either flag to suppress.
 ## Requirements
 
 The smoke needs a Chromium. It looks at `$CHROME` first, then the usual macOS and
-Linux paths. It does NOT need `public/sandbox/sandbox.wasm`: without it the third
-realm prints that it was skipped, and everything else still runs. **A missing browser fails the step**; it does not skip it. A check
-that quietly opts out on the machine where it matters is not a check, and this
-repository has shipped a dead page under a green gate before.
+Linux paths. It does NOT need `public/sandbox/sandbox.wasm.gz`: without it the
+third realm prints that it was skipped, and everything else still runs.
+**A missing browser fails the step**; it does not skip it. A check that quietly
+opts out on the machine where it matters is not a check, and this repository has
+shipped a dead page under a green gate before.
 
 `bun run smoke` builds first. It used to run `scripts/smoke.js` against whatever
 `out/` happened to be lying around, which is how it reported `ready in 176ms` over
 a `src/` tree carrying row 6 — the exact fault this whole step exists to catch.
+The same trap eats mutation checks: `public/sandbox/` is COPIED into `out/` at
+build time, so an edit to `public/sandbox/vm-worker.js` followed by bare
+`bun scripts/smoke.js` measures the old worker and passes. Row 3 above was
+re-verified that way once and read as a hole in the gate before the rebuild
+turned it red. Mutate, then `bun run smoke`, never `bun scripts/smoke.js`.
 Inside `check` it was safe, because build ran first; alone it manufactured the
 false green. `check` now composes `smoke` rather than repeating the build, so it
 costs nothing.

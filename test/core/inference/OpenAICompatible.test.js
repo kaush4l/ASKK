@@ -60,6 +60,19 @@ describe('the captured replies', () => {
     expect(choice.message.content.split('shell({"command": "uname -a"})').length - 1).toBe(4)
   })
 
+  test('truncation INSIDE the contract: the same state, and no act line at all', () => {
+    const choice = JSON.parse(fixture('truncated-mid-contract.json')).choices[0]
+
+    expect(choice.finish_reason).toBe('length')
+    // Routed correctly, unlike the file above — so this is `cut`, not the dump.
+    expect(choice.message.reasoning_content.length).toBe(4352)
+    // And what is MISSING is the whole of the problem: the model got two fields
+    // into a four-field contract and stopped. No transport can see that, and
+    // `ReActResponse` used to fill the gap in with 'answer' and end the run.
+    expect(choice.message.content.startsWith('think: [')).toBe(true)
+    expect(choice.message.content).not.toContain('act:')
+  })
+
   test('spent INSIDE the think block: length, reasoning present, and NO content key', () => {
     const choice = JSON.parse(fixture('spent-in-think.json')).choices[0]
 

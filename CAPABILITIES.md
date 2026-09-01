@@ -250,7 +250,7 @@ packages, `apk info -e tree` from absent to present, and `/usr/bin/tree` from a
 12-byte busybox symlink to a 65,072-byte binary. What actually blocks `apk add`
 from a *repository* is C2, not C5: `eth0` exists but is `qdisc noop state DOWN`
 and `/etc/resolv.conf` is empty, because every WASI socket call is stubbed
-`ENOTSUP` (`vm-worker.js:93-98`). Evidence:
+`ENOTSUP` (`vm-worker.js:121-132`). Evidence:
 `scripts/probe/results/` (`pty`, install stage).
 
 What survives is narrower and still binding: the image's *contents at boot* are
@@ -269,11 +269,13 @@ improves: a tool that is a fetched wasm module is not in an image at all.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| Run the loop | agent-zero `agent.py:391` | a module worker | have | have | unverified | — | `ReActEngine.js:116` `while (true)` |
+| Run the loop | agent-zero `agent.py:391` | a module worker | have | have | unverified | — | `ReActEngine.js:174` `while (true)` |
 | Bound it | — | a budget, and one sentence about it | have | have | have | — | `Budget.js` renders `# BUDGET` ONLY on the turn that has no room left — the running counters it used to print were measured against an arm without them (n=8, same distribution), cost 30 tokens a turn at `cached_tokens: 0`, and were cut; `AgentSpec.js` parses the terms and refuses `"250k"` rather than reading 250 off the front of it; the hard stop quotes what the last turn wrote instead of an answer — a note, never a truncation |
 | Cancel it | MCP spec `cancellation.mdx` | to the open request | have | have | have | — | a signal cannot be structured-cloned, so `Envelope.js:129` `calls.cancel` names the call instead; `Kernel.js:90` holds one controller per request; `Inference.js:179` `_either` combines it with the deadline so it reaches `fetch`; `page.jsx:607` `onClick={() => clientRef.current?.stop(running)}` is the button |
 | Terminate a runaway thread | — | a method with no caller | absent | absent | absent | — | `AgentWorkerPool.js:124` — `grep -rn "pool.terminate" src` → no matches |
 | Approve an action mid-loop | — | nothing | absent | absent | absent | — | none |
+| Notice that a reply was cut off | — | the transport does; nothing below it does | degraded | degraded | unverified | — | **The transport classifies four truncation states and refuses two of them.** `OpenAICompatible.js:304-310` `_state` reads `finish_reason` and `reasoning_content` together; `:189` `if (state === Reply.THINKING) return this._dumped(text.length)` refuses a reply whose `content` is raw scratchpad, and `:174` `_spent` refuses one that never began. `ReActEngine.js:242` `if (!taken.ok) return taken.withNote(...)` — so a refusal ends the run with a named failure instead of with a fabricated answer. **The degradation is `Reply.CUT`**: `:190` `Outcome.ok(text, [this._cutNote(text.length)])` hands a truncated answer on as an ordinary answer with a note, and nothing after it consults `finish` again — `grep -rn "finish" src/core/engine/ src/core/response/` returns 5 hits, all prose in comments |
+| Refuse a reply that carries no action | agent-zero `extract_tools.py` — an unparsable reply is `misformat`, re-prompted, and the turn is retried | the same, for both routes inside the contract | degraded | degraded | unverified | — | **The fail-open is gone and the two routes are now told apart in words.** `ReActResponse.js:55` is the comment where `default: ACT_ANSWER` used to be — `grep -rn "default: ACT_ANSWER" src/` now returns **one hit, in that comment**. `normalize` matches at `:137` and falls to `ACT_UNSAID` at `:161` with no default; `:181` `isUnsaid`. Probed by the accountant through the shipped `parse`, not read off a diff: `'think: [a]\n\nplan: [c'` → `act=unsaid`, *"the reply stopped before it reached the act line"*; `act: shell` → `act=unsaid`, *"the model wrote act: shell, which is neither 'tool' nor 'answer'"*; a JSON `"act": 4` and `"act": {"tool":"shell"}` both → `unsaid` rather than the throw the missing `String()` used to allow. `ReActEngine.js:251` counts the streak, `:253` ends the run at `UNSAID_CEILING = 2` (`:81`) through `unreadable` (`:349`), which names the route and no lever; `:272` resets it. **The named cost is the third route, which is unchanged**: `BaseResponse.js:277` `return new this({ [this.answerField()]: text.trim() })` still makes a reply the answer when neither parser found any field. Measured over all 34 recorded replies, that branch is taken **10 times and every one of the 10 is `Reply.THINKING`** — refused by the transport before `parse` is reached — so it is taken **0 times in production** and a model inside the contract cannot reach it. `degraded` rather than `have` because the branch exists and the reference arm refuses that reply where we answer it |
 
 The loop was unbounded **and** uncancellable at the same time, which was worse
 than either alone: an agent that alternated between two different tool calls ran
@@ -308,17 +310,17 @@ and the budget is per-run rather than per-tree.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| Run a command | pi `env/nodejs.ts:145` (the one `spawn`), `:230` (`/bin/bash`) | c2w Alpine in wasm, ~102 MiB beside the page | degraded | degraded | unverified | — | **Run through the built artifact for the first time on 2026-09-01, which is the one thing two prior waves never did.** `bun run build`, then the export served from `Bun.serve` and opened in headless Chrome; the page's own module worker was kept by proxying `Worker` in `Page.addScriptToEvaluateOnNewDocument`, and `settings.save` / `conversations.create` / `chat.send` were sent to it as envelopes. Everything under the wire was the bundled build — `buildKernel`, `C2wSandbox`, `ChatService`, `ReActEngine`, `Toolbox`, `ShellTool`. The model was the only substitution, a local endpoint the same script served, and the observation it was handed on step 2 was `shell -> Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux / marker-42 / ls: /definitely-not-here: No such file or directory / rc=1` — output, arithmetic the guest did, and a real non-zero status. Whole turn 2,732 ms, two guest boots in it (MCP discovery, then the command). Repeated against the real model on `http://127.0.0.1:8873/v1`: 21,203 ms, two steps, final answer *"The sandbox kernel release is 6.1.0, and the shell computes 6*7 as 42."* **The harness is a scratch file and is NOT in the tree** — `docs/LEDGER.md` row S22. What is committed: `scripts/smoke.js` runs the same guest through `C2wSandbox.js:177` every `bun run check` (three runs: cold 1015 / 951 / 965 ms, warm 764 / 751 / 749 ms, `Linux localhost 6.1.0 …` and exit 1 every time) and `test/backend/composition.test.js:210` asserts `buildKernel` yields `chat.services.sandbox.available === true`. **Two costs, both named.** Speed: against the identical busybox 1.37.0 in `docker run --rm alpine:3.21`, same bytes (both print sha256 `2daeb1f3…`), `awk` 1e6 loop 85,930 ms vs 0.24 s = **358x**, `sha256sum` 8 MB 9,700 ms vs 0.02 s = **485x**, `gzip -c` 8 MB 7,661 ms vs 0.03 s = **255x** — the guest is `x86_64` and the native control ran `aarch64`, which flatters the guest. Host: the row below. Both numbers the model is actually handed are wrong: `ShellTool.js:25` tells it the command line cannot exceed 1024 bytes (it is 993), and `C2wSandbox.js:216` plus `agents/main/agent.md:29` tell it the emulator is *"roughly a hundred times slower"* (it is 255x–485x). `docs/LEDGER.md` row S25 |
-| Get that environment to the visitor | bolt.diy `README.md:515` (WebContainer is fetched from its vendor, under a licence) | a 102 MiB file the project's own host refuses | absent | absent | absent | — | **Measured on the live deploy, 2026-09-01.** `curl -s -o /dev/null -w '%{http_code}' https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm` → **404**, while `/ASKK/` and `/ASKK/sandbox/vm-worker.js` both answer **200**. So every `shell` call on the deployed page today reaches `boot-failed` and the model is handed *"the sandbox could not run that…"*. Why: `wc -c public/sandbox/sandbox.wasm` = **107,054,914** bytes, which is **2,197,314 over** GitHub's documented 100 MiB per-file block (*"GitHub blocks files larger than 100 MiB"*), so the file is excluded from the repository at `.gitignore:33` and the deploy commit adds a second `.gitignore` of its own (`git show a1d7a98 -- .gitignore` → one line, `sandbox/*.wasm`). `git ls-tree -r gh-pages` is **56 files / 25,155,729 bytes** and none of them is a `.wasm` guest. Git LFS is not a way out — *"Git LFS cannot be used with GitHub Pages sites"* — and Cloudflare Pages is stricter still at 25 MiB per asset. Compression does not touch it either: it is a limit on the file **at rest**, and the edge already gzips `application/wasm` for free (the committed 23,567,050-byte ORT module comes down the wire at 5,862,143, 4.02:1). `absent` and not `barred`: nothing in a browser stops it, the tree has the override for it (`next.config.js:26`, `composition.js:214`), and no host has been tried — see the row below and §5.7 |
+| Run a command | pi `env/nodejs.ts:145` (the one `spawn`), `:230` (`/bin/bash`) | c2w Alpine in wasm, ~102 MiB beside the page | degraded | degraded | unverified | — | **Run through the built artifact for the first time on 2026-09-01, which is the one thing two prior waves never did.** `bun run build`, then the export served from `Bun.serve` and opened in headless Chrome; the page's own module worker was kept by proxying `Worker` in `Page.addScriptToEvaluateOnNewDocument`, and `settings.save` / `conversations.create` / `chat.send` were sent to it as envelopes. Everything under the wire was the bundled build — `buildKernel`, `C2wSandbox`, `ChatService`, `ReActEngine`, `Toolbox`, `ShellTool`. The model was the only substitution, a local endpoint the same script served, and the observation it was handed on step 2 was `shell -> Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux / marker-42 / ls: /definitely-not-here: No such file or directory / rc=1` — output, arithmetic the guest did, and a real non-zero status. Whole turn 2,732 ms, two guest boots in it (MCP discovery, then the command). Repeated against the real model on `http://127.0.0.1:8873/v1`: 21,203 ms, two steps, final answer *"The sandbox kernel release is 6.1.0, and the shell computes 6*7 as 42."* **The harness is a scratch file and is NOT in the tree** — `docs/LEDGER.md` row S22. What is committed: `scripts/smoke.js` runs the same guest through `C2wSandbox.js:178` every `bun run check` — and since the compressed image landed it boots from `out/sandbox/sandbox.wasm.gz` and prints both sizes, which is what makes a raw module shipped under that name fail the gate rather than reach a visitor (three runs by the accountant, 2026-09-01: cold 930 / 925 / 945 ms, warm 674 / 671 / 692 ms, `40029960 bytes fetched, inflated to 107054914`, `Linux localhost 6.1.0 …` and exit 1 every time) and `test/backend/composition.test.js:210` asserts `buildKernel` yields `chat.services.sandbox.available === true`. **Two costs, both named.** Speed: against the identical busybox 1.37.0 in `docker run --rm alpine:3.21`, same bytes (both print sha256 `2daeb1f3…`), `awk` 1e6 loop 85,930 ms vs 0.24 s = **358x**, `sha256sum` 8 MB 9,700 ms vs 0.02 s = **485x**, `gzip -c` 8 MB 7,661 ms vs 0.03 s = **255x** — the guest is `x86_64` and the native control ran `aarch64`, which flatters the guest. Host: the row below. Both numbers the model is actually handed are wrong: `ShellTool.js:25` tells it the command line cannot exceed 1024 bytes (it is 993), and `C2wSandbox.js:217` (the timeout hint, *"about a hundred times slower"*) plus `agents/main/agent.md:29` (*"roughly a hundred times slower"*) tell it the emulator is a hundred times slower (it is 255x–485x). `docs/LEDGER.md` row S25 |
+| Get that environment to the visitor | bolt.diy `README.md:515` (WebContainer is fetched from its vendor, under a licence) | a 102 MiB file the project's own host refuses | absent | absent | absent | — | **Measured on the live deploy, 2026-09-01.** `curl -s -o /dev/null -w '%{http_code}' https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm` → **404**, while `/ASKK/` and `/ASKK/sandbox/vm-worker.js` both answer **200**. So every `shell` call on the deployed page today reaches `boot-failed` and the model is handed *"the sandbox could not run that…"*. Why: `wc -c public/sandbox/sandbox.wasm` = **107,054,914** bytes, which is **2,197,314 over** GitHub's documented 100 MiB per-file block (*"GitHub blocks files larger than 100 MiB"*), so the file is excluded from the repository by `.gitignore`'s `public/sandbox/*.wasm` rule (named rather than numbered: it was cited as `.gitignore:33` in three documents and that line is now a comment) and the deploy commit adds a second `.gitignore` of its own (`git show a1d7a98 -- .gitignore` → one line, `sandbox/*.wasm`). `git ls-tree -r gh-pages` is **56 files / 25,155,729 bytes** and none of them is a `.wasm` guest. Git LFS is not a way out — *"Git LFS cannot be used with GitHub Pages sites"* — and Cloudflare Pages is stricter still at 25 MiB per asset. **The clause that stood here saying compression does not touch it is now false and is withdrawn.** It said the limit is on the file at rest and the edge gzips for free, which is true and is not the whole story: `gzip -9` produces `public/sandbox/sandbox.wasm.gz` at **40,029,960 bytes**, well under the block, it inflates to the raw module's own sha256 (`f5d05789…c102a70`, `docs/GATE.md`), `vm-worker.js` inflates it with `DecompressionStream`, and `bun run smoke` boots the real guest from it on every gate run. **The way out is built and not walked.** `git check-ignore -v public/sandbox/sandbox.wasm.gz` exits **1** and `git ls-files public/sandbox/` lists five files, none of them the `.gz` — so it is neither tracked nor ignored, and `curl -s -o /dev/null -w '%{http_code}' https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` is **404** too (re-measured 2026-09-01 alongside the two 200s above). There is also nothing in this repository that writes the deploy: `git ls-files \| grep -iE "deploy\|publish\|pages\|workflow\|ya?ml"` returns **nothing** and there is no `.github/`, so whatever produces `gh-pages` is on somebody's machine and has never been shown to carry or exclude anything. `absent` and not `barred`: nothing in a browser stops it, the tree has the override for it (`next.config.js:26`, `composition.js:214`), and no host has been tried — see the row below and §5.7 |
 | Point a deploy at a guest on another host | — | a build-time override, never once exercised against a host | unverified | unverified | unverified | — | `SANDBOX_IMAGE=<url> bun run build` compiles the URL into the chunk — `next.config.js:26`, `composition.js:214`, pinned by `test/backend/composition.test.js:232` and by `scripts/smoke.js`, which reads the URL the build was configured with and fails when no chunk carries it. **Nothing beyond the string has ever been observed.** The smoke says so itself: an override names a host it cannot serve, so its browser run falls back to the copy in `out/`. A cross-origin 102 MiB `fetch` + `WebAssembly.compile` needs CORS on that host (C2), holds two copies live at once because `vm-worker.js` uses `arrayBuffer()` and not `compileStreaming`, and has never been tried from a page. An empty evidence cell for the thing actually claimed is what makes this `unverified` |
-| Know whether a command succeeded | pi `env/nodejs.ts:145` (a real `spawn` exit) | the shell is asked to print it | degraded | degraded | unverified | — | **Closed this wave; it read a constant 0 before.** c2w's `proc_exit` is the emulator's, so `C2wSandbox` sends `sh -c '( <cmd> ) ; echo "__askk_rc$?"'` and takes the marker off the END of stdout (`C2wSandbox.js:37-47`, `:253-261`). Measured through the real 107 MB image in a browser: `ls /nope` 1, `false` 1, `exit 7` 7, `sh -c "exit 3"` 3, `printf abc` 0 with the marker split off a line that has no newline, `echo "__askk_rc9"` 0 because the last marker wins. Asserted every gate run — `scripts/smoke.js` requires the failing command to come back `code === 1` and the marker never to reach the caller. Confirmed once more in the artifact run above: `rc=1` reached the model. **The cost is 25 bytes**, so the row below is 993 and not 1024, and no time: bare against wrapped, interleaved in one browser, 957/965, 760/801, 725/741, 723/732 ms. **The degradation**: a command whose own quoting swallows the echo, or a guest that traps, prints no marker, and the emulator's 0 stands — `C2wSandbox.js:255-260` says so and the trap arrives as a note |
-| An interactive session | agent-zero `tty_session.py:259` | none | absent | absent | unverified | — | **the browser can; we have not built it.** One guest booted with blocking stdin two realms down reached its prompt in 3,826 ms and then answered ten commands at 106–120 ms each with the boot never re-paid — about **7.5x cheaper per command** than re-paying the 887 ms one-shot, and the saving does not decay (`scripts/probe/results/2026-09-01T06-53-06-isolation+model+pty.md` and `scripts/probe/results/2026-09-01-pty.md`). The tree still has none: `C2wSandbox.js:177` `async run(` builds one instance per command |
+| Know whether a command succeeded | pi `env/nodejs.ts:145` (a real `spawn` exit) | the shell is asked to print it | degraded | degraded | unverified | — | **Closed this wave; it read a constant 0 before.** c2w's `proc_exit` is the emulator's, so `C2wSandbox` sends `sh -c '( <cmd> ) ; echo "__askk_rc$?"'` and takes the marker off the END of stdout (`C2wSandbox.js:37-47`, `:253-261`). Measured through the real 107 MB image in a browser: `ls /nope` 1, `false` 1, `exit 7` 7, `sh -c "exit 3"` 3, `printf abc` 0 with the marker split off a line that has no newline, `echo "__askk_rc9"` 0 because the last marker wins. Asserted every gate run — `scripts/smoke.js` requires the failing command to come back `code === 1` and the marker never to reach the caller. Confirmed once more in the artifact run above: `rc=1` reached the model. **The cost is 25 bytes**, so the row below is 993 and not 1024, and no time: bare against wrapped, interleaved in one browser, 957/965, 760/801, 725/741, 723/732 ms. **The degradation**: a command whose own quoting swallows the echo, or a guest that traps, prints no marker, and the emulator's 0 stands — `C2wSandbox.js:265-269` says so and the trap arrives as a note |
+| An interactive session | agent-zero `tty_session.py:259` | none | absent | absent | unverified | — | **the browser can; we have not built it.** One guest booted with blocking stdin two realms down reached its prompt in 3,826 ms and then answered ten commands at 106–120 ms each with the boot never re-paid — about **7.5x cheaper per command** than re-paying the 887 ms one-shot, and the saving does not decay (`scripts/probe/results/2026-09-01T06-53-06-isolation+model+pty.md` and `scripts/probe/results/2026-09-01-pty.md`). The tree still has none: `C2wSandbox.js:178` `async run(` builds one instance per command |
 | Keep a file between calls | pi `harness/types.ts:315` | none | absent | absent | unverified | — | **within one boot the browser can; across a reload nobody can.** `echo hello > /tmp/a` then `cat /tmp/a` → `hello`, then `ls -la /tmp` → `-rw-r--r-- 1 root root 6 … a`. After `page.reload()` in the same tab: `cat: can't open '/tmp/a': No such file or directory`, `RC=1`, `/tmp` empty, and the 3,821 ms boot paid again. The store is a RAM overlay — `overlay 56.3M`, `upperdir=/run/rootfs-upper`, inside the guest's `Mem: 115244` KB — so it is capped at 56 MB and competes with the workload. The tree still has none: `C2wSandbox.js:59-61` (*"ONE BOOT RUNS ONE COMMAND"*), one instance per command by construction (`scripts/probe/results/2026-09-01T06-53-06-isolation+model+pty.md`) |
 | Command length | — | 1024 bytes on the channel, **993 usable** | degraded | degraded | degraded | — | `C2wSandbox.js:18` `MAX_COMMAND_BYTES = 1024`, checked at `:188-197`; c2w's fixed entrypoint channel, unrelated to isolation. **The usable number changed this wave**: the cap is now measured against the WRAPPER, because the status marker is what actually crosses, so a command may be 993 bytes and the refusal says so — `the command is N bytes and the sandbox accepts at most 993`. The 1024 in `ShellTool`'s description, which is the sentence the model reads, is the old number. **A live shell does not remove this, it doubles it and makes it silent**: binary-searched, a line of 2,047 bytes including the newline runs and one of 2,048 vanishes with no error and no partial execution — reproduced in two separate runs. That silence is worse than the 1024-byte cap, which at least says `the command is N bytes and the sandbox accepts at most 993`. It bit this probe: the install stage first sent an unwrapped base64 blob as one 40,424-byte line and got `base64: truncated input`, a wrong md5 and `BAD archive` (`scripts/probe/results/2026-09-01T07-28-08-pty.md`); wrapped at 76 columns it installs. A heredoc has no cap — 11,889 bytes over 400 lines written and executed |
-| Install software into the guest | — | bake it into the image | absent | absent | unverified | — | C5 used to bar this and **that clause is measured false**. A 30,316-byte `tree-2.2.1-r0.apk` delivered over the tty as base64 at 2.52 KB/s arrived with its host md5 intact (`c1580b7f3775e59960109e0d41154729`), and `apk add --allow-untrusted` printed `(1/1) Installing tree` / `OK: 7 MiB in 16 packages`: the guest went 15 → 16 packages, `apk info -e tree` from absent to present, `/usr/bin/tree` from a 12-byte busybox symlink to a 65,072-byte binary that reports `tree v2.2.1`. From a *repository* it still fails, on C2 rather than C5 — `eth0` is `qdisc noop state DOWN`, `/etc/resolv.conf` is empty, every WASI socket is stubbed `ENOTSUP` (`vm-worker.js:93-98`). It also dies with the tab: the package lives in the 56 MB RAM overlay (`scripts/probe/results/2026-09-01-pty.md`) |
-| Network from inside the guest | — | none | absent | absent | absent | C2 | `vm-worker.js:93-98` — every WASI socket stubbed `ENOTSUP`; a page has no raw socket, so any guest network is a `fetch` bridge and inherits C2 |
+| Install software into the guest | — | bake it into the image | absent | absent | unverified | — | C5 used to bar this and **that clause is measured false**. A 30,316-byte `tree-2.2.1-r0.apk` delivered over the tty as base64 at 2.52 KB/s arrived with its host md5 intact (`c1580b7f3775e59960109e0d41154729`), and `apk add --allow-untrusted` printed `(1/1) Installing tree` / `OK: 7 MiB in 16 packages`: the guest went 15 → 16 packages, `apk info -e tree` from absent to present, `/usr/bin/tree` from a 12-byte busybox symlink to a 65,072-byte binary that reports `tree v2.2.1`. From a *repository* it still fails, on C2 rather than C5 — `eth0` is `qdisc noop state DOWN`, `/etc/resolv.conf` is empty, every WASI socket is stubbed `ENOTSUP` (`vm-worker.js:121-132`). It also dies with the tab: the package lives in the 56 MB RAM overlay (`scripts/probe/results/2026-09-01-pty.md`) |
+| Network from inside the guest | — | none | absent | absent | absent | C2 | `vm-worker.js:121-132` — every WASI socket stubbed `ENOTSUP`; a page has no raw socket, so any guest network is a `fetch` bridge and inherits C2 |
 | Choose where it runs | elizaOS `shell-execution-router.ts:493` | one, in the tab | barred | barred | barred | C4 | none |
-| Drive a GUI | agent-zero `supervisord.conf` | none | barred | barred | barred | C2 | `vm-worker.js:93-98` — a display server needs a socket the guest does not have |
+| Drive a GUI | agent-zero `supervisord.conf` | none | barred | barred | barred | C2 | `vm-worker.js:121-132` — a display server needs a socket the guest does not have |
 
 Three of these rows used to say `barred | C1`, then `unverified`, and they are
 `absent` now — which is the vocabulary working twice. `unverified` was right
@@ -355,7 +357,7 @@ compiled module lives in — is plausible, reproduced by a second party, and
 **lives in a scratch directory**. By this document's own rule at the top, that is
 an assertion with extra steps, so it is a `docs/LEDGER.md` row (S23) and not a
 cell. The one part of it that is already citable is in the source: the timeout
-path calls `close()` (`C2wSandbox.js:212-218`), and that comment now says the
+path calls `close()` (`C2wSandbox.js:209-218`), and that comment now says the
 next command pays for the whole image again.
 
 Four things the port would have to handle that the current design does not: a
@@ -374,7 +376,7 @@ browser reason.
 |---|---|---|---|---|---|---|---|
 | A filesystem the agent and the human both see | pi `harness/types.ts:315` + `env/nodejs.ts` | none | absent | absent | absent | — | `grep -rni "opfs\|getDirectory\|FileSystemHandle" src public scripts` → one prose comment, `Repository.js:8`; `Sandbox.js:30` is `run()` and nothing else |
 | Files that survive a reload | bolt.diy `useChatHistory.ts:308` | conversations and settings only | degraded | degraded | unverified | — | `composition.js:18-19` — two store names, neither of them files |
-| A language runtime that is not emulated | — | none | absent | absent | absent | — | `package.json` dependencies: four, none of them a runtime; the only execution path in the tree is `C2wSandbox.js:177` |
+| A language runtime that is not emulated | — | none | absent | absent | absent | — | `package.json` dependencies: four, none of them a runtime; the only execution path in the tree is `C2wSandbox.js:178` |
 | Run a test suite | — | none | absent | absent | absent | — | as above; `package.json` `test: bun test` is the repo's own gate, not a tool the agent can call |
 | A formatter | — | none | absent | absent | absent | — | `@biomejs/biome` is a devDependency of this repo, not something the agent can call; `BUILTIN_TOOLS` is `shell`, `fetch`, `search` (`tools/index.js:24-31`) |
 | A linter | — | none | absent | absent | absent | — | as above |
@@ -396,14 +398,85 @@ reason that has anything to do with isolation.
 | More than one loop to choose between | — | one | absent | absent | absent | — | `engine/index.js:6-8` — `ENGINES` has a single entry |
 | The agent selects its loop by task difficulty | elizaOS `message-handler.ts:366` (binary, not graded) | none | absent | absent | absent | — | `loadAgent.js:86` `loop: spec.engine` — the loop comes from a file's `engine:` field, chosen before the task is read |
 | A named strategy library (plan-then-execute, write-critique-improve, delegate) | deepseek `packages/workflow/tool-ralph/README.md:12` | none | absent | absent | absent | — | `engine/index.js:6-8` — one loop; `tools/index.js:24-31` — three built-in tools, none of them a strategy |
-| Write → critique → apply a standard → iterate until it passes | elizaOS `planner-loop.ts:4101` | none | absent | absent | absent | — | `ReActEngine.js:235` — `observe` returns the tool's text; nothing reads a result against a standard |
-| A successful edit must be followed by a passing check | elizaOS `planner-loop.ts:4310`, `:4351` | none | absent | absent | absent | — | `ReActEngine.js:186` — the run ends the moment the model says `isAnswer`, and nothing else is consulted |
+| Write → critique → apply a standard → iterate until it passes | elizaOS `planner-loop.ts:4101` | none | absent | absent | absent | — | `ReActEngine.js:372` — `observe` returns the tool's text; nothing reads a result against a standard |
+| A successful edit must be followed by a passing check | elizaOS `planner-loop.ts:4310`, `:4351` | none | absent | absent | absent | — | `ReActEngine.js:275` `if (typeof last === 'string' || last.isAnswer !== false)` — the run ends the moment the model says `isAnswer`, and nothing else is consulted |
 | A check the agent cannot certify for itself | — (nobody ships one) | none | absent | absent | absent | — | none — and see §5, this is the load-bearing half |
 
 Loop selection is `absent` and not `barred` on purpose: nothing in a browser
 prevents it. What prevents it everywhere is that **nobody has a difficulty
 signal that is not itself a model call** (`docs/MINING.md:203-207`) — which is a
 cost problem, not a platform one, and belongs in a different conversation.
+
+### Judged against another scaffold
+
+`docs/LEDGER.md`'s bar is *a blind critic, handed two unlabelled transcripts on
+the same task, picks ours, on the rubric in `docs/REFERENCE-PROMPTS.md`*. A rig
+exists, it has been run once, and **that run is void**: it did not call this
+tree's transport. One row here is `have` — the rig now imports the shipped class
+— and it went `have` after the run, so **no pass number below has been re-earned
+under it.** The numbers that survive the void are the ones the transport cannot
+move: tokens and seconds, counted from the endpoint's own `usage` on every reply
+whatever state it was in.
+
+| Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
+|---|---|---|---|---|---|---|---|
+| Run this loop and a reference loop over the same tasks, same endpoint | — | `bench/`, five tasks × two arms × three runs | degraded | — | — | — | 30 runs completed, `skipped: []`, one `callModel`, one `DEFAULTS`, one tool-call counter below both adapters. Re-derived by the accountant rather than believed: `md5 bench/results.json` = `be2c057ef0f810ff01c0b6f989122039`, and every median and total in the report reproduces to the digit from that file. **The named cost is that none of it is in the repository** — `git ls-files bench` returns nothing, so a clone cannot re-run the command or check the md5, and by this document's own rule that is an assertion with extra steps until the slice lands |
+| Cost this loop against that one | — | 6.6× fewer prompt tokens for the same completions | degraded | — | — | — | Re-derived from `bench/results.json` by the accountant, md5 `be2c057ef0f810ff01c0b6f989122039`: ours 58,439 tokens / 736 s, agent-zero 237,579 / 1,177 s — 4.065× and 1.60×. **Split by usage field it is a stronger claim than the totals make it:** prompt 31,939 vs 211,531 (**6.62×**), completion 26,500 vs 26,048 (**ours 1.7% more**). The two models wrote the same amount and the whole difference is what each harness sent, which rules out the alternative reading that one arm just did less. This is the only figure in this section the transport defect cannot move, because it is the endpoint's own `usage` on every reply whatever state it arrived in. Same model, temperature 0, seed 7, `max_tokens` 1200, turn cap 12, one usage field summed one way. Same cost as the row above — untracked |
+| A blind judge picks ours | — | the blinding is better and is still defeated | unverified | — | — | — | **Two of the three defeats are closed and the remaining one separates every pair, so the condition is still unmeasurable.** Re-derived by the accountant, `bun bench/blind.js` on this tree: **exit 0**, `wrote 10 blinded transcripts`, key written to `bench/blind-key.json` **outside** the handed directory. CLOSED — (1) the arm's own directory name: `grep -c "ours/" bench/blind/no-such-capability/B.md` → **0**, was 6; (2) the system-prompt opening: `grep -c "You are a careful, direct assistant"` over all ten files → **5, all in `no-such-capability/B.md`**, was 5 of 5 files, because the request block is no longer projected at all and what remains is the model quoting its own prompt back, which may not be rewritten; it is declared in `RESIDUAL`, counted, and named in the report. OPEN, and it is now the whole defeat — **tool names separate 10 of 10 files and 5 of 5 pairs with no ambiguity**: `text_editor`/`code_execution_tool` appear in exactly the five agent-zero files and `read_file`/`write_file`/`list_files` in exactly the five ours files, checked against `blind-key.json`'s map. `blind.js` reports this itself (`NOT BLIND: 137 line(s) … 7 declared identifying term(s) … 10 of 10 file(s)`) and **exits 0 anyway**, by a documented argument that a tool name is part of what is being judged. That argument is defensible and the consequence is not: A/B assignment is randomised per task, and this residual survives the randomisation. No panel run against this artifact can be reported as blind |
+| The two arms are handed the same information | — | no | absent | absent | absent | — | Re-derived: **79 of 79** agent-zero requests carry a recursive workspace file tree; **0 of 34** of ours ever do. On the three tasks that turn on knowing what is in the directory, one arm is given for free every turn what the other must spend a tool call to learn |
+| The rig runs the arm this tree ships | — | yes — the rig imports the shipped class | have | — | — | — | **Closed this wave, and it was the finding that invalidated the last comparison.** `bench/transport.js:80` `import { OpenAICompatible } from '../src/core/inference/OpenAICompatible.js'`, `:82` `export class RigTransport extends OpenAICompatible`. The predecessor was `bench/driver.js`'s own `callModel`, and the check that caught it was `grep -rn OpenAICompatible bench/` → 3 hits, **all prose in comments**. Re-run by the accountant on this tree: the same grep now returns the import and the subclass among its hits, and `_state`, `_spent`, `_dumped`, `_cutNote`, the shape guard and the abort handling are inherited rather than repeated. What is overridden is one shape mismatch — `_body`'s single-user-message form — and it is argued in the file rather than worked around. **This row being `absent` is what made every pass number from the previous run not about this tree; it is `have` now and the run has not been repeated, so no pass number in this section has been re-earned yet** |
+
+**What followed from that row, and it is the sentence the panel needed.** The
+head-to-head ran our agent file, our `PromptTemplate`, our `Toolbox`, our
+`ShellTool` and our `ReActResponse` over a transport we do not ship, and the
+transport is where the guard for this exact failure lives. The rig imports the
+shipped class as of this wave; the replay below is what the recorded run means
+read through it, and it is still a counterfactual, because nothing has been
+re-run.
+
+Replayed through the tree's own exported function rather than a transcription of
+it — `import { OpenAICompatible } from './src/core/inference/OpenAICompatible.js'`,
+then `_state(e.finish, e.reasoning, e.content, true)` over every recorded reply in
+`bench/transcripts/*/ours/[123].json`. Run independently by the accountant, and
+it reproduces to the reply:
+
+    all 34 replies      { whole: 20, thinking: 12, cut: 2 }
+    agent-zero, 79      { whole: 76, cut: 3 }  — zero refusals, so the guard
+                                                 costs that arm nothing
+    runs containing no reply this tree refuses      5 of 15
+    of those 5, still passing                       4  — collatz/1, collatz/2,
+                                                          pointer-chase/1, /3
+    passes the guard would have ended as refusals   4  — pointer-chase/2 and all
+                                                          three no-such-capability
+
+Two numbers here were argued over by two seats and both are right, which is worth
+recording because the disagreement was about framing and cost a review cycle:
+**10 of 15** runs *contain* a refused reply and **5 of 15** contain *none*. They
+are complements of one another, not a discrepancy.
+
+Parsing the same 34 through the shipped `ReActResponse.parse` puts the branch
+counts at **TOON-with-`act` 23 · TOON-without-`act` 1 · last resort 10** — and
+crossed against the transport state, all 10 last-resort replies are `thinking`.
+That is the measurement behind the third route's `degraded` in *The loop* above.
+
+**This is a counterfactual replay, not a run, and it cuts against us.** Under the
+transport this tree ships, ours' `8/15` is at most `4/15`, and the
+`no-such-capability` column — the one cell where ours beat the reference —
+becomes three named failures rather than three passes, because all three of those
+"declines" are `Reply.THINKING` replies the model never finished. The guard is
+not free either: `pointer-chase/2` genuinely completed the task on two replies
+this tree would have refused.
+
+So the pass column is not a measurement of this loop in either direction. It is
+too high by four and the win is not a win. **The arm is built on `Inference` as
+of this wave, so that blocker is gone and the re-run is now merely undone.** What
+still stops the re-run being comparable is on the judge's side and the task's,
+not the arm's: the blind set separates every pair on tool names, and one arm is
+handed a recursive file tree every turn that the other must spend a call to
+learn.
+
+The cost result is not affected: token and time totals are counted from the
+endpoint's own `usage` on every reply, whichever state it was in.
 
 ### Finding things out
 
@@ -513,7 +586,7 @@ implying with a cron row.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| Tool calls as they happen | elizaOS `task-activity-store.ts` | the call, never the result | degraded | degraded | unverified | — | `ReActEngine.js:172` `onStep?.(…)` emits the step before `:204` runs it; `ChatService.js:195-200` sends `{step, answer, isAnswer, thinking}` and no observation; `page.jsx:505` renders it |
+| Tool calls as they happen | elizaOS `task-activity-store.ts` | the call, never the result | degraded | degraded | unverified | — | `ReActEngine.js:231` `onStep?.(…)` emits the step before `:293` runs it; `ChatService.js:195-200` sends `{step, answer, isAnswer, thinking}` and no observation; `page.jsx:505` renders it |
 | Progress on a long run | bolt.diy `ProgressCompilation.tsx` | a step counter and a token stream | degraded | degraded | unverified | — | `EventName.PROGRESS` exists at `Envelope.js:144` and is emitted only by `SpeechService.js:57`, `:138` and `:153` — never by the agent loop |
 | Viewing and editing a file | bolt.diy `CodeMirrorEditor.tsx` | none | absent | absent | absent | — | `grep -rni "codemirror\|monaco" package.json src` → no matches |
 | Speech in | — | 3 engines | have | have | unverified | — | `WebSpeechTranscriber.js:30` probes the constructor; wired at `page.jsx:205` `dictate()` |
@@ -567,7 +640,7 @@ Four observations the diagram makes obvious:
   record's sandbox reports `available === true`. The port is checked now instead
   of argued for.
 - **The agent worker branch is dead** and has never executed. `ARCHITECTURE.md`'s
-  *Sub-agents are threads* (`ARCHITECTURE.md:354`, *"Verified: nested module
+  *Sub-agents are threads* (`ARCHITECTURE.md:355`, *"Verified: nested module
   workers"*) says the mechanism is verified; this ledger says the branch is never
   reached. Both are true and they are about different things — the mechanism
   works, and `ChatService.js:142` never gives it anything to do.
@@ -739,16 +812,43 @@ New this wave, and it is the question the whole *Run a command* row now hangs on
 The environment works in a browser and does not reach the one host this project
 deploys to (`sandbox.wasm` → **404** on `https://kaush4l.github.io/ASKK/`, page
 and worker → 200, measured 2026-09-01). Nothing about that is a browser limit.
-**The experiment**, in three parts, none of them run: put the image on a host
-that will take it and set `SANDBOX_IMAGE` to it, then open the deployed page and
-call the shell tool — that is the only way to learn whether a cross-origin
-102 MiB `fetch` + `compile` survives CORS, the HTTP cache and a phone; measure
-what a first visit costs on a real connection, since every measurement in this
-document pulled the module over loopback; and decide whether a pre-compressed
-blob the worker inflates is worth the loader change, because the 100 MiB block is
-on the file **at rest** and edge gzip cannot move it (measured: brotli q11 takes
-the guest to 28,512,028 bytes, gzip -9 to 40,029,960, and GitHub Pages already
-gzips `application/wasm` on the wire for free at 4.02:1).
+**The third part of this question has been answered and the answer is that no
+other host is needed.** A pre-compressed blob the worker inflates was worth the
+loader change: `gzip -9` puts the guest at 40,029,960 bytes — inside GitHub's
+block — it inflates to the raw module's own sha256, and `bun run smoke` boots the
+real guest from it on every gate run at 930 / 925 / 945 ms cold, which is not
+slower than the raw module was. Somebody else's Pages site serving a `.gz` was
+asked what the real host sends, and it sends raw gzip bytes with no
+`Content-Encoding`, so `fetch` does not pre-inflate and the loader's `1f 8b`
+sniff fires (`docs/GATE.md`, with the curl). Two other compressors were priced —
+brotli q11 30,089,508 in 116.1 s, zstd −19 30,617,879 in 15.8 s — and neither is
+reachable through `DecompressionStream('gzip')`.
+
+**What is left is not a measurement, it is an action nobody has taken.**
+`public/sandbox/sandbox.wasm.gz` is neither tracked nor ignored
+(`git check-ignore -v` exits 1), so `/ASKK/sandbox/sandbox.wasm.gz` is still a
+404 and every `shell` call on the live page still reaches `boot-failed`. And
+there is no deploy step in this repository to point at it: `git ls-files |
+grep -iE "deploy|publish|pages|workflow|ya?ml"` returns nothing and there is no
+`.github/`. **The experiment**, in two parts, neither run: commit the 38.2 MiB
+`.gz` and deploy, then `curl` for a 200; and open the deployed page and call the
+shell tool, which is the only way to learn what a first visit costs on a real
+connection — every measurement in this document pulled the module over loopback.
+
+**8. Does the pass column survive a token ceiling that binds on both arms?**
+New this wave, and it is the first thing the next benchmark run must settle.
+`max_tokens` was 1200, identical for both arms, and it bound on one:
+`finish_reason: 'length'` on **14 of ours' 34 replies** and **3 of agent-zero's
+79**, median completion 896 against 217 (re-derived from
+`bench/transcripts/*/*/[123].json`). `bench/run.js` has no knob for it —
+`parseArgs` takes `n/scaffold/task/workdir/out` — so "raise it and re-run" is a
+change to the rig, not a flag. Two things have to happen before any pass number
+from that rig means anything: the arm has to be built on `Inference` rather than
+on the rig's own `callModel`, because 12 of those 14 truncations are the state
+`OpenAICompatible` refuses; and the workspace path has to stop carrying the task
+id, because on `no-such-capability` the model quoted its own directory name back
+as an answer key 7, 6 and 10 times in three runs while the reference arm did so
+zero times.
 
 **7. Who writes the acceptance test?** Moves one row and blocks the goal.
 elizaOS enforces only that *a* check of the right family exited 0
@@ -759,17 +859,34 @@ copy — the smallest honest one is: have the human name the command, run it
 unmodified, and let the loop end only on its exit code.
 
 **That paragraph used to say every "measured" number here is an assertion, and it
-is no longer true of all of them.** `package.json`'s `check` is four steps now —
-`biome`, `bun test --isolate`, `next build`, and `scripts/smoke.js`, which boots
-the export in headless Chrome and runs a command in the real 107 MB guest. So the
-boot cost, the guest's own `uname` line and the exit status are re-derived by
-anyone who types `bun run check`, and this run printed
-`the real guest answered "Linux localhost 6.1.0 …" in 1015ms cold, then a failing
-command in 764ms warm (exit 1)`. There are **30** test files
-(`find test -name '*.test.js' | wc -l`) and **395 pass / 0 fail / 1,022 expects**;
-there is still no third-party browser driver
+is no longer true of all of them.** `package.json`'s `check` is `lint && test &&
+smoke`, and `smoke` composes the build, so it is still the four steps
+`docs/GATE.md` names: `biome`, `bun test --isolate ./test`, `next build`, and
+`scripts/smoke.js`, which boots the export in headless Chrome and runs a command
+in the real guest. So the boot cost, the guest's own `uname` line and the exit
+status are re-derived by anyone who types `bun run check`, and this wave's run
+printed `the real guest answered "Linux localhost 6.1.0 …" in 1406ms cold, then a
+failing command in 1086ms warm (exit 1); 40029960 bytes fetched, inflated to
+107054914`. There are **38** test files
+(`find test -name '*.test.js' | wc -l`) and **551 pass / 0 fail / 1,530
+expects**; there is still no third-party browser driver
 (`grep -rn "playwright\|puppeteer" package.json` → no matches — the smoke speaks
 CDP over a raw WebSocket).
+
+**The first step of that gate was RED on files no human wrote, and it is green
+now.** `bun run lint` includes `bench`, and `bench/work/` — the throwaway
+workspace the benchmark's own agents write into — is gitignored but not invisible
+to biome, which has no `vcs` block and so does not read `.gitignore`. The fix is
+`"!bench/work/**"` in `biome.json`'s include list. Re-derived by the accountant
+with that line removed and restored: with it **133 files, no errors**; without it
+**139 files, 6 errors**, all six under `bench/work/…/agent-zero/`. A planted
+unused constant in `bench/driver.js` is still caught and the same constant under
+`bench/work/` is still ignored, so the gate's subject narrowed without its
+sensitivity dropping. `docs/LEDGER.md` row S30, closed.
+
+Those counts moved a long way in one wave — 484/1,314/36 files to 551/1,530/38 —
+and three seats reported three different pass counts on the way, each true when
+it was run. **In a tree several agents write to, a pass count is a timestamp.**
 
 What has **not** changed: those tests are unit tests of `core/` against fakes,
 and they cover none of the numbers in this document except the ones the smoke

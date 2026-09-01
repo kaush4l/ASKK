@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { estimateTokens } from '../../../src/core/prompt/tokens.js'
-import { ACT_ANSWER, ACT_TOOL, ReActResponse } from '../../../src/core/response/ReActResponse.js'
+import {
+  ACT_ANSWER,
+  ACT_TOOL,
+  ACT_UNSAID,
+  ReActResponse,
+} from '../../../src/core/response/ReActResponse.js'
+import { fixture } from '../../support/fixtures.js'
 
 /**
  * `act` is the only field that steers control flow, so every way a model can
@@ -52,19 +58,78 @@ describe('ReActResponse.normalize', () => {
     expect(response.result).toBe('{"tool": "shell"}')
   })
 
-  test('a bare tool name in act becomes answer, not a call', () => {
-    // `act: shell` is the model naming a tool where a verb belongs, with no
-    // call anywhere. There is nothing to run, so the turn ends rather than
-    // looping on text that contains no call — this is what stops a run that
-    // could otherwise never terminate.
+  test('a bare tool name in act is a decision the loop cannot read', () => {
+    // `act: shell` is the model naming a tool where a verb belongs, with no call
+    // anywhere. This assertion ran the other way round until the fail-open was
+    // priced: it USED TO END THE RUN and show `result` to the user as the final
+    // reply, which is how a run terminated on a word nobody meant as a verb.
     const response = new ReActResponse({ act: 'shell', result: 'the file is empty' })
 
-    expect(response.act).toBe(ACT_ANSWER)
-    expect(response.isAnswer).toBe(true)
+    expect(response.act).toBe(ACT_UNSAID)
+    expect(response.isAnswer).toBe(false)
+    expect(response.isToolCall).toBe(false)
+    expect(response.isUnsaid).toBe(true)
+    // WHICH way it was unsaid, kept because the two routes have opposite
+    // remedies and `act` cannot carry it — it is a closed enum the loop
+    // switches on, and the word the model wrote is gone by the next line.
+    expect(response.unsaidBecause).toBe(
+      "the model wrote act: shell, which is neither 'tool' nor 'answer'",
+    )
   })
 
-  test('an absent act defaults to answer, so a stripped reply ends the run', () => {
+  test('a sentence written into act is quoted back bounded, not whole', () => {
+    // `act` can hold anything. This string is rendered into the correction the
+    // loop sends back and into the failure a user reads, so an unbounded one
+    // would put a paragraph in both — and the correction stays in the
+    // scratchpad for the rest of the run.
+    const response = new ReActResponse({ think: ['a'], act: 'x'.repeat(400) })
+
+    expect(response.isUnsaid).toBe(true)
+    expect(response.unsaidBecause).toBe(
+      `the model wrote act: ${'x'.repeat(57)}..., which is neither 'tool' nor 'answer'`,
+    )
+  })
+
+  test('a JSON reply with a number in act is unsaid, not a thrown error', () => {
+    // NOTHING IN `src/` THROWS, and this is the one line in this file that
+    // could. `_parseJson` coerces only list fields, so a model writing
+    // `"act": 4` or `"act": {"tool": "shell"}` delivers a non-string here and
+    // `.trim()` on it would throw out of the core into an uncaught rejection in
+    // the backend worker — where no `Outcome` and no page can report it. The
+    // read goes through `String(...)`, and this is what pins that.
+    expect(ReActResponse.parse('Here:\n{"think":["a"],"act":4,"result":"4"}').act).toBe(ACT_UNSAID)
+    expect(new ReActResponse({ think: ['a'], act: 4, result: '4' }).act).toBe(ACT_UNSAID)
+    // An OBJECT in `act` is unsaid too, and by a route worth knowing: it reads
+    // as `[object Object]`, which carries no bracket, so the tool-call rescue
+    // does not fire on it. That is the right answer — there is nothing runnable
+    // in it — and the reason the model is told the word it wrote is the word we
+    // could read.
+    const asObject = ReActResponse.parse('{"think":["a"],"act":{"tool":"shell"},"result":""}')
+    expect(asObject.act).toBe(ACT_UNSAID)
+    expect(asObject.unsaidBecause).toContain('[object Object]')
+  })
+
+  test('an act missing from a reply that reached the contract is unsaid', () => {
+    // The shape of a truncated reply: the model wrote `think` and stopped. There
+    // is no fourth field to read and no decision anywhere, so the loop must not
+    // treat the empty `result` as the answer.
+    const response = new ReActResponse({ think: ['half a thought'] })
+
+    expect(response.act).toBe(ACT_UNSAID)
+    expect(response.isAnswer).toBe(false)
+    // The other route's words, and they must not mention a word the model
+    // wrote: it wrote none.
+    expect(response.unsaidBecause).toBe('the reply stopped before it reached the act line')
+  })
+
+  test('an act missing from a reply that reached nothing still answers', () => {
+    // The other side of the same rule, and the reason `normalize` is given the
+    // values rather than only the object: a reply that supplied no field before
+    // `act` is not a contract that stopped, it is prose. `parse`'s last resort
+    // builds exactly this, and making it unsaid would spend a turn correcting a
+    // reply that is already the answer.
     expect(new ReActResponse({}).act).toBe(ACT_ANSWER)
+    expect(new ReActResponse({ result: 'hi' }).isAnswer).toBe(true)
     expect(new ReActResponse({ act: null, result: 'hi' }).isAnswer).toBe(true)
   })
 })
@@ -105,6 +170,26 @@ describe('ReActResponse.parse', () => {
 
     expect(parsed.isToolCall).toBe(true)
     expect(parsed.answer).toBe('shell({"command": "ls /"})')
+  })
+
+  test('a REAL reply cut off before the act line does not end the run', () => {
+    // Captured off `http://127.0.0.1:8873/v1` with `max_tokens: 1135` on this
+    // tree's own step-1 prompt: `finish_reason: length`, `reasoning_content`
+    // present and correctly routed, and `content` stopping inside `plan:`.
+    //
+    // Before the fix this parsed to `act: answer` with an EMPTY `result`, so the
+    // loop ended and `ChatService` wrote "(the model returned nothing)" into the
+    // transcript as the assistant's reply. Nothing raised anywhere.
+    const captured = JSON.parse(fixture('truncated-mid-contract.json'))
+    const text = captured.choices[0].message.content
+
+    expect(text).not.toContain('act:')
+    const parsed = ReActResponse.parse(text)
+
+    expect(parsed.think).toHaveLength(2)
+    expect(parsed.result).toBe('')
+    expect(parsed.act).toBe(ACT_UNSAID)
+    expect(parsed.isAnswer).toBe(false)
   })
 
   test('a reply with no fields at all becomes the answer instead of an error', () => {

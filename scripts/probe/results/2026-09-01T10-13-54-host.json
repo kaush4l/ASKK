@@ -1,0 +1,495 @@
+{
+ "started": "2026-09-01T10:13:54.726Z",
+ "argv": [
+  "host",
+  "--port=8831",
+  "--echo-port=8834",
+  "--guest-port=8835"
+ ],
+ "cells": [
+  {
+   "probe": "host",
+   "engine": "chromium",
+   "mode": "off",
+   "artifacts": {
+    "sandbox.wasm": {
+     "bytes": 107054914,
+     "sha256": "f5d05789d1c8b402e2d4ec29808a7bb083ed9383d078afd01120e52b7c102a70"
+    },
+    "sandbox.wasm.gz": {
+     "bytes": 40029960,
+     "sha256": "256c5fd3e77352743a288b25450b6aafdef713e8a052c6e9431a12ee007b575c"
+    }
+   },
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "corp": "(absent)"
+   },
+   "crossOriginIsolated": false,
+   "worker": {
+    "crossOriginIsolated": false,
+    "SharedArrayBuffer": "undefined"
+   },
+   "guest": {
+    "same origin (what ships today)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 206,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 976,
+     "coi": false
+    },
+    "cross-origin, ACAO * + CORP cross-origin  (the cdnjs / jsDelivr profile)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 199,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 973,
+     "coi": false
+    },
+    "cross-origin, ACAO * only, NO CORP        (the huggingface profile)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 198,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 985,
+     "coi": false
+    },
+    "cross-origin, no ACAO and no CORP         (the C2 control)": {
+     "ok": false,
+     "where": "boot",
+     "err": "Failed to fetch",
+     "ms": 6,
+     "coi": false
+    },
+    "cross-origin, the RAW 107 MB module, ACAO * only": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 51,
+      "bytes": 107054914,
+      "transferred": 107054914
+     },
+     "ms": 830,
+     "coi": false
+    }
+   },
+   "remote": {
+    "huggingface.co LFS — takes files of any size, and this tree already fetches this host": {
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "bytes": 32904992,
+     "ms": 2280,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    "cdn.jsdelivr.net — a real cross-origin .wasm, fetched and compiled": {
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "bytes": 281261,
+     "ms": 103,
+     "corp": "cross-origin",
+     "acao": "*"
+    }
+   },
+   "split": {
+    "parts": [
+     35684972,
+     35684972,
+     35684970
+    ],
+    "bytes": 107054914,
+    "sha256": "f5d05789d1c8b402e2d4ec29808a7bb083ed9383d078afd01120e52b7c102a70",
+    "compiled": true,
+    "ms": 309,
+    "matches_whole_file": true
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[requestfailed] http://127.0.0.1:8835/bare/sandbox.wasm.gz :: net::ERR_FAILED"
+   ]
+  },
+  {
+   "probe": "host",
+   "engine": "chromium",
+   "mode": "require-corp",
+   "artifacts": {
+    "sandbox.wasm": {
+     "bytes": 107054914,
+     "sha256": "f5d05789d1c8b402e2d4ec29808a7bb083ed9383d078afd01120e52b7c102a70"
+    },
+    "sandbox.wasm.gz": {
+     "bytes": 40029960,
+     "sha256": "256c5fd3e77352743a288b25450b6aafdef713e8a052c6e9431a12ee007b575c"
+    }
+   },
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "corp": "(absent)"
+   },
+   "crossOriginIsolated": true,
+   "worker": {
+    "crossOriginIsolated": true,
+    "SharedArrayBuffer": "function"
+   },
+   "guest": {
+    "same origin (what ships today)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 217,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 979,
+     "coi": true
+    },
+    "cross-origin, ACAO * + CORP cross-origin  (the cdnjs / jsDelivr profile)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 199,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 979,
+     "coi": true
+    },
+    "cross-origin, ACAO * only, NO CORP        (the huggingface profile)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 196,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 989,
+     "coi": true
+    },
+    "cross-origin, no ACAO and no CORP         (the C2 control)": {
+     "ok": false,
+     "where": "boot",
+     "err": "Failed to fetch",
+     "ms": 8,
+     "coi": true
+    },
+    "cross-origin, the RAW 107 MB module, ACAO * only": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 53,
+      "bytes": 107054914,
+      "transferred": 107054914
+     },
+     "ms": 835,
+     "coi": true
+    }
+   },
+   "remote": {
+    "huggingface.co LFS — takes files of any size, and this tree already fetches this host": {
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "bytes": 32904992,
+     "ms": 2174,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    "cdn.jsdelivr.net — a real cross-origin .wasm, fetched and compiled": {
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "bytes": 281261,
+     "ms": 95,
+     "corp": "cross-origin",
+     "acao": "*"
+    }
+   },
+   "split": {
+    "parts": [
+     35684972,
+     35684972,
+     35684970
+    ],
+    "bytes": 107054914,
+    "sha256": "f5d05789d1c8b402e2d4ec29808a7bb083ed9383d078afd01120e52b7c102a70",
+    "compiled": true,
+    "ms": 298,
+    "matches_whole_file": true
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[requestfailed] http://127.0.0.1:8835/bare/sandbox.wasm.gz :: net::ERR_FAILED"
+   ]
+  },
+  {
+   "probe": "host",
+   "engine": "webkit",
+   "mode": "off",
+   "artifacts": {
+    "sandbox.wasm": {
+     "bytes": 107054914,
+     "sha256": "f5d05789d1c8b402e2d4ec29808a7bb083ed9383d078afd01120e52b7c102a70"
+    },
+    "sandbox.wasm.gz": {
+     "bytes": 40029960,
+     "sha256": "256c5fd3e77352743a288b25450b6aafdef713e8a052c6e9431a12ee007b575c"
+    }
+   },
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "corp": "(absent)"
+   },
+   "crossOriginIsolated": false,
+   "worker": {
+    "crossOriginIsolated": false,
+    "SharedArrayBuffer": "undefined"
+   },
+   "guest": {
+    "same origin (what ships today)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 256,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 1140,
+     "coi": false
+    },
+    "cross-origin, ACAO * + CORP cross-origin  (the cdnjs / jsDelivr profile)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 238,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 923,
+     "coi": false
+    },
+    "cross-origin, ACAO * only, NO CORP        (the huggingface profile)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 237,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 933,
+     "coi": false
+    },
+    "cross-origin, no ACAO and no CORP         (the C2 control)": {
+     "ok": false,
+     "where": "boot",
+     "err": "Load failed",
+     "ms": 8,
+     "coi": false
+    },
+    "cross-origin, the RAW 107 MB module, ACAO * only": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 123,
+      "bytes": 107054914,
+      "transferred": 107054914
+     },
+     "ms": 803,
+     "coi": false
+    }
+   },
+   "remote": {
+    "huggingface.co LFS — takes files of any size, and this tree already fetches this host": {
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "bytes": 32904992,
+     "ms": 2068,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    "cdn.jsdelivr.net — a real cross-origin .wasm, fetched and compiled": {
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "bytes": 281261,
+     "ms": 203,
+     "corp": "cross-origin",
+     "acao": "*"
+    }
+   },
+   "split": {
+    "parts": [
+     35684972,
+     35684972,
+     35684970
+    ],
+    "bytes": 107054914,
+    "sha256": "f5d05789d1c8b402e2d4ec29808a7bb083ed9383d078afd01120e52b7c102a70",
+    "compiled": true,
+    "ms": 184,
+    "matches_whole_file": true
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Origin http://127.0.0.1:8831 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[requestfailed] http://127.0.0.1:8835/bare/sandbox.wasm.gz :: Origin http://127.0.0.1:8831 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8831 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Fetch API cannot load http://127.0.0.1:8835/bare/sandbox.wasm.gz due to access control checks."
+   ]
+  },
+  {
+   "probe": "host",
+   "engine": "webkit",
+   "mode": "require-corp",
+   "artifacts": {
+    "sandbox.wasm": {
+     "bytes": 107054914,
+     "sha256": "f5d05789d1c8b402e2d4ec29808a7bb083ed9383d078afd01120e52b7c102a70"
+    },
+    "sandbox.wasm.gz": {
+     "bytes": 40029960,
+     "sha256": "256c5fd3e77352743a288b25450b6aafdef713e8a052c6e9431a12ee007b575c"
+    }
+   },
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "corp": "(absent)"
+   },
+   "crossOriginIsolated": true,
+   "worker": {
+    "crossOriginIsolated": true,
+    "SharedArrayBuffer": "function"
+   },
+   "guest": {
+    "same origin (what ships today)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 262,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 943,
+     "coi": true
+    },
+    "cross-origin, ACAO * + CORP cross-origin  (the cdnjs / jsDelivr profile)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 238,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 919,
+     "coi": true
+    },
+    "cross-origin, ACAO * only, NO CORP        (the huggingface profile)": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 236,
+      "bytes": 107054914,
+      "transferred": 40029960
+     },
+     "ms": 929,
+     "coi": true
+    },
+    "cross-origin, no ACAO and no CORP         (the C2 control)": {
+     "ok": false,
+     "where": "boot",
+     "err": "Load failed",
+     "ms": 9,
+     "coi": true
+    },
+    "cross-origin, the RAW 107 MB module, ACAO * only": {
+     "ok": true,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\n",
+     "code": 0,
+     "boot": {
+      "ms": 125,
+      "bytes": 107054914,
+      "transferred": 107054914
+     },
+     "ms": 824,
+     "coi": true
+    }
+   },
+   "remote": {
+    "huggingface.co LFS — takes files of any size, and this tree already fetches this host": {
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "bytes": 32904992,
+     "ms": 2097,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    "cdn.jsdelivr.net — a real cross-origin .wasm, fetched and compiled": {
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "bytes": 281261,
+     "ms": 91,
+     "corp": "cross-origin",
+     "acao": "*"
+    }
+   },
+   "split": {
+    "parts": [
+     35684972,
+     35684972,
+     35684970
+    ],
+    "bytes": 107054914,
+    "sha256": "f5d05789d1c8b402e2d4ec29808a7bb083ed9383d078afd01120e52b7c102a70",
+    "compiled": true,
+    "ms": 180,
+    "matches_whole_file": true
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Origin http://127.0.0.1:8831 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[requestfailed] http://127.0.0.1:8835/bare/sandbox.wasm.gz :: Origin http://127.0.0.1:8831 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8831 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Fetch API cannot load http://127.0.0.1:8835/bare/sandbox.wasm.gz due to access control checks."
+   ]
+  }
+ ]
+}

@@ -199,10 +199,16 @@ export async function buildKernel({
   //
   // The image URL is DERIVED, exactly like the worker URL beside it, because the
   // two files ship side by side: `public/sandbox/` is copied into the export
-  // whole. What cannot carry 107 MB is the REPOSITORY — `.gitignore` excludes
-  // the image and GitHub refuses a file that size — and reasoning about the
-  // repository from a line that runs in the export is what left this `''` in
-  // every build ever made. `docs/GATE.md` has the measurement.
+  // whole. Reasoning about the repository from a line that runs in the export is
+  // what left this `''` in every build ever made. `docs/GATE.md` has the
+  // measurement.
+  //
+  // GZIPPED, and that is what makes the deploy possible rather than an
+  // optimisation. The module is 107,054,914 bytes, GitHub blocks a file over
+  // 100 MiB, and the block is on the file at rest — so the uncompressed guest
+  // could be in neither the repository nor the Pages deploy, and every `shell`
+  // call on the live page reached a 404. `gzip -9` is 40,029,960 bytes, which
+  // GitHub takes, and `vm-worker.js` inflates it with `DecompressionStream`.
   //
   // The build-time override survives, and stays build-time. Which host serves
   // the image is a property of the DEPLOY, not of the person visiting it: a
@@ -211,7 +217,7 @@ export async function buildKernel({
   // URL nobody visiting can know, stored in a database only their own browser
   // reads, and every other visitor would still be broken.
   const sandbox = new C2wSandbox({
-    imageUrl: process.env.NEXT_PUBLIC_SANDBOX_IMAGE || `${base}/sandbox/sandbox.wasm`,
+    imageUrl: process.env.NEXT_PUBLIC_SANDBOX_IMAGE || `${base}/sandbox/sandbox.wasm.gz`,
     workerUrl: `${base}/sandbox/vm-worker.js`,
   })
 

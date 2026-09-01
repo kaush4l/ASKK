@@ -217,11 +217,24 @@ describe('the ports buildKernel hands the chat service', () => {
     // the claim is that they share a directory, which is what makes deriving
     // the image the same way as the worker correct. Two spelled-out constants
     // would pass with the pair pointing at different hosts.
-    expect(imageUrl).toBe(workerUrl.replace('vm-worker.js', 'sandbox.wasm'))
+    expect(imageUrl).toBe(workerUrl.replace('vm-worker.js', 'sandbox.wasm.gz'))
     expect(workerUrl.endsWith('/sandbox/vm-worker.js')).toBe(true)
   })
 
-  test('a deploy whose host will not serve 107 MB can point the build elsewhere', async () => {
+  /**
+   * The extension is the deploy, not a preference. 107,054,914 bytes is 2,197,314
+   * over GitHub's 100 MiB per-file block, so the raw module can be in neither the
+   * repository nor the Pages branch and the live page answered 404 for it; the
+   * gzipped image is 40,029,960 bytes and GitHub takes it. Asserted here because
+   * `.wasm` reads as the obvious spelling and is the one that ships a dead page.
+   */
+  test('and it asks for the compressed image, which is the only one a repository can carry', async () => {
+    const { imageUrl } = (await buildKernel()).chat.services.sandbox
+
+    expect(imageUrl.endsWith('.wasm.gz')).toBe(true)
+  })
+
+  test('a deploy whose host will not serve the image can point the build elsewhere', async () => {
     // The override that replaces the setting the failure hint used to promise.
     // It is read at build time, so this is the only realm it can be exercised
     // in; in the browser Next has already inlined it as a literal.

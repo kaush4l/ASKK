@@ -29,5 +29,24 @@ src/agents/catalogue.generated.js
 # published from agents/ by scripts/agents.js
 public/agents/
 
-# The sandbox guest image: ~100MB, built by scripts/wasm/build.sh, never committed.
+# The RAW guest image, 107,054,914 bytes, built by scripts/wasm/build.sh. Never
+# committed, and it cannot be: GitHub blocks a file over 100 MiB and the block is
+# on the file at rest. What the page loads and what the deploy carries is
+# `public/sandbox/sandbox.wasm.gz` — 40,029,960 bytes, which GitHub takes — and
+# that file is deliberately NOT matched by the rule below. The raw module stays
+# on a developer's disk for the probes; `vm-worker.js` inflates the compressed
+# one with `DecompressionStream`.
 public/sandbox/*.wasm
+
+# One temp workspace per bench run, seeded from a task's fixtures and thrown
+# away by the next one. `bench/transcripts/` and `bench/results.json` are NOT
+# here: they are the evidence a run produces, and evidence that is not in the
+# repository is what `CAPABILITIES.md` refuses to accept.
+bench/work/
+
+# The A/B key. `bench/blind/<task>/{A,B}.md` are the artifact a blind judge
+# reads and they ARE committed; the file that says which letter is which must
+# not travel beside them. It used to be written to `bench/blind/key.json` —
+# INSIDE the directory a judge is handed, which is a label rather than a key —
+# and now sits one level up. Regenerate it with `bun run bench:blind`.
+bench/blind-key.json

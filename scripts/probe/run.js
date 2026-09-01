@@ -16,7 +16,11 @@
 //   bun scripts/probe/run.js --list                what each probe establishes
 //
 // Flags: --engines, --modes, --stages, --idle=<s>, --local=<url>, --out=<path>,
-//        --port, --echo-port, --no-write.
+//        --port, --echo-port, --guest-port, --no-write.
+//
+// Every server takes a port flag because two agents probe the same tree at once
+// and the defaults collide — an EADDRINUSE from a neighbour's run reads as a
+// broken probe otherwise.
 //
 // Requires `playwright` and its browsers. It is not a dependency of this repo —
 // the app does not need it and a 300 MB download does not belong in `bun
@@ -25,7 +29,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { echoServer, staticServer } from './lib/servers.js'
+import { crossOriginHost, echoServer, staticServer } from './lib/servers.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '../..')
@@ -54,10 +58,18 @@ const PROBES = {
     establishes:
       'whether one guest boot survives many commands with blocking stdin, whether its filesystem carries state between them, what a resident guest costs in host RSS, where the input-line boundary is, and whether any of it survives a page reload',
     cannot:
-      'anything about src/backend/sandbox/C2wSandbox.js or the built app in out/ — neither is loaded here — and nothing about a phone: this is headless desktop Chromium pulling ~107 MB over loopback',
+      'anything about src/backend/sandbox/C2wSandbox.js or the built app in out/ — neither is loaded here — and nothing about a phone: this is headless desktop Chromium pulling the whole image over loopback',
     engines: ['chromium'],
     modes: ['require-corp'],
     stages: ['oneshot', 'session', 'bench', 'speed', 'install', 'reload'],
+  },
+  host: {
+    establishes:
+      "whether the guest boots from a host that is not the page's own while the page is cross-origin isolated, under each header profile a real host sends; what two real third-party hosts send today; whether a split artifact reassembles to the same bytes; and what the compressed image costs against the raw one",
+    cannot:
+      'anything about https://kaush4l.github.io/ASKK/ or about what GitHub Pages does with a .gz — nothing here has been deployed. Every server but the two named remote hosts is on 127.0.0.1, so no cross-origin cell here is a measurement of a real connection',
+    engines: ['chromium', 'webkit'],
+    modes: ['off', 'require-corp'],
   },
 }
 
@@ -116,6 +128,10 @@ const LAUNCHERS = {
 // ---------------------------------------------------------------- servers
 const site = staticServer({ port: Number(flags.port ?? 8811), roots: [PAGE_DIR, SANDBOX_DIR] })
 const echo = echoServer({ port: Number(flags['echo-port'] ?? 8814) })
+// One port over IS a different origin, and the browser's definition is the one
+// every check under test uses. This serves the SAME files as `site`, so a
+// difference between the two is the header profile and nothing else.
+const guest = crossOriginHost({ port: Number(flags['guest-port'] ?? 8815), dir: SANDBOX_DIR })
 const localUrl = typeof flags.local === 'string' ? flags.local : 'http://127.0.0.1:8873'
 
 // ------------------------------------------------------------------ log
@@ -136,6 +152,9 @@ log(
   `host             ${site.url}   (roots: ${site.roots.map((r) => r.replace(`${ROOT}/`, '')).join(', ')})`,
 )
 log(`echo endpoint    ${echo.url}   (ACAO *, deliberately no CORP, records what it receives)`)
+log(
+  `guest host       ${guest.url}   (a SECOND ORIGIN for public/sandbox/, header profile per path)`,
+)
 log(`local model      ${localUrl}`)
 log(`platform         ${process.platform} ${process.arch}, bun ${Bun.version}`)
 log(`git              ${gitDescribe()}`)
@@ -156,10 +175,12 @@ function gitDescribe() {
   }
 }
 function sandboxNote() {
-  const p = join(SANDBOX_DIR, 'sandbox.wasm')
-  if (!existsSync(p))
-    return '(absent — build it with scripts/wasm/build.sh; the pty probe needs it)'
-  return `${Bun.file(p).size} bytes at public/sandbox/sandbox.wasm`
+  const parts = []
+  for (const name of ['sandbox.wasm', 'sandbox.wasm.gz']) {
+    const p = join(SANDBOX_DIR, name)
+    parts.push(existsSync(p) ? `${name} ${Bun.file(p).size} bytes` : `${name} (absent)`)
+  }
+  return `${parts.join(', ')} — build them with scripts/wasm/build.sh`
 }
 
 // ------------------------------------------------------------------- run
@@ -170,7 +191,10 @@ try {
     const spec = PROBES[name]
     const engines = list(flags.engines, spec.engines)
     const modes = list(flags.modes, spec.modes)
-    const { run } = await import(`./drivers/${name}.mjs`)
+    // `.js`, not `.mjs`: `package.json` is `"type": "module"` so the extension
+    // buys nothing, and `biome.json` globs `scripts/**/*.js` — as `.mjs` these
+    // four files were 716 lines the lint step could not see, by extension.
+    const { run } = await import(`./drivers/${name}.js`)
 
     log('')
     log(`## ${name}`)
@@ -178,6 +202,11 @@ try {
     log(`establishes: ${spec.establishes}`)
     log(`cannot say:  ${spec.cannot}`)
 
+    if (name === 'host' && !existsSync(join(SANDBOX_DIR, 'sandbox.wasm.gz'))) {
+      log('')
+      log('SKIPPED: public/sandbox/sandbox.wasm.gz is absent. Nothing was measured.')
+      continue
+    }
     if (name === 'pty' && !existsSync(join(SANDBOX_DIR, 'sandbox.wasm'))) {
       log('')
       log('SKIPPED: public/sandbox/sandbox.wasm is absent. Nothing was measured.')
@@ -203,6 +232,8 @@ try {
             },
             local: { url: localUrl },
             wasmUrl: `${site.url}sandbox.wasm`,
+            sandboxDir: SANDBOX_DIR,
+            guest: guest.url,
             idleSeconds: Number(flags.idle ?? 30),
             stages: new Set(list(flags.stages, spec.stages ?? [])),
             log,
@@ -220,6 +251,7 @@ try {
 } finally {
   site.stop()
   echo.stop()
+  guest.stop()
 }
 
 log('')

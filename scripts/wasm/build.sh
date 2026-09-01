@@ -146,8 +146,25 @@ elif [ "$STRIP" = "1" ]; then
   echo "WARNING: wasm-opt not found; shipping WITH developer sections"
 fi
 
+# ------------------------------------------------------- 6. compress (deploy)
+# WRITTEN, not measured and discarded. The gzip size used to be piped into `wc`
+# and printed, which is how this project shipped a page whose guest was a 404
+# for a year: the module is over GitHub's 100 MiB per-file block and the block is
+# on the file AT REST, so edge compression cannot reach it. `gzip -9` brings it
+# under, and GitHub takes that. The `.gz` is therefore the DEPLOYED artifact, and
+# `public/sandbox/vm-worker.js` inflates it with `DecompressionStream`. The raw
+# module stays beside it for the probes, gitignored, and the deploy's own ignore
+# rule (`sandbox/*.wasm`) drops it.
+#
+# No byte count is written here on purpose. This script is what CHANGES both of
+# them, so a size in this comment is a lie one run away; the pair it prints below
+# is the live answer and `docs/GATE.md` holds the dated one.
+say "compressing for the deploy"
+gzip -9 -c "$WORK/out/$OUT_NAME" > "$WORK/out/$OUT_NAME.gz"
+
 say "artifact"
-ls -l "$WORK/out/$OUT_NAME"
+ls -l "$WORK/out/$OUT_NAME" "$WORK/out/$OUT_NAME.gz"
 FINAL=$(wc -c < "$WORK/out/$OUT_NAME")
-GZ=$(gzip -9 -c "$WORK/out/$OUT_NAME" | wc -c)
+GZ=$(wc -c < "$WORK/out/$OUT_NAME.gz")
 printf 'profile=%s raw=%s stripped=%s gzip=%s\n' "$PROFILE" "$RAW" "$FINAL" "$GZ"
+echo "copy BOTH into public/sandbox/ — the page loads $OUT_NAME.gz, the probes load $OUT_NAME"

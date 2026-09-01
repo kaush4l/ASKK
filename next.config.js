@@ -21,8 +21,8 @@ const config = {
     // therefore means "use the one in the export", not "there is none".
     //
     // Set it — `SANDBOX_IMAGE=<url> bun run build` — only for a deploy whose
-    // host will not serve a 107 MB file, which redirects every visitor at once
-    // rather than asking each of them to know a URL.
+    // host will not serve the guest image at all, which redirects every visitor
+    // at once rather than asking each of them to know a URL. `docs/GATE.md`.
     NEXT_PUBLIC_SANDBOX_IMAGE: process.env.SANDBOX_IMAGE ?? '',
   },
 

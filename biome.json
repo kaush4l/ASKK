@@ -5,9 +5,11 @@
       "src/**/*.js",
       "src/**/*.jsx",
       "scripts/**/*.js",
+      "bench/**/*.js",
       "test/**/*.js",
       "*.js",
       "*.json",
+      "!bench/work/**",
       "!src/agents/catalogue.generated.js",
       "public/sandbox/vm-worker.js",
       "!scripts/wasm/boot-probe/**"

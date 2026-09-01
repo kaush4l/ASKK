@@ -28,11 +28,19 @@ export class BaseResponse {
       const given = values[name]
       this[name] = given === undefined || given === null ? fallback : given
     }
-    this.normalize()
+    this.normalize(values)
   }
 
-  /** Repair a well-meant but malformed reply. Overridden where a field is an enum. */
-  normalize() {}
+  /**
+   * Repair a well-meant but malformed reply. Overridden where a field is an enum.
+   *
+   * Takes the values the parse supplied, because by the time the loop above has
+   * run, a field the model wrote and a field this constructor filled in are the
+   * same thing — and the difference between them decides whether a run ends. A
+   * reply that stopped before it reached a field is not a reply that reached the
+   * field and wrote its default. `ReActResponse` is where that costs something.
+   */
+  normalize(_given = {}) {}
 
   static fieldNames() {
     return Object.keys(this.FIELDS)
@@ -234,10 +242,15 @@ export class BaseResponse {
    * The last-resort branch — the whole reply becomes the answer field — has no
    * rule either, and should not get one. It exists so `parse` cannot fail, and a
    * rule saying "if you emit no fields your prose is shown to the user verbatim"
-   * would spend tokens describing a fallback rather than preventing it. What it
-   * does need, and does not have here, is somewhere for the loop to notice it
-   * happened: today an unparseable reply ends a run indistinguishably from a
-   * finished one. That belongs in the engine, not in this file.
+   * would spend tokens describing a fallback rather than preventing it.
+   *
+   * It also still ANSWERS, and that is now a decision rather than the absence of
+   * one. A reply carrying none of the contract's fields is not a contract that
+   * stopped half-written; it is a model that ignored the contract and spoke, and
+   * its words are the whole of what it said. A reply that carried some fields
+   * and stopped is the opposite event, and used to be indistinguishable from
+   * this one. `ReActResponse.normalize` tells them apart from the values this
+   * method hands it — which is the only reason `normalize` takes them.
    */
   static parse(raw) {
     const text = typeof raw === 'string' ? raw : String(raw)

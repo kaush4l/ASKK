@@ -19,6 +19,17 @@ import { readFileSync } from 'node:fs'
  *       cut off mid-sentence. Captured with `max_tokens: 500` on a prompt that
  *       thinks briefly and then writes a long list.
  *
+ *   truncated-mid-contract.json / .sse    finish_reason `length`, past the
+ *       think block and INSIDE THE RESPONSE CONTRACT. `reasoning_content` is
+ *       PRESENT and correctly routed, and `content` is `think: [...]` followed by
+ *       half a `plan:` — no `act` line anywhere. Same transport state as the file
+ *       above it and a different event downstream: this is the reply that used to
+ *       END A RUN, because `act` defaulted to 'answer'. Captured on this tree's
+ *       own step-1 prompt with `max_tokens: 1135` (non-streamed) and `1020`
+ *       (streamed) — the window between "the reasoning finished" and "the answer
+ *       finished" is about eighty tokens wide on this model, which is why the two
+ *       captures do not share a ceiling.
+ *
  *   truncated-in-think.json / .sse        finish_reason `length`, still INSIDE
  *       the think block. `reasoning_content` is ABSENT and the raw reasoning is
  *       the WHOLE of `content`. Captured with `max_tokens: 220`.
@@ -29,9 +40,12 @@ import { readFileSync } from 'node:fs'
  *       `Object.keys(message)` is `['role', 'reasoning_content']`. Captured
  *       from `gemma-4-12B-it-qat-mxfp8` with `max_tokens: 120`, 3/3.
  *
- * The first three came from `Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp` and the
- * fourth from `gemma-4-12B-it-qat-mxfp8`, and the two models are the reason
- * there are four states rather than three. The comment that shipped with the
+ * All but one came from `Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp`, and
+ * `spent-in-think` from `gemma-4-12B-it-qat-mxfp8`; the two models are the reason
+ * there are four states rather than three. FIVE FILES, FOUR STATES: the two
+ * `truncated-past-think` and `truncated-mid-contract` captures are both `cut`,
+ * and keeping both is the point — the transport cannot tell them apart and must
+ * not try, while the layer that reads the contract must. The comment that shipped with the
  * first three said "no fourth state seen" over ~60 calls, which was true of the
  * calls made and false of the endpoint: a different chat template on the same
  * server routes the halves correctly and simply runs out before writing an

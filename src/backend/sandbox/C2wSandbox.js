@@ -67,8 +67,9 @@ const STATUS_LINE = new RegExp(`${STATUS}(\\d+)\\n?$`)
  * and one malformed command wedges the shell for every later caller.
  *
  * The module is fetched and compiled once and instantiated per command. The
- * download is ~100 MB and compiling is milliseconds, so the module is what is
- * worth keeping; a fresh instance per command is also what makes each command's
+ * download is 40,029,960 gzipped bytes that inflate to a 107,054,914-byte
+ * module, and compiling is milliseconds, so the module is what is worth
+ * keeping; a fresh instance per command is also what makes each command's
  * filesystem clean.
  */
 export class C2wSandbox extends Sandbox {
@@ -100,9 +101,9 @@ export class C2wSandbox extends Sandbox {
   /**
    * Boot once, on the first command.
    *
-   * Not at construction: the image is ~100 MB, and an agent that never runs a
-   * command must not have downloaded it. Concurrent first calls share the one
-   * boot rather than starting two.
+   * Not at construction: the image is 38 MiB on the wire and 102 MiB in memory,
+   * and an agent that never runs a command must not have downloaded it.
+   * Concurrent first calls share the one boot rather than starting two.
    */
   async _boot() {
     if (this._booted) return this._booted
@@ -141,18 +142,18 @@ export class C2wSandbox extends Sandbox {
 
   _receive(data, resolveBoot) {
     if (data?.type === 'booted') {
-      resolveBoot(Outcome.ok({ bytes: data.bytes }))
+      resolveBoot(Outcome.ok({ bytes: data.bytes, transferred: data.transferred }))
       return
     }
     if (data?.type === 'boot-failed') {
       resolveBoot(
         Outcome.failed(Reason.UNAVAILABLE, `the sandbox image did not load: ${data.message}`, {
           // The one failure a real deploy can hit, so the hint names the two
-          // controls that exist and no others. The image is gitignored — it is
-          // ~107 MB — so a fresh clone has none until it is built, and a host
-          // that will not serve a file that size has to be pointed elsewhere at
-          // build time. There is no setting for this and there should not be:
-          // see `composition.js`.
+          // controls that exist and no others. What ships is the gzipped image;
+          // a clone that has never run the build has neither it nor the raw
+          // module, and a host that will not serve 38 MiB has to be pointed
+          // elsewhere at build time. There is no setting for this and there
+          // should not be: see `composition.js`.
           hint: 'Build the guest with scripts/wasm/build.sh into public/sandbox/, or point the build at a hosted copy with SANDBOX_IMAGE=<url>.',
         }),
       )
@@ -204,8 +205,8 @@ export class C2wSandbox extends Sandbox {
     // returns blocks that worker for ever and no later command can run. The
     // worker is terminated rather than waited on: there is nothing to interrupt.
     // The compiled module dies with it, so the next command pays for the whole
-    // image again — under a second over loopback, and a 107 MB download on a
-    // deploy. That is the price of the only interruption there is.
+    // image again — under a second over loopback, and a 38 MiB download plus an
+    // inflate on a deploy. That is the price of the only interruption there is.
     const expired = new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), timeout))
     const finished = await Promise.race([settled, expired])
 
@@ -235,8 +236,17 @@ export class C2wSandbox extends Sandbox {
     // is the worst of the available answers.
     if (!this._announced) {
       this._announced = true
-      if (booted.value?.bytes) {
-        notes.push(`the sandbox image is ${booted.value.bytes} bytes, fetched once for this tab`)
+      // Both numbers, because they differ on the deploy and only one of them is
+      // what the visitor paid. The image ships gzipped — 40,029,960 bytes on the
+      // wire for a 107,054,914-byte module — since a file over 100 MiB cannot be
+      // in the repository this project is served from at all.
+      const { bytes, transferred } = booted.value ?? {}
+      if (bytes) {
+        notes.push(
+          transferred < bytes
+            ? `the sandbox image is ${bytes} bytes, fetched once for this tab as ${transferred} compressed`
+            : `the sandbox image is ${bytes} bytes, fetched once for this tab`,
+        )
       }
       if (finished.stubbed?.length) {
         notes.push(

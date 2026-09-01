@@ -1,4 +1,4 @@
-// Two servers, both deliberately hostile to the thing being measured.
+// Three servers, each deliberately hostile to the thing being measured.
 //
 // 1. `staticServer` — the header-free host. It sends NO Cross-Origin-Embedder-
 //    Policy, NO Cross-Origin-Opener-Policy and NO Cross-Origin-Resource-Policy,
@@ -13,6 +13,10 @@
 //    CORS preflight still reach the network under COEP" — a client-side
 //    "it worked" cannot distinguish a preflight that was sent from one the
 //    browser skipped.
+//
+// 3. `crossOriginHost` — a SECOND ORIGIN for the guest image, one port over,
+//    which serves the same bytes under three header profiles so the page can be
+//    told to load its guest from somewhere that is not its own host.
 
 import { existsSync, statSync } from 'node:fs'
 import { extname, join, normalize } from 'node:path'
@@ -20,7 +24,6 @@ import { extname, join, normalize } from 'node:path'
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.wasm': 'application/wasm',
   '.css': 'text/css; charset=utf-8',
@@ -31,9 +34,19 @@ const TYPES = {
  * Serve `roots` in order, first match wins. Nothing is added to a response but
  * Content-Type, Content-Length and Server — no isolation headers, ever.
  *
- * The second root is normally `public/sandbox`, so the pty probe loads the
- * TREE'S OWN `vm-worker.js`, `wasi-util.js` and `browser_wasi_shim/` rather
- * than copies that can drift away from them.
+ * The first root is `scripts/probe/page` and the second `public/sandbox`, so a
+ * name the probe does not carry itself falls through to the tree's own file —
+ * `wasi-util.js`, `browser_wasi_shim/`, and `vm-worker.js`, which no probe page
+ * shadows.
+ *
+ * WHICH LOADER A STAGE MEASURES IS NOT UNIFORM, and reading this as "the probes
+ * run what ships" is how this tree gets a claim refuted. Only the pty probe's
+ * `oneshot` stage boots the shipped `vm-worker.js`. Its `session`, `bench`,
+ * `speed`, `install` and `reload` stages boot `page/sandbox-pty.js`, a COPY —
+ * `vm-worker.js` with one substitution, and a copy that has already drifted:
+ * neither it nor `page/vm-worker-streaming.js` carries the gzip inflate the
+ * shipped loader gained, so neither can boot the artifact the deploy serves.
+ * A stage's evidence is worth what its loader is.
  */
 export function staticServer({ port, roots }) {
   const resolved = roots.filter((r) => existsSync(r))
@@ -153,4 +166,58 @@ export function echoServer({ port, frames = 40 }) {
     read: () => log.slice(),
     stop: () => server.stop(true),
   }
+}
+
+/**
+ * A SECOND ORIGIN for the guest image, with the header profile chosen per
+ * request.
+ *
+ * The deploy question this exists for is not "can a browser fetch an image this
+ * large" — it is "can it fetch that image from somewhere that is not the page's
+ * own host, while the page is cross-origin isolated". Under COEP a subresource
+ * needs either CORP or a passed CORS check, and the two hosts that would
+ * actually take a file this size differ on exactly that: cdn.jsdelivr.net sends
+ * `cross-origin-resource-policy: cross-origin`, huggingface.co's LFS CDN sends
+ * only `access-control-allow-origin: *`. Both profiles are servable here, along
+ * with the control that has neither.
+ *
+ * Different port, same host, which IS a different origin — the browser's own
+ * definition includes the port, and every check under test is the browser's.
+ *
+ *   /corp/<file>   ACAO * and CORP cross-origin      (the cdnjs / jsDelivr profile)
+ *   /cors/<file>   ACAO * only, deliberately no CORP (the huggingface profile)
+ *   /bare/<file>   neither                           (the C2 control; must fail)
+ *   ?part=i/n      byte range i of n, so a split artifact can be reassembled
+ */
+export function crossOriginHost({ port, dir }) {
+  const profiles = {
+    corp: { 'access-control-allow-origin': '*', 'cross-origin-resource-policy': 'cross-origin' },
+    cors: { 'access-control-allow-origin': '*' },
+    bare: {},
+  }
+  const server = Bun.serve({
+    port,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      const url = new URL(req.url)
+      const [, profile, name] = url.pathname.split('/')
+      if (!profiles[profile] || !name) return new Response('not found\n', { status: 404 })
+      const path = join(dir, name)
+      if (!existsSync(path)) return new Response('not found\n', { status: 404 })
+      const headers = {
+        'content-type': TYPES[extname(path)] ?? 'application/octet-stream',
+        server: 'askk-guest-host/1',
+        ...profiles[profile],
+      }
+      const part = url.searchParams.get('part')
+      if (!part) return new Response(Bun.file(path), { headers })
+      const [i, n] = part.split('/').map(Number)
+      const total = statSync(path).size
+      const size = Math.ceil(total / n)
+      return new Response(Bun.file(path).slice(i * size, Math.min((i + 1) * size, total)), {
+        headers,
+      })
+    },
+  })
+  return { server, url: `http://127.0.0.1:${server.port}`, stop: () => server.stop(true) }
 }

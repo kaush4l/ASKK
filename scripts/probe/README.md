@@ -51,9 +51,10 @@ bun add -d playwright && bunx playwright install chromium webkit
 |---|---|
 | `run.js` | the one entry point: starts both servers, drives the browsers, writes the artifact |
 | `lib/servers.js` | the header-free static host, and the CORP-less recording SSE endpoint |
-| `drivers/isolation.mjs` | probe 1 — cross-origin isolation and its price |
-| `drivers/model.mjs` | probe 2 — the app's real model call under COEP |
-| `drivers/pty.mjs` | probe 3 — a pty in the guest, and what it costs |
+| `drivers/isolation.js` | probe 1 — cross-origin isolation and its price |
+| `drivers/model.js` | probe 2 — the app's real model call under COEP |
+| `drivers/pty.js` | probe 3 — a pty in the guest, and what it costs |
+| `drivers/host.js` | probe 4 — where the guest may be served from, and whether it must arrive whole |
 | `page/` | everything the browser loads. Not linted or formatted: it holds vendored upstream code — see `page/PROVENANCE.md` |
 | `fixtures/` | `tree-2.2.1-r0.apk`, the package the install stage hands to the guest |
 | `results/` | dated run artifacts, committed |
@@ -145,16 +146,21 @@ reimplements the host half of the worker protocol; the tree's own sandbox class
 is never loaded, and no run of this probe has ever set `SANDBOX_IMAGE`, rebuilt,
 and watched `C2wSandbox.available` become `true`. It also cannot speak for a
 phone: every pass is headless desktop Chromium (`deviceMemory: 8`,
-`hardwareConcurrency: 16`) pulling ~107 MB over loopback, so no mobile RAM
+`hardwareConcurrency: 16`) pulling the whole image over loopback, so no mobile RAM
 ceiling, cellular transfer, tab discard or OOM behaviour is tested.
 
 ## Prerequisites, and what happens without them
 
 - **`playwright` + browsers.** Without them `run.js` exits 2 and prints the
   install line. Nothing is written.
-- **`public/sandbox/sandbox.wasm`** (~107 MB, built by `scripts/wasm/build.sh`,
-  never committed). Without it the `pty` probe prints `SKIPPED` into the
-  artifact and measures nothing — it does not quietly pass.
+- **`public/sandbox/sandbox.wasm.gz`**, built by `scripts/wasm/build.sh`, for
+  the `host` probe, and the raw **`public/sandbox/sandbox.wasm`** — never
+  committed, because it is over GitHub's 100 MiB per-file block — for `pty` and
+  for the `host` probe's split and raw rows. Sizes are in `docs/GATE.md`, with
+  the commands; a rebuild changes both and this file is not where a measurement
+  should be able to go stale. Without them the `pty` probe prints `SKIPPED` into
+  the artifact and measures nothing — it does not quietly pass, and the `host`
+  probe drops the two rows that need the raw module rather than throwing.
 - **A local OpenAI-compatible endpoint** for the `model` probe's long-stream
   rows, `http://127.0.0.1:8873` by default, overridable with `--local=<url>`.
   Without one those rows record the failure rather than being omitted.
@@ -163,7 +169,31 @@ ceiling, cellular transfer, tab discard or OOM behaviour is tested.
   is a number with nothing to divide by. Note the control runs on the host's own
   architecture: on Apple silicon that is `aarch64` against an `x86_64` guest, and
   the artifact prints both so the mismatch is on the record.
-- **Ports.** 8811 and 8814 by default; `--port` and `--echo-port` move them.
+- **Ports.** 8811, 8814 and 8815 by default; `--port`, `--echo-port` and
+  `--guest-port` move them. Two agents probing one tree collide on these, and the
+  failure is `EADDRINUSE` at startup rather than a wrong measurement.
+
+### `host`
+
+**Establishes** whether the guest boots from a host that is not the page's own
+while the page — and the classic worker that does the fetching — are cross-origin
+isolated, under each header profile a host that would actually take a file this
+size sends today; whether a split artifact reassembles to the same bytes; and
+what the compressed image costs against the raw one.
+
+The controls are what make it worth anything. `/bare/` sends neither
+`access-control-allow-origin` nor `cross-origin-resource-policy` and **must**
+fail, in every cell, or the passing rows are measuring nothing. The classic
+worker is asked for its own `crossOriginIsolated` rather than the page's, because
+the page's is not a statement about its workers and inheritance was the
+assumption. And the two remote rows are real hosts on the real internet, asked
+what they send rather than told what they should.
+
+**Cannot establish** anything about `https://kaush4l.github.io/ASKK/`, or what
+GitHub Pages does with a `.gz`: nothing here has been deployed. Every server but
+the two named remote hosts is on `127.0.0.1`, so no cross-origin cell here is a
+measurement of a real connection — which is exactly why the remote rows carry the
+only transfer times worth reading.
 
 ## Reading a result
 

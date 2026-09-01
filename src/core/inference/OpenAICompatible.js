@@ -367,6 +367,28 @@ export class OpenAICompatible extends Inference {
       : `The limit is already ${this.maxTokens.toLocaleString('en-US')} tokens, so raising it is not the answer: ask for something narrower, or set thinking to false for this model.`
   }
 
+  /**
+   * A cut reply is HANDED ON, and this note is the whole of what is said about
+   * it. That is the one truncation this file does not refuse, and it is a
+   * decision rather than an oversight.
+   *
+   * The other two discard what arrived because what arrived is the model's
+   * private working. Here it is the model's answer, and refusing it would throw
+   * away work that is often finished. Measured, replaying the 34 replies
+   * `bench/transcripts/<task>/ours/` recorded from a real run through `_state`:
+   * two were CUT, and one of them carried a complete tool call in a run that
+   * PASSED. A blanket refusal here would have failed that run in order to protect
+   * the other one.
+   *
+   * What the other one needed was not a refusal but a reader. Its `content` was
+   * `think: [Need inspect workspace to see if package.json exists and`, stopping
+   * mid-word with no `act` line, and the loop ended on it and showed the user
+   * nothing. Whether a truncated reply got as far as a decision is a question
+   * about the response contract, which this file must not answer — a guard here
+   * would be a guess about English made by the layer that knows the least about
+   * it. `ReActResponse.normalize` answers it and `ReActEngine` acts on it; this
+   * note travels beside that ending and is what tells the user WHY it happened.
+   */
   _cutNote(chars) {
     return `the reply was cut off at the ${this.maxTokens.toLocaleString('en-US')}-token limit after ${chars.toLocaleString('en-US')} characters, so it may stop mid-sentence`
   }
