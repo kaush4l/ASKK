@@ -4,6 +4,38 @@ import { Budget } from './Budget.js'
 import { Engine } from './Engine.js'
 
 /**
+ * What the model wrote, short enough to sit in a note.
+ *
+ * The hard stop used to carry the final turn on the Outcome's value and say in
+ * a comment that "nothing the model produced is thrown away". It was: the one
+ * reader of that value, `ChatService`, drops it. A note is a channel the page
+ * already renders, so the words go there instead of into a field nobody
+ * destructures.
+ */
+function quote(last) {
+  const text = last === null ? '' : typeof last === 'string' ? last : String(last.answer ?? '')
+  const trimmed = text.trim().replace(/\s+/g, ' ')
+  if (!trimmed) return 'nothing at all'
+  return `"${trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed}"`
+}
+
+/**
+ * A promise that settles when the stop is pressed, and never otherwise.
+ *
+ * For racing against something that cannot be cancelled. `once` matters: the
+ * loop calls this on every iteration against one long-lived signal, and a
+ * listener per step that outlived its step would accumulate for the length of
+ * the run.
+ */
+function until(signal) {
+  if (!signal) return new Promise(() => {})
+  return new Promise((resolve) => {
+    if (signal.aborted) resolve('')
+    else signal.addEventListener('abort', () => resolve(''), { once: true })
+  })
+}
+
+/**
  * Think → act → observe, until the agent says it is done or the run runs out.
  *
  * The loop reads one field of the parsed response: `act`. While it says `tool`
@@ -21,25 +53,29 @@ import { Engine } from './Engine.js'
  *
  * What it got wrong was "the only party that knows": the person paying for the
  * run knows something no amount of reasoning can derive. `Budget` is that
- * argument in full, and this loop is the three consequences of it, in order of
- * how much they matter:
+ * argument in full, and this loop is the two consequences of it:
  *
- *   1. The budget block, present from the first step. This is the mechanism,
- *      and it is a fact in the prompt rather than a number in the loop.
- *   2. A LAST WORD. When the next step would exhaust the budget, the block says
+ *   1. A LAST WORD. When the next step would exhaust the budget, the block says
  *      so in plain words BEFORE that step is sent, and the agent gets one turn
  *      to answer with what it has. A run should end with an answer, not with a
- *      severed rope.
- *   3. A hard stop behind that, for the agent that was told this was its last
+ *      severed rope. This is the mechanism, and it is a SENTENCE in the prompt
+ *      rather than a number in the loop — the running counters that used to sit
+ *      beside it were measured against an arm without them, changed nothing,
+ *      and were cut. `Budget`'s own comment carries that measurement.
+ *   2. A hard stop behind that, for the agent that was told this was its last
  *      turn and called a tool anyway. It is a safety net and not the mechanism,
  *      and it never truncates silently: the run fails, naming which budget ran
- *      out and saying that the final turn did not answer.
+ *      out and quoting what the final turn wrote instead of an answer.
  *
- * And the loop can be stopped from outside. `signal` is the user's, and it goes
- * all the way to the transport rather than being polled between iterations,
- * because a flag checked on the way round still leaves a model call open on the
- * network. A stopped run is not a failure — it is a run the user ended — so it
- * comes back ok, carrying whatever it had produced, with a note.
+ * And the loop can be stopped from outside. `signal` is the user's, and where
+ * it reaches is uneven, which is worth knowing before trusting it: it goes all
+ * the way to the transport for the MODEL CALL — see `Engine.step` — so a stop
+ * ends a request that is open on the network rather than the iteration after
+ * it. A tool call gets the same signal but only some tools can act on one, so
+ * the loop additionally RACES its wait against the stop: the run returns at
+ * once and a tool that cannot be cancelled finishes into nothing. A stopped run
+ * is not a failure — it is a run the user ended — so it comes back ok, carrying
+ * whatever it had produced, with a note.
  */
 export class ReActEngine extends Engine {
   static LABEL = 'react'
@@ -71,7 +107,7 @@ export class ReActEngine extends Engine {
     const scratchpad = []
     const seen = new Map()
     const notes = []
-    const budget = declared instanceof Budget ? declared : new Budget(declared ?? {})
+    const budget = new Budget(declared)
     let last = null
 
     // Four exits: the agent answered, the user stopped it, a call to the model
@@ -84,8 +120,10 @@ export class ReActEngine extends Engine {
       // its own prompt that it was the last and wrote a tool call regardless.
       // The tool is not run and the run does not pretend to have an answer —
       // returning the tool call as one is the silent truncation this exists to
-      // avoid — but the parsed turn travels with the failure so nothing the
-      // model produced is thrown away.
+      // avoid — but what the model wrote is QUOTED IN THE NOTE rather than only
+      // carried on the Outcome's value. The value travelled here before and
+      // `ChatService` dropped it, which made a comment promising that nothing
+      // was thrown away into a comment describing a throw-away.
       if (budget.closing) {
         return new Outcome(
           false,
@@ -100,7 +138,7 @@ export class ReActEngine extends Engine {
           ),
           [
             ...notes,
-            `stopped after ${budget.steps} steps: ${budget.closing} is spent and the last turn did not answer`,
+            `stopped after ${budget.steps} steps: ${budget.closing} is spent and the last turn wrote ${quote(last)} instead of an answer`,
           ],
         )
       }
@@ -122,6 +160,18 @@ export class ReActEngine extends Engine {
       })
       notes.push(...taken.notes)
 
+      // BEFORE the abort check below, and this order is the whole of a defect
+      // that shipped. A stream aborted mid-flight still comes back ok when text
+      // had already arrived — `OpenAICompatible` returns the part that landed —
+      // so a user pressing stop in the last second of a run had a COMPLETE,
+      // PARSED reply in hand at this line. Assigning after the check discarded
+      // it and the run then said "before the model had said anything", which
+      // was a lie about a turn it was holding.
+      if (taken.ok) {
+        last = taken.value
+        onStep?.({ step: budget.steps, parsed: last })
+      }
+
       // Checked again after the call and not only before it: this is the branch
       // a mid-flight stop takes, and the transport's own failure — an aborted
       // fetch — must not be reported to the user as a broken endpoint.
@@ -132,20 +182,29 @@ export class ReActEngine extends Engine {
       // only make the user wait longer for the same answer.
       if (!taken.ok) return taken.withNote(`failed on step ${at}`)
 
-      last = taken.value
-      onStep?.({ step: budget.steps, parsed: last })
-
       // A plain-text run has no `act` to read, so the first reply is the answer.
       if (typeof last === 'string' || last.isAnswer !== false) {
-        const done = budget.steps > 1 ? `answered after ${budget.steps} steps` : ''
-        return Outcome.ok(last, done ? [...notes, done] : notes)
+        return Outcome.ok(
+          last,
+          budget.steps > 1 ? [...notes, `answered after ${budget.steps} steps`] : notes,
+        )
       }
 
       const action = String(last.answer).trim()
       const times = (seen.get(action) ?? 0) + 1
       seen.set(action, times)
 
-      scratchpad.push({ action, observation: await this.observe(last, times) })
+      // Raced, not merely awaited. The signal goes into the tool as well, but a
+      // tool that cannot act on one — the wasm guest, an MCP server mid-call —
+      // would otherwise hold the whole run open for as long as it likes while
+      // the user watches a button they already pressed. Measured before this
+      // line existed: abort at 300 ms into a 1,500 ms tool, run returned at
+      // 1,504 ms. The tool is not killed, because it cannot be; it finishes
+      // into a scratchpad nobody will read.
+      const observed = await Promise.race([this.observe(last, times, signal), until(signal)])
+      if (signal?.aborted) return this.stopped(last, budget, notes)
+
+      scratchpad.push({ action, observation: observed })
     }
   }
 
@@ -173,14 +232,14 @@ export class ReActEngine extends Engine {
    * informing rather than by stopping — the agent still chooses what to do with
    * the information, including choosing to answer.
    */
-  async observe(parsed, times = 1) {
+  async observe(parsed, times = 1, signal = null) {
     if (times > 1) {
       return `this exact call was already made ${times - 1} time(s), so it was not run again — the result would be identical. Do something different: another tool, different arguments, or answer with what you have.`
     }
     if (!this.toolbox || this.toolbox.isEmpty) {
       return 'no tools are available. Answer with what you already know — set act to answer.'
     }
-    const { observation } = await this.toolbox.run(String(parsed.answer))
+    const { observation } = await this.toolbox.run(String(parsed.answer), signal)
     return observation
   }
 }

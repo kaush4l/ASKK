@@ -19,9 +19,13 @@ import { ScriptedInference } from '../../support/ScriptedInference.js'
  * the tree — just a worse answer. So the assertions are on the prompt strings
  * the transport was handed.
  *
- * The bound is tested the same way, and for the same reason. A budget that is
- * counted but never rendered is not a bound the agent can act on, so the
- * assertion that matters is the one on the prompt string, not on the number.
+ * The bound is tested the same way, and for the same reason: what a budget puts
+ * in the prompt is one SENTENCE, on the turn that has no room left, so the
+ * assertion that matters is the one on the prompt string. The running counters
+ * that used to sit beside it are gone — measured against an arm without them,
+ * they changed nothing and cost 30 tokens a turn — so the assertions here are
+ * that the block is ABSENT while there is room and present in words when there
+ * is not.
  */
 
 class EchoTool extends Tool {
@@ -163,33 +167,39 @@ describe('ReActEngine.run', () => {
     // Never a silent truncation: the note says exactly what ran out, and the
     // turn the model did produce comes back with the failure rather than being
     // discarded.
+    // Never a silent truncation, and never a value nobody reads: what the model
+    // wrote is QUOTED in the note, which is a channel the page renders. The
+    // Outcome's value carried it before and `ChatService` dropped it on the
+    // floor, so the comment promising nothing was thrown away described a
+    // throw-away.
     expect(outcome.notes).toContain(
-      'stopped after 3 steps: the 3-step budget is spent and the last turn did not answer',
+      'stopped after 3 steps: the 3-step budget is spent and the last turn wrote "echo({"text": "2"})" instead of an answer',
     )
     expect(outcome.value.answer).toContain('echo(')
   })
 })
 
 describe('a budget the agent can read', () => {
-  test('the block is in the prompt the transport was handed, from the very first call', async () => {
-    const { engine, inference } = engineWith([answerTurn('done')])
+  test('a run with room to spare is charged nothing for its budget', async () => {
+    const { engine, inference } = engineWith([toolTurn('echo({"a": 1})'), answerTurn('done')])
 
     await engine.run(history, { budget: { steps: 6, tokens: 9000, seconds: 120 } })
 
-    expect(inference.prompts[0]).toContain(
-      '# BUDGET\n\nsteps: 0 of 6 used\ntokens: 0 of 9,000 used (estimated)\ntime: 0s of 120s used',
-    )
+    // Not "contains no numbers" — the heading itself is absent, because an
+    // empty body takes the whole block out of the prompt. This is the assertion
+    // that would fail if somebody put the running counters back.
+    expect(inference.prompts[0]).not.toContain('# BUDGET')
+    expect(inference.prompts[1]).not.toContain('# BUDGET')
   })
 
-  test('what the last prompt spent is in the next one, so the agent watches it go', async () => {
-    const { engine, inference } = engineWith([toolTurn('echo({"a": 1})'), answerTurn('done')])
+  test('the bound still binds without being printed', async () => {
+    // The numbers left the prompt; the budget did not stop counting them.
+    const tool = new EchoTool()
+    const { engine, inference } = engineWith(neverAnswers(10), { toolbox: new Toolbox([tool]) })
 
-    await engine.run(history, { budget: { steps: 6 } })
+    await engine.run(history, { budget: { steps: 3 } })
 
-    expect(inference.prompts[1]).toContain('steps: 1 of 6 used')
-    // The estimate for the first prompt, standing because this transport
-    // reports no usage — and the block says which of the two it is.
-    expect(inference.prompts[1]).toMatch(/tokens: \d{3,} of 250,000 used \(estimated\)/)
+    expect(inference.calls).toHaveLength(3)
   })
 
   test('the last turn is told it is the last, in words, before it is sent', async () => {
@@ -197,8 +207,10 @@ describe('a budget the agent can read', () => {
 
     const outcome = await engine.run(history, { budget: { steps: 2 } })
 
-    expect(inference.prompts[0]).not.toContain('LAST TURN')
-    expect(inference.prompts[1]).toContain('THIS IS YOUR LAST TURN. the 2-step budget is spent')
+    expect(inference.prompts[0]).not.toContain('# BUDGET')
+    expect(inference.prompts[1]).toContain(
+      '# BUDGET\n\nTHIS IS YOUR LAST TURN. the 2-step budget is spent',
+    )
     // And the run ends with an answer rather than a severed rope, which is the
     // whole reason the last word exists.
     expect(outcome.ok).toBe(true)
@@ -212,7 +224,11 @@ describe('a budget the agent can read', () => {
     await engine.run(history, { budget: declared })
     await engine.run(history, { budget: declared })
 
-    expect(inference.prompts[1]).toContain('steps: 0 of 4 used')
+    // Both runs answered on their first step, which a leaked counter would have
+    // made impossible: four steps spent across two runs of a 4-step budget
+    // would close the second one before it started.
+    expect(inference.calls).toHaveLength(2)
+    expect(inference.prompts[1]).not.toContain('# BUDGET')
   })
 })
 
@@ -223,9 +239,9 @@ describe('stopping a run', () => {
 
     await engine.run(history, { signal: controller.signal })
 
-    // The argument at the boundary. A stop that is only polled between
-    // iterations leaves the model call open for as long as the endpoint takes,
-    // which is precisely the wait the button was pressed to end.
+    // Only that the object was handed over. That it ABORTS anything is proved
+    // in `test/core/inference/Inference.test.js`, against a fetch, because
+    // nothing at this seam can see it.
     expect(inference.calls[0].options.signal).toBe(controller.signal)
   })
 
@@ -242,6 +258,72 @@ describe('stopping a run', () => {
     expect(outcome.notes).toContain(
       'you stopped this run after 0 step(s), before the model had said anything',
     )
+  })
+
+  test('a COMPLETED answer is not destroyed by the stop that arrived after it', async () => {
+    // The defect this replaces, and it was invisible to every test here. A
+    // stream aborted mid-flight still comes back ok when text had arrived, so
+    // at the moment of the abort check the loop was holding a parsed, complete
+    // answer — and assigned `last` one line too late, binning it and reporting
+    // "before the model had said anything" about a turn it had in hand.
+    const controller = new AbortController()
+    const inference = new ScriptedInference({
+      replies: [toolTurn('echo({"text": "0"})'), answerTurn('HERE IS THE ANSWER')],
+    })
+    const original = inference.invoke.bind(inference)
+    inference.invoke = async (...args) => {
+      const reply = await original(...args)
+      // Stopped as the second reply lands: the endpoint answered, the user's
+      // finger was already down. Exactly the last second of a long run.
+      if (inference.calls.length === 2) controller.abort()
+      return reply
+    }
+    const engine = new ReActEngine({ inference, toolbox: new Toolbox([new EchoTool()]) })
+
+    const outcome = await engine.run(history, { signal: controller.signal })
+
+    expect(outcome.ok).toBe(true)
+    expect(outcome.value.answer).toBe('HERE IS THE ANSWER')
+    expect(outcome.value.isAnswer).toBe(true)
+    // And the note no longer contradicts the value sitting beside it.
+    expect(outcome.notes).toContain('you stopped this run after 2 step(s)')
+    expect(outcome.notes.join(' ')).not.toContain('before the model had said anything')
+  })
+
+  test('a stop returns while a tool is still running, rather than waiting it out', async () => {
+    // Measured before the race existed: abort at 300 ms into a 1,500 ms tool,
+    // run returned at 1,504 ms. The tool cannot be killed — the wasm guest and
+    // an MCP server mid-call have no cancel — so the loop leaves rather than
+    // waits, and the tool finishes into a scratchpad nobody reads.
+    const controller = new AbortController()
+    let released = null
+    class SlowTool extends Tool {
+      constructor() {
+        super({ name: 'slow', description: 'never finishes on its own', parameters: {} })
+      }
+
+      async call() {
+        return new Promise((resolve) => {
+          released = () => resolve(Outcome.ok('finally'))
+        })
+      }
+    }
+    const { engine } = engineWith([toolTurn('slow({})'), answerTurn('unreached')], {
+      toolbox: new Toolbox([new SlowTool()]),
+    })
+
+    const running = engine.run(history, { signal: controller.signal })
+    // Let the first model call and the tool dispatch happen, then press stop.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    controller.abort()
+    const outcome = await running
+
+    expect(outcome.ok).toBe(true)
+    expect(outcome.notes.some((note) => note.startsWith('you stopped this run'))).toBe(true)
+    // The tool really was still outstanding — this is what makes the assertion
+    // above a race and not a coincidence of timing.
+    expect(released).toBeInstanceOf(Function)
+    released()
   })
 
   test('a run stopped part-way carries the work it had done', async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { estimateTokens } from '../../../src/core/prompt/tokens.js'
 import { Format } from '../../../src/core/response/BaseResponse.js'
 import { ACT_ANSWER, ACT_TOOL, ReActResponse } from '../../../src/core/response/ReActResponse.js'
 
@@ -154,17 +155,68 @@ describe('ReActResponse.parse', () => {
 })
 
 describe('the contract the model is shown', () => {
-  test('the instructions name every field, in declaration order, with the wrong-act example', () => {
+  test('the instructions name every field, in declaration order, with a real act example', () => {
     const instructions = ReActResponse.instructions(Format.TOON)
 
     expect(instructions.startsWith('# RESPONSE FORMAT')).toBe(true)
-    expect(instructions).toContain('in this order: think, plan, act, result')
     expect(instructions).toContain('- think (list):')
     expect(instructions).toContain('- act:')
-    // The one mistake worth spending prompt tokens on, because it is the one
-    // `normalize` exists to repair.
-    expect(instructions).toContain('act: echo({"text": "hello"})')
-    expect(instructions).toContain('WRONG (never do this):')
+    expect(instructions.indexOf('- think')).toBeLessThan(instructions.indexOf('- plan'))
+    expect(instructions.indexOf('- plan')).toBeLessThan(instructions.indexOf('- act'))
+    expect(instructions.indexOf('- act')).toBeLessThan(instructions.indexOf('- result'))
+    // The example shows the word the model has to write. `act: <your act here>`
+    // was a placeholder that read as an invitation to write a tool name there.
+    expect(instructions).toContain('\nact: answer\n')
+  })
+
+  test('the counter-example is gone, and this test no longer pins it in place', () => {
+    // This assertion used to run the other way round: it required
+    // `act: echo({"text": "hello"})` to be PRESENT because `normalize` exists to
+    // repair it — which is backwards. A repair existing is a reason to spend
+    // fewer prompt tokens on the case, not more, and docs/PROMPT-AUDIT.md
+    // measured both arms at 0/16 on the mistake the block exists to prevent.
+    const instructions = ReActResponse.instructions(Format.TOON)
+
+    expect(instructions).not.toContain('WRONG (never do this)')
+    expect(instructions).not.toContain('echo({"text": "hello"})')
+    expect(instructions).not.toContain('CORRECT (final reply)')
+  })
+
+  test('rules the parser repairs are not also charged for on every call', () => {
+    // Each of these was a numbered rule with a measured 0/48 violation rate —
+    // including in the arm that never stated it — sitting in front of a repair
+    // in `BaseResponse._parseToon` that runs whether the rule is stated or not.
+    const instructions = ReActResponse.instructions(Format.TOON)
+
+    expect(instructions).not.toContain('Rules:')
+    expect(instructions).not.toContain('lowercase name')
+    expect(instructions).not.toContain('No markdown decoration')
+    expect(instructions).not.toContain('do not repeat the field name')
+  })
+
+  test('bracket notation survives, folded into the two list field descriptions', () => {
+    // The one rule the experiment refused to give up. Deleting it outright
+    // produced four bulleted `think:` blocks in sixteen replies — the exact
+    // failure it names. Stating it inside the field description, at about six
+    // tokens, produced none. Folded, not deleted.
+    const instructions = ReActResponse.instructions(Format.TOON)
+
+    expect(instructions).toContain('- think (list): Your private reasoning')
+    expect(instructions).toContain('- plan (list): The concrete next steps')
+    expect(instructions.match(/`\[a, b\]`/g)).toHaveLength(2)
+  })
+
+  test('the contract stays under a third of the prompt it used to be', () => {
+    // A ratchet, not a vanity number. This block was 463 tokens — 42% of
+    // everything sent, more than the system text and the whole tool table
+    // combined. If it climbs back past 300 someone is adding rules again, and
+    // the finding it would have to argue against is 192 calls in which the
+    // 463-token contract and this one both scored 86% strict-clean, p = 1.00.
+    //
+    // It only weighs ReActResponse, which is why the sibling test asserts that
+    // `formatNotes` is gone rather than merely unused: a rules block returning
+    // through a per-subclass hook would never be weighed here at all.
+    expect(estimateTokens(ReActResponse.instructions(Format.TOON))).toBeLessThan(300)
   })
 
   test('the reminder is one line naming the fields and nothing else', () => {
@@ -173,7 +225,6 @@ describe('the contract the model is shown', () => {
     expect(reminder).toBe(
       'Reply with these fields, in this order, one per line: think, plan, act, result.',
     )
-    expect(reminder).not.toContain('\n')
   })
 
   test('a response round-trips through its own written form', () => {

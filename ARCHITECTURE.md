@@ -22,6 +22,12 @@ The boundary is enforced by the realm, not by convention. A component cannot
 import a service and quietly bypass the protocol — the import would fail at
 runtime, because that code is not in the page's realm.
 
+Which is a claim about the boundary, not about the checks. A file can compile
+for a realm it cannot run in, and for a long time nothing here executed a realm
+to find out. `docs/GATE.md` measures exactly which of those faults each step of
+`bun run check` catches, and names the two worker realms it still does not
+reach.
+
 ## Layers, innermost first
 
 | Layer | Depends on | Rule |

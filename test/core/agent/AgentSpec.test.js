@@ -46,6 +46,45 @@ describe('AgentSpec budget', () => {
     )
   })
 
+  test('a limit that is not a number is REFUSED, not read off the front of a string', () => {
+    // `Number.parseInt` was doing this, and every line below was silently
+    // becoming a budget a thousandth of the size its author wrote — with no
+    // note, so the run just looked like the model giving up early. Measured:
+    // `tokens: "250k"` produced a 250-token budget that closed after the first
+    // turn.
+    const built = spec({
+      name: 'x',
+      budget: { tokens: '250k', seconds: '10m', steps: '2.5e5' },
+    })
+
+    expect(built.value.budget).toEqual({ steps: 250_000 })
+    expect(built.notes).toContain(
+      'agents/x/agent.md: budget.tokens "250k" is not a positive number; ignored',
+    )
+    expect(built.notes).toContain(
+      'agents/x/agent.md: budget.seconds "10m" is not a positive number; ignored',
+    )
+  })
+
+  test('a thousands separator and an overflow are refused too', () => {
+    const built = spec({ name: 'x', budget: { tokens: '250,000', steps: '1e400' } })
+
+    expect(built.value.budget).toEqual({})
+    expect(built.notes).toHaveLength(2)
+  })
+
+  test('a key that is not a currency this loop spends costs a note', () => {
+    // The code's own comment promised this and the code did not do it:
+    // `budget: {minutes: 5}` produced no budget and no note, and left an author
+    // certain they had set one.
+    const built = spec({ name: 'x', budget: { minutes: 5 } })
+
+    expect(built.value.budget).toEqual({})
+    expect(built.notes).toContain(
+      'agents/x/agent.md: budget.minutes is not a limit this loop spends; ignored',
+    )
+  })
+
   test('an explicit budget wins over the older word for the same number', () => {
     expect(spec({ name: 'x', max_steps: 8, budget: { steps: 3 } }).value.budget).toEqual({
       steps: 3,
@@ -61,5 +100,42 @@ describe('AgentSpec prompt', () => {
     const built = spec({ name: 'x', prompt: ['identity', 'budget', 'cue'] })
 
     expect(built.value.prompt).toEqual(['identity', 'budget', 'cue'])
+  })
+})
+
+/**
+ * Whether this agent's model is allowed a scratchpad.
+ *
+ * Here at all because `OpenAICompatible` documented `thinking: false` as the
+ * escape hatch from a false positive in its own classifier, and shipped with no
+ * path from any file or setting to that constructor argument — a switch on the
+ * inside of a locked door. These tests are the lock: every one of them fails if
+ * the field stops being read.
+ */
+describe('AgentSpec thinking', () => {
+  test('a file that says nothing has no opinion, so the app-wide setting decides', () => {
+    // Null and not false. A boolean default here would override settings for
+    // every agent file ever written, none of which mention the word.
+    expect(spec({ name: 'x' }).value.thinking).toBe(null)
+  })
+
+  test('a file can turn it off, under either spelling', () => {
+    expect(spec({ name: 'x', thinking: false }).value.thinking).toBe(false)
+    expect(spec({ name: 'x', enable_thinking: false }).value.thinking).toBe(false)
+    expect(spec({ name: 'x', thinking: true }).value.thinking).toBe(true)
+  })
+
+  test('YAML that reads a boolean as a word still means the boolean', () => {
+    expect(spec({ name: 'x', thinking: 'false' }).value.thinking).toBe(false)
+    expect(spec({ name: 'x', thinking: 'TRUE' }).value.thinking).toBe(true)
+  })
+
+  test('anything that is not true or false costs the line and leaves a note', () => {
+    // `thinking: "no"` must not become true because a non-empty string is
+    // truthy, which is the whole reason this is not a `Boolean()` call.
+    const built = spec({ name: 'x', thinking: 'no' })
+
+    expect(built.value.thinking).toBe(null)
+    expect(built.notes).toContain('agents/x/agent.md: thinking "no" is not true or false; ignored')
   })
 })

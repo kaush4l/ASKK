@@ -16,7 +16,9 @@ import { Tool } from './Tool.js'
  */
 export class SubAgentTool extends Tool {
   /**
-   * @param {{spec: object, dispatch: (name: string, prompt: string) => Promise<Outcome>}} options
+   * @param {{spec: object,
+   *   dispatch: (name: string, prompt: string, signal: AbortSignal|null)
+   *     => Promise<Outcome>}} options
    */
   constructor({ spec, dispatch }) {
     super({
@@ -34,13 +36,17 @@ export class SubAgentTool extends Tool {
     this.dispatch = dispatch
   }
 
-  async call({ task } = {}) {
+  async call({ task } = {}, signal = null) {
     const instruction = typeof task === 'string' ? task.trim() : ''
     if (!instruction) {
       return Outcome.ok(
         `${this.name} was given no task. Call it again with {"task": "..."} describing what you need.`,
       )
     }
-    return this.dispatch(this.name, instruction)
+    // The signal goes on. A delegated run is a whole second agent burning a
+    // whole second budget on its own thread; before this it could not be
+    // stopped at all, so pressing stop on a delegating agent ended the parent
+    // and left the child running to completion.
+    return this.dispatch(this.name, instruction, signal)
   }
 }

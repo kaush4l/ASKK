@@ -1,0 +1,88 @@
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":0,"model":"keepalive","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244578,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"role":"assistant"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244579,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":"\nWe need to respond"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244579,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" to user: \"You are an agent with"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244579,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" a tool called shell(command)."}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244579,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" Reply with fields think, plan"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":", act, result. The"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" user asks: what kernel is"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" this machine running? Decide whether"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" to call shell({\"command\":"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" \"uname -a\"}) or answer"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":".\"\n\nWe need produce fields think"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":", plan, act, result. Likely"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" we should act"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244580,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" by calling shell? But as"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244581,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" language model, we cannot actually"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244581,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" execute? The prompt says agent with tool"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244581,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" called shell(command). We need decide"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244581,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" whether to call shell or answer"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244581,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":". To know kernel"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244581,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":", need execute uname"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244581,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" -a. So act should"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244582,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" be tool call? It says"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244582,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" Reply with fields think, plan, act,"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244582,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" result. Could format:\nthink:"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244582,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" ...\n"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244582,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":"plan: ...\nact:"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244582,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" shell({\"command\": \"uname"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244582,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" -a\"})\nresult: pending?"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244583,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" But if we need"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244583,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" final answer maybe include result after"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244583,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" hypothetical? The"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244583,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" user asks decide whether to call"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244583,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" shell or answer. We should"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244583,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" choose call shell"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244583,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":". But if act is call,"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244583,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" result maybe \"await"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244584,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":"ing tool result\". However maybe"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244584,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" they expect a single JSON-like"}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244584,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"reasoning_content":" with fields."}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244584,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{"content":"\nWe need to respond to user: \"You are an agent with a tool called shell(command). Reply with fields think, plan, act, result. The user asks: what kernel is this machine running? Decide whether to call shell({\"command\": \"uname -a\"}) or answer.\"\n\nWe need produce fields think, plan, act, result. Likely we should act by calling shell? But as language model, we cannot actually execute? The prompt says agent with tool called shell(command). We need decide whether to call shell or answer. To know kernel, need execute uname -a. So act should be tool call? It says Reply with fields think, plan, act, result. Could format:\nthink: ...\nplan: ...\nact: shell({\"command\": \"uname -a\"})\nresult: pending? But if we need final answer maybe include result after hypothetical? The user asks decide whether to call shell or answer. We should choose call shell. But if act is call, result maybe \"awaiting tool result\". However maybe they expect a single JSON-like with fields."}}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244584,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+
+data: {"id":"chatcmpl-9b0d3bb0","object":"chat.completion.chunk","created":1788244584,"model":"Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp","choices":[],"usage":{"prompt_tokens":101,"completion_tokens":220,"total_tokens":321,"input_tokens":101,"output_tokens":220,"prompt_tokens_details":{"cached_tokens":0},"time_to_first_token":1.23,"total_time":6.19,"prompt_eval_duration":1.23,"generation_duration":4.96,"prompt_tokens_per_second":81.99,"generation_tokens_per_second":44.33}}
+
+data: [DONE]
+

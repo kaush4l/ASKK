@@ -1,23 +1,31 @@
 /**
- * What a run has spent, and what it is allowed to spend — written down where
- * the agent can read it.
+ * What a run has spent, what it is allowed to spend, and the one sentence the
+ * agent is ever told about it.
  *
  * This exists because of an argument that was already won and was only half
  * right. `ReActEngine`'s doc comment says a step counter is "a guess overruling
- * the only party that knows", and about a HIDDEN counter that is exactly true:
- * a number the agent cannot see is not a bound it can work within, it is an
- * accident that happens to it partway through a plan. The half that was missing
- * is that there is a second party who knows something the agent does not — the
- * person whose battery, context window and bill are being spent. A budget is
- * how that party states their terms, and rendering it into the prompt is what
- * keeps the agent the one deciding: told "step 22 of 24", a model wraps up. Told
- * nothing and then stopped at 24, it is simply cut off mid-sentence.
+ * the only party that knows", and about a HIDDEN ceiling that is exactly true:
+ * a run cut off at a number nobody mentioned ends mid-sentence. The half that
+ * was missing is that there is a second party who knows something the agent
+ * cannot derive — the person whose battery, context window and bill are being
+ * spent. A budget is how that party states their terms.
  *
- * So this object is a FACT, not a gate. It counts, it renders, and it says when
- * it is finished; the loop decides what to do about that. The only place it
- * approaches a gate is `exhausted`, which the loop uses to decide that the next
- * turn is the agent's last — and even that is announced in the prompt before it
- * is acted on.
+ * WHAT WAS MEASURED, AND WHAT IT COST THE FIRST VERSION OF THIS FILE. That
+ * version rendered three running lines into every prompt — steps used, tokens
+ * used, seconds used — on the argument that "told step 22 of 24, a model wraps
+ * up". Measured on the testbed model, n=8 per arm, the arm carrying those lines
+ * and the arm without produced the same distribution of answers and tool calls;
+ * and the structural reason is plainer than the sample size. Nothing in an
+ * agent file, the tool listing or the response contract ever mentions a budget,
+ * a step count or an estimate, so there is no rule for a number to make the
+ * model branch on. Three lines of arithmetic are not an instruction. They cost
+ * 30 tokens on every turn of every run, against an endpoint measured at
+ * `cached_tokens: 0`, and bought nothing anybody could measure.
+ *
+ * So what is rendered is the sentence and only the sentence: when the coming
+ * turn is the last the budget can pay for, the block says THAT, in words, with
+ * an instruction attached. Everything else this object knows it keeps, and
+ * spends on deciding when that sentence appears.
  *
  * Three currencies, because a runaway loop can burn any of them independently:
  * a fast local model burns steps without tokens, a long-context call burns
@@ -26,10 +34,10 @@
  *
  * Tokens are counted from the provider's own number where there is one —
  * `Inference._usage` reports it and the engine hands it here — and from the
- * local estimator where there is not. Which of the two produced the figure is
- * printed beside it, because a budget quoting an estimate as though it were a
- * measurement is the failure mode this whole repository keeps rebuilding to
- * escape.
+ * local estimator where there is not. That distinction survives the lines that
+ * used to print it, because it was never decoration: it decides WHEN the run
+ * closes, and a budget quietly spending an estimate as though it were a
+ * measurement would close at the wrong time.
  */
 
 /**
@@ -52,7 +60,7 @@
  *                 clock can only run out on a run that has made more than one
  *                 call and is therefore looping rather than merely waiting.
  */
-export const BUDGET_DEFAULTS = Object.freeze({ steps: 24, tokens: 250_000, seconds: 600 })
+const BUDGET_DEFAULTS = Object.freeze({ steps: 24, tokens: 250_000, seconds: 600 })
 
 const count = (n) => n.toLocaleString('en-US')
 
@@ -89,7 +97,6 @@ export class Budget {
     return this._passes.length
   }
 
-  /** Seconds since the run began. */
   get seconds() {
     return Math.max(0, Math.round((this._now() - this._startedAt) / 1000))
   }
@@ -97,11 +104,6 @@ export class Budget {
   /** The provider's number where it gave one, this tree's estimate where it did not. */
   get tokens() {
     return this._passes.reduce((sum, pass) => sum + (pass.measured ?? pass.estimated), 0)
-  }
-
-  /** How many passes carry a real count. The difference between fact and guess. */
-  get counted() {
-    return this._passes.filter((pass) => pass.measured !== null).length
   }
 
   /**
@@ -116,7 +118,6 @@ export class Budget {
    */
   open(tokens) {
     this._passes.push({ estimated: Number(tokens) || 0, measured: null })
-    return this
   }
 
   /**
@@ -130,21 +131,34 @@ export class Budget {
     // public method and nothing in this tree may throw on a state a caller can
     // reach: usage reported against no pass is a no-op, not a crash.
     const pass = this._passes.at(-1)
-    if (!pass || !usage) return this
+    if (!pass || !usage) return
     const spent = (Number(usage.prompt) || 0) + (Number(usage.completion) || 0)
     if (spent > 0) pass.measured = spent
-    return this
   }
 
   /**
-   * What will have run out by the end of the NEXT step — empty while there is
-   * room for another.
+   * What has no room left for another step — empty while there is.
    *
-   * Asked about the next step rather than this one on purpose: the last word is
-   * spent FROM the budget rather than added to it, so a run declaring 24 steps
-   * makes at most 24 model calls and the twenty-fourth is the one told that it
-   * is the last. A budget that granted an extra turn on top of its own number
-   * would not be the number anybody wrote.
+   * THE THREE CURRENCIES ANSWER THIS DIFFERENTLY, and the difference is stated
+   * here rather than smoothed over, because a previous version of this comment
+   * claimed all three were asked about the next step and only one of them is.
+   *
+   * Steps is asked about the NEXT step (`steps + 1 >=`), because the cost of a
+   * step is the one cost that is known before it is taken: exactly one. The last
+   * word is therefore spent FROM the budget rather than added to it, so a run
+   * declaring 24 steps makes at most 24 model calls and the twenty-fourth is the
+   * one told that it is the last.
+   *
+   * Tokens and seconds are asked about THIS moment, because what the next call
+   * will cost cannot be known until it has been made. Forecasting it would put a
+   * number this file invented beside the two it measured, which is the exact
+   * confusion the rest of this class is built to avoid.
+   *
+   * The consequence is a floor and not a ceiling, and it is real: one call can
+   * overshoot a token or time limit by any amount. A 500-token budget facing a
+   * single 200,000-token reply closes AFTER that reply, not before it. The step
+   * limit is what actually bounds a runaway loop; the other two catch a run that
+   * is expensive or slow rather than long.
    */
   get exhausted() {
     if (this.steps + 1 >= this.limits.steps) return `the ${this.limits.steps}-step budget`
@@ -165,7 +179,6 @@ export class Budget {
    */
   close() {
     this._closing = this.exhausted
-    return this
   }
 
   /**
@@ -180,31 +193,21 @@ export class Budget {
   }
 
   /**
-   * The `# BUDGET` block's body.
+   * The `# BUDGET` block's body: the hand-over, or nothing at all.
    *
-   * Three lines and, at the end, one paragraph that only ever appears once. The
-   * paragraph is the whole point of the block existing: everything before it is
-   * a number the agent may or may not act on, and this is the sentence that
-   * turns a stop into a hand-over.
+   * Empty while there is room, and an empty body is dropped from the prompt
+   * entirely by `PromptTemplate` — the same elision that removes the identity
+   * block from an agent with no soul. A budget that has not run out has nothing
+   * to say that an agent could act on, and the measurement in this file's
+   * opening comment is what turned that from an opinion into a decision.
+   *
+   * This paragraph is the whole point of the block existing. It is the sentence
+   * that turns a stop into a hand-over, and unlike a number it names what has
+   * happened, what will happen to a tool call written now, and what to write
+   * instead.
    */
   render() {
-    const source =
-      this.counted === 0
-        ? 'estimated'
-        : this.counted === this.steps
-          ? 'counted by the provider'
-          : `${this.counted} of ${this.steps} counted by the provider`
-    const lines = [
-      `steps: ${this.steps} of ${this.limits.steps} used`,
-      `tokens: ${count(this.tokens)} of ${count(this.limits.tokens)} used (${source})`,
-      `time: ${this.seconds}s of ${this.limits.seconds}s used`,
-    ]
-    if (this._closing) {
-      lines.push(
-        '',
-        `THIS IS YOUR LAST TURN. ${this._closing} is spent, so no tool call you write now will be run — writing one ends the run with no answer at all. Set act to answer and reply with what you have: say what you found, and say plainly what you did not get to.`,
-      )
-    }
-    return lines.join('\n')
+    if (!this._closing) return ''
+    return `THIS IS YOUR LAST TURN. ${this._closing} is spent, so no tool call you write now will be run — writing one ends the run with no answer at all. Set act to answer and reply with what you have: say what you found, and say plainly what you did not get to.`
   }
 }

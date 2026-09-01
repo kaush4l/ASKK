@@ -12,11 +12,10 @@ import { CANCEL, ErrorCode, Response } from '../protocol/Envelope.js'
  * mechanism: it exists because a defect is still possible and must not take the
  * worker down with it, leaving every future call unanswered.
  *
- * It is also the only thing in either realm that knows what is RUNNING. A
- * service is handed params and has no idea it has a neighbour, let alone a
- * request id; the page holds ids but is on the wrong side of a boundary that
- * an AbortSignal cannot cross. So the signals live here, one per call, and the
- * page reaches them by sending a second request that names the first.
+ * It is also the only thing in either realm that knows what is RUNNING: the
+ * signals live here, one per call, and the page reaches them by sending a
+ * second request that names the first — see `CANCEL` in the envelope for why
+ * the handle is an id and not a signal.
  */
 export class Kernel {
   constructor() {
@@ -56,12 +55,16 @@ export class Kernel {
    * is to press stop as the answer arrives, and reporting that as an error would
    * put a red message on screen for a run that finished correctly. The boolean
    * says whether anything was actually interrupted.
+   *
+   * It said so in a NOTE too, and the note is gone. `BackendClient.stop` drops
+   * this promise on purpose — the call being stopped answers on its own request
+   * — so the one sentence distinguishing "I stopped it" from "it had already
+   * finished" reached the wire and was read by nobody but its own test. A
+   * sentence written for a user who cannot receive it is not a message.
    */
   cancel({ id } = {}) {
     const controller = this._running.get(String(id ?? ''))
-    if (!controller) {
-      return Outcome.ok(false, ['that call had already finished, so there was nothing to stop'])
-    }
+    if (!controller) return Outcome.ok(false)
     controller.abort()
     return Outcome.ok(true)
   }

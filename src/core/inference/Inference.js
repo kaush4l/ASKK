@@ -86,11 +86,25 @@ export class Inference {
    * `cached` is the part of the prompt the provider reused. It is the one
    * number that says whether the prompt's arrangement is working — everything
    * else about caching is inference from theory.
+   *
+   * `latency` is present only when the endpoint sent some. Every duration in
+   * this repository until now was an assertion; these are the endpoint's own
+   * numbers about the call that just happened, and they were arriving in the
+   * usage frame and being discarded one line above here.
+   *
+   * It shipped once with nowhere to go. `grep -rn latency src/` matched only the
+   * three lines that PRODUCE it — `Budget.measure` reads `prompt` and
+   * `completion`, and the page rendered `prompt` and `cached` — so a field the
+   * comment called the first measured timing in this application was collected,
+   * serialised across `EventName.USAGE`, and dropped. That is the exact
+   * declared-but-never-read defect this tree keeps rebuilding to escape, and the
+   * fix was not to delete it: `page.jsx` now prints the generation rate beside
+   * the token counts, which is where somebody can act on it.
    */
   static _usage(raw) {
     if (!raw) return null
     const prompt = raw.prompt_tokens ?? raw.input_tokens ?? 0
-    return {
+    const usage = {
       prompt,
       completion: raw.completion_tokens ?? raw.output_tokens ?? 0,
       cached:
@@ -100,6 +114,41 @@ export class Inference {
         0,
       written: raw.cache_creation_input_tokens ?? 0,
     }
+    const latency = Inference._latency(raw)
+    if (latency) usage.latency = latency
+    return usage
+  }
+
+  /**
+   * How long the endpoint says it took, in seconds and tokens per second.
+   *
+   * Absent keys are LEFT OUT rather than defaulted to zero, and the whole
+   * object is omitted when a provider reports none. A zero here would read as
+   * "measured, and instant", which is the exact confusion between an estimate
+   * and a measurement that this tree keeps being rebuilt to escape — and it
+   * would be indistinguishable from the truth on a fast local model.
+   *
+   * Sent by the testbed endpoint in the usage frame, which arrives only when
+   * `stream_options: {include_usage: true}` was asked for. The non-streaming
+   * reply carries `total_time` alone, so a call that reports one field and a
+   * call that reports six are both normal and neither is an error.
+   */
+  static _latency(raw) {
+    // NOT called `seconds`. Two of the six fields below are rates, and a
+    // validator named for the unit of the other four is a lie in a file whose
+    // whole subject is the difference between a measurement and an assertion.
+    const positiveNumber = (value) =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+    const measured = {
+      firstToken: positiveNumber(raw.time_to_first_token),
+      prefill: positiveNumber(raw.prompt_eval_duration),
+      generation: positiveNumber(raw.generation_duration),
+      total: positiveNumber(raw.total_time),
+      prefillRate: positiveNumber(raw.prompt_tokens_per_second),
+      generationRate: positiveNumber(raw.generation_tokens_per_second),
+    }
+    const kept = Object.entries(measured).filter(([, value]) => value !== null)
+    return kept.length ? Object.fromEntries(kept) : null
   }
 
   /** Release anything held open. Override where there is something to close. */
@@ -113,9 +162,26 @@ export class Inference {
    * mean opposite things to whoever reads the failure — one is an endpoint that
    * went quiet, the other is something somebody chose — so they are combined
    * for fetch and told apart in the catch.
+   *
+   * TAKES THE CONTROLLER RATHER THAN ITS SIGNAL, because of what happens on a
+   * browser without `AbortSignal.any`. That method is recent — Chrome 116,
+   * Safari 17.4, Firefox 124 — and `Kernel.handle` makes a controller for EVERY
+   * call, so `stop` is always truthy and this branch is always taken. Shipped
+   * bare, an older browser therefore lost not its stop button but every turn,
+   * with `AbortSignal.any is not a function` wearing the hint that says to check
+   * whether your server sends CORS headers. Measured, by deleting the method.
+   *
+   * The fallback forwards one abort into the other, which needs the controller.
+   * It is a listener per call on a signal that lives for one call, so nothing
+   * accumulates; and `stop.aborted` still reads true in the catch either way,
+   * which is what keeps a stopped call from being reported as a dead endpoint.
    */
-  static _either(stop, deadline) {
-    return stop ? AbortSignal.any([stop, deadline]) : deadline
+  static _either(stop, controller) {
+    if (!stop) return controller.signal
+    if (typeof AbortSignal.any === 'function') return AbortSignal.any([stop, controller.signal])
+    if (stop.aborted) controller.abort()
+    else stop.addEventListener('abort', () => controller.abort(), { once: true })
+    return controller.signal
   }
 
   /**
@@ -126,7 +192,7 @@ export class Inference {
    * that ends that, and it is reported as a timeout rather than as the generic
    * abort the browser raises.
    */
-  async _postJson(url, headers, body, stop = null) {
+  async _postJson(url, headers, body, stop) {
     const label = this.constructor.LABEL
     const controller = new AbortController()
     const deadline = setTimeout(() => controller.abort(), this.timeout)
@@ -137,7 +203,7 @@ export class Inference {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...headers },
         body: JSON.stringify(body),
-        signal: Inference._either(stop, controller.signal),
+        signal: Inference._either(stop, controller),
       })
     } catch (err) {
       if (err?.name === 'AbortError') {
@@ -199,7 +265,7 @@ export class Inference {
    *
    * @returns {Promise<Outcome>} value is `{ text }`, the accumulated result
    */
-  async _postStream(url, headers, body, onEvent, stop = null) {
+  async _postStream(url, headers, body, onEvent, stop) {
     const label = this.constructor.LABEL
     const controller = new AbortController()
     let idle = null
@@ -215,7 +281,7 @@ export class Inference {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...headers },
         body: JSON.stringify(body),
-        signal: Inference._either(stop, controller.signal),
+        signal: Inference._either(stop, controller),
       })
     } catch (err) {
       clearTimeout(idle)

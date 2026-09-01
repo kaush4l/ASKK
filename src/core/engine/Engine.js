@@ -38,8 +38,8 @@ export class Engine {
     responseCue = DEFAULT_CUE,
     toolbox = null,
     // Facts about right now, as ordered [label, value] pairs. Rendered as one
-    // block, last before the response contract — see `render` for why the
-    // volatile block goes at the end.
+    // block, last before the response contract — see `PromptTemplate` for why
+    // the volatile blocks go at the end.
     context = [],
     // How the prompt is arranged. A template, not a hardcoded order, because
     // the best arrangement depends on what an agent actually carries — see
@@ -133,10 +133,10 @@ export class Engine {
         // Carries a clock. Nothing after this can ever be reused.
         volatility: Volatility.VOLATILE,
       }),
-      // What this run has spent and what it is allowed to spend. Rendered so
-      // the agent can wrap up on its own terms rather than being cut off on
-      // somebody else's — see `Budget` for why a bound that is not in the
-      // prompt is not a bound the agent can act on.
+      // Empty on almost every turn, and dropped from the prompt when it is.
+      // The one thing it carries is the hand-over: the turn on which the budget
+      // has no room left is told so, in words, before it is sent — see `Budget`
+      // for the measurement that cut everything else this block used to say.
       new PromptBlock({
         id: 'budget',
         heading: 'BUDGET',
@@ -168,10 +168,6 @@ export class Engine {
    */
   plan(history, scratchpad = [], budget = null) {
     return this.template.assemble(this.blocks(history, scratchpad, budget))
-  }
-
-  render(history, scratchpad = [], budget = null) {
-    return this.plan(history, scratchpad, budget).text
   }
 
   /**

@@ -26,10 +26,17 @@ export class Tool {
   }
 
   /**
+   * `_signal` is the user's stop, threaded from the loop through the toolbox.
+   * A second parameter and not a wrapper, for the reason `Kernel.handle` gives
+   * about `emit`: a tool with nothing to abort simply does not declare it and
+   * reads exactly as it did before stopping existed. `SubAgentTool` is the one
+   * that has something — a whole second worker running a whole second budget.
+   *
    * @param {object} _args
+   * @param {AbortSignal|null} [_signal]
    * @returns {Promise<Outcome>} value is a string the agent will read
    */
-  async call(_args) {
+  async call(_args, _signal) {
     return Outcome.failed(Reason.NOT_IMPLEMENTED, `${this.name} does not do anything yet`)
   }
 

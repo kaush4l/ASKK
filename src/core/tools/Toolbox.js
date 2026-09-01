@@ -28,14 +28,31 @@ export class Toolbox {
     return [...this.tools.keys()]
   }
 
-  /** The `# TOOLS` block, or empty when there are none to offer. */
+  /**
+   * The `# TOOLS` block, or empty when there are none to offer.
+   *
+   * There used to be a lead-in line here — "Call a tool by writing it in the
+   * result field, exactly as shown:" — and it is gone because the response
+   * contract already says it, in the description of the very field it is about:
+   * "When act is 'tool': the tool calls and nothing else — tool_name({...}) — no
+   * explanation, no prose around them." Two spellings of one instruction, about
+   * 130 tokens apart, on every turn of every run. The scheduling line below is
+   * NOT a duplicate and stays: nothing else in the prompt says that calls on one
+   * line run together.
+   *
+   * What it saved is measured rather than asserted (`bun scripts/dryrun.js`,
+   * same task, before and after): the tools section falls 1,038 chars / 259
+   * tokens to 972 / 242, and the REUSABLE PREFIX falls by the same 17 tokens —
+   * 702 to 685 — so it is 17 tokens off every turn of every run and not only
+   * off the uncached ones. What it cost is NOT measured; no compliance arm was
+   * run. So this is a cut on the ground that the rule is stated once and is
+   * still stated, not on the ground that stating it twice bought nothing.
+   */
   render() {
     if (this.isEmpty) return ''
     const entries = [...this.tools.values()].map((tool) => tool.render()).join('\n')
     return [
       '# TOOLS',
-      '',
-      'Call a tool by writing it in the result field, exactly as shown:',
       '',
       entries,
       '',
@@ -106,7 +123,7 @@ export class Toolbox {
    * and a tool that reports a failure all come back as text the agent reads and
    * can act on, because "that did not work" is information, not an ending.
    */
-  async runOne({ name, argText, raw }) {
+  async runOne({ name, argText, raw }, signal = null) {
     const tool = this.tools.get(name)
     if (!tool) {
       return `${raw} -> there is no tool called ${name}. Available: ${this.names.join(', ') || 'none'}`
@@ -121,7 +138,7 @@ export class Toolbox {
       args = parsed.value
     }
 
-    const result = await tool.call(args)
+    const result = await tool.call(args, signal)
     if (!result.ok) {
       return `${name} -> failed: ${result.failure.message}${result.failure.hint ? ` (${result.failure.hint})` : ''}`
     }
@@ -137,9 +154,15 @@ export class Toolbox {
   /**
    * Run everything written in `text` and return what the agent should read.
    *
+   * `signal` is passed down and not acted on here. This class has nothing to
+   * abort — it parses and dispatches — and the loop does not wait on it
+   * indefinitely either: `ReActEngine` races this call against the stop, so a
+   * tool that ignores the signal delays nobody, it just finishes into a
+   * scratchpad the run has already left behind.
+   *
    * @returns {Promise<{observation: string, count: number}>}
    */
-  async run(text) {
+  async run(text, signal = null) {
     const lines = Toolbox.parse(text)
     if (lines.length === 0) {
       return {
@@ -154,9 +177,35 @@ export class Toolbox {
     for (const line of lines) {
       // Together, not one by one: calls the model put on one line said they do
       // not need each other, and running them in sequence would waste the fact.
-      const results = await Promise.all(line.map((call) => this.runOne(call)))
+      const results = await Promise.all(line.map((call) => this.runOne(call, signal)))
       observations.push(...results)
       count += line.length
+    }
+
+    // How much of the text was actually calls, reported and never enforced.
+    //
+    // It exists because of a measured incident: a model's raw reasoning reached
+    // this class as a `result` field, the scanner did its job on it, and a
+    // command written down as an EXAMPLE of what it might do was executed. The
+    // scanner was not wrong — finding `name(...)` anywhere in a line is what
+    // makes a call wrapped in a sentence still work — but a result that is 5%
+    // call and 95% prose lost an argument with its own contract. Refusing here
+    // would be guessing about English in the one class that must never guess,
+    // and the actual cause is upstream: `OpenAICompatible._state` is what stops
+    // a reasoning dump reaching anybody as an answer. This is the line in the
+    // transcript that says it happened anyway.
+    //
+    // A quarter is not a tuned threshold and is not claimed to be one: it is low
+    // enough that a call with a sentence of explanation around it passes
+    // silently, and the dumps measured on the testbed sat between 2% and 8%. No
+    // division guard is needed — `lines` is non-empty above, so a parsed call
+    // survived `.trim()` and `whole` cannot be zero.
+    const whole = String(text).trim().length
+    const written = lines.flat().reduce((total, call) => total + call.raw.length, 0)
+    if (written / whole < 0.25) {
+      observations.push(
+        `(most of that result was prose rather than calls, and ${count} call(s) were taken out of it and run.)`,
+      )
     }
     return { observation: observations.join('\n'), count }
   }

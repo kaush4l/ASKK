@@ -55,8 +55,8 @@ export class TransformersInference extends Inference {
     return loaded
   }
 
-  async invoke(prompt, multimodal = []) {
-    return this._generate(prompt, multimodal, null)
+  async invoke(prompt, multimodal = [], { signal } = {}) {
+    return this._generate(prompt, multimodal, null, signal)
   }
 
   /**
@@ -67,7 +67,7 @@ export class TransformersInference extends Inference {
    * streaming earns the most. `TextStreamer` is imported beside the pipeline —
    * from the same dynamic module, so it costs nothing until this path is taken.
    */
-  async stream(prompt, multimodal = [], { onDelta } = {}) {
+  async stream(prompt, multimodal = [], { onDelta, signal } = {}) {
     const made = await Outcome.attempt(
       async () => {
         const { TextStreamer } = await import('@huggingface/transformers')
@@ -92,14 +92,35 @@ export class TransformersInference extends Inference {
     // one and the answer still arrives, in a single piece.
     const streamer = made.ok ? made.value : null
     const notes = made.ok ? [] : ['this run did not stream: the streamer could not be built']
-    const generated = await this._generate(prompt, multimodal, streamer)
+    const generated = await this._generate(prompt, multimodal, streamer, signal)
     if (!streamer && generated.ok && generated.value) onDelta?.(generated.value, 'text')
     return notes.length ? generated.withNote(notes[0]) : generated
   }
 
-  async _generate(prompt, multimodal, streamer) {
+  async _generate(prompt, multimodal, streamer, signal = null) {
     const pipe = await this._pipe()
     if (!pipe.ok) return pipe
+
+    // The stop button, on the one transport where there is no request to abort.
+    //
+    // Generation here is a loop inside this thread, not a socket, so the signal
+    // that ends an HTTP call reaches nothing: it was accepted by the two other
+    // transports and silently dropped by this one, which made stop inert for
+    // in-browser models and said so nowhere. `InterruptableStoppingCriteria` is
+    // the library's own hook and is checked between tokens, so the wait is one
+    // token rather than a whole answer.
+    const stopper = await Outcome.attempt(
+      async () => {
+        const { InterruptableStoppingCriteria } = await import('@huggingface/transformers')
+        return new InterruptableStoppingCriteria()
+      },
+      { code: Reason.INTERNAL, hint: 'The in-browser runtime could not build a stop.' },
+    )
+    const criteria = stopper.ok ? stopper.value : null
+    if (criteria && signal) {
+      if (signal.aborted) criteria.interrupt()
+      else signal.addEventListener('abort', () => criteria.interrupt(), { once: true })
+    }
 
     // Text-generation takes chat messages; images would need an
     // image-text-to-text pipeline. The attachment is dropped rather than
@@ -116,18 +137,22 @@ export class TransformersInference extends Inference {
           temperature: this.temperature,
           do_sample: this.temperature > 0,
           ...(streamer ? { streamer } : {}),
+          ...(criteria ? { stopping_criteria: criteria } : {}),
         }),
       { code: Reason.INTERNAL, hint: 'Generation failed in the browser runtime.' },
     )
     if (!generated.ok) return generated
 
+    const stopped = signal?.aborted
+      ? ['the in-browser model was stopped, so this is the part it had generated']
+      : []
     const turns = generated.value?.[0]?.generated_text
     const text = Array.isArray(turns)
       ? (turns.at(-1)?.content ?? '')
       : typeof turns === 'string'
         ? turns.slice(prompt.length)
         : ''
-    return Outcome.ok(text, notes)
+    return Outcome.ok(text, [...notes, ...stopped])
   }
 
   async close() {

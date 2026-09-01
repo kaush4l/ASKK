@@ -28,6 +28,11 @@ export const AGENT_DEFAULTS = Object.freeze({
   // and a low default silently truncates long work instead of failing loudly.
   maxTokens: 131072,
   temperature: null,
+  // Null, not false, and not true: null means "this agent has no opinion, use
+  // the app-wide setting", which is the shape `temperature` already uses. A
+  // boolean here would silently override settings for every agent file that
+  // never mentioned the word.
+  thinking: null,
   model: '',
   tools: [],
   // MCP servers, as McpServerConfig records read from this agent's own file.
@@ -38,11 +43,6 @@ export const AGENT_DEFAULTS = Object.freeze({
   // agent wants a different prompt shape — see `PromptTemplate` for what the
   // default is and why.
   prompt: [],
-  // What a run of this agent may spend, as any of `steps`, `tokens`, `seconds`.
-  // Empty means `Budget`'s own defaults, which is where they are argued for —
-  // repeating a number here would be a second place for it to go stale, and the
-  // defaults are derived from measurements this file has no access to.
-  budget: {},
 })
 
 /** Frontmatter is written in snake_case; the code is camelCase. */
@@ -50,6 +50,7 @@ const ALIASES = {
   prompt_order: 'prompt',
   blocks: 'prompt',
   max_tokens: 'maxTokens',
+  enable_thinking: 'thinking',
   max_steps: 'maxSteps',
   response_model: 'response',
   loop: 'engine',
@@ -72,6 +73,31 @@ const RETIRED = {
 }
 
 const FORMATS = new Set(Object.values(Format))
+
+/**
+ * A budget limit, or null with a note saying why not.
+ *
+ * NOT `positiveIntOrNull`, and the difference is the whole reason this exists.
+ * That one uses `Number.parseInt`, which reads a number off the FRONT of a
+ * string and discards the rest — so `tokens: "250k"` became a 250-token budget
+ * that closed after the first turn, `seconds: "10m"` became ten seconds, and
+ * `"2.5e5"` became 2. Every one of them silently, with no note, on a line the
+ * author wrote believing it said something else.
+ *
+ * `Number` refuses all four: it is the whole string or nothing. That is the
+ * right strictness HERE and not for `max_tokens`, because a budget that is
+ * quietly a thousandth of what was asked for does not fail — it just ends good
+ * runs early and looks like the model giving up.
+ */
+function budgetLimit(value, field, notes) {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    notes.push(`${field} ${JSON.stringify(value)} is not a positive number; ignored`)
+    return null
+  }
+  return Math.floor(parsed)
+}
 
 function positiveIntOrNull(value, field, notes) {
   if (value === null || value === undefined || value === '') return null
@@ -154,9 +180,20 @@ export class AgentSpec {
       notes.push(`${source}: budget ${JSON.stringify(raw.budget)} is not a set of limits; ignored`)
     }
     const budget = {}
-    for (const field of ['steps', 'tokens', 'seconds']) {
-      const value = positiveIntOrNull(terms[field], `${source}: budget.${field}`, notes)
+    const currencies = ['steps', 'tokens', 'seconds']
+    for (const field of currencies) {
+      const value = budgetLimit(terms[field], `${source}: budget.${field}`, notes)
       if (value !== null) budget[field] = value
+    }
+    // The comment above promised this and the code did not do it: a key that is
+    // not one of the three was dropped in silence, so `budget: {minutes: 5}`
+    // produced no budget and no note and left an author certain they had set
+    // one. Named rather than counted, because the useful half of the sentence
+    // is which word was wrong.
+    for (const field of Object.keys(terms)) {
+      if (!currencies.includes(field)) {
+        notes.push(`${source}: budget.${field} is not a limit this loop spends; ignored`)
+      }
     }
     const legacySteps = positiveIntOrNull(raw.maxSteps, `${source}: max_steps`, notes)
     if (legacySteps !== null && budget.steps === undefined) {
@@ -181,6 +218,22 @@ export class AgentSpec {
       : raw.tools
         ? [String(raw.tools).trim()]
         : []
+
+    // Three states, and the third is the point: absent means the app-wide
+    // setting decides. Anything written that is not a boolean is corrected with
+    // a note, like every other bad line here — `thinking: "no"` must not become
+    // true because a non-empty string is truthy.
+    let thinking = null
+    if (raw.thinking !== undefined && raw.thinking !== null && raw.thinking !== '') {
+      const written = String(raw.thinking).trim().toLowerCase()
+      if (typeof raw.thinking === 'boolean' || written === 'true' || written === 'false') {
+        thinking = written === 'true'
+      } else {
+        notes.push(
+          `${source}: thinking ${JSON.stringify(raw.thinking)} is not true or false; ignored`,
+        )
+      }
+    }
 
     let temperature = null
     if (raw.temperature !== undefined && raw.temperature !== null && raw.temperature !== '') {
@@ -208,6 +261,7 @@ export class AgentSpec {
         response,
         format,
         temperature,
+        thinking,
         maxTokens,
         tools,
         mcp,

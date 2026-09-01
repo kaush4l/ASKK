@@ -68,8 +68,22 @@ export class AgentWorkerPool {
     return worker
   }
 
-  /** @returns {Promise<Outcome>} value is the sub-agent's answer */
-  async ask(name, task, settings) {
+  /**
+   * Ask a sub-agent, and be able to take it back.
+   *
+   * `signal` is the caller's stop. It cannot be postMessaged — the same fact
+   * that shapes the whole protocol — so it is sent as a SECOND MESSAGE naming
+   * the first, exactly as `CANCEL` names a request in `Envelope`. The worker
+   * answers its own message with whatever it had, which settles the promise
+   * below on the ordinary path rather than through a special case here.
+   *
+   * Without this a stop ended the parent run and left the child generating: a
+   * delegated call ran a full 24-step budget to completion on a thread nobody
+   * was waiting for any more.
+   *
+   * @returns {Promise<Outcome>} value is the sub-agent's answer
+   */
+  async ask(name, task, settings, signal = null) {
     const id = `s${++this._seq}`
     const worker = this._worker(name)
     const thread = this._threads.get(name)
@@ -93,6 +107,13 @@ export class AgentWorkerPool {
         resolve(data)
       })
       worker.postMessage({ id, name, task, settings })
+      if (signal) {
+        if (signal.aborted) worker.postMessage({ id, cancel: true })
+        else
+          signal.addEventListener('abort', () => worker.postMessage({ id, cancel: true }), {
+            once: true,
+          })
+      }
     })
 
     return answer.ok

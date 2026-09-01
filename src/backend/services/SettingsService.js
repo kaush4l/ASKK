@@ -24,6 +24,13 @@ export const DEFAULT_SETTINGS = Object.freeze({
   apiKey: '',
   temperature: 0.7,
   maxTokens: 2048,
+  // Whether the model is allowed its own scratchpad. On, because the work these
+  // agents do is the work thinking is for — see `OpenAICompatible`, which owns
+  // the measurement and the argument. It is here at all because that class
+  // documented `thinking: false` as the escape hatch from its own false
+  // positive and then shipped with no path from settings to the constructor, so
+  // the hatch was on the inside of a locked door.
+  thinking: true,
 
   // Speech. Two engines and two model ids, because hearing and speaking fail
   // independently: a machine with no microphone can still read a reply aloud,

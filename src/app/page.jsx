@@ -13,10 +13,9 @@ export default function Page() {
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
-  // The id of the turn that is in flight, which is also the only handle there
-  // is on it: a signal cannot be postMessaged, so stopping a run is a second
-  // request naming the first. Null between turns, and the stop button exists
-  // exactly while it is not.
+  // The id of the turn in flight, which is also the only handle there is on it
+  // — see `CANCEL` in the envelope. Null between turns, and the stop button
+  // exists exactly while it is not.
   const [running, setRunning] = useState(null)
   const [problem, setProblem] = useState(null)
   const [notes, setNotes] = useState([])
@@ -162,7 +161,6 @@ export default function Page() {
     )
     setRunning(turn.id)
     const result = await turn.done
-    setRunning(null)
     setNotes(result.notes)
     // Which sub-agent threads exist is a fact the backend holds and nothing
     // else can see. Read it after every turn so delegation is visible.
@@ -186,6 +184,11 @@ export default function Page() {
     // The turn is over: whatever it produced is now in the transcript, and a
     // leftover live view would be a second, stale copy of it.
     setLive({ raw: '', reasoning: '', steps: [] })
+    // Cleared WITH `busy` and not before it. Cleared early — as it was — the
+    // button went on reading "stop" for the length of the `agents.threads`
+    // round trip above while calling `stop(null)`, which does nothing. Nothing
+    // was lost, the turn was already over; the control simply lied.
+    setRunning(null)
     setBusy(false)
   }
 
@@ -316,19 +319,6 @@ export default function Page() {
     listening ? { text: 'listening', live: true } : null,
     busy ? { text: 'working', live: true } : null,
   ].filter(Boolean)
-
-  /**
-   * End the turn that is running.
-   *
-   * `busy` is not cleared here and the composer is not re-enabled. The call
-   * being stopped answers on its own request — with whatever it produced — and
-   * that reply is what ends the turn, exactly as a reply always does. Clearing
-   * the state from this side would be the interface guessing at a result it is
-   * about to be told.
-   */
-  function stop() {
-    clientRef.current?.stop(running)
-  }
 
   return (
     <div className="shell">
@@ -611,7 +601,12 @@ export default function Page() {
                   stop, so the button becomes it rather than sitting greyed out
                   beside a second one that only ever appears here. */}
               {busy ? (
-                <button type="button" className="stop" onClick={stop} data-testid="stop">
+                <button
+                  type="button"
+                  className="stop"
+                  onClick={() => clientRef.current?.stop(running)}
+                  data-testid="stop"
+                >
                   stop
                 </button>
               ) : (
@@ -681,6 +676,15 @@ export default function Page() {
                     <span className="measured" data-testid="usage">
                       {usage.prompt.toLocaleString()} counted
                       {usage.cached ? `, ${usage.cached.toLocaleString()} cached` : ''}
+                      {/* The endpoint's own timing, and the only measured duration on
+                          this page. It arrives in the usage frame — which is why
+                          `stream_options: {include_usage: true}` is load-bearing — and
+                          it was collected, carried across the protocol and rendered
+                          nowhere until this line. Absent when the provider reports
+                          none, rather than shown as a zero that would read as instant. */}
+                      {usage.latency?.generationRate
+                        ? `, ${usage.latency.generationRate} tok/s`
+                        : ''}
                     </span>
                   ) : null}
                 </p>

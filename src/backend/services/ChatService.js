@@ -49,6 +49,7 @@ export class ChatService {
       apiKey: settings.apiKey,
       temperature: spec.temperature ?? settings.temperature,
       maxTokens: spec.maxTokens ?? settings.maxTokens,
+      thinking: spec.thinking ?? settings.thinking,
     }
     const signature = JSON.stringify(resolved)
     if (this._inference && this._signature === signature) return Outcome.ok(this._inference)
@@ -69,9 +70,8 @@ export class ChatService {
    *
    * `signal` is the third argument every handler may declare — the Kernel makes
    * one per call — and this is the only handler that has any use for one. It
-   * goes straight through to the loop and on to the transport, so pressing stop
-   * ends the request that is open on the network rather than the iteration
-   * after it.
+   * goes straight through to the loop, which decides how far it reaches; see
+   * `ReActEngine` for what a stop does and does not interrupt.
    */
   async send({ id, text }, emit = null, signal = null) {
     const typed = typeof text === 'string' ? text.trim() : ''
@@ -129,7 +129,10 @@ export class ChatService {
       spec: spec.value,
       inference: inference.value,
       peers,
-      dispatch: (name, task) => this.pool.ask(name, task, settings.value),
+      // The signal goes with the task. A delegated run is a second agent on a
+      // second thread; without this, stopping the parent left the child running
+      // its own budget to completion for nobody.
+      dispatch: (name, task, stop) => this.pool.ask(name, task, settings.value, stop ?? signal),
       context: describeEnvironment(),
       services: this.services,
       extraTools: mcp.value,
@@ -190,7 +193,12 @@ export class ChatService {
     // user's own stop corrupting the conversation they stopped, so the
     // transcript keeps what they typed and the notes say what happened.
     if (parsed === null || (typeof parsed !== 'string' && parsed.isAnswer === false)) {
-      return Outcome.ok({ user: userMessage, assistant: null }, [...notes, ...answered.notes])
+      // `notes` already holds the run's own notes — they were pushed one branch
+      // above. Spreading them a second time here put every note on screen
+      // twice and, because `page.jsx` keys each note by its text, collided two
+      // React keys. `toContain` is true of a duplicate, which is why 208 green
+      // tests never saw it.
+      return Outcome.ok({ user: userMessage, assistant: null }, notes)
     }
 
     const reply = typeof parsed === 'string' ? parsed : parsed.answer

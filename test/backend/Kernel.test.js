@@ -6,10 +6,9 @@ import { CANCEL, Request } from '../../src/protocol/Envelope.js'
 /**
  * The half of cancellation that could not be solved in `core/`.
  *
- * An AbortSignal does not survive structured-clone, so a stop cannot be a field
- * on the request it stops. What crosses is an id and the signal stays on this
- * side — which makes the Kernel the only thing in either realm that can hold
- * one, because it is the only thing that knows what is running.
+ * A stop cannot be a field on the request it stops — `CANCEL` in the envelope
+ * says why — so the signal stays on this side, which makes the Kernel the only
+ * thing in either realm that can hold one.
  *
  * Both tests below are about the seam and not about the abort: that a handler
  * is HANDED a signal, and that a second request can reach it by name while the
@@ -74,7 +73,10 @@ describe('Kernel cancellation', () => {
     // message for a run that finished correctly would be a lie about it.
     expect(stopped.ok).toBe(true)
     expect(stopped.value).toBe(false)
-    expect(stopped.notes).toEqual(['that call had already finished, so there was nothing to stop'])
+    // And no note. There was one, and it reached the wire and nobody: the page
+    // drops this promise on purpose, so the sentence had exactly one reader,
+    // this assertion, asserting that a constant is itself.
+    expect(stopped.notes).toEqual([])
   })
 
   test('the signal is dropped when the call settles, so nothing accumulates', async () => {

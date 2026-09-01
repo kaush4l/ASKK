@@ -66,3 +66,55 @@ slice 0A, whose whole rule was to add tests without changing `src/`.
 The run ends when a blind critic, handed two unlabelled transcripts — ours and
 agent-zero's on the same task — picks ours, on the rubric in
 `docs/REFERENCE-PROMPTS.md`, without knowing which is which.
+
+## Who judges
+
+`docs/ROLES.md`. Three seats — coder, critic, bar raiser — and what each one
+is allowed to say. Waves 0 through 2 ran with the third seat briefed as a
+cutter rather than a bar raiser; every slice they passed is owed a bar-raiser
+pass it never got.
+
+## The bar-raiser survey
+
+Read-only, four lenses, every finding attacked by an independent skeptic that
+defaulted to refuted. 12 raises, 8 survived, 4 killed. Three refuters applied
+the rewrite in a scratch tree and ran the suite before voting.
+
+The verdict: **the tree meets the bar on composition and fails on
+bookkeeping.** 25 real `extends` in `src/`, and all but six have two or more
+real implementations. The six are the four transformers.js speech leaves —
+config records spelled as classes, and the tree's only two three-deep chains —
+and `Entity`, whose `equals` has zero callers while both subclasses shadow its
+`toJSON`. The port-in-the-constructor rule holds at every backend seam except
+one line, `composition.js:219`, which writes `chat.services.http` after
+construction behind five lines of comment defending it.
+
+What is not enforced is that a declaration must have a writer. Five dead ones:
+`soul`, the `identity` prompt block that has rendered zero bytes on every call
+ever made, `Format`'s JSON arm, `Entity.equals`, and `ShellTool`'s `description`
+option. Both standing rules in `docs/ROLES.md` come from this.
+
+Slices, ordered by concepts deleted per line edited:
+
+| # | what | files | call sites | state |
+|---|------|-------|-----------|-------|
+| S1 | delete `Entity` | Entity, Message, Conversation | 2 | ready |
+| S2a | speech: collapse the two transcriber leaves into the registry | speech/index, TransformersTranscriber, Transcriber | 0 outside index | ready |
+| S2b | speech: collapse the two speaker leaves | speech/index, TransformersSpeaker, Speaker | 0 outside index | ready |
+| S3 | `ChatService` takes `http` in its constructor | ChatService, composition | 1 | ready |
+| S4 | delete `soul` and the `identity` block | Engine, PromptTemplate, 8 assertions, 5 prose | — | Budget.js line blocked |
+| S5 | delete `Format` | 5 source, 2 test | — | in flight |
+| S6 | `Promise.withResolvers` in `BackendClient` | BackendClient | 1 | ready |
+| S7 | cut the duplicated paragraph from `agents/main/agent.md` | agent.md | — | ready |
+
+S2 must be split: the ear and voice halves have different option signatures and
+no coder holds both at once. S4 and the finding filed as 8 are the same
+deletion at the same line — slicing them twice buys a merge conflict.
+
+Three rewrites the survey explicitly refused: moving the ~100x-slower sentence
+into `ShellTool`'s description (it is a property of `C2wSandbox`, and
+`docs/TESTBED.md` records keeping it as deliberate, so moving it silently drops
+it from our arm of the only head-to-head in the repo); turning `static LABEL`
+into instance state (it is the tree-wide spelling and a registry key); and
+wiring `soul` rather than deleting it (identity already lives in the agent
+file's own body).

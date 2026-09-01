@@ -97,7 +97,13 @@ describe('ChatService and a run that was stopped', () => {
     expect(sent.value.assistant).toBe(null)
     expect(saved(conversations).map((m) => m.role)).toEqual(['user'])
     expect(saved(conversations)[0].text).toBe('what kernel is this?')
-    expect(sent.notes).toContain('you stopped this run after 2 step(s)')
+    // COUNTED, not `toContain`. Every note was in this array twice — pushed
+    // once and spread again — and `toContain` is true of a duplicate, which is
+    // why a green suite shipped a notes panel that repeated itself and, because
+    // `page.jsx` keys each note by its text, collided two React keys.
+    const stopNote = 'you stopped this run after 2 step(s)'
+    expect(sent.notes.filter((note) => note === stopNote)).toHaveLength(1)
+    expect(new Set(sent.notes).size).toBe(sent.notes.length)
   })
 
   test('a stop before the model said anything still leaves the question in the transcript', async () => {
@@ -121,20 +127,95 @@ describe('ChatService and a run that was stopped', () => {
     expect(saved(conversations).map((m) => m.role)).toEqual(['user', 'assistant'])
   })
 
-  test("the agent file's declared budget reaches the loop and is in the prompt", async () => {
-    const { service, inference, conversations } = chatWith([answerTurn('brief')])
-    // Declared the way an agent file declares it, through the same spec the
-    // catalogue hands over.
+  test("the agent file's declared budget reaches the loop and bounds the run", async () => {
+    // Asserted on BEHAVIOUR now rather than on a line in the prompt. The
+    // running counters are gone — an A/B against an arm without them changed
+    // nothing and they cost 30 tokens a turn — so what proves the declaration
+    // arrived is that two steps is where a two-step budget stops.
+    const { service, inference } = chatWith([
+      toolTurn('shell({"command": "true"})'),
+      toolTurn('shell({"command": "true"})'),
+      answerTurn('never reached'),
+    ])
     const spec = AgentSpec.of({
-      metadata: { name: 'main', budget: { steps: 5 } },
+      metadata: { name: 'main', budget: { steps: 2 } },
       body: 'be brief',
       source: 'test',
     }).value
     service.catalogue.spec = async () => Outcome.ok(spec)
 
-    await service.send({ id: 'c1', text: 'hello' })
+    const sent = await service.send({ id: 'c1', text: 'hello' })
 
-    expect(inference.prompts[0]).toContain('steps: 0 of 5 used')
-    expect(saved(conversations)).toHaveLength(2)
+    expect(inference.calls).toHaveLength(2)
+    // The last turn was told in words that it was the last, and said so in the
+    // prompt it was handed rather than being cut off after it.
+    expect(inference.prompts[1]).toContain('THIS IS YOUR LAST TURN. the 2-step budget is spent')
+    expect(sent.ok).toBe(false)
+    expect(sent.error?.message ?? sent.failure.message).toContain('the 2-step budget ran out')
+  })
+
+  test('a stop that lands on a completed answer keeps it, and writes it down', async () => {
+    // The other half of the engine's defect, seen where it would actually hurt:
+    // the answer the user was one second away from reading has to survive into
+    // the transcript, not be reported as "the model said nothing".
+    const controller = new AbortController()
+    const { service, conversations, inference } = chatWith([answerTurn('a linux kernel')])
+    const original = inference.invoke.bind(inference)
+    inference.invoke = async (...args) => {
+      const reply = await original(...args)
+      controller.abort()
+      return reply
+    }
+
+    const sent = await service.send(
+      { id: 'c1', text: 'what kernel is this?' },
+      null,
+      controller.signal,
+    )
+
+    expect(sent.ok).toBe(true)
+    expect(sent.value.assistant.text).toBe('a linux kernel')
+    expect(saved(conversations).map((m) => m.role)).toEqual(['user', 'assistant'])
+  })
+})
+
+/**
+ * What `_inferenceFor` actually hands the loop.
+ *
+ * Every other test in this file replaces that method, which is why a setting
+ * could be added to `DEFAULT_SETTINGS`, documented in the transport, and never
+ * arrive: the seam that drops it is the one seam the suite stubs out. So these
+ * call the real one and read the object it built.
+ */
+describe('the inference a turn is given', () => {
+  const service = () => new ChatService(new MemoryRepository('conversation'), null, null, null)
+  const bare = AgentSpec.of({ metadata: { name: 'main' }, body: 'be brief', source: 'test' }).value
+  const base = { kind: 'openai', model: 'm', baseUrl: 'http://127.0.0.1:8873/v1', apiKey: '' }
+
+  test('the app-wide thinking setting reaches the transport', async () => {
+    const built = await service()._inferenceFor({ ...base, thinking: false }, bare)
+
+    expect(built.value.thinking).toBe(false)
+  })
+
+  test('and an agent file overrides it, the way temperature and max tokens do', async () => {
+    const quiet = AgentSpec.of({
+      metadata: { name: 'main', thinking: false },
+      body: 'be brief',
+      source: 'test',
+    }).value
+
+    const built = await service()._inferenceFor({ ...base, thinking: true }, quiet)
+
+    expect(built.value.thinking).toBe(false)
+  })
+
+  test('a settings record written before the field existed still thinks', async () => {
+    // `SettingsService.get` merges the defaults over what was stored, so an old
+    // record yields `thinking: true` rather than `undefined`. This asserts the
+    // end of that path: undefined must not read as off.
+    const built = await service()._inferenceFor(base, bare)
+
+    expect(built.value.thinking).toBe(true)
   })
 })

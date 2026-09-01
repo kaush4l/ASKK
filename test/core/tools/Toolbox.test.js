@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { Outcome, Reason } from '../../../src/core/Outcome.js'
+import { ReActResponse } from '../../../src/core/response/ReActResponse.js'
 import { Tool } from '../../../src/core/tools/Tool.js'
 import { Toolbox } from '../../../src/core/tools/Toolbox.js'
+import { fixture, readSse } from '../../support/fixtures.js'
 
 /**
  * The seam where a model's text becomes an action, and the one place in the
@@ -289,5 +291,107 @@ describe('Toolbox.render', () => {
     const box = new Toolbox([{ description: 'nameless' }, new RecordingTool({ name: 'real' })])
 
     expect(box.names).toEqual(['real'])
+  })
+})
+
+/**
+ * The incident, driven end to end from the bytes that caused it.
+ *
+ * Nothing in this block is written by hand. The text comes off
+ * `test/support/fixtures/truncated-in-think.sse` — a real streamed reply from
+ * the testbed model that ran out of tokens inside its think block — and it goes
+ * through the real `ReActResponse.parse` and the real `Toolbox.parse` to the
+ * call that would have been executed.
+ *
+ * What the model was doing when it wrote that call is the whole point. It was
+ * rehearsing the response format to itself:
+ *
+ *     Could format:
+ *     think: ...
+ *     plan: ...
+ *     act: shell({"command": "uname -a"})
+ *
+ * `...` is literally what it wrote. This is not a decision, it is a worked
+ * example of what a decision would look like — and the agent ran it.
+ */
+describe('the reasoning dump that ran a command', () => {
+  /** The content channel of the captured stream: 960 characters of scratchpad. */
+  const dump = readSse(fixture('truncated-in-think.sse')).content
+
+  /**
+   * The same reply, cut where a smaller `max_tokens` would have cut it — at the
+   * end of the rehearsed `act:` line, 676 characters in instead of 960. Nothing
+   * is added and nothing is reordered; only the tail is missing, which is what
+   * a token limit does.
+   */
+  const REHEARSED = 'act: shell({"command": "uname -a"})'
+  const earlier = dump.slice(0, dump.indexOf(REHEARSED) + REHEARSED.length)
+
+  test('the response layer promotes the rehearsal to a decision', () => {
+    const parsed = ReActResponse.parse(earlier)
+
+    // `act` came from a line inside a paragraph of first-person reasoning, and
+    // `ReActResponse.normalize` saw a `(` in it, moved it to `result` and set
+    // the act to 'tool'. That promotion is what turns a mention into an action.
+    //
+    // The symbol, not a line number. This comment used to cite
+    // `response/ReActResponse.js:309-312`; that file is 102 lines long and has
+    // never had a line 309, because it was rewritten by its owner while this
+    // test was being written. A line citation into a file you do not own goes
+    // stale in silence, and this one did so within the hour.
+    //
+    // IF THIS TEST FAILS, read it before changing it: an `act` of 'answer' here
+    // means the response layer stopped promoting a mention, which is the second
+    // half of this fix landing. Assert 'answer' instead and keep the toolbox
+    // test below, which is about the toolbox and not about who fed it.
+    expect(parsed.act).toBe('tool')
+    expect(parsed.isToolCall).toBe(true)
+    expect(parsed.result).toBe('shell({"command": "uname -a"})')
+  })
+
+  test('and the toolbox then runs it — the observed defect, reproduced', async () => {
+    const tool = new RecordingTool({ name: 'shell', answer: Outcome.ok('Linux 6.1.0') })
+    const parsed = ReActResponse.parse(earlier)
+
+    const { count } = await new Toolbox([tool]).run(String(parsed.answer))
+
+    // A command executed on the user's behalf that the user did not ask for and
+    // the model did not decide on. This test is the record that it happens, and
+    // `OpenAICompatible._state` is what stops the text ever reaching here.
+    expect(count).toBe(1)
+    expect(tool.received).toEqual([{ command: 'uname -a' }])
+  })
+
+  test('the UNCUT dump mines FOUR calls out of one paragraph of thinking', async () => {
+    // Not one. The reply mentions the tool four times while reasoning about
+    // whether to use it — twice as the signature `shell(command)` copied out of
+    // the TOOLS block, twice as the rehearsed call — and every one of them is a
+    // `name(` followed by balanced brackets, so every one of them runs.
+    const tool = new RecordingTool({ name: 'shell', answer: Outcome.ok('Linux 6.1.0') })
+    const { observation, count } = await new Toolbox([tool]).run(dump)
+
+    expect(count).toBe(4)
+    // Two of the four reached the tool. The other two were the bare signature
+    // `shell(command)`, whose arguments are not JSON, so they came back to the
+    // agent as a complaint about its own reasoning. Two ran.
+    expect(tool.received).toEqual([{ command: 'uname -a' }, { command: 'uname -a' }])
+    expect(observation).toContain('were not valid JSON')
+    // 88 characters of call in 960 characters of text — 9%. The toolbox does not
+    // refuse it, because guessing about English is not its job, but it stops
+    // being silent about the ratio. Asserted through the observation the agent
+    // actually reads, rather than by recomputing the share with the arithmetic
+    // that produced it.
+    expect(observation).toContain('most of that result was prose rather than calls')
+  })
+
+  test('a call wrapped in one sentence of explanation is NOT called prose', async () => {
+    // The line that keeps the measure from being a nuisance: a model that says
+    // what it is about to do, and then does it, passes silently.
+    const tool = new RecordingTool({ name: 'shell' })
+    const { observation } = await new Toolbox([tool]).run(
+      'Checking the kernel: shell({"command": "uname -a"})',
+    )
+
+    expect(observation).toBe('shell -> ok')
   })
 })
