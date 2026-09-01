@@ -1,4 +1,4 @@
-import { ErrorCode, Request } from '../protocol/Envelope.js'
+import { CANCEL, ErrorCode, Request } from '../protocol/Envelope.js'
 
 /**
  * The page's handle on the backend.
@@ -14,6 +14,11 @@ import { ErrorCode, Request } from '../protocol/Envelope.js'
  * A call may also be watched: pass `onEvent` and the backend's progress
  * reports for that call — the prompt it assembled, the text as it streams —
  * arrive there. The awaited result is unchanged either way.
+ *
+ * And it may be stopped. `begin` hands back the id it generated so a caller can
+ * name the call again later; `stop` is that name sent back as a second request.
+ * The id has to be the handle because an AbortSignal cannot be postMessaged —
+ * see `CANCEL` in the envelope for why that is the shape rather than a wart.
  */
 export class BackendClient {
   constructor(worker) {
@@ -105,11 +110,36 @@ export class BackendClient {
 
   /** @returns {Promise<{ok: boolean, value: any, error: object|null, notes: string[]}>} */
   call(method, params = {}, onEvent = null) {
-    if (this._dead) {
-      return Promise.resolve({ ok: false, value: null, error: this._dead, notes: [] })
-    }
+    return this.begin(method, params, onEvent).done
+  }
+
+  /**
+   * Ask the backend to stop a call that is still running.
+   *
+   * Fire and forget, deliberately: the call being stopped answers on its own
+   * request, with whatever it had produced, and awaiting this one as well would
+   * only tell the caller a second time that something it already saw happened.
+   */
+  stop(id) {
+    if (id) this.call(CANCEL, { id })
+  }
+
+  /**
+   * Start a call and keep hold of its id.
+   *
+   * `call` is this with the id dropped, which is every use but one. A run that
+   * takes minutes has to be stoppable, and the only address a call has is the
+   * id generated here — the same id an Event uses to say which call it belongs
+   * to.
+   *
+   * @returns {{id: string, done: Promise<object>}}
+   */
+  begin(method, params = {}, onEvent = null) {
     const id = `r${++this._seq}`
-    return new Promise((resolve) => {
+    if (this._dead) {
+      return { id, done: Promise.resolve({ ok: false, value: null, error: this._dead, notes: [] }) }
+    }
+    const done = new Promise((resolve) => {
       this._pending.set(id, resolve)
       // Registered per call and dropped when it settles, so a listener cannot
       // outlive the thing it was watching.
@@ -132,6 +162,7 @@ export class BackendClient {
         })
       }
     })
+    return { id, done }
   }
 
   terminate() {

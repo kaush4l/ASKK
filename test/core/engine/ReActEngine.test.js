@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { Budget } from '../../../src/core/engine/Budget.js'
 import { ReActEngine } from '../../../src/core/engine/ReActEngine.js'
 import { Role } from '../../../src/core/Message.js'
 import { Outcome } from '../../../src/core/Outcome.js'
@@ -18,9 +19,9 @@ import { ScriptedInference } from '../../support/ScriptedInference.js'
  * the tree — just a worse answer. So the assertions are on the prompt strings
  * the transport was handed.
  *
- * The last test records the absence of a bound rather than testing a feature:
- * the loop runs as long as the model keeps calling tools, and the script's
- * length is the only thing that ends it.
+ * The bound is tested the same way, and for the same reason. A budget that is
+ * counted but never rendered is not a bound the agent can act on, so the
+ * assertion that matters is the one on the prompt string, not on the number.
  */
 
 class EchoTool extends Tool {
@@ -49,6 +50,9 @@ function engineWith(replies, { toolbox } = {}) {
   const engine = new ReActEngine({ system: 'You are careful.', inference, toolbox })
   return { engine, inference }
 }
+
+/** A model that only ever calls a tool: the runaway this slice exists to stop. */
+const neverAnswers = (n) => Array.from({ length: n }, (_, i) => toolTurn(`echo({"text": "${i}"})`))
 
 describe('ReActEngine.run', () => {
   test('a tool turn, then an answer — and the observation is in the second prompt', async () => {
@@ -83,7 +87,9 @@ describe('ReActEngine.run', () => {
 
     await engine.run(history)
 
-    const plan = engine.plan(history)
+    // Built against a SECOND budget with the same pinned clock and no passes,
+    // because the run's own has counted a step by the time this reads it.
+    const plan = engine.plan(history, [], new Budget({ now: () => 0 }))
     expect(inference.calls[0].prompt).toBe(plan.text)
     expect(inference.calls[0].options.cacheAt).toBe(plan.boundary)
     expect(plan.boundary).toBeGreaterThan(0)
@@ -138,25 +144,128 @@ describe('ReActEngine.run', () => {
     expect(outcome.failure.hint).toBe('Choose a model in settings.')
   })
 
-  test('nothing bounds the loop but the model — three tool turns run three tool turns', async () => {
-    // Recorded, not celebrated. `CAPABILITIES.md` lists "bound it: nothing" and
-    // this is what that costs: with a model that never answers, the run ends
-    // only when the transport does.
+  test('a model that never answers is stopped by the budget and not by the script running out', async () => {
+    // The runaway, with room for ten replies and a budget for three. Nothing in
+    // here is a ceiling the loop applies quietly: the third prompt says so, and
+    // the failure below names the budget rather than the script.
     const tool = new EchoTool()
-    const { engine, inference } = engineWith(
-      [
-        toolTurn('echo({"text": "a"})'),
-        toolTurn('echo({"text": "b"})'),
-        toolTurn('echo({"text": "c"})'),
-      ],
-      { toolbox: new Toolbox([tool]) },
-    )
+    const { engine, inference } = engineWith(neverAnswers(10), {
+      toolbox: new Toolbox([tool]),
+    })
 
-    const outcome = await engine.run(history)
+    const outcome = await engine.run(history, { budget: { steps: 3 } })
 
-    expect(tool.received).toEqual(['a', 'b', 'c'])
-    expect(inference.calls).toHaveLength(4)
+    expect(inference.calls).toHaveLength(3)
     expect(outcome.ok).toBe(false)
-    expect(outcome.notes).toContain('failed on step 4')
+    expect(outcome.failure.message).toBe(
+      'react: the 3-step budget ran out before the agent answered',
+    )
+    // Never a silent truncation: the note says exactly what ran out, and the
+    // turn the model did produce comes back with the failure rather than being
+    // discarded.
+    expect(outcome.notes).toContain(
+      'stopped after 3 steps: the 3-step budget is spent and the last turn did not answer',
+    )
+    expect(outcome.value.answer).toContain('echo(')
+  })
+})
+
+describe('a budget the agent can read', () => {
+  test('the block is in the prompt the transport was handed, from the very first call', async () => {
+    const { engine, inference } = engineWith([answerTurn('done')])
+
+    await engine.run(history, { budget: { steps: 6, tokens: 9000, seconds: 120 } })
+
+    expect(inference.prompts[0]).toContain(
+      '# BUDGET\n\nsteps: 0 of 6 used\ntokens: 0 of 9,000 used (estimated)\ntime: 0s of 120s used',
+    )
+  })
+
+  test('what the last prompt spent is in the next one, so the agent watches it go', async () => {
+    const { engine, inference } = engineWith([toolTurn('echo({"a": 1})'), answerTurn('done')])
+
+    await engine.run(history, { budget: { steps: 6 } })
+
+    expect(inference.prompts[1]).toContain('steps: 1 of 6 used')
+    // The estimate for the first prompt, standing because this transport
+    // reports no usage — and the block says which of the two it is.
+    expect(inference.prompts[1]).toMatch(/tokens: \d{3,} of 250,000 used \(estimated\)/)
+  })
+
+  test('the last turn is told it is the last, in words, before it is sent', async () => {
+    const { engine, inference } = engineWith([toolTurn('echo({"a": 1})'), answerTurn('what I got')])
+
+    const outcome = await engine.run(history, { budget: { steps: 2 } })
+
+    expect(inference.prompts[0]).not.toContain('LAST TURN')
+    expect(inference.prompts[1]).toContain('THIS IS YOUR LAST TURN. the 2-step budget is spent')
+    // And the run ends with an answer rather than a severed rope, which is the
+    // whole reason the last word exists.
+    expect(outcome.ok).toBe(true)
+    expect(outcome.value.answer).toBe('what I got')
+  })
+
+  test('a declared budget does not leak into the next run', async () => {
+    const { engine, inference } = engineWith([answerTurn('one'), answerTurn('two')])
+    const declared = { steps: 4 }
+
+    await engine.run(history, { budget: declared })
+    await engine.run(history, { budget: declared })
+
+    expect(inference.prompts[1]).toContain('steps: 0 of 4 used')
+  })
+})
+
+describe('stopping a run', () => {
+  test('the signal reaches the transport, not just the loop', async () => {
+    const { engine, inference } = engineWith([answerTurn('done')])
+    const controller = new AbortController()
+
+    await engine.run(history, { signal: controller.signal })
+
+    // The argument at the boundary. A stop that is only polled between
+    // iterations leaves the model call open for as long as the endpoint takes,
+    // which is precisely the wait the button was pressed to end.
+    expect(inference.calls[0].options.signal).toBe(controller.signal)
+  })
+
+  test('a run stopped before the model said anything comes back ok and empty', async () => {
+    const { engine, inference } = engineWith([answerTurn('never sent')])
+    const controller = new AbortController()
+    controller.abort()
+
+    const outcome = await engine.run(history, { signal: controller.signal })
+
+    expect(outcome.ok).toBe(true)
+    expect(outcome.value).toBe(null)
+    expect(inference.calls).toHaveLength(0)
+    expect(outcome.notes).toContain(
+      'you stopped this run after 0 step(s), before the model had said anything',
+    )
+  })
+
+  test('a run stopped part-way carries the work it had done', async () => {
+    const tool = new EchoTool()
+    const controller = new AbortController()
+    const inference = new ScriptedInference({ replies: neverAnswers(5) })
+    // Stopped from outside while the second call is in flight, which is where a
+    // user actually presses the button.
+    const original = inference.invoke.bind(inference)
+    inference.invoke = async (...args) => {
+      if (inference.calls.length === 1) controller.abort()
+      return original(...args)
+    }
+    const engine = new ReActEngine({ inference, toolbox: new Toolbox([tool]) })
+
+    const outcome = await engine.run(history, { signal: controller.signal })
+
+    // Ok, not failed: nothing broke, somebody ended it.
+    expect(outcome.ok).toBe(true)
+    expect(inference.calls).toHaveLength(2)
+    expect(tool.received).toEqual(['0'])
+    // The unanswered turn travels, so a caller can decide what it is worth —
+    // and `isAnswer` is how it tells this apart from a real reply.
+    expect(outcome.value.isAnswer).toBe(false)
+    expect(outcome.notes).toContain('you stopped this run after 2 step(s)')
   })
 })

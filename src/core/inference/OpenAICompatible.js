@@ -12,7 +12,7 @@ import { Modality, Multimodality } from './Multimodality.js'
 export class OpenAICompatible extends Inference {
   static LABEL = 'openai-compatible'
 
-  async invoke(prompt, multimodal = [], { onUsage } = {}) {
+  async invoke(prompt, multimodal = [], { onUsage, signal } = {}) {
     const posted = await this._postJson(
       `${this.baseUrl}/chat/completions`,
       // Local servers ignore the key; sending an empty bearer would be rejected
@@ -24,6 +24,7 @@ export class OpenAICompatible extends Inference {
         temperature: this.temperature,
         max_tokens: this.maxTokens,
       },
+      signal,
     )
     if (!posted.ok) return posted
 
@@ -46,7 +47,7 @@ export class OpenAICompatible extends Inference {
     return Outcome.ok(text)
   }
 
-  async stream(prompt, multimodal = [], { onDelta, onUsage } = {}) {
+  async stream(prompt, multimodal = [], { onDelta, onUsage, signal } = {}) {
     const read = await this._postStream(
       `${this.baseUrl}/chat/completions`,
       this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {},
@@ -83,6 +84,7 @@ export class OpenAICompatible extends Inference {
         onDelta?.(piece, 'text')
         return piece
       },
+      signal,
     )
     // A broken stream still carries whatever arrived. Below a threshold it is
     // not worth showing as an answer, but a long partial reply is, so it is

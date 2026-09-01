@@ -8,11 +8,26 @@ Every slice is built by one agent, judged by a second that never sees the
 first's reasoning, cut by a third that only asks whether deleting a line
 changes an output, and then fixed. Nothing is marked done without the gate:
 
-    bun run check && bun run build
+    bun run check
+    bun scripts/dryrun.js "<a task that exercises the slice>"
 
-`check` is `bun run lint && bun test`; the build is the static export. Written
-as one command that composes the other so there is a single definition of the
-gate — two wordings of it is how one of them stops being run. Output pasted.
+`check` is lint, then tests, then the static export — one definition, in
+`package.json`, and nothing here restates it. An earlier version of this file
+spelled the gate out a second way and immediately drifted from the scripts,
+which is the failure it was warning about.
+
+The dry run is the second half and it is not optional. A slice changes what the
+model is handed; the transcript is how anyone sees that, and it prints the
+prompt byte for byte with a sha256 rather than a summary of it. Output pasted,
+both commands, always.
+
+`test` runs `bun test --isolate`. Not a preference: Bun 1.4.0 segfaults when two
+or more test files import a module that fails to parse, which is the ordinary
+state of the tree while a slice is being written. `--isolate` turns that panic
+into a named error and keeps discovery unscoped — a `bunfig` test root was
+measured to silently drop a colocated test file, and a gate that hides a test is
+worse than one that crashes, because a crash is visible. `lint` running first is
+the real guard: biome catches the parse error before the runner ever sees it.
 
 Status: `open` -> `built` -> `judged` -> `landed` | `rejected`
 

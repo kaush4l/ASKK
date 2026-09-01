@@ -106,6 +106,19 @@ export class Inference {
   async close() {}
 
   /**
+   * Two reasons to abort the same request, and fetch takes one signal.
+   *
+   * The deadline is this class's own; `stop` is the user's, and it arrives from
+   * a button on a page, through the protocol, through the loop, to here. They
+   * mean opposite things to whoever reads the failure — one is an endpoint that
+   * went quiet, the other is something somebody chose — so they are combined
+   * for fetch and told apart in the catch.
+   */
+  static _either(stop, deadline) {
+    return stop ? AbortSignal.any([stop, deadline]) : deadline
+  }
+
+  /**
    * POST JSON with a deadline, reporting every failure as an Outcome.
    *
    * fetch has no timeout of its own, so a server that accepts a connection and
@@ -113,7 +126,7 @@ export class Inference {
    * that ends that, and it is reported as a timeout rather than as the generic
    * abort the browser raises.
    */
-  async _postJson(url, headers, body) {
+  async _postJson(url, headers, body, stop = null) {
     const label = this.constructor.LABEL
     const controller = new AbortController()
     const deadline = setTimeout(() => controller.abort(), this.timeout)
@@ -124,10 +137,18 @@ export class Inference {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...headers },
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal: Inference._either(stop, controller.signal),
       })
     } catch (err) {
       if (err?.name === 'AbortError') {
+        // Asked before the timeout is reported, because a stopped call is not a
+        // broken endpoint and telling a user their server is unreachable when
+        // they pressed stop is the kind of lie this tree exists to stop telling.
+        if (stop?.aborted) {
+          return Outcome.failed(Reason.UNAVAILABLE, `${label}: the call was stopped`, {
+            hint: 'You ended this run.',
+          })
+        }
         return Outcome.failed(Reason.UNAVAILABLE, `${label}: no answer within ${this.timeout}ms`, {
           hint: 'The endpoint accepted the connection but sent nothing. Check the server, or raise the timeout.',
         })
@@ -178,7 +199,7 @@ export class Inference {
    *
    * @returns {Promise<Outcome>} value is `{ text }`, the accumulated result
    */
-  async _postStream(url, headers, body, onEvent) {
+  async _postStream(url, headers, body, onEvent, stop = null) {
     const label = this.constructor.LABEL
     const controller = new AbortController()
     let idle = null
@@ -194,11 +215,16 @@ export class Inference {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...headers },
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal: Inference._either(stop, controller.signal),
       })
     } catch (err) {
       clearTimeout(idle)
       if (err?.name === 'AbortError') {
+        if (stop?.aborted) {
+          return Outcome.failed(Reason.UNAVAILABLE, `${label}: the call was stopped`, {
+            hint: 'You ended this run.',
+          })
+        }
         return Outcome.failed(Reason.UNAVAILABLE, `${label}: no answer within ${this.timeout}ms`, {
           hint: 'The endpoint accepted the connection but sent nothing.',
         })
@@ -265,17 +291,22 @@ export class Inference {
       buffer += decoder.decode()
       drain(true)
     } catch (err) {
-      const timedOut = err?.name === 'AbortError'
+      const aborted = err?.name === 'AbortError'
+      const stopped = aborted && stop?.aborted
       return new Outcome(
         false,
         // The value survives the failure on purpose: a partial answer is worth
         // more than a blank turn, and the caller decides whether to keep it.
+        // That matters most here: a stopped stream is exactly the case where
+        // what already arrived is the whole of what the user gets.
         { text },
         new Failure(
           Reason.UNAVAILABLE,
-          timedOut
-            ? `${label}: the stream went quiet for ${this.timeout}ms`
-            : `${label}: the stream broke — ${err?.message ?? String(err)}`,
+          stopped
+            ? `${label}: the stream was stopped`
+            : aborted
+              ? `${label}: the stream went quiet for ${this.timeout}ms`
+              : `${label}: the stream broke — ${err?.message ?? String(err)}`,
           text ? 'Part of the reply arrived before the connection failed.' : '',
         ),
       )

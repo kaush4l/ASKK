@@ -74,7 +74,7 @@ export class Engine {
    *
    * @returns {PromptBlock[]}
    */
-  blocks(history, scratchpad = []) {
+  blocks(history, scratchpad = [], budget = null) {
     const transcript = history
       .map((m) => `[${m.role === Role.ASSISTANT ? 'ASSISTANT' : 'USER'}]: ${m.text}`)
       .join('\n\n')
@@ -133,6 +133,16 @@ export class Engine {
         // Carries a clock. Nothing after this can ever be reused.
         volatility: Volatility.VOLATILE,
       }),
+      // What this run has spent and what it is allowed to spend. Rendered so
+      // the agent can wrap up on its own terms rather than being cut off on
+      // somebody else's — see `Budget` for why a bound that is not in the
+      // prompt is not a bound the agent can act on.
+      new PromptBlock({
+        id: 'budget',
+        heading: 'BUDGET',
+        body: budget?.render() ?? '',
+        volatility: Volatility.VOLATILE,
+      }),
       new PromptBlock({
         id: 'reminder',
         body: this.responseModel?.reminder(this.responseFormat) ?? '',
@@ -156,12 +166,12 @@ export class Engine {
    * prompt whose cost and cache behaviour you have to guess at; this is the
    * same text plus where the reusable prefix ends and what each block costs.
    */
-  plan(history, scratchpad = []) {
-    return this.template.assemble(this.blocks(history, scratchpad))
+  plan(history, scratchpad = [], budget = null) {
+    return this.template.assemble(this.blocks(history, scratchpad, budget))
   }
 
-  render(history, scratchpad = []) {
-    return this.plan(history, scratchpad).text
+  render(history, scratchpad = [], budget = null) {
+    return this.plan(history, scratchpad, budget).text
   }
 
   /**
@@ -190,10 +200,20 @@ export class Engine {
    * in the returned Outcome — so a caller that ignores them loses nothing but
    * the view.
    *
+   * `signal` is the one argument here that is not about watching. It is the
+   * user's stop, and it goes to the transport rather than being checked between
+   * steps: a loop that only looks at a flag on its way round still leaves a
+   * request open on the network for as long as the endpoint takes, which is
+   * precisely the wait the user pressed the button to end.
+   *
    * @returns {Promise<Outcome>} value is a parsed response, or raw text when
    *   this engine has no response contract.
    */
-  async step(history, multimodal = [], { scratchpad = [], onPrompt, onDelta, onUsage } = {}) {
+  async step(
+    history,
+    multimodal = [],
+    { scratchpad = [], budget = null, signal = null, onPrompt, onDelta, onUsage } = {},
+  ) {
     if (!this.inference) {
       return Outcome.failed(
         Reason.INTERNAL,
@@ -204,8 +224,18 @@ export class Engine {
       )
     }
 
-    const assembled = this.plan(history, scratchpad)
+    const assembled = this.plan(history, scratchpad, budget)
     const prompt = assembled.text
+    // The pass is opened here and nowhere else, because here is the only place
+    // the assembled cost is known. A provider that reports real usage replaces
+    // the estimate a moment later; one that reports none leaves it standing,
+    // and the block says which of the two happened.
+    //
+    // After `plan`, so the block the agent reads counts the calls that have
+    // FINISHED — "2 of 24 used" while the third is being written is what a
+    // spend report means, and counting the unsent one would bill for a prompt
+    // the endpoint has not seen.
+    budget?.open(assembled.total)
     // Announced before the call, not after: the point of showing the prompt is
     // to see what is about to be sent, including when the call then fails. The
     // whole plan goes out, not just the text — the block breakdown is the part
@@ -219,7 +249,7 @@ export class Engine {
     // that matches prefixes automatically ignores it; one that takes an explicit
     // breakpoint is told exactly where the repeating part ends, rather than
     // guessing at it or being given no breakpoint at all.
-    const options = { onUsage, cacheAt: assembled.boundary }
+    const options = { onUsage, cacheAt: assembled.boundary, signal }
     const replied = onDelta
       ? await this.inference.stream(prompt, multimodal, { ...options, onDelta })
       : await this.inference.invoke(prompt, multimodal, options)
@@ -236,7 +266,8 @@ export class Engine {
    * Drive the loop until it produces an answer.
    *
    * @param {Array<{role: string, text: string}>} _history
-   * @param {{multimodal?: object[], onPrompt?: (prompt: string) => void,
+   * @param {{multimodal?: object[], budget?: object, signal?: AbortSignal,
+   *   onPrompt?: (prompt: string) => void,
    *   onDelta?: (chunk: string, kind: string) => void,
    *   onStep?: (event: object) => void}} [_options]
    * @returns {Promise<Outcome>}

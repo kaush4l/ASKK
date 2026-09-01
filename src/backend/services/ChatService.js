@@ -66,8 +66,14 @@ export class ChatService {
    * The user's message is persisted BEFORE the model is called. A failed or
    * slow call must not lose what the user typed — on failure the turn is still
    * in the transcript, and they can retry rather than retype.
+   *
+   * `signal` is the third argument every handler may declare — the Kernel makes
+   * one per call — and this is the only handler that has any use for one. It
+   * goes straight through to the loop and on to the transport, so pressing stop
+   * ends the request that is open on the network rather than the iteration
+   * after it.
    */
-  async send({ id, text }, emit = null) {
+  async send({ id, text }, emit = null, signal = null) {
     const typed = typeof text === 'string' ? text.trim() : ''
     if (!typed) {
       // Nothing to send is not a fault to report; it is a no-op with a reason.
@@ -135,6 +141,11 @@ export class ChatService {
     // happening anyway — none of it changes the result, and a caller that
     // passed no emitter gets exactly the same reply.
     const answered = await agent.value.run(record.messages, {
+      // The terms this agent declared, or none — in which case `Budget` applies
+      // its own, which is where they are argued for. Handed as a declaration
+      // and not as a counter, so one turn's spending cannot leak into the next.
+      budget: spec.value.budget,
+      signal,
       onPrompt: emit
         ? (event) => {
             // An arrangement that wastes tokens says so on the same channel as
@@ -172,6 +183,16 @@ export class ChatService {
     notes.push(...answered.notes)
 
     const parsed = answered.value
+    // Nothing to write down. Either the run was stopped before the model said
+    // anything, or it was stopped while the model was mid tool call — the loop
+    // returns an unanswered turn on that path and on no other. Putting
+    // `shell({...})` into the transcript as the assistant's reply would be the
+    // user's own stop corrupting the conversation they stopped, so the
+    // transcript keeps what they typed and the notes say what happened.
+    if (parsed === null || (typeof parsed !== 'string' && parsed.isAnswer === false)) {
+      return Outcome.ok({ user: userMessage, assistant: null }, [...notes, ...answered.notes])
+    }
+
     const reply = typeof parsed === 'string' ? parsed : parsed.answer
     const assistantMessage = {
       id: newId(),

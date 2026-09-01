@@ -1,5 +1,5 @@
 import { Outcome } from '../core/Outcome.js'
-import { ErrorCode, Response } from '../protocol/Envelope.js'
+import { CANCEL, ErrorCode, Response } from '../protocol/Envelope.js'
 
 /**
  * The backend's front door.
@@ -11,10 +11,22 @@ import { ErrorCode, Response } from '../protocol/Envelope.js'
  * Nothing throws by design, so the try/catch here is a backstop rather than the
  * mechanism: it exists because a defect is still possible and must not take the
  * worker down with it, leaving every future call unanswered.
+ *
+ * It is also the only thing in either realm that knows what is RUNNING. A
+ * service is handed params and has no idea it has a neighbour, let alone a
+ * request id; the page holds ids but is on the wrong side of a boundary that
+ * an AbortSignal cannot cross. So the signals live here, one per call, and the
+ * page reaches them by sending a second request that names the first.
  */
 export class Kernel {
   constructor() {
     this._routes = new Map()
+    /** @type {Map<string, AbortController>} request id -> the call's stop. */
+    this._running = new Map()
+    // Registered directly rather than through `register`, because there is no
+    // service to register: cancelling is the front door's own business and the
+    // front door is the only thing holding the state it needs.
+    this._routes.set(CANCEL, (params) => this.cancel(params))
   }
 
   /**
@@ -38,6 +50,23 @@ export class Kernel {
   }
 
   /**
+   * Stop a call that is still running.
+   *
+   * Not finding one is an ordinary result, not a failure: the usual way to miss
+   * is to press stop as the answer arrives, and reporting that as an error would
+   * put a red message on screen for a run that finished correctly. The boolean
+   * says whether anything was actually interrupted.
+   */
+  cancel({ id } = {}) {
+    const controller = this._running.get(String(id ?? ''))
+    if (!controller) {
+      return Outcome.ok(false, ['that call had already finished, so there was nothing to stop'])
+    }
+    controller.abort()
+    return Outcome.ok(true)
+  }
+
+  /**
    * Always resolves. A rejected promise here would cross the postMessage
    * boundary as an unhandled rejection and the caller's request would hang
    * forever instead of failing.
@@ -50,10 +79,20 @@ export class Kernel {
       })
     }
 
+    // Every call gets one, whether or not its handler reads it. A signal costs
+    // nothing to create and making it unconditional means a handler becomes
+    // stoppable by declaring a third parameter — there is no list of
+    // cancellable methods to keep in step with the services.
+    const controller = new AbortController()
+    this._running.set(request.id, controller)
+
     // `emit` is a second argument, not a wrapper or a context object: a
     // handler that has nothing to say mid-call simply does not declare it, and
-    // reads exactly as it did before events existed.
-    const result = await Outcome.attempt(() => handler(request.params, emit))
+    // reads exactly as it did before events existed. `signal` is a third for
+    // the same reason.
+    const result = await Outcome.attempt(() => handler(request.params, emit, controller.signal))
+    this._running.delete(request.id)
+
     if (!result.ok) {
       // Only a defect reaches here — every intended failure arrived as a value.
       return Response.from(request.id, result.withNote('this is a bug: a handler threw'))

@@ -38,6 +38,11 @@ export const AGENT_DEFAULTS = Object.freeze({
   // agent wants a different prompt shape — see `PromptTemplate` for what the
   // default is and why.
   prompt: [],
+  // What a run of this agent may spend, as any of `steps`, `tokens`, `seconds`.
+  // Empty means `Budget`'s own defaults, which is where they are argued for —
+  // repeating a number here would be a second place for it to go stale, and the
+  // defaults are derived from measurements this file has no access to.
+  budget: {},
 })
 
 /** Frontmatter is written in snake_case; the code is camelCase. */
@@ -45,6 +50,7 @@ const ALIASES = {
   prompt_order: 'prompt',
   blocks: 'prompt',
   max_tokens: 'maxTokens',
+  max_steps: 'maxSteps',
   response_model: 'response',
   loop: 'engine',
 }
@@ -52,12 +58,16 @@ const ALIASES = {
 /**
  * Settings that no longer exist, named so a file still carrying one is told.
  *
- * They were ceilings on the loop, and they are gone because the agent decides
- * when its work is done. Silently ignoring a line someone wrote would leave
- * them believing a limit is in force that is not.
+ * Silently ignoring a line someone wrote would leave them believing a limit is
+ * in force that is not.
+ *
+ * `max_steps` used to be listed here. It is not any more — see below, where it
+ * becomes the step line of a budget. What was retired was the hidden ceiling,
+ * not the number: an author who wrote `max_steps: 8` was stating a term, and
+ * the honest answer is to honour it and tell the agent, rather than to discard
+ * it because the mechanism underneath it changed.
  */
 const RETIRED = {
-  max_steps: 'the loop has no step ceiling; the agent decides when it is finished',
   repeat_limit: 'a repeated call is reported to the agent, not counted against it',
 }
 
@@ -134,6 +144,32 @@ export class AgentSpec {
         ? [String(raw.prompt).trim()]
         : []
 
+    // Three optional numbers, and every one of them separately optional: a file
+    // declaring `steps` alone is stating the one term it cares about and takes
+    // `Budget`'s defaults for the other two. A key that is present but not a
+    // limit costs that key and leaves a note, like every other bad line here.
+    const terms =
+      raw.budget && typeof raw.budget === 'object' && !Array.isArray(raw.budget) ? raw.budget : {}
+    if (raw.budget !== undefined && terms !== raw.budget) {
+      notes.push(`${source}: budget ${JSON.stringify(raw.budget)} is not a set of limits; ignored`)
+    }
+    const budget = {}
+    for (const field of ['steps', 'tokens', 'seconds']) {
+      const value = positiveIntOrNull(terms[field], `${source}: budget.${field}`, notes)
+      if (value !== null) budget[field] = value
+    }
+    const legacySteps = positiveIntOrNull(raw.maxSteps, `${source}: max_steps`, notes)
+    if (legacySteps !== null && budget.steps === undefined) {
+      budget.steps = legacySteps
+      // Said out loud because the word means something different now. It used
+      // to stop the loop without telling the agent; it is now a line the agent
+      // reads in its prompt every turn, and the turn it runs out on is spent
+      // answering rather than being cut off.
+      notes.push(
+        `${source}: max_steps is this agent's budget.steps now — the agent is told the number, not stopped at it`,
+      )
+    }
+
     // MCP servers are records, not names: the command, its arguments and the
     // tools this agent is allowed to see are all part of what this agent is.
     const declared = Array.isArray(raw.mcp) ? raw.mcp : raw.mcp ? [raw.mcp] : []
@@ -176,6 +212,7 @@ export class AgentSpec {
         tools,
         mcp,
         prompt,
+        budget,
         model: String(raw.model ?? '').trim(),
         system,
         source,

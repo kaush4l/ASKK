@@ -86,6 +86,7 @@ export class PromptBlock {
  *   conversation  append    grows only at its end, so it extends the prefix
  *   scratchpad    append    this turn's actions and what they returned
  *   context       volatile  carries a clock; nothing after it can be reused
+ *   budget        volatile  what the run has spent and what it may still spend
  *   reminder      static    one line restating the contract, for recency
  *   cue           static    hands the turn over
  *
@@ -93,6 +94,17 @@ export class PromptBlock {
  * block that differs every call: ahead of the transcript it would push the whole
  * transcript out of the shared prefix, and that loss grows as the conversation
  * grows. Behind it, it costs its own length and nothing else.
+ *
+ * `budget` is last of the volatile blocks, next to the tail, because the one
+ * sentence in it that changes a run's course — the last-turn hand-over — is
+ * only useful if it is read. It is free to sit there: `context` has already
+ * ended the reusable prefix, so nothing is given up by putting it after.
+ *
+ * This list is also the vocabulary an agent file's `prompt:` is checked
+ * against, so a block missing from it is not merely mis-ordered — it is dropped
+ * from every prompt, silently, and refused if a file asks for it by name. That
+ * is what happened to `budget` for the length of one review: the block existed,
+ * rendered correctly, and reached the model as zero bytes.
  */
 export const DEFAULT_ORDER = Object.freeze([
   'identity',
@@ -102,6 +114,7 @@ export const DEFAULT_ORDER = Object.freeze([
   'conversation',
   'scratchpad',
   'context',
+  'budget',
   'reminder',
   'cue',
 ])

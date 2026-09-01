@@ -13,6 +13,11 @@ export default function Page() {
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  // The id of the turn that is in flight, which is also the only handle there
+  // is on it: a signal cannot be postMessaged, so stopping a run is a second
+  // request naming the first. Null between turns, and the stop button exists
+  // exactly while it is not.
+  const [running, setRunning] = useState(null)
   const [problem, setProblem] = useState(null)
   const [notes, setNotes] = useState([])
   const [settings, setSettings] = useState(null)
@@ -123,7 +128,7 @@ export default function Page() {
     // already been told to persist it first, so this is not an optimistic lie.
     setMessages((current) => [...current, { id: `local-${Date.now()}`, role: 'user', text }])
 
-    const result = await clientRef.current.call(
+    const turn = clientRef.current.begin(
       'chat.send',
       { id: conversationId, text },
       (name, data) => {
@@ -155,12 +160,19 @@ export default function Page() {
         }
       },
     )
+    setRunning(turn.id)
+    const result = await turn.done
+    setRunning(null)
     setNotes(result.notes)
     // Which sub-agent threads exist is a fact the backend holds and nothing
     // else can see. Read it after every turn so delegation is visible.
-    const running = await clientRef.current.call('agents.threads')
-    if (running.ok) setThreads(running.value)
+    const spawned = await clientRef.current.call('agents.threads')
+    if (spawned.ok) setThreads(spawned.value)
     if (result.ok) {
+      // `.filter(Boolean)` is not tidiness here. A stopped run answers ok with
+      // no assistant message at all — there was nothing it was willing to write
+      // down as a reply — and this is what keeps the transcript exactly as it
+      // was rather than growing an empty turn.
       setMessages((current) => [...current, result.value.assistant].filter(Boolean))
       // Not awaited. Reading a reply aloud takes as long as the reply is long,
       // and the turn is over — blocking on it would leave the composer disabled
@@ -304,6 +316,19 @@ export default function Page() {
     listening ? { text: 'listening', live: true } : null,
     busy ? { text: 'working', live: true } : null,
   ].filter(Boolean)
+
+  /**
+   * End the turn that is running.
+   *
+   * `busy` is not cleared here and the composer is not re-enabled. The call
+   * being stopped answers on its own request — with whatever it produced — and
+   * that reply is what ends the turn, exactly as a reply always does. Clearing
+   * the state from this side would be the interface guessing at a result it is
+   * about to be told.
+   */
+  function stop() {
+    clientRef.current?.stop(running)
+  }
 
   return (
     <div className="shell">
@@ -581,9 +606,19 @@ export default function Page() {
               >
                 {listening ? 'stop' : 'speak'}
               </button>
-              <button type="submit" disabled={!ready || busy || !draft.trim()}>
-                send
-              </button>
+              {/* One control, two turns of a run: while a turn is in flight
+                  there is nothing to send and the only useful thing to press is
+                  stop, so the button becomes it rather than sitting greyed out
+                  beside a second one that only ever appears here. */}
+              {busy ? (
+                <button type="button" className="stop" onClick={stop} data-testid="stop">
+                  stop
+                </button>
+              ) : (
+                <button type="submit" disabled={!ready || !draft.trim()}>
+                  send
+                </button>
+              )}
             </form>
           </div>
         </main>

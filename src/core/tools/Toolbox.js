@@ -122,9 +122,16 @@ export class Toolbox {
     }
 
     const result = await tool.call(args)
-    return result.ok
-      ? `${name} -> ${result.value}`
-      : `${name} -> failed: ${result.failure.message}${result.failure.hint ? ` (${result.failure.hint})` : ''}`
+    if (!result.ok) {
+      return `${name} -> failed: ${result.failure.message}${result.failure.hint ? ` (${result.failure.hint})` : ''}`
+    }
+    // Notes come through. They were dropped here, which made every note any
+    // tool threads on its way up write-only — carefully carried the whole way
+    // and then binned one statement before the only reader there is. A note is
+    // a tool saying what it repaired or lost, and that changes what the agent
+    // should believe about the value printed beside it.
+    const said = result.notes.map((note) => `\n   (${note})`).join('')
+    return `${name} -> ${result.value}${said}`
   }
 
   /**

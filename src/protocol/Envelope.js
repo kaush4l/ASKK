@@ -112,6 +112,22 @@ export class Event {
   }
 }
 
+/**
+ * The one method name both realms have to spell out.
+ *
+ * Every other route the page calls it discovers: the ready message carries
+ * `methods`, and a component asks for what it wants by name because the backend
+ * said the name exists. This one is different, because it is the only call
+ * whose parameter is another call — the page has to name a request that is
+ * still running, and a stop that had to wait for a roster would not be a stop.
+ *
+ * It is a second Request rather than a field on the first because an
+ * AbortSignal does not survive structured-clone: a signal cannot cross, so what
+ * crosses is an id, and the backend holds the signal on its own side. That is
+ * the same trick `Event` uses to say which call it belongs to, run backwards.
+ */
+export const CANCEL = 'calls.cancel'
+
 /** The event names both realms agree on. */
 export const EventName = Object.freeze({
   // The complete prompt, exactly as it was handed to the model.

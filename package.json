@@ -9,8 +9,8 @@
     "start": "bunx serve out",
     "lint": "biome check src scripts test next.config.js public/sandbox/vm-worker.js",
     "format": "biome check --write src scripts test next.config.js public/sandbox/vm-worker.js",
-    "test": "bun test",
-    "check": "bun run lint && bun test"
+    "test": "bun test --isolate",
+    "check": "bun run lint && bun run test && bun run build"
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",

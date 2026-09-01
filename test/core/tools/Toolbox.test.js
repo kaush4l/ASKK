@@ -183,6 +183,33 @@ describe('Toolbox.run — nonsense comes back as something to read', () => {
     expect(observation).toContain('I am not written to the contract')
   })
 
+  test('a note the tool carried up is printed, not binned one statement short of its reader', async () => {
+    const box = new Toolbox([
+      new RecordingTool({
+        name: 'fetch',
+        answer: Outcome.ok('the page said 0.15.2', [
+          'the declared charset was unknown, so utf-8 was used',
+        ]),
+      }),
+    ])
+
+    const { observation } = await box.run('fetch({"q": "x"})')
+
+    // `notes` is the only channel a tool has for "here is what I repaired or
+    // lost on the way", and this was the end of it: every tool in the tree
+    // threads them carefully and the last line before the agent dropped them.
+    // A truncated body reported as `value` and its reason reported as a `note`
+    // reached the model as "the response had no readable content".
+    expect(observation).toContain('the page said 0.15.2')
+    expect(observation).toContain('the declared charset was unknown')
+  })
+
+  test('a tool with nothing to add prints no empty note decoration', async () => {
+    const box = new Toolbox([new RecordingTool({ name: 'shell', answer: Outcome.ok('linux') })])
+
+    expect((await box.run('shell({"q": "x"})')).observation).toBe('shell -> linux')
+  })
+
   test('no call at all tells the model how to write one', async () => {
     const { observation, count } = await new Toolbox([new RecordingTool({ name: 'shell' })]).run(
       'I think I should look it up.',

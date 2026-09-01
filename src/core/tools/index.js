@@ -1,3 +1,5 @@
+import { FetchTool } from './FetchTool.js'
+import { SearchTool } from './SearchTool.js'
 import { ShellTool } from './ShellTool.js'
 
 /**
@@ -21,6 +23,11 @@ import { ShellTool } from './ShellTool.js'
  */
 export const BUILTIN_TOOLS = {
   shell: ({ sandbox } = {}) => new ShellTool({ sandbox }),
+  // Both take the same port and neither takes the global `fetch`, so the two
+  // tools whose every interesting case is a failure are the two that can be
+  // tested without a network.
+  fetch: ({ http } = {}) => new FetchTool({ http }),
+  search: ({ http } = {}) => new SearchTool({ http }),
 }
 
 export { McpTool } from './McpTool.js'

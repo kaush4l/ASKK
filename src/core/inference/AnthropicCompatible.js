@@ -27,13 +27,18 @@ export class AnthropicCompatible extends Inference {
     this.anthropicVersion = settings.anthropicVersion ?? '2023-06-01'
   }
 
-  async invoke(prompt, multimodal = [], { onUsage, cacheAt = 0 } = {}) {
-    const posted = await this._postJson(`${this.baseUrl}/messages`, this._headers(), {
-      model: this.model,
-      max_tokens: this.maxTokens,
-      temperature: this.temperature,
-      messages: [{ role: 'user', content: this._content(prompt, multimodal, cacheAt) }],
-    })
+  async invoke(prompt, multimodal = [], { onUsage, cacheAt = 0, signal } = {}) {
+    const posted = await this._postJson(
+      `${this.baseUrl}/messages`,
+      this._headers(),
+      {
+        model: this.model,
+        max_tokens: this.maxTokens,
+        temperature: this.temperature,
+        messages: [{ role: 'user', content: this._content(prompt, multimodal, cacheAt) }],
+      },
+      signal,
+    )
     if (!posted.ok) return posted
 
     const usage = AnthropicCompatible._usage(posted.value?.usage)
@@ -53,7 +58,7 @@ export class AnthropicCompatible extends Inference {
     )
   }
 
-  async stream(prompt, multimodal = [], { onDelta, onUsage, cacheAt = 0 } = {}) {
+  async stream(prompt, multimodal = [], { onDelta, onUsage, cacheAt = 0, signal } = {}) {
     const read = await this._postStream(
       `${this.baseUrl}/messages`,
       this._headers(),
@@ -85,6 +90,7 @@ export class AnthropicCompatible extends Inference {
         onDelta?.(piece, 'text')
         return piece
       },
+      signal,
     )
     const text = read.value?.text ?? ''
     if (!read.ok) {
