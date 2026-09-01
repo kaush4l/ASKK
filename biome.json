@@ -5,6 +5,7 @@
       "src/**/*.js",
       "src/**/*.jsx",
       "scripts/**/*.js",
+      "test/**/*.js",
       "*.js",
       "*.json",
       "!src/agents/catalogue.generated.js",

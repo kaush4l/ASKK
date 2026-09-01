@@ -7,8 +7,10 @@
     "dev": "bun scripts/agents.js && next dev --port 3000",
     "build": "bun scripts/agents.js && rm -rf .next out && next build",
     "start": "bunx serve out",
-    "lint": "biome check src scripts next.config.js public/sandbox/vm-worker.js",
-    "format": "biome check --write src scripts next.config.js public/sandbox/vm-worker.js"
+    "lint": "biome check src scripts test next.config.js public/sandbox/vm-worker.js",
+    "format": "biome check --write src scripts test next.config.js public/sandbox/vm-worker.js",
+    "test": "bun test",
+    "check": "bun run lint && bun test"
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",
