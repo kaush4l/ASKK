@@ -58,7 +58,9 @@ self.addEventListener('message', async (event) => {
     spec: spec.value,
     inference: inference.value,
     tools: [],
-    // A sub-agent gets the same facts as its caller.
+    // The clock and the machine, and deliberately NOT the caller's file
+    // listing: a sub-agent is built with `tools: []`, so naming files it has no
+    // way to open would be a fact it can only be misled by.
     context: describeEnvironment(),
   })
   if (!agent.ok) {

@@ -1,7 +1,16 @@
 # The rig
 
 Settles whether our agent scaffold drives tools better than a reference one, by
-holding everything except the scaffold constant.
+holding the model, the parameters, the tasks, the tools and the turn cap
+constant.
+
+**It does not hold everything else constant, and these first four lines used to
+say it did.** One arm is handed a recursive file tree in its prompt on every
+turn and the other is handed nothing. That is a second variable; it runs
+*against* our arm; and the correction to the opening claim sat 190 lines below
+the opening claim, which is not where a reader looks. It is measured in "The two
+arms are not handed the same information", below, and that section comes before
+any result on purpose.
 
     same model      Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp at http://127.0.0.1:8873/v1
     same params     temperature 0, seed 7, max_tokens 1200
@@ -9,12 +18,14 @@ holding everything except the scaffold constant.
     same tools      tools.js, four functions, every scaffold ends there
     same cap        12 turns, recorded as an event
 
-The only variable is `scaffolds/*.js`: the system prompt, the tool contract, the
-parse, and how an observation re-enters the context. `test/bench/driver.test.js`
-drives two scaffolds that differ only in their `id` and asserts that `model`,
-`temperature`, `seed` and `max_tokens` are byte-identical on the wire and that
-both are offered the same number of turns — because "everything except the
-scaffold is held constant" was prose until something failed when it was not.
+`scaffolds/*.js` is the variable this rig is FOR: the system prompt, the tool
+contract, the parse, and how an observation re-enters the context.
+`test/bench/driver.test.js` drives two scaffolds that differ only in their `id`
+and asserts that `model`, `temperature`, `seed` and `max_tokens` are
+byte-identical on the wire and that both are offered the same number of turns —
+because "everything except the scaffold is held constant" was prose until
+something failed when it was not, and it is still prose everywhere that test
+does not reach, the file tree included.
 
 **A SINGLE RUN IS A SAMPLE, NOT A MEASUREMENT.** `temperature: 0, seed: 7` does
 not make this endpoint reproducible; it is the same class of measured fact as
@@ -24,6 +35,22 @@ its `cached_tokens: 0`. The same task, the same code, an hour apart:
     ours        2 turns   3,390 tokens  50s   |  4 turns   4,467 tokens  33s
 
 So `-n 3` at least, and quote a spread, for any number anyone repeats.
+
+**`results.json` IS SUPERSEDED, and is kept.** The runs it holds are real and are
+the only recorded evidence there is; the comparison they support is not the one
+this file claims to make, because one arm was handed a recursive file tree in the
+prompt on every turn and the other was handed nothing — see "The two arms are not
+handed the same information", below, before any number. The file now says so in a
+`superseded` block of its own, and that block carries the md5 it had before the
+note was added (`be2c057ef0f810ff01c0b6f989122039`) so that the citation in
+`docs/LEDGER.md` still resolves. Today, `md5 bench/results.json` =
+`813fde9dbf088c5aaddad3639b7bcc0b`, and `runs`, `config`, `skipped` and `at` are
+byte-identical to the version that hashed to the first. **This is the only place
+in this file that tells you to run that command, and `test/bench/run.test.js`
+re-derives both hashes and refuses any third one**, so a `bun bench/run.js` that
+replaces the evidence turns the suite red instead of leaving a reader to find
+that the answer does not match. The re-take is due the moment our agent has a
+filesystem.
 
 ## Read this before any number below
 
@@ -40,7 +67,7 @@ intention; each row is checkable in the file it names.
 | the engine | **genuine.** `src/core/agent/loadAgent.js` `buildAgent`, the builder `ChatService` and `agentWorker` both call. It picks the loop, the response contract and the prompt arrangement; this rig picks none of them. |
 | prompt assembly and order | **genuine.** `Engine.blocks` / `Engine.plan` over `PromptTemplate` `DEFAULT_ORDER`. `test/bench/oursScaffold.test.js` asserts the message sent is `engine.plan(...).text`, re-derived, not a pinned string. |
 | response contract | **genuine.** `ReActResponse.FIELDS` rendered by `BaseResponse.instructions` / `reminder`. |
-| reply parsing | **genuine, and ASYMMETRIC — read this before any turn count.** `BaseResponse.parse` tries TOON, then JSON as a repair, then returns the whole reply as the answer. So this arm **cannot produce a malformed action at all**: a reply agent-zero scores `misformat` and pays a turn for ends this arm's run as an answer. Measured — `"Sure! I think the battery is at 87%."` is `{kind:"answer"}` here and `{kind:"malformed", reason:"misformat"}` there. It is our real production behaviour and is not repaired; it is recorded in `ours.js` `cuts`, so every transcript carries it. |
+| reply parsing | **genuine, and ASYMMETRIC — read this before any turn count.** `BaseResponse.parse` tries TOON, then JSON as a repair, then returns the whole reply as the answer. So a reply that reaches **none** of the contract's fields ends this arm's run as an answer, where agent-zero scores it `misformat` and pays a turn. Measured today — `"Sure! I think the battery is at 87%."` is `{act:"answer"}` here and `{kind:"malformed", reason:"misformat"}` there. A reply that **does** reach the contract and gets it wrong is named rather than waved through: `act: banana`, and a reply cut off before the `act` line, are both `ACT_UNSAID`, echoed back with which of the two it was, and two in a row end the run `unreadable`. This row read "**cannot produce a malformed action at all**" until `ACT_UNSAID` landed and for a wave after — `docs/LEDGER.md` row S37 — and the thirty transcripts already in `transcripts/` carry the old sentence, for which it was true when they were recorded. It is our real production behaviour and is not repaired; it is recorded in `ours.js` `cuts`, so every transcript carries it. |
 | tool rendering and listing | **genuine.** `Tool.signature` / `Tool.render`, `Toolbox.render`. |
 | tool-call syntax, parse and dispatch | **genuine.** `Toolbox.parse` / `runOne` / `run`. |
 | the repeat rule | **genuine.** `ReActEngine.observe`. |
@@ -105,7 +132,7 @@ with this:
 
 | what the recorded run says | what stands |
 |---|---|
-| ours 58,439 tok / 736 s vs agent-zero 237,579 / 1,177 s — 4.065x fewer tokens, 1.60x faster | **Stands as a record of what those runs cost.** It is not reproducible under the fixed rig: a refused reply ends its run, so re-running will produce FEWER tokens and LESS time for our arm and change the ratio. `md5 bench/results.json` = `be2c057ef0f810ff01c0b6f989122039` and all ten rows still re-derive. |
+| ours 58,439 tok / 736 s vs agent-zero 237,579 / 1,177 s — 4.065x fewer tokens, 1.60x faster | **Stands as a record of what those runs cost.** It is not reproducible under the fixed rig: a refused reply ends its run, so re-running will produce FEWER tokens and LESS time for our arm and change the ratio. All ten rows still re-derive from the file, which is the `superseded` block's `fileMd5BeforeThisNote` version plus that block — see the banner at the top for the hash to check it against, which is not this row's business to quote. |
 | ours 8/15 passed | **SUPERSEDED.** At most 4/15 survives: four of the eight passes contain a reply this project's own transport refuses. |
 | the `no-such-capability` cell, ours 3/3 | **SUPERSEDED.** All three runs are refusals under the fixed rig. |
 | the blind panel's 15 task-lens cells (ours 4, theirs 7, tie 4) | **VOID**, and not because of the transport — no judge was blind. See `blind.js`. |
@@ -184,6 +211,63 @@ the instrument's own evidence file.
 `test/bench/run.test.js` at the exact pair the wrong number came from; the row
 projection that writes all of the above is `resultRow`, pinned in the same file
 against a run driven through the repository's own recorded reply bodies.
+
+### The two arms are not handed the same information, and this one is in our favour to state
+
+**One arm is told what is in the working directory, every turn, for free. The
+other has to spend a tool call to find out.** That is not a controlled variable;
+it is the rig failing its own opening claim that only `scaffolds/*.js` differs.
+It is stated here, before any result, because an asymmetry that is stated is a
+finding and an asymmetry that is silent is a fraud — and because this one runs
+*against* our arm, so leaving it out would be the flattering omission.
+
+Counted over the 30 runs in `transcripts/`, and re-derivable from the JSON beside
+them rather than from this paragraph:
+
+| | agent-zero | ours |
+|---|---|---|
+| requests carrying a recursive workspace tree | **79 of 79** | **0 of 34** |
+| …of those, trees that were not empty | 76 | – |
+| tool-calling turns spent finding out what exists | 4 of 60 | **9 of 19** |
+
+The third row is the one that is rule-sensitive, so here is its rule: a `tool`
+action whose CALL, as issued, matches `/\bls\b|\bfind\b|\blist_files\b/` — which
+is `action.call` for our arm and `tool(JSON.stringify(args))` for the reference
+arm, because the two record a call differently. Matching the model's whole reply
+instead gives **10 of 60**, which is what this row used to say, by counting three
+`text_editor` reads of a file named in the previous turn as asking what exists.
+All three rows are re-derived from the JSON in `test/bench/run.test.js`; before
+they were, this row was the only one of the three that did not re-derive at all.
+
+The tree arrives as `project_file_structure` in agent-zero's `[EXTRAS]` block —
+`docs/REFERENCE-PROMPTS.md:91`, `_75_include_workdir_extras.py` — regenerated per
+turn to depth 5. Our arm has `list_files` and nothing else, so on the three tasks
+that begin by not knowing what exists, it opens by paying a turn for what the
+other arm was given. **Nearly half our arm's tool turns go on looking; a
+fifteenth of theirs do.** Any turn count, and any per-turn cost, has to be read
+with that.
+
+**What this asymmetry does NOT explain is the token gap, and the obvious guess is
+wrong by a factor of thirty.** Decomposing the 807,129 prompt characters
+agent-zero sent across its 79 requests:
+
+    system manual, re-sent unchanged every turn   580,297   71.9%
+    the workspace tree                             22,041    2.7%
+    the clock and the agent-number block           15,721    1.9%
+    the task, the dialogue and the observations    189,070   23.4%
+
+Ours sent 117,913 characters over 34 requests, in a single `user` message with no
+system role at all. So the file tree is **2.7%** of what the reference arm spends,
+and the 6.62x prompt-token ratio in `docs/LEDGER.md` is very nearly all the
+system manual paid for on every one of 79 turns. Giving our agent a file tree
+should be expected to change **which tasks it can do**, not what it costs — and
+anyone who quotes the cost result as "they pay for a file tree" is quoting a
+number this file measured and refuted.
+
+**The next run must be re-taken.** Another slice is giving our agent a
+filesystem; the moment it lands, our arm can be handed the same tree and this
+whole section becomes a `cuts` row about a rig that no longer needs it. Until
+then `results.json` is superseded — see the top of this file.
 
 ### One number a reader should have before the results, and where to get it
 
@@ -284,7 +368,7 @@ evidence outside the repository is not evidence.
                                       for a number anyone quotes
     bun bench/run.js --out /tmp/x     transcripts AND results.json elsewhere,
                                       leaving the repository's evidence alone
-    bun run bench:blind               build the blind set and gate it
+    bun run bench:blind               build the set and gate it (exit 1 today, and why)
     bun bench/blind.js --index 2      blind run 2 instead of run 1
     bun bench/blind.js --transcripts /tmp/x --out /tmp/x-blind
                                       blind a run that went somewhere else
@@ -329,48 +413,163 @@ NOT do:
   claimed dropping the request block was "the whole identity leak", while one
   `grep -l` separated that pair.
 
-Which means **the set is not blind, and the script says so in its own output**,
-per file, with counts — measured on the set now in `blind/`:
+Which means **the set is not blind — and as of this slice the exit code says so,
+not just the prose.** `bun bench/blind.js` used to print `NOT BLIND: 137 line(s)
+…` and exit **0**: an instrument built to enforce blindness passing an artifact
+it had just called broken. `docs/LEDGER.md` row S39, and either the exit code or
+the sentence had to give. The exit code gives, because the sentence was true.
 
-    NOT BLIND: 137 line(s) carrying one of 7 declared identifying term(s)
-    remain, in 10 of 10 file(s).
-       …/no-such-capability/B.md  read_file×3
-                                  You are a careful, direct assistant×5
-                                  write_file×5
+What is fatal is not that identifying terms remain — it is that they
+**separate**. `separation` asks one question of the set rather than of a reader:
+does any scanned term appear in one arm's files and in no other arm's? Measured
+on the set now in `blind/`, and pasted as the program emitted it — the only
+edits are whole lines dropped, marked where they were, and the prose paragraph
+the inventory prints under its own heading:
 
-The unit is the line, not the occurrence: a term twice on one line is one place
-to look, and the leak report beside it names line numbers.
+    DECLARED RESIDUE: 137 line(s) carrying one of 7 declared identifying term(s), in 10 of 10 file(s).
+       [… eight files …]
+       /Users/kaush/Downloads/Dev/ASKK/bench/blind/no-such-capability/B.md  read_file×3 You are a careful, direct assistant×5 write_file×5
+       [… one file …]
 
-`RESIDUAL` is that declared list and never fails the run; `BANNED` — the project
-names, the user's name, absolute paths, `bench/work`, `scaffold`, and
-`openai-compatible` — must not survive, and one hit exits 1. That last one is
-our own transport's class label, which opens every refusal message it writes:
-the refusal block is a run's ending so it stays, but the runs in `transcripts/`
-predate the transport and contain none, and once they are regenerated the
-classifier refuses 12 of one arm's 34 replies and 0 of the other's 79 — one
-`grep -l`, every pair, the same one-probe separation that made the last panel's
-verdict worth nothing. It is banned before the first regenerated set can carry
-it to a judge, not after. **The arms' own directory names are fatal too, and
-they are read off the run rather than typed in:** `transcripts/<task>/` names
-the arms that ran, so the set is exact and a third scaffold is covered the day
-it is added. `no-such-capability/ours/1` was printed six times inside one
-model's reasoning, and the previous conclusion — that `ours` is "too common a
-word to put in BANNED" — was a mismatch rather than a word problem: the scrub
-was `\b`-anchored and correctly left `yourself` alone, while the verifier was a
-substring scan and disagreed with it. Both halves are fixed and both are pinned. `test/bench/blind.test.js` holds both halves of the
+    verified: no banned term survives in any emitted file
+
+    !! NOT BLIND — 5 of 5 pair(s) can be sorted into arms by a judge who knows nothing about either project:
+       "code_execution_tool" [declared] appears only in agent-zero, in 5 of 5 pair(s)
+       "text_editor" [declared] appears only in agent-zero, in 5 of 5 pair(s)
+       "read_file" [declared] appears only in ours, in 4 of 5 pair(s)
+       "write_file" [declared] appears only in ours, in 4 of 5 pair(s)
+       "list_files" [declared] appears only in ours, in 2 of 5 pair(s)
+       "You are a careful, direct assistant" [declared] appears only in ours, in 1 of 5 pair(s)
+       "/workspace" [replacement] appears only in agent-zero, in 1 of 5 pair(s)
+       "this harness" [replacement] appears only in ours, in 1 of 5 pair(s)
+       [… the two closing paragraphs, one per kind …]
+
+    exit 1
+
+The block above used to be hand-aligned into columns, with the long term
+ellipsised and one file's terms spread over three lines. The program does none of
+those things. A prettified paraphrase inside a code fence is the wrong shape in a
+tree where three critics once spent a round arguing about a fixture that did not
+exist, so this is the bytes.
+
+The first block is an inventory; the second is the verdict. The unit of the
+inventory is the line, not the occurrence: a term twice on one line is one place
+to look, and the leak report beside it names line numbers. The unit of the
+verdict is the **pair**, because that is the number a reader of a panel's result
+needs — it is how many of five supposedly independent judgements were actually
+independent. A term appearing in both arms' files separates nothing and is
+vocabulary rather than identity; a term appearing nowhere (`System Manual`, which
+no model quoted back) is a cost nobody paid.
+
+**`[declared]` and `[replacement]` are two different findings and the verdict
+says which.** A declared term is a cost: a tool's name is part of what is being
+judged and renaming it would put the lie in the artifact. A replacement is a
+string `blind.js` ITSELF WROTE into the transcript, and one that separates is
+this rig's own defect — a replacement only reaches the files whose identifying
+token it replaced, so a token that named an arm becomes a replacement that names
+it. Until this slice `separation` scanned the two hand-typed lists and nothing
+else, so it could not see its own output: `this harness` (what an arm's own
+directory name scrubs to) sat in one `ours` file and `/workspace` in one
+`agent-zero` file, two separated pairs the verdict was silent about while
+reporting six it had been handed by hand. The near miss is the argument for the
+change — `openai-compatible` → `the transport` was added against a leak measured
+at 5 of 5 pairs, and the replacement it writes has identical separating power. It
+reads 0 only because `transcripts/` predates the transport, so the first
+regenerated set would have carried a five-pair separator past a green gate.
+
+**Separation is worse than recognition, which is why it is the thing gated on.**
+A judge who has read either project recognises an arm; *any* judge can sort ten
+files into two piles by tool vocabulary, and once the piles are sorted one
+opinion formed on one file propagates to all five pairs.
+
+**The residue cannot be scrubbed, so the panel is told instead.** Renaming a tool
+replaces a leak with a lie in the artifact, which is the trade this rig refuses
+everywhere. So `blind.js` prepends a `DISCLOSURE` block to every transcript — the
+only channel that certainly reaches a judge, since a key file, a README and a
+line of stdout can all be dropped on the way. It says the pair is not blind, why,
+that the pair is to be scored alone rather than matched against another pair, and
+that a judge who recognises a harness should say so rather than score around it.
+It names no tool and no arm: it is prepended to all ten files, so a residual term
+inside it would appear in every arm's files, stop separating, and **turn this
+gate green by making the leak universal.** Measured, as a mutation on the version that
+scanned the framed file: putting the five tool names into `DISCLOSURE` dropped
+the verdict from 5 of 5 pairs to 1 of 5; putting all seven residual terms in it
+printed `blind: no declared term appears in one arm's files and no other's` and
+exited 0. That laundering is now closed in the code rather than only asserted
+against: `separation` is handed the transcript BODY, not the framed file, so a
+word in the preamble cannot make a term universal — which it had to be, because
+the disclosure says "harness" four times and that is exactly what `scaffolds?`
+scrubs to. `test/bench/blind.test.js` still asserts the block is clean of both
+lists, for the two reasons that remain: a banned term there is a leak in ten
+files, and a residual term there inflates the inventory in every one of them.
+
+**The set is DISCLOSED, not blind, and that is the honest name for it.** This
+comparison cannot be blind while the two harnesses name their own tools, and
+calling it blind was the error. The green state is reachable and is not
+pretended away — it arrives when no scanned term appears in one arm's files and
+in no other's, which needs the two harnesses to spell a capability the same way
+and the replacements this rig writes to reach both arms alike. **Reducing the set
+to one pair does not reach it**: `separation` has no pair-count floor,
+deliberately, and `blind.js`'s header said it did until this slice. Measured over
+`transcripts/collatz` alone: `!! NOT BLIND — 1 of 1 pair(s)`, exit 1.
+
+**Criterion 1 of the rubric is withheld on this projection**, and the disclosure
+says so. It asks about the assembled prompt; the projection drops the assembled
+prompt, so this tree scored 1 on criterion 1 no matter what it did —
+`docs/LEDGER.md` row P5. The prompt does not come back to fix it: it is the
+largest single identity carrier in the record, and criterion 1's own poles are
+textual, so there is no half measure. `docs/REFERENCE-PROMPTS.md` was changed
+instead, to withhold rather than to score 1, and `blind.js`'s `RUBRIC` is the
+other half of that agreement — `test/bench/blind.test.js` reads the rubric page
+and fails if the two stop saying the same thing.
+
+`BANNED` — the project names, the user's name, absolute paths, `bench/work`,
+`scaffold`, and `openai-compatible` — must not survive, and one hit exits 1.
+`RESIDUAL` is the declared list; it never fails the run *on its own*, and is
+fatal exactly where it separates. That transport term is our own class label,
+which opens every refusal message it writes: the refusal block is a run's ending
+so it stays, but the runs in `transcripts/` predate the transport and contain
+none, and once they are regenerated the classifier refuses 12 of one arm's 34
+replies and 0 of the other's 79 — one `grep -l`, every pair, the same one-probe
+separation that made the last panel's verdict worth nothing. It is banned before
+the first regenerated set can carry it to a judge, not after. **The arms' own
+directory names are fatal too, and they are read off the run rather than typed
+in:** `transcripts/<task>/` names the arms that ran, so the set is exact and a
+third scaffold is covered the day it is added. `no-such-capability/ours/1` was
+printed six times inside one model's reasoning, and the previous conclusion —
+that `ours` is "too common a word to put in BANNED" — was a mismatch rather than
+a word problem: the scrub was `\b`-anchored and correctly left `yourself` alone,
+while the verifier was a substring scan and disagreed with it. Both halves are
+fixed and both are pinned. `test/bench/blind.test.js` holds both halves of the
 rule: every banned term must have a scrub rule behind it, and every residual term
 must survive the scrub, or one of the two lists is lying.
 
-**`bun run check` does not run this gate, and cannot.** `bench/` is not tracked
-(`git ls-files bench` → 0) and `transcripts/` is written by a run that needs a
-model for twenty minutes, so on any fresh checkout `bun bench/blind.js` exits 1
-on a missing directory — a gate step that is red for everyone who has not run
-the benchmark is not a gate, it is a broken build. What `bun run check` runs
+**`bun run check` does not run this gate, and must not.** `transcripts/` is
+written by a run that needs a model for twenty minutes, so `bun bench/blind.js`
+is meaningless without one — and the gate is *legitimately red today*, on the set
+in the repository, which a `check` step cannot be. What `bun run check` runs
 instead is `test/bench/blind.test.js`, which drives this script as a subprocess
-over fixtures and pins both leak classes it has actually shipped: an arm's own
-directory name in a model's prose, and our transport's signature in a refusal
-block. Running `bun run bench:blind` is the panel's first step and its exit code
-is the claim.
+over fixtures and pins every class it has shipped: an arm's own directory name in
+a model's prose, our transport's signature in a refusal block, a term that names
+one arm, and a `DISCLOSURE` that would launder one. Running `bun run bench:blind`
+is the panel's first step and **its exit code is the claim**; today that claim is
+exit 1, and a panel run over this set anyway must publish its `NOT BLIND` block
+beside its verdict.
+
+**The exit code is a claim, not a refusal, and nothing stops a set being handed
+over.** The ten files are written whether the gate passes or fails — a gate that
+deletes the evidence of its own failure cannot be audited — and they are
+committed, so anyone can open `bench/blind/` without running anything. That is
+why the statement travels *inside* each file rather than only in an exit status:
+the disclosure is the channel that cannot be dropped between this script and a
+judge, because it is part of the thing being judged.
+
+(`bench/` *is* tracked, as of `25c8750` — `git ls-files bench` → 101, including
+the ten `blind/<task>/{A,B}.md` a panel reads, the 60 files under `transcripts/`
+and `results.json`; `blind-key.json` is the one file deliberately ignored. This
+paragraph said "`bench/` is not tracked (`git ls-files bench` → 0)" while
+`.gitignore` said the blind set "ARE committed" — `docs/LEDGER.md` row S38, both
+halves now true and pinned by `test/bench/blind.test.js`.)
 
 **And the set now in `blind/` is built from `transcripts/`, which is the
 superseded run** — the one produced before the rig used this project's
@@ -406,7 +605,7 @@ these — no test here runs python, node or a model.
 | `scaffolds/ours.js` | our real modules, imported from `src/`. |
 | `vendor/agent-zero/` | the seventeen prompt files verbatim, plus two python files nothing runs — the oracle for the parser divergence — all hashed in `PROVENANCE.md`. |
 | `run.js` | runs the matrix, writes transcripts and `results.json`. |
-| `blind.js` | projects the loop out of each transcript, scrubs what can be removed, declares what cannot, and exits non-zero on a leak. |
+| `blind.js` | projects the loop out of each transcript, scrubs what can be removed, discloses what cannot, and exits non-zero on a leak **or on a term that names an arm**. Today: exit 1, 5 of 5 pairs. |
 
 Adding a third scaffold is a file in `scaffolds/` and a line in `run.js`.
 Nothing else changes.

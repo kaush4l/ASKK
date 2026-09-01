@@ -39,20 +39,37 @@ find it again, so it is written here rather than in a changelog.
 
 ## The guest
 
-The agent's environment is an Alpine userland in an x86 emulator, a single
-~102 MiB wasm module at `public/sandbox/sandbox.wasm`. It is **not in this
-repository** — GitHub blocks files over 100 MiB — so a fresh clone has none.
-Build it once with `scripts/wasm/build.sh` (about 18 minutes, needs Docker and a
-local registry; `ARCHITECTURE.md` has the commands). Without it everything works
-except running a command, and `bun run check` says on stdout that it skipped that
-step rather than passing over it in silence.
+The agent's environment is an Alpine userland in an x86 emulator, a single wasm
+module. Two forms of it, and the difference is the whole reason it can ship:
 
-`gzip -9` puts the same guest at 40,029,960 bytes — under GitHub's block — and
-that compressed file is what the page loads and what `bun run check` boots. The
-deployed page at `kaush4l.github.io/ASKK` still has no sandbox anyway, because
-the `.gz` is untracked: `sandbox/sandbox.wasm` and `sandbox/sandbox.wasm.gz` are
-both 404 there and the shell tool reports that it could not run.
-`SANDBOX_IMAGE=<url> bun run build` points a build at another host instead;
-nothing has tried one yet.
+    public/sandbox/sandbox.wasm      107,054,914 bytes   gitignored, over GitHub's block
+    public/sandbox/sandbox.wasm.gz    40,029,960 bytes   TRACKED — this is what loads
+
+The page fetches the `.gz`, sniffs `1f 8b` and inflates it with
+`DecompressionStream`, and that is the path `bun run check` boots on every run.
+A fresh clone therefore HAS a working guest. `scripts/wasm/build.sh` rebuilds the
+raw module from pinned sources (about 18 minutes, needs Docker and a local
+registry; `ARCHITECTURE.md` has the commands) and is only needed to change what
+is inside it.
+
+## Deploying
+
+    bun scripts/deploy.js        # dist/, built from a CLEAN CHECKOUT of a commit
+    bun scripts/deploy-check.js  # open dist/ in a real browser and drive the agent
+
+`deploy.js` extracts the tracked tree with `git archive`, installs into an empty
+`node_modules` and builds — so nothing in your working tree can reach the output,
+and a stranger with this repository and nothing else gets the same directory. It
+does not push: publishing is the owner's, and a script that both builds and
+publishes turns one review into none. `deploy-check.js` then serves that
+directory over a host that sends no COOP, no COEP and no CORP — the same silence
+GitHub Pages sends — and runs a real shell command through the real agent loop
+in real Chrome.
+
+Neither is part of `bun run check`; `docs/DEPLOY.md` says why and what each one
+proves. **The live site is not deployed from either of them yet**:
+`https://kaush4l.github.io/ASKK/` answers 200 and
+`/ASKK/sandbox/sandbox.wasm.gz` answers 404, so every `shell` call a visitor
+makes there still reports that it could not run.
 
 Everything before the rebuild is recoverable: `git show pre-narrated-rebuild:<path>`.

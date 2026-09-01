@@ -28,10 +28,10 @@ Two rules keep this from rotting into a wish list:
    wired — `TokenScale` has zero call sites outside its own test
    (`grep -rn TokenScale src scripts test` → `src/core/prompt/tokens.js` and
    `test/core/prompt/tokens.test.js`, nothing else), multimodal is unreachable
-   because both `run` sites pass no images — `ChatService.js:171` and
-   `agentWorker.js:74` both call `run(...)` with none, against the parameter at
+   because both `run` sites pass no images — `ChatService.js:249` and
+   `agentWorker.js:76` both call `run(...)` with none, against the parameter at
    `Engine.js:199` `multimodal = []` — sub-agents are never constructed because
-   `peers` is always empty (`ChatService.js:142` `const peers = …`, and `agents/`
+   `peers` is always empty (`ChatService.js:220` `const peers = …`, and `agents/`
    holds one directory), sub-agents get `tools: []` (`agentWorker.js:60`), and
    `AgentWorkerPool.terminate` has no caller (`:124`;
    `grep -rn "pool.terminate" src` → no matches; the three `.terminate()` hits in
@@ -50,7 +50,7 @@ Two rules keep this from rotting into a wish list:
    The third was a real defect and it is **closed**: the sandbox used to be off
    in every build ever made, because `composition.js` read its image URL from an
    environment variable nothing anywhere set. It is derived now, exactly like the
-   worker URL beside it (`composition.js:214`), and a shell command has been run
+   worker URL beside it (`composition.js:227`), and a shell command has been run
    through the built artifact end to end — the environment table below carries
    the run.
 
@@ -147,7 +147,7 @@ itemised:
           three are fetched and all in CORS mode (`api.anthropic.com`,
           `api.firecrawl.dev`, `huggingface.co` at `src/core/speech/index.js:113`),
           and `github.com` is a comment in `public/sandbox/wasi-util.js:5`
-        → costs it ONE thing today: `composition.js:93` re-probes a failed
+        → costs it ONE thing today: `composition.js:100` re-probes a failed
           request with `mode: 'no-cors'` to tell a CORS refusal from a dead
           host, and that is precisely the request `require-corp` blocks
         → costs the roadmap any arbitrary origin the agent decides to pull
@@ -310,13 +310,13 @@ and the budget is per-run rather than per-tree.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| Run a command | pi `env/nodejs.ts:145` (the one `spawn`), `:230` (`/bin/bash`) | c2w Alpine in wasm, ~102 MiB beside the page | degraded | degraded | unverified | — | **Run through the built artifact for the first time on 2026-09-01, which is the one thing two prior waves never did.** `bun run build`, then the export served from `Bun.serve` and opened in headless Chrome; the page's own module worker was kept by proxying `Worker` in `Page.addScriptToEvaluateOnNewDocument`, and `settings.save` / `conversations.create` / `chat.send` were sent to it as envelopes. Everything under the wire was the bundled build — `buildKernel`, `C2wSandbox`, `ChatService`, `ReActEngine`, `Toolbox`, `ShellTool`. The model was the only substitution, a local endpoint the same script served, and the observation it was handed on step 2 was `shell -> Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux / marker-42 / ls: /definitely-not-here: No such file or directory / rc=1` — output, arithmetic the guest did, and a real non-zero status. Whole turn 2,732 ms, two guest boots in it (MCP discovery, then the command). Repeated against the real model on `http://127.0.0.1:8873/v1`: 21,203 ms, two steps, final answer *"The sandbox kernel release is 6.1.0, and the shell computes 6*7 as 42."* **The harness is a scratch file and is NOT in the tree** — `docs/LEDGER.md` row S22. What is committed: `scripts/smoke.js` runs the same guest through `C2wSandbox.js:178` every `bun run check` — and since the compressed image landed it boots from `out/sandbox/sandbox.wasm.gz` and prints both sizes, which is what makes a raw module shipped under that name fail the gate rather than reach a visitor (three runs by the accountant, 2026-09-01: cold 930 / 925 / 945 ms, warm 674 / 671 / 692 ms, `40029960 bytes fetched, inflated to 107054914`, `Linux localhost 6.1.0 …` and exit 1 every time) and `test/backend/composition.test.js:210` asserts `buildKernel` yields `chat.services.sandbox.available === true`. **Two costs, both named.** Speed: against the identical busybox 1.37.0 in `docker run --rm alpine:3.21`, same bytes (both print sha256 `2daeb1f3…`), `awk` 1e6 loop 85,930 ms vs 0.24 s = **358x**, `sha256sum` 8 MB 9,700 ms vs 0.02 s = **485x**, `gzip -c` 8 MB 7,661 ms vs 0.03 s = **255x** — the guest is `x86_64` and the native control ran `aarch64`, which flatters the guest. Host: the row below. Both numbers the model is actually handed are wrong: `ShellTool.js:25` tells it the command line cannot exceed 1024 bytes (it is 993), and `C2wSandbox.js:217` (the timeout hint, *"about a hundred times slower"*) plus `agents/main/agent.md:29` (*"roughly a hundred times slower"*) tell it the emulator is a hundred times slower (it is 255x–485x). `docs/LEDGER.md` row S25 |
-| Get that environment to the visitor | bolt.diy `README.md:515` (WebContainer is fetched from its vendor, under a licence) | a 102 MiB file the project's own host refuses | absent | absent | absent | — | **Measured on the live deploy, 2026-09-01.** `curl -s -o /dev/null -w '%{http_code}' https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm` → **404**, while `/ASKK/` and `/ASKK/sandbox/vm-worker.js` both answer **200**. So every `shell` call on the deployed page today reaches `boot-failed` and the model is handed *"the sandbox could not run that…"*. Why: `wc -c public/sandbox/sandbox.wasm` = **107,054,914** bytes, which is **2,197,314 over** GitHub's documented 100 MiB per-file block (*"GitHub blocks files larger than 100 MiB"*), so the file is excluded from the repository by `.gitignore`'s `public/sandbox/*.wasm` rule (named rather than numbered: it was cited as `.gitignore:33` in three documents and that line is now a comment) and the deploy commit adds a second `.gitignore` of its own (`git show a1d7a98 -- .gitignore` → one line, `sandbox/*.wasm`). `git ls-tree -r gh-pages` is **56 files / 25,155,729 bytes** and none of them is a `.wasm` guest. Git LFS is not a way out — *"Git LFS cannot be used with GitHub Pages sites"* — and Cloudflare Pages is stricter still at 25 MiB per asset. **The clause that stood here saying compression does not touch it is now false and is withdrawn.** It said the limit is on the file at rest and the edge gzips for free, which is true and is not the whole story: `gzip -9` produces `public/sandbox/sandbox.wasm.gz` at **40,029,960 bytes**, well under the block, it inflates to the raw module's own sha256 (`f5d05789…c102a70`, `docs/GATE.md`), `vm-worker.js` inflates it with `DecompressionStream`, and `bun run smoke` boots the real guest from it on every gate run. **The way out is built and not walked.** `git check-ignore -v public/sandbox/sandbox.wasm.gz` exits **1** and `git ls-files public/sandbox/` lists five files, none of them the `.gz` — so it is neither tracked nor ignored, and `curl -s -o /dev/null -w '%{http_code}' https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` is **404** too (re-measured 2026-09-01 alongside the two 200s above). There is also nothing in this repository that writes the deploy: `git ls-files \| grep -iE "deploy\|publish\|pages\|workflow\|ya?ml"` returns **nothing** and there is no `.github/`, so whatever produces `gh-pages` is on somebody's machine and has never been shown to carry or exclude anything. `absent` and not `barred`: nothing in a browser stops it, the tree has the override for it (`next.config.js:26`, `composition.js:214`), and no host has been tried — see the row below and §5.7 |
-| Point a deploy at a guest on another host | — | a build-time override, never once exercised against a host | unverified | unverified | unverified | — | `SANDBOX_IMAGE=<url> bun run build` compiles the URL into the chunk — `next.config.js:26`, `composition.js:214`, pinned by `test/backend/composition.test.js:232` and by `scripts/smoke.js`, which reads the URL the build was configured with and fails when no chunk carries it. **Nothing beyond the string has ever been observed.** The smoke says so itself: an override names a host it cannot serve, so its browser run falls back to the copy in `out/`. A cross-origin 102 MiB `fetch` + `WebAssembly.compile` needs CORS on that host (C2), holds two copies live at once because `vm-worker.js` uses `arrayBuffer()` and not `compileStreaming`, and has never been tried from a page. An empty evidence cell for the thing actually claimed is what makes this `unverified` |
-| Know whether a command succeeded | pi `env/nodejs.ts:145` (a real `spawn` exit) | the shell is asked to print it | degraded | degraded | unverified | — | **Closed this wave; it read a constant 0 before.** c2w's `proc_exit` is the emulator's, so `C2wSandbox` sends `sh -c '( <cmd> ) ; echo "__askk_rc$?"'` and takes the marker off the END of stdout (`C2wSandbox.js:37-47`, `:253-261`). Measured through the real 107 MB image in a browser: `ls /nope` 1, `false` 1, `exit 7` 7, `sh -c "exit 3"` 3, `printf abc` 0 with the marker split off a line that has no newline, `echo "__askk_rc9"` 0 because the last marker wins. Asserted every gate run — `scripts/smoke.js` requires the failing command to come back `code === 1` and the marker never to reach the caller. Confirmed once more in the artifact run above: `rc=1` reached the model. **The cost is 25 bytes**, so the row below is 993 and not 1024, and no time: bare against wrapped, interleaved in one browser, 957/965, 760/801, 725/741, 723/732 ms. **The degradation**: a command whose own quoting swallows the echo, or a guest that traps, prints no marker, and the emulator's 0 stands — `C2wSandbox.js:265-269` says so and the trap arrives as a note |
-| An interactive session | agent-zero `tty_session.py:259` | none | absent | absent | unverified | — | **the browser can; we have not built it.** One guest booted with blocking stdin two realms down reached its prompt in 3,826 ms and then answered ten commands at 106–120 ms each with the boot never re-paid — about **7.5x cheaper per command** than re-paying the 887 ms one-shot, and the saving does not decay (`scripts/probe/results/2026-09-01T06-53-06-isolation+model+pty.md` and `scripts/probe/results/2026-09-01-pty.md`). The tree still has none: `C2wSandbox.js:178` `async run(` builds one instance per command |
-| Keep a file between calls | pi `harness/types.ts:315` | none | absent | absent | unverified | — | **within one boot the browser can; across a reload nobody can.** `echo hello > /tmp/a` then `cat /tmp/a` → `hello`, then `ls -la /tmp` → `-rw-r--r-- 1 root root 6 … a`. After `page.reload()` in the same tab: `cat: can't open '/tmp/a': No such file or directory`, `RC=1`, `/tmp` empty, and the 3,821 ms boot paid again. The store is a RAM overlay — `overlay 56.3M`, `upperdir=/run/rootfs-upper`, inside the guest's `Mem: 115244` KB — so it is capped at 56 MB and competes with the workload. The tree still has none: `C2wSandbox.js:59-61` (*"ONE BOOT RUNS ONE COMMAND"*), one instance per command by construction (`scripts/probe/results/2026-09-01T06-53-06-isolation+model+pty.md`) |
-| Command length | — | 1024 bytes on the channel, **993 usable** | degraded | degraded | degraded | — | `C2wSandbox.js:18` `MAX_COMMAND_BYTES = 1024`, checked at `:188-197`; c2w's fixed entrypoint channel, unrelated to isolation. **The usable number changed this wave**: the cap is now measured against the WRAPPER, because the status marker is what actually crosses, so a command may be 993 bytes and the refusal says so — `the command is N bytes and the sandbox accepts at most 993`. The 1024 in `ShellTool`'s description, which is the sentence the model reads, is the old number. **A live shell does not remove this, it doubles it and makes it silent**: binary-searched, a line of 2,047 bytes including the newline runs and one of 2,048 vanishes with no error and no partial execution — reproduced in two separate runs. That silence is worse than the 1024-byte cap, which at least says `the command is N bytes and the sandbox accepts at most 993`. It bit this probe: the install stage first sent an unwrapped base64 blob as one 40,424-byte line and got `base64: truncated input`, a wrong md5 and `BAD archive` (`scripts/probe/results/2026-09-01T07-28-08-pty.md`); wrapped at 76 columns it installs. A heredoc has no cap — 11,889 bytes over 400 lines written and executed |
+| Run a command | pi `env/nodejs.ts:145` (the one `spawn`), `:230` (`/bin/bash`) | c2w Alpine in wasm, ~102 MiB beside the page | degraded | degraded | unverified | — | **Run through the built artifact for the first time on 2026-09-01, which is the one thing two prior waves never did.** `bun run build`, then the export served from `Bun.serve` and opened in headless Chrome; the page's own module worker was kept by proxying `Worker` in `Page.addScriptToEvaluateOnNewDocument`, and `settings.save` / `conversations.create` / `chat.send` were sent to it as envelopes. Everything under the wire was the bundled build — `buildKernel`, `C2wSandbox`, `ChatService`, `ReActEngine`, `Toolbox`, `ShellTool`. The model was the only substitution, a local endpoint the same script served, and the observation it was handed on step 2 was `shell -> Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux / marker-42 / ls: /definitely-not-here: No such file or directory / rc=1` — output, arithmetic the guest did, and a real non-zero status. Whole turn 2,732 ms, two guest boots in it (MCP discovery, then the command). Repeated against the real model on `http://127.0.0.1:8873/v1`: 21,203 ms, two steps, final answer *"The sandbox kernel release is 6.1.0, and the shell computes 6*7 as 42."* **The harness is a scratch file and is NOT in the tree** — `docs/LEDGER.md` row S22. What is committed: `scripts/smoke.js` runs the same guest through `C2wSandbox.js:292` every `bun run check` — and since the compressed image landed it boots from `out/sandbox/sandbox.wasm.gz` and prints both sizes, which is what makes a raw module shipped under that name fail the gate rather than reach a visitor (accountant, 2026-09-01, integrated tree: cold 1,398 ms, warm 1,047 ms, `40029960 bytes fetched, inflated to 107054914`, `Linux localhost 6.1.0 …` and exit 1; the step got slower than the 930 / 925 / 945 and 674 / 671 / 692 ms of the previous wave because it now stages two files onto a budget-filling command line and asserts the return leg, not because the guest changed) and `test/backend/composition.test.js:210` asserts `buildKernel` yields `chat.services.sandbox.available === true`. **Two costs, both named.** Speed: against the identical busybox 1.37.0 in `docker run --rm alpine:3.21`, same bytes (both print sha256 `2daeb1f3…`), `awk` 1e6 loop 85,930 ms vs 0.24 s = **358x**, `sha256sum` 8 MB 9,700 ms vs 0.02 s = **485x**, `gzip -c` 8 MB 7,661 ms vs 0.03 s = **255x** — the guest is `x86_64` and the native control ran `aarch64`, which flatters the guest. Host: the row below. **One of the two numbers the model is handed is now right and the other is still wrong.** The command-line sentence was repaired this wave — `ShellTool.js:148` now says *"cannot exceed 800 bytes, counting each space as two"* against a real budget of 962 in those units (`C2wSandbox.js:211` `commandBudget`, re-derived by the accountant: `new C2wSandbox({imageUrl:'x',workerUrl:'y'}).commandBudget` → **962**), so the stated figure is reachable for the first time. The speed sentence is unrepaired: `C2wSandbox.js:332` (the timeout hint, *"about a hundred times slower"*) and `agents/main/agent.md:29` (*"roughly a hundred times slower"*) both still say a hundred, measured 255x–485x. `docs/LEDGER.md` row S25, now half closed |
+| Get that environment to the visitor | bolt.diy `README.md:515` (WebContainer is fetched from its vendor, under a licence) | a deploy directory that carries it, and a live site that still does not | degraded | degraded | unverified | — | **Two of the three things this row has always needed are now done and the third has not been walked.** (1) *The guest is in the repository.* `git ls-tree HEAD public/sandbox/` lists `sandbox.wasm.gz` as blob `7bb91246…`, 40,029,960 bytes — under GitHub's 100 MiB per-file block, which the raw 107,054,914-byte module is 2,197,314 over. `docs/LEDGER.md` row S33 closed. (2) *There is a deploy step, and it was run.* `bun scripts/deploy.js` (accountant, 2026-09-01, against `25c8750`): extracts the tracked tree with `git archive`, `bun install --frozen-lockfile` into an empty `node_modules`, builds, and writes **58 files / 65,207,472 bytes**, of which the guest is 40,029,960, with **1 chunk naming `/sandbox/sandbox.wasm.gz`**. It refuses a directory it did not write, refuses a file over the block, and does not push. Then `bun scripts/deploy-check.js`, my own run: `dist/` served over a host that sends **no COOP, no COEP, no CORP** — proved by a 404 control the browser fetches on every pass, `status=404 server=askk-deploy/1 coop=(absent) coep=(absent) corp=(absent)` — opened in real Chrome, `crossOriginIsolated=false` and `SharedArrayBuffer=undefined` in the page realm AND in a classic worker, 0 service workers registered and none in the export. Ready in **219 ms after 19 requests, 692,306 bytes on the wire**, and the guest was requested **0 times before the first turn**. Turn two, through the page's own composer into the real model on `127.0.0.1:8873` and back out of the emulator: `step 1 shell({"command": "uname -a"})` → *"Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux"* in 30,878 ms, with the guest fetched once, 40,030,146 bytes in 76 ms. Both ways a static host may answer a `.gz` were driven: no `Content-Encoding` (what GitHub Pages sends) boots `{bytes:107054914, transferred:40029960}` and `Content-Encoding: gzip` boots `{107054914, 107054914}`. Exit 0. `docs/LEDGER.md` row S34 closed. (3) *Nobody has published it.* Re-measured today: `curl -s -o /dev/null -w '%{http_code}'` against `https://kaush4l.github.io/ASKK/` **200**, `/sandbox/vm-worker.js` **200**, `/sandbox/sandbox.wasm` **404**, `/sandbox/sandbox.wasm.gz` **404**; `git log --oneline gh-pages | wc -l` is **93** and `git ls-tree -r gh-pages` is **56 files**, no `.wasm` guest among them. So every `shell` call a visitor makes today still reaches `boot-failed`. `degraded` rather than `absent`, and that is the whole change: the artifact a static host can serve exists and has been served and driven; what is missing is a push, which `deploy.js` deliberately does not do |
+| Point a deploy at a guest on another host | — | a build-time override, never once exercised against a host | unverified | unverified | unverified | — | `SANDBOX_IMAGE=<url> bun run build` compiles the URL into the chunk — `next.config.js:26`, `composition.js:227`, pinned by `test/backend/composition.test.js:232` and by `scripts/smoke.js`, which reads the URL the build was configured with and fails when no chunk carries it. **Nothing beyond the string has ever been observed.** The smoke says so itself: an override names a host it cannot serve, so its browser run falls back to the copy in `out/`. A cross-origin 102 MiB `fetch` + `WebAssembly.compile` needs CORS on that host (C2), holds two copies live at once because `vm-worker.js` uses `arrayBuffer()` and not `compileStreaming`, and has never been tried from a page. An empty evidence cell for the thing actually claimed is what makes this `unverified` |
+| Know whether a command succeeded | pi `env/nodejs.ts:145` (a real `spawn` exit) | the shell is asked to print it | degraded | degraded | unverified | — | **Closed this wave; it read a constant 0 before.** c2w's `proc_exit` is the emulator's, so `C2wSandbox` sends `sh -c '( <cmd> ) ; echo "__askk_rc$?"'` and takes the marker off the END of stdout (`C2wSandbox.js:76-93`, `:380-386`). Measured through the real 107 MB image in a browser: `ls /nope` 1, `false` 1, `exit 7` 7, `sh -c "exit 3"` 3, `printf abc` 0 with the marker split off a line that has no newline, `echo "__askk_rc9"` 0 because the last marker wins. Asserted every gate run — `scripts/smoke.js` requires the failing command to come back `code === 1` and the marker never to reach the caller. Confirmed once more in the artifact run above: `rc=1` reached the model. **The cost is 32 of the guest's 1,000**, so the row below is 962 and not 1,024, and no time: bare against wrapped, interleaved in one browser, 957/965, 760/801, 725/741, 723/732 ms. **The degradation**: a command whose own quoting swallows the echo, or a guest that traps, prints no marker, and the emulator's 0 stands — `C2wSandbox.js:380-386` says so and the trap arrives as a note |
+| An interactive session | agent-zero `tty_session.py:259` | none | absent | absent | unverified | — | **the browser can; we have not built it.** One guest booted with blocking stdin two realms down reached its prompt in 3,826 ms and then answered ten commands at 106–120 ms each with the boot never re-paid — about **7.5x cheaper per command** than re-paying the 887 ms one-shot, and the saving does not decay (`scripts/probe/results/2026-09-01T06-53-06-isolation+model+pty.md` and `scripts/probe/results/2026-09-01-pty.md`). The tree still has none: `C2wSandbox.js:292` `async run(` builds one instance per command |
+| Keep a file between calls **inside the guest** | pi `harness/types.ts:315` | none, and the agent no longer needs it to | absent | absent | unverified | — | **Read this row against *The guest can read and write the agent's files* below, which is `have`.** The guest's own filesystem still dies with the boot; what changed is that the agent's does not, and `ShellTool` carries named files across the gap in both directions. So this row is about the guest and is unmoved. **within one boot the browser can; across a reload nobody can.** `echo hello > /tmp/a` then `cat /tmp/a` → `hello`, then `ls -la /tmp` → `-rw-r--r-- 1 root root 6 … a`. After `page.reload()` in the same tab: `cat: can't open '/tmp/a': No such file or directory`, `RC=1`, `/tmp` empty, and the 3,821 ms boot paid again. The store is a RAM overlay — `overlay 56.3M`, `upperdir=/run/rootfs-upper`, inside the guest's `Mem: 115244` KB — so it is capped at 56 MB and competes with the workload. The tree still has none: `C2wSandbox.js:141` (*"a fresh instance per command is also what makes each command's filesystem clean"*), one instance per command by construction (`scripts/probe/results/2026-09-01T06-53-06-isolation+model+pty.md`) |
+| Command length | — | **962, in units that are not bytes** | degraded | degraded | degraded | — | **The channel does not count bytes, and every earlier number here was wrong for that reason.** `C2wSandbox.js:74` `MAX_COMMAND_COST = 1000`, charged by `:187` `cost(text)` = UTF-8 bytes + one more for every SPACE and every NEWLINE, and checked at `:301`. Twelve character classes were swept against the real image (`C2wSandbox.js:7-73` holds the table): `a`, `'`, `"`, `$`, `\`, TAB, CR, VT, FF, `;` and `*` cost one; SPACE and NEWLINE cost two — so it is not "whitespace", and tab/CR/VT/FF are the control. The ceiling is not one number either: 978 `a` runs and 979 refuses (cost 1000/1001), 489 spaces run and 490 refuse (1000/1002), and the shape that ships runs at 1,008 — so 1000 is the LOWEST ceiling measured and the guard is conservative by up to eight. What a caller gets is `:211` `commandBudget`, re-derived by the accountant on this tree: `new C2wSandbox({imageUrl:'x',workerUrl:'y'}).commandBudget` → **962**, and `cost('a')` 1, `cost('a a')` 4, `cost('a\na')` 4. The two prior readings are recorded rather than deleted, because both passed a bisection: 1024 (the guest's own refusal counter, which also covers argv separators and a time block) and 1,003 (bisected with one padding character — under which 800 bytes of ordinary shell, ~13% spaces, passed the guard and the guest refused it). **NOT MEASURED and a hazard rather than a price:** non-ASCII argv. One or ten `é` run; twenty wedged the guest until the browser stopped answering the debugger; 100–300 returned in ~12 ms with no boot. `Workspace` accepts arbitrary UTF-8 and `ShellTool` stages file text verbatim, so an accented note can reach it. That region belongs to `public/sandbox/` and the c2w image. **A live shell does not remove this, it doubles it and makes it silent**: binary-searched, a line of 2,047 bytes including the newline runs and one of 2,048 vanishes with no error and no partial execution — reproduced in two separate runs. That silence is worse than the 1024-byte cap, which at least says `the command is N bytes and the sandbox accepts at most 993`. It bit this probe: the install stage first sent an unwrapped base64 blob as one 40,424-byte line and got `base64: truncated input`, a wrong md5 and `BAD archive` (`scripts/probe/results/2026-09-01T07-28-08-pty.md`); wrapped at 76 columns it installs. A heredoc has no cap — 11,889 bytes over 400 lines written and executed |
 | Install software into the guest | — | bake it into the image | absent | absent | unverified | — | C5 used to bar this and **that clause is measured false**. A 30,316-byte `tree-2.2.1-r0.apk` delivered over the tty as base64 at 2.52 KB/s arrived with its host md5 intact (`c1580b7f3775e59960109e0d41154729`), and `apk add --allow-untrusted` printed `(1/1) Installing tree` / `OK: 7 MiB in 16 packages`: the guest went 15 → 16 packages, `apk info -e tree` from absent to present, `/usr/bin/tree` from a 12-byte busybox symlink to a 65,072-byte binary that reports `tree v2.2.1`. From a *repository* it still fails, on C2 rather than C5 — `eth0` is `qdisc noop state DOWN`, `/etc/resolv.conf` is empty, every WASI socket is stubbed `ENOTSUP` (`vm-worker.js:121-132`). It also dies with the tab: the package lives in the 56 MB RAM overlay (`scripts/probe/results/2026-09-01-pty.md`) |
 | Network from inside the guest | — | none | absent | absent | absent | C2 | `vm-worker.js:121-132` — every WASI socket stubbed `ENOTSUP`; a page has no raw socket, so any guest network is a `fetch` bridge and inherits C2 |
 | Choose where it runs | elizaOS `shell-execution-router.ts:493` | one, in the tab | barred | barred | barred | C4 | none |
@@ -357,7 +357,7 @@ compiled module lives in — is plausible, reproduced by a second party, and
 **lives in a scratch directory**. By this document's own rule at the top, that is
 an assertion with extra steps, so it is a `docs/LEDGER.md` row (S23) and not a
 cell. The one part of it that is already citable is in the source: the timeout
-path calls `close()` (`C2wSandbox.js:209-218`), and that comment now says the
+path calls `close()` (`C2wSandbox.js:330`), and that comment now says the
 next command pays for the whole image again.
 
 Four things the port would have to handle that the current design does not: a
@@ -369,27 +369,36 @@ session. They are §5.3d.
 ### Building software
 
 The section the previous draft did not have, and the one the sharpened goal is
-made of. Every row here is `absent` or worse, and only two of them have a
-browser reason.
+made of. **The wave that produced this draft gave the agent a filesystem**, so
+this table has moved for the first time — one row to `have`, three to `degraded`,
+and the rest are unchanged and say why in their own cells. Nothing here needed a
+browser capability we did not already have; what it needed was a store, and the
+store is `src/backend/files/Workspace.js` over a third IndexedDB object store.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| A filesystem the agent and the human both see | pi `harness/types.ts:315` + `env/nodejs.ts` | none | absent | absent | absent | — | `grep -rni "opfs\|getDirectory\|FileSystemHandle" src public scripts` → one prose comment, `Repository.js:8`; `Sandbox.js:30` is `run()` and nothing else |
-| Files that survive a reload | bolt.diy `useChatHistory.ts:308` | conversations and settings only | degraded | degraded | unverified | — | `composition.js:18-19` — two store names, neither of them files |
-| A language runtime that is not emulated | — | none | absent | absent | absent | — | `package.json` dependencies: four, none of them a runtime; the only execution path in the tree is `C2wSandbox.js:178` |
-| Run a test suite | — | none | absent | absent | absent | — | as above; `package.json` `test: bun test` is the repo's own gate, not a tool the agent can call |
-| A formatter | — | none | absent | absent | absent | — | `@biomejs/biome` is a devDependency of this repo, not something the agent can call; `BUILTIN_TOOLS` is `shell`, `fetch`, `search` (`tools/index.js:24-31`) |
+| The agent has files of its own | pi `harness/types.ts:315` + `env/nodejs.ts` | a workspace in IndexedDB, reachable from the prompt, the tools and the guest | have | unverified | unverified | — | **Driven end to end in a browser by the accountant, against the built export, 2026-09-01.** `out/` served from `Bun.serve` at `/ASKK`, opened in real Chrome, and four messages typed into the page's own composer against the real model on `127.0.0.1:8873`. Turn 1 *"Write a file called ledger-note.md whose entire contents are exactly: kiwi-7742-anchor"* → `step 1 write_file({"path": "ledger-note.md", "content": "kiwi-7742-anchor"})`, answered in 40,488 ms. Turn 2, a LATER turn, *"Read the file ledger-note.md and tell me exactly what it contains."* → `step 1 read_file({"path": "ledger-note.md"})` → *"ledger-note.md contains exactly: kiwi-7742-anchor"*, 39,220 ms. The token is one this probe invented, so no reply can be right by recall. Wiring: `FilesPort.js` is the port, `Workspace.js` the only implementation, `composition.js:244` constructs it over `STORE_FILES`, `tools/index.js:37-38` registers `read_file`/`write_file`, and `agents/main/agent.md` names them |
+| Files that survive a reload | bolt.diy `useChatHistory.ts:308` | conversations, settings **and the agent's files** | have | unverified | unverified | — | **The same run, continued through a full page reload.** After `Page.navigate` back to the same URL and a fresh `data-live` in 156 ms, turn 3 asked the identical question of a page that had just booted from nothing: `step 1 read_file({"path": "ledger-note.md"})` → *"ledger-note.md contains exactly: kiwi-7742-anchor"*, 37,245 ms, no console errors on either load. `composition.js:17-26` — `DB_VERSION` 3 and `STORE_FILES = 'files'`, a third store beside conversations and settings; the cell that stood here said *"two store names, neither of them files"* and is retired rather than renumbered. `bun run check` also pins it every run: `smoke: the agent's files survived a reload — made-in-the-guest.txt, smoke-note.md, src/deep.txt` |
+| A filesystem the agent and the **human** both see | bolt.diy `FileTree.tsx`; pi `harness/types.ts:315` | the agent sees it; the human cannot | degraded | degraded | degraded | — | **This is the half that is missing, and it is missing completely.** `grep -rn "files\." src/app src/client` → **no matches**: nothing in the page realm reads, lists, renders or downloads the workspace. A user can watch the model say it wrote a file and has no way to open it, and no way to put one in. The agent's half is `have` (the row above); a row about both parties cannot be better than its worse half. Not `absent`, because the store is there and a reader is a page-realm change with no unknown in it |
+| The guest can read and write the agent's files | pi `env/nodejs.ts` (a real filesystem under the process) | staged in, harvested out, one command at a time | have | unverified | unverified | — | **Measured in the same browser run, as turn 4.** *"Using the sandbox, run `wc -c ledger-note.md` and show me exactly what it printed."* → `step 1 shell({"command": "wc -c ledger-note.md"})` → **`16 ledger-note.md`**, which is the exact byte length of the token turn 1 wrote through a different tool on a previous page load. `ShellTool` puts any of the agent's files whose path the command mentions into `/w` before the command and saves back every file left there after it; the gate asserts the return leg too — `the guest read two off a command line spending all 962 of its budget (608 of it padding) and wrote one back out`, and `made-in-the-guest.txt` is in the reload assertion above. **The cost is stated, not hidden**: staging spends the same 962-unit command budget the command does, one file's text is capped at `FilesPort.js` `MAX_FILE_BYTES` = 64 KiB, and a file that will not fit is refused in a sentence naming what it cost and what was left |
+| A language runtime that is not emulated | — | none | absent | absent | absent | — | `package.json` dependencies: four, none of them a runtime; the only execution path in the tree is `C2wSandbox.js:292` |
+| Run a test suite | — | none | absent | absent | absent | — | **Unchanged by the filesystem, and the reason is the image and not the store.** `scripts/wasm/image/Dockerfile` is `FROM alpine:3.21` plus one 15-line `sh` MCP server, so the guest has busybox and nothing that runs a test: no node, no python, no compiler. The agent can now write `test/x.test.js` into its workspace and stage it into `/w`; there is nothing in there to run it with. C5 is what stands in the way of changing that, and C5 is a build, not a browser |
+| A formatter | — | none | absent | absent | absent | — | as above — `@biomejs/biome` is a devDependency of this repo, not something the agent can call. `BUILTIN_TOOLS` is now five (`tools/index.js:26-44`: `shell`, `read_file`, `write_file`, `fetch`, `search`) and none of them is a formatter |
 | A linter | — | none | absent | absent | absent | — | as above |
-| Version control the agent can commit to | — | none | absent | absent | absent | — | `grep -rn "isomorphic-git" src package.json` → no matches; the seven hits for `git` in `src` are `GitHub`, `digit` and `legitimate` |
+| Version control the agent can commit to | — | none | absent | absent | absent | — | `grep -rn "isomorphic-git" src package.json` → no matches; the seven hits for `git` in `src` are `GitHub`, `digit` and `legitimate`. Newly reachable in principle — a pure-JS git needs a filesystem and there is one now — and nothing has been built |
 | Push a commit to a remote | — | none | barred | barred | barred | C2 | github.com's git transport answers `Failed to fetch` from a page (`docs/MINING.md:46-48`); `api.github.com` sends ACAO `*` and is the only server-free write path, and is unbuilt |
-| A diff the human can read | bolt.diy `DiffView.tsx` | none | absent | absent | absent | — | `grep -rniw "diff" src` → no matches; the 60 hits for the substring are `different` and `difference` |
-| Snapshot the workspace and rewind to a message | bolt.diy `useChatHistory.ts:308`, `:79-82` | none | absent | absent | absent | — | `composition.js:18-19` — no third store |
+| A diff the human can read | bolt.diy `DiffView.tsx` | none | absent | absent | absent | — | `grep -rniw "diff" src` → no matches; the 60 hits for the substring are `different` and `difference`. It is the same missing reader as the human-visible row above: there is now something to diff and nothing to show it in |
+| Snapshot the workspace and rewind to a message | bolt.diy `useChatHistory.ts:308`, `:79-82` | none | absent | absent | absent | — | The third store exists (`composition.js:17-26`) and holds one version of each path. `FilesPort.js` states in its own docblock that there is no `remove` because nothing would call one; there is likewise no history, no version and no association between a file and the message that wrote it |
 | A native compiler toolchain | — | none | barred | barred | barred | C5 | `docs/MINING.md:46` — no browser answer measured for one |
 
-**Eight of these eleven rows are `absent`, which means nothing in the browser
-stops them.** That is now the largest and most actionable hole in the document.
-One is `degraded` and two are `barred` — and neither of the two is barred for a
-reason that has anything to do with isolation.
+**Three of these thirteen rows are `have` and they are the three the environment
+could not reach before.** Of the rest, seven are `absent` — nothing in the
+browser stops them — one is `degraded`, and two are `barred`, neither for a
+reason that has anything to do with isolation. The honest summary of what
+changed: **the agent can now keep work between turns, between conversations and
+between page loads, and can hand it to a Linux guest and take it back.** What it
+still cannot do is build software with it, because the guest holds no toolchain
+and the human holds no view of the files.
 
 ### Choosing how to work
 
@@ -397,7 +406,7 @@ reason that has anything to do with isolation.
 |---|---|---|---|---|---|---|---|
 | More than one loop to choose between | — | one | absent | absent | absent | — | `engine/index.js:6-8` — `ENGINES` has a single entry |
 | The agent selects its loop by task difficulty | elizaOS `message-handler.ts:366` (binary, not graded) | none | absent | absent | absent | — | `loadAgent.js:86` `loop: spec.engine` — the loop comes from a file's `engine:` field, chosen before the task is read |
-| A named strategy library (plan-then-execute, write-critique-improve, delegate) | deepseek `packages/workflow/tool-ralph/README.md:12` | none | absent | absent | absent | — | `engine/index.js:6-8` — one loop; `tools/index.js:24-31` — three built-in tools, none of them a strategy |
+| A named strategy library (plan-then-execute, write-critique-improve, delegate) | deepseek `packages/workflow/tool-ralph/README.md:12` | none | absent | absent | absent | — | `engine/index.js:6-8` — one loop; `tools/index.js:26-44` — five built-in tools, none of them a strategy |
 | Write → critique → apply a standard → iterate until it passes | elizaOS `planner-loop.ts:4101` | none | absent | absent | absent | — | `ReActEngine.js:372` — `observe` returns the tool's text; nothing reads a result against a standard |
 | A successful edit must be followed by a passing check | elizaOS `planner-loop.ts:4310`, `:4351` | none | absent | absent | absent | — | `ReActEngine.js:275` `if (typeof last === 'string' || last.isAnswer !== false)` — the run ends the moment the model says `isAnswer`, and nothing else is consulted |
 | A check the agent cannot certify for itself | — (nobody ships one) | none | absent | absent | absent | — | none — and see §5, this is the load-bearing half |
@@ -482,9 +491,9 @@ endpoint's own `usage` on every reply, whichever state it was in.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| Search the web | — | one keyless endpoint | unverified | unverified | unverified | — | `SearchTool.js:28` `SEARCH_ENDPOINT`; registered `tools/index.js:30`; named by `agents/main/agent.md` `tools: [shell, search, fetch]`; the port is a constructor argument, `composition.js:232` `http: browserHttp`. Exercised only against a fake port (`test/core/tools/SearchTool.test.js`) — never called from a browser |
-| Fetch a URL | — | one tool, capped and reduced | unverified | unverified | unverified | — | `FetchTool.js:7,10` (512 KB down, 8,000 chars shown); registered `tools/index.js:29`; same fake-port testing, same absence of a browser run |
-| Know which kind of nothing came back | — | four named refusals | unverified | unverified | unverified | — | `HttpPort.js:45` `Blocked` names four; `composition.js:93` re-probes with `mode: 'no-cors'` to tell a CORS refusal from an unreachable host |
+| Search the web | — | one keyless endpoint | unverified | unverified | unverified | — | `SearchTool.js:28` `SEARCH_ENDPOINT`; registered `tools/index.js:43`; named by `agents/main/agent.md` `tools: [shell, read_file, write_file, search, fetch]`; the port is a constructor argument, `composition.js:253` `http: browserHttp`. Exercised only against a fake port (`test/core/tools/SearchTool.test.js`) — never called from a browser |
+| Fetch a URL | — | one tool, capped and reduced | unverified | unverified | unverified | — | `FetchTool.js:7,10` (512 KB down, 8,000 chars shown); registered `tools/index.js:42`; same fake-port testing, same absence of a browser run |
+| Know which kind of nothing came back | — | four named refusals | unverified | unverified | unverified | — | `HttpPort.js:45` `Blocked` names four; `composition.js:100` re-probes with `mode: 'no-cors'` to tell a CORS refusal from an unreachable host |
 | Reach a CORS-less origin | — | none, and it is named | barred | barred | barred | C2 | `HttpPort.js:45` `Blocked.REFUSED`; a page has permission, not reach |
 | The tools are actually attached | — | nothing checks | unverified | unverified | unverified | — | |
 | Remote model | — | OpenAI/Anthropic-shaped | have | have | unverified | — | `AnthropicCompatible.js:61-64` (the streaming POST), `:109-113` (the headers); the preflight returns 200 with ACAO `*` once `anthropic-dangerous-direct-browser-access` is sent, and the POST arrives with a readable body in Chromium and WebKit under all three COEP modes (`scripts/probe/results/2026-09-01T06-53-06-isolation+model+pty.md`) |
@@ -507,7 +516,7 @@ previous draft said we never send is at `AnthropicCompatible.js:113` and was
 measured working.
 
 **One row here is now coupled to C1's price.** The refusal-classifier at
-`composition.js:93` is a `no-cors` fetch, and a `no-cors` fetch to a host that
+`composition.js:100` is a `no-cors` fetch, and a `no-cors` fetch to a host that
 sends no CORP is exactly what `COEP: require-corp` blocks. Buying isolation
 would make `Blocked.REFUSED` and `Blocked.UNREACHABLE` collapse into one
 another for a large class of hosts — the first concrete, cited thing in this
@@ -519,22 +528,22 @@ tree that isolation would cost.
 |---|---|---|---|---|---|---|---|
 | Durable conversation state | pi `session/types.ts:359` | IndexedDB | have | have | unverified | — | `IndexedDb.js:28` `typeof indexedDB === 'undefined'` guard, `MemoryRepository` fallback at `composition.js:187-188` |
 | Semantic recall | elizaOS (pgvector, dimension-pinned) | none | absent | absent | absent | — | none |
-| Cross-session recall | — | none | absent | absent | absent | — | none |
-| Skills the agent writes itself | — | none | absent | absent | absent | — | none; blocked on the filesystem row above. The previous draft cited agent-zero `extension.py:347` for this; that line sorts extension classes by file and agent-zero's own skills tool is read-only (`list search load read_file`, `az/agent.system.tool.skills.md:3`), so no reference ships it |
-| Storage pressure | — | eviction, unhandled | unverified | unverified | unverified | — | `grep -rn "navigator.storage" src public scripts` → no matches |
+| Cross-session recall | — | **whatever the agent chose to write down** | degraded | unverified | unverified | — | The workspace is keyed by path and not by conversation, so a file written in one conversation is named in the context block of the next and readable by `read_file`. Proved across a page reload rather than across two conversations (`docs/LEDGER.md`, *The files-and-deploy wave*) — the store is the same either way, and the two-conversation case has not been driven. `degraded` and not `have` because recall here is entirely the model's own discipline: nothing summarises a conversation, nothing writes anything down unasked, and `agents/main/agent.md` asking it to is the whole mechanism |
+| Skills the agent writes itself | — | none | absent | absent | absent | — | **No longer blocked on a filesystem, and still not built.** The agent can write a file and read it back on a later turn; nothing loads one as an instruction, and `grep -rn "skill" src` finds no loader. This row was blocked on the filesystem row above and is now blocked only on itself. The previous draft cited agent-zero `extension.py:347` for this; that line sorts extension classes by file and agent-zero's own skills tool is read-only (`list search load read_file`, `az/agent.system.tool.skills.md:3`), so no reference ships it |
+| Storage pressure | — | eviction, unhandled | unverified | unverified | unverified | — | `grep -rn "navigator.storage" src public scripts` → no matches. **Worse than it was, and by design rather than by accident:** the same database now holds model-written files as well as conversations, and `FilesPort.js` caps one file at 64 KiB and nothing caps their number. An eviction takes the agent's work with the transcript |
 
 ### Structure
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| A thread per agent | deepseek `child-agent.ts:199` (`applyChildComposition`, whose parent is a required parameter) | a named module worker | unverified | unverified | unverified | — | `AgentWorkerPool.js:38` — never reached; the roster is one agent (`agents/main/`, published to `public/agents/index.json`) so `peers` at `ChatService.js:142` is always `[]` |
+| A thread per agent | deepseek `child-agent.ts:199` (`applyChildComposition`, whose parent is a required parameter) | a named module worker | unverified | unverified | unverified | — | `AgentWorkerPool.js:38` — never reached; the roster is one agent (`agents/main/`, published to `public/agents/index.json`) so `peers` at `ChatService.js:220` is always `[]` |
 | A fresh context per sub-agent call | pi `subagent/index.ts:300` (`--no-session`) | stateless by construction, on a reused worker | unverified | unverified | unverified | — | `agentWorker.js:57-60` builds a fresh agent per message; `AgentWorkerPool.js:33-34` reuses the thread |
 | Sub-agents that receive tools | deepseek `child-agent.ts:217` (`tools.restrict`); pi `subagent/index.ts:307` (`--tools`) | **none** | absent | absent | absent | — | `agentWorker.js:60` `tools: []` |
 | A depth limit for nesting | elizaOS `acp.ts:18` | enforced by giving nothing | degraded | degraded | degraded | — | `agentWorker.js:9-12` and `:60` are the same line: the limit and the tool starvation cannot be separated |
-| An MCP client | deepseek `transport.ts:31` | one, run per turn | degraded | degraded | unverified | C5 | `discover.js:21` from `ChatService.js:148`; the only declared server is `mcp-disk` in the image (`agents/main/agent.md`). **It ran, for the first time, in the artifact run recorded in the environment table**: the reply carried the note `mcp server host offered 1 tool(s); 1 allowed`, which is a second guest boot inside the same turn. The clause that used to end this cell — *"and `next.config.js` ships no image by default"* — was true of every build ever made and is false now |
+| An MCP client | deepseek `transport.ts:31` | one, run per turn | degraded | degraded | unverified | C5 | `discover.js:21` from `ChatService.js:226`; the only declared server is `mcp-disk` in the image (`agents/main/agent.md`). **It ran, for the first time, in the artifact run recorded in the environment table**: the reply carried the note `mcp server host offered 1 tool(s); 1 allowed`, which is a second guest boot inside the same turn. The clause that used to end this cell — *"and `next.config.js` ships no image by default"* — was true of every build ever made and is false now |
 | An MCP server running in this tab | `@mcp-b/transports` `TabServerTransport.ts` | none | absent | absent | absent | — | `grep -rn "MessagePort\|InMemoryTransport" src` → no matches; `core/mcp/` offers exactly two transports at `discover.js:29-37` |
 | An MCP client that talks over a port, not a process | MCP spec `transports/index.mdx` (Custom Transports) | none | absent | absent | absent | — | as above |
-| An MCP server holding state across calls, in the guest | agent-zero `mcp_handler.py:1332` `_execute_with_session` (also stateless) | none | barred | barred | barred | C5 | `SandboxTransport.js:42` replays `initialize` ahead of every call because `C2wSandbox.js:59-61` gives it a new process |
+| An MCP server holding state across calls, in the guest | agent-zero `mcp_handler.py:1332` `_execute_with_session` (also stateless) | none | barred | barred | barred | C5 | `SandboxTransport.js:42` replays `initialize` ahead of every call because `C2wSandbox.js:7-73` gives it a new process |
 | An MCP server holding state across calls, in this tab | — | none | absent | absent | absent | — | no in-tab server exists to hold anything |
 | A remote MCP server over HTTP | bolt.diy `mcpService.ts:219` | code, no configuration | degraded | degraded | unverified | C2 | `discover.js:29-30` constructs `HttpTransport` for any server declaring `url`; no agent file declares one, and it needs CORS — ~23% of a 200-server sample answered a preflight from our origin (`docs/MINING.md:234-237`) |
 | Secrets | — | plaintext in IndexedDB | degraded | degraded | unverified | — | `SettingsService.js:24` `apiKey: ''`, stored by `SettingsService` into the same IndexedDB store as everything else |
@@ -554,7 +563,7 @@ not-yet-built rather than not-possible.
 | Run when the tab is closed | elizaOS `task.ts:76` (daemon) | nothing | barred | barred | barred | C3 | none |
 | Scheduled work that catches up when the tab next opens | deepseek `packages/schedule/schedule/README.md:12` | nothing | absent | absent | absent | — | `grep -rn "cron\|setInterval\|schedule" src` → no matches. Split out of the row below: deepseek had a host process available and chose these semantics anyway (`docs/MINING.md:198-201`) |
 | Cron the human can write | agent-zero `job_loop.py:10,34` (`SLEEP_TIME = 60`, the tick) | nothing | absent | absent | absent | — | as above — a schedule is a record and a tick, and C3 bars neither |
-| Long-running work that survives a reload | pi `session/types.ts:359` | nothing | absent | absent | absent | — | a run lives inside one `await` at `ChatService.js:171`, and a reload loses it. The second half of this cell used to read *"nothing durable is written until `:215`"* and was never true: the user's turn is appended at `ChatService.js:118`, **before** the model is called, on purpose. What is not durable is the assistant's half, written at `:234` after the loop returns |
+| Long-running work that survives a reload | pi `session/types.ts:359` | nothing | absent | absent | absent | — | a run lives inside one `await` at `ChatService.js:249`, and a reload loses it. The second half of this cell used to read *"nothing durable is written until `:215`"* and was never true: the user's turn is appended at `ChatService.js:196`, **before** the model is called, on purpose. What is not durable is the assistant's half, written at `:312` after the loop returns |
 | Be reachable from outside | — | nothing | barred | barred | barred | C4 | none |
 | Messaging connectors | — | none | barred | barred | barred | C4 | none |
 | Two tabs at once | — | both drive the same DB | absent | absent | absent | — | `grep -rn "navigator.locks" src` → no matches |
@@ -574,9 +583,9 @@ implying with a cron row.
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
 | Token accounting | elizaOS `trajectories/pricing.ts` | streamed, shown | degraded | degraded | unverified | — | `page.jsx:678` — a `0` renders nothing, so "not cached" is invisible |
-| Prompt inspection | — | the panel | have | have | unverified | — | `ChatService.js:185` `emit(EventName.PROMPT, event)` → `page.jsx:134` |
+| Prompt inspection | — | the panel | have | have | unverified | — | `ChatService.js:263` `emit(EventName.PROMPT, event)` → `page.jsx:134` |
 | Cost | elizaOS `trajectories/pricing.ts` | none | absent | absent | absent | — | none |
-| Traces / a run log | deepseek `client/ui-trajectory` | nothing durable | absent | absent | absent | — | `composition.js:18-19` — two store names, and neither is a run |
+| Traces / a run log | deepseek `client/ui-trajectory` | nothing durable | absent | absent | absent | — | `composition.js:17-26` — three store names now, and none of them is a run. The agent could write its own log into the third with `write_file`, which is not the same thing: a trace nothing but the model chooses to keep is not a record |
 | Install | — | open a URL | have | have | unverified | — | `next.config.js` `output: 'export'` |
 | Update | — | reload | have | have | unverified | — | — |
 | Runtime licence | bolt.diy `README.md:515` (WebContainer is licensed) | none | have | have | have | — | c2w is ours to ship |
@@ -586,9 +595,10 @@ implying with a cron row.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| Tool calls as they happen | elizaOS `task-activity-store.ts` | the call, never the result | degraded | degraded | unverified | — | `ReActEngine.js:231` `onStep?.(…)` emits the step before `:293` runs it; `ChatService.js:195-200` sends `{step, answer, isAnswer, thinking}` and no observation; `page.jsx:505` renders it |
+| Tool calls as they happen | elizaOS `task-activity-store.ts` | the call, never the result | degraded | degraded | unverified | — | `ReActEngine.js:231` `onStep?.(…)` emits the step before `:293` runs it; `ChatService.js:273-277` sends `{step, answer, isAnswer, thinking}` and no observation; `page.jsx:505` renders it |
 | Progress on a long run | bolt.diy `ProgressCompilation.tsx` | a step counter and a token stream | degraded | degraded | unverified | — | `EventName.PROGRESS` exists at `Envelope.js:144` and is emitted only by `SpeechService.js:57`, `:138` and `:153` — never by the agent loop |
-| Viewing and editing a file | bolt.diy `CodeMirrorEditor.tsx` | none | absent | absent | absent | — | `grep -rni "codemirror\|monaco" package.json src` → no matches |
+| Seeing that a file exists at all | bolt.diy `FileTree.tsx` | none | absent | absent | absent | — | **New row, and it is the sharpest thing this section now says.** The agent has a workspace and the page has no view of it: `grep -rn "files\." src/app src/client` → **no matches**. A user watches the model say it wrote `notes.md` and cannot list it, open it, download it or put one in. `docs/LEDGER.md` row S41 |
+| Viewing and editing a file | bolt.diy `CodeMirrorEditor.tsx` | none | absent | absent | absent | — | `grep -rni "codemirror\|monaco" package.json src` → no matches. Downstream of the row above: there is now something to edit |
 | Speech in | — | 3 engines | have | have | unverified | — | `WebSpeechTranscriber.js:30` probes the constructor; wired at `page.jsx:205` `dictate()` |
 | Speech out | — | 3 engines | have | have | unverified | — | `WebSpeechSpeaker.js:23`; replies are spoken at `page.jsx:178`, a message on demand at `:487` |
 | Mobile layout | — | responsive | have | have | unverified | — | `globals.css:825` `@media (max-width: 60rem)` |
@@ -598,8 +608,11 @@ Both speech rows were re-checked against the new goal and both survive as
 should stop being listed as ambition anywhere — the same is true of live tool
 views, CodeMirror and diffs, which every reference already ships
 (`docs/MINING.md:225-229`). The honest reading of this section is that the two
-`degraded` rows are one event name away from `have`: the loop emits the action
-and never the observation, and it has a `PROGRESS` channel it does not use.
+`degraded` rows are one event name away from `have` — the loop emits the action
+and never the observation, and it has a `PROGRESS` channel it does not use — and
+that this section is now the weakest in the document. Everything the wave that
+produced this draft built, it built for the model: the agent gained files, and
+the human it works for gained no way to see one.
 
 ---
 
@@ -620,30 +633,38 @@ Four observations the diagram makes obvious:
 
 - **The environment is the deepest thing in the tree and the least reachable.**
   Two realm hops from the page, and everything it can do has to fit through a
-  1024-byte command line.
-- **There is no filesystem layer anywhere on this diagram.** Not in the page,
-  not in the backend worker, not beside the guest. Eleven rows in *Building
-  software* are waiting on a box that does not exist yet, and the measured
-  candidate — OPFS in the backend worker — would sit exactly where "state" is.
+  command line the guest prices at 1000 and the tree budgets at 962 — in units
+  of bytes-plus-one-per-space-or-newline, not bytes.
+- **There is a filesystem layer now, and it is in the backend worker.** This
+  bullet said there was none anywhere on the diagram, and it went to the wrong
+  technology twice: the candidate it named was OPFS, and what landed is
+  `backend/files/Workspace.js` over a third IndexedDB object store, beside the
+  two that already held conversations and settings. It sits exactly where the
+  bullet predicted — where "state" is — and it moved three *Building software*
+  rows and none of the other eight, which is the correction worth carrying: a
+  store was never what those eight were waiting on. **It is also only on one
+  side of the diagram.** Nothing in the page realm touches it
+  (`grep -rn "files\." src/app src/client` → no matches), so the box the human
+  would read it through is the one that does not exist yet.
 - **"Finding things out" found an owner, and it is the backend worker.** The
-  `http` port is built at `composition.js:123` and **passed to a constructor** —
-  `composition.js:232` `http: browserHttp`, inside the `new ChatService({…})` at
-  `:226-233` — beside the model call, never touching the guest. The tools that
+  `http` port is built at `composition.js:130` and **passed to a constructor** —
+  `composition.js:253` `http: browserHttp`, inside the `new ChatService({…})` at
+  `:246-256` — beside the model call, never touching the guest. The tools that
   use it are the first capability in this tree wired at the layer that already
   had the ability. Everything this bullet used to say after that describes code
   that no longer exists: there is no post-construction attachment, no
   `if (chat.services)` guard to be missing, and no *"Unguarded on purpose"*
   comment. What replaced them is checkable: `buildKernel` returns the chat
-  service it built (`composition.js:253`), so
+  service it built (`composition.js:274`), so
   `test/backend/composition.test.js:196` asserts `chat.services.http` **is**
   `browserHttp` by identity rather than by `typeof`, and `:210` asserts the same
   record's sandbox reports `available === true`. The port is checked now instead
   of argued for.
 - **The agent worker branch is dead** and has never executed. `ARCHITECTURE.md`'s
-  *Sub-agents are threads* (`ARCHITECTURE.md:355`, *"Verified: nested module
+  *Sub-agents are threads* (`ARCHITECTURE.md:414`, *"Verified: nested module
   workers"*) says the mechanism is verified; this ledger says the branch is never
   reached. Both are true and they are about different things — the mechanism
-  works, and `ChatService.js:142` never gives it anything to do.
+  works, and `ChatService.js:220` never gives it anything to do.
 - **The sandbox branch is no longer dead, and this is the wave that ran it.**
   Every box on this diagram from the page down to *the agent's computer* has now
   executed in one turn of the built export: the page's worker, the kernel, the
@@ -718,15 +739,28 @@ and what it turned out to be worth is the verification gate, not the schema.
 
 Ordered by how many rows each one moves.
 
-**1. Is there a filesystem in this tab at all?** Moves eight of the eleven rows
-in *Building software*, plus skills-the-agent-writes, cross-session recall, snapshot/rewind,
-long-running work, and the file-viewer row — every one of them is currently
-waiting on the same missing box. **The experiment:** open one OPFS sync access
-handle in `src/backend/worker.js`, write a file, read it back, reload the tab,
-read it again, and print `navigator.storage.estimate()` beside the result. The
-mining round measured 408 MB/s through one handle and an 8 GB quota
-(`docs/MINING.md:42`) — in a scratch page, not in this tree, against a
-`grep -rn "navigator.storage" src` that returns nothing.
+**1. ~~Is there a filesystem in this tab at all?~~ ANSWERED — yes, and it moved
+three rows, not eight.** This question stood at the top of this list for four
+waves and its estimate was wrong in a way worth keeping: it predicted eight of
+the eleven *Building software* rows plus five others, all "waiting on the same
+missing box". The box exists — `backend/files/Workspace.js` over a third
+IndexedDB store, driven in a browser through the built export with the real
+model, write in one turn and read back after a reload (`docs/LEDGER.md`, *The
+files-and-deploy wave*) — and it moved **three**. The other eight were never
+waiting on a store: five want a toolchain inside the guest (C5, question 2
+below) and three want a reader in the page realm. **The lesson is the estimate,
+not the answer:** "waiting on the same missing box" was an inference from a
+shared symptom, and a shared symptom is not a shared cause.
+
+**1b. Would OPFS have been better?** Still not measured, and now it is a
+narrower question than it was. The mining round measured 408 MB/s through one
+sync access handle and an 8 GB quota (`docs/MINING.md:42`) — in a scratch page,
+not in this tree, against a `grep -rn "navigator.storage" src` that still
+returns nothing. IndexedDB was chosen because the two repositories beside it
+already use it and a third store is a version bump rather than a new subsystem;
+what nobody has measured is the size at which that stops being true, or what
+`navigator.storage.estimate()` reports on a real device. The experiment is
+unchanged and it is now an optimisation rather than a blocker.
 
 **2. Does a compiled tool run in the backend worker with no isolation?** Moves
 the language-runtime, test-suite, formatter, linter and version-control rows, and
@@ -760,7 +794,7 @@ and it refuted a clause of C5. What replaced it:
   and what it showed is that the variable was never the answer: the image ships
   **inside the export**, because `public/` is copied whole, so the URL is
   derived from the base path the way the worker URL beside it always was
-  (`composition.js:214`). The environment table's *Run a command* row carries the
+  (`composition.js:227`). The environment table's *Run a command* row carries the
   run, the observation the model was handed, and the two committed halves of it.
   `SANDBOX_IMAGE` survives as an override for a host that will not serve the
   file, and **that** is what is now unverified — its own row, two above.
@@ -775,7 +809,7 @@ and it refuted a clause of C5. What replaced it:
   current design does not handle — and **the first of them is now already paid
   for**: a pty returns no exit code, so every call needs `echo $?` and a parser,
   which is exactly the marker-on-stdout mechanism the one-shot path shipped this
-  wave (`C2wSandbox.js:37-47`), measured at 25 bytes and no time. A pty would
+  wave (`C2wSandbox.js:76-93`), measured at 32 of the guest's 1,000 and no time. A pty would
   inherit it rather than invent it. The three that remain: prompt detection becomes load-bearing and the
   spike anchored on `ESC[6n`, an ash implementation detail, because quiescence
   fired early on a 128-second `awk`; the transcript is a terminal, with echo,

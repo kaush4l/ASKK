@@ -3,6 +3,7 @@ import { Outcome } from '../core/Outcome.js'
 import { Blocked } from '../core/tools/HttpPort.js'
 import { SEARCH_ENDPOINT } from '../core/tools/SearchTool.js'
 import { AgentWorkerPool } from './AgentWorkerPool.js'
+import { Workspace } from './files/Workspace.js'
 import { Kernel } from './Kernel.js'
 import { IndexedDb } from './repositories/IndexedDb.js'
 import { IndexedDbRepository } from './repositories/IndexedDbRepository.js'
@@ -14,9 +15,15 @@ import { ConversationService } from './services/ConversationService.js'
 import { SettingsService } from './services/SettingsService.js'
 
 export const DB_NAME = 'askk'
-export const DB_VERSION = 2
+// 3 because the agent's files are a third store. `IndexedDb.open` creates only
+// the stores that are missing, so an existing database keeps its conversations
+// and settings and gains one — a version that did not move would leave every
+// browser that has already opened this app without a files store at all, and
+// every write to it failing on a name the database has never heard of.
+export const DB_VERSION = 3
 export const STORE_CONVERSATIONS = 'conversations'
 export const STORE_SETTINGS = 'settings'
+export const STORE_FILES = 'files'
 
 /** Long enough to answer "is anything there", short enough not to double a failed call. */
 const REACH_TIMEOUT = 8000
@@ -179,7 +186,7 @@ export const browserHttp = async ({
  * user can be shown instead of a failure on their first message.
  */
 export async function buildKernel({
-  db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS]),
+  db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES]),
 } = {}) {
   const opened = await db.open()
   const notes = opened.ok ? [] : [`storage unavailable: ${opened.failure.message}`]
@@ -229,12 +236,20 @@ export async function buildKernel({
   // exactly the defect this replaced.
   const conversations = new ConversationService(make('Conversation', STORE_CONVERSATIONS))
 
+  // The agent's own files, in the same database and behind the same port as
+  // everything else. It is handed to the chat use case as a port and reaches
+  // the tools from there; NOTHING registers it on the kernel, because no
+  // component asks for it. A route with no caller is the defect this tree keeps
+  // shipping, and the day the page grows a file view is the day it earns one.
+  const files = new Workspace(make('File', STORE_FILES))
+
   const chat = new ChatService({
     conversations,
     settings,
     catalogue,
     pool,
     sandbox,
+    files,
     http: browserHttp,
   })
 

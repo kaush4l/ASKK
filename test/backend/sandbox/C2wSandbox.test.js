@@ -108,8 +108,24 @@ describe('C2wSandbox', () => {
     expect(FakeWorker.last.sent.at(-1).argv).toEqual([
       'sh',
       '-c',
-      '( uname -a ) ; echo "__askk_rc$?"',
+      '( uname -a\n) ; echo "__askk_rc$?"',
     ])
+  })
+
+  test('a command that ends in a comment does not swallow the wrapper', async () => {
+    // A `#` comments to the END OF THE LINE and this whole wrapper is one line,
+    // so without the newline the closing paren and the status echo are inside
+    // the comment. Found by `scripts/smoke.js` against the real guest, which
+    // answered `sh: syntax error: unexpected end of file (expecting ")")` — a
+    // command that ran nothing, reported as the command's own output. Two of
+    // the budget, and a model writing `ls -la # what is here` is not exotic.
+    boots([{ stdout: '__askk_rc0\r\n', code: 0 }])
+
+    await box().run('ls -la # what is here')
+
+    const line = FakeWorker.last.sent.at(-1).argv[2]
+    expect(line).toBe('( ls -la # what is here\n) ; echo "__askk_rc$?"')
+    expect(line.slice(line.indexOf('#')).includes('\n')).toBe(true)
   })
 
   test('the status is taken off the end and the marker never reaches the caller', async () => {
@@ -149,20 +165,68 @@ describe('C2wSandbox', () => {
     expect(ran.notes).toContain('the guest stopped abnormally: unreachable')
   })
 
-  test('the byte cap is measured against the wrapper, not the bare command', async () => {
-    // 1024 is the guest's own hard limit — past it nothing runs at all — and
-    // `sh -c ` plus the wrapper spend 31 of it.
+  test('the cap is measured against the wrapper, not the bare command', async () => {
+    // 1,000 is the guest's own hard limit on `sh -c <line>` — past it nothing
+    // runs at all — and `sh -c ` plus the wrapper spend 38 of it.
+    //
+    // The numbers here were 1024/993, then 1003/972, and every one of them was
+    // wrong. 1024 is the figure inside the guest's own refusal, and that counter
+    // also covers the argv separators, the `arg0` the worker prepends and a time
+    // block. 1,003 was a bisection over one padding character, which cannot see
+    // that the guest charges a space twice. The sweep that found it is in
+    // `C2wSandbox`.
     boots([{ stdout: '__askk_rc0\r\n', code: 0 }])
-    const fits = await box().run('a'.repeat(993))
+    const fits = await box().run('a'.repeat(962))
     expect(fits.ok).toBe(true)
 
     boots([])
-    const over = await box().run('a'.repeat(994))
+    const over = await box().run('a'.repeat(963))
     expect(over.ok).toBe(false)
     expect(over.failure.code).toBe(Reason.BAD_REQUEST)
     expect(over.failure.message).toBe(
-      'the command is 994 bytes and the sandbox accepts at most 993',
+      'the command costs 963 and the sandbox accepts 962 — the guest charges one for every byte and one more for every space or newline',
     )
+  })
+
+  test('a command of spaces is refused at half the length one of letters is', async () => {
+    // THE defect, in the one place a unit test can see it: the arithmetic. c2w
+    // escapes the argv it is handed, so a space crosses as two characters, and
+    // a guard that counted bytes passed 800 bytes of ordinary shell — about 130
+    // spaces — which the real guest then refused with `too many write (1025 >
+    // 1024)`. What the agent read back was the emulator complaining about an
+    // entrypoint it never wrote, returned as the command's own output.
+    //
+    // 800 bytes here, well inside the 962 a byte count would allow, and 1,200
+    // in the units the guest actually counts. `scripts/smoke.js` runs the same
+    // shape through the real guest, because only a guest can prove which of the
+    // two rules is the guest's.
+    const sandbox = box()
+    boots([])
+
+    const spaced = await sandbox.run('a '.repeat(400))
+
+    expect(spaced.ok).toBe(false)
+    expect(spaced.failure.message).toBe(
+      'the command costs 1200 and the sandbox accepts 962 — the guest charges one for every byte and one more for every space or newline',
+    )
+  })
+
+  test('the budget it declares is the budget it enforces', async () => {
+    // `ShellTool` prices the files it stages onto this line against this number
+    // and this method, and a second copy of either in that file could not see
+    // this one. Asserted as an IDENTITY between the getter and the guard rather
+    // than as a constant: anything added to `wrap` has to shrink both together
+    // or fail here.
+    const sandbox = box()
+
+    boots([{ stdout: '__askk_rc0\r\n', code: 0 }])
+    expect((await sandbox.run('a'.repeat(sandbox.commandBudget))).ok).toBe(true)
+
+    boots([])
+    expect((await sandbox.run('a'.repeat(sandbox.commandBudget + 1))).ok).toBe(false)
+    // And the same budget spent on whitespace, which is where the two readings
+    // of it part company.
+    expect((await sandbox.run(' '.repeat(sandbox.commandBudget))).ok).toBe(false)
   })
 
   test('what the image is and what it cannot do are said once for the boot, not on every result', async () => {

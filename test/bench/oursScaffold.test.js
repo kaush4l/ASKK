@@ -261,3 +261,55 @@ describe('parse and act are the tree’s, not the rig’s', () => {
     expect(said.observation).toContain('(exit 3)')
   })
 })
+
+/**
+ * `docs/LEDGER.md` row S37: this scaffold's `cuts` and `bench/README.md` both
+ * certified that this arm "cannot produce a malformed action at all". P1 made
+ * that false, and `ours.js` stamps `cuts` into every transcript the rig records
+ * — so the sentence was not merely stale documentation, it was being written
+ * into new evidence.
+ *
+ * The close is not an edit, it is this block: the claim is re-derived from
+ * `src/core/response/ReActResponse.js` on every test run, so the next change to
+ * the parser takes the sentence with it.
+ */
+describe('what this arm does with a reply that does not say what to do', () => {
+  const cutRow = () =>
+    scaffold.cuts.find((entry) => entry.where === 'src/core/response/BaseResponse.js parse')
+
+  test('a reply carrying NO contract field at all is an answer — the asymmetry is real', () => {
+    const parsed = ReActResponse.parse('Sure! I think the battery is at 87%.')
+    expect(parsed.act).toBe('answer')
+    expect(cutRow().why).toContain(
+      '"Sure! I think the battery is at 87%." is `{act:"answer"}` here',
+    )
+  })
+
+  test('but a reply that reaches the contract and gets `act` wrong is NAMED, not waved through', () => {
+    const parsed = ReActResponse.parse('think: hi\nplan: do\nact: banana\nresult: x')
+    expect(parsed.act).toBe('unsaid')
+    expect(parsed.unsaidBecause).toContain("neither 'tool' nor 'answer'")
+  })
+
+  test('and a reply cut off before the `act` line is named as the other of the two', () => {
+    const parsed = ReActResponse.parse('think: hi\nplan: do')
+    expect(parsed.act).toBe('unsaid')
+    expect(parsed.unsaidBecause).toBe('the reply stopped before it reached the act line')
+  })
+
+  test('so the row stamped into every transcript names ACT_UNSAID and its ceiling', () => {
+    // The half that can rot silently: `cuts` travels into the artifact a reader
+    // judges. Mutating the row back to "cannot produce a malformed action at
+    // all" fails here; mutating `ReActResponse` back to `default: ACT_ANSWER`
+    // fails the two tests above.
+    expect(cutRow().why).toContain('ACT_UNSAID')
+    expect(cutRow().why).toContain('unreadable')
+    expect(cutRow().why).toContain('S37')
+  })
+
+  test('and so does the README, which certified the same sentence', () => {
+    const readme = readFileSync(join(REPO, 'bench', 'README.md'), 'utf8')
+    expect(readme).toContain('`ACT_UNSAID`, echoed back with which of the two it was')
+    expect(readme).toContain('S37')
+  })
+})

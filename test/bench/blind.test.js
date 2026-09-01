@@ -15,10 +15,16 @@ import {
   armRules,
   BANNED,
   blindTranscript,
+  DISCLOSURE,
   findTerms,
+  frame,
   letterFor,
+  REPLACEMENTS,
   RESIDUAL,
+  RUBRIC,
+  SEPARATION_TERMS,
   scrub,
+  separation,
 } from '../../bench/blind.js'
 
 /**
@@ -387,16 +393,25 @@ describe('the script itself is the gate', () => {
     return { out, err, code, root }
   }
 
-  test('an arm that prints its own directory name is scrubbed, not leaked', async () => {
+  test('an arm that prints its own directory name is scrubbed — and the scrub’s own token is then reported', async () => {
     // The measured leak, end to end: `no-such-capability/ours/1` in the model's
     // own prose. `main()` reads the arm ids off the transcript directories.
+    //
+    // This test asserted exit 0 and was wrong to. The arm name is gone, but the
+    // string that replaced it reaches only the arm whose name it replaced, so
+    // one file now carries `this harness` and no other does — the leak moved a
+    // spelling to the left and the gate, which scanned two hand-typed lists,
+    // reported nothing. It is a `[replacement]`, distinguished from a
+    // `[declared]` cost because it is this file's defect and is fixable.
     const root = fixture('I looked in probe/ours/1 and found it')
-    const { code, root: at } = await runBlind(root)
-    expect(code).toBe(0)
+    const { code, err, root: at } = await runBlind(root)
     const written = readdirSync(join(at, 'out', 'probe')).sort()
     const bodies = written.map((name) => readFileSync(join(at, 'out', 'probe', name), 'utf8'))
     expect(bodies.join('\n')).toContain('probe/this harness/1')
     expect(bodies.join('\n')).not.toMatch(/\bours\b/)
+    expect(code).toBe(1)
+    expect(err).toContain('"this harness" [replacement] appears only in ours, in 1 of 1 pair(s)')
+    expect(err).toContain("THIS FILE'S OWN LEAK")
   })
 
   test('an identifier that survives the scrub exits NON-ZERO and names it', async () => {
@@ -462,5 +477,366 @@ describe('the script itself is the gate', () => {
       readFileSync(join((await runBlind(oneLine)).root, 'out-key.json'), 'utf8'),
     )
     expect(Object.values(key2.residual).find((per) => per.read_file)).toEqual({ read_file: 1 })
+  })
+
+  test('a residual term in ONE arm exits non-zero, naming the term and the arm', async () => {
+    // Row S39, end to end. Before this change the same fixture printed
+    // `NOT BLIND: … 1 of 2 file(s)` and exited 0. No unit test can see an exit
+    // code, and `separation` returning `{terms: []}` unconditionally left every
+    // assertion in the block above green — measured.
+    const root = fixture('I called read_file and then write_file')
+    const { code, err } = await runBlind(root)
+    expect(code).toBe(1)
+    expect(err).toContain('NOT BLIND — 1 of 1 pair(s)')
+    expect(err).toContain('"read_file" [declared] appears only in ours, in 1 of 1 pair(s)')
+  })
+
+  test('the same term in BOTH arms is vocabulary, and the gate goes green', async () => {
+    // The reachable pass. `fixture` gives the text to one arm only, so this
+    // writes the second copy by hand — the point being that the gate is not
+    // stuck red by construction, it is red because of what the arms are called.
+    const root = fixture('I called read_file')
+    writeFileSync(
+      join(root, 'in', 'probe', 'agent-zero', '1.json'),
+      JSON.stringify({
+        run: { answer: 'I called read_file', events: [{ type: 'task', at: 0, text: 'a thing' }] },
+      }),
+      'utf8',
+    )
+    const { code, out } = await runBlind(root)
+    expect(code).toBe(0)
+    expect(out).toContain('blind: no declared term appears in')
+  })
+
+  test('the key records the separation, so a verdict cannot be read without it', async () => {
+    const root = fixture('I called read_file')
+    const { root: at } = await runBlind(root)
+    const key = JSON.parse(readFileSync(join(at, 'out-key.json'), 'utf8'))
+    expect(key.separation).toMatchObject({ pairs: 1, separated: 1 })
+    expect(key.separation.terms).toEqual([
+      { term: 'read_file', kind: 'declared', arm: 'ours', tasks: ['probe'] },
+    ])
+    expect(key.rubric.withheld).toEqual(RUBRIC.withheld)
+  })
+
+  test('and the files are written anyway, each carrying the disclosure', async () => {
+    // A gate that deletes the evidence of its own failure cannot be audited,
+    // and the panel that gets handed this set anyway must still be told.
+    const root = fixture('I called read_file')
+    const { root: at } = await runBlind(root)
+    for (const name of readdirSync(join(at, 'out', 'probe'))) {
+      expect(readFileSync(join(at, 'out', 'probe', name), 'utf8')).toContain(DISCLOSURE)
+    }
+  })
+})
+
+/**
+ * The gate `docs/LEDGER.md` row S39 was filed for: the script printed
+ * `NOT BLIND: 137 line(s) …` and exited 0.
+ *
+ * The claim under test is not "identifying terms are gone" — they are not, on
+ * purpose. It is that a term which NAMES AN ARM is fatal, that the arithmetic
+ * saying so is derived from the set rather than typed in, and that the panel is
+ * told in the one channel that reaches it.
+ */
+describe('separation is what makes a set not blind', () => {
+  const file = (arm, task, ...terms) => ({ arm, task, terms: new Set(terms) })
+
+  test('a term in one arm and no other names that arm, and the pair is separated', () => {
+    const split = separation([
+      file('ours', 'a', 'read_file'),
+      file('agent-zero', 'a'),
+      file('ours', 'b', 'read_file'),
+      file('agent-zero', 'b'),
+    ])
+    expect(split.terms).toEqual([
+      { term: 'read_file', kind: 'declared', arm: 'ours', tasks: ['a', 'b'] },
+    ])
+    expect(split).toMatchObject({ pairs: 2, separated: 2 })
+  })
+
+  test('one pair does NOT reach the green state, and the header said it did', () => {
+    // There is no pair-count floor, deliberately: a gate a smaller run walks
+    // past is row S39 again. Measured over `transcripts/collatz` alone:
+    // `!! NOT BLIND — 1 of 1 pair(s)`, exit 1.
+    const split = separation([file('ours', 'a', 'read_file'), file('agent-zero', 'a')])
+    expect(split).toMatchObject({ pairs: 1, separated: 1 })
+  })
+
+  test('a string the SCRUB wrote separates too, and is reported as this file’s own leak', () => {
+    // The defect the two hand-typed lists could not see. A replacement reaches
+    // only the files whose identifying token it replaced, so a token that named
+    // an arm becomes a replacement that names it — same separating power, new
+    // spelling, invisible to a scan of `RESIDUAL`. Measured on the set in
+    // `blind/` when this landed: `this harness` in one `ours` file and
+    // `/workspace` in one `agent-zero` file, two pairs the verdict was silent
+    // about. The near miss is `openai-compatible` → `the transport`, added
+    // against a leak measured at 5 of 5 pairs.
+    expect(REPLACEMENTS).toContain('this harness')
+    expect(REPLACEMENTS).toContain('the transport')
+    const split = separation([
+      file('ours', 'a', 'this harness'),
+      file('agent-zero', 'a', 'the transport'),
+    ])
+    expect(split.terms).toEqual([
+      { term: 'the transport', kind: 'replacement', arm: 'agent-zero', tasks: ['a'] },
+      { term: 'this harness', kind: 'replacement', arm: 'ours', tasks: ['a'] },
+    ])
+    expect(split.separated).toBe(1)
+  })
+
+  test('a shorter replacement wholly inside a longer one is one leak, not two', () => {
+    // `scaffolds?` scrubs to `harness` and an arm id scrubs to `this harness`;
+    // the scan is a substring scan, so every `harness` in the current set is
+    // inside a `this harness`. Reported separately it read as two independent
+    // leaks over one occurrence, and the verdict's own argument is that its
+    // numbers are what a reader of a panel result acts on.
+    const split = separation([
+      file('ours', 'a', 'harness', 'this harness'),
+      file('agent-zero', 'a'),
+    ])
+    expect(split.terms.map((entry) => entry.term)).toEqual(['this harness'])
+  })
+
+  test('but the same short term somewhere the long one is not still stands alone', () => {
+    // The fold is per file set, not per spelling: `harness` in a pair where
+    // `this harness` never appears is its own leak and must survive.
+    const split = separation([
+      file('ours', 'a', 'harness', 'this harness'),
+      file('agent-zero', 'a'),
+      file('ours', 'b', 'harness'),
+      file('agent-zero', 'b'),
+    ])
+    expect(split.terms.map((entry) => entry.term).sort()).toEqual(['harness', 'this harness'])
+  })
+
+  test('every replacement the scrub can write is in the scanned set', () => {
+    // The rule that keeps the two from drifting: adding a `SCRUBS` row adds a
+    // string to the artifact, and a string in the artifact this gate does not
+    // scan is a leak it cannot report.
+    for (const replacement of REPLACEMENTS) expect(SEPARATION_TERMS).toContain(replacement)
+    for (const term of RESIDUAL) expect(SEPARATION_TERMS).toContain(term)
+  })
+
+  test('a term BOTH arms use separates nothing — it is vocabulary, not identity', () => {
+    // The green state, and the only one reachable without changing what a
+    // harness calls its own tools: two arms that spell a capability the same
+    // way. A gate whose pass is unreachable teaches readers to ignore it.
+    const split = separation([file('ours', 'a', 'read_file'), file('agent-zero', 'a', 'read_file')])
+    expect(split.terms).toEqual([])
+    expect(split.separated).toBe(0)
+  })
+
+  test('a declared term nobody wrote is not a leak', () => {
+    // `System Manual` is in RESIDUAL and appears in zero files of the current
+    // set — the model never quoted that opening back. Counting a cost nobody
+    // paid would make the gate red for a term with no occurrence anywhere.
+    const split = separation([file('ours', 'a'), file('agent-zero', 'a')])
+    expect(split.terms).toEqual([])
+    expect(RESIDUAL).toContain('System Manual')
+  })
+
+  test('the separated count is PAIRS, not terms — five terms over one pair is one pair', () => {
+    // The number a reader of a verdict needs is how many of the panel's
+    // independent judgements were actually independent. Summing terms would
+    // report six where one pair was compromised.
+    const split = separation([
+      file('ours', 'a', 'read_file', 'write_file', 'list_files'),
+      file('agent-zero', 'a', 'text_editor'),
+      file('ours', 'b'),
+      file('agent-zero', 'b'),
+    ])
+    expect(split.terms).toHaveLength(4)
+    expect(split.separated).toBe(1)
+    expect(split.pairs).toBe(2)
+  })
+})
+
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+describe('the disclosure the panel is handed', () => {
+  test('carries no banned and no residual term', () => {
+    // The trap this test was written for: the disclosure is prepended to EVERY
+    // file, so a disclosure naming `read_file` put that term in both arms'
+    // files and turned the gate green over a set nothing had changed. That is
+    // now closed in the code as well — `main` hands `separation` the BODY, not
+    // the framed file, so the preamble cannot make a term universal. The
+    // assertion stays because the two halves it guards are different: a BANNED
+    // term here is a leak in ten files, and a RESIDUAL term here inflates the
+    // declared-residue inventory in every one of them.
+    expect(findTerms(DISCLOSURE, BANNED, 'disclosure')).toEqual([])
+    expect(findTerms(DISCLOSURE, RESIDUAL, 'disclosure')).toEqual([])
+  })
+
+  test('and a term inside it can no longer launder that term in every file', () => {
+    // The structural half. The disclosure says "harness" four times, which is
+    // exactly what `scaffolds?` scrubs to; if `separation` read the framed file
+    // that replacement could never be reported again, in any set, forever.
+    const body = 'a body naming this harness and nothing else'
+    expect(frame('probe', 'A', body)).toContain('harness')
+    expect(findTerms(body, SEPARATION_TERMS, 'body').map((hit) => hit.term)).toContain(
+      'this harness',
+    )
+  })
+
+  test('it names the rubric it hands a judge three criterion numbers of', () => {
+    // A judge reached only through this block had the numbers and no document.
+    // Interpolated, so a moved page moves the citation; and the page really has
+    // that heading, checked against the page rather than against this string.
+    expect(DISCLOSURE).toContain(`\`${RUBRIC.source}\`, section "${RUBRIC.section}"`)
+    expect(readFileSync(join(REPO, RUBRIC.source), 'utf8')).toContain(`## ${RUBRIC.section}`)
+  })
+
+  test('names no arm, so it cannot itself be the label', () => {
+    // Checked with the gate's own whole-word matcher against the arm ids read
+    // off the recorded runs, not against a typed pair: `agent harnesses` is
+    // English and `agent-zero` is a name, and a substring scan cannot tell them
+    // apart. That is the same mistake `findTerms`' `wholeWord` was added for.
+    const arms = readdirSync(join(REPO, 'bench', 'transcripts', 'collatz')).sort()
+    expect(arms.length).toBeGreaterThan(1)
+    expect(findTerms(DISCLOSURE, arms, 'disclosure', { wholeWord: true })).toEqual([])
+  })
+
+  test('the two counts it gives a judge are DERIVED from the rubric, not typed', () => {
+    // Three numbers typed into a paragraph go stale the first time the rubric
+    // gains a row, silently, in the artifact a panel reads.
+    const scored = RUBRIC.criteria - RUBRIC.withheld.length
+    const summed = scored - RUBRIC.disqualifying.length
+    expect(DISCLOSURE).toContain(`Score the other ${scored}`)
+    expect(DISCLOSURE).toContain(`sum the ${summed} that are neither withheld`)
+    expect(scored).toBe(7)
+    expect(summed).toBe(5)
+  })
+
+  test('it reaches the transcript, above the run and below nothing but the title', () => {
+    const text = blindTranscript(record(), 'probe', 'A')
+    expect(text.indexOf(DISCLOSURE)).toBeGreaterThan(-1)
+    expect(text.indexOf(DISCLOSURE)).toBeLessThan(text.indexOf('## task'))
+  })
+})
+
+describe('the rubric and the instrument say the same thing', () => {
+  /**
+   * P5: `blind.js` drops the assembled prompt, criterion 1 is about the prompt,
+   * so this tree scored 1 on criterion 1 no matter what it did. The repair is
+   * in the rubric — the argument is in `blind.js`'s header — and a repair that
+   * lives in two files is a repair that comes apart. This reads the page.
+   */
+  const rubric = () => readFileSync(join(REPO, RUBRIC.source), 'utf8')
+
+  test('the page exists where the instrument says it does', () => {
+    expect(existsSync(join(REPO, RUBRIC.source))).toBe(true)
+  })
+
+  test('the page has exactly the number of criteria the instrument counts', () => {
+    const rows = [...rubric().matchAll(/^\| (\d) \| \*\*/gm)].map((m) => Number(m[1]))
+    expect(rows).toEqual(Array.from({ length: RUBRIC.criteria }, (_, at) => at + 1))
+  })
+
+  test('the page declares the same disqualifiers', () => {
+    expect(rubric()).toContain(
+      `Criteria **${RUBRIC.disqualifying.join('** and **')}** are disqualifying at 1`,
+    )
+  })
+
+  test('the page withholds what the instrument withholds, and says not to sum it', () => {
+    for (const at of RUBRIC.withheld) {
+      expect(rubric()).toContain(`criterion ${at} is WITHHELD: not\nscored, and not summed`)
+    }
+    expect(rubric()).toContain('minus any criterion the projection **withheld**')
+  })
+
+  test('and it no longer says the withheld criterion is scored 1', () => {
+    // The sentence that made criterion 1 unanswerable-by-construction rather
+    // than withheld. It survives, narrowed to the TRANSCRIPT, beside a second
+    // rule for the PROJECTION — the two are the same rule read from different
+    // ends, and the test pins both halves because deleting either restores P5.
+    expect(rubric()).toContain('A criterion the **transcript** cannot answer is scored 1')
+    expect(rubric()).toContain('A criterion the **projection** withholds from both arms equally')
+    expect(rubric()).not.toContain('criterion 1 cannot be scored at\nall')
+  })
+})
+
+/**
+ * `docs/LEDGER.md` row S38: `.gitignore` said `bench/blind/<task>/{A,B}.md` "ARE
+ * committed" and exempted `bench/transcripts/` and `bench/results.json` from the
+ * ignore list on the argument that evidence outside the repository is not
+ * evidence — and then `git ls-files bench` returned 0. Not being ignored is not
+ * the same as being tracked, and the file stated the confusion as its opposite.
+ *
+ * The rows are tracked as of `25c8750`. This is what stops them going back:
+ * a prose claim in `.gitignore` with nothing that can fail is how it got there.
+ */
+describe('the artifact and the evidence are in the repository, not on one machine', () => {
+  const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const tracked = (path) =>
+    Bun.spawnSync(['git', 'ls-files', '-z', path], { cwd: REPO })
+      .stdout.toString()
+      .split('\0')
+      .filter(Boolean)
+
+  test('every blinded transcript a panel is handed is tracked', () => {
+    const emitted = readdirSync(join(REPO, 'bench', 'blind'))
+      .flatMap((task) =>
+        readdirSync(join(REPO, 'bench', 'blind', task)).map(
+          (name) => `bench/blind/${task}/${name}`,
+        ),
+      )
+      .sort()
+    expect(emitted.length).toBeGreaterThan(0)
+    expect(tracked('bench/blind').sort()).toEqual(emitted)
+  })
+
+  test('so is the evidence the runs produced', () => {
+    expect(tracked('bench/transcripts').length).toBeGreaterThan(0)
+    expect(tracked('bench/results.json')).toEqual(['bench/results.json'])
+  })
+
+  test('and the key, which decodes them, is NOT', () => {
+    // The one file whose absence from the repository is the point.
+    expect(tracked('bench/blind-key.json')).toEqual([])
+    expect(existsSync(join(REPO, 'bench', 'blind-key.json'))).toBe(true)
+  })
+
+  /**
+   * The ten files a panel is handed are TRACKED and GENERATED, and nothing tied
+   * the two together: every other test in this file drives `blind.js` over a
+   * fixture in `tmpdir()`, and the artifact in the repository is whatever the
+   * last process to touch that directory left there — a mutation run, an
+   * `--index 2` run, a run from a branch.
+   *
+   * Observed in this tree: a mutation run left `bench/blind/collatz/A.md`
+   * carrying a disclosure that named all five tool names and both prompt
+   * openings — the laundering the disclosure's own test exists to prevent —
+   * while `blind.js` on disk was clean and the whole suite was green. The gate
+   * cannot see it either: it overwrites each file before it scans it, so it only
+   * ever checks bytes it just wrote, never bytes in the repository.
+   */
+  test('the tracked set is what today’s script emits from the tracked transcripts', async () => {
+    const out = join(mkdtempSync(join(tmpdir(), 'askk-regen-')), 'out')
+    // Exit 1 is the expected verdict on this set today; the files are written
+    // anyway, which is what makes them comparable.
+    await Bun.spawn(
+      [
+        'bun',
+        join(REPO, 'bench', 'blind.js'),
+        '--transcripts',
+        join(REPO, 'bench', 'transcripts'),
+        '--out',
+        out,
+      ],
+      { cwd: REPO, stdout: 'ignore', stderr: 'ignore' },
+    ).exited
+    const here = join(REPO, 'bench', 'blind')
+    for (const task of readdirSync(here).sort()) {
+      for (const name of readdirSync(join(here, task)).sort()) {
+        // The tuple is so a failure names the file instead of printing two 12 KB
+        // blobs at a reader who then has to diff them by eye.
+        expect([`${task}/${name}`, readFileSync(join(out, task, name), 'utf8')]).toEqual([
+          `${task}/${name}`,
+          readFileSync(join(here, task, name), 'utf8'),
+        ])
+      }
+    }
   })
 })

@@ -13,10 +13,23 @@ it simply runs in a Web Worker instead of on a host.
     │  app/      React components │        │  backend/  Kernel           │
     │  client/   BackendClient    │ ─────► │            services/        │
     │                             │ postMsg│            repositories/    │
+    │                             │        │            files/Workspace  │
     └─────────────┬───────────────┘ ◄───── └──────┬──────────────────────┘
                   │                                │
-                  └──────► protocol/ ◄─────────────┘        IndexedDB
-                        (the only shared code)
+                  └──────► protocol/ ◄─────────────┘   IndexedDB `askk` v3
+                        (the only shared code)         conversations
+                                                       settings
+                                                       files      ◄── the agent's
+
+The third store is the newest box and the one this diagram had none of for four
+waves: **the agent's own files**. `backend/files/Workspace.js` is the only
+implementation of `core/tools/FilesPort.js`, it is constructed in
+`composition.js` beside the other two repositories, and it is reached three
+ways — `read_file` and `write_file` as tools, one line of the context block
+naming what exists, and `ShellTool` staging named files into the guest and
+harvesting them back. It is in the worker realm and nothing in `app/` reads it,
+which is a real gap and is `CAPABILITIES.md`'s *A filesystem the agent and the
+human both see*, not a simplification of this drawing.
 
 The boundary is enforced by the realm, not by convention. A component cannot
 import a service and quietly bypass the protocol — the import would fail at
@@ -35,6 +48,7 @@ reach.
 | `core/` | nothing | The agent kernel: domain, inference, response, engine. **Realm-agnostic, not side-effect free** — `fetch` is allowed because it exists in both realms; DOM and storage are not. |
 | `protocol/` | nothing | The wire contract. Must survive structured-clone. Imported by both realms, so it may use no API exclusive to either. |
 | `backend/repositories/` | `core` | `Repository` is the port; `IndexedDbRepository` and `MemoryRepository` implement it. Stores plain records — structured-clone drops prototypes. |
+| `backend/files/` | `core`, a `Repository` | `Workspace` implements `core/tools/FilesPort.js` over one of those repositories. The agent's own files: `list` · `read` · `write`, no `remove`. |
 | `backend/services/` | `core`, `protocol`, port | Use cases. Load → enforce → save. Knows nothing about transports. |
 | `backend/Kernel.js` | `protocol` | Routes `namespace.method` and converts thrown values to typed failures, uniformly. |
 | `client/` | `protocol` | Turns postMessage broadcast into awaitable calls by correlating reply ids. |
@@ -157,7 +171,10 @@ agent file says what is different about this agent and nothing more.
 
     core/tools/Tool.js          name · description · parameters · call() -> Outcome
     core/tools/Toolbox.js       prompt rendering, call parsing, execution
-    core/tools/ShellTool.js     a command in the sandbox
+    core/tools/FilesPort.js     the agent's own files, as a port
+    core/tools/ShellTool.js     a command in the sandbox — over those files
+    core/tools/ReadFileTool.js  read one back
+    core/tools/WriteFileTool.js write one
     core/tools/McpTool.js       one tool belonging to an MCP server
     core/tools/SubAgentTool.js  another agent, offered as a tool
 
@@ -187,12 +204,15 @@ something out rather than be told it.
 host that cannot set COOP and COEP headers. That single fact is why this
 substrate was chosen over the alternatives.
 
-**Boot to first output: ~1 s over loopback.** The module is fetched and compiled
-once and instantiated per command. This is the one number in this file that the
-gate re-derives on every run — `bun run check` prints it, most recently *"the
-real guest answered `Linux localhost 6.1.0 …` in 930ms cold, then a failing
-command in 674ms warm (exit 1); 40029960 bytes fetched, inflated to 107054914"*
-— three runs spread 925–945 ms cold and 671–692 ms warm. The cold figure is the
+**Boot to first output: ~1.4 s over loopback.** The module is fetched and
+compiled once and instantiated per command. This is the one number in this file
+that the gate re-derives on every run — `bun run check` prints it, most recently
+*"the real guest answered `Linux localhost 6.1.0 …` in 1398ms cold, then a
+failing command in 1047ms warm (exit 1); 40029960 bytes fetched, inflated to
+107054914"* (accountant, 2026-09-01, integrated tree). The figures went up from
+925–945 / 671–692 ms when the smoke step began staging two files onto a
+budget-filling command line; the guest is the same and the step now asks it for
+more. The cold figure is the
 whole 38.2 MiB fetch, the inflate and a compile; the warm one is an instance and
 an Alpine boot. It fetches the compressed module because that is what the deploy
 can carry, and it prints both sizes so a build that shipped the raw module under
@@ -202,17 +222,31 @@ Four limits, each measured rather than assumed, and each stated to the model
 rather than hidden:
 
 - **One boot runs one command.** With no blocking stdin there is no interactive
-  shell, so the filesystem does not survive between calls. A long-lived pty was
-  the alternative: it needs blocking stdin, hence SharedArrayBuffer, hence
-  headers this app cannot set — and one malformed command wedges the shell for
-  every later caller.
-- **1024 bytes on the channel, 993 usable.** At 1025 the guest prints
+  shell, so the GUEST's filesystem does not survive between calls. A long-lived
+  pty was the alternative: it needs blocking stdin, hence SharedArrayBuffer,
+  hence headers this app cannot set — and one malformed command wedges the shell
+  for every later caller. What survives instead is the *agent's* filesystem, one
+  realm up: `ShellTool` stages any of the agent's files whose path the command
+  mentions into `/w` before the command runs and saves back every file left
+  there afterwards, so a command's work outlives the boot that did it even
+  though the boot does not. That staging is paid out of the same 962-unit
+  command budget, and a file that will not fit is refused in a sentence naming
+  what placing it would have cost and what was left.
+- **962 on the channel, and the channel does not count bytes.** The guest charges
+  one for every UTF-8 byte and one MORE for every space and every newline — not
+  whitespace, since tab, CR, VT and FF all cost one, which is how the rule was
+  pinned. Over 1000 it prints
   `too many write (1025 > 1024) failed to prepare entrypoint info` and exits
-  before running anything. `C2wSandbox` checks this and says so, rather than
-  passing on an exit code about an entrypoint nobody wrote. The 31-byte gap is
-  the status wrapper below, and the cap is measured against the **wrapper**,
-  because that is what actually crosses. **A program that will not fit belongs in
-  the image, not on the command line.**
+  before running anything; `C2wSandbox` refuses first and says what the command
+  cost, rather than handing the emulator's complaint back as the command's own
+  output. `MAX_COMMAND_COST` is 1000 because 1000 is the LOWEST ceiling measured
+  across shapes — 1,008 ran on the shape that ships — so the guard is
+  deliberately conservative by up to eight. The 38-unit gap to 962 is the status
+  wrapper below, and `commandBudget` is derived from it rather than written down,
+  so anything added to the wrapper shrinks it without an edit. Two earlier
+  readings of this number were wrong and both passed a bisection, which is why
+  `C2wSandbox.js` now carries the sweep table and not just the answer. **A program
+  that will not fit belongs in the image, not on the command line.**
 - **The exit status has to be asked for.** c2w's `proc_exit` is the *emulator's*
   and returns 0 whatever ran, so for as long as this sandbox existed every
   command came back successful. The guest is now sent
@@ -229,40 +263,45 @@ rather than hidden:
   `awk` loop, 485x on `sha256sum`, 255x on `gzip`. Fine for `ls`, a grep, a small
   script. Not a place to run a build.
 
-### It does not reach the deployed page
+### Getting it to the visitor
 
 The image ships **inside the export** — `public/` is copied whole, so
 `composition.js` derives its URL from the base path exactly as it derives the
 worker's. That is what makes a shell command work when the export is served, and
 it has been run end to end through the built artifact.
 
-It does not work on `https://kaush4l.github.io/ASKK/`, and the reason is not a
-browser one. The file is 107,054,914 bytes, which is 2,197,314 over GitHub's
-100 MiB per-file block, so it is excluded from the repository by `.gitignore`'s
-`public/sandbox/*.wasm` rule — named rather than numbered, because that line was
-cited as `.gitignore:33` in three documents and is now a comment — and from the
-deploy (`git show a1d7a98 -- .gitignore`). Measured on the live site: the page
-and `sandbox/vm-worker.js` answer 200 and `sandbox/sandbox.wasm` answers **404**,
-so every `shell` call there fails to boot and the model is told so. Git LFS is
-closed to Pages by Pages' own documentation.
+**Three things had to be true and two of them now are.**
 
-**Compression is the way out, and this file used to say it was not.** The
-sentence that stood here — that compression does not help because the limit is on
-the file at rest — was half an argument: the limit is indeed on the file at rest,
-which is exactly why compressing the file at rest works. `gzip -9` gives
-`public/sandbox/sandbox.wasm.gz` at 40,029,960 bytes, inside the block; it
-inflates to the raw module's own sha256; `vm-worker.js` inflates it with
-`DecompressionStream` after sniffing `1f 8b`; and `bun run smoke` boots the real
-guest from it on every gate run. GitHub Pages serves a `.gz` as raw gzip bytes
-with no `Content-Encoding`, so `fetch` does not pre-inflate it and the sniff
-fires — measured against a Pages site that already serves one, in `docs/GATE.md`.
+**The guest is in the repository.** The raw module is 107,054,914 bytes, which is
+2,197,314 over GitHub's 100 MiB per-file block, so it stays excluded by
+`.gitignore`'s `public/sandbox/*.wasm` rule — named rather than numbered, because
+that line was cited as `.gitignore:33` in three documents and is now a comment.
+`gzip -9` puts the same guest at 40,029,960 bytes, under the block; it inflates
+to the raw module's own sha256; `vm-worker.js` inflates it with
+`DecompressionStream` after sniffing `1f 8b`; and GitHub Pages serves a `.gz` as
+raw gzip bytes with no `Content-Encoding`, so the sniff is the path that ships
+(measured against a Pages site that already serves one, `docs/GATE.md`).
+`git ls-tree HEAD public/sandbox/` now lists it as a blob. The
+neither-tracked-nor-ignored state this section used to describe is closed.
 
-What is still true is that nobody has walked it. The `.gz` is neither tracked nor
-ignored (`git check-ignore -v public/sandbox/sandbox.wasm.gz` exits 1),
-`/ASKK/sandbox/sandbox.wasm.gz` is a 404 alongside the raw module, and there is
-no deploy step in this repository at all — `git ls-files | grep -iE
-"deploy|publish|pages|workflow|ya?ml"` returns nothing and there is no
-`.github/`.
+**There is a deploy step.** `scripts/deploy.js` builds the directory a static
+host serves, and the whole of its design is that it builds from a CLEAN
+CHECKOUT: `git archive <ref> | tar -x`, then `bun install --frozen-lockfile`
+into an empty `node_modules`, then `next build`. Nothing in a developer's
+working tree can reach the output, which is what makes it answer the question a
+deploy is actually for — can a stranger with this repository and nothing else
+produce the page. It refuses to write a directory it did not write before, it
+refuses a file over the block, it writes a `deploy.json` so the directory says
+what prefix it was built for, and **it does not push**. `scripts/deploy-check.js`
+then opens that directory in a real browser over a host that sends no COOP, no
+COEP and no CORP — proved by a 404 control the browser itself fetches — and
+drives two turns through the page's own composer, one that needs no tool and one
+that needs the shell.
+
+**Nobody has published it.** `gh-pages` is still 93 commits and 56 files with no
+guest in it, and `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` is
+still a 404 beside a page that answers 200. That is one push, and it is the
+owner's: a script that both builds and publishes turns one review into none.
 
 `SANDBOX_IMAGE=<url> bun run build` compiles a different URL into the bundle for
 a deploy whose host will serve the file. It is an override, not the location, and
@@ -520,15 +559,23 @@ question, where the model reads it more reliably. **The right order depends on
 what an agent actually carries** — which is the reason this is a template and
 not a method.
 
-## Context — one fact
+## Context — a clock, and what exists
 
     core/agent/Environment.js   describeEnvironment()
+    backend/services/ChatService.js   the files line
 
     # CONTEXT
 
     now: Saturday, 29 August 2026 at 23:09 (America/New_York)
+    your files: notes.md src/main.c plan-2.txt
 
-23 tokens. A model knows what it was trained on and nothing about the moment it
+23 tokens for the clock, and about five per file for the second line. **Both are
+here for the same reason and it is the rule below, not a widening of it:** a
+model cannot derive the moment it is answering in, and it cannot derive what it
+wrote down last week either. The files line is `ChatService._context`, capped at
+forty names, and past the cap it SAYS it was cut — `(and 12 more, not listed)` —
+because an agent certain it has seen every file is the one thing a silent
+truncation would buy. A model knows what it was trained on and nothing about the moment it
 is answering in, and the clock is the only thing it cannot derive, guess, or be
 told by the conversation itself.
 
@@ -552,8 +599,13 @@ characters earlier. Asking the time now takes **one** call.
 
 If the answer is the same every time it is asked within a turn, state it once and
 stop paying for it. A tool earns its round trip by *doing* something a prompt
-cannot contain — reading a page, searching, asking another agent. `BUILTIN_TOOLS`
-is left in place, and empty, as the seam for the first tool that qualifies.
+cannot contain — reading a page, searching, asking another agent. `BUILTIN_TOOLS` holds
+five: `shell`, `read_file`, `write_file`, `fetch` and `search`. There is no
+`list_files`, and its absence is this rule applied rather than an omission — the
+names of the agent's files are a FACT, so they are one line of the context block
+instead of a round trip, measured at ~5 tokens a file against 22 tokens of
+rendered tool description plus a whole call. Past forty files the line says it
+was cut, and past forty the tool would be the better buy.
 
 Being the clock is what makes this block volatile, and that is what decides where
 it renders: after the conversation, so a value that ticks cannot push the
@@ -812,30 +864,52 @@ ACT_ANSWER" src/` returns only the comment recording it. This was *"the one plac
 a reference scaffold beat this one in a measured head-to-head"* and it is the
 only defect this project has had named by a judge that did not know whose code it
 was reading. *Streaming* —
-`EventName.DELTA` on the same request id, emitted at `ChatService.js:188`. *Prompt components* — `core/prompt/PromptTemplate.js`.
+`EventName.DELTA` on the same request id, emitted at `ChatService.js:266`. *Prompt components* — `core/prompt/PromptTemplate.js`.
 *Deploy* — static export to GitHub Pages at `/ASKK` with `.nojekyll`;
 `git log --oneline gh-pages | wc -l` is 93, of which exactly **one**
 (`a1d7a98 Deploy 2ef2c05`) is a commit descended from this architecture's
 skeleton, and it is five commits behind `main`. Verify by polling the build id,
 never page content: a stale build serves a byte-identical page from disk cache.
 
+**Also done, and written here rather than deleted for the same reason.** *A
+filesystem* — item 4 on this list for four waves, described as "nothing on the
+realm diagram holds files" — exists: `core/tools/FilesPort.js` is the port,
+`backend/files/Workspace.js` the implementation over a third IndexedDB store,
+and it is drawn on the diagram at the top of this file. Verify by writing a file
+in one turn and reading it back after a reload; `bun run check`'s smoke does it
+every run. What it did NOT deliver is the eleven *Building software* rows the
+item claimed it would unblock: it closed three of them and the other eight need
+a toolchain inside the guest or a reader inside the page, neither of which is a
+store. That over-claim is left visible rather than edited out. *A deploy step* —
+`scripts/deploy.js` and `scripts/deploy-check.js`, and the guest is tracked.
+
 **Open, in the order that unblocks the most:**
 
-1. **Get the guest to the visitor.** The environment works in a browser and is
-   404 on the site this project deploys to. This is no longer a host hunt: the
-   compressed guest is built, gated and under GitHub's block, and it is untracked
-   — one `git add` and a deploy, then a `curl` that answers 200. See *It does not
-   reach the deployed page* above.
+1. **Push it.** The environment works in a browser, the deploy directory that
+   carries it builds from a clean checkout and has been driven in a browser, and
+   `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` is still a 404. This
+   is no longer a host hunt or a tracking problem: it is `bun scripts/deploy.js`
+   and one push, then a `curl` that answers 200. See *Getting it to the visitor*
+   above.
+
+2. **A view of the agent's files.** `grep -rn "files\." src/app src/client`
+   returns nothing: the agent has a workspace and the human it works for cannot
+   open, list, download or add a single file in it. The store, the port and the
+   realm crossing all exist, so this is a page-realm change with no unknown in
+   it, and it is the one thing standing between "the agent has files" and "we
+   have files".
 
 3. **Single-writer election** — `navigator.locks` in the worker, so two open tabs
    cannot both drive the same run (`grep -rn "navigator.locks" src` → 0). The
    lock must be held by a promise that never settles, or it releases the moment
    the callback returns.
 
-4. **A filesystem.** Nothing on the realm diagram holds files. Eleven rows of
-   `CAPABILITIES.md`'s *Building software* wait on one box that does not exist,
-   and the measured candidate is OPFS in the backend worker.
+4. **Something in the guest that builds software.** `scripts/wasm/image/` is
+   `FROM alpine:3.21` plus a 15-line `sh` MCP server, so the guest can move
+   bytes and cannot compile, test, lint or format one. Eight *Building software*
+   rows wait here now instead of on the filesystem, and the constraint is C5 —
+   a Docker build, not a browser limit.
 
 5. **Sub-agents that are actually constructed.** `agentWorker.js` is the only
-   realm on the diagram nothing has ever entered: `ChatService.js:142` computes
+   realm on the diagram nothing has ever entered: `ChatService.js:220` computes
    `peers` from a roster of one, so the pool is never asked for a thread.

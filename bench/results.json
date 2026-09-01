@@ -1,5 +1,12 @@
 {
   "at": "2026-09-01T11:04:38.972Z",
+  "superseded": {
+    "at": "2026-09-01",
+    "why": "Both arms were offered the same four tools, and only one of them was told what was in the working directory: 79 of 79 requests on this side carry a recursive workspace tree, 0 of 34 on the other. See bench/README.md, “The two arms are not handed the same information”. Nothing in these runs is wrong; the comparison they support is not the one the rig claims to make.",
+    "reTakeWhen": "our agent has a filesystem and can be handed the same tree. Re-run `bun bench/run.js -n 3` and overwrite this file; do not delete it before then, it is the only recorded evidence there is.",
+    "stillQuotable": "the usage totals, which no defect above touches: they are counted from the endpoint’s own `usage` on every reply, in whatever state that reply arrived, for both arms.",
+    "fileMd5BeforeThisNote": "be2c057ef0f810ff01c0b6f989122039"
+  },
   "config": {
     "baseUrl": "http://127.0.0.1:8873/v1",
     "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",

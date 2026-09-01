@@ -574,9 +574,23 @@ observation. This tree already emits all of it —
 `Engine.step → onPrompt(assembled)` carries the text *and* the per-block token
 and cache breakdown, `onStep` carries the parsed reply, and `ReActEngine` builds
 the scratchpad from the observations (ARCHITECTURE.md, "The prompt is visible").
-Where only the visible dialogue is available, criterion 1 cannot be scored at
-all — which is itself the strongest argument for putting the prompt in the
-transcript.
+Where only the visible dialogue is available, **criterion 1 is WITHHELD: not
+scored, and not summed.** This used to read "cannot be scored at all", beside a
+scoring rule that says an unanswerable criterion is scored 1 — so on a
+dialogue-only set criterion 1 was a 1 for both arms no matter what either
+harness did, and this rubric was carrying an eighth of its own surface as a
+constant. `docs/LEDGER.md` row P5.
+
+**The prompt does not come back to fix it, and that is a decision rather than an
+omission.** `bench/blind.js` drops the assembled request because it is the
+largest single identity carrier in the record: the two system prompts' opening
+lines are the exact strings that let the last panel separate 5 of 5 pairs.
+Restoring it buys one scorable criterion at the cost of every other. And
+criterion 1's own poles are textual — "a persona restated three times", "a
+paragraph introducing a heading" — so no token-count projection answers it and
+there is no half measure to take. The instrument declares the withholding in
+`WITHHELD_CRITERIA`, prints it, and tells the panel in every file it emits;
+`test/bench/blind.test.js` reads this page and fails if the two stop agreeing.
 
 | # | Criterion | 1 | 5 |
 |---|---|---|---|
@@ -595,13 +609,21 @@ transcript.
   about what happened — one about who said a thing, one about whether a thing
   was done — and a transcript that lies loses to one that is merely expensive,
   regardless of totals.
-- Sum the remaining six. Ties break on **6**, then on **3**: given equal cost,
+- Sum the remaining six, minus any criterion the projection **withheld** — five
+  on a dialogue-only set. Ties break on **6**, then on **3**: given equal cost,
   prefer the run whose ending you can explain.
 - Score each criterion against the *other* transcript, not against an ideal. The
   question is which of these two is better, and a rubric that scores both a 2
   has told the critic nothing.
-- A criterion the transcript cannot answer is scored 1, not skipped. An
+- A criterion the **transcript** cannot answer is scored 1, not skipped. An
   unanswerable question about a run is a fact about the run.
+- A criterion the **projection** withholds from both arms equally is not scored
+  at all, and the count of criteria scored is reported with the verdict. That is
+  a fact about the instrument, not about either run, and scoring it 1 twice adds
+  a constant that can change no winner while dressing a hole in the instrument up
+  as a measurement of the work. The two rules are the same rule read from
+  different ends: score what the run failed to show, withhold what the judge was
+  never shown.
 
 Criteria 4, 5 and 8 are the three this tree currently fails or cannot
 demonstrate: observations carry no speaker marker beyond `observation:`, and

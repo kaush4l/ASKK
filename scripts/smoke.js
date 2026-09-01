@@ -9,10 +9,10 @@
  * docs/GATE.md has the fault table that measures exactly which faults reach
  * this step and which are caught earlier, and the designs rejected for it.
  */
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import config from '../next.config.js'
+import config, { SANDBOX_IMAGE_PATH } from '../next.config.js'
+import { attachBrowser, findChrome } from './browser.js'
 import { TINY_GUEST_STDOUT, tinyGuest } from './wasm/tinyGuest.js'
 
 const OUT = join(import.meta.dir, '..', 'out')
@@ -21,27 +21,18 @@ const OUT = join(import.meta.dir, '..', 'out')
 // different prefix from the one built in would prove the wrong page works.
 const BASE = config.basePath
 
-/** Where a Chromium usually is, when nobody has said. */
-const CHROME_CANDIDATES = [
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/Applications/Chromium.app/Contents/MacOS/Chromium',
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium',
-]
-
-/** Everything that needs tearing down, so one failure path can close all of it. */
-const open = { server: null, chrome: null, socket: null, profile: null }
+/**
+ * Everything that needs tearing down, so one failure path can close all of it.
+ *
+ * The browser half lives in `scripts/browser.js`, which owns the profile leak
+ * and the port-file race for both checks that drive one. What is left here is
+ * this file's own host.
+ */
+const open = { server: null, browser: null }
 
 async function shutdown() {
-  open.socket?.close()
-  // SIGKILL and then WAIT. Measured: on SIGTERM Chrome writes its profile out
-  // while shutting down, so an immediate `rmSync` deletes a directory the
-  // browser then recreates — 14 runs left 14 profiles behind, and this machine
-  // had 167 of them by the time anyone counted.
-  open.chrome?.kill('SIGKILL')
-  await open.chrome?.exited
+  await open.browser?.close()
   open.server?.stop(true)
-  if (open.profile) rmSync(open.profile, { recursive: true, force: true })
 }
 
 // An interrupted run — a tool timeout, a Ctrl-C, an agent that gave up waiting —
@@ -62,20 +53,8 @@ async function fail(message, details = []) {
 
 if (!existsSync(OUT)) await fail('there is no out/ to boot — run `bun run build` first')
 
-// An explicit CHROME that is not there is an error, not a hint to look
-// elsewhere. Falling back would run the check against a browser other than the
-// one that was asked for and say nothing about it, which is how a green result
-// stops meaning what its reader thinks.
-const named = process.env.CHROME
-if (named && !existsSync(named)) await fail(`CHROME is set to ${named}, and there is nothing there`)
-
-const chromePath = named ?? CHROME_CANDIDATES.find((path) => existsSync(path))
-if (!chromePath)
-  await fail('no browser found', [
-    'This step boots the built page in a real browser, because that is the only',
-    'way to see a worker that cannot start. Install Chrome, or set CHROME to a',
-    'Chromium binary.',
-  ])
+const chrome = findChrome()
+if (chrome.problem) await fail(chrome.problem, chrome.details)
 
 // --- the host ---------------------------------------------------------------
 
@@ -109,8 +88,8 @@ const SRC = join(import.meta.dir, '..', 'src')
  * prove the emulator runs and prove nothing about the artifact that ships — and
  * the raw module is exactly what the live page 404-ed on.
  */
-const IMAGE_FILE = join(OUT, 'sandbox', 'sandbox.wasm.gz')
-const IMAGE_URL = `${BASE}/sandbox/sandbox.wasm.gz`
+const IMAGE_FILE = join(OUT, SANDBOX_IMAGE_PATH.slice(1))
+const IMAGE_URL = `${BASE}${SANDBOX_IMAGE_PATH}`
 
 open.server = Bun.serve({
   port: 0,
@@ -141,123 +120,8 @@ const url = `http://127.0.0.1:${open.server.port}${BASE}/`
 
 // --- the driver -------------------------------------------------------------
 
-open.profile = mkdtempSync(join(tmpdir(), 'askk-smoke-'))
-open.chrome = Bun.spawn(
-  [
-    chromePath,
-    '--headless=new',
-    // Port 0 means the OS picks one, so two agents checking at once do not
-    // collide. Chrome writes the port it took into the profile directory.
-    '--remote-debugging-port=0',
-    // Fresh and discarded, so nothing needs suppressing. Do not add
-    // `--disable-gpu` here: measured, it cost 0.93 s of a 1.8 s step.
-    `--user-data-dir=${open.profile}`,
-    'about:blank',
-  ],
-  { stdout: 'ignore', stderr: 'ignore' },
-)
-
-const portFile = join(open.profile, 'DevToolsActivePort')
-const launched = Date.now()
-// Polled until the file PARSES, not until it exists. Chrome creates this file
-// and then writes it, so a read that wins that race returns an empty string,
-// `port` is `undefined`, and `new WebSocket('ws://127.0.0.1:undefined...')`
-// throws — at the top level of a module, above every catch, so `shutdown` never
-// runs and the browser tree and its profile are orphaned. That is the exact
-// leak the SIGKILL-and-wait above exists to stop, and it was observed once in
-// roughly ten runs: seven Chrome processes still holding their profile 70 s later.
-let port = null
-let endpoint = null
-while (Date.now() - launched < 20000) {
-  const [p, e] = existsSync(portFile) ? readFileSync(portFile, 'utf8').trim().split('\n') : []
-  if (p && e) {
-    port = p
-    endpoint = e
-    break
-  }
-  await Bun.sleep(20)
-}
-if (!port) await fail('the browser did not report a debugger port within 20s')
-
-try {
-  open.socket = new WebSocket(`ws://127.0.0.1:${port}${endpoint}`)
-} catch (cause) {
-  await fail(`the browser wrote a debugger endpoint this cannot dial: ${cause.message}`)
-}
-await new Promise((resolve) => {
-  open.socket.addEventListener('open', resolve)
-  // Reported, not rejected. A rejection here reaches the top level of a module
-  // with nothing above it to catch, so the process would die around `shutdown`
-  // and leave the browser it had just launched running with its profile.
-  open.socket.addEventListener('error', () => fail('the browser refused a debugger connection'))
-})
-
-let seq = 0
-const pending = new Map()
-
-/**
- * Anything the browser reported that a user would call broken.
- *
- * Collected rather than thrown on, so a failing run names every problem at once
- * instead of the first one. A worker that fails to parse shows up here as a
- * `worker:` entry — that is the channel this whole file was written for.
- */
-const problems = []
-
-open.socket.addEventListener('message', (event) => {
-  const message = JSON.parse(event.data)
-  if (message.id) {
-    pending.get(message.id)?.(message)
-    pending.delete(message.id)
-    return
-  }
-  if (message.method === 'Runtime.exceptionThrown') {
-    const { exception, text } = message.params.exceptionDetails
-    problems.push(`page: ${exception?.description ?? text}`)
-  }
-  if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') {
-    const { source, text, url: where } = message.params.entry
-    problems.push(`${source}: ${text}${where ? ` <${where}>` : ''}`)
-  }
-})
-
-/**
- * One request, one reply, and a ceiling on the wait.
- *
- * The two realm waits have their own ceilings; the protocol between them had
- * none, so the single failure that could hang `bun run check` for ever was a
- * browser that stopped answering. Ten seconds is far longer than any call here
- * takes and far shorter than an agent's patience.
- */
-const send = (method, params, sessionId, ceilingMs = 10000) =>
-  new Promise((resolve) => {
-    const id = ++seq
-    const ceiling = setTimeout(() => fail(`the browser never answered ${method}`), ceilingMs)
-    pending.set(id, (message) => {
-      clearTimeout(ceiling)
-      resolve(message)
-    })
-    open.socket.send(JSON.stringify({ id, method, params, sessionId }))
-  })
-
-const evaluate = async (expression, session, awaitPromise = false, ceilingMs) => {
-  const reply = await send(
-    'Runtime.evaluate',
-    { expression, returnByValue: true, awaitPromise },
-    session,
-    ceilingMs,
-  )
-  return reply.result?.result?.value
-}
-
-const { result: target } = await send('Target.createTarget', { url: 'about:blank' })
-const { result: attached } = await send('Target.attachToTarget', {
-  targetId: target.targetId,
-  flatten: true,
-})
-const session = attached.sessionId
-await send('Runtime.enable', {}, session)
-await send('Log.enable', {}, session)
+open.browser = await attachBrowser({ chromePath: chrome.path, whenLost: fail })
+const { session, send, evaluate, problems } = open.browser
 
 // --- realm one: the module workers behind the page --------------------------
 
@@ -360,7 +224,7 @@ if (sandbox !== 'ok') await fail(`the sandbox worker ${sandbox}`, problems)
 // gate red on the one procedure `composition.js` argues for — a
 // `SANDBOX_IMAGE=<url> bun run build` compiled the override into the chunk, the
 // scan could not find the default, and the step blamed a file that was correct.
-const CONFIGURED_IMAGE = config.env.NEXT_PUBLIC_SANDBOX_IMAGE || '/sandbox/sandbox.wasm.gz'
+const CONFIGURED_IMAGE = config.env.NEXT_PUBLIC_SANDBOX_IMAGE || SANDBOX_IMAGE_PATH
 const chunks = join(OUT, '_next', 'static', 'chunks')
 const carriers = readdirSync(chunks)
   .filter((name) => name.endsWith('.js'))
@@ -413,8 +277,83 @@ if (!existsSync(IMAGE_FILE)) {
        const warm = performance.now()
        const failing = await box.run('ls /definitely-not-here')
        const hot = Math.round(performance.now() - warm)
+
+       // --- the agent's files, in a real IndexedDB, through the real guest ---
+       //
+       // One boot does all three halves of the claim, because a boot is ~750 ms
+       // and this step is run many times an hour: the command READS a file that
+       // was in the store before it started, CREATES one that has to end up
+       // there afterwards, and EXITS NON-ZERO so that the status still belongs
+       // to the command rather than to the base64 the frame runs after it.
+       const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+         await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
+       const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
+       const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
+       const { Workspace } = await import(${JSON.stringify(`${SRC_URL}/backend/files/Workspace.js`)})
+       const { ShellTool } = await import(${JSON.stringify(`${SRC_URL}/core/tools/ShellTool.js`)})
+       const { Outcome } = await import(${JSON.stringify(`${SRC_URL}/core/Outcome.js`)})
+
+       const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+       const opened = await db.open()
+       const files = new Workspace(new IndexedDbRepository('File', db, STORE_FILES))
+       const kept = await files.write('smoke-note.md', 'written before the reload')
+       // Nested, because a path with a folder in it is the first thing a real
+       // src/ workspace hits and the only thing that drives the mkdir prelude in
+       // ShellTool._stage. The guest's working directory starts empty, so
+       // without it this file's printf writes into a folder that is not there.
+       const nested = await files.write('src/deep.txt', 'deep')
+
+       // A RECORDER, not a fake: every member delegates to the real sandbox and
+       // the only thing added is that the line handed to the guest is kept. It
+       // is what lets the assertion below be about the budget rather than about
+       // a number this file copied out of ShellTool.
+       const seen = []
+       const recording = (run) => ({
+         get available() {
+           return box.available
+         },
+         get commandBudget() {
+           return box.commandBudget
+         },
+         cost: (text) => box.cost(text),
+         run: (line, options) => {
+           seen.push(line)
+           return run(line, options)
+         },
+       })
+
+       // The command is padded to spend the guest's WHOLE budget, and the pad is
+       // measured rather than written down: one call through a recorder that
+       // boots nothing says exactly what the frame and the two staged files took,
+       // and the rest is the pad. Written down it would be a second copy of
+       // ShellTool's own frame, in a file that cannot see the first.
+       const base =
+         'cat smoke-note.md src/deep.txt; echo harvested >made-in-the-guest.txt; false #'
+       const dry = recording(async () => Outcome.ok({ stdout: '', code: 0 }))
+       await new ShellTool({ sandbox: dry, files }).call({ command: base })
+       const pad = box.commandBudget - box.cost(seen[0])
+       seen.length = 0
+
+       const bridged = await new ShellTool({ sandbox: recording((line, options) => box.run(line, options)), files }).call({
+         command: base + 'x'.repeat(Math.max(0, pad)),
+       })
+       const sent = box.cost(seen[0] ?? '')
+
        await box.close()
-       return { available, cold, hot, first: first.toJSON(), failing: failing.toJSON() }
+       return {
+         available,
+         cold,
+         hot,
+         first: first.toJSON(),
+         failing: failing.toJSON(),
+         storage: opened.ok,
+         kept: kept.toJSON(),
+         nested: nested.toJSON(),
+         bridged: bridged.toJSON(),
+         budget: box.commandBudget,
+         pad,
+         sent,
+       }
      })()`,
     session,
     true,
@@ -490,6 +429,138 @@ if (!existsSync(IMAGE_FILE)) {
     `smoke: the real guest answered ${said(real.first.value.stdout.trim())} in ${real.cold}ms cold, ` +
       `then a failing command in ${real.hot}ms warm (exit ${real.failing.value.code}); ` +
       `${transfer[2]} bytes fetched, inflated to ${transfer[1]}`,
+  )
+
+  // --- the agent's own files -------------------------------------------------
+  //
+  // The claim is that the agent has files: that they outlive a command, that
+  // the shell can both READ and WRITE them, and that they are still there after
+  // the tab is reloaded. None of it can be proved anywhere but here — a unit
+  // test's store is a Map, and a unit test's guest is a fake that returns
+  // whatever the test wrote into it.
+  if (!real.storage)
+    await fail('the browser would not open IndexedDB, so nothing was proved', problems)
+  if (!real.kept.ok) await fail(`the file was not written: ${said(real.kept.failure)}`, problems)
+  if (!real.nested.ok)
+    await fail(`the nested file was not written: ${said(real.nested.failure)}`, problems)
+
+  // THE WHOLE BUDGET, spent. This first check is a PRECONDITION and not the
+  // claim: it says the padding really landed on the ceiling, so that the guest
+  // assertions below are being made about the largest line this tool will ever
+  // send rather than about a comfortable one. It can only fail if growing the
+  // command pushed a staged file back out of the line.
+  if (real.sent !== real.budget)
+    await fail(`the padded command spent ${real.sent} of a ${real.budget} budget`, [
+      'The pad is computed from a dry run through a recorder, so this can only',
+      'differ if the staging no longer fits beside it. See _stage() in',
+      'src/core/tools/ShellTool.js.',
+    ])
+  // THE CLAIM. At that ceiling the guest either runs the line or answers
+  // `too many write (1025 > 1024)`, and only a guest can say which — so
+  // `MAX_COMMAND_COST`, `cost`, `wrap` and `frame` are settled together here
+  // and nowhere else. WATCHED FAILING: `MAX_COMMAND_COST` at 1012 puts this
+  // line past what the guest takes and this is the line that reports it. The
+  // guard is conservative by up to eight on a real line, so a mutation of one
+  // or two does not reach here; the sweep that fixes the ceiling is in
+  // `C2wSandbox`, and this is the assertion that the declared budget is
+  // SPENDABLE rather than a number nothing ever reaches.
+  //
+  // The unit test that used to claim this borrowed the budget NUMBER off a fake
+  // and certified a limit the real guest would not take: the guest charges a
+  // space twice, and 800 bytes of ordinary shell came back as the emulator's
+  // refusal, handed to the agent as its own command's output.
+  if (real.bridged.value.includes('too many write'))
+    await fail(`the guest refused a command inside its own budget: ${said(real.bridged.value)}`, [
+      'The budget is priced in bytes, plus one for every space and newline, by',
+      'cost() in src/backend/sandbox/C2wSandbox.js. The guest disagrees with it.',
+    ])
+
+  // Staged IN. Both files existed only in the database when the command
+  // started, and the guest printed both — so the command line carried them
+  // across, and the nested one proves the `mkdir -p` prelude, since the guest's
+  // working directory starts empty and `src/` is not in it.
+  if (!real.bridged.value.includes('written before the reload'))
+    await fail(`the guest could not read the agent's file: ${said(real.bridged.value)}`, [
+      'A file the command named was not placed in the working directory.',
+      'See _stage() in src/core/tools/ShellTool.js.',
+      ...problems,
+    ])
+  if (!real.bridged.value.includes('deep'))
+    await fail(`the guest could not read a file in a folder: ${said(real.bridged.value)}`, [
+      'src/deep.txt was named by the command and its folder was never made.',
+      'See the mkdir prelude in _stage(), src/core/tools/ShellTool.js.',
+      ...problems,
+    ])
+  // The status is still the COMMAND's. `find` and `base64` run after it inside
+  // the same line, so without `exit $_r` every failing command that touched a
+  // file would be reported to the agent as a success.
+  if (!real.bridged.value.includes('(exit 1)'))
+    await fail(`the status was lost inside the file frame: ${said(real.bridged.value)}`, problems)
+  // And the frame's own chatter is not shown as output.
+  if (real.bridged.value.includes('__askk_f'))
+    await fail(`the harvest markers reached the agent: ${said(real.bridged.value)}`, problems)
+  // A file the command CREATED, not one it was handed: the staged file comes
+  // back in the same note because it is still in the working directory, and an
+  // assertion on the whole sentence would be an assertion about that instead.
+  if (
+    !real.bridged.notes.some(
+      (note) => note.startsWith('saved to your files:') && note.includes('made-in-the-guest.txt'),
+    )
+  )
+    await fail(`the guest's file was not saved: ${said(real.bridged.notes)}`, problems)
+
+  // --- and after a reload ----------------------------------------------------
+  //
+  // A second page load against the same origin, so the database is the one the
+  // first load wrote and not a fresh one. This is the whole of "survives a
+  // reload": everything above would pass identically over a Map.
+  const reloaded = Date.now()
+  await send('Page.navigate', { url }, session)
+  let back = 'none'
+  while (Date.now() - reloaded < 15000) {
+    back = await evaluate(`document.querySelector('.wordmark')?.dataset.live ?? 'none'`, session)
+    if (back === 'true') break
+    if (problems.length) break
+    await Bun.sleep(50)
+  }
+  if (back !== 'true')
+    await fail(`the page did not come back after a reload (data-live=${back})`, problems)
+
+  const survived = await evaluate(
+    `(async () => {
+       const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+         await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
+       const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
+       const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
+       const { Workspace } = await import(${JSON.stringify(`${SRC_URL}/backend/files/Workspace.js`)})
+       const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+       const files = new Workspace(new IndexedDbRepository('File', db, STORE_FILES))
+       return { listed: (await files.list()).toJSON(), guest: (await files.read('made-in-the-guest.txt')).toJSON() }
+     })()`,
+    session,
+    true,
+  )
+
+  const names = (survived?.listed?.value ?? []).map((file) => file.path)
+  if (!names.includes('smoke-note.md'))
+    await fail(`the agent's file did not survive the reload: ${said(survived)}`, [
+      'It was written to IndexedDB before the reload and the store is empty after it.',
+      'See the files store in src/backend/composition.js.',
+      ...problems,
+    ])
+  // The one the GUEST wrote, which is the half a store alone cannot prove: it
+  // came back out of the emulator on stdout, was decoded here, and is in a
+  // database that has since been closed and reopened by a new page load.
+  if (survived?.guest?.value?.text !== 'harvested\n')
+    await fail(
+      `what the guest wrote did not survive the reload: ${said(survived?.guest)}`,
+      problems,
+    )
+
+  console.log(
+    `smoke: the agent's files survived a reload — ${names.join(', ')}; ` +
+      `the guest read two off a command line spending all ${real.budget} of its budget ` +
+      `(${real.pad} of it padding) and wrote one back out`,
   )
 }
 

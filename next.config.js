@@ -9,6 +9,16 @@
 // the worker chunk as a literal.
 const BASE_PATH = '/ASKK'
 
+/**
+ * Where the guest image sits inside the export, relative to the base path.
+ *
+ * Exported because it was spelled out nine times across this file, three scripts
+ * and `src/`, and the deploy's guards, the smoke's guards and the check's server
+ * all have to be looking for the SAME string as the build. A guard that searches
+ * for a path the build no longer writes passes on a broken artifact.
+ */
+export const SANDBOX_IMAGE_PATH = '/sandbox/sandbox.wasm.gz'
+
 /** @type {import('next').NextConfig} */
 const config = {
   output: 'export',

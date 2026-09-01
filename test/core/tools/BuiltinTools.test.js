@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test'
+import { Workspace } from '../../../src/backend/files/Workspace.js'
+import { MemoryRepository } from '../../../src/backend/repositories/MemoryRepository.js'
 import { AgentCatalogue } from '../../../src/core/agent/AgentCatalogue.js'
 import { resolveTools } from '../../../src/core/agent/loadAgent.js'
 import { Outcome } from '../../../src/core/Outcome.js'
@@ -71,5 +73,28 @@ describe('the tools the real agent file asks for', () => {
     expect(http.calls).toHaveLength(2)
     expect(http.calls[1].method).toBe('POST')
     expect(searched.observation).not.toContain('there is no tool called')
+  })
+
+  test('main names read_file and write_file, and both reach the store it was composed with', async () => {
+    // Same argument as the test above, for the capability the goal is made of.
+    // A file store that is built, tested and absent from `tools:` is a store
+    // the agent cannot reach, and every other test of it constructs the tool
+    // itself and would stay green through exactly that.
+    const spec = await catalogue.spec('main')
+    const files = new Workspace(new MemoryRepository('File'))
+
+    const resolved = resolveTools({ names: spec.value.tools, services: { files } })
+    const toolbox = new Toolbox(resolved.value)
+
+    expect(toolbox.names).toContain('read_file')
+    expect(toolbox.names).toContain('write_file')
+
+    const wrote = await toolbox.run('write_file({"path": "notes.md", "content": "kept"})')
+    expect(wrote.observation).toContain('wrote notes.md, 4 bytes')
+    // Through the real store and back out, so a tool wired to `NO_FILES` by a
+    // missing key in the services object fails here rather than answering
+    // politely for ever.
+    expect((await files.read('notes.md')).value.text).toBe('kept')
+    expect((await toolbox.run('read_file({"path": "notes.md"})')).observation).toContain('kept')
   })
 })

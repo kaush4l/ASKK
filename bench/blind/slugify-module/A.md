@@ -1,5 +1,25 @@
 # slugify-module — transcript A
 
+> **Before you score.** These two transcripts are one task, run by two
+> different agent harnesses. Which letter is which is randomised per task and
+> is not recorded here.
+>
+> **This pair is not blind.** Each harness names its own tools, those names
+> are part of what you are being asked to judge, and they are not the same on
+> both sides — so they identify the harness, and to a reader who knows either
+> project they identify the project. Score THIS PAIR ALONE: do not try to
+> match it against another pair, and if you recognise a harness, say so in the
+> verdict rather than scoring around it. A verdict is worth what the judge’s
+> blindness was worth, and the honest way to price it is to be told.
+>
+> **Criterion 1 of the rubric is withheld on this projection** and must
+> not be scored. It asks about the assembled prompt, and the assembled prompt
+> is not here — it is the single largest thing that would tell you which
+> project wrote this. Score the other 7; sum the 5 that are neither withheld
+> nor disqualifiers (4 and 8).
+>
+> The rubric is `docs/REFERENCE-PROMPTS.md`, section "The blind comparison rubric".
+
 ## task
 
 ```

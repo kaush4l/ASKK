@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -357,5 +357,158 @@ describe('the evidence file survives the ways a run can produce nothing', () => 
     const { code } = await runBench(['-n', '0'], dir)
     expect(code).toBe(0)
     expect(readFileSync(join(dir, 'results.json'), 'utf8')).toBe('{"runs":[{"real":true}]}')
+  })
+})
+
+/**
+ * The recorded evidence, and the one claim `README.md` makes about it that can
+ * go stale without anybody touching a word: its hash.
+ *
+ * `results.json` was marked superseded rather than deleted — one arm was handed
+ * a recursive file tree every turn and the other was not, so the runs are real
+ * and the comparison they support is not the one the rig claims. The banner at
+ * the top of `README.md` quotes two md5s: the one `docs/LEDGER.md` cites, and
+ * the one the file has now. The second is a fact about a file that any later
+ * `bun bench/run.js` overwrites, at which point the banner is a lie nobody
+ * edited.
+ */
+describe('the superseded evidence and the README that points at it', () => {
+  const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const results = () => readFileSync(join(REPO, 'bench', 'results.json'))
+  const readme = () => readFileSync(join(REPO, 'bench', 'README.md'), 'utf8')
+
+  test('the file says it is superseded, in itself, where a reader of the JSON meets it', () => {
+    const doc = JSON.parse(results())
+    expect(doc.superseded.why).toContain('79 of 79')
+    expect(doc.superseded.reTakeWhen).toContain('filesystem')
+    // Kept, not deleted: 30 recorded runs, which is all the evidence there is.
+    expect(doc.runs).toHaveLength(30)
+  })
+
+  test('and it carries the md5 it had BEFORE the note, so the LEDGER citation still resolves', () => {
+    // Annotating evidence changes its hash, and a reader chasing a stale md5
+    // cannot tell "annotated" from "rewritten". This is the chain.
+    expect(JSON.parse(results()).superseded.fileMd5BeforeThisNote).toMatch(/^[0-9a-f]{32}$/)
+    expect(readme()).toContain(JSON.parse(results()).superseded.fileMd5BeforeThisNote)
+  })
+
+  test('the md5 the README quotes as CURRENT is the file’s md5 today', () => {
+    // Re-derived, never pinned: the assertion is that two things agree, so a
+    // benchmark re-run that replaces the evidence turns this red instead of
+    // leaving a banner that quotes a hash of something that no longer exists.
+    const md5 = new Bun.CryptoHasher('md5').update(results()).digest('hex')
+    expect(readme()).toContain(md5)
+  })
+
+  test('and no THIRD hash is quoted anywhere, current or otherwise', () => {
+    // `toContain(md5)` and `toContain(before)` were both satisfied by a README
+    // that presented the OLD hash as the current one, which is what it did: a
+    // live instruction reading ``md5 bench/results.json` = `be2c057…`` for a
+    // file that hashed to `813fde9…`. A reader who follows an instruction and
+    // gets the wrong answer concludes the evidence was tampered with. So the
+    // rule is a whitelist, not two memberships: exactly two hashes exist and
+    // this file knows both.
+    const md5 = new Bun.CryptoHasher('md5').update(results()).digest('hex')
+    const before = JSON.parse(results()).superseded.fileMd5BeforeThisNote
+    const quoted = new Set(readme().match(/\b[0-9a-f]{32}\b/g) ?? [])
+    expect([...quoted].sort()).toEqual([md5, before].sort())
+  })
+
+  test('the one line that tells a reader to run the command names the CURRENT hash', () => {
+    // The imperative is the dangerous shape — prose can be read as history, a
+    // command with an answer beside it cannot. There is one, and this pins what
+    // follows it.
+    const line = readme()
+      .split('\n')
+      .join(' ')
+      .match(/`md5 bench\/results\.json` = `([0-9a-f]{32})`/g)
+    expect(line).toHaveLength(1)
+    expect(line[0]).toContain(new Bun.CryptoHasher('md5').update(results()).digest('hex'))
+  })
+})
+
+/**
+ * The finding the whole comparison has to be read through, pinned to the
+ * evidence it is a finding about.
+ *
+ * "The two arms are not handed the same information" is placed before any
+ * result on purpose and its numbers were unpinned prose, in a slice that pinned
+ * the `results.json` hash, the tracking claims and the rubric agreement. It also
+ * has a date on it: the file says the run must be re-taken the moment our agent
+ * has a filesystem, and the moment `bun bench/run.js` overwrites
+ * `transcripts/`, `79 of 79` and `0 of 34` become statements about runs that no
+ * longer exist, in the section a reader is told to meet first, with nobody
+ * having edited a word. The transcripts are tracked, so the numbers re-derive.
+ */
+describe('the asymmetry the README states before any result', () => {
+  const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const readme = () => readFileSync(join(REPO, 'bench', 'README.md'), 'utf8')
+
+  /** What a turn spent finding out what exists looks like, as ISSUED. */
+  const LOOKING = /\bls\b|\bfind\b|\blist_files\b/
+
+  const arms = () => {
+    const root = join(REPO, 'bench', 'transcripts')
+    const seen = {}
+    for (const task of readdirSync(root)) {
+      for (const arm of readdirSync(join(root, task))) {
+        for (const name of readdirSync(join(root, task, arm))) {
+          if (!name.endsWith('.json')) continue
+          const doc = JSON.parse(readFileSync(join(root, task, arm, name), 'utf8'))
+          seen[arm] ??= { requests: 0, withTree: 0, filled: 0, chars: 0, tools: 0, looking: 0 }
+          const at = seen[arm]
+          for (const event of doc.run.events) {
+            if (event.type === 'request') {
+              at.requests += 1
+              let tree = false
+              let filled = false
+              for (const message of event.messages) {
+                at.chars += message.content.length
+                if (!message.content.includes('project_file_structure')) continue
+                tree = true
+                if (!message.content.includes('(empty)')) filled = true
+              }
+              if (tree) at.withTree += 1
+              if (filled) at.filled += 1
+            }
+            if (event.type !== 'action' || event.action?.kind !== 'tool') continue
+            at.tools += 1
+            // The two arms record a call differently — ours as `call`, theirs
+            // as a tool name and an args object — so the predicate is stated
+            // over the call AS ISSUED rather than over the model's whole reply.
+            // Over the reply it reads 10 of 60, by counting three reads of a
+            // file named in the previous turn as asking what exists.
+            const call =
+              event.action.call ?? `${event.action.tool}(${JSON.stringify(event.action.args)})`
+            if (LOOKING.test(call)) at.looking += 1
+          }
+        }
+      }
+    }
+    return seen
+  }
+
+  test('the free file tree: one arm every turn, the other never', () => {
+    for (const [arm, at] of Object.entries(arms())) {
+      expect([arm, readme().includes(`**${at.withTree} of ${at.requests}**`)]).toEqual([arm, true])
+    }
+    expect(arms()['agent-zero'].filled).toBe(76)
+    expect(readme()).toContain('| …of those, trees that were not empty | 76 | – |')
+  })
+
+  test('the turns each arm spends finding out what exists, by the stated rule', () => {
+    const seen = arms()
+    expect(readme()).toContain(
+      `| tool-calling turns spent finding out what exists | ${seen['agent-zero'].looking} of ${seen['agent-zero'].tools} | **${seen.ours.looking} of ${seen.ours.tools}** |`,
+    )
+    expect(readme()).toContain(String(LOOKING).slice(1, -1))
+  })
+
+  test('and the prompt-character totals the 2.7% is a share of', () => {
+    // The refutation of the brief's own guess — that the tree is most of the
+    // token gap — is only worth the arithmetic under it.
+    const seen = arms()
+    expect(readme()).toContain(seen['agent-zero'].chars.toLocaleString('en-US'))
+    expect(readme()).toContain(seen.ours.chars.toLocaleString('en-US'))
   })
 })

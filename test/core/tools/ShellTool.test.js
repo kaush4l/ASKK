@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
+import { Workspace } from '../../../src/backend/files/Workspace.js'
+import { MemoryRepository } from '../../../src/backend/repositories/MemoryRepository.js'
+import { C2wSandbox } from '../../../src/backend/sandbox/C2wSandbox.js'
 import { Outcome, Reason } from '../../../src/core/Outcome.js'
 import { Sandbox } from '../../../src/core/sandbox/Sandbox.js'
+import { MAX_FILE_BYTES } from '../../../src/core/tools/FilesPort.js'
 import { ShellTool } from '../../../src/core/tools/ShellTool.js'
 
 /**
@@ -29,6 +33,42 @@ class FakeSandbox extends Sandbox {
     return this.answer
   }
 }
+
+/**
+ * A sandbox that declares a command budget and the rule for spending it, which
+ * together are what turn the file staging on.
+ *
+ * Both are the real ones, delegated to `C2wSandbox` rather than written here,
+ * so a test that fits inside the budget fits inside the guest's budget too —
+ * and so that a fake cannot quietly price a line the guest would refuse. The
+ * pricing is the whole of what went wrong: the guest charges a space twice, and
+ * a fake that borrowed only the NUMBER certified a limit the real guest would
+ * not take.
+ */
+const guest = new C2wSandbox({})
+
+class GuestSandbox extends FakeSandbox {
+  get commandBudget() {
+    return guest.commandBudget
+  }
+
+  cost(text) {
+    return guest.cost(text)
+  }
+}
+
+const workspace = () => new Workspace(new MemoryRepository('File'))
+
+/** stdout as the frame writes it: the command's output, then the harvest. */
+const withFiles = (output, files = {}) =>
+  [
+    output,
+    '__askk_fs',
+    ...Object.entries(files).flatMap(([path, text]) => [
+      `__askk_f ./${path}`,
+      typeof text === 'string' ? btoa(text) : text,
+    ]),
+  ].join('\n')
 
 describe('ShellTool', () => {
   test('a sandbox that could not run anything hands the model its hint, and asks it to relay', async () => {
@@ -90,5 +130,333 @@ describe('ShellTool', () => {
 
     expect(said.ok).toBe(true)
     expect(said.value).toContain('the sandbox is not available')
+  })
+})
+
+/**
+ * The bridge between the agent's files and a guest that forgets everything.
+ *
+ * These are the tests for a channel that was MEASURED rather than assumed: a
+ * thousand characters of command line into the guest — bytes, and one more for
+ * every space — per ~950 ms boot, with no way to chunk because the filesystem
+ * does not survive; and at least 512 KiB of stdout back out for the same money.
+ * Everything asserted below is a consequence of that asymmetry, so if the
+ * numbers ever move these are the tests that should argue about it.
+ */
+describe('ShellTool and the agent’s files', () => {
+  test('a file the command names is written into the working directory before it runs', async () => {
+    const files = workspace()
+    await files.write('notes.md', 'hello')
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles('hello'), code: 0 }))
+
+    const said = await new ShellTool({ sandbox, files }).call({ command: 'cat notes.md' })
+
+    expect(sandbox.asked[0]).toContain(`printf %s 'hello'>'notes.md';`)
+    // In the working directory, and the command runs there, so `cat notes.md`
+    // means the agent's own file with no path in front of it.
+    expect(sandbox.asked[0]).toStartWith('mkdir -p /w;cd /w||exit 1;')
+    expect(said.value).toBe('hello')
+    expect(said.notes).toContain('in /w: notes.md')
+  })
+
+  test('a file the command does not name is left where it is', async () => {
+    // The whole workspace would not fit — that is the measured 1 KB — so what
+    // goes in is what was asked for. Staging everything would break on the
+    // third file and this is the assertion that says it does not try.
+    const files = workspace()
+    await files.write('notes.md', 'hello')
+    await files.write('other.md', 'unrelated')
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles(''), code: 0 }))
+
+    await new ShellTool({ sandbox, files }).call({ command: 'cat notes.md' })
+
+    expect(sandbox.asked[0]).toContain(`'notes.md'`)
+    expect(sandbox.asked[0]).not.toContain('unrelated')
+  })
+
+  test('a file too big for the command line is refused out loud, with both numbers', async () => {
+    // The failure that must never be silent. A command that reads an empty
+    // file it asked for by name would have the agent conclude its own work had
+    // vanished, and go and do it again.
+    const files = workspace()
+    await files.write('big.md', 'x'.repeat(2000))
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles(''), code: 0 }))
+
+    const said = await new ShellTool({ sandbox, files }).call({ command: 'wc -c big.md' })
+
+    expect(sandbox.asked[0]).not.toContain('xxxx')
+    // Both numbers in ONE unit. "it is 2,000 bytes and the line had N to spare"
+    // was two units in one sentence, which is the same confusion that made the
+    // budget wrong in the first place.
+    expect(
+      said.notes.some((note) => note.startsWith('big.md was not put in /w: placing it costs 2,0')),
+    ).toBe(true)
+  })
+
+  test('a nested path gets its folder made before anything is written into it', async () => {
+    // `src/main.c` cannot be written until `src` exists, and the guest starts
+    // every command with an empty working directory. Nothing else in the gate
+    // sees this: `scripts/smoke.js` stages one nested file through the real
+    // guest for the same reason, and deleting the prelude fails both.
+    const files = workspace()
+    await files.write('src/main.c', 'int main(){}')
+    await files.write('notes.md', 'hello')
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles(''), code: 0 }))
+
+    await new ShellTool({ sandbox, files }).call({ command: 'cc src/main.c; cat notes.md' })
+
+    // Before the first `printf`, and only for the file that needs one.
+    expect(sandbox.asked[0]).toContain(`;mkdir -p 'src';printf %s `)
+  })
+
+  test('one oversized file does not cost the command the small ones beside it', async () => {
+    // The whole point of taking them cheapest first. Sent in path order the
+    // 700-byte file goes in and eats the room, and two of the three small files
+    // the command also named are then refused for want of what it took.
+    const files = workspace()
+    await files.write('a-big.md', 'x'.repeat(700))
+    for (const name of ['x-one.md', 'y-two.md', 'z-three.md']) await files.write(name, 'k')
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles(''), code: 0 }))
+
+    const said = await new ShellTool({ sandbox, files }).call({
+      command: 'cat a-big.md x-one.md y-two.md z-three.md',
+    })
+
+    expect(said.notes).toContain('in /w: x-one.md, y-two.md, z-three.md')
+    expect(said.notes.some((note) => note.startsWith('a-big.md was not put in /w'))).toBe(true)
+  })
+
+  test('a command too long to wrap runs on its own, and the model is told where', async () => {
+    // The frame itself is 159 of the guest's 962, so a long enough command
+    // leaves nothing for it. Sent bare rather than refused — it is still a legal
+    // command — but a command that ran in `/` with none of its files is a
+    // different command from the one the model asked for, and it has to know.
+    const files = workspace()
+    await files.write('notes.md', 'hello')
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: 'out', code: 0 }))
+
+    const long = `echo notes.md ${'a'.repeat(820)}`
+    const said = await new ShellTool({ sandbox, files }).call({ command: long })
+
+    expect(sandbox.asked).toEqual([long])
+    expect(said.notes).toContain(
+      'the command is too long to run with your files around it, so it ran on its own in / instead',
+    )
+  })
+
+  test('a store that cannot be listed is said out loud, not silently skipped', async () => {
+    // The agent would otherwise watch a command read an empty directory and
+    // conclude its own work had vanished.
+    const files = {
+      async list() {
+        return Outcome.failed(Reason.UNAVAILABLE, 'IndexedDB is blocked by another open tab')
+      },
+      async read() {
+        return Outcome.ok(null)
+      },
+      async write() {
+        return Outcome.ok({ path: 'x', bytes: 0, created: true })
+      },
+    }
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles('out'), code: 0 }))
+
+    const said = await new ShellTool({ sandbox, files }).call({ command: 'cat notes.md' })
+
+    expect(said.notes).toContain('your files could not be reached, so none were placed in /w')
+  })
+
+  test('a file the command left behind that is too big for the store is named, not dropped', async () => {
+    // The guest can write a file larger than the workspace will hold, and the
+    // harvest cap is a blast radius rather than a per-file one — so without
+    // this the write simply failed and the model was told nothing.
+    const files = workspace()
+    const sandbox = new GuestSandbox(
+      Outcome.ok({
+        stdout: withFiles('', { 'huge.txt': 'x'.repeat(MAX_FILE_BYTES + 100) }),
+        code: 0,
+      }),
+    )
+
+    const said = await new ShellTool({ sandbox, files }).call({ command: 'yes >huge.txt' })
+
+    expect((await files.list()).value).toEqual([])
+    expect(
+      said.notes.some(
+        (note) =>
+          note.startsWith('huge.txt was left in /w and not saved: it is 65,') &&
+          note.endsWith('and a file may be 65,536'),
+      ),
+    ).toBe(true)
+  })
+
+  test('the status the agent is told is its own command’s, not the harvest’s', async () => {
+    // `base64` and `find` run AFTER the command inside the same line, and
+    // `C2wSandbox` reads the status from an echo it appends after all of it. So
+    // without this the exit code of every failing command would be 0.
+    const files = workspace()
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles('nope'), code: 1 }))
+
+    await new ShellTool({ sandbox, files }).call({ command: 'false' })
+
+    expect(sandbox.asked[0]).toContain(';_r=$?;')
+    expect(sandbox.asked[0]).toEndWith(';exit $_r')
+  })
+
+  test('what the command left behind is saved, and never shown as its output', async () => {
+    const files = workspace()
+    const sandbox = new GuestSandbox(
+      Outcome.ok({ stdout: withFiles('done', { 'out.txt': 'made it\n' }), code: 0 }),
+    )
+
+    const said = await new ShellTool({ sandbox, files }).call({ command: 'echo done >out.txt' })
+
+    expect((await files.read('out.txt')).value.text).toBe('made it\n')
+    // The frame's own chatter is not the command's output. A model reading
+    // base64 of its own file back as an observation would pay for it twice.
+    expect(said.value).toBe('done')
+    expect(said.notes).toContain('saved to your files: out.txt')
+  })
+
+  test('a command that ends in a comment does not swallow the harvest', async () => {
+    // `#` runs to the end of the line and the frame is one line, so without the
+    // newline after the command the closing paren, the status capture and the
+    // whole harvest are inside the comment. The real guest answers
+    // `sh: syntax error: unexpected end of file (expecting ")")`, and
+    // `scripts/smoke.js` sends exactly this shape because it is the only place
+    // the guest can say so.
+    const files = workspace()
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles('done'), code: 0 }))
+
+    await new ShellTool({ sandbox, files }).call({ command: 'ls -la # what is here' })
+
+    expect(sandbox.asked[0]).toContain('( ls -la # what is here\n);_r=$?;')
+  })
+
+  test('the marker is put on a line of its own, whatever the command left on the last one', async () => {
+    // Found in the browser, not here. `cat` a file with no trailing newline and
+    // the output runs into the marker — `written before the reload__askk_fs` —
+    // so nothing matched, and the model was handed its own files back as
+    // base64. The bare `echo` is the fix and this is the pin on it.
+    const files = workspace()
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles('no newline'), code: 0 }))
+
+    await new ShellTool({ sandbox, files }).call({ command: 'printf x' })
+
+    expect(sandbox.asked[0]).toContain(';echo;echo __askk_fs;')
+  })
+
+  test('a command that prints the harvest marker itself does not lose its output', async () => {
+    // The last marker is the frame's, because the frame runs after the command
+    // and nothing can be printed after a command has exited. Same rule as the
+    // status marker in `C2wSandbox`, and it is a rule rather than luck.
+    const files = workspace()
+    const sandbox = new GuestSandbox(
+      Outcome.ok({ stdout: withFiles('__askk_fs\nreal output', { 'a.txt': 'x' }), code: 0 }),
+    )
+
+    const said = await new ShellTool({ sandbox, files }).call({ command: 'echo __askk_fs' })
+
+    expect(said.value).toBe('__askk_fs\nreal output')
+    expect((await files.read('a.txt')).value.text).toBe('x')
+  })
+
+  test('a file that is not text is named and not stored', async () => {
+    // Decoded with `fatal`, so a guest binary cannot enter the workspace as a
+    // string of replacement characters that reads like the agent's own writing.
+    const files = workspace()
+    const sandbox = new GuestSandbox(
+      Outcome.ok({
+        stdout: withFiles('', { 'a.out': String.fromCharCode(0x7f, 0x45, 0xff, 0xfe) }),
+        code: 0,
+      }),
+    )
+
+    const said = await new ShellTool({ sandbox, files }).call({ command: 'cc x.c' })
+
+    expect((await files.list()).value).toEqual([])
+    expect(said.notes).toContain('a.out was left in /w but it is not text, so it was not saved')
+  })
+
+  test('a command that fills the working directory cannot fill the database', async () => {
+    // `cp -r /bin /w` is one command away, and the outward channel is nearly
+    // free. What is over the cap is named rather than dropped in silence.
+    const files = workspace()
+    const many = Object.fromEntries(
+      Array.from({ length: 40 }, (_, i) => [`f${String(i).padStart(2, '0')}.txt`, 'x']),
+    )
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles('', many), code: 0 }))
+
+    const said = await new ShellTool({ sandbox, files }).call({ command: 'sh make-many.sh' })
+
+    expect((await files.list()).value).toHaveLength(32)
+    expect(said.notes.some((note) => note.includes('one command may bring back 32 files'))).toBe(
+      true,
+    )
+  })
+
+  test('a sandbox that will not price its own line is sent the bare command', async () => {
+    // Sizing the staging wrong does not fail politely — the guest refuses to
+    // boot and answers about an entrypoint nobody wrote — so a sandbox that
+    // does not say how long a line it takes, OR does not say what a line costs,
+    // is not one this frame fits. Both halves, because a budget with no pricing
+    // rule is what this file spent two waves assuming was a byte count.
+    const files = workspace()
+    await files.write('notes.md', 'hello')
+    const neither = new FakeSandbox(Outcome.ok({ stdout: 'hello', code: 0 }))
+    class BudgetOnly extends FakeSandbox {
+      get commandBudget() {
+        return guest.commandBudget
+      }
+    }
+    const unpriced = new BudgetOnly(Outcome.ok({ stdout: 'hello', code: 0 }))
+
+    expect(
+      (await new ShellTool({ sandbox: neither, files }).call({ command: 'cat notes.md' })).value,
+    ).toBe('hello')
+    expect(
+      (await new ShellTool({ sandbox: unpriced, files }).call({ command: 'cat notes.md' })).value,
+    ).toBe('hello')
+    expect(neither.asked).toEqual(['cat notes.md'])
+    expect(unpriced.asked).toEqual(['cat notes.md'])
+  })
+
+  test('a build with nowhere to keep files still runs the command', async () => {
+    // `null` is what `ChatService` passes when composition handed it nothing,
+    // and it is not `undefined`, so the parameter default never fires. Before
+    // the port was checked by value this threw `null is not an object` on
+    // `this.files.list` — inside `shell`, which the Kernel reports as a bug in
+    // the harness rather than as a shell that has no store.
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: 'hi', code: 0 }))
+
+    const said = await new ShellTool({ sandbox, files: null }).call({ command: 'echo hi' })
+
+    expect(said.ok).toBe(true)
+    expect(said.value).toBe('hi')
+    expect(sandbox.asked).toEqual(['echo hi'])
+  })
+
+  test('the frame plus the limit the prompt states fits the budget the sandbox declares', async () => {
+    // What this CAN check, said in its own name. The number in the tool
+    // description is written down, because `scripts/dryrun.js` builds this tool
+    // with no sandbox and a description that changed shape without one would
+    // make every prompt measured there a measurement of a different prompt.
+    // This is what stops it drifting: the room really left for a command, after
+    // the guest's own wrapper and this file's frame, has to be at least what
+    // the model was told.
+    //
+    // What it CANNOT check is that the guest agrees, because the sandbox here is
+    // a fake that borrows a number. This test used to be called "the limit the
+    // prompt states is one the guest will actually accept", and the guest did
+    // not accept it: 800 bytes of ordinary shell was refused. The assertion that
+    // needs a guest lives in `scripts/smoke.js`, where there is one.
+    const stated = Number(
+      /cannot exceed (\d+) bytes/.exec(new ShellTool({ sandbox: null }).description)[1],
+    )
+    const files = workspace()
+    const sandbox = new GuestSandbox(Outcome.ok({ stdout: withFiles(''), code: 0 }))
+
+    await new ShellTool({ sandbox, files }).call({ command: 'a'.repeat(stated) })
+
+    expect(sandbox.cost(sandbox.asked[0])).toBeLessThanOrEqual(sandbox.commandBudget)
   })
 })

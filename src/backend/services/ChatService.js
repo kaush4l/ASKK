@@ -26,6 +26,35 @@ const isAnswered = (parsed) =>
 const reasoningOf = (parsed) => [parsed?.think, parsed?.thinking].flat().filter(Boolean).join('\n')
 
 /**
+ * How many file names one prompt will carry.
+ *
+ * MEASURED against the alternative it replaces, which is a `list_files` tool,
+ * and both halves are re-derivable because the strings are named here. The
+ * workspace priced is `notes.md src/main.c plan-2.txt README.md src/util.c
+ * data.json …` — ordinary agent-written paths, a mix of bare names and one
+ * folder deep — through this tree's own `estimateTokens`. The line
+ * `your files: <names>` costs 5 tokens at one file, 16 at five, 34 at twelve
+ * and 104 at forty.
+ *
+ * The tool costs its rendering on every turn whether or not it is called. A
+ * `list_files` written as tersely as it could honestly be —
+ * `- list_files({})` and `List the names of your own files, as read_file wants
+ * them.` — renders at 22 tokens through `Tool.render`, and then a whole round
+ * trip, a ~900-token prompt and a reply, the first time a run needs to know
+ * what exists.
+ *
+ * So the line is the better buy up to roughly forty files and the tool is
+ * better past it, and forty is the cap for exactly that reason rather than
+ * because a round number was wanted. Past it the listing SAYS it was cut: a
+ * workspace that big has outgrown a fact in the prompt and wants the tool, and
+ * the one thing that must not happen meanwhile is an agent certain it has seen
+ * all of them. `WorkspaceThroughTheLoop.test.js` asserts that sentence against
+ * the prompt the transport is handed, because a truncation nobody is told about
+ * is the whole of what this cap could get wrong.
+ */
+const MAX_LISTED = 40
+
+/**
  * The chat use case: take what the user typed, run the agent, keep the result.
  *
  * This is the only class that knows both the domain and the model. The Engine
@@ -48,14 +77,22 @@ export class ChatService {
   // next round trip, and none of `Message`'s repairs ran on the live chat path
   // at all. A use case that needs a conversation changed asks the use case that
   // owns conversations.
-  constructor({ conversations, settings, catalogue, pool, sandbox = null, http = null } = {}) {
+  constructor({
+    conversations,
+    settings,
+    catalogue,
+    pool,
+    sandbox = null,
+    http = null,
+    files = null,
+  } = {}) {
     this.conversations = conversations
     this.settings = settings
     this.catalogue = catalogue
     this.pool = pool
     // What a tool needs to reach the world. Handed to the agent builder, which
     // gives each tool only what that tool asked for.
-    this.services = { sandbox, http }
+    this.services = { sandbox, http, files }
     this._inference = null
     this._signature = ''
   }
@@ -88,6 +125,47 @@ export class ChatService {
     this._inference = built.value
     this._signature = signature
     return built
+  }
+
+  /**
+   * The facts this turn is told, which is the clock and what the agent owns.
+   *
+   * The file NAMES and nothing else — no sizes, no tree, no contents. That is a
+   * deliberate refusal of what the reference arm does: it hands its model a
+   * recursive listing on all 79 of its turns, which is most of why it knows
+   * what exists and most of why its runs cost 211,531 prompt tokens against
+   * 31,939 (`bench/README.md`). Names are what the agent needs to decide
+   * whether to call `read_file`; everything else it can go and ask for.
+   *
+   * Capped, and the cap SAYS SO. A workspace bigger than this is a workspace
+   * whose listing has become the prompt, and silently showing the first hundred
+   * would leave the agent certain it had seen all of them.
+   *
+   * Cheap in the right place too: the block is `Volatility.VOLATILE` and sits
+   * after the conversation, so a listing that changes mid-run costs its own
+   * length and does not push the transcript out of the reusable prefix. On this
+   * endpoint there is no prefix to lose anyway — measured, `cached_tokens` is 0
+   * and there is no cache field at all — so what it costs is exactly its size.
+   */
+  async _context(notes) {
+    const context = describeEnvironment()
+    if (!this.services.files) return context
+
+    const listed = await this.services.files.list()
+    // A store that cannot be read is the user's problem, not the model's: the
+    // note goes to the page, and the prompt simply says nothing about files.
+    if (!listed.ok) {
+      notes.push(`your files could not be listed: ${listed.failure.message}`)
+      return context
+    }
+    notes.push(...listed.notes)
+    if (!listed.value.length) return context
+
+    const names = listed.value.map((file) => file.path)
+    const shown = names.slice(0, MAX_LISTED)
+    const rest = names.length - shown.length
+    context.push(['your files', shown.join(' ') + (rest ? ` (and ${rest} more, not listed)` : '')])
+    return context
   }
 
   /**
@@ -158,7 +236,7 @@ export class ChatService {
       // second thread; without this, stopping the parent left the child running
       // its own budget to completion for nobody.
       dispatch: (name, task, stop) => this.pool.ask(name, task, settings.value, stop ?? signal),
-      context: describeEnvironment(),
+      context: await this._context(notes),
       services: this.services,
       extraTools: mcp.value,
     })

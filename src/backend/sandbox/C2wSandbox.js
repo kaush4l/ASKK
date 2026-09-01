@@ -5,17 +5,73 @@ import { Sandbox } from '../../core/sandbox/Sandbox.js'
 const DEFAULT_TIMEOUT = 120_000
 
 /**
- * The guest's hard limit on the command it is handed.
+ * What the guest will accept on a command line, in the units it counts.
  *
- * MEASURED, not guessed: at 1025 bytes the guest prints
- * `too many write (1025 > 1024) failed to prepare entrypoint info` and exits 1
- * before running anything. c2w passes the entrypoint through a fixed-size
- * channel, and a command longer than this cannot be delivered at all.
+ * NOT BYTES, which is why this constant and `cost` below are a pair, and it is
+ * a FLOOR rather than a boundary, which is why it is 1000 and not the largest
+ * number measured. Everything here was swept against the real image in a
+ * browser rather than bisected to, because a bisection over one padding
+ * character is what hid the space for two waves.
  *
- * Checked here so the caller is told what the limit is, rather than being given
- * an exit code and a sentence about an entrypoint it never wrote.
+ * WHAT A CHARACTER COSTS. Twelve classes, each bisected in `sh -c <line>`: `a`,
+ * `'`, `"`, `$`, `\`, TAB, CR, VT, FF, `;` and `*` all cost exactly one. SPACE
+ * and NEWLINE cost two. It is not "whitespace" — tab, CR, VT and FF are all
+ * whitespace and all cost one — so `cost` counts those two characters by name.
+ * The newline was pinned twice over, once by its own sweep and once by holding
+ * a line's length fixed and adding newlines to it: 1, 2, 5 and 20 newlines cost
+ * 2, 4, 10 and 40.
+ *
+ * WHERE THE LINE IS. Two padded shapes refuse at 1,001, swept one length at a
+ * time with the `echo` at the END of the line so a silently truncated tail
+ * could not pass as a run:
+ *
+ *     padding   bytes  spaces  cost  the guest
+ *     978 x a     996       4  1000  ran
+ *     979 x a     997       4  1001  too many write (1025 > 1024)
+ *     489 x ' '   507     493  1000  ran
+ *     490 x ' '   508     494  1002  too many write (1025 > 1024)
+ *
+ * The shape that actually ships — this wrapper around `ShellTool`'s frame
+ * around a padded command, with two files staged onto it — runs at 1,008 and
+ * refuses at 1,009. So the ceiling is NOT one number: it moves by up to eight
+ * with the shape, and both figures are multiples of eight, which reads like an
+ * alignment somewhere inside c2w rather than a limit anybody wrote down. 1000
+ * is therefore the lowest ceiling measured, and this guard is conservative by
+ * up to eight on a real line. Deliberately: over-spending is not a polite
+ * failure — the guest refuses to boot and answers about an entrypoint the
+ * caller never wrote, and `C2wSandbox` used to hand that to the agent as its
+ * own command's output.
+ *
+ * There is NO TRUNCATION BAND. Across 39 swept lengths the guest either ran the
+ * whole line or refused before running anything, so a line this guard accepts
+ * is the line that ran. The one thing that LOOKED like truncation was ours: see
+ * the newline in `wrap`.
+ *
+ * NOT MEASURED, and a hazard rather than a price: NON-ASCII bytes. A command
+ * line with one or ten `é` in it runs normally; twenty wedged the guest so hard
+ * that the browser stopped answering the debugger, and a hundred to three
+ * hundred came back in ~12 ms with no output and no boot. UTF-8 length is the
+ * conservative reading of a region where the guest does not behave, and the
+ * region belongs to `public/sandbox/` and the c2w image, which this slice does
+ * not own. The trace is in the report.
+ *
+ * This is the SECOND correction to this number and the first one is why the
+ * shape of the measurement is written down here and not just its answer. It was
+ * 1024, read out of the guest's own refusal message — a counter that also
+ * covers the argv separators, the `arg0` the worker prepends and a time block.
+ * Then it was 1,003, bisected with one padding character, and under that byte
+ * reading 800 bytes of ordinary shell — about 13% spaces — passed this guard
+ * and the guest refused it.
+ *
+ * There is no chunking: the filesystem does not survive a boot, so a command
+ * too long for one call cannot be split across two.
+ *
+ * The environment is a SECOND channel of the same size and is not used here:
+ * 906 bytes of `env` reached the guest beside a command, and 4,000 bytes
+ * answered `failed to prepare env info`. It is `public/sandbox/vm-worker.js`
+ * that passes `[]` for it.
  */
-const MAX_COMMAND_BYTES = 1024
+const MAX_COMMAND_COST = 1000
 
 /**
  * The guest's exit status, asked for on stdout because the channel does not
@@ -28,14 +84,30 @@ const MAX_COMMAND_BYTES = 1024
  * module does not pass it out. So the shell is asked to print what it knows.
  *
  * It is paid for in the two currencies that were argued about, and both were
- * measured rather than estimated. 25 bytes of the 1024-byte budget, which
- * leaves a command 993. And no time: bare and wrapped, interleaved against the
+ * measured rather than estimated. 32 of the guest's 1,000, counted the way the
+ * guest counts — `sh -c ` and this wrapper together spend 40 and leave a
+ * command 960. And no time: bare and wrapped, interleaved against the
  * real image in the same browser, `uname -a` 957 / 965 ms, `ls /nope`
  * 760 / 801 ms, `exit 7` 725 / 741 ms, `false` 723 / 732 ms — the guest boot is
  * the whole cost and 25 bytes do not move it.
  */
 const STATUS = '__askk_rc'
-const wrap = (command) => `( ${command} ) ; echo "${STATUS}$?"`
+
+/**
+ * The NEWLINE before the closing paren is not formatting.
+ *
+ * MEASURED against the real guest, and it is the defect `scripts/smoke.js`
+ * found the first time it sent a command ending in a comment. Everything after
+ * `#` is comment to the END OF THE LINE, and this whole wrapper is one line —
+ * so `( ls -la # what is here ) ; echo "__askk_rc$?"` loses its own closing
+ * paren and the status echo with it, and the guest answers
+ * `sh: syntax error: unexpected end of file (expecting ")")`. A comment is
+ * something a model writes; the newline costs two of the budget and ends it.
+ *
+ *     ( echo X #zzz ) ; echo "__askk_rc$?"      sh: syntax error …
+ *     ( echo X #zzz \n) ; echo "__askk_rc$?"    X, then __askk_rc0
+ */
+const wrap = (command) => `( ${command}\n) ; echo "${STATUS}$?"`
 
 /**
  * Anchored at the END, and both reasons are measured rather than guessed. fd 2
@@ -96,6 +168,48 @@ export class C2wSandbox extends Sandbox {
 
   get available() {
     return Boolean(this.imageUrl && this.workerUrl)
+  }
+
+  /**
+   * What a piece of a command line costs this guest.
+   *
+   * Public, and additive over concatenation, because a caller that puts
+   * anything ALONGSIDE the agent's command — `ShellTool` stages files onto the
+   * same line — has to price its own text the way the guest will, a fragment at
+   * a time. The alternative is a second copy of the rule in a file that cannot
+   * see this one, and a second copy is exactly how the byte reading above
+   * survived two waves.
+   *
+   * UTF-8 bytes, not characters, and the difference is not theoretical: a
+   * staged file of 400 CJK characters is 1,200 bytes on the wire. Measured in
+   * characters it would be waved through and then refused by the guest.
+   */
+  cost(text) {
+    const line = String(text)
+    // `split` rather than a counting loop: this is a one-line string on every
+    // path but one, and the one exception is a staged file already capped at
+    // 64 KiB. Two passes rather than one regex, because a regex here would be
+    // the character class the measurement REFUSES — tab, CR, VT and FF are all
+    // whitespace and all cost one, and `\s` would charge for them.
+    const spaces = line.split(' ').length - 1
+    const newlines = line.split('\n').length - 1
+    return new TextEncoder().encode(line).length + spaces + newlines
+  }
+
+  /**
+   * The most a `command` handed to `run` may cost.
+   *
+   * Declared because a caller that wants to put anything alongside that command
+   * has to size it against the guest's real ceiling. Derived from `wrap` rather
+   * than written down for the same reason `cost` is a method: the status marker
+   * is part of what crosses, so anything added to `wrap` shrinks this without an
+   * edit.
+   *
+   * A `Sandbox` that does not declare one is not refusing; it is saying it has
+   * no fixed line length, which is true of every implementation but this one.
+   */
+  get commandBudget() {
+    return MAX_COMMAND_COST - this.cost(`sh -c ${wrap('')}`)
   }
 
   /**
@@ -183,16 +297,17 @@ export class C2wSandbox extends Sandbox {
     // is measured against. Checked bare, a command that only just fitted would
     // arrive truncated and the guest would answer about an entrypoint the
     // caller never wrote.
-    const encoder = new TextEncoder()
     const line = wrap(command)
-    const sent = encoder.encode(`sh -c ${line}`).length
-    if (sent > MAX_COMMAND_BYTES) {
-      const own = encoder.encode(command).length
+    if (this.cost(`sh -c ${line}`) > MAX_COMMAND_COST) {
+      // Said in the guest's units and with the rule beside it, because a caller
+      // told only "too long" cannot tell whether to cut the command or the
+      // whitespace in it — and for a line half made of spaces those are very
+      // different edits.
       return Outcome.failed(
         Reason.BAD_REQUEST,
-        `the command is ${own} bytes and the sandbox accepts at most ${MAX_COMMAND_BYTES - (sent - own)}`,
+        `the command costs ${this.cost(command)} and the sandbox accepts ${this.commandBudget} — the guest charges one for every byte and one more for every space or newline`,
         {
-          hint: 'Write a shorter command. A program that will not fit belongs in the image, not on the command line.',
+          hint: 'Write a shorter command, or one with fewer spaces in it. A program that will not fit belongs in the image, not on the command line.',
         },
       )
     }
