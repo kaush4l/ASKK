@@ -18,6 +18,35 @@ const DEFAULT_TIMEOUT = 120_000
 const MAX_COMMAND_BYTES = 1024
 
 /**
+ * The guest's exit status, asked for on stdout because the channel does not
+ * carry it.
+ *
+ * MEASURED through the real image, in a browser, through this module: c2w's
+ * `proc_exit` is the EMULATOR's, and it is 0 whatever ran inside. `ls /nope`,
+ * `false`, `exit 7` and `sh -c "exit 3"` all came back 0, while
+ * `ls /nope; echo $?` printed 1 INSIDE the guest — the shell knows and the
+ * module does not pass it out. So the shell is asked to print what it knows.
+ *
+ * It is paid for in the two currencies that were argued about, and both were
+ * measured rather than estimated. 25 bytes of the 1024-byte budget, which
+ * leaves a command 993. And no time: bare and wrapped, interleaved against the
+ * real image in the same browser, `uname -a` 957 / 965 ms, `ls /nope`
+ * 760 / 801 ms, `exit 7` 725 / 741 ms, `false` 723 / 732 ms — the guest boot is
+ * the whole cost and 25 bytes do not move it.
+ */
+const STATUS = '__askk_rc'
+const wrap = (command) => `( ${command} ) ; echo "${STATUS}$?"`
+
+/**
+ * Anchored at the END, and both reasons are measured rather than guessed. fd 2
+ * shares this buffer with fd 1, so the marker is not necessarily on a line of
+ * its own; and a command whose own output has no trailing newline runs straight
+ * into it — `printf abc` comes back `abc__askk_rc0`. A command that prints the
+ * marker itself is answered correctly for the same reason: the last one wins.
+ */
+const STATUS_LINE = new RegExp(`${STATUS}(\\d+)\\n?$`)
+
+/**
  * An Alpine userland inside an x86 emulator, running in this tab.
  *
  * The artifact is built by `scripts/wasm/build.sh` with container2wasm. Two
@@ -48,8 +77,10 @@ export class C2wSandbox extends Sandbox {
   /**
    * @param {{imageUrl: string, workerUrl: string}} options where the guest
    *   image and its host worker are served from. Both are runtime URLs, not
-   *   imports: the image is far too large to live in a repository, so the app
-   *   is told where it is rather than carrying it.
+   *   imports, because both live in `public/`: a bundler must never walk into a
+   *   107 MB module or a vendored UMD shim, so the pair is fetched by address.
+   *   `composition.js` derives both from the base path — they ship side by side
+   *   in the export — and nothing here needs to know what that address is.
    */
   constructor({ imageUrl = '', workerUrl = '' } = {}) {
     super()
@@ -59,6 +90,7 @@ export class C2wSandbox extends Sandbox {
     this._booted = null
     this._pending = new Map()
     this._seq = 0
+    this._announced = false
   }
 
   get available() {
@@ -74,11 +106,6 @@ export class C2wSandbox extends Sandbox {
    */
   async _boot() {
     if (this._booted) return this._booted
-    if (!this.available) {
-      return Outcome.failed(Reason.UNAVAILABLE, 'no sandbox image is configured', {
-        hint: 'Set the sandbox image URL in settings, or build one with scripts/wasm/build.sh.',
-      })
-    }
 
     this._booted = new Promise((resolve) => {
       let worker
@@ -120,7 +147,13 @@ export class C2wSandbox extends Sandbox {
     if (data?.type === 'boot-failed') {
       resolveBoot(
         Outcome.failed(Reason.UNAVAILABLE, `the sandbox image did not load: ${data.message}`, {
-          hint: 'Check the image URL, and that the file is complete.',
+          // The one failure a real deploy can hit, so the hint names the two
+          // controls that exist and no others. The image is gitignored — it is
+          // ~107 MB — so a fresh clone has none until it is built, and a host
+          // that will not serve a file that size has to be pointed elsewhere at
+          // build time. There is no setting for this and there should not be:
+          // see `composition.js`.
+          hint: 'Build the guest with scripts/wasm/build.sh into public/sandbox/, or point the build at a hosted copy with SANDBOX_IMAGE=<url>.',
         }),
       )
       return
@@ -145,12 +178,18 @@ export class C2wSandbox extends Sandbox {
     const booted = await this._boot()
     if (!booted.ok) return booted
 
-    // `sh -c ` and the command, which is what actually crosses the channel.
-    const size = new TextEncoder().encode(`sh -c ${command}`).length
-    if (size > MAX_COMMAND_BYTES) {
+    // The WRAPPER is what crosses the channel, so the wrapper is what the cap
+    // is measured against. Checked bare, a command that only just fitted would
+    // arrive truncated and the guest would answer about an entrypoint the
+    // caller never wrote.
+    const encoder = new TextEncoder()
+    const line = wrap(command)
+    const sent = encoder.encode(`sh -c ${line}`).length
+    if (sent > MAX_COMMAND_BYTES) {
+      const own = encoder.encode(command).length
       return Outcome.failed(
         Reason.BAD_REQUEST,
-        `the command is ${size} bytes and the sandbox accepts at most ${MAX_COMMAND_BYTES}`,
+        `the command is ${own} bytes and the sandbox accepts at most ${MAX_COMMAND_BYTES - (sent - own)}`,
         {
           hint: 'Write a shorter command. A program that will not fit belongs in the image, not on the command line.',
         },
@@ -159,12 +198,14 @@ export class C2wSandbox extends Sandbox {
 
     const id = `c${++this._seq}`
     const settled = new Promise((resolve) => this._pending.set(id, resolve))
-    this._worker.postMessage({ type: 'run', id, argv: ['sh', '-c', command] })
+    this._worker.postMessage({ type: 'run', id, argv: ['sh', '-c', line] })
 
     // The guest runs synchronously inside the worker, so a command that never
     // returns blocks that worker for ever and no later command can run. The
-    // worker is terminated rather than waited on — there is nothing to
-    // interrupt, and a fresh one boots in under a second.
+    // worker is terminated rather than waited on: there is nothing to interrupt.
+    // The compiled module dies with it, so the next command pays for the whole
+    // image again — under a second over loopback, and a 107 MB download on a
+    // deploy. That is the price of the only interruption there is.
     const expired = new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), timeout))
     const finished = await Promise.race([settled, expired])
 
@@ -186,18 +227,45 @@ export class C2wSandbox extends Sandbox {
     // an explanation attached rather than looking like the command's own output.
     if (finished.trap) notes.push(`the guest stopped abnormally: ${finished.trap}`)
 
+    // Said ONCE for this boot rather than on every result: both are properties
+    // of the IMAGE, not of the command, and a constant line on every
+    // observation is paid again on every turn of every run. Said at all because
+    // `vm-worker.js` computes both and nothing read either — its own comment
+    // promises the stubbed calls are reported, and a socket that fails silently
+    // is the worst of the available answers.
+    if (!this._announced) {
+      this._announced = true
+      if (booted.value?.bytes) {
+        notes.push(`the sandbox image is ${booted.value.bytes} bytes, fetched once for this tab`)
+      }
+      if (finished.stubbed?.length) {
+        notes.push(
+          `not implemented in this sandbox, answering ENOTSUP: ${finished.stubbed.join(', ')}`,
+        )
+      }
+    }
+
     // The guest's console is a terminal, so every line ends CRLF. Measured, not
     // assumed: `stty -onlcr` does not stick across a boot, so the stripping has
     // to happen on this side. Left in, a stray \r rides into the transcript and
-    // then into the next prompt.
-    const stdout = String(finished.stdout ?? '').replaceAll('\r\n', '\n')
-    return Outcome.ok({ stdout, code: finished.code ?? 0 }, notes)
+    // then into the next prompt. Done before the status is matched, because the
+    // marker arrives with the same line ending as everything else.
+    const raw = String(finished.stdout ?? '').replaceAll('\r\n', '\n')
+    const status = raw.match(STATUS_LINE)
+    // No marker means the shell never reached the echo: a trap, a guest that
+    // died mid-command, or a command whose own quoting swallowed it. The
+    // emulator's code stands in that case, which is the old always-zero answer
+    // — wrong, but it is the only number there is, and the trap note above is
+    // usually beside it.
+    if (!status) return Outcome.ok({ stdout: raw, code: finished.code ?? 0 }, notes)
+    return Outcome.ok({ stdout: raw.slice(0, status.index), code: Number(status[1]) }, notes)
   }
 
   async close() {
     this._worker?.terminate()
     this._worker = null
     this._booted = null
+    this._announced = false
     for (const [, settle] of this._pending) {
       settle(Outcome.failed(Reason.UNAVAILABLE, 'the sandbox was shut down'))
     }

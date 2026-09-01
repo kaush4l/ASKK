@@ -51,7 +51,22 @@ export class ShellTool extends Tool {
     if (!ran.ok) {
       // The sandbox itself broke. Reported as an observation rather than an
       // error, because the agent's next move is a decision it can make.
-      return Outcome.ok(`the sandbox could not run that: ${ran.failure.message}`, ran.notes)
+      //
+      // The hint is carried in the sentence. `Toolbox` appends it for a FAILED
+      // outcome and this one is deliberately ok, so every hint the sandbox
+      // writes — the whole of what to do about an image that did not load —
+      // reached nobody at all.
+      //
+      // And the model is asked to repeat it, which is not padding: a tool's
+      // notes stop at the observation `Toolbox` renders, and the page's notes
+      // list is written from the boot and from a turn's own Outcome. There is
+      // no channel from here to the person reading the page except this
+      // sentence and whoever reads it.
+      const { message, hint } = ran.failure
+      return Outcome.ok(
+        `the sandbox could not run that: ${message}${hint ? ` (${hint})` : ''}. Say so in your answer — nothing else tells the user.`,
+        ran.notes,
+      )
     }
 
     const { stdout, code } = ran.value

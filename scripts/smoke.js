@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Boot the built artifact in a browser and wait for both realms to answer.
+ * Boot the built artifact in a browser and make three realms answer — the page
+ * and its module workers, the classic sandbox worker, and the real 107 MB guest
+ * through the tree's own `C2wSandbox`.
  *
  * The other three steps of the gate cannot see a module that parses, resolves
  * and passes its unit tests yet cannot run in the realm it was written for.
  * docs/GATE.md has the fault table that measures exactly which faults reach
  * this step and which are caught earlier, and the designs rejected for it.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import config from '../next.config.js'
@@ -81,11 +83,40 @@ if (!chromePath)
 // real guest image: same origin, same prefix, same `fetch` in the same realm.
 const GUEST_URL = `${BASE}/__smoke/guest.wasm`
 
+/**
+ * The repository's own `src/` tree, served verbatim, so realm three below can
+ * import the module under test rather than a copy of it.
+ *
+ * This is only possible because there is NO TRANSPILE over `src/`: the file a
+ * browser imports from here is the file on disk, byte for byte, with its own
+ * relative imports resolving to the neighbouring real files. Two waves measured
+ * this guest from scratch copies of the host half and a refuter killed both
+ * claims for exactly that, so the copy is the one thing this step must not be.
+ *
+ * It is not the bundle, and the difference is stated rather than glossed: the
+ * bundle is what the chunk scan below checks, and it checks the one thing a
+ * source import cannot — that the URL `composition.js` derives survived into
+ * the artifact a visitor downloads.
+ */
+const SRC_URL = `${BASE}/__src`
+const SRC = join(import.meta.dir, '..', 'src')
+
+/** Where the export puts what `public/sandbox/` holds, and what the page asks for. */
+const IMAGE_FILE = join(OUT, 'sandbox', 'sandbox.wasm')
+const IMAGE_URL = `${BASE}/sandbox/sandbox.wasm`
+
 open.server = Bun.serve({
   port: 0,
   async fetch(request) {
     const path = new URL(request.url).pathname
     if (path === GUEST_URL) return new Response(tinyGuest())
+    if (path.startsWith(`${SRC_URL}/`)) {
+      // Nothing above `src/` is reachable: a `..` in a specifier would resolve
+      // in the URL before it ever arrives, but the join is still constrained
+      // because this server is handed whatever a page asks for.
+      const file = Bun.file(join(SRC, path.slice(SRC_URL.length + 1)))
+      return (await file.exists()) ? new Response(file) : new Response('not found', { status: 404 })
+    }
     // Chrome asks the ORIGIN root for this, outside the base path, and a static
     // host at a subpath answers 404 in production too. Answered here so the one
     // request that means nothing does not have to be filtered out by name later.
@@ -171,10 +202,10 @@ open.socket.addEventListener('message', (event) => {
  * browser that stopped answering. Ten seconds is far longer than any call here
  * takes and far shorter than an agent's patience.
  */
-const send = (method, params, sessionId) =>
+const send = (method, params, sessionId, ceilingMs = 10000) =>
   new Promise((resolve) => {
     const id = ++seq
-    const ceiling = setTimeout(() => fail(`the browser never answered ${method}`), 10000)
+    const ceiling = setTimeout(() => fail(`the browser never answered ${method}`), ceilingMs)
     pending.set(id, (message) => {
       clearTimeout(ceiling)
       resolve(message)
@@ -182,11 +213,12 @@ const send = (method, params, sessionId) =>
     open.socket.send(JSON.stringify({ id, method, params, sessionId }))
   })
 
-const evaluate = async (expression, session, awaitPromise = false) => {
+const evaluate = async (expression, session, awaitPromise = false, ceilingMs) => {
   const reply = await send(
     'Runtime.evaluate',
     { expression, returnByValue: true, awaitPromise },
     session,
+    ceilingMs,
   )
   return reply.result?.result?.value
 }
@@ -273,6 +305,140 @@ const sandbox = await evaluate(
 )
 
 if (sandbox !== 'ok') await fail(`the sandbox worker ${sandbox}`, problems)
+
+// --- realm three: the real 107 MB guest, through the tree's own port ---------
+
+// The whole claim of this project is a static page with its own environment
+// that can get work done inside it. Everything above proves the wiring; only
+// this proves the environment. Two waves measured this guest and neither ever
+// ran it through `src/backend/sandbox/C2wSandbox.js`, so the one thing this
+// step must not do is measure a copy: the module below is imported from the
+// repository's own `src/`, and the image and worker come out of the export.
+//
+// Two halves, because neither alone is the claim:
+//
+//   the chunk scan   proves the URL `composition.js` DERIVES reached the
+//                    artifact. Before this slice `imageUrl` came from a
+//                    variable nothing set, so the built bundle contained
+//                    `imageUrl:""` and the string `sandbox.wasm` appeared
+//                    nowhere in `out/_next/` at all. Source-level proof cannot
+//                    see that, because the source was always readable and
+//                    always wrong.
+//   the browser run  proves the module, the classic worker, the WASI shim and
+//                    the 107 MB emulator actually run a command, hand back what
+//                    it printed, and hand back the status it exited with.
+//
+// The string searched for is the one THIS build was configured with, read from
+// the same config the build read. Hardcoding `/sandbox/sandbox.wasm` made the
+// gate red on the one procedure `composition.js` argues for — a
+// `SANDBOX_IMAGE=<url> bun run build` compiled the override into the chunk, the
+// scan could not find the default, and the step blamed a file that was correct.
+const CONFIGURED_IMAGE = config.env.NEXT_PUBLIC_SANDBOX_IMAGE || '/sandbox/sandbox.wasm'
+const chunks = join(OUT, '_next', 'static', 'chunks')
+const carriers = readdirSync(chunks)
+  .filter((name) => name.endsWith('.js'))
+  .filter((name) => readFileSync(join(chunks, name), 'utf8').includes(CONFIGURED_IMAGE))
+if (!carriers.length)
+  await fail(`no built chunk names the guest image (${CONFIGURED_IMAGE})`, [
+    'The backend was compiled with no image URL in it, so every shell call in',
+    'this artifact returns UNAVAILABLE without fetching a byte. See the sandbox',
+    'wiring in src/backend/composition.js.',
+  ])
+
+// An override names a host this gate cannot serve, so the browser run below
+// uses the copy in the export and says so. What it proves is unchanged — the
+// module, the classic worker, the shim and the emulator all run a command —
+// and what it does not prove, that the override's host answers, is a property
+// of a deploy rather than of this tree.
+if (config.env.NEXT_PUBLIC_SANDBOX_IMAGE)
+  console.log(
+    `smoke: this build points at ${CONFIGURED_IMAGE}; the browser run below uses the copy in out/.`,
+  )
+
+if (!existsSync(IMAGE_FILE)) {
+  // SAID, not skipped silently. The image is gitignored — 107 MB — so a fresh
+  // clone genuinely has none, and failing here would make the gate impossible
+  // to run before `scripts/wasm/build.sh` has ever been run. What is NOT
+  // skipped is the chunk scan above: a build that forgot where its guest lives
+  // is a source fault and fails on any machine.
+  console.log(
+    `smoke: SKIPPED the real guest — ${IMAGE_FILE} is not there (it is gitignored; build it with scripts/wasm/build.sh). The wiring was still checked: ${carriers.join(', ')} names it.`,
+  )
+} else {
+  // Imported, not reimplemented. `C2wSandbox.js` is plain JavaScript with no
+  // transpile over it, so the browser loads the file this repository holds,
+  // with its own `../../core/Outcome.js` resolving to the real one beside it.
+  const real = await evaluate(
+    `(async () => {
+       const { C2wSandbox } = await import(${JSON.stringify(`${SRC_URL}/backend/sandbox/C2wSandbox.js`)})
+       const box = new C2wSandbox({
+         imageUrl: ${JSON.stringify(IMAGE_URL)},
+         workerUrl: ${JSON.stringify(`${BASE}/sandbox/vm-worker.js`)},
+       })
+       const available = box.available
+       const at = performance.now()
+       // The first call pays for the whole 107 MB: fetch, compile, instantiate
+       // and boot the guest. The second pays for an instance and a boot only,
+       // which is the number that says what a second command costs.
+       const first = await box.run('uname -a')
+       const cold = Math.round(performance.now() - at)
+       const warm = performance.now()
+       const failing = await box.run('ls /definitely-not-here')
+       const hot = Math.round(performance.now() - warm)
+       await box.close()
+       return { available, cold, hot, first: first.toJSON(), failing: failing.toJSON() }
+     })()`,
+    session,
+    true,
+    // The ceiling is the whole 107 MB fetch, compile and two guest boots, not a
+    // protocol round trip. Measured on this machine at ~1.7 s over loopback.
+    120000,
+  )
+
+  const said = (what) => JSON.stringify(what)
+  // Over the two URLs THIS FILE wrote, so it is not evidence about the built
+  // page and is not offered as any: the chunk scan above is the whole of that,
+  // and it is a substring rather than an observation. Asserted anyway because
+  // the getter is real — turning it into `return false` fails here. What no
+  // step proves is that `composition.js` yields a true `available` INSIDE the
+  // artifact; importing it here dies on `process is not defined`, because only
+  // the bundler inlines NEXT_PUBLIC_*.
+  if (!real?.available) await fail(`the real sandbox reported available=${said(real)}`, problems)
+  if (!real.first.ok)
+    await fail(`the real guest did not run: ${said(real.first.failure)}`, problems)
+  // A real Linux, not a string this file could have written. Asserted rather
+  // than printed, because a step that prints what nobody compares passes over
+  // an empty answer.
+  if (!real.first.value.stdout.startsWith('Linux '))
+    await fail(`the guest did not answer uname: ${said(real.first.value)}`, problems)
+
+  // The failing command. Its diagnostic comes back because the worker sends
+  // fd 2 to the same buffer as fd 1, so a command that failed is readable at all.
+  if (!real.failing.value.stdout.includes('No such file or directory'))
+    await fail(`a failing command said nothing: ${said(real.failing)}`, problems)
+
+  // The status, which until this slice could only ever be 0: c2w's `proc_exit`
+  // is the emulator's, so `ls /nope`, `false` and `exit 7` all reported success
+  // and `Sandbox.js`'s promise that a non-zero exit is a readable RESULT was
+  // never kept. `C2wSandbox` now asks the shell for what it knows. This is the
+  // assertion that stands where a red-on-repair pin used to; it is asserted
+  // HERE and not in a unit test because a fake sandbox proves nothing about
+  // what the real guest's shell prints.
+  if (real.failing.value.code !== 1)
+    await fail(`the guest reported exit ${real.failing.value.code}, not 1`, [
+      'A command that failed is being reported to the agent as a success.',
+      'See the STATUS marker in src/backend/sandbox/C2wSandbox.js.',
+    ])
+  // And the marker itself is stripped: an agent must never read it as output.
+  if (real.failing.value.stdout.includes('__askk_rc'))
+    await fail(`the status marker reached the caller: ${said(real.failing.value.stdout)}`, problems)
+
+  console.log(
+    `smoke: the real guest answered ${said(real.first.value.stdout.trim())} in ${real.cold}ms cold, ` +
+      `then a failing command in ${real.hot}ms warm (exit ${real.failing.value.code})`,
+  )
+}
+
 if (problems.length) await fail('the page booted but the browser reported errors', problems)
 
 await shutdown()

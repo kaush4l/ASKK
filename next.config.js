@@ -15,10 +15,14 @@ const config = {
 
   env: {
     NEXT_PUBLIC_BASE_PATH: BASE_PATH,
-    // Where the sandbox guest image is served from. Empty by default: the
-    // artifact is ~100 MB and cannot live in a repository, so a build says
-    // where it was published rather than carrying it. With no URL the shell
-    // tool reports that it cannot run anything, which is true.
+    // An OVERRIDE, not the location. `composition.js` derives the image URL
+    // from the base path, because `public/sandbox/` is copied into the export
+    // whole and the image ships beside the worker that loads it. Empty
+    // therefore means "use the one in the export", not "there is none".
+    //
+    // Set it — `SANDBOX_IMAGE=<url> bun run build` — only for a deploy whose
+    // host will not serve a 107 MB file, which redirects every visitor at once
+    // rather than asking each of them to know a URL.
     NEXT_PUBLIC_SANDBOX_IMAGE: process.env.SANDBOX_IMAGE ?? '',
   },
 

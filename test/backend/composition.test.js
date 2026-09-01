@@ -196,10 +196,42 @@ describe('the ports buildKernel hands the chat service', () => {
     expect(chat.services.http).toBe(browserHttp)
   })
 
-  test('and the sandbox it built, so a shell tool has something to run in', async () => {
+  /**
+   * This test used to assert that the sandbox was truthy and had a `run`
+   * method, and it was green for the entire life of a build in which every
+   * `shell` call returned UNAVAILABLE without one byte being fetched: the image
+   * URL came from a variable nothing anywhere set, so `available` was false and
+   * the object it was asserting about could not run a command. Truthiness is
+   * the assertion that cost this tree the sandbox.
+   */
+  test('and the sandbox it built can actually run something', async () => {
     const { chat } = await buildKernel()
 
-    expect(chat.services.sandbox).toBeTruthy()
-    expect(typeof chat.services.sandbox.run).toBe('function')
+    expect(chat.services.sandbox.available).toBe(true)
+  })
+
+  test('the image is fetched from beside the worker it is paired with', async () => {
+    const { imageUrl, workerUrl } = (await buildKernel()).chat.services.sandbox
+
+    // Written as one URL derived from the other rather than as two literals:
+    // the claim is that they share a directory, which is what makes deriving
+    // the image the same way as the worker correct. Two spelled-out constants
+    // would pass with the pair pointing at different hosts.
+    expect(imageUrl).toBe(workerUrl.replace('vm-worker.js', 'sandbox.wasm'))
+    expect(workerUrl.endsWith('/sandbox/vm-worker.js')).toBe(true)
+  })
+
+  test('a deploy whose host will not serve 107 MB can point the build elsewhere', async () => {
+    // The override that replaces the setting the failure hint used to promise.
+    // It is read at build time, so this is the only realm it can be exercised
+    // in; in the browser Next has already inlined it as a literal.
+    process.env.NEXT_PUBLIC_SANDBOX_IMAGE = 'https://cdn.example/guest.wasm'
+    try {
+      const { chat } = await buildKernel()
+
+      expect(chat.services.sandbox.imageUrl).toBe('https://cdn.example/guest.wasm')
+    } finally {
+      delete process.env.NEXT_PUBLIC_SANDBOX_IMAGE
+    }
   })
 })

@@ -40,12 +40,19 @@ describe('Conversation identity', () => {
 
   test('toJSON is the persisted record: keyed by id, messages flattened', () => {
     const conversation = new Conversation({ id: 'c-1', title: 'Chat', createdAt: 1 })
-    conversation.append(Role.USER, 'hi')
+    conversation.append({ role: Role.USER, text: 'hi' })
 
     const record = conversation.toJSON()
 
     expect(record.id).toBe('c-1')
     expect(record.messages).toHaveLength(1)
+    // Asserted because `append` takes one object and every field in it is a
+    // string: called positionally it repairs rather than refusing, and every
+    // assertion in this file about ids and lengths stays green over a message
+    // whose text is ''.
+    expect(record.messages[0].text).toBe('hi')
+    expect(record.messages[0].role).toBe(Role.USER)
+    expect(record.messages[0].repairs).toBeUndefined()
     // The record is not the instance: the instance holds `_messages` of
     // `Message`, the record holds `messages` of plain rows.
     expect(record._messages).toBeUndefined()
@@ -56,7 +63,7 @@ describe('Conversation identity', () => {
     // The sentence the docstring makes: identity is the id, not the fields.
     const conversation = new Conversation({ id: 'c-1', title: 'Chat' })
     conversation.rename('Renamed')
-    conversation.append(Role.USER, 'hi')
+    conversation.append({ role: Role.USER, text: 'hi' })
 
     expect(conversation.id).toBe('c-1')
     expect(conversation.toJSON().title).toBe('Renamed')
@@ -73,7 +80,7 @@ describe('Conversation identity', () => {
     // The getter copies on read. If it returned `_messages` this push would
     // land in the record.
     const conversation = new Conversation({ id: 'c-1' })
-    conversation.append(Role.USER, 'hi')
+    conversation.append({ role: Role.USER, text: 'hi' })
 
     conversation.messages.push('forged')
 
@@ -82,11 +89,55 @@ describe('Conversation identity', () => {
 
   test('a round trip through JSON keeps the conversation and message ids', () => {
     const conversation = new Conversation({ id: 'c-1', title: 'Chat' })
-    const appended = conversation.append(Role.USER, 'hi')
+    const appended = conversation.append({ role: Role.USER, text: 'hi' })
 
     const reloaded = Conversation.fromJSON(JSON.parse(JSON.stringify(conversation)))
 
     expect(reloaded.id).toBe('c-1')
     expect(reloaded.messages[0].id).toBe(appended.id)
+  })
+})
+
+describe('the scratchpad a reply was written with', () => {
+  test('it is part of the message, not a field beside it', () => {
+    // `ChatService` needed somewhere to keep the model's working-out and wrote
+    // it onto a literal of its own, which `Message.toJSON` did not emit: one
+    // schema, two writers, and the field belonged to the one that wrote last.
+    const conversation = new Conversation({ id: 'c-1' })
+
+    conversation.append({ role: Role.ASSISTANT, text: 'linux', thinking: 'one\ntwo' })
+
+    expect(conversation.toJSON().messages[0].thinking).toBe('one\ntwo')
+  })
+
+  test('a reply with nothing behind it does not carry an empty field', () => {
+    const conversation = new Conversation({ id: 'c-1' })
+
+    conversation.append({ role: Role.ASSISTANT, text: 'linux' })
+
+    expect('thinking' in conversation.toJSON().messages[0]).toBe(false)
+  })
+
+  test('a record whose messages field is not a list keeps the conversation', () => {
+    // `Message` repairs an unknown role and a non-string body rather than
+    // refusing; the container did not, and threw out of `map`. Everything that
+    // reads a conversation goes through this constructor, so the throw was not
+    // confined to the damaged record — see `ConversationService.test.js` for
+    // what it cost the menu.
+    const reloaded = Conversation.fromJSON({ id: 'c-1', title: 'Corrupt', messages: null })
+
+    expect(reloaded.id).toBe('c-1')
+    expect(reloaded.title).toBe('Corrupt')
+    expect(reloaded.messages).toEqual([])
+    expect(Conversation.fromJSON({ id: 'c-2', messages: 'hi' }).messages).toEqual([])
+  })
+
+  test('a record that predates createdAt keeps the oldest time, not the time it was read', () => {
+    // The constructor's default is right for a conversation being made and
+    // wrong for one being rehydrated. `ConversationService.list` sorts newest
+    // first, and `page.jsx` opens the first row.
+    const reloaded = Conversation.fromJSON({ id: 'c-1', title: 'Ancient', messages: [] })
+
+    expect(reloaded.createdAt).toBe(0)
   })
 })

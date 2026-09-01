@@ -1,11 +1,29 @@
 import { describeEnvironment } from '../../core/agent/Environment.js'
 import { buildAgent } from '../../core/agent/loadAgent.js'
-import { newId } from '../../core/ids.js'
 import { createInference } from '../../core/inference/index.js'
 import { Role } from '../../core/Message.js'
 import { discoverMcpTools } from '../../core/mcp/index.js'
-import { Outcome, Reason } from '../../core/Outcome.js'
+import { Outcome } from '../../core/Outcome.js'
 import { EventName } from '../../protocol/Envelope.js'
+
+/**
+ * What a parsed response means, asked in one place.
+ *
+ * Each of these three questions was written twice — once for the STEP event the
+ * page draws and once for the record that goes to storage — and the two
+ * spellings had already drifted. `answer` was `?? ''` on the wire and a bare
+ * `.answer` on the way to storage; `isAnswer` called a `null` parse answered on
+ * the wire and unanswered on the way to storage, and only reached the second of
+ * those, so the disagreement was latent rather than visible. Two spellings of
+ * one rule is how `thinking` became a field only one writer had heard of; the
+ * same argument is at the top of `Message`.
+ */
+const answerOf = (parsed) => (typeof parsed === 'string' ? parsed : (parsed?.answer ?? ''))
+/** `!= null` rather than `!== null`: nothing here throws, including on `undefined`. */
+const isAnswered = (parsed) =>
+  parsed != null && (typeof parsed === 'string' || parsed.isAnswer !== false)
+/** `think` is a list on the ReAct contract and a string on the simpler ones. */
+const reasoningOf = (parsed) => [parsed?.think, parsed?.thinking].flat().filter(Boolean).join('\n')
 
 /**
  * The chat use case: take what the user typed, run the agent, keep the result.
@@ -22,6 +40,14 @@ export class ChatService {
   // Named, not positional. Four of these six are shapeless objects and this
   // tree has no type checker, so a transposed pair of arguments is accepted
   // everywhere and fails three files away as `settings.get is not a function`.
+  //
+  // `conversations` is the `ConversationService`, not the repository it holds.
+  // This class used to take the repository and write message rows onto it by
+  // hand, which made it a second author of a schema it did not own: it wrote a
+  // `thinking` field the domain model had never heard of and dropped it on the
+  // next round trip, and none of `Message`'s repairs ran on the live chat path
+  // at all. A use case that needs a conversation changed asks the use case that
+  // owns conversations.
   constructor({ conversations, settings, catalogue, pool, sandbox = null, http = null } = {}) {
     this.conversations = conversations
     this.settings = settings
@@ -85,21 +111,17 @@ export class ChatService {
       ])
     }
 
-    const loaded = await this.conversations.get(id)
+    const loaded = await this.conversations.get({ id })
     if (!loaded.ok) return loaded
-    if (!loaded.value) {
-      return Outcome.failed(Reason.NOT_FOUND, `no conversation ${id}`, {
-        hint: 'Start a new chat.',
-      })
-    }
 
-    const record = loaded.value
     const notes = []
-    const userMessage = { id: newId(), role: Role.USER, text: typed, createdAt: Date.now() }
-    record.messages.push(userMessage)
-
-    const savedUser = await this.conversations.put(record)
-    if (!savedUser.ok) notes.push(`your message was not saved: ${savedUser.failure.message}`)
+    const appended = await this.conversations.appendMessage({ id, role: Role.USER, text: typed })
+    if (!appended.ok) return appended
+    notes.push(...appended.notes)
+    const userMessage = appended.value
+    // The transcript as it stands after that append, without a second read.
+    // Re-loading would be a round trip to learn something this call just did.
+    const history = [...loaded.value.messages, userMessage]
 
     const settings = await this.settings.get()
     notes.push(...settings.notes)
@@ -146,7 +168,7 @@ export class ChatService {
     // The live view of the run. Everything here is a report on work that is
     // happening anyway — none of it changes the result, and a caller that
     // passed no emitter gets exactly the same reply.
-    const answered = await agent.value.run(record.messages, {
+    const answered = await agent.value.run(history, {
       // The terms this agent declared, or none — in which case `Budget` applies
       // its own, which is where they are argued for. Handed as a declaration
       // and not as a counter, so one turn's spending cannot leak into the next.
@@ -172,9 +194,9 @@ export class ChatService {
         ? ({ step, parsed }) =>
             emit(EventName.STEP, {
               step,
-              answer: typeof parsed === 'string' ? parsed : (parsed?.answer ?? ''),
-              isAnswer: typeof parsed === 'string' ? true : parsed?.isAnswer !== false,
-              thinking: [parsed?.think, parsed?.thinking].flat().filter(Boolean).join('\n'),
+              answer: answerOf(parsed),
+              isAnswer: isAnswered(parsed),
+              thinking: reasoningOf(parsed),
             })
         : undefined,
     })
@@ -195,7 +217,7 @@ export class ChatService {
     // `shell({...})` into the transcript as the assistant's reply would be the
     // user's own stop corrupting the conversation they stopped, so the
     // transcript keeps what they typed and the notes say what happened.
-    if (parsed === null || (typeof parsed !== 'string' && parsed.isAnswer === false)) {
+    if (!isAnswered(parsed)) {
       // `notes` already holds the run's own notes — they were pushed one branch
       // above. Spreading them a second time here put every note on screen
       // twice and, because `page.jsx` keys each note by its text, collided two
@@ -204,21 +226,39 @@ export class ChatService {
       return Outcome.ok({ user: userMessage, assistant: null }, notes)
     }
 
-    const reply = typeof parsed === 'string' ? parsed : parsed.answer
-    const assistantMessage = {
-      id: newId(),
+    const reply = answerOf(parsed)
+    // Appended rather than pushed onto the record loaded at the top of this
+    // method. That record is as old as the model call — seconds, or minutes on
+    // a local model — and writing it back would erase anything appended or
+    // renamed while the model was thinking.
+    const wrote = await this.conversations.appendMessage({
+      id,
       role: Role.ASSISTANT,
+      // A model that answers with an empty string still made a turn, and a
+      // blank assistant bubble is a transcript that says nothing happened.
       text: reply || '(the model returned nothing)',
-      createdAt: Date.now(),
-      // Kept for the transcript, never rendered as the reply. `think` is a list
-      // on the ReAct contract and a string on simpler ones, so it is flattened.
-      thinking: [parsed?.think, parsed?.thinking].flat().filter(Boolean).join('\n'),
+      // Stored beside the reply, never shown as it.
+      //
+      // It now survives a round trip, which it did not before. It still has no
+      // reader: `page.jsx` renders `live.reasoning` while the turn is running
+      // and `message.text` afterwards, and `grep -rn 'message.thinking' src/`
+      // is empty. Kept rather than deleted because the erasure was the defect
+      // being fixed and the record is the only place the reasoning can be read
+      // back from at all — but it is a field with a writer and no reader, and
+      // it is `docs/LEDGER.md` row S21 until the transcript renders it.
+      thinking: reasoningOf(parsed),
+    })
+    // The same shape as the stopped-run branch above. The question is already
+    // in the transcript either way, so a caller that failed here still learns
+    // what was written down before the failure.
+    if (!wrote.ok) {
+      return new Outcome(false, { user: userMessage, assistant: null }, wrote.failure, [
+        ...notes,
+        ...wrote.notes,
+      ])
     }
-    record.messages.push(assistantMessage)
+    notes.push(...wrote.notes)
 
-    const savedReply = await this.conversations.put(record)
-    if (!savedReply.ok) notes.push(`the reply was not saved: ${savedReply.failure.message}`)
-
-    return Outcome.ok({ user: userMessage, assistant: assistantMessage }, notes)
+    return Outcome.ok({ user: userMessage, assistant: wrote.value }, notes)
   }
 }

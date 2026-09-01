@@ -197,17 +197,31 @@ export async function buildKernel({
   // that never runs a command must never download it — the first `shell` call
   // is what pays for it.
   //
-  // The image URL is a setting rather than a constant because the artifact is
-  // far too large to live in a repository: the app is told where it is hosted.
-  // Empty means no sandbox, and the shell tool says so instead of failing.
+  // The image URL is DERIVED, exactly like the worker URL beside it, because the
+  // two files ship side by side: `public/sandbox/` is copied into the export
+  // whole. What cannot carry 107 MB is the REPOSITORY — `.gitignore` excludes
+  // the image and GitHub refuses a file that size — and reasoning about the
+  // repository from a line that runs in the export is what left this `''` in
+  // every build ever made. `docs/GATE.md` has the measurement.
+  //
+  // The build-time override survives, and stays build-time. Which host serves
+  // the image is a property of the DEPLOY, not of the person visiting it: a
+  // deploy whose host will not serve 107 MB is redirected once, for everybody,
+  // with `SANDBOX_IMAGE=<url> bun run build`. As a user setting it would be a
+  // URL nobody visiting can know, stored in a database only their own browser
+  // reads, and every other visitor would still be broken.
   const sandbox = new C2wSandbox({
-    imageUrl: process.env.NEXT_PUBLIC_SANDBOX_IMAGE ?? '',
+    imageUrl: process.env.NEXT_PUBLIC_SANDBOX_IMAGE || `${base}/sandbox/sandbox.wasm`,
     workerUrl: `${base}/sandbox/vm-worker.js`,
   })
 
-  const conversations = make('Conversation', STORE_CONVERSATIONS)
   const settingsRepository = make('Settings', STORE_SETTINGS)
   const settings = new SettingsService(settingsRepository)
+  // One instance, handed to both the route table and the chat use case. Two
+  // would be two write queues over one store, which is the interleaving the
+  // queue exists to stop — and a second author of the conversation schema is
+  // exactly the defect this replaced.
+  const conversations = new ConversationService(make('Conversation', STORE_CONVERSATIONS))
 
   const chat = new ChatService({
     conversations,
@@ -219,14 +233,11 @@ export async function buildKernel({
   })
 
   const kernel = new Kernel()
-    .register('conversations', new ConversationService(conversations))
+    .register('conversations', conversations)
     .register('settings', settings)
     .register('chat', chat)
     .register('agents', new AgentService(catalogue, pool))
 
-  if (!sandbox.available) {
-    notes.push('no sandbox image is configured, so the shell tool cannot run commands')
-  }
   // Said out loud, in the one place the user reads notes. Nothing else in this
   // app leaves the machine except the model call the user configured — but a
   // search cannot be served from inside a static page, so every query goes

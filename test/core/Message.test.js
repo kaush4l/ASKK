@@ -69,3 +69,87 @@ describe('Message identity', () => {
     expect(Message.fromJSON(JSON.parse(JSON.stringify(message))).id).toBe('m-1')
   })
 })
+
+describe('what a message is made of', () => {
+  test('the scratchpad is a field of the record, emitted only when there is one', () => {
+    const withThought = new Message({ role: Role.ASSISTANT, text: 'linux', thinking: 'because' })
+    const without = new Message({ role: Role.ASSISTANT, text: 'linux' })
+
+    expect(withThought.toJSON().thinking).toBe('because')
+    expect('thinking' in without.toJSON()).toBe(false)
+  })
+
+  test('a non-string scratchpad is converted and the conversion is recorded', () => {
+    // The same rule as `text`, written once and applied to both. It used to be
+    // written inline for `text` and not at all for `thinking`, which is how
+    // `thinking` came to be a field only one of the two writers had heard of.
+    const message = new Message({ role: Role.ASSISTANT, text: 'linux', thinking: 7 })
+
+    expect(message.thinking).toBe('7')
+    expect(message.toJSON().repairs).toEqual(['thinking was not a string; converted'])
+  })
+
+  test('an absent scratchpad is empty and is not a repair', () => {
+    const message = new Message({ role: Role.USER, text: 'hi' })
+
+    expect(message.thinking).toBe('')
+    expect(message.repairs).toEqual([])
+  })
+
+  test('a field stored as null is empty too, not the four letters of "null"', () => {
+    // `undefined` is what the case above passes, and it is not the case that
+    // reaches a stored record: a JSON or IndexedDB round trip hands back
+    // `null`. With the guard written `=== undefined` every assertion in this
+    // file stayed green while `String(null)` became the message body.
+    const message = new Message({ role: Role.USER, text: null, thinking: null })
+
+    expect(message.text).toBe('')
+    expect(message.thinking).toBe('')
+    expect(message.repairs).toEqual([])
+  })
+
+  test('a repairs field that is not a list costs the trail, not the message', () => {
+    // The audit trail is the one field that is ABOUT damage, and it was the one
+    // field damage could not survive: a non-iterable `repairs` threw out of the
+    // spread in the constructor, out of `fromJSON`, and out of every read of
+    // the conversation holding it.
+    const forged = Message.fromJSON({ id: 'm-1', role: Role.USER, text: 'hi', repairs: 'ab' })
+
+    // Not `['a', 'b']`, which is what spreading a string produced: an audit
+    // trail invented out of characters.
+    expect(forged.repairs).toEqual(['repairs was not a list; the earlier trail was lost'])
+    expect(forged.text).toBe('hi')
+    expect(Message.fromJSON({ role: Role.USER, text: 'hi', repairs: 5 }).repairs).toHaveLength(1)
+    // An absent trail is absent, not damaged.
+    expect(Message.fromJSON({ role: Role.USER, text: 'hi', repairs: null }).repairs).toEqual([])
+  })
+
+  test('the audit trail cannot be added to by whoever is holding the message', () => {
+    // The freeze on the object leaves the array reachable by reference, and
+    // `toJSON` emits whatever is in it — so a line pushed here round trips into
+    // storage and reaches the user as a note the service never wrote.
+    const message = new Message({ role: Role.ASSISTANT, text: 'linux', thinking: 7 })
+
+    expect(() => message.repairs.push('forged')).toThrow()
+    expect(message.toJSON().repairs).toEqual(['thinking was not a string; converted'])
+  })
+
+  test('a stored message survives a full round trip with everything on it', () => {
+    const original = new Message({ role: 'wizard', text: 7, thinking: 'hmm' })
+
+    const back = Message.fromJSON(original.toJSON())
+
+    expect(back.toJSON()).toEqual(original.toJSON())
+    expect(back.thinking).toBe('hmm')
+    // The repairs are carried, not re-derived: the second pass has nothing left
+    // to repair, so a record that re-earned them would be one that lost them.
+    expect(back.repairs).toEqual(original.repairs)
+  })
+
+  test('a message that predates createdAt keeps the oldest time, not the time it was read', () => {
+    expect(Message.fromJSON({ id: 'm-1', role: Role.USER, text: 'ancient' }).createdAt).toBe(0)
+    expect(
+      Message.fromJSON({ id: 'm-1', role: Role.USER, text: 'x', createdAt: 5 }).createdAt,
+    ).toBe(5)
+  })
+})

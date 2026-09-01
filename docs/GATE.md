@@ -112,7 +112,7 @@ see", below, for the other two.
 ## What the smoke does
 
 `scripts/smoke.js` serves `out/` from `Bun.serve`, drives headless Chrome over
-raw CDP, and makes two realms answer:
+raw CDP, and makes three realms answer:
 
 - **the page and the backend worker.** It waits for `data-live` on the wordmark,
   which goes true only after `worker.js` has answered `conversations.list`,
@@ -140,7 +140,42 @@ arrives as an answer naming it:
 
 The guest is hand-assembled from bytes rather than compiled because a toolchain
 would be a dependency and a checked-in binary would be unreadable. The real
-guest image is ~100 MB and cannot be a gate's dependency at all.
+guest image is ~100 MB and cannot be a gate's dependency at all — which is not
+the same as saying the gate may never run it, and the third realm is what that
+distinction bought.
+
+- **the real 107 MB guest, through `src/backend/sandbox/C2wSandbox.js`.** Two
+  waves measured this guest and neither ever ran it through the tree's own port:
+  everything known about it came from scratch copies of the host half, and a
+  refuter killed both claims for exactly that. This step imports the real module
+  — possible only because there is no transpile over `src/`, so the browser gets
+  the file the repository holds — points it at `out/sandbox/sandbox.wasm` and
+  `out/sandbox/vm-worker.js`, and runs two commands. It asserts
+  `available === true`, that `uname -a` answers a line starting `Linux `, and
+  that a failing command's diagnostic comes back.
+
+  It also asserts, from `out/_next/static/chunks/`, that some chunk contains the
+  string `/sandbox/sandbox.wasm`. That is not decoration. Until this slice
+  `composition.js` read the image URL from an environment variable nothing
+  anywhere set, so every build ever made shipped `imageUrl:""` and the string
+  `sandbox.wasm` appeared nowhere in `out/_next/` at all. A source-level check
+  cannot see that fault, because the source was always readable and always
+  wrong; only the artifact says whether the URL survived into it.
+
+  **The image is gitignored, so a fresh clone has none.** The step then SAYS it
+  is skipping and why, in one line on stdout, and the chunk scan still runs — a
+  build that forgot where its guest lives is a source fault and fails on any
+  machine, with or without 107 MB on disk. A check that opts out silently is the
+  thing this file was written against; a check that cannot run at all until
+  `scripts/wasm/build.sh` has been run once is a check nobody can adopt.
+
+  It also asserts the exit status, and that assertion is the only place in the
+  gate where the status can be proved: a fake sandbox in a unit test prints
+  whatever the test wrote into it. This step used to assert the WRONG value —
+  the c2w module's `proc_exit` is the emulator's and returned 0 whatever ran —
+  pinned red-on-repair the way `Toolbox.test.js` pins the tool that throws. The
+  repair landed, the pin came out with it, and `C2wSandbox` now asks the shell
+  for the status on stdout. `docs/LEDGER.md`, row S20.
 
 Rejected, with reasons:
 
@@ -270,6 +305,18 @@ noise lands on both:
     the smoke step alone, before           0.74 s
     the smoke step alone, after            0.72 s
 
+Re-measured when the real guest was added, same machine, three runs each:
+
+    the smoke step, image absent (skipped)   0.71 s
+    the smoke step, image present            2.33 / 2.30 / 2.49 s
+
+The 1.6 s is the guest and nothing else: 0.94 s for the cold call — the 107 MB
+fetch over loopback, `WebAssembly.compile`, an instance and the Alpine boot —
+and 0.73 s for the second, which pays for everything but the fetch and the
+compile. It is the most expensive thing in the gate, and the only thing in the
+gate that executes the substrate this project's claim rests on. A machine that
+does not want to pay it does not have the file.
+
 Booting and running a guest costs nothing measurable: the module is ~300 bytes,
 `WebAssembly.compile` on it is sub-millisecond, and the round trip is one
 `postMessage` more than the refusal it replaced. What it buys back is the
@@ -285,7 +332,8 @@ every run, so there is no state for either flag to suppress.
 ## Requirements
 
 The smoke needs a Chromium. It looks at `$CHROME` first, then the usual macOS and
-Linux paths. **A missing browser fails the step**; it does not skip it. A check
+Linux paths. It does NOT need `public/sandbox/sandbox.wasm`: without it the third
+realm prints that it was skipped, and everything else still runs. **A missing browser fails the step**; it does not skip it. A check
 that quietly opts out on the machine where it matters is not a check, and this
 repository has shipped a dead page under a green gate before.
 

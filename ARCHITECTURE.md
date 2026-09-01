@@ -149,10 +149,15 @@ something out rather than be told it.
 host that cannot set COOP and COEP headers. That single fact is why this
 substrate was chosen over the alternatives.
 
-**Boot to first output: 814 ms.** The module is fetched and compiled once
-(~107 MB, 15 ms to compile) and instantiated per command (9 ms).
+**Boot to first output: ~1 s over loopback.** The module is fetched and compiled
+once (~107 MB) and instantiated per command. This is the one number in this file
+that the gate re-derives on every run — `bun run check` prints it, most recently
+*"the real guest answered `Linux localhost 6.1.0 …` in 965ms cold, then a
+failing command in 749ms warm (exit 1)"* — three runs spread 951–1015 ms cold and
+749–764 ms warm. The cold figure is the whole 107 MB
+fetch plus a compile; the warm one is an instance and an Alpine boot.
 
-Three limits, each measured rather than assumed, and each stated to the model
+Four limits, each measured rather than assumed, and each stated to the model
 rather than hidden:
 
 - **One boot runs one command.** With no blocking stdin there is no interactive
@@ -160,13 +165,50 @@ rather than hidden:
   the alternative: it needs blocking stdin, hence SharedArrayBuffer, hence
   headers this app cannot set — and one malformed command wedges the shell for
   every later caller.
-- **1024 bytes of command line.** At 1025 the guest prints
+- **1024 bytes on the channel, 993 usable.** At 1025 the guest prints
   `too many write (1025 > 1024) failed to prepare entrypoint info` and exits
   before running anything. `C2wSandbox` checks this and says so, rather than
-  passing on an exit code about an entrypoint nobody wrote. **A program that
-  will not fit belongs in the image, not on the command line.**
-- **About a hundred times slower** than the machine it runs on. Fine for `ls`,
-  a grep, a small script. Not a place to run a build.
+  passing on an exit code about an entrypoint nobody wrote. The 31-byte gap is
+  the status wrapper below, and the cap is measured against the **wrapper**,
+  because that is what actually crosses. **A program that will not fit belongs in
+  the image, not on the command line.**
+- **The exit status has to be asked for.** c2w's `proc_exit` is the *emulator's*
+  and returns 0 whatever ran, so for as long as this sandbox existed every
+  command came back successful. The guest is now sent
+  `sh -c '( <cmd> ) ; echo "__askk_rc$?"'` and the marker is taken off the **end**
+  of stdout — the end, not a line of its own, because fd 2 shares the buffer and
+  because `printf abc` runs straight into it. Measured through the real image:
+  `ls /nope` 1, `false` 1, `exit 7` 7, `sh -c "exit 3"` 3. It costs 25 bytes and
+  no measurable time, and the gate asserts it. Where the shell never reaches the
+  echo — a trap, quoting that swallowed it — the emulator's 0 stands and the trap
+  arrives as a note.
+- **About a hundred times slower** than the machine it runs on, which is the
+  sentence the model is handed and is the wrong order of magnitude. Measured
+  against the identical busybox in `docker run --rm alpine:3.21`: 358x on an
+  `awk` loop, 485x on `sha256sum`, 255x on `gzip`. Fine for `ls`, a grep, a small
+  script. Not a place to run a build.
+
+### It does not reach the deployed page
+
+The image ships **inside the export** — `public/` is copied whole, so
+`composition.js` derives its URL from the base path exactly as it derives the
+worker's. That is what makes a shell command work when the export is served, and
+it has been run end to end through the built artifact.
+
+It does not work on `https://kaush4l.github.io/ASKK/`, and the reason is not a
+browser one. The file is 107,054,914 bytes, which is 2,197,314 over GitHub's
+100 MiB per-file block, so it is excluded from the repository (`.gitignore:33`)
+and from the deploy (`git show a1d7a98 -- .gitignore`). Measured on the live
+site: the page and `sandbox/vm-worker.js` answer 200 and `sandbox/sandbox.wasm`
+answers **404**, so every `shell` call there fails to boot and the model is told
+so. Git LFS is closed to Pages by Pages' own documentation; compression does not
+help, because the limit is on the file at rest and the edge already gzips
+`application/wasm` for free.
+
+`SANDBOX_IMAGE=<url> bun run build` compiles a different URL into the bundle for
+a deploy whose host will serve the file. It is an override, not the location, and
+nothing has ever fetched the image from another origin — see `CAPABILITIES.md`,
+which carries that as `unverified` rather than as a plan.
 
 ### Two builds
 
@@ -697,17 +739,33 @@ later audio would be dropped in silence.
 
 ## Where this goes next
 
-1. **Tools** — a `Toolbox` behind `ReActEngine.observe`, which currently
-   reports that none exist. That method is the whole of the change.
-2. **Streaming** — the protocol answers once per request. Streaming tokens needs
-   a second message shape (`chunk`) keyed to the same request id, and a
-   `_postJson` sibling that reads the SSE body.
-3. **Prompt components** — system / history / contract are assembled by
-   `Engine.render` in a fixed order. The reference implementation makes each a
-   `Component` with a slot, so an agent file can choose the recipe.
-4. **Single-writer election** — `navigator.locks` in the worker, so two open tabs
-   cannot both drive the same run. The lock must be held by a promise that never
-   settles, or it releases the moment the callback returns.
-5. **Deploy** — static export to GitHub Pages at `/ASKK`, with `.nojekyll` (Pages
-   strips `_next/`). Verify by polling the build id, never page content: a stale
-   build serves a byte-identical page from disk cache.
+The first three items on this list were done and the list did not notice, which
+is the failure mode this file is supposed to be immune to. They are written down
+as done, with what to grep, rather than deleted, because a plan that quietly
+loses its own history is how the same thing gets built twice.
+
+**Done.** *Tools* — `core/tools/Toolbox.js` exists and `ReActEngine.js:239`
+runs it. *Streaming* — `EventName.DELTA` on the same request id, emitted at
+`ChatService.js:188`. *Prompt components* — `core/prompt/PromptTemplate.js`.
+*Deploy* — static export to GitHub Pages at `/ASKK` with `.nojekyll`;
+`git log --oneline gh-pages | wc -l` is 93, of which exactly **one**
+(`a1d7a98 Deploy 2ef2c05`) is a commit descended from this architecture's
+skeleton, and it is five commits behind `main`. Verify by polling the build id,
+never page content: a stale build serves a byte-identical page from disk cache.
+
+**Open, in the order that unblocks the most:**
+
+1. **Get the guest to the visitor.** The environment works in a browser and is
+   404 on the site this project deploys to. See *It does not reach the deployed
+   page* above; `CAPABILITIES.md` has the measurements and the three parts of the
+   experiment.
+2. **Single-writer election** — `navigator.locks` in the worker, so two open tabs
+   cannot both drive the same run (`grep -rn "navigator.locks" src` → 0). The
+   lock must be held by a promise that never settles, or it releases the moment
+   the callback returns.
+3. **A filesystem.** Nothing on the realm diagram holds files. Eleven rows of
+   `CAPABILITIES.md`'s *Building software* wait on one box that does not exist,
+   and the measured candidate is OPFS in the backend worker.
+4. **Sub-agents that are actually constructed.** `agentWorker.js` is the only
+   realm on the diagram nothing has ever entered: `ChatService.js:142` computes
+   `peers` from a roster of one, so the pool is never asked for a thread.

@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import { MemoryRepository } from '../../src/backend/repositories/MemoryRepository.js'
 import { ChatService } from '../../src/backend/services/ChatService.js'
+import { ConversationService } from '../../src/backend/services/ConversationService.js'
 import { AgentSpec } from '../../src/core/agent/AgentSpec.js'
 import { Outcome } from '../../src/core/Outcome.js'
+import { EventName } from '../../src/protocol/Envelope.js'
 import { ScriptedInference } from '../support/ScriptedInference.js'
 
 /**
@@ -42,8 +44,13 @@ class ScriptedChat extends ChatService {
 }
 
 function chatWith(replies, services = {}) {
-  const conversations = new MemoryRepository('conversation')
-  conversations.rows.set('c1', { id: 'c1', title: 'Chat', messages: [] })
+  // The real `ConversationService` over an in-memory store, not a fake: the
+  // thing under test is that the chat path writes through the domain model, and
+  // a fake `appendMessage` would be this test agreeing with itself about a
+  // schema neither of them owns.
+  const repository = new MemoryRepository('conversation')
+  repository.rows.set('c1', { id: 'c1', title: 'Chat', messages: [], createdAt: 1 })
+  const conversations = new ConversationService(repository)
 
   const spec = AgentSpec.of({ metadata: { name: 'main' }, body: 'be brief', source: 'test' }).value
   const catalogue = {
@@ -67,7 +74,7 @@ function chatWith(replies, services = {}) {
     pool: { ask: async () => Outcome.ok('') },
     ...services,
   })
-  return { service, conversations, inference }
+  return { service, conversations: repository, inference }
 }
 
 const saved = (conversations) => conversations.rows.get('c1').messages
@@ -192,7 +199,8 @@ describe('ChatService and a run that was stopped', () => {
  * call the real one and read the object it built.
  */
 describe('the inference a turn is given', () => {
-  const service = () => new ChatService({ conversations: new MemoryRepository('conversation') })
+  const service = () =>
+    new ChatService({ conversations: new ConversationService(new MemoryRepository('c')) })
   const bare = AgentSpec.of({ metadata: { name: 'main' }, body: 'be brief', source: 'test' }).value
   const base = { kind: 'openai', model: 'm', baseUrl: 'http://127.0.0.1:8873/v1', apiKey: '' }
 
@@ -294,5 +302,168 @@ describe('the port a tool is given', () => {
 
     expect(sent.ok).toBe(true)
     expect(inference.prompts[1]).toContain('this build cannot make an HTTP request')
+  })
+})
+
+/**
+ * The transcript this service writes, and who owns its shape.
+ *
+ * This class used to take the repository and push message literals onto the
+ * record it had loaded — `{id, role, text, createdAt}` for the question and the
+ * same plus `thinking` for the reply. `Message.toJSON()` emitted neither
+ * `thinking` nor any of its repairs, so the two writers held two spellings of
+ * one schema and the first round trip through `ConversationService` deleted the
+ * field only one of them knew about. These pin the single owner.
+ */
+describe('the record a turn leaves behind', () => {
+  const thinkingTurn = (thought, answer) =>
+    `think: [${thought}]\n\nplan: []\n\nact: answer\n\nresult: ${answer}`
+
+  test("the model's working-out is on disk, and is still there a turn later", async () => {
+    const { service, conversations } = chatWith([
+      thinkingTurn('it is linux', 'a linux kernel'),
+      thinkingTurn('asked again', 'still linux'),
+    ])
+
+    const first = await service.send({ id: 'c1', text: 'what kernel is this?' })
+    expect(first.value.assistant.thinking).toBe('it is linux')
+    expect(saved(conversations)[1].thinking).toBe('it is linux')
+
+    // The second turn rewrites the whole record. Before the schema had one
+    // owner this is the exact write that erased the first turn's thinking.
+    await service.send({ id: 'c1', text: 'are you sure?' })
+    expect(saved(conversations).map((m) => m.thinking)).toEqual([
+      undefined,
+      'it is linux',
+      undefined,
+      'asked again',
+    ])
+  })
+
+  test('the step the page draws and the record it is drawn beside are one reader', async () => {
+    // Nothing in the tree drove `emit` at all, so the whole narration half of
+    // `send` — four `EventName` emissions — had never been executed by a test.
+    // Its three questions about a parsed reply were also spelled out a second
+    // time, one branch below, for the record: `answer` was `?? ''` on the wire
+    // and a bare `.answer` on the way to storage. Two spellings of one rule is
+    // how `thinking` became a field only one writer had heard of, so what is
+    // asserted is that the wire and the record AGREE, not merely that each is
+    // individually plausible.
+    const events = []
+    const { service, conversations } = chatWith([
+      thinkingTurn('a shell would settle it', 'shell({"command": "uname -a"})').replace(
+        'act: answer',
+        'act: tool',
+      ),
+      thinkingTurn('it is linux', 'a linux kernel'),
+    ])
+
+    await service.send({ id: 'c1', text: 'what kernel is this?' }, (name, payload) =>
+      events.push([name, payload]),
+    )
+
+    const steps = events.filter(([name]) => name === EventName.STEP).map(([, event]) => event)
+    expect(steps.map((s) => s.isAnswer)).toEqual([false, true])
+    expect(steps[0].answer).toBe('shell({"command": "uname -a"})')
+    expect(steps[0].thinking).toBe('a shell would settle it')
+    // The last step and the message written down are the same two strings.
+    const written = saved(conversations).at(-1)
+    expect(written.text).toBe(steps.at(-1).answer)
+    expect(written.thinking).toBe(steps.at(-1).thinking)
+  })
+
+  test('a reply with no text in it is written down as having said nothing', async () => {
+    // Found by mutation: replacing the stand-in with `''` left every test in
+    // this file green. A model that answers with an empty string still made a
+    // turn, and the transcript would show a blank assistant bubble that nothing
+    // — not the notes, not the record — explains.
+    const { service, conversations } = chatWith([answerTurn('')])
+
+    const sent = await service.send({ id: 'c1', text: 'what kernel is this?' })
+
+    expect(sent.value.assistant.text).toBe('(the model returned nothing)')
+    expect(saved(conversations)[1].text).toBe('(the model returned nothing)')
+  })
+
+  test('the domain model repairs the transcript this turn was appended to', async () => {
+    // The repair path had never run on the live chat path at all, because
+    // nothing here constructed a `Message`. A malformed row already on disk was
+    // therefore read, sent to the model, and written back exactly as malformed.
+    const { service, conversations } = chatWith([answerTurn('linux')])
+    conversations.rows.get('c1').messages.push({ id: 'm0', role: 'wizard', text: 7, createdAt: 1 })
+
+    await service.send({ id: 'c1', text: 'what kernel is this?' })
+
+    const [repaired] = saved(conversations)
+    expect(repaired.role).toBe('user')
+    expect(repaired.text).toBe('7')
+    expect(repaired.repairs).toHaveLength(2)
+  })
+
+  test('a message that arrives while the model is thinking is not overwritten', async () => {
+    // The reply used to be pushed onto the record loaded before the model call
+    // and put back whole, so anything written during the call — seconds, or
+    // minutes against a local model — was deleted by a turn reporting success.
+    const { service, conversations, inference } = chatWith([answerTurn('a linux kernel')])
+    const original = inference.invoke.bind(inference)
+    inference.invoke = async (...args) => {
+      await service.conversations.appendMessage({
+        id: 'c1',
+        role: 'system',
+        text: 'arrived mid-call',
+      })
+      return original(...args)
+    }
+
+    const sent = await service.send({ id: 'c1', text: 'what kernel is this?' })
+
+    expect(sent.ok).toBe(true)
+    expect(saved(conversations).map((m) => m.text)).toEqual([
+      'what kernel is this?',
+      'arrived mid-call',
+      'a linux kernel',
+    ])
+  })
+
+  test('the whole transcript is what the model is given, not just the new question', async () => {
+    // Found by mutation: replacing the history with `[userMessage]` alone left
+    // every test in this file green. An agent that is handed only the latest
+    // question has no memory at all, and nothing here could see it.
+    const { service, inference } = chatWith([answerTurn('linux'), answerTurn('yes, linux')])
+
+    await service.send({ id: 'c1', text: 'what kernel is this?' })
+    await service.send({ id: 'c1', text: 'are you sure?' })
+
+    expect(inference.prompts[1]).toContain('what kernel is this?')
+    expect(inference.prompts[1]).toContain('linux')
+    expect(inference.prompts[1]).toContain('are you sure?')
+  })
+
+  test('a reply that cannot be written down still reports what was', async () => {
+    // The failure shape has to match the stopped-run branch: the question was
+    // persisted before the model was called, and a caller that is handed a bare
+    // failure cannot tell whether it survived.
+    const { service, conversations } = chatWith([answerTurn('a linux kernel')])
+    const original = service.conversations.appendMessage.bind(service.conversations)
+    let calls = 0
+    service.conversations.appendMessage = async (...args) =>
+      ++calls === 2 ? Outcome.failed('UNAVAILABLE', 'the database is closed') : original(...args)
+
+    const sent = await service.send({ id: 'c1', text: 'what kernel is this?' })
+
+    expect(sent.ok).toBe(false)
+    expect(sent.value.user.text).toBe('what kernel is this?')
+    expect(sent.value.assistant).toBe(null)
+    expect(saved(conversations).map((m) => m.role)).toEqual(['user'])
+  })
+
+  test('a conversation that is gone fails by name rather than being invented', async () => {
+    const { service } = chatWith([answerTurn('never sent')])
+
+    const sent = await service.send({ id: 'no-such', text: 'hello?' })
+
+    expect(sent.ok).toBe(false)
+    expect(sent.failure.message).toBe('no conversation no-such')
+    expect(sent.failure.hint).toContain('Start a new chat')
   })
 })
