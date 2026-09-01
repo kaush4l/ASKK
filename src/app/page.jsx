@@ -4,6 +4,17 @@ import { useEffect, useRef, useState } from 'react'
 import { BackendClient } from '../client/BackendClient.js'
 import { Dictation, Voice } from '../client/Speech.js'
 import { EventName } from '../protocol/Envelope.js'
+import { FilesPanel } from './FilesPanel.jsx'
+
+/**
+ * The three instruments, in the order they answer a different question.
+ *
+ * `prompt` is what was SENT, `run` is what the agent DID with the reply, and
+ * `files` is what is left behind afterwards. The order is the order of the
+ * turn, and it is written once here rather than three times in the markup so
+ * that adding a fourth is one entry and not three edits that can disagree.
+ */
+const INSTRUMENTS = ['prompt', 'run', 'files']
 
 export default function Page() {
   const clientRef = useRef(null)
@@ -23,12 +34,24 @@ export default function Page() {
   const [agents, setAgents] = useState([])
   const [threads, setThreads] = useState([])
   const [showSettings, setShowSettings] = useState(false)
-  // What the current turn is doing, as it does it. `raw` is the text arriving
-  // from the model before it has been parsed, `reasoning` is the scratchpad a
-  // thinking model emits alongside it, and `steps` are the passes that have
-  // already resolved. All are cleared when the turn ends, because from then on
-  // the transcript is the record.
-  const [live, setLive] = useState({ raw: '', reasoning: '', steps: [] })
+  // The turn, as it happens and afterwards. `raw` is the text arriving from the
+  // model before it has been parsed, `reasoning` is the scratchpad a thinking
+  // model emits alongside it, and `steps` are the passes that have resolved.
+  //
+  // It was called `live` and the two streaming halves still are — they are
+  // cleared the moment the turn ends, because from then on the transcript is
+  // the record of what was SAID. The steps are not, and clearing them was the
+  // defect this slice repairs: a ReAct run's tool calls existed only while the
+  // spinner was up, so a person who looked away missed every one of them and
+  // `scripts/deploy-check.js` had to poll the page 4 times a second to see any
+  // — its own comment says "a reader that only looks afterwards finds an empty
+  // list and reports that a multi-pass run took one pass". They are kept until
+  // the next turn replaces them, and the run panel is where they are read.
+  const [run, setRun] = useState({ raw: '', reasoning: '', steps: [], at: 0, ms: 0 })
+  // Bumped when a turn finishes. The workspace is the one thing on this page a
+  // turn can change behind the reader's back, so this is what tells the file
+  // view to look again — a trigger, not a value anything reads.
+  const [turnsDone, setTurnsDone] = useState(0)
   // Every prompt this turn sent, in order. A ReAct run is several calls, so one
   // slot would show the last one and quietly hide the rest.
   const [prompts, setPrompts] = useState([])
@@ -36,11 +59,15 @@ export default function Page() {
   // here that is measured rather than estimated, so it is kept beside the
   // estimates rather than replacing them.
   const [usage, setUsage] = useState(null)
+  // Which instrument is open, or null. One slot and not three booleans: the
+  // aside is one pane, so two open at once is a state the layout cannot show
+  // and a reader would have to be protected from.
+  //
   // Closed at first render, on purpose. The panel is a second pane on a desktop
   // and a full-screen sheet on a phone, so opening it by default would greet a
   // phone with an empty readout and the conversation hidden behind it. The
   // desktop opens it below, after mount, where the viewport is knowable.
-  const [showPrompt, setShowPrompt] = useState(false)
+  const [panel, setPanel] = useState(null)
   const [promptAt, setPromptAt] = useState(0)
   // Dictation, as three separate facts because they are separately interesting:
   // whether the microphone is open, what has been heard so far, and how much of
@@ -100,7 +127,7 @@ export default function Page() {
   // a build that has no viewport, and a component that guessed one would
   // hydrate into a layout the markup does not match.
   useEffect(() => {
-    if (window.matchMedia?.('(min-width: 60rem)').matches) setShowPrompt(true)
+    if (window.matchMedia?.('(min-width: 60rem)').matches) setPanel('prompt')
   }, [])
 
   // Follow the conversation as it grows, including while a reply is pending.
@@ -119,7 +146,8 @@ export default function Page() {
     setProblem(null)
     setBusy(true)
     setDraft('')
-    setLive({ raw: '', reasoning: '', steps: [] })
+    const startedAt = Date.now()
+    setRun({ raw: '', reasoning: '', steps: [], at: startedAt, ms: 0 })
     setPrompts([])
     setPromptAt(0)
     setUsage(null)
@@ -144,7 +172,7 @@ export default function Page() {
           // scratchpad before its first word of answer; merging them would put
           // the reply at the bottom of its own working-out.
           const field = data.kind === 'reasoning' ? 'reasoning' : 'raw'
-          setLive((current) => ({ ...current, [field]: current[field] + data.chunk }))
+          setRun((current) => ({ ...current, [field]: current[field] + data.chunk }))
           return
         }
         if (name === EventName.USAGE) {
@@ -155,7 +183,12 @@ export default function Page() {
           // The raw text is dropped here on purpose. It has just been parsed,
           // and showing both the contract and the answer it contains is how a
           // reader ends up reading the scaffolding.
-          setLive((current) => ({ raw: '', reasoning: '', steps: [...current.steps, data] }))
+          setRun((current) => ({
+            ...current,
+            raw: '',
+            reasoning: '',
+            steps: [...current.steps, data],
+          }))
         }
       },
     )
@@ -181,9 +214,16 @@ export default function Page() {
       // called — so the transcript is left alone and only the reply is missing.
       setProblem({ message: result.error.message, hint: result.error.hint })
     }
-    // The turn is over: whatever it produced is now in the transcript, and a
-    // leftover live view would be a second, stale copy of it.
-    setLive({ raw: '', reasoning: '', steps: [] })
+    // The turn is over. The two streaming halves go, because whatever they were
+    // producing is now in the transcript and a leftover copy would be a second,
+    // stale one. The STEPS stay: they are the only account anywhere of what the
+    // agent did on the way to that answer, the transcript holds none of it, and
+    // throwing them away at the end of every turn is what made tool calls
+    // invisible to everyone who was not watching the exact second they resolved.
+    setRun((current) => ({ ...current, raw: '', reasoning: '', ms: Date.now() - current.at }))
+    // After the steps, so a file view that reloads on this reads a workspace the
+    // turn has finished writing to.
+    setTurnsDone((count) => count + 1)
     // Cleared WITH `busy` and not before it. Cleared early — as it was — the
     // button went on reading "stop" for the length of the `agents.threads`
     // round trip above while calling `stop(null)`, which does nothing. Nothing
@@ -349,14 +389,21 @@ export default function Page() {
           >
             settings
           </button>
-          <button
-            type="button"
-            onClick={() => setShowPrompt((v) => !v)}
-            aria-pressed={showPrompt}
-            data-testid="prompt-toggle"
-          >
-            prompt
-          </button>
+          {/* One button per instrument, each pressed exactly while its pane is
+              the one open. A single "panel" button would hide which of the
+              three a reader is looking at, and a reader who cannot tell the
+              prompt from the run log is the reason this slice exists. */}
+          {INSTRUMENTS.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setPanel((current) => (current === name ? null : name))}
+              aria-pressed={panel === name}
+              data-testid={`${name}-toggle`}
+            >
+              {name}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -464,7 +511,7 @@ export default function Page() {
         </form>
       ) : null}
 
-      <div className={`panes${showPrompt ? ' with-panel' : ''}`}>
+      <div className={`panes${panel ? ' with-panel' : ''}`}>
         <main className="stage">
           <div className="transcript" ref={scrollRef} data-testid="transcript">
             {messages.length === 0 && ready ? (
@@ -502,7 +549,7 @@ export default function Page() {
                       finished pass stays visible so the route to the answer is
                       legible, and the final one is the reply that will land in
                       the transcript. */}
-                  {live.steps.map((taken) => (
+                  {run.steps.map((taken) => (
                     <div
                       key={taken.step}
                       className={`text step${taken.isAnswer ? ' answered' : ''}`}
@@ -512,20 +559,20 @@ export default function Page() {
                       {taken.answer}
                     </div>
                   ))}
-                  {live.reasoning ? (
+                  {run.reasoning ? (
                     <div className="text thinking" data-testid="reasoning">
-                      {live.reasoning}
+                      {run.reasoning}
                     </div>
                   ) : null}
                   {/* Raw, unparsed, exactly as it arrives. Replaced the moment
                       the pass is parsed — this is the wait made visible, not a
                       second rendering of the answer. */}
-                  {live.raw ? (
+                  {run.raw ? (
                     <div className="text raw" data-testid="stream">
-                      {live.raw}
+                      {run.raw}
                     </div>
                   ) : null}
-                  {live.raw || live.reasoning || live.steps.length ? null : (
+                  {run.raw || run.reasoning || run.steps.length ? null : (
                     <div className="text raw" />
                   )}
                 </div>
@@ -618,12 +665,12 @@ export default function Page() {
           </div>
         </main>
 
-        {showPrompt ? (
-          <aside className="panel" data-testid="prompt-panel">
+        {panel ? (
+          <aside className="panel" data-testid={`${panel}-panel`}>
             <header>
-              <h2>prompt</h2>
+              <h2>{panel}</h2>
               <div className="steps">
-                {prompts.length > 1
+                {panel === 'prompt' && prompts.length > 1
                   ? prompts.map((entry, index) => (
                       <button
                         key={entry.step}
@@ -635,13 +682,13 @@ export default function Page() {
                       </button>
                     ))
                   : null}
-                <button type="button" className="close" onClick={() => setShowPrompt(false)}>
+                <button type="button" className="close" onClick={() => setPanel(null)}>
                   close
                 </button>
               </div>
             </header>
 
-            {shown ? (
+            {panel === 'prompt' && shown ? (
               <div className="readout">
                 {/* The signature: the prompt as a proportional band. Each block
                     is as wide as its share of the tokens, the reusable prefix
@@ -691,7 +738,7 @@ export default function Page() {
               </div>
             ) : null}
 
-            {shown ? (
+            {panel === 'prompt' && shown ? (
               <ol className="layout" data-testid="prompt-layout">
                 {shown.parts.map((part) => (
                   <li key={part.id} className={part.cached ? 'cached' : ''}>
@@ -703,14 +750,88 @@ export default function Page() {
               </ol>
             ) : null}
 
-            {shown ? (
-              <pre data-testid="prompt-text">{shown.text}</pre>
-            ) : (
-              <p className="hint">
-                The complete prompt appears here as it is sent, block by block, with what each one
-                costs and where the reusable prefix ends.
-              </p>
-            )}
+            {panel === 'prompt' ? (
+              shown ? (
+                <pre data-testid="prompt-text">{shown.text}</pre>
+              ) : (
+                <p className="hint">
+                  The complete prompt appears here as it is sent, block by block, with what each one
+                  costs and where the reusable prefix ends.
+                </p>
+              )
+            ) : null}
+
+            {/* WHAT THE AGENT DID, and it stays after the turn ends.
+                
+                Every entry is one STEP event — the same event the transcript
+                draws while the spinner is up and the same one
+                `scripts/dryrun.js` reads. Nothing here is a second channel:
+                inventing one is the defect this tree shipped when two writers
+                disagreed about a schema and silently erased a field.
+                
+                The call is rendered VERBATIM, exactly as the model wrote it,
+                and that is a decision rather than laziness. `Toolbox.parse` is
+                the one thing in this application that decides what a call is;
+                a pretty rendering here would be a second parser, in another
+                realm, that agrees with it until the day it does not — and the
+                day it does not, the page shows a call that never ran.
+                
+                What is NOT here: the OBSERVATION. `ReActEngine.run` pushes
+                `{action, observation}` onto its scratchpad and hands the
+                observation to no callback, so nothing outside the engine can
+                see what a tool answered. Surfacing it is a change in
+                `src/core/`, which this slice does not own; it is reported and
+                not fixed. */}
+            {panel === 'run' ? (
+              run.steps.length ? (
+                <>
+                  <div className="readout">
+                    <p className="figures" data-testid="run-meta">
+                      <span>
+                        <b>{run.steps.length.toLocaleString()}</b>{' '}
+                        {run.steps.length === 1 ? 'step' : 'steps'}
+                      </span>
+                      {run.ms ? (
+                        <span>{(run.ms / 1000).toFixed(1)}s</span>
+                      ) : (
+                        <span className="measured">running</span>
+                      )}
+                      {usage ? (
+                        <span className="measured">{usage.prompt.toLocaleString()} counted</span>
+                      ) : null}
+                    </p>
+                  </div>
+                  <ol className="runlog" data-testid="run-log">
+                    {run.steps.map((taken) => (
+                      <li
+                        key={taken.step}
+                        className={taken.isAnswer ? 'answered' : 'called'}
+                        data-testid={`run-step-${taken.step}`}
+                      >
+                        <span className="id">
+                          {taken.isAnswer ? 'answered' : `step ${taken.step}`}
+                        </span>
+                        {taken.thinking ? <p className="thought">{taken.thinking}</p> : null}
+                        <pre className="call">{taken.answer}</pre>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              ) : (
+                <p className="hint">
+                  Every pass of a run lands here as it resolves — the calls the agent wrote, word
+                  for word, and the reply it finished on. It stays until the next turn replaces it.
+                </p>
+              )
+            ) : null}
+
+            {/* Given the client rather than the values, because the workspace
+                is the backend's and a component that was handed a list would be
+                showing whatever the page last remembered. `turnsDone` is when
+                to look again. */}
+            {panel === 'files' && clientRef.current ? (
+              <FilesPanel client={clientRef.current} at={turnsDone} />
+            ) : null}
           </aside>
         ) : null}
       </div>

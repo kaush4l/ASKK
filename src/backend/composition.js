@@ -12,6 +12,7 @@ import { C2wSandbox } from './sandbox/C2wSandbox.js'
 import { AgentService } from './services/AgentService.js'
 import { ChatService } from './services/ChatService.js'
 import { ConversationService } from './services/ConversationService.js'
+import { FilesService } from './services/FilesService.js'
 import { SettingsService } from './services/SettingsService.js'
 
 export const DB_NAME = 'askk'
@@ -237,10 +238,17 @@ export async function buildKernel({
   const conversations = new ConversationService(make('Conversation', STORE_CONVERSATIONS))
 
   // The agent's own files, in the same database and behind the same port as
-  // everything else. It is handed to the chat use case as a port and reaches
-  // the tools from there; NOTHING registers it on the kernel, because no
-  // component asks for it. A route with no caller is the defect this tree keeps
-  // shipping, and the day the page grows a file view is the day it earns one.
+  // everything else. ONE instance, handed to the chat use case as a port and
+  // registered on the kernel through `FilesService` below — two would be two
+  // write queues over one store, which is the interleaving a queue exists to
+  // stop, and it is the same argument `ConversationService` is built on.
+  //
+  // This line used to end "NOTHING registers it on the kernel, because no
+  // component asks for it ... the day the page grows a file view is the day it
+  // earns one". That day is this one. The sentence is rewritten rather than
+  // left to rot beside a `register` call that contradicts it: a citation that
+  // still resolves while the fact under it has inverted is the most expensive
+  // kind this tree makes.
   const files = new Workspace(make('File', STORE_FILES))
 
   const chat = new ChatService({
@@ -258,6 +266,10 @@ export async function buildKernel({
     .register('settings', settings)
     .register('chat', chat)
     .register('agents', new AgentService(catalogue, pool))
+    // Read-only, and `FilesService` argues why at length. The short version:
+    // the store is safe from interleaving and it is not safe from a person
+    // saving a file the agent rewrote while they were reading it.
+    .register('files', new FilesService(files))
 
   // Said out loud, in the one place the user reads notes. Nothing else in this
   // app leaves the machine except the model call the user configured — but a

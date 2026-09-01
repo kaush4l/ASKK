@@ -545,12 +545,41 @@ select:disabled {
 
 /* ── instrument panel ───────────────────────────────────────────────────── */
 
+/* A column, not three fixed rows. The pane holds three different instruments
+   now and they have different numbers of parts — the prompt has a readout, a
+   layout and a body; the file view has a listing beside a body; the run log has
+   a readout and a list. Everything is its natural height and exactly one child
+   takes what is left and scrolls, which is named below rather than counted. */
 .panel {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   border-left: 1px solid var(--rule);
   background: var(--panel);
+}
+
+.panel > * {
+  flex: 0 0 auto;
+}
+
+.panel > pre,
+.panel > .runlog {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* The file pane scrolls in its two halves, not as a whole: the listing must
+   stay put while the file under it is read. */
+.panel > .files-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel h2::first-letter {
+  text-transform: uppercase;
 }
 
 .panel > header {
@@ -727,6 +756,183 @@ select:disabled {
   padding: 0 1rem;
   color: var(--faint);
   font-size: 0.85rem;
+}
+
+/* ── the run log ────────────────────────────────────────────────────────── */
+
+/* What the agent DID, kept after the turn ends. The transcript holds what was
+   said; this holds the passes underneath it, and until this slice they existed
+   only while the spinner was up. */
+.runlog {
+  margin: 0;
+  padding: 0 0 1.5rem;
+  list-style: none;
+}
+
+.runlog li {
+  padding: 0.55rem 1rem;
+  border-left: 2px solid var(--rule);
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+/* The one that became the reply, marked the way the transcript marks it. A run
+   log where every entry looks the same makes the reader count to find the end. */
+.runlog li.answered {
+  border-left-color: var(--signal);
+}
+
+.runlog .id {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.runlog li.answered .id {
+  color: var(--signal);
+}
+
+.runlog .thought {
+  margin: 0 0 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.6;
+  color: var(--faint);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.runlog .call {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: #9fb0c0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── the agent's files ──────────────────────────────────────────────────── */
+
+/* The listing above the file, not beside it: this pane is 23rem at its
+   narrowest and two columns inside it would leave a path and a line of code
+   with about eleven characters each. */
+.files-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.filelist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* A length and not a percentage. `40%` inside a grid row sized by its own
+     content is a percentage of something indefinite, and Chrome resolved it to
+     a ten-pixel sliver with the first file half visible in it — measured on the
+     capture, not reasoned about. Twelve rows is enough to see a workspace and
+     short enough to leave the file the larger half. */
+  max-height: 11rem;
+  overflow: auto;
+  border-bottom: 1px solid var(--rule);
+}
+
+.filelist li button {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  width: 100%;
+  padding: 0.3rem 1rem;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  text-align: left;
+  color: var(--dim);
+}
+
+.filelist li button:hover {
+  background: var(--raise);
+  color: var(--text);
+}
+
+.filelist li button.on {
+  border-left-color: var(--signal);
+  color: var(--signal);
+}
+
+.filelist .none {
+  padding: 0.5rem 1rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--faint);
+}
+
+.fileview {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.fileview > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.fileview .id {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.fileview .steps button {
+  padding: 0.1rem 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+.fileview pre.code {
+  margin: 0;
+  padding: 0.6rem 1rem 1.5rem;
+  min-height: 0;
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: #9fb0c0;
+  tab-size: 2;
+}
+
+/* Four colours and no more. A palette that names every construct turns reading
+   into decoding a legend; these are the four a person actually scans for —
+   what is not code, what is literal, what is a value, and what is structure. */
+.code .tok.comment {
+  color: var(--faint);
+  font-style: italic;
+}
+
+.code .tok.string {
+  color: #9ad4a0;
+}
+
+.code .tok.number {
+  color: var(--warn);
+}
+
+.code .tok.keyword {
+  color: var(--signal);
 }
 
 /* ── settings ───────────────────────────────────────────────────────────── */

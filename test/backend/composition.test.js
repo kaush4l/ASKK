@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { browserHttp, buildKernel } from '../../src/backend/composition.js'
 import { Blocked } from '../../src/core/tools/HttpPort.js'
+import { Request } from '../../src/protocol/Envelope.js'
 
 /**
  * The half of the web tools that had no tests and all of the risk.
@@ -246,5 +247,103 @@ describe('the ports buildKernel hands the chat service', () => {
     } finally {
       delete process.env.NEXT_PUBLIC_SANDBOX_IMAGE
     }
+  })
+})
+
+/**
+ * The route the page reaches the agent's files through.
+ *
+ * Driven through `kernel.handle` and a real `Request` rather than by calling
+ * `FilesService` directly, because the thing that was missing was never the
+ * class: `Workspace` has had `list` and `read` since the store landed, and a
+ * unit test of either would have been green throughout the wave in which the
+ * accountant wrote "the human cannot open, list, download or add one file".
+ * What was missing was a NAME on the kernel, and only the front door can say
+ * whether a name is there.
+ */
+describe('the files routes', () => {
+  test('the page can ask for them by name', async () => {
+    const { kernel } = await buildKernel()
+
+    expect(kernel.methods).toContain('files.list')
+    expect(kernel.methods).toContain('files.read')
+  })
+
+  /**
+   * Identity, for the reason the HTTP port above is asserted by identity: two
+   * `Workspace` objects over one store would be two write queues over one
+   * store, and every assertion below would still pass while the page read a
+   * workspace the agent never wrote to.
+   */
+  test('and they are the workspace the agent writes to, not a second one', async () => {
+    const { kernel, chat } = await buildKernel()
+
+    const handler = kernel._routes.get('files.read')
+    expect(chat.services.files).toBeTruthy()
+    // Reached through the bound method the kernel actually calls: `register`
+    // binds `service[name]`, so this is the object on the other side of the
+    // route and not one this test constructed.
+    const written = await chat.services.files.write('through-the-agent.md', 'kiwi-7742-anchor')
+    expect(written.ok).toBe(true)
+
+    const read = await handler({ path: 'through-the-agent.md' })
+    expect(read.value).toEqual({
+      path: 'through-the-agent.md',
+      text: 'kiwi-7742-anchor',
+      bytes: 16,
+    })
+  })
+
+  test('a file written by the agent is listed and read back over the wire', async () => {
+    const { kernel, chat } = await buildKernel()
+    await chat.services.files.write('src/deep.txt', 'deep')
+    await chat.services.files.write('notes.md', '# plan\n')
+
+    const listed = await kernel.handle(new Request('a', 'files.list'))
+    expect(listed.ok).toBe(true)
+    // Sorted, and the order is `Workspace`'s so that the in-memory fallback and
+    // IndexedDB are not two different products.
+    expect(listed.value).toEqual([{ path: 'notes.md' }, { path: 'src/deep.txt' }])
+
+    const opened = await kernel.handle(new Request('b', 'files.read', { path: 'notes.md' }))
+    expect(opened.ok).toBe(true)
+    expect(opened.value.text).toBe('# plan\n')
+    expect(opened.value.bytes).toBe(7)
+  })
+
+  test('a file that is not there is an answer, not an error on screen', async () => {
+    const { kernel } = await buildKernel()
+
+    const opened = await kernel.handle(new Request('c', 'files.read', { path: 'gone.md' }))
+    expect(opened.ok).toBe(true)
+    expect(opened.value).toBe(null)
+    expect(opened.error).toBe(null)
+  })
+
+  test('an unusable path is refused in a sentence, over the wire, and nothing throws', async () => {
+    const { kernel } = await buildKernel()
+
+    const opened = await kernel.handle(new Request('d', 'files.read', { path: '../etc/passwd' }))
+    expect(opened.ok).toBe(false)
+    expect(opened.error.code).toBe('BAD_REQUEST')
+    expect(opened.error.message).toContain('not a usable path')
+    // Not the Kernel's backstop. A handler that THREW would arrive here with
+    // this note attached, and the refusal being written down is a value.
+    expect(opened.notes).not.toContain('this is a bug: a handler threw')
+  })
+
+  /**
+   * The decision, pinned. Read-only is argued at length in `FilesService`, and
+   * an argument in a comment is not a constraint — this is. A `files.write`
+   * appearing on the kernel means somebody added a route without the
+   * compare-and-set that comment says it must arrive with.
+   */
+  test('and there is no way for the page to write one', async () => {
+    const { kernel } = await buildKernel()
+
+    expect(kernel.methods.filter((name) => name.startsWith('files.'))).toEqual([
+      'files.list',
+      'files.read',
+    ])
   })
 })
