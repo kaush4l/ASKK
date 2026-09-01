@@ -1,0 +1,189 @@
+{
+ "started": "2026-09-01T07:28:08.517Z",
+ "argv": [
+  "pty",
+  "--port=8821",
+  "--echo-port=8824"
+ ],
+ "cells": [
+  {
+   "probe": "pty",
+   "engine": "chromium",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)"
+   },
+   "baseline_rss_kb": 732304,
+   "isolation": {
+    "sw": null,
+    "coi": true,
+    "reloads": 1,
+    "ready": true,
+    "err": null
+   },
+   "backend_realm": {
+    "backend_coi": true,
+    "backend_SAB": "function",
+    "measureUASM": "undefined",
+    "deviceMemory": 8,
+    "hardwareConcurrency": 16
+   },
+   "oneshot": [
+    {
+     "file": "./vm-worker.js",
+     "wallMs": 1184,
+     "peakDeltaKB": 530384,
+     "command": "uname -a; echo RC=$?",
+     "bytes": 107054914,
+     "bootMs": 144,
+     "memoryAfterCompile": "unsupported",
+     "runMs": 1038,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\nRC=0\r\n",
+     "code": 0,
+     "stubbed": [
+      "sock_accept"
+     ],
+     "memoryAfterRun": "unsupported"
+    },
+    {
+     "file": "./vm-worker-streaming.js",
+     "wallMs": 996,
+     "peakDeltaKB": 242960,
+     "command": "uname -a; echo RC=$?",
+     "bytes": -1,
+     "bootMs": 108,
+     "memoryAfterCompile": "unsupported",
+     "runMs": 887,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\nRC=0\r\n",
+     "code": 0,
+     "stubbed": [
+      "sock_accept"
+     ],
+     "memoryAfterRun": "unsupported"
+    }
+   ],
+   "boot": {
+    "startedMs": 109,
+    "note": {
+     "type": "note",
+     "text": "running argv=[\"arg0\"]"
+    }
+   },
+   "prompt_ms": 3828,
+   "resident_at_prompt_kb": 1576576,
+   "session": [
+    {
+     "cmd": "echo hello > /tmp/a\n",
+     "ms": 153,
+     "text": "echo hello > /tmp/a\r\n/ # \u001b[6n"
+    },
+    {
+     "cmd": "cat /tmp/a\n",
+     "ms": 312,
+     "text": "cat /tmp/a\r\nhello\r\n/ # \u001b[6n"
+    },
+    {
+     "cmd": "ls -la /tmp\n",
+     "ms": 111,
+     "text": "ls -la /tmp\r\ntotal 4\r\ndrwxrwxrwt    1 root     root            60 Sep  1 07:28 \u001b[1;34m.\u001b[m\r\ndrwxr-xr-x    1 root     root           100 Aug 30 05:12 \u001b[1;34m..\u001b[m\r\n-rw-r--r--    1 root     root             6 Sep  1 07:28 \u001b[0;0ma\u001b[m\r\n/ # \u001b[6n"
+    }
+   ],
+   "stats_after_session": {
+    "state": "poll",
+    "readCount": 3,
+    "writeCount": 23,
+    "pollCount": 8726,
+    "pendingToGuest": 0,
+    "pendingFromGuest": 0,
+    "readLens": {
+     "128": 3
+    }
+   },
+   "resident_after_3_cmds_kb": 1585872,
+   "resident_after_20s_idle_kb": 1570160,
+   "store": "df -h / /tmp 2>&1 | head -5; mount | head -4; free | head -2\r\nFilesystem                Size      Used Available Use% Mounted on\r\noverlay                  56.3M     20.0K     56.3M   0% /\r\noverlay                  56.3M     20.0K     56.3M   0% /\r\noverlay on / type overlay (rw,relatime,lowerdir=/oci/rootfs,upperdir=/run/rootfs-upper,workdir=/run/rootfs-work)\r\nproc on /proc type proc (rw,nosuid,nodev,noexec,relatime)\r\ntmpfs on /dev type tmpfs (rw,nosuid,size=65536k,mode=755)\r\ndevpts on /dev/pts type devpts (rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=666)\r\n              total        used        free      shared  buff/cache   available\r\nMem:         115244       10296       83116          28       21832      100620\r\n/ # \u001b[6n",
+   "times": [
+    106,
+    106,
+    106,
+    109,
+    106,
+    109,
+    107,
+    106,
+    108,
+    110
+   ],
+   "line_boundary": [
+    {
+     "payload": 2033,
+     "lineBytes": 2047,
+     "wc": "2034"
+    },
+    {
+     "payload": 2034,
+     "lineBytes": 2048,
+     "wc": null
+    },
+    {
+     "payload": 2035,
+     "lineBytes": 2049,
+     "wc": null
+    },
+    {
+     "payload": 2040,
+     "lineBytes": 2054,
+     "wc": null
+    },
+    {
+     "payload": 2048,
+     "lineBytes": 2062,
+     "wc": null
+    },
+    {
+     "payload": 4096,
+     "lineBytes": 4110,
+     "wc": null
+    }
+   ],
+   "heredoc": {
+    "bodyBytes": 11889,
+    "writeMs": 5659,
+    "result": "sh /tmp/big.sh; wc -l /tmp/big.out; tail -1 /tmp/big.out\r\n400 /tmp/big.out\r\nline 399\r\n/ # \u001b[6n"
+   },
+   "install": {
+    "hostBytes": 30316,
+    "hostMd5": "c1580b7f3775e59960109e0d41154729",
+    "deliverMs": 5460,
+    "kbPerSec": 7.23,
+    "before": "apk info | wc -l; apk info -e tree; echo TREE_PRESENT=$?; ls -la /usr/bin/tr\r\r\nee 2>&1\r\nWARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.21/main: No such file or directory\r\nWARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.21/community: No such file or directory\r\n15\r\nTREE_PRESENT=1\r\nlrwxrwxrwx    2 root     root            12 Apr 15 16:10 \u001b[1;36m/usr/bin/tree\u001b[m -> \u001b[1;32m/bin/busybox\u001b[m\r\n/ # \u001b[6n",
+    "install": "base64 -d /tmp/t.b64 > /tmp/t.apk; md5sum /tmp/t.apk; apk add --allow-untrus\r\r\nted /tmp/t.apk 2>&1 | tail -3\r\nbase64: truncated input\r\n2f30b3fbe406cea3f8003e32c881029f  /tmp/t.apk\r\n(1/1) Installing tree (2.2.1-r0)\r\nERROR: tree-2.2.1-r0: BAD archive\r\n1 error; 7 MiB in 15 packages\r\n/ # \u001b[6n",
+    "after": "apk info | wc -l; apk info -e tree; echo TREE_PRESENT=$?; ls -la /usr/bin/tr\r\r\nee; tree --version\r\nWARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.21/main: No such file or directory\r\nWARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.21/community: No such file or directory\r\n15\r\nTREE_PRESENT=1\r\nlrwxrwxrwx    2 root     root            12 Apr 15 16:10 \u001b[1;36m/usr/bin/tree\u001b[m -> \u001b[1;32m/bin/busybox\u001b[m\r\n--version [error opening dir]\r\n\r\n0 directories, 0 files\r\n/ # \u001b[6n",
+    "network": "ip addr 2>&1 | head -6; cat /etc/resolv.conf 2>&1; apk update 2>&1 | head -4\r\r\n1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN qlen 1000\r\n    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00\r\n    inet 127.0.0.1/8 scope host lo\r\n       valid_lft forever preferred_lft forever\r\n2: eth0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN qlen 1000\r\n    link/ether 02:00:00:00:00:01 brd ff:ff:ff:ff:ff:ff\r\nfetch https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/APKINDEX.tar.gz\r\nWARNING: updating and opening https://dl-cdn.alpinelinux.org/alpine/v3.21/main: temporary error (try again later)\r\nfetch https://dl-cdn.alpinelinux.org/alpine/v3.21/community/x86_64/APKINDEX.tar.gz\r\nWARNING: updating and opening https://dl-cdn.alpinelinux.org/alpine/v3.21/community: temporary error (try again later)\r\n/ # \u001b[6n",
+    "totalMs": 20510
+   },
+   "rss_after_reload_no_guest_kb": 1578448,
+   "reboot_prompt_ms": 3725,
+   "after_reload": [
+    {
+     "cmd": "cat /tmp/a; echo RC=$?\n",
+     "text": "cat /tmp/a; echo RC=$?\r\ncat: can't open '/tmp/a': No such file or directory\r\nRC=1\r\n/ # \u001b[6n"
+    },
+    {
+     "cmd": "ls -la /tmp\n",
+     "text": "ls -la /tmp\r\ntotal 2\r\ndrwxrwxrwt    2 root     root          2048 Apr 15 16:10 \u001b[1;34m.\u001b[m\r\ndrwxr-xr-x    1 root     root            80 Aug 30 05:12 \u001b[1;34m..\u001b[m\r\n/ # \u001b[6n"
+    }
+   ],
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[wasm] status=200 ct=application/wasm coep=require-corp",
+    "[wasm] status=200 ct=application/wasm coep=require-corp",
+    "[wasm] status=200 ct=application/wasm coep=require-corp",
+    "[wasm] status=200 ct=application/wasm coep=require-corp"
+   ]
+  }
+ ]
+}

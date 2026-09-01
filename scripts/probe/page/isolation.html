@@ -1,0 +1,147 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>COI probe</title>
+<h1>coi-serviceworker probe</h1>
+<pre id="out">booting…</pre>
+<script>
+const params = new URL(location.href).searchParams;
+const MODE = params.get("coep") || "require-corp";
+const out = document.getElementById("out");
+const R = { mode: MODE, ua: navigator.userAgent, steps: [] };
+window.__RESULTS = R;
+const log = (k, v) => { R.steps.push([k, v]); out.textContent = JSON.stringify(R, null, 1); console.log("PROBE " + k + " = " + JSON.stringify(v)); };
+
+async function boot() {
+  log("first_paint_crossOriginIsolated", self.crossOriginIsolated);
+  log("first_paint_SAB_typeof", typeof SharedArrayBuffer);
+  if (MODE === "off") { log("sw", "skipped on purpose - BASELINE, no isolation"); R.reloads_needed = 0; return run(); }
+  if (!("serviceWorker" in navigator)) { log("fatal", "no serviceWorker"); return run(); }
+
+  const reg = await navigator.serviceWorker.register("coi-serviceworker.js?coep=" + MODE, { scope: "./" });
+  log("sw_registered", { scope: reg.scope });
+  await navigator.serviceWorker.ready;
+
+  const ctrl = navigator.serviceWorker.controller;
+  const key = "coi_reloads_" + MODE;
+  const n = Number(sessionStorage.getItem(key) || "0");
+  if (!self.crossOriginIsolated && n < 2) {
+    sessionStorage.setItem(key, String(n + 1));
+    log("reloading", { attempt: n + 1, controller: !!ctrl });
+    location.reload();
+    return;
+  }
+  R.reloads_needed = n;
+  run();
+}
+
+async function run() {
+  log("crossOriginIsolated", self.crossOriginIsolated);
+  log("controller", !!navigator.serviceWorker.controller);
+
+  // ---- SharedArrayBuffer
+  try { const sab = new SharedArrayBuffer(8); log("SharedArrayBuffer", { ok: true, byteLength: sab.byteLength }); }
+  catch (e) { log("SharedArrayBuffer", { ok: false, err: String(e) }); }
+
+  // ---- Atomics.wait in a worker
+  await new Promise((resolve) => {
+    let sab;
+    try { sab = new SharedArrayBuffer(8); } catch (e) { log("Atomics.wait", { ok: false, err: "no SAB: " + e }); return resolve(); }
+    const ia = new Int32Array(sab);
+    const w = new Worker("atomics-worker.js");
+    const t0 = performance.now();
+    let got = 0;
+    const to = setTimeout(() => { log("Atomics.wait", { ok: false, err: "worker timeout" }); w.terminate(); resolve(); }, 5000);
+    w.onmessage = (e) => {
+      if (e.data.err) { clearTimeout(to); log("Atomics.wait", { ok: false, err: e.data.err }); w.terminate(); return resolve(); }
+      log("atomics_" + e.data.phase, e.data);
+      got++;
+      if (got === 1) {
+        setTimeout(() => { Atomics.store(ia, 1, 1); Atomics.notify(ia, 1); }, 250);
+      } else {
+        clearTimeout(to);
+        log("Atomics.wait", { ok: e.data.result === "ok", wake_ms: e.data.ms, main_thread_still_alive_ms: Math.round(performance.now() - t0) });
+        w.terminate(); resolve();
+      }
+    };
+    w.postMessage({ sab });
+  });
+
+  // ---- (a) cross-origin CORS fetch. 401 that ARRIVES = pass. Network error = fail.
+  const corsTargets = [
+    ["openai      (no CORP, CORS)", "https://api.openai.com/v1/models"],
+    ["anthropic   (no CORP, CORS)", "https://api.anthropic.com/v1/models"],
+    ["huggingface (no CORP, CORS) - transformers.js weights", "https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json"],
+    ["wikipedia   (no CORP, NO ACAO) - CORS control", "https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo"],
+  ];
+  for (const [label, url] of corsTargets) {
+    try {
+      const res = await fetch(url);
+      log("fetch_cors " + label, { arrived: true, status: res.status, type: res.type });
+    } catch (e) {
+      log("fetch_cors " + label, { arrived: false, err: String(e) });
+    }
+  }
+
+  // ---- no-cors fetch: the subresource case. CORP decides.
+  const nocorsTargets = [
+    ["cdnjs  (HAS CORP: cross-origin)", "https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"],
+    ["esm.sh (NO CORP)", "https://esm.sh/marked@12.0.2"],
+    ["huggingface (NO CORP)", "https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json"],
+  ];
+  for (const [label, url] of nocorsTargets) {
+    try {
+      const res = await fetch(url, { mode: "no-cors" });
+      log("fetch_nocors " + label, { arrived: true, type: res.type, status: res.status });
+    } catch (e) { log("fetch_nocors " + label, { arrived: false, err: String(e) }); }
+  }
+
+  // ---- (b) cross-origin <script> under COEP
+  await new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js";
+    s.onload = () => { log("script_tag cdnjs (HAS CORP)", { loaded: true, marked: typeof window.marked }); resolve(); };
+    s.onerror = () => { log("script_tag cdnjs (HAS CORP)", { loaded: false, err: "onerror" }); resolve(); };
+    document.head.appendChild(s);
+    setTimeout(resolve, 8000);
+  });
+
+  // ---- cross-origin <link rel=stylesheet> (Google Fonts, HAS CORP)
+  await new Promise((resolve) => {
+    const l = document.createElement("link");
+    l.rel = "stylesheet";
+    l.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400&display=swap";
+    l.onload = () => { log("stylesheet fonts.googleapis (HAS CORP)", { loaded: true, rules: (() => { try { return l.sheet.cssRules.length; } catch (e) { return "opaque:" + e.name; } })() }); resolve(); };
+    l.onerror = () => { log("stylesheet fonts.googleapis (HAS CORP)", { loaded: false, err: "onerror" }); resolve(); };
+    document.head.appendChild(l);
+    setTimeout(resolve, 8000);
+  });
+
+  // ---- cross-origin <img>: one WITH CORP, one WITHOUT
+  for (const [label, src] of [
+    ["google favicon (HAS CORP)", "https://www.google.com/favicon.ico?x="],
+    ["python.org favicon (NO CORP)", "https://www.python.org/static/favicon.ico?x="],
+    ["developer.mozilla.org favicon (NO CORP)", "https://developer.mozilla.org/favicon.ico?x="],
+  ]) {
+    await new Promise((resolve) => {
+      const i = new Image();
+      let done = false;
+      const fin = (v) => { if (done) return; done = true; log("img " + label, v); resolve(); };
+      i.onload = () => fin({ loaded: true, w: i.naturalWidth });
+      i.onerror = () => fin({ loaded: false, err: "onerror" });
+      i.src = src + Date.now();
+      setTimeout(() => fin({ loaded: false, err: "timeout" }), 8000);
+    });
+  }
+
+  // ---- 404 control against our own server
+  try {
+    const res = await fetch("does-not-exist-" + Date.now() + ".txt", { cache: "no-store" });
+    log("control_404", { status: res.status, coep: res.headers.get("cross-origin-embedder-policy"), coop: res.headers.get("cross-origin-opener-policy") });
+  } catch (e) { log("control_404", { err: String(e) }); }
+
+  R.done = true;
+  out.textContent = JSON.stringify(R, null, 1);
+  console.log("PROBE DONE");
+}
+boot();
+</script>

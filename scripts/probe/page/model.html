@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>real model request under COEP</title>
+<pre id="out">booting…</pre>
+<script src="calls.js"></script>
+<script>
+const MODE = new URL(location.href).searchParams.get("coep") || "require-corp";
+const out = document.getElementById("out");
+const log = (k, v) => { console.log("PROBE " + k + " = " + JSON.stringify(v)); out.textContent += "\n" + k + " " + JSON.stringify(v); };
+window.__LOG = log;
+
+async function boot() {
+  log("first_paint", { coi: self.crossOriginIsolated, SAB: typeof SharedArrayBuffer, mode: MODE });
+  if (MODE === "off") { window.__READY = true; return settle(); }
+  const reg = await navigator.serviceWorker.register("coi-serviceworker.js?coep=" + MODE, { scope: "./" });
+  await navigator.serviceWorker.ready;
+  const key = "coi_reloads_" + MODE;
+  const n = Number(sessionStorage.getItem(key) || "0");
+  if (!self.crossOriginIsolated && n < 2) {
+    sessionStorage.setItem(key, String(n + 1));
+    log("reloading", { attempt: n + 1 });
+    location.reload();
+    return;
+  }
+  window.__RELOADS = n;
+  window.__READY = true;
+  settle();
+}
+
+// Controls that must run on EVERY pass, or the pass proves nothing.
+async function settle() {
+  const ctl = {};
+  // (i) 404 control: prove we are talking to OUR header-free server, not a cache.
+  try {
+    const r = await fetch("does-not-exist-" + Date.now() + ".html", { cache: "no-store" });
+    ctl.control_404 = { status: r.status, server_hdr_coep: r.headers.get("cross-origin-embedder-policy"),
+                        sw_synthesised_coep: r.headers.get("cross-origin-embedder-policy") };
+  } catch (e) { ctl.control_404 = { err: String(e) }; }
+  // (ii) ENFORCEMENT control: a cross-origin no-CORP subresource. Under a REAL
+  //      require-corp this MUST fail. If it loads, isolation is not being enforced
+  //      and every "ARRIVED" below would be meaningless.
+  ctl.enforcement_nocorp_img = await new Promise((res) => {
+    const i = new Image(); let done = false;
+    const fin = (v) => { if (!done) { done = true; res(v); } };
+    i.onload = () => fin({ loaded: true, w: i.naturalWidth });
+    i.onerror = () => fin({ loaded: false });
+    i.src = "https://www.python.org/static/favicon.ico?x=" + Date.now();
+    setTimeout(() => fin({ loaded: false, timeout: true }), 8000);
+  });
+  ctl.coi = self.crossOriginIsolated;
+  ctl.SAB = typeof SharedArrayBuffer;
+  window.__CONTROLS = ctl;
+  log("controls", ctl);
+  window.__SETTLED = true;
+}
+boot();
+</script>

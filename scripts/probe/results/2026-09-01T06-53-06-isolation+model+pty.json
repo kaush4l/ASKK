@@ -1,0 +1,2668 @@
+{
+ "started": "2026-09-01T06:53:06.568Z",
+ "argv": [
+  "isolation",
+  "model",
+  "pty",
+  "--port=8821",
+  "--echo-port=8824"
+ ],
+ "cells": [
+  {
+   "probe": "isolation",
+   "engine": "chromium",
+   "mode": "off",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "first_nav": {
+    "status": 200,
+    "coep_on_wire": "(absent)"
+   },
+   "first_paint": {
+    "coi": false,
+    "sab": "undefined"
+   },
+   "results": {
+    "mode": "off",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.0.0 Safari/537.36",
+    "steps": [
+     [
+      "first_paint_crossOriginIsolated",
+      false
+     ],
+     [
+      "first_paint_SAB_typeof",
+      "undefined"
+     ],
+     [
+      "sw",
+      "skipped on purpose - BASELINE, no isolation"
+     ],
+     [
+      "crossOriginIsolated",
+      false
+     ],
+     [
+      "controller",
+      false
+     ],
+     [
+      "SharedArrayBuffer",
+      {
+       "ok": false,
+       "err": "ReferenceError: SharedArrayBuffer is not defined"
+      }
+     ],
+     [
+      "Atomics.wait",
+      {
+       "ok": false,
+       "err": "no SAB: ReferenceError: SharedArrayBuffer is not defined"
+      }
+     ],
+     [
+      "fetch_cors openai      (no CORP, CORS)",
+      {
+       "arrived": true,
+       "status": 401,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors anthropic   (no CORP, CORS)",
+      {
+       "arrived": false,
+       "err": "TypeError: Failed to fetch"
+      }
+     ],
+     [
+      "fetch_cors huggingface (no CORP, CORS) - transformers.js weights",
+      {
+       "arrived": true,
+       "status": 200,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors wikipedia   (no CORP, NO ACAO) - CORS control",
+      {
+       "arrived": false,
+       "err": "TypeError: Failed to fetch"
+      }
+     ],
+     [
+      "fetch_nocors cdnjs  (HAS CORP: cross-origin)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors esm.sh (NO CORP)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors huggingface (NO CORP)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "script_tag cdnjs (HAS CORP)",
+      {
+       "loaded": true,
+       "marked": "object"
+      }
+     ],
+     [
+      "stylesheet fonts.googleapis (HAS CORP)",
+      {
+       "loaded": true,
+       "rules": "opaque:SecurityError"
+      }
+     ],
+     [
+      "img google favicon (HAS CORP)",
+      {
+       "loaded": true,
+       "w": 32
+      }
+     ],
+     [
+      "img python.org favicon (NO CORP)",
+      {
+       "loaded": true,
+       "w": 48
+      }
+     ],
+     [
+      "img developer.mozilla.org favicon (NO CORP)",
+      {
+       "loaded": true,
+       "w": 48
+      }
+     ],
+     [
+      "control_404",
+      {
+       "status": 404,
+       "coep": null,
+       "coop": null
+      }
+     ]
+    ],
+    "reloads_needed": 0,
+    "done": true
+   },
+   "nested": {
+    "err": "outer onerror: Uncaught ReferenceError: SharedArrayBuffer is not defined"
+   },
+   "sw_headers": {
+    "status": 200,
+    "coep": null,
+    "coop": null,
+    "corp": null
+   },
+   "after_reload": {
+    "status": 200,
+    "coi": false,
+    "controller": false
+   },
+   "cold_visit": {
+    "isolated_at_first_load": false,
+    "after_sw_install": false,
+    "reloads_needed": 0,
+    "navigations": 1
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Access to fetch at 'https://api.anthropic.com/v1/models' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[console.error] Access to fetch at 'https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[requestfailed] https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395b :: net::ERR_ABORTED",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[pageerror] SharedArrayBuffer is not defined",
+    "[requestfailed] http://127.0.0.1:8821/coi-serviceworker.js?probe=1788245589007 :: net::ERR_ABORTED",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Access to fetch at 'https://api.anthropic.com/v1/models' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[console.error] Access to fetch at 'https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[requestfailed] https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395b :: net::ERR_ABORTED",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "isolation",
+   "engine": "chromium",
+   "mode": "require-corp",
+   "driver_failed": "evaluate: Execution context was destroyed, most likely because of a navigation"
+  },
+  {
+   "probe": "isolation",
+   "engine": "chromium",
+   "mode": "credentialless",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "first_nav": {
+    "status": 200,
+    "coep_on_wire": "(absent)"
+   },
+   "first_paint": {
+    "coi": false,
+    "sab": "undefined"
+   },
+   "results": {
+    "mode": "credentialless",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.0.0 Safari/537.36",
+    "steps": [
+     [
+      "first_paint_crossOriginIsolated",
+      true
+     ],
+     [
+      "first_paint_SAB_typeof",
+      "function"
+     ],
+     [
+      "sw_registered",
+      {
+       "scope": "http://127.0.0.1:8821/"
+      }
+     ],
+     [
+      "crossOriginIsolated",
+      true
+     ],
+     [
+      "controller",
+      true
+     ],
+     [
+      "SharedArrayBuffer",
+      {
+       "ok": true,
+       "byteLength": 8
+      }
+     ],
+     [
+      "atomics_timeout-probe",
+      {
+       "phase": "timeout-probe",
+       "result": "timed-out",
+       "ms": 54
+      }
+     ],
+     [
+      "atomics_blocking-probe",
+      {
+       "phase": "blocking-probe",
+       "result": "ok",
+       "ms": 251
+      }
+     ],
+     [
+      "Atomics.wait",
+      {
+       "ok": true,
+       "wake_ms": 251,
+       "main_thread_still_alive_ms": 308
+      }
+     ],
+     [
+      "fetch_cors openai      (no CORP, CORS)",
+      {
+       "arrived": true,
+       "status": 401,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors anthropic   (no CORP, CORS)",
+      {
+       "arrived": false,
+       "err": "TypeError: Failed to fetch"
+      }
+     ],
+     [
+      "fetch_cors huggingface (no CORP, CORS) - transformers.js weights",
+      {
+       "arrived": true,
+       "status": 200,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors wikipedia   (no CORP, NO ACAO) - CORS control",
+      {
+       "arrived": false,
+       "err": "TypeError: Failed to fetch"
+      }
+     ],
+     [
+      "fetch_nocors cdnjs  (HAS CORP: cross-origin)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors esm.sh (NO CORP)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors huggingface (NO CORP)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "script_tag cdnjs (HAS CORP)",
+      {
+       "loaded": true,
+       "marked": "object"
+      }
+     ],
+     [
+      "stylesheet fonts.googleapis (HAS CORP)",
+      {
+       "loaded": true,
+       "rules": "opaque:SecurityError"
+      }
+     ],
+     [
+      "img google favicon (HAS CORP)",
+      {
+       "loaded": true,
+       "w": 32
+      }
+     ],
+     [
+      "img python.org favicon (NO CORP)",
+      {
+       "loaded": true,
+       "w": 48
+      }
+     ],
+     [
+      "img developer.mozilla.org favicon (NO CORP)",
+      {
+       "loaded": true,
+       "w": 48
+      }
+     ],
+     [
+      "control_404",
+      {
+       "status": 404,
+       "coep": "credentialless",
+       "coop": "same-origin"
+      }
+     ]
+    ],
+    "reloads_needed": 1,
+    "done": true
+   },
+   "nested": {
+    "outer_coi": true,
+    "outer_sab": "function",
+    "inner": {
+     "inner_coi": true,
+     "inner_sab": "function",
+     "atomics_wait": "ok",
+     "blocked_ms": 208
+    }
+   },
+   "sw_headers": {
+    "status": 200,
+    "coep": "credentialless",
+    "coop": "same-origin",
+    "corp": "same-origin"
+   },
+   "after_reload": {
+    "status": 200,
+    "coi": true,
+    "controller": true
+   },
+   "cold_visit": {
+    "isolated_at_first_load": false,
+    "after_sw_install": true,
+    "reloads_needed": 1,
+    "navigations": 2
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Access to fetch at 'https://api.anthropic.com/v1/models' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[console.error] Access to fetch at 'https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[requestfailed] https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395b :: net::ERR_ABORTED",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[requestfailed] http://127.0.0.1:8821/coi-serviceworker.js?probe=1788245597196 :: net::ERR_ABORTED",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Access to fetch at 'https://api.anthropic.com/v1/models' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[console.error] Access to fetch at 'https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[requestfailed] https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395b :: net::ERR_ABORTED",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "isolation",
+   "engine": "webkit",
+   "mode": "off",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "first_nav": {
+    "status": 200,
+    "coep_on_wire": "(absent)"
+   },
+   "first_paint": {
+    "coi": false,
+    "sab": "undefined"
+   },
+   "results": {
+    "mode": "off",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    "steps": [
+     [
+      "first_paint_crossOriginIsolated",
+      false
+     ],
+     [
+      "first_paint_SAB_typeof",
+      "undefined"
+     ],
+     [
+      "sw",
+      "skipped on purpose - BASELINE, no isolation"
+     ],
+     [
+      "crossOriginIsolated",
+      false
+     ],
+     [
+      "controller",
+      false
+     ],
+     [
+      "SharedArrayBuffer",
+      {
+       "ok": false,
+       "err": "ReferenceError: Can't find variable: SharedArrayBuffer"
+      }
+     ],
+     [
+      "Atomics.wait",
+      {
+       "ok": false,
+       "err": "no SAB: ReferenceError: Can't find variable: SharedArrayBuffer"
+      }
+     ],
+     [
+      "fetch_cors openai      (no CORP, CORS)",
+      {
+       "arrived": true,
+       "status": 401,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors anthropic   (no CORP, CORS)",
+      {
+       "arrived": false,
+       "err": "TypeError: Load failed"
+      }
+     ],
+     [
+      "fetch_cors huggingface (no CORP, CORS) - transformers.js weights",
+      {
+       "arrived": true,
+       "status": 200,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors wikipedia   (no CORP, NO ACAO) - CORS control",
+      {
+       "arrived": false,
+       "err": "TypeError: Load failed"
+      }
+     ],
+     [
+      "fetch_nocors cdnjs  (HAS CORP: cross-origin)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors esm.sh (NO CORP)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors huggingface (NO CORP)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "script_tag cdnjs (HAS CORP)",
+      {
+       "loaded": true,
+       "marked": "object"
+      }
+     ],
+     [
+      "stylesheet fonts.googleapis (HAS CORP)",
+      {
+       "loaded": true,
+       "rules": "opaque:SecurityError"
+      }
+     ],
+     [
+      "img google favicon (HAS CORP)",
+      {
+       "loaded": true,
+       "w": 32
+      }
+     ],
+     [
+      "img python.org favicon (NO CORP)",
+      {
+       "loaded": true,
+       "w": 48
+      }
+     ],
+     [
+      "img developer.mozilla.org favicon (NO CORP)",
+      {
+       "loaded": true,
+       "w": 48
+      }
+     ],
+     [
+      "control_404",
+      {
+       "status": 404,
+       "coep": null,
+       "coop": null
+      }
+     ]
+    ],
+    "reloads_needed": 0,
+    "done": true
+   },
+   "nested": {
+    "err": "outer onerror: ReferenceError: Can't find variable: SharedArrayBuffer"
+   },
+   "sw_headers": {
+    "status": 200,
+    "coep": null,
+    "coop": null,
+    "corp": null
+   },
+   "after_reload": {
+    "status": 200,
+    "coi": false,
+    "controller": false
+   },
+   "cold_visit": {
+    "isolated_at_first_load": false,
+    "after_sw_install": false,
+    "reloads_needed": 0,
+    "navigations": 1
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.anthropic.com/v1/models due to access control checks.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[pageerror] /en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo due to access control checks.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[pageerror] Can't find variable: SharedArrayBuffer",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.anthropic.com/v1/models due to access control checks.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[pageerror] /en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo due to access control checks.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "isolation",
+   "engine": "webkit",
+   "mode": "require-corp",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "first_nav": {
+    "status": 200,
+    "coep_on_wire": "(absent)"
+   },
+   "first_paint": {
+    "coi": false,
+    "sab": "undefined"
+   },
+   "results": {
+    "mode": "require-corp",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    "steps": [
+     [
+      "first_paint_crossOriginIsolated",
+      true
+     ],
+     [
+      "first_paint_SAB_typeof",
+      "function"
+     ],
+     [
+      "sw_registered",
+      {
+       "scope": "http://127.0.0.1:8821/"
+      }
+     ],
+     [
+      "crossOriginIsolated",
+      true
+     ],
+     [
+      "controller",
+      true
+     ],
+     [
+      "SharedArrayBuffer",
+      {
+       "ok": true,
+       "byteLength": 8
+      }
+     ],
+     [
+      "atomics_timeout-probe",
+      {
+       "phase": "timeout-probe",
+       "result": "timed-out",
+       "ms": 56
+      }
+     ],
+     [
+      "atomics_blocking-probe",
+      {
+       "phase": "blocking-probe",
+       "result": "ok",
+       "ms": 252
+      }
+     ],
+     [
+      "Atomics.wait",
+      {
+       "ok": true,
+       "wake_ms": 252,
+       "main_thread_still_alive_ms": 312
+      }
+     ],
+     [
+      "fetch_cors openai      (no CORP, CORS)",
+      {
+       "arrived": true,
+       "status": 401,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors anthropic   (no CORP, CORS)",
+      {
+       "arrived": false,
+       "err": "TypeError: Load failed"
+      }
+     ],
+     [
+      "fetch_cors huggingface (no CORP, CORS) - transformers.js weights",
+      {
+       "arrived": true,
+       "status": 200,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors wikipedia   (no CORP, NO ACAO) - CORS control",
+      {
+       "arrived": false,
+       "err": "TypeError: Load failed"
+      }
+     ],
+     [
+      "fetch_nocors cdnjs  (HAS CORP: cross-origin)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors esm.sh (NO CORP)",
+      {
+       "arrived": false,
+       "err": "TypeError: Load failed"
+      }
+     ],
+     [
+      "fetch_nocors huggingface (NO CORP)",
+      {
+       "arrived": false,
+       "err": "TypeError: Load failed"
+      }
+     ],
+     [
+      "script_tag cdnjs (HAS CORP)",
+      {
+       "loaded": true,
+       "marked": "object"
+      }
+     ],
+     [
+      "stylesheet fonts.googleapis (HAS CORP)",
+      {
+       "loaded": true,
+       "rules": "opaque:SecurityError"
+      }
+     ],
+     [
+      "img google favicon (HAS CORP)",
+      {
+       "loaded": true,
+       "w": 32
+      }
+     ],
+     [
+      "img python.org favicon (NO CORP)",
+      {
+       "loaded": false,
+       "err": "onerror"
+      }
+     ],
+     [
+      "img developer.mozilla.org favicon (NO CORP)",
+      {
+       "loaded": false,
+       "err": "onerror"
+      }
+     ],
+     [
+      "control_404",
+      {
+       "status": 404,
+       "coep": "require-corp",
+       "coop": "same-origin"
+      }
+     ]
+    ],
+    "reloads_needed": 1,
+    "done": true
+   },
+   "nested": {
+    "outer_coi": true,
+    "outer_sab": "function",
+    "inner": {
+     "inner_coi": true,
+     "inner_sab": "function",
+     "atomics_wait": "ok",
+     "blocked_ms": 206
+    }
+   },
+   "sw_headers": {
+    "status": 200,
+    "coep": "require-corp",
+    "coop": "same-origin",
+    "corp": "same-origin"
+   },
+   "after_reload": {
+    "status": 200,
+    "coi": true,
+    "controller": true
+   },
+   "cold_visit": {
+    "isolated_at_first_load": false,
+    "after_sw_install": true,
+    "reloads_needed": 1,
+    "navigations": 2
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.anthropic.com/v1/models due to access control checks.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[pageerror] /en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo due to access control checks.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Cancelled load to https://esm.sh/marked@12.0.2 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[pageerror] /esm.sh/marked@12.0.2 due to access control checks.",
+    "[requestfailed] https://esm.sh/marked@12.0.2 :: Cancelled load to https://esm.sh/marked@12.0.2 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cancelled load to https://esm.sh/marked@12.0.2 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cross-origin redirection to https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395bd330e9531d9d32ada7049/config.json?%2FXenova%2Fwhisper-tiny.en%2Fresolve%2Fmain%2Fconfig.json=&etag=%228170b9ae19fe3eec3501b3179afafd2e09ea7731%22 denied by Cross-Origin Resource Sharing policy: Cancelled load to https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[pageerror] /huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json due to access control checks.",
+    "[requestfailed] https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json :: Cross-origin redirection to https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395bd330e9531d9d32ada7049/config.json?%2FXenova%2Fwhisper-tiny.en%2Fresolve%2Fmain%2Fconfig.json=&etag=%228170b9ae19fe3eec3501b3179afafd2e09ea7731%22 denied by Cross-Origin Resource Sharing policy: Cancelled load to https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cross-origin redirection to https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395bd330e9531d9d32ada7049/config.json?%2FXenova%2Fwhisper-tiny.en%2Fresolve%2Fmain%2Fconfig.json=&etag=%228170b9ae19fe3eec3501b3179afafd2e09ea7731%22 denied by Cross-Origin Resource Sharing policy: Cancelled load to https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cancelled load to https://www.python.org/static/favicon.ico?x=1788245606748 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cannot load image https://www.python.org/static/favicon.ico?x=1788245606748 due to access control checks.",
+    "[requestfailed] https://www.python.org/static/favicon.ico?x=1788245606748 :: Cancelled load to https://www.python.org/static/favicon.ico?x=1788245606748 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cancelled load to https://www.python.org/static/favicon.ico?x=1788245606748 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cancelled load to https://developer.mozilla.org/favicon.ico?x=1788245606877 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cannot load image https://developer.mozilla.org/favicon.ico?x=1788245606877 due to access control checks.",
+    "[requestfailed] https://developer.mozilla.org/favicon.ico?x=1788245606877 :: Cancelled load to https://developer.mozilla.org/favicon.ico?x=1788245606877 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cancelled load to https://developer.mozilla.org/favicon.ico?x=1788245606877 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.anthropic.com/v1/models due to access control checks.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[pageerror] /en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo due to access control checks.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Cancelled load to https://esm.sh/marked@12.0.2 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[pageerror] /esm.sh/marked@12.0.2 due to access control checks.",
+    "[requestfailed] https://esm.sh/marked@12.0.2 :: Cancelled load to https://esm.sh/marked@12.0.2 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cancelled load to https://esm.sh/marked@12.0.2 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cross-origin redirection to https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395bd330e9531d9d32ada7049/config.json?%2FXenova%2Fwhisper-tiny.en%2Fresolve%2Fmain%2Fconfig.json=&etag=%228170b9ae19fe3eec3501b3179afafd2e09ea7731%22 denied by Cross-Origin Resource Sharing policy: Cancelled load to https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[pageerror] /huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json due to access control checks.",
+    "[requestfailed] https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json :: Cross-origin redirection to https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395bd330e9531d9d32ada7049/config.json?%2FXenova%2Fwhisper-tiny.en%2Fresolve%2Fmain%2Fconfig.json=&etag=%228170b9ae19fe3eec3501b3179afafd2e09ea7731%22 denied by Cross-Origin Resource Sharing policy: Cancelled load to https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cross-origin redirection to https://huggingface.co/api/resolve-cache/models/Xenova/whisper-tiny.en/79fb389fc764e7c395bd330e9531d9d32ada7049/config.json?%2FXenova%2Fwhisper-tiny.en%2Fresolve%2Fmain%2Fconfig.json=&etag=%228170b9ae19fe3eec3501b3179afafd2e09ea7731%22 denied by Cross-Origin Resource Sharing policy: Cancelled load to https://huggingface.co/Xenova/whisper-tiny.en/resolve/main/config.json because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cancelled load to https://www.python.org/static/favicon.ico?x=1788245608583 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cannot load image https://www.python.org/static/favicon.ico?x=1788245608583 due to access control checks.",
+    "[requestfailed] https://www.python.org/static/favicon.ico?x=1788245608583 :: Cancelled load to https://www.python.org/static/favicon.ico?x=1788245608583 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cancelled load to https://www.python.org/static/favicon.ico?x=1788245608583 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cancelled load to https://developer.mozilla.org/favicon.ico?x=1788245608658 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cannot load image https://developer.mozilla.org/favicon.ico?x=1788245608658 due to access control checks.",
+    "[requestfailed] https://developer.mozilla.org/favicon.ico?x=1788245608658 :: Cancelled load to https://developer.mozilla.org/favicon.ico?x=1788245608658 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cancelled load to https://developer.mozilla.org/favicon.ico?x=1788245608658 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "isolation",
+   "engine": "webkit",
+   "mode": "credentialless",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "first_nav": {
+    "status": 200,
+    "coep_on_wire": "(absent)"
+   },
+   "first_paint": {
+    "coi": false,
+    "sab": "undefined"
+   },
+   "results": {
+    "mode": "credentialless",
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    "steps": [
+     [
+      "first_paint_crossOriginIsolated",
+      false
+     ],
+     [
+      "first_paint_SAB_typeof",
+      "undefined"
+     ],
+     [
+      "sw_registered",
+      {
+       "scope": "http://127.0.0.1:8821/"
+      }
+     ],
+     [
+      "crossOriginIsolated",
+      false
+     ],
+     [
+      "controller",
+      true
+     ],
+     [
+      "SharedArrayBuffer",
+      {
+       "ok": false,
+       "err": "ReferenceError: Can't find variable: SharedArrayBuffer"
+      }
+     ],
+     [
+      "Atomics.wait",
+      {
+       "ok": false,
+       "err": "no SAB: ReferenceError: Can't find variable: SharedArrayBuffer"
+      }
+     ],
+     [
+      "fetch_cors openai      (no CORP, CORS)",
+      {
+       "arrived": true,
+       "status": 401,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors anthropic   (no CORP, CORS)",
+      {
+       "arrived": false,
+       "err": "TypeError: Load failed"
+      }
+     ],
+     [
+      "fetch_cors huggingface (no CORP, CORS) - transformers.js weights",
+      {
+       "arrived": true,
+       "status": 200,
+       "type": "cors"
+      }
+     ],
+     [
+      "fetch_cors wikipedia   (no CORP, NO ACAO) - CORS control",
+      {
+       "arrived": false,
+       "err": "TypeError: Load failed"
+      }
+     ],
+     [
+      "fetch_nocors cdnjs  (HAS CORP: cross-origin)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors esm.sh (NO CORP)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "fetch_nocors huggingface (NO CORP)",
+      {
+       "arrived": true,
+       "type": "opaque",
+       "status": 0
+      }
+     ],
+     [
+      "script_tag cdnjs (HAS CORP)",
+      {
+       "loaded": true,
+       "marked": "object"
+      }
+     ],
+     [
+      "stylesheet fonts.googleapis (HAS CORP)",
+      {
+       "loaded": true,
+       "rules": "opaque:SecurityError"
+      }
+     ],
+     [
+      "img google favicon (HAS CORP)",
+      {
+       "loaded": true,
+       "w": 32
+      }
+     ],
+     [
+      "img python.org favicon (NO CORP)",
+      {
+       "loaded": true,
+       "w": 48
+      }
+     ],
+     [
+      "img developer.mozilla.org favicon (NO CORP)",
+      {
+       "loaded": true,
+       "w": 48
+      }
+     ],
+     [
+      "control_404",
+      {
+       "status": 404,
+       "coep": "credentialless",
+       "coop": "same-origin"
+      }
+     ]
+    ],
+    "reloads_needed": 2,
+    "done": true
+   },
+   "nested": {
+    "err": "outer onerror: ReferenceError: Can't find variable: SharedArrayBuffer"
+   },
+   "sw_headers": {
+    "status": 200,
+    "coep": "credentialless",
+    "coop": "same-origin",
+    "corp": "same-origin"
+   },
+   "after_reload": {
+    "status": 200,
+    "coi": false,
+    "controller": true
+   },
+   "cold_visit": {
+    "isolated_at_first_load": false,
+    "after_sw_install": false,
+    "reloads_needed": 2,
+    "navigations": 3
+   },
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.anthropic.com/v1/models due to access control checks.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[pageerror] /en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo due to access control checks.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[pageerror] Can't find variable: SharedArrayBuffer",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.anthropic.com/v1/models due to access control checks.",
+    "[requestfailed] https://api.anthropic.com/v1/models :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[pageerror] /en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo due to access control checks.",
+    "[requestfailed] https://en.wikipedia.org/w/api.php?action=query&format=json&meta=siteinfo :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 200",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "model",
+   "engine": "chromium",
+   "mode": "off",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "controls": {
+    "control_404": {
+     "status": 404,
+     "server_hdr_coep": null,
+     "sw_synthesised_coep": null
+    },
+    "enforcement_nocorp_img": {
+     "loaded": true,
+     "w": 48
+    },
+    "coi": false,
+    "SAB": "undefined"
+   },
+   "coi": false,
+   "reloads": 0,
+   "anthropic": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json",
+    "acao": "*",
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 106,
+    "text_len": 0,
+    "first_chunk_ms": 246,
+    "ms": 246,
+    "text_head": ""
+   },
+   "openai": {
+    "phase": "fetch",
+    "arrived": false,
+    "err_name": "TypeError",
+    "err": "Failed to fetch"
+   },
+   "openai_noauth": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 496,
+    "text_len": 0,
+    "first_chunk_ms": 175,
+    "ms": 175,
+    "text_head": ""
+   },
+   "local_short": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 12,
+    "frames": 12,
+    "bytes": 2616,
+    "text_len": 5,
+    "first_chunk_ms": 6,
+    "ms": 3319,
+    "text_head": "\n\nOK."
+   },
+   "local_long": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 405,
+    "frames": 406,
+    "bytes": 86044,
+    "text_len": 3886,
+    "first_chunk_ms": 4,
+    "ms": 146738,
+    "text_head": "\nWe need answer user's request: \"Write a detailed 600-word explanation of how a CPU cache "
+   },
+   "echo": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 41,
+    "frames": 40,
+    "bytes": 2084,
+    "text_len": 230,
+    "first_chunk_ms": 5,
+    "ms": 840,
+    "text_head": "tok0 tok1 tok2 tok3 tok4 tok5 tok6 tok7 tok8 tok9 tok10 tok11 tok12 tok13 tok14 tok15 tok1"
+   },
+   "echo_server_saw": [
+    {
+     "method": "OPTIONS",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": "POST",
+     "acrh": "anthropic-dangerous-direct-browser-access,anthropic-version,content-type,x-api-key",
+     "sec_fetch_mode": "cors",
+     "custom": {}
+    },
+    {
+     "method": "POST",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": null,
+     "acrh": null,
+     "sec_fetch_mode": "cors",
+     "custom": {
+      "x-api-key": "sk-ant-not-a-real-key-deliberately",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+     }
+    }
+   ],
+   "nested_local_short": {
+    "depth": 2,
+    "outer_coi": false,
+    "inner_coi": false,
+    "inner_SAB": "undefined",
+    "which": "local_short",
+    "result": {
+     "phase": "complete",
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "ok": true,
+     "has_readable_body": true,
+     "ct": "text/event-stream; charset=utf-8",
+     "acao": null,
+     "corp": null,
+     "chunks": 12,
+     "frames": 12,
+     "bytes": 2617,
+     "text_len": 5,
+     "first_chunk_ms": 2,
+     "ms": 5649,
+     "text_head": "\n\nOK."
+    }
+   },
+   "local_long_aged": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 405,
+    "frames": 406,
+    "bytes": 85732,
+    "text_len": 3729,
+    "first_chunk_ms": 7,
+    "ms": 121046,
+    "text_head": "\nWe need to respond to user: \"Write a detailed 600-word explanation of how a CPU cache wor"
+   },
+   "control_404_end": {
+    "status": 404,
+    "coep": null
+   },
+   "cdp": [
+    {
+     "k": "preflight-sent",
+     "url": "https://api.anthropic.com/v1/messages"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "https://api.anthropic.com/v1/messages",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "https://api.openai.com/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "https://api.openai.com/v1/chat/completions",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "http://127.0.0.1:8821"
+    },
+    {
+     "k": "loadingFailed",
+     "type": "Fetch",
+     "err": "net::ERR_FAILED",
+     "blockedReason": null,
+     "corsError": "MissingAllowOriginHeader"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "http://127.0.0.1:8873/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "http://127.0.0.1:8873/v1/chat/completions",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "http://127.0.0.1:8824/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "http://127.0.0.1:8824/v1/chat/completions",
+     "status": 204,
+     "corp": "(absent)",
+     "acao": "(absent)"
+    }
+   ],
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Access to fetch at 'https://api.openai.com/v1/chat/completions' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] POST https://api.openai.com/v1/chat/completions :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "model",
+   "engine": "chromium",
+   "mode": "require-corp",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "controls": {
+    "control_404": {
+     "status": 404,
+     "server_hdr_coep": "require-corp",
+     "sw_synthesised_coep": "require-corp"
+    },
+    "enforcement_nocorp_img": {
+     "loaded": false
+    },
+    "coi": true,
+    "SAB": "function"
+   },
+   "coi": true,
+   "reloads": 1,
+   "anthropic": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json",
+    "acao": "*",
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 106,
+    "text_len": 0,
+    "first_chunk_ms": 243,
+    "ms": 243,
+    "text_head": ""
+   },
+   "openai": {
+    "phase": "fetch",
+    "arrived": false,
+    "err_name": "TypeError",
+    "err": "Failed to fetch"
+   },
+   "openai_noauth": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 496,
+    "text_len": 0,
+    "first_chunk_ms": 230,
+    "ms": 231,
+    "text_head": ""
+   },
+   "local_short": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 17,
+    "frames": 17,
+    "bytes": 3613,
+    "text_len": 5,
+    "first_chunk_ms": 6,
+    "ms": 4210,
+    "text_head": "\n\nOK."
+   },
+   "local_long": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 378,
+    "frames": 377,
+    "bytes": 80087,
+    "text_len": 3689,
+    "first_chunk_ms": 3,
+    "ms": 60610,
+    "text_head": "\nWe need respond to user: \"Write a detailed 600-word explanation of how a CPU cache works."
+   },
+   "echo": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 41,
+    "frames": 40,
+    "bytes": 2084,
+    "text_len": 230,
+    "first_chunk_ms": 3,
+    "ms": 837,
+    "text_head": "tok0 tok1 tok2 tok3 tok4 tok5 tok6 tok7 tok8 tok9 tok10 tok11 tok12 tok13 tok14 tok15 tok1"
+   },
+   "echo_server_saw": [
+    {
+     "method": "OPTIONS",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": "POST",
+     "acrh": "anthropic-dangerous-direct-browser-access,anthropic-version,content-type,x-api-key",
+     "sec_fetch_mode": "cors",
+     "custom": {}
+    },
+    {
+     "method": "POST",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": null,
+     "acrh": null,
+     "sec_fetch_mode": "cors",
+     "custom": {
+      "x-api-key": "sk-ant-not-a-real-key-deliberately",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+     }
+    }
+   ],
+   "nested_local_short": {
+    "depth": 2,
+    "outer_coi": true,
+    "inner_coi": true,
+    "inner_SAB": "function",
+    "which": "local_short",
+    "result": {
+     "phase": "complete",
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "ok": true,
+     "has_readable_body": true,
+     "ct": "text/event-stream; charset=utf-8",
+     "acao": null,
+     "corp": null,
+     "chunks": 16,
+     "frames": 16,
+     "bytes": 3429,
+     "text_len": 4,
+     "first_chunk_ms": 2,
+     "ms": 4313,
+     "text_head": "\n\nOK"
+    }
+   },
+   "local_long_aged": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 407,
+    "frames": 406,
+    "bytes": 85687,
+    "text_len": 3703,
+    "first_chunk_ms": 5,
+    "ms": 68563,
+    "text_head": "\nWe need to respond to user: \"Write a detailed 600-word explanation of how a CPU cache wor"
+   },
+   "control_404_end": {
+    "status": 404,
+    "coep": "require-corp"
+   },
+   "cdp": [
+    {
+     "k": "loadingFailed",
+     "type": "Image",
+     "err": "net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep",
+     "blockedReason": "corp-not-same-origin-after-defaulted-to-same-origin-by-coep",
+     "corsError": null
+    },
+    {
+     "k": "preflight-sent",
+     "url": "https://api.anthropic.com/v1/messages"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "https://api.anthropic.com/v1/messages",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "https://api.openai.com/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "https://api.openai.com/v1/chat/completions",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "http://127.0.0.1:8821"
+    },
+    {
+     "k": "loadingFailed",
+     "type": "Fetch",
+     "err": "net::ERR_FAILED",
+     "blockedReason": null,
+     "corsError": "MissingAllowOriginHeader"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "http://127.0.0.1:8873/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "http://127.0.0.1:8873/v1/chat/completions",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "http://127.0.0.1:8824/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "http://127.0.0.1:8824/v1/chat/completions",
+     "status": 204,
+     "corp": "(absent)",
+     "acao": "(absent)"
+    }
+   ],
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[requestfailed] GET https://www.python.org/static/favicon.ico?x=1788245924434 :: net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep",
+    "[console.error] Failed to load resource: net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Access to fetch at 'https://api.openai.com/v1/chat/completions' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] POST https://api.openai.com/v1/chat/completions :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "model",
+   "engine": "chromium",
+   "mode": "credentialless",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "controls": {
+    "control_404": {
+     "status": 404,
+     "server_hdr_coep": "credentialless",
+     "sw_synthesised_coep": "credentialless"
+    },
+    "enforcement_nocorp_img": {
+     "loaded": true,
+     "w": 48
+    },
+    "coi": true,
+    "SAB": "function"
+   },
+   "coi": true,
+   "reloads": 1,
+   "anthropic": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json",
+    "acao": "*",
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 106,
+    "text_len": 0,
+    "first_chunk_ms": 276,
+    "ms": 277,
+    "text_head": ""
+   },
+   "openai": {
+    "phase": "fetch",
+    "arrived": false,
+    "err_name": "TypeError",
+    "err": "Failed to fetch"
+   },
+   "openai_noauth": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 496,
+    "text_len": 0,
+    "first_chunk_ms": 73,
+    "ms": 73,
+    "text_head": ""
+   },
+   "local_short": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 18,
+    "frames": 17,
+    "bytes": 3606,
+    "text_len": 5,
+    "first_chunk_ms": 5,
+    "ms": 2108,
+    "text_head": "\n\nOK."
+   },
+   "local_long": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 374,
+    "frames": 373,
+    "bytes": 78591,
+    "text_len": 3318,
+    "first_chunk_ms": 5,
+    "ms": 68957,
+    "text_head": "\nWe need to answer user's request: \"Write a detailed 600-word explanation of how a CPU cac"
+   },
+   "echo": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 41,
+    "frames": 40,
+    "bytes": 2084,
+    "text_len": 230,
+    "first_chunk_ms": 22,
+    "ms": 947,
+    "text_head": "tok0 tok1 tok2 tok3 tok4 tok5 tok6 tok7 tok8 tok9 tok10 tok11 tok12 tok13 tok14 tok15 tok1"
+   },
+   "echo_server_saw": [
+    {
+     "method": "OPTIONS",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": "POST",
+     "acrh": "anthropic-dangerous-direct-browser-access,anthropic-version,content-type,x-api-key",
+     "sec_fetch_mode": "cors",
+     "custom": {}
+    },
+    {
+     "method": "POST",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": null,
+     "acrh": null,
+     "sec_fetch_mode": "cors",
+     "custom": {
+      "x-api-key": "sk-ant-not-a-real-key-deliberately",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+     }
+    }
+   ],
+   "nested_local_short": {
+    "depth": 2,
+    "outer_coi": true,
+    "inner_coi": true,
+    "inner_SAB": "function",
+    "which": "local_short",
+    "result": {
+     "phase": "complete",
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "ok": true,
+     "has_readable_body": true,
+     "ct": "text/event-stream; charset=utf-8",
+     "acao": null,
+     "corp": null,
+     "chunks": 12,
+     "frames": 12,
+     "bytes": 2617,
+     "text_len": 5,
+     "first_chunk_ms": 3,
+     "ms": 1808,
+     "text_head": "\n\nOK."
+    }
+   },
+   "local_long_aged": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 388,
+    "frames": 387,
+    "bytes": 81991,
+    "text_len": 3679,
+    "first_chunk_ms": 6,
+    "ms": 81783,
+    "text_head": "\nWe need to respond to user: \"Write a detailed 600-word explanation of how a CPU cache wor"
+   },
+   "control_404_end": {
+    "status": 404,
+    "coep": "credentialless"
+   },
+   "cdp": [
+    {
+     "k": "preflight-sent",
+     "url": "https://api.anthropic.com/v1/messages"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "https://api.anthropic.com/v1/messages",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "https://api.openai.com/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "https://api.openai.com/v1/chat/completions",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "http://127.0.0.1:8821"
+    },
+    {
+     "k": "loadingFailed",
+     "type": "Fetch",
+     "err": "net::ERR_FAILED",
+     "blockedReason": null,
+     "corsError": "MissingAllowOriginHeader"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "http://127.0.0.1:8873/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "http://127.0.0.1:8873/v1/chat/completions",
+     "status": 200,
+     "corp": "(absent)",
+     "acao": "*"
+    },
+    {
+     "k": "preflight-sent",
+     "url": "http://127.0.0.1:8824/v1/chat/completions"
+    },
+    {
+     "k": "preflight-resp",
+     "url": "http://127.0.0.1:8824/v1/chat/completions",
+     "status": 204,
+     "corp": "(absent)",
+     "acao": "(absent)"
+    }
+   ],
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Access to fetch at 'https://api.openai.com/v1/chat/completions' from origin 'http://127.0.0.1:8821' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "[requestfailed] POST https://api.openai.com/v1/chat/completions :: net::ERR_FAILED",
+    "[console.error] Failed to load resource: net::ERR_FAILED",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "model",
+   "engine": "webkit",
+   "mode": "off",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "controls": {
+    "control_404": {
+     "status": 404,
+     "server_hdr_coep": null,
+     "sw_synthesised_coep": null
+    },
+    "enforcement_nocorp_img": {
+     "loaded": true,
+     "w": 48
+    },
+    "coi": false,
+    "SAB": "undefined"
+   },
+   "coi": false,
+   "reloads": 0,
+   "anthropic": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json",
+    "acao": "*",
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 106,
+    "text_len": 0,
+    "first_chunk_ms": 377,
+    "ms": 378,
+    "text_head": ""
+   },
+   "openai": {
+    "phase": "fetch",
+    "arrived": false,
+    "err_name": "TypeError",
+    "err": "Load failed"
+   },
+   "openai_noauth": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 496,
+    "text_len": 0,
+    "first_chunk_ms": 178,
+    "ms": 178,
+    "text_head": ""
+   },
+   "local_short": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 20,
+    "frames": 19,
+    "bytes": 4026,
+    "text_len": 5,
+    "first_chunk_ms": 6,
+    "ms": 3786,
+    "text_head": "\n\nOK."
+   },
+   "local_long": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 378,
+    "frames": 377,
+    "bytes": 80299,
+    "text_len": 3800,
+    "first_chunk_ms": 4,
+    "ms": 84395,
+    "text_head": "\nWe need to write a detailed 600-word explanation of how a CPU cache works. Do not stop ea"
+   },
+   "echo": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 41,
+    "frames": 40,
+    "bytes": 2084,
+    "text_len": 230,
+    "first_chunk_ms": 4,
+    "ms": 837,
+    "text_head": "tok0 tok1 tok2 tok3 tok4 tok5 tok6 tok7 tok8 tok9 tok10 tok11 tok12 tok13 tok14 tok15 tok1"
+   },
+   "echo_server_saw": [
+    {
+     "method": "OPTIONS",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": "POST",
+     "acrh": "anthropic-dangerous-direct-browser-access,anthropic-version,content-type,x-api-key",
+     "sec_fetch_mode": "cors",
+     "custom": {}
+    },
+    {
+     "method": "POST",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": null,
+     "acrh": null,
+     "sec_fetch_mode": "cors",
+     "custom": {
+      "x-api-key": "sk-ant-not-a-real-key-deliberately",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+     }
+    }
+   ],
+   "nested_local_short": {
+    "depth": 2,
+    "outer_coi": false,
+    "inner_coi": false,
+    "inner_SAB": "undefined",
+    "which": "local_short",
+    "result": {
+     "phase": "complete",
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "ok": true,
+     "has_readable_body": true,
+     "ct": "text/event-stream; charset=utf-8",
+     "acao": null,
+     "corp": null,
+     "chunks": 21,
+     "frames": 20,
+     "bytes": 4249,
+     "text_len": 0,
+     "first_chunk_ms": 4,
+     "ms": 3754,
+     "text_head": ""
+    }
+   },
+   "local_long_aged": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 382,
+    "frames": 382,
+    "bytes": 79106,
+    "text_len": 2709,
+    "first_chunk_ms": 5,
+    "ms": 93462,
+    "text_head": "\nWe need to respond to user: \"Write a detailed 600-word explanation of how a CPU cache wor"
+   },
+   "control_404_end": {
+    "status": 404,
+    "coep": null
+   },
+   "cdp": [],
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.openai.com/v1/chat/completions due to access control checks.",
+    "[requestfailed] POST https://api.openai.com/v1/chat/completions :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "model",
+   "engine": "webkit",
+   "mode": "require-corp",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "controls": {
+    "control_404": {
+     "status": 404,
+     "server_hdr_coep": "require-corp",
+     "sw_synthesised_coep": "require-corp"
+    },
+    "enforcement_nocorp_img": {
+     "loaded": false
+    },
+    "coi": true,
+    "SAB": "function"
+   },
+   "coi": true,
+   "reloads": 1,
+   "anthropic": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json",
+    "acao": "*",
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 106,
+    "text_len": 0,
+    "first_chunk_ms": 182,
+    "ms": 182,
+    "text_head": ""
+   },
+   "openai": {
+    "phase": "fetch",
+    "arrived": false,
+    "err_name": "TypeError",
+    "err": "Load failed"
+   },
+   "openai_noauth": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 496,
+    "text_len": 0,
+    "first_chunk_ms": 81,
+    "ms": 81,
+    "text_head": ""
+   },
+   "local_short": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 14,
+    "frames": 13,
+    "bytes": 2805,
+    "text_len": 5,
+    "first_chunk_ms": 4,
+    "ms": 13385,
+    "text_head": "\n\nOK."
+   },
+   "local_long": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 407,
+    "frames": 406,
+    "bytes": 83798,
+    "text_len": 2756,
+    "first_chunk_ms": 4,
+    "ms": 237004,
+    "text_head": "\nWe need to answer user: \"Write a detailed 600-word explanation of how a CPU cache works. "
+   },
+   "echo": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 41,
+    "frames": 40,
+    "bytes": 2084,
+    "text_len": 230,
+    "first_chunk_ms": 3,
+    "ms": 841,
+    "text_head": "tok0 tok1 tok2 tok3 tok4 tok5 tok6 tok7 tok8 tok9 tok10 tok11 tok12 tok13 tok14 tok15 tok1"
+   },
+   "echo_server_saw": [
+    {
+     "method": "POST",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": null,
+     "acrh": null,
+     "sec_fetch_mode": "cors",
+     "custom": {
+      "x-api-key": "sk-ant-not-a-real-key-deliberately",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+     }
+    }
+   ],
+   "nested_local_short": {
+    "depth": 2,
+    "outer_coi": true,
+    "inner_coi": true,
+    "inner_SAB": "function",
+    "which": "local_short",
+    "result": {
+     "phase": "complete",
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "ok": true,
+     "has_readable_body": true,
+     "ct": "text/event-stream; charset=utf-8",
+     "acao": null,
+     "corp": null,
+     "chunks": 22,
+     "frames": 21,
+     "bytes": 4355,
+     "text_len": 4,
+     "first_chunk_ms": 5,
+     "ms": 63859,
+     "text_head": "\n\nOK"
+    }
+   },
+   "local_long_aged": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 410,
+    "frames": 411,
+    "bytes": 86309,
+    "text_len": 3549,
+    "first_chunk_ms": 6,
+    "ms": 222518,
+    "text_head": "\nWe need answer user: \"Write a detailed 600-word explanation of how a CPU cache works. Do "
+   },
+   "control_404_end": {
+    "status": 404,
+    "coep": "require-corp"
+   },
+   "cdp": [],
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Cancelled load to https://www.python.org/static/favicon.ico?x=1788246501146 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Cannot load image https://www.python.org/static/favicon.ico?x=1788246501146 due to access control checks.",
+    "[requestfailed] GET https://www.python.org/static/favicon.ico?x=1788246501146 :: Cancelled load to https://www.python.org/static/favicon.ico?x=1788246501146 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: Cancelled load to https://www.python.org/static/favicon.ico?x=1788246501146 because it violates the resource's Cross-Origin-Resource-Policy response header.",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.openai.com/v1/chat/completions due to access control checks.",
+    "[requestfailed] POST https://api.openai.com/v1/chat/completions :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "model",
+   "engine": "webkit",
+   "mode": "credentialless",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)",
+    "corp": "(absent)"
+   },
+   "controls": {
+    "control_404": {
+     "status": 404,
+     "server_hdr_coep": "credentialless",
+     "sw_synthesised_coep": "credentialless"
+    },
+    "enforcement_nocorp_img": {
+     "loaded": true,
+     "w": 48
+    },
+    "coi": false,
+    "SAB": "undefined"
+   },
+   "coi": false,
+   "reloads": 2,
+   "anthropic": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json",
+    "acao": "*",
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 106,
+    "text_len": 0,
+    "first_chunk_ms": 246,
+    "ms": 247,
+    "text_head": ""
+   },
+   "openai": {
+    "phase": "fetch",
+    "arrived": false,
+    "err_name": "TypeError",
+    "err": "Load failed"
+   },
+   "openai_noauth": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 401,
+    "type": "cors",
+    "ok": false,
+    "has_readable_body": true,
+    "ct": "application/json; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 1,
+    "frames": 0,
+    "bytes": 496,
+    "text_len": 0,
+    "first_chunk_ms": 100,
+    "ms": 100,
+    "text_head": ""
+   },
+   "local_short": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 21,
+    "frames": 20,
+    "bytes": 4179,
+    "text_len": 4,
+    "first_chunk_ms": 5,
+    "ms": 49163,
+    "text_head": "\n\nOK"
+   },
+   "local_long": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 408,
+    "frames": 408,
+    "bytes": 86387,
+    "text_len": 3864,
+    "first_chunk_ms": 4,
+    "ms": 194758,
+    "text_head": "\nWe need to answer user: \"Write a detailed 600-word explanation of how a CPU cache works. "
+   },
+   "echo": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 41,
+    "frames": 40,
+    "bytes": 2084,
+    "text_len": 230,
+    "first_chunk_ms": 4,
+    "ms": 840,
+    "text_head": "tok0 tok1 tok2 tok3 tok4 tok5 tok6 tok7 tok8 tok9 tok10 tok11 tok12 tok13 tok14 tok15 tok1"
+   },
+   "echo_server_saw": [
+    {
+     "method": "POST",
+     "path": "/v1/chat/completions",
+     "origin": "http://127.0.0.1:8821",
+     "acrm": null,
+     "acrh": null,
+     "sec_fetch_mode": "cors",
+     "custom": {
+      "x-api-key": "sk-ant-not-a-real-key-deliberately",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+     }
+    }
+   ],
+   "nested_local_short": {
+    "depth": 2,
+    "outer_coi": false,
+    "inner_coi": false,
+    "inner_SAB": "undefined",
+    "which": "local_short",
+    "result": {
+     "phase": "complete",
+     "arrived": true,
+     "status": 200,
+     "type": "cors",
+     "ok": true,
+     "has_readable_body": true,
+     "ct": "text/event-stream; charset=utf-8",
+     "acao": null,
+     "corp": null,
+     "chunks": 23,
+     "frames": 24,
+     "bytes": 5085,
+     "text_len": 103,
+     "first_chunk_ms": 4,
+     "ms": 38024,
+     "text_head": "\nThinking:\n\n1.  **Analyze the Request:** The user wants me to say \"OK\".\n2.  **Formulate Re"
+    }
+   },
+   "local_long_aged": {
+    "phase": "complete",
+    "arrived": true,
+    "status": 200,
+    "type": "cors",
+    "ok": true,
+    "has_readable_body": true,
+    "ct": "text/event-stream; charset=utf-8",
+    "acao": null,
+    "corp": null,
+    "chunks": 409,
+    "frames": 408,
+    "bytes": 86003,
+    "text_len": 3687,
+    "first_chunk_ms": 6,
+    "ms": 197098,
+    "text_head": "\nWe need answer user: \"Write a detailed 600-word explanation of how a CPU cache works. Do "
+   },
+   "control_404_end": {
+    "status": 404,
+    "coep": "credentialless"
+   },
+   "cdp": [],
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[pageerror] /api.openai.com/v1/chat/completions due to access control checks.",
+    "[requestfailed] POST https://api.openai.com/v1/chat/completions :: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: Origin http://127.0.0.1:8821 is not allowed by Access-Control-Allow-Origin. Status code: 401",
+    "[console.error] Failed to load resource: the server responded with a status of 401 ()",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ]
+  },
+  {
+   "probe": "pty",
+   "engine": "chromium",
+   "control_404": {
+    "status": 404,
+    "server": "askk-probe/1",
+    "coep": "(absent)",
+    "coop": "(absent)"
+   },
+   "baseline_rss_kb": 734016,
+   "isolation": {
+    "sw": null,
+    "coi": true,
+    "reloads": 1,
+    "ready": true,
+    "err": null
+   },
+   "backend_realm": {
+    "backend_coi": true,
+    "backend_SAB": "function",
+    "measureUASM": "undefined",
+    "deviceMemory": 8,
+    "hardwareConcurrency": 16
+   },
+   "oneshot": [
+    {
+     "file": "./vm-worker.js",
+     "wallMs": 1094,
+     "peakDeltaKB": 533936,
+     "command": "uname -a; echo RC=$?",
+     "bytes": 107054914,
+     "bootMs": 112,
+     "memoryAfterCompile": "unsupported",
+     "runMs": 980,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\nRC=0\r\n",
+     "code": 0,
+     "stubbed": [
+      "sock_accept"
+     ],
+     "memoryAfterRun": "unsupported"
+    },
+    {
+     "file": "./vm-worker-streaming.js",
+     "wallMs": 992,
+     "peakDeltaKB": 193968,
+     "command": "uname -a; echo RC=$?",
+     "bytes": -1,
+     "bootMs": 114,
+     "memoryAfterCompile": "unsupported",
+     "runMs": 876,
+     "stdout": "Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux\r\nRC=0\r\n",
+     "code": 0,
+     "stubbed": [
+      "sock_accept"
+     ],
+     "memoryAfterRun": "unsupported"
+    }
+   ],
+   "boot": {
+    "startedMs": 151,
+    "note": {
+     "type": "note",
+     "text": "running argv=[\"arg0\"]"
+    }
+   },
+   "prompt_ms": 3826,
+   "resident_at_prompt_kb": 1580464,
+   "session": [
+    {
+     "cmd": "echo hello > /tmp/a\n",
+     "ms": 112,
+     "text": "echo hello > /tmp/a\r\n/ # \u001b[6n"
+    },
+    {
+     "cmd": "cat /tmp/a\n",
+     "ms": 415,
+     "text": "cat /tmp/a\r\nhello\r\n/ # \u001b[6n"
+    },
+    {
+     "cmd": "ls -la /tmp\n",
+     "ms": 213,
+     "text": "ls -la /tmp\r\ntotal 4\r\ndrwxrwxrwt    1 root     root            60 Sep  1 07:26 \u001b[1;34m.\u001b[m\r\ndrwxr-xr-x    1 root     root           100 Aug 30 05:12 \u001b[1;34m..\u001b[m\r\n-rw-r--r--    1 root     root             6 Sep  1 07:26 \u001b[0;0ma\u001b[m\r\n/ # \u001b[6n"
+    }
+   ],
+   "stats_after_session": {
+    "state": "poll",
+    "readCount": 3,
+    "writeCount": 23,
+    "pollCount": 8803,
+    "pendingToGuest": 0,
+    "pendingFromGuest": 0,
+    "readLens": {
+     "128": 3
+    }
+   },
+   "resident_after_3_cmds_kb": 1589824,
+   "resident_after_20s_idle_kb": 1568368,
+   "store": "df -h / /tmp 2>&1 | head -5; mount | head -4; free | head -2\r\nFilesystem                Size      Used Available Use% Mounted on\r\noverlay                  56.3M     20.0K     56.3M   0% /\r\noverlay                  56.3M     20.0K     56.3M   0% /\r\noverlay on / type overlay (rw,relatime,lowerdir=/oci/rootfs,upperdir=/run/rootfs-upper,workdir=/run/rootfs-work)\r\nproc on /proc type proc (rw,nosuid,nodev,noexec,relatime)\r\ntmpfs on /dev type tmpfs (rw,nosuid,size=65536k,mode=755)\r\ndevpts on /dev/pts type devpts (rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=666)\r\n              total        used        free      shared  buff/cache   available\r\nMem:         115244       10296       83116          28       21832      100632\r\n/ # \u001b[6n",
+   "times": [
+    106,
+    110,
+    108,
+    108,
+    110,
+    109,
+    108,
+    107,
+    107,
+    106
+   ],
+   "line_boundary": [
+    {
+     "payload": 2033,
+     "lineBytes": 2047,
+     "wc": "2034"
+    },
+    {
+     "payload": 2034,
+     "lineBytes": 2048,
+     "wc": null
+    },
+    {
+     "payload": 2035,
+     "lineBytes": 2049,
+     "wc": null
+    },
+    {
+     "payload": 2040,
+     "lineBytes": 2054,
+     "wc": null
+    },
+    {
+     "payload": 2048,
+     "lineBytes": 2062,
+     "wc": null
+    },
+    {
+     "payload": 4096,
+     "lineBytes": 4110,
+     "wc": null
+    }
+   ],
+   "heredoc": {
+    "bodyBytes": 11889,
+    "writeMs": 4961,
+    "result": "sh /tmp/big.sh; wc -l /tmp/big.out; tail -1 /tmp/big.out\r\n400 /tmp/big.out\r\nline 399\r\n/ # \u001b[6n"
+   },
+   "rss_after_reload_no_guest_kb": 1561392,
+   "reboot_prompt_ms": 3821,
+   "after_reload": [
+    {
+     "cmd": "cat /tmp/a; echo RC=$?\n",
+     "text": "cat /tmp/a; echo RC=$?\r\ncat: can't open '/tmp/a': No such file or directory\r\nRC=1\r\n/ # \u001b[6n"
+    },
+    {
+     "cmd": "ls -la /tmp\n",
+     "text": "ls -la /tmp\r\ntotal 2\r\ndrwxrwxrwt    2 root     root          2048 Apr 15 16:10 \u001b[1;34m.\u001b[m\r\ndrwxr-xr-x    1 root     root            80 Aug 30 05:12 \u001b[1;34m..\u001b[m\r\n/ # \u001b[6n"
+    }
+   ],
+   "noise": [
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[console.error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[wasm] status=200 ct=application/wasm coep=require-corp",
+    "[wasm] status=200 ct=application/wasm coep=require-corp",
+    "[wasm] status=200 ct=application/wasm coep=require-corp",
+    "[wasm] status=200 ct=application/wasm coep=require-corp"
+   ]
+  }
+ ]
+}

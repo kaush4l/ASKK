@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>c2w pty spike</title>
+<h1>c2w pty spike</h1>
+<pre id="out">booting…</pre>
+<script>
+// ---------------------------------------------------------------- page realm
+// Registers the coi-serviceworker, reloads ONCE if it was not already
+// controlling, then spawns the backend worker. Everything else happens two
+// realms down; this file only relays and records.
+window.__LOG = [];
+window.__STATE = { sw: null, coi: null, reloads: 0, ready: false, err: null };
+
+const outEl = document.getElementById("out");
+function log(s) {
+  window.__LOG.push(s);
+  outEl.textContent = window.__LOG.join("\n");
+}
+
+const COEP = new URLSearchParams(location.search).get("coep") || "require-corp";
+
+(async () => {
+  window.__STATE.coi = self.crossOriginIsolated;
+  log("page crossOriginIsolated (before) = " + self.crossOriginIsolated);
+  if (!self.crossOriginIsolated) {
+    const reg = await navigator.serviceWorker.register("./coi-serviceworker.js?coep=" + COEP, { scope: "./" });
+    window.__STATE.sw = reg.scope;
+    log("sw registered scope = " + reg.scope);
+    // The first load is never isolated: the document that started the SW was
+    // itself fetched without the headers. One navigation fixes it.
+    const n = Number(sessionStorage.getItem("reloads") || "0");
+    if (n < 2) {
+      sessionStorage.setItem("reloads", String(n + 1));
+      await navigator.serviceWorker.ready;
+      location.reload();
+      return;
+    }
+    log("STILL NOT ISOLATED after " + n + " reloads");
+  }
+  window.__STATE.reloads = Number(sessionStorage.getItem("reloads") || "0");
+  window.__STATE.coi = self.crossOriginIsolated;
+  log("page crossOriginIsolated = " + self.crossOriginIsolated);
+  log("page SharedArrayBuffer   = " + (typeof SharedArrayBuffer));
+
+  const backend = new Worker("./pty-backend.js", { name: "backend" });
+  window.__BACKEND = backend;
+  const pending = new Map();
+  let seq = 0;
+  backend.onmessage = (e) => {
+    const d = e.data;
+    if (d.type === "log") { log(d.text); return; }
+    if (d.type === "reply") {
+      const s = pending.get(d.id);
+      if (s) { pending.delete(d.id); s(d.value); }
+      return;
+    }
+  };
+  backend.onerror = (e) => { window.__STATE.err = String(e.message); log("BACKEND ERROR " + e.message); };
+
+  window.__CALL = (op, args) => new Promise((res) => {
+    const id = "r" + (++seq);
+    pending.set(id, res);
+    backend.postMessage({ id, op, args: args || {} });
+  });
+
+  window.__STATE.ready = true;
+  log("backend spawned; window.__CALL ready");
+})();
+</script>
