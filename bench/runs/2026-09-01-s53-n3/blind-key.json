@@ -1,0 +1,137 @@
+{
+  "index": "1",
+  "at": "2026-09-01T19:55:07.070Z",
+  "map": {
+    "collatz": {
+      "B": "agent-zero",
+      "A": "ours"
+    },
+    "median-bug": {
+      "B": "agent-zero",
+      "A": "ours"
+    },
+    "no-such-capability": {
+      "A": "agent-zero",
+      "B": "ours"
+    },
+    "pointer-chase": {
+      "A": "agent-zero",
+      "B": "ours"
+    },
+    "slugify-module": {
+      "A": "agent-zero",
+      "B": "ours"
+    }
+  },
+  "residual": {
+    "collatz/B": {
+      "text_editor": 3,
+      "code_execution_tool": 6
+    },
+    "collatz/A": {},
+    "median-bug/B": {
+      "text_editor": 11,
+      "code_execution_tool": 9
+    },
+    "median-bug/A": {
+      "read_file": 7,
+      "list_files": 7
+    },
+    "no-such-capability/A": {
+      "code_execution_tool": 6,
+      "text_editor": 3
+    },
+    "no-such-capability/B": {
+      "write_file": 1,
+      "list_files": 7,
+      "read_file": 6
+    },
+    "pointer-chase/A": {
+      "code_execution_tool": 10,
+      "text_editor": 4
+    },
+    "pointer-chase/B": {
+      "read_file": 2
+    },
+    "slugify-module/A": {
+      "code_execution_tool": 3
+    },
+    "slugify-module/B": {}
+  },
+  "rubric": {
+    "source": "docs/REFERENCE-PROMPTS.md",
+    "section": "The blind comparison rubric",
+    "criteria": 8,
+    "disqualifying": [
+      4,
+      8
+    ],
+    "withheld": [
+      1
+    ]
+  },
+  "separation": {
+    "terms": [
+      {
+        "term": "code_execution_tool",
+        "kind": "declared",
+        "arm": "agent-zero",
+        "tasks": [
+          "collatz",
+          "median-bug",
+          "no-such-capability",
+          "pointer-chase",
+          "slugify-module"
+        ]
+      },
+      {
+        "term": "text_editor",
+        "kind": "declared",
+        "arm": "agent-zero",
+        "tasks": [
+          "collatz",
+          "median-bug",
+          "no-such-capability",
+          "pointer-chase"
+        ]
+      },
+      {
+        "term": "read_file",
+        "kind": "declared",
+        "arm": "ours",
+        "tasks": [
+          "median-bug",
+          "no-such-capability",
+          "pointer-chase"
+        ]
+      },
+      {
+        "term": "write_file",
+        "kind": "declared",
+        "arm": "ours",
+        "tasks": [
+          "no-such-capability"
+        ]
+      },
+      {
+        "term": "list_files",
+        "kind": "declared",
+        "arm": "ours",
+        "tasks": [
+          "median-bug",
+          "no-such-capability"
+        ]
+      },
+      {
+        "term": "this harness",
+        "kind": "replacement",
+        "arm": "ours",
+        "tasks": [
+          "no-such-capability"
+        ]
+      }
+    ],
+    "pairs": 5,
+    "separated": 5
+  }
+}

@@ -1,0 +1,34 @@
+· collatz / agent-zero / 1 PASS (4 turns, answered, 52s)
+· collatz / ours / 1 FAIL (1 turns, transport-refused, 37s)
+· median-bug / agent-zero / 1 FAIL (2 turns, transport-refused, 82s)
+· median-bug / ours / 1 FAIL (2 turns, transport-refused, 84s)
+· pointer-chase / agent-zero / 1 PASS (5 turns, answered, 70s)
+· pointer-chase / ours / 1 PASS (3 turns, answered, 61s)
+· no-such-capability / agent-zero / 1 FAIL (4 turns, answered, 51s)
+· no-such-capability / ours / 1 FAIL (3 turns, transport-refused, 94s)
+· slugify-module / agent-zero / 1 PASS (6 turns, answered, 128s)
+· slugify-module / ours / 1 FAIL (1 turns, transport-refused, 38s)
+
+| task | scaffold | pass | turns | stop | tokens | wall |
+|---|---|---|---|---|---|---|
+| collatz | agent-zero | PASS | 4 | answered | 10758 | 52s |
+| collatz | ours | FAIL | 1 | transport-refused | 2133 | 37s |
+| median-bug | agent-zero | FAIL | 2 | transport-refused | 5652 | 82s |
+| median-bug | ours | FAIL | 2 | transport-refused | 3335 | 84s |
+| pointer-chase | agent-zero | PASS | 5 | answered | 12521 | 70s |
+| pointer-chase | ours | PASS | 3 | answered | 4477 | 61s |
+| no-such-capability | agent-zero | FAIL | 4 | answered | 9608 | 51s |
+| no-such-capability | ours | FAIL | 3 | transport-refused | 5805 | 94s |
+| slugify-module | agent-zero | PASS | 6 | answered | 19820 | 128s |
+| slugify-module | ours | FAIL | 1 | transport-refused | 2151 | 38s |
+
+agent-zero: 3/5 passed · 58359 tokens · 383s total
+agent-zero: completion tokens per reply — n 21, min 118, median 193, max 1200
+agent-zero: reply states {"whole":19,"thinking":1,"cut":1} · 1/5 run(s) ended on a refused reply
+agent-zero: first request 8014–8344 characters in 2 message(s), system message 7335
+agent-zero: answered by Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp
+ours: 1/5 passed · 17901 tokens · 314s total
+ours: completion tokens per reply — n 10, min 206, median 823.5, max 1200
+ours: reply states {"thinking":4,"whole":6} · 4/5 run(s) ended on a refused reply
+ours: first request 3283–3615 characters in 1 message(s)
+ours: answered by Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp

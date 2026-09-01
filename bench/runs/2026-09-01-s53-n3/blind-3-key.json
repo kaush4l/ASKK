@@ -1,0 +1,146 @@
+{
+  "index": "3",
+  "at": "2026-09-01T19:55:22.946Z",
+  "map": {
+    "collatz": {
+      "B": "agent-zero",
+      "A": "ours"
+    },
+    "median-bug": {
+      "B": "agent-zero",
+      "A": "ours"
+    },
+    "no-such-capability": {
+      "A": "agent-zero",
+      "B": "ours"
+    },
+    "pointer-chase": {
+      "A": "agent-zero",
+      "B": "ours"
+    },
+    "slugify-module": {
+      "A": "agent-zero",
+      "B": "ours"
+    }
+  },
+  "residual": {
+    "collatz/B": {
+      "text_editor": 3,
+      "code_execution_tool": 3
+    },
+    "collatz/A": {},
+    "median-bug/B": {
+      "text_editor": 9,
+      "code_execution_tool": 9
+    },
+    "median-bug/A": {
+      "read_file": 7,
+      "list_files": 7
+    },
+    "no-such-capability/A": {
+      "code_execution_tool": 6,
+      "text_editor": 3
+    },
+    "no-such-capability/B": {
+      "list_files": 8,
+      "read_file": 6,
+      "write_file": 9
+    },
+    "pointer-chase/A": {
+      "code_execution_tool": 4,
+      "text_editor": 10
+    },
+    "pointer-chase/B": {
+      "read_file": 12,
+      "write_file": 7
+    },
+    "slugify-module/A": {
+      "code_execution_tool": 3
+    },
+    "slugify-module/B": {
+      "write_file": 1,
+      "list_files": 6,
+      "read_file": 5
+    }
+  },
+  "rubric": {
+    "source": "docs/REFERENCE-PROMPTS.md",
+    "section": "The blind comparison rubric",
+    "criteria": 8,
+    "disqualifying": [
+      4,
+      8
+    ],
+    "withheld": [
+      1
+    ]
+  },
+  "separation": {
+    "terms": [
+      {
+        "term": "code_execution_tool",
+        "kind": "declared",
+        "arm": "agent-zero",
+        "tasks": [
+          "collatz",
+          "median-bug",
+          "no-such-capability",
+          "pointer-chase",
+          "slugify-module"
+        ]
+      },
+      {
+        "term": "text_editor",
+        "kind": "declared",
+        "arm": "agent-zero",
+        "tasks": [
+          "collatz",
+          "median-bug",
+          "no-such-capability",
+          "pointer-chase"
+        ]
+      },
+      {
+        "term": "read_file",
+        "kind": "declared",
+        "arm": "ours",
+        "tasks": [
+          "median-bug",
+          "no-such-capability",
+          "pointer-chase",
+          "slugify-module"
+        ]
+      },
+      {
+        "term": "write_file",
+        "kind": "declared",
+        "arm": "ours",
+        "tasks": [
+          "no-such-capability",
+          "pointer-chase",
+          "slugify-module"
+        ]
+      },
+      {
+        "term": "list_files",
+        "kind": "declared",
+        "arm": "ours",
+        "tasks": [
+          "median-bug",
+          "no-such-capability",
+          "slugify-module"
+        ]
+      },
+      {
+        "term": "this harness",
+        "kind": "replacement",
+        "arm": "ours",
+        "tasks": [
+          "no-such-capability"
+        ]
+      }
+    ],
+    "pairs": 5,
+    "separated": 5
+  }
+}

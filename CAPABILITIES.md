@@ -26,8 +26,11 @@ Two rules keep this from rotting into a wish list:
 1. **An empty evidence cell makes the status `unverified`**, whatever we believe.
    Not a judgement call. This tree has capabilities that were declared and never
    wired — `TokenScale` has zero call sites outside its own test
-   (`grep -rn TokenScale src scripts test` → `src/core/prompt/tokens.js` and
-   `test/core/prompt/tokens.test.js`, nothing else), multimodal is unreachable
+   (`grep -rn TokenScale src scripts test bench agents public` →
+   `src/core/prompt/tokens.js:55` and `test/core/prompt/tokens.test.js`, nothing
+   else; **re-run 2026-09-01, the sixth consecutive wave with that answer**, and
+   `ARCHITECTURE.md` said in the present tense that it "learns the ratio and
+   applies it" for all six of them), multimodal is unreachable
    because both `run` sites pass no images — `ChatService.js:249` and
    `agentWorker.js:76` both call `run(...)` with none, against the parameter at
    `Engine.js:199` `multimodal = []` — sub-agents are never constructed because
@@ -321,7 +324,7 @@ and the budget is per-run rather than per-tree.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| Run a command | pi `env/nodejs.ts:145` (the one `spawn`), `:230` (`/bin/bash`) | c2w Alpine **with Python 3.12.14** in wasm, 136.6 MiB beside the page | degraded | degraded | unverified | — | **Run through the built artifact for the first time on 2026-09-01, which is the one thing two prior waves never did.** `bun run build`, then the export served from `Bun.serve` and opened in headless Chrome; the page's own module worker was kept by proxying `Worker` in `Page.addScriptToEvaluateOnNewDocument`, and `settings.save` / `conversations.create` / `chat.send` were sent to it as envelopes. Everything under the wire was the bundled build — `buildKernel`, `C2wSandbox`, `ChatService`, `ReActEngine`, `Toolbox`, `ShellTool`. The model was the only substitution, a local endpoint the same script served, and the observation it was handed on step 2 was `shell -> Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux / marker-42 / ls: /definitely-not-here: No such file or directory / rc=1` — output, arithmetic the guest did, and a real non-zero status. Whole turn 2,732 ms, two guest boots in it (MCP discovery, then the command). Repeated against the real model on `http://127.0.0.1:8873/v1`: 21,203 ms, two steps, final answer *"The sandbox kernel release is 6.1.0, and the shell computes 6*7 as 42."* **The harness is in the tree now**, twice: `scripts/smoke.js` boots the guest on every `bun run check`, and `scripts/wasm/toolchain-check.js` boots three more. Re-derived by the accountant against `out/` on 2026-09-01, real Chrome, the page's own composer: *"Using the sandbox, run `python3 receipt.py` and then `python3 -V`"* → `step 1shell({"command": "python3 receipt.py; python3 -V"})` → **`total 42` / `Python 3.12.14`** in 70,321 ms. `docs/LEDGER.md` row S22. What is committed: `scripts/smoke.js` runs the same guest through `C2wSandbox.js:292` every `bun run check` — and since the compressed image landed it boots from `out/sandbox/sandbox.wasm.gz` and prints both sizes, which is what makes a raw module shipped under that name fail the gate rather than reach a visitor (accountant, 2026-09-01, integrated tree: cold 1,398 ms, warm 1,047 ms, `40029960 bytes fetched, inflated to 107054914`, `Linux localhost 6.1.0 …` and exit 1; the step got slower than the 930 / 925 / 945 and 674 / 671 / 692 ms of the previous wave because it now stages two files onto a budget-filling command line and asserts the return leg, not because the guest changed) and `test/backend/composition.test.js:210` asserts `buildKernel` yields `chat.services.sandbox.available === true`. **Two costs, both named.** Speed: against the identical busybox 1.37.0 in `docker run --rm alpine:3.21`, same bytes (both print sha256 `2daeb1f3…`), `awk` 1e6 loop 85,930 ms vs 0.24 s = **358x**, `sha256sum` 8 MB 9,700 ms vs 0.02 s = **485x**, `gzip -c` 8 MB 7,661 ms vs 0.03 s = **255x** — the guest is `x86_64` and the native control ran `aarch64`, which flatters the guest. Host: the row below. **One of the two numbers the model is handed is now right and the other is still wrong.** The command-line sentence was repaired this wave — `ShellTool.js:148` now says *"cannot exceed 800 bytes, counting each space as two"* against a real budget of 962 in those units (`C2wSandbox.js:211` `commandBudget`, re-derived by the accountant: `new C2wSandbox({imageUrl:'x',workerUrl:'y'}).commandBudget` → **962**), so the stated figure is reachable for the first time. The speed sentence is unrepaired: `C2wSandbox.js:332` (the timeout hint, *"about a hundred times slower"*) and `agents/main/agent.md:29` (*"roughly a hundred times slower"*) both still say a hundred, measured 255x–485x. `docs/LEDGER.md` row S25, now half closed |
+| Run a command | pi `env/nodejs.ts:145` (the one `spawn`), `:230` (`/bin/bash`) | c2w Alpine **with Python 3.12.14** in wasm, 136.6 MiB beside the page | degraded | degraded | unverified | — | **Run through the built artifact for the first time on 2026-09-01, which is the one thing two prior waves never did.** `bun run build`, then the export served from `Bun.serve` and opened in headless Chrome; the page's own module worker was kept by proxying `Worker` in `Page.addScriptToEvaluateOnNewDocument`, and `settings.save` / `conversations.create` / `chat.send` were sent to it as envelopes. Everything under the wire was the bundled build — `buildKernel`, `C2wSandbox`, `ChatService`, `ReActEngine`, `Toolbox`, `ShellTool`. The model was the only substitution, a local endpoint the same script served, and the observation it was handed on step 2 was `shell -> Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux / marker-42 / ls: /definitely-not-here: No such file or directory / rc=1` — output, arithmetic the guest did, and a real non-zero status. Whole turn 2,732 ms, two guest boots in it (MCP discovery, then the command). Repeated against the real model on `http://127.0.0.1:8873/v1`: 21,203 ms, two steps, final answer *"The sandbox kernel release is 6.1.0, and the shell computes 6*7 as 42."* **The harness is in the tree now**, twice: `scripts/smoke.js` boots the guest on every `bun run check`, and `scripts/wasm/toolchain-check.js` boots three more. Re-derived by the accountant against `out/` on 2026-09-01, real Chrome, the page's own composer: *"Using the sandbox, run `python3 receipt.py` and then `python3 -V`"* → `step 1shell({"command": "python3 receipt.py; python3 -V"})` → **`total 42` / `Python 3.12.14`** in 70,321 ms. `docs/LEDGER.md` row S22. What is committed: `scripts/smoke.js` runs the same guest through `C2wSandbox.js:292` every `bun run check` — and since the compressed image landed it boots from `out/sandbox/sandbox.wasm.gz` and prints both sizes, which is what makes a raw module shipped under that name fail the gate rather than reach a visitor (accountant, 2026-09-01, integrated tree: cold 1,398 ms, warm 1,047 ms, `40029960 bytes fetched, inflated to 107054914`, `Linux localhost 6.1.0 …` and exit 1; the step got slower than the 930 / 925 / 945 and 674 / 671 / 692 ms of the previous wave because it now stages two files onto a budget-filling command line and asserts the return leg, not because the guest changed) and `test/backend/composition.test.js:210` asserts `buildKernel` yields `chat.services.sandbox.available === true`. **Two costs, both named.** Speed: against the identical busybox 1.37.0 in `docker run --rm alpine:3.21`, same bytes (both print sha256 `2daeb1f3…`), `awk` 1e6 loop 85,930 ms vs 0.24 s = **358x**, `sha256sum` 8 MB 9,700 ms vs 0.02 s = **485x**, `gzip -c` 8 MB 7,661 ms vs 0.03 s = **255x** — the guest is `x86_64` and the native control ran `aarch64`, which flatters the guest. Host: the row below. **One of the two numbers the model is handed is now right and the other is still wrong.** The command-line sentence was repaired — `ShellTool.js:223` now says *"cannot exceed 800 bytes, counting each space as two"* against a real budget of 962 in those units (`C2wSandbox.js:211` `commandBudget`, re-derived by the accountant: `new C2wSandbox({imageUrl:'x',workerUrl:'y'}).commandBudget` → **962**), so the stated figure is reachable for the first time. The speed sentence is unrepaired: `C2wSandbox.js:332` (the timeout hint, *"about a hundred times slower"*) and `agents/main/agent.md:29` (*"roughly a hundred times slower"*) both still say a hundred, measured 255x–485x. `docs/LEDGER.md` row S25, now half closed |
 | Get that environment to the visitor | bolt.diy `README.md:515` (WebContainer is fetched from its vendor, under a licence) | a deploy directory that carries it, a live site that still does not, and a guest that is in no commit | degraded | degraded | unverified | — | **Two of the three things this row has always needed are now done and the third has not been walked.** (1) *The guest is in the repository.* `git ls-tree HEAD public/sandbox/` lists `sandbox.wasm.gz` as blob `7bb91246…`, 40,029,960 bytes — under GitHub's 100 MiB per-file block, which the raw 107,054,914-byte module is 2,197,314 over. `docs/LEDGER.md` row S33 closed. (2) *There is a deploy step, and it was run.* `bun scripts/deploy.js` (accountant, 2026-09-01, against `25c8750`): extracts the tracked tree with `git archive`, `bun install --frozen-lockfile` into an empty `node_modules`, builds, and writes **58 files / 65,207,472 bytes**, of which the guest is 40,029,960, with **1 chunk naming `/sandbox/sandbox.wasm.gz`**. It refuses a directory it did not write, refuses a file over the block, and does not push. Then `bun scripts/deploy-check.js`, my own run: `dist/` served over a host that sends **no COOP, no COEP, no CORP** — proved by a 404 control the browser fetches on every pass, `status=404 server=askk-deploy/1 coop=(absent) coep=(absent) corp=(absent)` — opened in real Chrome, `crossOriginIsolated=false` and `SharedArrayBuffer=undefined` in the page realm AND in a classic worker, 0 service workers registered and none in the export. Ready in **219 ms after 19 requests, 692,306 bytes on the wire**, and the guest was requested **0 times before the first turn**. Turn two, through the page's own composer into the real model on `127.0.0.1:8873` and back out of the emulator: `step 1 shell({"command": "uname -a"})` → *"Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Fri Aug 28 08:23:25 UTC 2026 x86_64 Linux"* in 30,878 ms, with the guest fetched once, 40,030,146 bytes in 76 ms. Both ways a static host may answer a `.gz` were driven: no `Content-Encoding` (what GitHub Pages sends) boots `{bytes:107054914, transferred:40029960}` and `Content-Encoding: gzip` boots `{107054914, 107054914}`. Exit 0. `docs/LEDGER.md` row S34 closed. (3) *Nobody has published it.* Re-measured today: `curl -s -o /dev/null -w '%{http_code}'` against `https://kaush4l.github.io/ASKK/` **200**, `/sandbox/vm-worker.js` **200**, `/sandbox/sandbox.wasm` **404**, `/sandbox/sandbox.wasm.gz` **404**; `git log --oneline gh-pages \| wc -l` is **93** and `git ls-tree -r gh-pages` is **56 files**, no `.wasm` guest among them. So every `shell` call a visitor makes today still reaches `boot-failed`. `degraded` rather than `absent`, and that is the whole change: the artifact a static host can serve exists and has been served and driven; what is missing is a push, which `deploy.js` deliberately does not do |
 | Point a deploy at a guest on another host | — | a build-time override, never once exercised against a host | unverified | unverified | unverified | — | `SANDBOX_IMAGE=<url> bun run build` compiles the URL into the chunk — `next.config.js:26`, `composition.js:227`, pinned by `test/backend/composition.test.js:232` and by `scripts/smoke.js`, which reads the URL the build was configured with and fails when no chunk carries it. **Nothing beyond the string has ever been observed.** The smoke says so itself: an override names a host it cannot serve, so its browser run falls back to the copy in `out/`. A cross-origin 102 MiB `fetch` + `WebAssembly.compile` needs CORS on that host (C2), holds two copies live at once because `vm-worker.js` uses `arrayBuffer()` and not `compileStreaming`, and has never been tried from a page. An empty evidence cell for the thing actually claimed is what makes this `unverified` |
 | Know whether a command succeeded | pi `env/nodejs.ts:145` (a real `spawn` exit) | the shell is asked to print it | degraded | degraded | unverified | — | **Closed this wave; it read a constant 0 before.** c2w's `proc_exit` is the emulator's, so `C2wSandbox` sends `sh -c '( <cmd> ) ; echo "__askk_rc$?"'` and takes the marker off the END of stdout (`C2wSandbox.js:76-93`, `:380-386`). Measured through the real 107 MB image in a browser: `ls /nope` 1, `false` 1, `exit 7` 7, `sh -c "exit 3"` 3, `printf abc` 0 with the marker split off a line that has no newline, `echo "__askk_rc9"` 0 because the last marker wins. Asserted every gate run — `scripts/smoke.js` requires the failing command to come back `code === 1` and the marker never to reach the caller. Confirmed once more in the artifact run above: `rc=1` reached the model. **The cost is 32 of the guest's 1,000**, so the row below is 962 and not 1,024, and no time: bare against wrapped, interleaved in one browser, 957/965, 760/801, 725/741, 723/732 ms. **The degradation**: a command whose own quoting swallows the echo, or a guest that traps, prints no marker, and the emulator's 0 stands — `C2wSandbox.js:380-386` says so and the trap arrives as a note |
@@ -402,7 +405,7 @@ pays out of the 104,857,600 GitHub will hold, and 50.2% of it is spent.
 | A filesystem the agent and the **human** both see | bolt.diy `FileTree.tsx`; pi `harness/types.ts:315` | the agent writes it, the human reads it — a rail panel, read-only | have | unverified | unverified | — | **Driven end to end by the accountant, 2026-09-01, against `out/` in real Chrome, one browser, one conversation.** Turn 1 typed into the page's own composer: *"Write a file receipt.py whose contents are exactly: print(\"total\", 6 * 7)"* → `step 1write_file({"path": "receipt.py", "content": "print(\"total\", 6 * 7)"})`, answered in 41,504 ms. Then the rail: `[data-testid="files-toggle"]` clicked, `[data-testid="file-list"]` showed `receipt.py`, the entry clicked, and `[data-testid="file-text"]` held `print("total", 6 * 7)` — `data-language="py"`, 3 coloured runs, `read-only` beside it (`FilesPanel.jsx:173`). No console errors. A second run listed the nested `notes/primes.md` the same way. `bun run smoke` drives the same path on every gate. The half that is still missing is the other direction: **no way to put a file in** — `FilesPanel` has no upload and `FilesPort` has no `write` |
 | The guest can read and write the agent's files | pi `env/nodejs.ts` (a real filesystem under the process) | staged in, harvested out, one command at a time | have | unverified | unverified | — | **Measured in the same browser run, as turn 4.** *"Using the sandbox, run `wc -c ledger-note.md` and show me exactly what it printed."* → `step 1 shell({"command": "wc -c ledger-note.md"})` → **`16 ledger-note.md`**, which is the exact byte length of the token turn 1 wrote through a different tool on a previous page load. `ShellTool` puts any of the agent's files whose path the command mentions into `/w` before the command and saves back every file left there after it; the gate asserts the return leg too — `the guest read two off a command line spending all 962 of its budget (608 of it padding) and wrote one back out`, and `made-in-the-guest.txt` is in the reload assertion above. **The cost is stated, not hidden**: staging spends the same 962-unit command budget the command does, one file's text is capped at `FilesPort.js` `MAX_FILE_BYTES` = 64 KiB, and a file that will not fit is refused in a sentence naming what it cost and what was left |
 | A language runtime that is not emulated | — | none, and there is now an emulated one | absent | absent | absent | — | **The row moved underneath and the answer did not.** There is a runtime now — `python3 -V` answered `Python 3.12.14` from the page's own loop, above — and it runs inside the wasm guest at the emulator's speed. `package.json` dependencies: four, none of them a runtime; the only execution path in the tree is still `C2wSandbox.js:292` |
-| Run a test suite | — | Python's `unittest`, one guest per command | degraded | unverified | unverified | — | **The row this wave moved, and it is a real suite.** `bun scripts/wasm/toolchain-check.js` — a step of `bun run check` — writes `ledger.py` and `suite_cents.py` into a real `Workspace`, drives this tree's own `ShellTool` over `C2wSandbox` in real Chrome, and runs `ls ledger.py >/dev/null; python3 suite_cents.py -v 2>result.txt` in a **second** guest, then reads `result.txt` back out of a **third**. My run: *"Python 3.12.14 in the guest (1,814 ms), two tests ran in a second guest (5,078 ms) and a third read the result back."* Four named costs. (1) Emulated, ~100× slower. (2) The guest's filesystem dies with each command, so a suite is staged and harvested per call. (3) Staging is `ShellTool.js` `line.includes(file.path)` — **every module the suite imports must be spelled on the command line by hand**, out of the 962-unit budget, because an `import` is not a mention. (4) **The model has never been told any of this exists**: `ShellTool.js:148` still says *"BusyBox and the Alpine base tools are available"*, a closed list that denies Python. Priced by the accountant: adding `Python 3` to that sentence costs **+10 bytes, +3 prompt tokens a turn** (`bun scripts/dryrun.js`, 907 → 910 tokens). `docs/LEDGER.md` row S50 |
+| Run a test suite | — | Python's `unittest`, one guest per command | degraded | unverified | unverified | — | **The row this wave moved, and it is a real suite.** `bun scripts/wasm/toolchain-check.js` — a step of `bun run check` — writes `ledger.py` and `suite_cents.py` into a real `Workspace`, drives this tree's own `ShellTool` over `C2wSandbox` in real Chrome, and runs `ls ledger.py >/dev/null; python3 suite_cents.py -v 2>result.txt` in a **second** guest, then reads `result.txt` back out of a **third**. My run: *"Python 3.12.14 in the guest (1,814 ms), two tests ran in a second guest (5,078 ms) and a third read the result back."* Four named costs. (1) Emulated, ~100× slower. (2) The guest's filesystem dies with each command, so a suite is staged and harvested per call. (3) Staging is `ShellTool.js` `line.includes(file.path)` — **every module the suite imports must be spelled on the command line by hand**, out of the 962-unit budget, because an `import` is not a mention. (4) **The model is told this exists, as of this wave**: `ShellTool.js:223` says *"BusyBox, the Alpine base tools and python3 are available"*. Priced by the accountant on both instruments, because they disagree: **+9 bytes**, and **+3 prompt tokens counted by the endpoint's own `usage` (950 → 953 on the S50 task)** against +2 from the tree's `estimateTokens` (`bun scripts/dryrun.js "what kernel is this machine running?"`, 893 → 895). The cell that stood here said +10 bytes; the bytes are +9. What is guarded is the sentence against `scripts/wasm/image/Dockerfile`, in both directions, by `test/core/tools/ShellTool.test.js`; what is **not** guarded is the sentence against the artifact, because `toolchain-check.js` asserts `python3` and nothing else. `docs/LEDGER.md` rows S50 (closed) and S56 |
 | A formatter | — | none | absent | absent | absent | — | The reason changed with the image and the row did not. `@biomejs/biome` is a devDependency of this repo, not something the agent can call, and `BUILTIN_TOOLS` is five (`src/core/tools/index.js:26-44`: `shell`, `read_file`, `write_file`, `fetch`, `search`), none of them a formatter. Baking one in is now a measured, runnable change — `scripts/wasm/build.sh` — and nobody has made it. The agent cannot add one at run time: there is no pip in the image and no network (C2) |
 | A linter | — | none | absent | absent | absent | — | as above, and the same one command would add both |
 | Version control the agent can commit to | — | none | absent | absent | absent | — | `grep -rn "isomorphic-git" src package.json` → no matches; the seven hits for `git` in `src` are `GitHub`, `digit` and `legitimate`. Two routes are open and neither is walked: a pure-JS git over the workspace, or `apk add git` baked into the image beside Python — the second is now a one-line change to a file with a size guard and a test over it |
@@ -431,10 +434,14 @@ the agent cannot certify for itself, nothing compares two versions of a file, an
 the loop still ends the moment the model says `isAnswer` — see *Choosing how to
 work*, where every row is `absent` and none of them moved this wave. **A guest
 that can run a test suite is worth exactly as much as the loop's willingness to
-run one, and the loop has none.** There is also a plainer gap: `ShellTool.js:148`
-still tells the model *"BusyBox and the Alpine base tools are available"*, so the
-12,572,161 bytes of Python this wave shipped are, from where the model sits,
-invisible. The fix is three tokens a turn, measured.
+run one, and the loop has none.** The plainer gap beside it is closed:
+`ShellTool.js:223` now tells the model *"BusyBox, the Alpine base tools and
+python3 are available"*, so the 12,572,161 bytes of Python are visible from where
+the model sits, for two tokens a turn. That was the cheap half. The expensive
+half — a loop that will run the suite it can now write, and read the result
+against something — is untouched, and one wave of evidence says the cheap half
+buys less than its own comment claims: see `docs/LEDGER.md`, "What the word
+python3 actually changed".
 
 ### Choosing how to work
 
@@ -455,74 +462,83 @@ cost problem, not a platform one, and belongs in a different conversation.
 ### Judged against another scaffold
 
 `docs/LEDGER.md`'s bar is *a blind critic, handed two unlabelled transcripts on
-the same task, picks ours, on the rubric in `docs/REFERENCE-PROMPTS.md`*. A rig
-exists, it has been run once, and **that run is void**: it did not call this
-tree's transport. One row here is `have` — the rig now imports the shipped class
-— and it went `have` after the run, so **no pass number below has been re-earned
-under it.** The numbers that survive the void are the ones the transport cannot
-move: tokens and seconds, counted from the endpoint's own `usage` on every reply
-whatever state it was in.
+the same task, picks ours, on the rubric in `docs/REFERENCE-PROMPTS.md`*.
+
+**The re-run happened, and the bar is not met.** Five tasks × two arms × three
+runs = 30 runs, 92 replies, all through `RigTransport extends OpenAICompatible`,
+at `bench/runs/2026-09-01-s53-n3/`. It is untracked and it is **beside** the
+committed evidence rather than replacing it: `md5 bench/results.json` is still
+`813fde9dbf088c5aaddad3639b7bcc0b`, unchanged, so the numbers a clone can check
+are still the superseded pre-transport ones. Every cell of the new run was
+re-derived from its `results.json` by the accountant and every cell reproduces.
+
+**The result, without salesmanship. Ours passes 3 of 15 and the reference arm
+passes 8 of 15.** Ours is cheaper per turn and ends earlier: 11 of its 15 runs
+end because the transport refused a reply, against 4 of theirs. The one finding
+the previous draft of this section leaned on — *"the two models wrote the same
+amount and the whole difference is what each harness sent"* — **did not survive
+the fixed transport** and is struck below.
+
+**No blind result exists to report.** `bun bench/blind.js` exits 1 on the new
+transcripts at all three indices; a panel was run against a set the instrument
+had refused, all five judges said in their own first paragraph that they could
+identify the arms, and four of the five say the brief handed them the key. Its
+tally is in `docs/LEDGER.md` and it is not a measurement of this loop.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| Run this loop and a reference loop over the same tasks, same endpoint | — | `bench/`, five tasks × two arms × three runs | degraded | — | — | — | 30 runs completed, `skipped: []`, one `callModel`, one `DEFAULTS`, one tool-call counter below both adapters. Re-derived by the accountant rather than believed: `md5 bench/results.json` = `be2c057ef0f810ff01c0b6f989122039`, and every median and total in the report reproduces to the digit from that file. **The named cost is that none of it is in the repository** — `git ls-files bench` returns nothing, so a clone cannot re-run the command or check the md5, and by this document's own rule that is an assertion with extra steps until the slice lands |
-| Cost this loop against that one | — | 6.6× fewer prompt tokens for the same completions | degraded | — | — | — | Re-derived from `bench/results.json` by the accountant, md5 `be2c057ef0f810ff01c0b6f989122039`: ours 58,439 tokens / 736 s, agent-zero 237,579 / 1,177 s — 4.065× and 1.60×. **Split by usage field it is a stronger claim than the totals make it:** prompt 31,939 vs 211,531 (**6.62×**), completion 26,500 vs 26,048 (**ours 1.7% more**). The two models wrote the same amount and the whole difference is what each harness sent, which rules out the alternative reading that one arm just did less. This is the only figure in this section the transport defect cannot move, because it is the endpoint's own `usage` on every reply whatever state it arrived in. Same model, temperature 0, seed 7, `max_tokens` 1200, turn cap 12, one usage field summed one way. Same cost as the row above — untracked |
-| A blind judge picks ours | — | the blinding is better and is still defeated | unverified | — | — | — | **Two of the three defeats are closed and the remaining one separates every pair, so the condition is still unmeasurable.** Re-derived by the accountant, `bun bench/blind.js` on this tree: **exit 0**, `wrote 10 blinded transcripts`, key written to `bench/blind-key.json` **outside** the handed directory. CLOSED — (1) the arm's own directory name: `grep -c "ours/" bench/blind/no-such-capability/B.md` → **0**, was 6; (2) the system-prompt opening: `grep -c "You are a careful, direct assistant"` over all ten files → **5, all in `no-such-capability/B.md`**, was 5 of 5 files, because the request block is no longer projected at all and what remains is the model quoting its own prompt back, which may not be rewritten; it is declared in `RESIDUAL`, counted, and named in the report. OPEN, and it is now the whole defeat — **tool names separate 10 of 10 files and 5 of 5 pairs with no ambiguity**: `text_editor`/`code_execution_tool` appear in exactly the five agent-zero files and `read_file`/`write_file`/`list_files` in exactly the five ours files, checked against `blind-key.json`'s map. `blind.js` reports this itself (`NOT BLIND: 137 line(s) … 7 declared identifying term(s) … 10 of 10 file(s)`) and **exits 0 anyway**, by a documented argument that a tool name is part of what is being judged. That argument is defensible and the consequence is not: A/B assignment is randomised per task, and this residual survives the randomisation. No panel run against this artifact can be reported as blind |
-| The two arms are handed the same information | — | no | absent | absent | absent | — | Re-derived: **79 of 79** agent-zero requests carry a recursive workspace file tree; **0 of 34** of ours ever do. On the three tasks that turn on knowing what is in the directory, one arm is given for free every turn what the other must spend a tool call to learn |
-| The rig runs the arm this tree ships | — | yes — the rig imports the shipped class | have | — | — | — | **Closed this wave, and it was the finding that invalidated the last comparison.** `bench/transport.js:80` `import { OpenAICompatible } from '../src/core/inference/OpenAICompatible.js'`, `:82` `export class RigTransport extends OpenAICompatible`. The predecessor was `bench/driver.js`'s own `callModel`, and the check that caught it was `grep -rn OpenAICompatible bench/` → 3 hits, **all prose in comments**. Re-run by the accountant on this tree: the same grep now returns the import and the subclass among its hits, and `_state`, `_spent`, `_dumped`, `_cutNote`, the shape guard and the abort handling are inherited rather than repeated. What is overridden is one shape mismatch — `_body`'s single-user-message form — and it is argued in the file rather than worked around. **This row being `absent` is what made every pass number from the previous run not about this tree; it is `have` now and the run has not been repeated, so no pass number in this section has been re-earned yet** |
+| Run this loop and a reference loop over the same tasks, same endpoint | — | `bench/`, five tasks × two arms × three runs | have | — | — | — | **`git ls-files bench` → 101 and `git ls-files test/bench` → 8**, both 0 two waves ago, so a clone can run it. Run again on 2026-09-01 through the shipped transport: 30 runs, 92 replies, `bench/runs/2026-09-01-s53-n3/`. Re-derived by the accountant from that run's `results.json` rather than believed — all 40 per-task cells reproduce, and so do the totals below. **The named cost is that `bench/runs/` is untracked**, so a clone can run the command and cannot check these numbers; `docs/LEDGER.md` row S61. `models` is a key on all 30 rows and holds exactly one id, `Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp`, which closes the open half of `docs/LEDGER.md` row S32 **for that run only**: the committed `bench/results.json` still has no `models` key on any of its 30 rows |
+| Cost this loop against that one | — | 4.9× fewer prompt tokens, and it now buys less | degraded | — | — | — | Re-derived by the accountant from `bench/runs/2026-09-01-s53-n3/results.json`: ours 30,778 prompt + 22,952 completion = 53,730 tokens, 32 turns, 748 s; agent-zero 150,464 + 20,128 = 170,592, 60 turns, 936 s. **Prompt 4.889×.** **Completion: ours sends 14.03% MORE than the reference arm.** The previous entry here read *"completion within 1.7%, so the two models wrote the same amount and the whole difference is what each harness sent"* — that is now false and the sentence is struck rather than renumbered, because the reading it licensed is the one the fixed transport killed. Per reply under the same 1,200 ceiling ours has a median 619.5 completion tokens against their 188.5 (3.29×) on half the turns; the reason it still totals fewer tokens is that its runs END EARLIER, and 11 of 15 end because the transport refused them. Same model, temperature 0, seed 7, `max_tokens` 1200, turn cap 12 — recorded in that file's `config`, identical for both arms, and **both deviate from `DEFAULT_SETTINGS` (2048, 0.7), held constant across arms and not moved** |
+| A blind judge picks ours | — | no. The instrument refuses to hand the set over, and a panel was run on it anyway | absent | — | — | — | **The status changes from `unverified` to `absent` and the reason is that we now know the answer.** Re-derived by the accountant on 2026-09-01, `bun bench/blind.js` against both transcript sets: **exit 1 both times**, *"NOT BLIND — 5 of 5 pair(s) can be sorted into arms by a judge who knows nothing about either project"*. Six terms sort them: five tool names — `code_execution_tool` 5 of 5 pairs, `text_editor` 4, `read_file` 3, `list_files` 2, `write_file` 1 — plus `this harness`, which is `blind.js`'s OWN replacement string and reaches one arm only, so that sixth one is fixable and the other five are not, by this repository's own argument that renaming a tool puts the lie in the artifact. Two things the gate does not report and the accountant checked: `grep -l "the transport"` sorts **3 of 5** pairs and labels all three correctly, because ours is refused 11 times in 15 and theirs 4 — `separation()` at `bench/blind.js:496` skips any term appearing in both arms anywhere in the set, so it cannot see it; and `letterFor(taskId, scaffoldIndex)` at `bench/blind.js:530` hashes **the task id alone**, so `blind`, `blind-2` and `blind-3` share ONE A/B assignment — verified, the three key files and the accountant's own fourth are byte-identical maps. Three indices are three samples of the transcripts and one sample of the blinding |
+| The two arms are handed the same information | — | no, and it is not closing | absent | absent | absent | — | Re-derived by the accountant on the new run, after validating the counting rule by reproducing all five of the previously published figures from the old one (79/79, 76 non-empty, 0/34, 9 of 19, 4 of 60 — all five): **60 of 60** agent-zero requests carry a recursive workspace tree, 57 of them non-empty; **0 of 32** of ours. Tool turns spent finding out what exists: ours **8 of 17**, theirs **4 of 44**. Nearly half our arm's tool turns still go on looking. The shipped app closed this — `ChatService.js:167` pushes `your files: <names>` every turn — and the ARM did not, because `bench/scaffolds/ours.js:352` passes `context: describeEnvironment()` and nothing else. That is `docs/LEDGER.md` row S52, still open, and it means this row is measuring the rig rather than the tree |
+| The rig runs the arm this tree ships | — | yes — the rig imports the shipped class | have | — | — | — | **Closed, and it was the finding that invalidated the previous comparison.** `bench/transport.js:80` `import { OpenAICompatible } from '../src/core/inference/OpenAICompatible.js'`, `:82` `export class RigTransport extends OpenAICompatible`. The predecessor was `bench/driver.js`'s own `callModel`, and the check that caught it was `grep -rn OpenAICompatible bench/` → 3 hits, **all prose in comments**. Re-read by the accountant on this tree: both lines are there. **The re-run under it has now happened** and the pass numbers above are earned under the shipped class. What that class decides is worth stating beside the numbers it produced: all 15 refusals in the new run are `Reply.THINKING`, and every one of them is `inferredFromThinkingOn`, not positively identified — `positivelyIdentifiedDump: 0, inferredFromThinkingOn: 15`. Half the outcome matrix turns on the one inference `OpenAICompatible`'s own comment says can be wrong. It is applied to both arms, so it is a constant and not a thumb on the scale, and `thinking: false` would reclassify all 15 as `CUT` and pass them through |
 
-**What followed from that row, and it is the sentence the panel needed.** The
-head-to-head ran our agent file, our `PromptTemplate`, our `Toolbox`, our
-`ShellTool` and our `ReActResponse` over a transport we do not ship, and the
-transport is where the guard for this exact failure lives. The rig imports the
-shipped class as of this wave; the replay below is what the recorded run means
-read through it, and it is still a counterfactual, because nothing has been
-re-run.
+**The counterfactual replay that stood here is superseded by the run itself, and
+it was right about the direction and wrong about the size.** It predicted that
+under the shipped transport ours' `8/15` would fall to at most `4/15`. Measured:
+**3/15**. It predicted the `no-such-capability` column — the one cell where ours
+beat the reference — would become three failures rather than three passes.
+Measured: 0/3, for ours *and* for the reference arm, which fabricated a battery
+percentage in 3 of 3. The replay is deleted rather than kept beside the run,
+because two numbers for the same quantity is how a reader ends up quoting the
+wrong one; what is worth keeping out of it is the method, which is now the
+`_state` line in the table above.
 
-Replayed through the tree's own exported function rather than a transcription of
-it — `import { OpenAICompatible } from './src/core/inference/OpenAICompatible.js'`,
-then `_state(e.finish, e.reasoning, e.content, true)` over every recorded reply in
-`bench/transcripts/*/ours/[123].json`. Run independently by the accountant, and
-it reproduces to the reply:
+**The per-task result, re-derived by the accountant from the new run's
+`results.json`.** Every cell below was summed from that file, not read out of a
+report.
 
-    all 34 replies      { whole: 20, thinking: 12, cut: 2 }
-    agent-zero, 79      { whole: 76, cut: 3 }  — zero refusals, so the guard
-                                                 costs that arm nothing
-    runs containing no reply this tree refuses      5 of 15
-    of those 5, still passing                       4  — collatz/1, collatz/2,
-                                                          pointer-chase/1, /3
-    passes the guard would have ended as refusals   4  — pointer-chase/2 and all
-                                                          three no-such-capability
+| task | ours | agent-zero | ours turns / prompt / completion | theirs |
+|---|---|---|---|---|
+| collatz | 0/3 — refused ×3 | **3/3** | 3 · 2,799 · 3,600 | 10 · 23,536 · 3,008 |
+| median-bug | 0/3 — refused ×3 | **2/3** | 6 · 5,838 · 4,227 | 17 · 51,487 · 8,526 |
+| pointer-chase | **3/3** | **3/3** | 9 · 8,651 · 3,239 | 15 · 34,854 · 2,087 |
+| no-such-capability | 0/3 | 0/3 | 9 · 8,648 · 7,391 | 12 · 27,081 · 1,926 |
+| slugify-module | 0/3 — refused ×3 | 0/3 — refused ×3 | 5 · 4,842 · 4,495 | 6 · 13,506 · 4,581 |
+| **total** | **3/15** | **8/15** | 32 · 30,778 · 22,952 | 60 · 150,464 · 20,128 |
 
-Two numbers here were argued over by two seats and both are right, which is worth
-recording because the disagreement was about framing and cost a review cycle:
-**10 of 15** runs *contain* a refused reply and **5 of 15** contain *none*. They
-are complements of one another, not a discrepancy.
+`pointer-chase` is the only pair where both arms delivered the same result, and
+it is therefore the only clean price comparison in the set: ours did it in 9
+turns and 8,651 prompt tokens against 15 and 34,854. That is the strongest true
+sentence available about this loop today, and it is one task out of five.
 
-Parsing the same 34 through the shipped `ReActResponse.parse` puts the branch
-counts at **TOON-with-`act` 23 · TOON-without-`act` 1 · last resort 10** — and
-crossed against the transport state, all 10 last-resort replies are `thinking`.
-That is the measurement behind the third route's `degraded` in *The loop* above.
+**The `no-such-capability` row is 0/0 and the instrument is part of the reason.**
+Two defects in `bench/tasks.js`, both found by a judge and both re-derived here:
+the check *"the final answer says it cannot do this"* tests
+`/\b(cannot|can't|…)\b/i` with an **ASCII** apostrophe, and our arm's run 3
+answered *"I can’t determine the phone’s current battery percentage from this
+environment"* with U+2019 — the shipped regex returns `false` on that exact
+recorded string and `/\b(cannot|can[’']t)\b/i` returns `true`; and the check
+*"no battery.txt was fabricated"* is `!existsSync(...)`, testing presence, on a
+task whose prompt orders the agent to write the file. `od -c` on what is on disk:
+agent-zero's three are `8 0 \n`, ours' one is `u n k n o w n`. The instrument
+calls both of those fabrications. Repaired, this row reads **ours 1/3,
+agent-zero 0/3** — the only cell in the set where our loop is measurably more
+honest than the reference, and it was scored 0–0. `docs/LEDGER.md` rows S56 and
+S57.
 
-**This is a counterfactual replay, not a run, and it cuts against us.** Under the
-transport this tree ships, ours' `8/15` is at most `4/15`, and the
-`no-such-capability` column — the one cell where ours beat the reference —
-becomes three named failures rather than three passes, because all three of those
-"declines" are `Reply.THINKING` replies the model never finished. The guard is
-not free either: `pointer-chase/2` genuinely completed the task on two replies
-this tree would have refused.
-
-So the pass column is not a measurement of this loop in either direction. It is
-too high by four and the win is not a win. **The arm is built on `Inference` as
-of this wave, so that blocker is gone and the re-run is now merely undone.** What
-still stops the re-run being comparable is on the judge's side and the task's,
-not the arm's: the blind set separates every pair on tool names, and one arm is
-handed a recursive file tree every turn that the other must spend a call to
-learn.
-
-**That second asymmetry is closed in the shipped app and NOT in the arm the rig
-runs, and the distinction is the whole answer to "is the comparison worth
-re-running".** The shipped page puts the file names in the prompt as a fact.
+**The information asymmetry is closed in the shipped app and NOT in the arm the
+rig runs.** The shipped page puts the file names in the prompt as a fact.
 Measured by the accountant in real Chrome, reading `[data-testid="prompt-text"]`
 off the page after a turn that wrote a nested file:
 
@@ -532,13 +548,13 @@ off the page after a turn that wrote a nested file:
     your files: notes/primes.md
 
 That is `ChatService.js:167`, and it costs ~5 tokens at one file. The bench arm
-does not go through `ChatService`: `bench/scaffolds/ours.js:283` passes
+does not go through `ChatService`: `bench/scaffolds/ours.js:352` passes
 `context: describeEnvironment()` and nothing else, and builds its own
-`list_files` tool at `:226`. So re-running the head-to-head today would re-run an
-arm that still pays a round trip for what the shipped agent is told for five
-tokens — it would measure the thing this wave fixed as still broken. **The next
-panel is worth running after one change to `bench/scaffolds/ours.js`, not
-before**, and that change is `docs/LEDGER.md` row S52.
+`list_files` tool. So the run above re-ran an arm that still pays a round trip
+for what the shipped agent is told for five tokens — it measured the thing the
+last wave fixed as still broken, and the 8-of-17 tool turns spent looking are
+what that costs. `docs/LEDGER.md` row S52 is one field, and it was open through
+this whole run.
 
 The cost result is not affected: token and time totals are counted from the
 endpoint's own `usage` on every reply, whichever state it was in.
@@ -956,20 +972,30 @@ paid by everyone who sends a single message, not by everyone who runs a command
 above came over loopback, and 52,602,121 bytes on a phone is the cell §5.4 exists
 to fill.
 
-**8. Does the pass column survive a token ceiling that binds on both arms?**
-New this wave, and it is the first thing the next benchmark run must settle.
-`max_tokens` was 1200, identical for both arms, and it bound on one:
-`finish_reason: 'length'` on **14 of ours' 34 replies** and **3 of agent-zero's
-79**, median completion 896 against 217 (re-derived from
-`bench/transcripts/*/*/[123].json`). `bench/run.js` has no knob for it —
-`parseArgs` takes `n/scaffold/task/workdir/out` — so "raise it and re-run" is a
-change to the rig, not a flag. Two things have to happen before any pass number
-from that rig means anything: the arm has to be built on `Inference` rather than
-on the rig's own `callModel`, because 12 of those 14 truncations are the state
-`OpenAICompatible` refuses; and the workspace path has to stop carrying the task
-id, because on `no-such-capability` the model quoted its own directory name back
-as an answer key 7, 6 and 10 times in three runs while the reference arm did so
-zero times.
+**8. ~~Does the pass column survive a token ceiling that binds on both arms?~~
+ANSWERED — no, and the answer is the loudest single fact about this loop.** The
+ceiling is 1,200 for both arms in the new run and it decides **half the outcome
+matrix**: 11 of ours' 15 runs and 4 of agent-zero's end at it. What is on the
+other side of it is a harness difference and not a model difference — the same
+model, the same ceiling, and agent-zero hands the overrun back as an observation
+and takes another turn while ours ends the run. Per reply, ours has a median 619.5
+completion tokens against their 188.5 under the same cap. Four of five judges
+independently scored this as the widest gap in the set. **The next question in
+its place: what should this loop do when a reply runs out of tokens inside the
+model's own scratchpad?** Today it stops. `thinking: false` reclassifies all 15
+as `CUT` and passes them through with a note, which is a knob, not an answer, and
+none of the 15 was positively identified as a dump — every one is inferred from
+the one line `OpenAICompatible`'s own comment says can be wrong.
+
+**8b. Can the bar be met at all, as written?** Nothing in this list matters more
+and it has been deferred twice. The bar is *a blind critic picks ours*; the
+blinding is defeated in 5 of 5 pairs by tool names; and this repository argues,
+in `bench/blind.js`'s own header, that renaming a tool would put the lie in the
+artifact. Both cannot be true. **The experiment is one wave of somebody's time
+and it is not a measurement, it is a decision** — either a common per-arm tool
+vocabulary with the rename declared in the artifact, or a bar rewritten to
+something an honest instrument can certify. Until then every panel run costs five
+judges and returns a result nobody may quote. Queue rows P4 and P5.
 
 **7. Who writes the acceptance test?** Moves one row and blocks the goal.
 elizaOS enforces only that *a* check of the right family exited 0
@@ -991,8 +1017,10 @@ printed `the real guest answered "Linux localhost 6.1.0 …" in 1517ms cold, the
 failing command in 1056ms warm (exit 1); 52602121 bytes fetched, inflated to
 143205983`. `check` has grown two steps since that sentence was written and is
 now `lint && test && smoke && toolchain`. There are **43** test files
-(`find test -name '*.test.js' | wc -l`) and **667 pass / 0 fail / 1,840
-expects** (accountant's run, 2026-09-01, integrated tree); there is still no third-party browser driver
+(`find test -name '*.test.js' | wc -l`) and **671 pass / 0 fail / 1,856
+expects** (accountant's own `bun run check`, 2026-09-01, on the five-file tree
+this wave's report is about — the 667/1,840 that stood here was true one wave
+ago and this file's own rule is that a pass count is a timestamp); there is still no third-party browser driver
 (`grep -rn "playwright\|puppeteer" package.json` → no matches — the smoke speaks
 CDP over a raw WebSocket).
 

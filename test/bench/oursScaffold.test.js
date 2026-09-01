@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AGENT_FILE, buildRigAgent, loadSpec, scaffold } from '../../bench/scaffolds/ours.js'
+import { buildSystemPrompt } from '../../bench/scaffolds/agent-zero.js'
+import {
+  AGENT_FILE,
+  buildRigAgent,
+  hostRuntimes,
+  loadSpec,
+  scaffold,
+} from '../../bench/scaffolds/ours.js'
 import { makeTools } from '../../bench/tools.js'
 import { describeEnvironment } from '../../src/core/agent/Environment.js'
 import { buildAgent } from '../../src/core/agent/loadAgent.js'
@@ -311,5 +318,87 @@ describe('what this arm does with a reply that does not say what to do', () => {
     const readme = readFileSync(join(REPO, 'bench', 'README.md'), 'utf8')
     expect(readme).toContain('`ACT_UNSAID`, echoed back with which of the two it was')
     expect(readme).toContain('S37')
+  })
+})
+
+describe('both arms are told the same thing about the machine', () => {
+  /**
+   * The asymmetry this rig existed with, and the reason it is a test and not a
+   * paragraph.
+   *
+   * `agent-zero.js` `environmentSection` has always told its model "python3 and
+   * node are installed and on PATH". Our arm's shell description said nothing
+   * about runtimes, so the rig handed one side a fact about the host and
+   * withheld it from the other — measured before this test existed: our arm's
+   * assembled prompt did not contain the string `python3` and theirs did.
+   *
+   * That is not a difference between two scaffold designs, which is what this
+   * rig is for. It is a difference the rig invented, running against the arm
+   * whose shipped `ShellTool` states the same kind of fact about the browser
+   * guest. It belongs in a test because prose about it would sit below the
+   * numbers it invalidates.
+   */
+
+  test('both prompts carry the same runtime sentence, and this host is what it says', () => {
+    const shared = rigTools()
+    const ours = scaffold.request(scaffold.init({ task: { prompt: 'x' }, tools: shared }))
+      .messages[0].content
+
+    // The SENTENCE, not the word. `node` occurs six times in agent-zero's own
+    // prompt — the `code_execution_tool` runtime list, its `python nodejs linux
+    // libraries` line and a worked example among them — and five of those six
+    // are not claims about this host's PATH. Measured with a substring oracle
+    // in place: rewriting `environmentSection` to say "python3 is installed and
+    // on PATH", the exact asymmetry in the exact direction this test exists to
+    // catch, left this file at 28 pass / 0 fail.
+    //
+    // It is also the only writer for what `hostRuntimes` claims about itself —
+    // that its wording is agent-zero's and not a paraphrase. A reword on either
+    // side now goes red here.
+    const bothPresent = hostRuntimes(() => '/somewhere')
+    // Their line, not their prompt: `toContain` over 12 KB of prose prints the
+    // whole manual on failure, and reading the one line back is the stronger
+    // claim anyway — their sentence IS ours, rather than somewhere inside.
+    const theirLine = buildSystemPrompt(shared.workdir)
+      .split('\n')
+      .find((line) => line.includes('installed and on PATH'))
+    expect(theirLine).toBe(bothPresent.replace(/\.$/, ''))
+
+    // Their line is hard-coded, so the two arms are symmetric only on a host
+    // that really has what it asserts. Asserted, not assumed: a host missing
+    // one fails HERE, naming the reason, rather than in a bench result nobody
+    // re-reads.
+    expect(hostRuntimes()).toBe(bothPresent)
+    expect(ours).toContain(bothPresent)
+  })
+
+  test('and ours derives the sentence rather than copying the machine it was written on', () => {
+    // The assertion above cannot separate deriving from asserting, because this
+    // machine has both runtimes and a hard-coded sentence would satisfy it.
+    // These can: the lookup is a parameter, so a host that has neither can be
+    // asked what it would be told.
+    expect(hostRuntimes(() => null)).toBe('')
+    expect(hostRuntimes((name) => (name === 'node' ? '/somewhere/node' : null))).toBe(
+      'node is installed and on PATH.',
+    )
+    // And the default really is the PATH lookup, not a third spelling.
+    expect(hostRuntimes()).toBe(hostRuntimes(Bun.which))
+  })
+
+  test('and the prompt derives it too, not just the function', () => {
+    // The one that covers the CALL. `hostRuntimes` had exactly one caller and
+    // no test observed it, so replacing `hostRuntimes(which)` in `ourTools`
+    // with the literal sentence left the whole suite at 670 pass / 0 fail and
+    // left the function exported, argued for, and called by nothing — measured.
+    //
+    // Driving the lookup from out here is what closes that: on a host with
+    // neither runtime the rendered tool listing must name neither, which no
+    // literal can do. The sentence is dropped whole rather than left as a gap,
+    // so the two around it still read as one line.
+    const bare = buildRigAgent(loadSpec().value, rigTools(), () => null).value.toolbox.render()
+
+    expect(bare).not.toMatch(/(^|\s)python3(\s|$)/)
+    expect(bare).not.toMatch(/(^|\s)node(\s|$)/)
+    expect(bare).toContain('including the exit code. The workspace persists between calls')
   })
 })

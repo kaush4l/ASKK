@@ -177,6 +177,44 @@ class ForwardingTool extends Tool {
   }
 }
 
+/** The runtime names both arms are told about, in the order agent-zero says them. */
+const HOST_RUNTIMES = ['python3', 'node']
+
+/**
+ * Not hand-rolled. `Intl.ListFormat` is the platform's answer to joining a list
+ * in English, and at three names it writes the Oxford comma that a
+ * `slice(0, -1).join(', ')` spelling of the same thing drops. This file stops
+ * knowing how English joins a list.
+ */
+const AND = new Intl.ListFormat('en', { type: 'conjunction' })
+
+/**
+ * Which of those this machine actually has, said the way the reference arm says it.
+ *
+ * The wording is agent-zero's own, not a paraphrase of it, so the two arms read
+ * one sentence rather than two that a reader has to decide are equivalent.
+ * Empty when the host has neither, in which case the sentence is dropped
+ * instead of asserting something false — `.filter(Boolean)` below.
+ *
+ * `which` is a parameter for one reason and it is not testability in the
+ * abstract: a hard-coded sentence would pass every assertion that can be made
+ * on THIS machine, because this machine has both. Handing the lookup in is what
+ * lets a test ask what the sentence says on a host that has neither, which is
+ * the only question that separates deriving from asserting.
+ *
+ * MEASURED, and it is why `ourTools` and `buildRigAgent` take the lookup too
+ * rather than stopping the parameter here: with the lookup ending at this
+ * function, replacing the `hostRuntimes()` CALL with the literal sentence left
+ * `bun test ./test` at 670 pass / 0 fail and reduced `git grep hostRuntimes`
+ * over `bench/ src/ scripts/` to this file's own `export` line. A derivation
+ * nothing calls is this tree's signature defect, and it was one edit away.
+ */
+export function hostRuntimes(which = Bun.which) {
+  const found = HOST_RUNTIMES.filter((name) => which(name))
+  if (!found.length) return ''
+  return `${AND.format(found)} ${found.length > 1 ? 'are' : 'is'} installed and on PATH.`
+}
+
 /**
  * Our four tools.
  *
@@ -184,7 +222,7 @@ class ForwardingTool extends Tool {
  * a tool (`Tool.render`), so the three written here are written the way the tree
  * writes them: what it is for, and what happens when it is the wrong choice.
  */
-function ourTools(shared) {
+function ourTools(shared, which) {
   const forwarded = [
     [
       {
@@ -245,10 +283,35 @@ function ourTools(shared) {
   // command line is capped, and both are false here. Leaving it would tell the
   // model its files vanish and lose every multi-step task for a reason that has
   // nothing to do with the scaffold under test.
+  //
+  // The runtimes are named here because the reference arm names them, and it
+  // has all along: `agent-zero.js` `environmentSection` tells its model
+  // "python3 and node are installed and on PATH". Our arm was told nothing,
+  // which is not a difference in scaffold design — it is the rig handing one
+  // side a fact about the machine and withholding it from the other. The
+  // shipped `ShellTool` states the same KIND of fact about the browser guest,
+  // so omitting it here also measured an arm this tree does not ship.
+  //
+  // DERIVED, where their side asserts. `Bun.which` is the claim itself — on
+  // PATH or not — so a host without node reports a sentence that is true of it
+  // rather than one copied from the machine this was written on. It costs a
+  // PATH lookup once per run and nothing per turn. That agent-zero's own copy
+  // of the sentence is still asserted is a row for whoever owns that file.
+  //
+  // The lookup arrives rather than being reached for, all the way from
+  // `buildRigAgent`, so that a test can drive THIS line with a host that has
+  // neither runtime and read what the prompt then says. That is the only
+  // instrument that can tell this call from the literal it produces here.
   const shell = new ShellTool({
     sandbox: new WorkspaceSandbox(shared),
-    description:
-      'Run a command in the workspace with /bin/sh and read its output, including the exit code. The workspace persists between calls, so a command can see what an earlier one wrote. A command that has not finished after 30 seconds is killed.',
+    description: [
+      'Run a command in the workspace with /bin/sh and read its output, including the exit code.',
+      hostRuntimes(which),
+      'The workspace persists between calls, so a command can see what an earlier one wrote.',
+      'A command that has not finished after 30 seconds is killed.',
+    ]
+      .filter(Boolean)
+      .join(' '),
   })
 
   return [...forwarded, shell]
@@ -274,12 +337,18 @@ export function loadSpec() {
  * `buildAgent` skips `resolveTools` and attaches exactly these. `inference` is
  * null because the driver owns the HTTP call — the engine is never `run`, only
  * `plan`ned and `observe`d.
+ *
+ * `which` is the PATH lookup `hostRuntimes` uses, carried through because the
+ * shell description this builds is derived from the host and nothing else here
+ * can be asked what it would say on a different one. Every caller in the rig
+ * leaves it out; its writer is the test that asks for a host with neither
+ * runtime.
  */
-export function buildRigAgent(spec, shared) {
+export function buildRigAgent(spec, shared, which) {
   return buildAgent({
     spec,
     inference: null,
-    tools: ourTools(shared),
+    tools: ourTools(shared, which),
     context: describeEnvironment(),
   })
 }
@@ -295,8 +364,8 @@ export const scaffold = {
     },
     {
       where: 'src/core/tools/ShellTool.js description',
-      cut: 'the shipped sentence: no network, a clean filesystem on every call, a 1024-byte command line',
-      why: "true of the browser sandbox, false of this rig. It is replaced through the class's own `description` option rather than by forking the class, so the tool the model calls is still `ShellTool`.",
+      cut: "the shipped sentence: no network, a clean filesystem on every call, a 1024-byte command line, and the guest's own runtime list",
+      why: "true of the browser sandbox, false of this rig. It is replaced through the class's own `description` option rather than by forking the class, so the tool the model calls is still `ShellTool`. The replacement now names the host's runtimes, derived with `Bun.which`, because the shipped sentence names the guest's and because `agent-zero.js` has always told its own model \"python3 and node are installed and on PATH\". Leaving that out of ours was not a scaffold difference — it was the rig telling one arm what the machine has and not the other.",
     },
     {
       where: 'src/core/response/BaseResponse.js parse',

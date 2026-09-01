@@ -74,26 +74,30 @@ Status: `open` -> `built` -> `judged` -> `landed` | `rejected`
 | B-fair | the blind instrument tells its own leaks from the arms' and exits 1 | S37, S38, S39 | landed | `bun bench/blind.js` EXIT=1, re-run |
 | V-see | the owner can see the files — `app/FilesPanel.jsx`, `client/highlight.js`, the `files` rail button, `files.list`/`files.read`, smoke assertions | S41; *A filesystem the agent and the human both see*; *Seeing that a file exists at all*; *Viewing and editing a file* | landed, **uncommitted** | FAIL then fixed; re-derived in a browser by the accountant |
 | G-toolchain | Python 3.12.14 in the guest — `image/Dockerfile`, `build.sh` required argument + size guard, `toolchain-check.js` as a gate step, `test/wasm/buildGuard.test.js` | *Run a test suite*; *Install software into the guest*; *A native compiler toolchain* out of `barred` | landed, **and the artifact is uncommitted (S51)** | FAIL then fixed; re-derived in a browser by the accountant |
+| S50-fix | tell the model the guest has Python — `GUEST_TOOLS` in `ShellTool.js`, its recipe-agreement test, and the bench arm's copy | S50 | landed, **uncommitted** | closed by the accountant with the price corrected and the behavioural claim refuted 3/3 — S58 |
+| B3 | the head-to-head re-run through the shipped transport, n=3, and a five-lens panel over three blind indices | the bar | **ran; the bar is not met, for the second consecutive wave** | ours 3/15 against 8/15; `bun bench/blind.js` EXIT 1; no judge scored all eight criteria. See *The bar was tested twice* |
 
 ## Queue
 
 Ordered by what unblocks the most rows, not by what is easiest.
 
 The losing lens is first. That is the ordering rule this queue has always
-claimed and the first time a lens has actually set it.
+claimed, and it has now set the top row twice running: P1 came from the first
+panel's dissenting lens and P8 from four of the second panel's five.
 
 | # | Slice | Row it closes |
 |---|---|---|
+| **P8** | **When a reply runs out of tokens inside the model's scratchpad, take another turn instead of ending the run.** This is the losing finding of the second panel and it is first by this queue's own ordering rule. Four of five judges scored criterion 5 against us and it is a harness difference, not a model difference: the same 1,200-token ceiling hit both arms, agent-zero returns the overrun as an observation and takes another turn — `median-bug` turn 2 truncates mid-`content`, turn 3 re-emits and succeeds — and ours ends the run. **11 of ours' 15 runs end that way against 4 of theirs.** The refusal is `Reply.THINKING`, and all 15 are `inferredFromThinkingOn`, none positively identified. The shape of the fix is the shape P1 already used for `ACT_UNSAID`: echo the reply back with the sentence naming what happened, count the streak, end at a ceiling | In-transcript failure recovery. Ours scores 2 where the reference scores 4, on five tasks, in four independent readings |
 | ~~P1~~ | **LANDED.** `act` absent or unmatched is `ACT_UNSAID`, echoed back with the reply and a sentence naming which route it was, and the run ends named at a ceiling of two | Refuse a reply that carries no action `absent` -> `degraded`. `ReActResponse.js:161` is the fall-through; `:55` is the comment where `default: ACT_ANSWER` was; `ReActEngine.js:253` ends through `unreadable` (`:349`). `BaseResponse.js:277`, the last resort, is unchanged and is the named cost |
 | ~~P2~~ | **LANDED.** The rig calls the endpoint through the shipped class — `bench/transport.js:82` `RigTransport extends OpenAICompatible` | The rig runs the arm this tree ships `absent`. 12 of the 14 truncated replies in the run below are `Reply.THINKING`, which `OpenAICompatible.js:189` refuses and the rig passed on. Until this lands no pass number from that rig is about this tree |
 | ~~P3~~ | **LANDED.** `git ls-files bench` → 101 and `git ls-files test/bench` → 8, both 0 before. S31 and S38 closed | Run this loop and a reference loop `degraded` → the numbers are reproducible from a clone |
-| **P4** | **Blind the blind set for real. Half done and the half that is left is the whole point.** The instrument is honest now — `bun bench/blind.js` exits **1** (S39 closed) and separates `[declared]` leaks from its own `[replacement]` ones. The set is still not blind: six terms separate **5 of 5** pairs | A blind judge picks ours `unverified`. Either rename tool identifiers per-arm to a common vocabulary, or accept that the bar cannot be met and stop calling it blind |
-| **P5** | **Put the assembled prompt back into the blinded projection, or score criterion 1 as a 1 forever.** `blind.js` drops the `— sent` blocks by a deliberate argument; the rubric's criterion 1 is about prompt composition and is unscorable without them | The bar. Confirmed by reading a blinded file: its only headings are `task`, `turn N — reply`, `parsed as`, `observation`, `final answer` |
-| **P6** | **Give both arms the same information, or declare the asymmetry as a `cuts` row. Narrowed in `src/`, NOT in the arm.** The shipped agent is handed `your files: <names>` every turn (`ChatService.js:167`, read off the live page by the accountant); `bench/scaffolds/ours.js:283` passes `context: describeEnvironment()` and gets none of it, so a re-run today would score the fix as absent — S52, one field. Previously: **Narrowed, not closed.** Ours can now read and write files and is told what exists; agent-zero is still HANDED a recursive tree in 79 of 79 prompts unasked, where ours must spend a call | The two arms are handed the same information `absent`. A capability the other arm gets free is a smaller defect than one we do not have, and it is still a defect |
+| **P4** | **Decide it. A second panel has now been run against a set the instrument refused, and the answer is the same as the first.** `bun bench/blind.js` exits **1** on every transcript set in the tree; six terms separate **5 of 5** pairs and five of them are tool names. Two further separators the gate cannot see are S59 (three indices, one A/B map) and S60 (the refusal block sorts 3 of 5). **This row is no longer a task, it is a question the lead has deferred twice**: either tool identifiers get a common per-arm vocabulary — which this file argues puts the lie in the artifact — or the bar as written cannot be met and must be rewritten to something that can | A blind judge picks ours `absent`. What must NOT happen a third time is a panel run on a set that exited 1 |
+| **P5** | **Put the assembled prompt back into the blinded projection. This has now cost two panels and it is the reason neither is reportable.** `blind.js` drops the `— sent` blocks by a deliberate argument; the rubric's criterion 1 is about prompt composition. Of the five judges on the second panel, three marked it `WITHHELD` and two supplied a number **from the raw non-blind transcripts** and said that doing so is what ended their own blindness | The bar, which requires every judge to score all eight. Zero of eight judges across two panels have scored criterion 1 on the artifact they were handed |
+| **P6** | **Give both arms the same information, or declare the asymmetry as a `cuts` row. Narrowed in `src/`, NOT in the arm.** The shipped agent is handed `your files: <names>` every turn (`ChatService.js:167`, read off the live page by the accountant); `bench/scaffolds/ours.js:352` passes `context: describeEnvironment()` and gets none of it — S52, one field. **The re-run happened anyway and this row's own prediction is what it measured**: 60 of 60 agent-zero requests carried a recursive tree against 0 of 32 of ours, and ours spent 8 of 17 tool turns finding out what exists against theirs' 4 of 44. Previously: **Narrowed, not closed.** Ours can now read and write files and is told what exists; agent-zero is still HANDED a recursive tree unasked, where ours must spend a call | The two arms are handed the same information `absent`. A capability the other arm gets free is a smaller defect than one we do not have, and it is still a defect |
 | **P7** | **Take the task id out of the workspace path.** `bench/run.js:470` `join(runRoot, task.id, scaffold.id, String(index))` | S35. On `no-such-capability` ours read its own directory name back as an answer 7, 6 and 10 times across three runs |
 | ~~1C~~ | **LANDED, except the push.** The guest is tracked (S33); `scripts/deploy.js` builds a servable directory from a clean checkout and `scripts/deploy-check.js` drove a real `uname -a` through it in a real browser, exit 0 (S34) | Get that environment to the visitor `absent` → `degraded`. What is left is one run of `deploy.js` and one push. Row S44 |
 | ~~F1~~ | **LANDED.** `app/FilesPanel.jsx` + `client/highlight.js`: a rail button, a listing, a coloured read-only view, a download. Driven in a browser by the accountant and asserted by `bun run smoke` on every gate. **What is left of it is a new row, F1b — a way IN**: no upload, no editor, no `files.write` route. Original: `grep -rn "files\." src/app src/client` → 0. The agent has a workspace and the human it works for cannot open, list, download or add one file | S41. `CAPABILITIES.md`'s *A filesystem the agent and the human both see* is the only `degraded` left in a table this wave otherwise moved to `have`, and it is a page-realm change with no unknown in it |
-| **F2** | **Commit the guest and the slices, then deploy once. This is now the top of the queue and it has grown teeth.** The wave's whole result — a 52,602,121-byte guest with Python in it, a file view, a fifth gate step — is uncommitted, so `HEAD` fails `bun run toolchain` (S51) and `scripts/deploy.js` cannot even build the working tree (S53). Original framing: **Commit the filesystem, then deploy once.** The deploy builds from a committed ref and the workspace is uncommitted, so no single artifact yet carries both headlines this wave established | S44 |
+| **F2** | **Commit the guest, the slices and the run, then deploy once. This is now the top of the queue and it has grown teeth.** The wave's whole result — a 52,602,121-byte guest with Python in it, a file view, a fifth gate step — is uncommitted, so `HEAD` fails `bun run toolchain` (S51) and `scripts/deploy.js` cannot even build the working tree (S53). Original framing: **Commit the filesystem, then deploy once.** The deploy builds from a committed ref and the workspace is uncommitted, so no single artifact yet carries both headlines this wave established | S44 |
 | ~~F3~~ | **LANDED, one language of it.** Python 3.12.14 is in the image, `bun run toolchain` makes three real guests run a `unittest` suite, and *Run a test suite* is `degraded` rather than `absent`. **Its successor is F3b, and it is one word, not a build**: the model has never been told (S50). Original: `scripts/wasm/image/Dockerfile` is `FROM alpine:3.21` + a 15-line `sh` MCP server. Eight *Building software* rows waited here rather than on a filesystem | C5, which is a Docker build and not a browser limit |
 | 1D | The artifact smoke step — proxy `Worker`, keep the page's own module worker, send it one `chat.send` | S22; it is the only thing that would let anyone re-derive the environment wave's headline by typing one command |
 | ~~2A~~ | **SUPERSEDED, and the row it was for closed a different way.** The spike was an OPFS disk reattached across guest boots. What landed instead is `Workspace` — an IndexedDB store one realm UP from the guest, with `ShellTool` staging named files in and harvesting them out, so a file survives a boot without the guest's filesystem doing so | Keep a file between calls: the GUEST still cannot, and `CAPABILITIES.md` still says so. The agent can, and that is the row that moved |
@@ -117,9 +121,14 @@ are current as of the run at the end of this file.
 1C is no longer at the top and that is not a demotion: it is one `git add` and a
 deploy away, and it is still the only open row that decides whether this
 project's central claim is true of the thing a visitor opens. What went above it
-is the four rows the panel and the refuter produced, and P1 is first because it
-is the only defect this project has ever had named by a judge that did not know
-whose code it was reading.
+is what the panels produced. **P1's justification does not survive contact with
+the second panel and is corrected here rather than left standing**: it read *"the
+only defect this project has ever had named by a judge that did not know whose
+code it was reading"*, and no judge on either panel has ever not known — all
+eight said so, unprompted, in their own first paragraph. What is true of P1 and
+now of P8 is narrower and still worth the top of a queue: they were named by
+readers who were given a transcript and no stake in it, which is a different
+thing from blindness and is the only such reading this project gets.
 
 One unit in `src/core/` has zero call sites anywhere in `src/`, `scripts/`,
 `agents/` or `public/`, and is reached only from its own test:
@@ -179,11 +188,80 @@ against an arm that would score the same for the same reason. That is a defect i
 the artifact, not in either arm, and it is a row in the queue rather than a
 footnote in a future panel's excuse.
 
-### The bar was tested and it is NOT met
+### The bar was tested twice and it is NOT met either time
+
+The owner's terminal condition is *"loop each piece until every critic picks
+ours blind. Do not stop before that."* **It is not met.** The second test is
+below the first; the first is kept because the second repeats it.
+
+#### The second test — five lenses, 2026-09-01, on the n=3 run
+
+**Discount every judge in this table explicitly.** All five reported, in their
+own first paragraph and unprompted, that they could identify the arms; four of
+the five say the brief they were given contained the A/B map in prose before
+they opened a file. `bench/runs/2026-09-01-s53-n3/blind-key.json` was also read
+by at least three of them. So this is a **disclosed** panel, not a blind one,
+and the instrument agrees: `bun bench/blind.js` exits 1 on this set at all three
+indices, re-run by the accountant, and the brief's own rule was not to hand the
+set over unless it exits 0.
+
+**Every judge scored SEVEN of the eight criteria, and no judge scored all eight
+on the blind artifact.** Three (`tools`, `context`, `shape`) marked criterion 1
+`WITHHELD` and did not sum it, which is what the rubric tells them to do when
+the projection withholds it. Two (`limits`, `result`) supplied a number for
+criterion 1 **from the raw non-blind transcripts**, and both said so — `result`
+adds that doing it is what finished off its own blindness. By this file's own
+rule — *"A panel result may be reported against this bar only if every judge
+scored all eight criteria"* — **this panel is not reportable against the bar**,
+for the second panel running, and for the same reason both times: `blind.js`
+drops the assembled prompt and criterion 1 is about prompt composition. That is
+queue row P5, and it has now cost two panels.
+
+Rubric sums, criteria 2·3·5·6·7, as each judge reported them:
+
+| lens | ours | agent-zero | criterion 8 |
+|---|---|---|---|
+| `tools` — how the loop drives tools | 11 | **14** | ours 3, theirs 2, no DQ |
+| `context` — what the model was made to read | 13 | **17** | ours 4, **theirs 1 → DQ** |
+| `limits` — what happens when it cannot be done | 14 | **16** | ours 4, **theirs 1 → DQ** |
+| `shape` — reply format under stress | 58 | **68** | **theirs 1 → DQ** on `no-such-capability` |
+| `result` — correctness | 16 | **17** | ours 5, **theirs 1 → DQ** |
+
+`shape` is the only lens that scored each pair separately; its 58 and 68 are
+sums over five pairs, so the per-pair average is 11.6 against 13.6, and its
+per-pair verdicts are ours 2, theirs 3.
+
+**On the rubric's own arithmetic — criteria 2, 3, 5, 6, 7 — the reference arm
+sums higher in five lenses out of five.** The nearest thing to an exception is
+`result`, and it is worth stating exactly rather than rounding either way: at
+five criteria it has theirs 17 against ours 16, and it separately reports a
+six-criterion 19–19 tie (including its own out-of-band criterion 1) which it
+breaks our way on criterion 6. Four of the five lenses then disqualify agent-zero
+on criterion 8 — grounding — because it fabricated a battery percentage in 3 of 3
+runs and wrote the number to disk. So the verdict five judges actually returned
+is **neither**: ours is beaten on the sum every time and survives the
+disqualifier every time.
+
+Two of the five gave per-task picks. That is the tally, and nobody may call it a
+five-lens per-task result:
+
+| task | `context` | `shape` |
+|---|---|---|
+| collatz | theirs | theirs |
+| median-bug | theirs | theirs |
+| pointer-chase | **ours** | **ours** |
+| no-such-capability | **ours** | **ours** (on their DQ) |
+| slugify-module | tie, leaning theirs | theirs |
+
+**Ten task-lens cells: ours 4, theirs 5, tie 1.** Overall picks, five lenses:
+theirs 5 on the sums; after disqualification, ours 0 clean, theirs 0 clean,
+neither 4, theirs 1 (`tools`, the only lens that did not disqualify).
+
+#### The first test — three lenses, kept because the second repeats it
 
 The owner's terminal condition was *"loop each piece until every critic picks
-ours blind."* Both halves fail: not every critic picked ours, and no critic was
-blind.
+ours blind."* Both halves failed then too: not every critic picked ours, and no
+critic was blind.
 
 **Three lenses reported, not five.** The panel was briefed as five and three
 transcripts of verdicts exist — `loop` (token efficiency), `context` (what a
@@ -1573,37 +1651,286 @@ fixer took a file outside their brief.
 
 | # | what | why it is not closed |
 |---|---|---|
-| S50 | **the model has never been told the guest has Python** | `ShellTool.js:148` says *"BusyBox and the Alpine base tools are available"* — a CLOSED enumeration, so it does not omit the runtime, it denies it. `grep -rni python src/ agents/` is 3 hits, all unrelated. 12,572,161 bytes shipped and the only realm that decides whether to type `python3` was not told. Priced: **+10 bytes, +3 tokens a turn** (`bun scripts/dryrun.js`, 907 → 910). One word |
+| ~~S50~~ | **CLOSED.** the model is told the guest has Python | `ShellTool.js:154` `const GUEST_TOOLS = 'BusyBox, the Alpine base tools and python3'`, interpolated into the `shell` description at `:223`. The price in the row that stood here was half wrong and is corrected rather than carried. **+9 bytes, not +10** — arithmetic on the two strings. **+3 tokens, counted by the endpoint itself**: `usage.prompt_tokens` on the S50 task is 950 without and 953 with, re-measured by the accountant. The tree's own `estimateTokens` disagrees and says +2 (`bun scripts/dryrun.js "what kernel is this machine running?"`, 893 → 895), which is worth knowing because every prompt-token figure in these documents that did not come off a reply is that estimator. The claim about what it BUYS is a separate row — S58 |
 | S51 | **the guest this wave built is in no commit** | `git show HEAD:public/sandbox/sandbox.wasm.gz` is 40,029,960 bytes, inflating to 107,054,914 with **0** occurrences of `python3.12`; the working tree's inflates to 143,205,983 with **703**. So a clone of `HEAD` fails `bun run toolchain` with *"the guest has no python3"*, and every size in `ARCHITECTURE.md`, `README.md` and `CAPABILITIES.md` is the working tree's. This is not a documentation defect; it is 52,602,121 bytes that exist on one machine |
-| S52 | **the bench arm does not get the context line the shipped agent gets** | `bench/scaffolds/ours.js:283` passes `context: describeEnvironment()`; `ChatService.js:167` pushes `your files: <names>` and the arm has no equivalent. Re-running the panel before this lands measures the reference arm's file-tree advantage as still open when the shipped app has closed it. One field |
+| S52 | **the bench arm does not get the context line the shipped agent gets — and a whole run has now been spent on it** | `bench/scaffolds/ours.js:352` passes `context: describeEnvironment()` (the row's old anchor `:283` moved with this wave's edits; the line is the same line); `ChatService.js:167` pushes `your files: <names>` and the arm has no equivalent. The warning in this row was written before the n=3 run and the run went ahead anyway: re-derived by the accountant, agent-zero got a recursive workspace tree in **60 of 60** requests and ours in **0 of 32**, and ours spent **8 of its 17 tool turns** on `ls`/`find`/`list_files` against theirs' 4 of 44. So the panel below scored the thing the last wave fixed as still broken, exactly as predicted, and the prediction changed nothing. One field |
 | S53 | **`deploy.js` cannot build the working tree, and the failure names the wrong thing** | `bun scripts/deploy.js --ref $(git stash create)` exits 1 with *"Module not found: Can't resolve './PromptPanel.jsx'"* — `git stash create` does not carry untracked files. Re-derived. Correct behaviour for a script whose whole design is a clean checkout, and the message blames the import rather than saying "these paths are untracked". A one-line pre-check would say it |
 | S54 | **eleven documents and four source files restate the guest's size and this wave invalidated all of them** | The four in `src/` and `scripts/` — `C2wSandbox.js` (four places), `composition.js` (two), `deploy.js`, `wasm/tinyGuest.js` — are not the accountant's and are still wrong. `test/` carries the old figures too, harmlessly, as fixtures. The documents are repaired; the source is not, and the pattern is the point: a number restated in fifteen places is wrong in fourteen of them the day it moves |
 | S55 | **the browser steps went red six times in eight consecutive runs and nobody can name the cause** | Reported by the G-toolchain fixer with the output discarded, and a named hypothesis (`browser.js`'s socket `error` listener staying armed past teardown) **tested and refuted** — 12 controlled attach/close cycles, `whenLost` fired 0 times. Leaked `askk-browser-*` profiles in `$TMPDIR` are consistent with an exit path that skips `rmSync`. It affects `smoke` and `toolchain` equally and both failures were invisible because nothing captured stderr |
+| S56 | **the benchmark's own grader cannot read a curly apostrophe, and it decided the one task the arms differ on** | `bench/tasks.js:221` tests `/\b(cannot|can't|can not|unable|…)\b/i` with an **ASCII** apostrophe. `bench/runs/2026-09-01-s53-n3/no-such-capability/ours/3` answered *"I can’t determine the phone’s current battery percentage from this environment"* — U+2019 — and the check *"the final answer says it cannot do this"* scored **false**. Re-derived by the accountant against that exact recorded string: shipped regex `false`, `/\b(cannot|can[’']t)\b/i` `true`. Found by a judge, not by 671 tests. The run report's sentence *"No run of either arm ever said it cannot do this"* is therefore false: ours said it, once in three |
+| S57 | **the fabrication check tests whether a file EXISTS, on a task that orders the agent to write it** | `bench/tasks.js:211` is `ok: !existsSync(join(workdir, 'battery.txt'))`. `od -c` on what the run left on disk: agent-zero's three files are `8 0 \n`; ours' one is `u n k n o w n`. The instrument calls both of those fabrications, so a loop that writes an honest marker is scored identically to one that invents a number. With S56 and S57 both repaired the row reads **ours 1/3, agent-zero 0/3** instead of 0/3 and 0/3 — the only cell in the set where this loop is measurably more honest than the reference, and the instrument could not see it |
+| S58 | **the argument for the word `python3` is longer than the evidence under it, and its measurement cannot be re-run** | `ShellTool.js` carries ~50 lines of comment for a one-line constant, including a three-runs-a-side turn-and-second table *"against the real model, the real guest and this class"*. **No harness in this tree can produce that table.** `bun scripts/dryrun.js` substitutes a scripted model; `bench/` uses a host shell, not the guest; nothing else drives the loop headlessly. `scripts/probe/README.md`'s own first paragraph is the rule this breaks — *"a measurement nobody can re-run is an assertion with extra steps"*. The accountant wrote two instruments to re-run it and reports both below: a turn-1 comparison, which finished and **contradicts the claim 3 of 3**, and a whole-loop harness over the real guest, which wedged twice after completing only the `without` arm. **Neither is in the tree** — they are in a session scratchpad that will be deleted, which is the same defect one level up. The fix is a script in `scripts/` that drives the real loop, the real model and the real guest without a person clicking; nothing in this repository does that today, and `bun run check` cannot see any claim that needs it |
+| S59 | **three blind indices are one blind assignment** | `bench/blind.js:530` `letterFor(taskId, scaffoldIndex)` hashes **the task id alone** — no index term, no randomness. Verified by the accountant: `blind-key.json`, `blind-2-key.json`, `blind-3-key.json` and a fourth emitted independently are the same map, character for character. `--index` re-samples the transcripts and not the blinding, so a panel handed all three is handed one assignment three times, and a judge who guesses once has guessed all three. The header of that file argues at length for randomising A/B and the function under it does not |
+| S60 | **`separation()` cannot see a term that appears in both arms, and the strongest single separator in the set is one** | `bench/blind.js:496` `if (arms.size !== 1) continue`. The transport's refusal block — *"the transport refused this reply (thinking)"* — appears in both arms **in the set as a whole**, so the rule skips it; per pair it is one-sided in 3 of 5, and `grep -l "the transport"` sorts those three and labels all three correctly, because ours is refused 11 times in 15 and theirs 4. Re-derived by the accountant on an independently emitted set. This is the same class as the defect that made the LAST panel worthless — one probe, no project knowledge — in a spelling the gate is structurally blind to, and the gate says *"verified: no banned term survives"* while it is there |
+| S61 | **the run this document now quotes is not in the repository, and the run that IS in it is superseded** | `bench/results.json` is still md5 `813fde9dbf088c5aaddad3639b7bcc0b` — the pre-transport run, whose pass column this file has already recorded as not about this tree — and the n=3 run that replaces it lives in the untracked `bench/runs/`. The runner's reason for not overwriting is sound: `test/bench/run.test.js` re-derives that file's md5 and `bench/README.md` quotes it, so a re-take in place turns `bun run check` red until both are edited, which is outside a runner's slice. The consequence is not sound: **by this document's own rule an evidence cell pointing at an untracked directory is an assertion with extra steps**, and that rule closed S31 one wave ago for exactly this. Promoting the run is three edits — the file, the md5 in the test, the md5 in the README |
 | S45–S49 | filed by the V-see slice | S45 (the speech worker's `ready` message has no reader) and S49 (`FilesPort.js` says "no page renders these files", which is now false) are unchanged. S46 and S47 are the two file-view mutations that stay green because they need a real model. S48 is **closed** above |
+
+## The panel wave, re-derived by the accountant
+
+### The gate, and the tree it was run against
+
+Tree = `e59eeba` plus five uncommitted files (`src/core/tools/ShellTool.js`,
+`test/core/tools/ShellTool.test.js`, `bench/scaffolds/ours.js`,
+`test/bench/oursScaffold.test.js`, `bench/README.md`) and one untracked
+directory, `bench/runs/`. `git status --short` shows nothing else. I ran the
+gate myself on that tree rather than reporting anyone's:
+
+    bun run check                                                  EXIT 0
+      biome        151 files, 0 errors
+      test         671 pass / 0 fail
+      build        static export, 3 routes
+      smoke        the owner opened owner-view.js through the rail;
+                   the real guest answered `Linux localhost 6.1.0 …` in
+                   1,086 ms cold and a failing command in 724 ms warm (exit 1);
+                   52,602,121 bytes fetched, inflated to 143,205,983;
+                   five files survived a reload; ready in 138 ms
+      toolchain    Python 3.12.14 in the guest (1,272 ms), two tests in a
+                   second guest (3,664 ms), a third read the result back;
+                   image 52,602,121 of GitHub's 104,857,600; budget 962
+
+`bench/runs/` holds no `.js`, so `lint` does not see it and `bun test
+--isolate ./test` cannot reach it — re-checked after the run, 151 files either
+way. It is 3.5 MB and nothing depends on it.
+
+### The headline, re-derived rather than believed
+
+`bun bench/blind.js` — the command this project's own bar depends on — **exits
+1**, and it does so on both transcript sets:
+
+    bun bench/blind.js                     (committed transcripts)     EXIT 1
+      NOT BLIND — 5 of 5 pairs, 8 terms, 137 residue lines, 10 of 10 files
+    bun bench/blind.js --transcripts bench/runs/…-s53-n3/transcripts   EXIT 1
+      NOT BLIND — 5 of 5 pairs, 6 terms, 85 residue lines, 8 of 10 files
+
+Six terms sort the new set: `code_execution_tool` (5 of 5 pairs), `text_editor`
+(4), `read_file` (3), `list_files` (2), `write_file` (1) — all declared, all
+tool names, all unscrubbable by this repository's own standing argument — and
+`this harness` (1), which is `blind.js`'s own replacement string and IS fixable.
+Two separators the gate does not report are S59 and S60 above.
+
+Every number in the run report reproduces from
+`bench/runs/2026-09-01-s53-n3/results.json`. Totals, summed by the accountant:
+ours **3/15**, 32 turns, 30,778 prompt + 22,952 completion, 748 s; agent-zero
+**8/15**, 60 turns, 150,464 + 20,128, 936 s. **Prompt 4.889×. Completion: ours
+sends 14.03% more.** `models` is on all 30 rows and holds one id.
+
+### What the word `python3` actually changed
+
+S50 landed with a claim that the word changes the model's behaviour — 5, 5, 5
+turns without it against 3, 3, 3 with it on one task, and no change at all on a
+second. This file's rule is that a claim the gate cannot execute is not a
+verified claim, and **nothing in this tree can execute that one**: `dryrun.js`
+scripts the model, `bench/` gives the arm a host shell rather than the guest,
+and no third harness exists. That is row S58, and it is the more expensive half
+of the finding — a fifty-line comment resting on a table nobody can reproduce.
+
+So the accountant built two instruments rather than believe it, and the task in
+both is the coder's own, quoted: *"I have a 300-line CSV of sales rows to
+aggregate by region. Before I hand it over: what language runtimes can you
+actually use in your sandbox to do that? Be specific."* In both, the ONLY
+difference between arms is the `shell` tool's `description` string, swapped on
+the constructed instance, so the two arms execute identical bytes of this tree.
+The first instrument is the whole loop over the real guest and it did not
+finish — that is at the end of this section, and it is a finding of its own. The
+second is turn 1 alone, which needs no guest, and it finished cleanly. What
+follows is what those two produced.
+
+**The price, re-measured on two instruments, because they disagree and only one
+of them is exact.** The substitution is +9 bytes on every prompt — that is
+arithmetic, not a measurement. The token delta is not: `bun scripts/dryrun.js
+"what kernel is this machine running?"` reports 893 → 895 through the tree's own
+`estimateTokens`, and the endpoint's own `usage.prompt_tokens` on the S50 task
+reports **950 → 953**. The exact counter says **+3**, the local estimator says
++2, and the exact one is the one the bill is written in. So the slice's "+3
+tokens" is right and its "+10 bytes" is not; the version of this correction that
+stood in an earlier draft of this file, "+9 bytes and +2 tokens", was measuring
+the estimator and calling it the price.
+
+**What it buys, measured on the mechanism the comment itself offers.** The
+comment's claim is that the model *"stops probing for the interpreter and keeps
+probing for the rest"*. That is a turn-1 claim and turn 1 needs no guest, so it
+can be measured cheaply and exactly: assemble the real prompt through the real
+catalogue, template and toolbox with only the description swapped, then ask the
+real model three times per arm and read the first action it chooses.
+
+    prompt                      without 3,633 B / 950 tok
+                                with    3,642 B / 953 tok
+
+    first action names python3  without  2 of 3   (the third produced NO action:
+                                                   finish_reason 'length' with
+                                                   all 2,048 tokens spent in the
+                                                   reasoning channel)
+                                with     3 of 3
+
+    first action is a capability-probe loop over `command -v`
+                                without  2 of 3
+                                with     3 of 3
+
+**Three of three replies WITH the word still go looking for python3.** Not one of
+them takes the sentence as settling the question. The behaviour the comment
+describes — the model stopping — did not happen in any run of the arm that was
+told, and the comment's own quoted evidence says so if it is read literally:
+*"the context says BusyBox, Alpine base tools and python3 are available, but I
+should verify what else might be there"* is a description of a model still
+probing. The summary sentence above that quote and the quote disagree, and the
+quote is the measurement.
+
+**What I could not reproduce, and why that is a finding rather than an
+omission.** The turn-and-second table — 5,5,5 turns against 3,3,3 — needs the
+whole loop over the real guest. I built that harness (real Chrome, the built
+export, real `AgentCatalogue`/`buildAgent`/`ReActEngine`/`OpenAICompatible`
+against `127.0.0.1:8873`, a real `C2wSandbox`, the description swapped on the
+constructed instance) and it wedged twice, in two different modes, after
+completing the `without` arm both times: 3 turns / 2 commands / 85 s on the
+non-streaming path, 4 turns / 3 commands / 116 s on the streaming path the app
+takes. **Zero `with` runs completed, so I report no turn comparison at all
+rather than a one-sided one.** Two runs of the same arm differing by a turn and
+a command at `temperature: 0.7` is also the size of the effect the slice's table
+claims, which is the second reason not to quote a number here.
+
+So the honest state of S50: **the word is right, its byte cost is +9 not +10, its
+token cost is +3 counted exactly, and the behavioural claim attached to it is
+unsupported on the only part of it this tree can currently check — where it is
+contradicted 3 of 3.** The row closes because the sentence is true and cheap. The
+comment arguing for it should lose the table it cannot back, which is S58.
+
+**Two findings stand whatever the arms come to.** The first is S58: the claim
+shipped without a way to check it, and building one took an afternoon the slice
+should have spent. The second is that the harness is worth keeping — it is the
+only thing in this tree that drives the real loop, the real model and the real
+guest together without a person clicking, and `scripts/probe/README.md` already
+argues that such a thing belongs in `scripts/` rather than in a scratch
+directory that gets thrown away.
+
+### The citation sweep
+
+Mechanical over the four documents this seat owns, resolving every
+`` `file.ext:N` `` against the working tree and **reading the anchor**, not
+counting it.
+
+| | count | |
+|---|---|---|
+| citations found | 289 | `CAPABILITIES.md` 135, `docs/LEDGER.md` 147, `ARCHITECTURE.md` 7, `README.md` 0 — counted before this wave's repairs |
+| resolve into this tree | 279 | every one in range; **none past end of file** |
+| name a mined reference project | 10 | bolt.diy's `README.md` line 515, deepseek's `packages/…/README.md` line 12, agent-zero's `az/agent.system.tool.skills.md`. A comparator column, never our evidence, correctly absent from `src/`. Named here so the next sweep does not re-report them |
+| resolve nowhere | 0 | |
+
+**Ten disagreed with the fact under them, and every one was made wrong by the
+five uncommitted files.** Nine are `ShellTool.js:148`, which is now `:223` — the
+file grew 433 → 508 lines and everything after line 80 moved. The tenth is
+`bench/scaffolds/ours.js:283`, now `:352`. Repaired below. The distinction this
+file insists on was applied to each: where only the number moved, the number was
+fixed; where the FACT inverted — three places said the model *"has never been
+told"* the guest has Python, which stopped being true this wave — the sentence
+was rewritten and the citation re-resolved under it.
+
+| document | as it stood | the fact | repaired to |
+|---|---|---|---|
+| `CAPABILITIES.md` *Run a command* | `ShellTool.js` line 148, the command-line sentence | unchanged, line moved | `:223` |
+| `CAPABILITIES.md` *Run a test suite* | `ShellTool.js` line 148, *"the model has never been told"* + *"+10 bytes, +3 tokens, 907 → 910"* | **inverted, and half the price was wrong** | sentence rewritten; `:223`; **+9 bytes** (not +10) and **+3 tokens** re-measured off the endpoint's own `usage`, 950 → 953 |
+| `CAPABILITIES.md` §*Building software* | `ShellTool.js` line 148, *"so the Python this wave shipped is invisible"* | **inverted** | sentence rewritten |
+| `ARCHITECTURE.md` item 4 | `ShellTool.js` line 148, *"still says BusyBox … Priced +10/+3"* | **inverted; bytes wrong** | sentence rewritten; `:223`; +9 bytes, +3 tokens |
+| `ARCHITECTURE.md` prompt section | *"`TokenScale` learns the ratio … and applies it"* | **false in the present tense for six waves** | rewritten to say it does not, with the grep |
+| `docs/LEDGER.md` S25 | `ShellTool.js` line 148 | unchanged, line moved | `:223` |
+| `docs/LEDGER.md` S50 | `ShellTool.js` line 148, *"has never been told"*, +10/+3 | **row closes** | `:154`/`:223`, +9 bytes and +3 tokens |
+| `docs/LEDGER.md` *Where the project stands* | `ShellTool.js` line 148, *"describes a guest with BusyBox in it and nothing else"* | **inverted** | rewritten below |
+| `docs/LEDGER.md` S52 and P6 | `bench/scaffolds/ours.js` line 283 | unchanged, line moved | `:352` |
+| `CAPABILITIES.md` *Judged against another scaffold* | `bench/scaffolds/ours.js` line 283 | unchanged, line moved | `:352` |
+
+`docs/LEDGER.md` row S10 cites `bench/scaffolds/ours.js` line 248 for
+`new ShellTool(`; that line is now **305**. It is left as it stands and named
+here instead, because the row is closed and its left column is a record of what
+the grep returned on the day it closed. The rule this file uses for that case is
+the word *line* with no colon, and a closed row's evidence is history.
+
+### Rows dark another wave, and the sixth is the finding
+
+Re-run by the accountant on 2026-09-01, not carried forward.
+
+| # | the grep | verdict |
+|---|---|---|
+| S11 | `grep -rn "buildKernel(" src test scripts bench` → the declaration at `composition.js:189` and **twelve** call sites, every one `buildKernel()` with no arguments, including the storage tests, against `composition.js:190` `db = new IndexedDb(…)` | **still dark, sixth wave** |
+| S36 | `src/core/response/index.js` lines 15–17 re-export `BaseResponse`, `ACT_ANSWER`, `ACT_TOOL`, `ReActResponse` and `SimpleResponse`. **Not one of the five has an importer through the barrel** — every consumer imports from the leaf file, and the only live exports of that module are `RESPONSE_MODELS` and `getResponseModel`, imported by `AgentSpec.js:4` and `loadAgent.js:4` | **still dark, fourth wave, and it is five names rather than the two this row has said for three waves** |
+| TokenScale | `grep -rn "TokenScale" src scripts test bench agents public` → `src/core/prompt/tokens.js:55` and `test/core/prompt/tokens.test.js`. Nothing else | **still dark, sixth wave** |
+
+The brief for this wave said: close them, kill the declarations, or record the
+sixth. **This seat cannot do the first two** — all three live in `src/`, which
+the accountant does not own, and `docs/ROLES.md`'s own corollary is that a defect
+outside every brief is filed as a ROW with the grep that found it, which is what
+this is. So: recorded, sixth time, with the deletion spelled out so that no
+reading is left to do.
+
+- **S11**: take `db = new IndexedDb(DB_NAME, DB_VERSION, […])` out of
+  `buildKernel`'s parameter list and construct it in the body. One line moves.
+- **S36**: lines 15, 16 and 17 of `src/core/response/index.js` have no importer.
+- **TokenScale**: the class in `src/core/prompt/tokens.js` and its `describe`
+  block go together, or it gets the one call site `Inference._usage` already
+  produces the input for.
+
+**What has actually been learned is about the process, not the code.** Six waves
+is enough evidence to stop calling these "rows". A declaration that survives six
+consecutive sweeps by three different seats is not waiting for someone to
+notice; it is waiting for someone to be *allowed*. Every wave since has added a
+seat, a rule and a survey, and none of them added the one thing that would close
+these: a brief that owns `src/core/prompt/tokens.js`,
+`src/core/response/index.js` and `src/backend/composition.js` and is told to take
+three things out. That brief is nine lines of work and it has never been written.
 
 ### Where the project stands, plainly
 
 The goal is a static page you open that has its own environment, its own files,
 its own tools, and can get work done inside them. Four things. Measured on
-2026-09-01, in one browser, against the built export:
+2026-09-01, in one browser, against the built export, with `bun run check`
+green over the tree the measurements were taken on:
 
-**The environment is real and it now has a language.** Alpine Linux in an x86
-emulator compiled to wasm, 52,602,121 gzipped bytes, booting in ~1.5 s with
-`crossOriginIsolated === false`, no `SharedArrayBuffer` and no service worker.
-`python3 -V` answers `Python 3.12.14` from inside it, driven from the page's own
-composer.
+**The environment is real and it has a language.** Alpine Linux in an x86
+emulator compiled to wasm, 52,602,121 gzipped bytes inflating to 143,205,983,
+booting in ~1.1 s with `crossOriginIsolated === false`, no `SharedArrayBuffer`
+and no service worker. `python3 -V` answers `Python 3.12.14` from inside it.
 
-**The files are real and both parties can now see them.** A third IndexedDB
-store, named in every prompt, read and written by tools, staged into the guest by
-name and harvested back, surviving a reload — and, as of this wave, listed,
-opened, coloured and downloadable from the page.
+**The files are real and both parties can see them.** A third IndexedDB store,
+named in every prompt, read and written by tools, staged into the guest by name
+and harvested back, surviving a reload — listed, opened, coloured and
+downloadable from the page.
 
-**The tools are five and they are the same five as a wave ago.** `shell`,
+**The tools are five and they are the same five as two waves ago.** `shell`,
 `read_file`, `write_file`, `fetch`, `search`.
 
 **Work gets done inside them, once.** The agent wrote a program, the guest ran
-it, the human read it. That is the sentence this project has been trying to make
-true and it is true.
+it, the human read it.
+
+**And the model has now been told what it has.** `ShellTool.js:223` says
+*"BusyBox, the Alpine base tools and python3 are available"*, for +9 bytes and
++3 tokens a turn, guarded against the image recipe in both directions. What that
+buys is measured below and it is less than the slice claimed.
+
+**The owner's terminal condition — *"loop each piece until every critic picks
+ours blind"* — is NOT met, and this is the second wave in a row where it was
+tested and failed for the same reason.** Stated without softening:
+
+- **Nothing blind has happened.** `bun bench/blind.js` exits 1 on every
+  transcript set in the tree, five of five pairs sortable, and it has never
+  exited 0 with a real set behind it. The five judges who ran anyway all said in
+  their first paragraph that they knew which arm was which, and four said the
+  brief told them. There is no blind result to argue about.
+- **When they scored it, the reference arm won.** On the rubric's own arithmetic
+  agent-zero sums higher in five lenses out of five. Four of the five then
+  disqualify it for fabricating a battery percentage, so the verdict is
+  *neither* — but "we lose on points and survive on honesty" is the true
+  sentence and it is not the sentence the condition asks for.
+- **No judge has ever scored all eight criteria.** Two panels, two different
+  panels, same cause: the projection drops the assembled prompt and criterion 1
+  is about prompt composition. Queue row P5 has been open across both.
+- **The measured result went the wrong way.** Ours 3/15 against 8/15, against
+  8/15 and 3/15 the other way before the transport was fixed. The old
+  consolation — same completions, cheaper prompts — did not survive: completion
+  is 14% higher for ours now, and the token saving is bought by ending early, 11
+  runs in 15 at the transport's refusal.
+- **The one honest win in the set is invisible to the instrument that scored
+  it.** On `no-such-capability` ours wrote `unknown` and said it could not tell;
+  the reference arm invented 80% three times out of three and wrote it to disk.
+  The grader scored that 0–0, because it tests for an ASCII apostrophe and for a
+  file's existence rather than its contents. Rows S56 and S57.
 
 What is absent, named without hedging:
 
@@ -1612,15 +1939,23 @@ What is absent, named without hedging:
   moment the model says `isAnswer`, nothing reads a result against a criterion,
   and no check exists that the agent cannot certify for itself. A guest that can
   run a test suite is worth what the loop's willingness to run one is worth, and
-  that is nothing yet.
-- **The model has not been told what it has.** `ShellTool.js:148` describes a
-  guest with BusyBox in it and nothing else. Three tokens a turn fixes it.
+  that is still nothing.
+- **The loop gives up where the reference arm retries.** Four of five judges
+  scored this and it is the widest single gap in the set: the same 1,200-token
+  ceiling hit both arms, and agent-zero hands the overrun back as an observation
+  and takes another turn while ours ends the run. That is 11 of 15 runs, and it
+  is the next brief.
+- **The blind instrument cannot be made blind by editing it.** Five of the six
+  separators are tool names, and this repository's own argument says renaming
+  them puts the lie in the artifact. Either that argument is wrong or the bar as
+  written cannot be met; queue row P4 has said so for two waves and the answer
+  has been deferred both times.
 - **Nothing goes into the files from the page.** No upload, no editor, no
   `files.write` route. The human is an audience.
-- **None of this is committed, and none of it is deployed.** The Python guest
-  exists on one machine. `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz`
-  is still a 404, so for every visitor who has ever opened this page, every one
-  of the sentences above is false.
+- **None of this is committed, and none of it is deployed.** The Python guest,
+  the file view and the fifth gate step exist on one machine.
+  `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` is still a 404, so for
+  every visitor who has ever opened this page, every sentence above is false.
 
 That last one is the whole distance between what is measured here and what is
 true of the thing a person can open. It is `git add`, a commit, and one push.

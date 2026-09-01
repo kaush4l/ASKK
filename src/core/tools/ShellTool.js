@@ -78,6 +78,81 @@ const MAX_HARVEST_BYTES = 256 * 1024
  */
 const STATED_ROOM = 800
 
+/**
+ * What is in the guest, told to the model because it cannot look.
+ *
+ * This is an ENUMERATION, and an enumeration goes stale in the
+ * direction nobody notices: `apk add --no-cache python3` landed in
+ * `scripts/wasm/image/Dockerfile`, the sentence went on saying "BusyBox and the
+ * Alpine base tools", and to a model that reads as a complete list with no
+ * interpreter in it. So this is not a fact being added to the prompt — it is a
+ * list being corrected, and the two tokens it costs are the difference between
+ * a true list and a misleading one.
+ *
+ * MEASURED, three runs each side, against the real model, the real guest and
+ * this class, 2026-09-01. Task: "I have a 300-line CSV of sales rows to
+ * aggregate by region. Before I hand it over: what language runtimes can you
+ * actually use in your sandbox to do that? Be specific."
+ *
+ *     without the word   5, 5, 5 turns   120, 123, 125 s   4 guest boots each
+ *     with it            3, 3, 3 turns    77,  79,  78 s   2 guest boots each
+ *
+ * The saving is two turns and two boots, and the model says why in its own
+ * reasoning on the first turn: "the context says BusyBox, Alpine base tools and
+ * python3 are available, but I should verify what else might be there". It stops
+ * probing for the interpreter and keeps probing for the rest — which is the
+ * behaviour the sentence licenses and no more. That is ~45 seconds against two
+ * tokens a turn (914 -> 916 through `scripts/dryrun.js`, six over a three-turn
+ * run), and it is the same trade the `now` tool lost: a round trip to learn what
+ * the prompt could have said. `BUILTIN_TOOLS` carries that argument; this is the
+ * second case of it.
+ *
+ * WHAT IT DID NOT CHANGE, stated because a change that reads as a feature and
+ * alters nothing is worse than none. Same harness, same three-runs-a-side, task
+ * "write a function that converts a dollar amount to whole cents, write tests
+ * for it, run the tests":
+ *
+ *     without the word   13, 13, 13 turns   533, 294, 279 s
+ *     with it            14,  7, 16 turns   664, 141, 355 s
+ *
+ * Nothing here. The word does not decide anything on a task that already
+ * implies an interpreter: all six runs opened with the SAME first command, a
+ * heredoc of a Python module into `/w`, and the spread with the word swallows
+ * the run count without it. So the word is worth two tokens for the case above
+ * and not for this one, and anyone reading the case above as "it makes the
+ * agent better at Python" is reading something that was measured and is not
+ * there.
+ *
+ * Those runs also spent turns on a defect outside this file, reported with the
+ * slice: `ReActEngine.observe` refuses a repeated `shell` line as already made,
+ * and it is not — `ShellTool` stages the agent's files onto that line and the
+ * file had changed.
+ *
+ * THE VERSION IS DELIBERATELY ABSENT. The guest ships 3.12.14 today and
+ * `scripts/wasm/README-UNPINNED.md` records that the package is unpinned, so a
+ * point release moves it without an edit here. `python3` is exactly as much as
+ * anything can keep true.
+ *
+ * AND SO IS "the only one". The image argues for a single runtime in its own
+ * comments, but nothing executable asserts the absence of a second, so the
+ * sentence claims only what is guarded — which is why the agent may still probe
+ * for node.
+ *
+ * WHAT IS GUARDED, exactly, because the two halves are not guarded equally.
+ * `test/core/tools/ShellTool.test.js` reads the recipe's `apk add` list out of
+ * `scripts/wasm/image/Dockerfile` and fails if this list and that one disagree
+ * in either direction, so this sentence cannot drift from the RECIPE.
+ * `scripts/wasm/toolchain-check.js` boots the shipped guest, but it asserts
+ * `python3` and nothing else — one runtime, hard-coded there, with nothing
+ * linking it to this list. So the sentence cannot drift from the recipe, and
+ * `python3` alone cannot drift from the artifact. Measured: adding `nodejs` to
+ * the recipe and `node` here, rebuilding nothing, passes the whole gate over a
+ * guest that has no node. ADDING A SECOND RUNTIME TO THIS STRING IS UNGUARDED
+ * against what actually ships until `toolchain-check.js` proves each name in
+ * the list answers in the guest.
+ */
+const GUEST_TOOLS = 'BusyBox, the Alpine base tools and python3'
+
 const count = (n) => n.toLocaleString('en-US')
 
 /** A shell word that means exactly this string, whatever is in it. */
@@ -145,7 +220,7 @@ export class ShellTool extends Tool {
       name: 'shell',
       description:
         description ||
-        `Run a command in a private Linux sandbox and read its output. BusyBox and the Alpine base tools are available. Nothing is shared with the user’s machine and there is no network. It runs in ${WORKDIR}: any of your own files whose path the command mentions are put there first, and every file left there afterwards is saved back to your files. Nothing else in the guest survives the call. The command line cannot exceed ${STATED_ROOM} bytes, counting each space as two.`,
+        `Run a command in a private Linux sandbox and read its output. ${GUEST_TOOLS} are available. Nothing is shared with the user’s machine and there is no network. It runs in ${WORKDIR}: any of your own files whose path the command mentions are put there first, and every file left there afterwards is saved back to your files. Nothing else in the guest survives the call. The command line cannot exceed ${STATED_ROOM} bytes, counting each space as two.`,
       parameters: {
         command: {
           type: 'string',

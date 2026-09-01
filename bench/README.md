@@ -269,6 +269,43 @@ filesystem; the moment it lands, our arm can be handed the same tree and this
 whole section becomes a `cuts` row about a rig that no longer needs it. Until
 then `results.json` is superseded — see the top of this file.
 
+### A second asymmetry, now closed, that every recorded transcript still carries
+
+**The reference arm has always been told what runtimes the host has. Ours was
+told nothing.** `scaffolds/agent-zero.js` `environmentSection` writes
+`python3 and node are installed and on PATH` into its system manual on every
+turn — a line this rig wrote, not a line agent-zero shipped, so it is a fact the
+RIG handed one side. Our arm's shell description, written in the same file that
+argues for faithfulness, said only where the workspace was and how long a command
+may run. Measured on 2026-09-01 by assembling both arms' first request: the
+string `python3` appeared in agent-zero's prompt and in **none** of ours.
+
+That is a rig-invented difference on exactly the axis the tasks are scored on,
+and it also measured an arm this tree does not ship: `src/core/tools/ShellTool.js`
+states the same kind of fact about the browser guest — `BusyBox, the Alpine base
+tools and python3 are available` — and the rig replaces that whole sentence
+through the class's own `description` option.
+
+It is closed. `ourTools` now names the host's runtimes, **derived with
+`Bun.which` rather than asserted**, in agent-zero's own wording so the two arms
+read one sentence and not two paraphrases; a host with neither gets no sentence
+instead of a false one. `test/bench/oursScaffold.test.js` holds the two arms to
+the same SENTENCE rather than to the word `python3` — theirs read back off its
+own line, ours derived — and then builds our arm's prompt through a lookup that
+finds neither runtime and reads what it says. That last assertion is the one
+that matters, and it is the one that did not exist first: with only the function
+covered, replacing the call in `ourTools` with the literal sentence left the
+suite at 670 pass / 0 fail and left the derivation with no caller. Two things
+are left rather than fixed, and both are rows for whoever owns those files:
+agent-zero's copy of the sentence is still asserted rather than derived, and the
+runtime the SHIPPED description names is the guest's, which no rig on a
+developer's machine can reproduce.
+
+**Every transcript in `transcripts/` was recorded under the asymmetry**, along
+with the runs in `results.json`, which is superseded for other reasons already
+stated at the top of this file. Any turn count quoted from them is a count taken
+while one arm knew it had an interpreter and the other did not.
+
 ### One number a reader should have before the results, and where to get it
 
 Prompt size is **printed by the run that produced the results** and written into

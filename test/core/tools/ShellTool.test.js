@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import { Workspace } from '../../../src/backend/files/Workspace.js'
 import { MemoryRepository } from '../../../src/backend/repositories/MemoryRepository.js'
 import { C2wSandbox } from '../../../src/backend/sandbox/C2wSandbox.js'
@@ -458,5 +459,82 @@ describe('ShellTool and the agent’s files', () => {
     await new ShellTool({ sandbox, files }).call({ command: 'a'.repeat(stated) })
 
     expect(sandbox.cost(sandbox.asked[0])).toBeLessThanOrEqual(sandbox.commandBudget)
+  })
+
+  test('the description names the language runtimes the image recipe installs, and no others', () => {
+    // The one assertion in this file whose oracle is not written in this file.
+    //
+    // `ShellTool`'s description ENUMERATES what is in the guest, and an
+    // enumeration is a declaration that goes stale silently: `apk add
+    // --no-cache python3` landed in the image and the sentence still said
+    // "BusyBox and the Alpine base tools", which reads to a model as "there is
+    // no interpreter here". Measured against the real model on 2026-09-01, it
+    // cost four guest boots and four turns to find out otherwise.
+    //
+    // So the recipe is the oracle. `scripts/wasm/image/Dockerfile` is where a
+    // runtime enters or leaves the guest, and this reads its `apk add` line
+    // rather than a copy of it. Both directions are checked, which is what
+    // makes it a link and not a restatement: a runtime the recipe installs must
+    // be named in the prompt, and one it does not must not be.
+    //
+    // An ALLOWLIST OF SUBJECTS, not a denylist of spellings, and not every
+    // package. Only names that answer "what can I write a program in" belong in
+    // the sentence the model reads; `tzdata` does not, and a test that demanded
+    // every package be named would force nonsense prose the first time one was
+    // added. Adding `nodejs` to the recipe turns this red until the sentence
+    // says so, which is the only failure mode that matters.
+    //
+    // What this CANNOT see is whether the guest that ships was built from this
+    // recipe, and the check that would is narrower than it looks. `bun run
+    // toolchain` boots the real guest and fails with "the guest has no
+    // python3" — that ONE runtime, hard-coded there, with nothing linking it to
+    // the list below. Measured: adding `nodejs` to the recipe and `node` to the
+    // sentence and rebuilding nothing passes lint, all 670 tests and `bun run
+    // toolchain`, over a guest that has no node. So a SECOND runtime named in
+    // the sentence is unguarded against the artifact that ships. Closing that
+    // means making `scripts/wasm/toolchain-check.js` prove each named runtime
+    // answers in the guest; that file is not this slice's to edit and it is
+    // filed as a row.
+    const RUNTIMES = ['python3', 'nodejs', 'ruby', 'perl', 'php', 'lua']
+    const recipe = readFileSync(
+      new URL('../../../scripts/wasm/image/Dockerfile', import.meta.url),
+      'utf8',
+    )
+    const installs = recipe
+      // An `apk add` list routinely continues onto the next line, and a parser
+      // that reads only the line the verb is on reports the whole recipe as
+      // installing nothing — which this test then renders as "the sentence
+      // names a runtime the image does not have", the one message that argues
+      // for deleting the true half. Measured: putting THIS recipe's `apk add`
+      // onto two lines, changing no package, turned the assertion below red on
+      // `python3`; adding `nodejs` behind the same continuation failed on
+      // `python3` first and never mentioned `nodejs` at all.
+      .replace(/\\\n/g, ' ')
+      .split('\n')
+      .filter((line) => /^RUN\s+apk\s+add\b/.test(line))
+      .join(' ')
+    const description = new ShellTool({ sandbox: null }).description
+
+    // ONE spelling of "this text names that runtime", used on both sides.
+    // `includes` was on the description side, and a description carrying the
+    // word "evaluate" makes `lua` read as named — measured, it turns this red
+    // on a fault that is not there. Anchoring on whitespace is also what keeps
+    // the `rm -rf /usr/lib/python3.12/...` the continuation now joins in from
+    // answering for `python3`.
+    const names = (text, word) => new RegExp(`(^|\\s)${word}[.,;:]?(\\s|$)`).test(text)
+
+    // Not "is the verb there" — that survived the reformat above with every
+    // argument hidden. This image ships a runtime, so a parse that finds none
+    // has come loose from the recipe rather than found an empty one.
+    expect(RUNTIMES.filter((runtime) => names(installs, runtime))).not.toBeEmpty()
+    for (const runtime of RUNTIMES) {
+      // `node`, because the package is `nodejs` and the command is `node`; the
+      // sentence is written for a model that will type the command.
+      const spelling = runtime === 'nodejs' ? 'node' : runtime
+      expect({ runtime, named: names(description, spelling) }).toEqual({
+        runtime,
+        named: names(installs, runtime),
+      })
+    }
   })
 })

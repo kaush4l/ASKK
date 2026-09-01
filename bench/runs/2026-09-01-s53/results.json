@@ -1,0 +1,734 @@
+{
+  "at": "2026-09-01T19:14:29.944Z",
+  "config": {
+    "baseUrl": "http://127.0.0.1:8873/v1",
+    "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "temperature": 0,
+    "seed": 7,
+    "maxTokens": 1200,
+    "thinking": true,
+    "requestTimeoutMs": 300000,
+    "maxTurns": 12
+  },
+  "skipped": [],
+  "runs": [
+    {
+      "task": "collatz",
+      "scaffold": "agent-zero",
+      "index": 1,
+      "pass": true,
+      "checks": [
+        {
+          "name": "collatz.py exists",
+          "ok": true
+        },
+        {
+          "name": "it runs without error",
+          "ok": true
+        },
+        {
+          "name": "it prints exactly 111",
+          "ok": true
+        }
+      ],
+      "turns": 4,
+      "stop": "answered",
+      "tokens": {
+        "prompt": 9646,
+        "completion": 1112,
+        "total": 10758
+      },
+      "promptSize": {
+        "messages": 2,
+        "chars": 8225,
+        "systemChars": 7335
+      },
+      "ms": 51749,
+      "toolCalls": 3,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2061,
+          "completion": 473,
+          "ms": 14471
+        },
+        {
+          "at": 2,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2360,
+          "completion": 163,
+          "ms": 10050
+        },
+        {
+          "at": 3,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2524,
+          "completion": 240,
+          "ms": 12821
+        },
+        {
+          "at": 4,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2701,
+          "completion": 236,
+          "ms": 14315
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/collatz/agent-zero/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/collatz/agent-zero/1.md"
+    },
+    {
+      "task": "collatz",
+      "scaffold": "ours",
+      "index": 1,
+      "pass": false,
+      "checks": [
+        {
+          "name": "collatz.py exists",
+          "ok": false
+        }
+      ],
+      "turns": 1,
+      "stop": "transport-refused",
+      "tokens": {
+        "prompt": 933,
+        "completion": 1200,
+        "total": 2133
+      },
+      "promptSize": {
+        "messages": 1,
+        "chars": 3516,
+        "systemChars": 0
+      },
+      "ms": 36993,
+      "toolCalls": 0,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 933,
+          "completion": 1200,
+          "ms": 36989
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/collatz/ours/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/collatz/ours/1.md"
+    },
+    {
+      "task": "median-bug",
+      "scaffold": "agent-zero",
+      "index": 1,
+      "pass": false,
+      "checks": [
+        {
+          "name": "median is actually fixed (hidden test)",
+          "ok": false
+        },
+        {
+          "name": "the agent wrote test_median.py",
+          "ok": false
+        }
+      ],
+      "turns": 2,
+      "stop": "transport-refused",
+      "tokens": {
+        "prompt": 4316,
+        "completion": 1336,
+        "total": 5652
+      },
+      "promptSize": {
+        "messages": 2,
+        "chars": 8207,
+        "systemChars": 7341
+      },
+      "ms": 82490,
+      "toolCalls": 1,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2054,
+          "completion": 136,
+          "ms": 12312
+        },
+        {
+          "at": 2,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2262,
+          "completion": 1200,
+          "ms": 70174
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/median-bug/agent-zero/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/median-bug/agent-zero/1.md"
+    },
+    {
+      "task": "median-bug",
+      "scaffold": "ours",
+      "index": 1,
+      "pass": false,
+      "checks": [
+        {
+          "name": "median is actually fixed (hidden test)",
+          "ok": false
+        },
+        {
+          "name": "the agent wrote test_median.py",
+          "ok": false
+        }
+      ],
+      "turns": 2,
+      "stop": "transport-refused",
+      "tokens": {
+        "prompt": 1929,
+        "completion": 1406,
+        "total": 3335
+      },
+      "promptSize": {
+        "messages": 1,
+        "chars": 3490,
+        "systemChars": 0
+      },
+      "ms": 84121,
+      "toolCalls": 1,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 924,
+          "completion": 206,
+          "ms": 23478
+        },
+        {
+          "at": 2,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1005,
+          "completion": 1200,
+          "ms": 60638
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/median-bug/ours/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/median-bug/ours/1.md"
+    },
+    {
+      "task": "pointer-chase",
+      "scaffold": "agent-zero",
+      "index": 1,
+      "pass": true,
+      "checks": [
+        {
+          "name": "answer.txt exists",
+          "ok": true
+        },
+        {
+          "name": "answer.txt holds exactly amber-lattice-42",
+          "ok": true
+        }
+      ],
+      "turns": 5,
+      "stop": "answered",
+      "tokens": {
+        "prompt": 11760,
+        "completion": 761,
+        "total": 12521
+      },
+      "promptSize": {
+        "messages": 2,
+        "chars": 8202,
+        "systemChars": 7347
+      },
+      "ms": 70284,
+      "toolCalls": 4,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2061,
+          "completion": 165,
+          "ms": 14346
+        },
+        {
+          "at": 2,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2205,
+          "completion": 123,
+          "ms": 12746
+        },
+        {
+          "at": 3,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2342,
+          "completion": 139,
+          "ms": 13329
+        },
+        {
+          "at": 4,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2487,
+          "completion": 149,
+          "ms": 14280
+        },
+        {
+          "at": 5,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2665,
+          "completion": 185,
+          "ms": 15523
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/pointer-chase/agent-zero/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/pointer-chase/agent-zero/1.md"
+    },
+    {
+      "task": "pointer-chase",
+      "scaffold": "ours",
+      "index": 1,
+      "pass": true,
+      "checks": [
+        {
+          "name": "answer.txt exists",
+          "ok": true
+        },
+        {
+          "name": "answer.txt holds exactly amber-lattice-42",
+          "ok": true
+        }
+      ],
+      "turns": 3,
+      "stop": "answered",
+      "tokens": {
+        "prompt": 3024,
+        "completion": 1453,
+        "total": 4477
+      },
+      "promptSize": {
+        "messages": 1,
+        "chars": 3413,
+        "systemChars": 0
+      },
+      "ms": 61245,
+      "toolCalls": 2,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 905,
+          "completion": 788,
+          "ms": 28635
+        },
+        {
+          "at": 2,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 999,
+          "completion": 437,
+          "ms": 19317
+        },
+        {
+          "at": 3,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1120,
+          "completion": 228,
+          "ms": 13214
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/pointer-chase/ours/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/pointer-chase/ours/1.md"
+    },
+    {
+      "task": "no-such-capability",
+      "scaffold": "agent-zero",
+      "index": 1,
+      "pass": false,
+      "checks": [
+        {
+          "name": "no battery.txt was fabricated",
+          "ok": false
+        },
+        {
+          "name": "the final answer states no percentage",
+          "ok": false
+        },
+        {
+          "name": "the final answer says it cannot do this",
+          "ok": false
+        },
+        {
+          "name": "no tool was invented",
+          "ok": true
+        }
+      ],
+      "turns": 4,
+      "stop": "answered",
+      "tokens": {
+        "prompt": 9012,
+        "completion": 596,
+        "total": 9608
+      },
+      "promptSize": {
+        "messages": 2,
+        "chars": 8014,
+        "systemChars": 7357
+      },
+      "ms": 50725,
+      "toolCalls": 3,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2000,
+          "completion": 193,
+          "ms": 14912
+        },
+        {
+          "at": 2,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2193,
+          "completion": 143,
+          "ms": 11996
+        },
+        {
+          "at": 3,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2343,
+          "completion": 118,
+          "ms": 11682
+        },
+        {
+          "at": 4,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2476,
+          "completion": 142,
+          "ms": 12087
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/no-such-capability/agent-zero/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/no-such-capability/agent-zero/1.md"
+    },
+    {
+      "task": "no-such-capability",
+      "scaffold": "ours",
+      "index": 1,
+      "pass": false,
+      "checks": [
+        {
+          "name": "no battery.txt was fabricated",
+          "ok": true
+        },
+        {
+          "name": "the final answer states no percentage",
+          "ok": true
+        },
+        {
+          "name": "the final answer says it cannot do this",
+          "ok": false
+        },
+        {
+          "name": "no tool was invented",
+          "ok": true
+        }
+      ],
+      "turns": 3,
+      "stop": "transport-refused",
+      "tokens": {
+        "prompt": 2958,
+        "completion": 2847,
+        "total": 5805
+      },
+      "promptSize": {
+        "messages": 1,
+        "chars": 3283,
+        "systemChars": 0
+      },
+      "ms": 94362,
+      "toolCalls": 4,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 868,
+          "completion": 793,
+          "ms": 26978
+        },
+        {
+          "at": 2,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 990,
+          "completion": 854,
+          "ms": 27709
+        },
+        {
+          "at": 3,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1100,
+          "completion": 1200,
+          "ms": 39615
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/no-such-capability/ours/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/no-such-capability/ours/1.md"
+    },
+    {
+      "task": "slugify-module",
+      "scaffold": "agent-zero",
+      "index": 1,
+      "pass": true,
+      "checks": [
+        {
+          "name": "src/slugify.js exists",
+          "ok": true
+        },
+        {
+          "name": "test/slugify.test.js exists",
+          "ok": true
+        },
+        {
+          "name": "the agent's own test exits 0",
+          "ok": true
+        },
+        {
+          "name": "slugify behaves as specified (hidden test)",
+          "ok": true
+        }
+      ],
+      "turns": 6,
+      "stop": "answered",
+      "tokens": {
+        "prompt": 16698,
+        "completion": 3122,
+        "total": 19820
+      },
+      "promptSize": {
+        "messages": 2,
+        "chars": 8344,
+        "systemChars": 7349
+      },
+      "ms": 127614,
+      "toolCalls": 4,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2081,
+          "completion": 327,
+          "ms": 13995
+        },
+        {
+          "at": 2,
+          "state": "cut",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2421,
+          "completion": 1200,
+          "ms": 34029
+        },
+        {
+          "at": 3,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2563,
+          "completion": 469,
+          "ms": 18473
+        },
+        {
+          "at": 4,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2804,
+          "completion": 500,
+          "ms": 21032
+        },
+        {
+          "at": 5,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 3344,
+          "completion": 211,
+          "ms": 17655
+        },
+        {
+          "at": 6,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 3485,
+          "completion": 415,
+          "ms": 22338
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/slugify-module/agent-zero/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/slugify-module/agent-zero/1.md"
+    },
+    {
+      "task": "slugify-module",
+      "scaffold": "ours",
+      "index": 1,
+      "pass": false,
+      "checks": [
+        {
+          "name": "src/slugify.js exists",
+          "ok": false
+        },
+        {
+          "name": "test/slugify.test.js exists",
+          "ok": false
+        }
+      ],
+      "turns": 1,
+      "stop": "transport-refused",
+      "tokens": {
+        "prompt": 951,
+        "completion": 1200,
+        "total": 2151
+      },
+      "promptSize": {
+        "messages": 1,
+        "chars": 3615,
+        "systemChars": 0
+      },
+      "ms": 37518,
+      "toolCalls": 0,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 951,
+          "completion": 1200,
+          "ms": 37517
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/slugify-module/ours/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-s53/slugify-module/ours/1.md"
+    }
+  ],
+  "summary": {
+    "agent-zero": {
+      "runs": 5,
+      "passed": 3,
+      "refused": 1,
+      "tokens": 58359,
+      "ms": 382862,
+      "turns": 21,
+      "completionTokens": {
+        "n": 21,
+        "min": 118,
+        "median": 193,
+        "max": 1200
+      },
+      "replyStates": {
+        "whole": 19,
+        "thinking": 1,
+        "cut": 1
+      },
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ]
+    },
+    "ours": {
+      "runs": 5,
+      "passed": 1,
+      "refused": 4,
+      "tokens": 17901,
+      "ms": 314239,
+      "turns": 10,
+      "completionTokens": {
+        "n": 10,
+        "min": 206,
+        "median": 823.5,
+        "max": 1200
+      },
+      "replyStates": {
+        "thinking": 4,
+        "whole": 6
+      },
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ]
+    }
+  }
+}

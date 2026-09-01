@@ -1,0 +1,74 @@
+· collatz / agent-zero / 1 PASS (4 turns, answered, 54s)
+· collatz / agent-zero / 2 PASS (3 turns, answered, 41s)
+· collatz / agent-zero / 3 PASS (3 turns, answered, 41s)
+· collatz / ours / 1 FAIL (1 turns, transport-refused, 34s)
+· collatz / ours / 2 FAIL (1 turns, transport-refused, 35s)
+· collatz / ours / 3 FAIL (1 turns, transport-refused, 36s)
+· median-bug / agent-zero / 1 PASS (8 turns, answered, 164s)
+· median-bug / agent-zero / 2 FAIL (2 turns, transport-refused, 41s)
+· median-bug / agent-zero / 3 PASS (7 turns, answered, 149s)
+· median-bug / ours / 1 FAIL (2 turns, transport-refused, 44s)
+· median-bug / ours / 2 FAIL (2 turns, transport-refused, 45s)
+· median-bug / ours / 3 FAIL (2 turns, transport-refused, 44s)
+· pointer-chase / agent-zero / 1 PASS (5 turns, answered, 54s)
+· pointer-chase / agent-zero / 2 PASS (5 turns, answered, 50s)
+· pointer-chase / agent-zero / 3 PASS (5 turns, answered, 51s)
+· pointer-chase / ours / 1 PASS (3 turns, answered, 52s)
+· pointer-chase / ours / 2 PASS (2 turns, answered, 30s)
+· pointer-chase / ours / 3 PASS (4 turns, answered, 46s)
+· no-such-capability / agent-zero / 1 FAIL (4 turns, answered, 49s)
+· no-such-capability / agent-zero / 2 FAIL (4 turns, answered, 47s)
+· no-such-capability / agent-zero / 3 FAIL (4 turns, answered, 46s)
+· no-such-capability / ours / 1 FAIL (3 turns, transport-refused, 93s)
+· no-such-capability / ours / 2 FAIL (2 turns, transport-refused, 59s)
+· no-such-capability / ours / 3 FAIL (4 turns, answered, 91s)
+· slugify-module / agent-zero / 1 FAIL (2 turns, transport-refused, 49s)
+· slugify-module / agent-zero / 2 FAIL (2 turns, transport-refused, 50s)
+· slugify-module / agent-zero / 3 FAIL (2 turns, transport-refused, 49s)
+· slugify-module / ours / 1 FAIL (1 turns, transport-refused, 36s)
+· slugify-module / ours / 2 FAIL (1 turns, transport-refused, 35s)
+· slugify-module / ours / 3 FAIL (3 turns, transport-refused, 67s)
+
+| task | scaffold | pass | turns | stop | tokens | wall |
+|---|---|---|---|---|---|---|
+| collatz | agent-zero | PASS | 4 | answered | 10758 | 54s |
+| collatz | agent-zero | PASS | 3 | answered | 7893 | 41s |
+| collatz | agent-zero | PASS | 3 | answered | 7893 | 41s |
+| collatz | ours | FAIL | 1 | transport-refused | 2133 | 34s |
+| collatz | ours | FAIL | 1 | transport-refused | 2133 | 35s |
+| collatz | ours | FAIL | 1 | transport-refused | 2133 | 36s |
+| median-bug | agent-zero | PASS | 8 | answered | 29733 | 164s |
+| median-bug | agent-zero | FAIL | 2 | transport-refused | 5624 | 41s |
+| median-bug | agent-zero | PASS | 7 | answered | 24656 | 149s |
+| median-bug | ours | FAIL | 2 | transport-refused | 3356 | 44s |
+| median-bug | ours | FAIL | 2 | transport-refused | 3356 | 45s |
+| median-bug | ours | FAIL | 2 | transport-refused | 3353 | 44s |
+| pointer-chase | agent-zero | PASS | 5 | answered | 12521 | 54s |
+| pointer-chase | agent-zero | PASS | 5 | answered | 12210 | 50s |
+| pointer-chase | agent-zero | PASS | 5 | answered | 12210 | 51s |
+| pointer-chase | ours | PASS | 3 | answered | 4321 | 52s |
+| pointer-chase | ours | PASS | 2 | answered | 2701 | 30s |
+| pointer-chase | ours | PASS | 4 | answered | 4868 | 46s |
+| no-such-capability | agent-zero | FAIL | 4 | answered | 9747 | 49s |
+| no-such-capability | agent-zero | FAIL | 4 | answered | 9630 | 47s |
+| no-such-capability | agent-zero | FAIL | 4 | answered | 9630 | 46s |
+| no-such-capability | ours | FAIL | 3 | transport-refused | 5774 | 93s |
+| no-such-capability | ours | FAIL | 2 | transport-refused | 3655 | 59s |
+| no-such-capability | ours | FAIL | 4 | answered | 6610 | 91s |
+| slugify-module | agent-zero | FAIL | 2 | transport-refused | 6029 | 49s |
+| slugify-module | agent-zero | FAIL | 2 | transport-refused | 6029 | 50s |
+| slugify-module | agent-zero | FAIL | 2 | transport-refused | 6029 | 49s |
+| slugify-module | ours | FAIL | 1 | transport-refused | 2151 | 36s |
+| slugify-module | ours | FAIL | 1 | transport-refused | 2151 | 35s |
+| slugify-module | ours | FAIL | 3 | transport-refused | 5035 | 67s |
+
+agent-zero: 8/15 passed · 170592 tokens · 936s total
+agent-zero: completion tokens per reply — n 60, min 108, median 188.5, max 1200
+agent-zero: reply states {"whole":55,"cut":1,"thinking":4} · 4/15 run(s) ended on a refused reply
+agent-zero: first request 8014–8344 characters in 2 message(s), system message 7335
+agent-zero: answered by Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp
+ours: 3/15 passed · 53730 tokens · 748s total
+ours: completion tokens per reply — n 32, min 148, median 619.5, max 1200
+ours: reply states {"thinking":11,"whole":20,"cut":1} · 11/15 run(s) ended on a refused reply
+ours: first request 3283–3615 characters in 1 message(s)
+ours: answered by Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp

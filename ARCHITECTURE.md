@@ -671,7 +671,12 @@ or a number confidently wrong for whichever model the user chose. Instead:
 - Every reply carries `usage.prompt_tokens` — the exact count, from the only
   tokenizer whose opinion counts. Streamed calls ask for it explicitly with
   `stream_options: {include_usage: true}`.
-- `TokenScale` learns the ratio between the two, per model, and applies it.
+- `TokenScale` would learn the ratio between the two, per model, and apply it.
+  It does not, and has never been asked to: `grep -rn "TokenScale" src scripts
+  test bench agents public` returns `src/core/prompt/tokens.js` and
+  `test/core/prompt/tokens.test.js` and nothing else, re-run by the accountant
+  on 2026-09-01 — **the sixth wave that grep has returned the same two files.**
+  The estimate below is uncalibrated because nothing calibrates it.
 
 Measured on this tree, three turns: **865 est / 872 counted**, **1,351 /
 1,373**, **962 / 970** — within 1.6% before any calibration.
@@ -961,13 +966,21 @@ files from the page, and the model has never been told the guest has Python.
    lock must be held by a promise that never settles, or it releases the moment
    the callback returns.
 
-4. **Tell the model what is in the guest, then decide what else goes in.** The
-   guest can run a test now and `ShellTool.js:148` still says *"BusyBox and the
-   Alpine base tools are available"* — a closed list that denies Python, on the
-   one sentence the model reads before it decides what to type. Priced: **+10
-   bytes, +3 tokens a turn** (`bun scripts/dryrun.js`, 907 → 910). That is item
-   4's whole first step and it is one word. After it the remaining *Building
-   software* rows are a budget question rather than a capability one: a
+4. **The model has been told what is in the guest. What goes in next is now a
+   budget question.** `ShellTool.js:223` says *"BusyBox, the Alpine base tools
+   and python3 are available"*, and the constant it interpolates —
+   `GUEST_TOOLS` — is checked against `scripts/wasm/image/Dockerfile`'s `apk
+   add` list in both directions by `test/core/tools/ShellTool.test.js`. Priced
+   by the accountant on both instruments: **+9 bytes** (arithmetic on the two
+   strings, not the +10 this paragraph carried), and **+3 prompt tokens counted
+   by the endpoint's own `usage`** — 950 → 953 on the S50 task. The tree's own
+   `estimateTokens` says +2 over the same substitution
+   (`bun scripts/dryrun.js "what kernel is this machine running?"`, 893 → 895);
+   where the two disagree the endpoint is the one the bill is written in.
+   What that check does NOT cover is the artifact: `toolchain-check.js` asserts
+   `python3` and nothing else, so a second runtime added to this sentence would
+   ship unguarded. `docs/LEDGER.md` rows S50 and S56. The remaining *Building
+   software* rows are now a budget question rather than a capability one: a
    formatter, a linter and `git` are an `apk add` line, and 52,602,121 of
    GitHub's 104,857,600 is already spent.
 

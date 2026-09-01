@@ -13,12 +13,23 @@ is plain classes with no runtime dependencies.
     bun run lint       # biome
     bun run format     # biome, writing fixes
     bun run bench      # this agent against a reference scaffold, same model
-    bun run bench:blind  # the same transcripts, scrubbed, for a blind judge
+    bun run bench:blind  # the same transcripts, scrubbed — and it exits 1
 
 `bun run check` is the gate; `docs/GATE.md` says what each of its steps can see
 and what still gets past all five. See `ARCHITECTURE.md` for the layer rules and
 what comes next, and `CAPABILITIES.md` for what this thing can actually do and
 how each answer was measured.
+
+**`bench:blind` is the one command here that is expected to fail, and it should
+stay that way until it can honestly succeed.** It builds the set a panel is
+handed and then judges its own work: on the current transcripts it reports *"NOT
+BLIND — 5 of 5 pair(s) can be sorted into arms by a judge who knows nothing
+about either project"* and exits 1. Re-run by the accountant on 2026-09-01
+against both transcript sets, exit 1 both times. Six terms do the sorting and
+five of them are tool names, which this repository argues may not be renamed.
+So there is no blind result to report, and `docs/LEDGER.md`'s bar — *"a blind
+critic picks ours"* — is **not met**, for a reason that is in the instrument
+rather than in either arm.
 
 **The trap that used to be in that list is closed, and how it was closed is the
 part worth keeping.** `lint` covers `bench`, and `bun run bench` writes
