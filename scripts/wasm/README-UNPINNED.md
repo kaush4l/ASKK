@@ -57,6 +57,15 @@ possible because the content hash proves the substitution is honest.
    verifies content; the registry still has to be reachable.
 4. **Registry availability.** A digest is content-addressed but Docker Hub
    still has to serve it, and Hub applies rate limits to anonymous pulls.
+5. **`dl-cdn.alpinelinux.org`.** `scripts/wasm/image/Dockerfile` installs the
+   guest's Python with `apk add --no-cache python3`, against the live 3.21
+   repositories and with no version in the line. Alpine 3.21 is on
+   `python3-3.12.14-r0` today; a point release moves it without changing this
+   repository, and the version that landed is only visible in the artifact —
+   `bun run toolchain` prints it, and `bun run check` runs it. Pinning it means
+   `python3=3.12.14-r0`, which turns a silent version drift into a build that
+   fails the day Alpine retires that exact package, and that trade has not been
+   made either.
 
 ## What would actually make this reproducible
 
@@ -67,19 +76,25 @@ make the build depend on this repository and nothing else. The cost is roughly
 2.5 MB) plus git bundles for eight repositories plus four base images — call it
 a gigabyte in-tree, against a 200-line-file, zero-dependency house style.
 
-That trade has not been made. Until it is, this build works because sixteen
+That trade has not been made. Until it is, this build works because seventeen
 servers are up today.
 
 ## The sandbox image (`scripts/wasm/image/`)
 
-`alpine:3.21` by tag, not by digest, plus whatever is copied in beside it. The
-image is what the agent's shell tool actually runs in, and it is rebuilt with
+`alpine:3.21` by tag, not by digest, plus `python3` from Alpine's repositories
+and whatever is copied in beside it. The image is what the agent's shell tool
+actually runs in, and it is rebuilt with
 
     docker build --platform=linux/amd64 -t localhost:5000/askk-sandbox:1 scripts/wasm/image
     docker push localhost:5000/askk-sandbox:1
     PROFILE=ship OUT_NAME=sandbox.wasm scripts/wasm/build.sh localhost:5000/askk-sandbox:1
 
-Two things about that, both found the hard way:
+The image argument is REQUIRED and used to have a default of `alpine:3.21`.
+Dropping it built a guest with neither `mcp-disk` nor Python in it, and every
+check in the tree stayed green over that artifact, so `build.sh` now refuses to
+run without being told what to bake in.
+
+Three things about the rest of it, all found the hard way:
 
 - **c2w resolves images through a registry, not the local daemon.** A locally
   built image it has never seen is answered with `pull access denied`, so a
@@ -87,3 +102,10 @@ Two things about that, both found the hard way:
 - **`--platform=linux/amd64` is required on Apple silicon.** Without it the push
   carries an arm64 manifest and c2w — which hardcodes linux/amd64 — reports
   `no matching manifest for linux/amd64`, which reads like a c2w bug and is not.
+- **Port 5000 is not free on macOS.** AirPlay Receiver, inside `ControlCenter`,
+  listens on it and answers `403 Forbidden` with a `Server: AirTunes` header.
+  Anything that probes the port to decide whether a registry is up gets a
+  perfectly good TCP connection from Apple and skips starting one, and the push
+  then fails much later with `connection refused` against the loopback address
+  the *daemon* sees. Wait for `listening on` in `docker logs` instead of for the
+  port to answer, or turn the receiver off in System Settings.

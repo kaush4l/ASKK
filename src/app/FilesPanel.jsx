@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { highlight, languageOf } from '../client/highlight.js'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { highlight, LANGUAGES, languageOf } from '../client/highlight.js'
 
 /**
  * How many coloured spans this view will put in the document.
@@ -22,8 +22,12 @@ import { highlight, languageOf } from '../client/highlight.js'
  */
 const MAX_COLOURED_TOKENS = 4000
 
-/** Wall-clock, because "3 minutes ago" needs a timer to stay true and this does not. */
-const clock = (at) => new Date(at).toTimeString().slice(0, 8)
+/**
+ * Wall-clock, because "3 minutes ago" needs a timer to stay true and this does
+ * not. The reader's own clock and not a format this file cut out of a longer
+ * string by index: a 12-hour locale gets a 12-hour stamp.
+ */
+const clock = (millis) => new Date(millis).toLocaleTimeString()
 
 /**
  * The agent's files, for the person who owns them.
@@ -41,14 +45,15 @@ const clock = (at) => new Date(at).toTimeString().slice(0, 8)
  * What a reader CAN hold is a stale one, and the whole of this component's
  * answer to that is: every open is stamped with the moment it was read, there
  * is a re-read beside the stamp, and the listing refreshes when a turn ends —
- * which is `at`, below. It does not poll. A file view that redrew itself under
+ * which is `turnsDone`, below. It does not poll. A file view that redrew itself under
  * someone's eyes while they were reading would be worse than a stale one that
  * says when it was taken.
  *
- * @param {{client: import('../client/BackendClient.js').BackendClient, at: number}} props
- *   `at` changes when a turn finishes; it is a trigger, not a value this reads.
+ * @param {{client: import('../client/BackendClient.js').BackendClient, turnsDone: number}} props
+ *   `turnsDone` is a trigger, not a value this reads — it changes when a turn
+ *   finishes, which is the only moment the workspace can have changed.
  */
-export function FilesPanel({ client, at }) {
+export function FilesPanel({ client, turnsDone }) {
   // `null` until the first listing answers, so an empty workspace and an
   // unanswered one are different things on screen. They were the same thing for
   // one draft of this and it read as "you have no files" while the call was
@@ -57,6 +62,12 @@ export function FilesPanel({ client, at }) {
   const [open, setOpen] = useState(null)
   const [problem, setProblem] = useState('')
   const [reading, setReading] = useState('')
+  // The path whose reply this view still wants. Two clicks in quick succession
+  // are two calls in flight and the backend answers whichever finishes first,
+  // so without this the first reply's `setReading('')` cleared the second's
+  // badge and the slower file won the pane. A ref and not state: it is read
+  // inside a reply that already knows nothing rendered since it was set.
+  const wanted = useRef('')
 
   const list = useCallback(async () => {
     const result = await client.call('files.list')
@@ -70,54 +81,78 @@ export function FilesPanel({ client, at }) {
 
   const read = useCallback(
     async (path) => {
+      wanted.current = path
       setReading(path)
       const result = await client.call('files.read', { path })
+      // A reply nobody is waiting for any more. Dropped whole rather than
+      // applied and overwritten: applying it would clear the badge on the read
+      // that IS still running and flash the wrong file into the pane.
+      if (wanted.current !== path) return
       setReading('')
       if (!result.ok) {
         setProblem(result.error.message)
         return
       }
       setProblem('')
-      // A `null` value is a file that is no longer there — an ordinary answer
-      // from the store, and the one a listing drawn a minute ago can produce.
-      // It is shown as what it is rather than as an error, because nothing went
-      // wrong: the agent moved on.
-      setOpen(
-        result.value
-          ? { ...result.value, readAt: Date.now() }
-          : { path, text: null, bytes: 0, readAt: Date.now() },
-      )
+      // A `null` value is a file that is no longer there. No tool deletes —
+      // `core/tools/FilesPort.js` says so — so through this app's own agent
+      // this cannot happen, and the ways left are a second tab and the
+      // browser's own storage controls. It is still an ordinary answer from the
+      // store rather than a failure, so it is shown as what it is. The listing
+      // that offered the name is now known to be stale, which is why the whole
+      // of it is asked for again: a pane saying a file is gone above a list
+      // still offering it is worse than either.
+      if (!result.value) {
+        setOpen({ path, text: null, bytes: 0, readAt: Date.now() })
+        list()
+        return
+      }
+      setOpen({ ...result.value, readAt: Date.now() })
     },
-    [client],
+    [client, list],
   )
 
   // Re-listed when a turn ends, because that is when the workspace changes.
-  // `list` is stable, `at` is the trigger; dropping it would list once, on
-  // mount, and then quietly show yesterday's names for the rest of the session.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `at` is a trigger, not a value read here
+  // `list` is stable, `turnsDone` is the trigger; dropping it would list once,
+  // on mount, and then quietly show yesterday's names for the rest of the
+  // session.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `turnsDone` is a trigger, not a value read here
   useEffect(() => {
     list()
-  }, [list, at])
+  }, [list, turnsDone])
 
   // The open file, re-read when a turn ends, so the pane a person left open
   // does not go on showing text the agent has replaced. Deliberately separate
   // from the listing effect: they refresh together and they fail apart, and one
   // effect doing both would leave a stale body behind a fresh listing.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `at` is the trigger; re-reading on `open` would loop
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `turnsDone` is the trigger; re-reading on `open` would loop
   useEffect(() => {
-    if (at && open?.path) read(open.path)
-  }, [at])
+    if (turnsDone && open?.path) read(open.path)
+  }, [turnsDone])
 
-  const tokens = open?.text ? highlight(open.text, open.path) : []
+  // Memoised on the open file, because this component's parent re-renders once
+  // per streamed chunk — `OpenAICompatible.stream` calls `onDelta` per SSE
+  // frame, which is one `setRun` each — so a file left open during a turn was
+  // re-scanned hundreds of times for a body that had not changed.
+  const tokens = useMemo(() => (open?.text ? highlight(open.text, open.path) : []), [open])
   const coloured = tokens.length > 0 && tokens.length <= MAX_COLOURED_TOKENS
   // The token's position in the file is its identity — stable across a re-read
   // that changed nothing, and meaningful, which an array index is neither.
-  let offset = 0
-  const spans = tokens.map((token) => {
-    const key = offset
-    offset += token.text.length
-    return { key, ...token }
-  })
+  //
+  // Built only when they will be DRAWN. Over the cap these were 65,536 objects
+  // allocated and thrown away: on the pathological 64 KiB the map alone is
+  // 2.84 ms against the scan's 2.10 ms, so the discarded half cost MORE than
+  // the scan the cap above was written about. Measured 2026-09-01, this
+  // machine, ten runs each after a warm-up.
+  const spans = useMemo(() => {
+    if (!coloured) return []
+    let offset = 0
+    return tokens.map((token) => {
+      const key = offset
+      offset += token.text.length
+      return { key, ...token }
+    })
+  }, [tokens, coloured])
 
   return (
     <>
@@ -178,7 +213,7 @@ export function FilesPanel({ client, at }) {
                   re-read
                 </button>
                 {open.text != null ? (
-                  <button type="button" onClick={() => save(open)}>
+                  <button type="button" onClick={() => save(open)} data-testid="file-download">
                     download
                   </button>
                 ) : null}
@@ -201,6 +236,19 @@ export function FilesPanel({ client, at }) {
               <p className="hint" data-testid="file-plain">
                 {tokens.length.toLocaleString()} coloured runs is more than this view will draw, so{' '}
                 {open.path} is shown plain. All {open.bytes.toLocaleString()} bytes of it are here.
+              </p>
+            ) : null}
+
+            {/* Asked and answered where the question comes up. A reader who
+                opens `main.rs`, sees no colour and is told nothing has to guess
+                whether the highlighter is broken or the language is simply not
+                one of them; this is the list saying which. It is the module's
+                own `LANGUAGES`, so a language added there says so here without
+                a second list to keep in step. */}
+            {open.text && !languageOf(open.path) ? (
+              <p className="hint" data-testid="file-unknown-language">
+                Nothing here knows what {open.path} is written in, so it is shown plain. This view
+                colours {LANGUAGES.join(', ')}.
               </p>
             ) : null}
 

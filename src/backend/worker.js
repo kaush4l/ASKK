@@ -44,6 +44,6 @@ self.addEventListener('message', async (event) => {
 // rather than inferring it from the first request happening to succeed. The
 // notes say whether persistence is real, which the user is entitled to know
 // before they type anything worth keeping.
-booted.then(({ kernel, notes, persistent }) => {
-  self.postMessage({ type: 'ready', methods: kernel.methods, notes, persistent })
+booted.then(({ notes, persistent }) => {
+  self.postMessage({ type: 'ready', notes, persistent })
 })

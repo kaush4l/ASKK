@@ -28,6 +28,10 @@
   --signal-soft: rgba(35, 179, 209, 0.14);
   --warn: #e2a244;
   --bad: #e2685f;
+  /* The one colour that is not a state. Syntax needs a fourth hue and none of
+     the three above may take the job: a green literal that borrowed --signal
+     would be a file claiming to be measured. */
+  --string: #9ad4a0;
 
   --gutter: 4.5rem;
   --measure: 42rem;
@@ -833,8 +837,14 @@ select:disabled {
   /* A length and not a percentage. `40%` inside a grid row sized by its own
      content is a percentage of something indefinite, and Chrome resolved it to
      a ten-pixel sliver with the first file half visible in it — measured on the
-     capture, not reasoned about. Twelve rows is enough to see a workspace and
-     short enough to leave the file the larger half. */
+     capture, not reasoned about.
+
+     11rem is 176px and a row is 28.03px — 0.72rem of monospace on the body's
+     unitless 1.6, plus 0.3rem of padding either side — so this is SIX rows and
+     a sliver of the seventh, which is the sliver that says the list scrolls.
+     The number is derived here rather than stated, because this comment said
+     "twelve" for a whole slice while the rule under it said six, and a comment
+     that names a count nobody can recompute is how that happens. */
   max-height: 11rem;
   overflow: auto;
   border-bottom: 1px solid var(--rule);
@@ -924,7 +934,7 @@ select:disabled {
 }
 
 .code .tok.string {
-  color: #9ad4a0;
+  color: var(--string);
 }
 
 .code .tok.number {

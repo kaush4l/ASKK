@@ -5,17 +5,18 @@ A personal agent that runs entirely in the browser. Static export, no server.
 Vanilla JavaScript. React and Next for the view layer; everything below the view
 is plain classes with no runtime dependencies.
 
-    bun run check      # lint, tests, build, and boot the built page in a browser
+    bun run check      # lint, tests, build, boot the page, and make the guest run Python
     bun run dev        # http://localhost:3000/ASKK
     bun run build      # static export to out/
     bun run smoke      # build, then boot it in headless Chrome
+    bun run toolchain  # make three real guests write, run and read back a Python test suite
     bun run lint       # biome
     bun run format     # biome, writing fixes
     bun run bench      # this agent against a reference scaffold, same model
     bun run bench:blind  # the same transcripts, scrubbed, for a blind judge
 
 `bun run check` is the gate; `docs/GATE.md` says what each of its steps can see
-and what still gets past all four. See `ARCHITECTURE.md` for the layer rules and
+and what still gets past all five. See `ARCHITECTURE.md` for the layer rules and
 what comes next, and `CAPABILITIES.md` for what this thing can actually do and
 how each answer was measured.
 
@@ -42,15 +43,43 @@ find it again, so it is written here rather than in a changelog.
 The agent's environment is an Alpine userland in an x86 emulator, a single wasm
 module. Two forms of it, and the difference is the whole reason it can ship:
 
-    public/sandbox/sandbox.wasm      107,054,914 bytes   gitignored, over GitHub's block
-    public/sandbox/sandbox.wasm.gz    40,029,960 bytes   TRACKED — this is what loads
+    public/sandbox/sandbox.wasm      143,205,983 bytes   gitignored, over GitHub's block
+    public/sandbox/sandbox.wasm.gz    52,602,121 bytes   TRACKED — this is what loads
+
+It holds Alpine 3.21, busybox, a 15-line `sh` MCP server and **Python 3.12.14**.
+Python is what the last rebuild added, and it cost 12,572,161 gzipped bytes —
+half of GitHub's 104,857,600 per-file block is now spent, which is the budget
+every future addition comes out of.
 
 The page fetches the `.gz`, sniffs `1f 8b` and inflates it with
 `DecompressionStream`, and that is the path `bun run check` boots on every run.
-A fresh clone therefore HAS a working guest. `scripts/wasm/build.sh` rebuilds the
-raw module from pinned sources (about 18 minutes, needs Docker and a local
-registry; `ARCHITECTURE.md` has the commands) and is only needed to change what
-is inside it.
+A fresh clone therefore HAS a working guest.
+
+**The two sizes above are the working tree's and not any commit's**, and that
+matters more than a stale figure usually would: at `HEAD` the tracked `.gz` is
+still the 40,029,960-byte pre-Python guest, so a clone of `HEAD` fails
+`bun run toolchain` with *"the guest has no python3"*. Verified rather than
+assumed — inflate the blob at `HEAD` and count occurrences of `python3.12`: zero,
+against 703 in the working tree's. `docs/LEDGER.md` row S51.
+
+`scripts/wasm/build.sh <image>` rebuilds the raw module from pinned sources
+(about 18 minutes, needs Docker and a local registry; `ARCHITECTURE.md` has the
+commands). The image argument is required — run it bare and it prints the recipe
+and exits 2, because the default it used to carry silently built a guest with
+neither the MCP server nor Python in it.
+
+## The files
+
+The agent has a workspace — a third IndexedDB store, named in every prompt as
+`your files:`, readable by `read_file`, writable by `write_file`, and staged into
+the guest by name on each `shell` call. **As of this wave the person it works for
+can see it too**: the `files` button on the rail lists it, opens a file into a
+read-only coloured view and hands over a copy. Driven end to end in a browser:
+the agent wrote `receipt.py`, the page listed and displayed it, and the guest ran
+it and printed `total 42`.
+
+Nothing goes the other way. There is no upload, no editor and no `files.write`
+route, so the human reads and the agent writes.
 
 ## Deploying
 
@@ -66,8 +95,19 @@ directory over a host that sends no COOP, no COEP and no CORP — the same silen
 GitHub Pages sends — and runs a real shell command through the real agent loop
 in real Chrome.
 
+`deploy.js` builds from a commit, so **an untracked file in the working tree is
+invisible to it and the build fails on the import**. Reproduced here:
+`bun scripts/deploy.js --ref $(git stash create)` exits 1 with
+*"Module not found: Can't resolve './PromptPanel.jsx'"*, because `git stash
+create` does not carry untracked files. `git add` before measuring a deploy.
+
 Neither is part of `bun run check`; `docs/DEPLOY.md` says why and what each one
-proves. **The live site is not deployed from either of them yet**:
+proves. What a first visit costs, measured on both sides of this wave by driving
+the built `dist/` in a real browser: **700,092 → 710,701 bytes** on the wire, 19
+requests, ready in 165 ms either way. The guest is not in that number — it is
+fetched on the first turn, whatever that turn does, and it is **52,602,121 bytes**.
+
+**The live site is not deployed from either of them yet**:
 `https://kaush4l.github.io/ASKK/` answers 200 and
 `/ASKK/sandbox/sandbox.wasm.gz` answers 404, so every `shell` call a visitor
 makes there still reports that it could not run.

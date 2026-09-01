@@ -589,8 +589,17 @@ Restoring it buys one scorable criterion at the cost of every other. And
 criterion 1's own poles are textual — "a persona restated three times", "a
 paragraph introducing a heading" — so no token-count projection answers it and
 there is no half measure to take. The instrument declares the withholding in
-`WITHHELD_CRITERIA`, prints it, and tells the panel in every file it emits;
-`test/bench/blind.test.js` reads this page and fails if the two stop agreeing.
+`bench/blind.js:408` `withheld: [1]`, prints it in the disclosure it puts at the
+top of every file it emits (`:443`) and in its own summary line (`:684`), and
+`test/bench/blind.test.js:519` asserts the answer key carries the same list this
+page describes.
+
+**That sentence named a constant called `WITHHELD_CRITERIA` for four waves and no
+such name has ever existed in this tree** (`grep -rn WITHHELD_CRITERIA .` → one
+hit, this paragraph). The mechanism was real the whole time and only its name was
+invented, which is the more expensive half of the same defect: a reader who
+greps for the name concludes the withholding is unimplemented and rebuilds it.
+`docs/LEDGER.md` row S40, closed by naming the thing that is actually there.
 
 | # | Criterion | 1 | 5 |
 |---|---|---|---|

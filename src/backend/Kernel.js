@@ -18,14 +18,20 @@ import { CANCEL, ErrorCode, Response } from '../protocol/Envelope.js'
  * the handle is an id and not a signal.
  */
 export class Kernel {
+  // `#`, not the `_` this tree usually writes, because these two are the whole
+  // of the front door's state and nothing outside may hold either. A test
+  // reached into the route table once, to call a handler without dispatching to
+  // it, and certified a route that `handle` might never have found; `#` is what
+  // makes that unwritable rather than discouraged.
+  #routes = new Map()
+  /** @type {Map<string, AbortController>} request id -> the call's stop. */
+  #running = new Map()
+
   constructor() {
-    this._routes = new Map()
-    /** @type {Map<string, AbortController>} request id -> the call's stop. */
-    this._running = new Map()
     // Registered directly rather than through `register`, because there is no
     // service to register: cancelling is the front door's own business and the
     // front door is the only thing holding the state it needs.
-    this._routes.set(CANCEL, (params) => this.cancel(params))
+    this.#routes.set(CANCEL, (params) => this.cancel(params))
   }
 
   /**
@@ -39,13 +45,13 @@ export class Kernel {
       if (name === 'constructor' || name.startsWith('_')) continue
       const value = service[name]
       if (typeof value !== 'function') continue
-      this._routes.set(`${namespace}.${name}`, value.bind(service))
+      this.#routes.set(`${namespace}.${name}`, value.bind(service))
     }
     return this
   }
 
   get methods() {
-    return [...this._routes.keys()].sort()
+    return [...this.#routes.keys()].sort()
   }
 
   /**
@@ -63,7 +69,7 @@ export class Kernel {
    * sentence written for a user who cannot receive it is not a message.
    */
   cancel({ id } = {}) {
-    const controller = this._running.get(String(id ?? ''))
+    const controller = this.#running.get(String(id ?? ''))
     if (!controller) return Outcome.ok(false)
     controller.abort()
     return Outcome.ok(true)
@@ -75,7 +81,7 @@ export class Kernel {
    * forever instead of failing.
    */
   async handle(request, emit = null) {
-    const handler = this._routes.get(request.method)
+    const handler = this.#routes.get(request.method)
     if (!handler) {
       return Response.fail(request.id, ErrorCode.NO_HANDLER, `no method ${request.method}`, {
         hint: `Known methods: ${this.methods.join(', ')}`,
@@ -87,14 +93,14 @@ export class Kernel {
     // stoppable by declaring a third parameter — there is no list of
     // cancellable methods to keep in step with the services.
     const controller = new AbortController()
-    this._running.set(request.id, controller)
+    this.#running.set(request.id, controller)
 
     // `emit` is a second argument, not a wrapper or a context object: a
     // handler that has nothing to say mid-call simply does not declare it, and
     // reads exactly as it did before events existed. `signal` is a third for
     // the same reason.
     const result = await Outcome.attempt(() => handler(request.params, emit, controller.signal))
-    this._running.delete(request.id)
+    this.#running.delete(request.id)
 
     if (!result.ok) {
       // Only a defect reaches here — every intended failure arrived as a value.

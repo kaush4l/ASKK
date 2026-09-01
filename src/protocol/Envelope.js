@@ -113,13 +113,18 @@ export class Event {
 }
 
 /**
- * The one method name both realms have to spell out.
+ * The one method name the protocol owns.
  *
- * Every other route the page calls it discovers: the ready message carries
- * `methods`, and a component asks for what it wants by name because the backend
- * said the name exists. This one is different, because it is the only call
- * whose parameter is another call — the page has to name a request that is
- * still running, and a stop that had to wait for a roster would not be a stop.
+ * Nothing here is a route registry and no route is discovered at runtime: both
+ * realms spell every name out. The backend spells them by existing — `register`
+ * in `backend/Kernel.js` walks a service's own methods, so `files.read` is on
+ * the wire because `FilesService` has a `read` — and a component spells the
+ * same string back as a literal. This one name has no service to take it from.
+ * Cancelling is the front door's own business, registered out of this constant,
+ * so without it the two realms would be agreeing on a string that nothing owns.
+ *
+ * It is also the only call whose parameter is another call: the page has to
+ * name a request that is still running.
  *
  * It is a second Request rather than a field on the first because an
  * AbortSignal does not survive structured-clone: a signal cannot cross, so what

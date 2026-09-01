@@ -109,11 +109,10 @@ describe('BackendClient.ready', () => {
     const worker = new DeafWorker()
     const client = new BackendClient(worker)
 
-    worker.send({ type: 'ready', methods: ['chat.send'], notes: ['a note'], persistent: false })
+    worker.send({ type: 'ready', notes: ['a note'], persistent: false })
 
     const boot = await client.ready()
     expect(boot.ok).toBe(true)
-    expect(boot.methods).toEqual(['chat.send'])
     expect(boot.notes).toEqual(['a note'])
     expect(boot.persistent).toBe(false)
   })
@@ -140,7 +139,7 @@ describe('BackendClient.ready', () => {
     const early = client.ready()
     expect(client.ready()).toBe(early)
 
-    worker.send({ type: 'ready', methods: [] })
+    worker.send({ type: 'ready' })
 
     expect(client.ready()).toBe(early)
     expect((await early).ok).toBe(true)
@@ -156,7 +155,7 @@ describe('BackendClient.ready', () => {
     const worker = new DeafWorker()
     const client = new BackendClient(worker)
 
-    worker.send({ type: 'ready', methods: ['chat.send'] })
+    worker.send({ type: 'ready', notes: ['a note'] })
     client.terminate()
 
     // Both paths now call the resolver unguarded, so this asserts the thing
@@ -164,7 +163,7 @@ describe('BackendClient.ready', () => {
     // nothing, and the page is not told the backend never started.
     const boot = await client.ready()
     expect(boot.ok).toBe(true)
-    expect(boot.methods).toEqual(['chat.send'])
+    expect(boot.notes).toEqual(['a note'])
   })
 })
 

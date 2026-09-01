@@ -13,7 +13,8 @@
     "bench": "bun bench/run.js",
     "bench:blind": "bun bench/blind.js",
     "smoke": "bun run build && bun scripts/smoke.js",
-    "check": "bun run lint && bun run test && bun run smoke"
+    "toolchain": "bun scripts/wasm/toolchain-check.js",
+    "check": "bun run lint && bun run test && bun run smoke && bun run toolchain"
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",

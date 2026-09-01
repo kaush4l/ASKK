@@ -44,4 +44,4 @@ self.addEventListener('message', async (event) => {
 
 // Announced so the page can prove this thread booted, rather than inferring it
 // from the first dictation happening to work.
-self.postMessage({ type: 'ready', methods: kernel.methods, notes: [], persistent: true })
+self.postMessage({ type: 'ready', notes: [], persistent: true })

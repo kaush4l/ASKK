@@ -11,25 +11,39 @@ it simply runs in a Web Worker instead of on a host.
 
     ┌─ page realm ────────────────┐        ┌─ worker realm ──────────────┐
     │  app/      React components │        │  backend/  Kernel           │
-    │  client/   BackendClient    │ ─────► │            services/        │
-    │                             │ postMsg│            repositories/    │
-    │                             │        │            files/Workspace  │
-    └─────────────┬───────────────┘ ◄───── └──────┬──────────────────────┘
+    │            PromptPanel      │ ─────► │            services/        │
+    │            RunPanel         │ postMsg│            repositories/    │
+    │            FilesPanel ──────┼── files.list / files.read ──┐        │
+    │  client/   BackendClient    │        │            files/Workspace  │
+    │            highlight.js     │ ◄───── └──────┬──────────────────────┘
+    └─────────────┬───────────────┘               │
                   │                                │
                   └──────► protocol/ ◄─────────────┘   IndexedDB `askk` v3
                         (the only shared code)         conversations
                                                        settings
-                                                       files      ◄── the agent's
+                                                       files ◄── the agent's,
+                                                                 and now the
+                                                                 human's to read
 
-The third store is the newest box and the one this diagram had none of for four
-waves: **the agent's own files**. `backend/files/Workspace.js` is the only
-implementation of `core/tools/FilesPort.js`, it is constructed in
-`composition.js` beside the other two repositories, and it is reached three
-ways — `read_file` and `write_file` as tools, one line of the context block
-naming what exists, and `ShellTool` staging named files into the guest and
-harvesting them back. It is in the worker realm and nothing in `app/` reads it,
-which is a real gap and is `CAPABILITIES.md`'s *A filesystem the agent and the
-human both see*, not a simplification of this drawing.
+The third store is **read from both realms as of this wave**, and the arrow is
+one-way on purpose. `backend/files/Workspace.js` is the only implementation of
+`core/tools/FilesPort.js`, constructed in `composition.js` beside the other two
+repositories, and it is reached five ways now: `read_file` and `write_file` as
+tools, one line of the context block naming what exists, `ShellTool` staging
+named files into the guest and harvesting them back, and — new — `files.list` and
+`files.read` called from `app/FilesPanel.jsx` over the same envelope protocol
+every other route uses.
+
+The paragraph that stood here said *"nothing in `app/` reads it, which is a real
+gap"*. That gap is closed; a narrower one is open in its place. **There is no
+route in the other direction.** `FilesPort` declares `list`, `read` and `write`;
+the kernel exposes only the first two to the page, and `FilesPanel` has no
+upload and no editor. The page realm can watch the agent work and cannot join in.
+
+Two page-realm files carry the view: `app/FilesPanel.jsx` renders the listing and
+the file, and `client/highlight.js` colours it — a hand-written scanner over c,
+js, json, md, py and sh, chosen over CodeMirror at a measured price
+(`CAPABILITIES.md`, *Viewing and editing a file*).
 
 The boundary is enforced by the realm, not by convention. A component cannot
 import a service and quietly bypass the protocol — the import would fail at
@@ -199,6 +213,13 @@ An Alpine userland inside an x86 emulator compiled to wasm, built with
 container2wasm. It is the first thing in this tree that lets an agent find
 something out rather than be told it.
 
+**It has a language in it as of this wave: Python 3.12.14.** That is the whole of
+what the rebuild bought, and it is enough to write a program, run it, and run a
+test over it — driven from the page's own composer by the accountant on
+2026-09-01: `shell({"command": "python3 receipt.py; python3 -V"})` returned
+`total 42` and `Python 3.12.14`, where `receipt.py` was a file the model had
+written a turn earlier through `write_file`. It cost 12,572,161 gzipped bytes.
+
 **It needs no `SharedArrayBuffer`.** Measured: it boots with
 `crossOriginIsolated = false`, which is what makes it deployable to a static
 host that cannot set COOP and COEP headers. That single fact is why this
@@ -207,14 +228,14 @@ substrate was chosen over the alternatives.
 **Boot to first output: ~1.4 s over loopback.** The module is fetched and
 compiled once and instantiated per command. This is the one number in this file
 that the gate re-derives on every run — `bun run check` prints it, most recently
-*"the real guest answered `Linux localhost 6.1.0 …` in 1398ms cold, then a
-failing command in 1047ms warm (exit 1); 40029960 bytes fetched, inflated to
-107054914"* (accountant, 2026-09-01, integrated tree). The figures went up from
-925–945 / 671–692 ms when the smoke step began staging two files onto a
-budget-filling command line; the guest is the same and the step now asks it for
-more. The cold figure is the
-whole 38.2 MiB fetch, the inflate and a compile; the warm one is an instance and
-an Alpine boot. It fetches the compressed module because that is what the deploy
+*"the real guest answered `Linux localhost 6.1.0 …` in 1517ms cold, then a
+failing command in 1056ms warm (exit 1); 52602121 bytes fetched, inflated to
+143205983"* (accountant, 2026-09-01, integrated tree). It has moved twice for two
+different reasons and both are worth separating: 925–945 / 671–692 ms → ~1,400 ms
+when the smoke step began staging two files onto a budget-filling command line
+(the same guest, asked for more), and ~1,400 → ~1,520 ms when the guest itself
+grew Python. The cold figure is the whole 50.2 MiB fetch, the inflate and a
+compile; the warm one is an instance and an Alpine boot. It fetches the compressed module because that is what the deploy
 can carry, and it prints both sizes so a build that shipped the raw module under
 that name fails here rather than reaching a visitor.
 
@@ -272,17 +293,25 @@ it has been run end to end through the built artifact.
 
 **Three things had to be true and two of them now are.**
 
-**The guest is in the repository.** The raw module is 107,054,914 bytes, which is
-2,197,314 over GitHub's 100 MiB per-file block, so it stays excluded by
-`.gitignore`'s `public/sandbox/*.wasm` rule — named rather than numbered, because
-that line was cited as `.gitignore:33` in three documents and is now a comment.
-`gzip -9` puts the same guest at 40,029,960 bytes, under the block; it inflates
-to the raw module's own sha256; `vm-worker.js` inflates it with
+**The guest is in the repository — and the guest that is in the repository is not
+the guest this section describes.** The raw module is 143,205,983 bytes, far over
+GitHub's 100 MiB per-file block, so it stays excluded by `.gitignore`'s
+`public/sandbox/*.wasm` rule — named rather than numbered, because that line was
+cited as `.gitignore` line 33 in three documents and is now a comment. `gzip -9`
+puts the same guest at 52,602,121 bytes, under the block and using 50.2% of it;
+it inflates to the raw module's own sha256; `vm-worker.js` inflates it with
 `DecompressionStream` after sniffing `1f 8b`; and GitHub Pages serves a `.gz` as
 raw gzip bytes with no `Content-Encoding`, so the sniff is the path that ships
 (measured against a Pages site that already serves one, `docs/GATE.md`).
-`git ls-tree HEAD public/sandbox/` now lists it as a blob. The
+`git ls-tree HEAD public/sandbox/` lists it as a blob, so the
 neither-tracked-nor-ignored state this section used to describe is closed.
+
+**What replaced it is smaller and sharper: the tracked blob is the OLD guest.**
+At `HEAD` it is 40,029,960 bytes, inflating to 107,054,914 with zero occurrences
+of the string `python3.12`; the working tree's inflates to 143,205,983 with 703.
+So a clone of `HEAD` boots a guest without a language in it and fails
+`bun run toolchain`. Every figure in this section is the working tree's until
+somebody commits 52,602,121 bytes. `docs/LEDGER.md` row S51.
 
 **There is a deploy step.** `scripts/deploy.js` builds the directory a static
 host serves, and the whole of its design is that it builds from a CLEAN
@@ -310,9 +339,19 @@ which carries that as `unverified` rather than as a plan.
 
 ### Two builds
 
-    PROFILE=ship  scripts/wasm/build.sh    107,049,115 bytes (gzip 40,064,757)
-    PROFILE=check scripts/wasm/build.sh    109,684,303 bytes
-    the shipped image, with mcp-disk in it   107,054,914 bytes
+    PROFILE=ship  scripts/wasm/build.sh <image>   the artifact that ships
+    PROFILE=check scripts/wasm/build.sh <image>   the same sources, narrating
+    the shipped image, Alpine + mcp-disk + Python 3.12.14
+                                                  143,205,983 raw / 52,602,121 gz
+
+The image argument is REQUIRED. It used to default to `alpine:3.21`, which built
+a guest with neither `mcp-disk` nor Python in it and said nothing; bare, the
+script now prints the three-line rebuild recipe and exits 2.
+
+The byte counts that used to be written here per profile are gone rather than
+corrected. They moved three times in one day — twice for a rebuild and once for a
+prune — and a number restated in ten files is a number that is wrong in nine of
+them. `bun run toolchain` prints the live pair on every gate run.
 
 Same pinned sources; the difference is flags and nothing else.
 
@@ -396,6 +435,12 @@ exist. Rebuilding:
     docker build --platform=linux/amd64 -t localhost:5000/askk-sandbox:1 scripts/wasm/image
     docker push localhost:5000/askk-sandbox:1
     PROFILE=ship OUT_NAME=sandbox.wasm scripts/wasm/build.sh localhost:5000/askk-sandbox:1
+
+A third trap, paid for in a whole rebuild during this wave: on macOS **AirPlay
+Receiver holds port 5000** and answers `403 / Server: AirTunes`, so a readiness
+probe against the port succeeds without a registry behind it and the push fails
+minutes later with `connection refused`. Wait for `listening on` in
+`docker logs`, not for the port to answer.
 
 Both flags were found the hard way. c2w resolves images through a **registry,
 not the local daemon**, so a locally built image it has never seen is answered
@@ -883,6 +928,18 @@ a toolchain inside the guest or a reader inside the page, neither of which is a
 store. That over-claim is left visible rather than edited out. *A deploy step* —
 `scripts/deploy.js` and `scripts/deploy-check.js`, and the guest is tracked.
 
+**Two more, done by the wave that produced this draft, and both were items on the
+list below.** *A view of the agent's files* — item 2 — is `app/FilesPanel.jsx`
+plus `client/highlight.js`: `grep -rn "files\." src/app src/client` returns
+`files.list` and `files.read`, `bun run smoke` drives the rail button, the
+listing, an opened file, its colours and its download on every gate, and five
+deletions in `src/app/**` turn it red. *Something in the guest that builds
+software* — item 4 — is Python 3.12.14 in `scripts/wasm/image/Dockerfile`, with
+`bun run toolchain` making three real guests write a module, run a `unittest`
+suite over it and read the result back. Both are drawn above. **Neither is
+complete, and the residue is what items 2 and 4 become:** nothing goes INTO the
+files from the page, and the model has never been told the guest has Python.
+
 **Open, in the order that unblocks the most:**
 
 1. **Push it.** The environment works in a browser, the deploy directory that
@@ -892,23 +949,27 @@ store. That over-claim is left visible rather than edited out. *A deploy step* �
    and one push, then a `curl` that answers 200. See *Getting it to the visitor*
    above.
 
-2. **A view of the agent's files.** `grep -rn "files\." src/app src/client`
-   returns nothing: the agent has a workspace and the human it works for cannot
-   open, list, download or add a single file in it. The store, the port and the
-   realm crossing all exist, so this is a page-realm change with no unknown in
-   it, and it is the one thing standing between "the agent has files" and "we
-   have files".
+2. **A way IN to the agent's files.** The reading half is done (above). Nothing
+   goes the other way: `FilesPort` has a `write` the kernel does not expose to
+   the page, `FilesPanel` has no upload and no editor, and `read-only` is on
+   screen. Until a human can hand the agent a file, "we have files" is half
+   true — and a diff, a rewind and an editor are all downstream of the same
+   missing route.
 
 3. **Single-writer election** — `navigator.locks` in the worker, so two open tabs
    cannot both drive the same run (`grep -rn "navigator.locks" src` → 0). The
    lock must be held by a promise that never settles, or it releases the moment
    the callback returns.
 
-4. **Something in the guest that builds software.** `scripts/wasm/image/` is
-   `FROM alpine:3.21` plus a 15-line `sh` MCP server, so the guest can move
-   bytes and cannot compile, test, lint or format one. Eight *Building software*
-   rows wait here now instead of on the filesystem, and the constraint is C5 —
-   a Docker build, not a browser limit.
+4. **Tell the model what is in the guest, then decide what else goes in.** The
+   guest can run a test now and `ShellTool.js:148` still says *"BusyBox and the
+   Alpine base tools are available"* — a closed list that denies Python, on the
+   one sentence the model reads before it decides what to type. Priced: **+10
+   bytes, +3 tokens a turn** (`bun scripts/dryrun.js`, 907 → 910). That is item
+   4's whole first step and it is one word. After it the remaining *Building
+   software* rows are a budget question rather than a capability one: a
+   formatter, a linter and `git` are an `apk add` line, and 52,602,121 of
+   GitHub's 104,857,600 is already spent.
 
 5. **Sub-agents that are actually constructed.** `agentWorker.js` is the only
    realm on the diagram nothing has ever entered: `ChatService.js:220` computes

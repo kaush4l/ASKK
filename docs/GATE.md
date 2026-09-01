@@ -1,6 +1,6 @@
 # What the gate proves
 
-`bun run check` is four steps. This page says what each one can see, and what it
+`bun run check` is five steps. This page says what each one can see, and what it
 still cannot, because the question came up as a claim that turned out to be half
 wrong, and the only way to settle any of it was to break the tree deliberately
 and watch.
@@ -29,6 +29,18 @@ the gate cannot tell that from a real fault.** `docs/LEDGER.md`, row S30.
 Every row in the table below is one exact edit applied to a clean tree, all four
 steps run, then the file restored byte for byte. `pass` means the step went
 green **over the fault**.
+
+**There is a fifth step now and this table has no column for it, which is stated
+rather than filled in.** `bun run toolchain` (`scripts/wasm/toolchain-check.js`)
+boots three more real guests and makes them write a Python module, run a
+`unittest` suite over it and read the result back out of a later guest. Adding a
+column would mean re-running twenty-odd fault rows against it, and nobody has;
+inventing the cells would be worse than leaving them out. What IS measured about
+it is the one thing that matters: **it is the only step that can see the guest's
+contents.** Put the pre-Python guest back under the current tree and `bun run
+smoke` passes in every particular — it asserts `uname`, an exit status and a file
+round trip, and none of those names Python — while this step exits 1 with *"the
+guest has no python3"*. Cost: 8.9 s.
 
 ## The claim that started this
 
@@ -128,12 +140,29 @@ see", below, for the other two.
 ## What the smoke does
 
 `scripts/smoke.js` serves `out/` from `Bun.serve`, drives headless Chrome over
-raw CDP, and makes three realms answer:
+raw CDP, and makes three realms answer — and, in the first of them, drives one
+feature by clicking it:
 
 - **the page and the backend worker.** It waits for `data-live` on the wordmark,
   which goes true only after `worker.js` has answered `conversations.list`,
   `settings.get`, `agents.list` and `conversations.create` — one attribute, but
   reaching it exercises the envelope, IndexedDB and the agent catalogue fetch.
+- **the file view, through the rail.** Every other assertion in this step is
+  made by calling something. This one clicks: it plants two files in a real
+  `Workspace`, presses `[data-testid="files-toggle"]`, opens the file from the
+  listing, and asserts the bytes on screen, that they are coloured, that the
+  download hands over the SAME bytes under a flattened name, that a file in no
+  known language is told which languages there are, and that the pane says it is
+  read-only. It is here because nothing else can see it: `bun test` has no DOM
+  and this tree has no component renderer, so a `FilesPanel` that never calls
+  `files.list`, a colour cap of 1, an `INSTRUMENTS` without `files`, a download
+  carrying the wrong bytes and a page that never mounts the component at all
+  were five deletions of the feature, all green at 665/665, measured by mutation
+  on 2026-09-01. All five are red now. **Two are still green** and both need a
+  real model — the run panel discarding its steps at turn end, and `turnsDone`
+  never bumping — which is `scripts/deploy-check.js`'s ground and not this
+  step's. `docs/LEDGER.md`, rows S46 and S47.
+
 - **`public/sandbox/vm-worker.js`, running an actual guest.** The smoke serves a
   ~300-byte wasm module it assembles itself (`scripts/wasm/tinyGuest.js`), posts
   `boot` and then `run`, and requires the answer to be `stdout: '!'` with exit
@@ -188,12 +217,20 @@ distinction bought.
   100 MiB raw, under it compressed — because that survives a rebuild. Measured
   2026-09-01, on the artifact `scripts/wasm/build.sh` produced:
 
-      wc -c public/sandbox/sandbox.wasm          107054914   (102.1 MiB)
-      wc -c public/sandbox/sandbox.wasm.gz        40029960   ( 38.2 MiB)
-      shasum -a 256 public/sandbox/sandbox.wasm  f5d05789…c102a70
+      wc -c public/sandbox/sandbox.wasm          143205983   (136.6 MiB)
+      wc -c public/sandbox/sandbox.wasm.gz        52602121   ( 50.2 MiB)
+      shasum -a 256 public/sandbox/sandbox.wasm  ed788162…e96f47b
       gzip -dc public/sandbox/sandbox.wasm.gz | shasum -a 256   the same digest
 
-  100 MiB is 104,857,600, so the raw module is 2,197,314 bytes over. The last
+  Re-measured by the accountant on 2026-09-01 after the guest gained Python; the
+  pair before it was 107,054,914 / 40,029,960, and that is the number still
+  written into `C2wSandbox.js`, `composition.js`, `deploy.js` and `tinyGuest.js`
+  (`docs/LEDGER.md` row S54). **The two sizes above are the WORKING TREE's**: the
+  blob at `HEAD` is still the pre-Python one, so the fifth step of this gate is
+  red on a fresh clone (S51).
+
+  100 MiB is 104,857,600, so the raw module is 38,348,383 bytes over and the
+  compressed one uses 50.2% of what is left. The last
   line matters more than the sizes: the `.gz` inflates to the raw module's own
   digest, so the compressed artifact is the same guest and not a stale one.
 
@@ -404,6 +441,13 @@ real connection. Measured separately, cross-origin over loopback in
 most expensive thing in the gate, and the only thing in the gate that executes
 the substrate this project's claim rests on. A machine that does not want to pay
 it does not have the file.
+
+The file view costs **0.20 s**, which is what clicking through a built page in a
+real browser is worth. Medians of three interleaved runs against one `out/`,
+alternating the two versions of this file so machine noise lands on both:
+4.89 s without the section, 5.09 s with it. Measured 2026-09-01, on the guest
+image of that day — the whole step is seconds rather than the 0.72 s priced
+above because the image grew, not because of this.
 
 Booting and running a guest costs nothing measurable: the module is ~300 bytes,
 `WebAssembly.compile` on it is sub-millisecond, and the round trip is one

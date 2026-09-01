@@ -44,8 +44,17 @@ the guest's output: ""* — blaming the loop for an absent model.
 
 ## 1. The 38 MiB decision
 
-`public/sandbox/sandbox.wasm.gz` — 40,029,960 bytes — **is tracked**, and this
-is the argument for it rather than a note that it happened.
+> **Every byte count on this page is from before the guest gained Python.** The
+> tracked blob at `HEAD` is still 40,029,960 and the working tree's is
+> **52,602,121**, from a 143,205,983-byte module. The decision this page argues
+> for is unchanged and its price went up by 12,572,161 bytes, which is the number
+> to carry away rather than the ones below. Re-measured by the accountant,
+> 2026-09-01; `docs/LEDGER.md` rows S51 and S54. The transcripts further down are
+> kept verbatim as records of runs that happened, not as current figures.
+
+`public/sandbox/sandbox.wasm.gz` — 40,029,960 bytes at `HEAD`, 52,602,121 in the
+working tree — **is tracked**, and this is the argument for it rather than a note
+that it happened.
 
 The state the last survey found, where `.gitignore`'s comment described a
 tracked artifact and the index held none, is gone: `git ls-files
@@ -131,8 +140,8 @@ so out loud when the tree is dirty, because shipping a commit while looking at
 an uncommitted fix is the most likely way for this script to lie.
 
 That is not ceremony. `next build` copies `public/` **whole**, and a developer's
-`public/sandbox/` holds `sandbox.wasm` — the raw 107,054,914-byte module, which
-is gitignored precisely because it is 2,197,314 bytes over GitHub's per-file
+`public/sandbox/` holds `sandbox.wasm` — the raw module, 143,205,983 bytes as of
+this wave, which is gitignored precisely because it is far over GitHub's per-file
 block. A deploy built in place carries a file the host refuses. A deploy built
 from an archive of the ref cannot, because the file is not in the ref.
 

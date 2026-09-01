@@ -3,8 +3,8 @@
  *
  * `Workspace` is the store and takes positional arguments the way a domain
  * object should; the Kernel calls every handler with one params object off the
- * wire. This class is the whole of that translation, which is why it is four
- * lines of body and a page of argument.
+ * wire. This class is the whole of that translation, which is why it is three
+ * statements and a page of argument.
  *
  * ## Read-only, and how the two writers were going to disagree
  *

@@ -53,7 +53,7 @@ export class BackendClient {
     )
   }
 
-  /** Resolves once the backend has booted, with its methods and any notes. */
+  /** Resolves once the backend has booted, with its notes and whether it persists. */
   ready() {
     return this._ready
   }
@@ -69,7 +69,6 @@ export class BackendClient {
     if (data?.type === 'ready') {
       this._resolveReady({
         ok: true,
-        methods: data.methods ?? [],
         notes: data.notes ?? [],
         persistent: data.persistent !== false,
       })
@@ -99,7 +98,7 @@ export class BackendClient {
     }
     this._pending.clear()
     this._listeners.clear()
-    this._resolveReady({ ok: false, methods: [], notes: [message], persistent: false })
+    this._resolveReady({ ok: false, notes: [message], persistent: false })
   }
 
   /** @returns {Promise<{ok: boolean, value: any, error: object|null, notes: string[]}>} */

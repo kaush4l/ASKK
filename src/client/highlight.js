@@ -18,8 +18,16 @@
  *     @codemirror/{state,view,language} + lang-javascript, readOnly
  *                                        366,728 bytes   123,645 gzip -9
  *
- * Against a deploy whose ENTIRE JavaScript is 1,289,285 bytes, the smaller of
- * those is +28.4% of all the code in the application, and the larger +51.3%.
+ * Priced against what a visitor actually pays, which is the export gzipped:
+ * `find out \( -name '*.js' -o -name '*.css' \) -exec gzip -9 -c {} +` over a
+ * build of this tree is 414,376 bytes, so the smaller of those is +29.8% of
+ * every byte of code a cold load moves. The raw comparison says the same thing
+ * one way less honestly and is kept because it is the cheaper one to re-run:
+ * `find out -name '*.js' -exec wc -c {} +` is 1,332,314 — which INCLUDES
+ * `public/sandbox/**`, 35,076 bytes of classic-worker JavaScript that Turbopack
+ * never sees and that ships all the same — making the smaller +27.5% and the
+ * larger +49.7%. Measured 2026-09-01.
+ *
  * What it would buy is colour on files this store caps at 64 KiB
  * (`core/tools/FilesPort.js`), read-only by the decision argued in
  * `backend/services/FilesService.js` — so the editing engine, the change
@@ -133,7 +141,16 @@ export function languageOf(path) {
   return BY_EXTENSION[name.slice(dot + 1).toLowerCase()] ?? ''
 }
 
-/** Every language this module can colour, for anything that wants to say so. */
+/**
+ * Every language this module can colour.
+ *
+ * Exported because the file view says it out loud: `app/FilesPanel.jsx` prints
+ * this list under a file whose name it cannot place, so a reader who opens
+ * `main.rs` and sees no colour is told which languages have rules rather than
+ * left to wonder whether the highlighter broke. Derived from `BY_EXTENSION`
+ * rather than written beside it, so a language added there cannot fail to
+ * appear — and `highlight.test.js` walks it to prove every one has a scanner.
+ */
 export const LANGUAGES = Object.freeze([...new Set(Object.values(BY_EXTENSION))].sort())
 
 /**

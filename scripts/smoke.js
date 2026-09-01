@@ -159,6 +159,165 @@ if (live !== 'true') {
   ])
 }
 
+// --- the owner's view of the agent's files -----------------------------------
+//
+// The claim this half of the slice makes is "the human can open, list and read
+// one file", and NOTHING in lint, test or build can see it: measured by
+// mutation on 2026-09-01, a `FilesPanel` that never calls `files.list`, a
+// `MAX_COLOURED_TOKENS` of 1, an `INSTRUMENTS` without `files` and a page that
+// never mounts the component at all were four separate deletions of the
+// feature and the gate stayed green at 665/665 over every one of them. There is
+// no DOM in `bun test` and no component renderer in this tree, so the only
+// place the view can be executed is here, where the built page is already up.
+//
+// Placed BEFORE the guest so it runs on a clone that has no image: the file
+// view needs a store and a browser and neither needs the emulator.
+const ANCHOR = 'owner-view-4d1f0a: the reader is real'
+const planted = await evaluate(
+  `(async () => {
+     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+       await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
+     const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
+     const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
+     const { Workspace } = await import(${JSON.stringify(`${SRC_URL}/backend/files/Workspace.js`)})
+     const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+     await db.open()
+     // A .js name on purpose: this is the one assertion that the colours are
+     // drawn, and a language the scanner does not know renders one plain run.
+     const files = new Workspace(new IndexedDbRepository('File', db, STORE_FILES))
+     const written = await files.write(
+       'owner-view.js',
+       'const seen = ' + JSON.stringify(${JSON.stringify(ANCHOR)}) + '\\n',
+     )
+     // A second file under a name nothing here can place. The view has a branch
+     // for it — say which languages have rules, so a reader is not left deciding
+     // whether the highlighter is broken — and a branch nothing opens is the
+     // defect this whole section exists to make visible.
+     const unknown = await files.write('owner-view.rst', 'plain and proud\\n')
+     return { written: written.toJSON(), unknown: unknown.toJSON() }
+   })()`,
+  session,
+  true,
+)
+if (!planted?.written?.ok || !planted?.unknown?.ok)
+  await fail(`could not put a file in front of the view: ${JSON.stringify(planted)}`, problems)
+
+// Driven by clicking, not by calling the component's own functions: what is in
+// question is the wiring — a rail button, a mounted pane, a route name spelled
+// the same in both realms — and every one of those is a thing only a click
+// crosses.
+const view = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get) => {
+       for (let i = 0; i < 100; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     const toggle = pick('files-toggle')
+     if (!toggle) return { where: 'the rail has no files button' }
+     toggle.click()
+     const list = await until(() => pick('file-list'))
+     if (!list) return { where: 'the files pane never rendered a listing' }
+     const entry = await until(() => pick('file-owner-view.js'))
+     if (!entry) return { where: 'the listing never showed the file', listing: list.textContent }
+     entry.click()
+     const body = await until(() => pick('file-text'))
+     if (!body) return { where: 'the file never opened', listing: list.textContent }
+     // The download, taken at the seam rather than at the disk. save() builds
+     // an object URL and clicks an anchor, so standing in for both says what
+     // bytes and what filename the reader would actually have been handed —
+     // and a headless browser that really downloaded it would only prove a
+     // file appeared somewhere. Both are put back before anything else runs.
+     // No backticks in here: this whole block is a template literal, and one
+     // would end it.
+     const createObjectURL = URL.createObjectURL
+     const anchorClick = HTMLAnchorElement.prototype.click
+     let handed = null
+     let named = ''
+     URL.createObjectURL = (blob) => {
+       handed = blob
+       return createObjectURL.call(URL, blob)
+     }
+     HTMLAnchorElement.prototype.click = function () {
+       named = this.download
+     }
+     pick('file-download')?.click()
+     URL.createObjectURL = createObjectURL
+     HTMLAnchorElement.prototype.click = anchorClick
+
+     return {
+       where: '',
+       opened: pick('file-open')?.textContent ?? '',
+       text: body.textContent,
+       handed: handed ? await handed.text() : null,
+       named,
+       // The colours, counted rather than described. A cap that refuses to draw
+       // them, or a highlighter that returned one plain run, is this number
+       // going to zero while everything above still passes.
+       coloured: body.querySelectorAll('span.tok').length,
+       plain: Boolean(pick('file-plain')),
+       readonly: (pick('files-readout')?.textContent ?? '').includes('read-only'),
+       unknown: await (async () => {
+         pick('file-owner-view.rst')?.click()
+         const said = await until(() => pick('file-unknown-language'))
+         return said?.textContent ?? ''
+       })(),
+     }
+   })()`,
+  session,
+  true,
+)
+
+if (view?.where) await fail(`the owner cannot see the agent's files: ${view.where}`, problems)
+if (view.opened !== 'owner-view.js')
+  await fail(
+    `the pane opened ${JSON.stringify(view.opened)}, not the file that was clicked`,
+    problems,
+  )
+// The BYTES, not a name. A view that lists a file and shows somebody else's
+// text is the failure this anchor exists to catch, and it is the failure a
+// listing-only assertion passes over.
+if (!view.text.includes(ANCHOR))
+  await fail(`the file view showed the wrong bytes: ${JSON.stringify(view.text)}`, problems)
+if (!view.coloured || view.plain)
+  await fail(`the file was shown with no colours (${view.coloured} spans, plain=${view.plain})`, [
+    'See MAX_COLOURED_TOKENS in src/app/FilesPanel.jsx and RULES in src/client/highlight.js.',
+  ])
+// The copy the reader is handed. Same anchor as the pane, because the whole
+// claim of the button is that it hands over the file that is on screen; a
+// download that quietly carries the path, or the previous file, is a defect no
+// listing assertion and no `file-text` assertion can see.
+if (view.handed !== view.text)
+  await fail(
+    `the download handed over different bytes from the ones on screen: ${JSON.stringify(view.handed)}`,
+    ['See save() in src/app/FilesPanel.jsx.'],
+  )
+// And under a name that says which file it was. A browser's download directory
+// is flat, so the slashes become dashes and `src/deep.txt` does not arrive as
+// somebody else's `deep.txt`.
+if (view.named !== 'owner-view.js')
+  await fail(`the download would be saved as ${JSON.stringify(view.named)}`, problems)
+// The languages, named where the question comes up. `LANGUAGES` is exported for
+// this one sentence, so a check that never renders it would leave the export
+// dark under a test that only proves the list is well formed.
+if (!view.unknown.includes('owner-view.rst') || !view.unknown.includes('js, json, md'))
+  await fail(`a file in no known language said ${JSON.stringify(view.unknown)}`, [
+    'See LANGUAGES in src/client/highlight.js and the hint that prints it in',
+    'src/app/FilesPanel.jsx.',
+  ])
+// Said on screen, because a person who can see their files and cannot change
+// them is owed the reason. It is a sentence, and a sentence nobody renders is
+// this tree's signature defect.
+if (!view.readonly) await fail('the file view never says it is read-only', problems)
+
+console.log(
+  `smoke: the owner opened ${view.opened} through the rail — ${view.coloured} coloured runs, read-only`,
+)
+
 // --- realm two: the classic worker nothing bundles --------------------------
 
 // Booted with a guest and asked to run it, not merely asked to refuse. The

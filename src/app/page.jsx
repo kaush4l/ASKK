@@ -5,14 +5,23 @@ import { BackendClient } from '../client/BackendClient.js'
 import { Dictation, Voice } from '../client/Speech.js'
 import { EventName } from '../protocol/Envelope.js'
 import { FilesPanel } from './FilesPanel.jsx'
+import { PromptPanel } from './PromptPanel.jsx'
+import { RunPanel } from './RunPanel.jsx'
 
 /**
  * The three instruments, in the order they answer a different question.
  *
  * `prompt` is what was SENT, `run` is what the agent DID with the reply, and
  * `files` is what is left behind afterwards. The order is the order of the
- * turn, and it is written once here rather than three times in the markup so
- * that adding a fourth is one entry and not three edits that can disagree.
+ * turn, and this list is the whole of the rail: one button per entry, each
+ * pressed exactly while its pane is open, so the rail cannot disagree with
+ * itself about how many instruments there are.
+ *
+ * It is not a registry. A fourth instrument is an entry here AND a component
+ * beside the three below, because the pane needs the props only the page can
+ * hand it — which is a sibling line in one place rather than the guard per
+ * block this used to be, where an arm could be forgotten and render a meter
+ * inside the run log.
  */
 const INSTRUMENTS = ['prompt', 'run', 'files']
 
@@ -688,149 +697,14 @@ export default function Page() {
               </div>
             </header>
 
-            {panel === 'prompt' && shown ? (
-              <div className="readout">
-                {/* The signature: the prompt as a proportional band. Each block
-                    is as wide as its share of the tokens, the reusable prefix
-                    filled and everything after it hatched. The list below says
-                    what each block costs; this says what the costs are FOR —
-                    how much has to be read again, and which block is the
-                    reason. */}
-                <div className="meter" data-testid="prompt-meter" aria-hidden="true">
-                  {shown.parts.map((part) => (
-                    <i
-                      key={part.id}
-                      className={part.cached ? 'cached' : part.volatility}
-                      style={{ flexGrow: Math.max(part.tokens, 1) }}
-                      title={`${part.id}: ${part.tokens} tokens`}
-                    />
-                  ))}
-                </div>
-
-                {/* Tokens, not characters: every limit that matters — the
-                    context window, the cache minimum, the bill — is counted in
-                    tokens, and the same characters cost wildly different
-                    numbers of them depending on what they are. */}
-                <p className="figures" data-testid="prompt-meta">
-                  <span>
-                    <b>{shown.total.toLocaleString()}</b> tokens
-                  </span>
-                  <span>
-                    <b>{shown.cacheable.toLocaleString()}</b> reusable
-                  </span>
-                  {shown.brokenBy ? <span>prefix ends at {shown.brokenBy}</span> : null}
-                  {usage ? (
-                    <span className="measured" data-testid="usage">
-                      {usage.prompt.toLocaleString()} counted
-                      {usage.cached ? `, ${usage.cached.toLocaleString()} cached` : ''}
-                      {/* The endpoint's own timing, and the only measured duration on
-                          this page. It arrives in the usage frame — which is why
-                          `stream_options: {include_usage: true}` is load-bearing — and
-                          it was collected, carried across the protocol and rendered
-                          nowhere until this line. Absent when the provider reports
-                          none, rather than shown as a zero that would read as instant. */}
-                      {usage.latency?.generationRate
-                        ? `, ${usage.latency.generationRate} tok/s`
-                        : ''}
-                    </span>
-                  ) : null}
-                </p>
-              </div>
-            ) : null}
-
-            {panel === 'prompt' && shown ? (
-              <ol className="layout" data-testid="prompt-layout">
-                {shown.parts.map((part) => (
-                  <li key={part.id} className={part.cached ? 'cached' : ''}>
-                    <span className="id">{part.id}</span>
-                    <span className={`vol ${part.volatility}`}>{part.volatility}</span>
-                    <span className="tok">{part.tokens.toLocaleString()}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : null}
-
-            {panel === 'prompt' ? (
-              shown ? (
-                <pre data-testid="prompt-text">{shown.text}</pre>
-              ) : (
-                <p className="hint">
-                  The complete prompt appears here as it is sent, block by block, with what each one
-                  costs and where the reusable prefix ends.
-                </p>
-              )
-            ) : null}
-
-            {/* WHAT THE AGENT DID, and it stays after the turn ends.
-                
-                Every entry is one STEP event — the same event the transcript
-                draws while the spinner is up and the same one
-                `scripts/dryrun.js` reads. Nothing here is a second channel:
-                inventing one is the defect this tree shipped when two writers
-                disagreed about a schema and silently erased a field.
-                
-                The call is rendered VERBATIM, exactly as the model wrote it,
-                and that is a decision rather than laziness. `Toolbox.parse` is
-                the one thing in this application that decides what a call is;
-                a pretty rendering here would be a second parser, in another
-                realm, that agrees with it until the day it does not — and the
-                day it does not, the page shows a call that never ran.
-                
-                What is NOT here: the OBSERVATION. `ReActEngine.run` pushes
-                `{action, observation}` onto its scratchpad and hands the
-                observation to no callback, so nothing outside the engine can
-                see what a tool answered. Surfacing it is a change in
-                `src/core/`, which this slice does not own; it is reported and
-                not fixed. */}
-            {panel === 'run' ? (
-              run.steps.length ? (
-                <>
-                  <div className="readout">
-                    <p className="figures" data-testid="run-meta">
-                      <span>
-                        <b>{run.steps.length.toLocaleString()}</b>{' '}
-                        {run.steps.length === 1 ? 'step' : 'steps'}
-                      </span>
-                      {run.ms ? (
-                        <span>{(run.ms / 1000).toFixed(1)}s</span>
-                      ) : (
-                        <span className="measured">running</span>
-                      )}
-                      {usage ? (
-                        <span className="measured">{usage.prompt.toLocaleString()} counted</span>
-                      ) : null}
-                    </p>
-                  </div>
-                  <ol className="runlog" data-testid="run-log">
-                    {run.steps.map((taken) => (
-                      <li
-                        key={taken.step}
-                        className={taken.isAnswer ? 'answered' : 'called'}
-                        data-testid={`run-step-${taken.step}`}
-                      >
-                        <span className="id">
-                          {taken.isAnswer ? 'answered' : `step ${taken.step}`}
-                        </span>
-                        {taken.thinking ? <p className="thought">{taken.thinking}</p> : null}
-                        <pre className="call">{taken.answer}</pre>
-                      </li>
-                    ))}
-                  </ol>
-                </>
-              ) : (
-                <p className="hint">
-                  Every pass of a run lands here as it resolves — the calls the agent wrote, word
-                  for word, and the reply it finished on. It stays until the next turn replaces it.
-                </p>
-              )
-            ) : null}
-
+            {panel === 'prompt' ? <PromptPanel shown={shown} usage={usage} /> : null}
+            {panel === 'run' ? <RunPanel run={run} usage={usage} /> : null}
             {/* Given the client rather than the values, because the workspace
                 is the backend's and a component that was handed a list would be
                 showing whatever the page last remembered. `turnsDone` is when
                 to look again. */}
-            {panel === 'files' && clientRef.current ? (
-              <FilesPanel client={clientRef.current} at={turnsDone} />
+            {panel === 'files' ? (
+              <FilesPanel client={clientRef.current} turnsDone={turnsDone} />
             ) : null}
           </aside>
         ) : null}

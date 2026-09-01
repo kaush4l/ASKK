@@ -24,18 +24,44 @@
 # Both come from the SAME pinned sources, so a difference between them is a
 # difference in flags and nothing else.
 #
-# Usage:  scripts/wasm/build.sh [image] [workdir]
+# Usage:  scripts/wasm/build.sh <image> [workdir]
 #           PROFILE=ship|check   which of the two (default: ship)
+#           OUT_NAME=<name>.wasm what to call it (default: per profile)
 #           DRY_RUN=1            stop before the build
 # Output: $WORK/out/<name>.wasm
+#
+# The image is REQUIRED, and it did not used to be. It defaulted to `alpine:3.21`
+# — which is a real image, builds without complaint, and is not the guest this
+# tree ships: no `mcp-disk`, no Python. Running the line documented for the
+# sandbox rebuild without its argument therefore produced a plausible artifact
+# with the whole userland missing, and the only check that would have noticed is
+# `scripts/wasm/toolchain-check.js`, which nothing ran until this wave. A default
+# that picks the wrong guest silently is worse than no default.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 set -a; . "$HERE/PINS.env"; set +a
 
-IMAGE="${1:-alpine:3.21}"
-WORK="${2:-$HOME/.cache/askk-wasm}"
+if [ "$#" -lt 1 ]; then
+  cat >&2 <<'USAGE'
+scripts/wasm/build.sh needs the image to bake in, and there is no safe default.
+
+The guest this tree ships is built from scripts/wasm/image/, through a local
+registry because c2w resolves images through a registry and not the daemon:
+
+  docker build --platform=linux/amd64 -t localhost:5000/askk-sandbox:1 scripts/wasm/image
+  docker push localhost:5000/askk-sandbox:1
+  PROFILE=ship OUT_NAME=sandbox.wasm scripts/wasm/build.sh localhost:5000/askk-sandbox:1
+
+Pass `alpine:3.21` explicitly for a bare guest with no userland of ours in it.
+scripts/wasm/README-UNPINNED.md has the whole of why the registry is not optional.
+USAGE
+  exit 2
+fi
+IMAGE="$1"
+shift
+WORK="${1:-$HOME/.cache/askk-wasm}"
 PROFILE="${PROFILE:-ship}"
 
 case "$PROFILE" in
@@ -119,7 +145,12 @@ echo "patched Dockerfile: $DF ($(wc -l < "$DF") lines)"
 # so on Apple silicon every stage runs under the VM's x86_64 binfmt.
 [ "${DRY_RUN:-}" = "1" ] && { echo "DRY_RUN=1: stopping before the build"; exit 0; }
 
-say "building $IMAGE -> $WORK/out/$OUT_NAME [$PROFILE] (measured: 17m37s on 10 vCPUs, warm cache)"
+# Two measurements, because they answer different questions. 17m37s on 10 vCPUs
+# with a warm cache is what a first real build costs. A rebuild that changes
+# ONLY scripts/wasm/image/Dockerfile is 2m46s — buildkit keeps every stage up to
+# the rootfs — and rebuilding an unchanged image is 5.9s, a total cache hit that
+# reproduces the previous artifact byte for byte (md5 verified, 2026-09-01).
+say "building $IMAGE -> $WORK/out/$OUT_NAME [$PROFILE]"
 mkdir -p "$WORK/out"
 time "$WORK/c2w" \
   --target-arch=amd64 \
@@ -167,4 +198,23 @@ ls -l "$WORK/out/$OUT_NAME" "$WORK/out/$OUT_NAME.gz"
 FINAL=$(wc -c < "$WORK/out/$OUT_NAME")
 GZ=$(wc -c < "$WORK/out/$OUT_NAME.gz")
 printf 'profile=%s raw=%s stripped=%s gzip=%s\n' "$PROFILE" "$RAW" "$FINAL" "$GZ"
+
+# REFUSED here, not merely reported here. This is the script that MAKES the file
+# and the script a person runs after editing image/Dockerfile, so it is the first
+# place a package that breaks the deploy can be caught, and it costs no browser
+# and no build to ask. `scripts/wasm/toolchain-check.js` asserts the same
+# threshold on the artifact in `public/sandbox/` — that is the copy a visitor
+# gets, and it is a different question from whether this run just produced one.
+#
+# 100 MiB is GitHub's per-file block. It is applied AT REST, which is why edge
+# compression cannot reach it and why the `.gz` and not the raw module is the
+# deployed artifact.
+if [ "$GZ" -gt 104857600 ]; then
+  say "REFUSED"
+  echo "$OUT_NAME.gz is $GZ bytes, over GitHub's 104857600-byte per-file block."
+  echo "A repository cannot carry it, so the Pages deploy would answer 404 for"
+  echo "the guest and every shell call the agent makes would fail with the image"
+  echo "never arriving. Take something out of scripts/wasm/image/Dockerfile."
+  exit 1
+fi
 echo "copy BOTH into public/sandbox/ — the page loads $OUT_NAME.gz, the probes load $OUT_NAME"

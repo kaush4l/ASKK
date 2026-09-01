@@ -278,15 +278,17 @@ describe('the files routes', () => {
   test('and they are the workspace the agent writes to, not a second one', async () => {
     const { kernel, chat } = await buildKernel()
 
-    const handler = kernel._routes.get('files.read')
     expect(chat.services.files).toBeTruthy()
-    // Reached through the bound method the kernel actually calls: `register`
-    // binds `service[name]`, so this is the object on the other side of the
-    // route and not one this test constructed.
+    // Written on the object the ChatService holds and read back over the wire.
+    // The anchor is the whole assertion: nothing but the workspace the agent
+    // writes to can produce this string, so a `files.read` that answered it
+    // reached that object and not one the composition made a second time.
     const written = await chat.services.files.write('through-the-agent.md', 'kiwi-7742-anchor')
     expect(written.ok).toBe(true)
 
-    const read = await handler({ path: 'through-the-agent.md' })
+    const read = await kernel.handle(
+      new Request('e', 'files.read', { path: 'through-the-agent.md' }),
+    )
     expect(read.value).toEqual({
       path: 'through-the-agent.md',
       text: 'kiwi-7742-anchor',
