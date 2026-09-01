@@ -1,0 +1,16 @@
+#!/bin/sh
+# A minimal MCP server in POSIX sh, for proving the sandbox transport.
+# Reads one JSON-RPC request per line on stdin, writes one reply per line.
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+  case "$line" in
+    *'"initialize"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-06-18","serverInfo":{"name":"hostinfo","version":"1"},"capabilities":{"tools":{}}}}\n' "$id" ;;
+    *'"tools/list"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"disk","description":"Report free space on the sandbox filesystem.","inputSchema":{"type":"object","properties":{}}}]}}\n' "$id" ;;
+    *'"tools/call"'*)
+      out=$(df -h / 2>&1 | tr '\n' ' ' | sed 's/"/\\"/g')
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"%s"}]}}\n' "$id" "$out" ;;
+    *) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+  esac
+done

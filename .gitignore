@@ -22,3 +22,12 @@ out/
 .cache/
 .tmp/
 coverage/
+
+# generated from agents/*/agent.md by scripts/agents.js
+src/agents/catalogue.generated.js
+
+# published from agents/ by scripts/agents.js
+public/agents/
+
+# The sandbox guest image: ~100MB, built by scripts/wasm/build.sh, never committed.
+public/sandbox/*.wasm
