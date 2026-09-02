@@ -46,6 +46,13 @@ const WHY = Object.freeze({
   read_file: 'a sub-agent thread cannot hold a second writer over the file store',
   write_file: 'a sub-agent thread cannot hold a second writer over the file store',
   shell: 'a sub-agent thread would hold a second copy of the guest image',
+  // Not a resource argument, and the third kind of reason this table has: a
+  // sub-agent is given no peers, so it can hand no work over, so it can never
+  // have a task to read back. Left in, it resolves to a tool that answers "you
+  // have not handed any work over" on every call — a capability in the prompt
+  // that cannot do anything, which costs tokens on every turn and invites the
+  // model to try.
+  check_task: 'a sub-agent has no peers to hand work to, so it has no tasks to read',
 })
 
 /**

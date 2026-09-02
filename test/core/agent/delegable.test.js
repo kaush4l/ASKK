@@ -51,6 +51,18 @@ describe('what a sub-agent may keep', () => {
   })
 
   /**
+   * The third kind of refusal, and the only one that is not about resources: a
+   * sub-agent is given no peers, so it can hand no work over, so a task reader
+   * would resolve to a tool that says "you have not handed any work over" on
+   * every call — prompt bytes for a capability that cannot act.
+   */
+  test('the task reader is dropped, because a sub-agent has nothing to read', () => {
+    const { names, notes } = delegableTools(['check_task', 'search'])
+    expect(names).toEqual(['search'])
+    expect(notes[0]).toContain('no peers to hand work to')
+  })
+
+  /**
    * The list is not a preference, and this is the assertion that keeps it that
    * way: a tool added to `DELEGABLE_TOOLS` must be one that costs a request and
    * holds nothing between calls. Both of these build with an HTTP port alone,
