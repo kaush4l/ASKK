@@ -259,13 +259,39 @@ export default function Page() {
       // ONE per tick, and the most overdue first. A tab that has been closed
       // for a week must not open into every missed question at once.
       const next = mine[0]
-      // Recorded BEFORE the turn, not after: a question that takes four
-      // minutes would otherwise still be due at the next tick and be asked
-      // again on top of itself. A run that fails is a run that happened.
-      await clientRef.current.call('schedules.ran', { id: next.id, at: Date.now() })
+
+      // Checked AGAIN, here, and this is a race rather than belt and braces:
+      // three awaits have passed since the check at the top of this function,
+      // and a person can press send in any of them. `ask` has no guard of its
+      // own guard against a ref and `send` reads React state, so without this
+      // line two `chat.send` calls could run at once in one conversation and
+      // their appends interleave.
+      if (stopped || busyRef.current) return
+
+      // Recorded BEFORE the turn, not after: a question that takes four minutes
+      // would otherwise still be due at the next tick and be asked again on top
+      // of itself. A run that fails is a run that happened.
+      //
+      // And the outcome is READ. `ran` answers NOT_FOUND for a schedule that
+      // was removed while this tick was deciding, and asking it anyway would be
+      // this page running a question the person deleted.
+      const recorded = await clientRef.current.call('schedules.ran', {
+        id: next.id,
+        at: Date.now(),
+      })
       const listed = await clientRef.current.call('schedules.list')
       if (listed.ok && !stopped) setSchedules(listed.value)
-      if (!stopped) await askRef.current?.(next.text)
+      if (!recorded.ok) return
+
+      // NOT guarded by `stopped` any more. The cleanup runs when the
+      // conversation changes, and a schedule already marked as run that is then
+      // skipped loses a whole period in silence.
+      //
+      // The conversation is named explicitly rather than taken from the
+      // closure: `askRef` holds the LATEST `ask`, whose default is whatever
+      // conversation is open now, so a schedule that survived a switch would
+      // otherwise ask its question in the wrong transcript.
+      await askRef.current?.(next.text, next.conversationId)
     }
 
     const tick = async () => {
@@ -318,7 +344,12 @@ export default function Page() {
    * conversation, same streaming, same transcript. A second path to the model
    * would be a path that drifts from the one people actually use.
    */
-  async function ask(text) {
+  async function ask(text, into = conversationId) {
+    // The guard belongs here as well as at the two call sites, because this is
+    // the function that starts a turn and a second turn started on top of a
+    // live one interleaves two transcripts. `send` reads React state, the
+    // scheduler reads a ref, and only this sees every caller.
+    if (busyRef.current || !into) return
     setProblem(null)
     setBusy(true)
     setStopping(false)
@@ -331,65 +362,61 @@ export default function Page() {
     // already been told to persist it first, so this is not an optimistic lie.
     setMessages((current) => [...current, { id: `local-${Date.now()}`, role: 'user', text }])
 
-    const turn = clientRef.current.begin(
-      'chat.send',
-      { id: conversationId, text },
-      (name, data) => {
-        if (name === EventName.PROMPT) {
-          setPrompts((current) => [...current, data])
-          // Follow the run: a panel pinned to step 1 while step 4 is being sent
-          // is showing history, not what is happening. Steps are numbered from
-          // one and arrive in order, so the index is the step minus one.
-          setPromptAt(data.step - 1)
-          return
-        }
-        if (name === EventName.DELTA) {
-          // The first token is proof the model is up, so it is also what
-          // retires the download bar — a cached model reports a start and then
-          // nothing at all, and waiting for a finish that never comes would
-          // leave the last byte count on screen for the whole turn.
-          setDownload(null)
-          // Two channels, kept apart. A thinking model can emit pages of
-          // scratchpad before its first word of answer; merging them would put
-          // the reply at the bottom of its own working-out.
-          const field = data.kind === 'reasoning' ? 'reasoning' : 'raw'
-          setRun((current) => ({ ...current, [field]: current[field] + data.chunk }))
-          return
-        }
-        if (name === EventName.USAGE) {
-          setUsage(data)
-          return
-        }
-        if (name === EventName.PROGRESS) {
-          // Weights arriving for a model that runs in this tab. The same bar
-          // the speech panels use, because it is the same fact: a first load is
-          // minutes of a file, and an app that says nothing for minutes is
-          // indistinguishable from one that has hung.
-          setDownload(data)
-          return
-        }
-        if (name === EventName.DELEGATE) {
-          // A second agent, part-way through the question this turn handed it.
-          // It is kept as ONE value rather than appended to a list: the rail
-          // has room for a line, and what a reader needs is what the delegate
-          // is doing NOW — the history of a delegated run belongs to the
-          // delegate, and the parent already records the answer it returned.
-          setDelegates((current) => ({ ...current, [data.agent]: data }))
-          return
-        }
-        if (name === EventName.STEP) {
-          // The raw text is dropped here on purpose. It has just been parsed,
-          // and showing both the contract and the answer it contains is how a
-          // reader ends up reading the scaffolding.
-          setRun((current) => ({
-            ...current,
-            raw: '',
-            reasoning: '',
-            steps: [...current.steps, data],
-          }))
-        }
-      },
-    )
+    const turn = clientRef.current.begin('chat.send', { id: into, text }, (name, data) => {
+      if (name === EventName.PROMPT) {
+        setPrompts((current) => [...current, data])
+        // Follow the run: a panel pinned to step 1 while step 4 is being sent
+        // is showing history, not what is happening. Steps are numbered from
+        // one and arrive in order, so the index is the step minus one.
+        setPromptAt(data.step - 1)
+        return
+      }
+      if (name === EventName.DELTA) {
+        // The first token is proof the model is up, so it is also what
+        // retires the download bar — a cached model reports a start and then
+        // nothing at all, and waiting for a finish that never comes would
+        // leave the last byte count on screen for the whole turn.
+        setDownload(null)
+        // Two channels, kept apart. A thinking model can emit pages of
+        // scratchpad before its first word of answer; merging them would put
+        // the reply at the bottom of its own working-out.
+        const field = data.kind === 'reasoning' ? 'reasoning' : 'raw'
+        setRun((current) => ({ ...current, [field]: current[field] + data.chunk }))
+        return
+      }
+      if (name === EventName.USAGE) {
+        setUsage(data)
+        return
+      }
+      if (name === EventName.PROGRESS) {
+        // Weights arriving for a model that runs in this tab. The same bar
+        // the speech panels use, because it is the same fact: a first load is
+        // minutes of a file, and an app that says nothing for minutes is
+        // indistinguishable from one that has hung.
+        setDownload(data)
+        return
+      }
+      if (name === EventName.DELEGATE) {
+        // A second agent, part-way through the question this turn handed it.
+        // It is kept as ONE value rather than appended to a list: the rail
+        // has room for a line, and what a reader needs is what the delegate
+        // is doing NOW — the history of a delegated run belongs to the
+        // delegate, and the parent already records the answer it returned.
+        setDelegates((current) => ({ ...current, [data.agent]: data }))
+        return
+      }
+      if (name === EventName.STEP) {
+        // The raw text is dropped here on purpose. It has just been parsed,
+        // and showing both the contract and the answer it contains is how a
+        // reader ends up reading the scaffolding.
+        setRun((current) => ({
+          ...current,
+          raw: '',
+          reasoning: '',
+          steps: [...current.steps, data],
+        }))
+      }
+    })
     setRunning(turn.id)
     const result = await turn.done
     // A stopped run answers ok with no assistant message, and said nothing at
@@ -610,10 +637,15 @@ export default function Page() {
     // and `researcher·1` says a thread exists where `researcher: fetch (3)`
     // says it is working and on what. The threads line stays underneath it,
     // because it survives the turn and this does not.
-    // What is scheduled, when anything is. A count and not a list: the panel
-    // holds the detail, and the rail's job is to say that something will happen
-    // without a person having to remember they set it up.
-    schedules.length ? { text: `${schedules.length} scheduled` } : null,
+    // What is scheduled IN THIS CONVERSATION, which is the only place a
+    // schedule can be asked. The count used to be every schedule in the store,
+    // so a chat with none of its own reported other chats' — a promise that
+    // something would happen here that could not.
+    schedules.filter((one) => one.conversationId === conversationId).length
+      ? {
+          text: `${schedules.filter((one) => one.conversationId === conversationId).length} scheduled`,
+        }
+      : null,
     ...Object.values(delegates).map((one) => ({
       text: one.answered
         ? `${one.agent}: answered`

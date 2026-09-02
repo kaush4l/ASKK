@@ -273,12 +273,21 @@ if (live !== 'true') {
 const ANCHOR = 'owner-view-4d1f0a: the reader is real'
 const planted = await evaluate(
   `(async () => {
-     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES, STORE_SCHEDULES } =
        await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
      const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
      const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
      const { Workspace } = await import(${JSON.stringify(`${SRC_URL}/backend/files/Workspace.js`)})
-     const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+     const db = new IndexedDb(DB_NAME, DB_VERSION, [
+       STORE_CONVERSATIONS,
+       STORE_SETTINGS,
+       STORE_FILES,
+       // Every store this version HAS. Naming three of four opened a v4
+       // database with no schedules store on any run that reached here before
+       // the app did — and an upgrade only runs once, so the app would never
+       // create it either.
+       STORE_SCHEDULES,
+     ])
      await db.open()
      // A .js name on purpose: this is the one assertion that the colours are
      // drawn, and a language the scanner does not know renders one plain run.
@@ -521,12 +530,21 @@ console.log(
 // whether the person running the gate happens to have a model server up.
 const dead = await evaluate(
   `(async () => {
-     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES, STORE_SCHEDULES } =
        await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
      const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
      const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
      const { DEFAULT_SETTINGS, SETTINGS_ID } = await import(${JSON.stringify(`${SRC_URL}/backend/services/SettingsService.js`)})
-     const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+     const db = new IndexedDb(DB_NAME, DB_VERSION, [
+       STORE_CONVERSATIONS,
+       STORE_SETTINGS,
+       STORE_FILES,
+       // Every store this version HAS. Naming three of four opened a v4
+       // database with no schedules store on any run that reached here before
+       // the app did — and an upgrade only runs once, so the app would never
+       // create it either.
+       STORE_SCHEDULES,
+     ])
      await db.open()
      const saved = await new IndexedDbRepository('Settings', db, STORE_SETTINGS).put({
        ...DEFAULT_SETTINGS,
@@ -579,12 +597,21 @@ console.log(
 // page already holds.
 const planted2 = await evaluate(
   `(async () => {
-     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES, STORE_SCHEDULES } =
        await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
      const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
      const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
      const { DEFAULT_SETTINGS, SETTINGS_ID } = await import(${JSON.stringify(`${SRC_URL}/backend/services/SettingsService.js`)})
-     const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+     const db = new IndexedDb(DB_NAME, DB_VERSION, [
+       STORE_CONVERSATIONS,
+       STORE_SETTINGS,
+       STORE_FILES,
+       // Every store this version HAS. Naming three of four opened a v4
+       // database with no schedules store on any run that reached here before
+       // the app did — and an upgrade only runs once, so the app would never
+       // create it either.
+       STORE_SCHEDULES,
+     ])
      await db.open()
      const settings = new IndexedDbRepository('Settings', db, STORE_SETTINGS)
      const saved = await settings.put({
@@ -898,7 +925,14 @@ if (!existsSync(IMAGE_FILE)) {
        // was in the store before it started, CREATES one that has to end up
        // there afterwards, and EXITS NON-ZERO so that the status still belongs
        // to the command rather than to the base64 the frame runs after it.
-       const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+       const {
+         DB_NAME,
+         DB_VERSION,
+         STORE_CONVERSATIONS,
+         STORE_SETTINGS,
+         STORE_FILES,
+         STORE_SCHEDULES,
+       } =
          await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
        const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
        const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
@@ -906,7 +940,16 @@ if (!existsSync(IMAGE_FILE)) {
        const { ShellTool } = await import(${JSON.stringify(`${SRC_URL}/core/tools/ShellTool.js`)})
        const { Outcome } = await import(${JSON.stringify(`${SRC_URL}/core/Outcome.js`)})
 
-       const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+       const db = new IndexedDb(DB_NAME, DB_VERSION, [
+       STORE_CONVERSATIONS,
+       STORE_SETTINGS,
+       STORE_FILES,
+       // Every store this version HAS. Naming three of four opened a v4
+       // database with no schedules store on any run that reached here before
+       // the app did — and an upgrade only runs once, so the app would never
+       // create it either.
+       STORE_SCHEDULES,
+     ])
        const opened = await db.open()
        const files = new Workspace(new IndexedDbRepository('File', db, STORE_FILES))
        const kept = await files.write('smoke-note.md', 'written before the reload')
@@ -1141,12 +1184,28 @@ if (!existsSync(IMAGE_FILE)) {
 
   const survived = await evaluate(
     `(async () => {
-       const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+       const {
+         DB_NAME,
+         DB_VERSION,
+         STORE_CONVERSATIONS,
+         STORE_SETTINGS,
+         STORE_FILES,
+         STORE_SCHEDULES,
+       } =
          await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
        const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
        const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
        const { Workspace } = await import(${JSON.stringify(`${SRC_URL}/backend/files/Workspace.js`)})
-       const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+       const db = new IndexedDb(DB_NAME, DB_VERSION, [
+       STORE_CONVERSATIONS,
+       STORE_SETTINGS,
+       STORE_FILES,
+       // Every store this version HAS. Naming three of four opened a v4
+       // database with no schedules store on any run that reached here before
+       // the app did — and an upgrade only runs once, so the app would never
+       // create it either.
+       STORE_SCHEDULES,
+     ])
        const files = new Workspace(new IndexedDbRepository('File', db, STORE_FILES))
        return { listed: (await files.list()).toJSON(), guest: (await files.read('made-in-the-guest.txt')).toJSON() }
      })()`,

@@ -19,15 +19,108 @@ export class AgentWorkerPool {
    * others; a thread that is handed the wrong prefix fetches nothing, which is
    * a visible failure rather than a silent default.
    */
-  constructor({ timeout = 300_000, basePath = '' } = {}) {
+  /**
+   * `timeout` is a BACKSTOP, not a policy, and it has to sit above the budget a
+   * sub-agent can legitimately spend or it becomes the policy. `Budget` gives a
+   * run 600 seconds and a single model call may take 300, so a child doing two
+   * long calls was inside its own declared terms and killed at 300,000 ms with
+   * "did not answer within 300000ms" — the pool silently overruling the file,
+   * which is the opposite of what `agentWorker` says it does. Eleven minutes is
+   * the 600-second budget plus a minute for the thread to notice.
+   */
+  constructor({ timeout = 660_000, basePath = '' } = {}) {
     this.timeout = timeout
     this.basePath = basePath
     this._workers = new Map()
     this._pending = new Map()
+    /**
+     * Worker name -> the ids that worker owes an answer to.
+     *
+     * `_pending` is keyed by task id and is pool-wide, so the `error` handler
+     * below used to settle EVERY in-flight call when ONE worker died — a
+     * `summarizer` that failed to load reported `researcher`'s live run as
+     * failed, and when the researcher's real answer arrived there was nothing
+     * left to deliver it to. One dead thread may only fail its own callers.
+     */
+    this._owed = new Map()
     /** @type {Map<string, (progress: object) => void>} task id -> who is watching it. */
     this._watching = new Map()
     this._threads = new Map()
+    /**
+     * Work that outlives the turn that asked for it.
+     *
+     * `ask` is a promise, and a promise dies with the turn awaiting it. A
+     * question a parent hands over and gets on with — the whole point of a
+     * sub-agent that reads six pages — needs somewhere for the answer to sit
+     * until somebody comes back for it. This is that somewhere: task id ->
+     * `{id, agent, task, state, startedAt, endedAt, progress, result}`.
+     *
+     * In memory, and deliberately not in IndexedDB: the run itself is a thread
+     * in this worker, so a record that survived a reload would describe work
+     * that does not. What a reload loses is the answer to a question nobody
+     * waited for, and saying so is honest where a stored record that can never
+     * be finished is not.
+     */
+    this._tasks = new Map()
     this._seq = 0
+  }
+
+  /**
+   * Every background task this pool has been given, newest first.
+   *
+   * The whole record, because both readers want different halves: the model
+   * wants the answer, and the page wants to know something is running.
+   */
+  tasks() {
+    return [...this._tasks.values()].sort((a, b) => b.startedAt - a.startedAt)
+  }
+
+  /** One, by id, or undefined. */
+  task(id) {
+    return this._tasks.get(id)
+  }
+
+  /**
+   * Hand a question over and come straight back with a receipt.
+   *
+   * The difference from `ask` is only who waits: the same thread, the same
+   * message, the same worker. `ask` awaits the promise; this one lets it settle
+   * into a record that anyone can read later, which is what makes a delegated
+   * run outlive the turn that started it.
+   *
+   * There is no signal. A background task is not attached to the turn that
+   * started it, so the parent's stop cannot mean "stop that too" — the run it
+   * would be stopping may belong to a question asked four turns ago. What
+   * bounds it is the pool's own timeout, the same one `ask` uses.
+   *
+   * @returns {{id: string, agent: string}} the receipt, immediately
+   */
+  start(name, task, settings) {
+    const id = `t${++this._seq}`
+    const record = {
+      id,
+      agent: name,
+      task,
+      state: 'running',
+      startedAt: Date.now(),
+      endedAt: 0,
+      progress: null,
+      result: null,
+    }
+    this._tasks.set(id, record)
+
+    // Not awaited on purpose: this method's whole contract is that it returns
+    // before the work does. The promise cannot reject — `ask` answers with an
+    // Outcome on every path — so there is nothing here to catch.
+    this.ask(name, task, settings, null, (progress) => {
+      record.progress = progress
+    }).then((answered) => {
+      record.state = answered.ok ? 'done' : 'failed'
+      record.endedAt = Date.now()
+      record.result = answered.toJSON()
+    })
+
+    return { id, agent: name }
   }
 
   /**
@@ -68,7 +161,10 @@ export class AgentWorkerPool {
         // Kept on the thread as well as forwarded, because the two answer
         // different questions: the forward is for whoever is watching this
         // call, and the record is what `agents.threads` can tell a page that
-        // was not watching — after a reload, or in a second tab.
+        // asked later in the same session — the panel polls it after each turn.
+        // NOT across a reload or a second tab, which this comment claimed for
+        // one wave: the pool lives in the tab's own backend worker, so a reload
+        // is a new pool with nothing in it.
         if (thread) thread.status = { ...progress, at: Date.now() }
         this._watching.get(at)?.(progress)
         return
@@ -80,17 +176,22 @@ export class AgentWorkerPool {
       settle(event.data)
     })
     worker.addEventListener('error', (event) => {
-      // One dead thread must not leave its callers waiting, and must not be
-      // reused: the next call gets a fresh worker.
+      // One dead thread must not leave ITS OWN callers waiting, and must not
+      // leave anyone else's answer undeliverable: only the ids this worker owes
+      // are failed. It is not reused either — the next call gets a fresh one.
       this._workers.delete(name)
-      for (const [id, settle] of this._pending) {
+      const thread = this._threads.get(name)
+      if (thread) thread.status = null
+      for (const id of this._owed.get(name) ?? []) {
+        const settle = this._pending.get(id)
         this._pending.delete(id)
         this._watching.delete(id)
-        settle({
+        settle?.({
           ok: false,
           failure: { code: Reason.INTERNAL, message: `${name}: ${event.message}`, hint: '' },
         })
       }
+      this._owed.delete(name)
     })
     this._workers.set(name, worker)
     this._threads.set(name, { name, confirmedName: null, startedAt: Date.now(), calls: 0 })
@@ -128,6 +229,11 @@ export class AgentWorkerPool {
       const timer = setTimeout(() => {
         this._pending.delete(id)
         this._watching.delete(id)
+        this._owed.get(name)?.delete(id)
+        // The thread is not doing what it last said it was doing. Left
+        // standing, `agents.threads` reports a fetch that was abandoned
+        // minutes ago as live, for as long as the page is open.
+        if (thread) thread.status = null
         // The thread is told, not merely abandoned. Giving up on the promise
         // used to leave the run going on its own budget for a caller that had
         // stopped waiting — the same defect the signal below exists to fix,
@@ -144,18 +250,26 @@ export class AgentWorkerPool {
       }, this.timeout)
 
       if (onProgress) this._watching.set(id, onProgress)
+      if (!this._owed.has(name)) this._owed.set(name, new Set())
+      this._owed.get(name).add(id)
+
+      // Named rather than inline, so the abort listener can be REMOVED when the
+      // call settles. A parent that delegates twenty times in one run held
+      // twenty closures until the turn ended, each waiting to post a cancel for
+      // an id the worker had long forgotten.
+      const cancel = () => worker.postMessage({ id, cancel: true })
+
       this._pending.set(id, (data) => {
         clearTimeout(timer)
         this._watching.delete(id)
+        this._owed.get(name)?.delete(id)
+        signal?.removeEventListener('abort', cancel)
         resolve(data)
       })
       worker.postMessage({ id, name, task, settings, basePath: this.basePath })
       if (signal) {
-        if (signal.aborted) worker.postMessage({ id, cancel: true })
-        else
-          signal.addEventListener('abort', () => worker.postMessage({ id, cancel: true }), {
-            once: true,
-          })
+        if (signal.aborted) cancel()
+        else signal.addEventListener('abort', cancel, { once: true })
       }
     })
 

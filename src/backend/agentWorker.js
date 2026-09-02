@@ -52,7 +52,31 @@ function catalogueFor(basePath = '') {
 /** Task id -> the stop for the run that is answering it. */
 const running = new Map()
 
-self.addEventListener('message', async (event) => {
+/**
+ * A defect in here must not become a caller waiting eleven minutes.
+ *
+ * This handler is `async`, so anything it throws is an `unhandledrejection`
+ * INSIDE the worker — which is not the `error` event a `Worker` object fires,
+ * so the pool never hears it and nothing ever posts an answer for that id. The
+ * caller then waits out the pool's whole backstop for a thread that died in
+ * milliseconds. Nothing in this tree throws by design, and this is the seam
+ * that makes a broken design assumption cost one failed call instead of a
+ * hung turn.
+ */
+self.addEventListener('message', (event) => {
+  answer(event).catch((err) => {
+    const { id } = event.data ?? {}
+    running.delete(id)
+    self.postMessage({
+      id,
+      ...Outcome.failed(Reason.INTERNAL, `the ${self.name} thread failed: ${err?.message ?? err}`, {
+        hint: 'This is a defect in the sub-agent thread, not in the agent file.',
+      }).toJSON(),
+    })
+  })
+})
+
+async function answer(event) {
   const { id, name, task, settings, basePath, cancel } = event.data ?? {}
 
   if (cancel) {
@@ -173,6 +197,6 @@ self.addEventListener('message', async (event) => {
     answer,
   )
   self.postMessage({ id, ...reply.toJSON() })
-})
+}
 
 self.postMessage({ type: 'ready', name: self.name })

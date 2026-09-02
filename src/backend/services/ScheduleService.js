@@ -25,8 +25,9 @@ import { Outcome, Reason } from '../../core/Outcome.js'
  *
  * The backend is a worker that answers requests; it never wakes on its own, and
  * a `setInterval` in here would fire in every tab at once against one store. So
- * the CALLER ticks — `page.jsx`, under a `navigator.locks` lease so that exactly
- * one tab does — and this service only says what is due and records what ran.
+ * the CALLER ticks — `page.jsx`, under a `navigator.locks` lease so that one tab
+ * does where the browser has Web Locks, and every open tab does where it does
+ * not — and this service only says what is due and records what ran.
  * That leaves the whole of "when" in the realm that can see a clock and a user,
  * and leaves this a store with rules.
  *

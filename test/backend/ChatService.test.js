@@ -589,7 +589,20 @@ describe('what an mcp server in the guest costs a turn', () => {
       },
       async run(command) {
         ran.push(command)
-        const listing = { jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'disk' }] } }
+        // The id is ECHOED, not fixed at 1. A canned `id: 1` answers the
+        // handshake and leaves `tools/list` unanswered, so this fake used to
+        // produce a FAILED discovery — and the caching test above it was
+        // asserting that a failure is cached, which is the one thing that must
+        // not be. `McpClient` correlates by id exactly as a real client does.
+        // The LAST id on the command line, not the first: the transport
+        // replays the handshake ahead of every request, so the line carries
+        // `initialize` (id 1) and then the request actually being made.
+        const ids = [...String(command).matchAll(/"id":\s*(\d+)/g)].map((m) => Number(m[1]))
+        const listing = {
+          jsonrpc: '2.0',
+          id: ids.at(-1) ?? 1,
+          result: { tools: [{ name: 'disk' }] },
+        }
         return Outcome.ok({ stdout: `${JSON.stringify(listing)}\n`, stderr: '', code: 0 })
       },
     }
@@ -632,8 +645,68 @@ describe('what an mcp server in the guest costs a turn', () => {
 
     // Two commands for the handshake, and the same two are not paid twice: the
     // list cannot change while the page is open, because the agent file it came
-    // from is fetched once and kept.
+    // from is fetched once and kept. A discovery that FAILED is not cached —
+    // a server that was down on turn one must not stay invisible all session —
+    // so this asserts the successful path, and the fake answers with the id it
+    // was asked with for exactly that reason.
     expect(afterFirst).toBe(2)
     expect(sandbox.ran.length).toBe(2)
+  })
+})
+
+/**
+ * And the other half of that rule, which is the one a cache gets wrong.
+ *
+ * A tools list cannot change while the page is open. A server being DOWN can
+ * change at any moment, so freezing "was not available" for the session means a
+ * server that comes up a minute later stays invisible until someone reloads.
+ */
+describe('an mcp server that was down when it was first asked', () => {
+  test('is asked again on the next turn, and its tools arrive', async () => {
+    const spec = AgentSpec.of({
+      metadata: { name: 'main', mcp: [{ name: 'host', command: 'mcp-disk' }] },
+      body: 'be brief',
+      source: 'test',
+    }).value
+
+    let up = false
+    const sandbox = {
+      get available() {
+        return true
+      },
+      get warm() {
+        return true
+      },
+      async run(command) {
+        if (!up) return Outcome.ok({ stdout: '', stderr: '', code: 1 })
+        const ids = [...String(command).matchAll(/"id":\s*(\d+)/g)].map((m) => Number(m[1]))
+        return Outcome.ok({
+          stdout: `${JSON.stringify({ jsonrpc: '2.0', id: ids.at(-1) ?? 1, result: { tools: [{ name: 'disk' }] } })}\n`,
+          stderr: '',
+          code: 0,
+        })
+      },
+    }
+
+    const { service } = chatWith([answerTurn('one'), answerTurn('two')], {
+      catalogue: {
+        async spec() {
+          return Outcome.ok(spec)
+        },
+        async all() {
+          return Outcome.ok([spec])
+        },
+      },
+      sandbox,
+    })
+
+    const first = await service.send({ id: 'c1', text: 'hello' })
+    expect(first.notes.some((note) => note.includes('was not available'))).toBe(true)
+
+    up = true
+    const second = await service.send({ id: 'c1', text: 'hello again' })
+
+    expect(second.notes.some((note) => note.includes('was not available'))).toBe(false)
+    expect(second.notes.some((note) => note.includes('offered 1 tool(s)'))).toBe(true)
   })
 })

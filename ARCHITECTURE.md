@@ -646,6 +646,20 @@ the narrow place it is actually needed. `ifAvailable` matters: a tab that
 queues behind the lease runs its tick the moment the holder releases, which is
 two ticks in a row rather than one.
 
+Three limits of that, stated rather than discovered. A browser without Web Locks
+runs the tick in **every** open tab, and the code says so where it falls back —
+the alternative, refusing to schedule at all, is worse. The lease is one
+origin-wide name held for the whole turn, so a tab running a four-minute
+scheduled question starves another tab's tick for four minutes; it is late, not
+lost. And the lock cannot see the composer: a person pressing send in the same
+tab is guarded by a `busy` ref read twice, at the top of the tick and again
+immediately before the turn starts, because three awaits sit between them.
+
+**A schedule that outlives the conversation switch it was decided in is asked in
+the conversation it belongs to, named explicitly.** `askRef` holds the newest
+`ask`, whose default is whatever is open now, so a question recorded as run and
+then asked after a switch would land in the wrong transcript.
+
 **A run is recorded before it happens, not after.** A question that takes four
 minutes would otherwise still be due at the next tick and be asked on top of
 itself, and a schedule that only recorded its successes would retry a failing
@@ -659,7 +673,11 @@ transcript nobody is looking at would be a turn a person cannot see happening,
 in an app whose whole live view is what makes a run legible.
 
 The gate drives it: the schedule is created by clicking through the panel, and
-the reload IS the tick, because the page ticks on mount.
+the reload is what runs the tick, because the page ticks as soon as it is ready
+and a fresh schedule carries `lastRanAt: 0`. What that proves is a NEW schedule
+firing once. It does not prove the overdue path — a schedule with a real past
+`lastRanAt`, reopened after its period — and saying so is the difference between
+a check and a claim.
 
 ## Ready is not the same as able
 

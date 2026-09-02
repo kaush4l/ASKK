@@ -78,9 +78,15 @@ export class HealthService {
     // OpenAI-compatible server on the same machine usually wants neither, and
     // the ones that do answer 401, which is still an answer.
     const headers = { accept: 'application/json' }
-    if (apiKey && kind === 'anthropic') {
-      headers['x-api-key'] = apiKey
+    if (kind === 'anthropic') {
+      if (apiKey) headers['x-api-key'] = apiKey
       headers['anthropic-version'] = '2023-06-01'
+      // The header that makes Anthropic answer a browser at all. Without it
+      // this probe was measuring a request the app never makes: a refusal here
+      // would have been reported as "that server will not let a browser read
+      // it" while the actual chat, which sends it, works. A probe that tests a
+      // different path than the one it predicts is worse than no probe.
+      headers['anthropic-dangerous-direct-browser-access'] = 'true'
     } else if (apiKey) {
       headers.authorization = `Bearer ${apiKey}`
     }

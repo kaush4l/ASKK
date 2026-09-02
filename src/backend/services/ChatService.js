@@ -174,7 +174,13 @@ export class ChatService {
     if (known) return known
 
     const found = await discoverMcpTools(spec.mcp, this.services)
-    this._mcp.set(key, found)
+    // A FAILURE is never cached. The list of tools a server offers cannot
+    // change while the page is open, which is what makes caching sound; a
+    // server being DOWN can change at any moment, and freezing "mcp server X
+    // was not available" for the session means a server that comes up a minute
+    // later stays invisible until someone reloads the page.
+    const failed = found.notes.some((note) => note.includes('was not available'))
+    if (!failed) this._mcp.set(key, found)
     return found
   }
 
