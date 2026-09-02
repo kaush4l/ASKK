@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { browserHttp, buildKernel } from '../../src/backend/composition.js'
+import { HealthService } from '../../src/backend/services/HealthService.js'
+import { Outcome } from '../../src/core/Outcome.js'
 import { Blocked } from '../../src/core/tools/HttpPort.js'
 import { Request } from '../../src/protocol/Envelope.js'
 
@@ -347,5 +349,112 @@ describe('the files routes', () => {
       'files.list',
       'files.read',
     ])
+  })
+})
+
+/**
+ * Whether a question can be answered, which is a different question from
+ * whether the app started.
+ *
+ * Every other boot note reports on this app — storage, the worker, the guest —
+ * and all three can be perfectly fine while the model the app was told to call
+ * is not running. The default address is a server on `127.0.0.1` that most
+ * people are not running, so a first visit said "ready" and then answered the
+ * first question with a transport failure.
+ */
+describe('the model probe', () => {
+  const settingsOf = (values) => ({
+    async get() {
+      return Outcome.ok({
+        kind: 'openai',
+        baseUrl: 'http://127.0.0.1:8873/v1',
+        apiKey: '',
+        model: 'm',
+        ...values,
+      })
+    },
+  })
+
+  /** A port that answers with one status, and records what it was asked. */
+  const port = (answer) => {
+    const asked = []
+    const fn = async (request) => {
+      asked.push(request)
+      return Outcome.ok({
+        url: request.url,
+        status: 0,
+        contentType: '',
+        text: '',
+        bytes: 0,
+        truncated: false,
+        stopped: '',
+        blocked: Blocked.NONE,
+        ...answer,
+      })
+    }
+    fn.asked = asked
+    return fn
+  }
+
+  test('a server that answers anything at all is reachable, and it is asked with a GET', async () => {
+    const http = port({ status: 200 })
+    const health = new HealthService({ settings: settingsOf({}), http })
+
+    const said = await health.model()
+
+    expect(said.value.reachable).toBe(true)
+    expect(said.value.detail).toBe('')
+    // `/models` off the base url, and no method: a completion would spend
+    // tokens on every page load, and a HEAD is answered 405 by several servers.
+    expect(http.asked[0].url).toBe('http://127.0.0.1:8873/v1/models')
+    expect(http.asked[0].method).toBeUndefined()
+  })
+
+  test('a refused key is reachable and says so, because the server answered', async () => {
+    const health = new HealthService({
+      settings: settingsOf({ apiKey: 'k' }),
+      http: port({ status: 401 }),
+    })
+
+    const said = await health.model()
+
+    expect(said.value.reachable).toBe(true)
+    expect(said.value.detail).toContain('refused the key')
+  })
+
+  test('nothing at that address is not reachable, and the sentence names the address', async () => {
+    const health = new HealthService({
+      settings: settingsOf({}),
+      http: port({ status: 0, blocked: Blocked.UNREACHABLE }),
+    })
+
+    const said = await health.model()
+
+    expect(said.value.reachable).toBe(false)
+    expect(said.value.detail).toContain('http://127.0.0.1:8873/v1')
+  })
+
+  test('an origin that will not let a browser read it says whose setting that is', async () => {
+    const health = new HealthService({
+      settings: settingsOf({}),
+      http: port({ status: 0, blocked: Blocked.REFUSED }),
+    })
+
+    expect((await health.model()).value.detail).toContain('CORS setting on that server')
+  })
+
+  test('a model in this tab has no endpoint to answer, and is not called unreachable', async () => {
+    const http = port({ status: 200 })
+    const health = new HealthService({ settings: settingsOf({ kind: 'transformers' }), http })
+
+    const said = await health.model()
+
+    expect(said.value.reachable).toBe(true)
+    expect(http.asked).toEqual([])
+  })
+
+  test('the route is on the wire, so the page can ask it', async () => {
+    const { kernel } = await buildKernel()
+    expect(kernel.methods).toContain('health.model')
   })
 })

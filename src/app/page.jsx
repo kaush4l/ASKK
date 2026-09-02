@@ -109,6 +109,14 @@ export default function Page() {
   // a model is still to arrive. The first run of a local engine spends minutes
   // on the third with nothing to show for the other two, and a spinner that
   // cannot tell those apart is a spinner nobody believes.
+  /**
+   * Whether the model this app was told to call actually answers.
+   *
+   * `ready` has always meant "the app started", and a first visit reads it as
+   * "ask me something" — then meets a transport failure, because the default
+   * address is a server on this machine that most people are not running.
+   */
+  const [modelHealth, setModelHealth] = useState(null)
   const [listening, setListening] = useState(false)
   const [heard, setHeard] = useState('')
   const [download, setDownload] = useState(null)
@@ -131,14 +139,20 @@ export default function Page() {
       if (!boot.persistent)
         collected.push('Storage is unavailable — this conversation ends with the tab.')
 
-      const [existing, loaded, roster] = await Promise.all([
+      const [existing, loaded, roster, model] = await Promise.all([
         client.call('conversations.list'),
         client.call('settings.get'),
         client.call('agents.list'),
+        // Whether a question can be answered at all, asked once at boot. Every
+        // other boot note is about THIS app — storage, the worker, the guest —
+        // and the app can be perfectly ready while the model it was told to
+        // call is not running, which is what a first visit actually hits.
+        client.call('health.model'),
       ])
       collected.push(...existing.notes, ...loaded.notes, ...roster.notes)
       if (loaded.ok) setSettings(loaded.value)
       if (roster.ok) setAgents(roster.value)
+      if (model.ok) setModelHealth(model.value)
 
       let conversation = existing.ok ? existing.value[0] : null
       if (!conversation) {
@@ -397,6 +411,11 @@ export default function Page() {
       // field, and the form must show what was actually kept, not what was typed.
       setSettings(result.value)
       setShowSettings(false)
+      // Asked again, because the reason to open settings was usually this. A
+      // message telling someone to fix something that stays up after they have
+      // fixed it is worse than no message at all.
+      const rechecked = await clientRef.current.call('health.model')
+      if (rechecked.ok) setModelHealth(rechecked.value)
     } else {
       setProblem({ message: result.error.message, hint: result.error.hint })
     }
@@ -511,32 +530,62 @@ export default function Page() {
               </button>
             </h2>
 
+            {/* This app has no model of its own. Everything above the fold
+                here is what a person has to answer before it can reply at all,
+                and it used to be five bare labels — "model", "base url" — that
+                said what the field was called and never what to put in it. */}
+            <p className="hint">
+              This app brings no model. Name one below: a server on your own machine, a hosted one
+              with a key, or a small model that downloads into this tab. Nothing here leaves your
+              browser except the request to whichever you choose.
+            </p>
             <label>
-              model provider
+              where the model runs
               <select {...field('kind')}>
-                <option value="openai">OpenAI-compatible</option>
+                <option value="openai">
+                  an OpenAI-compatible server (LM Studio, vLLM, OpenAI)
+                </option>
                 <option value="anthropic">Anthropic</option>
-                <option value="transformers">transformers.js (in-browser)</option>
+                <option value="transformers">in this tab (downloads a small model)</option>
               </select>
             </label>
             <label>
-              model
-              <input {...field('model')} />
-            </label>
-            <label>
-              base url
-              <input {...field('baseUrl')} disabled={settings.kind === 'transformers'} />
-            </label>
-            <label>
-              api key
+              model name
               <input
-                type="password"
-                {...field('apiKey')}
-                placeholder="stored on this device only"
+                {...field('model')}
+                placeholder={
+                  settings.kind === 'transformers'
+                    ? 'a Hugging Face model id, e.g. onnx-community/Qwen2.5-0.5B-Instruct'
+                    : 'exactly what that server calls the model'
+                }
               />
             </label>
             <label>
-              agent
+              address
+              <input
+                {...field('baseUrl')}
+                disabled={settings.kind === 'transformers'}
+                placeholder={
+                  settings.kind === 'transformers'
+                    ? 'nothing to reach — the model runs here'
+                    : 'http://127.0.0.1:1234/v1 — must end in /v1'
+                }
+              />
+            </label>
+            <label>
+              key
+              <input
+                type="password"
+                {...field('apiKey')}
+                placeholder={
+                  settings.kind === 'openai'
+                    ? 'blank for a server on your own machine'
+                    : 'stored on this device only, sent only to the address above'
+                }
+              />
+            </label>
+            <label>
+              who you are talking to
               <select {...field('agent')}>
                 {agents.map((agent) => (
                   <option key={agent.name} value={agent.name}>
@@ -548,6 +597,13 @@ export default function Page() {
             </label>
 
             <div className="group" />
+            {/* Everything below is voice, and none of it is needed to ask a
+                question. Said once, here, because five model-id fields with no
+                heading read as five more things that must be filled in. */}
+            <p className="hint">
+              Voice, if you want it. None of this is needed to ask a question, and the two “nothing
+              to download” choices are what the browser already has.
+            </p>
             <label>
               hearing
               <select {...field('sttKind')}>
@@ -608,11 +664,23 @@ export default function Page() {
       <div className={`panes${panel ? ' with-panel' : ''}`}>
         <main className="stage">
           <div className="transcript" ref={scrollRef} data-testid="transcript">
-            {messages.length === 0 && ready ? (
+            {messages.length === 0 && ready && modelHealth && !modelHealth.reachable ? (
+              <p className="empty" data-testid="no-model">
+                <strong>no model yet</strong>
+                {modelHealth.detail} This app brings no model of its own: name one in{' '}
+                <button type="button" className="inline" onClick={() => setShowSettings(true)}>
+                  settings
+                </button>{' '}
+                — a server on this machine, a hosted one with a key, or a small model that downloads
+                into this tab.
+              </p>
+            ) : null}
+            {messages.length === 0 && ready && (!modelHealth || modelHealth.reachable) ? (
               <p className="empty">
                 <strong>ready</strong>
-                Ask a question. The agent can run commands in a private Linux sandbox when the
-                answer is something to find out rather than recall.
+                Ask a question. The agent can search the web, run commands in a private Linux
+                sandbox, and hand a question to a second agent when the answer is something to go
+                and find out rather than recall.
               </p>
             ) : null}
 

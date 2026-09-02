@@ -506,6 +506,62 @@ console.log(
     `reporting ${reports.length} passes on the way`,
 )
 
+// --- the app is ready and the model is not ----------------------------------
+//
+// "ready" has always meant the app started, and a first visit reads it as "ask
+// me something" — then meets a transport failure, because the default address
+// is a server on this machine that most people are not running. The empty state
+// now asks the model first, and this is the only place that answer can be
+// rendered: there is no DOM in `bun test`.
+//
+// The address planted here is the discard port, which refuses a connection
+// immediately. Pointing it at the default would make this check depend on
+// whether the person running the gate happens to have a model server up.
+const dead = await evaluate(
+  `(async () => {
+     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+       await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
+     const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
+     const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
+     const { DEFAULT_SETTINGS, SETTINGS_ID } = await import(${JSON.stringify(`${SRC_URL}/backend/services/SettingsService.js`)})
+     const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+     await db.open()
+     const saved = await new IndexedDbRepository('Settings', db, STORE_SETTINGS).put({
+       ...DEFAULT_SETTINGS,
+       id: SETTINGS_ID,
+       baseUrl: 'http://127.0.0.1:9/v1',
+     })
+     return saved.toJSON()
+   })()`,
+  session,
+  true,
+)
+if (!dead?.ok) await fail(`could not plant a dead endpoint: ${JSON.stringify(dead)}`, problems)
+
+await send('Page.navigate', { url }, session)
+const unconfigured = await evaluate(
+  `(async () => {
+     for (let i = 0; i < 300; i++) {
+       const said = document.querySelector('[data-testid="no-model"]')
+       if (said) return said.textContent
+       await new Promise((r) => setTimeout(r, 50))
+     }
+     return document.querySelector('.empty')?.textContent ?? '(no empty state at all)'
+   })()`,
+  session,
+  true,
+)
+if (!String(unconfigured).includes('127.0.0.1:9'))
+  await fail(`the page did not say the model is unreachable: ${JSON.stringify(unconfigured)}`, [
+    'The probe is health.model in src/backend/services/HealthService.js and the',
+    'empty state that renders it is in src/app/page.jsx.',
+    ...problems,
+  ])
+
+console.log(
+  `smoke: with no model reachable the page says so — ${JSON.stringify(String(unconfigured).slice(0, 60))}…`,
+)
+
 // --- the delegating turn, through the page a visitor gets --------------------
 //
 // Realm four above proves the thread; this proves the WHOLE path a person

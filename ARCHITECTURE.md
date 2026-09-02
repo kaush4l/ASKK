@@ -594,6 +594,32 @@ Sub-agents are **stateless** — asked one complete question, they answer it. A
 per-sub-agent transcript would make the same call return different things at
 different times, which is not what a tool is.
 
+## Ready is not the same as able
+
+`ready` means this app started: the worker booted, storage answered, the roster
+loaded. It says nothing about the one thing that decides whether a question gets
+an answer, and the default settings name a model server on `127.0.0.1` that most
+people are not running — so a first visit read "ready", asked something, and met
+a transport failure.
+
+`backend/services/HealthService.js` asks the other question at boot, on the
+`health.model` route: a plain GET of `<baseUrl>/models`, four-second deadline,
+nothing read. Not a completion, because a probe that spends tokens on every page
+load costs money to open a tab; not a HEAD, because several OpenAI-compatible
+servers answer one with 405. **Any status at all means reachable** — a 401 is a
+running server with a key problem and says so, a 404 is a running server that
+does not list models — and only `blocked` distinguishes the three ways nothing
+came back, which is the distinction `HttpPort` exists to make. A model that runs
+in the tab is not probed at all: there is no endpoint, and calling it
+unreachable would be a warning about a configuration that is correct.
+
+An unreachable model is a RESULT and not a failure, so it renders as an empty
+state with the address in it and the word *settings* as a control, rather than
+as a red error. Saving settings asks again, because a message telling someone to
+fix something that stays up after they have fixed it is worse than none. The
+gate plants the discard port and asserts the sentence, which is the only place
+it can be asserted: there is no DOM in `bun test`.
+
 ## Nothing throws
 
 Every fallible call returns an `Outcome` — `ok` with a value, or a `Failure`

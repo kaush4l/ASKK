@@ -12,6 +12,7 @@ import { AgentService } from './services/AgentService.js'
 import { ChatService } from './services/ChatService.js'
 import { ConversationService } from './services/ConversationService.js'
 import { FilesService } from './services/FilesService.js'
+import { HealthService } from './services/HealthService.js'
 import { SettingsService } from './services/SettingsService.js'
 
 // Re-exported because it was defined here for four waves and one test, one
@@ -127,6 +128,10 @@ export async function buildKernel() {
     // the store is safe from interleaving and it is not safe from a person
     // saving a file the agent rewrote while they were reading it.
     .register('files', new FilesService(files))
+    // Whether a QUESTION can be answered, which every other boot note is silent
+    // about: storage, the worker and the guest can all be fine while the model
+    // this app was told to call is not running.
+    .register('health', new HealthService({ settings, http: browserHttp }))
 
   // Said out loud, in the one place the user reads notes. Nothing else in this
   // app leaves the machine except the model call the user configured — but a

@@ -399,6 +399,26 @@ select:disabled {
   color: var(--faint);
 }
 
+/* A word inside a sentence that happens to be a control. The empty state tells
+   someone to open settings, and a link-shaped word they can press is one step
+   where "find the settings button in the corner" is two. */
+.empty button.inline {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  /* --text, not --signal: cyan means measured in this palette and a control is
+     not a measurement. The underline is what makes it read as pressable. */
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.empty button.inline:hover {
+  background: none;
+  text-decoration-thickness: 2px;
+}
+
 .empty strong {
   display: block;
   margin-bottom: 0.4rem;
