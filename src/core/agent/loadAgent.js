@@ -23,7 +23,7 @@ import { AgentSpec } from './AgentSpec.js'
  * An unresolvable name costs that tool and nothing else — the agent still runs
  * with the rest, and the note says which one went missing.
  */
-export function resolveTools({ names = [], peers = [], dispatch, services = {} } = {}) {
+export function resolveTools({ names = [], peers = [], dispatch, start, services = {} } = {}) {
   const notes = []
   const tools = []
   const byName = new Map(peers.map((spec) => [spec.name, spec]))
@@ -43,7 +43,7 @@ export function resolveTools({ names = [], peers = [], dispatch, services = {} }
       // The agent file's own name and description become the tool's name and
       // description — the calling model is told what this agent is for in the
       // words its author wrote.
-      tools.push(new SubAgentTool({ spec: peer, dispatch }))
+      tools.push(new SubAgentTool({ spec: peer, dispatch, start }))
       continue
     }
     notes.push(
@@ -69,6 +69,7 @@ export function buildAgent({
   inference,
   peers = [],
   dispatch,
+  start,
   tools,
   extraTools = [],
   context = [],
@@ -76,7 +77,7 @@ export function buildAgent({
 } = {}) {
   const resolved = tools
     ? Outcome.ok(tools)
-    : resolveTools({ names: spec.tools, peers, dispatch, services })
+    : resolveTools({ names: spec.tools, peers, dispatch, start, services })
 
   // An agent file may state its own prompt arrangement. Most do not, and take
   // the default — which is the point of a default.

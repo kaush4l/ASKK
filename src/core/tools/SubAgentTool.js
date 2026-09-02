@@ -20,7 +20,7 @@ export class SubAgentTool extends Tool {
    *   dispatch: (name: string, prompt: string, signal: AbortSignal|null)
    *     => Promise<Outcome>}} options
    */
-  constructor({ spec, dispatch }) {
+  constructor({ spec, dispatch, start = null }) {
     super({
       name: spec.name,
       description: spec.description || `Ask the ${spec.name} agent.`,
@@ -30,17 +30,47 @@ export class SubAgentTool extends Tool {
           description:
             'What you want done, written as a complete instruction. The agent cannot see this conversation, so include everything it needs.',
         },
+        wait: {
+          type: 'boolean',
+          description:
+            'true (the default) to wait for the answer now. false to hand it over and carry on — you get a task id back, the context block says when it is done, and check_task reads it.',
+        },
       },
     })
     this.spec = spec
     this.dispatch = dispatch
+    // How to hand work over without waiting, when the caller can. Absent in a
+    // realm that has nowhere to keep a running task — a sub-agent's own thread,
+    // for instance — and the tool says so rather than quietly waiting instead.
+    this.start = start
   }
 
-  async call({ task } = {}, signal = null) {
+  async call({ task, wait } = {}, signal = null) {
     const instruction = typeof task === 'string' ? task.trim() : ''
     if (!instruction) {
       return Outcome.ok(
         `${this.name} was given no task. Call it again with {"task": "..."} describing what you need.`,
+      )
+    }
+
+    // Handed over rather than awaited. `wait: false` is the difference between
+    // a tool that costs the parent the child's whole runtime and one that costs
+    // a round trip: the receipt comes straight back, the run carries on in its
+    // own realm, and the context block reports it from the next turn onward.
+    //
+    // Read strictly — `false` and `"false"`, not "anything falsy" — because a
+    // model writing nothing at all must still get the waiting behaviour it did
+    // not ask to change.
+    const handOver = wait === false || String(wait).trim().toLowerCase() === 'false'
+    if (handOver) {
+      if (!this.start) {
+        return Outcome.ok(
+          `${this.name} cannot be handed work here — nothing in this build can hold a task that outlives the turn. Call it again without wait: false.`,
+        )
+      }
+      const receipt = this.start(this.name, instruction)
+      return Outcome.ok(
+        `handed to ${this.name} as ${receipt.id}. Carry on; the context block will say when it is done, and check_task({"id": "${receipt.id}"}) reads the answer.`,
       )
     }
     // The signal goes on. A delegated run is a whole second agent burning a

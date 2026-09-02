@@ -1,3 +1,4 @@
+import { CheckTaskTool } from './CheckTaskTool.js'
 import { FetchTool } from './FetchTool.js'
 import { ReadFileTool } from './ReadFileTool.js'
 import { SearchTool } from './SearchTool.js'
@@ -41,10 +42,19 @@ export const BUILTIN_TOOLS = {
   // tested without a network.
   fetch: ({ http } = {}) => new FetchTool({ http }),
   search: ({ http } = {}) => new SearchTool({ http }),
+  // Reading back work this agent handed over without waiting. There is no
+  // matching `start_task`: a sub-agent is started by CALLING it with
+  // `wait: false`, so an agent can only hand work to the agents its own file
+  // already names. A spawn tool taking an agent name would be a way around the
+  // `tools:` list, and that list is the whole of how this tree decides what an
+  // agent may do.
+  check_task: ({ tasks } = {}) => new CheckTaskTool({ tasks }),
 }
 
+export { CheckTaskTool } from './CheckTaskTool.js'
 export { McpTool } from './McpTool.js'
 export { ShellTool } from './ShellTool.js'
 export { SubAgentTool } from './SubAgentTool.js'
+export { describeTask, NO_TASKS, TaskState, tasksOr } from './TasksPort.js'
 export { Tool } from './Tool.js'
 export { Toolbox } from './Toolbox.js'

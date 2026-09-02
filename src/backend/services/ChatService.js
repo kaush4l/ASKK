@@ -5,6 +5,7 @@ import { Role } from '../../core/Message.js'
 import { discoverMcpTools } from '../../core/mcp/index.js'
 import { Outcome } from '../../core/Outcome.js'
 import { describeProgress } from '../../core/progress.js'
+import { describeTask } from '../../core/tools/index.js'
 import { EventName } from '../../protocol/Envelope.js'
 
 /**
@@ -93,7 +94,24 @@ export class ChatService {
     this.pool = pool
     // What a tool needs to reach the world. Handed to the agent builder, which
     // gives each tool only what that tool asked for.
-    this.services = { sandbox, http, files }
+    // The pool is the thing that holds a running task, and `tasks` is the
+    // narrow view of it `core/` is allowed: list and get, never start. Starting
+    // is `SubAgentTool` with `wait: false`, so an agent can only hand work to
+    // the peers its own file names.
+    this.services = {
+      sandbox,
+      http,
+      files,
+      // Built only from a pool that can actually answer both questions. A
+      // dispatcher that can send a question and cannot hold a running one is a
+      // legitimate thing to be handed — `SubAgentTool` says so to the model
+      // when `wait: false` has nowhere to go — and a port that existed but
+      // threw would turn that into a broken turn instead of a sentence.
+      tasks:
+        typeof pool?.tasks === 'function' && typeof pool?.task === 'function'
+          ? { list: () => pool.tasks(), get: (id) => pool.task(id) ?? null }
+          : undefined,
+    }
     this._inference = null
     this._signature = ''
     /**
@@ -206,6 +224,28 @@ export class ChatService {
   }
 
   /**
+   * Work this agent handed to another and did not wait for.
+   *
+   * THE NOTIFICATION, and it is a line in the prompt rather than a message
+   * because there is nowhere else for it to arrive: an agent is not running
+   * between turns, so "tell the parent when the child finishes" can only mean
+   * "the next turn is told". A finished task is therefore something the agent
+   * reads in the same breath as the clock and its own file listing.
+   *
+   * The ANSWER is not here, on the rule the whole tools table is built on: that
+   * a task exists and is done is a fact, and a fact belongs in the context
+   * block; what it actually said is a paragraph of someone else's research, and
+   * rendering that into every remaining turn of the conversation would cost
+   * more than never having delegated. `check_task` spends the call to read it.
+   */
+  _backgroundContext(context) {
+    const running = this.services.tasks?.list?.() ?? []
+    if (!running.length) return context
+    context.push(['handed over', running.map((task) => describeTask(task)).join('\n')])
+    return context
+  }
+
+  /**
    * Send a message and get the reply.
    *
    * The user's message is persisted BEFORE the model is called. A failed or
@@ -294,6 +334,13 @@ export class ChatService {
       // call the user is waiting on; `SubAgentTool` does not carry it, because
       // this closure already knows the name and the emitter and a fourth
       // argument threaded through `Toolbox` would buy nothing.
+      // Handing work over without waiting. The pool answers with a receipt and
+      // the run settles into a record; nothing here awaits it, which is the
+      // whole point.
+      start:
+        typeof this.pool?.start === 'function'
+          ? (name, task) => this.pool.start(name, task, settings.value)
+          : null,
       dispatch: (name, task, stop) =>
         this.pool.ask(
           name,
@@ -302,7 +349,7 @@ export class ChatService {
           stop ?? signal,
           emit ? (progress) => emit(EventName.DELEGATE, progress) : null,
         ),
-      context: await this._context(notes),
+      context: this._backgroundContext(await this._context(notes)),
       services: this.services,
       extraTools: mcp.value,
     })

@@ -69,3 +69,65 @@ describe('SubAgentTool', () => {
     expect(answered.value).toContain('was given no task')
   })
 })
+
+/**
+ * Handing work over instead of waiting for it.
+ *
+ * The difference between a sub-agent that costs the parent the child's whole
+ * runtime and one that costs a round trip. What comes back is a receipt, and
+ * the id in it is what the context block and `check_task` both use.
+ */
+describe('a task handed over rather than awaited', () => {
+  const spec = { name: 'researcher', description: 'reads pages' }
+
+  test('wait: false returns a receipt at once and never touches the dispatcher', async () => {
+    const started = []
+    const tool = new SubAgentTool({
+      spec,
+      dispatch: async () => {
+        throw new Error('the dispatcher must not be called for a handed-over task')
+      },
+      start: (name, task) => {
+        started.push({ name, task })
+        return { id: 't7', agent: name }
+      },
+    })
+
+    const said = await tool.call({ task: 'read the release notes', wait: false })
+
+    expect(started).toEqual([{ name: 'researcher', task: 'read the release notes' }])
+    expect(said.value).toContain('t7')
+    expect(said.value).toContain('check_task')
+  })
+
+  /**
+   * A model writes what it writes. `"false"` out of a JSON-ish argument string
+   * has to mean the same thing as `false`, and everything else — including
+   * nothing at all — has to keep the waiting behaviour nobody asked to change.
+   */
+  test('only false and "false" hand over; anything else waits', async () => {
+    const waited = []
+    const tool = new SubAgentTool({
+      spec,
+      dispatch: async (_name, task) => {
+        waited.push(task)
+        return Outcome.ok('answered')
+      },
+      start: () => ({ id: 't1', agent: 'researcher' }),
+    })
+
+    expect((await tool.call({ task: 'a', wait: 'false' })).value).toContain('t1')
+    expect((await tool.call({ task: 'b' })).value).toBe('answered')
+    expect((await tool.call({ task: 'c', wait: true })).value).toBe('answered')
+    expect(waited).toEqual(['b', 'c'])
+  })
+
+  test('a realm that cannot hold a task says so instead of waiting anyway', async () => {
+    const tool = new SubAgentTool({ spec, dispatch: async () => Outcome.ok('answered') })
+
+    const said = await tool.call({ task: 'go', wait: false })
+
+    expect(said.value).toContain('cannot be handed work here')
+    expect(said.value).toContain('without wait: false')
+  })
+})

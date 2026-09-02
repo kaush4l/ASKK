@@ -5,6 +5,7 @@ import { AgentCatalogue } from '../../../src/core/agent/AgentCatalogue.js'
 import { resolveTools } from '../../../src/core/agent/loadAgent.js'
 import { Outcome } from '../../../src/core/Outcome.js'
 import { Blocked } from '../../../src/core/tools/HttpPort.js'
+import { BUILTIN_TOOLS } from '../../../src/core/tools/index.js'
 import { Toolbox } from '../../../src/core/tools/Toolbox.js'
 
 /**
@@ -173,5 +174,72 @@ describe('the peer the real agent file asks for', () => {
     const rendered = new Toolbox(resolved.value).render()
     expect(rendered).toContain(researcher.description)
     expect(rendered).not.toContain('Ask the researcher agent.')
+  })
+})
+
+/**
+ * Reading back work that was handed over.
+ *
+ * The split this tool exists for: WHICH tasks exist and whether they are done
+ * is a fact and lives in the context block, so this tool spends its round trip
+ * on the one thing a prompt cannot afford to carry — what a finished task
+ * actually said.
+ */
+describe('check_task', () => {
+  const port = (tasks) => ({
+    list: () => tasks,
+    get: (id) => tasks.find((task) => task.id === id) ?? null,
+  })
+
+  const finished = {
+    id: 't1',
+    agent: 'researcher',
+    task: 'read it',
+    state: 'done',
+    startedAt: 1000,
+    endedAt: 4000,
+    progress: null,
+    result: { ok: true, value: 'the page said hello', failure: null, notes: [] },
+  }
+
+  test('a finished task comes back with the answer, which the prompt never carries', async () => {
+    const tool = BUILTIN_TOOLS.check_task({ tasks: port([finished]) })
+
+    const said = await tool.call({ id: 't1' })
+
+    expect(said.value).toContain('the page said hello')
+    expect(said.value).toContain('3s')
+  })
+
+  test('a running task is reported, not waited for', async () => {
+    const running = {
+      ...finished,
+      id: 't2',
+      state: 'running',
+      endedAt: 0,
+      progress: { doing: ['fetch'] },
+      result: null,
+    }
+    const tool = BUILTIN_TOOLS.check_task({ tasks: port([running]) })
+
+    const said = await tool.call({ id: 't2' })
+
+    expect(said.value).toContain('still working')
+    expect(said.value).toContain('fetch')
+  })
+
+  test('an id that is not there lists the ones that are, rather than failing', async () => {
+    const tool = BUILTIN_TOOLS.check_task({ tasks: port([finished]) })
+
+    const said = await tool.call({ id: 'nope' })
+
+    expect(said.ok).toBe(true)
+    expect(said.value).toContain('t1')
+  })
+
+  test('a build with no task port answers instead of throwing', async () => {
+    const said = await BUILTIN_TOOLS.check_task({}).call({ id: 't1' })
+    expect(said.ok).toBe(true)
+    expect(said.value).toContain('not handed any work over')
   })
 })

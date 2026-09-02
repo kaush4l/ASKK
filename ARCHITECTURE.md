@@ -597,6 +597,47 @@ Sub-agents are **stateless** — asked one complete question, they answer it. A
 per-sub-agent transcript would make the same call return different things at
 different times, which is not what a tool is.
 
+## Work that outlives the turn that asked for it
+
+    researcher({"task": "...", "wait": false})   ->  handed to researcher as t1
+    context block, from the next turn on         ->  handed over: t1: researcher finished …
+    check_task({"id": "t1"})                     ->  what it actually said
+
+A delegated call blocks the parent for as long as the child takes. That is the
+right shape when the child's answer IS the reply, and the wrong one when the
+person is waiting for something else — so a sub-agent call takes a `wait`
+argument, and `false` returns a receipt at once while the run carries on in its
+own realm.
+
+**There is no `spawn` tool, and that is a decision.** Work is handed over by
+calling a peer this agent's file already names in `tools:`. A tool that took an
+agent name as an argument would be a way around that list, and the list is the
+whole of how this tree decides what an agent may do.
+
+**`AgentWorkerPool.start` is `ask` with nobody waiting.** Same thread, same
+message, same worker; the promise settles into a record instead of into a
+caller. The records live in memory and deliberately not in IndexedDB: the run is
+a thread in this worker, so a record that survived a reload would describe work
+that does not exist. What a reload loses is the answer to a question nobody
+waited for, and losing it honestly beats a stored record that can never finish.
+
+**The notification is a line in the prompt, because there is nowhere else for it
+to arrive.** An agent is not running between turns: "tell the parent when the
+child finishes" can only mean "the next turn is told". So a finished task is a
+fact in the context block, beside the clock and the file listing — and the
+ANSWER is not, on the same rule the tools table is built on. That a task is done
+is a fact and costs a line; what it said is a paragraph of someone else's
+research, and rendering that into every remaining turn would cost more than
+never having delegated. `check_task` spends one call to read it.
+
+Within a single run the context block does not change — it is rendered once per
+turn — so an agent that hands work over and wants it in the same run polls with
+`check_task`. Between turns it is simply told.
+
+The gate drives the whole loop through the built page: one typed question that
+hands the work over and answers immediately, and a second where the context
+block says it is done and the parent reads it back.
+
 ## An agent can be made to check its own work
 
 An agent file may declare one tool call, and the loop runs it once before that

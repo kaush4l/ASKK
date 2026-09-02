@@ -122,6 +122,12 @@ const PAGE_TEXT = 'the delegated tool reached the host'
 const DELEGATED_ANSWER = 'researcher-9f3c1: read one page and answered'
 /** What the PARENT has to finish with, once its sub-agent has answered it. */
 const PARENT_ANSWER = 'main-2b7e4: the researcher came back'
+/** The typed question that makes the parent hand work over instead of waiting. */
+const HANDOVER_QUESTION = 'hand it over: 8c1f2'
+/** What the parent says on the turn it hands the work over. */
+const HANDOVER_STARTED = 'main-4a9d0: started it and carried on'
+/** What the parent says once it has read the handed-over answer back. */
+const HANDOVER_READ = 'main-51e7c: the handed-over answer came back'
 /** What a scheduled question says, so it can be found in the transcript. */
 const SCHEDULED_MARK = 'scheduled-6d24b'
 /** A line only the researcher's own file carries, which is how a child prompt is known. */
@@ -144,6 +150,32 @@ function scriptedReply(prompt) {
     return prompt.includes(PAGE_TEXT)
       ? `think: [the page said what it says]\n\nplan: []\n\nact: answer\n\nresult: ${DELEGATED_ANSWER}`
       : `think: [read the page]\n\nplan: [fetch it]\n\nact: tool\n\nresult: fetch({"url": "${PAGE_URL}"})`
+  }
+  // The parent, in four states, and each is read off evidence in the prompt
+  // rather than off a counter this file keeps — a reply that arrived in the
+  // wrong order would otherwise be indistinguishable from the right one.
+  //
+  //   it has read a handed-over answer back      -> finish
+  //   the context block says something is done   -> read it with check_task
+  //   the question asked it to hand work over    -> hand it over, then finish
+  //   it has a researcher observation in hand    -> finish
+  //   anything else                              -> delegate and wait
+  // `action: check_task(` is the SCRATCHPAD's rendering of a call this run made.
+  // Matching a bare `check_task(` matched the tools block instead, which every
+  // prompt carries, so the very first delegating turn answered as though it had
+  // already read something back.
+  if (prompt.includes('action: check_task(') && prompt.includes(DELEGATED_ANSWER)) {
+    return `think: [it came back]\n\nplan: []\n\nact: answer\n\nresult: ${HANDOVER_READ}`
+  }
+  const handed = /\bt\d+\b/.exec(prompt.slice(prompt.indexOf('handed over')))
+  if (prompt.includes('handed over') && prompt.includes('finished') && handed) {
+    return `think: [read it]\n\nplan: []\n\nact: tool\n\nresult: check_task({"id": "${handed[0]}"})`
+  }
+  if (prompt.includes(HANDOVER_QUESTION) && !prompt.includes('handed to researcher')) {
+    return `think: [start it and carry on]\n\nplan: []\n\nact: tool\n\nresult: researcher({"task": "Read the page and say what it said.", "wait": false})`
+  }
+  if (prompt.includes('handed to researcher')) {
+    return `think: [started]\n\nplan: []\n\nact: answer\n\nresult: ${HANDOVER_STARTED}`
   }
   return prompt.includes(DELEGATED_ANSWER)
     ? `think: [it answered]\n\nplan: []\n\nact: answer\n\nresult: ${PARENT_ANSWER}`
@@ -724,6 +756,74 @@ if (!clocks.size) await fail(`the rail never showed an elapsed time: ${railSaid}
 console.log(
   `smoke: a typed question was delegated and answered through the built page; ` +
     `the rail said ${JSON.stringify([...new Set((turn.rail ?? []).filter((t) => t.includes('researcher:')))][0] ?? '')} while it worked`,
+)
+
+// --- work that outlives the turn that asked for it ---------------------------
+//
+// A delegated call blocks the parent for as long as the child takes, which is
+// the right shape when the answer IS the reply and the wrong one when it is
+// not. `researcher({..., "wait": false})` hands the question over and comes
+// straight back with a receipt; the context block reports it from the next turn
+// onward, and `check_task` spends a call to read what it said.
+//
+// Two typed questions, because that is what the feature IS: the notification
+// can only arrive on a turn, and there is no turn between turns. The first
+// hands the work over and answers immediately; the second is where the context
+// block says it is done and the parent reads it back.
+const handover = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 15000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+     const say = async (text, expected) => {
+       const input = await until(() => {
+         const field = pick('input')
+         return field && !field.disabled ? field : null
+       })
+       if (!input) return null
+       setter.call(input, text)
+       input.dispatchEvent(new Event('input', { bubbles: true }))
+       input.form.requestSubmit()
+       return until(() =>
+         [...document.querySelectorAll('.turn.assistant .text')].find((node) =>
+           node.textContent.includes(expected),
+         ),
+       )
+     }
+
+     const started = await say(${JSON.stringify(HANDOVER_QUESTION)}, ${JSON.stringify(HANDOVER_STARTED)})
+     if (!started) return { where: 'the parent never answered the hand-over turn' }
+     const read = await say('and what did it say?', ${JSON.stringify(HANDOVER_READ)})
+     if (!read) {
+       return {
+         where: 'the parent never read the handed-over answer back',
+         transcript: (pick('transcript')?.textContent ?? '').slice(-300),
+       }
+     }
+     return { started: true, read: true }
+   })()`,
+  session,
+  true,
+)
+
+if (!handover?.read)
+  await fail(`the handed-over task never came back: ${JSON.stringify(handover)}`, [
+    'The receipt comes from AgentWorkerPool.start, the line naming it comes from',
+    'ChatService._backgroundContext, and check_task reads it back. The agent must',
+    'name check_task in agents/main/agent.md tools: for any of that to be reachable.',
+    ...problems,
+  ])
+
+console.log(
+  'smoke: a question was handed to another agent, answered while the parent carried on, ' +
+    'and read back on a later turn through the context block',
 )
 
 // --- a question that asks itself --------------------------------------------
