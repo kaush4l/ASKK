@@ -677,6 +677,8 @@ implying with a cron row.
 | Prompt inspection | — | the panel | have | have | unverified | — | `ChatService.js:263` `emit(EventName.PROMPT, event)` → `page.jsx:134` |
 | Cost | elizaOS `trajectories/pricing.ts` | none | absent | absent | absent | — | none |
 | Traces / a run log | deepseek `client/ui-trajectory` | nothing durable | absent | absent | absent | — | `composition.js:18-27` — three store names now, and none of them is a run. The agent could write its own log into the third with `write_file`, which is not the same thing: a trace nothing but the model chooses to keep is not a record |
+| A question that repeats on a schedule | claw-code (a host cron drives it); pi (`--cron`) | `everySeconds`, ticked by the page under a Web Lock | yes | unverified | unverified | C3 | `backend/services/ScheduleService.js` + the tick in `page.jsx`; measured 2026-09-02 through the built page, both a new schedule and one overdue by an hour. **Only while a tab is open** — C3 is the root constraint, and a schedule that came due while it was shut asks once at the next open rather than once per period missed |
+| Work that survives the tab | claw-code, pi (both host processes) | **none, and not reachable** | absent | absent | absent | C3 | A run is a thread in this worker. A record could be persisted; the RUN cannot, and a stored task that can never finish would be a lie rather than a feature |
 | Install | — | open a URL | have | have | unverified | — | `next.config.js` `output: 'export'` |
 | Update | — | reload | have | have | unverified | — | — |
 | Runtime licence | bolt.diy `README.md:515` (WebContainer is licensed) | none | have | have | have | — | c2w is ours to ship |
