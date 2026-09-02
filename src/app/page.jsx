@@ -134,6 +134,8 @@ export default function Page() {
    * address is a server on this machine that most people are not running.
    */
   const [modelHealth, setModelHealth] = useState(null)
+  /** Work handed to another agent that no turn is waiting for. */
+  const [tasks, setTasks] = useState([])
   /** What is scheduled, so the rail can say so and the panel can list it. */
   const [schedules, setSchedules] = useState([])
   const [listening, setListening] = useState(false)
@@ -436,6 +438,11 @@ export default function Page() {
     // else can see. Read it after every turn so delegation is visible.
     const spawned = await clientRef.current.call('agents.threads')
     if (spawned.ok) setThreads(spawned.value)
+    // And what is still running with nobody waiting for it. Read on the same
+    // beat as the threads, because both are facts the backend holds that
+    // nothing in this realm can see.
+    const handed = await clientRef.current.call('agents.tasks')
+    if (handed.ok) setTasks(handed.value)
     if (result.ok) {
       // `.filter(Boolean)` is not tidiness here. A stopped run answers ok with
       // no assistant message at all — there was nothing it was willing to write
@@ -644,6 +651,15 @@ export default function Page() {
     schedules.filter((one) => one.conversationId === conversationId).length
       ? {
           text: `${schedules.filter((one) => one.conversationId === conversationId).length} scheduled`,
+        }
+      : null,
+    // Handed over and still going, with nobody waiting. Counted rather than
+    // named: the agent reads the detail in its own context block, and what a
+    // person needs from the rail is that something is happening for them.
+    tasks.filter((one) => one.state === 'running').length
+      ? {
+          text: `${tasks.filter((one) => one.state === 'running').length} in the background`,
+          live: true,
         }
       : null,
     ...Object.values(delegates).map((one) => ({

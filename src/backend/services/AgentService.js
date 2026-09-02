@@ -24,6 +24,18 @@ export class AgentService {
     return Outcome.ok(this.pool?.threads() ?? [])
   }
 
+  /**
+   * Work handed to another agent that outlived the turn that asked for it.
+   *
+   * The same records `check_task` reads, offered to the page for a different
+   * reason: the model needs the answer, and a person needs to know something is
+   * running at all. A rail that said nothing about it would leave a background
+   * question indistinguishable from one that was never asked.
+   */
+  async tasks() {
+    return Outcome.ok(this.pool?.tasks?.() ?? [])
+  }
+
   async list() {
     const all = await this.catalogue.all()
     if (!all.ok) return all
