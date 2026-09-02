@@ -168,6 +168,14 @@ describe('work handed over', () => {
     const { pool } = pooled()
 
     const receipt = pool.start('researcher', 'read it', {}, { owner: 'c1' })
+
+    // Polling a RUNNING task does not end its notification. Marking a poll as
+    // read would mean the agent asks "is it done yet", the task finishes, and
+    // nothing ever tells it — polled once, then silence.
+    expect(pool.acknowledge(receipt.id)).toBe(false)
+    expect(pool.task(receipt.id).read).toBe(false)
+
+    pool.task(receipt.id).state = 'done'
     expect(pool.acknowledge(receipt.id)).toBe(true)
     expect(pool.task(receipt.id).read).toBe(true)
     expect(pool.acknowledge('no-such')).toBe(false)

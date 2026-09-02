@@ -117,8 +117,15 @@ export class AgentWorkerPool {
    */
   acknowledge(id) {
     const found = this._tasks.get(id)
-    if (found) found.read = true
-    return Boolean(found)
+    if (!found) return false
+    // A RUNNING task cannot be read, only polled — and marking a poll as read
+    // is the bug this line exists to prevent: the agent asks "is it done yet",
+    // the record is marked read, the task finishes, and the context block never
+    // mentions it again. The agent would have polled once and then never been
+    // told. Only a finished task can be over.
+    if (found.state === TaskState.RUNNING) return false
+    found.read = true
+    return true
   }
 
   /**
