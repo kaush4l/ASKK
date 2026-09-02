@@ -552,3 +552,88 @@ describe('a sub-agent that is still working', () => {
     expect(seen).toEqual([{ name: 'helper', task: 'go and read', watched: false }])
   })
 })
+
+/**
+ * What a turn costs before the model is called.
+ *
+ * An agent that declares an MCP server in the guest used to pay for it on every
+ * single turn: `initialize` and `tools/list` are two commands, the transport has
+ * no session, and a command is an Alpine boot. Measured here at TWO
+ * `sandbox.run` calls for a turn that only said hello — and on the first turn of
+ * a session those two are the 50.2 MiB image, fetched and inflated, for a
+ * question that never wanted a guest.
+ *
+ * So the guest's servers wait for the guest. This is the measurement, kept as a
+ * test because the number is the whole argument.
+ */
+describe('what an mcp server in the guest costs a turn', () => {
+  const withServer = AgentSpec.of({
+    metadata: {
+      name: 'main',
+      mcp: [{ name: 'host', command: 'mcp-disk', include_tools: ['disk'] }],
+    },
+    body: 'be brief',
+    source: 'test',
+  }).value
+
+  /** A guest that records every command and answers the handshake. */
+  const guest = ({ warm }) => {
+    const ran = []
+    return {
+      ran,
+      get available() {
+        return true
+      },
+      get warm() {
+        return warm
+      },
+      async run(command) {
+        ran.push(command)
+        const listing = { jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'disk' }] } }
+        return Outcome.ok({ stdout: `${JSON.stringify(listing)}\n`, stderr: '', code: 0 })
+      },
+    }
+  }
+
+  const chatFor = (sandbox) => {
+    const { service } = chatWith([answerTurn('hello back')], {
+      catalogue: {
+        async spec() {
+          return Outcome.ok(withServer)
+        },
+        async all() {
+          return Outcome.ok([withServer])
+        },
+      },
+      sandbox,
+    })
+    return service
+  }
+
+  test('a cold guest is not started, and the note says the server is waiting', async () => {
+    const sandbox = guest({ warm: false })
+    const service = chatFor(sandbox)
+
+    const sent = await service.send({ id: 'c1', text: 'hello' })
+
+    expect(sandbox.ran).toEqual([])
+    expect(
+      sent.notes.some((note) => note.includes('is in the guest, which is not running yet')),
+    ).toBe(true)
+  })
+
+  test('a guest that is already running is asked, once, and not again', async () => {
+    const sandbox = guest({ warm: true })
+    const service = chatFor(sandbox)
+
+    await service.send({ id: 'c1', text: 'hello' })
+    const afterFirst = sandbox.ran.length
+    await service.send({ id: 'c1', text: 'hello again' })
+
+    // Two commands for the handshake, and the same two are not paid twice: the
+    // list cannot change while the page is open, because the agent file it came
+    // from is fetched once and kept.
+    expect(afterFirst).toBe(2)
+    expect(sandbox.ran.length).toBe(2)
+  })
+})

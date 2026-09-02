@@ -171,6 +171,15 @@ export class C2wSandbox extends Sandbox {
   }
 
   /**
+   * The module has been fetched and the worker is up. Not "a command is
+   * running" — one boot serves every later command — so this is exactly the
+   * question "would using the guest right now cost a download".
+   */
+  get warm() {
+    return Boolean(this._booted)
+  }
+
+  /**
    * What a piece of a command line costs this guest.
    *
    * Public, and additive over concatenation, because a caller that puts

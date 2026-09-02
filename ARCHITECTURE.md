@@ -419,6 +419,28 @@ run a process.** The guest in `public/sandbox/` is a real Linux userland, so a
 command run there is a real process, and the server it starts is a real MCP
 server. Nothing is emulated at the protocol level and nothing is a shim.
 
+### The guest's servers wait for the guest
+
+Discovery is two commands per server — `initialize` and `tools/list`, because the
+transport has no session — and it ran **on every turn**. Measured in
+`test/backend/ChatService.test.js`: two `sandbox.run` calls before the model was
+called, on a turn that said hello. Two Alpine boots at roughly a second each,
+and on the first turn of a session those two boots are the whole 50.2 MiB image,
+fetched and inflated, for a question that never wanted a guest. That made
+`composition.js`'s promise — *"an agent that never runs a command must never
+download the guest"* — false for every agent with an `mcp:` block, which is
+every agent that shipped.
+
+Two changes, and the measured number is 2 → 0 for that turn. `Sandbox` answers a
+second question now, `warm`: not "could a command run" but "is the guest already
+up", and a port that cannot tell answers false, because guessing wrong costs a
+download nobody asked for. `discoverMcpTools` skips a guest-backed server while
+the guest is cold and says so in a note, so the tools appear from the turn after
+the first `shell` call rather than never and rather than at once. And
+`ChatService` keeps what discovery found for the session, keyed by agent and by
+whether the guest was up — the same argument as the one inference object it
+already reuses, one seam over.
+
 ### The server is part of the agent
 
 There is no second configuration file. A server is declared where the agent is:

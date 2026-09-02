@@ -18,6 +18,23 @@ export class Sandbox {
   static LABEL = 'sandbox'
 
   /** Whether this sandbox can run anything at all right now. */
+  /**
+   * Is the guest already RUNNING, as opposed to merely configured?
+   *
+   * The two are different questions with different prices. `available` says a
+   * command could be run; `warm` says running one costs no download. Anything
+   * that wants the guest for a convenience rather than for the user's own
+   * request has to ask this one — see `discoverMcpTools`, which used to boot a
+   * 50 MiB guest twice before the model was called on a turn that only said
+   * hello.
+   *
+   * False by default: a port that cannot tell must be treated as cold, because
+   * the cost of being wrong is a download the user did not ask for.
+   */
+  get warm() {
+    return false
+  }
+
   get available() {
     return false
   }

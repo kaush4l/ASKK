@@ -95,6 +95,12 @@ export class ChatService {
     this.services = { sandbox, http, files }
     this._inference = null
     this._signature = ''
+    /**
+     * An agent's MCP tools, once discovered. Same argument as the inference
+     * above, one seam over: rebuilding per turn is free for an HTTP server and
+     * two Alpine boots for one in the guest.
+     */
+    this._mcp = new Map()
   }
 
   /**
@@ -147,6 +153,30 @@ export class ChatService {
    * endpoint there is no prefix to lose anyway — measured, `cached_tokens` is 0
    * and there is no cache field at all — so what it costs is exactly its size.
    */
+  /**
+   * An agent's MCP tools, discovered once rather than once a turn.
+   *
+   * Discovery is two guest commands per server — `initialize` and `tools/list`,
+   * because the transport has no session — and it ran on every single turn.
+   * Measured at two `sandbox.run` calls before the model was called on a turn
+   * that said hello, which is two Alpine boots at roughly a second each for a
+   * list that cannot change while the page is open: an agent file is fetched
+   * once by `AgentCatalogue` and kept.
+   *
+   * Keyed by the agent AND by whether the guest was running, because those are
+   * two different answers: cold, a guest server is deliberately skipped with a
+   * note, and that answer must not be remembered after the guest starts.
+   */
+  async _mcpToolsFor(spec) {
+    const key = `${spec.name}:${this.services.sandbox?.warm ? 'warm' : 'cold'}`
+    const known = this._mcp.get(key)
+    if (known) return known
+
+    const found = await discoverMcpTools(spec.mcp, this.services)
+    this._mcp.set(key, found)
+    return found
+  }
+
   async _context(notes) {
     const context = describeEnvironment()
     if (!this.services.files) return context
@@ -223,7 +253,7 @@ export class ChatService {
     // offer, before the prompt is rendered: a tool the model is not told about
     // is a tool it will never call. A server that cannot be started costs its
     // own tools and leaves a note.
-    const mcp = await discoverMcpTools(spec.value.mcp, this.services)
+    const mcp = await this._mcpToolsFor(spec.value)
     notes.push(...mcp.notes)
 
     // The agent — its instructions, loop, contract and toolkit — comes from its
