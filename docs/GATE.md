@@ -140,8 +140,18 @@ see", below, for the other two.
 ## What the smoke does
 
 `scripts/smoke.js` serves `out/` from `Bun.serve`, drives headless Chrome over
-raw CDP, and makes three realms answer — and, in the first of them, drives one
-feature by clicking it:
+raw CDP, and makes **four** realms answer — the page, the backend worker, a
+sub-agent's own thread, and the classic sandbox worker — driving four features
+by clicking or typing at them.
+
+It also serves a **scripted model**: an OpenAI-compatible endpoint on the same
+host that answers with a reply chosen by what the prompt it was sent already
+contains, on both the plain-JSON and the SSE paths, because the page streams
+whenever anyone is watching. Nothing of the tree is mocked by it. The transport,
+the contract, the parser, the loop and the toolbox are all the real ones; the
+only thing standing in for reality is the model, and the branch it takes is read
+off evidence in the prompt rather than off a turn counter, so a reply arriving in
+the wrong order fails rather than passing by luck.
 
 - **the page and the backend worker.** It waits for `data-live` on the wordmark,
   which goes true only after `worker.js` has answered `conversations.list`,
@@ -163,6 +173,29 @@ feature by clicking it:
   never bumping — which is `scripts/deploy-check.js`'s ground and not this
   step's. `docs/LEDGER.md`, rows S46 and S47.
 
+- **a sub-agent's own thread.** `AgentWorkerPool` is asked for `researcher`; the
+  thread fetches its own agent file from the base path the pool handed it,
+  builds the tools its own file declares, reads a page with its own `fetch`,
+  reports each finished pass, and answers — and the check asserts the name the
+  worker reported for `self.name`, not the name it was asked for. This realm was
+  the one on the architecture's diagram nothing had ever entered.
+- **a delegating turn, typed into the composer.** The parent chooses to call the
+  researcher, the rail is watched by a `MutationObserver` while it happens (a
+  poll on a timer read either side of the line it was looking for), and the
+  answer is asserted in the transcript. It also asserts the clock moved, which
+  is the difference between an app that is working and one that is wedged.
+- **work handed over and read back.** Two typed questions: the first hands a
+  question to another agent with `wait: false` and answers immediately; the
+  second is where the context block reports it finished and the parent reads it
+  with `check_task`.
+- **a question that asks itself.** A schedule is created by clicking through the
+  panel, and the reload runs the tick. What that proves is a NEW schedule firing
+  once; the overdue path — a real past `lastRanAt`, reopened after its period —
+  is not covered, and saying so is the difference between a check and a claim.
+- **an app that is ready and a model that is not.** The discard port is planted
+  as the model address and the page has to say which address it tried. Pointing
+  it at the default would make the check depend on whether whoever runs the gate
+  happens to have a model server up.
 - **`public/sandbox/vm-worker.js`, running an actual guest.** The smoke serves a
   ~300-byte wasm module it assembles itself (`scripts/wasm/tinyGuest.js`), posts
   `boot` and then `run`, and requires the answer to be `stdout: '!'` with exit
