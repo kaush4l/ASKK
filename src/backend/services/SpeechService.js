@@ -1,4 +1,5 @@
 import { Outcome, Reason } from '../../core/Outcome.js'
+import { describeProgress } from '../../core/progress.js'
 import { createSpeaker, createTranscriber } from '../../core/speech/index.js'
 import { EventName } from '../../protocol/Envelope.js'
 
@@ -160,20 +161,4 @@ export class SpeechService {
 /** Carry a factory's repairs onto whatever outcome finally travels. `withNote` takes one. */
 function withNotes(outcome, notes) {
   return notes.reduce((carried, note) => carried.withNote(note), outcome)
-}
-
-/**
- * transformers.js reports progress per file, several times a second, in an
- * object that also carries the pipeline's internals. Narrowed here so what
- * crosses the wire is what the page draws and nothing else — and so a change in
- * that library's event shape is one function to repair rather than a component.
- */
-function describeProgress(event) {
-  return {
-    status: event?.status ?? 'progress',
-    file: event?.file ?? '',
-    loaded: event?.loaded ?? 0,
-    total: event?.total ?? 0,
-    percent: Math.round(event?.progress ?? 0),
-  }
 }

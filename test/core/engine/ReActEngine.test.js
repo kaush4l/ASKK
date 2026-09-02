@@ -903,3 +903,113 @@ describe('the four states, through the engine', () => {
     expect(outcome.notes).toContain('failed on step 1')
   })
 })
+
+/**
+ * An agent's own check, run once before it is allowed to finish.
+ *
+ * The design question is who judges the result, and the answer is: not the
+ * loop. A check's output is a test runner's summary, a linter's silence, an
+ * exit status — reading pass or fail out of that would be the engine guessing
+ * at a vocabulary it does not own, and guessing wrong means either a good
+ * answer thrown away or a broken one waved through. So the output goes back to
+ * the agent, which has the task and the output in front of it.
+ */
+describe('the check an agent declares', () => {
+  const CHECK = 'shell({"command": "python3 -m unittest"})'
+
+  /** A toolbox that records what it was asked to run and answers with a script. */
+  const recorder = (observation = 'OK') => {
+    const ran = []
+    return {
+      isEmpty: false,
+      names: ['shell'],
+      render: () => '- shell',
+      ran,
+      async run(text) {
+        ran.push(text)
+        return { observation, count: 1 }
+      },
+    }
+  }
+
+  test('it runs when the agent first answers, and the agent answers again after seeing it', async () => {
+    const toolbox = recorder('FAILED (failures=1)')
+    const engine = new ReActEngine({
+      inference: new ScriptedInference({
+        replies: [
+          'think: []\n\nplan: []\n\nact: answer\n\nresult: done',
+          'think: []\n\nplan: []\n\nact: answer\n\nresult: fixed it and done',
+        ],
+      }),
+      toolbox,
+      check: CHECK,
+    })
+
+    const run = await engine.run([{ role: 'user', text: 'write the module' }])
+
+    expect(toolbox.ran).toEqual([CHECK])
+    expect(run.value.answer).toBe('fixed it and done')
+    expect(run.notes.some((note) => note.includes("ran this agent's check"))).toBe(true)
+  })
+
+  test('it runs once, not once per answer, so a failing check cannot eat the budget', async () => {
+    const toolbox = recorder('FAILED (failures=1)')
+    const engine = new ReActEngine({
+      inference: new ScriptedInference({
+        replies: [
+          'think: []\n\nplan: []\n\nact: answer\n\nresult: first',
+          'think: []\n\nplan: []\n\nact: answer\n\nresult: second',
+          'think: []\n\nplan: []\n\nact: answer\n\nresult: third',
+        ],
+      }),
+      toolbox,
+      check: CHECK,
+    })
+
+    const run = await engine.run([{ role: 'user', text: 'write the module' }])
+
+    expect(toolbox.ran).toHaveLength(1)
+    expect(run.value.answer).toBe('second')
+  })
+
+  test('an agent that declares none is not delayed by one', async () => {
+    const toolbox = recorder()
+    const engine = new ReActEngine({
+      inference: new ScriptedInference({
+        replies: ['think: []\n\nplan: []\n\nact: answer\n\nresult: done'],
+      }),
+      toolbox,
+    })
+
+    const run = await engine.run([{ role: 'user', text: 'anything' }])
+
+    expect(toolbox.ran).toEqual([])
+    expect(run.value.answer).toBe('done')
+  })
+
+  /**
+   * The last turn was told it was the last. Spending its final step on a check
+   * would end the run with no answer at all, which is worse than an unchecked
+   * one — and the agent was never given a turn to react to the result.
+   */
+  test('it is skipped on the last turn, because the answer matters more', async () => {
+    const toolbox = recorder()
+    const engine = new ReActEngine({
+      inference: new ScriptedInference({
+        replies: [
+          'think: []\n\nplan: []\n\nact: tool\n\nresult: shell({"command": "ls"})',
+          'think: []\n\nplan: []\n\nact: answer\n\nresult: done anyway',
+        ],
+      }),
+      toolbox,
+      check: CHECK,
+    })
+
+    const run = await engine.run([{ role: 'user', text: 'anything' }], { budget: { steps: 2 } })
+
+    expect(run.ok).toBe(true)
+    expect(run.value.answer).toBe('done anyway')
+    // The one call is the model's own tool call, not the check.
+    expect(toolbox.ran).toEqual(['shell({"command": "ls"})'])
+  })
+})

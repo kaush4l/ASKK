@@ -33,6 +33,11 @@ export const AGENT_DEFAULTS = Object.freeze({
   thinking: null,
   model: '',
   tools: [],
+  // One tool call to run before this agent is allowed to finish. Empty because
+  // most agents have nothing to check: a check is a claim that this agent's
+  // work has a test, and inventing one for an agent that answers questions
+  // would spend a tool call proving nothing.
+  check: '',
   // MCP servers, as McpServerConfig records read from this agent's own file.
   // Empty because a server is something an agent is given, never something it
   // has by default.
@@ -237,6 +242,16 @@ export class AgentSpec {
       }
     }
 
+    // One tool call the agent's own author wrote, run once before this agent is
+    // allowed to finish. A string and not a list: a check that is three calls
+    // is a script, and a script belongs in a file the guest can run.
+    const check = String(raw.check ?? '').trim()
+    if (check && !/^[A-Za-z_][\w-]*\s*\(/.test(check)) {
+      notes.push(
+        `${source}: check ${JSON.stringify(check)} is not a tool call like name({"arg": "value"}); ignored`,
+      )
+    }
+
     // The body IS the system message. An empty one is allowed and means the
     // agent brings only its response contract — an odd agent, but a legitimate
     // one, and not something to substitute an invented instruction for.
@@ -253,6 +268,7 @@ export class AgentSpec {
         thinking,
         maxTokens,
         tools,
+        check: /^[A-Za-z_][\w-]*\s*\(/.test(check) ? check : '',
         mcp,
         prompt,
         budget,

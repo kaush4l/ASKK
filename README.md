@@ -8,7 +8,8 @@ model you point it at.
 ## What you need before it can answer anything
 
 **A model.** This app has no model of its own and no key of its own. In
-*settings* you name one of three things:
+*settings* you name one of three things — and if you have none of them today,
+the third needs nothing but patience:
 
 - an **OpenAI-compatible** server — LM Studio, vLLM, Ollama's OpenAI endpoint,
   OpenAI itself. Give it the base URL ending in `/v1`, the model name that
@@ -18,9 +19,9 @@ model you point it at.
 - **transformers.js** — a small model that downloads into the tab and runs
   there. No endpoint, no key, and a wait of minutes the first time.
 
-Until one of those answers, every question comes back with the endpoint's own
-complaint. That is not the app failing quietly; it is the app telling you what
-the endpoint said.
+Until one of those answers, the page says so on its own: it checks the address
+when it opens and, when nothing is there, says which address it tried instead of
+waiting for your first question to fail.
 
 ## What to expect the first time
 
@@ -30,21 +31,21 @@ the endpoint said.
 - **The sandbox is slow on purpose-built work.** It is an emulator, a few
   hundred times slower than the machine it runs on. Fine for a file, a check, a
   short script. Not a place to build software.
-- **A question can take minutes.** While one is running the rail at the top
-  counts the seconds, and names any second agent working on your behalf — so
-  `researcher: fetch (2)` means a helper is reading a page for you, and a clock
-  that keeps moving means the tab is alive.
+- **A question can take minutes.** While one is running, the bar across the top
+  counts the seconds and names any second agent working on your behalf — so
+  `researcher: fetch · step 2` means a helper is on its second pass, reading a
+  page for you. A clock that keeps moving means the tab is alive.
 - **Nothing is uploaded.** Conversations, settings and the agent's files are in
   your browser's own storage. In a private window there is no storage, and the
   app says so and keeps working for the length of the tab.
 
 ## What it can do
 
-Ask itself a question on a period — hourly, daily — in the conversation you set
-it up in, for as long as that tab is open. Answer from what it knows; search the web and read a page; run a command in a
+Answer from what it knows; search the web and read a page; run a command in a
 private Linux userland with Python 3.12 in it; keep files of its own that last
 between conversations and that you can read; hand a question to a second agent
-that works on its own thread. What is in *settings* is the model, the voice, and
+that works on its own thread; and ask itself a question on a period — hourly,
+daily — in the conversation you set it up in, for as long as that tab is open. What is in *settings* is the model, the voice, and
 which agent you are talking to.
 
 An agent is a markdown file — `agents/main/agent.md` is the one the app opens
@@ -54,8 +55,11 @@ no build step between the file and the behaviour.
 
 ## Running it yourself
 
+It builds and runs with [Bun](https://bun.sh) — one install, no other toolchain:
+
+    curl -fsSL https://bun.sh/install | bash   # if you do not have it
     bun install
-    bun run dev        # http://localhost:3000/ASKK
+    bun run dev                                # http://localhost:3000/ASKK
 
 # Notes for whoever is working on it
 

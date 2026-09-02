@@ -40,7 +40,13 @@ function lastRan(at) {
   return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`
 }
 
-export function SchedulePanel({ schedules = [], onCreate, onRemove, ready = true }) {
+export function SchedulePanel({
+  schedules = [],
+  conversationId = '',
+  onCreate,
+  onRemove,
+  ready = true,
+}) {
   const [text, setText] = useState('')
   const [seconds, setSeconds] = useState(3600)
 
@@ -87,9 +93,10 @@ export function SchedulePanel({ schedules = [], onCreate, onRemove, ready = true
 
       {schedules.length === 0 ? (
         <p className="hint" data-testid="plans-empty">
-          Nothing is scheduled. A scheduled question is asked in this conversation, the same way you
-          would ask it yourself, while this tab is open — close the tab and the next one waits for
-          you rather than piling up.
+          Nothing is scheduled yet. A scheduled question is asked in this conversation, the same way
+          you would ask it yourself, and only while this tab is open. Close the tab and nothing
+          runs; open it again and a question that came due while you were away is asked once,
+          however long you were gone.
         </p>
       ) : (
         <ul className="plan-list" data-testid="plan-list">
@@ -99,6 +106,15 @@ export function SchedulePanel({ schedules = [], onCreate, onRemove, ready = true
               <div className="plan-when">
                 <span>{said(one.everySeconds)}</span>
                 <span className="dim">last {lastRan(one.lastRanAt)}</span>
+                {/* Which conversation it belongs to, said only when that is not
+                    this one. A schedule asks in the chat it was made in, and a
+                    list that looked identical in every chat would have someone
+                    waiting here for a question that is asked over there. */}
+                {conversationId && one.conversationId !== conversationId ? (
+                  <span className="dim" data-testid={`plan-elsewhere-${one.id}`}>
+                    in another chat
+                  </span>
+                ) : null}
                 <button type="button" onClick={() => onRemove?.(one.id)}>
                   remove
                 </button>

@@ -230,6 +230,6 @@ describe('the real agents/main/agent.md', () => {
     // `docs/TESTBED.md` records keeping it here as deliberate. A decision with a
     // doc paragraph and no executable guard is a decision the next cut deletes
     // by accident: the whole sandbox paragraph could go with the suite green.
-    expect(body).toContain('a hundred times slower')
+    expect(body).toContain('a few hundred times slower')
   })
 })

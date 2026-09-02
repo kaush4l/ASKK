@@ -305,8 +305,11 @@ rather than hidden:
   no measurable time, and the gate asserts it. Where the shell never reaches the
   echo — a trap, quoting that swallowed it — the emulator's 0 stands and the trap
   arrives as a note.
-- **About a hundred times slower** than the machine it runs on, which is the
-  sentence the model is handed and is the wrong order of magnitude. Measured
+- **A few hundred times slower** than the machine it runs on, which is the
+  sentence the model is handed and now matches the measurement. It said "roughly
+  a hundred" in `agents/main/agent.md` and "a few hundred" in `README.md` for a
+  wave, and the two contradicting each other was found by a reader of the words
+  rather than by any check. Measured
   against the identical busybox in `docker run --rm alpine:3.21`: 358x on an
   `awk` loop, 485x on `sha256sum`, 255x on `gzip`. Fine for `ls`, a grep, a small
   script. Not a place to run a build.
@@ -593,6 +596,30 @@ machine.
 Sub-agents are **stateless** — asked one complete question, they answer it. A
 per-sub-agent transcript would make the same call return different things at
 different times, which is not what a tool is.
+
+## An agent can be made to check its own work
+
+An agent file may declare one tool call, and the loop runs it once before that
+agent is allowed to finish:
+
+    check: shell({"command": "python3 -m unittest -q"})
+
+**Nothing in the loop judges the result.** A check's output is a test runner's
+summary, a linter's silence, an exit status — reading pass or fail out of that
+would be `ReActEngine` guessing at a vocabulary it does not own, and guessing
+wrong means either a good answer thrown away or a broken one waved through. So
+the output goes into the scratchpad with one sentence of framing and the agent
+takes another turn: the reply that ends the run is one that has seen its own
+test, rather than one that never ran it.
+
+Once per run, not once per answer, because an agent that keeps failing its check
+would otherwise spend its whole budget on it — and the second answer is already
+written in the knowledge of the result. Skipped when the budget is closing: the
+last turn was told it is the last, and spending its final step on a check ends
+the run with no answer at all, which is worse than an unchecked one.
+
+A file that names a `check` which is not a tool call keeps the agent and loses
+the line, with a note, like every other setting `AgentSpec` cannot honour.
 
 ## Questions that ask themselves
 

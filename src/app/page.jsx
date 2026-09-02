@@ -24,7 +24,12 @@ import { SchedulePanel } from './SchedulePanel.jsx'
  * block this used to be, where an arm could be forgotten and render a meter
  * inside the run log.
  */
-const INSTRUMENTS = ['prompt', 'run', 'files', 'plans']
+// The rail's buttons, and each one is the name the whole app uses for that
+// thing. `schedule` was `plans` for one wave and the feature had four names —
+// the button said plans, the panel said scheduled question, the submit said
+// schedule it, the rail said "2 scheduled" — which is four things to a reader
+// and one to whoever wrote it.
+const INSTRUMENTS = ['prompt', 'run', 'files', 'schedule']
 
 /**
  * How often the page looks for a schedule that has come due.
@@ -339,6 +344,11 @@ export default function Page() {
           return
         }
         if (name === EventName.DELTA) {
+          // The first token is proof the model is up, so it is also what
+          // retires the download bar — a cached model reports a start and then
+          // nothing at all, and waiting for a finish that never comes would
+          // leave the last byte count on screen for the whole turn.
+          setDownload(null)
           // Two channels, kept apart. A thinking model can emit pages of
           // scratchpad before its first word of answer; merging them would put
           // the reply at the bottom of its own working-out.
@@ -348,6 +358,14 @@ export default function Page() {
         }
         if (name === EventName.USAGE) {
           setUsage(data)
+          return
+        }
+        if (name === EventName.PROGRESS) {
+          // Weights arriving for a model that runs in this tab. The same bar
+          // the speech panels use, because it is the same fact: a first load is
+          // minutes of a file, and an app that says nothing for minutes is
+          // indistinguishable from one that has hung.
+          setDownload(data)
           return
         }
         if (name === EventName.DELEGATE) {
@@ -418,6 +436,7 @@ export default function Page() {
     // leftover "researcher: fetch (3)" on the rail would be a claim that
     // something is still running.
     setDelegates({})
+    setDownload(null)
     // After the steps, so a file view that reloads on this reads a workspace the
     // turn has finished writing to.
     setTurnsDone((count) => count + 1)
@@ -598,7 +617,7 @@ export default function Page() {
     ...Object.values(delegates).map((one) => ({
       text: one.answered
         ? `${one.agent}: answered`
-        : `${one.agent}: ${one.doing?.join(', ') || 'thinking'} (${one.step})`,
+        : `${one.agent}: ${one.doing?.join(', ') || 'thinking'} · step ${one.step}`,
       live: !one.answered,
     })),
     ...threads.map((t) => ({ text: `${t.confirmedName ?? t.name}·${t.calls}`, live: true })),
@@ -1002,9 +1021,10 @@ export default function Page() {
                 is the backend's and a component that was handed a list would be
                 showing whatever the page last remembered. `turnsDone` is when
                 to look again. */}
-            {panel === 'plans' ? (
+            {panel === 'schedule' ? (
               <SchedulePanel
                 schedules={schedules}
+                conversationId={conversationId}
                 ready={ready && Boolean(conversationId)}
                 onCreate={addSchedule}
                 onRemove={removeSchedule}

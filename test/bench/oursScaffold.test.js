@@ -61,9 +61,12 @@ describe('the spec comes out of agents/main/agent.md', () => {
     const body = readFileSync(REAL_AGENT_FILE, 'utf8').split('\n---\n')[1].trim()
     expect(spec.value.system).toBe(body)
     // The rig cuts the frontmatter's tool list; it does not touch the body. The
-    // sentence about a hundred-times-slower emulator is not true of this rig and
-    // is deliberately left in — softening it is the thumb on the scale.
-    expect(spec.value.system).toContain('roughly a hundred times slower')
+    // sentence about a few-hundred-times-slower emulator is not true of this rig
+    // and is deliberately left in — softening it is the thumb on the scale. The
+    // wording moved from "roughly a hundred" to "a few hundred" when a reader
+    // noticed the file and the README disagreed; the measurements behind it are
+    // 358x, 485x and 255x, so "a few hundred" is the true one.
+    expect(spec.value.system).toContain('a few hundred times slower')
   })
 
   test('the body is the shipped one byte for byte, hashed the way their arm is', () => {

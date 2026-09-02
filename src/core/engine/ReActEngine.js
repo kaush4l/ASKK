@@ -209,6 +209,9 @@ export class ReActEngine extends Engine {
     // Reset by any reply that decides, and named for the streak rather than for
     // the count so it cannot be read as a total three lines from `last.isUnsaid`.
     let unsaidStreak = 0
+    // Whether this agent's declared check has been run for this run. One per
+    // run, not one per answer: see the answer branch below.
+    let checked = false
 
     // Five exits: the agent answered, the user stopped it, a call to the model
     // failed, the budget ran out and the last word was not taken, or the model
@@ -370,6 +373,35 @@ export class ReActEngine extends Engine {
 
       // A plain-text run has no `act` to read, so the first reply is the answer.
       if (typeof last === 'string' || last.isAnswer !== false) {
+        // The agent's own check, run ONCE, before this answer is allowed to be
+        // the end of the run.
+        //
+        // Who judges it is the whole design question, and the answer here is:
+        // not this loop. A check's output is a test runner's summary, a
+        // linter's silence, an exit status — reading pass or fail out of that
+        // text would be this file guessing at a vocabulary it does not own, and
+        // guessing wrong means either an answer thrown away or a broken one
+        // waved through. So the result goes back to the agent, which has the
+        // task, the code and the output in front of it, and the next reply is
+        // an answer that has seen its own test rather than one that never ran.
+        //
+        // Once, and only once, because a check the agent keeps failing would
+        // otherwise spend the whole budget on it — and because the second
+        // answer is already an answer written in the knowledge of the result.
+        // Skipped when the budget is closing: the last turn was told it is the
+        // last, and spending its final step on a check would end the run with
+        // no answer at all, which is worse than an unchecked one.
+        if (this.check && !checked && this.toolbox && !this.toolbox.isEmpty && !budget.closing) {
+          checked = true
+          const ran = await Promise.race([this.toolbox.run(this.check, signal), until(signal)])
+          if (signal?.aborted) return this.stopped(last, budget, notes)
+          notes.push(`ran this agent's check: ${this.check}`)
+          scratchpad.push({
+            action: this.check,
+            observation: `${ran?.observation ?? ''}\n\nThat is this agent's own check, run because you were about to finish. Read it: if it shows your work is done and correct, answer now. If it shows a problem, fix that first.`,
+          })
+          continue
+        }
         return Outcome.ok(
           last,
           budget.steps > 1 ? [...notes, `answered after ${budget.steps} steps`] : notes,

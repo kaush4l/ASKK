@@ -725,7 +725,7 @@ const scheduled = await evaluate(
      // Through the panel, not through the route: what is in question is the
      // wiring — a rail button, a mounted pane, a form that reaches the backend
      // — and only a click crosses all of it.
-     const toggle = pick('plans-toggle')
+     const toggle = pick('schedule-toggle')
      if (!toggle) return { where: 'the rail has no plans button' }
      toggle.click()
      const field = await until(() => pick('plan-text'))

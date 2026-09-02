@@ -4,6 +4,7 @@ import { createInference } from '../../core/inference/index.js'
 import { Role } from '../../core/Message.js'
 import { discoverMcpTools } from '../../core/mcp/index.js'
 import { Outcome } from '../../core/Outcome.js'
+import { describeProgress } from '../../core/progress.js'
 import { EventName } from '../../protocol/Envelope.js'
 
 /**
@@ -243,6 +244,19 @@ export class ChatService {
     const inference = await this._inferenceFor(settings.value, spec.value)
     notes.push(...inference.notes)
 
+    // A model that runs in this tab arrives before it answers, and the first
+    // arrival is minutes of weights. `TransformersInference` has always had an
+    // `onProgress` hook and nothing ever set it: the app went silent for the
+    // whole download on the one setup recommended to a person who has no
+    // server — while the speech panels, using the same library, drew a bar.
+    // Set per turn because the emitter belongs to this call, and cleared below
+    // for the same reason.
+    if (typeof inference.value?.onProgress === 'function') {
+      inference.value.onProgress = emit
+        ? (event) => emit(EventName.PROGRESS, describeProgress(event))
+        : () => {}
+    }
+
     // Every other agent is a possible tool. Which of them this one actually
     // gets is decided by its own file's `tools:` list, not by what exists.
     const roster = await this.catalogue.all()
@@ -324,6 +338,11 @@ export class ChatService {
             })
         : undefined,
     })
+    // The emitter goes with the call it belonged to. Left in place, the next
+    // turn's download would report itself to a request that has already been
+    // answered, and the page would draw a bar for a turn that is over.
+    if (typeof inference.value?.onProgress === 'function') inference.value.onProgress = () => {}
+
     if (!answered.ok) {
       // The user's turn is already saved, so the failure is reported against a
       // transcript that still holds what they typed.

@@ -34,6 +34,11 @@ export class Engine {
     responseModel,
     responseCue = DEFAULT_CUE,
     toolbox = null,
+    // One tool call, written by the agent's author, run once before a run is
+    // allowed to end. Empty for every agent that declares none, which is most
+    // of them — see `ReActEngine.run` for what it does with the result and for
+    // the argument about who judges it.
+    check = '',
     // Facts about right now, as ordered [label, value] pairs. Rendered as one
     // block, last before the response contract — see `PromptTemplate` for why
     // the volatile blocks go at the end.
@@ -55,6 +60,7 @@ export class Engine {
     this.responseModel = responseModel === undefined ? new.target.DEFAULT_RESPONSE : responseModel
     this.responseCue = responseCue
     this.toolbox = toolbox
+    this.check = check
     this.context = context
     this.template = template
   }

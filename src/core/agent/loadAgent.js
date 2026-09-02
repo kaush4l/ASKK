@@ -90,6 +90,9 @@ export function buildAgent({
     // Tools discovered at runtime — an MCP server's, which cannot be known
     // until the server has been asked — join the ones the file named.
     toolbox: new Toolbox([...resolved.value, ...extraTools]),
+    // The agent's own check, off its own file. A loop runs it; nothing here
+    // judges it — see `ReActEngine.run`.
+    check: spec.check,
     // The caller supplies the facts, because they are facts about the caller's
     // realm — what is stored, which model was chosen — and an agent file cannot
     // know them.
