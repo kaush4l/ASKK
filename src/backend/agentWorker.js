@@ -20,25 +20,46 @@
  * argument, which this file is one more instance of rather than a new idea.
  */
 import { AgentCatalogue } from '../core/agent/AgentCatalogue.js'
+import { delegableTools } from '../core/agent/delegable.js'
 import { describeEnvironment } from '../core/agent/Environment.js'
-import { buildAgent } from '../core/agent/loadAgent.js'
+import { buildAgent, resolveTools } from '../core/agent/loadAgent.js'
 import { createInference } from '../core/inference/index.js'
 import { Outcome, Reason } from '../core/Outcome.js'
+import { browserHttp } from './browserHttp.js'
 
-const catalogue = new AgentCatalogue(process.env.NEXT_PUBLIC_BASE_PATH ?? '')
+/**
+ * One catalogue per base path, built on the first message that names one.
+ *
+ * Not a module-scope constant off `process.env` any more: where the app is
+ * served from is something the realm that started this thread already knows,
+ * and it now arrives with the task. A worker that reads a build-time constant
+ * for itself is a second place that has to be right about the deploy.
+ *
+ * Keyed rather than replaced so the fetched file stays cached across calls,
+ * which is the whole reason `AgentCatalogue` holds one.
+ */
+const catalogues = new Map()
+
+function catalogueFor(basePath = '') {
+  const existing = catalogues.get(basePath)
+  if (existing) return existing
+  const made = new AgentCatalogue(basePath)
+  catalogues.set(basePath, made)
+  return made
+}
 
 /** Task id -> the stop for the run that is answering it. */
 const running = new Map()
 
 self.addEventListener('message', async (event) => {
-  const { id, name, task, settings, cancel } = event.data ?? {}
+  const { id, name, task, settings, basePath, cancel } = event.data ?? {}
 
   if (cancel) {
     running.get(id)?.abort()
     return
   }
 
-  const spec = await catalogue.spec(name)
+  const spec = await catalogueFor(basePath ?? '').spec(name)
   if (!spec.ok) {
     self.postMessage({ id, ...Outcome.failed(Reason.NOT_FOUND, spec.failure.message).toJSON() })
     return
@@ -54,13 +75,26 @@ self.addEventListener('message', async (event) => {
     thinking: spec.value.thinking ?? settings.thinking,
   })
 
+  // The sub-agent's OWN tools, off its own file, minus the ones a second realm
+  // may not hold — `delegable.js` argues each refusal. This used to be the
+  // literal `tools: []`, which made every sub-agent a model with no way to find
+  // anything out: `agents/researcher/agent.md` declares `search` and `fetch`
+  // and would have been handed neither.
+  //
+  // `peers` and `dispatch` are still absent, and that is the depth limit this
+  // file's header argues for rather than an omission: with no peers to resolve,
+  // a sub-agent naming another agent gets a note and no tool.
+  const allowed = delegableTools(spec.value.tools)
+  const tools = resolveTools({ names: allowed.names, services: { http: browserHttp } })
+
   const agent = buildAgent({
     spec: spec.value,
     inference: inference.value,
-    tools: [],
+    tools: tools.value,
     // The clock and the machine, and deliberately NOT the caller's file
-    // listing: a sub-agent is built with `tools: []`, so naming files it has no
-    // way to open would be a fact it can only be misled by.
+    // listing: the file store is one realm up and no delegable tool opens it,
+    // so naming files this agent cannot read would be a fact it can only be
+    // misled by.
     context: describeEnvironment(),
   })
   if (!agent.ok) {
@@ -81,12 +115,19 @@ self.addEventListener('message', async (event) => {
     signal: controller.signal,
   })
   running.delete(id)
-  const reply = answered.ok
+  // Every note the build made travels back with the answer. A tool the file
+  // asked for and did not get is something the CALLING agent has to know, and
+  // this thread is the only place that fact exists.
+  const answer = answered.ok
     ? Outcome.ok(
         typeof answered.value === 'string' ? answered.value : answered.value.answer,
         answered.notes,
       )
     : answered
+  const reply = [...allowed.notes, ...tools.notes, ...agent.notes].reduce(
+    (outcome, note) => outcome.withNote(note),
+    answer,
+  )
   self.postMessage({ id, ...reply.toJSON() })
 })
 

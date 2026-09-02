@@ -91,11 +91,77 @@ const SRC = join(import.meta.dir, '..', 'src')
 const IMAGE_FILE = join(OUT, SANDBOX_IMAGE_PATH.slice(1))
 const IMAGE_URL = `${BASE}${SANDBOX_IMAGE_PATH}`
 
+/**
+ * A model endpoint, and a page for a tool to go and read.
+ *
+ * Realm four below runs a REAL sub-agent thread, and a real agent needs an
+ * endpoint to think with. This is an OpenAI-compatible one that answers with a
+ * script rather than a model: two replies, chosen by what the prompt it was
+ * sent already contains. That is what makes the check deterministic while
+ * leaving every layer under it — the transport, the contract, the parser, the
+ * loop, the toolbox — the tree's own.
+ *
+ * It is not a mock of the tree's code. Nothing here is imported by the app;
+ * this is a server the app talks to over HTTP exactly as it would talk to LM
+ * Studio, and the one thing it stands in for is the model.
+ */
+const MODEL_URL = `${BASE}/__model/v1`
+const PAGE_PATH = `${BASE}/__model/page`
+/**
+ * The ABSOLUTE address of that page, filled in once the host is listening.
+ *
+ * `FetchTool` refuses a relative path — "Write the whole address, including
+ * https://" — which is a real refusal in the shipped tool and cost this check
+ * its first run. So the script hands the sub-agent the address a person would
+ * type, and the port is not known until the server has bound one.
+ */
+let PAGE_URL = PAGE_PATH
+/** What the sub-agent's own `fetch` tool has to bring back for the check to pass. */
+const PAGE_TEXT = 'the delegated tool reached the host'
+/** What the sub-agent has to answer with once it has read that page. */
+const DELEGATED_ANSWER = 'researcher-9f3c1: read one page and answered'
+
+/**
+ * The scripted reply, in the contract the tree's own `ReActResponse` renders.
+ *
+ * Turn one sends it to the page above; turn two, recognised by that page's text
+ * already being in the prompt as an observation, answers. A reply that arrived
+ * in the wrong order would answer without ever fetching, so the two are told
+ * apart by evidence in the prompt rather than by a counter this file keeps.
+ */
+function scriptedReply(prompt) {
+  const observed = prompt.includes(PAGE_TEXT)
+  return observed
+    ? `think: [the page said what it says]\n\nplan: []\n\nact: answer\n\nresult: ${DELEGATED_ANSWER}`
+    : `think: [read the page]\n\nplan: [fetch it]\n\nact: tool\n\nresult: fetch({"url": "${PAGE_URL}"})`
+}
+
 open.server = Bun.serve({
   port: 0,
   async fetch(request) {
     const path = new URL(request.url).pathname
     if (path === GUEST_URL) return new Response(tinyGuest())
+    if (path === PAGE_PATH)
+      return new Response(PAGE_TEXT, { headers: { 'content-type': 'text/plain' } })
+    if (path === `${MODEL_URL}/chat/completions`) {
+      const body = await request.json()
+      // The whole prompt as it arrived, which is the only thing the script
+      // branches on. `messages` is what the transport sends; reading it here
+      // rather than a field of our own means a change to how the prompt is
+      // assembled reaches this check instead of going around it.
+      const prompt = JSON.stringify(body?.messages ?? '')
+      return Response.json({
+        id: 'smoke',
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: scriptedReply(prompt) },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      })
+    }
     if (path.startsWith(`${SRC_URL}/`)) {
       // Nothing above `src/` is reachable: a `..` in a specifier would resolve
       // in the URL before it ever arrives, but the join is still constrained
@@ -117,6 +183,7 @@ open.server = Bun.serve({
   },
 })
 const url = `http://127.0.0.1:${open.server.port}${BASE}/`
+PAGE_URL = `http://127.0.0.1:${open.server.port}${PAGE_PATH}`
 
 // --- the driver -------------------------------------------------------------
 
@@ -316,6 +383,68 @@ if (!view.readonly) await fail('the file view never says it is read-only', probl
 
 console.log(
   `smoke: the owner opened ${view.opened} through the rail — ${view.coloured} coloured runs, read-only`,
+)
+
+// --- realm four: a sub-agent's own thread ------------------------------------
+//
+// `agentWorker.js` was the one realm on the architecture's diagram that nothing
+// had ever entered, and the cause was one line: the roster held a single agent,
+// so `ChatService` computed no peers, no `tools:` entry could resolve to one,
+// and the pool was never asked for a thread. `agents/researcher/agent.md` is
+// the second agent, and this is the check that it is a THREAD and not a story:
+// nothing in lint or `bun test` can start a Worker, so this is the only place
+// the realm can be executed at all.
+//
+// What it proves, in one run: a named thread starts; it fetches its own agent
+// file from the base path the PARENT realm handed it, rather than a constant it
+// read for itself; it builds the tools its own file declares — `search` and
+// `fetch`, the two `delegable.js` allows a second realm to hold; it runs its own
+// declared budget; the `fetch` it was given actually reaches the host; and the
+// answer comes back to the caller as an ordinary `Outcome`.
+const delegated = await evaluate(
+  `(async () => {
+     const { AgentWorkerPool } = await import(${JSON.stringify(`${SRC_URL}/backend/AgentWorkerPool.js`)})
+     const pool = new AgentWorkerPool({ basePath: ${JSON.stringify(BASE)}, timeout: 20000 })
+     const answered = await pool.ask('researcher', 'Read the page and say what it said.', {
+       kind: 'openai',
+       model: 'scripted',
+       baseUrl: ${JSON.stringify(`http://127.0.0.1:${open.server.port}${MODEL_URL}`)},
+       apiKey: '',
+     })
+     const threads = pool.threads()
+     pool.terminate()
+     return { answered: answered.toJSON(), threads }
+   })()`,
+  session,
+  true,
+)
+
+if (!delegated?.answered?.ok)
+  await fail(`the sub-agent thread did not answer: ${JSON.stringify(delegated)}`, [
+    'The thread is src/backend/agentWorker.js, started by src/backend/AgentWorkerPool.js.',
+    'It fetches agents/researcher/agent.md from the base path the pool handed it.',
+    ...problems,
+  ])
+if (!String(delegated.answered.value).includes(DELEGATED_ANSWER))
+  await fail(`the sub-agent answered ${JSON.stringify(delegated.answered.value)}`, [
+    `It was scripted to fetch ${PAGE_URL} and then answer with ${DELEGATED_ANSWER}.`,
+    'Answering without the second turn means its `fetch` tool never ran, so the',
+    'thread was built with no tools — see delegableTools in src/core/agent/delegable.js.',
+    ...problems,
+  ])
+// `confirmedName` is what the worker reported `self.name` to be once it was
+// alive. A thread we intended and a thread that exists are different claims,
+// and this is the one that is evidence.
+const thread = (delegated.threads ?? []).find((one) => one.name === 'researcher')
+if (thread?.confirmedName !== 'researcher')
+  await fail(`the thread never confirmed its own name: ${JSON.stringify(delegated.threads)}`, [
+    'The name is the agent identity in devtools and in `agents.threads`.',
+    ...problems,
+  ])
+
+console.log(
+  `smoke: the researcher answered on its own thread (self.name=${thread.confirmedName}, ` +
+    `${thread.calls} call) after its own fetch tool read ${PAGE_URL}`,
 )
 
 // --- realm two: the classic worker nothing bundles --------------------------

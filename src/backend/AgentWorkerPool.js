@@ -9,8 +9,19 @@ import { Outcome, Reason } from '../core/Outcome.js'
  * them, which is the point of doing this with workers rather than awaits.
  */
 export class AgentWorkerPool {
-  constructor({ timeout = 300_000 } = {}) {
+  /**
+   * `basePath` is where the app is served from, e.g. `/ASKK`, and it is passed
+   * IN rather than read here. The sub-agent thread needs it to fetch its own
+   * agent file, and it used to read `process.env.NEXT_PUBLIC_BASE_PATH` for
+   * itself — a second module deriving a value `composition.js` already derives,
+   * which is the duplication that put `imageUrl: ""` into every build ever made
+   * (`docs/GATE.md`). One realm decides where the app lives and tells the
+   * others; a thread that is handed the wrong prefix fetches nothing, which is
+   * a visible failure rather than a silent default.
+   */
+  constructor({ timeout = 300_000, basePath = '' } = {}) {
     this.timeout = timeout
+    this.basePath = basePath
     this._workers = new Map()
     this._pending = new Map()
     this._threads = new Map()
@@ -106,7 +117,7 @@ export class AgentWorkerPool {
         clearTimeout(timer)
         resolve(data)
       })
-      worker.postMessage({ id, name, task, settings })
+      worker.postMessage({ id, name, task, settings, basePath: this.basePath })
       if (signal) {
         if (signal.aborted) worker.postMessage({ id, cancel: true })
         else

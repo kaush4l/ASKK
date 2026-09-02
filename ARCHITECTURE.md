@@ -508,6 +508,38 @@ thread's identity, visible in devtools and in `agents.threads`. Two agents doing
 long work at once are two threads, not two turns. Verified: nested module
 workers work, and `self.name` propagates.
 
+**A thread has now actually been entered, and it is the gate that says so.** For
+four waves this realm was the one on the diagram nothing had ever run, and the
+cause was one line rather than a missing mechanism: the roster held a single
+agent, so `ChatService.js:220` computed no peers, so no `tools:` entry could
+resolve to a peer and the pool was never asked for a thread. What was missing
+was a second agent. `agents/researcher/agent.md` is it — `search` and `fetch`,
+its own eight-step budget — and `main` names it in `tools:`. `bun run smoke`
+runs one: a scripted OpenAI-compatible endpoint on the smoke host answers the
+thread's own request, the thread's own `fetch` reads a page from that host, and
+the answer comes back through `AgentWorkerPool.ask` as an ordinary `Outcome`
+with `confirmedName: "researcher"` beside it. Nothing in lint or `bun test` can
+start a Worker, so that step is the only place this realm can be executed at
+all.
+
+**A sub-agent has the tools its own file names, minus the ones a second realm
+may not hold.** It used to be built with the literal `tools: []`, which made
+every sub-agent a model with no way to find anything out.
+`core/agent/delegable.js` is the policy and it is a resource argument rather
+than a taste: a delegated tool is a SECOND live instance of whatever it reaches,
+so `read_file` and `write_file` are refused because `Workspace` is one write
+queue over one store and a thread cannot share the parent's instance, and
+`shell` is refused because the guest is a 50.2 MiB download that inflates to
+143 MB in whichever realm holds it. `search` and `fetch` survive because their
+whole cost is a request. Each refusal travels back to the calling agent as a
+note, so a file that asked for `shell` is told the line did not take effect.
+
+**Where the app is served from is passed in, not read again.** The pool takes a
+`basePath` and sends it with every task; `agentWorker.js` builds one catalogue
+per prefix from that. It used to read `process.env.NEXT_PUBLIC_BASE_PATH` for
+itself — a second module deriving what `composition.js` already derives, which
+is the exact duplication that put `imageUrl: ""` into every build ever made.
+
 **An agent file already declares a tool's whole interface.** `name` becomes the
 callable name and the thread name; `description` becomes the line telling the
 calling model when this agent is the right one to ask. There is no separate
@@ -999,6 +1031,14 @@ files from the page, and the model has never been told the guest has Python.
    formatter, a linter and `git` are an `apk add` line, and 52,602,121 of
    GitHub's 104,857,600 is already spent.
 
-5. **Sub-agents that are actually constructed.** `agentWorker.js` is the only
-   realm on the diagram nothing has ever entered: `ChatService.js:220` computes
-   `peers` from a roster of one, so the pool is never asked for a thread.
+5. **Done, by the wave that wrote this paragraph.** *Sub-agents that are
+   actually constructed* — the roster is two agents, `main` names `researcher`
+   in `tools:`, and `bun run smoke` starts the thread, drives its own tools and
+   asserts the name the worker reported for itself. What is left is the half a
+   thread does not buy: a sub-agent still answers **once, at the end**. There is
+   no way for it to say *what it is doing* while it does it, and no way for the
+   parent to ask. The pool holds `calls` and `startedAt` and nothing about
+   progress, and `SubAgentTool.call` awaits a single promise — so a delegated
+   run that takes four minutes is four minutes of silence in a UI that is
+   already streaming the parent's every token. That is the next thing, and it is
+   a channel, not a thread.

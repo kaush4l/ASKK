@@ -1,7 +1,7 @@
 ---
 name: main
 description: The assistant this app opens with. Answers directly, and goes and finds out — searching the web or running a command in a private Linux sandbox — when a question needs a real answer rather than a recalled one.
-tools: [shell, read_file, write_file, search, fetch]
+tools: [shell, read_file, write_file, search, fetch, researcher]
 # MCP servers, started inside this browser's own Linux guest when the agent
 # loads. The fields are the ones every MCP client uses, so a server that works
 # elsewhere transfers by copying its command across. include_tools is an
