@@ -1122,6 +1122,28 @@ every pass would re-transcribe the whole dictation, so the tenth minute would
 cost ten times the first — and whisper truncates at thirty seconds anyway, so the
 later audio would be dropped in silence.
 
+## What a second browser would have to answer
+
+Every measurement in this file was taken in Chrome, because that is the browser
+the gate drives. `CAPABILITIES.md` says `unverified` for Safari on nearly every
+row and this section is what a Safari run would have to check, so that the work
+is a checklist rather than an exploration. It is a list of dependencies, not a
+claim about support: nothing here has been executed in Safari by this tree.
+
+| What the app does | The API it needs | Where it would show up if missing |
+|---|---|---|
+| The backend, and every sub-agent | module Workers (`type: 'module'`) | nothing boots; `data-live` never goes true |
+| A sub-agent's identity | `self.name` on a named Worker | `agents.threads` reports a thread that never confirmed its name |
+| One tab ticking the scheduler | `navigator.locks` | the code falls back to ticking in every open tab, and says so |
+| The Linux guest | `WebAssembly` + `DecompressionStream` | the guest 404s or inflates to nothing; `shell` refuses in a sentence |
+| Streaming replies | `fetch` with a readable body stream | the transport reports "the stream carried no text" |
+| Everything persistent | IndexedDB | `MemoryRepository` and a boot note saying persistence is gone |
+| A model in the tab | transformers.js and its wasm backends | the download bar stalls; the transport fails on build |
+
+The two that would be new news are the lock and the guest, because both have a
+fallback this tree chose deliberately and neither fallback has ever been
+exercised in the browser that would need it.
+
 ## Design rules earned, not assumed
 
 - **Decide realm positionally, never by interrogation.** `typeof window` is folded
