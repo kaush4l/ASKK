@@ -122,6 +122,8 @@ const PAGE_TEXT = 'the delegated tool reached the host'
 const DELEGATED_ANSWER = 'researcher-9f3c1: read one page and answered'
 /** What the PARENT has to finish with, once its sub-agent has answered it. */
 const PARENT_ANSWER = 'main-2b7e4: the researcher came back'
+/** What a scheduled question says, so it can be found in the transcript. */
+const SCHEDULED_MARK = 'scheduled-6d24b'
 /** A line only the researcher's own file carries, which is how a child prompt is known. */
 const CHILD_MARK = 'answering one question for another agent'
 
@@ -695,6 +697,79 @@ if (!clocks.size) await fail(`the rail never showed an elapsed time: ${railSaid}
 console.log(
   `smoke: a typed question was delegated and answered through the built page; ` +
     `the rail said ${JSON.stringify([...new Set((turn.rail ?? []).filter((t) => t.includes('researcher:')))][0] ?? '')} while it worked`,
+)
+
+// --- a question that asks itself --------------------------------------------
+//
+// The scheduler is a timer in the page, a lease on `navigator.locks` so that
+// two tabs do not both fire, and a route that says what is due. None of that
+// can be executed anywhere but here: `bun test` has no page, no lock manager
+// and no clock anyone is watching.
+//
+// A one-minute period is the floor, and waiting one is not something a gate may
+// do — so the schedule is written with `lastRanAt: 0`, which is what `create`
+// does anyway, and the assertion is that the very next tick asks it. The tick
+// is driven rather than waited for: the page ticks on mount, so a reload IS the
+// tick.
+const scheduled = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 8000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     // Through the panel, not through the route: what is in question is the
+     // wiring — a rail button, a mounted pane, a form that reaches the backend
+     // — and only a click crosses all of it.
+     const toggle = pick('plans-toggle')
+     if (!toggle) return { where: 'the rail has no plans button' }
+     toggle.click()
+     const field = await until(() => pick('plan-text'))
+     if (!field) return { where: 'the plans pane never rendered' }
+     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+     setter.call(field, ${JSON.stringify(`say ${SCHEDULED_MARK}`)})
+     field.dispatchEvent(new Event('input', { bubbles: true }))
+     pick('plan-add').click()
+     const listed = await until(() => pick('plan-list'))
+     if (!listed) return { where: 'the schedule was not listed after adding it' }
+     return { listed: listed.textContent }
+   })()`,
+  session,
+  true,
+)
+if (!scheduled?.listed)
+  await fail(`the schedule was not made through the panel: ${JSON.stringify(scheduled)}`, problems)
+
+// The reload is the tick: the page looks for a due schedule on mount, and one
+// written a moment ago with `lastRanAt: 0` is due.
+await send('Page.navigate', { url }, session)
+const fired = await evaluate(
+  `(async () => {
+     for (let i = 0; i < 400; i++) {
+       const asked = [...document.querySelectorAll('.turn.user .text')].find((node) =>
+         node.textContent.includes(${JSON.stringify(SCHEDULED_MARK)}),
+       )
+       if (asked) return { asked: asked.textContent }
+       await new Promise((r) => setTimeout(r, 50))
+     }
+     return { asked: '', transcript: (document.querySelector('[data-testid="transcript"]')?.textContent ?? '').slice(-200) }
+   })()`,
+  session,
+  true,
+)
+if (!fired?.asked)
+  await fail(`the scheduled question was never asked: ${JSON.stringify(fired)}`, [
+    'The tick is in src/app/page.jsx, under navigator.locks, and what is due',
+    'comes from src/backend/services/ScheduleService.js.',
+    ...problems,
+  ])
+
+console.log(
+  `smoke: a scheduled question asked itself on the next open — ${JSON.stringify(fired.asked)}`,
 )
 
 // --- realm two: the classic worker nothing bundles --------------------------

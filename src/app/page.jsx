@@ -7,6 +7,7 @@ import { EventName } from '../protocol/Envelope.js'
 import { FilesPanel } from './FilesPanel.jsx'
 import { PromptPanel } from './PromptPanel.jsx'
 import { RunPanel } from './RunPanel.jsx'
+import { SchedulePanel } from './SchedulePanel.jsx'
 
 /**
  * The three instruments, in the order they answer a different question.
@@ -23,7 +24,18 @@ import { RunPanel } from './RunPanel.jsx'
  * block this used to be, where an arm could be forgotten and render a meter
  * inside the run log.
  */
-const INSTRUMENTS = ['prompt', 'run', 'files']
+const INSTRUMENTS = ['prompt', 'run', 'files', 'plans']
+
+/**
+ * How often the page looks for a schedule that has come due.
+ *
+ * Twenty seconds, against a floor of sixty on a schedule's period: the tick is
+ * what bounds how LATE a question is, and a schedule may not ask more often
+ * than a minute, so a third of that is close enough to feel prompt and rare
+ * enough to be free. One `schedules.due` is one indexed read of a store holding
+ * a handful of records.
+ */
+const TICK_MS = 20_000
 
 export default function Page() {
   const clientRef = useRef(null)
@@ -117,6 +129,8 @@ export default function Page() {
    * address is a server on this machine that most people are not running.
    */
   const [modelHealth, setModelHealth] = useState(null)
+  /** What is scheduled, so the rail can say so and the panel can list it. */
+  const [schedules, setSchedules] = useState([])
   const [listening, setListening] = useState(false)
   const [heard, setHeard] = useState('')
   const [download, setDownload] = useState(null)
@@ -153,6 +167,8 @@ export default function Page() {
       if (loaded.ok) setSettings(loaded.value)
       if (roster.ok) setAgents(roster.value)
       if (model.ok) setModelHealth(model.value)
+      const planned = await client.call('schedules.list')
+      if (planned.ok) setSchedules(planned.value)
 
       let conversation = existing.ok ? existing.value[0] : null
       if (!conversation) {
@@ -187,6 +203,89 @@ export default function Page() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, busy])
 
+  /**
+   * Whether a turn is running, readable from inside a timer.
+   *
+   * The scheduler's interval closes over the state at the moment it was
+   * created; reading `busy` there would read whatever it was when the effect
+   * last ran, and a schedule would start a second turn on top of a live one.
+   */
+  const busyRef = useRef(false)
+  useEffect(() => {
+    busyRef.current = busy
+  }, [busy])
+
+  /**
+   * The turn function, reachable from the timer.
+   *
+   * `ask` is a new function on every render, so naming it as a dependency would
+   * tear down and rebuild the scheduler's interval on every keystroke — and a
+   * timer that restarts constantly is a timer that never fires.
+   */
+  const askRef = useRef(null)
+  askRef.current = ask
+
+  /**
+   * The scheduler: look for a question that has come due, and ask it.
+   *
+   * Under a `navigator.locks` lease, which is the whole of the multi-tab story.
+   * Two tabs are two pages holding two workers over one database, and without a
+   * lease both would find the same schedule due and ask it twice. `ifAvailable`
+   * means the tab that does not get the lock does nothing at all rather than
+   * queueing behind it — a tick that waits for a lease it will get in twenty
+   * seconds is a tick that runs twice in a row.
+   *
+   * A schedule runs in the conversation it was made in, and only while that
+   * conversation is open. The alternative — sending into a transcript that is
+   * not on screen — is a turn a person cannot see happening, in an app whose
+   * whole live view is what makes a run legible.
+   */
+  useEffect(() => {
+    if (!ready || !conversationId) return undefined
+    let stopped = false
+
+    const runOne = async () => {
+      if (stopped || busyRef.current) return
+      const due = await clientRef.current.call('schedules.due', { now: Date.now() })
+      if (!due.ok) return
+      const mine = due.value.filter((one) => one.conversationId === conversationId)
+      if (!mine.length) return
+
+      // ONE per tick, and the most overdue first. A tab that has been closed
+      // for a week must not open into every missed question at once.
+      const next = mine[0]
+      // Recorded BEFORE the turn, not after: a question that takes four
+      // minutes would otherwise still be due at the next tick and be asked
+      // again on top of itself. A run that fails is a run that happened.
+      await clientRef.current.call('schedules.ran', { id: next.id, at: Date.now() })
+      const listed = await clientRef.current.call('schedules.list')
+      if (listed.ok && !stopped) setSchedules(listed.value)
+      if (!stopped) await askRef.current?.(next.text)
+    }
+
+    const tick = async () => {
+      if (stopped) return
+      const locks = globalThis.navigator?.locks
+      if (!locks?.request) {
+        // No Web Locks — an older browser, or a context that refuses them. One
+        // tab is still correct; two would double up, and saying nothing about
+        // that would be worse than the alternative of not scheduling at all.
+        await runOne()
+        return
+      }
+      await locks.request('askk-schedule', { ifAvailable: true }, async (held) => {
+        if (held) await runOne()
+      })
+    }
+
+    const timer = setInterval(tick, TICK_MS)
+    tick()
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+  }, [ready, conversationId])
+
   // One interval for the whole turn, torn down when it ends. `busy` is the only
   // dependency: a timer that outlives the run it is timing is a clock counting
   // up on a finished answer.
@@ -202,11 +301,22 @@ export default function Page() {
     event.preventDefault()
     const text = draft.trim()
     if (!text || busy || !conversationId) return
+    setDraft('')
+    await ask(text)
+  }
 
+  /**
+   * One turn, from wherever the question came from.
+   *
+   * Split out of `send` so a schedule can use it. That is the whole of what
+   * makes a scheduled question the same thing as a typed one: same route, same
+   * conversation, same streaming, same transcript. A second path to the model
+   * would be a path that drifts from the one people actually use.
+   */
+  async function ask(text) {
     setProblem(null)
     setBusy(true)
     setStopping(false)
-    setDraft('')
     const startedAt = Date.now()
     setRun({ raw: '', reasoning: '', steps: [], at: startedAt, ms: 0 })
     setPrompts([])
@@ -421,6 +531,35 @@ export default function Page() {
     }
   }
 
+  /**
+   * Add a schedule to THIS conversation.
+   *
+   * The conversation is not a field on the form: a scheduled question lands in
+   * a transcript, and the one a person is looking at is the one they mean. It
+   * is stored on the record so the tick can tell whose it is.
+   */
+  async function addSchedule({ text, everySeconds }) {
+    const made = await clientRef.current.call('schedules.create', {
+      text,
+      everySeconds,
+      conversationId,
+    })
+    setNotes(made.notes)
+    if (!made.ok) {
+      setProblem({ message: made.error.message, hint: made.error.hint })
+      return
+    }
+    const listed = await clientRef.current.call('schedules.list')
+    if (listed.ok) setSchedules(listed.value)
+  }
+
+  async function removeSchedule(id) {
+    const gone = await clientRef.current.call('schedules.remove', { id })
+    setNotes(gone.notes)
+    const listed = await clientRef.current.call('schedules.list')
+    if (listed.ok) setSchedules(listed.value)
+  }
+
   async function newChat() {
     const result = await clientRef.current.call('conversations.create', { title: 'Chat' })
     setNotes(result.notes)
@@ -452,6 +591,10 @@ export default function Page() {
     // and `researcher·1` says a thread exists where `researcher: fetch (3)`
     // says it is working and on what. The threads line stays underneath it,
     // because it survives the turn and this does not.
+    // What is scheduled, when anything is. A count and not a list: the panel
+    // holds the detail, and the rail's job is to say that something will happen
+    // without a person having to remember they set it up.
+    schedules.length ? { text: `${schedules.length} scheduled` } : null,
     ...Object.values(delegates).map((one) => ({
       text: one.answered
         ? `${one.agent}: answered`
@@ -859,6 +1002,14 @@ export default function Page() {
                 is the backend's and a component that was handed a list would be
                 showing whatever the page last remembered. `turnsDone` is when
                 to look again. */}
+            {panel === 'plans' ? (
+              <SchedulePanel
+                schedules={schedules}
+                ready={ready && Boolean(conversationId)}
+                onCreate={addSchedule}
+                onRemove={removeSchedule}
+              />
+            ) : null}
             {panel === 'files' ? (
               <FilesPanel client={clientRef.current} turnsDone={turnsDone} />
             ) : null}

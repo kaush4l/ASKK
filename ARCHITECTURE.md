@@ -594,6 +594,46 @@ Sub-agents are **stateless** — asked one complete question, they answer it. A
 per-sub-agent transcript would make the same call return different things at
 different times, which is not what a tool is.
 
+## Questions that ask themselves
+
+    backend/services/ScheduleService.js   the store and the rules
+    app/SchedulePanel.jsx                 what to ask, how often, what is set
+    app/page.jsx                          the tick, under navigator.locks
+
+A schedule is a question and how often to ask it, and when one comes due the
+page sends it through **`chat.send`** — the same route the composer uses, the
+same conversation, the same streaming, the same transcript. A second path to the
+model would be a path that drifts from the one people actually use.
+
+**There is no cron expression.** A cron expression is a language: it needs a
+parser, a timezone policy, and an answer for what "the 31st" means in February.
+A page that is awake only while a tab is open can honour none of that, and
+`everySeconds` with a sixty-second floor is exactly what this can promise.
+
+**Nothing in the backend holds a timer.** The worker answers requests and never
+wakes on its own, and a `setInterval` inside it would fire in every tab at once
+against one database. So the page ticks, every twenty seconds, inside
+`navigator.locks.request('askk-schedule', {ifAvailable: true})` — the first
+`navigator.locks` in this tree, and the thing roadmap item 3 was asking for in
+the narrow place it is actually needed. `ifAvailable` matters: a tab that
+queues behind the lease runs its tick the moment the holder releases, which is
+two ticks in a row rather than one.
+
+**A run is recorded before it happens, not after.** A question that takes four
+minutes would otherwise still be due at the next tick and be asked on top of
+itself, and a schedule that only recorded its successes would retry a failing
+question every twenty seconds for as long as it kept failing.
+
+**Overdue is not skipped.** A schedule that came due while the tab was closed
+asks once at the next open, not once per period missed: a week of closure must
+not open into a hundred and sixty-eight questions. And a schedule runs in the
+conversation it was made in, while that conversation is open — sending into a
+transcript nobody is looking at would be a turn a person cannot see happening,
+in an app whose whole live view is what makes a run legible.
+
+The gate drives it: the schedule is created by clicking through the panel, and
+the reload IS the tick, because the page ticks on mount.
+
 ## Ready is not the same as able
 
 `ready` means this app started: the worker booted, storage answered, the roster

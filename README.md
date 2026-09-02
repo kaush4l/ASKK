@@ -40,7 +40,8 @@ the endpoint said.
 
 ## What it can do
 
-Answer from what it knows; search the web and read a page; run a command in a
+Ask itself a question on a period — hourly, daily — in the conversation you set
+it up in, for as long as that tab is open. Answer from what it knows; search the web and read a page; run a command in a
 private Linux userland with Python 3.12 in it; keep files of its own that last
 between conversations and that you can read; hand a question to a second agent
 that works on its own thread. What is in *settings* is the model, the voice, and

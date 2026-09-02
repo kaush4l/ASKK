@@ -602,6 +602,66 @@ select:disabled {
   overflow: hidden;
 }
 
+/* The plans pane scrolls as a whole: the form is short and the list under it is
+   the part that grows. */
+.panel > .plans {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.9rem;
+}
+
+.plan-new {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.plan-new label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.plan-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-list li {
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.plan-what {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.plan-when {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
+.plan-when .dim {
+  color: var(--faint);
+}
+
+.plan-when button {
+  margin-left: auto;
+}
+
 .panel h2::first-letter {
   text-transform: uppercase;
 }

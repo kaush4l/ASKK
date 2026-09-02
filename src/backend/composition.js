@@ -13,6 +13,7 @@ import { ChatService } from './services/ChatService.js'
 import { ConversationService } from './services/ConversationService.js'
 import { FilesService } from './services/FilesService.js'
 import { HealthService } from './services/HealthService.js'
+import { ScheduleService } from './services/ScheduleService.js'
 import { SettingsService } from './services/SettingsService.js'
 
 // Re-exported because it was defined here for four waves and one test, one
@@ -21,15 +22,17 @@ import { SettingsService } from './services/SettingsService.js'
 export { browserHttp }
 
 export const DB_NAME = 'askk'
-// 3 because the agent's files are a third store. `IndexedDb.open` creates only
-// the stores that are missing, so an existing database keeps its conversations
-// and settings and gains one — a version that did not move would leave every
-// browser that has already opened this app without a files store at all, and
-// every write to it failing on a name the database has never heard of.
-export const DB_VERSION = 3
+// 4 because schedules are a fourth store. `IndexedDb.open` creates only the
+// stores that are missing, so an existing database keeps its conversations, its
+// settings and the agent's files and gains one — a version that did not move
+// would leave every browser that has already opened this app without a
+// schedules store at all, and every write to it failing on a name the database
+// has never heard of. That is the same argument version 3 was made for.
+export const DB_VERSION = 4
 export const STORE_CONVERSATIONS = 'conversations'
 export const STORE_SETTINGS = 'settings'
 export const STORE_FILES = 'files'
+export const STORE_SCHEDULES = 'schedules'
 
 /**
  * The single place where concrete implementations are chosen.
@@ -44,7 +47,12 @@ export const STORE_FILES = 'files'
  * user can be shown instead of a failure on their first message.
  */
 export async function buildKernel() {
-  const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+  const db = new IndexedDb(DB_NAME, DB_VERSION, [
+    STORE_CONVERSATIONS,
+    STORE_SETTINGS,
+    STORE_FILES,
+    STORE_SCHEDULES,
+  ])
   const opened = await db.open()
   const notes = opened.ok ? [] : [`storage unavailable: ${opened.failure.message}`]
 
@@ -132,6 +140,10 @@ export async function buildKernel() {
     // about: storage, the worker and the guest can all be fine while the model
     // this app was told to call is not running.
     .register('health', new HealthService({ settings, http: browserHttp }))
+    // Questions that ask themselves. Nothing here holds a timer — the page
+    // ticks, under a lock, and this only says what is due; `ScheduleService`
+    // argues why the clock lives in the realm that can see a user.
+    .register('schedules', new ScheduleService(make('Schedule', STORE_SCHEDULES)))
 
   // Said out loud, in the one place the user reads notes. Nothing else in this
   // app leaves the machine except the model call the user configured — but a
