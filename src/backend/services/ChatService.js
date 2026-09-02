@@ -235,7 +235,23 @@ export class ChatService {
       // The signal goes with the task. A delegated run is a second agent on a
       // second thread; without this, stopping the parent left the child running
       // its own budget to completion for nobody.
-      dispatch: (name, task, stop) => this.pool.ask(name, task, settings.value, stop ?? signal),
+      //
+      // And the progress channel comes back the same way. A delegated run is
+      // minutes of a second agent working, and until this it was minutes of
+      // nothing at all on a screen that streams the parent's every token — a
+      // thread reading its fourth page and a thread that was wedged looked
+      // identical. The event rides the PARENT's request id, because that is the
+      // call the user is waiting on; `SubAgentTool` does not carry it, because
+      // this closure already knows the name and the emitter and a fourth
+      // argument threaded through `Toolbox` would buy nothing.
+      dispatch: (name, task, stop) =>
+        this.pool.ask(
+          name,
+          task,
+          settings.value,
+          stop ?? signal,
+          emit ? (progress) => emit(EventName.DELEGATE, progress) : null,
+        ),
       context: await this._context(notes),
       services: this.services,
       extraTools: mcp.value,

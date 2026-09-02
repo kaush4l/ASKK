@@ -68,6 +68,26 @@ export default function Page() {
   // here that is measured rather than estimated, so it is kept beside the
   // estimates rather than replacing them.
   const [usage, setUsage] = useState(null)
+  /** The sub-agent working right now, if one is: `{agent, step, doing, answered}`. */
+  const [delegate, setDelegate] = useState(null)
+  /**
+   * Seconds since this turn started, while it is running.
+   *
+   * A clock, and it earns its re-render: the rail said the single word
+   * "working" for however long a turn took, and a turn here can be minutes —
+   * a 50 MB guest downloading, a sub-agent reading pages. A word that does not
+   * move is how a working app and a wedged one look the same, and the first
+   * thing a person does about that is close the tab.
+   */
+  const [elapsed, setElapsed] = useState(0)
+  /**
+   * The user pressed stop, and the turn has not finished reacting to it yet.
+   *
+   * Kept because a stopped run comes back SUCCESSFUL with no assistant message
+   * — which is correct, and left nothing whatsoever on screen. The turn simply
+   * ended, indistinguishable from one that answered with nothing.
+   */
+  const [stopping, setStopping] = useState(false)
   // Which instrument is open, or null. One slot and not three booleans: the
   // aside is one pane, so two open at once is a state the layout cannot show
   // and a reader would have to be protected from.
@@ -147,6 +167,17 @@ export default function Page() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, busy])
 
+  // One interval for the whole turn, torn down when it ends. `busy` is the only
+  // dependency: a timer that outlives the run it is timing is a clock counting
+  // up on a finished answer.
+  useEffect(() => {
+    if (!busy) return undefined
+    const started = Date.now()
+    setElapsed(0)
+    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000)
+    return () => clearInterval(tick)
+  }, [busy])
+
   async function send(event) {
     event.preventDefault()
     const text = draft.trim()
@@ -154,6 +185,7 @@ export default function Page() {
 
     setProblem(null)
     setBusy(true)
+    setStopping(false)
     setDraft('')
     const startedAt = Date.now()
     setRun({ raw: '', reasoning: '', steps: [], at: startedAt, ms: 0 })
@@ -188,6 +220,15 @@ export default function Page() {
           setUsage(data)
           return
         }
+        if (name === EventName.DELEGATE) {
+          // A second agent, part-way through the question this turn handed it.
+          // It is kept as ONE value rather than appended to a list: the rail
+          // has room for a line, and what a reader needs is what the delegate
+          // is doing NOW — the history of a delegated run belongs to the
+          // delegate, and the parent already records the answer it returned.
+          setDelegate(data)
+          return
+        }
         if (name === EventName.STEP) {
           // The raw text is dropped here on purpose. It has just been parsed,
           // and showing both the contract and the answer it contains is how a
@@ -203,7 +244,19 @@ export default function Page() {
     )
     setRunning(turn.id)
     const result = await turn.done
-    setNotes(result.notes)
+    // A stopped run answers ok with no assistant message, and said nothing at
+    // all about it: the turn ended, the composer came back, and whether it had
+    // been stopped or had simply answered with nothing was left to the reader
+    // to guess. The sentence is written here rather than in the backend because
+    // only this realm knows the stop came from a person pressing a button.
+    const ended =
+      stopping && !result.value?.assistant
+        ? [
+            'stopped — the turn ended where it was, and nothing was added to the conversation',
+            ...result.notes,
+          ]
+        : result.notes
+    setNotes(ended)
     // Which sub-agent threads exist is a fact the backend holds and nothing
     // else can see. Read it after every turn so delegation is visible.
     const spawned = await clientRef.current.call('agents.threads')
@@ -230,6 +283,11 @@ export default function Page() {
     // throwing them away at the end of every turn is what made tool calls
     // invisible to everyone who was not watching the exact second they resolved.
     setRun((current) => ({ ...current, raw: '', reasoning: '', ms: Date.now() - current.at }))
+    // The delegate goes with the streaming halves and for the same reason:
+    // whatever it was doing is finished and folded into the answer, and a
+    // leftover "researcher: fetch (3)" on the rail would be a claim that
+    // something is still running.
+    setDelegate(null)
     // After the steps, so a file view that reloads on this reads a workspace the
     // turn has finished writing to.
     setTurnsDone((count) => count + 1)
@@ -364,9 +422,32 @@ export default function Page() {
     ready ? null : { text: 'starting', live: true },
     settings?.agent ? { text: settings.agent } : null,
     settings?.model ? { text: settings.model } : null,
+    // The delegate FIRST, and as words rather than a count: a running
+    // sub-agent is the one thing on this rail the user is actually waiting for,
+    // and `researcher·1` says a thread exists where `researcher: fetch (3)`
+    // says it is working and on what. The threads line stays underneath it,
+    // because it survives the turn and this does not.
+    delegate
+      ? {
+          text: delegate.answered
+            ? `${delegate.agent}: answered`
+            : `${delegate.agent}: ${delegate.doing?.join(', ') || 'thinking'} (${delegate.step})`,
+          live: !delegate.answered,
+        }
+      : null,
     ...threads.map((t) => ({ text: `${t.confirmedName ?? t.name}·${t.calls}`, live: true })),
     listening ? { text: 'listening', live: true } : null,
-    busy ? { text: 'working', live: true } : null,
+    // The clock, beside the word. `4:07` past a minute, `47s` under one — a
+    // reader wants "is it moving", and two units say that more plainly than
+    // one padded format does.
+    busy
+      ? {
+          text: stopping
+            ? 'stopping'
+            : `working ${elapsed >= 60 ? `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : `${elapsed}s`}`,
+          live: true,
+        }
+      : null,
   ].filter(Boolean)
 
   return (
@@ -660,7 +741,10 @@ export default function Page() {
                 <button
                   type="button"
                   className="stop"
-                  onClick={() => clientRef.current?.stop(running)}
+                  onClick={() => {
+                    setStopping(true)
+                    clientRef.current?.stop(running)
+                  }}
                   data-testid="stop"
                 >
                   stop

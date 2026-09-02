@@ -48,6 +48,19 @@ function catalogueFor(basePath = '') {
   return made
 }
 
+/**
+ * The tool names in a `result` that holds calls.
+ *
+ * The whole call is not sent: an argument can be a page of text, and the
+ * parent's live view is a status rail rather than a second transcript. A name
+ * is what the reader needs — "reading a page" versus "searching" — and it is
+ * taken off the front of each call rather than parsed, because this is a label
+ * and `Toolbox` is the thing that has to be exactly right about the call.
+ */
+function toolNames(text) {
+  return [...String(text).matchAll(/([A-Za-z_][\w-]*)\s*\(/g)].map((found) => found[1])
+}
+
 /** Task id -> the stop for the run that is answering it. */
 const running = new Map()
 
@@ -113,6 +126,29 @@ self.addEventListener('message', async (event) => {
     // limit depend on how much the first had already used.
     budget: spec.value.budget,
     signal: controller.signal,
+    // Something to say before there is an answer.
+    //
+    // A delegated run was one message: the task went down and, minutes later,
+    // an answer came back. Nothing in between existed, so a thread that was
+    // reading its fourth page and a thread that was wedged looked identical
+    // from the only realm anyone is watching. This is one message per finished
+    // pass, carrying WHAT the pass decided rather than its text — the parent's
+    // view is already full of the parent's own tokens, and a second stream of
+    // someone else's prose would bury it.
+    onStep: ({ step, parsed }) => {
+      self.postMessage({
+        id,
+        progress: {
+          agent: name,
+          step,
+          // The tool names it called, or nothing when it answered. `result`
+          // holds the calls verbatim on this contract, so the names are read
+          // off the front of each call rather than invented here.
+          doing: parsed?.isAnswer === false ? toolNames(parsed?.answer ?? '') : [],
+          answered: parsed?.isAnswer !== false,
+        },
+      })
+    },
   })
   running.delete(id)
   // Every note the build made travels back with the answer. A tool the file

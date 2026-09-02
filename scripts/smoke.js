@@ -120,6 +120,10 @@ let PAGE_URL = PAGE_PATH
 const PAGE_TEXT = 'the delegated tool reached the host'
 /** What the sub-agent has to answer with once it has read that page. */
 const DELEGATED_ANSWER = 'researcher-9f3c1: read one page and answered'
+/** What the PARENT has to finish with, once its sub-agent has answered it. */
+const PARENT_ANSWER = 'main-2b7e4: the researcher came back'
+/** A line only the researcher's own file carries, which is how a child prompt is known. */
+const CHILD_MARK = 'answering one question for another agent'
 
 /**
  * The scripted reply, in the contract the tree's own `ReActResponse` renders.
@@ -130,10 +134,18 @@ const DELEGATED_ANSWER = 'researcher-9f3c1: read one page and answered'
  * apart by evidence in the prompt rather than by a counter this file keeps.
  */
 function scriptedReply(prompt) {
-  const observed = prompt.includes(PAGE_TEXT)
-  return observed
-    ? `think: [the page said what it says]\n\nplan: []\n\nact: answer\n\nresult: ${DELEGATED_ANSWER}`
-    : `think: [read the page]\n\nplan: [fetch it]\n\nact: tool\n\nresult: fetch({"url": "${PAGE_URL}"})`
+  // WHOSE turn this is, read off the prompt itself: only the researcher's own
+  // file carries that sentence, so a child request identifies itself by the
+  // system text it was built with rather than by a counter this file keeps.
+  const child = prompt.includes(CHILD_MARK)
+  if (child) {
+    return prompt.includes(PAGE_TEXT)
+      ? `think: [the page said what it says]\n\nplan: []\n\nact: answer\n\nresult: ${DELEGATED_ANSWER}`
+      : `think: [read the page]\n\nplan: [fetch it]\n\nact: tool\n\nresult: fetch({"url": "${PAGE_URL}"})`
+  }
+  return prompt.includes(DELEGATED_ANSWER)
+    ? `think: [it answered]\n\nplan: []\n\nact: answer\n\nresult: ${PARENT_ANSWER}`
+    : `think: [ask the researcher]\n\nplan: [delegate]\n\nact: tool\n\nresult: researcher({"task": "Read the page and say what it said."})`
 }
 
 open.server = Bun.serve({
@@ -150,12 +162,29 @@ open.server = Bun.serve({
       // rather than a field of our own means a change to how the prompt is
       // assembled reaches this check instead of going around it.
       const prompt = JSON.stringify(body?.messages ?? '')
+      const said = scriptedReply(prompt)
+      // The page STREAMS — `ChatService` passes an `onDelta` whenever anyone is
+      // watching the call — so the endpoint a real turn reaches is the SSE one.
+      // Answering only the plain-JSON form made this check fail with the app's
+      // own honest complaint, "the stream carried no text", which is the
+      // transport being right about a server that was wrong.
+      if (body?.stream) {
+        const frames = [
+          { choices: [{ index: 0, delta: { role: 'assistant', content: said } }] },
+          { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+          { choices: [], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } },
+        ]
+        return new Response(
+          `${frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join('')}data: [DONE]\n\n`,
+          { headers: { 'content-type': 'text/event-stream' } },
+        )
+      }
       return Response.json({
         id: 'smoke',
         choices: [
           {
             index: 0,
-            message: { role: 'assistant', content: scriptedReply(prompt) },
+            message: { role: 'assistant', content: said },
             finish_reason: 'stop',
           },
         ],
@@ -405,15 +434,22 @@ const delegated = await evaluate(
   `(async () => {
      const { AgentWorkerPool } = await import(${JSON.stringify(`${SRC_URL}/backend/AgentWorkerPool.js`)})
      const pool = new AgentWorkerPool({ basePath: ${JSON.stringify(BASE)}, timeout: 20000 })
-     const answered = await pool.ask('researcher', 'Read the page and say what it said.', {
-       kind: 'openai',
-       model: 'scripted',
-       baseUrl: ${JSON.stringify(`http://127.0.0.1:${open.server.port}${MODEL_URL}`)},
-       apiKey: '',
-     })
+     const progress = []
+     const answered = await pool.ask(
+       'researcher',
+       'Read the page and say what it said.',
+       {
+         kind: 'openai',
+         model: 'scripted',
+         baseUrl: ${JSON.stringify(`http://127.0.0.1:${open.server.port}${MODEL_URL}`)},
+         apiKey: '',
+       },
+       null,
+       (report) => progress.push(report),
+     )
      const threads = pool.threads()
      pool.terminate()
-     return { answered: answered.toJSON(), threads }
+     return { answered: answered.toJSON(), threads, progress }
    })()`,
   session,
   true,
@@ -432,6 +468,28 @@ if (!String(delegated.answered.value).includes(DELEGATED_ANSWER))
     'thread was built with no tools — see delegableTools in src/core/agent/delegable.js.',
     ...problems,
   ])
+// Something was said BEFORE the answer, which is the half a thread does not
+// buy on its own. A delegated run is minutes of a second agent working, and
+// until this channel existed the only realm anyone watches saw nothing at all
+// until it finished — a thread reading its fourth page and a thread that was
+// wedged were the same picture.
+const reports = delegated.progress ?? []
+if (reports.length < 2)
+  await fail(`the thread reported ${reports.length} pass(es) before answering`, [
+    'Each finished pass should arrive as one message: see onStep in',
+    'src/backend/agentWorker.js and the progress branch in AgentWorkerPool.js.',
+    ...problems,
+  ])
+if (!reports[0]?.doing?.includes('fetch') || reports.at(-1)?.answered !== true)
+  await fail(`the reported passes were ${JSON.stringify(reports)}`, [
+    'The first pass called fetch and the last one answered; the reports should say so.',
+    ...problems,
+  ])
+// The same fact, kept where a page that was NOT watching can still read it —
+// after a reload, or in a second tab, through `agents.threads`.
+if (delegated.threads?.[0]?.status?.answered !== true)
+  await fail(`the thread kept no status: ${JSON.stringify(delegated.threads)}`, problems)
+
 // `confirmedName` is what the worker reported `self.name` to be once it was
 // alive. A thread we intended and a thread that exists are different claims,
 // and this is the one that is evidence.
@@ -444,7 +502,143 @@ if (thread?.confirmedName !== 'researcher')
 
 console.log(
   `smoke: the researcher answered on its own thread (self.name=${thread.confirmedName}, ` +
-    `${thread.calls} call) after its own fetch tool read ${PAGE_URL}`,
+    `${thread.calls} call) after its own fetch tool read ${PAGE_URL}, ` +
+    `reporting ${reports.length} passes on the way`,
+)
+
+// --- the delegating turn, through the page a visitor gets --------------------
+//
+// Realm four above proves the thread; this proves the WHOLE path a person
+// takes: settings the app boots with, a question typed into the composer, the
+// parent agent choosing to delegate, a second thread answering it, the parent
+// answering the person, and the rail saying what was happening while it did.
+// Every layer here is the built artifact — the bundle, not the source tree —
+// and the only thing standing in for reality is the model.
+//
+// The settings are planted in the store the app reads at boot rather than typed
+// into the form, because what is under test is the turn and not the form; the
+// page is reloaded onto them so nothing here depends on a state the running
+// page already holds.
+const planted2 = await evaluate(
+  `(async () => {
+     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES } =
+       await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
+     const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
+     const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
+     const { DEFAULT_SETTINGS, SETTINGS_ID } = await import(${JSON.stringify(`${SRC_URL}/backend/services/SettingsService.js`)})
+     const db = new IndexedDb(DB_NAME, DB_VERSION, [STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES])
+     await db.open()
+     const settings = new IndexedDbRepository('Settings', db, STORE_SETTINGS)
+     const saved = await settings.put({
+       ...DEFAULT_SETTINGS,
+       id: SETTINGS_ID,
+       model: 'scripted',
+       baseUrl: ${JSON.stringify(`http://127.0.0.1:${open.server.port}${MODEL_URL}`)},
+     })
+     return saved.toJSON()
+   })()`,
+  session,
+  true,
+)
+if (!planted2?.ok)
+  await fail(`could not plant the model settings: ${JSON.stringify(planted2)}`, problems)
+
+const relaunched = Date.now()
+await send('Page.navigate', { url }, session)
+let up = 'none'
+while (Date.now() - relaunched < 15000) {
+  up = await evaluate(`document.querySelector('.wordmark')?.dataset.live ?? 'none'`, session)
+  if (up === 'true') break
+  if (problems.length) break
+  await Bun.sleep(50)
+}
+if (up !== 'true')
+  await fail(`the page did not come back for the delegating turn (${up})`, problems)
+
+const turn = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 8000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     const input = pick('input')
+     if (!input) return { where: 'there is no composer' }
+     // Typed the way React hears it: the value setter on the ELEMENT's own
+     // prototype, then an input event. Assigning .value alone updates the DOM
+     // and not the state, so the form would submit an empty draft and the turn
+     // would never start — and calling the setter of the wrong prototype throws
+     // "Illegal invocation", which cost this check its first run.
+     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+     setter.call(input, 'Ask the researcher what the page says.')
+     input.dispatchEvent(new Event('input', { bubbles: true }))
+     input.form.requestSubmit()
+
+     // What the rail said WHILE it ran. WATCHED rather than sampled: a
+     // delegated run against a scripted endpoint is over in milliseconds, and a
+     // poll on a timer read the rail either side of the line it was there to
+     // find. An observer sees every state the rail was ever in.
+     const seen = new Set()
+     const rail = pick('status')
+     const watcher = new MutationObserver(() => {
+       const text = rail?.textContent ?? ''
+       if (text) seen.add(text)
+     })
+     if (rail) watcher.observe(rail, { subtree: true, childList: true, characterData: true })
+     const sampling = setInterval(() => {
+       const text = rail?.textContent ?? ''
+       if (text) seen.add(text)
+     }, 100)
+     const answered = await until(
+       () => [...document.querySelectorAll('.turn.assistant .text')].find((node) =>
+         node.textContent.includes(${JSON.stringify(PARENT_ANSWER)}),
+       ),
+     )
+     clearInterval(sampling)
+     watcher.disconnect()
+     return {
+       answered: Boolean(answered),
+       rail: [...seen],
+       transcript: (pick('transcript')?.textContent ?? '').slice(-400),
+       error: pick('error')?.textContent ?? '',
+       notes: pick('notes')?.textContent ?? '',
+     }
+   })()`,
+  session,
+  true,
+)
+
+if (!turn?.answered)
+  await fail(`the delegating turn never reached an answer: ${JSON.stringify(turn)}`, [
+    'The parent agent was scripted to call researcher() and then answer with',
+    `${PARENT_ANSWER}. See tools: in agents/main/agent.md and the peers list in`,
+    'src/backend/services/ChatService.js.',
+    ...problems,
+  ])
+// The rail SAID a second agent was working, in words, while it was. Without
+// this the whole channel — agentWorker's onStep, the pool's progress branch,
+// the DELEGATE event, the line in page.jsx — can be deleted with every test
+// still green, because no test outside a browser can render a component.
+const railSaid = (turn.rail ?? []).join(' | ')
+if (!railSaid.includes('researcher:'))
+  await fail(`the rail never named the sub-agent while it worked: ${railSaid}`, [
+    'Expected a line like "researcher: fetch (1)" from the DELEGATE event.',
+    ...problems,
+  ])
+// And a clock that moved, which is the difference between an app that is
+// working and an app that is wedged, for a reader who cannot see either.
+const clocks = new Set(
+  (turn.rail ?? []).flatMap((text) => [...text.matchAll(/working (\d+)s/g)].map((m) => m[1])),
+)
+if (!clocks.size) await fail(`the rail never showed an elapsed time: ${railSaid}`, problems)
+
+console.log(
+  `smoke: a typed question was delegated and answered through the built page; ` +
+    `the rail said ${JSON.stringify([...new Set((turn.rail ?? []).filter((t) => t.includes('researcher:')))][0] ?? '')} while it worked`,
 )
 
 // --- realm two: the classic worker nothing bundles --------------------------

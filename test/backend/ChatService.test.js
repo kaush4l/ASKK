@@ -467,3 +467,88 @@ describe('the record a turn leaves behind', () => {
     expect(sent.failure.hint).toContain('Start a new chat')
   })
 })
+
+/**
+ * What the page hears while a SECOND agent is working.
+ *
+ * A delegated run is a whole other agent on a whole other thread, and until
+ * this it said nothing at all until it was finished: the parent's view streams
+ * every token the parent produces and showed a blank rail for the minutes a
+ * sub-agent spent reading pages. A thread doing its fourth fetch and a thread
+ * that was wedged were the same picture.
+ *
+ * The pool is faked here and the CHANNEL is what is under test: that
+ * `ChatService` hands the pool somewhere to report to, that what arrives is
+ * relabelled onto the parent's own request id, and that a caller who passed no
+ * emitter is handed no channel and gets the same answer anyway. The thread
+ * itself is proven in `bun run smoke`, which is the only place a Worker exists.
+ */
+describe('a sub-agent that is still working', () => {
+  const delegating = [toolTurn('helper({"task": "go and read"})'), answerTurn('it said hello')]
+
+  /** A pool that reports two passes before it answers, like a real thread. */
+  const reportingPool = (seen) => ({
+    async ask(name, task, _settings, _signal, onProgress) {
+      seen.push({ name, task, watched: typeof onProgress === 'function' })
+      onProgress?.({ agent: name, step: 1, doing: ['fetch'], answered: false })
+      onProgress?.({ agent: name, step: 2, doing: [], answered: true })
+      return Outcome.ok('hello')
+    },
+  })
+
+  /** A second agent in the roster, so `helper` resolves to a peer and not a note. */
+  const withPeer = (services) => {
+    const main = AgentSpec.of({
+      metadata: { name: 'main', tools: ['helper'] },
+      body: 'be brief',
+      source: 'test',
+    }).value
+    const helper = AgentSpec.of({
+      metadata: { name: 'helper', description: 'goes and reads' },
+      body: 'read it',
+      source: 'test',
+    }).value
+    return {
+      catalogue: {
+        async spec() {
+          return Outcome.ok(main)
+        },
+        async all() {
+          return Outcome.ok([main, helper])
+        },
+      },
+      ...services,
+    }
+  }
+
+  test('every pass it finishes arrives on the parent’s request as a delegate event', async () => {
+    const seen = []
+    const { service } = chatWith(delegating, withPeer({ pool: reportingPool(seen) }))
+    const events = []
+
+    const sent = await service.send({ id: 'c1', text: 'ask the helper' }, (name, data) =>
+      events.push({ name, data }),
+    )
+
+    expect(sent.ok).toBe(true)
+    expect(seen).toEqual([{ name: 'helper', task: 'go and read', watched: true }])
+    const delegated = events.filter((event) => event.name === EventName.DELEGATE)
+    expect(delegated.map((event) => event.data)).toEqual([
+      { agent: 'helper', step: 1, doing: ['fetch'], answered: false },
+      { agent: 'helper', step: 2, doing: [], answered: true },
+    ])
+  })
+
+  test('a caller watching nothing is handed no channel, and gets the same answer', async () => {
+    const seen = []
+    const { service } = chatWith(delegating, withPeer({ pool: reportingPool(seen) }))
+
+    const sent = await service.send({ id: 'c1', text: 'ask the helper' })
+
+    expect(sent.ok).toBe(true)
+    expect(sent.value.assistant.text).toBe('it said hello')
+    // Not merely unused: not passed. A pool given a callback nobody is listening
+    // to would post messages across a realm boundary for nothing.
+    expect(seen).toEqual([{ name: 'helper', task: 'go and read', watched: false }])
+  })
+})

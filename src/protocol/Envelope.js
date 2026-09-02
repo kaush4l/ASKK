@@ -151,6 +151,11 @@ export const EventName = Object.freeze({
   // same problem as a streaming reply — something to say before there is an
   // answer — so it is the same message, not a second mechanism.
   PARTIAL: 'partial',
+  // A sub-agent, part-way through the question it was handed. It rides the
+  // PARENT call's id, because that is the call the user is waiting on: a
+  // delegated run has no request of its own on this wire, and inventing one
+  // would make the page correlate two ids for one thing it is watching.
+  DELEGATE: 'delegate',
 })
 
 // There is no error class here any more. Failures are values: a handler

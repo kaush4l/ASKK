@@ -1031,14 +1031,22 @@ files from the page, and the model has never been told the guest has Python.
    formatter, a linter and `git` are an `apk add` line, and 52,602,121 of
    GitHub's 104,857,600 is already spent.
 
-5. **Done, by the wave that wrote this paragraph.** *Sub-agents that are
-   actually constructed* — the roster is two agents, `main` names `researcher`
-   in `tools:`, and `bun run smoke` starts the thread, drives its own tools and
-   asserts the name the worker reported for itself. What is left is the half a
-   thread does not buy: a sub-agent still answers **once, at the end**. There is
-   no way for it to say *what it is doing* while it does it, and no way for the
-   parent to ask. The pool holds `calls` and `startedAt` and nothing about
-   progress, and `SubAgentTool.call` awaits a single promise — so a delegated
-   run that takes four minutes is four minutes of silence in a UI that is
-   already streaming the parent's every token. That is the next thing, and it is
-   a channel, not a thread.
+5. **Done, by the wave that wrote this paragraph, and its residue with it.**
+   *Sub-agents that are actually constructed* — the roster is two agents, `main`
+   names `researcher` in `tools:`, and `bun run smoke` starts the thread, drives
+   its own tools and asserts the name the worker reported for itself. *And they
+   say what they are doing while they do it* — one message per finished pass
+   from `agentWorker.js`, kept on the thread record and forwarded to whoever is
+   watching the parent's call as `EventName.DELEGATE`, which the rail renders
+   as `researcher: fetch (1)`. The gate drives the whole path through the built
+   page: a question typed into the composer, the parent delegating, the rail
+   watched by a `MutationObserver` while it happens, and the parent's answer in
+   the transcript.
+
+   What a delegated run still cannot do is **outlive the turn that asked for
+   it**. `SubAgentTool.call` awaits one promise, so the parent is blocked for as
+   long as the child takes; there is no way to hand a question over, get on with
+   something else, and be told later. That is the next thing on this list, and
+   it is what the goal calls a status check and a notification: a delegated run
+   that has an id, a record that survives the turn, and a way to be told it
+   finished.

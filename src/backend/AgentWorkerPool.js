@@ -24,6 +24,8 @@ export class AgentWorkerPool {
     this.basePath = basePath
     this._workers = new Map()
     this._pending = new Map()
+    /** @type {Map<string, (progress: object) => void>} task id -> who is watching it. */
+    this._watching = new Map()
     this._threads = new Map()
     this._seq = 0
   }
@@ -56,6 +58,21 @@ export class AgentWorkerPool {
         if (thread) thread.confirmedName = event.data.name
         return
       }
+      // A pass that finished, on a run that has not. It does NOT settle the
+      // call — the same call goes on to answer normally — so it is handled and
+      // returned from before the pending map is touched, exactly as an `Event`
+      // is on the page's own wire.
+      if (event.data?.progress) {
+        const { id: at, progress } = event.data
+        const thread = this._threads.get(name)
+        // Kept on the thread as well as forwarded, because the two answer
+        // different questions: the forward is for whoever is watching this
+        // call, and the record is what `agents.threads` can tell a page that
+        // was not watching — after a reload, or in a second tab.
+        if (thread) thread.status = { ...progress, at: Date.now() }
+        this._watching.get(at)?.(progress)
+        return
+      }
       const { id } = event.data ?? {}
       const settle = this._pending.get(id)
       if (!settle) return
@@ -68,6 +85,7 @@ export class AgentWorkerPool {
       this._workers.delete(name)
       for (const [id, settle] of this._pending) {
         this._pending.delete(id)
+        this._watching.delete(id)
         settle({
           ok: false,
           failure: { code: Reason.INTERNAL, message: `${name}: ${event.message}`, hint: '' },
@@ -92,9 +110,15 @@ export class AgentWorkerPool {
    * delegated call ran a full 24-step budget to completion on a thread nobody
    * was waiting for any more.
    *
+   * `onProgress` is how the caller hears anything before the end. A delegated
+   * run used to be one message down and one message back, so a thread reading
+   * its fourth page and a thread that was wedged looked identical from the only
+   * realm anyone is watching. It is optional and advisory: a caller that passes
+   * nothing gets exactly the same answer.
+   *
    * @returns {Promise<Outcome>} value is the sub-agent's answer
    */
-  async ask(name, task, settings, signal = null) {
+  async ask(name, task, settings, signal = null, onProgress = null) {
     const id = `s${++this._seq}`
     const worker = this._worker(name)
     const thread = this._threads.get(name)
@@ -103,6 +127,7 @@ export class AgentWorkerPool {
     const answer = await new Promise((resolve) => {
       const timer = setTimeout(() => {
         this._pending.delete(id)
+        this._watching.delete(id)
         resolve({
           ok: false,
           failure: {
@@ -113,8 +138,10 @@ export class AgentWorkerPool {
         })
       }, this.timeout)
 
+      if (onProgress) this._watching.set(id, onProgress)
       this._pending.set(id, (data) => {
         clearTimeout(timer)
+        this._watching.delete(id)
         resolve(data)
       })
       worker.postMessage({ id, name, task, settings, basePath: this.basePath })
